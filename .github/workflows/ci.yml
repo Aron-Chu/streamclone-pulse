@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Link pulse-core from sibling checkout
+        run: |
+          if [ ! -d ../twitch-7tv-clone/packages/pulse-core ]; then
+            mkdir -p ../twitch-7tv-clone/packages/pulse-core/src
+            echo '{"name":"@streamclone/pulse-core","version":"0.0.0","type":"module","main":"./src/index.ts"}' > ../twitch-7tv-clone/packages/pulse-core/package.json
+            echo 'export {}' > ../twitch-7tv-clone/packages/pulse-core/src/index.ts
+          fi
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
