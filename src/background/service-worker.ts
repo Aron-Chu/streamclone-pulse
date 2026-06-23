@@ -9,6 +9,7 @@ import {
   fetchPulseChannel,
   fetchTopClip,
   postPulseBackfill,
+  postVodHint,
   postWatchChannel,
   setAlwaysTracked,
 } from './api.ts'
@@ -21,6 +22,10 @@ import {
   getWatchlist,
   removeFromWatchlist,
 } from '../shared/watchlist.ts'
+import { initPulseDebug, getPulseDebugLog, pulseDebug } from '../shared/pulseDebug.ts'
+import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
+
+void initPulseDebug()
 
 async function refreshPulse(login: string, window: 'recent' | 'full' = 'recent'): Promise<void> {
   try {
@@ -104,21 +109,20 @@ async function listPastVods(
   login: string,
   options?: { liveStreamId?: string; isLive?: boolean },
 ): Promise<PastVodRow[]> {
-  const key = login.toLowerCase()
+  const key = `${login.toLowerCase()}:${options?.isLive ? options.liveStreamId ?? 'live' : 'offline'}`
   const cached = pastVodsCache.get(key)
   const now = Date.now()
 
-  let baseRows: PastVodRow[]
   if (cached && now - cached.fetchedAt < PAST_VODS_CACHE_MS) {
-    baseRows = cached.rows
-  } else {
-    baseRows = await fetchPastVodRows(login)
-    pastVodsCache.set(key, { rows: baseRows, fetchedAt: now })
+    return cached.rows
   }
 
-  const liveStreamId = options?.isLive ? options.liveStreamId?.trim() : undefined
-  if (!liveStreamId) return baseRows
-  return baseRows.filter(row => row.streamId !== liveStreamId)
+  const rows = await fetchPastVodRows(login, {
+    liveStreamId: options?.liveStreamId,
+    isLive: options?.isLive,
+  })
+  pastVodsCache.set(key, { rows, fetchedAt: now })
+  return rows
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -129,7 +133,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   void syncWatchlistToBackend()
 })
 
-chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse) => {
   void (async () => {
     try {
       switch (message.type) {
@@ -171,9 +175,51 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
           } satisfies PulseUpdateMessage)
           return
         }
+        case 'DISCOVER_LIVE_VOD': {
+          try {
+            const tabId = sender.tab?.id
+            if (!tabId) {
+              sendResponse({
+                type: 'DISCOVER_LIVE_VOD',
+                result: { vodId: null, streamId: null, source: null, gqlErrors: ['no_twitch_tab'] },
+                error: 'no_twitch_tab',
+              } satisfies BackgroundResponse)
+              return
+            }
+            const result = await discoverLiveVodIdFromGqlInTab(tabId, message.login)
+            sendResponse({ type: 'DISCOVER_LIVE_VOD', result } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({
+              type: 'DISCOVER_LIVE_VOD',
+              result: { vodId: null, streamId: null, source: null, gqlErrors: [err instanceof Error ? err.message : 'discover_failed'] },
+              error: err instanceof Error ? err.message : 'discover_failed',
+            } satisfies BackgroundResponse)
+          }
+          return
+        }
+        case 'HINT_VOD': {
+          try {
+            const result = await postVodHint(message.login, {
+              streamId: message.streamId,
+              vodId: message.vodId,
+            })
+            await refreshPulse(message.login, 'full')
+            sendResponse({ ok: true, vodId: result.vodId ?? message.vodId })
+          } catch (err) {
+            await pulseDebug(
+              'vod.hint.api',
+              err instanceof Error ? err.message : 'vod hint failed',
+              { login: message.login, streamId: message.streamId, vodId: message.vodId },
+              'warn',
+            )
+            sendResponse({ ok: false, error: err instanceof Error ? err.message : 'vod_hint_failed' })
+          }
+          return
+        }
         case 'LOAD_MISSED_MOMENTS': {
           const job = await postPulseBackfill(message.login, {
             streamId: message.streamId,
+            vodId: message.vodId,
             fromOffsetSeconds: message.fromOffsetSeconds,
             toOffsetSeconds: message.toOffsetSeconds,
           })
@@ -204,7 +250,16 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
         }
         case 'HEALTH': {
           const health = await fetchExtensionHealth()
-          sendResponse({ type: 'HEALTH', ok: health.ok, version: health.version } satisfies BackgroundResponse)
+          sendResponse({
+            type: 'HEALTH',
+            ok: health.ok,
+            version: health.version,
+            helixEnabled: health.helixEnabled,
+          } satisfies BackgroundResponse)
+          return
+        }
+        case 'GET_PULSE_DEBUG_LOG': {
+          sendResponse({ type: 'PULSE_DEBUG_LOG', entries: await getPulseDebugLog() } satisfies BackgroundResponse)
           return
         }
         case 'OPEN_OPTIONS': {
@@ -294,12 +349,25 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
           sendResponse({ error: 'unknown_message' })
       }
     } catch (err) {
-      sendResponse({
-        type: 'PULSE_UPDATE',
-        login: 'type' in message && 'login' in message ? message.login : '',
-        payload: null,
-        error: err instanceof Error ? err.message : 'error',
-      })
+      const messageText = err instanceof Error ? err.message : 'error'
+      switch (message.type) {
+        case 'LOAD_MISSED_MOMENTS':
+          sendResponse({ type: 'PULSE_BACKFILL', job: null, error: messageText } satisfies BackgroundResponse)
+          return
+        case 'GET_PULSE_BACKFILL_STATUS':
+          sendResponse({ type: 'PULSE_BACKFILL_STATUS', job: null, error: messageText } satisfies BackgroundResponse)
+          return
+        case 'LIST_PAST_VODS':
+          sendResponse({ type: 'PAST_VODS', items: [], error: messageText } satisfies BackgroundResponse)
+          return
+        default:
+          sendResponse({
+            type: 'PULSE_UPDATE',
+            login: 'login' in message ? (message.login ?? '') : '',
+            payload: null,
+            error: messageText,
+          } satisfies PulseUpdateMessage)
+      }
     }
   })()
   return true

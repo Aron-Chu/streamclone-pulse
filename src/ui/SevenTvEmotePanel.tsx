@@ -1,15 +1,20 @@
+import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { formatHeatOffset } from '@streamclone/pulse-core'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
 import {
   buildSelectedEmoteSeries,
+  emoteAveragesFromRollups,
   emoteOverlayColor,
   emoteSelectionKey,
   maxSeriesValue,
+  streamSevenTvTotal,
 } from './chatActivityEmotes.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
 import { theme } from './theme.ts'
+
+const VISIBLE_CHIP_LIMIT = 5
 
 export interface SevenTvEmotePanelProps {
   expanded: boolean
@@ -29,6 +34,14 @@ function formatNumber(value: number): string {
   }).format(value)
 }
 
+function providerBadge(provider?: string): string {
+  const lower = (provider ?? '').trim().toLowerCase()
+  if (lower === '7tv' || lower === 'seventv') return '7TV'
+  if (lower === 'twitch') return 'TW'
+  if (lower === 'ffz') return 'FFZ'
+  return provider?.slice(0, 3).toUpperCase() ?? '—'
+}
+
 export function SevenTvEmotePanel({
   expanded,
   onToggleExpanded,
@@ -39,10 +52,15 @@ export function SevenTvEmotePanel({
   onToggleEmote,
   selectedOffsetSeconds,
 }: SevenTvEmotePanelProps) {
+  const [showAllChips, setShowAllChips] = useState(false)
+
   if (topEmotes.length === 0) return null
 
   const selectedEmotes = topEmotes.filter(emote => selectedKeys.includes(emoteSelectionKey(emote)))
   const previewNames = topEmotes.slice(0, 3).map(emote => emote.name).join(' · ')
+  const visibleEmotes = showAllChips ? topEmotes : topEmotes.slice(0, VISIBLE_CHIP_LIMIT)
+  const hiddenCount = Math.max(0, topEmotes.length - VISIBLE_CHIP_LIMIT)
+  const stream7tvTotal = streamSevenTvTotal(rollups)
 
   return (
     <div className="pulse-seven-tv-panel" style={styles.panel}>
@@ -53,7 +71,7 @@ export function SevenTvEmotePanel({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
       >
-        <span style={styles.toggleLabel}>7TV emotes</span>
+        <span style={styles.toggleLabel}>Emote lanes</span>
         {!expanded && previewNames ? (
           <span style={styles.togglePreview}>{previewNames}</span>
         ) : null}
@@ -69,11 +87,16 @@ export function SevenTvEmotePanel({
         <div style={styles.body}>
           {selectedOffsetSeconds != null ? (
             <p style={styles.sliceNote}>
-              Chart slice · {formatHeatOffset(selectedOffsetSeconds)} — selected emotes plot as lines on the chart above
+              Chart slice · {formatHeatOffset(selectedOffsetSeconds)} — click emotes to toggle chart lines
             </p>
           ) : (
-            <p style={styles.sliceNote}>Click emotes to add or remove their lines on the chat activity chart above</p>
+            <p style={styles.sliceNote}>Click emotes to toggle chart lines.</p>
           )}
+          {stream7tvTotal > 0 ? (
+            <p style={styles.streamTotal}>
+              {formatCount(stream7tvTotal)} 7TV uses in chart window · lanes plot 7TV emotes only
+            </p>
+          ) : null}
 
           {selectedEmotes.length > 0 ? (
             <div style={styles.legendRow}>
@@ -96,7 +119,7 @@ export function SevenTvEmotePanel({
           ) : null}
 
           <div className="pulse-no-scrollbar" style={styles.pillRow}>
-            {topEmotes.map(emote => {
+            {visibleEmotes.map(emote => {
               const key = emoteSelectionKey(emote)
               const selected = selectedKeys.includes(key)
               const selectedIndex = selectedKeys.indexOf(key)
@@ -119,19 +142,26 @@ export function SevenTvEmotePanel({
                   title={`${emote.name} · ${formatCount(emote.count)} uses · toggle chart line`}
                   onClick={() => onToggleEmote(emote)}
                 >
+                  <span style={styles.chipMarker} aria-hidden="true">{selected ? '●' : '○'}</span>
                   <PulseEmoteImg
                     emote={emote}
                     backendUrl={backendUrl}
-                    width={22}
-                    height={22}
+                    width={20}
+                    height={20}
                     style={styles.pillImg}
                   />
                   <span style={styles.pillName}>{emote.name}</span>
+                  <span style={styles.providerBadge}>{providerBadge(emote.provider)}</span>
                   <span style={styles.pillCount}>{formatCount(emote.count)}</span>
                 </button>
               )
             })}
           </div>
+          {hiddenCount > 0 && !showAllChips ? (
+            <button type="button" style={styles.moreButton} onClick={() => setShowAllChips(true)}>
+              More ({hiddenCount})
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -198,6 +228,13 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.35,
     margin: 0,
   },
+  streamTotal: {
+    color: theme.textSecondary,
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    margin: 0,
+  },
   legendRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
   legendChip: {
     alignItems: 'center',
@@ -230,7 +267,25 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: '5px 8px',
   },
+  chipMarker: { color: theme.accentSoft, fontSize: 10, lineHeight: 1, width: 10 },
   pillImg: { display: 'block', objectFit: 'contain' },
   pillName: { fontSize: 11, fontWeight: 800, maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  providerBadge: {
+    color: theme.textMuted,
+    fontSize: 8,
+    fontWeight: 900,
+    letterSpacing: '0.04em',
+  },
   pillCount: { color: theme.accentSoft, fontSize: 10, fontVariantNumeric: 'tabular-nums', fontWeight: 800 },
+  moreButton: {
+    background: 'transparent',
+    border: 0,
+    color: '#c4b5fd',
+    cursor: 'pointer',
+    fontSize: 10,
+    fontWeight: 800,
+    justifySelf: 'start',
+    padding: 0,
+    textTransform: 'uppercase',
+  },
 }

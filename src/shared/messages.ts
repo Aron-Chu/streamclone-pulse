@@ -15,6 +15,8 @@ export type MessageType =
   | 'SET_AUTO_UPDATE'
   | 'LIST_PAST_VODS'
   | 'FETCH_EMOTE_IMAGE'
+  | 'HINT_VOD'
+  | 'DISCOVER_LIVE_VOD'
   | 'PULSE_UPDATE'
 
 export interface TrackMessage {
@@ -149,6 +151,9 @@ export type BackgroundRequest =
   | SetAutoUpdateMessage
   | ListPastVodsMessage
   | FetchEmoteImageMessage
+  | HintVodMessage
+  | DiscoverLiveVodMessage
+  | GetPulseDebugLogMessage
   | LoadMissedMomentsMessage
   | GetPulseBackfillStatusMessage
 
@@ -205,6 +210,7 @@ export interface ExtensionHealthResponse {
   ok: boolean
   version: string
   time: number
+  helixEnabled?: boolean
 }
 
 export interface PulseBookmark {
@@ -266,10 +272,27 @@ export interface PulseStreamRecap {
   clipCandidates: PulseRecapMoment[]
 }
 
+export interface GetPulseDebugLogMessage {
+  type: 'GET_PULSE_DEBUG_LOG'
+}
+
+export interface HintVodMessage {
+  type: 'HINT_VOD'
+  login: string
+  streamId: string
+  vodId: string
+}
+
+export interface DiscoverLiveVodMessage {
+  type: 'DISCOVER_LIVE_VOD'
+  login: string
+}
+
 export interface LoadMissedMomentsMessage {
   type: 'LOAD_MISSED_MOMENTS'
   login: string
   streamId: string
+  vodId?: string
   fromOffsetSeconds?: number
   toOffsetSeconds?: number
 }
@@ -336,9 +359,10 @@ export interface PulsePayload {
   rollups: ExtensionRollup[]
   fullRollups?: ExtensionRollup[]
   lanes: ExtensionLanes
-  peaks: ExtensionPeak[]
+  peaks?: ExtensionPeak[]
   recap: PulseStreamRecap | null
   emoteSync?: EmoteSyncSnapshot
+  helixEnabled?: boolean
 }
 
 export interface PulseUpdateMessage {
@@ -351,7 +375,8 @@ export interface PulseUpdateMessage {
 export type BackgroundResponse =
   | PulseUpdateMessage
   | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }
-  | { type: 'HEALTH'; ok: boolean; version?: string; error?: string }
+  | { type: 'HEALTH'; ok: boolean; version?: string; helixEnabled?: boolean; error?: string }
+  | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   | { type: 'BOOKMARKS'; items: PulseBookmark[]; error?: string }
   | { type: 'BOOKMARK'; item: PulseBookmark; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
@@ -361,4 +386,5 @@ export type BackgroundResponse =
   | { type: 'EMOTE_IMAGE'; mimeType?: string; buffer?: ArrayBuffer; error?: string }
   | { type: 'PULSE_BACKFILL'; job: PulseBackfillJob | null; error?: string }
   | { type: 'PULSE_BACKFILL_STATUS'; job: PulseBackfillJob | null; error?: string }
+  | { type: 'DISCOVER_LIVE_VOD'; result: import('./twitchVodGql.ts').GqlVodDiscoveryResult; error?: string }
   | { ok: boolean; error?: string }

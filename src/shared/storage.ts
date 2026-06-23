@@ -1,4 +1,5 @@
 const BACKEND_URL_KEY = 'backendUrl'
+const BETA_KEY_KEY = 'betaKey'
 const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
 const OVERLAY_MODE_KEY = 'overlayMode'
 const OVERLAY_PLACEMENT_KEY = 'overlayPlacement'
@@ -6,7 +7,7 @@ const SIDEBAR_TAB_KEY = 'sidebarTab'
 const AUTO_TRACK_POLICY_KEY = 'autoTrackPolicy'
 const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 
-export const DEFAULT_BACKEND_URL = 'http://localhost:8090'
+export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
 export const DEFAULT_POLL_INTERVAL_MS = 30_000
 export const DEFAULT_AUTO_UPDATE_ENABLED = true
 export const POLL_INTERVAL_OPTIONS_MS = [15_000, 30_000, 60_000] as const
@@ -29,6 +30,15 @@ export async function getBackendUrl(): Promise<string> {
 
 export async function setBackendUrl(url: string): Promise<void> {
   await chrome.storage.sync.set({ [BACKEND_URL_KEY]: url.trim().replace(/\/+$/, '') })
+}
+
+export async function getBetaKey(): Promise<string> {
+  const stored = await chrome.storage.sync.get(BETA_KEY_KEY)
+  return String(stored[BETA_KEY_KEY] ?? '').trim()
+}
+
+export async function setBetaKey(key: string): Promise<void> {
+  await chrome.storage.sync.set({ [BETA_KEY_KEY]: key.trim() })
 }
 
 export async function getPollIntervalMs(): Promise<number> {
@@ -88,6 +98,17 @@ export async function getAutoUpdateEnabled(): Promise<boolean> {
 
 export async function setAutoUpdateEnabled(enabled: boolean): Promise<void> {
   await chrome.storage.sync.set({ [AUTO_UPDATE_ENABLED_KEY]: enabled })
+}
+
+const DEBUG_LOGGING_KEY = 'debugLoggingEnabled'
+
+export async function getDebugLoggingEnabled(): Promise<boolean> {
+  const stored = await chrome.storage.sync.get(DEBUG_LOGGING_KEY)
+  return Boolean(stored[DEBUG_LOGGING_KEY])
+}
+
+export async function setDebugLoggingEnabled(enabled: boolean): Promise<void> {
+  await chrome.storage.sync.set({ [DEBUG_LOGGING_KEY]: enabled })
 }
 
 export async function getSessionPulse(login: string): Promise<PulseCacheEntry | null> {

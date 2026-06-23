@@ -129,7 +129,7 @@ function sortByStartedAtDesc(rows: PastVodRow[]): PastVodRow[] {
   })
 }
 
-/** Merge metadata history + analytics streams; exclude the current live row when provided. */
+/** Merge metadata history + analytics streams; pin current live at top when provided. */
 export function mergePastVodRows(
   history: MetadataStreamHistoryItem[] | undefined,
   analytics: AnalyticsStreamListItem[] | undefined,
@@ -173,10 +173,19 @@ export function mergePastVodRows(
     })
   }
 
+  const sorted = sortByStartedAtDesc(rows)
   const liveStreamId = options?.isLive ? options.liveStreamId?.trim() : undefined
-  const filtered = liveStreamId
-    ? rows.filter(row => row.streamId !== liveStreamId)
-    : rows
+  if (!liveStreamId) return sorted
 
-  return sortByStartedAtDesc(filtered)
+  const liveIdx = sorted.findIndex(row => row.streamId === liveStreamId)
+  if (liveIdx < 0) return sorted
+
+  const liveRow: PastVodRow = {
+    ...sorted[liveIdx],
+    analyticsStatus: 'current-live',
+  }
+  if (liveIdx === 0) {
+    return [liveRow, ...sorted.slice(1)]
+  }
+  return [liveRow, ...sorted.filter(row => row.streamId !== liveStreamId)]
 }

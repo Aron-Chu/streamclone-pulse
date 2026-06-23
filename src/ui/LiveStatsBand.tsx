@@ -13,12 +13,14 @@ import {
 import type { PulsePayload } from '../shared/messages.ts'
 import { ChatActivityChart } from './ChatActivityChart.tsx'
 import {
+  aggregateChartEmotes,
   buildEmoteOverlaySeries,
   chartAlignFromStart,
   chartEmptyMessage,
   describeRollupGap,
   chartMaxPoints,
   chatSeriesFromRollups,
+  emoteAveragesFromRollups,
   hasFullTimelineRollups,
   emoteOverlayColor,
   emoteSelectionKey,
@@ -39,7 +41,9 @@ export interface LiveStatsBandProps {
   currentOffsetSeconds?: number
   isLive?: boolean
   fullTimeline?: boolean
-  onOpenStreamStart?: () => void
+  showLoadFromStart?: boolean
+  loadFromStartBusy?: boolean
+  onLoadFromStart?: () => void
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -157,7 +161,9 @@ export function LiveStatsBand({
   currentOffsetSeconds = 0,
   isLive = false,
   fullTimeline = false,
-  onOpenStreamStart,
+  showLoadFromStart = false,
+  loadFromStartBusy = false,
+  onLoadFromStart,
 }: LiveStatsBandProps) {
   const reducedMotion = useReducedMotion()
   const stats: LiveStats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
@@ -184,10 +190,14 @@ export function LiveStatsBand({
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  const topEmotesForChips =
-    (payload.topEmotes?.length ? payload.topEmotes : stats.topEmotes).slice(0, MAX_TOP_EMOTES)
+  const topEmotesForChips = (() => {
+    const fromRollups = aggregateChartEmotes(rollups, MAX_TOP_EMOTES)
+    if (fromRollups.length > 0) return fromRollups
+    return (payload.topEmotes?.length ? payload.topEmotes : stats.topEmotes).slice(0, MAX_TOP_EMOTES)
+  })()
   const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
   const emoteSyncTone = emoteSyncStatusTone(payload.emoteSync)
+  const emoteAvg5m = emoteAveragesFromRollups(rollups, 5)
   const emoteSyncStyle =
     emoteSyncTone === 'ok'
       ? { color: '#6ee7b7' }
@@ -214,10 +224,8 @@ export function LiveStatsBand({
     setSelectedIndex(index)
   }
 
-  const showStreamStartAction = Boolean(
-    onOpenStreamStart && (isLive || currentOffsetSeconds > 0 || canShowFullTimeline),
-  )
   const lateTracking = coverageStartOffsetSeconds > 60
+  const showTimelineMeta = isLive || currentOffsetSeconds > 0 || canShowFullTimeline
 
   return (
     <PulseSectionCard
@@ -279,19 +287,30 @@ export function LiveStatsBand({
           </span>
         </div>
         <div style={styles.metric}>
-          <span style={styles.metricLabel}>Emotes / min</span>
+          <span style={styles.metricLabel}>Emotes / min (this minute)</span>
           <AnimatedMetric value={stats.totalEmotePerMin} format={formatNumber} />
           {stats.hasProviderSplit ? (
             <span style={styles.metricMeta}>
               {stats.emoteProviderRates.map(rate => (
                 <span key={rate.provider} style={styles.providerRate}>
-                  {rate.provider} {formatNumber(rate.perMinute)}
+                  {rate.provider === 'Other' ? 'Other' : rate.provider} {formatNumber(rate.perMinute)}
                 </span>
               ))}
             </span>
           ) : (
-            <span style={styles.metricMeta}>No provider data</span>
+            <span style={styles.metricMeta}>No emotes this minute</span>
           )}
+          {emoteAvg5m.minutes > 0 ? (
+            <span style={styles.metricMeta}>
+              {formatNumber(emoteAvg5m.sevenTvPerMin)} 7TV avg · 5m
+              {emoteAvg5m.totalPerMin !== emoteAvg5m.sevenTvPerMin
+                ? ` · ${formatNumber(emoteAvg5m.totalPerMin)} total`
+                : ''}
+            </span>
+          ) : null}
+          {rollups.some(r => (r.totalEmoteCount ?? 0) > 0) && stats.totalEmotePerMin === 0 ? (
+            <span style={styles.metricHint}>Chart uses full stream; metric is latest minute.</span>
+          ) : null}
         </div>
       </div>
 
@@ -299,14 +318,12 @@ export function LiveStatsBand({
         <p style={{ ...styles.emoteSyncNote, ...emoteSyncStyle }}>{emoteSyncLabel}</p>
       ) : null}
 
-      {showStreamStartAction ? (
+      {showTimelineMeta ? (
         <div style={styles.timelineBar}>
           <div style={styles.timelineCopy}>
-            {lateTracking ? (
+            {lateTracking && !fullTimeline ? (
               <span style={styles.timelineMeta}>
-                {fullTimeline
-                  ? `Full stream · tracked from ${formatHeatOffset(coverageStartOffsetSeconds)}`
-                  : `Pulse rollups since ${formatHeatOffset(coverageStartOffsetSeconds)}`}
+                Pulse rollups since {formatHeatOffset(coverageStartOffsetSeconds)}
               </span>
             ) : (
               <span style={styles.timelineMeta}>
@@ -319,9 +336,16 @@ export function LiveStatsBand({
               </span>
             ) : null}
           </div>
-          <button type="button" style={styles.timelineButton} onClick={onOpenStreamStart}>
-            {fullTimeline && hasFullRollups ? 'Showing full stream' : 'Watch from start'}
-          </button>
+          {showLoadFromStart && onLoadFromStart ? (
+            <button
+              type="button"
+              style={styles.timelineButton}
+              disabled={loadFromStartBusy}
+              onClick={onLoadFromStart}
+            >
+              {loadFromStartBusy ? 'Loading…' : 'From stream start'}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -399,6 +423,7 @@ const styles: Record<string, CSSProperties> = {
   metricValue: { fontSize: 22, fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' },
   metricRow: { alignItems: 'center', display: 'flex', gap: 4 },
   metricMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 600 },
+  metricHint: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35 },
   providerRate: { marginRight: 8 },
   trendArrow: { fontSize: 11, fontWeight: 900 },
   emoteSyncNote: { fontSize: 10, fontWeight: 700, margin: '8px 0 0' },

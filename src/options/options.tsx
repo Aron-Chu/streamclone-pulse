@@ -9,19 +9,30 @@ import {
   POLL_INTERVAL_OPTIONS_MS,
   getAutoTrackPolicy,
   getBackendUrl,
+  getBetaKey,
   getOverlayPlacement,
   getPollIntervalMs,
   setAutoTrackPolicy,
   setBackendUrl,
+  setBetaKey,
   setOverlayPlacement,
   setPollIntervalMs,
   type AutoTrackPolicy,
   type OverlayPlacement,
 } from '../shared/storage.ts'
 import { normalizeLogin } from '../shared/login.ts'
+import {
+  clearPulseDebugLog,
+  getPulseDebugEnabled,
+  getPulseDebugLog,
+  initPulseDebug,
+  setPulseDebugEnabled,
+  type PulseDebugEntry,
+} from '../shared/pulseDebug.ts'
 
 function OptionsApp() {
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
+  const [betaKey, setBetaKeyState] = useState('')
   const [pollMs, setPollMsState] = useState(DEFAULT_POLL_INTERVAL_MS)
   const [placement, setPlacementState] = useState<OverlayPlacement>(DEFAULT_OVERLAY_PLACEMENT)
   const [autoTrackPolicy, setAutoTrackPolicyState] = useState<AutoTrackPolicy>(DEFAULT_AUTO_TRACK_POLICY)
@@ -30,14 +41,21 @@ function OptionsApp() {
   const [saved, setSaved] = useState(false)
   const [health, setHealth] = useState('Not checked')
   const [watchlistError, setWatchlistError] = useState('')
+  const [debugLogging, setDebugLogging] = useState(false)
+  const [debugLog, setDebugLog] = useState<PulseDebugEntry[]>([])
+  const [debugCopied, setDebugCopied] = useState(false)
 
   useEffect(() => {
     void (async () => {
+      await initPulseDebug()
       setBackendUrlState(await getBackendUrl())
+      setBetaKeyState(await getBetaKey())
       setPollMsState(await getPollIntervalMs())
       setPlacementState(await getOverlayPlacement())
       setAutoTrackPolicyState(await getAutoTrackPolicy())
+      setDebugLogging(await getPulseDebugEnabled())
       await refreshWatchlist()
+      await refreshDebugLog()
     })()
   }, [])
 
@@ -55,6 +73,7 @@ function OptionsApp() {
   async function save(): Promise<void> {
     await Promise.all([
       setBackendUrl(backendUrl),
+      setBetaKey(betaKey),
       setPollIntervalMs(pollMs),
       setOverlayPlacement(placement),
       setAutoTrackPolicy(autoTrackPolicy),
@@ -66,13 +85,53 @@ function OptionsApp() {
     await refreshWatchlist()
   }
 
+  async function refreshDebugLog(): Promise<void> {
+    setDebugLog(await getPulseDebugLog())
+  }
+
+  async function toggleDebugLogging(enabled: boolean): Promise<void> {
+    await setPulseDebugEnabled(enabled)
+    setDebugLogging(enabled)
+    if (!enabled) {
+      setDebugLog([])
+    } else {
+      await refreshDebugLog()
+    }
+  }
+
+  async function copyDebugLog(): Promise<void> {
+    const text = debugLog
+      .map(entry => {
+        const ts = new Date(entry.ts).toISOString()
+        const data = entry.data ? ` ${JSON.stringify(entry.data)}` : ''
+        return `[${ts}] ${entry.level} ${entry.step}: ${entry.message}${data}`
+      })
+      .join('\n')
+    await navigator.clipboard.writeText(text || '(empty)')
+    setDebugCopied(true)
+    setTimeout(() => setDebugCopied(false), 1500)
+  }
+
   async function probeHealth(): Promise<void> {
     setHealth('Checking...')
     try {
       const res = await sendBackgroundMessage({ type: 'HEALTH' })
-      setHealth('type' in res && res.type === 'HEALTH' && res.ok ? `Backend OK (${res.version ?? 'dev'})` : 'Backend unreachable')
+      if ('type' in res && res.type === 'HEALTH' && res.ok) {
+        const helix =
+          res.helixEnabled === true
+            ? 'Helix on'
+            : res.helixEnabled === false
+              ? 'Helix off'
+              : 'Helix unknown (redeploy analytics)'
+        setHealth(`Backend OK (${res.version ?? 'dev'}) · ${helix}`)
+      } else {
+        setHealth('Backend unreachable')
+      }
     } catch {
       setHealth('Backend unreachable')
+    }
+    if (debugLogging) {
+      await refreshDebugLog()
     }
   }
 
@@ -120,6 +179,16 @@ function OptionsApp() {
         <label style={styles.label}>
           <span>Backend URL</span>
           <input value={backendUrl} onChange={e => setBackendUrlState(e.target.value)} placeholder={DEFAULT_BACKEND_URL} style={styles.input} />
+        </label>
+        <label style={styles.label}>
+          <span>Beta key (hosted API only)</span>
+          <input
+            value={betaKey}
+            onChange={e => setBetaKeyState(e.target.value)}
+            placeholder="X-Streamclone-Beta-Key — leave empty for localhost"
+            style={styles.input}
+            autoComplete="off"
+          />
         </label>
         <div style={styles.status}>{health}</div>
       </section>
@@ -205,6 +274,54 @@ function OptionsApp() {
         </p>
       </section>
 
+      <section style={styles.section}>
+        <span style={styles.groupLabel}>Debug logging (VOD / backfill)</span>
+        <p style={styles.help}>
+          Turn on to record step-by-step VOD discovery, Helix health, pulse API, and backfill results. Use this when
+          &quot;Waiting for Twitch VOD…&quot; or &quot;Check for VOD &amp; load from start&quot; fails — the log shows exactly which step blocked.
+        </p>
+        <label style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={debugLogging}
+            onChange={event => void toggleDebugLogging(event.target.checked)}
+          />
+          Enable debug logging
+        </label>
+        <div style={styles.debugActions}>
+          <button type="button" style={styles.secondaryButton} onClick={() => void refreshDebugLog()} disabled={!debugLogging}>
+            Refresh log
+          </button>
+          <button type="button" style={styles.secondaryButton} onClick={() => void copyDebugLog()} disabled={!debugLogging || debugLog.length === 0}>
+            Copy log
+          </button>
+          <button
+            type="button"
+            style={styles.secondaryButton}
+            onClick={() => void clearPulseDebugLog().then(refreshDebugLog)}
+            disabled={!debugLogging || debugLog.length === 0}
+          >
+            Clear
+          </button>
+        </div>
+        {debugCopied ? <p style={styles.saved}>Debug log copied.</p> : null}
+        {debugLogging ? (
+          debugLog.length === 0 ? (
+            <p style={styles.help}>No entries yet. Open a live channel, expand Pulse, then use &quot;Check for VOD &amp; load from start&quot;.</p>
+          ) : (
+            <pre style={styles.debugPre}>
+              {debugLog
+                .slice(-20)
+                .map(entry => {
+                  const ts = new Date(entry.ts).toLocaleTimeString()
+                  return `${ts} [${entry.level}] ${entry.step}\n  ${entry.message}${entry.data ? `\n  ${JSON.stringify(entry.data)}` : ''}`
+                })
+                .join('\n\n')}
+            </pre>
+          )
+        ) : null}
+      </section>
+
       <button type="button" onClick={() => void save()} style={styles.primaryButton}>Save settings</button>
       {saved ? <p style={styles.saved}>Saved and watchlist synced.</p> : null}
     </main>
@@ -236,6 +353,22 @@ const styles: Record<string, React.CSSProperties> = {
   secondaryButton: { background: '#20202a', border: '1px solid #3f3f50', borderRadius: 8, color: '#fafafc', cursor: 'pointer', fontWeight: 900, padding: '9px 12px' },
   saved: { color: '#86efac', fontWeight: 800 },
   docLink: { color: '#c4b5fd' },
+  debugActions: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  debugPre: {
+    background: '#0d0d12',
+    border: '1px solid #30303a',
+    borderRadius: 8,
+    color: '#d4d4e0',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontSize: 10,
+    lineHeight: 1.45,
+    margin: 0,
+    maxHeight: 280,
+    overflow: 'auto',
+    padding: '10px 12px',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
 }
 
 createRoot(document.getElementById('root')!).render(<OptionsApp />)

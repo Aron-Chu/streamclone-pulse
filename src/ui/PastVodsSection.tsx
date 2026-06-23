@@ -20,6 +20,7 @@ export interface PastVodsSectionProps {
   liveStreamId?: string
   isLive?: boolean
   channelOffline?: boolean
+  onOpenFromStart?: () => void
 }
 
 export function PastVodsSection({
@@ -28,15 +29,18 @@ export function PastVodsSection({
   liveStreamId,
   isLive,
   channelOffline = false,
+  onOpenFromStart,
 }: PastVodsSectionProps) {
   const [rows, setRows] = useState<PastVodRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     let mounted = true
     setLoading(true)
     setError(null)
+    setExpanded(false)
     void (async () => {
       try {
         const res = await sendBackgroundMessage({
@@ -66,6 +70,9 @@ export function PastVodsSection({
   const subtitle = channelOffline
     ? 'Recent broadcasts'
     : 'Pulse in Streamclone · Twitch VOD for playback'
+
+  const visibleRows = expanded ? rows : rows.slice(0, MAX_PAST_STREAM_ROWS)
+  const hiddenCount = Math.max(0, rows.length - MAX_PAST_STREAM_ROWS)
 
   function openAnalytics(streamId: string): void {
     const path = buildAnalyticsMomentLink(login, 0, streamId)
@@ -109,18 +116,25 @@ export function PastVodsSection({
       {!loading && rows.length > 0 ? (
         <div className="pulse-past-vod-shell">
           <div role="list" style={styles.list}>
-            {rows.slice(0, MAX_PAST_STREAM_ROWS).map(row => (
+            {visibleRows.map(row => (
               <PastVodRowCard
                 key={row.streamId}
                 row={row}
                 onAnalytics={() => openAnalytics(row.streamId)}
                 onTwitchVod={() => openTwitchVod(row)}
+                onFromStart={row.analyticsStatus === 'current-live' ? onOpenFromStart : undefined}
               />
             ))}
           </div>
-          <button type="button" className="pulse-past-vod-footer" onClick={openAllAnalytics}>
-            Open all stream history →
-          </button>
+          {hiddenCount > 0 && !expanded ? (
+            <button type="button" className="pulse-past-vod-footer" onClick={() => setExpanded(true)}>
+              View all ({rows.length}) →
+            </button>
+          ) : (
+            <button type="button" className="pulse-past-vod-footer" onClick={openAllAnalytics}>
+              Open all stream history →
+            </button>
+          )}
         </div>
       ) : null}
     </PulseSectionCard>
@@ -131,10 +145,12 @@ function PastVodRowCard({
   row,
   onAnalytics,
   onTwitchVod,
+  onFromStart,
 }: {
   row: PastVodRow
   onAnalytics: () => void
   onTwitchVod: () => void
+  onFromStart?: () => void
 }) {
   const thumb = vodThumbnailUrl(row.thumbnailUrl, 80, 45)
   const dateLabel = formatPastVodDate(row.startedAt)
@@ -142,7 +158,11 @@ function PastVodRowCard({
   const statusClass = pastVodAnalyticsStatusClass(row.analyticsStatus)
 
   return (
-    <article className="pulse-past-vod-row pulse-past-vod-row-compact" style={styles.row} role="listitem">
+    <article
+      className="pulse-past-vod-row pulse-past-vod-row-compact"
+      style={styles.row}
+      role="listitem"
+    >
       <button type="button" className="pulse-past-vod-main" style={styles.rowMain} onClick={onAnalytics}>
         <div style={styles.thumbWrap}>
           {thumb ? (
@@ -164,6 +184,11 @@ function PastVodRowCard({
         </div>
       </button>
       <div style={styles.rowActions}>
+        {onFromStart ? (
+          <button type="button" className="pulse-past-vod-action pulse-past-vod-action-from-start" onClick={onFromStart}>
+            From start
+          </button>
+        ) : null}
         <button type="button" className="pulse-past-vod-action" onClick={onAnalytics}>
           Pulse
         </button>

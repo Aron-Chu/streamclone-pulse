@@ -50,6 +50,10 @@ export const shadowStyles = `
     from { opacity: 0; }
     to { opacity: 1; }
   }
+  @keyframes pulse-coverage-wait {
+    0%, 100% { border-color: rgba(167, 139, 250, 0.35); }
+    50% { border-color: rgba(167, 139, 250, 0.75); }
+  }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
@@ -67,9 +71,41 @@ export const shadowStyles = `
   .pulse-live-dot { animation: live-ping 1.8s ease-in-out infinite; }
   .pulse-row-rise { animation: row-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
   .pulse-row-rise:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28); }
-  .pulse-moment-row:hover { border-color: rgba(167, 139, 250, 0.4) !important; background: rgba(255,255,255,0.07) !important; }
+  .pulse-moment-row-button {
+    -webkit-tap-highlight-color: transparent;
+    appearance: none;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  .pulse-moment-row-button:hover {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  .pulse-moment-row-button:focus,
+  .pulse-moment-row-button:focus-visible,
+  .pulse-moment-row-button:active {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  .pulse-moment-row-button .pulse-moment-row {
+    border: none;
+    box-shadow: inset 0 0 0 1px transparent;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .pulse-moment-row-button:hover .pulse-moment-row {
+    box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.35) !important;
+    background: rgba(139, 92, 246, 0.08) !important;
+  }
+  .pulse-moment-row-selected {
+    box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.45) !important;
+    background: rgba(139, 92, 246, 0.14) !important;
+  }
   .pulse-top-emote-chip {
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition: transform 0.15s ease, border-color 0.15s ease;
   }
   .pulse-top-emote-chip:hover {
     border-color: rgba(167, 139, 250, 0.45) !important;
@@ -204,6 +240,20 @@ export const shadowStyles = `
   .pulse-past-vod-action-vod:hover {
     border-color: rgba(196, 181, 253, 0.45);
     background: rgba(139, 92, 246, 0.16);
+  }
+  .pulse-past-vod-row-current {
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(248, 113, 113, 0.22);
+    border-radius: 10px;
+  }
+  .pulse-past-vod-action-start {
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.25);
+    background: rgba(239, 68, 68, 0.12);
+  }
+  .pulse-past-vod-action-start:hover {
+    border-color: rgba(252, 165, 165, 0.45);
+    background: rgba(239, 68, 68, 0.18);
   }
   .pulse-past-vod-status {
     border: 1px solid transparent;

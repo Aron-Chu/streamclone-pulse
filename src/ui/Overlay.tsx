@@ -2,13 +2,9 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   buildMomentJumpLink,
-  deriveLiveHeat,
-  deriveLiveStats,
   formatHeatOffset,
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
   LIVE_HEAT_SUBTITLE,
-  toLiveHeatInputFromExtension,
-  toLiveStatsInputFromExtension,
   type LiveHeatPoint,
 } from '@streamclone/pulse-core'
 import { CollapsedPill } from './CollapsedPill.tsx'
@@ -16,6 +12,7 @@ import { MiniDock } from './MiniDock.tsx'
 import { LiveStatsBand } from './LiveStatsBand.tsx'
 import { MostReactedSection } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
+import { CoverageCard } from './CoverageCard.tsx'
 import type { ExtensionClip, PulseBackfillJob, PulsePayload } from '../shared/messages.ts'
 import {
   DEFAULT_BACKEND_URL,
@@ -42,9 +39,11 @@ import {
   toggleTwitchChatters,
 } from '../content/twitchChatControls.ts'
 import { getPrimaryVideo, seekPlaybackOffset, detectTwitchChannelLive, type TwitchPageContext } from '../content/twitch.ts'
+import { discoverLiveVodIdFromDom } from '../content/twitchVodDiscovery.ts'
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
-import { MissedMomentsBanner } from './MissedMomentsBanner.tsx'
-import { evaluateBackfillRefresh, isPulseBackfillTerminal, shouldShowMissedMomentsBanner } from './missedMoments.ts'
+import { evaluateBackfillRefresh, isPulseBackfillTerminal, resolvePulseCoverage, shouldShowMissedMomentsBanner } from './missedMoments.ts'
+import { initPulseDebug, pulseDebug, summarizeVodDebugBlockers } from '../shared/pulseDebug.ts'
+import { resolveMostReactedHeat } from './mostReacted.ts'
 
 interface OverlayProps {
   login: string
@@ -92,6 +91,14 @@ export function Overlay({
   const [missedBusy, setMissedBusy] = useState(false)
   const [missedRefreshed, setMissedRefreshed] = useState(false)
   const [missedJob, setMissedJob] = useState<PulseBackfillJob | null>(null)
+  const [saveBusy, setSaveBusy] = useState(false)
+  const [coverageLastCheck, setCoverageLastCheck] = useState<number | null>(null)
+  const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
+  const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
+
+  useEffect(() => {
+    void initPulseDebug()
+  }, [])
 
   useEffect(() => {
     setAwaitingTrack(pendingTrackPrompt && !payload?.tracking)
@@ -153,11 +160,11 @@ export function Overlay({
 
   const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
-  const liveHeat = displayPayload ? deriveLiveHeat(toLiveHeatInputFromExtension(displayPayload)) : null
-  const warming = Boolean(uiIsLive && liveHeat && !liveHeat.visible)
+  const mostReactedHeat = displayPayload ? resolveMostReactedHeat(displayPayload) : null
+  const warming = Boolean(uiIsLive && mostReactedHeat && !mostReactedHeat.visible)
   const panelSections = payload
     ? resolvePulsePanelSections(payload, {
-        liveHeatVisible: Boolean(liveHeat?.visible),
+        liveHeatVisible: Boolean(mostReactedHeat?.visible),
         warming,
         pageIsLive,
       })
@@ -276,45 +283,16 @@ export function Overlay({
   }
 
   async function loadMissedMoments(): Promise<void> {
-    if (!payload?.streamId || !payload.coverage) return
-    const beforePayload = payload
-    setMissedBusy(true)
-    setMissedRefreshed(false)
-    setNotice(null)
-    try {
-      const range = payload.coverage.missingRanges?.[0]
-      const response = await sendBackgroundMessage({
-        type: 'LOAD_MISSED_MOMENTS',
-        login,
-        streamId: payload.streamId,
-        fromOffsetSeconds: range?.fromOffsetSeconds ?? 0,
-        toOffsetSeconds: range?.toOffsetSeconds ?? payload.coverageStartOffsetSeconds,
-      })
-      if (!('type' in response) || response.type !== 'PULSE_BACKFILL' || !response.job) {
-        setNotice({ kind: 'warn', text: 'Could not start missed-moments backfill.' })
-        return
-      }
-      const job = response.job
-      setMissedJob(job)
-      if (job.status === 'already_available') {
-        const fresh = await refreshPulse(true)
-        applyBackfillRefreshOutcome(beforePayload, fresh ?? payload)
-        return
-      }
-      if (job.status === 'waiting_for_vod') {
-        setNotice({ kind: 'info', text: job.message || 'VOD chat not available yet.' })
-        return
-      }
-      if (job.status === 'failed') {
-        setNotice({ kind: 'warn', text: job.message || 'Backfill failed.' })
-        return
-      }
-      await pollMissedBackfill(job.jobId, beforePayload)
-    } catch (err) {
-      setNotice({ kind: 'warn', text: err instanceof Error ? err.message : 'Backfill failed.' })
-    } finally {
-      setMissedBusy(false)
+    if (!payload?.streamId) {
+      setNotice({ kind: 'warn', text: 'Stream ID missing — track this channel and retry.' })
+      return
     }
+    const coverage = resolvePulseCoverage(payload)
+    if (!coverage) {
+      setNotice({ kind: 'warn', text: 'No coverage info yet — wait for the first minute of rollups.' })
+      return
+    }
+    await loadMissedMomentsWithPayload(payload)
   }
 
   async function pollMissedBackfill(jobId: string, beforePayload: PulsePayload): Promise<void> {
@@ -333,6 +311,15 @@ export function Overlay({
       if (job.status === 'done' || job.status === 'already_available') {
         const fresh = await refreshPulse(true)
         applyBackfillRefreshOutcome(beforePayload, fresh ?? payload)
+        setCoverageCheckError(null)
+        return
+      }
+      if (job.status === 'waiting_for_vod') {
+        setCoverageCheckError(null)
+        setNotice({
+          kind: 'info',
+          text: 'Still waiting for VOD chat — will retry on the next check.',
+        })
         return
       }
       setMissedRefreshed(false)
@@ -341,6 +328,228 @@ export function Overlay({
     }
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
+
+  async function refreshVodDebugDetail(): Promise<void> {
+    const summary = await summarizeVodDebugBlockers()
+    setVodDebugDetail(summary)
+  }
+
+  async function submitPageVodHint(): Promise<string | null> {
+    if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
+    const domHint = discoverLiveVodIdFromDom()
+    await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
+      login,
+      streamId: payload.streamId,
+      id: domHint,
+    }, domHint ? 'info' : 'warn')
+    let hint = domHint
+    if (!hint) {
+      const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login })
+      const gql =
+        'type' in gqlRes && gqlRes.type === 'DISCOVER_LIVE_VOD'
+          ? gqlRes.result
+          : { vodId: null, streamId: null, source: null, gqlErrors: ['background_unreachable'] as string[] }
+      hint = gql.vodId
+      await pulseDebug(
+        'vod.discover.gql',
+        hint ? `found archive id via Twitch GQL (${gql.source})` : 'GQL returned no archive id',
+        {
+          login,
+          id: hint,
+          source: gql.source,
+          streamId: gql.streamId,
+          pulseStreamId: payload.streamId,
+          gqlErrors: gql.gqlErrors,
+        },
+        hint ? 'info' : 'warn',
+      )
+    }
+    if (!hint) {
+      await refreshVodDebugDetail()
+      return null
+    }
+    try {
+      const res = await sendBackgroundMessage({
+        type: 'HINT_VOD',
+        login,
+        streamId: payload.streamId,
+        vodId: hint,
+      })
+      if ('ok' in res && res.ok) {
+        await refreshPulse(true)
+      }
+    } catch {
+      await pulseDebug('vod.hint.api', 'vod-hint endpoint failed — backfill will still send vodId in POST body', {
+        login,
+        streamId: payload.streamId,
+        vodId: hint,
+      }, 'warn')
+    }
+    await refreshVodDebugDetail()
+    return hint
+  }
+
+  async function checkForVodAndBackfill(): Promise<void> {
+    if (!payload?.streamId || missedBusy) return
+    setMissedBusy(true)
+    setCoverageCheckError(null)
+    try {
+      const pageHint = await submitPageVodHint()
+      const healthRes = await sendBackgroundMessage({ type: 'HEALTH' }).catch(() => null)
+      if (healthRes && 'type' in healthRes && healthRes.type === 'HEALTH') {
+        const helix = healthRes.helixEnabled
+        const helixMessage =
+          helix === true
+            ? 'Helix enabled on backend'
+            : helix === false
+              ? 'Helix disabled on backend'
+              : 'Helix unknown — backend analytics needs redeploy'
+        await pulseDebug('vod.helix.health', helixMessage, {
+          helixEnabled: helix ?? null,
+          version: healthRes.version ?? null,
+        }, helix === true ? 'info' : 'warn')
+      }
+      const fresh = await refreshPulse(false)
+      setCoverageLastCheck(Date.now())
+      const next = fresh ?? payload
+      const coverage = resolvePulseCoverage(next)
+      await pulseDebug('ui.coverage', 'vod check finished', {
+        login,
+        streamId: next.streamId ?? null,
+        vodId: next.vodId ?? null,
+        resolvedState: coverage?.state ?? null,
+        canBackfill: coverage?.canBackfill ?? null,
+      })
+      if (next.vodId || coverage?.canBackfill || pageHint) {
+        setNotice({ kind: 'info', text: 'VOD linked — starting missed-moments backfill…' })
+        const payloadForLoad =
+          pageHint && !next.vodId
+            ? { ...next, vodId: pageHint }
+            : fresh ?? next
+        await loadMissedMomentsWithPayload(payloadForLoad)
+        return
+      }
+      if (coverage?.state === 'backfill_running') {
+        setNotice({ kind: 'info', text: 'Backfill already running…' })
+        return
+      }
+      if (next.helixEnabled === false) {
+        setCoverageCheckError(
+          'Backend Helix is off — analytics needs TWITCH_OAUTH_CLIENT_ID/SECRET (or redeploy latest analytics).',
+        )
+        await refreshVodDebugDetail()
+        return
+      }
+      if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
+        setCoverageCheckError(
+          'BearHost analytics needs redeploy (Helix/vod-hint). If GQL shows "Failed to fetch", whitelist gql.twitch.tv in your ad blocker.',
+        )
+      } else if (!next.vodId) {
+        setCoverageCheckError(
+          'Twitch has not published a VOD id for this stream yet — try again after a few minutes or when the stream ends.',
+        )
+      } else {
+        setCoverageCheckError(null)
+      }
+      await refreshVodDebugDetail()
+    } catch (err) {
+      setCoverageCheckError(err instanceof Error ? err.message : 'Could not check VOD status')
+    } finally {
+      setMissedBusy(false)
+    }
+  }
+
+  async function loadMissedMomentsWithPayload(activePayload: PulsePayload): Promise<void> {
+    const coverage = resolvePulseCoverage(activePayload)
+    if (!coverage || !activePayload.streamId) return
+    const beforePayload = activePayload
+    setMissedBusy(true)
+    setMissedRefreshed(false)
+    setFullTimeline(true)
+    setNotice({ kind: 'info', text: 'Loading missed moments… this can take a few minutes.' })
+    try {
+      const range = coverage.missingRanges?.[0]
+      const hintedVodId =
+        activePayload.vodId
+        ?? (await submitPageVodHint())
+        ?? undefined
+      const response = await sendBackgroundMessage({
+        type: 'LOAD_MISSED_MOMENTS',
+        login,
+        streamId: activePayload.streamId,
+        vodId: hintedVodId,
+        fromOffsetSeconds: range?.fromOffsetSeconds ?? 0,
+        toOffsetSeconds: range?.toOffsetSeconds ?? Math.max(0, coverage.coverageStartOffsetSeconds - 60),
+      })
+      if ('error' in response && response.error) {
+        setCoverageCheckError(String(response.error))
+        return
+      }
+      if (!('type' in response) || response.type !== 'PULSE_BACKFILL' || !response.job) {
+        setCoverageCheckError('Could not start backfill — check beta key and backend URL in settings.')
+        return
+      }
+      const job = response.job
+      setMissedJob(job)
+      if (job.status === 'already_available') {
+        const fresh = await refreshPulse(true)
+        applyBackfillRefreshOutcome(beforePayload, fresh ?? activePayload)
+        return
+      }
+      if (job.status === 'waiting_for_vod') {
+        setNotice({ kind: 'info', text: job.message || 'VOD chat not ready yet.' })
+        return
+      }
+      if (job.status === 'failed') {
+        setCoverageCheckError(job.message || job.error || 'Backfill failed.')
+        return
+      }
+      await pollMissedBackfill(job.jobId, beforePayload)
+    } catch (err) {
+      setCoverageCheckError(err instanceof Error ? err.message : 'Backfill failed.')
+    } finally {
+      setMissedBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!payload) return
+    const coverage = resolvePulseCoverage(payload)
+    void pulseDebug('ui.coverage', 'pulse payload in overlay', {
+      login,
+      streamId: payload.streamId ?? null,
+      vodId: payload.vodId ?? null,
+      tracking: payload.tracking,
+      coverageState: coverage?.state ?? null,
+      coverageStart: payload.coverageStartOffsetSeconds ?? null,
+      helixEnabled: payload.helixEnabled ?? null,
+    })
+    if (coverage?.state === 'waiting_for_vod') {
+      void refreshVodDebugDetail()
+    }
+  }, [login, payload?.streamId, payload?.vodId, payload?.tracking, payload?.coverageStartOffsetSeconds, payload?.coverage?.state, payload?.helixEnabled])
+
+  const coverageForPoll = payload ? resolvePulseCoverage(payload) : undefined
+  useEffect(() => {
+    if (!payload?.tracking || !uiIsLive) return
+    if (coverageForPoll?.state !== 'waiting_for_vod' && !coverageForPoll?.canBackfill) return
+    if (missedBusy || missedJob?.status === 'fetching_chat') return
+
+    const timer = window.setInterval(() => {
+      void checkForVodAndBackfill()
+    }, 45_000)
+
+    return () => window.clearInterval(timer)
+  }, [
+    payload?.tracking,
+    payload?.streamId,
+    payload?.vodId,
+    uiIsLive,
+    coverageForPoll?.state,
+    coverageForPoll?.canBackfill,
+    missedBusy,
+    missedJob?.status,
+  ])
 
   function openSettings(): void {
     void sendBackgroundMessage({ type: 'OPEN_OPTIONS' })
@@ -366,12 +575,33 @@ export function Overlay({
     }
   }
 
-  function openStreamStartToLive(): void {
-    setNotice(null)
+  async function loadStreamFromStart(): Promise<void> {
     setFullTimeline(true)
+    setNotice(null)
+    let active = payload
+    if (!active?.vodId) {
+      await submitPageVodHint()
+      active = (await refreshPulse(true)) ?? active
+    }
+    const coverage = active ? resolvePulseCoverage(active) : undefined
+    if (active && (active.vodId || coverage?.canBackfill)) {
+      await loadMissedMomentsWithPayload(active)
+    } else if (coverage?.state === 'waiting_for_vod') {
+      const hint = await submitPageVodHint()
+      if (hint && active) {
+        await loadMissedMomentsWithPayload({ ...active, vodId: hint })
+      } else {
+        await checkForVodAndBackfill()
+      }
+    }
+    seekToStreamStart()
+  }
+
+  function seekToStreamStart(): void {
+    setFullTimeline(true)
+    setNotice(null)
     const vodId = payload?.vodId ?? context.vodId ?? undefined
     const offset = 0
-    openAnalytics(offset)
 
     if (vodId) {
       const vodUrl = buildTwitchVodUrl(vodId, offset)
@@ -408,9 +638,55 @@ export function Overlay({
       kind: 'info',
       text:
         coverageStart > 60
-          ? `Playback from start — chat data begins at ${formatHeatOffset(coverageStart)} unless you load missed moments.`
-          : 'Watch from start once Twitch publishes the archive.',
+          ? `Chart expanded from stream start — chat data begins at ${formatHeatOffset(coverageStart)}. Backfill still needs a Twitch VOD link.`
+          : 'Chart expanded from stream start.',
     })
+  }
+
+  useEffect(() => {
+    if (!payload?.tracking || !uiIsLive || payload.vodId) return
+    const coverage = resolvePulseCoverage(payload)
+    if (coverage?.state !== 'waiting_for_vod' && !coverage?.canBackfill) return
+    void submitPageVodHint()
+  }, [payload?.tracking, payload?.streamId, payload?.vodId, uiIsLive, payload?.coverageStartOffsetSeconds])
+
+  function openStreamStartToLive(): void {
+    seekToStreamStart()
+  }
+
+  async function saveMoment(point: LiveHeatPoint): Promise<void> {
+    if (!payload) return
+    setSaveBusy(true)
+    setNotice(null)
+    try {
+      const response = await sendBackgroundMessage({
+        type: 'SAVE_BOOKMARK',
+        bookmark: {
+          login: payload.login,
+          streamId: payload.streamId,
+          vodId: payload.vodId ?? undefined,
+          offsetSeconds: point.offsetSeconds,
+          label: `${formatHeatOffset(point.offsetSeconds)} · ${point.reasonLabel}`,
+          score: point.score,
+          source: 'extension',
+        },
+      })
+      if ('type' in response && response.type === 'BOOKMARK') {
+        setNotice({ kind: 'ok', text: `Saved moment at ${formatHeatOffset(point.offsetSeconds)}.` })
+        return
+      }
+      if ('error' in response && response.error) {
+        setNotice({ kind: 'warn', text: String(response.error) })
+      }
+    } catch (err) {
+      setNotice({ kind: 'warn', text: err instanceof Error ? err.message : 'Could not save moment.' })
+    } finally {
+      setSaveBusy(false)
+    }
+  }
+
+  function openAnalyticsForMoment(point: LiveHeatPoint): void {
+    openAnalytics(point.offsetSeconds)
   }
 
   function jumpMoment(point: LiveHeatPoint): void {
@@ -556,17 +832,7 @@ export function Overlay({
       {!error && payload ? (
         <>
           {panelSections?.showLiveStatsBand && displayPayload ? (
-            <>
-              {payload.coverage && shouldShowMissedMomentsBanner(payload.coverage) ? (
-                <MissedMomentsBanner
-                  coverage={payload.coverage}
-                  busy={missedBusy}
-                  refreshed={missedRefreshed}
-                  job={missedJob}
-                  onLoad={() => void loadMissedMoments()}
-                />
-              ) : null}
-              <LiveStatsBand
+            <LiveStatsBand
               payload={displayPayload}
               backendUrl={backendUrl}
               sidebarFill={sidebarSnapped}
@@ -575,10 +841,39 @@ export function Overlay({
               currentOffsetSeconds={payload.currentOffsetSeconds}
               isLive={uiIsLive}
               fullTimeline={fullTimeline}
-              onOpenStreamStart={openStreamStartToLive}
+              showLoadFromStart={coverageStart > 60 || !payload.vodId}
+              loadFromStartBusy={missedBusy}
+              onLoadFromStart={() => void loadStreamFromStart()}
             />
-            </>
           ) : null}
+
+          {payload && shouldShowMissedMomentsBanner(payload) ? (
+            <CoverageCard
+              source={{ ...payload, tracking: payload.tracking }}
+              busy={missedBusy}
+              refreshed={missedRefreshed}
+              job={missedJob}
+              lastCheckedAt={coverageLastCheck}
+              checkError={coverageCheckError}
+              debugDetail={vodDebugDetail}
+              onLoad={() => void loadMissedMoments()}
+              onCheckVod={() => void checkForVodAndBackfill()}
+              onOpenSettings={openSettings}
+              onOpenAnalytics={() => openAnalytics()}
+            />
+          ) : null}
+
+          {panelSections?.showMostReacted && displayPayload ? (
+            <MostReactedSection
+              payload={displayPayload}
+              backendUrl={backendUrl}
+              onJump={jumpMoment}
+              onSave={point => void saveMoment(point)}
+              onAnalytics={openAnalyticsForMoment}
+              saveBusy={saveBusy}
+            />
+          ) : null}
+
 
           <PastVodsSection
             login={login}
@@ -586,14 +881,11 @@ export function Overlay({
             liveStreamId={payload.streamId}
             isLive={uiIsLive}
             channelOffline={!uiIsLive}
+            onOpenFromStart={openStreamStartToLive}
           />
 
-          {panelSections?.showMostReacted && displayPayload ? (
-            <MostReactedSection payload={displayPayload} backendUrl={backendUrl} onJump={jumpMoment} />
-          ) : null}
-
           {panelSections?.showWarming ? (
-            <WarmingState count={liveHeat?.completedRollupCount ?? 0} coverageStart={coverageStart} />
+            <WarmingState count={mostReactedHeat?.completedRollupCount ?? 0} coverageStart={coverageStart} />
           ) : null}
 
           {panelSections?.showRecap && payload.recap ? (
@@ -671,9 +963,9 @@ function StreamPulseHeader({
       </div>
       <div style={actionsStyle}>
         {tracking ? (
-          <button type="button" style={trackButtonStyle} disabled aria-label="Tracking this streamer">
+          <span style={trackButtonStyle} aria-label="Tracking this streamer">
             Tracking
-          </button>
+          </span>
         ) : (
           <button type="button" style={trackStreamerStyle} disabled={trackBusy} onClick={onTrack}>
             {trackBusy ? 'Starting…' : 'Track streamer'}
@@ -1101,8 +1393,8 @@ const styles: Record<string, CSSProperties> = {
   streamPulseHeaderActionsSidebar: { alignItems: 'stretch', display: 'flex', flexDirection: 'column', gap: 10, width: '100%' },
   trackStreamerButton: { background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(167, 139, 250, 0.3)', borderRadius: theme.radiusButton, color: '#ddd6fe', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '8px 12px', textTransform: 'uppercase' },
   trackStreamerButtonFull: { background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(167, 139, 250, 0.3)', borderRadius: theme.radiusButton, color: '#ddd6fe', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '10px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
-  trackingButton: { background: '#7c3aed', border: 0, borderRadius: theme.radiusButton, color: '#fff', cursor: 'default', fontSize: 11, fontWeight: 900, padding: '8px 12px', textTransform: 'uppercase' },
-  trackingButtonFull: { background: '#7c3aed', border: 0, borderRadius: theme.radiusButton, color: '#fff', cursor: 'default', fontSize: 11, fontWeight: 900, padding: '10px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
+  trackingButton: { background: 'rgba(139, 92, 246, 0.22)', border: '1px solid rgba(167, 139, 250, 0.45)', borderRadius: 999, color: '#c4b5fd', display: 'inline-block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 10px', textTransform: 'uppercase' },
+  trackingButtonFull: { background: 'rgba(139, 92, 246, 0.22)', border: '1px solid rgba(167, 139, 250, 0.45)', borderRadius: 999, color: '#c4b5fd', display: 'block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '8px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
   headerIconButton: { background: 'transparent', border: 0, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 4px' },
   headerIconButtonFull: { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '8px 6px', textAlign: 'center', width: '100%' },
   autoUpdateLabel: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8 },

@@ -13,7 +13,20 @@ import {
   type AnalyticsStreamListItem,
   type MetadataStreamHistoryItem,
 } from '../shared/pastVods.ts'
-import { getBackendUrl } from '../shared/storage.ts'
+import { getBackendUrl, getBetaKey } from '../shared/storage.ts'
+import { pulseDebug } from '../shared/pulseDebug.ts'
+
+async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
+  const headers: Record<string, string> = {}
+  if (contentJson) {
+    headers['Content-Type'] = 'application/json'
+  }
+  const key = await getBetaKey()
+  if (key) {
+    headers['X-Streamclone-Beta-Key'] = key
+  }
+  return headers
+}
 
 export async function fetchExtensionHealth(baseUrl?: string): Promise<ExtensionHealthResponse> {
   const root = baseUrl ?? await getBackendUrl()
@@ -21,7 +34,13 @@ export async function fetchExtensionHealth(baseUrl?: string): Promise<ExtensionH
   if (!res.ok) {
     throw new Error(`health ${res.status}`)
   }
-  return res.json() as Promise<ExtensionHealthResponse>
+  const health = await res.json() as ExtensionHealthResponse
+  await pulseDebug('vod.helix.health', 'extension health', {
+    ok: health.ok,
+    helixEnabled: health.helixEnabled ?? null,
+    version: health.version,
+  })
+  return health
 }
 
 export async function fetchPulseChannel(
@@ -30,15 +49,33 @@ export async function fetchPulseChannel(
 ): Promise<PulsePayload> {
   const root = options?.baseUrl ?? await getBackendUrl()
   const qs = options?.window === 'full' ? '?window=full' : ''
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${qs}`)
+  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${qs}`, {
+    headers: await pulseRequestHeaders(),
+  })
   if (!res.ok) {
     throw new Error(`pulse ${res.status}`)
   }
-  return res.json() as Promise<PulsePayload>
+  const payload = await res.json() as PulsePayload
+  const lastRollup = payload.rollups[payload.rollups.length - 1]
+  await pulseDebug('vod.pulse.api', 'pulse payload received', {
+    login,
+    window: options?.window ?? 'recent',
+    streamId: payload.streamId ?? null,
+    vodId: payload.vodId ?? null,
+    tracking: payload.tracking,
+    coverageState: payload.coverage?.state ?? null,
+    coverageStart: payload.coverageStartOffsetSeconds ?? null,
+    helixEnabled: payload.helixEnabled ?? null,
+    emoteSyncState: payload.emoteSync?.state ?? null,
+    lastRollupSevenTv: lastRollup?.sevenTvEmoteCount ?? null,
+    lastRollupTotal: lastRollup?.totalEmoteCount ?? null,
+  })
+  return payload
 }
 
 export interface PulseBackfillRequest {
   streamId: string
+  vodId?: string
   mode?: 'missed'
   fromOffsetSeconds?: number
   toOffsetSeconds?: number
@@ -52,28 +89,75 @@ export async function postPulseBackfill(
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/backfill`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ mode: 'missed', ...body }),
   })
   if (!res.ok) {
-    throw new Error(`backfill ${res.status}`)
+    let detail = `Backfill failed (${res.status})`
+    try {
+      const body = await res.json() as { error?: string }
+      if (body.error?.trim()) {
+        detail = body.error.trim()
+      }
+    } catch {
+      // ignore non-JSON bodies
+    }
+    await pulseDebug('vod.backfill.start', detail, { login, streamId: body.streamId, vodId: body.vodId ?? null }, 'error')
+    throw new Error(detail)
   }
-  return res.json() as Promise<PulseBackfillJob>
+  const job = await res.json() as PulseBackfillJob
+  await pulseDebug('vod.backfill.result', `backfill ${job.status}`, {
+    login,
+    streamId: body.streamId,
+    vodId: body.vodId ?? null,
+    status: job.status,
+    message: job.message ?? null,
+    error: job.error ?? null,
+  }, job.status === 'failed' ? 'error' : 'info')
+  return job
 }
 
 export async function fetchPulseBackfillStatus(jobId: string, baseUrl?: string): Promise<PulseBackfillJob> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/backfill/${encodeURIComponent(jobId)}`)
+  const res = await fetch(`${root}/v1/extension/pulse/backfill/${encodeURIComponent(jobId)}`, {
+    headers: await pulseRequestHeaders(),
+  })
   if (!res.ok) {
     throw new Error(`backfill_status ${res.status}`)
   }
   return res.json() as Promise<PulseBackfillJob>
 }
 
+export async function postVodHint(
+  login: string,
+  body: { streamId: string; vodId: string },
+  baseUrl?: string,
+): Promise<{ ok: boolean; vodId?: string }> {
+  const root = baseUrl ?? await getBackendUrl()
+  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/vod-hint`, {
+    method: 'POST',
+    headers: await pulseRequestHeaders(true),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    await pulseDebug(
+      'vod.hint.api',
+      `vod-hint HTTP ${res.status}`,
+      { login, streamId: body.streamId, vodId: body.vodId, status: res.status },
+      res.status === 404 ? 'warn' : 'error',
+    )
+    throw new Error(`vod_hint ${res.status}`)
+  }
+  const result = await res.json() as { ok: boolean; vodId?: string }
+  await pulseDebug('vod.hint.api', 'vod-hint accepted', { login, ...body, ok: result.ok })
+  return result
+}
+
 export async function postWatchChannel(login: string, baseUrl?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetch(`${root}/v1/analytics/channels/${encodeURIComponent(login)}/watch`, {
     method: 'POST',
+    headers: await pulseRequestHeaders(),
   })
   if (!res.ok && res.status !== 202) {
     throw new Error(`watch ${res.status}`)
@@ -90,7 +174,9 @@ export async function fetchPulseBookmarks(
   if (params.streamId) qs.set('streamId', params.streamId)
   if (params.vodId) qs.set('vodId', params.vodId)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const res = await fetch(`${root}/v1/pulse/bookmarks${suffix}`)
+  const res = await fetch(`${root}/v1/pulse/bookmarks${suffix}`, {
+    headers: await pulseRequestHeaders(),
+  })
   if (!res.ok) {
     throw new Error(`bookmarks ${res.status}`)
   }
@@ -105,7 +191,7 @@ export async function createPulseBookmark(
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetch(`${root}/v1/pulse/bookmarks`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await pulseRequestHeaders(true),
     body: JSON.stringify(bookmark),
   })
   if (!res.ok) {
@@ -118,6 +204,7 @@ export async function deletePulseBookmark(id: string, baseUrl?: string): Promise
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetch(`${root}/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: await pulseRequestHeaders(),
   })
   if (!res.ok) {
     throw new Error(`delete_bookmark ${res.status}`)

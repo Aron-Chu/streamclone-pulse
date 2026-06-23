@@ -24,6 +24,24 @@ export interface ChatActivityChartProps {
   alignFromStart?: boolean
 }
 
+function formatChartAxisTime(offsetSeconds: number): string {
+  const totalMinutes = Math.max(0, Math.floor(offsetSeconds / 60))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}`
+  return `${minutes}m`
+}
+
+function axisTickStyle(index: number, total: number, leftPct: number): CSSProperties {
+  if (index === 0) {
+    return { left: 0, transform: 'none', textAlign: 'left' }
+  }
+  if (index === total - 1) {
+    return { right: 0, left: 'auto', transform: 'none', textAlign: 'right' }
+  }
+  return { left: `${leftPct}%`, transform: 'translateX(-50%)', textAlign: 'center' }
+}
+
 export function ChatActivityChart({
   chatSeries,
   offsets,
@@ -170,8 +188,27 @@ export function ChatActivityChart({
 
   const showEmptyState = rawPoints.length === 0
 
+  const axisTicks: { label: string; leftPct: number }[] = []
+  if (!showEmptyState && pointOffsets.length >= 2) {
+    const lastIndex = pointOffsets.length - 1
+    const tickIndexes =
+      lastIndex >= 2
+        ? [0, Math.floor(lastIndex / 2), lastIndex]
+        : [0, lastIndex]
+    const uniqueIndexes = [...new Set(tickIndexes)]
+    for (const index of uniqueIndexes) {
+      const offset = pointOffsets[index]
+      if (offset == null) continue
+      const isLast = index === pointOffsets.length - 1
+      axisTicks.push({
+        label: isLast ? 'Now' : formatChartAxisTime(offset),
+        leftPct: (index / Math.max(1, pointOffsets.length - 1)) * 100,
+      })
+    }
+  }
+
   return (
-    <div className="pulse-sparkline-wrap" style={{ minHeight: height }}>
+    <div className="pulse-sparkline-wrap" style={{ minHeight: height, overflow: 'hidden' }}>
       {showEmptyState ? (
         <div className="pulse-chart-empty pulse-shimmer" style={{ ...styles.empty, height }} role="status">
           <span style={styles.emptyText}>{emptyMessage ?? 'Waiting for chat rollups…'}</span>
@@ -208,6 +245,18 @@ export function ChatActivityChart({
           {tooltipParts.join(' · ')}
         </span>
       ) : null}
+      {axisTicks.length > 0 ? (
+        <div style={styles.axisRow} aria-hidden="true">
+          {axisTicks.map((tick, index) => (
+            <span
+              key={`${tick.label}-${tick.leftPct}`}
+              style={{ ...styles.axisTick, ...axisTickStyle(index, axisTicks.length, tick.leftPct) }}
+            >
+              {tick.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -231,5 +280,23 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.45,
     maxWidth: 320,
     textAlign: 'center',
+  },
+  axisRow: {
+    height: 14,
+    marginTop: 4,
+    overflow: 'hidden',
+    padding: '0 4px',
+    position: 'relative',
+    width: '100%',
+  },
+  axisTick: {
+    color: 'rgba(161, 161, 170, 0.85)',
+    fontSize: 9,
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 600,
+    lineHeight: 1.2,
+    position: 'absolute',
+    top: 0,
+    whiteSpace: 'nowrap',
   },
 }

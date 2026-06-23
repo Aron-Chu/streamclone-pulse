@@ -41,6 +41,7 @@ const BASE_STYLE = `
   }
   * { box-sizing: border-box; }
   button, input, select, textarea { font: inherit; }
+  button:focus, button:focus-visible { outline: none !important; }
   .pulse-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .pulse-no-scrollbar::-webkit-scrollbar { display: none; }
   .pulse-root { all: initial; pointer-events: none; width: 100%; height: 100%; }

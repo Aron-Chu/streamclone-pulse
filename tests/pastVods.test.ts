@@ -112,7 +112,7 @@ describe('mergePastVodRows', () => {
     expect(rows[0]?.analyticsStatus).toBe('stats-only')
   })
 
-  it('excludes the current live stream when isLive is true', () => {
+  it('pins the current live stream at the top when isLive is true', () => {
     const rows = mergePastVodRows(
       [
         { id: 'live', title: 'Live now', startedAt: '2026-06-12T12:00:00.000Z' },
@@ -125,7 +125,8 @@ describe('mergePastVodRows', () => {
       { liveStreamId: 'live', isLive: true },
     )
 
-    expect(rows.map(row => row.streamId)).toEqual(['past'])
+    expect(rows.map(row => row.streamId)).toEqual(['live', 'past'])
+    expect(rows[0]?.analyticsStatus).toBe('current-live')
   })
 
   it('sorts newest streams first', () => {

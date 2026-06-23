@@ -2,7 +2,7 @@ import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streamclone/pulse-core'
 import { CHART_THEME } from './chartTheme.ts'
 import type { ExtensionEmote, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 
-export const MAX_PAST_STREAM_ROWS = 4
+export const MAX_PAST_STREAM_ROWS = 3
 export const CHAT_INSPECTOR_EMOTE_LIMIT = 8
 
 export const EMOTE_OVERLAY_PALETTE = CHART_THEME.perEmotePalette
@@ -29,6 +29,37 @@ function rollupSource(payload: PulsePayload, window: RollupWindow): ExtensionRol
 
 export function chatSeriesFromRollups(rollups: ExtensionRollup[]): number[] {
   return rollups.map(rollup => Math.max(0, rollup.chatCount ?? 0))
+}
+
+/** Average emote counts over the last N completed rollup minutes. */
+export function emoteAveragesFromRollups(
+  rollups: ExtensionRollup[],
+  windowMinutes = 5,
+): { totalPerMin: number; sevenTvPerMin: number; minutes: number } {
+  const completed = rollups.filter(r =>
+    !r.missing && ((r.totalEmoteCount ?? 0) > 0 || (r.sevenTvEmoteCount ?? 0) > 0),
+  )
+  const slice = completed.slice(-windowMinutes)
+  if (slice.length === 0) {
+    return { totalPerMin: 0, sevenTvPerMin: 0, minutes: 0 }
+  }
+  let total = 0
+  let sevenTv = 0
+  for (const rollup of slice) {
+    total += rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0
+    sevenTv += rollup.sevenTvEmoteCount ?? 0
+  }
+  const minutes = slice.length
+  return {
+    totalPerMin: Math.round(total / minutes),
+    sevenTvPerMin: Math.round(sevenTv / minutes),
+    minutes,
+  }
+}
+
+/** Sum of 7TV emote uses across chart rollups (stream window). */
+export function streamSevenTvTotal(rollups: ExtensionRollup[]): number {
+  return rollups.reduce((sum, rollup) => sum + Math.max(0, rollup.sevenTvEmoteCount ?? 0), 0)
 }
 
 export function rollupSeries(payload: PulsePayload, window: RollupWindow = 'recent'): ExtensionRollup[] {
@@ -201,10 +232,11 @@ export function sevenTvEmotesFromRollup(rollup: ExtensionRollup): ExtensionEmote
 }
 
 export function emoteCountAtRollup(rollup: ExtensionRollup, emote: ExtensionEmote): number {
+  const targetKey = emoteSelectionKey(emote)
   for (const top of rollup.topEmotes ?? []) {
-    if (!isSevenTvProvider(top.provider)) continue
-    if (emote.id && top.id && top.id === emote.id) return Math.max(0, top.count ?? 0)
-    if (top.name === emote.name) return Math.max(0, top.count ?? 0)
+    if (emoteSelectionKey(top) === targetKey) {
+      return Math.max(0, top.count ?? 0)
+    }
   }
   return 0
 }
@@ -213,13 +245,13 @@ export function buildSelectedEmoteSeries(rollups: ExtensionRollup[], emote: Exte
   return rollups.map(rollup => emoteCountAtRollup(rollup, emote))
 }
 
-export function aggregateSevenTvEmotes(
+export function aggregateChartEmotes(
   rollups: ExtensionRollup[],
   limit = CHAT_INSPECTOR_EMOTE_LIMIT,
 ): ExtensionEmote[] {
   const totals = new Map<string, ExtensionEmote>()
   for (const rollup of rollups) {
-    for (const emote of sevenTvEmotesFromRollup(rollup)) {
+    for (const emote of rollup.topEmotes ?? []) {
       const key = emoteSelectionKey(emote)
       const existing = totals.get(key)
       if (existing) {
@@ -233,6 +265,9 @@ export function aggregateSevenTvEmotes(
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, limit)
 }
+
+/** @deprecated use aggregateChartEmotes */
+export const aggregateSevenTvEmotes = aggregateChartEmotes
 
 export function sparklineIndexFromClick(
   clientX: number,

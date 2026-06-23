@@ -10,6 +10,15 @@ function normalizeEmoteProvider(provider?: string): string | undefined {
   return lower
 }
 
+function backendProxyUrl(path: string, backendUrl: string): string {
+  const base = backendUrl.replace(/\/+$/, '')
+  return `${base}${path}`
+}
+
+function sevenTvCdnUrl(id: string): string {
+  return `https://cdn.7tv.app/emote/${id}/4x.webp`
+}
+
 /** Resolve BFF emote metadata to a URL the extension can load (absolute CDN or backend proxy). */
 export function extensionEmoteImageUrl(
   emote: Pick<ExtensionEmote, 'id' | 'imageUrl' | 'provider'>,
@@ -23,12 +32,12 @@ export function extensionEmoteImageUrl(
     return raw
   }
 
+  if (provider === 'seventv' && id && LEGACY_SEVEN_TV_ID.test(id)) {
+    return sevenTvCdnUrl(id)
+  }
+
   if (raw && raw.startsWith('/') && !isBrokenLocalEmotePath(raw)) {
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-      return undefined
-    }
-    const base = backendUrl.replace(/\/+$/, '')
-    return `${base}${raw}`
+    return backendProxyUrl(raw, backendUrl)
   }
 
   const resolved = resolveEmoteImageUrl({
@@ -40,14 +49,7 @@ export function extensionEmoteImageUrl(
   if (!resolved) return undefined
 
   if (resolved.startsWith('/')) {
-    if (provider === 'seventv' && id && LEGACY_SEVEN_TV_ID.test(id)) {
-      return `https://cdn.7tv.app/emote/${id}/4x.webp`
-    }
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-      return undefined
-    }
-    const base = backendUrl.replace(/\/+$/, '')
-    return `${base}${resolved}`
+    return backendProxyUrl(resolved, backendUrl)
   }
   return resolved
 }
