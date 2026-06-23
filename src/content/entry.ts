@@ -1,34 +1,67 @@
 import { onPulseUpdate, sendBackgroundMessage } from './bridge.ts'
-import { mountOverlay, unmountOverlay, updateOverlayPayload } from './mount.tsx'
-import { isTwitchChannelPage, parseChannelLogin } from './twitch.ts'
+import { mountOverlay, unmountOverlay, updateOverlayContext, updateOverlayPayload } from './mount.tsx'
+import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 import type { PulseUpdateMessage } from '../shared/messages.ts'
+import { getAutoTrackPolicy } from '../shared/storage.ts'
+import { getWatchlist } from '../shared/watchlist.ts'
 
 let activeLogin: string | null = null
+let lastPageIsLive = false
 
-async function activate(login: string): Promise<void> {
+async function nudgeWatchOnLive(login: string): Promise<void> {
+  await sendBackgroundMessage({ type: 'GET_PULSE', login, watch: true })
+}
+
+async function loadInitialPayload(login: string, autoTrack: boolean): Promise<PulseUpdateMessage['payload']> {
+  const response = await sendBackgroundMessage(
+    autoTrack ? { type: 'TRACK', login } : { type: 'GET_PULSE', login, watch: false },
+  )
+  return 'payload' in response ? response.payload : null
+}
+
+async function activate(context: TwitchPageContext): Promise<void> {
+  const login = context.login
+  if (!login) {
+    deactivate()
+    return
+  }
   if (activeLogin === login) {
+    updateOverlayContext(context)
+    const pageIsLive = detectTwitchChannelLive(context)
+    if (pageIsLive && !lastPageIsLive) {
+      void nudgeWatchOnLive(login)
+    }
+    lastPageIsLive = pageIsLive
     return
   }
   activeLogin = login
-  const response = await sendBackgroundMessage({ type: 'TRACK', login })
-  const payload = 'payload' in response ? response.payload : null
-  mountOverlay(login, payload)
+  const [policy, watchlist] = await Promise.all([getAutoTrackPolicy(), getWatchlist()])
+  const onWatchlist = watchlist.includes(login.toLowerCase())
+  const autoTrack = policy === 'followed' || (policy === 'ask' && onWatchlist)
+  const payload = await loadInitialPayload(login, autoTrack)
+  mountOverlay(login, payload, context, { pendingTrackPrompt: policy === 'ask' && !autoTrack && !payload?.tracking })
+  const pageIsLive = detectTwitchChannelLive(context)
+  if (pageIsLive && !lastPageIsLive) {
+    void nudgeWatchOnLive(login)
+  }
+  lastPageIsLive = pageIsLive
 }
 
 function deactivate(): void {
   activeLogin = null
+  lastPageIsLive = false
   unmountOverlay()
 }
 
 const NAV_DEBOUNCE_MS = 350
 
 function syncFromLocation(): void {
-  const login = parseChannelLogin(window.location.pathname)
-  if (!login || !isTwitchChannelPage(window.location.pathname)) {
+  const context = parseTwitchPage(window.location.pathname)
+  if (context.kind === 'non-channel' || !context.login) {
     deactivate()
     return
   }
-  void activate(login)
+  void activate(context)
 }
 
 onPulseUpdate((message: PulseUpdateMessage) => {
@@ -61,6 +94,20 @@ history.replaceState = (...args) => {
   originalReplaceState(...args)
   scheduleSync()
 }
+
+setInterval(() => {
+  if (!activeLogin) return
+  const context = parseTwitchPage(window.location.pathname)
+  if (context.login !== activeLogin) return
+  const pageIsLive = detectTwitchChannelLive(context)
+  if (pageIsLive !== lastPageIsLive) {
+    if (pageIsLive) {
+      void nudgeWatchOnLive(activeLogin)
+    }
+    lastPageIsLive = pageIsLive
+    updateOverlayContext(context)
+  }
+}, 5000)
 
 syncFromLocation()
 
