@@ -1,0 +1,31 @@
+{
+  "name": "streampulse-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/prerender.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@streamclone/pulse-core": "file:../../twitch-7tv-clone/packages/pulse-core",
+    "@tanstack/react-query": "^5.90.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "^7.9.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.15.21",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "^26.1.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "3.2.4"
+  }
+}
