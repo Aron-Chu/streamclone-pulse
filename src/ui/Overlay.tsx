@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
+  buildMomentJumpLink,
+  deriveLiveHeat,
+  deriveLiveStats,
   formatHeatOffset,
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
+  LIVE_HEAT_SUBTITLE,
+  toLiveHeatInputFromExtension,
+  toLiveStatsInputFromExtension,
+  type LiveHeatPoint,
 } from '@streamclone/pulse-core'
+import { LiveStatsBand } from './LiveStatsBand.tsx'
+import { MostReactedSection } from './MostReactedSection.tsx'
+import type { ExtensionClip, PulseBackfillJob, PulsePayload } from '../shared/messages.ts'
 import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
@@ -18,6 +28,7 @@ import {
   type OverlayPlacement,
   type SidebarTab,
 } from '../shared/storage.ts'
+import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { resolvePulsePanelSections } from './pulsePanelLayout.ts'
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
@@ -71,6 +82,8 @@ export function Overlay({
   const [trackBusy, setTrackBusy] = useState(false)
   const [awaitingTrack, setAwaitingTrack] = useState(pendingTrackPrompt)
   const [autoUpdate, setAutoUpdate] = useState(true)
+  const [topClip, setTopClip] = useState<ExtensionClip | null>(null)
+  const [fullTimeline, setFullTimeline] = useState(false)
 
   useEffect(() => {
     setAwaitingTrack(pendingTrackPrompt && !payload?.tracking)
@@ -117,11 +130,24 @@ export function Overlay({
     }
   }, [])
 
+  useEffect(() => {
+    if (!payload) return
+    void loadTopClip()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when stream/vod context changes
+  }, [payload?.login, payload?.streamId, payload?.vodId, payload?.startedAt, payload?.isLive])
+
   const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
-  const warming = false
-  const panelSections = null
-  const coverageStart = 0
+  const liveHeat = displayPayload ? deriveLiveHeat(toLiveHeatInputFromExtension(displayPayload)) : null
+  const warming = Boolean(uiIsLive && liveHeat && !liveHeat.visible)
+  const panelSections = payload
+    ? resolvePulsePanelSections(payload, {
+        liveHeatVisible: Boolean(liveHeat?.visible),
+        warming,
+        pageIsLive,
+      })
+    : null
+  const coverageStart = payload?.coverageStartOffsetSeconds ?? 0
   const resolvedPlacement = effectivePlacement ?? placement
   const resolvedMode = mode
   const resolvedSidebarTab = sidebarTab
@@ -129,6 +155,7 @@ export function Overlay({
   const sidebarBodyOnly = sidebarPart === 'body'
   const sidebarTabsOnly = sidebarPart === 'tabs'
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
+  const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < 360
   const shellClass = [
     'pulse-shell',
     `placement-${resolvedPlacement}`,
@@ -182,7 +209,7 @@ export function Overlay({
     }
   }
 
-  async function refreshPulse(): Promise<PulsePayload | null> {
+  async function refreshPulse(full = false): Promise<PulsePayload | null> {
     setTrackBusy(true)
     try {
       const response = await sendBackgroundMessage({
@@ -190,8 +217,7 @@ export function Overlay({
         login,
         watch: false,
         window: 'recent',
-      })
-      if ('type' in response && response.type === 'PULSE_UPDATE') {
+      })if ('type' in response && response.type === 'PULSE_UPDATE') {
         return response.payload
       }
       return null
@@ -205,10 +231,23 @@ export function Overlay({
   }
 
   function openAnalytics(offsetSeconds?: number): void {
+    const path = buildMomentJumpLink(login, offsetSeconds ?? 0, {
       vodId: payload?.vodId ?? context.vodId ?? undefined,
       analyticsStreamId: payload?.streamId,
     })
     window.open(`${backendUrl}${path}`, '_blank', 'noopener,noreferrer')
+  }
+
+  async function loadTopClip(): Promise<void> {
+    const res = await sendBackgroundMessage({
+      type: 'GET_CLIP',
+      login,
+      startedAt: payload?.startedAt,
+      isLive: payload?.isLive,
+    })
+    if ('type' in res && res.type === 'CLIP') {
+      setTopClip(res.clip)
+    }
   }
 
   function openStreamStartToLive(): void {
@@ -219,6 +258,7 @@ export function Overlay({
     openAnalytics(offset)
 
     if (vodId) {
+      const vodUrl = buildTwitchVodUrl(vodId, offset)
       if (context.kind === 'vod' && context.vodId === vodId) {
         const result = seekPlaybackOffset(getPrimaryVideo(), offset, { isLive: false })
         setNotice({
@@ -257,6 +297,7 @@ export function Overlay({
     })
   }
 
+  function jumpMoment(point: LiveHeatPoint): void {
     setNotice(null)
     const vodId = payload?.vodId ?? context.vodId ?? undefined
 
@@ -272,6 +313,7 @@ export function Overlay({
         })
         return
       }
+      window.open(buildTwitchVodUrl(vodId, point.offsetSeconds), '_blank', 'noopener,noreferrer')
       setNotice({
         kind: 'ok',
         text: `Opened Twitch VOD at ${formatHeatOffset(point.offsetSeconds)} with matching Pulse chart.`,
@@ -382,6 +424,7 @@ export function Overlay({
 
       {!error && payload ? (
         <>
+          {panelSections?.showLiveStatsBand && displayPayload ? (
             <>
                   coverage={payload.coverage}
                   busy={missedBusy}
@@ -390,6 +433,7 @@ export function Overlay({
                   onLoad={() => void loadMissedMoments()}
                 />
               ) : null}
+              <LiveStatsBand
               payload={displayPayload}
               backendUrl={backendUrl}
               sidebarFill={sidebarSnapped}
@@ -411,8 +455,29 @@ export function Overlay({
           />
 
           {panelSections?.showMostReacted && displayPayload ? (
+            <MostReactedSection payload={displayPayload} backendUrl={backendUrl} onJump={jumpMoment} />
           ) : null}
 
+          {panelSections?.showWarming ? (
+            <WarmingState count={liveHeat?.completedRollupCount ?? 0} coverageStart={coverageStart} />
+          ) : null}
+
+          {panelSections?.showRecap && payload.recap ? (
+            <StreamRecap
+              recap={payload.recap}
+              onJump={offset => openAnalytics(offset)}
+            />
+          ) : null}
+
+          {notice ? <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p> : null}
+
+          {topClip ? <ClipSpikeCard clip={topClip} /> : null}
+
+          <div style={styles.analyticsFooter}>
+            <button type="button" style={styles.analyticsFooterLink} onClick={() => openAnalytics()}>
+              Open full analytics →
+            </button>
+          </div>
         </>
       ) : null}
 
@@ -468,6 +533,7 @@ function StreamPulseHeader({
           <h2 style={styles.streamPulseTitle}>Stream Pulse</h2>
           {isLive ? <span style={styles.liveBadge}>Live</span> : null}
         </div>
+        <p style={styles.streamPulseLead}>{LIVE_HEAT_SUBTITLE}</p>
       </div>
       <div style={actionsStyle}>
         {tracking ? (
@@ -501,6 +567,7 @@ function StreamPulseHeader({
   )
 }
 
+function ClipSpikeCard({ clip }: { clip: ExtensionClip }) {
   const duration = formatClipDuration(clip.durationSeconds)
   return (
     <section style={styles.clipSpikeSection}>
