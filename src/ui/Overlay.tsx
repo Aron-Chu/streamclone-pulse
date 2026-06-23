@@ -580,6 +580,14 @@ export function Overlay({
             </>
           ) : null}
 
+          <PastVodsSection
+            login={login}
+            backendUrl={backendUrl}
+            liveStreamId={payload.streamId}
+            isLive={uiIsLive}
+            channelOffline={!uiIsLive}
+          />
+
           {panelSections?.showMostReacted && displayPayload ? (
             <MostReactedSection payload={displayPayload} backendUrl={backendUrl} onJump={jumpMoment} />
           ) : null}

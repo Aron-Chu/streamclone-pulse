@@ -50,10 +50,12 @@ gh repo create Aron-Chu/streamclone-pulse --private --source . --push
 
 ## Spec (canonical)
 
-Product requirements and API contracts live in the main repo:
+Product requirements and API contracts live in **this repo**:
 
-- [`../twitch-7tv-clone/docs/pulse-extension/requirements.md`](../twitch-7tv-clone/docs/pulse-extension/requirements.md)
-- [`../twitch-7tv-clone/docs/pulse-extension/design.md`](../twitch-7tv-clone/docs/pulse-extension/design.md)
-- [`../twitch-7tv-clone/docs/pulse-extension/tasks.md`](../twitch-7tv-clone/docs/pulse-extension/tasks.md)
+- [`docs/pulse-extension/README.md`](docs/pulse-extension/README.md) — sidebar chrome bar layout, **7TV coexistence**
+- [`docs/pulse-extension/requirements.md`](docs/pulse-extension/requirements.md)
+- [`docs/pulse-extension/design.md`](docs/pulse-extension/design.md)
+- [`docs/pulse-extension/tasks.md`](docs/pulse-extension/tasks.md)
+- [`docs/pulse-extension/figma-handoff.md`](docs/pulse-extension/figma-handoff.md) — UI reference PNGs for Codex/agents without Figma MCP
 
 Use the multi-root workspace `streamclone-pulse-extension.code-workspace` in Streamclone for one Cursor session over both trees.

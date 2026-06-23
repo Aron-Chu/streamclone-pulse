@@ -1,19 +1,22 @@
-# Context — how this repo connects to Streamclone
+# Context — Streamclone Pulse extension
 
 | Piece | Location |
 |-------|----------|
-| Canonical spec | `../twitch-7tv-clone/docs/pulse-extension/` |
+| **Spec (requirements, design, tasks)** | **This repo** `docs/pulse-extension/` |
+| **Figma UI (PNG exports)** | `docs/pulse-extension/figma/` + `figma-handoff.md` |
 | Shared TS scoring | `../twitch-7tv-clone/packages/pulse-core` (`@streamclone/pulse-core`) |
-| BFF + health endpoints | Streamclone `internal/analytics/extension_api.go` |
-| Local stack URL | `http://localhost:8090` via Caddy |
+| BFF + health + bookmarks + recap | streamclone `internal/analytics/` |
+| Local stack | `http://localhost:8090` (Caddy in streamclone) |
 | Multi-root workspace | `../twitch-7tv-clone/streamclone-pulse-extension.code-workspace` |
 
-Extension `file:` dependency path in `package.json` assumes sibling folders:
+Sibling layout on disk:
 
 ```text
 C:\Users\Aron\
-  twitch-7tv-clone\     # Streamclone source
-  streamclone-pulse\    # this repo
+  twitch-7tv-clone\      # streamclone workspace root (backend)
+  streamclone-pulse\     # this repo (extension)
 ```
 
-Do not duplicate the full requirements/design markdown here — link to Streamclone and edit the canonical files there.
+Edit product spec here in `docs/pulse-extension/` (requirements status reflects MVP shipped / in progress as of 2026-06). streamclone `docs/pulse-extension/` only has redirect stubs pointing at [Aron-Chu/streamclone-pulse](https://github.com/Aron-Chu/streamclone-pulse).
+
+Agent skills for the streamclone sibling live in two mirrored trees: **Cursor** `.cursor/skills/streamclone/` and **Codex** `.agents/skills/streamclone/` (sync via `make codex-sync-skills` in streamclone).
