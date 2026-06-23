@@ -11,8 +11,11 @@ import {
   toLiveStatsInputFromExtension,
   type LiveHeatPoint,
 } from '@streamclone/pulse-core'
+import { CollapsedPill } from './CollapsedPill.tsx'
+import { MiniDock } from './MiniDock.tsx'
 import { LiveStatsBand } from './LiveStatsBand.tsx'
 import { MostReactedSection } from './MostReactedSection.tsx'
+import { PastVodsSection } from './PastVodsSection.tsx'
 import type { ExtensionClip, PulseBackfillJob, PulsePayload } from '../shared/messages.ts'
 import {
   DEFAULT_BACKEND_URL,
@@ -477,8 +480,23 @@ export function Overlay({
     return null
   }
 
-  return (
+  if (resolvedMode === 'collapsed') {
+    return (
+      <section className={shellClass} style={styles.collapsedHost} aria-label="Streamclone Pulse collapsed">
+        <CollapsedPill
+          tracking={payload?.tracking ?? false}
+          isLive={uiIsLive}
+          sidebarFill={sidebarBodyOnly}
+          onOpen={() => void persistMode('expanded')}
+        />
+      </section>
+    )
+  }
+
+  if (resolvedMode === 'mini') {
+    return (
       <section className={shellClass} style={styles.miniHost} aria-label="Streamclone Pulse mini overlay">
+        <MiniDock
           login={login}
           payload={payload}
           tracking={payload?.tracking ?? false}
@@ -561,13 +579,6 @@ export function Overlay({
             />
             </>
           ) : null}
-
-            login={login}
-            backendUrl={backendUrl}
-            liveStreamId={payload.streamId}
-            isLive={uiIsLive}
-            channelOffline={!uiIsLive}
-          />
 
           {panelSections?.showMostReacted && displayPayload ? (
             <MostReactedSection payload={displayPayload} backendUrl={backendUrl} onJump={jumpMoment} />
@@ -1135,4 +1146,3 @@ const styles: Record<string, CSSProperties> = {
   collectingBadge: { background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 999, color: '#fde68a', display: 'inline-block', fontSize: 10, fontWeight: 800, padding: '2px 8px', width: 'fit-content' },
   footerActionsSingle: { display: 'grid', gap: 8, marginTop: 12 },
 }
-
