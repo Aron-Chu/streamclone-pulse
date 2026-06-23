@@ -9,6 +9,24 @@ interface TrackedLogin {
 }
 
 const tracked = new Map<string, TrackedLogin>()
+let globalPollingEnabled = true
+let pollCallback: ((login: string) => Promise<void>) | null = null
+
+export function configurePolling(poll: (login: string) => Promise<void>): void {
+  pollCallback = poll
+}
+
+export function setGlobalPollingEnabled(enabled: boolean): void {
+  globalPollingEnabled = enabled
+  if (!pollCallback) return
+  for (const login of tracked.keys()) {
+    if (enabled) {
+      resumePolling(login, pollCallback)
+    } else {
+      pausePolling(login)
+    }
+  }
+}
 
 export function isTracked(login: string): boolean {
   return tracked.has(normalize(login))
@@ -35,6 +53,35 @@ export function listTrackedLogins(): string[] {
   return [...tracked.keys()]
 }
 
+export function pausePolling(login: string): void {
+  const key = normalize(login)
+  const entry = tracked.get(key)
+  if (entry?.timer) {
+    clearInterval(entry.timer)
+    entry.timer = null
+  }
+}
+
+export function resumePolling(
+  login: string,
+  poll: (login: string) => Promise<void>,
+  intervalMs = DEFAULT_POLL_INTERVAL_MS,
+): void {
+  const key = normalize(login)
+  const entry = tracked.get(key)
+  if (!entry) return
+  entry.intervalMs = intervalMs
+  if (entry.timer) {
+    clearInterval(entry.timer)
+    entry.timer = null
+  }
+  if (!globalPollingEnabled) return
+  void poll(key)
+  entry.timer = setInterval(() => {
+    void poll(key)
+  }, entry.intervalMs)
+}
+
 export function startPolling(
   login: string,
   poll: (login: string) => Promise<void>,
@@ -49,20 +96,31 @@ export function startPolling(
   entry.intervalMs = intervalMs
   if (entry.timer) {
     clearInterval(entry.timer)
+    entry.timer = null
   }
+  if (!globalPollingEnabled) return
   void poll(key)
   entry.timer = setInterval(() => {
     void poll(key)
   }, entry.intervalMs)
 }
 
-export function stopAllPolling(): void {
-  for (const entry of tracked.values()) {
-    if (entry.timer) {
-      clearInterval(entry.timer)
-    }
+export function pauseAllPolling(): void {
+  globalPollingEnabled = false
+  for (const login of tracked.keys()) {
+    pausePolling(login)
   }
-  tracked.clear()
+}
+
+export function resumeAllPolling(
+  poll: (login: string) => Promise<void>,
+  intervalMs = DEFAULT_POLL_INTERVAL_MS,
+): void {
+  globalPollingEnabled = true
+  pollCallback = poll
+  for (const login of tracked.keys()) {
+    resumePolling(login, poll, intervalMs)
+  }
 }
 
 function normalize(login: string): string {

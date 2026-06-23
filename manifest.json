@@ -22,7 +22,10 @@
   "permissions": ["storage"],
   "host_permissions": [
     "http://localhost:8090/*",
-    "http://127.0.0.1:8090/*"
+    "http://127.0.0.1:8090/*",
+    "https://cdn.7tv.app/*",
+    "https://static-cdn.jtvnw.net/*",
+    "https://cdn.frankerfacez.com/*"
   ],
   "icons": {
     "16": "icons/icon16.png",

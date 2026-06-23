@@ -1,7 +1,13 @@
-import { defineConfig } from 'vite'
+import { build as viteBuild, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
+
+const sharedOutput = {
+  entryFileNames: '[name].js',
+  chunkFileNames: 'chunks/[name].js',
+  assetFileNames: 'assets/[name][extname]',
+}
 
 function copyToDist(root: string, relativePath: string): void {
   const src = resolve(root, relativePath)
@@ -11,9 +17,33 @@ function copyToDist(root: string, relativePath: string): void {
 }
 
 function chromeExtensionPlugin() {
+  let contentBuildComplete = false
+
   return {
     name: 'streamclone-pulse-extension',
-    closeBundle() {
+    async closeBundle() {
+      if (!contentBuildComplete) {
+        contentBuildComplete = true
+        await viteBuild({
+          configFile: false,
+          plugins: [react()],
+          build: {
+            outDir: 'dist',
+            emptyOutDir: false,
+            rollupOptions: {
+              input: resolve(__dirname, 'src/content/entry.ts'),
+              output: {
+                ...sharedOutput,
+                entryFileNames: 'content/twitch.js',
+                format: 'iife',
+                inlineDynamicImports: true,
+                name: 'StreamclonePulseContent',
+              },
+            },
+          },
+        })
+      }
+
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })
       const manifest = JSON.parse(readFileSync(resolve(__dirname, 'manifest.json'), 'utf8'))
@@ -37,15 +67,10 @@ export default defineConfig({
     rollupOptions: {
       input: {
         'background/service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
-        'content/twitch': resolve(__dirname, 'src/content/entry.ts'),
         'popup/popup': resolve(__dirname, 'src/popup/popup.tsx'),
         'options/options': resolve(__dirname, 'src/options/options.tsx'),
       },
-      output: {
-        entryFileNames: '[name].js',
-        chunkFileNames: 'chunks/[name].js',
-        assetFileNames: 'assets/[name][extname]',
-      },
+      output: sharedOutput,
     },
   },
 })
