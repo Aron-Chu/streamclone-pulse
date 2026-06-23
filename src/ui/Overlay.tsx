@@ -40,6 +40,8 @@ import {
 } from '../content/twitchChatControls.ts'
 import { getPrimaryVideo, seekPlaybackOffset, detectTwitchChannelLive, type TwitchPageContext } from '../content/twitch.ts'
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
+import { MissedMomentsBanner } from './MissedMomentsBanner.tsx'
+import { evaluateBackfillRefresh, isPulseBackfillTerminal, shouldShowMissedMomentsBanner } from './missedMoments.ts'
 
 interface OverlayProps {
   login: string
@@ -84,6 +86,9 @@ export function Overlay({
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [topClip, setTopClip] = useState<ExtensionClip | null>(null)
   const [fullTimeline, setFullTimeline] = useState(false)
+  const [missedBusy, setMissedBusy] = useState(false)
+  const [missedRefreshed, setMissedRefreshed] = useState(false)
+  const [missedJob, setMissedJob] = useState<PulseBackfillJob | null>(null)
 
   useEffect(() => {
     setAwaitingTrack(pendingTrackPrompt && !payload?.tracking)
@@ -135,6 +140,13 @@ export function Overlay({
     void loadTopClip()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when stream/vod context changes
   }, [payload?.login, payload?.streamId, payload?.vodId, payload?.startedAt, payload?.isLive])
+
+  useEffect(() => {
+    setFullTimeline(false)
+    setMissedBusy(false)
+    setMissedRefreshed(false)
+    setMissedJob(null)
+  }, [payload?.streamId, payload?.login])
 
   const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
@@ -216,14 +228,115 @@ export function Overlay({
         type: 'GET_PULSE',
         login,
         watch: false,
-        window: 'recent',
-      })if ('type' in response && response.type === 'PULSE_UPDATE') {
+        window: full ? 'full' : 'recent',
+      })
+      if (full) {
+        setFullTimeline(true)
+      }
+      if ('type' in response && response.type === 'PULSE_UPDATE') {
         return response.payload
       }
       return null
     } finally {
       setTrackBusy(false)
     }
+  }
+
+  function applyBackfillRefreshOutcome(
+    before: PulsePayload | null | undefined,
+    after: PulsePayload | null | undefined,
+  ): void {
+    const outcome = evaluateBackfillRefresh(before, after)
+    setFullTimeline(true)
+    if (outcome === 'full') {
+      setMissedRefreshed(true)
+      setNotice({ kind: 'ok', text: 'Moments refreshed with earlier stream coverage.' })
+      return
+    }
+    if (outcome === 'partial') {
+      setMissedRefreshed(false)
+      const missing = after?.coverage?.missingRanges?.[0]
+      const label = missing
+        ? formatHeatOffset(Math.max(0, missing.toOffsetSeconds - missing.fromOffsetSeconds))
+        : 'part of the stream'
+      setNotice({
+        kind: 'info',
+        text: `Loaded some earlier chat — still missing about ${label}. Try again after more VOD chat publishes.`,
+      })
+      return
+    }
+    setMissedRefreshed(false)
+    setNotice({
+      kind: 'warn',
+      text: 'Backfill finished but Twitch VOD chat still does not include the missing stream start.',
+    })
+  }
+
+  async function loadMissedMoments(): Promise<void> {
+    if (!payload?.streamId || !payload.coverage) return
+    const beforePayload = payload
+    setMissedBusy(true)
+    setMissedRefreshed(false)
+    setNotice(null)
+    try {
+      const range = payload.coverage.missingRanges?.[0]
+      const response = await sendBackgroundMessage({
+        type: 'LOAD_MISSED_MOMENTS',
+        login,
+        streamId: payload.streamId,
+        fromOffsetSeconds: range?.fromOffsetSeconds ?? 0,
+        toOffsetSeconds: range?.toOffsetSeconds ?? payload.coverageStartOffsetSeconds,
+      })
+      if (!('type' in response) || response.type !== 'PULSE_BACKFILL' || !response.job) {
+        setNotice({ kind: 'warn', text: 'Could not start missed-moments backfill.' })
+        return
+      }
+      const job = response.job
+      setMissedJob(job)
+      if (job.status === 'already_available') {
+        const fresh = await refreshPulse(true)
+        applyBackfillRefreshOutcome(beforePayload, fresh ?? payload)
+        return
+      }
+      if (job.status === 'waiting_for_vod') {
+        setNotice({ kind: 'info', text: job.message || 'VOD chat not available yet.' })
+        return
+      }
+      if (job.status === 'failed') {
+        setNotice({ kind: 'warn', text: job.message || 'Backfill failed.' })
+        return
+      }
+      await pollMissedBackfill(job.jobId, beforePayload)
+    } catch (err) {
+      setNotice({ kind: 'warn', text: err instanceof Error ? err.message : 'Backfill failed.' })
+    } finally {
+      setMissedBusy(false)
+    }
+  }
+
+  async function pollMissedBackfill(jobId: string, beforePayload: PulsePayload): Promise<void> {
+    const maxAttempts = 120
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 2000 : 7000))
+      const response = await sendBackgroundMessage({ type: 'GET_PULSE_BACKFILL_STATUS', jobId })
+      if (!('type' in response) || response.type !== 'PULSE_BACKFILL_STATUS' || !response.job) {
+        continue
+      }
+      const job = response.job
+      setMissedJob(job)
+      if (!isPulseBackfillTerminal(job.status)) {
+        continue
+      }
+      if (job.status === 'done' || job.status === 'already_available') {
+        const fresh = await refreshPulse(true)
+        applyBackfillRefreshOutcome(beforePayload, fresh ?? payload)
+        return
+      }
+      setMissedRefreshed(false)
+      setNotice({ kind: 'warn', text: job.message || job.error || 'Backfill failed.' })
+      return
+    }
+    setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 
   function openSettings(): void {
@@ -426,6 +539,8 @@ export function Overlay({
         <>
           {panelSections?.showLiveStatsBand && displayPayload ? (
             <>
+              {payload.coverage && shouldShowMissedMomentsBanner(payload.coverage) ? (
+                <MissedMomentsBanner
                   coverage={payload.coverage}
                   busy={missedBusy}
                   refreshed={missedRefreshed}
