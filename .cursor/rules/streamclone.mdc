@@ -1,0 +1,40 @@
+---
+description: Streamclone Pulse / StreamPulse guardrails — read product docs before code
+globs: src/**,docs/pulse-extension/**,docs/website-portal/**,streampulse-web/**
+alwaysApply: false
+---
+
+# Streamclone Pulse & StreamPulse
+
+Cursor-specific guardrails. Generic routing stays in [`AGENTS.md`](../../AGENTS.md).
+
+## Read docs before code
+
+Before changing extension, portal, coverage, backfill, or hosted API behavior, read:
+
+- [`docs/pulse-extension/live-coverage-requirements.md`](../../docs/pulse-extension/live-coverage-requirements.md)
+- [`docs/website-portal/design.md`](../../docs/website-portal/design.md)
+- [`docs/website-portal/tasks.md`](../../docs/website-portal/tasks.md)
+
+Backend changes → sibling **streamclone** checkout (`../twitch-7tv-clone`); implement Go APIs there, not in this repo.
+
+## Guardrails (non-negotiable)
+
+- No unauthenticated `/watch`
+- No raw chat exposed to extension or portal
+- No client-side Pulse scoring
+- No fake progress (coverage/backfill UI must match backend state)
+- No full timeline fetch on live polling
+- Backend coverage, peaks, sync, and backfill states are source of truth
+- D1 is user state only — never rollups, raw chat, VOD chat, TwitchTracker, or corpus data
+
+## Cursor surfaces (this repo)
+
+| Surface | Path | Use |
+|---------|------|-----|
+| Rules | `.cursor/rules/` | Always-on Cursor behavior |
+| Skills | `.cursor/skills/` | Reusable workflows (`coverage-triage`, `streamclone-task-runner`, …) |
+| Subagents | `.cursor/agents/` | Three reviewers only — do not spawn a swarm |
+| Hooks | `.cursor/hooks.json` | Lightweight lint/format/secret guards |
+
+Default backend: `http://localhost:8090` (Caddy in streamclone). Content scripts: `chrome.runtime.sendMessage` only — no `fetch`.
