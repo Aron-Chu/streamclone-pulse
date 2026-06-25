@@ -5,23 +5,38 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aron-Chu/streamclone
+          ref: master
+          path: _streamclone
+          sparse-checkout: packages/pulse-core
+      - name: Link pulse-core from Streamclone
+        run: bash scripts/ci-link-pulse-core.sh
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-      - name: Link pulse-core from sibling checkout
-        run: |
-          if [ ! -d ../twitch-7tv-clone/packages/pulse-core ]; then
-            mkdir -p ../twitch-7tv-clone/packages/pulse-core/src
-            echo '{"name":"@streamclone/pulse-core","version":"0.0.0","type":"module","main":"./src/index.ts"}' > ../twitch-7tv-clone/packages/pulse-core/package.json
-            echo 'export {}' > ../twitch-7tv-clone/packages/pulse-core/src/index.ts
-          fi
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test
       - run: npm run build
