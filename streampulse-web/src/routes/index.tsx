@@ -9,6 +9,7 @@ import Login from './public/Login'
 
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const AdminShell = lazy(() => import('./admin/AdminShell'))
+const DashboardHome = lazy(() => import('./dashboard/Home'))
 
 function RouteFallback() {
   return (
@@ -28,6 +29,7 @@ export function AppRoutes() {
         <Route path="/docs/*" element={<Docs />} />
         <Route path="/status" element={<Status />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/analytics" element={<DashboardHome />} />
 
         <Route element={<RequireAuth />}>
           <Route path="/dashboard/*" element={<DashboardShell />} />

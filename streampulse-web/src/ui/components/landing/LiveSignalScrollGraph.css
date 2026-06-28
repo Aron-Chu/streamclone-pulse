@@ -1,0 +1,906 @@
+/* ============================================================================
+ * LiveSignalScrollGraph — scroll-driven StreamPulse signal map.
+ *
+ * The component writes a handful of progress vars on `.lsg`
+ * (--wipe, --sigv, --sigc, --emo, --sv, --emotes, --moments, --channels) and the rules
+ * below turn them into transform / opacity / stroke-dashoffset reveals only.
+ * `data-beat` (1–5) drives the narrative highlight. `data-static` (no-JS /
+ * reduced motion) pins every var to 1 and shows the final expanded state.
+ * Colors come from the shared --sc-* token ramp.
+ * ========================================================================== */
+.lsg {
+  --sig-chat: hsl(var(--sc-chart-1)); /* cyan   */
+  --sig-7tv: hsl(var(--sc-chart-2)); /* violet */
+  --sig-view: hsl(var(--sc-chart-3)); /* green  */
+  --sig-warn: hsl(var(--sc-chart-4)); /* amber  */
+  --sig-spike: hsl(var(--sc-chart-5)); /* rose   */
+  --grid: hsl(var(--sc-border) / 0.55);
+  --panel: hsl(var(--sc-card) / 0.82);
+
+  position: relative;
+  margin-top: clamp(1.5rem, 4vw, 2.75rem);
+}
+
+/* ---- Scroll track + pin -------------------------------------------------- */
+.lsg__scene {
+  position: relative;
+  height: 460vh;
+}
+.lsg__sticky {
+  /* JS transform-pin (see component): emulates position:sticky because the
+     .sp-landing wrapper is a non-scrolling overflow container that disables it. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  will-change: transform;
+}
+.lsg__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.55fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem);
+  align-items: center;
+}
+
+/* ---- Left: narrative steps ---------------------------------------------- */
+.lsg__narrative {
+  align-self: center;
+}
+.lsg__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-chart-2));
+  padding: 0.3rem 0.7rem;
+  border: 1px solid hsl(var(--sc-chart-2) / 0.35);
+  border-radius: 9999px;
+  background: hsl(var(--sc-chart-2) / 0.08);
+}
+.lsg__steps {
+  list-style: none;
+  margin: 1.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.lsg__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'rail kicker'
+    'rail title'
+    'rail body';
+  column-gap: 0.9rem;
+  padding: 0.7rem 0;
+  opacity: 0.52;
+  transition: opacity 0.5s ease;
+  --tone: var(--sig-view);
+}
+.lsg__step[data-tone='view'] {
+  --tone: var(--sig-view);
+}
+.lsg__step[data-tone='chat'] {
+  --tone: var(--sig-chat);
+}
+.lsg__step[data-tone='7tv'] {
+  --tone: var(--sig-7tv);
+}
+.lsg__step[data-tone='spike'] {
+  --tone: var(--sig-spike);
+}
+.lsg__step[data-tone='multi'] {
+  --tone: var(--sig-7tv);
+}
+.lsg__step-rail {
+  grid-area: rail;
+  position: relative;
+  width: 12px;
+}
+.lsg__step-rail::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0.25rem;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid hsl(var(--sc-border));
+  background: hsl(var(--sc-card));
+  transition: border-color 0.4s ease, box-shadow 0.4s ease, background 0.4s ease;
+}
+.lsg__step-rail::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1.4rem;
+  bottom: -0.7rem;
+  transform: translateX(-50%);
+  width: 2px;
+  background: hsl(var(--sc-border) / 0.6);
+}
+.lsg__step:last-child .lsg__step-rail::after {
+  display: none;
+}
+.lsg__step-kicker {
+  grid-area: kicker;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__step-title {
+  grid-area: title;
+  margin-top: 0.15rem;
+  font-size: clamp(1rem, 1.6vw, 1.18rem);
+  font-weight: 700;
+  color: hsl(var(--sc-foreground));
+  line-height: 1.25;
+}
+.lsg__step-body {
+  grid-area: body;
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: hsl(var(--sc-muted-foreground) / 0.92);
+}
+
+/* Active step (driven by data-beat) */
+.lsg[data-beat='1'] .lsg__step[data-step='1'],
+.lsg[data-beat='2'] .lsg__step[data-step='2'],
+.lsg[data-beat='3'] .lsg__step[data-step='3'],
+.lsg[data-beat='4'] .lsg__step[data-step='4'],
+.lsg[data-beat='5'] .lsg__step[data-step='5'] {
+  opacity: 1;
+}
+.lsg[data-beat='1'] .lsg__step[data-step='1'] .lsg__step-rail::before,
+.lsg[data-beat='2'] .lsg__step[data-step='2'] .lsg__step-rail::before,
+.lsg[data-beat='3'] .lsg__step[data-step='3'] .lsg__step-rail::before,
+.lsg[data-beat='4'] .lsg__step[data-step='4'] .lsg__step-rail::before,
+.lsg[data-beat='5'] .lsg__step[data-step='5'] .lsg__step-rail::before {
+  border-color: var(--tone);
+  background: var(--tone);
+  box-shadow: 0 0 0 4px hsl(var(--sc-background)), 0 0 16px -2px var(--tone);
+}
+
+/* ---- Right: stage + tracked-channel deck -------------------------------- */
+.lsg__stage {
+  position: relative;
+  min-width: 0;
+}
+.lsg__deck {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.lsg__ghost {
+  position: absolute;
+  inset: 6% 2% auto 2%;
+  height: 88%;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: calc(var(--sc-radius) + 0.4rem);
+  background: hsl(var(--sc-card) / 0.5);
+  opacity: calc(var(--channels, 0) * 0.7);
+  transition: opacity 0.3s linear;
+}
+.lsg__ghost--a {
+  transform: translate(calc(var(--channels, 0) * 18px), calc(var(--channels, 0) * -14px)) rotate(calc(var(--channels, 0) * 1.4deg));
+}
+.lsg__ghost--b {
+  transform: translate(calc(var(--channels, 0) * 34px), calc(var(--channels, 0) * -28px)) rotate(calc(var(--channels, 0) * 2.6deg));
+  opacity: calc(var(--channels, 0) * 0.45);
+}
+
+.lsg__panel {
+  position: relative;
+  margin: 0;
+  padding: clamp(0.9rem, 1.8vw, 1.3rem);
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: calc(var(--sc-radius) + 0.4rem);
+  background:
+    radial-gradient(120% 80% at 80% -10%, hsl(var(--sc-chart-2) / 0.12), transparent 60%),
+    var(--panel);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 40px 90px -40px rgb(0 0 0 / 0.8), 0 0 60px -30px hsl(var(--sc-chart-2) / 0.45);
+  transform: scale(calc(1 - var(--channels, 0) * 0.05));
+  transform-origin: 70% 40%;
+  overflow: hidden;
+}
+
+.lsg__nowcap {
+  display: none;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-chart-3));
+}
+
+.lsg__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+.lsg__title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: hsl(var(--sc-foreground));
+}
+.lsg__title b {
+  background: linear-gradient(90deg, hsl(var(--sc-chart-1)), hsl(var(--sc-chart-2)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lsg__head-right {
+  display: flex;
+  gap: 0.4rem;
+}
+.lsg__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.22rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+}
+.lsg__pill--live {
+  color: hsl(var(--sc-chart-5));
+  border-color: hsl(var(--sc-chart-5) / 0.4);
+  background: hsl(var(--sc-chart-5) / 0.12);
+}
+.lsg__pill--sync {
+  color: hsl(var(--sc-chart-3));
+  border-color: hsl(var(--sc-chart-3) / 0.4);
+  background: hsl(var(--sc-chart-3) / 0.12);
+  opacity: clamp(0, calc(var(--sigv, 0) * 4), 1);
+}
+.sl-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px 1px currentColor;
+}
+
+/* ---- KPI cards ----------------------------------------------------------- */
+.lsg__kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.lsg__kpi {
+  padding: 0.55rem 0.6rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: var(--sc-radius);
+  background: hsl(var(--sc-background) / 0.5);
+  opacity: clamp(0, calc(var(--sigv, 0) * 3), 1);
+  transform: translateY(calc((1 - var(--sigv, 0)) * 10px));
+}
+.lsg__kpi small {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__kpi b {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.lsg__kpi b i {
+  font-style: normal;
+}
+.lsg__kpi[data-sig='view'] b {
+  color: hsl(var(--sc-chart-3));
+}
+.lsg__kpi[data-sig='chat'] b {
+  color: hsl(var(--sc-chart-2));
+}
+.lsg__kpi[data-sig='emotes'] b {
+  color: hsl(var(--sc-chart-4));
+}
+.lsg__kpi-delta {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.6rem;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__kpi-delta.up {
+  color: hsl(var(--sc-chart-3));
+}
+
+/* ---- Plot ---------------------------------------------------------------- */
+.lsg__plot {
+  position: relative;
+  height: clamp(220px, 30vw, 300px);
+  margin-bottom: 0.75rem;
+  --axis-h: 22px;
+}
+.lsg__svg,
+.lsg__bars,
+.lsg__peaks {
+  position: absolute;
+  inset: 0 0 var(--axis-h) 0;
+}
+.lsg__svg {
+  width: 100%;
+  height: calc(100% - var(--axis-h));
+  overflow: visible;
+}
+.lsg__gridlines line {
+  stroke: var(--grid);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.lsg__gridcol {
+  stroke: hsl(var(--sc-border) / 0.32);
+  stroke-dasharray: 2 6;
+}
+
+/* Viewers baseline (green) */
+.lsg__view-area {
+  fill: hsl(var(--sc-chart-3) / 0.1);
+  opacity: var(--sigv, 0);
+}
+.lsg__view-line {
+  fill: none;
+  stroke: hsl(var(--sc-chart-3) / 0.85);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--wipe, 0));
+  opacity: var(--sigv, 0);
+}
+
+/* Total emotes/min (amber) */
+.lsg__emo-line {
+  fill: none;
+  stroke: hsl(var(--sc-chart-4));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--wipe, 0));
+  opacity: var(--emo, 0);
+  filter: drop-shadow(0 0 6px hsl(var(--sc-chart-4) / 0.45));
+}
+
+/* 7TV/min subset (green dashed) */
+.lsg__sv-line {
+  fill: none;
+  stroke: hsl(var(--sc-chart-3));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 6 4;
+  stroke-dashoffset: calc((1 - var(--wipe, 0)) * 12);
+  opacity: var(--sv, 0);
+}
+
+/* Chat/min line over the bars — matches analytics hub violet */
+.lsg__chat-line {
+  fill: none;
+  stroke: hsl(var(--sc-chart-2));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--wipe, 0));
+  opacity: calc(var(--sigc, 0) * 0.95);
+  filter: drop-shadow(0 0 5px hsl(var(--sc-chart-2) / 0.35));
+}
+
+/* Chat/min bars — violet whisper histogram */
+.lsg__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.lsg__bar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  background: hsl(var(--sc-chart-2) / 0.38);
+  transform-origin: bottom;
+  --on: clamp(0, calc(var(--wipe, 0) * var(--n) - var(--i)), 1);
+  transform: scaleY(var(--on));
+  opacity: calc(var(--on) * var(--sigc, 0));
+  will-change: transform, opacity;
+}
+
+/* Peak callouts — emote chip stacked above score badge */
+.lsg__peak {
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+}
+.lsg__peak.is-top {
+  z-index: 2;
+}
+.lsg__peak-dot {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: hsl(var(--sc-chart-5));
+  border: 2px solid hsl(var(--sc-background));
+  box-shadow: 0 0 12px 1px hsl(var(--sc-chart-5) / 0.8);
+  opacity: var(--moments, 0);
+}
+.lsg__peak.is-top .lsg__peak-dot {
+  width: 15px;
+  height: 15px;
+}
+.lsg__peak-callout {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+.lsg__peak[data-side='left'] .lsg__peak-callout {
+  transform: translateX(calc(-50% - 14px));
+}
+.lsg__peak[data-side='right'] .lsg__peak-callout {
+  transform: translateX(calc(-50% + 14px));
+}
+.lsg__peak-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.14rem 0.38rem 0.14rem 0.18rem;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--sc-chart-4) / 0.45);
+  background: hsl(var(--sc-card) / 0.94);
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: hsl(var(--sc-chart-4));
+  white-space: nowrap;
+  opacity: var(--emotes, 0);
+  transform: translateY(calc((1 - var(--emotes, 0)) * 6px));
+}
+.lsg__peak-chip img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.lsg__peak-score {
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: hsl(var(--sc-chart-5));
+  box-shadow: 0 6px 16px -6px hsl(var(--sc-chart-5) / 0.9);
+  opacity: var(--moments, 0);
+  transform: translateY(calc((1 - var(--moments, 0)) * 8px));
+}
+.lsg__peak.is-top .lsg__peak-score {
+  background: linear-gradient(135deg, hsl(var(--sc-chart-5)), hsl(var(--sc-chart-4)));
+}
+
+/* Sweeping playhead / scanline */
+.lsg__playhead {
+  position: absolute;
+  top: 0;
+  bottom: var(--axis-h);
+  left: clamp(0%, calc(var(--wipe, 0) * 100%), 100%);
+  width: 2px;
+  background: linear-gradient(180deg, hsl(var(--sc-chart-1) / 0.05), hsl(var(--sc-chart-1) / 0.65), hsl(var(--sc-chart-1) / 0.05));
+  box-shadow: 0 0 14px 2px hsl(var(--sc-chart-1) / 0.4);
+  opacity: calc(var(--wipe, 0) * (1 - var(--channels, 0)));
+  pointer-events: none;
+}
+.lsg__playhead-now {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-chart-1));
+}
+
+.lsg__axis {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: var(--axis-h);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--sc-muted-foreground));
+}
+
+/* ---- Legend -------------------------------------------------------------- */
+.lsg__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.66rem;
+  color: hsl(var(--sc-muted-foreground));
+  opacity: clamp(0, calc(var(--sigc, 0) * 3), 1);
+}
+.lsg__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.lsg__legend i {
+  width: 14px;
+  height: 3px;
+  border-radius: 9999px;
+}
+.lsg__legend [data-sig='chat'] i {
+  height: 7px;
+  background: linear-gradient(180deg, hsl(var(--sc-chart-2)), hsl(var(--sc-chart-2) / 0.35));
+}
+.lsg__legend [data-sig='emotes'] i {
+  background: hsl(var(--sc-chart-4));
+}
+.lsg__legend [data-sig='7tv'] i {
+  height: 0;
+  width: 16px;
+  border-top: 2px dashed hsl(var(--sc-chart-3));
+  border-radius: 0;
+  background: transparent;
+}
+.lsg__legend [data-sig='view'] i {
+  background: hsl(var(--sc-chart-3));
+}
+.lsg__legend [data-sig='spike'] i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--sc-chart-5));
+}
+
+/* ---- Lower: top emotes + most-reacted card ------------------------------ */
+.lsg__lower {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+.lsg__te,
+.lsg__moment {
+  padding: 0.7rem 0.75rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: var(--sc-radius);
+  background: hsl(var(--sc-background) / 0.45);
+}
+.lsg__te {
+  opacity: clamp(0, calc(var(--emotes, 0) * 2), 1);
+  transform: translateY(calc((1 - clamp(0, calc(var(--emotes, 0) * 2), 1)) * 12px));
+}
+.lsg__te-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__te-count {
+  color: hsl(var(--sc-chart-2));
+}
+.lsg__te-row {
+  display: grid;
+  grid-template-columns: auto 18px 1fr 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.16rem 0;
+  font-size: 0.72rem;
+}
+.lsg__te-row.is-hot {
+  color: hsl(var(--sc-chart-2));
+}
+.lsg__te-rank {
+  font-weight: 800;
+  color: hsl(var(--sc-muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.lsg__te-row img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+.lsg__te-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lsg__te-bar {
+  height: 5px;
+  border-radius: 9999px;
+  background: hsl(var(--sc-secondary) / 0.6);
+  overflow: hidden;
+}
+.lsg__te-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, hsl(var(--sc-chart-1)), hsl(var(--sc-chart-2)));
+}
+.lsg__te-n {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--sc-foreground));
+}
+.lsg__te-stale {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: 0.62rem;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__te-stale .sl-dot {
+  width: 5px;
+  height: 5px;
+  color: hsl(var(--sc-chart-3));
+  box-shadow: none;
+}
+
+.lsg__moment {
+  position: relative;
+  border-color: hsl(var(--sc-chart-5) / 0.35);
+  background: radial-gradient(120% 100% at 100% 0%, hsl(var(--sc-chart-5) / 0.12), transparent 65%), hsl(var(--sc-background) / 0.5);
+  opacity: var(--moments, 0);
+  transform: translateY(calc((1 - var(--moments, 0)) * 20px));
+}
+.lsg__moment-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.lsg__moment-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-chart-5));
+}
+.lsg__moment-time {
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__moment-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.1rem;
+}
+.lsg__moment-score b {
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1;
+  color: hsl(var(--sc-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.lsg__moment-score small {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__moment-reason {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: hsl(var(--sc-chart-5));
+}
+.lsg__moment-metrics {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0.45rem 0 0.6rem;
+  font-size: 0.7rem;
+  color: hsl(var(--sc-muted-foreground));
+}
+.lsg__moment-metrics b {
+  color: hsl(var(--sc-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.lsg__moment-btns {
+  display: flex;
+  gap: 0.4rem;
+}
+.lsg__moment-btn {
+  flex: 1;
+  text-align: center;
+  padding: 0.32rem 0.5rem;
+  border-radius: var(--sc-radius);
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, hsl(var(--sc-chart-5)), hsl(var(--sc-chart-2)));
+}
+.lsg__moment-btn.ghost {
+  color: hsl(var(--sc-foreground));
+  background: transparent;
+  border: 1px solid hsl(var(--sc-border));
+}
+
+/* ---- Beat 5: tracked-channel ledger ------------------------------------- */
+.lsg__channels {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid hsl(var(--sc-border));
+  opacity: clamp(0, calc(var(--channels, 0) * 2), 1);
+}
+.lsg__channels-cap {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--sc-chart-3));
+}
+.lsg__channels-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lsg__chan {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.55rem 0.28rem 0.3rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: 9999px;
+  background: hsl(var(--sc-card) / 0.7);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: hsl(var(--sc-foreground));
+  transform: translateY(calc((1 - var(--channels, 0)) * 14px));
+  opacity: clamp(0, calc(var(--channels, 0) * 3 - var(--ci) * 0.25), 1);
+}
+.lsg__chan-av {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, hsl(var(--sc-chart-2)), hsl(var(--sc-chart-1)));
+}
+.lsg__chan-name {
+  font-variant-numeric: tabular-nums;
+}
+.lsg__chan-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: hsl(var(--sc-chart-3));
+  box-shadow: 0 0 8px 1px hsl(var(--sc-chart-3) / 0.8);
+}
+.lsg__chan-dot.is-off {
+  background: hsl(var(--sc-muted-foreground) / 0.5);
+  box-shadow: none;
+}
+
+/* ---- Responsive ---------------------------------------------------------- */
+@media (max-width: 960px) {
+  .lsg__scene {
+    height: 420vh;
+  }
+  .lsg__grid {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+  /* On narrow screens the side rail collapses; the active beat shows as a
+     caption inside the pinned panel instead. */
+  .lsg__narrative {
+    display: none;
+  }
+  .lsg__nowcap {
+    display: flex;
+  }
+  .lsg__kpi b {
+    font-size: 1.2rem;
+  }
+}
+@media (max-width: 560px) {
+  .lsg__scene {
+    height: 380vh;
+  }
+  .lsg__kpis {
+    gap: 0.4rem;
+  }
+  .lsg__kpi {
+    padding: 0.45rem 0.5rem;
+  }
+  .lsg__lower {
+    grid-template-columns: 1fr;
+  }
+  .lsg__plot {
+    height: 200px;
+  }
+}
+
+/* ---- Static / reduced-motion / no-JS: final expanded state -------------- */
+.lsg[data-static] {
+  --p: 1;
+  --wipe: 1;
+  --sigv: 1;
+  --sigc: 1;
+  --emo: 1;
+  --sv: 1;
+  --emotes: 1;
+  --moments: 1;
+  --channels: 1;
+}
+.lsg[data-static] .lsg__scene {
+  height: auto;
+}
+.lsg[data-static] .lsg__sticky {
+  position: static;
+  min-height: 0;
+  transform: none;
+}
+.lsg[data-static] .lsg__panel {
+  transform: none;
+}
+.lsg[data-static] .lsg__playhead {
+  display: none;
+}
+.lsg[data-static] .lsg__step {
+  opacity: 1;
+}
+.lsg[data-static] .lsg__step .lsg__step-rail::before {
+  border-color: var(--tone);
+  background: var(--tone);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lsg__bar,
+  .lsg__step,
+  .lsg__ghost {
+    transition: none !important;
+  }
+}
