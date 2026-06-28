@@ -14,6 +14,9 @@ export type ApiErrorKind =
 export interface ApiError {
   kind: ApiErrorKind
   message: string
+  status: number
+  code?: string
+  body?: unknown
   hint?: string
 }
 
@@ -69,11 +72,12 @@ export function normalizeApiError(status: number, body: unknown): ApiError {
       : typeof record.message === 'string'
         ? record.message
         : `HTTP ${status}`
+  const code = typeof record.code === 'string' ? record.code : typeof record.error === 'string' ? record.error : undefined
 
-  if (status === 401) return { kind: 'unauthorized', message, hint }
-  if (status === 429) return { kind: 'rate_limited', message, hint }
-  if (status >= 500) return { kind: 'server', message, hint }
-  return { kind: 'bad_request', message, hint }
+  if (status === 401) return { kind: 'unauthorized', message, status, code, body, hint }
+  if (status === 429) return { kind: 'rate_limited', message, status, code, body, hint }
+  if (status >= 500) return { kind: 'server', message, status, code, body, hint }
+  return { kind: 'bad_request', message, status, code, body, hint }
 }
 
 function parseCacheHeader(value: string | null): ApiClientResult<unknown>['cache'] {
@@ -162,6 +166,7 @@ export async function apiClient<T = unknown>(
       const unreachable: ApiError = {
         kind: 'unreachable',
         message: error instanceof Error ? error.message : 'Network error',
+        status: 0,
       }
       if (attempt === 0) {
         lastError = unreachable

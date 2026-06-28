@@ -9,6 +9,9 @@ import Login from './public/Login'
 
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const AdminShell = lazy(() => import('./admin/AdminShell'))
+const DashboardHome = lazy(() => import('./dashboard/Home'))
+const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
+const StreamsHubPlaceholder = lazy(() => import('./analytics/StreamsHubPlaceholder'))
 
 function RouteFallback() {
   return (
@@ -28,6 +31,15 @@ export function AppRoutes() {
         <Route path="/docs/*" element={<Docs />} />
         <Route path="/status" element={<Status />} />
         <Route path="/login" element={<Login />} />
+
+        {/* Public aggregate hub — polls /v1/public/hub only */}
+        <Route path="/analytics" element={<DashboardHome />} />
+
+        {/* Beta-gated chart / channel surfaces */}
+        <Route element={<RequireAuth />}>
+          <Route path="/analytics/streams" element={<StreamsHubPlaceholder />} />
+          <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
+        </Route>
 
         <Route element={<RequireAuth />}>
           <Route path="/dashboard/*" element={<DashboardShell />} />
