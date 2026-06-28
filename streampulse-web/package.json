@@ -8,7 +8,10 @@
     "build": "tsc --noEmit && vite build && node scripts/prerender.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pages:deploy:personal": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cf-pages-deploy-personal.ps1",
+    "pages:deploy:prod": "npm run pages:deploy:personal",
+    "pages:deploy": "npm run pages:deploy:prod"
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.15",
