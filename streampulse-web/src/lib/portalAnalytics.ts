@@ -45,6 +45,38 @@ export function portalStreamSyncStatusPath(streamId: string): string {
   return `${PORTAL_ANALYTICS_PREFIX}/streams/${encodeURIComponent(streamId)}/sync/status`
 }
 
+export function portalStreamGamesPath(streamId: string): string {
+  return `${PORTAL_ANALYTICS_PREFIX}/streams/${encodeURIComponent(streamId)}/games`
+}
+
+export function portalStreamRecapPath(streamId: string): string {
+  return `${PORTAL_ANALYTICS_PREFIX}/streams/${encodeURIComponent(streamId)}/recap`
+}
+
+export function portalStreamReplayHeatmapPath(streamId: string): string {
+  return `${PORTAL_ANALYTICS_PREFIX}/streams/${encodeURIComponent(streamId)}/replay-heatmap`
+}
+
+export function portalChannelStreamsPath(login: string): string {
+  return `${PORTAL_ANALYTICS_PREFIX}/channels/${encodeURIComponent(login)}/streams`
+}
+
+export function portalChannelLivePath(login: string): string {
+  return `${PORTAL_ANALYTICS_PREFIX}/channels/${encodeURIComponent(login)}/live`
+}
+
+export const PORTAL_CHART_PATH_BUILDERS = [
+  portalStreamMinutesPath,
+  portalStreamDetailPath,
+  portalStreamSummaryPath,
+  portalStreamSyncStatusPath,
+  portalStreamGamesPath,
+  portalStreamRecapPath,
+  portalStreamReplayHeatmapPath,
+  portalChannelStreamsPath,
+  portalChannelLivePath,
+] as const
+
 /** Gated portal minutes — explicit channel/stream navigation only. */
 export async function fetchPortalStreamMinutes(
   streamId: string,

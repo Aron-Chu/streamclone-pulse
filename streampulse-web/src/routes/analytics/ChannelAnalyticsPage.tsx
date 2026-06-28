@@ -1,10 +1,13 @@
 import { Link, useParams } from 'react-router-dom'
 import { AnalyticsConsole } from '@streamclone/analytics-console'
+import { usePortalAnalyticsConsoleApi } from '../../hooks/usePortalAnalyticsConsoleApi'
 import '../../ui/tokens.css'
 import '../../ui/components/analytics/analytics-hub-home.css'
+import '../../ui/components/analytics/analytics-console.css'
 
-/** Gated channel analytics shell — full console lands via @streamclone/analytics-console (P4). */
+/** Gated channel analytics — Streamclone console via portalAnalytics adapter. */
 export default function ChannelAnalyticsPage() {
+  usePortalAnalyticsConsoleApi()
   const { login = '' } = useParams<{ login: string }>()
   const label = login || 'channel'
 
@@ -16,12 +19,12 @@ export default function ChannelAnalyticsPage() {
         </Link>
         <span className="hub-brand__tag">Channel analytics</span>
       </header>
-      <section className="hub-sec">
+      <section className="hub-sec hub-sec--console">
         <div className="hub-sec-head">
           <div className="hub-sec-head__l">
             <h1 id="channel-analytics-title">{label}</h1>
             <span className="hub-sec-head__desc">
-              Beta-gated Streamclone analytics console. Charts load from the portal API with your beta key.
+              Streamclone minute charts via sanitized portal analytics APIs.
             </span>
           </div>
           <Link className="hub-openbtn" to="/analytics">

@@ -38,6 +38,7 @@ export function AppRoutes() {
         {/* Beta-gated chart / channel surfaces */}
         <Route element={<RequireAuth />}>
           <Route path="/analytics/streams" element={<StreamsHubPlaceholder />} />
+          <Route path="/analytics/:login/s/:streamId" element={<ChannelAnalyticsPage />} />
           <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
         </Route>
 
