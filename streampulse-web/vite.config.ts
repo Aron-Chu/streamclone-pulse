@@ -16,6 +16,7 @@ export default defineConfig({
       'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),
       '@tanstack/react-query': resolve(__dirname, 'node_modules/@tanstack/react-query'),
       zustand: resolve(__dirname, 'node_modules/zustand'),
+      '@streamclone/pulse-core': resolve(__dirname, 'node_modules/@streamclone/pulse-core'),
     },
   },
   build: {
