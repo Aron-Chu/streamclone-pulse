@@ -73,7 +73,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           cd ../twitch-7tv-clone/packages/analytics-console
-          npm install --no-package-lock --no-save \
+          npm install --no-package-lock --no-save --legacy-peer-deps \
             react@18.3.1 react-dom@18.3.1 react-router-dom@7.9.1 \
             @tanstack/react-query@5.90.2 zustand@5.0.8 \
             @types/react@18.3.18 @types/react-dom@18.3.5 typescript@6.0.3
