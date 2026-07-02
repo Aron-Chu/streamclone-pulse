@@ -207,6 +207,10 @@ export function createPortalAnalyticsApi(): AnalyticsApi {
       return null
     },
 
+    async getTwitchDayClips(_login: string, _startedAt: string, _endedAt: string) {
+      return { items: [] }
+    },
+
     async getSetupWelcome() {
       return {
         profile: 'portal',
