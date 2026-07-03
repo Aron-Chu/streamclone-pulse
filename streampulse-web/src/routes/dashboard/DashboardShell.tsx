@@ -9,8 +9,7 @@ export default function DashboardShell() {
         </Link>
         <nav className="app-nav__links">
           <Link to="/dashboard">Home</Link>
-          <Link to="/setup">Connection</Link>
-          <Link to="/login">Account</Link>
+          <Link to="/analytics">Analytics</Link>
         </nav>
       </header>
       <main className="app-main">

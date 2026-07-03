@@ -4,16 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/prerender.mjs",
+    "dev": "node ../scripts/dev-portal.mjs",
+    "dev:vite": "vite",
+    "dev:hosted": "node ../scripts/dev-portal.mjs",
+    "dev:local": "vite --env-file .env.development.local.example",
+    "build": "tsc --noEmit && vite build && node scripts/prerender.mjs && node scripts/check-backend-url.mjs",
+    "build:vite": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:hosted": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
+    "capture:analytics": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
     "preview": "vite preview",
-    "pages:deploy:personal": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cf-pages-deploy-personal.ps1",
-    "pages:deploy:prod": "npm run pages:deploy:personal",
-    "pages:deploy": "npm run pages:deploy:prod"
+    "check:analytics-routes-spa": "node scripts/check-analytics-routes-spa.mjs",
+    "check:analytics-links": "node scripts/check-analytics-links.mjs",
+    "check:backend-url": "node scripts/check-backend-url.mjs",
+    "pages:deploy:prod": "node scripts/pages-deploy-prod.mjs"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
     "@radix-ui/react-tabs": "^1.1.15",
     "@streamclone/analytics-console": "file:../../twitch-7tv-clone/packages/analytics-console",
     "@streamclone/pulse-core": "file:../../twitch-7tv-clone/packages/pulse-core",
@@ -22,7 +32,7 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-router-dom": "^7.9.1",
-    "zustand": "^5.0.8"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

@@ -1,6 +1,6 @@
 import type { Ref } from 'react'
 import type { ExtModel } from './landingData'
-import { seventvImageUrl } from './landingEmotes'
+import { findLandingEmote, landingEmoteImageUrl, type LandingEmote } from './landingEmotes'
 
 export type ExtTheme = 'aurora' | 'volt' | 'azure' | 'aqua'
 export type SidebarDemoTab = 'chat' | 'pulse'
@@ -56,31 +56,34 @@ const CHAT_BAND = chartBand(CHAT_MAX, CHAT_MIN)
 const SV_LINE = chartLine(SEVENTV)
 const SV_AREA = `${SV_LINE} L${CHART_W},${CHART_H} L0,${CHART_H} Z`
 
-/** Top-emote leaderboard — 7TV ids are decorative stand-ins for the channel set. */
-const TOP_EMOTES: ReadonlyArray<{ name: string; count: number; id: string; pct: number }> = [
-  { name: 'LOL', count: 37, id: '01GAZ199Z8000FEWHS6AT5QZV0', pct: 100 },
-  { name: '!join', count: 23, id: '01GB8EQNJ8000497KFBZWNSDFZ', pct: 62 },
-  { name: 'LO', count: 17, id: '01G98W833R0000BRQD106P0ZNT', pct: 46 },
-  { name: 'aikoL', count: 15, id: '01GB2ZJFBG000DTBJYANG8XYFP', pct: 41 },
-  { name: 'classic', count: 10, id: '01GB4P2HX0000BJ5HR8F6XV9Q0', pct: 27 },
-  { name: 'clappi', count: 9, id: '01GAM8EFQ00004MXFXAJYKA859', pct: 24 },
+/** Top-emote leaderboard — 7TV-heavy with Speed-culture wide emotes up top. */
+const TOP_EMOTES: ReadonlyArray<{ name: string; count: number; emote: LandingEmote; pct: number }> = [
+  { name: 'widespeedlaugh', count: 37, emote: findLandingEmote('widespeedlaugh')!, pct: 100 },
+  { name: 'degloved', count: 28, emote: findLandingEmote('degloved')!, pct: 76 },
+  { name: 'widereacting', count: 21, emote: findLandingEmote('widereacting')!, pct: 57 },
+  { name: 'peepoHappy', count: 17, emote: findLandingEmote('peepoHappy')!, pct: 46 },
+  { name: 'forsenPls', count: 12, emote: findLandingEmote('forsenPls')!, pct: 32 },
+  { name: 'Kappa', count: 9, emote: findLandingEmote('Kappa')!, pct: 24 },
 ]
 
-/** 7TV emote ids used as decorative spike thumbnails. */
-const TOP_MOMENT_THUMBS = ['01GB8EQNJ8000497KFBZWNSDFZ', '01GB2ZJFBG000DTBJYANG8XYFP', '01GAZ199Z8000FEWHS6AT5QZV0']
+const TOP_MOMENT_THUMBS = [
+  findLandingEmote('widespeedlaugh')!,
+  findLandingEmote('degloved')!,
+  findLandingEmote('widereacting')!,
+]
 
-const MORE_SPIKES: ReadonlyArray<{ time: string; kind: string; stats: string; emotes: string[] }> = [
+const MORE_SPIKES: ReadonlyArray<{ time: string; kind: string; stats: string; emotes: LandingEmote[] }> = [
   {
     time: '00:42:00',
     kind: '7TV emote spike',
     stats: '52 chat · 45 emotes · score 37',
-    emotes: ['01G98W833R0000BRQD106P0ZNT', '01GB4P2HX0000BJ5HR8F6XV9Q0', '01GAM8EFQ00004MXFXAJYKA859'],
+    emotes: [findLandingEmote('widespeedlaugh')!, findLandingEmote('degloved')!, findLandingEmote('Clap')!],
   },
   {
     time: '00:14:00',
-    kind: 'Twitch emote spike',
+    kind: '7TV emote spike',
     stats: '22 chat · 17 emotes · score 33',
-    emotes: ['01GB2ZJFBG000DTBJYANG8XYFP', '01GAFTZ9K80003DHH026MC7JW0'],
+    emotes: [findLandingEmote('widereacting')!, findLandingEmote('PepePls')!],
   },
 ]
 
@@ -305,7 +308,7 @@ export function ExtensionDemoCard({
                   <span className="sl-te__rank">{index + 1}</span>
                   <img
                     className="sl-te__img"
-                    src={seventvImageUrl(emote.id, '1x')}
+                    src={landingEmoteImageUrl(emote.emote, '1x')}
                     alt=""
                     loading="lazy"
                     decoding="async"
@@ -381,8 +384,8 @@ export function ExtensionDemoCard({
                 </span>
               </div>
               <div className="sl-mrhero__thumbs" aria-hidden="true">
-                {TOP_MOMENT_THUMBS.map((id) => (
-                  <img key={id} src={seventvImageUrl(id, '1x')} alt="" loading="lazy" decoding="async" />
+                {TOP_MOMENT_THUMBS.map((emote) => (
+                  <img key={emote.id} src={landingEmoteImageUrl(emote, '1x')} alt="" loading="lazy" decoding="async" />
                 ))}
                 <span className="sl-mrhero__w">W</span>
               </div>
@@ -401,8 +404,8 @@ export function ExtensionDemoCard({
                     <small>{spike.stats}</small>
                   </span>
                   <span className="sl-mr-row__emos" aria-hidden="true">
-                    {spike.emotes.map((id) => (
-                      <img key={id} src={seventvImageUrl(id, '1x')} alt="" loading="lazy" decoding="async" />
+                    {spike.emotes.map((emote) => (
+                      <img key={emote.id} src={landingEmoteImageUrl(emote, '1x')} alt="" loading="lazy" decoding="async" />
                     ))}
                   </span>
                 </div>

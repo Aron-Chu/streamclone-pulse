@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ircSlotMetrics } from '../src/lib/coverageHealthMetrics'
+import { hubCorpusPipelineFixture } from '../src/lib/publicHub'
 import type { HubCorpusPipeline, HubCoverage } from '../src/lib/publicHub'
 
 const coverageFixture: HubCoverage = {
@@ -13,7 +14,7 @@ const coverageFixture: HubCoverage = {
   state: 'degraded',
 }
 
-const pipelineFixture: HubCorpusPipeline = {
+const pipelineFixture: HubCorpusPipeline = hubCorpusPipelineFixture({
   generatedAt: '2026-06-28T16:54:13.764Z',
   state: 'degraded',
   topN: 500,
@@ -33,9 +34,7 @@ const pipelineFixture: HubCorpusPipeline = {
     viewerOnly: 74,
     zeroChatAfterAge: 0,
   },
-  silver: { queued: 0, running: 0, done: 0, skipped: 0, failed: 0, total: 0, eligible: 0 },
-  gold: { queued: 0, running: 0, done: 0, skipped: 0, failed: 0, total: 0, eligible: 0 },
-}
+})
 
 describe('ircSlotMetrics', () => {
   it('uses collector slot fill when pipeline is present', () => {

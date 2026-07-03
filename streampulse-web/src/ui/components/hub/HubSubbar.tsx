@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 import { Menu, RefreshCw } from 'lucide-react'
 import type { BackendSource } from '../../../lib/backendSource'
 import { backendSourceLabel } from '../../../lib/backendSource'
@@ -47,9 +46,9 @@ export function HubSubbar({
       {search}
       <div className="right">
         {backendSource ? (
-          <Link to="/setup" className="hx-backend-badge" title="Change backend in Setup">
+          <span className="hx-backend-badge" title="Backend source">
             <Badge variant="secondary">{backendSourceLabel(backendSource)}</Badge>
-          </Link>
+          </span>
         ) : null}
         <Badge variant={statusTone === 'live' ? 'live' : 'down'} dot pulse={statusTone === 'live'}>
           {statusLabel}

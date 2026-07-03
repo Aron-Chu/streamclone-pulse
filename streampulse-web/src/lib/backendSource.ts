@@ -45,3 +45,11 @@ export function backendSourceCaption(url?: string): string {
   const source = resolveBackendSource(url)
   return `Reading ${backendSourceLabel(source)} · ${backendSourceHost(url)}`
 }
+
+/** True when dev env default (not session override) points at local stack. */
+export function isEnvLocalBackendDefault(): boolean {
+  const envDefault =
+    import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '') ||
+    DEFAULT_PRODUCTION_BACKEND_URL
+  return resolveBackendSource(envDefault) === 'local'
+}

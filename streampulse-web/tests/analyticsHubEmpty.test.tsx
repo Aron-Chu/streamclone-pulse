@@ -39,6 +39,29 @@ vi.mock('../src/hooks/usePublicHubData', () => ({
       topMovers: [],
       liveChannels: [],
       moments: [],
+      livePulseMoments: [],
+      corpusPipeline: {
+        generatedAt: new Date().toISOString(),
+        state: 'healthy',
+        topN: 500,
+        collectorActive: 0,
+        collectorMax: 100,
+        roster: {
+          live: 0,
+          collectorTracking: 0,
+          expectedCollectorRows: 0,
+          liveCollectorDeficitRows: 0,
+          metadataOnly: 0,
+          metadataStale: 0,
+          admissionDisabled: 0,
+          capacityBlocked: 0,
+          warming: 0,
+          collecting: 0,
+          viewerOnly: 0,
+          zeroChatAfterAge: 0,
+        },
+      },
+      featuredSession: { state: 'empty', reason: 'no_qualifying_session' },
     },
     loading: false,
     refreshing: false,
@@ -57,11 +80,12 @@ describe('Analytics hub empty watchlist (HUB-P4)', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('heading', { name: 'StreamPulse analytics' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: /Stream intelligence/i })).toBeTruthy()
     expect(screen.getByRole('search')).toBeTruthy()
-    expect(screen.getByText('Search-first gateway')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Live now' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Recent sessions' })).toBeTruthy()
-    expect(screen.getByText(/No channels live right now/i)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Global activity/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Live collector/i })).toBeTruthy()
+    // No live pool: carousel shows an honest empty state, not a fake row.
+    expect(screen.getAllByText(/No channels live right now/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/add channels to your watchlist to see live analytics/i)).toBeNull()
   })
 })

@@ -6,6 +6,7 @@ import '../../ui/components/landing/landing.css'
 import { buttonClass } from '../../ui/primitives'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { EmoteRain } from '../../ui/components/landing/EmoteRain'
+import { TwitchChatBackdrop } from '../../ui/components/landing/TwitchChatBackdrop'
 import { EmoteTicker } from '../../ui/components/landing/EmoteTicker'
 import { ExtensionShowcase } from '../../ui/components/landing/ExtensionShowcase'
 import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScrollGraph'
@@ -13,12 +14,14 @@ import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildExtModel, buildMoverTicker } from '../../ui/components/landing/landingData'
 
+const CHROME_EXTENSION_URL = '/docs#extension'
+const EXTENSION_BETA_LABEL = 'Install extension (beta)'
+
 function TopNav() {
   return (
     <header className="sl-header">
       <nav className="sl-nav" aria-label="StreamPulse">
         <Link to="/" className="sl-brand">
-          <span className="sl-logo">SP</span>
           StreamPulse
         </Link>
         <div className="sl-menu">
@@ -59,9 +62,9 @@ function Hero({
           StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and VODs.
         </p>
         <div className="sl-hero__actions">
-          <Link to="/setup" className={buttonClass('default', 'lg')}>
+          <Link to={CHROME_EXTENSION_URL} className={buttonClass('default', 'lg')}>
             <PanelTopOpen size={17} aria-hidden="true" />
-            Install Chrome Extension
+            {EXTENSION_BETA_LABEL}
           </Link>
           <Link to="/analytics" className={buttonClass('outline', 'lg')}>
             <LineChart size={17} aria-hidden="true" />
@@ -159,7 +162,6 @@ function Footer() {
           StreamPulse
         </Link>
         <div className="sl-foot__links">
-          <Link to="/setup">Setup</Link>
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
           <Link to="/analytics">Analytics</Link>
@@ -203,6 +205,7 @@ export default function Landing() {
   return (
     <div className="sp-landing">
       <EmoteRain />
+      <TwitchChatBackdrop />
       <TopNav />
       <main className="sl-main" ref={mainRef}>
         <Hero emoteItems={emoteItems} moverItems={moverItems} />

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StreamPulse — Command Center (Figma-matched) — Most Reacted Minutes</title>
+<style>
+  :root {
+    --bg:            #09090b;
+    --nav-bg:        rgba(9,9,11,0.94);
+    --panel:         rgba(255,255,255,0.028);
+    --panel-alt:     rgba(99,102,241,0.055);
+    --border:        rgba(255,255,255,0.075);
+    --border-accent: rgba(99,102,241,0.38);
+    --accent:        #6366f1;
+    --accent-bg:     rgba(99,102,241,0.14);
+    --accent-text:   #818cf8;
+    --accent-dim:    rgba(99,102,241,0.08);
+    --green:         #4ade80;
+    --cyan:          #22d3ee;
+    --amber:         #fbbf24;
+    --red:           #f87171;
+    --orange:        #f97416;
+    --pink:          #f472b6;
+    --text:          #f4f4f5;
+    --sub:           #a1a1aa;
+    --muted:         #52525b;
+    --dim:           rgba(255,255,255,0.035);
+    --mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  .skip-link {
+    position: absolute; left: -9999px; top: 0; z-index: 999;
+    background: var(--accent); color: #fff; padding: 10px 16px; border-radius: 0 0 8px 0;
+    font-size: 13px; font-weight: 600;
+  }
+  .skip-link:focus { left: 0; }
+
+  a { color: inherit; }
+  button { font-family: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ── Topbar ───────────────────────────────────────────────────────── */
+  .topbar {
+    height: 46px; display: flex; align-items: center; gap: 16px; padding: 0 20px;
+    border-bottom: 1px solid var(--border); background: var(--nav-bg);
+    backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 50;
+  }
+  .topbar__brand { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.04em; flex: 0 0 auto; }
+  .topbar__brand-mark {
+    width: 22px; height: 22px; border-radius: 6px; background: var(--accent-bg);
+    border: 1px solid var(--border-accent); display: flex; align-items: center; justify-content: center;
+  }
+  .topbar__crumb { font-size: 12px; color: var(--sub); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar__crumb strong { color: var(--accent-text); font-weight: 600; }
+  .crumb-sep { color: var(--muted); margin: 0 6px; }
+  .topbar__badge {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--green); background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.3);
+    padding: 3px 8px; border-radius: 5px; white-space: nowrap;
+  }
+
+  main { padding: 16px 20px 40px; display: flex; flex-direction: column; gap: 14px; max-width: 1480px; margin: 0 auto; }
+
+  /* ── Session header ───────────────────────────────────────────────── */
+  .session-header {
+    padding: 11px 18px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--panel-alt); display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .session-id {
+    display: flex; align-items: center; gap: 9px; cursor: pointer; padding: 4px 8px; border-radius: 8px;
+    border: 1px solid transparent; text-decoration: none; transition: border-color .15s;
+  }
+  .session-id:hover, .session-id:focus-visible { border-color: var(--border-accent); }
+  .session-id__avatar {
+    width: 32px; height: 32px; border-radius: 7px; background: var(--accent-bg); border: 1px solid var(--border-accent);
+    display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 700;
+    color: var(--accent-text); flex: 0 0 auto; position: relative;
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px var(--red);
+    position: absolute; top: -2px; right: -2px; border: 1.5px solid var(--bg);
+  }
+  .session-id__name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .session-id__meta { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+  .session-divider { width: 1px; height: 26px; background: var(--border); flex: 0 0 auto; }
+  .kpi-row { display: flex; flex: 1; min-width: 280px; }
+  .kpi-cell { flex: 1; padding: 0 16px; border-left: 1px solid var(--border); }
+  .kpi-cell:first-child { border-left: none; }
+  .kpi-cell__label { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1px; }
+  .kpi-cell__value { font-size: 18px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .kpi-cell__value small { font-size: 10px; font-weight: 400; color: var(--muted); }
+  .session-actions { display: flex; gap: 7px; flex: 0 0 auto; }
+
+  .btn-primary, .btn-secondary {
+    display: flex; align-items: center; gap: 5px; font-size: 11px; border-radius: 6px; cursor: pointer;
+    text-decoration: none; white-space: nowrap; font-weight: 600;
+  }
+  .btn-primary { padding: 6px 14px; background: var(--accent-bg); border: 1px solid var(--border-accent); color: var(--accent-text); }
+  .btn-primary:hover { background: rgba(99,102,241,0.22); }
+  .btn-secondary { padding: 6px 12px; background: none; border: 1px solid var(--border); color: var(--sub); font-weight: 400; }
+  .btn-secondary:hover { border-color: var(--border-accent); color: var(--accent-text); }
+
+  /* ── Generic panel chrome (mirrors Figma SH()) ───────────────────── */
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .panel-h {
+    padding: 9px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    justify-content: space-between; gap: 8px;
+  }
+  .panel-h__left { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .panel-h__icon { display: flex; color: var(--muted); flex: 0 0 auto; }
+  .panel-h__label { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+  .panel-h__right { font-family: var(--mono); font-size: 9px; color: var(--accent-text); white-space: nowrap; }
+  .panel-h__hint { font-size: 9.5px; color: var(--muted); padding: 0 14px 8px; margin-top: -2px; }
+
+  /* ── Chart row: signal chart (left) + top emote bursts (right) ───── */
+  .chart-row { display: grid; grid-template-columns: 1fr 300px; gap: 12px; align-items: start; }
+  .chart-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 12px; }
+  .chart-panel__head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+  .chart-eyebrow { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 2px; }
+  .chart-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .chart-legend { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-swatch { width: 16px; height: 2px; border-radius: 1px; }
+  .legend-swatch--dashed { background-image: repeating-linear-gradient(90deg, currentColor 0, currentColor 4px, transparent 4px, transparent 8px); background-color: transparent !important; height: 2px; opacity: 0.85; }
+  .legend-swatch--bar { width: 4px; height: 13px; border-radius: 1px; opacity: 0.5; }
+  .legend-label { font-family: var(--mono); font-size: 9px; color: var(--sub); }
+  .legend-item[hidden] { display: none; }
+  .legend-item--plotted { padding: 1px 8px 1px 4px; border-radius: 10px; background: rgba(244,114,182,0.14); border: 1px solid rgba(244,114,182,0.35); }
+  .legend-item--plotted .legend-label { color: var(--pink); font-weight: 600; }
+  .legend-clear {
+    border: none; background: none; color: var(--pink); cursor: pointer; font-size: 12px; line-height: 1;
+    padding: 0 0 0 4px; font-weight: 700;
+  }
+
+  .chart-svg-wrap { position: relative; height: 260px; }
+  .chart-svg-wrap svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .chart-tooltip {
+    position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--border-accent);
+    border-radius: 8px; padding: 7px 10px; font-family: var(--mono); font-size: 10px; color: var(--text);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); white-space: nowrap; opacity: 0; transition: opacity 0.08s; z-index: 10;
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .chart-tooltip__time { color: var(--accent-text); margin-bottom: 4px; font-weight: 700; }
+  .chart-tooltip__row { display: flex; justify-content: space-between; gap: 10px; }
+
+  .moment-strip { display: flex; gap: 5px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .moment-chip {
+    flex: 1; min-width: 96px; padding: 6px 8px; background: var(--dim); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer; text-align: left;
+  }
+  .moment-chip:hover { border-color: var(--border-accent); }
+  .moment-chip[aria-pressed="true"] { background: var(--accent-dim); border-color: var(--border-accent); }
+  .moment-chip__time { font-family: var(--mono); font-size: 9px; color: var(--accent-text); margin-bottom: 1px; }
+  .moment-chip__label { font-size: 10px; color: var(--sub); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Top emote bursts (now beside the chart) ─────────────────────── */
+  .emote-bursts { display: flex; flex-direction: column; }
+  .emote-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-bottom: 1px solid var(--dim);
+    cursor: pointer; border-left: 2px solid transparent; background: none; width: 100%; text-align: left; color: inherit;
+  }
+  .emote-row:last-child { border-bottom: none; }
+  .emote-row:hover { background: rgba(255,255,255,0.02); }
+  .emote-row[aria-pressed="true"] { background: var(--accent-dim); border-left-color: var(--pink); }
+  .emote-row__rank { font-family: var(--mono); font-size: 9px; color: var(--muted); width: 12px; flex: 0 0 auto; }
+  .emote-track { flex: 1; height: 3px; background: var(--dim); border-radius: 2px; min-width: 28px; }
+  .emote-track__fill { height: 100%; background: rgba(34,211,238,0.7); border-radius: 2px; }
+  .emote-row[aria-pressed="true"] .emote-track__fill { background: var(--pink); }
+  .emote-row__count { font-family: var(--mono); font-size: 9px; color: var(--sub); flex: 0 0 auto; }
+  .emote-row__plot-hint { font-size: 9px; color: var(--pink); flex: 0 0 auto; opacity: 0; }
+  .emote-row[aria-pressed="true"] .emote-row__plot-hint { opacity: 1; }
+
+  .emote-chip {
+    font-family: var(--mono); font-size: 10px; color: var(--cyan); background: rgba(34,211,238,0.12);
+    border: 1px solid rgba(34,211,238,0.28); padding: 1px 7px; border-radius: 4px; flex: 0 0 auto; min-width: 72px;
+    text-align: center; text-decoration: none; display: inline-block;
+  }
+  .emote-chip:hover { text-decoration: underline; }
+
+  .trend-arrow { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; font-weight: 600; flex: 0 0 auto; }
+
+  /* ── Lower grid: live sessions+coverage | most reacted minutes | inspector ─ */
+  .lower-grid { display: grid; grid-template-columns: 1.05fr 1.7fr 1fr; gap: 12px; align-items: start; }
+  .col-stack { display: flex; flex-direction: column; gap: 10px; }
+
+  table.dtable { width: 100%; border-collapse: collapse; font-size: 11px; }
+  table.dtable th {
+    text-align: left; padding: 5px 11px; font-family: var(--mono); font-size: 8px; color: var(--muted);
+    font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  table.dtable td { padding: 7px 11px; vertical-align: middle; }
+  table.dtable tbody tr { border-bottom: 1px solid var(--dim); }
+  table.dtable tbody tr:last-child { border-bottom: none; }
+
+  /* Live sessions table */
+  .ch-row { cursor: pointer; }
+  .ch-row:hover { background: rgba(255,255,255,0.015); }
+  .ch-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 5px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .ch-name { font-weight: 600; }
+  .ch-name--active { color: var(--accent-text); }
+
+  /* Coverage */
+  .cov-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 13px; border-bottom: 1px solid var(--dim); }
+  .cov-row:last-child { border-bottom: none; }
+  .cov-row__left { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--sub); }
+  .cov-row__value { font-family: var(--mono); font-size: 10px; font-weight: 600; }
+  .cov-footer { padding: 7px 13px; border-top: 1px solid var(--dim); font-family: var(--mono); font-size: 9px; color: var(--muted); }
+  .ok-icon { color: var(--green); }
+  .warn-icon { color: var(--amber); }
+
+  /* Most reacted minutes (improved) */
+  .moments-table tbody tr { cursor: pointer; }
+  .moments-table tbody tr:hover { background: rgba(255,255,255,0.015); }
+  .moments-table tbody tr[aria-selected="true"] { background: var(--accent-dim); }
+  .moments-table tbody tr.is-plotted { box-shadow: inset 2px 0 0 var(--pink); }
+  .m-rank { font-family: var(--mono); color: var(--muted); }
+  .m-time { font-family: var(--mono); font-weight: 600; font-size: 10px; color: var(--accent-text); white-space: nowrap; }
+  .m-score { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  .m-label { color: var(--sub); max-width: 168px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-chat { color: var(--accent-text); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .m-viewers { color: var(--green); font-family: var(--mono); white-space: nowrap; }
+
+  .confbar { display: flex; align-items: center; gap: 5px; }
+  .confbar__track { width: 40px; height: 3px; background: var(--dim); border-radius: 2px; }
+  .confbar__fill { height: 100%; border-radius: 2px; }
+  .confbar__pct { font-size: 10px; font-weight: 600; }
+
+  .pill {
+    font-size: 9px; padding: 1px 7px; border-radius: 3px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; white-space: nowrap; border: 1px solid; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .pill-btn { cursor: pointer; background: none; font-family: inherit; }
+  .pill-btn:hover { filter: brightness(1.3); }
+
+  /* Inspector */
+  .inspector { padding: 14px; }
+  .inspector__time { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent-text); margin-bottom: 1px; }
+  .inspector__label { font-size: 12px; color: var(--sub); margin-bottom: 12px; line-height: 1.4; }
+  .inspector-grid {
+    display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+  }
+  .inspector-cell { padding: 9px 10px; }
+  .inspector-cell__label { font-family: var(--mono); font-size: 8px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 3px; }
+  .inspector-cell__value { font-size: 13px; font-weight: 700; font-family: var(--mono); }
+  .inspector-actions { display: flex; flex-direction: column; gap: 5px; }
+  .inspector-actions .btn-primary { width: 100%; justify-content: center; padding: 8px; font-size: 12px; }
+  .inspector-actions-row { display: flex; gap: 5px; }
+  .inspector-actions-row .btn-secondary { flex: 1; justify-content: center; padding: 6px; }
+
+  /* spec / provenance panel */
+  .spec-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); padding: 14px 18px; }
+  .spec-panel summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--accent-text); list-style: none; display: flex; align-items: center; gap: 6px; }
+  .spec-panel summary::-webkit-details-marker { display: none; }
+  .spec-panel summary::before { content: "▸"; transition: transform .15s; display: inline-block; }
+  .spec-panel[open] summary::before { transform: rotate(90deg); }
+  .spec-body { margin-top: 12px; font-size: 12px; color: var(--sub); line-height: 1.6; }
+  .spec-body code { font-family: var(--mono); font-size: 11px; background: var(--dim); padding: 1px 5px; border-radius: 3px; color: var(--accent-text); }
+  .spec-body ul { margin: 6px 0 12px 18px; padding: 0; }
+  .spec-body li { margin-bottom: 4px; }
+  .spec-body h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 14px 0 6px; font-family: var(--mono); }
+
+  .announcer { position: absolute; left: -9999px; }
+
+  @media (max-width: 1180px) {
+    .chart-row { grid-template-columns: 1fr; }
+    .lower-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<header class="topbar">
+  <span class="topbar__brand">
+    <span class="topbar__brand-mark" aria-hidden="true">📡</span>
+    StreamPulse
+  </span>
+  <nav class="topbar__crumb" aria-label="Breadcrumb">
+    Stream intelligence command center <span class="crumb-sep" aria-hidden="true">›</span> <strong>xQc</strong> session dashboard
+  </nav>
+  <span class="topbar__badge">Figma Make · 1:1 token match</span>
+</header>
+
+<main id="main">
+
+  <!-- Session header -->
+  <div class="session-header">
+    <a class="session-id" href="https://twitch.tv/xqc" target="_blank" rel="noopener noreferrer" aria-label="xQc on Twitch (opens in new tab)">
+      <span class="session-id__avatar">xQ<span class="live-dot" aria-hidden="true"></span></span>
+      <span>
+        <div class="session-id__name">xQc — Minecraft</div>
+        <div class="session-id__meta">Jun 29 2026 · 2h 01m · vod synced</div>
+      </span>
+    </a>
+    <div class="session-divider" aria-hidden="true"></div>
+    <div class="kpi-row">
+      <div class="kpi-cell"><div class="kpi-cell__label">Viewers</div><div class="kpi-cell__value">84.2K</div></div>
+      <div class="kpi-cell"><div class="kpi-cell__label">Chat / min</div><div class="kpi-cell__value" style="color:var(--accent-text)">1,171<small>/m</small></div></div>
+      <div class="kpi-cell"><div class="kpi-cell__label">7TV / min</div><div class="kpi-cell__value" style="color:var(--cyan)">438<small>/m</small></div></div>
+      <div class="kpi-cell"><div class="kpi-cell__label">Peaks</div><div class="kpi-cell__value" style="color:var(--amber)">7</div></div>
+      <div class="kpi-cell"><div class="kpi-cell__label">VOD conf.</div><div class="kpi-cell__value" style="color:var(--green)">99<small>%</small></div></div>
+    </div>
+    <div class="session-actions">
+      <button type="button" class="btn-primary" id="btn-view-channel">View channel →</button>
+      <button type="button" class="btn-secondary" id="btn-export">⭳ Export</button>
+      <a class="btn-secondary" href="https://twitch.tv/videos/0000000000?t=00h18m34s" target="_blank" rel="noopener noreferrer">▶ Open VOD</a>
+    </div>
+  </div>
+
+  <!-- Chart + Top emote bursts (beside the chart, clickable to plot) -->
+  <div class="chart-row">
+    <section class="chart-panel" aria-label="Multi-signal chart">
+      <div class="chart-panel__head">
+        <div>
+          <div class="chart-eyebrow">Multi-signal · 4 traces · 120m · normalized 0–100</div>
+          <div class="chart-title">xQc / Minecraft — reacted-minute trace</div>
+        </div>
+        <div class="chart-legend" id="chart-legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--accent)"></span><span class="legend-label">Chat/min</span></div>
+          <div class="legend-item"><span class="legend-swatch legend-swatch--dashed" style="color:var(--green)"></span><span class="legend-label">Viewers</span></div>
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--cyan)"></span><span class="legend-label">7TV/emote</span></div>
+          <div class="legend-item"><span class="legend-swatch legend-swatch--dashed" style="color:var(--amber)"></span><span class="legend-label">Sentiment</span></div>
+          <div class="legend-item"><span class="legend-swatch legend-swatch--bar" style="background:var(--amber)"></span><span class="legend-label">Heat bars</span></div>
+          <div class="legend-item legend-item--plotted" id="legend-plotted" hidden>
+            <span class="legend-swatch" style="background:var(--pink)"></span>
+            <span class="legend-label" id="legend-plotted-name">KEKW</span>
+            <button type="button" class="legend-clear" id="btn-clear-plot" aria-label="Clear plotted emote">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-svg-wrap" id="chart-wrap">
+        <svg id="chart-svg" viewBox="0 0 1000 260" preserveAspectRatio="none" role="img" aria-label="Chat, viewers, 7TV emotes and sentiment over a 121 minute stream, with reacted-minute markers"></svg>
+        <div class="chart-tooltip" id="chart-tooltip" role="status"></div>
+      </div>
+
+      <div class="moment-strip" id="moment-strip" role="group" aria-label="Jump to a reacted minute"></div>
+    </section>
+
+    <section class="panel emote-bursts" aria-label="Top emote bursts">
+      <div class="panel-h">
+        <div class="panel-h__left">
+          <span class="panel-h__icon" aria-hidden="true">✨</span>
+          <span class="panel-h__label">Top emote bursts</span>
+        </div>
+      </div>
+      <div class="panel-h__hint">Click an emote to plot its burst on the chart →</div>
+      <div id="emote-bursts-list"></div>
+    </section>
+  </div>
+
+  <!-- Lower grid -->
+  <div class="lower-grid">
+    <!-- Left: live sessions + coverage truth -->
+    <div class="col-stack">
+      <section class="panel" aria-label="Live sessions">
+        <div class="panel-h">
+          <div class="panel-h__left">
+            <span class="panel-h__icon" aria-hidden="true">📈</span>
+            <span class="panel-h__label">Live sessions</span>
+          </div>
+          <span class="panel-h__right">5 tracked</span>
+        </div>
+        <table class="dtable" id="channels-table">
+          <caption class="sr-only">Live tracked channels, viewers, chat rate and trend</caption>
+          <thead><tr><th>Channel</th><th>Game</th><th>Viewers</th><th>Chat/m</th><th>Peak</th><th>Trend</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="panel" aria-label="Coverage truth">
+        <div class="panel-h">
+          <div class="panel-h__left">
+            <span class="panel-h__icon" aria-hidden="true">✓</span>
+            <span class="panel-h__label">Coverage truth</span>
+          </div>
+        </div>
+        <div id="coverage-list"></div>
+        <div class="cov-footer">Know what data is live, syncing, or backfilled.</div>
+      </section>
+    </div>
+
+    <!-- Center: most reacted minutes (the section being improved) -->
+    <section class="panel" aria-label="Most reacted minutes">
+      <div class="panel-h">
+        <div class="panel-h__left">
+          <span class="panel-h__icon" aria-hidden="true">⚡</span>
+          <span class="panel-h__label">Most reacted minutes</span>
+        </div>
+        <span class="panel-h__right" id="moments-count">6 moments</span>
+      </div>
+      <table class="dtable moments-table" id="moments-table">
+        <caption class="sr-only">Ranked reacted minutes for this session — select a row to inspect, click the emote to view it on 7TV, click the VOD pill to jump to that timestamp</caption>
+        <thead>
+          <tr>
+            <th scope="col">#</th><th scope="col">Time</th><th scope="col">Score</th><th scope="col">Label</th>
+            <th scope="col">Chat/m</th><th scope="col">Δ Viewers</th><th scope="col">Emote</th><th scope="col">Conf.</th><th scope="col">VOD</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Right: moment inspector -->
+    <section class="panel inspector" aria-label="Moment inspector">
+      <div class="panel-h__label" style="margin-bottom:8px;">Moment inspector</div>
+      <div class="inspector__time" id="insp-time">00:18:34</div>
+      <div class="inspector__label" id="insp-label">7TV cascade after impossible save</div>
+      <div class="inspector-grid" id="insp-grid"></div>
+      <div class="inspector-actions">
+        <a class="btn-primary" id="insp-jump" href="#" target="_blank" rel="noopener noreferrer">▶ Jump to VOD</a>
+        <div class="inspector-actions-row">
+          <button type="button" class="btn-secondary" id="insp-export">⭳ Export</button>
+          <button type="button" class="btn-secondary" id="insp-share">⇪ Share</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <details class="spec-panel">
+    <summary>Design provenance &amp; architecture notes</summary>
+    <div class="spec-body">
+      <p>Colors, type, the <code>SH</code> panel-header pattern, <code>ConfBar</code>, <code>Pill</code>, and the
+      <code>MomentsTable</code> / <code>Inspector</code> / <code>ChannelsTable</code> / <code>CoveragePanel</code> /
+      <code>EmotePanel</code> layouts were pulled 1:1 from the connected Figma Make file
+      (<code>StreamPulse Analytics Page Redesign</code>, fileKey <code>C35yDLsXdkoRyDvnlxd5gr</code>) via
+      <code>get_design_context</code> → <code>src/app/App.tsx</code>. The slate token set (<code>--bg</code>,
+      <code>--accent</code>, <code>--green</code>, <code>--cyan</code>, <code>--amber</code>, <code>--red</code>, …),
+      the mock moment/emote/channel data, and the gaussian-bump chart generator are copied verbatim from that source
+      so this mock is pixel- and data-accurate to what's in Figma — not a reinterpretation.</p>
+
+      <h4>What changed vs. the literal Figma layout</h4>
+      <ul>
+        <li><strong>Top emote bursts moved beside the chart</strong> (was stacked under the Inspector in the default grid) and made clickable — clicking an emote plots a synthetic burst line for that exact emote on the chart and jumps the Inspector to its matching moment.</li>
+        <li><strong>Most reacted minutes</strong> emote chips and the VOD pill are now real interactive affordances: the emote links out to 7TV, the VOD pill (when <code>synced</code>/<code>partial</code>) jumps to that timestamp — the static Figma mock only painted these as colored text.</li>
+        <li>Channel identity in the session header links to Twitch; clicking a row in <em>Live sessions</em> is intentionally inert here (no multi-channel routing in this static mock) rather than faked.</li>
+      </ul>
+
+      <h4>Wiring for production</h4>
+      <ul>
+        <li>Chart traces (<code>chatN</code>/<code>viewersN</code>/<code>emotesN</code>/<code>sentimentN</code>/<code>heat</code>) map to the same normalized signal fields already used by <code>GlobalActivityChart</code> — swap the synthetic <code>STREAM_DATA</code> generator for the real per-minute series from <code>/v1/public/hub</code>.</li>
+        <li>The emote-plot overlay needs a real per-minute emote series (provider emote counts bucketed by minute) — currently approximated with a gaussian bump centered on each emote's peak minute, matching only count/peak, not a true timeline.</li>
+        <li><code>livePulseMomentsStatus</code>/<code>reason</code> should still drive the fallback banner above this section when <code>feed.source !== "network"</code> — this mock assumes a healthy network-live state throughout.</li>
+      </ul>
+    </div>
+  </details>
+
+</main>
+
+<div class="announcer" role="status" aria-live="polite" id="announcer"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── Design tokens (verbatim from Figma Make App.tsx `T`) ──────────────
+  var T = {
+    accent: "#6366f1", accentText: "#818cf8", green: "#4ade80", cyan: "#22d3ee",
+    amber: "#fbbf24", red: "#f87171", orange: "#f97416", pink: "#f472b6",
+    sub: "#a1a1aa", muted: "#52525b", text: "#f4f4f5"
+  };
+
+  // ── Mock data (verbatim from Figma Make App.tsx) ──────────────────────
+  var MOMENTS = [
+    { time: "00:18:34", m: 18,  score: 99, label: "7TV cascade after impossible save", chat: "1,171/m", viewers: "+3.8K", emote: "KEKW",        conf: 99, vod: "synced"  },
+    { time: "01:13:08", m: 73,  score: 96, label: "Raid lands + creator callout",      chat: "1,044/m", viewers: "+7.2K", emote: "PogChamp",    conf: 97, vod: "synced"  },
+    { time: "00:47:22", m: 47,  score: 91, label: "Near wipe, chat flips negative",    chat: "821/m",   viewers: "+1.9K", emote: "monkaS",      conf: 94, vod: "synced"  },
+    { time: "01:42:10", m: 102, score: 82, label: "Clip-worthy one liner",             chat: "611/m",   viewers: "+940",  emote: "OMEGALUL",    conf: 86, vod: "partial" },
+    { time: "00:58:15", m: 58,  score: 77, label: "Hype train trigger",                chat: "524/m",   viewers: "+620",  emote: "PauseChamp",  conf: 81, vod: "synced"  },
+    { time: "01:28:44", m: 88,  score: 71, label: "VOD highlight flagged by mod",      chat: "448/m",   viewers: "+380",  emote: "FeelsBadMan", conf: 74, vod: "synced"  }
+  ];
+
+  var EMOTES_LIST = [
+    { name: "KEKW",        count: "4,821", delta: "+38%", peak: "00:18", pct: 100 },
+    { name: "PogChamp",    count: "3,204", delta: "+24%", peak: "01:13", pct: 66  },
+    { name: "monkaS",      count: "2,891", delta: "+19%", peak: "00:47", pct: 60  },
+    { name: "OMEGALUL",    count: "2,341", delta: "+15%", peak: "00:18", pct: 48  },
+    { name: "PauseChamp",  count: "1,923", delta: "+12%", peak: "01:42", pct: 40  },
+    { name: "FeelsBadMan", count: "1,567", delta: "+9%",  peak: "01:28", pct: 32  }
+  ];
+
+  var CHANNELS = [
+    { name: "xQc",      game: "Minecraft",     viewers: "84.2K", chat: "1,171/m", trend: "+14%", peak: "1,847", live: true  },
+    { name: "KaiCenat", game: "GTA V RP",      viewers: "71.8K", chat: "987/m",   trend: "+8%",  peak: "1,401", live: true  },
+    { name: "Jynxzi",   game: "R6 Siege",      viewers: "42.1K", chat: "812/m",   trend: "+18%", peak: "1,102", live: true  },
+    { name: "HasanAbi", game: "Just Chatting", viewers: "38.4K", chat: "643/m",   trend: "-3%",  peak: "892",   live: true  },
+    { name: "caseoh",   game: "Fortnite",      viewers: "29.3K", chat: "534/m",   trend: "+5%",  peak: "748",   live: false }
+  ];
+
+  var COVERAGE = [
+    { label: "VOD available",   value: "Yes · 2h 01m", ok: true  },
+    { label: "Chat replay",     value: "Live sync",     ok: true  },
+    { label: "Source conf.",    value: "99%",           ok: true  },
+    { label: "Backfill status", value: "None needed",   ok: true  },
+    { label: "Data freshness",  value: "< 2s lag",      ok: true  },
+    { label: "7TV coverage",    value: "Partial · 93%", ok: false }
+  ];
+
+  // Each emote in EMOTES_LIST maps 1:1 to the moment at the same index
+  // (same emote name, same minute) — this is true in the source data.
+  function momentForEmote(emoteName) {
+    for (var i = 0; i < MOMENTS.length; i++) {
+      if (MOMENTS[i].emote === emoteName) return i;
+    }
+    return -1;
+  }
+
+  function peakMinuteFromLabel(lbl) {
+    var parts = lbl.split(":");
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  }
+
+  // ── Synthetic per-minute stream signal (verbatim formula) ─────────────
+  function gauss(i, c, w, a) { return a * Math.exp(-Math.pow(i - c, 2) / (2 * w * w)); }
+
+  var STREAM_DATA = (function () {
+    var out = [];
+    for (var i = 0; i < 121; i++) {
+      var chat = 220 + Math.sin(i / 4) * 38 + gauss(i, 18, 3, 920) + gauss(i, 47, 5, 540) + gauss(i, 73, 4, 760) + gauss(i, 98, 7, 360);
+      var viewers = 51200 + i * 108 + Math.sin(i / 8) * 1900 + gauss(i, 73, 8, 7200) - gauss(i, 84, 3, 5800);
+      var emotes = 46 + Math.sin(i / 3) * 14 + gauss(i, 18, 2, 390) + gauss(i, 47, 4, 260) + gauss(i, 73, 3, 430) + gauss(i, 102, 4, 170);
+      var sentiment = 52 + Math.sin(i / 7) * 18 + gauss(i, 18, 5, 22) - gauss(i, 47, 4, 28) + gauss(i, 73, 5, 30) - gauss(i, 98, 4, 12);
+      out.push({
+        i: i,
+        chatN: Math.min(100, Math.round((chat / 1200) * 100)),
+        viewersN: Math.min(100, Math.round(((viewers - 49000) / 18000) * 100)),
+        emotesN: Math.min(100, Math.round((emotes / 470) * 100)),
+        sentimentN: Math.min(100, Math.max(0, Math.round((sentiment / 80) * 100))),
+        heat: Math.min(100, Math.round((chat / 1200) * 52 + (emotes / 470) * 36 + Math.max(0, sentiment) * 0.12)),
+        chatRaw: Math.round(chat), viewersRaw: Math.round(viewers), emotesRaw: Math.round(emotes), sentimentRaw: Math.round(sentiment)
+      });
+    }
+    return out;
+  })();
+
+  // ── Shared helpers (mirror Figma's TrendArrow / ConfBar / Pill) ───────
+  function scoreColor(score) { return score >= 95 ? T.green : score >= 88 ? T.accentText : T.amber; }
+  function confColor(v) { return v >= 95 ? T.green : v >= 85 ? T.accentText : T.amber; }
+  function pillColor(status) {
+    var map = { synced: T.green, partial: T.orange, live: T.red, vod: T.muted };
+    return map[status.toLowerCase()] || T.muted;
+  }
+  function trendArrowHTML(value) {
+    var up = value.charAt(0) !== "-";
+    var color = up ? T.green : T.red;
+    return '<span class="trend-arrow" style="color:' + color + '">' + (up ? "▲" : "▼") + " " + value + "</span>";
+  }
+  function pillHTML(status, opts) {
+    opts = opts || {};
+    var c = pillColor(status);
+    var tag = opts.clickable ? "button" : "span";
+    var attrs = opts.clickable ? ' type="button" class="pill pill-btn" data-jump="' + opts.jumpIdx + '" aria-label="Jump to VOD at ' + opts.time + '"' : ' class="pill"';
+    return "<" + tag + attrs + ' style="background:' + c + "18;color:" + c + ";border-color:" + c + '33">' + status + "</" + tag + ">";
+  }
+  function confBarHTML(v) {
+    var c = confColor(v);
+    return '<div class="confbar"><div class="confbar__track"><div class="confbar__fill" style="width:' + v + "%;background:" + c + '"></div></div>' +
+      '<span class="confbar__pct" style="color:' + c + '">' + v + "%</span></div>";
+  }
+  function emoteLinkHTML(name) {
+    return '<a class="emote-chip" href="https://7tv.app/emotes?query=' + encodeURIComponent(name) + '" target="_blank" rel="noopener noreferrer" aria-label="' + name + " on 7TV (opens in new tab)\">" + name + "</a>";
+  }
+  function announce(msg) {
+    var el = document.getElementById("announcer");
+    el.textContent = "";
+    window.setTimeout(function () { el.textContent = msg; }, 30);
+  }
+
+  // ── State ───────────────────────────────────────────────────────────
+  var state = { selectedIdx: 0, plottedEmote: null /* emote name or null */ };
+
+  // ── Render: moment strip under chart ──────────────────────────────────
+  function renderMomentStrip() {
+    var wrap = document.getElementById("moment-strip");
+    wrap.innerHTML = MOMENTS.map(function (m, i) {
+      return '<button type="button" class="moment-chip" data-idx="' + i + '" aria-pressed="' + (state.selectedIdx === i) + '">' +
+        '<div class="moment-chip__time">' + m.time + "</div>" +
+        '<div class="moment-chip__label">' + m.label + "</div></button>";
+    }).join("");
+    Array.prototype.forEach.call(wrap.querySelectorAll(".moment-chip"), function (btn) {
+      btn.addEventListener("click", function () { selectMoment(parseInt(btn.dataset.idx, 10), { plot: false }); });
+    });
+  }
+
+  // ── Render: top emote bursts (clickable → plot on chart) ─────────────
+  function renderEmoteBursts() {
+    var wrap = document.getElementById("emote-bursts-list");
+    wrap.innerHTML = EMOTES_LIST.map(function (e, i) {
+      var active = state.plottedEmote === e.name;
+      return '<button type="button" class="emote-row" data-emote="' + e.name + '" aria-pressed="' + active + '" ' +
+        'aria-label="Plot ' + e.name + " burst on the chart (peak " + e.count + " at " + e.peak + ')">' +
+        '<span class="emote-row__rank">' + (i + 1) + "</span>" +
+        emoteLinkHTML(e.name).replace("<a ", '<a onclick="event.stopPropagation()" ') +
+        '<span class="emote-track"><span class="emote-track__fill" style="width:' + e.pct + '%"></span></span>' +
+        '<span class="emote-row__count">' + e.count + "</span>" +
+        trendArrowHTML(e.delta) +
+        '<span class="emote-row__plot-hint">●</span>' +
+        "</button>";
+    }).join("");
+    Array.prototype.forEach.call(wrap.querySelectorAll(".emote-row"), function (btn) {
+      btn.addEventListener("click", function (ev) {
+        if (ev.target.closest("a")) return; // let the 7TV link navigate independently
+        toggleEmotePlot(btn.dataset.emote);
+      });
+    });
+  }
+
+  function toggleEmotePlot(emoteName) {
+    if (state.plottedEmote === emoteName) {
+      state.plottedEmote = null;
+      announce("Cleared " + emoteName + " from the chart.");
+    } else {
+      state.plottedEmote = emoteName;
+      var idx = momentForEmote(emoteName);
+      if (idx >= 0) state.selectedIdx = idx;
+      announce("Plotting " + emoteName + " burst on the chart, centered on its peak minute.");
+    }
+    renderAll();
+  }
+
+  // ── Render: live sessions table ────────────────────────────────────
+  function renderChannelsTable() {
+    var tbody = document.querySelector("#channels-table tbody");
+    tbody.innerHTML = CHANNELS.map(function (ch) {
+      return '<tr class="ch-row" tabindex="0" aria-label="' + ch.name + ", " + ch.game + ", " + ch.viewers + ' viewers">' +
+        "<td><span class=\"ch-dot\" style=\"background:" + (ch.live ? T.red : "#334155") + (ch.live ? ";box-shadow:0 0 5px " + T.red : "") + '"></span>' +
+        '<span class="ch-name' + (ch.name === "xQc" ? " ch-name--active" : "") + '">' + ch.name + "</span></td>" +
+        "<td style=\"color:" + T.muted + ';">' + ch.game + "</td>" +
+        "<td style=\"color:" + T.sub + ';font-variant-numeric:tabular-nums">' + ch.viewers + "</td>" +
+        "<td style=\"color:" + T.accentText + ';font-family:var(--mono)">' + ch.chat + "</td>" +
+        "<td style=\"color:" + T.sub + ';font-family:var(--mono)">' + ch.peak + "</td>" +
+        "<td>" + trendArrowHTML(ch.trend) + "</td></tr>";
+    }).join("");
+    Array.prototype.forEach.call(tbody.querySelectorAll(".ch-row"), function (row) {
+      row.addEventListener("click", function () { announce("Channel switching isn't wired in this static mock — Live sessions stays read-only here."); });
+    });
+  }
+
+  // ── Render: coverage truth ─────────────────────────────────────────
+  function renderCoverage() {
+    var wrap = document.getElementById("coverage-list");
+    wrap.innerHTML = COVERAGE.map(function (c) {
+      return '<div class="cov-row"><span class="cov-row__left">' +
+        '<span class="' + (c.ok ? "ok-icon" : "warn-icon") + '" aria-hidden="true">' + (c.ok ? "✓" : "!") + "</span>" +
+        c.label + "</span><span class=\"cov-row__value\" style=\"color:" + (c.ok ? T.green : T.amber) + '">' + c.value + "</span></div>";
+    }).join("");
+  }
+
+  // ── Render: most reacted minutes (the improved table) ──────────────
+  function renderMomentsTable() {
+    var tbody = document.querySelector("#moments-table tbody");
+    tbody.innerHTML = MOMENTS.map(function (m, i) {
+      var selected = state.selectedIdx === i;
+      var plotted = state.plottedEmote === m.emote;
+      var jumpable = m.vod === "synced" || m.vod === "partial";
+      return '<tr data-idx="' + i + '" tabindex="0" aria-selected="' + selected + '" class="' + (plotted ? "is-plotted" : "") + '" ' +
+        'aria-label="Moment ' + (i + 1) + " at " + m.time + ", score " + m.score + ", " + m.label + '">' +
+        '<td class="m-rank">' + (i + 1) + "</td>" +
+        '<td class="m-time">' + m.time + "</td>" +
+        '<td><span class="m-score" style="color:' + scoreColor(m.score) + '">' + m.score + "</span></td>" +
+        '<td class="m-label">' + m.label + "</td>" +
+        '<td class="m-chat">' + m.chat + "</td>" +
+        '<td class="m-viewers">' + m.viewers + "</td>" +
+        "<td>" + emoteLinkHTML(m.emote) + "</td>" +
+        "<td>" + confBarHTML(m.conf) + "</td>" +
+        "<td>" + pillHTML(m.vod, { clickable: jumpable, jumpIdx: i, time: m.time }) + "</td>" +
+        "</tr>";
+    }).join("");
+
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (row) {
+      var idx = parseInt(row.dataset.idx, 10);
+      row.addEventListener("click", function (ev) {
+        if (ev.target.closest("a") || ev.target.closest("button.pill-btn")) return;
+        selectMoment(idx, { plot: false });
+      });
+      row.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectMoment(idx, { plot: false }); }
+      });
+    });
+    Array.prototype.forEach.call(tbody.querySelectorAll(".pill-btn"), function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var idx = parseInt(btn.dataset.jump, 10);
+        var m = MOMENTS[idx];
+        announce("Jumping to VOD at " + m.time + " for \u201c" + m.label + "\u201d.");
+        window.open("https://twitch.tv/videos/0000000000?t=" + m.time.replace(/:/g, "h").replace("h", "h", 1), "_blank", "noopener");
+      });
+    });
+  }
+
+  // ── Render: inspector ──────────────────────────────────────────────
+  function renderInspector() {
+    var m = MOMENTS[state.selectedIdx];
+    document.getElementById("insp-time").textContent = m.time;
+    document.getElementById("insp-label").textContent = m.label;
+    var cells = [
+      { label: "Score", value: m.score, color: scoreColor(m.score) },
+      { label: "Chat/min", value: m.chat, color: T.accentText },
+      { label: "Viewers+", value: m.viewers, color: T.green },
+      { label: "Top emote", value: m.emote, color: T.cyan },
+      { label: "Confidence", value: m.conf + "%", color: confColor(m.conf) },
+      { label: "VOD", value: m.vod, color: m.vod === "synced" ? T.green : T.amber }
+    ];
+    var grid = document.getElementById("insp-grid");
+    grid.innerHTML = cells.map(function (c, i) {
+      var borderRight = (i % 2 === 0) ? "border-right:1px solid var(--border);" : "";
+      var borderBottom = (i < 4) ? "border-bottom:1px solid var(--border);" : "";
+      return '<div class="inspector-cell" style="' + borderRight + borderBottom + '">' +
+        '<div class="inspector-cell__label">' + c.label + "</div>" +
+        '<div class="inspector-cell__value" style="color:' + c.color + '">' + c.value + "</div></div>";
+    }).join("");
+    var jump = document.getElementById("insp-jump");
+    jump.href = "https://twitch.tv/videos/0000000000?t=" + m.time;
+    jump.setAttribute("aria-label", "Jump to VOD at " + m.time);
+  }
+
+  // ── Chart rendering ────────────────────────────────────────────────
+  var CW = 1000, CH = 260, PAD_L = 30, PAD_R = 10, PAD_T = 10, PAD_B = 22;
+  var PLOT_W = CW - PAD_L - PAD_R, PLOT_H = CH - PAD_T - PAD_B;
+  function cx(i) { return PAD_L + (i / 120) * PLOT_W; }
+  function cy(v) { return PAD_T + (1 - v / 105) * PLOT_H; }
+  var bottomY = PAD_T + PLOT_H;
+
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  function buildStepAfterPath(values) {
+    var d = "M " + cx(0) + " " + cy(values[0]);
+    for (var i = 0; i < values.length - 1; i++) {
+      d += " L " + cx(i + 1) + " " + cy(values[i]);
+      d += " L " + cx(i + 1) + " " + cy(values[i + 1]);
+    }
+    return d;
+  }
+  function buildLinePath(values) {
+    var d = "M " + cx(0) + " " + cy(values[0]);
+    for (var i = 1; i < values.length; i++) d += " L " + cx(i) + " " + cy(values[i]);
+    return d;
+  }
+
+  function renderChart() {
+    var svg = document.getElementById("chart-svg");
+    svg.innerHTML = "";
+
+    // grid lines (horizontal dashed, matches CartesianGrid vertical=false)
+    [0, 25, 50, 75, 100].forEach(function (v) {
+      svg.appendChild(svgEl("line", { x1: PAD_L, x2: CW - PAD_R, y1: cy(v), y2: cy(v), stroke: "rgba(255,255,255,0.075)", "stroke-dasharray": "3 7" }));
+      var lbl = svgEl("text", { x: 4, y: cy(v) + 3, fill: T.muted, "font-size": 9, "font-family": "var(--mono)" });
+      lbl.textContent = v;
+      svg.appendChild(lbl);
+    });
+
+    // reference area band (70-78m)
+    svg.appendChild(svgEl("rect", { x: cx(70), y: PAD_T, width: cx(78) - cx(70), height: PLOT_H, fill: T.accent, "fill-opacity": 0.08 }));
+
+    // heat bars
+    STREAM_DATA.forEach(function (d) {
+      var h = bottomY - cy(d.heat);
+      svg.appendChild(svgEl("rect", { x: cx(d.i) - 2, y: cy(d.heat), width: 3.4, height: Math.max(0, h), fill: T.amber, "fill-opacity": 0.22 }));
+    });
+
+    // reference lines for first 4 moments
+    MOMENTS.slice(0, 4).forEach(function (mo) {
+      var x = cx(mo.m);
+      svg.appendChild(svgEl("line", { x1: x, x2: x, y1: PAD_T, y2: bottomY, stroke: T.red, "stroke-opacity": 0.35, "stroke-dasharray": "4 5" }));
+      var lbl = svgEl("text", { x: x + 3, y: PAD_T + 9, fill: T.red, "font-size": 8, "font-family": "var(--mono)" });
+      lbl.textContent = mo.emote;
+      svg.appendChild(lbl);
+    });
+
+    // chat area + line
+    var chatVals = STREAM_DATA.map(function (d) { return d.chatN; });
+    var areaD = buildLinePath(chatVals) + " L " + cx(120) + " " + bottomY + " L " + cx(0) + " " + bottomY + " Z";
+    svg.appendChild(svgEl("path", { d: areaD, fill: T.accent, "fill-opacity": 0.08, stroke: "none" }));
+    svg.appendChild(svgEl("path", { d: buildLinePath(chatVals), fill: "none", stroke: T.accent, "stroke-width": 2.5 }));
+
+    // viewers step line
+    svg.appendChild(svgEl("path", { d: buildStepAfterPath(STREAM_DATA.map(function (d) { return d.viewersN; })), fill: "none", stroke: T.green, "stroke-width": 1.8 }));
+
+    // emotes line
+    svg.appendChild(svgEl("path", { d: buildLinePath(STREAM_DATA.map(function (d) { return d.emotesN; })), fill: "none", stroke: T.cyan, "stroke-width": 1.6 }));
+
+    // sentiment dashed line
+    svg.appendChild(svgEl("path", { d: buildLinePath(STREAM_DATA.map(function (d) { return d.sentimentN; })), fill: "none", stroke: T.amber, "stroke-width": 1.4, "stroke-dasharray": "6 4" }));
+
+    // selected-emote overlay (the new requested feature)
+    if (state.plottedEmote) {
+      var emote = EMOTES_LIST.filter(function (e) { return e.name === state.plottedEmote; })[0];
+      var peakM = peakMinuteFromLabel(emote.peak);
+      var series = [];
+      for (var i = 0; i <= 120; i++) series.push(emote.pct * Math.exp(-Math.pow(i - peakM, 2) / (2 * 5 * 5)));
+      svg.appendChild(svgEl("path", { d: buildLinePath(series), fill: "none", stroke: T.pink, "stroke-width": 2.6, opacity: 0.95 }));
+      var dot = svgEl("circle", { cx: cx(peakM), cy: cy(emote.pct), r: 4, fill: T.pink, stroke: "#09090b", "stroke-width": 1.5 });
+      svg.appendChild(dot);
+      var pl = svgEl("text", { x: cx(peakM) + 6, y: cy(emote.pct) - 6, fill: T.pink, "font-size": 9, "font-family": "var(--mono)", "font-weight": 700 });
+      pl.textContent = emote.name + " burst";
+      svg.appendChild(pl);
+    }
+
+    // x axis labels every 15 min
+    for (var m = 0; m <= 120; m += 15) {
+      var lblEl = svgEl("text", { x: cx(m), y: CH - 6, fill: T.muted, "font-size": 9, "font-family": "var(--mono)", "text-anchor": "middle" });
+      lblEl.textContent = Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0");
+      svg.appendChild(lblEl);
+    }
+
+    // legend plotted chip
+    var legendPlotted = document.getElementById("legend-plotted");
+    if (state.plottedEmote) {
+      legendPlotted.hidden = false;
+      document.getElementById("legend-plotted-name").textContent = state.plottedEmote + " burst";
+    } else {
+      legendPlotted.hidden = true;
+    }
+  }
+
+  function wireChartHover() {
+    var wrap = document.getElementById("chart-wrap");
+    var svg = document.getElementById("chart-svg");
+    var tooltip = document.getElementById("chart-tooltip");
+    wrap.addEventListener("pointermove", function (ev) {
+      var rect = svg.getBoundingClientRect();
+      var relX = (ev.clientX - rect.left) / rect.width;
+      var minute = Math.round(relX * 120);
+      minute = Math.max(0, Math.min(120, minute));
+      var d = STREAM_DATA[minute];
+      tooltip.innerHTML = '<div class="chart-tooltip__time">' + Math.floor(minute / 60) + ":" + String(minute % 60).padStart(2, "0") + "</div>" +
+        '<div class="chart-tooltip__row"><span style="color:' + T.accentText + '">chat/min</span><span>' + d.chatRaw + "</span></div>" +
+        '<div class="chart-tooltip__row"><span style="color:' + T.green + '">viewers</span><span>' + d.viewersRaw.toLocaleString() + "</span></div>" +
+        '<div class="chart-tooltip__row"><span style="color:' + T.cyan + '">7tv/min</span><span>' + d.emotesRaw + "</span></div>" +
+        '<div class="chart-tooltip__row"><span style="color:' + T.amber + '">sentiment</span><span>' + d.sentimentRaw + "</span></div>";
+      tooltip.classList.add("visible");
+      var left = ev.clientX - rect.left + 12;
+      if (left > rect.width - 150) left = ev.clientX - rect.left - 150;
+      tooltip.style.left = left + "px";
+      tooltip.style.top = (ev.clientY - rect.top - 60) + "px";
+    });
+    wrap.addEventListener("pointerleave", function () { tooltip.classList.remove("visible"); });
+  }
+
+  // ── Selection ──────────────────────────────────────────────────────
+  function selectMoment(idx, opts) {
+    state.selectedIdx = idx;
+    if (opts && opts.plot === false) {
+      // keep whatever plottedEmote state already is
+    }
+    var m = MOMENTS[idx];
+    announce("Selected moment at " + m.time + ", score " + m.score + ": " + m.label + ".");
+    renderAll();
+  }
+
+  function wireButtons() {
+    document.getElementById("btn-clear-plot").addEventListener("click", function () {
+      announce("Cleared " + state.plottedEmote + " from the chart.");
+      state.plottedEmote = null;
+      renderAll();
+    });
+    document.getElementById("btn-export").addEventListener("click", function () { announce("Export started for this session (mock action)."); });
+    document.getElementById("btn-view-channel").addEventListener("click", function () { announce("View channel is a mock action in this static page."); });
+    document.getElementById("insp-export").addEventListener("click", function () { announce("Export started for the selected moment (mock action)."); });
+    document.getElementById("insp-share").addEventListener("click", function () {
+      var m = MOMENTS[state.selectedIdx];
+      announce("Share link copied for moment at " + m.time + " (mock action).");
+    });
+  }
+
+  function renderAll() {
+    renderMomentStrip();
+    renderEmoteBursts();
+    renderMomentsTable();
+    renderInspector();
+    renderChart();
+  }
+
+  renderChannelsTable();
+  renderCoverage();
+  wireChartHover();
+  wireButtons();
+  renderAll();
+})();
+</script>
+</body>
+</html>

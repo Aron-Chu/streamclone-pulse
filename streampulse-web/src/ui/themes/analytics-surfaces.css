@@ -1,0 +1,137 @@
+/*
+ * Analytics semantic surface tokens (--sp-*).
+ *
+ * RULE: No new rgba(255,255,255,…) backgrounds on cards, rows, chips, or panels
+ * in streampulse-web/src/ui/components/analytics. Use --sp-surface-* tokens.
+ *
+ * Surface-tier usage (hub audit HUB-AUDIT-030 / HUB-AUDIT-033):
+ * - Page canvas → --sp-bg
+ * - Top-level cards/sections (Pulse Moments shell, figma-block) → --sp-surface-1 / --fma-panel
+ * - Nested containers (leaderboard body, inspector, economy embed) → --sp-surface-2
+ * - Rows/chips at rest (peak rows, burst list items) → --sp-surface-3
+ * - Hover → --sp-surface-3-hover; selected/active → --sp-surface-active
+ * - Borders: default --sp-border; emphasis/hover/active only → --sp-border-strong
+ */
+.figma-analytics {
+  --sp-bg: #09090b;
+  /* Soft flat default — borders carry separation, surfaces stay close to canvas */
+  --sp-surface-1: rgba(255, 255, 255, 0.016);
+  --sp-surface-2: rgba(255, 255, 255, 0.022);
+  --sp-surface-3: rgba(255, 255, 255, 0.028);
+  --sp-surface-3-hover: rgba(255, 255, 255, 0.042);
+  --sp-surface-active: rgba(255, 255, 255, 0.06);
+  --sp-surface-inset: rgba(255, 255, 255, 0.012);
+
+  --sp-border: rgba(255, 255, 255, 0.085);
+  --sp-border-strong: rgba(255, 255, 255, 0.14);
+
+  --sp-text: rgba(255, 255, 255, 0.92);
+  --sp-text-muted: rgba(255, 255, 255, 0.58);
+  --sp-text-faint: rgba(255, 255, 255, 0.55);
+
+  /* Teal accent — matches chat volume bars, avoids indigo wash on flat surfaces */
+  --sp-accent: #5eead4;
+  --sp-accent-strong: #99f6e4;
+  --sp-accent-bg: rgba(94, 234, 212, 0.1);
+  --sp-accent-dim: rgba(94, 234, 212, 0.05);
+  --sp-green: #4ade80;
+  --sp-amber: #fbbf24;
+  --sp-cyan: #22d3ee;
+  --sp-red: #f87171;
+
+  --sp-provider-7tv: #86EFAC;
+  --sp-provider-twitch: #8B5CF6;
+  --sp-provider-bttv: #FB7185;
+  --sp-provider-ffz: #FBBF24;
+
+  /* Typography scale — Inter for UI, mono for numeric columns only */
+  --sp-type-label: 0.6875rem;
+  --sp-type-meta: 0.75rem;
+  --sp-type-body: 0.8125rem;
+  --sp-type-title-sm: 0.9375rem;
+  --sp-type-title: 1.125rem;
+  --sp-type-display: clamp(1.45rem, 2.4vw, 1.85rem);
+  --sp-leading-body: 1.45;
+  --sp-tracking-label: 0.04em;
+
+  --fma-font: Inter, system-ui, sans-serif;
+  --fma-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  /* Bridge legacy --fma-* names during migration */
+  --fma-bg: var(--sp-bg);
+  --fma-nav-bg: rgba(9, 9, 11, 0.94);
+  --fma-panel: var(--sp-surface-1);
+  --fma-panel-alt: rgba(255, 255, 255, 0.02);
+  --fma-border: var(--sp-border);
+  --fma-border-accent: var(--sp-border-strong);
+  --fma-accent: var(--sp-accent);
+  --fma-accent-bg: var(--sp-accent-bg);
+  --fma-accent-text: var(--sp-accent-strong);
+  --fma-accent-dim: var(--sp-accent-dim);
+  --fma-green: var(--sp-green);
+  --fma-cyan: var(--sp-cyan);
+  --fma-amber: var(--sp-amber);
+  --fma-red: var(--sp-red);
+  --fma-text: var(--sp-text);
+  --fma-sub: var(--sp-text-muted);
+  --fma-muted: var(--sp-text-faint);
+  --fma-dim: var(--sp-surface-2);
+}
+
+/* Embedded hub chart inherits analytics shell tokens + font */
+.figma-analytics .hubx {
+  font-family: var(--fma-font);
+  --font-mono: var(--fma-mono);
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --muted: 240 10% 3.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --border: 240 3.7% 15.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --chart-1: 172 48% 52%;
+  --chart-2: 280 65% 68%;
+  --chart-3: 160 84% 45%;
+  --chart-4: 43 96% 56%;
+  --chart-5: 347 89% 65%;
+  --chart-bar: 172 48% 52%;
+  --hx-bg: var(--sp-bg);
+  --hx-accent: var(--sp-accent);
+  --hx-accent-text: var(--sp-accent-strong);
+  --hx-accent-bg: var(--sp-accent-bg);
+  --hx-accent-dim: var(--sp-accent-dim);
+  --hx-panel: var(--sp-surface-1);
+  --hx-border-accent: var(--sp-border-strong);
+}
+
+.figma-analytics .hubx .hx-chart-actions,
+.figma-analytics .hubx .hx-legend,
+.figma-analytics .hubx .hx-range-tabs button {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-meta);
+}
+
+.figma-analytics .hubx .hx-chart2 {
+  background: var(--sp-surface-inset);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sp-border) 55%, transparent);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='7tv'],
+.figma-analytics .figma-burst-list__provider[data-provider='seventv'] {
+  color: var(--sp-provider-7tv);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='twitch'] {
+  color: var(--sp-provider-twitch);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='bttv'] {
+  color: var(--sp-provider-bttv);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='ffz'] {
+  color: var(--sp-provider-ffz);
+}

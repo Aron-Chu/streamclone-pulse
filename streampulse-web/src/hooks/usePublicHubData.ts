@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  readPublicHubCacheForCurrentBackend,
+  writePublicHubCacheForCurrentBackend,
+} from '../lib/publicHubCache'
 import {
   fetchPublicHub,
+  fetchPublicHubBase,
   normalizePublicHub,
   type PublicHub,
   type PublicHubActivityWindow,
@@ -18,31 +23,84 @@ export interface PublicHubState {
   data: PublicHub | null
   loading: boolean
   refreshing: boolean
+  /** True while fetching a new activity window but shell data may still be visible. */
+  activityRefreshing: boolean
   error: string | null
   loadSource: PublicHubLoadSource | null
   hubEndpointOk: boolean
   /** Loaded successfully but no live channels in the pool. */
   liveEmpty: boolean
   lastUpdated: number | null
+  /** When data was read from browser cache (ms since epoch). */
+  cachedAt: number | null
   refresh: () => void
 }
 
 const DEFAULT_POLL_MS = 30_000
 const RETRY_MS_NO_DATA = 5_000
 
+function hydrateFromCache(activityWindow: PublicHubActivityWindow) {
+  const cached = readPublicHubCacheForCurrentBackend(activityWindow)
+  if (!cached) {
+    return {
+      data: null as PublicHub | null,
+      loading: true,
+      loadSource: null as PublicHubLoadSource | null,
+      lastUpdated: null as number | null,
+      cachedAt: null as number | null,
+      hasData: false,
+      loadedActivityWindow: null as PublicHubActivityWindow | null,
+    }
+  }
+  return {
+    data: cached.data,
+    loading: false,
+    loadSource: 'cache' as PublicHubLoadSource,
+    lastUpdated: cached.cachedAt,
+    cachedAt: cached.cachedAt,
+    hasData: true,
+    loadedActivityWindow: activityWindow,
+  }
+}
+
+function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub) {
+  writePublicHubCacheForCurrentBackend(activityWindow, hub)
+}
+
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
-  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow } = options
-  const [data, setData] = useState<PublicHub | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '7d' } = options
+  const initial = hydrateFromCache(activityWindow)
+  const [data, setData] = useState<PublicHub | null>(initial.data)
+  const [loading, setLoading] = useState(initial.loading)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(null)
+  const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(initial.loadSource)
   const [hubEndpointOk, setHubEndpointOk] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(initial.lastUpdated)
+  const [cachedAt, setCachedAt] = useState<number | null>(initial.cachedAt)
+  const [loadedActivityWindow, setLoadedActivityWindow] = useState<PublicHubActivityWindow | null>(
+    initial.loadedActivityWindow,
+  )
 
   const controllerRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
-  const hasDataRef = useRef(false)
+  const hasDataRef = useRef(initial.hasData)
+  const prevActivityWindowRef = useRef(activityWindow)
+
+  const applySuccessfulLoad = useCallback(
+    (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean) => {
+      setData(hub)
+      setLoadSource(source)
+      setHubEndpointOk(endpointOk)
+      setError(null)
+      setLastUpdated(Date.now())
+      setCachedAt(null)
+      hasDataRef.current = true
+      setLoadedActivityWindow(activityWindow)
+      persistSuccessfulHub(activityWindow, hub)
+    },
+    [activityWindow],
+  )
 
   const load = useCallback(async () => {
     controllerRef.current?.abort()
@@ -53,17 +111,23 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     else setLoading(true)
 
     try {
-      const result = await fetchPublicHub(controller.signal, activityWindow)
+      const base = await fetchPublicHubBase(controller.signal, activityWindow)
       if (!mountedRef.current || controller.signal.aborted) return
-      setData(normalizePublicHub(result.data))
-      setLoadSource(result.loadSource)
-      setHubEndpointOk(result.hubEndpointOk)
-      setError(null)
-      setLastUpdated(Date.now())
-      hasDataRef.current = true
+
+      if (base.hubEndpointOk) {
+        applySuccessfulLoad(normalizePublicHub(base.data), base.loadSource, true)
+        return
+      }
+
+      const fallback = await fetchPublicHub(controller.signal, activityWindow)
+      if (!mountedRef.current || controller.signal.aborted) return
+      applySuccessfulLoad(
+        normalizePublicHub(fallback.data),
+        fallback.loadSource,
+        fallback.hubEndpointOk,
+      )
     } catch (err) {
       if (controller.signal.aborted || !mountedRef.current) return
-      // Keep any previously loaded data on screen; just surface the error.
       setError(err instanceof Error ? err.message : 'Failed to load live hub data')
     } finally {
       if (mountedRef.current) {
@@ -71,11 +135,31 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         setRefreshing(false)
       }
     }
-  }, [activityWindow])
+  }, [activityWindow, applySuccessfulLoad])
 
   const refresh = useCallback(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (prevActivityWindowRef.current === activityWindow) return
+    prevActivityWindowRef.current = activityWindow
+    const cached = readPublicHubCacheForCurrentBackend(activityWindow)
+    if (cached) {
+      setData(cached.data)
+      setLoading(false)
+      setLoadSource('cache')
+      setLastUpdated(cached.cachedAt)
+      setCachedAt(cached.cachedAt)
+      hasDataRef.current = true
+      setLoadedActivityWindow(activityWindow)
+      return
+    }
+    // Stale-while-revalidate: keep prior hub payload visible while the new window loads.
+    if (!hasDataRef.current) {
+      setLoading(true)
+    }
+  }, [activityWindow])
 
   useEffect(() => {
     mountedRef.current = true
@@ -98,7 +182,6 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       pollTimer = window.setInterval(tick, pollMs)
     }
 
-    // Retry quickly until the first successful load (e.g. backend still starting).
     const retryTimer = window.setInterval(() => {
       if (hasDataRef.current) return
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
@@ -119,15 +202,25 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     }
   }, [enabled, pollMs, load])
 
+  const activityRefreshing = useMemo(
+    () =>
+      Boolean(
+        data && loadedActivityWindow != null && loadedActivityWindow !== activityWindow,
+      ),
+    [activityWindow, data, loadedActivityWindow],
+  )
+
   return {
     data,
     loading,
     refreshing,
+    activityRefreshing,
     error,
     loadSource,
     hubEndpointOk,
     liveEmpty: Boolean(data) && (data?.poolSize ?? 0) === 0,
     lastUpdated,
+    cachedAt,
     refresh,
   }
 }

@@ -11,6 +11,9 @@ export { HubDataHealthBanner } from './HubDataHealthBanner'
 export type { HubDataHealthBannerProps } from './HubDataHealthBanner'
 export { HubLiveTable } from './HubLiveTable'
 export type { HubLiveTableProps } from './HubLiveTable'
+export { CorpusPipelineCard } from './CorpusPipelineCard'
+export { EmoteSignalSection } from './EmoteSignalSection'
+export type { EmoteSignalSectionProps } from './EmoteSignalSection'
 export {
   TopMoversList,
   TopStreamersRail,

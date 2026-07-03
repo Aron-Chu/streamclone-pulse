@@ -1,3 +1,18 @@
 node_modules
 dist
 *.local
+
+# Env and local overrides (keep examples tracked)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local reports and debug output
+playwright-report/
+blob-report/
+test-results/
+coverage/
+
+# Local API dumps / ad-hoc channel captures
+jynxzi_*.json

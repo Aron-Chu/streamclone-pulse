@@ -57,6 +57,8 @@ export function maskBetaKey(key: string): string {
 }
 
 export function getBackendUrlOverride(): string | null {
+  if (import.meta.env.PROD) return null
+  if (!import.meta.env.DEV && import.meta.env.VITE_ALLOW_LOCAL_BACKEND !== '1') return null
   try {
     const value = sessionStorage.getItem(BACKEND_OVERRIDE_KEY)?.trim()
     return value ? value.replace(/\/+$/, '') : null
@@ -73,8 +75,7 @@ export function setBackendUrlOverride(url: string | null): void {
   }
 }
 
-export const DEFAULT_BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '') ||
-  'http://localhost:8090'
-
 export const DEFAULT_PRODUCTION_BACKEND_URL = 'https://api.streampulse.stream'
+
+export const DEFAULT_BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '') || DEFAULT_PRODUCTION_BACKEND_URL

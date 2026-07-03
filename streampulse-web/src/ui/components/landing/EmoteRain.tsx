@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { SEVENTV_EMOTES, seventvImageUrl } from './landingEmotes'
+import { LANDING_EMOTES, landingEmoteImageUrl } from './landingEmotes'
 
 interface Drop {
   name: string
@@ -9,19 +9,18 @@ interface Drop {
 }
 
 /**
- * Decorative emote-rain backdrop built from REAL 7TV emotes (image CDN). Purely
- * presentational (aria-hidden) and disabled entirely under
- * `prefers-reduced-motion` via landing.css (`.sl-fx { display:none }`). If an
- * emote image fails to load, it falls back to the emote name as styled text.
+ * Decorative emote-rain backdrop — mostly 7TV culture emotes with a few Twitch
+ * globals mixed in. Purely presentational (aria-hidden) and disabled under
+ * `prefers-reduced-motion` via landing.css.
  */
-export function EmoteRain({ count = 14 }: { count?: number }) {
+export function EmoteRain({ count = 18 }: { count?: number }) {
   const drops = useMemo<Drop[]>(() => {
     return Array.from({ length: count }, (_, index) => {
-      const emote = SEVENTV_EMOTES[index % SEVENTV_EMOTES.length]
+      const emote = LANDING_EMOTES[index % LANDING_EMOTES.length]!
       const size = 1.4 + Math.random() * 1.5
       return {
         name: emote.name,
-        url: seventvImageUrl(emote.id, '2x'),
+        url: landingEmoteImageUrl(emote, '2x'),
         style: {
           left: `${Math.random() * 100}%`,
           ['--sz' as string]: `${size.toFixed(2)}rem`,
@@ -29,8 +28,6 @@ export function EmoteRain({ count = 14 }: { count?: number }) {
           animationDuration: `${(26 + Math.random() * 22).toFixed(1)}s`,
           animationDelay: `${(-Math.random() * 44).toFixed(1)}s`,
           ['--r' as string]: `${(Math.random() * 20 - 10).toFixed(0)}deg`,
-          // Peak opacity per emote; the float keyframes read this via var(--op)
-          // so the rain stays a faint ambient texture instead of foreground.
           ['--op' as string]: `${(0.1 + Math.random() * 0.12).toFixed(3)}`,
         },
       }

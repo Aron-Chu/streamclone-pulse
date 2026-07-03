@@ -1,5 +1,9 @@
 import type { PublicHub } from '../../../lib/publicHub'
-import { SEVENTV_EMOTES, seventvImageUrl } from './landingEmotes'
+import {
+  LANDING_EMOTES,
+  findLandingEmote,
+  landingEmoteImageUrl,
+} from './landingEmotes'
 
 /** Compact integer formatting for landing visuals: 1234 -> "1.2K", 2_400_000 -> "2.4M". */
 export function compact(value: number): string {
@@ -47,15 +51,16 @@ export interface TickerItem {
   image?: string
 }
 
+/** Plausible 7TV-heavy fallback when the hub has no live top-emote rollup yet. */
 const FALLBACK_EMOTES: TickerItem[] = [
-  { lead: 'forsenPls', label: 'forsenPls', value: '18.2K', tone: 'up', delta: '+34%', image: seventvImageUrl('01GB8EQNJ8000497KFBZWNSDFZ') },
-  { lead: 'WAYTOODANK', label: 'WAYTOODANK', value: '14.7K', tone: 'up', delta: '+21%', image: seventvImageUrl('01G98W833R0000BRQD106P0ZNT') },
-  { lead: 'peepoHappy', label: 'peepoHappy', value: '12.1K', tone: 'up', delta: '+12%', image: seventvImageUrl('01GAZ199Z8000FEWHS6AT5QZV0') },
-  { lead: 'gachiBASS', label: 'gachiBASS', value: '9.4K', tone: 'up', delta: '+8%', image: seventvImageUrl('01GB4P2HX0000BJ5HR8F6XV9Q0') },
-  { lead: 'AlienDance', label: 'AlienDance', value: '7.8K', tone: 'flat', image: seventvImageUrl('01GB2ZJFBG000DTBJYANG8XYFP') },
-  { lead: 'FeelsDankMan', label: 'FeelsDankMan', value: '5.2K', tone: 'dn', delta: '-4%', image: seventvImageUrl('01GB9W8JN80004CKF2H1TWA99H') },
-  { lead: 'PepePls', label: 'PepePls', value: '4.9K', tone: 'up', delta: '+6%', image: seventvImageUrl('01GAFTZ9K80003DHH026MC7JW0') },
-  { lead: 'Clap', label: 'Clap', value: '3.3K', tone: 'up', delta: '+44%', image: seventvImageUrl('01GAM8EFQ00004MXFXAJYKA859') },
+  { lead: 'widespeedlaugh', label: 'widespeedlaugh', value: '22.1K', tone: 'up', delta: '+41%', image: landingEmoteImageUrl(findLandingEmote('widespeedlaugh')!) },
+  { lead: 'degloved', label: 'degloved', value: '18.6K', tone: 'up', delta: '+34%', image: landingEmoteImageUrl(findLandingEmote('degloved')!) },
+  { lead: 'widereacting', label: 'widereacting', value: '15.4K', tone: 'up', delta: '+28%', image: landingEmoteImageUrl(findLandingEmote('widereacting')!) },
+  { lead: 'peepoHappy', label: 'peepoHappy', value: '12.1K', tone: 'up', delta: '+12%', image: landingEmoteImageUrl(findLandingEmote('peepoHappy')!) },
+  { lead: 'forsenPls', label: 'forsenPls', value: '9.8K', tone: 'up', delta: '+8%', image: landingEmoteImageUrl(findLandingEmote('forsenPls')!) },
+  { lead: 'WAYTOODANK', label: 'WAYTOODANK', value: '7.2K', tone: 'flat', image: landingEmoteImageUrl(findLandingEmote('WAYTOODANK')!) },
+  { lead: 'gachiBASS', label: 'gachiBASS', value: '5.9K', tone: 'up', delta: '+6%', image: landingEmoteImageUrl(findLandingEmote('gachiBASS')!) },
+  { lead: 'Kappa', label: 'Kappa', value: '3.3K', tone: 'up', delta: '+2%', image: landingEmoteImageUrl(findLandingEmote('Kappa')!) },
 ]
 
 // Representative sample momentum (no leaderboard ranks — order is not a global #1/#2).
@@ -68,14 +73,14 @@ const FALLBACK_MOVERS: TickerItem[] = [
   { lead: 'L', label: 'ludwig', value: '188/min', tone: 'flat' },
 ]
 
-const EMOTE_ID_BY_NAME = new Map<string, string>(
-  SEVENTV_EMOTES.map((emote) => [emote.name.toLowerCase(), emote.id]),
+const EMOTE_BY_NAME = new Map<string, (typeof LANDING_EMOTES)[number]>(
+  LANDING_EMOTES.map((emote) => [emote.name.toLowerCase(), emote]),
 )
 
-/** Resolve a 7TV CDN image for a known emote name (undefined if unmapped). */
+/** Resolve a landing CDN image for a known emote name (undefined if unmapped). */
 function emoteImageByName(name: string): string | undefined {
-  const id = EMOTE_ID_BY_NAME.get(name.trim().toLowerCase())
-  return id ? seventvImageUrl(id) : undefined
+  const emote = EMOTE_BY_NAME.get(name.trim().toLowerCase())
+  return emote ? landingEmoteImageUrl(emote) : undefined
 }
 
 function nameOf(login: string, displayName?: string): string {
@@ -358,8 +363,10 @@ function findPeakIndices(values: number[], maxCount = 3): number[] {
 
 function resolveEmoteImage(name: string | undefined, imageUrl: string | undefined): string {
   if (imageUrl?.trim()) return imageUrl
-  const id = name ? EMOTE_ID_BY_NAME.get(name.trim().toLowerCase()) : undefined
-  return id ? seventvImageUrl(id) : seventvImageUrl('01GAZ199Z8000FEWHS6AT5QZV0')
+  const mapped = name ? emoteImageByName(name) : undefined
+  if (mapped) return mapped
+  const fallback = findLandingEmote('peepoHappy')
+  return fallback ? landingEmoteImageUrl(fallback) : ''
 }
 
 function buildLiveSignalMoment(

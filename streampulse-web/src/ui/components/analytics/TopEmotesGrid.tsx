@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Smile } from 'lucide-react'
 import type { HubEmote } from '../../../lib/publicHub'
 import { Skeleton } from '../../primitives'
@@ -6,6 +7,14 @@ import { compact } from './hubFormat'
 interface TopEmotesGridProps {
   emotes: HubEmote[]
   loading?: boolean
+}
+
+function EmoteThumb({ imageUrl, name }: { imageUrl?: string; name: string }) {
+  const [broken, setBroken] = useState(false)
+  if (!imageUrl?.trim() || broken) {
+    return <Smile size={22} aria-hidden="true" />
+  }
+  return <img src={imageUrl} alt="" loading="lazy" onError={() => setBroken(true)} />
 }
 
 function sparkBars(seed: number): number[] {
@@ -38,7 +47,7 @@ export function TopEmotesGrid({ emotes, loading = false }: TopEmotesGridProps) {
       {emotes.slice(0, 8).map((emote, index) => (
         <div className="hub-emote" key={`${emote.name}-${index}`}>
           <span className="hub-emote__g">
-            {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" /> : <Smile size={22} aria-hidden="true" />}
+            <EmoteThumb imageUrl={emote.imageUrl} name={emote.name} />
           </span>
           <div className="hub-emote__b">
             <div className="hub-emote__n">

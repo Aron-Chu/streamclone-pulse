@@ -1,40 +1,83 @@
 /**
- * Real 7TV emotes used for the decorative landing background + tickers.
+ * Decorative landing emotes — 7TV-dominant culture set plus a few Twitch globals.
  *
- * IDs were resolved from the live 7TV global emote set
- * (https://7tv.io/v3/emote-sets/global). Images are served from the public 7TV
- * CDN; the portal CSP allows `img-src https:` so these load in production.
- *
- * These are decorative only (the rain is aria-hidden); if the CDN is blocked or
- * an image fails, the EmoteRain falls back to the emote name as styled text.
+ * 7TV IDs were resolved from the live 7TV global emote set
+ * (https://7tv.io/v3/emote-sets/global). Twitch IDs use the public Twitch CDN.
+ * Images are decorative only (aria-hidden); failed loads fall back to text.
  */
-export interface SeventvEmote {
+export type LandingEmoteProvider = 'sevenTv' | 'twitch'
+
+export interface LandingEmote {
   name: string
   id: string
+  provider: LandingEmoteProvider
 }
 
-export const SEVENTV_EMOTES: SeventvEmote[] = [
-  { name: 'peepoHappy', id: '01GAZ199Z8000FEWHS6AT5QZV0' },
-  { name: 'peepoSad', id: '01GAZ4SBX80007YCE2RXBT44B2' },
-  { name: 'FeelsDankMan', id: '01GB9W8JN80004CKF2H1TWA99H' },
-  { name: 'forsenPls', id: '01GB8EQNJ8000497KFBZWNSDFZ' },
-  { name: 'WAYTOODANK', id: '01G98W833R0000BRQD106P0ZNT' },
-  { name: 'gachiBASS', id: '01GB4P2HX0000BJ5HR8F6XV9Q0' },
-  { name: 'PepePls', id: '01GAFTZ9K80003DHH026MC7JW0' },
-  { name: 'ppL', id: '01GGD5PJA8000FH13S498E9D8X' },
-  { name: 'Clap', id: '01GAM8EFQ00004MXFXAJYKA859' },
-  { name: 'PartyParrot', id: '01FKSDK14G0008TM5NY9QEG0QV' },
-  { name: 'AlienDance', id: '01GB2ZJFBG000DTBJYANG8XYFP' },
-  { name: 'BillyApprove', id: '01GB2S7H7000018VJGJ4A9BMFS' },
-  { name: 'ApuApustaja', id: '01GGCQPCGR000C7MT8JZGP6E89' },
-  { name: 'RainTime', id: '01FCY771D800007PQ2DF3GDTN6' },
-  { name: 'PETPET', id: '01FE3XY508000AA32JP519W2EW' },
-  { name: 'reckH', id: '01F014S6KG0007E4VV006YKSM3' },
-  { name: 'peepoPls', id: '01HM524VE80004SKSHMCZWXH1T' },
-  { name: 'Gayge', id: '01G4GQC5H0000D3DGNAYJJP8EB' },
+/** 7TV-heavy set used for rain, chat backdrop, and ticker fallbacks. */
+export const LANDING_EMOTES: LandingEmote[] = [
+  // Speed-culture wide emotes (verified via 7TV v4 search)
+  { name: 'degloved', id: '01KCAC3BFZSWKZR16ER0810D08', provider: 'sevenTv' },
+  { name: 'widespeedlaugh', id: '01HR89NJZ0000FC75JXX9NJ9M1', provider: 'sevenTv' },
+  { name: 'widereacting', id: '01HMM8VG3R0007GXBD883VP2YY', provider: 'sevenTv' },
+  { name: 'peepoHappy', id: '01GAZ199Z8000FEWHS6AT5QZV0', provider: 'sevenTv' },
+  { name: 'peepoSad', id: '01GAZ4SBX80007YCE2RXBT44B2', provider: 'sevenTv' },
+  { name: 'FeelsDankMan', id: '01GB9W8JN80004CKF2H1TWA99H', provider: 'sevenTv' },
+  { name: 'forsenPls', id: '01GB8EQNJ8000497KFBZWNSDFZ', provider: 'sevenTv' },
+  { name: 'WAYTOODANK', id: '01G98W833R0000BRQD106P0ZNT', provider: 'sevenTv' },
+  { name: 'gachiBASS', id: '01GB4P2HX0000BJ5HR8F6XV9Q0', provider: 'sevenTv' },
+  { name: 'PepePls', id: '01GAFTZ9K80003DHH026MC7JW0', provider: 'sevenTv' },
+  { name: 'Clap', id: '01GAM8EFQ00004MXFXAJYKA859', provider: 'sevenTv' },
+  { name: 'AlienDance', id: '01GB2ZJFBG000DTBJYANG8XYFP', provider: 'sevenTv' },
+  { name: 'peepoPls', id: '01HM524VE80004SKSHMCZWXH1T', provider: 'sevenTv' },
+  { name: 'PETPET', id: '01FE3XY508000AA32JP519W2EW', provider: 'sevenTv' },
+  { name: 'PartyParrot', id: '01FKSDK14G0008TM5NY9QEG0QV', provider: 'sevenTv' },
+  { name: 'ppL', id: '01GGD5PJA8000FH13S498E9D8X', provider: 'sevenTv' },
+  { name: 'BillyApprove', id: '01GB2S7H7000018VJGJ4A9BMFS', provider: 'sevenTv' },
+  // Twitch globals — used sparingly where they still show up in chat
+  { name: 'Kappa', id: '304894101', provider: 'twitch' },
+  { name: 'LUL', id: '425618', provider: 'twitch' },
+  { name: 'PogChamp', id: '305954156', provider: 'twitch' },
+  { name: 'OMEGALUL', id: '583989', provider: 'twitch' },
+  { name: 'KEKW', id: '305954168', provider: 'twitch' },
 ]
 
-/** 7TV CDN image URL for an emote id (size: 1x | 2x | 3x | 4x). */
+/** @deprecated Use LANDING_EMOTES */
+export const SEVENTV_EMOTES = LANDING_EMOTES.filter((e) => e.provider === 'sevenTv')
+
+/** @deprecated Use LANDING_EMOTES */
+export const TWITCH_LANDING_EMOTES = LANDING_EMOTES
+
+const EMOTE_BY_NAME = new Map<string, LandingEmote>(
+  LANDING_EMOTES.map((emote) => [emote.name.toLowerCase(), emote]),
+)
+
+export function findLandingEmote(name: string): LandingEmote | undefined {
+  return EMOTE_BY_NAME.get(name.trim().toLowerCase())
+}
+
 export function seventvImageUrl(id: string, size: '1x' | '2x' | '3x' | '4x' = '2x'): string {
-  return `https://cdn.7tv.app/emote/${id}/${size}.webp`
+  const scale = size === '1x' ? '1' : size === '2x' ? '2' : size === '3x' ? '3' : '4'
+  return `https://cdn.7tv.app/emote/${id}/${scale}x.webp`
+}
+
+export function twitchEmoteImageUrl(id: string, scale: '1.0' | '2.0' | '3.0' = '2.0'): string {
+  return `https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/${scale}`
+}
+
+/** Resolve a CDN image for a landing emote record. */
+export function landingEmoteImageUrl(
+  emote: LandingEmote,
+  size: '1x' | '2x' | '3x' = '2x',
+): string {
+  if (emote.provider === 'twitch') {
+    const scale = size === '1x' ? '1.0' : size === '2x' ? '2.0' : '3.0'
+    return twitchEmoteImageUrl(emote.id, scale)
+  }
+  return seventvImageUrl(emote.id, size === '3x' ? '3x' : size === '1x' ? '1x' : '2x')
+}
+
+/** Lookup by emote name; undefined when unmapped. */
+export function landingEmoteImageByName(name: string, size: '1x' | '2x' = '2x'): string | undefined {
+  const emote = findLandingEmote(name)
+  return emote ? landingEmoteImageUrl(emote, size) : undefined
 }

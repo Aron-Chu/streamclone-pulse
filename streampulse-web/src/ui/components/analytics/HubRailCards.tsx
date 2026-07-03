@@ -4,6 +4,7 @@ import type { HubCorpusPipeline, HubCoverage, HubEmote, HubMover } from '../../.
 import { ircSlotMetrics } from '../../../lib/coverageHealthMetrics'
 import { Skeleton } from '../../primitives'
 import { compact, displayName, emoteBadges, initial, providerLabel } from './hubFormat'
+import { EmoteImg } from './EmoteImg'
 
 /* ----------------------------------------------------------- recent channels */
 export interface RecentChannelItem {
@@ -101,7 +102,7 @@ export function GlobalEmotesCard({ emotes, loading = false }: { emotes: HubEmote
           emotes.slice(0, 5).map((emote, index) => (
             <div className="dash-emrow" key={`${emote.name}-${index}`}>
               <span className="em" aria-hidden="true">
-                {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" /> : emote.name.slice(0, 2)}
+                <EmoteImg src={emote.imageUrl} name={emote.name} />
               </span>
               <span className="dash-emmain">
                 <span className="nm">{emote.name}</span>

@@ -1,0 +1,113 @@
+/* Unified analytics typography — one sans scale, mono reserved for numbers/times */
+
+.figma-analytics :is(
+  .figma-panel__head-label,
+  .pulse-moments-live__eyebrow,
+  .figma-chart__eyebrow,
+  .pulse-moments__table-head span,
+  .figma-side-rail__card-head span,
+  .figma-kpi-card__label,
+  .analytics-topnav__status small
+) {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-label);
+  font-weight: 600;
+  letter-spacing: var(--sp-tracking-label);
+  text-transform: uppercase;
+  color: var(--sp-text-muted);
+}
+
+.figma-analytics .figma-panel__head-meta {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-meta);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--sp-accent-strong);
+}
+
+.figma-analytics .figma-panel__head-meta--scope {
+  font-weight: 600;
+  color: var(--sp-text-muted);
+}
+
+.figma-analytics :is(
+  .figma-panel__body,
+  .figma-global-activity__chart-note,
+  .pulse-moments-live__sub,
+  .figma-hero__desc,
+  .figma-hero__lede,
+  .figma-burst-list li,
+  .figma-emote-chip,
+  .pulse-moments__peak-row,
+  .pulse-moments__peak-label
+) {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-body);
+  line-height: var(--sp-leading-body);
+}
+
+.figma-analytics :is(
+  .figma-burst-list__count,
+  .figma-burst-list__share,
+  .pulse-moments__peak-rank,
+  .pulse-moments__peak-time,
+  .pulse-moments__peak-meta,
+  .pulse-moments__time-btn,
+  .pulse-moments__score--high,
+  .pulse-moments__score--mid,
+  .pulse-moments__score--low,
+  .pulse-moments__delta,
+  .figma-kpi-card__value,
+  .analytics-topnav__status strong
+) {
+  font-family: var(--fma-mono);
+  font-size: var(--sp-type-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.figma-analytics :is(
+  .pulse-moments-live__title,
+  .figma-block__title,
+  .figma-panel__head h3,
+  .pulse-moments__table-head h3
+) {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-title);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.figma-analytics .figma-hero__title {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.figma-analytics .figma-burst-list__provider {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-meta);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.figma-analytics .pulse-moments-live__meta-pill,
+.figma-analytics .figma-chart-source,
+.figma-analytics .figma-collector-note {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-meta);
+  line-height: var(--sp-leading-body);
+}
+
+.figma-analytics .figma-chart-source strong,
+.figma-analytics .figma-collector-note strong {
+  font-family: var(--fma-font);
+  font-weight: 600;
+}
+
+.figma-analytics .muted {
+  color: var(--sp-text-muted);
+}

@@ -1,0 +1,240 @@
+import {
+  resolveLivePulseMoments,
+  livePulseMomentsFromPublicHub,
+} from '../src/lib/figmaSessionAnalytics'
+import {
+  filterMomentsByBucket,
+  filterPulseMoments,
+  isBucketWithinLiveHorizon,
+  LIVE_PULSE_RECENT_WINDOW_MS,
+  momentContextParts,
+  momentEmoteTitle,
+  momentHasEmoteRollups,
+  resolveMomentEmote,
+  ROLLUP_CONFIDENCE_LABEL,
+  sourceLabel,
+  vodStateLabel,
+  buildEmoteLookup,
+} from '../src/lib/pulseMomentsUtils'
+import type { PublicHub } from '../src/lib/publicHub'
+import { hubCorpusPipelineFixture } from '../src/lib/publicHub'
+import { describe, expect, it } from 'vitest'
+
+function samplePublicHub(): PublicHub {
+  return {
+    generatedAt: new Date().toISOString(),
+    poolSize: 1,
+    corpus: {
+      streamsTracked: 1,
+      momentsDetected: 0,
+      chatMessagesProcessed: 0,
+      emotesIndexed: 0,
+      vodsAnalyzed: 0,
+    },
+    coverage: {
+      liveChannels: 1,
+      trackingMax: 100,
+      backfillActive: 0,
+      backfillMax: 0,
+      syncActive: 0,
+      emotesIndexed: 0,
+      databaseOk: true,
+      state: 'operational',
+    },
+    corpusPipeline: hubCorpusPipelineFixture({
+      generatedAt: new Date().toISOString(),
+      state: 'healthy',
+      topN: 500,
+      collectorActive: 10,
+      collectorMax: 100,
+      roster: {
+        live: 1,
+        collectorTracking: 1,
+        expectedCollectorRows: 1,
+        liveCollectorDeficitRows: 0,
+        metadataOnly: 0,
+        metadataStale: 0,
+        admissionDisabled: 0,
+        capacityBlocked: 0,
+        warming: 0,
+        collecting: 1,
+        viewerOnly: 0,
+        zeroChatAfterAge: 0,
+      },
+    }),
+    activity: { points: [], windowMinutes: 60, channelCount: 0 },
+    emoteIntel: {
+      emotesPerMin: 0,
+      topEmoteSharePct: 0,
+      uniqueEmotes: 0,
+      biggestPeakPerMin: 0,
+      seventvSharePct: 0,
+      providerShares: [],
+    },
+    topEmotes: [{ name: 'KEKW', provider: '7tv', imageUrl: 'https://cdn.example/kekw.webp', count: 10, sharePct: 0 }],
+    topMovers: [],
+    liveChannels: [],
+    moments: [],
+    livePulseMoments: [],
+    featuredSession: { state: 'empty', reason: 'no_qualifying_session' },
+  }
+}
+
+describe('resolveLivePulseMoments', () => {
+  it('labels featured fallback when livePulseMoments is empty', () => {
+    const hub = samplePublicHub()
+    hub.featuredSession = {
+      state: 'ready',
+      login: 'xqc',
+      streamId: 's1',
+      topMoments: [{ offsetSeconds: 60, score: 80, label: 'Chat spike' }],
+    }
+    const result = resolveLivePulseMoments(hub)
+    expect(result.source).toBe('featured_fallback')
+    expect(result.banner).toContain('Hosted API has not deployed network live moments yet')
+    expect(result.moments).toHaveLength(1)
+  })
+
+  it('prefers network livePulseMoments', () => {
+    const hub = samplePublicHub()
+    hub.livePulseMoments = [
+      { login: 'a', streamId: 's1', offsetSeconds: 1, score: 90, label: 'A' },
+      { login: 'b', streamId: 's2', offsetSeconds: 2, score: 85, label: 'B' },
+    ]
+    hub.featuredSession = { state: 'ready', login: 'a', streamId: 's1', topMoments: [] }
+    const result = resolveLivePulseMoments(hub)
+    expect(result.source).toBe('network')
+    expect(result.banner).toBeUndefined()
+    expect(livePulseMomentsFromPublicHub(hub)).toHaveLength(2)
+  })
+})
+
+describe('resolveMomentEmote', () => {
+  it('falls back to hub lookup and marks missing image honestly', () => {
+    const lookup = buildEmoteLookup(samplePublicHub().topEmotes)
+    const resolved = resolveMomentEmote(
+      {
+        offsetSeconds: 1,
+        score: 1,
+        label: 'x',
+        topEmoteCode: 'KEKW',
+      },
+      lookup,
+    )
+    expect(resolved?.imageUrl).toBe('https://cdn.example/kekw.webp')
+    expect(resolved?.imageUnavailable).toBe(false)
+  })
+
+  it('uses text chip title when no image URL exists', () => {
+    const resolved = resolveMomentEmote(
+      {
+        offsetSeconds: 1,
+        score: 1,
+        label: 'x',
+        topEmotes: [{ name: 'NOIMG', provider: '7tv', count: 12 }],
+      },
+      new Map(),
+    )
+    expect(resolved?.imageUnavailable).toBe(true)
+    expect(momentEmoteTitle(resolved!)).toContain('Image unavailable from backend')
+    expect(momentEmoteTitle(resolved!)).toContain('12 uses')
+  })
+})
+
+describe('filterMomentsByBucket', () => {
+  it('keeps moments whose wall-clock peak falls inside the bucket', () => {
+    const bucketT = 1_700_000_000_000
+    const windowMinutes = 10_080 // 7d → 42-minute buckets
+    const moments = [
+      { offsetSeconds: 1, score: 90, label: 'in bucket', at: bucketT + 30_000 },
+      { offsetSeconds: 2, score: 80, label: 'outside', at: bucketT + 120 * 60_000 },
+    ]
+    const filtered = filterMomentsByBucket(moments, bucketT, windowMinutes)
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0]?.label).toBe('in bucket')
+  })
+
+  it('derives wall-clock time from channel startedAt when at is missing', () => {
+    const startedAt = '2024-01-01T12:00:00.000Z'
+    const startMs = Date.parse(startedAt)
+    const bucketT = startMs + 5 * 60_000
+    const moments = [
+      { offsetSeconds: 300, score: 90, label: 'derived', login: 'xqc' },
+    ]
+    const filtered = filterMomentsByBucket(moments, bucketT, 1440, [
+      { login: 'xqc', startedAt },
+    ])
+    expect(filtered).toHaveLength(1)
+  })
+})
+
+describe('isBucketWithinLiveHorizon', () => {
+  it('treats recent buckets as within the live pulse window', () => {
+    const now = 1_700_000_000_000
+    expect(isBucketWithinLiveHorizon(now - LIVE_PULSE_RECENT_WINDOW_MS + 60_000, now)).toBe(true)
+  })
+
+  it('treats older buckets as outside the live pulse window', () => {
+    const now = 1_700_000_000_000
+    expect(isBucketWithinLiveHorizon(now - LIVE_PULSE_RECENT_WINDOW_MS - 60_000, now)).toBe(false)
+  })
+})
+
+describe('fallback filter guard', () => {
+  it('forces all filter so hidden fallback filters cannot hide rows', () => {
+    const source = 'featured_fallback' as const
+    const userFilter = 'chat' as const
+    const effective = source === 'featured_fallback' || source === 'legacy_fallback' ? 'all' : userFilter
+    const moments = [{ offsetSeconds: 1, score: 90, label: 'Emote spike', kind: 'emotes' }]
+    expect(filterPulseMoments(moments, userFilter)).toHaveLength(0)
+    expect(filterPulseMoments(moments, effective)).toHaveLength(1)
+  })
+})
+
+describe('moment emote rollups', () => {
+  it('detects when backend attached emote rows', () => {
+    expect(momentHasEmoteRollups({ offsetSeconds: 1, score: 1, label: 'x', topEmotes: [{ name: 'KEKW', count: 3 }] })).toBe(true)
+    expect(momentHasEmoteRollups({ offsetSeconds: 1, score: 1, label: 'x', topEmoteCode: 'KEKW' })).toBe(true)
+    expect(momentHasEmoteRollups({ offsetSeconds: 1, score: 1, label: '7TV emote spike' })).toBe(false)
+  })
+
+  it('dedupes live IRC context labels', () => {
+    const parts = momentContextParts({
+      offsetSeconds: 1,
+      score: 1,
+      label: 'x',
+      source: 'live_irc',
+      confidence: 100,
+      vodState: 'live_only',
+    })
+    expect(parts).toEqual(['Live IRC', '100% conf'])
+  })
+})
+
+describe('sourceLabel', () => {
+  it('returns honest unknown label for empty source', () => {
+    expect(sourceLabel(undefined)).toBe('Unknown source')
+    expect(sourceLabel('')).toBe('Unknown source')
+    expect(sourceLabel('   ')).toBe('Unknown source')
+  })
+
+  it('maps known source values', () => {
+    expect(sourceLabel('live_irc')).toBe('Live IRC')
+    expect(sourceLabel('corpus_historical')).toBe('Corpus historical')
+    expect(sourceLabel('gql_gold')).toBe('Gold VOD corpus')
+    expect(sourceLabel('vod_synced')).toBe('VOD synced')
+    expect(sourceLabel('partial')).toBe('Partial IRC')
+  })
+})
+
+describe('vodStateLabel', () => {
+  it('maps vod_ready to VOD ready', () => {
+    expect(vodStateLabel('vod_ready')).toBe('VOD ready')
+  })
+
+  it('preserves existing mappings', () => {
+    expect(vodStateLabel('synced')).toBe('Synced')
+    expect(vodStateLabel('partial')).toBe('Partial')
+    expect(vodStateLabel('no_vod')).toBe('Live IRC')
+  })
+})

@@ -1,11 +1,29 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Activity, CheckCircle2, Clock, MessageSquare, TrendingUp, Zap } from 'lucide-react'
-import type { HubMoment, HubMomentKind } from '../../../lib/publicHub'
+import type { HubEmote, HubMoment, HubMomentKind } from '../../../lib/publicHub'
 import { Skeleton } from '../../primitives'
+import { compact } from './hubFormat'
+import { EmoteImg } from './EmoteImg'
 
 interface MomentsFeedProps {
   moments: HubMoment[]
   loading?: boolean
+}
+
+function MomentEmoteChips({ emotes }: { emotes?: HubEmote[] }) {
+  if (!emotes || emotes.length === 0) return null
+  return (
+    <div className="dash-feed__emotes" aria-label="Moment top emotes">
+      {emotes.slice(0, 4).map((emote, index) => (
+        <span className="dash-feed__emote" key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}>
+          <EmoteImg src={emote.imageUrl} name={emote.name} />
+          <span>{emote.name}</span>
+          {emote.count > 0 ? <small>{compact(emote.count)}</small> : null}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function kindMeta(kind: HubMomentKind): { icon: ReactNode; color: string; tone: string } {
@@ -60,6 +78,19 @@ export function MomentsFeed({ moments, loading = false }: MomentsFeedProps) {
         ) : (
           moments.slice(0, 6).map((moment, index) => {
             const meta = kindMeta(moment.kind)
+            const name = moment.displayName?.trim() || moment.login?.trim() || ''
+            const login = moment.login?.trim().toLowerCase() ?? ''
+            const streamId = moment.streamId?.trim() ?? ''
+            const streamHref = login
+              ? streamId
+                ? `/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}`
+                : `/analytics/${encodeURIComponent(login)}`
+              : ''
+            const rawLabel = moment.label ?? ''
+            const label =
+              name && rawLabel.toLowerCase().startsWith(name.toLowerCase())
+                ? rawLabel.slice(name.length).replace(/^[\s:·–-]+/, '')
+                : rawLabel
             return (
               <div className="ev" key={`${moment.kind}-${moment.at}-${index}`}>
                 <span className="ic" style={{ background: meta.tone, color: meta.color }}>
@@ -67,10 +98,23 @@ export function MomentsFeed({ moments, loading = false }: MomentsFeedProps) {
                 </span>
                 <div className="body">
                   <div className="t">
-                    <b>{moment.label}</b>
+                    {name ? <b>{name} </b> : null}
+                    {label}
                     {moment.detail ? <span style={{ color: 'hsl(var(--sc-muted-foreground))' }}> · {moment.detail}</span> : null}
+                    {moment.magnitude != null && moment.magnitude > 0 ? (
+                      <span style={{ color: 'hsl(var(--sc-muted-foreground))' }}> · +{Math.round(moment.magnitude)}%</span>
+                    ) : null}
                   </div>
-                  <div className="tm">{relativeTime(moment.at)}</div>
+                  <div className="tm">
+                    {relativeTime(moment.at)}
+                    {streamHref ? (
+                      <>
+                        {' · '}
+                        <Link to={streamHref} className="dash-feed__open">Open stream</Link>
+                      </>
+                    ) : null}
+                  </div>
+                  <MomentEmoteChips emotes={moment.topEmotes} />
                 </div>
               </div>
             )

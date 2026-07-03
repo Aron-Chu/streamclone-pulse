@@ -1,11 +1,14 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet } from 'react-router-dom'
 import { hasBetaKey } from '../lib/auth'
 
+/**
+ * Gate for the separate dashboard product surface. Public analytics never uses
+ * this — analytics is a no-login surface. Without a beta key we send visitors to
+ * the public analytics hub rather than a (now removed) login screen.
+ */
 export function RequireAuth() {
-  const location = useLocation()
   if (!hasBetaKey()) {
-    const next = encodeURIComponent(`${location.pathname}${location.search}`)
-    return <Navigate to={`/login?next=${next}`} replace />
+    return <Navigate to="/analytics" replace />
   }
   return <Outlet />
 }

@@ -42,12 +42,14 @@ describe('auth', () => {
     expect(maskBetaKey('PULSE-1234-5678-9012')).toBe('PULSE-••••-••••-9012')
   })
 
-  it('redirects unauthenticated dashboard access to login', async () => {
+  it('sends unauthenticated dashboard access to the public analytics hub', async () => {
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
         <AppRoutes />
       </MemoryRouter>,
     )
-    expect(await screen.findByRole('heading', { name: /connect streampulse/i })).toBeTruthy()
+    // Public analytics is a no-login surface; there is no beta-key login screen.
+    expect(await screen.findByRole('main')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: /connect streampulse/i })).toBeNull()
   })
 })

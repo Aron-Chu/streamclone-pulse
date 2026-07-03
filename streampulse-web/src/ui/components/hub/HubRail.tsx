@@ -22,9 +22,11 @@ import type {
   HubCorpusPipeline,
   HubProviderShare,
 } from '../../../lib/publicHub'
+import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import { ircSlotMetrics } from '../../../lib/coverageHealthMetrics'
 import type { RecentSessionRow } from '../../../hooks/useAnalyticsHubData'
-import { compact, providerLabel } from '../analytics/hubFormat'
+import { EmoteImg } from '../analytics/EmoteImg'
+import { compact, formatStreamUptime, providerLabel, twitchLivePreviewUrlFresh } from '../analytics/hubFormat'
 import { Avatar, EmptyState, ProgressRow, Skeleton } from './primitives'
 
 function clampPct(value: number): number {
@@ -92,33 +94,47 @@ type RankedChannel = { channel: HubLiveChannel; rank: number }
 function StreamChip({ channel, rank, ghost }: { channel: HubLiveChannel; rank: number; ghost?: boolean }) {
   const name = channel.displayName?.trim() || channel.login
   const category = channel.category?.trim()
-  const velocity = Math.max(channel.chatPerMin || 0, 0)
-  const hot = velocity >= 30 || Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin || 0) >= 8
+  const title = channel.title?.trim()
+  const uptime = formatStreamUptime(channel.startedAt)
+  const previewUrl = twitchLivePreviewUrlFresh(channel.login, 320, 180)
   return (
     <Link
-      to={`/analytics/${encodeURIComponent(channel.login)}`}
+      to={buildAnalyticsHref({ login: channel.login, streamId: channel.streamId })}
       className="hx-streamchip"
       role={ghost ? undefined : 'listitem'}
       aria-hidden={ghost ? true : undefined}
       tabIndex={ghost ? -1 : undefined}
     >
-      <span className={`rk${rank <= 3 ? ' rk--top' : ''}`} aria-hidden="true">
-        {rank}
-      </span>
-      <span className="av">
-        <Avatar login={channel.login} src={channel.profileImageUrl} alt={name} />
-        <span className="ring" aria-hidden="true" />
-      </span>
+      <div className="hx-streamchip__thumb">
+        <img
+          className="hx-streamchip__preview"
+          src={previewUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={(event) => {
+            event.currentTarget.style.display = 'none'
+          }}
+        />
+        <span className={`hx-streamchip__rk${rank <= 3 ? ' hx-streamchip__rk--top' : ''}`} aria-hidden="true">
+          {rank}
+        </span>
+        <span className="hx-streamchip__live">LIVE</span>
+        <span className="hx-streamchip__viewers">{compact(channel.viewers)}</span>
+        <span className="hx-streamchip__av">
+          <Avatar login={channel.login} src={channel.profileImageUrl} alt={name} />
+        </span>
+      </div>
       <span className="meta">
         <strong title={name}>{name}</strong>
+        {title ? (
+          <span className="hx-streamchip__title" title={title}>
+            {title}
+          </span>
+        ) : null}
         <span className="cat" title={category || 'Live now'}>
           {category || 'Live now'}
-        </span>
-        <span className="vw">
-          <span className="dot" aria-hidden="true" />
-          {compact(channel.viewers)}
-          <span className="vw__lbl"> watching</span>
-          {hot ? <span className="hot" title="High chat velocity">🔥</span> : null}
+          {uptime ? <span className="hx-streamchip__uptime"> · {uptime}</span> : null}
         </span>
       </span>
     </Link>
@@ -139,11 +155,10 @@ export function TopStreamersRail({
         <div className="hx-streamtrack">
           {Array.from({ length: 6 }).map((_, i) => (
             <div className="hx-streamchip" key={i}>
-              <Skeleton width={52} height={52} radius="9999px" />
+              <Skeleton width="100%" height={90} radius="0.5rem" />
               <span className="meta">
                 <Skeleton width="6rem" height="0.85rem" />
                 <Skeleton width="4.5rem" height="0.7rem" style={{ marginTop: '0.4rem' }} />
-                <Skeleton width="5.5rem" height="0.7rem" style={{ marginTop: '0.4rem' }} />
               </span>
             </div>
           ))}
@@ -172,44 +187,61 @@ export function TopStreamersRail({
 
 /* ------------------------------------------------------- Global emotes */
 export function GlobalEmotesList({ emotes, loading }: { emotes: HubEmote[]; loading?: boolean }) {
-  const top = emotes.slice(0, 8)
+  const top = emotes.slice(0, 12)
   const max = top.reduce((acc, e) => Math.max(acc, e.count), 0) || 1
   if (loading && emotes.length === 0) {
     return (
-      <>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', padding: '0.45rem 0' }}>
-            <Skeleton width={27} height={27} radius="0.35rem" />
-            <Skeleton width="3.6rem" height="0.8rem" />
-            <Skeleton height="0.4rem" style={{ flex: 1 }} />
-          </div>
-        ))}
-      </>
+      <table className="hx-emtable">
+        <tbody>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <tr key={i}>
+              <td colSpan={5}>
+                <Skeleton height={34} radius="0.35rem" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     )
   }
   if (top.length === 0) {
     return <EmptyState icon={<Smile aria-hidden="true" />}>No emote traffic in the current window.</EmptyState>
   }
   return (
-    <>
-      {top.map((emote) => (
-        <div className="hx-emrow" key={emote.name}>
-          <span className="em" aria-hidden="true">
-            {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" /> : emote.name.slice(0, 2)}
-          </span>
-          <span className="meta">
-            <span className="nm" title={emote.name}>
-              {emote.name}
-            </span>
-            <span className="pv">{providerLabel(emote.provider)}</span>
-          </span>
-          <span className="bar" aria-hidden="true">
-            <i style={{ width: `${clampPct((emote.count / max) * 100)}%` }} />
-          </span>
-          <span className="ct tnum">{compact(emote.count)}</span>
-        </div>
-      ))}
-    </>
+    <table className="hx-emtable" aria-label="Top emotes ranked by use count">
+      <thead>
+        <tr>
+          <th scope="col">#</th>
+          <th scope="col">Emote</th>
+          <th scope="col">Provider</th>
+          <th scope="col">Uses</th>
+          <th scope="col">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        {top.map((emote, index) => (
+          <tr key={`${emote.name}-${index}`}>
+            <td className="rk tnum">{index + 1}</td>
+            <td>
+              <span className="hx-emtable__cell">
+                <span className="em" aria-hidden="true">
+                  {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" /> : emote.name.slice(0, 2)}
+                </span>
+                <code>{emote.name}</code>
+              </span>
+            </td>
+            <td className="pv">{providerLabel(emote.provider)}</td>
+            <td className="ct tnum">{compact(emote.count)}</td>
+            <td>
+              <span className="bar" aria-hidden="true">
+                <i style={{ width: `${clampPct((emote.count / max) * 100)}%` }} />
+              </span>
+              <span className="ct tnum">{emote.sharePct > 0 ? `${emote.sharePct.toFixed(1)}%` : '—'}</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -249,14 +281,6 @@ export function CoverageHealthList({
     pipeline && pipeline.roster.live > 0
       ? ((pipeline.roster.live - Math.min(pipeline.roster.live, freshnessProblem)) / pipeline.roster.live) * 100
       : 100
-  const tierPct = (tier: HubCorpusPipeline['silver']) =>
-    tier.total > 0 ? ((tier.done + tier.skipped) / tier.total) * 100 : 0
-  const tierMeta = (tier: HubCorpusPipeline['silver']) =>
-    tier.total > 0
-      ? `${compact(tier.done)} done · ${compact(tier.running)} running · ${compact(tier.queued)} queued${tier.failed > 0 ? ` · ${compact(tier.failed)} failed` : ''}${tier.oldestQueuedSeconds ? ` · oldest ${ageLabel(tier.oldestQueuedSeconds)}` : ''}`
-      : tier.eligible > 0
-        ? `${compact(tier.eligible)} eligible · queue idle (no jobs right now)`
-        : 'queue idle (no jobs right now)'
   return (
     <div className="hx-health">
       <ProgressRow
@@ -266,11 +290,11 @@ export function CoverageHealthList({
         color={ircSlots.color}
       />
       <ProgressRow
-        label="VOD backfill"
+        label="Manual VOD import"
         meta={
           coverage.backfillActive > 0
             ? `${coverage.backfillActive}${coverage.backfillMax > 0 ? ` / ${coverage.backfillMax}` : ''} running`
-            : 'Idle — no jobs queued'
+            : 'Idle — per-channel import only'
         }
         pct={hasBackfill ? backfillPct : 0}
         color="hsl(var(--chart-4))"
@@ -291,7 +315,7 @@ export function CoverageHealthList({
         <>
           <ProgressRow
             label={`Top-${pipeline.topN} IRC coverage`}
-            meta={trackerMeta}
+            meta={trackerMeta ? `${trackerMeta} · diagnostic only (not chart fill)` : 'Diagnostic only (not chart fill)'}
             pct={trackerPct}
             color={trackerColor}
           />
@@ -308,18 +332,6 @@ export function CoverageHealthList({
             }
             pct={zeroChatPct}
             color={pipeline.roster.metadataStale > 0 || pipeline.roster.admissionDisabled > 0 ? 'hsl(var(--chart-5))' : pipeline.roster.zeroChatAfterAge > 0 ? 'hsl(var(--chart-4))' : 'hsl(var(--chart-3))'}
-          />
-          <ProgressRow
-            label="Silver VOD backfill"
-            meta={tierMeta(pipeline.silver)}
-            pct={tierPct(pipeline.silver)}
-            color="hsl(var(--chart-4))"
-          />
-          <ProgressRow
-            label="Gold chat backfill"
-            meta={tierMeta(pipeline.gold)}
-            pct={tierPct(pipeline.gold)}
-            color="hsl(var(--chart-2))"
           />
         </>
       ) : null}
@@ -423,7 +435,7 @@ export function EmoteEconomyPanel({
       <div className="hx-econ-split">
         <div>
           <div className="hx-card__desc" style={{ marginBottom: '0.35rem' }}>
-            Trending now
+            Top aggregate emotes
           </div>
           {trending.length === 0 ? (
             <span className="muted" style={{ fontSize: '0.8rem' }}>
@@ -431,12 +443,20 @@ export function EmoteEconomyPanel({
             </span>
           ) : (
             trending.map((emote) => (
-              <div className="hx-trend" key={emote.name}>
+              <div
+                className="hx-trend"
+                key={`${emote.provider ?? 'unknown'}:${emote.name}:${emote.imageUrl ?? emote.count}`}
+              >
                 <span className="em" aria-hidden="true">
-                  {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" /> : emote.name.slice(0, 2)}
+                  <EmoteImg src={emote.imageUrl} name={emote.name} width={18} height={18} />
                 </span>
                 <strong title={emote.name}>{emote.name}</strong>
-                <span className="arrow rise">{Math.round(emote.sharePct)}%</span>
+                {emote.provider ? (
+                  <span className="muted" style={{ fontSize: '0.65rem' }}>
+                    {providerLabel(emote.provider)}
+                  </span>
+                ) : null}
+                <span className="arrow tnum">{Math.round(emote.sharePct)}%</span>
               </div>
             ))
           )}
@@ -444,23 +464,37 @@ export function EmoteEconomyPanel({
         <div>
           <div className="hx-card__desc" style={{ marginBottom: '0.35rem' }}>
             Velocity
+            <span className="muted" style={{ display: 'block', fontWeight: 400, marginTop: '0.15rem' }}>
+              Live emote rate across tracked rooms in the recent window
+            </span>
           </div>
-          <EconStat label="Emotes / min" value={compact(intel.emotesPerMin)} />
-          <EconStat label="Biggest peak" value={`${compact(intel.biggestPeakPerMin)}/m`} />
-          <EconStat label="Top emote share" value={`${Math.round(intel.topEmoteSharePct)}%`} />
+          <EconStat
+            label="Emotes / min"
+            value={compact(intel.emotesPerMin)}
+            hint="Average emotes posted per minute network-wide"
+          />
+          <EconStat
+            label="Biggest peak"
+            value={`${compact(intel.biggestPeakPerMin)}/m`}
+            hint="Highest single-minute emote rate detected"
+          />
+          <EconStat
+            label="Top emote dominance"
+            value={`${Math.round(intel.topEmoteSharePct)}%`}
+            hint="Share of all emotes that belong to the #1 emote"
+          />
         </div>
       </div>
     </>
   )
 }
 
-function EconStat({ label, value }: { label: string; value: string }) {
+function EconStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="hx-trend" style={{ borderTop: 'none' }}>
-      <span className="muted" style={{ fontSize: '0.8rem' }}>
-        {label}
-      </span>
-      <strong className="arrow tnum">{value}</strong>
+    <div className="hx-econstat" title={hint}>
+      <span className="lbl">{label}</span>
+      {hint ? <span className="hx-econstat__hint">{hint}</span> : null}
+      <strong className="val">{value}</strong>
     </div>
   )
 }
@@ -476,6 +510,21 @@ const MOMENT_ICONS: Record<string, { icon: ReactNode; tint: string }> = {
 
 function momentVisual(kind: HubMomentKind) {
   return MOMENT_ICONS[kind] ?? { icon: <Zap />, tint: 'chart-4' }
+}
+
+function MomentEmoteChips({ emotes }: { emotes: HubEmote[] | undefined }) {
+  if (!emotes || emotes.length === 0) return null
+  return (
+    <div className="hx-feed__emotes" aria-label="Moment top emotes">
+      {emotes.slice(0, 4).map((emote, index) => (
+        <span className="hx-feed__emote" key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}>
+          {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" decoding="async" /> : null}
+          <span>{emote.name}</span>
+          {emote.count > 0 ? <small>{compact(emote.count)}</small> : null}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export function MomentsFeedList({ moments, loading }: { moments: HubMoment[]; loading?: boolean }) {
@@ -497,7 +546,7 @@ export function MomentsFeedList({ moments, loading }: { moments: HubMoment[]; lo
   if (moments.length === 0) {
     return (
       <EmptyState icon={<Zap aria-hidden="true" />}>
-        No moments detected yet — chat and emote spikes appear here as live rooms heat up.
+        No live peaks yet — chat and emote spikes appear here as tracked rooms heat up.
       </EmptyState>
     )
   }
@@ -506,9 +555,11 @@ export function MomentsFeedList({ moments, loading }: { moments: HubMoment[]; lo
       {moments.slice(0, 10).map((moment, index) => {
         const visual = momentVisual(moment.kind)
         const name = moment.displayName?.trim() || moment.login?.trim() || ''
+        const login = moment.login?.trim().toLowerCase() ?? ''
+        const streamId = moment.streamId?.trim() ?? ''
+        const streamHref =
+          login && streamId ? `/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}` : login ? `/analytics/${encodeURIComponent(login)}` : ''
         const rawLabel = moment.label ?? ''
-        // Backend labels sometimes already include the channel name (e.g.
-        // "Cinna emote spam spike"); strip it so we don't render "Cinna Cinna …".
         const label =
           name && rawLabel.toLowerCase().startsWith(name.toLowerCase())
             ? rawLabel.slice(name.length).replace(/^[\s:·–-]+/, '')
@@ -527,8 +578,22 @@ export function MomentsFeedList({ moments, loading }: { moments: HubMoment[]; lo
                 {name ? <b>{name} </b> : null}
                 {label}
                 {moment.detail ? <span className="muted"> · {moment.detail}</span> : null}
+                {moment.magnitude != null && moment.magnitude > 0 ? (
+                  <span className="muted"> · +{Math.round(moment.magnitude)}%</span>
+                ) : null}
               </div>
-              <div className="tm">{relTime(moment.at)}</div>
+              <div className="tm">
+                {relTime(moment.at)}
+                {streamHref ? (
+                  <>
+                    {' · '}
+                    <Link to={streamHref} className="hx-feed__open">
+                      Open stream
+                    </Link>
+                  </>
+                ) : null}
+              </div>
+              <MomentEmoteChips emotes={moment.topEmotes} />
             </div>
           </div>
         )
@@ -567,7 +632,7 @@ export function RecentSessionsPanel({
       <EmptyState icon={<Inbox aria-hidden="true" />}>
         {historyUnavailable
           ? 'Session history is unavailable for these channels right now.'
-          : 'No recent sessions yet — pin a channel to your watchlist to collect recaps.'}
+          : 'No recent channels yet — search above or open a channel to populate shortcuts.'}
       </EmptyState>
     )
   }
@@ -575,11 +640,11 @@ export function RecentSessionsPanel({
     <>
       {sessions.map((session) => (
         <Link
-          key={`${session.login}-${session.streamId}`}
-          to={`/analytics/${encodeURIComponent(session.login)}/s/${encodeURIComponent(session.streamId)}`}
+          key={`${session.login}-${session.streamId || session.login}`}
+          to={buildAnalyticsHref({ login: session.login, streamId: session.streamId || undefined })}
           className="hx-session"
         >
-          <Avatar login={session.login} />
+          <Avatar login={session.login} src={session.profileImageUrl} alt={session.title} />
           <span className="info">
             <strong title={session.title}>{session.title}</strong>
             <small>

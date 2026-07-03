@@ -1,0 +1,63 @@
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter, useLocation, useParams } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@streamclone/analytics-console', () => ({
+  AnalyticsConsole: ({
+    mode,
+    showGameSegments,
+  }: {
+    mode?: string
+    showGameSegments?: boolean
+  }) => {
+    const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
+    return (
+      <main aria-label={`Analytics for ${login}`}>
+        <span data-testid="console-mode">{mode ?? 'internal'}</span>
+        <span data-testid="show-game-segments">{String(showGameSegments)}</span>
+        <span data-testid="stream-id">{streamId ?? ''}</span>
+      </main>
+    )
+  },
+}))
+
+import { AppRoutes } from '../src/routes/index'
+
+function LocationProbe() {
+  const { pathname } = useLocation()
+  return <span data-testid="pathname">{pathname}</span>
+}
+
+function renderPath(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
+      <AppRoutes />
+    </MemoryRouter>,
+  )
+}
+
+describe('public channel analytics routes', () => {
+  it('renders the shared console in public mode for /analytics/:channel', async () => {
+    renderPath('/analytics/xqc')
+    expect(await screen.findByRole('main', { name: /analytics for xqc/i })).toBeTruthy()
+    expect(screen.getByTestId('console-mode').textContent).toBe('public')
+    expect(screen.getByTestId('show-game-segments').textContent).toBe('true')
+    expect(screen.getByTestId('stream-id').textContent).toBe('')
+  })
+
+  it('renders the same console for the canonical /analytics/:channel/:streamId', async () => {
+    renderPath('/analytics/xqc/12345')
+    expect(await screen.findByRole('main', { name: /analytics for xqc/i })).toBeTruthy()
+    expect(screen.getByTestId('stream-id').textContent).toBe('12345')
+    expect(screen.getByTestId('console-mode').textContent).toBe('public')
+    expect(screen.getByTestId('show-game-segments').textContent).toBe('true')
+  })
+
+  it('redirects the legacy /analytics/:channel/s/:streamId alias to the canonical route', async () => {
+    renderPath('/analytics/xqc/s/12345')
+    expect(await screen.findByRole('main', { name: /analytics for xqc/i })).toBeTruthy()
+    expect(screen.getByTestId('pathname').textContent).toBe('/analytics/xqc/12345')
+    expect(screen.getByTestId('stream-id').textContent).toBe('12345')
+  })
+})

@@ -8,11 +8,9 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           StreamPulse
         </Link>
         <nav className="app-nav__links">
-          <Link to="/setup">Setup</Link>
+          <Link to="/analytics">Analytics</Link>
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
-          <Link to="/login">Login</Link>
-          <Link to="/dashboard">Dashboard</Link>
         </nav>
       </header>
       <main className="app-main">{children}</main>

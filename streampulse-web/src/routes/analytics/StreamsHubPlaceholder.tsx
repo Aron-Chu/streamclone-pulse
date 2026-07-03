@@ -16,7 +16,7 @@ export default function StreamsHubPlaceholder() {
           <div className="hub-sec-head__l">
             <h1>Streams directory</h1>
             <span className="hub-sec-head__desc">
-              Watchlist-backed stream history is beta-gated. Search any login from the hub to open channel analytics.
+              A browsable stream directory is coming soon. Search any channel from the hub to open its analytics.
             </span>
           </div>
           <Link className="hub-openbtn" to="/analytics">

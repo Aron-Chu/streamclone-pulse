@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 
 export default function Status() {
@@ -7,7 +8,7 @@ export default function Status() {
         <h1>Status</h1>
         <p className="muted">
           Public status data from <code>/v1/public/status</code> will appear here in a later batch.
-          Health checks are available on the <a href="/setup">setup page</a>.
+          Open <Link to="/analytics">Analytics</Link> for live hub health.
         </p>
       </section>
     </PublicLayout>

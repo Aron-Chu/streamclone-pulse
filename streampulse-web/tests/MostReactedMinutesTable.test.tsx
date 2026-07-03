@@ -1,0 +1,70 @@
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
+import { MostReactedMinutesTable } from '../src/ui/components/analytics/MostReactedMinutesTable'
+import type { FigmaMomentRow } from '../src/lib/figmaSessionAnalytics'
+
+const moments: FigmaMomentRow[] = [
+  {
+    offsetSeconds: 120,
+    score: 88,
+    label: 'Chat spike',
+    login: 'xqc',
+    displayName: 'xQc',
+    vodId: 'vod-1',
+    source: 'live_irc',
+    topEmoteCode: 'KEKW',
+    topEmotes: [{ name: 'KEKW', provider: '7tv', count: 12 }],
+  },
+]
+
+function renderPulseLive(onSelect = vi.fn()) {
+  const view = render(
+    <MemoryRouter>
+      <MostReactedMinutesTable
+        moments={moments}
+        variant="pulse-live"
+        selectedKey="xqc::120"
+        onSelect={onSelect}
+        channel={{ login: 'xqc', displayName: 'xQc' }}
+        liveLogins={new Set(['xqc'])}
+      />
+    </MemoryRouter>,
+  )
+  return { ...view, onSelect }
+}
+
+describe('MostReactedMinutesTable pulse-live rows', () => {
+  it('uses div role=option rows without wrapping links in a button', () => {
+    const { container } = renderPulseLive()
+    const row = screen.getByRole('option', { name: /Chat spike/i })
+    expect(row.tagName).toBe('DIV')
+    expect(container.querySelector('button.pulse-moments__leaderboard-row')).toBeNull()
+    expect(within(row).getByRole('link', { name: /xQc/i })).toBeTruthy()
+    expect(within(row).getByRole('link', { name: /KEKW on 7TV/i })).toBeTruthy()
+    expect(within(row).getByRole('link', { name: '2:00' })).toBeTruthy()
+  })
+
+  it('selects row on container click and keyboard', () => {
+    const onSelect = vi.fn()
+    renderPulseLive(onSelect)
+    expect(screen.getByRole('heading', { name: /Most reacted minutes/i })).toBeTruthy()
+    expect(screen.getByText(/1 live peak/i)).toBeTruthy()
+    expect(screen.getByText(/Live IRC/i)).toBeTruthy()
+    const row = screen.getByRole('option', { name: /Chat spike/i })
+    fireEvent.click(row)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ offsetSeconds: 120 }))
+    onSelect.mockClear()
+    row.focus()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ offsetSeconds: 120 }))
+  })
+
+  it('does not select row when clicking nested outbound links', () => {
+    const onSelect = vi.fn()
+    renderPulseLive(onSelect)
+    fireEvent.click(screen.getByRole('link', { name: /KEKW on 7TV/i }))
+    fireEvent.click(screen.getByRole('link', { name: /xQc/i }))
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+})

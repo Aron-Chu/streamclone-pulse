@@ -2,6 +2,7 @@ import { Smile } from 'lucide-react'
 import type { HubEmote, HubEmoteIntel, HubProviderShare } from '../../../lib/publicHub'
 import { Skeleton } from '../../primitives'
 import { compact, emoteBadges, providerLabel } from './hubFormat'
+import { EmoteImg } from './EmoteImg'
 
 interface EmoteEconomyCardProps {
   intel: HubEmoteIntel
@@ -61,7 +62,11 @@ export function EmoteEconomyCard({ intel, topEmotes, loading = false }: EmoteEco
           <div className="dash-card-title" id="dash-ee-h">
             Emote economy
           </div>
-          <div className="dash-card-desc">Provider mix · trailing window</div>
+          <div className="dash-card-desc">
+            {shares.length > 0
+              ? 'Provider mix reflects resolved backend rollups in this window.'
+              : 'Provider mix reflects resolved backend rollups in this window when available.'}
+          </div>
         </div>
         <span className="dash-badge dash-badge--outline">live</span>
       </div>
@@ -78,7 +83,10 @@ export function EmoteEconomyCard({ intel, topEmotes, loading = false }: EmoteEco
                 </span>
               </div>
               <div className="leg">
-                {(providerShares.length > 0 ? providerShares : [{ provider: '7TV', count: 0, sharePct: intel.seventvSharePct }]).slice(0, 4).map((share, index) => (
+                {(providerShares.length > 0
+                  ? providerShares
+                  : [{ provider: 'Awaiting provider rollups', count: 0, sharePct: 0 }]
+                ).slice(0, 4).map((share, index) => (
                   <span key={share.provider}>
                     <span className="sw" style={{ background: PROVIDER_COLORS[index] ?? 'hsl(var(--sc-secondary))' }} />
                     {share.provider} · {Math.round(share.sharePct)}%
@@ -103,7 +111,7 @@ export function EmoteEconomyCard({ intel, topEmotes, loading = false }: EmoteEco
                   topEmotes.slice(0, 4).map((emote, index) => (
                     <div className="dash-trend" key={`${emote.name}-${index}`}>
                       <span className="em" aria-hidden="true">
-                        {emote.imageUrl ? <img src={emote.imageUrl} alt="" loading="lazy" style={{ width: '1.2rem', height: '1.2rem' }} /> : emote.name.slice(0, 2)}
+                        <EmoteImg src={emote.imageUrl} name={emote.name} style={{ width: '1.2rem', height: '1.2rem' }} />
                       </span>
                       <strong>{emote.name}</strong>
                       <span className="dash-emtags">

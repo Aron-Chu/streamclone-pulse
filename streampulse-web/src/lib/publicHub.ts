@@ -1,5 +1,7 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
 import { apiClient, getBackendUrl } from './apiClient'
+import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
+import { resolveBackendSource } from './backendSource'
 
 /**
  * Mirrors PublicHubResponse from twitch-7tv-clone/internal/analytics/hub_overview.go.
@@ -34,6 +36,7 @@ export interface HubRosterSummary {
   liveCollectorDeficitRows: number
   metadataOnly: number
   metadataStale: number
+  admissionFeatureDisabled: number
   admissionDisabled: number
   capacityBlocked: number
   warming: number
@@ -42,7 +45,7 @@ export interface HubRosterSummary {
   zeroChatAfterAge: number
 }
 
-/** Aggregate backfill job counts for a single corpus tier (Silver or Gold). */
+/** Aggregate backfill job counts for a corpus tier (hosted-safe). */
 export interface HubTierCounts {
   queued: number
   running: number
@@ -51,23 +54,32 @@ export interface HubTierCounts {
   failed: number
   total: number
   eligible: number
-  oldestQueuedSeconds?: number | null
+  oldestQueuedSeconds?: number
 }
 
 /**
- * Hosted-safe corpus pipeline: Top-500 roster tracker summary + Silver/Gold VOD
- * backfill tier counts. Aggregate counts only — never per-channel rows, logins,
- * stream IDs, admission messages, or job errors.
+ * Hosted-safe corpus pipeline: Top-N roster tracker + Silver/Gold tier counts.
+ * Aggregate counts — never per-channel rows, logins, stream IDs, or job errors.
  */
 export interface HubCorpusPipeline {
   generatedAt: string
   state: 'healthy' | 'degraded' | 'critical' | string
   topN: number
+  liveAdmissionEnabled: boolean
+  liveAdmissionTopN: number
+  maxActiveIrcChannels: number
   collectorActive: number
   collectorMax: number
+  metadataSampledAgoSeconds?: number
   roster: HubRosterSummary
   silver: HubTierCounts
   gold: HubTierCounts
+}
+
+export interface HubBucketEmote {
+  name: string
+  provider?: string
+  count: number
 }
 
 export interface HubActivityPoint {
@@ -76,7 +88,12 @@ export interface HubActivityPoint {
   /** All-provider emote count for the minute (7TV + Twitch + FFZ + BTTV). */
   emotes?: number
   seventv: number
+  twitch?: number
+  bttv?: number
+  ffz?: number
   viewers: number
+  /** Highest-count emotes for the bucket (top 3), shown in the chart tooltip. */
+  topEmotes?: HubBucketEmote[]
 }
 
 export interface HubActivity {
@@ -122,6 +139,7 @@ export interface HubMover {
   seventvPerMin: number
   chatPerMin: number
   trendPct: number
+  trendSignal?: boolean
 }
 
 export type HubCoverageState =
@@ -137,8 +155,11 @@ export type HubCoverageState =
 export interface HubLiveChannel {
   login: string
   displayName?: string
+  title?: string
   category?: string
   profileImageUrl?: string
+  streamId?: string
+  startedAt?: string
   viewers: number
   chatPerMin: number
   /** All-provider emote velocity (Twitch + 7TV + FFZ + BTTV) for the recent window. */
@@ -147,6 +168,7 @@ export interface HubLiveChannel {
   seventvPerMin: number
   coverageState: HubCoverageState
   trendPct: number
+  trendSignal?: boolean
 }
 
 export type HubMomentKind =
@@ -161,10 +183,86 @@ export interface HubMoment {
   kind: HubMomentKind
   login?: string
   displayName?: string
+  streamId?: string
   label: string
   detail?: string
   magnitude?: number
   at: number
+  topEmotes?: HubEmote[]
+}
+
+export interface HubFeaturedMoment {
+  offsetSeconds: number
+  score: number
+  label: string
+  kind?: string
+  source?: string
+  chatPerMin?: number
+  viewerDelta?: string
+  topEmoteCode?: string
+  topEmotes?: HubEmote[]
+  confidence?: number
+  vodState?: string
+}
+
+/** Network-wide live IRC peak row for Pulse Moments Live (multi-channel). */
+export interface HubLivePulseMoment extends HubFeaturedMoment {
+  login?: string
+  displayName?: string
+  profileImageUrl?: string
+  streamId?: string
+  vodId?: string
+  /** Wall-clock peak time (unix ms). */
+  at?: number
+}
+
+export interface HubFeaturedChartPoint {
+  offsetSeconds: number
+  chatNorm: number
+  viewersNorm: number
+  emotesNorm: number
+  heat: number
+}
+
+export interface HubFeaturedEmoteBurst {
+  code: string
+  provider?: string
+  imageUrl?: string
+  count: number
+  deltaPct?: number
+  peakOffset?: string
+  peakOffsetSeconds?: number
+  sharePct?: number
+}
+
+export interface HubFeaturedCoverageRow {
+  label: string
+  value: string
+  ok: boolean
+}
+
+export interface HubFeaturedSession {
+  state: 'empty' | 'ready' | string
+  reason?: string
+  login?: string
+  displayName?: string
+  streamId?: string
+  category?: string
+  startedAt?: string
+  vodId?: string
+  viewers?: number
+  chatPerMin?: number
+  seventvPerMin?: number
+  peakCount?: number
+  dataCoveragePct?: number
+  topMoments?: HubFeaturedMoment[]
+  chartPoints?: HubFeaturedChartPoint[]
+  topEmoteBursts?: HubFeaturedEmoteBurst[]
+  coverageTruth?: HubFeaturedCoverageRow[]
+}
+
+export type PublicHubInput = Omit<Partial<PublicHub>, 'corpusPipeline'> & {
+  corpusPipeline?: HubCorpusPipelineInput
 }
 
 export interface PublicHub {
@@ -179,6 +277,10 @@ export interface PublicHub {
   topMovers: HubMover[]
   liveChannels: HubLiveChannel[]
   moments: HubMoment[]
+  livePulseMoments: HubLivePulseMoment[]
+  livePulseMomentsStatus?: 'ready' | 'fallback' | 'no_peaks' | string
+  livePulseMomentsReason?: string
+  featuredSession: HubFeaturedSession
 }
 
 interface PublicStatsSnapshot {
@@ -196,56 +298,22 @@ interface PublicStatusSnapshot {
   updatedAt?: string
 }
 
-interface Top500ReadinessSummarySnapshot {
-  liveRows?: number
-  collectorTrackingRows?: number
-  expectedCollectorRows?: number
-  liveCollectorDeficitRows?: number
-  metadataOnlyRows?: number
-  metadataStaleRows?: number
-  admissionDisabledRows?: number
-  capacityBlockedRows?: number
-  warmingRows?: number
-  collectingRows?: number
-  viewerOnlyRows?: number
-  zeroChatAfterAgeRows?: number
+export type PublicHubActivityWindow = 'all' | '1y' | '6m' | '3m' | '1m' | '7d' | '24h' | '30m' | 'recent'
+
+export type PublicHubLoadSource = 'full' | 'stats-fallback' | 'cache'
+
+/** Sanitized corpus peaks for one activity-chart bucket. */
+export interface PublicHubMomentsResponse {
+  bucketT: number
+  bucketStart: string
+  bucketEnd: string
+  hubGeneratedAt: string
+  source: string
+  status: 'ready' | 'empty' | string
+  reason?: string
+  activityWindowMinutes: number
+  moments: HubLivePulseMoment[]
 }
-
-interface Top500ReadinessRowSnapshot {
-  login?: string
-  isLive?: boolean
-  metadataStale?: boolean
-  viewerCount?: number | null
-  categoryName?: string
-  collectorTracking?: boolean
-  rollupCount?: number
-  latestChatCount?: number
-  latestTotalEmoteCount?: number
-  latestSevenTvCount?: number
-  viewerOnlyRecent?: boolean
-  readinessState?: string
-}
-
-interface Top500ReadinessSnapshot {
-  generatedAt?: string
-  topN?: number
-  admissionEnabled?: boolean
-  collectorActive?: number
-  collectorMax?: number
-  summary?: Top500ReadinessSummarySnapshot
-  rows?: Top500ReadinessRowSnapshot[]
-}
-
-const TOP500_TARGET_N = 500
-/** ALLOWLIST: aggregate ops readiness only — not stream timelines (see portalAnalytics.ts). */
-const TOP500_READINESS_PATHS = [
-  `/v1/analytics/top100/readiness?topN=${TOP500_TARGET_N}`,
-  `/v1/analytics/top-roster/readiness?topN=${TOP500_TARGET_N}`,
-]
-
-export type PublicHubActivityWindow = 'all' | '1y' | '3m' | '1m' | '7d' | '24h' | '30m'
-
-export type PublicHubLoadSource = 'full' | 'readiness-fallback'
 
 export interface FetchPublicHubResult {
   data: PublicHub
@@ -256,77 +324,144 @@ export interface FetchPublicHubResult {
 }
 
 function publicHubPath(activityWindow?: PublicHubActivityWindow): string {
-  if (!activityWindow) return '/v1/public/hub'
+  if (!activityWindow) return '/v1/public/hub?activityWindow=7d'
   const params = new URLSearchParams({ activityWindow })
   return `/v1/public/hub?${params.toString()}`
 }
 
-export async function fetchPublicHub(signal?: AbortSignal, activityWindow?: PublicHubActivityWindow): Promise<FetchPublicHubResult> {
-  let primary: Awaited<ReturnType<typeof apiClient<PublicHub>>> | null = null
-  let primaryError: unknown = null
+function publicHubMomentsPath(
+  bucketT: number,
+  activityWindow: PublicHubActivityWindow,
+  limit = 10,
+): string {
+  const params = new URLSearchParams({
+    bucketT: String(bucketT),
+    activityWindow,
+    limit: String(limit),
+  })
+  return `/v1/public/hub/moments?${params.toString()}`
+}
 
+export function normalizePublicHubMoments(
+  input: Partial<PublicHubMomentsResponse> | null | undefined,
+): PublicHubMomentsResponse {
+  const moments = (input?.moments ?? []).map((moment) => ({
+    ...moment,
+    topEmotes: (moment.topEmotes ?? []).map((emote) => ({
+      ...emote,
+      imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+    })),
+  }))
+  return {
+    bucketT: input?.bucketT ?? 0,
+    bucketStart: input?.bucketStart ?? '',
+    bucketEnd: input?.bucketEnd ?? '',
+    hubGeneratedAt: input?.hubGeneratedAt ?? '',
+    source: input?.source ?? 'corpus_historical',
+    status: input?.status ?? 'empty',
+    reason: input?.reason,
+    activityWindowMinutes: input?.activityWindowMinutes ?? 0,
+    moments,
+  }
+}
+
+/** Fetch bounded corpus peaks for a chart bucket click. */
+export async function fetchHistoricalHubMoments(
+  bucketT: number,
+  activityWindow: PublicHubActivityWindow,
+  signal?: AbortSignal,
+  limit = 10,
+): Promise<PublicHubMomentsResponse> {
+  const response = await apiClient<PublicHubMomentsResponse>(
+    publicHubMomentsPath(bucketT, activityWindow, limit),
+    { signal },
+  )
+  return normalizePublicHubMoments(response.data)
+}
+
+function normalizeUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '')
+}
+
+/** Primary hub fetch only — no Top-500 readiness fan-out. */
+export async function fetchPublicHubBase(
+  signal?: AbortSignal,
+  activityWindow?: PublicHubActivityWindow,
+): Promise<FetchPublicHubResult> {
   try {
-    primary = await apiClient<PublicHub>(publicHubPath(activityWindow), { signal })
-  } catch (error) {
-    primaryError = error
-  }
-
-  const hubEndpointOk = primary != null
-  const baseHub = primary ? normalizePublicHub(primary.data) : null
-  const hasAggregatePipelineHealth = baseHub
-    ? baseHub.corpusPipeline.state !== 'healthy'
-      || baseHub.corpusPipeline.roster.expectedCollectorRows > 0
-      || baseHub.corpusPipeline.roster.liveCollectorDeficitRows > 0
-      || baseHub.corpusPipeline.roster.metadataStale > 0
-      || baseHub.corpusPipeline.roster.admissionDisabled > 0
-    : false
-  const needsTop500Snapshot = !baseHub
-    || baseHub.corpusPipeline.topN < TOP500_TARGET_N
-    || (!hasAggregatePipelineHealth && baseHub.liveChannels.length < baseHub.corpusPipeline.roster.live)
-
-  if (!needsTop500Snapshot) {
+    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow), { signal })
     return {
-      data: baseHub!,
+      data: normalizePublicHub(primary.data),
       loadSource: 'full',
-      hubEndpointOk,
-      cache: primary?.cache,
-      status: primary?.status ?? 200,
-    }
-  }
-
-  const [readiness, stats, status] = await Promise.all([
-    fetchBestTop500Readiness(signal),
-    baseHub ? Promise.resolve(null) : fetchOptionalFromBackendCandidates<PublicStatsSnapshot>('/v1/public/stats', signal),
-    baseHub ? Promise.resolve(null) : fetchOptionalFromBackendCandidates<PublicStatusSnapshot>('/v1/public/status', signal),
-  ])
-
-  if (readiness) {
-    const fallbackHub = baseHub ?? buildPublicHubFallback(readiness, stats, status)
-    return {
-      data: mergeTop500Readiness(fallbackHub, readiness),
-      loadSource: hubEndpointOk ? 'full' : 'readiness-fallback',
-      hubEndpointOk,
-      cache: primary?.cache,
-      status: primary?.status ?? 200,
-    }
-  }
-
-  if (baseHub && primary) {
-    return {
-      data: baseHub,
-      loadSource: 'full',
-      hubEndpointOk,
+      hubEndpointOk: true,
       cache: primary.cache,
       status: primary.status,
     }
+  } catch (error) {
+    return {
+      data: normalizePublicHub(null),
+      loadSource: 'full',
+      hubEndpointOk: false,
+      status: 0,
+    }
+  }
+}
+
+export async function fetchPublicHub(signal?: AbortSignal, activityWindow?: PublicHubActivityWindow): Promise<FetchPublicHubResult> {
+  const baseResult = await fetchPublicHubBase(signal, activityWindow)
+  if (baseResult.hubEndpointOk) {
+    return baseResult
   }
 
-  throw primaryError
+  const [stats, status] = await Promise.all([
+    fetchOptionalFromBackendCandidates<PublicStatsSnapshot>('/v1/public/stats', signal),
+    fetchOptionalFromBackendCandidates<PublicStatusSnapshot>('/v1/public/status', signal),
+  ])
+
+  if (stats || status) {
+    return {
+      data: normalizePublicHub({
+        generatedAt: stats?.updatedAt ?? status?.updatedAt ?? new Date().toISOString(),
+        corpus: stats
+          ? {
+              streamsTracked: stats.streamsTracked ?? 0,
+              momentsDetected: stats.momentsDetected ?? 0,
+              chatMessagesProcessed: stats.chatMessagesProcessed ?? 0,
+              emotesIndexed: stats.emotesIndexed ?? 0,
+              vodsAnalyzed: stats.vodsAnalyzed ?? 0,
+            }
+          : undefined,
+        coverage: {
+          liveChannels: 0,
+          trackingMax: 0,
+          backfillActive: 0,
+          backfillMax: 0,
+          syncActive: 0,
+          emotesIndexed: stats?.emotesIndexed ?? 0,
+          databaseOk: status?.degraded !== true,
+          state: status?.status ?? 'operational',
+        },
+      }),
+      loadSource: 'stats-fallback',
+      hubEndpointOk: false,
+      status: 200,
+    }
+  }
+
+  throw new Error(
+    resolveBackendSource() === 'local'
+      ? 'Local /v1/public/hub unavailable — rebuild analytics and restart local-proxy, or switch to hosted API.'
+      : 'Public hub unavailable',
+  )
 }
 
 function backendCandidates(): string[] {
-  const candidates = [getBackendUrl(), DEFAULT_PRODUCTION_BACKEND_URL]
-    .map((value) => value.trim().replace(/\/+$/, ''))
+  const primary = normalizeUrl(getBackendUrl())
+  if (resolveBackendSource(primary) === 'local') {
+    return [primary]
+  }
+  const candidates = [primary, DEFAULT_PRODUCTION_BACKEND_URL]
+    .map((value) => normalizeUrl(value))
     .filter(Boolean)
   return Array.from(new Set(candidates))
 }
@@ -347,191 +482,6 @@ async function fetchOptionalFromBackendCandidates<T>(path: string, signal?: Abor
   return null
 }
 
-function betterReadiness(next: Top500ReadinessSnapshot, current: Top500ReadinessSnapshot | null): boolean {
-  if (!current) return true
-  const nextTopN = next.topN ?? 0
-  const currentTopN = current.topN ?? 0
-  if (nextTopN !== currentTopN) return nextTopN > currentTopN
-
-  const nextLive = next.summary?.liveRows ?? next.rows?.length ?? 0
-  const currentLive = current.summary?.liveRows ?? current.rows?.length ?? 0
-  if (nextLive !== currentLive) return nextLive > currentLive
-
-  return Date.parse(next.generatedAt ?? '') > Date.parse(current.generatedAt ?? '')
-}
-
-async function fetchBestTop500Readiness(signal?: AbortSignal): Promise<Top500ReadinessSnapshot | null> {
-  let best: Top500ReadinessSnapshot | null = null
-  for (const base of backendCandidates()) {
-    for (const path of TOP500_READINESS_PATHS) {
-      try {
-        const result = await apiClient<Top500ReadinessSnapshot>(apiPath(base, path), {
-          signal,
-          timeoutMs: 5_000,
-        })
-        if (betterReadiness(result.data, best)) best = result.data
-        if ((result.data.topN ?? 0) >= TOP500_TARGET_N && (result.data.summary?.liveRows ?? 0) > 0) break
-      } catch {
-        // Keep trying candidates; not every local backend has the Top-500 tracker route or data.
-      }
-    }
-    if ((best?.topN ?? 0) >= TOP500_TARGET_N && (best?.summary?.liveRows ?? 0) > 0) {
-      break
-    }
-  }
-  return best
-}
-
-function buildPublicHubFallback(
-  readiness: Top500ReadinessSnapshot,
-  stats: PublicStatsSnapshot | null,
-  status: PublicStatusSnapshot | null,
-): PublicHub {
-  return normalizePublicHub({
-    generatedAt: readiness.generatedAt ?? stats?.updatedAt ?? status?.updatedAt ?? new Date().toISOString(),
-    corpus: stats
-      ? {
-          streamsTracked: stats.streamsTracked ?? 0,
-          momentsDetected: stats.momentsDetected ?? 0,
-          chatMessagesProcessed: stats.chatMessagesProcessed ?? 0,
-          emotesIndexed: stats.emotesIndexed ?? 0,
-          vodsAnalyzed: stats.vodsAnalyzed ?? 0,
-        }
-      : undefined,
-    coverage: {
-      liveChannels: readiness.summary?.liveRows ?? readiness.rows?.length ?? 0,
-      trackingMax: readiness.collectorMax ?? 0,
-      backfillActive: 0,
-      backfillMax: 0,
-      syncActive: 0,
-      emotesIndexed: stats?.emotesIndexed ?? 0,
-      databaseOk: status?.degraded !== true,
-      state: status?.status ?? 'operational',
-    },
-  })
-}
-
-function readinessCoverageState(row: Top500ReadinessRowSnapshot): HubCoverageState {
-  const chat = row.latestChatCount ?? 0
-  const emotes = Math.max(row.latestTotalEmoteCount ?? 0, row.latestSevenTvCount ?? 0)
-  if (chat > 0 && emotes > 0) return 'synced'
-  if (chat > 0) return 'chat_only'
-  if (row.viewerOnlyRecent || row.readinessState === 'viewer_only') return 'viewer_only'
-  if (row.readinessState === 'warming' || (row.collectorTracking && (row.rollupCount ?? 0) === 0)) return 'warming'
-  if (row.readinessState === 'collecting' || row.collectorTracking || (row.rollupCount ?? 0) > 0) return 'collecting'
-  return 'stats_only'
-}
-
-/** Last-minute rollup snapshot when full hub window rates are unavailable. */
-function readinessMinuteRates(row: Top500ReadinessRowSnapshot): Pick<HubLiveChannel, 'chatPerMin' | 'emotesPerMin' | 'seventvPerMin'> {
-  const chatPerMin = row.latestChatCount ?? 0
-  const seventvPerMin = row.latestSevenTvCount ?? 0
-  const emotesPerMin = Math.max(row.latestTotalEmoteCount ?? 0, seventvPerMin)
-  return { chatPerMin, emotesPerMin, seventvPerMin }
-}
-
-function readinessLiveChannels(readiness: Top500ReadinessSnapshot): HubLiveChannel[] {
-  return (readiness.rows ?? [])
-    .filter((row) => row.isLive && row.login?.trim())
-    .map((row) => ({
-      login: row.login?.trim().toLowerCase() ?? '',
-      category: row.categoryName ?? '',
-      viewers: row.viewerCount ?? 0,
-      ...readinessMinuteRates(row),
-      coverageState: readinessCoverageState(row),
-      trendPct: 0,
-    }))
-}
-
-function mergeLiveChannels(base: HubLiveChannel[], readiness: HubLiveChannel[]): HubLiveChannel[] {
-  const byLogin = new Map<string, HubLiveChannel>()
-  for (const channel of readiness) byLogin.set(channel.login.toLowerCase(), channel)
-  for (const channel of base) {
-    const key = channel.login.toLowerCase()
-    const existing = byLogin.get(key)
-    byLogin.set(key, existing ? { ...existing, ...channel, viewers: Math.max(existing.viewers, channel.viewers) } : channel)
-  }
-  return Array.from(byLogin.values())
-    .sort((a, b) => b.viewers - a.viewers)
-    .slice(0, 100)
-}
-
-function mergeTop500Readiness(base: PublicHub, readiness: Top500ReadinessSnapshot): PublicHub {
-  const summary = derivedReadinessSummary(readiness)
-  const liveChannels = mergeLiveChannels(base.liveChannels, readinessLiveChannels(readiness))
-  const pipelineState = pipelineStateFromReadiness(readiness)
-
-  return {
-    ...base,
-    generatedAt: readiness.generatedAt ?? base.generatedAt,
-    poolSize: Math.max(base.poolSize, summary.liveRows ?? 0, liveChannels.length),
-    coverage: {
-      ...base.coverage,
-      liveChannels: Math.max(base.coverage.liveChannels, summary.liveRows ?? 0, liveChannels.length),
-      trackingMax: Math.max(base.coverage.trackingMax, readiness.collectorMax ?? 0),
-      state: coverageStateWithPipeline(base.coverage.state, pipelineState),
-    },
-    corpusPipeline: {
-      ...base.corpusPipeline,
-      generatedAt: readiness.generatedAt ?? base.corpusPipeline.generatedAt,
-      state: pipelineState,
-      topN: Math.max(base.corpusPipeline.topN, readiness.topN ?? 0),
-      collectorActive: readiness.collectorActive ?? base.corpusPipeline.collectorActive,
-      collectorMax: readiness.collectorMax ?? base.corpusPipeline.collectorMax,
-      roster: {
-        live: summary.liveRows ?? base.corpusPipeline.roster.live,
-        collectorTracking: summary.collectorTrackingRows ?? base.corpusPipeline.roster.collectorTracking,
-        expectedCollectorRows: summary.expectedCollectorRows ?? base.corpusPipeline.roster.expectedCollectorRows,
-        liveCollectorDeficitRows: summary.liveCollectorDeficitRows ?? base.corpusPipeline.roster.liveCollectorDeficitRows,
-        metadataOnly: summary.metadataOnlyRows ?? base.corpusPipeline.roster.metadataOnly,
-        metadataStale: summary.metadataStaleRows ?? base.corpusPipeline.roster.metadataStale,
-        admissionDisabled: summary.admissionDisabledRows ?? base.corpusPipeline.roster.admissionDisabled,
-        capacityBlocked: summary.capacityBlockedRows ?? base.corpusPipeline.roster.capacityBlocked,
-        warming: summary.warmingRows ?? base.corpusPipeline.roster.warming,
-        collecting: summary.collectingRows ?? base.corpusPipeline.roster.collecting,
-        viewerOnly: summary.viewerOnlyRows ?? base.corpusPipeline.roster.viewerOnly,
-        zeroChatAfterAge: summary.zeroChatAfterAgeRows ?? base.corpusPipeline.roster.zeroChatAfterAge,
-      },
-    },
-    liveChannels,
-  }
-}
-
-function pipelineStateFromReadiness(readiness: Top500ReadinessSnapshot): HubCorpusPipeline['state'] {
-  const summary = derivedReadinessSummary(readiness)
-  const live = summary.liveRows ?? 0
-  const collectorTracking = summary.collectorTrackingRows ?? 0
-  const collectorMax = readiness.collectorMax ?? 0
-  const deficit = summary.liveCollectorDeficitRows ?? 0
-  if (live <= 0) return 'degraded'
-  if ((summary.metadataStaleRows ?? 0) > 0) return 'critical'
-  if ((summary.admissionDisabledRows ?? 0) > 0 || readiness.admissionEnabled === false) return 'critical'
-  if (collectorMax <= 0 || collectorTracking <= 0) return 'critical'
-  if (deficit > 0 || (summary.capacityBlockedRows ?? 0) > 0 || (summary.zeroChatAfterAgeRows ?? 0) > 0) return 'degraded'
-  return 'healthy'
-}
-
-function derivedReadinessSummary(readiness: Top500ReadinessSnapshot): Top500ReadinessSummarySnapshot {
-  const summary = readiness.summary ?? {}
-  const rows = readiness.rows ?? []
-  const liveRows = summary.liveRows ?? rows.filter((row) => row.isLive).length
-  const collectorTrackingRows = summary.collectorTrackingRows ?? rows.filter((row) => row.isLive && row.collectorTracking).length
-  const expectedCollectorRows =
-    summary.expectedCollectorRows ?? Math.min(liveRows, readiness.collectorMax && readiness.collectorMax > 0 ? readiness.collectorMax : liveRows)
-  const liveCollectorDeficitRows = summary.liveCollectorDeficitRows ?? Math.max(0, expectedCollectorRows - collectorTrackingRows)
-  const metadataStaleRows = summary.metadataStaleRows ?? rows.filter((row) => row.isLive && row.metadataStale).length
-  const admissionDisabledRows = summary.admissionDisabledRows ?? (readiness.admissionEnabled === false && liveRows > 0 ? liveRows : 0)
-  return {
-    ...summary,
-    liveRows,
-    collectorTrackingRows,
-    expectedCollectorRows,
-    liveCollectorDeficitRows,
-    metadataStaleRows,
-    admissionDisabledRows,
-  }
-}
-
 function coverageStateWithPipeline(
   current: HubCoverage['state'] | undefined,
   pipelineState: HubCorpusPipeline['state'] | undefined,
@@ -550,10 +500,7 @@ function coverageStateWithPipeline(
  * so relative paths would otherwise 404 against the portal and fall back to text.
  */
 function absoluteAssetUrl(url: string | undefined): string | undefined {
-  if (!url) return url
-  if (/^(https?:|data:|blob:)/i.test(url)) return url
-  if (!url.startsWith('/')) return url
-  return `${getBackendUrl()}${url}`
+  return absolutizeEmoteAssetUrl(url)
 }
 
 function absolutizeEmotes(emotes: HubEmote[] | undefined): HubEmote[] {
@@ -566,16 +513,39 @@ function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   return movers.map((mover) => ({ ...mover, profileImageUrl: absoluteAssetUrl(mover.profileImageUrl) }))
 }
 
+/** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
+export function enrichTopMoversWithAvatars(
+  movers: HubMover[],
+  liveChannels: HubLiveChannel[],
+): HubMover[] {
+  const imageByLogin = new Map<string, string>()
+  for (const channel of liveChannels) {
+    if (channel.profileImageUrl) {
+      imageByLogin.set(channel.login.toLowerCase(), channel.profileImageUrl)
+    }
+  }
+  return movers.map((mover) =>
+    mover.profileImageUrl
+      ? mover
+      : { ...mover, profileImageUrl: imageByLogin.get(mover.login.toLowerCase()) },
+  )
+}
+
 function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLiveChannel[] {
   if (!channels) return []
   return channels.map((channel) => ({ ...channel, profileImageUrl: absoluteAssetUrl(channel.profileImageUrl) }))
+}
+
+function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
+  if (!moments) return []
+  return moments.map((moment) => ({ ...moment, topEmotes: absolutizeEmotes(moment.topEmotes) }))
 }
 
 /**
  * Defensive normaliser: the endpoint is additive and may evolve, so coerce
  * arrays/objects to safe defaults before the UI consumes them.
  */
-export function normalizePublicHub(raw: Partial<PublicHub> | null | undefined): PublicHub {
+export function normalizePublicHub(raw: PublicHubInput | null | undefined): PublicHub {
   const corpusPipeline = normalizeCorpusPipeline(raw?.corpusPipeline, raw?.generatedAt)
   return {
     generatedAt: raw?.generatedAt ?? new Date().toISOString(),
@@ -600,7 +570,7 @@ export function normalizePublicHub(raw: Partial<PublicHub> | null | undefined): 
     corpusPipeline,
     activity: {
       points: normalizeActivityPoints(raw?.activity?.points),
-      windowMinutes: raw?.activity?.windowMinutes ?? 30,
+      windowMinutes: raw?.activity?.windowMinutes ?? 7 * 24 * 60,
       channelCount: raw?.activity?.channelCount ?? 0,
     },
     emoteIntel: {
@@ -614,7 +584,49 @@ export function normalizePublicHub(raw: Partial<PublicHub> | null | undefined): 
     topEmotes: absolutizeEmotes(raw?.topEmotes),
     topMovers: absolutizeMovers(raw?.topMovers),
     liveChannels: absolutizeLiveChannels(raw?.liveChannels),
-    moments: raw?.moments ?? [],
+    moments: absolutizeMoments(raw?.moments),
+    livePulseMoments: normalizeLivePulseMoments(raw?.livePulseMoments),
+    livePulseMomentsStatus: raw?.livePulseMomentsStatus,
+    livePulseMomentsReason: raw?.livePulseMomentsReason,
+    featuredSession: normalizeFeaturedSession(raw?.featuredSession),
+  }
+}
+
+function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLivePulseMoment[] {
+  if (!raw?.length) return []
+  return raw.map((moment) => ({
+    ...moment,
+    topEmotes: absolutizeEmotes(moment.topEmotes),
+  }))
+}
+
+function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined): HubFeaturedSession {
+  if (!raw) return { state: 'empty', reason: 'no_qualifying_session' }
+  return {
+    state: raw.state ?? 'empty',
+    reason: raw.reason,
+    login: raw.login,
+    displayName: raw.displayName,
+    streamId: raw.streamId,
+    category: raw.category,
+    startedAt: raw.startedAt,
+    vodId: raw.vodId,
+    viewers: raw.viewers,
+    chatPerMin: raw.chatPerMin,
+    seventvPerMin: raw.seventvPerMin,
+    peakCount: raw.peakCount,
+    dataCoveragePct: raw.dataCoveragePct,
+    topMoments: (raw.topMoments ?? []).map((moment) => ({
+      ...moment,
+      topEmotes: absolutizeEmotes(moment.topEmotes),
+    })),
+    chartPoints: raw.chartPoints ?? [],
+    topEmoteBursts: (raw.topEmoteBursts ?? []).map((burst) => ({
+      ...burst,
+      imageUrl: absoluteAssetUrl(burst.imageUrl),
+      peakOffsetSeconds: burst.peakOffsetSeconds,
+    })),
+    coverageTruth: raw.coverageTruth ?? [],
   }
 }
 
@@ -622,11 +634,27 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
   if (!points) return []
   return points.map((point) => ({
     ...point,
-    emotes: Math.max(point.emotes ?? 0, point.seventv ?? 0),
+    emotes: Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0),
+    twitch: point.twitch ?? 0,
+    bttv: point.bttv ?? 0,
+    ffz: point.ffz ?? 0,
+    topEmotes: Array.isArray(point.topEmotes)
+      ? point.topEmotes
+          .filter((e) => e && typeof e.name === 'string' && e.name.length > 0)
+          .slice(0, 3)
+          .map((e) => ({ name: e.name, provider: e.provider, count: Number(e.count) || 0 }))
+      : undefined,
   }))
 }
 
-function normalizeTierCounts(raw: Partial<HubTierCounts> | null | undefined): HubTierCounts {
+function emptyTierCounts(): HubTierCounts {
+  return { queued: 0, running: 0, skipped: 0, done: 0, failed: 0, total: 0, eligible: 0 }
+}
+
+/** Test/fixture default for Silver/Gold tier counts on hub pipeline mocks. */
+export const EMPTY_HUB_TIER_COUNTS: HubTierCounts = emptyTierCounts()
+
+function normalizeTierCounts(raw: Partial<HubTierCounts> | undefined): HubTierCounts {
   return {
     queued: raw?.queued ?? 0,
     running: raw?.running ?? 0,
@@ -635,20 +663,39 @@ function normalizeTierCounts(raw: Partial<HubTierCounts> | null | undefined): Hu
     failed: raw?.failed ?? 0,
     total: raw?.total ?? 0,
     eligible: raw?.eligible ?? 0,
-    oldestQueuedSeconds: raw?.oldestQueuedSeconds ?? null,
+    oldestQueuedSeconds: raw?.oldestQueuedSeconds,
   }
 }
 
+export type HubCorpusPipelineInput = Partial<
+  Omit<HubCorpusPipeline, 'roster' | 'silver' | 'gold'>
+> & {
+  roster?: Partial<HubRosterSummary>
+  silver?: Partial<HubTierCounts>
+  gold?: Partial<HubTierCounts>
+}
+
+/** Build a normalized corpus pipeline block for tests and story fixtures. */
+export function hubCorpusPipelineFixture(
+  partial: HubCorpusPipelineInput = {},
+): HubCorpusPipeline {
+  return normalizeCorpusPipeline(partial, partial.generatedAt)
+}
+
 function normalizeCorpusPipeline(
-  raw: Partial<HubCorpusPipeline> | null | undefined,
+  raw: HubCorpusPipelineInput | Partial<HubCorpusPipeline> | null | undefined,
   generatedAt: string | undefined,
 ): HubCorpusPipeline {
   return {
     generatedAt: raw?.generatedAt ?? generatedAt ?? new Date().toISOString(),
     state: raw?.state ?? 'healthy',
-    topN: raw?.topN ?? 100, // Legacy public hubs fall below TOP500_TARGET_N and trigger readiness fallback.
+    topN: raw?.topN ?? 500,
+    liveAdmissionEnabled: raw?.liveAdmissionEnabled ?? false,
+    liveAdmissionTopN: raw?.liveAdmissionTopN ?? raw?.topN ?? 500,
+    maxActiveIrcChannels: raw?.maxActiveIrcChannels ?? raw?.collectorMax ?? 0,
     collectorActive: raw?.collectorActive ?? 0,
     collectorMax: raw?.collectorMax ?? 0,
+    metadataSampledAgoSeconds: raw?.metadataSampledAgoSeconds,
     roster: {
       live: raw?.roster?.live ?? 0,
       collectorTracking: raw?.roster?.collectorTracking ?? 0,
@@ -656,6 +703,7 @@ function normalizeCorpusPipeline(
       liveCollectorDeficitRows: raw?.roster?.liveCollectorDeficitRows ?? 0,
       metadataOnly: raw?.roster?.metadataOnly ?? 0,
       metadataStale: raw?.roster?.metadataStale ?? 0,
+      admissionFeatureDisabled: raw?.roster?.admissionFeatureDisabled ?? raw?.roster?.admissionDisabled ?? 0,
       admissionDisabled: raw?.roster?.admissionDisabled ?? 0,
       capacityBlocked: raw?.roster?.capacityBlocked ?? 0,
       warming: raw?.roster?.warming ?? 0,
@@ -663,7 +711,86 @@ function normalizeCorpusPipeline(
       viewerOnly: raw?.roster?.viewerOnly ?? 0,
       zeroChatAfterAge: raw?.roster?.zeroChatAfterAge ?? 0,
     },
-    silver: normalizeTierCounts(raw?.silver),
-    gold: normalizeTierCounts(raw?.gold),
+    silver: normalizeTierCounts(raw?.silver ?? emptyTierCounts()),
+    gold: normalizeTierCounts(raw?.gold ?? emptyTierCounts()),
   }
+}
+
+export type HubValidationSeverity = 'warn' | 'error'
+
+export interface HubValidationIssue {
+  code: string
+  message: string
+  severity: HubValidationSeverity
+}
+
+/** Client-side sanity checks — surfaces contract drift without mutating payload. */
+export function validatePublicHubInvariants(hub: PublicHub): HubValidationIssue[] {
+  const issues: HubValidationIssue[] = []
+
+  if (hub.corpusPipeline.roster.live > hub.liveChannels.length + 2) {
+    issues.push({
+      code: 'live_roster_vs_hub_rows',
+      severity: 'warn',
+      message: `Top-N roster reports ${hub.corpusPipeline.roster.live} live but hub returns ${hub.liveChannels.length} channel rows (bounded payload).`,
+    })
+  }
+
+  if (hub.corpusPipeline.roster.collectorTracking > hub.corpusPipeline.roster.live) {
+    issues.push({
+      code: 'collector_tracking_gt_live',
+      severity: 'error',
+      message: 'collectorTracking exceeds roster live count.',
+    })
+  }
+
+  if (hub.corpusPipeline.roster.liveCollectorDeficitRows > hub.corpusPipeline.roster.expectedCollectorRows) {
+    issues.push({
+      code: 'deficit_gt_expected',
+      severity: 'error',
+      message: 'liveCollectorDeficitRows exceeds expectedCollectorRows.',
+    })
+  }
+
+  for (let i = 1; i < hub.activity.points.length; i += 1) {
+    const prev = hub.activity.points[i - 1]?.t ?? 0
+    const next = hub.activity.points[i]?.t ?? 0
+    if (next <= prev) {
+      issues.push({
+        code: 'activity_points_unsorted',
+        severity: 'error',
+        message: `Activity points not strictly increasing at index ${i}.`,
+      })
+      break
+    }
+  }
+
+  hub.activity.points.forEach((point, index) => {
+    const emotes = point.emotes ?? 0
+    const seventv = point.seventv ?? 0
+    if (emotes > 0 && emotes < seventv) {
+      issues.push({
+        code: 'emotes_lt_seventv',
+        severity: 'warn',
+        message: `Activity point ${index}: emotes (${emotes}) below seventv (${seventv}).`,
+      })
+    }
+    if (point.chat < 0 || emotes < 0 || (point.viewers ?? 0) < 0) {
+      issues.push({
+        code: 'negative_activity_metric',
+        severity: 'error',
+        message: `Activity point ${index} has negative metrics.`,
+      })
+    }
+  })
+
+  if (hub.activity.channelCount > 0 && hub.poolSize > 0 && hub.activity.channelCount > hub.poolSize * 2) {
+    issues.push({
+      code: 'activity_channel_count_high',
+      severity: 'warn',
+      message: `activity.channelCount (${hub.activity.channelCount}) looks high vs poolSize (${hub.poolSize}).`,
+    })
+  }
+
+  return issues
 }

@@ -1,38 +1,44 @@
-import { Link, useParams } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AnalyticsConsole } from '@streamclone/analytics-console'
-import { usePortalAnalyticsConsoleApi } from '../../hooks/usePortalAnalyticsConsoleApi'
-import '../../ui/tokens.css'
-import '../../ui/components/analytics/analytics-hub-home.css'
-import '../../ui/components/analytics/analytics-console.css'
+import { useRecordHubRecentLogin } from '../../hooks/useRecordHubRecentLogin'
+import '../../ui/analytics-tailwind.css'
 
-/** Gated channel analytics — Streamclone console via portalAnalytics adapter. */
+const FigmaChannelView = lazy(() => import('./FigmaChannelView'))
+
+function portalSessionPath(login: string, streamId: string): string {
+  return `/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}`
+}
+
+/**
+ * Public, no-login channel analytics for a Twitch channel.
+ *
+ * `/analytics/:channelLogin` and `/analytics/:channelLogin/:streamId` render the
+ * shared Streamclone analytics console directly (full Streamclone parity).
+ *
+ * `?figma=1` is an optional opt-in to the lighter Figma session dashboard for
+ * design review only; it is not the default surface.
+ */
 export default function ChannelAnalyticsPage() {
-  usePortalAnalyticsConsoleApi()
-  const { login = '' } = useParams<{ login: string }>()
-  const label = login || 'channel'
+  useRecordHubRecentLogin()
+  const [searchParams] = useSearchParams()
+  const figmaMode = searchParams.get('figma') === '1'
+
+  if (figmaMode) {
+    return (
+      <Suspense fallback={null}>
+        <FigmaChannelView />
+      </Suspense>
+    )
+  }
 
   return (
-    <main className="sp-hub" id="analytics-main" aria-label={`Analytics for ${label}`}>
-      <header className="hub-brand">
-        <Link to="/analytics" className="hub-brand__nm" style={{ textDecoration: 'none', color: 'inherit' }}>
-          Stream<b>Pulse</b>
-        </Link>
-        <span className="hub-brand__tag">Channel analytics</span>
-      </header>
-      <section className="hub-sec hub-sec--console">
-        <div className="hub-sec-head">
-          <div className="hub-sec-head__l">
-            <h1 id="channel-analytics-title">{label}</h1>
-            <span className="hub-sec-head__desc">
-              Streamclone minute charts via sanitized portal analytics APIs.
-            </span>
-          </div>
-          <Link className="hub-openbtn" to="/analytics">
-            Back to hub
-          </Link>
-        </div>
-        <AnalyticsConsole />
-      </section>
-    </main>
+    <div className="sc-analytics-console" id="analytics-main">
+      <AnalyticsConsole
+        mode="public"
+        showGameSegments={true}
+        buildSessionPath={portalSessionPath}
+      />
+    </div>
   )
 }

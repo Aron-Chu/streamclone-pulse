@@ -20,7 +20,6 @@ const FALLBACK_COUNTERS = {
   streamsTracked: 512,
   chatMessagesProcessed: 48_200_000,
   emotesIndexed: 1_320_000,
-  momentsDetected: 214_000,
   vodsAnalyzed: 9_840,
 }
 
@@ -119,7 +118,6 @@ export function TrackedChannels({ hub }: { hub: PublicHub | null }) {
     { key: 'streams', label: 'Channels tracked', value: corpus?.streamsTracked || FALLBACK_COUNTERS.streamsTracked },
     { key: 'chat', label: 'Chat msgs read', value: corpus?.chatMessagesProcessed || FALLBACK_COUNTERS.chatMessagesProcessed },
     { key: 'emotes', label: 'Emotes indexed', value: corpus?.emotesIndexed || FALLBACK_COUNTERS.emotesIndexed },
-    { key: 'moments', label: 'Moments detected', value: corpus?.momentsDetected || FALLBACK_COUNTERS.momentsDetected },
     { key: 'vods', label: 'VODs analyzed', value: corpus?.vodsAnalyzed || FALLBACK_COUNTERS.vodsAnalyzed },
   ]
 

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronDown, Radio } from 'lucide-react'
 import type { HubLiveChannel } from '../../../lib/publicHub'
-import { compact, coverageMeta } from '../analytics/hubFormat'
+import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
+import { compact, coverageMeta, formatStreamUptime } from '../analytics/hubFormat'
 import { Avatar, Delta, EmptyState, Skeleton } from './primitives'
 
 type SortKey = 'viewers' | 'chatPerMin' | 'emotesPerMin'
@@ -11,6 +12,8 @@ type FilterKey = 'all' | 'synced' | 'collecting' | 'partial' | 'tracked'
 export interface HubLiveTableProps {
   channels: HubLiveChannel[]
   loading?: boolean
+  /** When true, omits outer card header (used inside Emote signal section). */
+  embedded?: boolean
 }
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -55,7 +58,11 @@ function coverageVisual(channel: HubLiveChannel): { pct: number; color: string; 
   }
 }
 
-export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
+function hasRollupSignal(channel: HubLiveChannel): boolean {
+  return channel.chatPerMin > 0 || Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin) > 0
+}
+
+export function HubLiveTable({ channels, loading, embedded }: HubLiveTableProps) {
   const navigate = useNavigate()
   const [sortKey, setSortKey] = useState<SortKey>('viewers')
   const [dir, setDir] = useState<'asc' | 'desc'>('desc')
@@ -69,7 +76,8 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
   }, [channels])
 
   const rows = useMemo(() => {
-    const filtered = filter === 'all' ? channels : channels.filter((c) => filterOf(c) === filter)
+    const effectiveFilter = embedded ? 'all' : filter
+    const filtered = effectiveFilter === 'all' ? channels : channels.filter((c) => filterOf(c) === effectiveFilter)
     const sorted = [...filtered].sort((a, b) => {
       const value = (channel: HubLiveChannel) =>
         sortKey === 'emotesPerMin' ? Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin) : channel[sortKey]
@@ -77,7 +85,7 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
       return dir === 'asc' ? delta : -delta
     })
     return sorted
-  }, [channels, filter, sortKey, dir])
+  }, [channels, filter, sortKey, dir, embedded])
 
   const visible = expanded ? rows : rows.slice(0, COLLAPSED_ROWS)
 
@@ -102,11 +110,12 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
 
   return (
     <>
+      {!embedded ? (
       <div className="hx-card__header hx-card__header--row">
         <div>
           <h3 className="hx-card__title">Live directory</h3>
           <div className="hx-card__desc">
-            IRC live coverage states · Silver/Gold VOD backfill progress is in Coverage health
+            IRC live coverage states · manual VOD import progress is in Coverage health
           </div>
         </div>
         <div className="hx-tabs" role="tablist" aria-label="Coverage filter">
@@ -128,6 +137,7 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
           ))}
         </div>
       </div>
+      ) : null}
       <div className="hx-card__content hx-card__content--flush" style={{ overflowX: 'auto' }}>
         {loading && channels.length === 0 ? (
           <div style={{ padding: '0.5rem 1.15rem' }}>
@@ -142,7 +152,7 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
         ) : rows.length === 0 ? (
           <EmptyState icon={<Radio aria-hidden="true" />}>
             {channels.length === 0
-              ? 'No channels are live right now. The directory fills as tracked streams go live.'
+              ? 'No channels live right now. The directory fills as tracked streams go live.'
               : 'No channels match this coverage filter.'}
           </EmptyState>
         ) : (
@@ -180,10 +190,10 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
                 >
                   Emotes/min {arrow('emotesPerMin')}
                 </th>
-                <th scope="col" className="c hide">
-                  Trend
+                <th scope="col" className="c">
+                  Rollup trend
                 </th>
-                <th scope="col" className="c hide" style={{ paddingRight: '1.15rem' }}>
+                <th scope="col" className="c" style={{ paddingRight: embedded ? '0.85rem' : '1.15rem' }}>
                   Coverage
                 </th>
               </tr>
@@ -192,10 +202,11 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
               {visible.map((channel) => {
                 const meta = coverageMeta(channel.coverageState)
                 const cov = coverageVisual(channel)
+                const uptime = formatStreamUptime(channel.startedAt)
                 return (
                   <tr
                     key={channel.login}
-                    onClick={() => navigate(`/analytics/${encodeURIComponent(channel.login)}`)}
+                    onClick={() => navigate(buildAnalyticsHref({ login: channel.login, streamId: channel.streamId }))}
                     style={{ cursor: 'pointer' }}
                   >
                     <td style={{ paddingLeft: '1.15rem' }}>
@@ -203,12 +214,20 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
                         <Avatar login={channel.login} src={channel.profileImageUrl} />
                         <span>
                           <Link
-                            to={`/analytics/${encodeURIComponent(channel.login)}`}
+                            to={buildAnalyticsHref({ login: channel.login, streamId: channel.streamId })}
                             onClick={(event) => event.stopPropagation()}
                           >
                             <strong>{channel.displayName?.trim() || channel.login}</strong>
                           </Link>
-                          <small>{channel.category?.trim() || 'Uncategorised'}</small>
+                          {channel.title?.trim() ? (
+                            <small className="hx-tbl__title" title={channel.title.trim()}>
+                              {channel.title.trim()}
+                            </small>
+                          ) : null}
+                          <small>
+                            {channel.category?.trim() || 'Uncategorised'}
+                            {uptime ? ` · ${uptime} live` : ''}
+                          </small>
                         </span>
                       </div>
                     </td>
@@ -221,10 +240,10 @@ export function HubLiveTable({ channels, loading }: HubLiveTableProps) {
                     <td className="r tnum">{compact(channel.viewers)}</td>
                     <td className="r tnum chat">{compact(channel.chatPerMin)}</td>
                     <td className="r tnum emote">{compact(Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin))}</td>
-                    <td className="c hide">
-                      <Delta pct={channel.trendPct} />
+                    <td className="c">
+                      {hasRollupSignal(channel) ? <Delta pct={channel.trendPct} /> : <span className="muted">no rollup</span>}
                     </td>
-                    <td className="c hide" style={{ paddingRight: '1.15rem' }}>
+                    <td className="c" style={{ paddingRight: embedded ? '0.85rem' : '1.15rem' }}>
                       <span className="hx-covbar" title={`${meta.label} · ${cov.pct}%`}>
                         <i style={{ width: `${cov.pct}%`, background: cov.color }} />
                       </span>

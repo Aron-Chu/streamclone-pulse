@@ -8,7 +8,6 @@ const STAT_FIELDS: { key: keyof PublicStats; label: string; accent: string }[] =
   { key: 'chatMessagesProcessed', label: 'Chat messages processed', accent: 'var(--sc-chart-2)' },
   { key: 'emotesIndexed', label: 'Emotes indexed', accent: 'var(--sc-chart-5)' },
   { key: 'streamsTracked', label: 'Streams tracked', accent: 'var(--sc-chart-1)' },
-  { key: 'momentsDetected', label: 'Moments detected', accent: 'var(--sc-chart-4)' },
   { key: 'vodsAnalyzed', label: 'VODs analyzed', accent: 'var(--sc-chart-3)' },
 ]
 

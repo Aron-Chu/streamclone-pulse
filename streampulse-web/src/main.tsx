@@ -1,11 +1,15 @@
 import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, useNavigate } from 'react-router-dom'
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AppRoutes } from './routes/index'
 import { clearBetaKey, refreshPrincipal } from './lib/auth'
+import { setupStreamcloneAnalyticsApi } from './lib/streamcloneAnalytics'
 import { shadowStyles } from './ui/theme'
 import './ui/global.css'
+
+// Portal analytics console queries run on first paint — configure before React mounts.
+setupStreamcloneAnalyticsApi()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,18 +20,34 @@ const queryClient = new QueryClient({
   },
 })
 
+function isPublicAnalyticsPath(pathname: string): boolean {
+  if (
+    pathname === '/analytics' ||
+    pathname === '/analytics/streams'
+  ) {
+    return true
+  }
+  // /analytics/:channelLogin, /analytics/:channelLogin/:streamId, and the
+  // /s/ backcompat alias are all public, no-login channel surfaces.
+  return /^\/analytics\/[^/]+(?:\/(?:s\/)?[^/]+)?$/.test(pathname)
+}
+
 function AuthRejectedListener() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     function onRejected() {
+      if (isPublicAnalyticsPath(location.pathname)) {
+        return
+      }
       clearBetaKey()
       queryClient.clear()
-      navigate('/login', { replace: true })
+      navigate('/analytics', { replace: true })
     }
     window.addEventListener('auth:rejected', onRejected)
     return () => window.removeEventListener('auth:rejected', onRejected)
-  }, [navigate])
+  }, [location.pathname, navigate])
 
   return null
 }

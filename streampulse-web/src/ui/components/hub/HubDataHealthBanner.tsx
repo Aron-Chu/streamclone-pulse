@@ -14,10 +14,6 @@ export interface HubDataHealthBannerProps {
   backendUrl?: string
 }
 
-function tierIdle(tier: HubCorpusPipeline['silver']): boolean {
-  return tier.total === 0 && tier.queued === 0 && tier.running === 0
-}
-
 export function HubDataHealthBanner({
   loadSource,
   hubEndpointOk,
@@ -30,62 +26,80 @@ export function HubDataHealthBanner({
   const messages: Array<{ tone: 'warn' | 'info'; text: string }> = []
 
   if (error) {
-    messages.push({
-      tone: 'warn',
-      text: `Could not refresh hub data — ${error}. Showing the last loaded snapshot if available.`,
-    })
+  messages.push({
+  tone: 'warn',
+  text: `Could not refresh hub data - ${error}. Showing the last loaded snapshot if available.`,
+  })
   }
 
-  if (loadSource === 'readiness-fallback') {
-    messages.push({
-      tone: 'warn',
-      text: 'Hub chart unavailable — using roster snapshot only. Deploy `/v1/public/hub` on this backend or switch backend in Setup.',
-    })
+  if (loadSource === 'stats-fallback') {
+  messages.push({
+  tone: 'warn',
+  text: 'Public hub unavailable - showing aggregate stats only. Deploy `/v1/public/hub` on this backend or switch backend in Setup.',
+  })
   } else if (hubEndpointOk && activitySummary.pointCount < 2) {
-    messages.push({
-      tone: 'info',
-      text: 'Hub connected but no minute rollups yet — chart fills as IRC collectors write data.',
-    })
+  messages.push({
+  tone: 'info',
+  text: 'Hub connected but no minute rollups yet - chart fills as IRC collectors write data.',
+  })
   }
 
   if (activitySummary.gapCount > 0) {
+  messages.push({
+  tone: 'info',
+  text: `${activitySummary.gapCount} gap${activitySummary.gapCount === 1 ? '' : 's'} in this window = minutes with no stored rollups (collector downtime or sparse pool).`,
+  })
+  }
+
+  if (activitySummary.expectedBuckets > 0 && activitySummary.missingBuckets > 0) {
+  messages.push({
+  tone: 'warn',
+  text: `Activity coverage ${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets (${Math.round(activitySummary.coveragePct)}%) - ${activitySummary.missingBuckets} bucket${activitySummary.missingBuckets === 1 ? '' : 's'} missing from backend rollups.`,
+  })
+  }
+
+  const pipelineCritical =
+    pipeline?.state === 'critical' ||
+    (pipeline?.roster.collectorTracking ?? 0) <= 0
+  if (pipelineCritical) {
+    const tracking = pipeline?.roster.collectorTracking ?? 0
+    const expected = Math.max(
+      pipeline?.roster.expectedCollectorRows ?? 0,
+      pipeline?.collectorMax ?? 0,
+    )
     messages.push({
-      tone: 'info',
-      text: `${activitySummary.gapCount} gap${activitySummary.gapCount === 1 ? '' : 's'} in this window = minutes with no stored rollups (collector downtime or sparse pool).`,
+      tone: 'warn',
+      text:
+        tracking <= 0
+          ? 'Partial live IRC coverage — collector admission is limited (0 tracked). Charts and moments reflect tracked channels only.'
+          : `Partial live IRC coverage — ${tracking}${expected > 0 ? ` / ${expected}` : ''} Top-${pipeline?.topN ?? 'N'} channels tracked.`,
     })
   }
 
-  if (
-    pipeline &&
-    liveRosterCount > 0 &&
-    tierIdle(pipeline.silver) &&
-    tierIdle(pipeline.gold)
-  ) {
-    messages.push({
-      tone: 'info',
-      text: 'VOD/Gold queues idle is normal; live IRC is separate.',
-    })
-  }
+  messages.push({
+  tone: 'info',
+  text: 'Live network activity uses backend minute rollups only from the hosted API and IRC worker plane. Imported VOD sessions never fill this global graph.',
+  })
 
   if (messages.length === 0) return null
 
   const caption = backendSourceCaption(backendUrl)
 
   return (
-    <div className="hx-health-banner" role="status" aria-live="polite">
-      {messages.map((message, index) => {
-        const Icon = message.tone === 'warn' ? AlertTriangle : Info
-        return (
-          <div
-            key={index}
-            className={`hx-health-banner__row hx-health-banner__row--${message.tone}`}
-          >
-            <Icon aria-hidden="true" size={16} />
-            <span>{message.text}</span>
-          </div>
-        )
-      })}
-      <div className="hx-health-banner__caption muted">{caption}</div>
-    </div>
+  <div className="hx-health-banner" role="status" aria-live="polite">
+  {messages.map((message, index) => {
+  const Icon = message.tone === 'warn' ? AlertTriangle : Info
+  return (
+  <div
+  key={index}
+  className={`hx-health-banner__row hx-health-banner__row--${message.tone}`}
+  >
+  <Icon aria-hidden="true" size={16} />
+  <span>{message.text}</span>
+  </div>
+  )
+  })}
+  <div className="hx-health-banner__caption muted">{caption}</div>
+  </div>
   )
 }

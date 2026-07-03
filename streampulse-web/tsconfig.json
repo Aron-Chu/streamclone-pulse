@@ -7,12 +7,17 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
     "ignoreDeprecations": "6.0",
     "types": ["vite/client", "vitest/globals", "node"]
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  "exclude": [
+    "src/routes/analytics/ChannelDatePage.tsx",
+    "src/routes/analytics/ChannelSessionKeyRoute.tsx",
+    "src/routes/analytics/StreamsHubPage.tsx"
+  ]
 }

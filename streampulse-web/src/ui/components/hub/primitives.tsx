@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
-import { compact, deltaLabel } from '../analytics/hubFormat'
+import { deltaLabel, compact } from '../analytics/hubFormat'
+import { TrendWithCaption } from '../analytics/TrendWithCaption'
 
 /** Chart accent token keys available in the .hubx scope. */
 export type HubAccent = 'chart-1' | 'chart-2' | 'chart-3' | 'chart-4' | 'chart-5'
@@ -209,9 +210,11 @@ export function EmptyState({ icon, children, action }: EmptyStateProps) {
 
 /* ----------------------------------------------------------------- Delta */
 export function Delta({ pct }: { pct: number | null | undefined }) {
-  const { text, tone } = deltaLabel(pct)
-  if (tone === 'flat') return <span className="muted">{text}</span>
-  return <span className={`delta ${tone === 'up' ? 'rise' : 'fall'}`}>{text}</span>
+  if (pct == null || !Number.isFinite(pct) || Math.round(pct) === 0) {
+    const { text } = deltaLabel(pct)
+    return <span className="muted">{text}</span>
+  }
+  return <TrendWithCaption pct={pct} classPrefix="delta" />
 }
 
 /* ---------------------------------------------------------------- Avatar */

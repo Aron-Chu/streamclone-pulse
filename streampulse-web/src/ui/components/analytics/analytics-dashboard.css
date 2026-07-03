@@ -993,6 +993,39 @@
   margin-top: 0.1rem;
   font-variant-numeric: tabular-nums;
 }
+.dash-feed__open {
+  color: hsl(var(--sc-chart-2));
+  text-decoration: none;
+}
+.dash-feed__open:hover {
+  text-decoration: underline;
+}
+.dash-feed__emotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+.dash-feed__emote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.4rem 0.12rem 0.25rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: 999px;
+  background: hsl(var(--sc-muted) / 0.45);
+  font-size: 0.66rem;
+  color: hsl(var(--sc-foreground));
+}
+.dash-feed__emote img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.dash-feed__emote small {
+  color: hsl(var(--sc-muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
 
 /* empty */
 .dash-empty {
