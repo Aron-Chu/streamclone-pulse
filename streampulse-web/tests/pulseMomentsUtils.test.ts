@@ -198,7 +198,7 @@ describe('moment emote rollups', () => {
     expect(momentHasEmoteRollups({ offsetSeconds: 1, score: 1, label: '7TV emote spike' })).toBe(false)
   })
 
-  it('dedupes live IRC context labels', () => {
+  it('momentContextParts still maps operator labels for diagnostics tooling', () => {
     const parts = momentContextParts({
       offsetSeconds: 1,
       score: 1,
@@ -236,5 +236,78 @@ describe('vodStateLabel', () => {
     expect(vodStateLabel('synced')).toBe('Synced')
     expect(vodStateLabel('partial')).toBe('Partial')
     expect(vodStateLabel('no_vod')).toBe('Live IRC')
+  })
+
+  it('does not claim Live IRC once the channel is known offline', () => {
+    expect(vodStateLabel('no_vod', false)).toBe('IRC (VOD pending)')
+    expect(vodStateLabel('live_only', false)).toBe('IRC (VOD pending)')
+    // Live or unknown liveness keeps the current copy.
+    expect(vodStateLabel('no_vod', true)).toBe('Live IRC')
+    expect(vodStateLabel('no_vod', undefined)).toBe('Live IRC')
+    // VOD-backed states are unaffected by liveness.
+    expect(vodStateLabel('vod_ready', false)).toBe('VOD ready')
+  })
+})
+
+describe('filterPulseMoments stream_opening filter', () => {
+  it('matches stream_opening kind and activity tag', () => {
+    const moments = [
+      { offsetSeconds: 1, score: 90, label: 'Just went live', kind: 'stream_opening' },
+      { offsetSeconds: 2, score: 80, label: 'Chat spike', kind: 'chat_spike' },
+      { offsetSeconds: 3, score: 70, label: 'Viewer spike', activityTag: 'early_stream' },
+    ]
+    const filtered = filterPulseMoments(moments, 'stream_opening')
+    expect(filtered.map((m) => m.offsetSeconds)).toEqual([1])
+  })
+})
+
+describe('momentWallClockLabel', () => {
+  it('formats UTC wall clock when moment.at is present', async () => {
+    const { momentWallClockLabel } = await import('../src/lib/pulseMomentsUtils')
+    const at = Date.parse('2026-07-04T04:06:00.000Z')
+    const label = momentWallClockLabel({ offsetSeconds: 120, score: 1, label: 'x', at })
+    expect(label.primary).toMatch(/UTC/)
+    expect(label.secondary).toContain('into stream')
+  })
+
+  it('falls back to stream offset when wall clock is unknown', async () => {
+    const { momentWallClockLabel } = await import('../src/lib/pulseMomentsUtils')
+    const label = momentWallClockLabel({ offsetSeconds: 180, score: 1, label: 'x' })
+    expect(label.primary).toBe('3:00')
+  })
+})
+
+describe('momentTotalEmoteUses', () => {
+  it('sums top emote counts for the minute', async () => {
+    const { momentTotalEmoteUses } = await import('../src/lib/pulseMomentsUtils')
+    expect(
+      momentTotalEmoteUses({
+        offsetSeconds: 1,
+        score: 1,
+        label: 'x',
+        topEmotes: [
+          { name: 'A', count: 6 },
+          { name: 'B', count: 5 },
+        ],
+      }),
+    ).toBe(11)
+  })
+})
+
+describe('momentWhatHappenedSummary', () => {
+  it('builds a readable one-liner with category and emote', async () => {
+    const { momentWhatHappenedSummary } = await import('../src/lib/pulseMomentsUtils')
+    const summary = momentWhatHappenedSummary({
+      offsetSeconds: 60,
+      score: 80,
+      label: 'Just went live',
+      kind: 'stream_opening',
+      chatPerMin: 42,
+      category: 'Just Chatting',
+      topEmoteCode: 'KEKW',
+    })
+    expect(summary).toContain('Just went live')
+    expect(summary).toContain('Just Chatting')
+    expect(summary).toContain('KEKW')
   })
 })

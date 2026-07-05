@@ -12,28 +12,9 @@
  * - Hover → --sp-surface-3-hover; selected/active → --sp-surface-active
  * - Borders: default --sp-border; emphasis/hover/active only → --sp-border-strong
  */
+@import './analytics-themes/command-center.css';
+
 .figma-analytics {
-  --sp-bg: #09090b;
-  /* Soft flat default — borders carry separation, surfaces stay close to canvas */
-  --sp-surface-1: rgba(255, 255, 255, 0.016);
-  --sp-surface-2: rgba(255, 255, 255, 0.022);
-  --sp-surface-3: rgba(255, 255, 255, 0.028);
-  --sp-surface-3-hover: rgba(255, 255, 255, 0.042);
-  --sp-surface-active: rgba(255, 255, 255, 0.06);
-  --sp-surface-inset: rgba(255, 255, 255, 0.012);
-
-  --sp-border: rgba(255, 255, 255, 0.085);
-  --sp-border-strong: rgba(255, 255, 255, 0.14);
-
-  --sp-text: rgba(255, 255, 255, 0.92);
-  --sp-text-muted: rgba(255, 255, 255, 0.58);
-  --sp-text-faint: rgba(255, 255, 255, 0.55);
-
-  /* Teal accent — matches chat volume bars, avoids indigo wash on flat surfaces */
-  --sp-accent: #5eead4;
-  --sp-accent-strong: #99f6e4;
-  --sp-accent-bg: rgba(94, 234, 212, 0.1);
-  --sp-accent-dim: rgba(94, 234, 212, 0.05);
   --sp-green: #4ade80;
   --sp-amber: #fbbf24;
   --sp-cyan: #22d3ee;
@@ -44,7 +25,6 @@
   --sp-provider-bttv: #FB7185;
   --sp-provider-ffz: #FBBF24;
 
-  /* Typography scale — Inter for UI, mono for numeric columns only */
   --sp-type-label: 0.6875rem;
   --sp-type-meta: 0.75rem;
   --sp-type-body: 0.8125rem;
@@ -54,14 +34,20 @@
   --sp-leading-body: 1.45;
   --sp-tracking-label: 0.04em;
 
+  --sp-radius-sm: 6px;
+  --sp-radius-md: 10px;
+  --sp-radius-lg: 12px;
+  --sp-radius-xl: 16px;
+  --sp-chart-fill-opacity: 0.12;
+  --sp-chart-stroke-width: 1.5;
+
   --fma-font: Inter, system-ui, sans-serif;
   --fma-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', monospace;
 
-  /* Bridge legacy --fma-* names during migration */
   --fma-bg: var(--sp-bg);
   --fma-nav-bg: rgba(9, 9, 11, 0.94);
   --fma-panel: var(--sp-surface-1);
-  --fma-panel-alt: rgba(255, 255, 255, 0.02);
+  --fma-panel-alt: rgba(255, 255, 255, 0.016);
   --fma-border: var(--sp-border);
   --fma-border-accent: var(--sp-border-strong);
   --fma-accent: var(--sp-accent);
@@ -98,6 +84,8 @@
   --chart-4: 43 96% 56%;
   --chart-5: 347 89% 65%;
   --chart-bar: 172 48% 52%;
+  --sp-chart-viewers: 210 12% 78%;
+  --sp-chart-chat: 172 48% 52%;
   --hx-bg: var(--sp-bg);
   --hx-accent: var(--sp-accent);
   --hx-accent-text: var(--sp-accent-strong);

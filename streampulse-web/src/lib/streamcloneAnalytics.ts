@@ -1,6 +1,7 @@
 import {
   configureAnalyticsApi,
   configureEmoteAssetBase,
+  minuteRollupSpanSeconds,
   type AnalyticsApi,
   type AnalyticsStreamOptions,
   type PulseBookmarkQuery,
@@ -26,9 +27,10 @@ import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore
  * `@streamclone/analytics-console`.
  *
  * - **Chart minutes:** `downsampleTimeline()` to ~240 points on hosted API (prod).
- *   For literal `:8090` visual QA, point `VITE_BACKEND_URL` at `http://localhost:8090`.
+ *   Local `:8090` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
  * - **Top emotes:** `mergePortalTopEmotes()` — stream summary totals win over
- *   per-minute bucket catalog counts.
+ *   per-minute bucket catalog counts; channel emote identity (`/channels/{login}/emotes`)
+ *   fills imageUrl/id gaps for recap-only or low-usage emotes.
  * - **VOD links:** client resolves `detail.vodId ?? stream.vodId ?? recap.vodId`
  *   for Selected Moment “Open on Twitch”.
  */
@@ -46,10 +48,13 @@ interface PortalStreamRecord {
   displayName?: string
   title?: string
   category?: string
+  gamesSummary?: string
   startedAt: string
   endedAt?: string | null
   currentViewers?: number
   peakViewers?: number
+  viewerSamples?: number
+  chatMessages?: number
   vodId?: string
 }
 
@@ -72,6 +77,7 @@ interface PortalMinutePoint {
   viewerMax?: number
   viewerLatest?: number
   chatCount?: number
+  totalEmoteCount?: number
   seventvEmoteCount?: number
   missing?: boolean
   topEmotes?: Array<{ name: string; provider?: string; imageUrl?: string; count: number }>
@@ -133,8 +139,32 @@ interface PortalSyncStatus {
   stale?: boolean
 }
 
-function usesLocalAnalyticsRoutes(): boolean {
+interface PortalChannelLiveResponse {
+  channel: string
+  state: string
+  stream?: PortalStreamRecord
+  rollups?: PortalMinutePoint[]
+  topEmotes?: AnalyticsTopEmote[]
+  sources?: Array<{ source: string; state: string; label?: string }>
+  updatedAt: number
+  vodId?: string
+  syncPhase?: string
+}
+
+interface PortalChannelEmoteRow {
+  provider: string
+  providerEmoteId?: string
+  name: string
+  imageUrl?: string
+  useCount?: number
+}
+
+export function usesLocalAnalyticsBackend(): boolean {
   return resolveBackendSource(getBackendUrl()) === 'local'
+}
+
+function usesLocalAnalyticsRoutes(): boolean {
+  return usesLocalAnalyticsBackend()
 }
 
 const PLACEHOLDER_CATEGORIES = /^(live|syncing\.{3}|syncing…)$/i
@@ -142,12 +172,13 @@ const PLACEHOLDER_CATEGORIES = /^(live|syncing\.{3}|syncing…)$/i
 /** Synthesize one chart segment from stream category + rollup span when games API is empty. */
 export function deriveClientGameSegments(
   streamId: string,
-  detail: Pick<AnalyticsStreamDetail, 'stream' | 'rollups'> | null | undefined,
+  detail: Pick<AnalyticsStreamDetail, 'stream' | 'rollups' | 'momentRollups'> | null | undefined,
 ): GameSegment[] {
   const category = detail?.stream?.category?.trim() ?? ''
   if (!category || PLACEHOLDER_CATEGORIES.test(category)) return []
-  const rollupCount = detail?.rollups?.length ?? 0
-  if (rollupCount <= 0) return []
+  const timeline = detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups ?? []
+  const durationSeconds = minuteRollupSpanSeconds(timeline)
+  if (durationSeconds <= 0) return []
   return [
     {
       id: 0,
@@ -155,7 +186,7 @@ export function deriveClientGameSegments(
       gameName: category,
       boxArtUrl: '',
       offsetSeconds: 0,
-      durationSeconds: rollupCount * 60,
+      durationSeconds,
       createdAt: new Date(0).toISOString(),
     },
   ]
@@ -176,6 +207,44 @@ function analyticsPath(path: string): string {
   return `/v1/analytics${path.startsWith('/') ? path : `/${path}`}`
 }
 
+function portalEmoteLookupKey(emote: { name: string; provider?: string }): string {
+  const name = emote.name.trim().toLowerCase()
+  if (!name) return ''
+  return `${(emote.provider ?? 'unknown').toLowerCase()}:${name}`
+}
+
+/** Re-key minute emote buckets to match stream-level topEmote keys (provider:id:name). */
+export function alignRollupEmoteKeys(
+  rollups: AnalyticsMinuteRollup[],
+  topEmotes: AnalyticsTopEmote[],
+): AnalyticsMinuteRollup[] {
+  if (!topEmotes.length) return rollups
+  const keyByLookup = new Map<string, string>()
+  for (const emote of topEmotes) {
+    const np = portalEmoteLookupKey(emote)
+    if (np && emote.key) keyByLookup.set(np, emote.key)
+  }
+  let anyChanged = false
+  const alignedRollups = rollups.map((rollup) => {
+    if (!rollup.emotes || Object.keys(rollup.emotes).length === 0) return rollup
+    const aligned: Record<string, number> = {}
+    let rollupChanged = false
+    for (const [rollupKey, count] of Object.entries(rollup.emotes)) {
+      if (count <= 0) continue
+      const parts = rollupKey.split(':')
+      const provider = (parts[0] ?? 'unknown').toLowerCase()
+      const name = (parts.length >= 3 ? parts.slice(2).join(':') : rollupKey).trim().toLowerCase()
+      const targetKey = keyByLookup.get(`${provider}:${name}`) ?? rollupKey
+      aligned[targetKey] = (aligned[targetKey] ?? 0) + count
+      if (targetKey !== rollupKey) rollupChanged = true
+    }
+    if (!rollupChanged) return rollup
+    anyChanged = true
+    return { ...rollup, emotes: aligned }
+  })
+  return anyChanged ? alignedRollups : rollups
+}
+
 function portalBucketEmoteKey(emote: { name: string; provider?: string }): string {
   const provider = (emote.provider ?? 'other').toLowerCase()
   const name = emote.name.trim()
@@ -183,37 +252,94 @@ function portalBucketEmoteKey(emote: { name: string; provider?: string }): strin
   return `${provider}:${name}:${name}`
 }
 
-/** Stream-level top emotes from `/summary` win over per-minute bucket totals. */
+/** Stream-level top emotes from `/summary` win counts; minute + channel catalogs fill imageUrl gaps. */
 export function mergePortalTopEmotes(
   catalog: AnalyticsTopEmote[],
   summaryEmotes: AnalyticsTopEmote[] | null | undefined,
+  channelEmotes?: AnalyticsTopEmote[] | null,
 ): AnalyticsTopEmote[] {
-  const catalogByNameProvider = new Map<string, AnalyticsTopEmote>()
+  const merged = new Map<string, AnalyticsTopEmote>()
+
   for (const emote of catalog) {
-    const name = emote.name.trim().toLowerCase()
-    if (!name) continue
-    const np = `${(emote.provider ?? 'unknown').toLowerCase()}:${name}`
-    catalogByNameProvider.set(np, emote)
+    const np = portalEmoteLookupKey(emote)
+    if (!np) continue
+    merged.set(np, {
+      ...emote,
+      imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+    })
   }
 
-  if (summaryEmotes?.length) {
-    return summaryEmotes
-      .map((emote) => {
-        const name = emote.name.trim().toLowerCase()
-        const np = `${(emote.provider ?? 'unknown').toLowerCase()}:${name}`
-        const catalogMatch = catalogByNameProvider.get(np)
-        const imageUrl = absolutizeEmoteAssetUrl(
-          emote.imageUrl ?? catalogMatch?.imageUrl,
-        )
-        if (catalogMatch?.imageUrl && !emote.imageUrl) {
-          return { ...emote, imageUrl }
-        }
-        return imageUrl && imageUrl !== emote.imageUrl ? { ...emote, imageUrl } : emote
+  for (const emote of summaryEmotes ?? []) {
+    const np = portalEmoteLookupKey(emote)
+    if (!np) continue
+    const minuteMatch = merged.get(np)
+    const imageUrl = absolutizeEmoteAssetUrl(emote.imageUrl ?? minuteMatch?.imageUrl)
+    merged.set(np, {
+      ...(minuteMatch ?? emote),
+      ...emote,
+      key: emote.key || minuteMatch?.key || np,
+      imageUrl,
+    })
+  }
+
+  for (const emote of channelEmotes ?? []) {
+    const np = portalEmoteLookupKey(emote)
+    if (!np) continue
+    const existing = merged.get(np)
+    const imageUrl = absolutizeEmoteAssetUrl(
+      existing?.imageUrl ?? emote.imageUrl,
+    )
+    const id = existing?.id?.trim() || emote.id?.trim() || undefined
+    if (existing) {
+      merged.set(np, {
+        ...existing,
+        id: id ?? existing.id,
+        imageUrl: imageUrl || existing.imageUrl,
+        key: existing.key || emote.key,
       })
-      .sort((a, b) => b.count - a.count)
+    } else {
+      merged.set(np, {
+        ...emote,
+        key: emote.key || `${np}:${emote.name}`,
+        imageUrl,
+        count: emote.count ?? 0,
+      })
+    }
   }
 
-  return [...catalog].sort((a, b) => b.count - a.count)
+  return Array.from(merged.values()).sort((a, b) => b.count - a.count)
+}
+
+function portalChannelEmotesToCatalog(emotes: PortalChannelEmoteRow[]): AnalyticsTopEmote[] {
+  const out: AnalyticsTopEmote[] = []
+  for (const emote of emotes) {
+    const name = emote.name.trim()
+    if (!name) continue
+    const provider = (emote.provider ?? 'unknown').toLowerCase()
+    const id = emote.providerEmoteId?.trim() || undefined
+    out.push({
+      key: id ? `${provider}:${id}:${name}` : portalBucketEmoteKey({ name, provider }),
+      name,
+      id,
+      provider,
+      imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+      count: emote.useCount ?? 0,
+    })
+  }
+  return out
+}
+
+async function fetchPortalChannelEmotesCatalog(login: string): Promise<AnalyticsTopEmote[]> {
+  const channel = login.trim()
+  if (!channel) return []
+  try {
+    const { data } = await apiClient<{ topEmotes?: PortalChannelEmoteRow[] }>(
+      portalPath(`/channels/${encodeURIComponent(channel)}/emotes?range=30d`),
+    )
+    return portalChannelEmotesToCatalog(data.topEmotes ?? [])
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -237,9 +363,8 @@ function portalMinutesToRollups(
     const chat = minute.chatCount ?? 0
     const viewerLatest = minute.viewerLatest ?? minute.viewerMax ?? minute.viewerAvg ?? 0
     const emotes: Record<string, number> = {}
-    // The portal minutes endpoint only exposes the authoritative 7TV count plus
-    // the top few bucket emotes. Total = known 7TV usage + any non-7TV top
-    // emotes (7TV tops are already inside `seventv`, so don't double-count).
+    // Prefer authoritative totalEmoteCount from portal minutes when present.
+    // Fallback: seventv + non-7TV top emotes only (legacy API without total field).
     let nonSeventvTop = 0
     for (const emote of minute.topEmotes ?? []) {
       const key = portalBucketEmoteKey(emote)
@@ -257,7 +382,10 @@ function portalMinutesToRollups(
         count: (existing?.count ?? 0) + emote.count,
       })
     }
-    const totalEmoteCount = seventv + nonSeventvTop
+    const totalEmoteCount =
+      minute.totalEmoteCount != null && minute.totalEmoteCount > 0
+        ? minute.totalEmoteCount
+        : seventv + nonSeventvTop
     return {
       minuteTs: new Date(minuteMs).toISOString(),
       viewerAvg: minute.viewerAvg ?? 0,
@@ -274,25 +402,49 @@ function portalMinutesToRollups(
   return { rollups, catalog: Array.from(catalogByKey.values()) }
 }
 
-async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean) {
+async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean, channelLogin?: string) {
   const detailPromise = apiClient<PortalStreamDetail>(portalPath(`/streams/${encodeURIComponent(streamId)}`))
-  // Minutes are the timeline source but are optional: on backends where the
-  // route is gated (401) or not yet deployed (404) we still render the console
-  // from detail + summary instead of blanking the whole channel.
+  let minutesFetchFailed = false
   const minutesPromise = includeMinutes
     ? apiClient<PortalStreamMinutesResponse>(portalPath(`/streams/${encodeURIComponent(streamId)}/minutes`), {
         timeoutMs: PORTAL_MINUTES_TIMEOUT_MS,
-      }).catch(() => null)
+      })
+        .then((res) => res)
+        .catch(() => {
+          minutesFetchFailed = true
+          if (import.meta.env.DEV) {
+            console.warn(`[streamcloneAnalytics] portal minutes unavailable for stream ${streamId}`)
+          }
+          return null
+        })
     : Promise.resolve(null)
   const summaryPromise = apiClient<PortalStreamSummary>(
     portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
   ).catch(() => null)
 
-  const [detailRes, minutesRes, summaryRes] = await Promise.all([detailPromise, minutesPromise, summaryPromise])
+  const detailRes = await detailPromise
+  const login =
+    channelLogin?.trim()
+    || detailRes.data?.channel?.trim()
+    || detailRes.data?.stream?.login?.trim()
+    || ''
+  const channelEmotesPromise =
+    login && !usesLocalAnalyticsRoutes()
+      ? fetchPortalChannelEmotesCatalog(login)
+      : Promise.resolve([] as AnalyticsTopEmote[])
+
+  const [minutesRes, summaryRes, channelEmotes] = await Promise.all([
+    minutesPromise,
+    summaryPromise,
+    channelEmotesPromise,
+  ])
   return {
     detail: detailRes.data,
     minutes: minutesRes?.data ?? null,
     summary: summaryRes?.data ?? null,
+    channelEmotes,
+    minutesFetchFailed,
+    includeMinutes,
   }
 }
 
@@ -300,26 +452,89 @@ function mergePortalSourceRows(
   sources?: Array<{ source: string; state: string; label?: string }>,
   badges?: Array<{ source: string; state: string; label?: string }>,
 ): Array<{ source: string; state: string; label?: string }> {
-  const out = [...(sources ?? [])]
+  const bySource = new Map<string, { source: string; state: string; label?: string }>()
+  for (const row of sources ?? []) {
+    bySource.set(row.source, row)
+  }
   for (const badge of badges ?? []) {
-    if (!out.some((row) => row.source === badge.source && row.label === badge.label)) {
-      out.push(badge)
+    const existing = bySource.get(badge.source)
+    if (!existing || (badge.label?.trim() && !existing.label?.trim())) {
+      bySource.set(badge.source, badge)
     }
   }
-  return out
+  return Array.from(bySource.values())
 }
 
+function portalLiveResponseToAnalytics(
+  data: PortalChannelLiveResponse,
+  channelEmotes?: AnalyticsTopEmote[],
+): AnalyticsStreamDetail {
+  const stream = data.stream
+  const minutesResult =
+    stream?.startedAt && data.rollups?.length
+      ? portalMinutesToRollups(stream.startedAt, data.rollups)
+      : null
+  const topEmotes = mergePortalTopEmotes(
+    minutesResult?.catalog ?? data.topEmotes ?? [],
+    data.topEmotes,
+    channelEmotes,
+  )
+  const rollups = alignRollupEmoteKeys(minutesResult?.rollups ?? [], topEmotes)
+  return {
+    channel: data.channel,
+    state: data.state,
+    stream: stream
+      ? {
+          streamId: stream.streamId,
+          login: stream.login,
+          displayName: stream.displayName,
+          title: stream.title,
+          category: stream.category,
+          startedAt: stream.startedAt,
+          endedAt: stream.endedAt,
+          currentViewers: stream.currentViewers,
+          peakViewers: stream.peakViewers,
+          viewerSamples: stream.viewerSamples,
+          chatMessages: stream.chatMessages,
+          vodId: stream.vodId ?? data.vodId,
+        }
+      : undefined,
+    rollups,
+    topEmotes,
+    sources: (data.sources ?? []).map((source) => ({
+      source: source.source,
+      state: source.state,
+      label: source.label,
+    })),
+    updatedAt: data.updatedAt,
+    vodId: data.vodId ?? stream?.vodId,
+    syncPhase: data.syncPhase,
+  }
+}
 function portalDetailToAnalytics(
   detail: PortalStreamDetail,
   minutes: PortalStreamMinutesResponse | null,
   summary: PortalStreamSummary | null,
+  opts?: { includeMinutes?: boolean; minutesFetchFailed?: boolean; channelEmotes?: AnalyticsTopEmote[] },
 ): AnalyticsStreamDetail {
   const stream = detail.stream
   const minutesResult =
     minutes && stream?.startedAt ? portalMinutesToRollups(stream.startedAt, minutes.minutes ?? []) : null
   const rawMinuteCount = minutes?.minutes?.length ?? minutesResult?.rollups.length ?? 0
-  const rollups = minutesResult ? downsampleTimeline(minutesResult.rollups, undefined, rollupChartActivityScore) : []
-  const mergedTopEmotes = mergePortalTopEmotes(minutesResult?.catalog ?? [], summary?.topEmotes)
+  const momentRollups = minutesResult?.rollups ?? []
+  const mergedTopEmotes = mergePortalTopEmotes(
+    minutesResult?.catalog ?? [],
+    summary?.topEmotes,
+    opts?.channelEmotes,
+  )
+  const alignedMomentRollups = alignRollupEmoteKeys(momentRollups, mergedTopEmotes)
+  const rollups = minutesResult
+    ? downsampleTimeline(alignedMomentRollups, undefined, rollupChartActivityScore)
+    : []
+  const minutesUnavailable = Boolean(
+    opts?.includeMinutes
+    && (opts.minutesFetchFailed || !minutes || rawMinuteCount === 0),
+  )
   return {
     channel: detail.channel,
     state: detail.state,
@@ -334,10 +549,13 @@ function portalDetailToAnalytics(
           endedAt: stream.endedAt,
           currentViewers: stream.currentViewers,
           peakViewers: stream.peakViewers,
+          viewerSamples: stream.viewerSamples,
+          chatMessages: stream.chatMessages,
           vodId: stream.vodId ?? detail.vodId,
         }
       : undefined,
     rollups,
+    momentRollups: alignedMomentRollups.length > 0 ? alignedMomentRollups : undefined,
     topEmotes: mergedTopEmotes,
     sources: mergePortalSourceRows(detail.sources, detail.dataSourceBadges).map((source) => ({
       source: source.source,
@@ -351,6 +569,7 @@ function portalDetailToAnalytics(
     chatCoveragePct: detail.chatCoveragePct,
     timelineMinutes: rawMinuteCount > 0 ? rawMinuteCount : rollups.length,
     analyticsQuality: summary?.analyticsQuality,
+    minutesUnavailable,
   }
 }
 
@@ -377,49 +596,90 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }
     const includeMinutes = opts?.sparse !== true
     try {
-      const bundle = await fetchPortalStreamBundle(streamId, includeMinutes)
-      return portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary)
+      const bundle = await fetchPortalStreamBundle(streamId, includeMinutes, opts?.channel)
+      return portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary, {
+        includeMinutes,
+        minutesFetchFailed: bundle.minutesFetchFailed,
+        channelEmotes: bundle.channelEmotes,
+      })
     } catch {
       return null
     }
   },
 
   async getAnalyticsStreams(login: string, limit = 20): Promise<AnalyticsStreamsResponse> {
-    const { data } = await apiClient<AnalyticsStreamsResponse>(
-      analyticsPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`),
-    )
+    const path = usesLocalAnalyticsRoutes()
+      ? analyticsPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
+      : portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
+    const { data } = await apiClient<AnalyticsStreamsResponse>(path)
     return data
   },
 
   async getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
-    const streams = (await portalAnalyticsApi.getAnalyticsStreams(login, 10)) as AnalyticsStreamsResponse
-    const live =
-      streams.items.find((item) => !item.endedAt) ??
-      streams.items[0]
-    if (!live?.streamId) {
+    if (usesLocalAnalyticsRoutes()) {
+      try {
+        const params = new URLSearchParams({ sparse: 'false' })
+        const { data } = await apiClient<AnalyticsStreamDetail>(
+          analyticsPath(`/channels/${encodeURIComponent(login)}/live?${params.toString()}`),
+        )
+        return data
+      } catch {
+        return {
+          channel: login,
+          state: 'not_collected',
+          rollups: [],
+          topEmotes: [],
+          sources: [],
+          updatedAt: Date.now(),
+        }
+      }
+    }
+    try {
+      const [{ data }, channelEmotes] = await Promise.all([
+        apiClient<PortalChannelLiveResponse>(portalPath(`/channels/${encodeURIComponent(login)}/live`)),
+        fetchPortalChannelEmotesCatalog(login),
+      ])
+      return portalLiveResponseToAnalytics(data, channelEmotes)
+    } catch {
       return {
         channel: login,
         state: 'not_collected',
         rollups: [],
         topEmotes: [],
-        sources: streams.sources ?? [],
-        updatedAt: streams.updatedAt ?? Date.now(),
-      }
-    }
-    const detail = (await portalAnalyticsApi.getAnalyticsStream(live.streamId, {
-      sparse: false,
-      channel: login,
-    })) as AnalyticsStreamDetail | null
-    return (
-      detail ?? {
-        channel: login,
-        state: 'not_collected',
-        rollups: [],
-        topEmotes: [],
-        sources: streams.sources ?? [],
+        sources: [],
         updatedAt: Date.now(),
       }
-    )
+    }
+  },
+
+  async getStreamSummary(streamId: string, channel?: string) {
+    if (!streamId.trim()) return null
+    if (usesLocalAnalyticsRoutes()) {
+      try {
+        const params = new URLSearchParams()
+        if (channel) params.set('channel', channel)
+        const suffix = params.toString() ? `?${params.toString()}` : ''
+        const { data } = await apiClient<{
+          metrics?: PortalStreamSummaryMetrics
+          updatedAt?: number
+        }>(analyticsPath(`/streams/${encodeURIComponent(streamId)}/summary${suffix}`))
+        const metrics = data.metrics
+        let analyticsQuality: string | undefined
+        if (metrics?.sync_health_state === 'synced' && (metrics.data_coverage_pct ?? 0) >= 80) {
+          analyticsQuality = 'full_pulse'
+        } else if ((metrics?.minutesWithData ?? 0) > 0) {
+          analyticsQuality = 'partial_pulse'
+        } else if (metrics?.sync_health_state === 'syncing') {
+          analyticsQuality = 'syncing'
+        } else {
+          analyticsQuality = 'limited'
+        }
+        return { metrics, analyticsQuality, updatedAt: data.updatedAt }
+      } catch {
+        return null
+      }
+    }
+    return fetchPortalStreamSummary(streamId)
   },
 
   async getPulseBookmarks(_params?: PulseBookmarkQuery) {
@@ -485,6 +745,13 @@ export const portalAnalyticsApi: AnalyticsApi = {
 
   async getSyncStatus(streamId: string): Promise<SyncStatus | null> {
     try {
+      if (usesLocalAnalyticsRoutes()) {
+        const { data } = await apiClient<SyncStatus & { phase?: string }>(
+          analyticsPath(`/streams/${encodeURIComponent(streamId)}/sync/status`),
+        )
+        if (data.phase === 'idle') return null
+        return { ...data, streamId }
+      }
       const { data } = await apiClient<PortalSyncStatus>(
         portalPath(`/streams/${encodeURIComponent(streamId)}/sync/status`),
       )
@@ -500,10 +767,15 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }
   },
 
-  async startHistoricalSync(streamId: string, login?: string, _options?: StartHistoricalSyncOptions) {
-    return apiClient(analyticsPath(`/streams/${encodeURIComponent(streamId)}/sync`), {
+  async startHistoricalSync(streamId: string, login?: string, options?: StartHistoricalSyncOptions) {
+    const params = new URLSearchParams()
+    if (login) params.set('channel', login)
+    if (options?.viewersOnly) params.set('viewers_only', 'true')
+    if (options?.forceChat) params.set('force_chat', 'true')
+    if (options?.vodId) params.set('vod_id', options.vodId)
+    const suffix = params.toString() ? `?${params.toString()}` : ''
+    return apiClient(analyticsPath(`/streams/${encodeURIComponent(streamId)}/sync${suffix}`), {
       method: 'POST',
-      body: login ? { login } : {},
       gated: true,
     }).then((res) => res.data)
   },
@@ -511,16 +783,11 @@ export const portalAnalyticsApi: AnalyticsApi = {
   async getStreamGameSegments(streamId: string): Promise<GameSegment[]> {
     try {
       const { data } = await apiClient<GameSegment[]>(gamesEndpoint(streamId))
-      if (Array.isArray(data) && data.length > 0) return data
+      if (Array.isArray(data)) return data
     } catch {
-      /* fall through to client fallback */
+      /* backend is source of truth; do not synthesize a misleading single-game span */
     }
-    try {
-      const detail = (await portalAnalyticsApi.getAnalyticsStream(streamId, { sparse: false })) as AnalyticsStreamDetail | null
-      return deriveClientGameSegments(streamId, detail)
-    } catch {
-      return []
-    }
+    return []
   },
 
   async getReplayHeatmap(streamId: string, window = 60, channel?: string) {
@@ -529,7 +796,6 @@ export const portalAnalyticsApi: AnalyticsApi = {
     try {
       return apiClient(
         portalPath(`/streams/${encodeURIComponent(streamId)}/replay-heatmap?${params.toString()}`),
-        { gated: true },
       ).then((res) => res.data)
     } catch {
       return null

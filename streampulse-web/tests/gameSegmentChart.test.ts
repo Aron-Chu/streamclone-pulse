@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest'
+
+import { gameSegmentPlotBounds } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/gameSegmentChart.ts'
+
+describe('gameSegmentPlotBounds', () => {
+  const rollups = Array.from({ length: 550 }, (_, index) => ({
+    minuteTs: new Date(Date.parse('2026-07-02T19:07:58Z') + index * 60_000).toISOString(),
+  }))
+
+  it('maps absolute stream offsets onto downsampled chart window', () => {
+    const first = gameSegmentPlotBounds(
+      { offsetSeconds: 0, durationSeconds: 12645 },
+      rollups,
+      '2026-07-02T19:07:58Z',
+      90,
+      876,
+    )
+    const second = gameSegmentPlotBounds(
+      { offsetSeconds: 12645, durationSeconds: 10859 },
+      rollups,
+      '2026-07-02T19:07:58Z',
+      90,
+      876,
+    )
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    expect(first!.endX).toBeLessThanOrEqual(second!.startX + 1)
+    expect(first!.textWidth).toBeGreaterThan(30)
+    expect(second!.textWidth).toBeGreaterThan(30)
+  })
+
+  it('returns null when segment ends before visible chart window', () => {
+    const bounds = gameSegmentPlotBounds(
+      { offsetSeconds: 0, durationSeconds: 60 },
+      rollups,
+      '2026-07-02T12:00:00Z',
+      90,
+      876,
+    )
+    expect(bounds).toBeNull()
+  })
+})

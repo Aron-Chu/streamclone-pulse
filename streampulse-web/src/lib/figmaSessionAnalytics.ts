@@ -26,6 +26,9 @@ export interface FigmaMomentRow {
   profileImageUrl?: string
   streamId?: string
   vodId?: string
+  category?: string
+  streamStartedAt?: number
+  activityTag?: string
 }
 
 export interface FigmaChartPoint {
@@ -193,6 +196,9 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     streamId: moment.streamId,
     vodId: moment.vodId,
     at: moment.at,
+    category: moment.category,
+    streamStartedAt: moment.streamStartedAt,
+    activityTag: moment.activityTag,
     href:
       login && streamId
         ? buildAnalyticsHref({ login, streamId, offsetSeconds: moment.offsetSeconds })
@@ -444,7 +450,7 @@ function normalizeChartValue(value: number, max: number): number {
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)))
 }
 
-import { downsampleTimeline } from './timelineDownsample'
+import { downsampleTimeline, rollupChartActivityScore } from './timelineDownsample'
 
 export function chartPointsFromMinutes(
   minutes: PortalStreamMinutesResponse['minutes'],
@@ -453,7 +459,8 @@ export function chartPointsFromMinutes(
   const maxChat = Math.max(...minutes.map((m) => m.chatCount ?? 0), 1)
   const maxViewers = Math.max(...minutes.map((m) => m.viewerLatest ?? m.viewerMax ?? m.viewerAvg ?? 0), 1)
   const maxEmotes = Math.max(...minutes.map((m) => m.seventvEmoteCount ?? 0), 1)
-  return downsampleTimeline(minutes).map((minute) => {
+  // Spike-preserving downsample: uniform stride flattens chat/emote peaks on long sessions.
+  return downsampleTimeline(minutes, undefined, rollupChartActivityScore).map((minute) => {
     const chat = minute.chatCount ?? 0
     const viewers = minute.viewerLatest ?? minute.viewerMax ?? minute.viewerAvg ?? 0
     const emotes = minute.seventvEmoteCount ?? 0

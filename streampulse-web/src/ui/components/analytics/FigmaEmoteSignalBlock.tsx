@@ -1,17 +1,36 @@
 import { Activity, Database, TrendingUp } from 'lucide-react'
-import type { HubCorpusPipeline, HubEmote, HubEmoteIntel, HubMover } from '../../../lib/publicHub'
+import {
+  HUB_TOP_MOVERS_CAP,
+  type HubCorpusPipeline,
+  type HubEmote,
+  type HubEmoteIntel,
+  type HubMover,
+} from '../../../lib/publicHub'
 import { EmoteEconomyPanel, TopMoversList } from '../hub'
 import '../hub/hub.css'
-import { compact } from './hubFormat'
+import { compact, formatLeadingEmoteShare } from './hubFormat'
+import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
 
 export interface FigmaEmoteSignalBlockProps {
   intel: HubEmoteIntel
   topEmotes?: HubEmote[]
   topMovers?: HubMover[]
   loading?: boolean
+  corpusPipeline?: HubCorpusPipeline
+  poolSize?: number
+  windowMinutes?: number
 }
 
-export function FigmaEmoteSignalBlock({ intel, topEmotes = [], topMovers = [], loading }: FigmaEmoteSignalBlockProps) {
+export function FigmaEmoteSignalBlock({
+  intel,
+  topEmotes = [],
+  topMovers = [],
+  loading,
+  corpusPipeline,
+  poolSize,
+  windowMinutes,
+}: FigmaEmoteSignalBlockProps) {
+  const labels = useCommandCenterLabels()
   const seventvProvider = intel.providerShares.find(
   (row) => row.provider.toLowerCase().includes('7tv') || row.provider.toLowerCase() === 'seventv',
   )
@@ -22,51 +41,61 @@ export function FigmaEmoteSignalBlock({ intel, topEmotes = [], topMovers = [], l
   ? `${Math.round(seventvProvider.sharePct)}%`
   : '-'
 
+  const leadingShare = formatLeadingEmoteShare(topEmotes, intel.topEmoteSharePct)
+
   const kpis = [
   {
   label: 'Emotes / min (global)',
   value: intel.emotesPerMin > 0 ? compact(intel.emotesPerMin) : '-',
   sub: 'across live rooms in this window',
   color: 'var(--fma-accent-text)',
+  title: undefined as string | undefined,
   },
   {
-  label: 'Top emote dominance',
-  value: intel.topEmoteSharePct > 0 ? `${Math.round(intel.topEmoteSharePct)}%` : '-',
-  sub: 'Share of counted emote sends from the #1 emote in this window',
+  label: leadingShare.label,
+  value: leadingShare.value,
+  sub: leadingShare.sub,
   color: 'var(--fma-cyan)',
+  title: leadingShare.title,
   },
   {
   label: '7TV share',
   value: seventvShare,
   sub: 'Provider mix from backend rollups',
   color: 'var(--fma-green)',
+  title: undefined as string | undefined,
   },
   {
   label: 'Unique emotes used',
   value: intel.uniqueEmotes > 0 ? compact(intel.uniqueEmotes) : '-',
   sub: 'Distinct codes seen in this window',
   color: 'var(--fma-amber)',
+  title: undefined as string | undefined,
   },
   {
   label: 'Biggest peak today',
   value: intel.biggestPeakPerMin > 0 ? compact(intel.biggestPeakPerMin) : '-',
   sub: 'Highest chat/min in this window',
   color: 'var(--fma-red)',
+  title: undefined as string | undefined,
   },
   ]
 
   return (
   <section className="figma-block" aria-labelledby="figma-emote-signal-title">
   <div className="figma-block__head">
-  <h2 id="figma-emote-signal-title" className="figma-block__title">Emote signal</h2>
+  <h2 id="figma-emote-signal-title" className="figma-block__title">{labels.emoteSignal}</h2>
   <p className="figma-block__sub">
-  Provider mix and dominance from backend rollup emote counts - not client-side scoring.
-  Only channels with IRC rollups can appear in Most reacted minutes.
+  Provider mix and dominance from backend rollup emote counts — not client-side scoring.
+  Only channels with live tracking can appear in Pulse Moments.
+  {corpusPipeline ? (
+    <> Live tracking: {loading ? '…' : `${compact(corpusPipeline.collectorActive)} / ${compact(corpusPipeline.collectorMax)} channels · ${corpusPipeline.state}`}.</>
+  ) : null}
   </p>
   </div>
   <div className="figma-kpi-grid figma-kpi-grid--5">
-  {kpis.map(({ label, value, sub, color }) => (
-  <div key={label} className="figma-kpi">
+  {kpis.map(({ label, value, sub, color, title }) => (
+  <div key={label} className="figma-kpi" title={title}>
   <div className="figma-kpi__lbl">{label}</div>
   <div className="figma-kpi__val" style={{ color }}>{loading ? '...' : value}</div>
   <div className="figma-kpi__sub">{sub}</div>
@@ -93,7 +122,21 @@ export function FigmaEmoteSignalBlock({ intel, topEmotes = [], topMovers = [], l
   </span>
   </div>
   <div className="hubx figma-economy-embed">
-  <TopMoversList movers={topMovers} loading={loading} />
+  <TopMoversList
+    movers={topMovers}
+    maxRows={HUB_TOP_MOVERS_CAP}
+    loading={loading}
+    honesty={
+      corpusPipeline
+        ? {
+            rosterLive: corpusPipeline.roster.live,
+            collectorTracking: corpusPipeline.roster.collectorTracking,
+            poolSize,
+            windowMinutes,
+          }
+        : undefined
+    }
+  />
   </div>
   </div>
   </div>

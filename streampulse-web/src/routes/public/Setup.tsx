@@ -7,6 +7,7 @@ import {
   setBackendUrlOverride,
   setBetaKey,
 } from '../../lib/auth'
+import { DEV_BACKEND_ENDPOINTS, devBackendSessionOverrideForPreset } from '../../lib/backendEndpoints'
 import { apiClient, getBackendUrl } from '../../lib/apiClient'
 import {
   TROUBLE_COPY,
@@ -134,6 +135,22 @@ export default function Setup() {
                 onChange={(event) => setBackendUrlField(event.target.value.trim())}
                 placeholder={DEFAULT_PRODUCTION_BACKEND_URL}
               />
+              <div className="stack-sm" role="group" aria-label="Backend presets">
+                {DEV_BACKEND_ENDPOINTS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className="btn btn-secondary"
+                    title={preset.description}
+                    onClick={() => {
+                      setBackendUrlField(preset.url)
+                      setBackendUrlOverride(devBackendSessionOverrideForPreset(preset.id))
+                    }}
+                  >
+                    Use {preset.label}
+                  </button>
+                ))}
+              </div>
               <label className="field-label" htmlFor="beta-key">
                 Beta key
               </label>

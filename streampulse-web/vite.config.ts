@@ -48,6 +48,10 @@ export default defineConfig({
         __dirname,
         '../../twitch-7tv-clone/packages/analytics-console/src/index.tsx',
       ),
+      '@streamclone/pulse-charts': resolve(
+        __dirname,
+        '../../twitch-7tv-clone/packages/pulse-charts/src/index.ts',
+      ),
       '@streamclone/pulse-core': resolve(__dirname, 'node_modules/@streamclone/pulse-core'),
       react: resolve(__dirname, 'node_modules/react'),
       'react-dom': resolve(__dirname, 'node_modules/react-dom'),

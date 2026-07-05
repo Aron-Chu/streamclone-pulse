@@ -1,9 +1,11 @@
 import type { FigmaMomentRow } from './figmaSessionAnalytics'
+import { formatOffsetLabel } from './figmaSessionAnalytics'
 import { activityBucketKey, activityBucketMs } from './hubActivitySummary'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import type { HubEmote, HubLiveChannel } from './publicHub'
+import { formatChatRate } from './momentMetricLabels'
 
-export type PulseMomentFilter = 'all' | 'chat' | 'emotes' | 'mixed' | 'synced'
+export type PulseMomentFilter = 'all' | 'chat' | 'emotes' | 'mixed' | 'synced' | 'stream_opening'
 
 export const PULSE_MOMENT_FILTER_HINT = 'Filters narrow spike type, not data source.'
 
@@ -141,23 +143,43 @@ export function momentEmoteRollupsEmptyHint(moment: FigmaMomentRow): string {
   return 'Viewer/chat spike — no emote breakdown for this minute.'
 }
 
-export function momentContextParts(moment: FigmaMomentRow): string[] {
+export function momentContextParts(moment: FigmaMomentRow, channelLive?: boolean): string[] {
   const parts: string[] = []
   const source = sourceLabel(moment.source)
   parts.push(source)
   if (moment.confidence != null && Number.isFinite(moment.confidence)) {
     parts.push(`${Math.round(moment.confidence)}% conf`)
   }
-  const vod = vodStateLabel(moment.vodState)
+  const vod = vodStateLabel(moment.vodState, channelLive)
   if (vod !== '—' && vod.toLowerCase() !== source.toLowerCase()) {
     parts.push(vod)
   }
   return parts
 }
 
+function momentActivityBadge(moment: FigmaMomentRow): string | null {
+  const tag = (moment.activityTag ?? '').trim().toLowerCase()
+  if (tag === 'early_stream') return 'Early stream'
+  if ((moment.kind ?? '').trim().toLowerCase() === 'stream_opening') return 'Just went live'
+  return null
+}
+
+export function momentWhatHappenedSummary(moment: FigmaMomentRow, category?: string): string {
+  const parts: string[] = [moment.label.trim()]
+  const chat = formatChatRate(moment.chatPerMin)
+  if (chat !== '—') parts.push(chat)
+  const top = moment.topEmotes?.[0]?.name ?? moment.topEmoteCode
+  if (top) parts.push(top)
+  const game = (category ?? moment.category)?.trim()
+  if (game) parts.push(game)
+  return parts.join(' · ')
+}
+
 function momentKind(moment: FigmaMomentRow): string {
   return (moment.kind ?? '').trim().toLowerCase()
 }
+
+export { momentActivityBadge }
 
 export function filterPulseMoments(moments: FigmaMomentRow[], filter: PulseMomentFilter): FigmaMomentRow[] {
   if (filter === 'all') return moments
@@ -166,7 +188,8 @@ export function filterPulseMoments(moments: FigmaMomentRow[], filter: PulseMomen
     const label = moment.label.toLowerCase()
     switch (filter) {
       case 'chat':
-        return kind === 'chat' || kind === 'chat_spike' || label.includes('chat')
+        // startsWith keeps "Chat spike"/"Chat velocity" but not labels that merely mention chat.
+        return kind === 'chat' || kind === 'chat_spike' || label.startsWith('chat')
       case 'emotes':
         return (
           kind === 'seventv' ||
@@ -179,6 +202,8 @@ export function filterPulseMoments(moments: FigmaMomentRow[], filter: PulseMomen
         return kind === 'mixed' || (label.includes('chat') && label.includes('emote'))
       case 'synced':
         return (moment.vodState ?? '').toLowerCase() === 'synced'
+      case 'stream_opening':
+        return kind === 'stream_opening' || label.includes('just went live')
       default:
         return true
     }
@@ -203,6 +228,47 @@ export function resolveMomentWallClockAt(
   const startMs = Date.parse(startedAt)
   if (!Number.isFinite(startMs)) return undefined
   return startMs + moment.offsetSeconds * 1000
+}
+
+/** Sum of backend top-emote counts for the selected minute (partial when API caps rows). */
+export function momentTotalEmoteUses(moment: FigmaMomentRow): number | undefined {
+  const rollups = moment.topEmotes?.filter((emote) => emote.count != null && Number.isFinite(emote.count)) ?? []
+  if (rollups.length === 0) return undefined
+  return rollups.reduce((sum, emote) => sum + (emote.count ?? 0), 0)
+}
+
+/** Wall-clock label for inspector header; falls back to stream offset when unknown. */
+export function momentWallClockLabel(
+  moment: FigmaMomentRow,
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>> = [],
+): { primary: string; secondary?: string } {
+  const wallMs = resolveMomentWallClockAt(moment, liveChannels)
+  if (wallMs != null) {
+    const primary = new Date(wallMs).toLocaleString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'UTC',
+      timeZoneName: 'short',
+    })
+    return { primary, secondary: `${formatOffsetLabel(moment.offsetSeconds)} into stream` }
+  }
+  return { primary: formatOffsetLabel(moment.offsetSeconds) }
+}
+
+/** Wall-clock time for bucket-filtered tables; falls back to stream offset. */
+export function formatMomentTableTime(
+  moment: FigmaMomentRow,
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>> = [],
+): string {
+  const wallMs = resolveMomentWallClockAt(moment, liveChannels)
+  if (wallMs != null) {
+    return new Date(wallMs).toLocaleString([], {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  }
+  return formatOffsetLabel(moment.offsetSeconds)
 }
 
 /** Keep moments whose wall-clock peak falls inside the selected activity bucket. */
@@ -241,12 +307,18 @@ export function confidenceTone(confidence?: number): 'high' | 'mid' | 'low' {
   return 'low'
 }
 
-export function vodStateLabel(vodState?: string): string {
+/**
+ * `channelLive === false` means the channel is known to be offline — an ended
+ * stream without an indexed VOD should not keep claiming "Live IRC".
+ */
+export function vodStateLabel(vodState?: string, channelLive?: boolean): string {
   const value = (vodState ?? '').trim().toLowerCase()
   if (value === 'synced') return 'Synced'
   if (value === 'vod_ready') return 'VOD ready'
   if (value === 'partial') return 'Partial'
-  if (value === 'live_only' || value === 'live' || value === 'no_vod') return 'Live IRC'
+  if (value === 'live_only' || value === 'live' || value === 'no_vod') {
+    return channelLive === false ? 'IRC (VOD pending)' : 'Live IRC'
+  }
   if (!value) return '—'
   return value.replace(/_/g, ' ')
 }

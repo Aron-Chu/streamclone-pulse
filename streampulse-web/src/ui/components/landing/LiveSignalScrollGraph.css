@@ -193,8 +193,9 @@
   border: 1px solid hsl(var(--sc-border));
   border-radius: calc(var(--sc-radius) + 0.4rem);
   background: hsl(var(--sc-card) / 0.5);
+  /* No CSS transition here: --channels is driven per-frame by the smoothed
+     scroll engine; a transition on top would chase the target and lag. */
   opacity: calc(var(--channels, 0) * 0.7);
-  transition: opacity 0.3s linear;
 }
 .lsg__ghost--a {
   transform: translate(calc(var(--channels, 0) * 18px), calc(var(--channels, 0) * -14px)) rotate(calc(var(--channels, 0) * 1.4deg));

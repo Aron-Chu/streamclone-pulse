@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../src/routes/index'
 
 const publicPaths = ['/', '/docs', '/status'] as const
@@ -45,5 +45,19 @@ describe('route smoke', () => {
     )
     expect(await screen.findByRole('main')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: /connect streampulse/i })).toBeNull()
+  })
+
+  it('renders private clips dashboard when there is a beta key', async () => {
+    localStorage.setItem('sp.betaKey', 'secret-one')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ items: [] }), { status: 200 })),
+    )
+    render(
+      <MemoryRouter initialEntries={['/dashboard/clips']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: /streamPulse clips/i })).toBeTruthy()
   })
 })

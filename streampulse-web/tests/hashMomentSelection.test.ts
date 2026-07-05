@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   findNearestRollupByOffset,
+  parseDeepLinkOffset,
   parseMomentHash,
   rollupOffsetSeconds,
 } from '@streamclone/analytics-console'
@@ -26,6 +27,15 @@ describe('parseMomentHash', () => {
     expect(parseMomentHash('#t=120')).toBe(120)
     expect(parseMomentHash('')).toBeNull()
     expect(parseMomentHash('#other')).toBeNull()
+  })
+})
+
+describe('parseDeepLinkOffset', () => {
+  it('reads hash and legacy query offsets', () => {
+    expect(parseDeepLinkOffset('#t=18840', '')).toBe(18840)
+    expect(parseDeepLinkOffset('', '?offset=18840')).toBe(18840)
+    expect(parseDeepLinkOffset('', '?t=120')).toBe(120)
+    expect(parseDeepLinkOffset('', '')).toBeNull()
   })
 })
 

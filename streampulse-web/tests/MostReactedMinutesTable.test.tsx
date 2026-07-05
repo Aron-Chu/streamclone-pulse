@@ -48,9 +48,9 @@ describe('MostReactedMinutesTable pulse-live rows', () => {
   it('selects row on container click and keyboard', () => {
     const onSelect = vi.fn()
     renderPulseLive(onSelect)
-    expect(screen.getByRole('heading', { name: /Most reacted minutes/i })).toBeTruthy()
-    expect(screen.getByText(/1 live peak/i)).toBeTruthy()
-    expect(screen.getByText(/Live IRC/i)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Pulse Moments/i })).toBeTruthy()
+    expect(screen.getByText(/1 moment/i)).toBeTruthy()
+    expect(screen.queryByText(/Live IRC/i)).toBeNull()
     const row = screen.getByRole('option', { name: /Chat spike/i })
     fireEvent.click(row)
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ offsetSeconds: 120 }))
@@ -60,11 +60,25 @@ describe('MostReactedMinutesTable pulse-live rows', () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ offsetSeconds: 120 }))
   })
 
-  it('does not select row when clicking nested outbound links', () => {
-    const onSelect = vi.fn()
-    renderPulseLive(onSelect)
-    fireEvent.click(screen.getByRole('link', { name: /KEKW on 7TV/i }))
-    fireEvent.click(screen.getByRole('link', { name: /xQc/i }))
-    expect(onSelect).not.toHaveBeenCalled()
+  it('shows game under channel when category is present', () => {
+    const withGame: FigmaMomentRow[] = [
+      {
+        ...moments[0],
+        category: 'Just Chatting',
+      },
+    ]
+    render(
+      <MemoryRouter>
+        <MostReactedMinutesTable
+          moments={withGame}
+          variant="pulse-live"
+          selectedKey="xqc::120"
+          onSelect={vi.fn()}
+          channel={{ login: 'xqc', displayName: 'xQc' }}
+          liveLogins={new Set(['xqc'])}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Just Chatting')).toBeTruthy()
   })
 })

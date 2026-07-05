@@ -68,7 +68,7 @@ function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: Publ
 }
 
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
-  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '7d' } = options
+  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h' } = options
   const initial = hydrateFromCache(activityWindow)
   const [data, setData] = useState<PublicHub | null>(initial.data)
   const [loading, setLoading] = useState(initial.loading)

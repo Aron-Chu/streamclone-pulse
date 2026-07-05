@@ -118,6 +118,7 @@ export function FigmaSessionDashboard({ model, compactTable, liveChannels = [] }
             moment={selectedMoment}
             vodId={model.vodId}
             sessionHref={model.demo ? undefined : model.sessionHref}
+            liveChannels={liveChannels}
           />
           <TopEmoteBurstsPanel
             bursts={model.bursts}

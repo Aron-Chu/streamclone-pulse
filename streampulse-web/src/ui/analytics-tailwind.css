@@ -56,8 +56,10 @@
 
 .sc-analytics-console {
   --sc-console-bg: #050507;
+  --sc-console-surface: rgba(255, 255, 255, 0.025);
+  --sc-console-border: rgba(255, 255, 255, 0.07);
   background-color: var(--sc-console-bg);
-  color: #f4f4f5;
+  color: #e4e4e7;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
   font-weight: 400;
@@ -65,7 +67,6 @@
   letter-spacing: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  scrollbar-color: #6d5dfc #101018;
 }
 
 .sc-analytics-console img,
@@ -85,23 +86,52 @@
   padding: 0;
 }
 
+.sc-analytics-console .sc-console-scroll,
 .sc-analytics-console .sc-moment-list {
   scrollbar-width: thin;
-  scrollbar-color: rgba(109, 93, 252, 0.65) rgba(255, 255, 255, 0.06);
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar,
 .sc-analytics-console .sc-moment-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.sc-analytics-console .sc-moment-list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(109, 93, 252, 0.65);
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar-button,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
 }
 
-.sc-analytics-console .sc-moment-list::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.06);
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar-thumb,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
 }
+
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar-track,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * Chart axis labels live in @streamclone/pulse-charts and use Tailwind fill-* utilities on
+ * SVG <text>. SVG paint uses fill, not color — when those utilities are missing, labels
+ * render black on the dark plot. Keep explicit fallbacks even with pulse-charts in the
+ * Tailwind content scan (same pattern as provider badges below).
+ */
+.sc-analytics-console .sc-chart-root text.fill-cyan-400 { fill: rgb(34 211 238); }
+.sc-analytics-console .sc-chart-root text.fill-cyan-400\/80 { fill: rgb(34 211 238 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-cyan-400\/70 { fill: rgb(34 211 238 / 0.7); }
+.sc-analytics-console .sc-chart-root text.fill-cyan-300\/90 { fill: rgb(103 232 249 / 0.9); }
+.sc-analytics-console .sc-chart-root text.fill-zinc-300\/80 { fill: rgb(212 212 216 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-zinc-500 { fill: rgb(113 113 122); }
+.sc-analytics-console .sc-chart-root text.fill-violet-300\/80 { fill: rgb(196 181 253 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-violet-400\/50 { fill: rgb(167 139 250 / 0.5); }
+.sc-analytics-console .sc-chart-root text.fill-emerald-300\/70 { fill: rgb(110 231 183 / 0.7); }
+.sc-analytics-console .sc-chart-root text.fill-emerald-300\/80 { fill: rgb(110 231 183 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-emerald-400\/50 { fill: rgb(52 211 153 / 0.5); }
 
 /* Provider pills — explicit styles so portal Tailwind scan cannot miss dynamic tones. */
 .sc-analytics-console .sc-emote-provider-badge {
@@ -145,7 +175,7 @@
 .sc-analytics-console .sc-emote-provider-badge[data-provider='unknown'] {
   color: rgb(161 161 170);
   background-color: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.07);
 }
 
 /* Figma Make loading pane — ghost chart bars, teal progress, staggered bullets */

@@ -56,4 +56,25 @@ describe('validatePublicHubInvariants', () => {
 
     expect(validatePublicHubInvariants(hub).some((issue) => issue.code === 'activity_points_unsorted')).toBe(true)
   })
+
+  it('warns when long-window activity viewers look like a single channel not global pool', () => {
+    const hub = normalizePublicHub({
+      poolSize: 3,
+      liveChannels: [
+        { login: 'alpha', viewers: 20_000, chatPerMin: 10, seventvPerMin: 1, coverageState: 'synced', trendPct: 0 },
+        { login: 'beta', viewers: 18_000, chatPerMin: 8, seventvPerMin: 1, coverageState: 'synced', trendPct: 0 },
+        { login: 'gamma', viewers: 15_000, chatPerMin: 6, seventvPerMin: 1, coverageState: 'synced', trendPct: 0 },
+      ],
+      activity: {
+        windowMinutes: 60 * 24 * 7,
+        channelCount: 3,
+        points: [{ t: 1_700_000_000_000, chat: 120, seventv: 40, viewers: 19_500 }],
+      },
+    })
+
+    const liveSum = hub.liveChannels.reduce((sum, ch) => sum + ch.viewers, 0)
+    const peakActivity = Math.max(...hub.activity.points.map((p) => p.viewers))
+    expect(liveSum).toBeGreaterThan(peakActivity * 1.5)
+    expect(validatePublicHubInvariants(hub).some((issue) => issue.code === 'activity_viewers_below_live_pool')).toBe(true)
+  })
 })

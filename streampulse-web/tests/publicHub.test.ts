@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  buildTopMoversFromLiveChannels,
   enrichTopMoversWithAvatars,
   fetchPublicHub,
   fetchPublicHubBase,
   fetchHistoricalHubMoments,
+  HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   normalizePublicHubMoments,
+  resolveHubTopMovers,
 } from '../src/lib/publicHub'
 import { coverageMeta } from '../src/ui/components/analytics/hubFormat'
 
@@ -49,6 +52,48 @@ describe('normalizePublicHub', () => {
       }],
     )
     expect(movers[0]?.profileImageUrl).toBe('https://cdn.example/xqc.png')
+  })
+
+  it('buildTopMoversFromLiveChannels returns up to the hub cap sorted by emote velocity', () => {
+    const liveChannels = Array.from({ length: 14 }, (_, index) => ({
+      login: `ch${index}`,
+      displayName: `Ch ${index}`,
+      viewers: 1000 - index,
+      chatPerMin: 100 - index,
+      emotesPerMin: 200 - index * 10,
+      seventvPerMin: 50 - index,
+      coverageState: 'synced' as const,
+      trendPct: 0,
+    }))
+    const movers = buildTopMoversFromLiveChannels(liveChannels, HUB_TOP_MOVERS_CAP)
+    expect(movers).toHaveLength(HUB_TOP_MOVERS_CAP)
+    expect(movers[0]?.login).toBe('ch0')
+    expect(movers[11]?.login).toBe('ch11')
+  })
+
+  it('resolveHubTopMovers prefers live-channel rows over legacy 8-row API payloads', () => {
+    const liveChannels = Array.from({ length: 12 }, (_, index) => ({
+      login: `ch${index}`,
+      displayName: `Ch ${index}`,
+      viewers: 1000,
+      chatPerMin: 80,
+      emotesPerMin: 150 - index * 5,
+      seventvPerMin: 40,
+      coverageState: 'synced' as const,
+      trendPct: 0,
+    }))
+    const apiMovers = liveChannels.slice(0, 8).map((channel) => ({
+      login: channel.login,
+      displayName: channel.displayName,
+      viewers: channel.viewers,
+      emotesPerMin: channel.emotesPerMin,
+      seventvPerMin: channel.seventvPerMin,
+      chatPerMin: channel.chatPerMin,
+      trendPct: channel.trendPct,
+    }))
+    const movers = resolveHubTopMovers(apiMovers, liveChannels)
+    expect(movers).toHaveLength(HUB_TOP_MOVERS_CAP)
+    expect(movers[8]?.login).toBe('ch8')
   })
 
   it('promotes critical collector state into coverage', () => {

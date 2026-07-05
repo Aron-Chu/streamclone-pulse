@@ -20,7 +20,6 @@ export function buildAnalyticsHref({ login, streamId, offsetSeconds }: Analytics
   return base
 }
 
-export function analyticsActionLabel(context?: AnalyticsLinkContext): string {
-  if (context === 'recent-session') return 'Open session'
-  return 'Open analytics'
+export function analyticsActionLabel(_context?: AnalyticsLinkContext): string {
+  return 'Analytics'
 }

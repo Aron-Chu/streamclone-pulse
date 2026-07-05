@@ -7,6 +7,8 @@ import Status from './public/Status'
 import AnalyticsLandingPage from './analytics/AnalyticsLandingPage'
 
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
+const DashboardHome = lazy(() => import('./dashboard/Home'))
+const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const AdminShell = lazy(() => import('./admin/AdminShell'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 const StreamsHubPlaceholder = lazy(() => import('./analytics/StreamsHubPlaceholder'))
@@ -52,7 +54,7 @@ export function AppRoutes() {
         <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
         <Route path="/analytics/streams" element={<StreamsHubPlaceholder />} />
 
-        {/* Public read-only channel analytics — Streamclone console by channel. */}
+        {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
         <Route path="/analytics/:login/:streamId" element={<ChannelAnalyticsPage />} />
         {/* Backcompat: redirect the old /s/ session form to the canonical route. */}
@@ -60,7 +62,10 @@ export function AppRoutes() {
 
         {/* Dashboard remains a separate, gated product surface. */}
         <Route element={<RequireAuth />}>
-          <Route path="/dashboard/*" element={<DashboardShell />} />
+          <Route path="/dashboard" element={<DashboardShell />}>
+            <Route index element={<DashboardHome />} />
+            <Route path="clips" element={<ClipsPage />} />
+          </Route>
         </Route>
 
         <Route path="/admin/*" element={<AdminShell />} />

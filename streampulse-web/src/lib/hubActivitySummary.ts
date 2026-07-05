@@ -23,6 +23,74 @@ export function activityBucketKey(t: number, windowMinutes: number): number {
   return Math.floor(t / bucketMs) * bucketMs
 }
 
+/** True when the bucket period has not ended yet (API flag or client heuristic). */
+export function isOpenActivityBucket(
+  point: HubActivityPoint,
+  windowMinutes: number,
+  nowMs: number = Date.now(),
+): boolean {
+  if (point.bucketComplete === false) return true
+  if (point.bucketComplete === true) return false
+  const bucketMs = activityBucketMs(windowMinutes)
+  return point.t + bucketMs > nowMs
+}
+
+/** Floor only the trailing open bucket — never paint a flat line across recent history. */
+export function applyLivePoolViewerFloor(
+  points: HubActivityPoint[],
+  livePoolViewerSum: number | undefined,
+  windowMinutes: number,
+  nowMs: number = Date.now(),
+): HubActivityPoint[] {
+  if (!points.length || !livePoolViewerSum || livePoolViewerSum <= 0) {
+    return points
+  }
+  const last = points[points.length - 1]
+  if (!last || !isOpenActivityBucket(last, windowMinutes, nowMs)) {
+    return points
+  }
+  const threshold = Math.floor(livePoolViewerSum / 5)
+  if (last.viewers >= threshold) {
+    return points
+  }
+  if (!(last.hasChatRollup || last.chat > 0 || (last.emotes ?? 0) > 0)) {
+    return points
+  }
+  const out = points.slice()
+  out[out.length - 1] = {
+    ...last,
+    viewers: livePoolViewerSum,
+    hasViewerRollup: true,
+  }
+  return out
+}
+
+/** Drop the trailing in-progress bucket so chart peaks are not skewed by partial data. */
+export function dropTrailingOpenBucket(
+  points: HubActivityPoint[],
+  windowMinutes: number,
+  nowMs: number = Date.now(),
+): HubActivityPoint[] {
+  if (points.length === 0) return points
+  const last = points[points.length - 1]
+  if (last && isOpenActivityBucket(last, windowMinutes, nowMs)) {
+    return points.slice(0, -1)
+  }
+  return points
+}
+
+/** Sparse API series → chart grid, omitting the open bucket and applying per-minute rates. */
+export function chartActivityPoints(
+  points: HubActivityPoint[],
+  windowMinutes: number,
+  nowMs?: number,
+  livePoolViewerSum?: number,
+): HubActivityPoint[] {
+  const floored = applyLivePoolViewerFloor(points, livePoolViewerSum, windowMinutes)
+  const trimmed = dropTrailingOpenBucket(floored, windowMinutes, nowMs ?? Date.now())
+  return normalizeActivityPointsForChart(trimmed, windowMinutes)
+}
+
 /** Merge a sparse hub activity series onto an evenly spaced bucket grid for charting. */
 export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: number): HubActivityPoint[] {
   if (points.length === 0) return []
@@ -37,7 +105,11 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
     const key = activityBucketKey(point.t, windowMinutes)
     const existing = byBucket.get(key)
     if (!existing || point.t >= existing.t) {
-      byBucket.set(key, point)
+      byBucket.set(key, {
+        ...point,
+        hasChatRollup: Boolean(existing?.hasChatRollup || point.hasChatRollup || point.chat > 0 || (point.emotes ?? 0) > 0),
+        hasViewerRollup: Boolean(existing?.hasViewerRollup || point.hasViewerRollup || point.viewers > 0),
+      })
     }
   }
 
@@ -50,6 +122,8 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
         chat: 0,
         seventv: 0,
         viewers: 0,
+        hasChatRollup: false,
+        hasViewerRollup: false,
       },
     )
   }
@@ -79,6 +153,46 @@ export function normalizeActivityPointsForChart(
   const filled = fillActivityPoints(points, windowMinutes)
   if (bucketMinutes(windowMinutes) <= 1) return filled
   return filled.map((point) => activityPointRates(point, windowMinutes))
+}
+
+/** Peak concurrent global viewers — same series as HubActivityChart tooltips. */
+export function peakActivityViewers(points: HubActivityPoint[], windowMinutes: number): number {
+  return chartActivityPoints(points, windowMinutes).reduce(
+    (max, point) => Math.max(max, point.viewers),
+    0,
+  )
+}
+
+/** Peak tracked IRC chat/min after coarse-bucket normalization — matches chart tooltip chat. */
+export function peakActivityChatPerMin(points: HubActivityPoint[], windowMinutes: number): number {
+  return chartActivityPoints(points, windowMinutes).reduce(
+    (max, point) => Math.max(max, point.chat),
+    0,
+  )
+}
+
+function chartPointHasSignal(point: HubActivityPoint): boolean {
+  return (
+    point.chat > 0 ||
+    point.seventv > 0 ||
+    (point.emotes ?? 0) > 0 ||
+    (point.twitch ?? 0) > 0 ||
+    point.viewers > 0
+  )
+}
+
+/**
+ * Resolve chart bucket click — no live-horizon guard; historical buckets are selectable.
+ * Returns null to clear selection, undefined to ignore, or bucket timestamp to select.
+ */
+export function resolveChartBucketSelection(
+  point: HubActivityPoint | undefined,
+  selectedBucketT: number | null | undefined,
+): number | null | undefined {
+  if (!point) return undefined
+  if (selectedBucketT != null && point.t === selectedBucketT) return null
+  if (!chartPointHasSignal(point)) return undefined
+  return point.t
 }
 
 /** Max gap between adjacent points before the chart breaks the line (aligned with HubActivityChart). */
@@ -161,7 +275,7 @@ export interface ActivitySummary {
 export function summarizeActivity(
   points: HubActivityPoint[],
   windowMinutes: number,
-  channelCount: number,
+  poolSize: number,
   updatedAgo?: string,
 ): ActivitySummary {
   const pointCount = points.length
@@ -174,7 +288,8 @@ export function summarizeActivity(
   const coveragePct = expectedBuckets > 0 ? (pointCount / expectedBuckets) * 100 : 0
   const windowLabel = formatActivityWindowLabel(windowMinutes)
   const updatedSuffix = updatedAgo ? ` · updated ${updatedAgo}` : ''
-  const footnote = `${pointCount}/${expectedBuckets} buckets · ~${bucket} min each · ${channelCount} channels in pool${updatedSuffix}`
+  const poolLabel = poolSize > 0 ? `${poolSize} channels in live pool` : 'live pool'
+  const footnote = `${pointCount}/${expectedBuckets} buckets · ~${bucket} min each · corpus-wide rollups · ${poolLabel}${updatedSuffix}`
 
   return {
     pointCount,

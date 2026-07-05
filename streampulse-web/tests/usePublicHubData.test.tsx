@@ -122,7 +122,7 @@ describe('usePublicHubData', () => {
   })
 
   it('initializes from cache immediately and does not stay in loading state', async () => {
-    writePublicHubCache(getBackendUrl(), '7d', sampleHub(8))
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
     fetchPublicHubBase.mockResolvedValue(hubResult(99))
 
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
@@ -134,7 +134,7 @@ describe('usePublicHubData', () => {
   })
 
   it('fetches fresh data after cache hydration', async () => {
-    writePublicHubCache(getBackendUrl(), '7d', sampleHub(8))
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
     fetchPublicHubBase.mockResolvedValue(hubResult(42))
 
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
@@ -152,13 +152,13 @@ describe('usePublicHubData', () => {
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
     await waitFor(() => expect(result.current.data?.poolSize).toBe(17))
 
-    const cached = readPublicHubCache(getBackendUrl(), '7d')
+    const cached = readPublicHubCache(getBackendUrl(), '24h')
     expect(cached?.data.poolSize).toBe(17)
     expect(typeof cached?.cachedAt).toBe('number')
   })
 
   it('ignores corrupted cache and cold-starts loading', async () => {
-    localStorage.setItem(publicHubCacheKey(getBackendUrl(), '7d'), '{not-json')
+    localStorage.setItem(publicHubCacheKey(getBackendUrl(), '24h'), '{not-json')
     fetchPublicHubBase.mockResolvedValue(hubResult(5))
 
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))

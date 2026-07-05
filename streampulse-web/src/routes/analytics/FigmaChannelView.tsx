@@ -7,10 +7,7 @@ import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigm
 import { FigmaChannelDashboard } from '../../ui/components/analytics/FigmaChannelDashboard'
 import '../../ui/components/analytics/figma-analytics.css'
 
-/**
- * Opt-in Figma session dashboard (`?figma=1`). Kept behind the hub shell on
- * purpose - this is a design-review surface, not the canonical channel view.
- */
+/** Default public channel session dashboard (stats strip + portal session panels). */
 export default function FigmaChannelView() {
   const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
   const channelData = useChannelPageData(login, streamId)

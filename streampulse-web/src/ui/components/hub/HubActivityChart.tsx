@@ -1,8 +1,11 @@
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Activity, BarChart3 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
-import { internalGapCount, maxConnectedGapMs, normalizeActivityPointsForChart, activityAxisTickIndices, formatActivityAxisTick } from '../../../lib/hubActivitySummary'
+import { internalGapCount, maxConnectedGapMs, chartActivityPoints, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
+import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
+import { useSmoothedScalar } from '../../motion/useSmoothedScalar'
 import { compact, getProviderColor } from '../analytics/hubFormat'
+import { EmoteProviderIcon } from '../analytics/EmoteProviderIcon'
 import { EmptyState, Skeleton } from './primitives'
 
 export interface HubActivityRangeOption {
@@ -20,6 +23,10 @@ export interface HubActivityChartProps {
   points: HubActivityPoint[]
   windowMinutes: number
   channelCount: number
+  /** Live pool size for chart copy (corpus-wide series, pool-sized roster). */
+  poolSize?: number
+  /** Sum of Helix viewer counts on hub live rows — floors sparse trailing buckets on chart. */
+  livePoolViewerSum?: number
   expectedBuckets?: number
   missingBuckets?: number
   coveragePct?: number
@@ -31,6 +38,10 @@ export interface HubActivityChartProps {
   selectedBucketT?: number | null
   /** When set, chart clicks toggle bucket selection for Pulse Moments Live. */
   onBucketSelect?: (bucketT: number | null) => void
+  /** Hover preview for bucket inspector rail. */
+  onBucketHover?: (bucketT: number | null) => void
+  /** When true, draw provider overlay lines on the main chart (power-user mode). */
+  showProviderOverlay?: boolean
   /** Lowercase emote name → image URL, used to render bucket emote thumbnails in the tooltip. */
   emoteImages?: Map<string, string>
 }
@@ -62,6 +73,33 @@ const PROVIDER_COLOR_KEYS: Record<ProviderKey, string> = {
   twitch: 'twitch',
   bttv: 'bttv',
   ffz: 'ffz',
+}
+
+const PROVIDER_STORAGE_KEY = 'sp.hub.providerLines'
+
+function readStoredProviders(): Set<ProviderKey> | null {
+  if (typeof sessionStorage === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(PROVIDER_STORAGE_KEY)
+    if (raw == null) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set()
+    const valid = parsed.filter((key): key is ProviderKey =>
+      PROVIDER_KEYS.includes(key as ProviderKey),
+    )
+    return new Set(valid)
+  } catch {
+    return new Set()
+  }
+}
+
+function saveEnabledProviders(enabled: Set<ProviderKey>) {
+  if (typeof sessionStorage === 'undefined') return
+  try {
+    sessionStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify([...enabled]))
+  } catch {
+    /* ignore quota errors */
+  }
 }
 
 function emoteCount(point: HubActivityPoint): number {
@@ -101,7 +139,14 @@ function windowLabel(minutes: number): string {
 }
 
 function activePoint(point: HubActivityPoint): boolean {
-  return point.chat > 0 || point.seventv > 0 || emoteCount(point) > 0 || point.viewers > 0
+  return (
+    point.hasChatRollup ||
+    point.hasViewerRollup ||
+    point.chat > 0 ||
+    point.seventv > 0 ||
+    emoteCount(point) > 0 ||
+    point.viewers > 0
+  )
 }
 
 function buildLine(pts: Pt[]): string {
@@ -137,6 +182,7 @@ function splitLinePaths(
   source: HubActivityPoint[],
   windowMinutes: number,
   sampleValues?: number[],
+  hasSample?: boolean[],
 ): string[] {
   if (pts.length < 2) return []
   const maxGap = maxConnectedGapMs(windowMinutes)
@@ -147,7 +193,9 @@ function splitLinePaths(
     current = []
   }
   for (let i = 0; i < pts.length; i += 1) {
-    const isSample = !sampleValues || (sampleValues[i] ?? 0) > 0
+    const isSample = hasSample
+      ? hasSample[i]
+      : !sampleValues || (sampleValues[i] ?? 0) > 0
     if (!isSample) {
       flush()
       continue
@@ -163,10 +211,22 @@ function splitLinePaths(
   return segments.map(buildLine).filter(Boolean)
 }
 
+/** Close a lane line path to the baseline for a semi-transparent area fill. */
+function areaPathFromLine(d: string): string {
+  if (!d) return ''
+  const nums = d.match(/-?\d*\.?\d+/g)
+  if (!nums || nums.length < 4) return ''
+  const startX = nums[0]
+  const endX = nums[nums.length - 2]
+  return `${d} L ${endX} 100 L ${startX} 100 Z`
+}
+
 export function HubActivityChart({
   points,
   windowMinutes,
   channelCount,
+  poolSize,
+  livePoolViewerSum,
   expectedBuckets,
   missingBuckets = 0,
   coveragePct = 100,
@@ -175,13 +235,40 @@ export function HubActivityChart({
   rangeControl,
   selectedBucketT = null,
   onBucketSelect,
+  onBucketHover,
+  showProviderOverlay = false,
   emoteImages,
 }: HubActivityChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<number | null>(null)
-  const [providers, setProviders] = useState<Set<ProviderKey>>(() => new Set())
-  const [compareMode, setCompareMode] = useState(false)
+  const hoverIndexRef = useRef<number | null>(null)
+  const hoverRafRef = useRef<number | null>(null)
+  const lastBucketTRef = useRef<number | null | undefined>(undefined)
+  const [enabledProviders, setEnabledProviders] = useState<Set<ProviderKey> | null>(null)
+
+  useEffect(() => () => {
+    if (hoverRafRef.current != null) {
+      cancelAnimationFrame(hoverRafRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (enabledProviders == null) return
+    saveEnabledProviders(enabledProviders)
+  }, [enabledProviders])
+
   const bucketSelectEnabled = Boolean(onBucketSelect)
+
+  const chartAriaLabel = useMemo(() => {
+    const poolLabel =
+      (poolSize ?? channelCount) > 0
+        ? `${poolSize ?? channelCount} channels in live pool`
+        : 'tracked streams'
+    const base = `Corpus-wide viewers and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
+    return bucketSelectEnabled
+      ? `${base}. Click a bucket to filter Pulse Moments Live.`
+      : base
+  }, [poolSize, channelCount, windowMinutes, bucketSelectEnabled])
 
   const providerMeta = useMemo(
     () =>
@@ -200,8 +287,8 @@ export function HubActivityChart({
   )
 
   const chartPoints = useMemo(
-    () => normalizeActivityPointsForChart(points, windowMinutes),
-    [points, windowMinutes],
+    () => chartActivityPoints(points, windowMinutes, undefined, livePoolViewerSum),
+    [points, windowMinutes, livePoolViewerSum],
   )
 
   const model = useMemo(() => {
@@ -244,6 +331,34 @@ export function HubActivityChart({
       },
       {} as Record<ProviderKey, string[]>,
     )
+    const LANE_PAD = 4
+    const providerLaneLines = PROVIDER_KEYS.reduce(
+      (acc, key) => {
+        const maxVal = chartPoints.reduce((a, p) => Math.max(a, providerValue(p, key)), 0) || 1
+        const atLaneY = (value: number): number =>
+          LANE_PAD + (1 - value / maxVal) * (100 - LANE_PAD * 2)
+        acc[key] = splitLinePaths(
+          chartPoints.map((p, i) => ({ x: xs[i], y: atLaneY(providerValue(p, key)) })),
+          chartPoints,
+          windowMinutes,
+          chartPoints.map((p) => providerValue(p, key)),
+        )
+        return acc
+      },
+      {} as Record<ProviderKey, string[]>,
+    )
+    const internalGapBands: { left: number; width: number }[] = []
+    const maxGap = maxConnectedGapMs(windowMinutes)
+    for (let i = 1; i < chartPoints.length; i += 1) {
+      const prevT = chartPoints[i - 1]?.t ?? 0
+      const nextT = chartPoints[i]?.t ?? prevT
+      if (nextT - prevT > maxGap) {
+        internalGapBands.push({
+          left: xs[i - 1],
+          width: Math.max(0.5, xs[i] - xs[i - 1]),
+        })
+      }
+    }
 
     const slotWidth = n > 0 ? 100 / n : 100
     const barW = Math.max(0.35, Math.min(slotWidth * 0.78, 3.5))
@@ -282,8 +397,16 @@ export function HubActivityChart({
       lastT,
       viewers,
       chat,
-      viewerLines: splitLinePaths(viewers, chartPoints, windowMinutes, chartPoints.map((p) => p.viewers)),
+      viewerLines: splitLinePaths(
+        viewers,
+        chartPoints,
+        windowMinutes,
+        undefined,
+        chartPoints.map((p) => p.hasViewerRollup || p.viewers > 0),
+      ),
       providerLines,
+      providerLaneLines,
+      internalGapBands,
       bars,
       firstActiveX,
       lastViewerIdx,
@@ -291,6 +414,20 @@ export function HubActivityChart({
       internalGaps: internalGapCount(chartPoints, windowMinutes),
       peakViewers: chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0),
       peakChat: chartPoints.reduce((a, p) => Math.max(a, p.chat), 0),
+      peakViewerAt: (() => {
+        let idx = 0
+        for (let i = 0; i < chartPoints.length; i += 1) {
+          if (chartPoints[i].viewers >= chartPoints[idx].viewers) idx = i
+        }
+        return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
+      })(),
+      peakChatAt: (() => {
+        let idx = 0
+        for (let i = 0; i < chartPoints.length; i += 1) {
+          if (chartPoints[i].chat >= chartPoints[idx].chat) idx = i
+        }
+        return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
+      })(),
     }
   }, [chartPoints, windowMinutes])
 
@@ -308,20 +445,62 @@ export function HubActivityChart({
     () => PROVIDER_KEYS.filter((key) => chartPoints.some((p) => providerValue(p, key) > 0)),
     [chartPoints],
   )
-  const shownProviders = availableProviders.filter((key) => providers.has(key))
-  const hiddenProviderCount = PROVIDER_KEYS.length - availableProviders.length
+  const storedProviders = useMemo(() => readStoredProviders(), [chartPoints.length])
+  const resolvedEnabledProviders = useMemo(() => {
+    if (enabledProviders != null) return enabledProviders
+    if (storedProviders != null) return storedProviders
+    return new Set(availableProviders)
+  }, [enabledProviders, storedProviders, availableProviders])
+  const shownProviders = showProviderOverlay
+    ? availableProviders
+    : availableProviders.filter((key) => resolvedEnabledProviders.has(key))
 
-  function toggleProvider(key: ProviderKey) {
-    setProviders((current) => {
-      const next = new Set(current)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
+  const { motionEnabled } = useAnalyticsMotion()
+
+  const crosshairTargets = useMemo(() => {
+    if (hover == null) {
+      return { hx: 0, hy: 0, hasViewer: false }
+    }
+    const hp = chartPoints[hover]
+    return {
+      hx: model.chat[hover]?.x ?? 0,
+      hy: hp && hp.viewers > 0 ? (model.viewers[hover]?.y ?? 0) : 0,
+      hasViewer: Boolean(hp && hp.viewers > 0),
+    }
+  }, [hover, chartPoints, model.chat, model.viewers])
+
+  const crosshairEnabled = hover != null && motionEnabled
+  const smoothHx = useSmoothedScalar(crosshairTargets.hx, crosshairEnabled)
+  const smoothHy = useSmoothedScalar(
+    crosshairTargets.hy,
+    crosshairEnabled && crosshairTargets.hasViewer,
+  )
+
+  const flushHover = useCallback((index: number | null) => {
+    setHover(index)
+    if (!onBucketHover) return
+    if (index == null) {
+      if (lastBucketTRef.current !== null) {
+        lastBucketTRef.current = null
+        onBucketHover(null)
       }
-      return next
+      return
+    }
+    const point = chartPoints[index]
+    const bucketT = point?.t ?? null
+    if (bucketT === lastBucketTRef.current) return
+    lastBucketTRef.current = bucketT
+    onBucketHover(bucketT)
+  }, [chartPoints, onBucketHover])
+
+  const commitHoverIndex = useCallback((index: number | null) => {
+    hoverIndexRef.current = index
+    if (hoverRafRef.current != null) return
+    hoverRafRef.current = requestAnimationFrame(() => {
+      hoverRafRef.current = null
+      flushHover(hoverIndexRef.current)
     })
-  }
+  }, [flushHover])
 
   const rangeTabs = rangeControl ? (
     <div className="hx-range-tabs hx-range-tabs--window" role="group" aria-label="Activity time window">
@@ -374,6 +553,8 @@ export function HubActivityChart({
     chat,
     viewerLines,
     providerLines,
+    providerLaneLines,
+    internalGapBands,
     bars,
     firstActiveX,
     lastViewerIdx,
@@ -381,7 +562,20 @@ export function HubActivityChart({
     internalGaps,
     peakViewers,
     peakChat,
+    peakViewerAt,
+    peakChatAt,
   } = model
+
+  const chartSummary = (() => {
+    const parts: string[] = []
+    if (peakViewers > 0) {
+      parts.push(`Peak ${compact(peakViewers)} viewers at ${peakViewerAt}`)
+    }
+    if (peakChat > 0) {
+      parts.push(`chat busiest around ${peakChatAt}`)
+    }
+    return parts.length > 0 ? parts.join(' · ') : null
+  })()
 
   function nearestPointIndex(clientX: number): number {
     const el = wrapRef.current
@@ -403,91 +597,122 @@ export function HubActivityChart({
 
   function handleMove(event: ReactMouseEvent<HTMLDivElement>) {
     const best = nearestPointIndex(event.clientX)
-    setHover(best)
+    commitHoverIndex(best)
+  }
+
+  function handleLeave() {
+    if (hoverRafRef.current != null) {
+      cancelAnimationFrame(hoverRafRef.current)
+      hoverRafRef.current = null
+    }
+    hoverIndexRef.current = null
+    flushHover(null)
   }
 
   function handleClick(event: ReactMouseEvent<HTMLDivElement>) {
     if (!onBucketSelect) return
     const best = nearestPointIndex(event.clientX)
     const point = chartPoints[best]
-    if (!point) return
-    if (selectedBucketT != null && point.t === selectedBucketT) {
-      onBucketSelect(null)
-      return
-    }
-    // Pulse Moments Live only maps to ~last 3h; skip bucket sync for older chart points.
-    if (
-      bucketSelectEnabled &&
-      point.t < Date.now() - 3 * 60 * 60 * 1000
-    ) {
-      return
-    }
-    if (!activePoint(point)) return
-    onBucketSelect(point.t)
+    const next = resolveChartBucketSelection(point, selectedBucketT)
+    if (next === undefined) return
+    onBucketSelect(next)
   }
 
   const selectedIndex =
     selectedBucketT != null ? chartPoints.findIndex((point) => point.t === selectedBucketT) : -1
 
   const hp = hover != null ? chartPoints[hover] : null
-  const hx = hover != null ? chat[hover].x : 0
+  const hx = crosshairEnabled ? smoothHx : crosshairTargets.hx
+  const hy =
+    crosshairEnabled && crosshairTargets.hasViewer ? smoothHy : crosshairTargets.hy
   // The tooltip is rendered below the plot (see .tip CSS) so it never covers the
   // graph. Horizontally it tracks the cursor but clamps near the edges so it
   // stays within the chart width.
   const tipShift = hx < 18 ? '0%' : hx > 82 ? '-100%' : '-50%'
   const minutesAgo = hp != null ? Math.max(0, Math.round((lastT - hp.t) / 60_000)) : 0
 
+  function toggleProvider(key: ProviderKey) {
+    if (showProviderOverlay) return
+    setEnabledProviders((prev) => {
+      const base = prev ?? resolvedEnabledProviders
+      const next = new Set(base)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   return (
     <>
-      <div className="hx-chart-actions" aria-label="Chart series toggles">
-        {rangeTabs}
-        <div className="hx-legend">
-          <span>
-            <span className="sw" style={{ background: 'hsl(var(--chart-2))' }} />
-            Viewers
-          </span>
-          <span>
-            <span className="sw sw--bar" style={{ background: 'hsl(var(--chart-bar))' }} />
-            Chat / min
-          </span>
-        </div>
-        {availableProviders.length > 0 ? (
-          <div className="hx-range-tabs" role="group" aria-label="Emote provider lines">
+      <div className="hx-chart-header">
+        {rangeControl ? (
+          <div className="hx-chart-header__window" aria-label="Activity time window">
+            {rangeTabs}
+          </div>
+        ) : null}
+        <div className="hx-chart-actions" aria-label="Chart series toggles">
+          <div className="hx-legend">
+            <span>
+              <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
+              Viewers
+            </span>
+            <span>
+              <span className="sw sw--bar" style={{ background: 'hsl(var(--sp-chart-chat))' }} />
+              Tracked IRC chat / min
+            </span>
+          </div>
+        {availableProviders.length > 0 && !showProviderOverlay ? (
+          <div className="hx-provider-chips" role="group" aria-label="Emote provider lanes">
             {availableProviders.map((key) => {
-              const meta = providerMeta[key]
-              const active = providers.has(key)
+              const active = resolvedEnabledProviders.has(key)
               return (
                 <button
                   key={key}
                   type="button"
-                  className={active ? 'is-active' : undefined}
+                  className={`hx-provider-chip${active ? ' is-active' : ''}`}
                   aria-pressed={active}
+                  title={`${active ? 'Hide' : 'Show'} ${providerMeta[key].label} provider lane`}
                   onClick={() => toggleProvider(key)}
                 >
-                  <span className="sw" style={{ background: meta.color }} aria-hidden="true" />
-                  {meta.label}
+                  <EmoteProviderIcon provider={PROVIDER_COLOR_KEYS[key]} size={14} />
+                  <span>{providerMeta[key].label}</span>
                 </button>
               )
             })}
           </div>
         ) : null}
+        </div>
       </div>
-      <div
-        ref={wrapRef}
-        className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}`}
-        data-hover={hover != null ? 'true' : undefined}
-        data-selected={selectedIndex >= 0 ? 'true' : undefined}
-        role="img"
-        aria-label={
-          bucketSelectEnabled
-            ? `Viewers, chat volume, and emote provider velocity over the last ${windowLabel(windowMinutes)} across ${channelCount} channels. Click a bucket to filter Pulse Moments Live.`
-            : `Viewers, chat volume, and emote provider velocity over the last ${windowLabel(windowMinutes)} across ${channelCount} channels.`
-        }
-        onMouseMove={handleMove}
-        onMouseLeave={() => setHover(null)}
-        onClick={bucketSelectEnabled ? handleClick : undefined}
-      >
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      {chartSummary ? (
+        <p className="hx-chart-summary muted" role="status">
+          {chartSummary}
+        </p>
+      ) : null}
+      <div className="hx-plot-stack">
+        <div className="hx-plot-stack__row">
+          <span className="hx-plot-stack__gutter" aria-hidden="true" />
+          <div className="hx-plot-stack__plot">
+            <div className="hx-chart-axis-labels" aria-hidden="true">
+              <span className="hx-chart-axis-labels__left">Viewers</span>
+              <span className="hx-chart-axis-labels__right">Tracked IRC chat/min</span>
+            </div>
+          </div>
+        </div>
+        <div className="hx-plot-stack__row">
+          <span className="hx-plot-stack__gutter" aria-hidden="true" />
+          <div className="hx-plot-stack__plot">
+            <div
+              ref={wrapRef}
+              className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}`}
+              data-hover={hover != null ? 'true' : undefined}
+              data-selected={selectedIndex >= 0 ? 'true' : undefined}
+              role="img"
+              aria-label={chartAriaLabel}
+              onMouseMove={handleMove}
+              onMouseLeave={handleLeave}
+              onClick={bucketSelectEnabled ? handleClick : undefined}
+            >
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <g className="grid">
             {[25, 50, 75].map((y) => (
               <line key={y} x1="0" y1={y} x2="100" y2={y} vectorEffect="non-scaling-stroke" />
@@ -533,25 +758,28 @@ export function HubActivityChart({
               strokeLinejoin="round"
             />
           ))}
-          {shownProviders.map((key) =>
-            providerLines[key].map((line, i) => (
-              <path
-                key={`${key}-${i}`}
-                className="hx-chart-line hx-chart-line--provider"
-                d={line}
-                fill="none"
-                stroke={providerMeta[key].color}
-                strokeDasharray={providerMeta[key].dash}
-                vectorEffect="non-scaling-stroke"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )),
-          )}
+          {showProviderOverlay
+            ? shownProviders.map((key) =>
+                providerLines[key].map((line, i) => (
+                  <path
+                    key={`${key}-${i}`}
+                    className="hx-chart-line hx-chart-line--provider"
+                    d={line}
+                    fill="none"
+                    stroke={providerMeta[key].color}
+                    strokeDasharray={providerMeta[key].dash}
+                    vectorEffect="non-scaling-stroke"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )),
+              )
+            : null}
         </svg>
 
         <div className="hx-chart2__layer">
-          <span className="ylab">{compact(chatMax)}/m peak chat</span>
+          <span className="ylab ylab--viewers">{compact(peakViewers)} peak viewers</span>
+          <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>
           {sampleNote ? (
             <>
               <span className="gap-fill" style={{ width: `${Math.max(0, firstActiveX)}%` }} />
@@ -561,9 +789,18 @@ export function HubActivityChart({
             </>
           ) : null}
           {!sampleNote && internalGaps > 0 ? (
-            <span className="gap-note" style={{ left: '18%' }}>
-              {internalGaps} corpus gap{internalGaps === 1 ? '' : 's'} not connected
-            </span>
+            <>
+              {internalGapBands.map((band, i) => (
+                <span
+                  key={`gap-band-${i}`}
+                  className="gap-fill gap-fill--internal"
+                  style={{ left: `${band.left}%`, width: `${band.width}%` }}
+                />
+              ))}
+              <span className="gap-note" style={{ left: '18%' }}>
+                Data gap — no measurements recorded for this period
+              </span>
+            </>
           ) : null}
           {!sampleNote && (missingBuckets > 0 || internalGaps > 0) ? (
             <span className="gap-note" style={{ left: '70%' }}>
@@ -574,25 +811,28 @@ export function HubActivityChart({
           {hover == null ? (
             lastViewerIdx >= 0 ? (
               <span className="now" style={{ left: `${viewers[lastViewerIdx].x}%`, top: `${viewers[lastViewerIdx].y}%` }}>
-                <span className="halo" style={{ background: 'hsl(var(--chart-2))' }} />
-                <i style={{ background: 'hsl(var(--chart-2))' }} />
+                <span className="halo" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
+                <i style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
               </span>
             ) : null
           ) : (
             <>
-              <span className="cross" style={{ left: `${hx}%` }} />
+              <span className="cross hx-crosshair" style={{ left: `${hx}%` }} />
               {hp && hp.viewers > 0 ? (
-                <span className="hdot" style={{ left: `${viewers[hover].x}%`, top: `${viewers[hover].y}%`, background: 'hsl(var(--chart-2))' }} />
+                <span
+                  className="hdot hx-crosshair"
+                  style={{ left: `${hx}%`, top: `${hy}%`, background: 'hsl(var(--sp-chart-viewers))' }}
+                />
               ) : null}
               <div className="tip" style={{ left: `${hx}%`, transform: `translateX(${tipShift})` }}>
                 <div className="t">{axisLabel(minutesAgo)}</div>
                 <div className="row">
-                  <span className="sw" style={{ background: 'hsl(var(--chart-2))' }} />
+                  <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
                   Viewers&nbsp;<b>{compact(hp?.viewers ?? 0)}</b>
                 </div>
                 <div className="row">
-                  <span className="sw sw--bar" style={{ background: 'hsl(var(--chart-bar))' }} />
-                  Chat&nbsp;<b>{compact(hp?.chat ?? 0)}</b>/m
+                  <span className="sw sw--bar" style={{ background: 'hsl(var(--sp-chart-chat))' }} />
+                  Tracked IRC chat&nbsp;<b>{compact(hp?.chat ?? 0)}</b>/m
                 </div>
                 {shownProviders.map((key) => (
                   <div className="row" key={key}>
@@ -637,109 +877,90 @@ export function HubActivityChart({
             </>
           )}
         </div>
-      </div>
-      <div className="hx-axis" aria-hidden="true">
-        {ticks.map((label, i) => (
-          <span key={i}>{label}</span>
-        ))}
-      </div>
-      {availableProviders.length > 0 ? (
-        <div className="hx-heatstrip" aria-label="Provider velocity heatmap">
-          {availableProviders.map((key) => {
-            const meta = providerMeta[key]
-            const maxVal = chartPoints.reduce((a, p) => Math.max(a, providerValue(p, key)), 0) || 1
-            return (
-              <div key={key} className="hx-heatstrip__row" title={meta.label}>
-                <span className="hx-heatstrip__label">{meta.label}</span>
-                <div className="hx-heatstrip__cells">
-                  {chartPoints.map((p, i) => {
-                    const v = providerValue(p, key)
-                    const intensity = v / maxVal
-                    return (
+            </div>
+          </div>
+        </div>
+        <div className="hx-plot-stack__row">
+          <span className="hx-plot-stack__gutter" aria-hidden="true" />
+          <div className="hx-plot-stack__plot">
+            <div className="hx-axis" aria-hidden="true">
+              {ticks.map((label, i) => (
+                <span key={i}>{label}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+        {availableProviders.length > 0 && !showProviderOverlay ? (
+          shownProviders.length > 0 ? (
+            <div className="hx-provider-lanes" role="group" aria-label="Emote provider sparklines">
+              {shownProviders.map((key) => {
+                const meta = providerMeta[key]
+                return (
+                  <div
+                    key={key}
+                    className="hx-provider-lane"
+                    role="img"
+                    aria-label={`${meta.label} emote uses per minute over the last ${windowLabel(windowMinutes)}`}
+                  >
+                    <span className="hx-provider-lane__label" aria-hidden="true">
                       <span
-                        key={i}
-                        className="hx-heatstrip__cell"
-                        style={{ backgroundColor: meta.color, opacity: intensity > 0.02 ? 0.15 + intensity * 0.7 : 0 }}
+                        className="hx-provider-lane__dot"
+                        style={{ background: meta.color }}
                       />
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
-      {availableProviders.length > 1 ? (
-        <div className="hx-compare-toggle">
-          <button
-            type="button"
-            className={`hx-btn hx-btn--ghost hx-btn--sm${compareMode ? ' is-active' : ''}`}
-            aria-pressed={compareMode}
-            onClick={() => setCompareMode((v) => !v)}
-          >
-            <BarChart3 aria-hidden="true" />
-            Compare providers
-          </button>
-        </div>
-      ) : null}
-      {compareMode && availableProviders.length > 1 ? (
-        <div className="hx-small-multiples" aria-label="Provider comparison charts">
-          {(['viewers', 'chat', ...availableProviders] as const).map((series) => {
-            const isProvider = series !== 'viewers' && series !== 'chat'
-            const label = isProvider ? providerMeta[series as ProviderKey].label : series === 'viewers' ? 'Viewers' : 'Chat / min'
-            const color = isProvider
-              ? providerMeta[series as ProviderKey].color
-              : series === 'viewers'
-                ? 'hsl(var(--chart-2))'
-                : 'hsl(var(--chart-bar))'
-            const maxVal = isProvider
-              ? chartPoints.reduce((a, p) => Math.max(a, providerValue(p, series as ProviderKey)), 0) || 1
-              : series === 'viewers'
-                ? chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0) || 1
-                : chartPoints.reduce((a, p) => Math.max(a, p.chat), 0) || 1
-            const PAD = 10
-            const pts = chartPoints.map((p, i) => {
-              const v = isProvider ? providerValue(p, series as ProviderKey) : series === 'viewers' ? p.viewers : p.chat
-              return { x: xs[i], y: PAD + (1 - v / maxVal) * (100 - PAD) }
-            })
-            const sampleVals = isProvider
-              ? chartPoints.map((p) => providerValue(p, series as ProviderKey))
-              : series === 'viewers'
-                ? chartPoints.map((p) => p.viewers)
-                : undefined
-            const lines = splitLinePaths(pts, chartPoints, windowMinutes, sampleVals)
-            return (
-              <div key={series} className="hx-small-multiples__chart">
-                <span className="hx-small-multiples__label">{label}</span>
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  <line className="hx-sm-grid" x1="0" y1="50" x2="100" y2="50" vectorEffect="non-scaling-stroke" />
-                  {lines.map((line, i) => (
-                    <path
-                      key={i}
-                      d={line}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth="1.5"
-                      vectorEffect="non-scaling-stroke"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ))}
-                </svg>
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
+                      {meta.label}
+                    </span>
+                    <div className="hx-provider-lane__plot" aria-hidden="true">
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+                        {providerLaneLines[key].map((line, i) => (
+                          <g key={i}>
+                            <path
+                              className="hx-provider-lane__area"
+                              d={areaPathFromLine(line)}
+                              fill={meta.color}
+                            />
+                            <path
+                              className="hx-provider-lane__line-underlay"
+                              d={line}
+                              fill="none"
+                              vectorEffect="non-scaling-stroke"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              className="hx-provider-lane__line"
+                              d={line}
+                              fill="none"
+                              stroke={meta.color}
+                              strokeDasharray={meta.dash}
+                              vectorEffect="non-scaling-stroke"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </g>
+                        ))}
+                      </svg>
+                      {hover != null || selectedIndex >= 0 ? (
+                        <span
+                          className="hx-provider-lane__cross"
+                          style={{
+                            left: `${hover != null ? hx : (model.xs[selectedIndex] ?? 0)}%`,
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="hx-provider-lanes-hidden" role="status">
+              Provider lanes hidden
+            </p>
+          )
+        ) : null}
+      </div>
       <p className="hx-chart-footnote muted">
-        {footnote ??
-          `Peak ${compact(peakViewers)} viewers · ${compact(peakChat)} chat/min · ${
-            availableProviders.length > 1
-              ? 'toggle provider emote lines above'
-              : hiddenProviderCount > 0
-                ? 'live rollups only break out 7TV — Twitch/BTTV/FFZ need per-emote rollups'
-                : 'emote line tracks 7TV velocity'
-          }.`}
+        {footnote ?? 'Viewers and tracked IRC chat use separate scales.'}
       </p>
     </>
   )

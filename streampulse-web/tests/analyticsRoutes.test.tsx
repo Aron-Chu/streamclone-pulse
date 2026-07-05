@@ -10,13 +10,14 @@ vi.mock('@streamclone/analytics-console', () => ({
     mode?: string
     showGameSegments?: boolean
   }) => {
-    const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
+    const { streamId } = useParams<{ login: string; streamId?: string }>()
+    // The real console renders no <main>; ConsoleChannelView owns the landmark.
     return (
-      <main aria-label={`Analytics for ${login}`}>
+      <div>
         <span data-testid="console-mode">{mode ?? 'internal'}</span>
         <span data-testid="show-game-segments">{String(showGameSegments)}</span>
         <span data-testid="stream-id">{streamId ?? ''}</span>
-      </main>
+      </div>
     )
   },
 }))

@@ -9,6 +9,9 @@ import { resolveBackendSource } from './backendSource'
  * returns aggregate corpus counts and bounded per-minute activity, never raw
  * rollups, emote maps, or principals.
  */
+/** Matches hubMoversCap in streamclone internal/analytics/hub_overview.go. */
+export const HUB_TOP_MOVERS_CAP = 12
+
 export interface HubCorpus {
   streamsTracked: number
   momentsDetected: number
@@ -92,7 +95,11 @@ export interface HubActivityPoint {
   bttv?: number
   ffz?: number
   viewers: number
-  /** Highest-count emotes for the bucket (top 3), shown in the chart tooltip. */
+  hasChatRollup?: boolean
+  hasViewerRollup?: boolean
+  /** False when the bucket period has not ended yet (open/in-progress). */
+  bucketComplete?: boolean
+  /** Highest-count emotes for the bucket (top 10 for inspector; chart tooltip slices to 3). */
   topEmotes?: HubBucketEmote[]
 }
 
@@ -100,6 +107,8 @@ export interface HubActivity {
   points: HubActivityPoint[]
   windowMinutes: number
   channelCount: number
+  peakViewersAt?: number
+  livePoolViewerSum?: number
 }
 
 export interface HubEmoteIntel {
@@ -169,6 +178,9 @@ export interface HubLiveChannel {
   coverageState: HubCoverageState
   trendPct: number
   trendSignal?: boolean
+  streamingTogether?: boolean
+  hostLogin?: string
+  togetherWith?: string[]
 }
 
 export type HubMomentKind =
@@ -214,6 +226,9 @@ export interface HubLivePulseMoment extends HubFeaturedMoment {
   vodId?: string
   /** Wall-clock peak time (unix ms). */
   at?: number
+  category?: string
+  streamStartedAt?: number
+  activityTag?: string
 }
 
 export interface HubFeaturedChartPoint {
@@ -324,7 +339,7 @@ export interface FetchPublicHubResult {
 }
 
 function publicHubPath(activityWindow?: PublicHubActivityWindow): string {
-  if (!activityWindow) return '/v1/public/hub?activityWindow=7d'
+  if (!activityWindow) return '/v1/public/hub?activityWindow=24h'
   const params = new URLSearchParams({ activityWindow })
   return `/v1/public/hub?${params.toString()}`
 }
@@ -531,6 +546,57 @@ export function enrichTopMoversWithAvatars(
   )
 }
 
+function compareMoverVelocity(a: HubMover | HubLiveChannel, b: HubMover | HubLiveChannel): number {
+  const aEmotes = a.emotesPerMin ?? 0
+  const bEmotes = b.emotesPerMin ?? 0
+  if (aEmotes !== bEmotes) return bEmotes - aEmotes
+  if (a.seventvPerMin !== b.seventvPerMin) return b.seventvPerMin - a.seventvPerMin
+  return b.chatPerMin - a.chatPerMin
+}
+
+function liveChannelToMover(channel: HubLiveChannel): HubMover {
+  return {
+    login: channel.login,
+    displayName: channel.displayName,
+    category: channel.category,
+    profileImageUrl: channel.profileImageUrl,
+    viewers: channel.viewers,
+    emotesPerMin: channel.emotesPerMin,
+    seventvPerMin: channel.seventvPerMin,
+    chatPerMin: channel.chatPerMin,
+    trendPct: channel.trendPct,
+    trendSignal: channel.trendSignal,
+  }
+}
+
+/** Rank live hub channels by emote velocity (matches backend topMovers ordering). */
+export function buildTopMoversFromLiveChannels(
+  liveChannels: HubLiveChannel[],
+  cap = HUB_TOP_MOVERS_CAP,
+): HubMover[] {
+  return liveChannels
+    .filter((channel) => (channel.emotesPerMin ?? 0) > 0 || channel.chatPerMin > 0)
+    .sort(compareMoverVelocity)
+    .slice(0, cap)
+    .map(liveChannelToMover)
+}
+
+/**
+ * Prefer live-channel velocity rows so the portal can show the full cap even when
+ * hosted `/v1/public/hub` still returns a legacy 8-row topMovers payload.
+ */
+export function resolveHubTopMovers(
+  apiMovers: HubMover[],
+  liveChannels: HubLiveChannel[],
+  cap = HUB_TOP_MOVERS_CAP,
+): HubMover[] {
+  const fromLive = buildTopMoversFromLiveChannels(liveChannels, cap)
+  if (fromLive.length > 0) {
+    return enrichTopMoversWithAvatars(fromLive, liveChannels)
+  }
+  return enrichTopMoversWithAvatars(apiMovers, liveChannels).slice(0, cap)
+}
+
 function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLiveChannel[] {
   if (!channels) return []
   return channels.map((channel) => ({ ...channel, profileImageUrl: absoluteAssetUrl(channel.profileImageUrl) }))
@@ -572,6 +638,8 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       points: normalizeActivityPoints(raw?.activity?.points),
       windowMinutes: raw?.activity?.windowMinutes ?? 7 * 24 * 60,
       channelCount: raw?.activity?.channelCount ?? 0,
+      peakViewersAt: raw?.activity?.peakViewersAt,
+      livePoolViewerSum: raw?.activity?.livePoolViewerSum,
     },
     emoteIntel: {
       emotesPerMin: raw?.emoteIntel?.emotesPerMin ?? 0,
@@ -638,10 +706,13 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
     twitch: point.twitch ?? 0,
     bttv: point.bttv ?? 0,
     ffz: point.ffz ?? 0,
+    hasChatRollup: Boolean(point.hasChatRollup),
+    hasViewerRollup: Boolean(point.hasViewerRollup),
+    bucketComplete: point.bucketComplete,
     topEmotes: Array.isArray(point.topEmotes)
       ? point.topEmotes
           .filter((e) => e && typeof e.name === 'string' && e.name.length > 0)
-          .slice(0, 3)
+          .slice(0, 10)
           .map((e) => ({ name: e.name, provider: e.provider, count: Number(e.count) || 0 }))
       : undefined,
   }))
@@ -790,6 +861,25 @@ export function validatePublicHubInvariants(hub: PublicHub): HubValidationIssue[
       severity: 'warn',
       message: `activity.channelCount (${hub.activity.channelCount}) looks high vs poolSize (${hub.poolSize}).`,
     })
+  }
+
+  if (
+    hub.activity.windowMinutes > 30 &&
+    hub.liveChannels.length >= 2 &&
+    hub.activity.points.length > 0
+  ) {
+    const livePoolViewers = hub.liveChannels.reduce((sum, ch) => sum + (ch.viewers ?? 0), 0)
+    const peakActivityViewers = hub.activity.points.reduce(
+      (max, point) => Math.max(max, point.viewers ?? 0),
+      0,
+    )
+    if (livePoolViewers > 0 && peakActivityViewers > 0 && peakActivityViewers < livePoolViewers * 0.75) {
+      issues.push({
+        code: 'activity_viewers_below_live_pool',
+        severity: 'warn',
+        message: `Long-window activity peak viewers (${peakActivityViewers}) is below the live pool sum (${livePoolViewers}); chart may be single-channel not global.`,
+      })
+    }
   }
 
   return issues

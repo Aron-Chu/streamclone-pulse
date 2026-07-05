@@ -1,0 +1,35 @@
+/* Command center — operational dark theme (teal accent) */
+.figma-analytics {
+  --sp-bg: #09090b;
+  --sp-surface-1: rgba(255, 255, 255, 0.013);
+  --sp-surface-2: rgba(255, 255, 255, 0.018);
+  --sp-surface-3: rgba(255, 255, 255, 0.022);
+  --sp-surface-3-hover: rgba(255, 255, 255, 0.034);
+  --sp-surface-active: rgba(255, 255, 255, 0.048);
+  --sp-surface-inset: rgba(255, 255, 255, 0.01);
+
+  --sp-border: rgba(255, 255, 255, 0.07);
+  --sp-border-strong: rgba(255, 255, 255, 0.11);
+
+  --sp-text: rgba(255, 255, 255, 0.88);
+  --sp-text-muted: rgba(255, 255, 255, 0.52);
+  --sp-text-faint: rgba(255, 255, 255, 0.48);
+
+  --sp-accent: #5eead4;
+  --sp-accent-strong: #99f6e4;
+  --sp-accent-bg: rgba(94, 234, 212, 0.1);
+  --sp-accent-dim: rgba(94, 234, 212, 0.05);
+
+  --sp-radius-sm: 6px;
+  --sp-radius-md: 10px;
+  --sp-radius-lg: 12px;
+  --sp-radius-xl: 16px;
+
+  --fma-font: Inter, system-ui, sans-serif;
+  --fma-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', monospace;
+  --fma-nav-bg: rgba(9, 9, 11, 0.94);
+  --fma-panel-alt: rgba(255, 255, 255, 0.016);
+
+  --sp-chart-fill-opacity: 0.12;
+  --sp-chart-stroke-width: 1.5;
+}

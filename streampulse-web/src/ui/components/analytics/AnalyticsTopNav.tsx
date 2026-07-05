@@ -19,7 +19,11 @@ export interface AnalyticsTopNavProps {
   navigationLabel?: string
 }
 
-export function AnalyticsTopNav({ items, status, navigationLabel = 'Analytics navigation' }: AnalyticsTopNavProps) {
+export function AnalyticsTopNav({
+  items,
+  status,
+  navigationLabel = 'Analytics navigation',
+}: AnalyticsTopNavProps) {
   return (
     <header className="analytics-topnav">
       <a href="#analytics-main" className="analytics-topnav__skip">
@@ -47,18 +51,20 @@ export function AnalyticsTopNav({ items, status, navigationLabel = 'Analytics na
         </nav>
       ) : null}
 
-      {status ? (
-        <div
-          className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}
-          aria-label={`${status.label}: ${status.value}${status.detail ? ` - ${status.detail}` : ''}`}
-          aria-live="polite"
-          title={status.detail}
-        >
-          <span aria-hidden="true" />
-          <small>{status.label}</small>
-          <strong>{status.value}</strong>
-        </div>
-      ) : null}
+      <div className="analytics-topnav__actions" aria-label="Analytics utilities">
+        {status ? (
+          <div
+            className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}
+            aria-label={`${status.label}: ${status.value}${status.detail ? ` - ${status.detail}` : ''}`}
+            aria-live="polite"
+            title={status.detail}
+          >
+            <span aria-hidden="true" />
+            <small>{status.label}</small>
+            <strong>{status.value}</strong>
+          </div>
+        ) : null}
+      </div>
     </header>
   )
 }

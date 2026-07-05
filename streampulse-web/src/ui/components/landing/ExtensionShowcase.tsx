@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { buildExtModel, type ExtModel } from './landingData'
 import { ExtensionDemoCard } from './ExtensionDemoCard'
+import { startScrollScene } from './scrollScene'
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
 
@@ -13,17 +14,15 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * Aurora accent ramp the Pulse panel shimmers through as scroll drives each
- * feature card — cyan → indigo → violet → purple → fuchsia. Centered on the
- * extension's aurora violet, with the borealis cyan/pink edges. One tone per
- * feature card, in scroll order.
+ * Tour accent ramp — one tone per Pulse panel feature card, aligned to StreamPulse
+ * chart tokens (violet 7TV, cyan chat, green synced, Twitch purple, rose live).
  */
-const AURORA_TONES = [
-  { accent: '#22d3ee', strong: '#0fb6d6', soft: '#a5f0fb', rgb: '34, 211, 238', on: '#04181d' },
-  { accent: '#7c83ff', strong: '#6366f1', soft: '#c7d2fe', rgb: '124, 131, 255', on: '#0a0a23' },
-  { accent: '#8b5cf6', strong: '#7c3aed', soft: '#c4b5fd', rgb: '139, 92, 246', on: '#ffffff' },
-  { accent: '#a855f7', strong: '#9333ea', soft: '#e9d5ff', rgb: '168, 85, 247', on: '#ffffff' },
-  { accent: '#e879f9', strong: '#d946ef', soft: '#f5d0fe', rgb: '232, 121, 249', on: '#2a0a2e' },
+const TOUR_TONES = [
+  { accent: '#a78bfa', strong: '#8b5cf6', soft: '#c4b5fd', rgb: '139, 92, 246', on: '#ffffff' },
+  { accent: '#22d3ee', strong: '#06b6d4', soft: '#a5f3fc', rgb: '34, 211, 238', on: '#04181d' },
+  { accent: '#22c55e', strong: '#16a34a', soft: '#bbf7d0', rgb: '34, 197, 94', on: '#04180a' },
+  { accent: '#9146ff', strong: '#772ce8', soft: '#d9c2ff', rgb: '145, 70, 255', on: '#ffffff' },
+  { accent: '#f43f7a', strong: '#e11d5c', soft: '#fbcfe8', rgb: '244, 63, 122', on: '#ffffff' },
 ] as const
 
 /** Narrative steps — one per Pulse panel feature card, in scroll order. */
@@ -83,9 +82,8 @@ export function ExtensionShowcase({ model }: { model?: ExtModel }) {
     setAnimate(true)
   }, [])
 
-  // Scroll engine — page scroll drives the panel's own scrollport through each
-  // feature card, lighting the centered card (+ its rail step + aurora tone) as
-  // it passes. Mirrors LiveSignalScrollGraph's transform-pin pattern.
+  // Scroll engine — page scroll drives panel content via transform (not scrollTop)
+  // so we avoid fighting native page scroll / wheel handling.
   useEffect(() => {
     if (!animate) return
     const root = rootRef.current
@@ -93,11 +91,15 @@ export function ExtensionShowcase({ model }: { model?: ExtModel }) {
     const port = portRef.current
     if (!root || !scene || !port) return
 
-    const cards = Array.from(port.querySelectorAll<HTMLElement>('.sl-ext__card'))
-    if (cards.length === 0) return
     const scroll = port.querySelector<HTMLElement>('.sl-ext__scroll')
+    if (!scroll) return
+
+    const cards = Array.from(scroll.querySelectorAll<HTMLElement>('.sl-ext__card'))
+    if (cards.length === 0) return
+
     const panel = root.querySelector<HTMLElement>('.sl-ext')
-    scroll?.classList.add('is-playing')
+    scroll.classList.add('is-playing')
+    port.classList.add('is-playing')
 
     let active = -1
     const paint = (index: number) => {
@@ -107,7 +109,7 @@ export function ExtensionShowcase({ model }: { model?: ExtModel }) {
       cards.forEach((card, i) => card.classList.toggle('is-live', i === idx))
       const step = String(Math.min(idx + 1, STEPS.length))
       if (root.dataset.step !== step) root.dataset.step = step
-      const tone = AURORA_TONES[idx % AURORA_TONES.length]!
+      const tone = TOUR_TONES[idx % TOUR_TONES.length]!
       if (panel) {
         panel.style.setProperty('--xp-accent', tone.accent)
         panel.style.setProperty('--xp-strong', tone.strong)
@@ -117,63 +119,47 @@ export function ExtensionShowcase({ model }: { model?: ExtModel }) {
       }
     }
 
-    let raf = 0
-    const measure = () => {
-      raf = 0
-      const vh = window.innerHeight || 1
-      const rect = scene.getBoundingClientRect()
-      const scrollable = scene.offsetHeight - vh
-      const p = scrollable > 0 ? clamp01(-rect.top / scrollable) : 0
+    // Shared scroll-scene engine (same as the live analytics replay): exact
+    // GPU-transform pinning plus smoothed progress, so both landing sections
+    // ease through wheel-step scrolling with the same fluid feel.
+    const stop = startScrollScene({
+      scene,
+      sticky: stickyRef.current,
+      onProgress: (p) => {
+        const portH = port.clientHeight
+        const maxScroll = Math.max(0, scroll.scrollHeight - portH)
+        const drive = clamp01((p - 0.04) / 0.88)
+        const virtualScroll = drive * maxScroll
+        scroll.style.transform = `translate3d(0, ${-virtualScroll}px, 0)`
 
-      // Transform-pin the stage: .sp-landing is a non-scrolling overflow
-      // container, so native position:sticky never engages here.
-      if (stickyRef.current) {
-        const pin = Math.min(Math.max(-rect.top, 0), Math.max(scrollable, 0))
-        stickyRef.current.style.transform = `translate3d(0, ${pin}px, 0)`
-      }
-
-      // Drive the panel scrollport from progress, with a small lead-in/out so
-      // the first and last cards rest fully in view at the scroll extremes.
-      const portH = port.clientHeight
-      const maxScroll = Math.max(0, port.scrollHeight - portH)
-      const drive = clamp01((p - 0.07) / 0.86)
-      port.scrollTop = drive * maxScroll
-
-      // Light the card nearest the scrollport's vertical center.
-      const center = port.scrollTop + portH / 2
-      let idx = 0
-      let best = Infinity
-      for (let i = 0; i < cards.length; i++) {
-        const card = cards[i]!
-        const cc = card.offsetTop + card.offsetHeight / 2
-        const d = Math.abs(cc - center)
-        if (d < best) {
-          best = d
-          idx = i
+        // Light the card nearest the scrollport center; snap first/last at extremes.
+        let idx = 0
+        if (drive >= 0.86 || p >= 0.9) {
+          idx = cards.length - 1
+        } else if (drive <= 0.04) {
+          idx = 0
+        } else {
+          const center = virtualScroll + portH / 2
+          let best = Infinity
+          for (let i = 0; i < cards.length; i++) {
+            const card = cards[i]!
+            const cc = card.offsetTop + card.offsetHeight / 2
+            const d = Math.abs(cc - center)
+            if (d < best) {
+              best = d
+              idx = i
+            }
+          }
         }
-      }
-      paint(idx)
-    }
+        paint(idx)
+      },
+    })
 
-    const onScroll = () => {
-      if (!raf) raf = window.requestAnimationFrame(measure)
-    }
-    // Inner scrollport is driven by page scroll — forward wheel to the document
-    // so hovering the panel does not hijack the scroll tour.
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      window.scrollBy(0, e.deltaY)
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll, { passive: true })
-    port.addEventListener('wheel', onWheel, { passive: false })
-    measure()
     return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      port.removeEventListener('wheel', onWheel)
-      if (raf) window.cancelAnimationFrame(raf)
-      scroll?.classList.remove('is-playing')
+      stop()
+      scroll.classList.remove('is-playing')
+      port.classList.remove('is-playing')
+      scroll.style.transform = ''
     }
   }, [animate])
 

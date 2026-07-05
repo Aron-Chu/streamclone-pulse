@@ -7,7 +7,7 @@ import { featuredSessionFromPublicHub } from '../../lib/figmaSessionAnalytics'
 import { getBackendUrl } from '../../lib/apiClient'
 import { resolveBackendSource } from '../../lib/backendSource'
 import { summarizeActivity } from '../../lib/hubActivitySummary'
-import { enrichTopMoversWithAvatars, normalizePublicHub, type PublicHubActivityWindow } from '../../lib/publicHub'
+import { HUB_TOP_MOVERS_CAP, normalizePublicHub, resolveHubTopMovers, type PublicHubActivityWindow } from '../../lib/publicHub'
 import type { RecentSessionRow } from '../../hooks/useAnalyticsHubData'
 import '../../ui/components/hub/hub.css'
 import {
@@ -82,7 +82,7 @@ const ACTIVITY_WINDOWS: Array<{ label: string; value: PublicHubActivityWindow }>
 
 export default function DashboardHome() {
   const [navOpen, setNavOpen] = useState(false)
-  const [activityWindow, setActivityWindow] = useState<PublicHubActivityWindow>('7d')
+  const [activityWindow, setActivityWindow] = useState<PublicHubActivityWindow>('24h')
   const recentLogins = useHubRecentLogins()
   const hub = usePublicHubData({ enabled: true, activityWindow })
   const data = normalizePublicHub(hub.data)
@@ -93,8 +93,8 @@ export default function DashboardHome() {
     ? `Updated ${new Date(hub.lastUpdated).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
     : 'Waiting for data'
   const activitySummary = useMemo(
-    () => summarizeActivity(data.activity.points, data.activity.windowMinutes, data.activity.channelCount),
-    [data.activity.channelCount, data.activity.points, data.activity.windowMinutes],
+    () => summarizeActivity(data.activity.points, data.activity.windowMinutes, data.poolSize),
+    [data.poolSize, data.activity.points, data.activity.windowMinutes],
   )
   const suggestions = useMemo<HubSuggestion[]>(() => {
     const seen = new Set<string>()
@@ -105,7 +105,7 @@ export default function DashboardHome() {
       seen.add(login)
       rows.push({ ...item, login })
     }
-    liveChannels.slice(0, 12).forEach((channel) =>
+    liveChannels.forEach((channel) =>
       add({
         login: channel.login,
         displayName: channel.displayName,
@@ -115,7 +115,7 @@ export default function DashboardHome() {
         live: true,
       }),
     )
-    data.topMovers.slice(0, 8).forEach((mover) =>
+    data.topMovers.slice(0, HUB_TOP_MOVERS_CAP).forEach((mover) =>
       add({
         login: mover.login,
         displayName: mover.displayName,
@@ -125,10 +125,22 @@ export default function DashboardHome() {
         live: liveChannels.some((channel) => channel.login.toLowerCase() === mover.login.toLowerCase()),
       }),
     )
-    return rows.length > 0 ? rows : FALLBACK_SUGGESTIONS
-  }, [data.topMovers, liveChannels])
+    recentLogins.forEach(({ login }) =>
+      add({
+        login,
+        live: liveChannels.some((channel) => channel.login.toLowerCase() === login.toLowerCase()),
+      }),
+    )
+    FALLBACK_SUGGESTIONS.forEach((item) =>
+      add({
+        ...item,
+        live: liveChannels.some((channel) => channel.login.toLowerCase() === item.login.toLowerCase()),
+      }),
+    )
+    return rows
+  }, [data.topMovers, liveChannels, recentLogins])
   const topMovers = useMemo(
-    () => enrichTopMoversWithAvatars(data.topMovers, liveChannels),
+    () => resolveHubTopMovers(data.topMovers, liveChannels),
     [data.topMovers, liveChannels],
   )
   const recentSessions = useMemo<RecentSessionRow[]>(() => {
@@ -241,7 +253,7 @@ export default function DashboardHome() {
                 </p>
                 <div className="hx-herosearch" role="search" aria-label="Channel search">
                   <span className="hx-herosearch__cap"><Search aria-hidden="true" />Open analytics console</span>
-                  <HubSearch suggestions={suggestions} showKbd showOpenButton placeholder="Search live channels…" />
+                  <HubSearch suggestions={suggestions} showKbd showOpenButton placeholder="Search channels…" />
                   {suggestions.length > 0 ? (
                     <div className="hx-herosearch__picks">
                       <span className="lbl">Recent picks</span>
@@ -350,6 +362,7 @@ export default function DashboardHome() {
                 points={data.activity.points}
                 windowMinutes={data.activity.windowMinutes}
                 channelCount={data.activity.channelCount}
+                poolSize={data.poolSize}
                 expectedBuckets={activitySummary.expectedBuckets}
                 missingBuckets={activitySummary.missingBuckets}
                 coveragePct={activitySummary.coveragePct}
@@ -383,7 +396,16 @@ export default function DashboardHome() {
               <Card ariaLabelledby="hub-movers-title">
                 <CardHeader title="Top movers" titleId="hub-movers-title" desc="Channels with the strongest current emote velocity." />
                 <CardContent>
-                  <TopMoversList movers={topMovers} loading={loadingInitial} />
+                  <TopMoversList
+                    movers={topMovers}
+                    loading={loadingInitial}
+                    honesty={{
+                      rosterLive: data.corpusPipeline.roster.live,
+                      collectorTracking: data.corpusPipeline.roster.collectorTracking,
+                      poolSize: data.poolSize,
+                      windowMinutes: data.activity.windowMinutes,
+                    }}
+                  />
                 </CardContent>
               </Card>
               <Card ariaLabelledby="hub-emotes-rail-title">

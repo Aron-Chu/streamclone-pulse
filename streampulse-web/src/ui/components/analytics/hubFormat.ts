@@ -68,6 +68,70 @@ export function coverageMeta(state: HubCoverageState): CoverageMeta {
   }
 }
 
+/** Context for Top movers empty/sparse honesty copy (IRC pool vs roster live). */
+export interface TopMoversHonestyContext {
+  rosterLive?: number
+  collectorTracking?: number
+  poolSize?: number
+  windowMinutes?: number
+}
+
+export function formatTopMoversHonestyNote(
+  ctx: TopMoversHonestyContext | undefined,
+  moversCount: number,
+): string | null {
+  if (!ctx) return null
+  const rosterLive = ctx.rosterLive ?? 0
+  const collectorTracking = ctx.collectorTracking ?? 0
+  if (rosterLive <= 0) return null
+  if (moversCount >= 3) return null
+  const windowMinutes = ctx.windowMinutes ?? 30
+  const poolHint =
+    ctx.poolSize != null && ctx.poolSize > 0
+      ? ` Hub KPIs use a bounded IRC rollup pool (≤${compact(ctx.poolSize)} channels).`
+      : ''
+  return `Only ${compact(collectorTracking)} of ${compact(rosterLive)} live roster channels have IRC emote rollups in the last ${windowMinutes}m.${poolHint}`
+}
+
+export function formatMoverVelocity(mover: {
+  emotesPerMin?: number
+  seventvPerMin?: number
+  chatPerMin?: number
+}): { emoteLabel: string; chatLabel: string } {
+  const emoteRate = Math.max(mover.emotesPerMin ?? 0, mover.seventvPerMin ?? 0)
+  return {
+    emoteLabel: `${compact(emoteRate)}/m`,
+    chatLabel: `${compact(mover.chatPerMin ?? 0)} chat/m`,
+  }
+}
+
+export function hubChatPerMinDisplay(channel: {
+  chatPerMin: number
+  coverageState?: HubCoverageState
+}): { text: string; title?: string; muted?: boolean; showCoverageBadge?: boolean } {
+  const state = channel.coverageState ?? ''
+  const meta = coverageMeta(state)
+  if (channel.chatPerMin > 0) {
+    return { text: compact(channel.chatPerMin) }
+  }
+  if (state === 'stats_only' || state === 'viewer_only') {
+    return {
+      text: '—',
+      title: `${meta.label}: no IRC chat rollups yet — 0 chat/min does not mean the channel is quiet on Twitch`,
+      muted: true,
+      showCoverageBadge: true,
+    }
+  }
+  return {
+    text: compact(channel.chatPerMin),
+    title: channel.chatPerMin === 0 ? 'No chat rollups in the recent hub window' : undefined,
+  }
+}
+
+export function isMetadataOnlyCoverage(state: HubCoverageState | undefined): boolean {
+  return state === 'stats_only' || state === 'viewer_only'
+}
+
 /** Coverage percent -> table cell tone + color token. */
 export function coveragePctMeta(pct: number): { cls: 'full' | 'mid' | 'low'; color: string } {
   if (pct >= 95) return { cls: 'full', color: 'hsl(var(--sc-chart-3))' }
@@ -183,4 +247,37 @@ export function formatStreamUptime(startedAt?: string): string {
   const d = Math.floor(h / 24)
   const rh = h % 24
   return rh > 0 ? `${d}d ${rh}h` : `${d}d`
+}
+
+export const LEADING_EMOTE_SHARE_TITLE =
+  'Of every emote sent across tracked channels in this window, what share came from the single most-used emote? Example: if KEKW was used 2,900 times out of 10,000 total emotes, the #1 emote share is 29%.'
+
+export interface LeadingEmoteShareCopy {
+  label: string
+  value: string
+  sub: string
+  title: string
+}
+
+/** Plain-language copy for the hub #1 emote share KPI. */
+export function formatLeadingEmoteShare(
+  topEmotes: Pick<HubEmote, 'name' | 'sharePct'>[],
+  topEmoteSharePct: number,
+): LeadingEmoteShareCopy {
+  const leader = topEmotes[0]
+  const pct = topEmoteSharePct > 0 ? Math.round(topEmoteSharePct) : 0
+  const value = pct > 0 ? `${pct}%` : '—'
+  const name = leader?.name?.trim()
+  const sub =
+    name && pct > 0
+      ? `${name} · ${pct}% of all emotes in this window`
+      : pct > 0
+        ? `${pct}% of all emotes came from the #1 emote`
+        : 'Shows when emote rollups exist for this window'
+  return {
+    label: '#1 emote share',
+    value,
+    sub,
+    title: LEADING_EMOTE_SHARE_TITLE,
+  }
 }

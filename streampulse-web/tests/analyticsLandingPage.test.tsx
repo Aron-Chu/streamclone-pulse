@@ -146,9 +146,27 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
       </MemoryRouter>,
     );
     expect(
-      await screen.findByRole("heading", { name: /Pulse Moments Live/i }),
+      await screen.findByRole("heading", { name: /Pulse Moments/i }),
     ).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /Moments feed/i })).toBeNull();
+  });
+
+  it("renders Live Activity before Pulse Moments in the page flow", async () => {
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    const liveActivity = await screen.findByRole("region", { name: /Live Activity/i });
+    const pulseMoments = await screen.findByRole("heading", { name: /Pulse Moments/i });
+    const activityHub = document.querySelector(".figma-activity-hub");
+
+    const position = liveActivity.compareDocumentPosition(pulseMoments);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activityHub).toBeTruthy();
+    expect(activityHub?.contains(liveActivity)).toBe(true);
+    expect(activityHub?.contains(pulseMoments)).toBe(true);
   });
 
   it("uses the aggregate activity chart instead of the duplicate featured session block", async () => {
@@ -158,7 +176,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
       </MemoryRouter>,
     );
     expect(
-      await screen.findByRole("region", { name: /Global emote activity/i }),
+      await screen.findByRole("region", { name: /Live Activity/i }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("region", { name: /Featured session analytics/i }),

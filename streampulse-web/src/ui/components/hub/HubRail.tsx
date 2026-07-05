@@ -26,7 +26,18 @@ import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import { ircSlotMetrics } from '../../../lib/coverageHealthMetrics'
 import type { RecentSessionRow } from '../../../hooks/useAnalyticsHubData'
 import { EmoteImg } from '../analytics/EmoteImg'
-import { compact, formatStreamUptime, providerLabel, twitchLivePreviewUrlFresh } from '../analytics/hubFormat'
+import { EmoteProviderIcon } from '../analytics/EmoteProviderIcon'
+import { HubTopEmotesTable } from '../analytics/HubTopEmotesTable'
+import {
+  compact,
+  formatLeadingEmoteShare,
+  formatMoverVelocity,
+  formatStreamUptime,
+  formatTopMoversHonestyNote,
+  providerLabel,
+  twitchLivePreviewUrlFresh,
+  type TopMoversHonestyContext,
+} from '../analytics/hubFormat'
 import { Avatar, EmptyState, ProgressRow, Skeleton } from './primitives'
 
 function clampPct(value: number): number {
@@ -57,11 +68,26 @@ function ageLabel(seconds?: number | null): string {
 }
 
 /* --------------------------------------------------------- Top movers */
-export function TopMoversList({ movers, loading }: { movers: HubMover[]; loading?: boolean }) {
+export function TopMoversList({
+  movers,
+  loading,
+  honesty,
+  maxRows,
+}: {
+  movers: HubMover[]
+  loading?: boolean
+  honesty?: TopMoversHonestyContext
+  /** When set, only the top N movers are shown (matches backend hub cap). */
+  maxRows?: number
+}) {
+  const visibleMovers = maxRows != null && maxRows > 0 ? movers.slice(0, maxRows) : movers
+  const honestyNote = formatTopMoversHonestyNote(honesty, visibleMovers.length)
+  const skeletonRows = maxRows != null && maxRows > 0 ? maxRows : 8
+
   if (loading && movers.length === 0) {
     return (
       <>
-        {Array.from({ length: 4 }).map((_, i) => (
+        {Array.from({ length: skeletonRows }).map((_, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0' }}>
             <Skeleton width={28} height={28} radius="0.5rem" />
             <Skeleton width="45%" height="0.85rem" />
@@ -71,19 +97,33 @@ export function TopMoversList({ movers, loading }: { movers: HubMover[]; loading
       </>
     )
   }
-  if (movers.length === 0) {
-    return <EmptyState icon={<TrendingUp aria-hidden="true" />}>No emote movers in the current window.</EmptyState>
+  if (visibleMovers.length === 0) {
+    return (
+      <>
+        <EmptyState icon={<TrendingUp aria-hidden="true" />}>
+          No emote movers in the current window.
+          {honestyNote ? ` ${honestyNote}` : ''}
+        </EmptyState>
+      </>
+    )
   }
   return (
     <>
-      {movers.map((mover, index) => (
-        <Link key={mover.login} to={`/analytics/${encodeURIComponent(mover.login)}`} className="hx-mover">
-          <span className="rk">{index + 1}</span>
-          <Avatar login={mover.login} src={mover.profileImageUrl} alt={mover.displayName?.trim() || mover.login} />
-          <strong>{mover.displayName?.trim() || mover.login}</strong>
-          <span className="v tnum">{compact(Math.max(mover.emotesPerMin ?? 0, mover.seventvPerMin))}/m</span>
-        </Link>
-      ))}
+      {visibleMovers.map((mover, index) => {
+        const velocity = formatMoverVelocity(mover)
+        return (
+          <Link key={mover.login} to={`/analytics/${encodeURIComponent(mover.login)}`} className="hx-mover">
+            <span className="rk">{index + 1}</span>
+            <Avatar login={mover.login} src={mover.profileImageUrl} alt={mover.displayName?.trim() || mover.login} />
+            <strong>{mover.displayName?.trim() || mover.login}</strong>
+            <span className="hx-mover__metrics tnum" title={`${velocity.emoteLabel} emotes · ${velocity.chatLabel}`}>
+              <span className="hx-mover__primary">{velocity.emoteLabel}</span>
+              <span className="hx-mover__secondary">{velocity.chatLabel}</span>
+            </span>
+          </Link>
+        )
+      })}
+      {honestyNote ? <p className="hx-mover__honesty muted">{honestyNote}</p> : null}
     </>
   )
 }
@@ -230,7 +270,9 @@ export function GlobalEmotesList({ emotes, loading }: { emotes: HubEmote[]; load
                 <code>{emote.name}</code>
               </span>
             </td>
-            <td className="pv">{providerLabel(emote.provider)}</td>
+            <td className="pv">
+              <EmoteProviderIcon provider={emote.provider} size={16} />
+            </td>
             <td className="ct tnum">{compact(emote.count)}</td>
             <td>
               <span className="bar" aria-hidden="true">
@@ -389,7 +431,7 @@ export function EmoteEconomyPanel({
   const providerShares = backendProviderShares.length > 0 ? backendProviderShares : providerSharesFromTopEmotes(topEmotes)
   const leadingProvider = providerShares[0]
   const ring = providerRing(providerShares)
-  const trending = topEmotes.slice(0, 4)
+  const leadingShare = formatLeadingEmoteShare(topEmotes, intel.topEmoteSharePct)
   if (loading && topEmotes.length === 0) {
     return (
       <div style={{ display: 'flex', gap: '1.1rem', alignItems: 'center' }}>
@@ -423,8 +465,8 @@ export function EmoteEconomyPanel({
         <div className="leg">
           {(providerShares.length > 0 ? providerShares : [{ provider: 'No provider data', count: 0, sharePct: 0 }]).slice(0, 5).map((share, index) => (
             <span key={share.provider}>
-              <span className="sw" style={{ background: PROVIDER_COLORS[index] ?? 'hsl(var(--secondary))' }} aria-hidden="true" />
-              {share.provider} · {Math.round(share.sharePct)}%
+              <EmoteProviderIcon provider={share.provider} size={14} />
+              {Math.round(share.sharePct)}%
             </span>
           ))}
           <span className="muted" style={{ fontSize: '0.72rem' }}>
@@ -433,33 +475,11 @@ export function EmoteEconomyPanel({
         </div>
       </div>
       <div className="hx-econ-split">
-        <div>
+        <div className="hx-econ-split__table">
           <div className="hx-card__desc" style={{ marginBottom: '0.35rem' }}>
             Top aggregate emotes
           </div>
-          {trending.length === 0 ? (
-            <span className="muted" style={{ fontSize: '0.8rem' }}>
-              No emote traffic yet.
-            </span>
-          ) : (
-            trending.map((emote) => (
-              <div
-                className="hx-trend"
-                key={`${emote.provider ?? 'unknown'}:${emote.name}:${emote.imageUrl ?? emote.count}`}
-              >
-                <span className="em" aria-hidden="true">
-                  <EmoteImg src={emote.imageUrl} name={emote.name} width={18} height={18} />
-                </span>
-                <strong title={emote.name}>{emote.name}</strong>
-                {emote.provider ? (
-                  <span className="muted" style={{ fontSize: '0.65rem' }}>
-                    {providerLabel(emote.provider)}
-                  </span>
-                ) : null}
-                <span className="arrow tnum">{Math.round(emote.sharePct)}%</span>
-              </div>
-            ))
-          )}
+          <HubTopEmotesTable emotes={topEmotes} loading={loading} maxRows={10} layout="leaderboard" />
         </div>
         <div>
           <div className="hx-card__desc" style={{ marginBottom: '0.35rem' }}>
@@ -479,9 +499,10 @@ export function EmoteEconomyPanel({
             hint="Highest single-minute emote rate detected"
           />
           <EconStat
-            label="Top emote dominance"
-            value={`${Math.round(intel.topEmoteSharePct)}%`}
-            hint="Share of all emotes that belong to the #1 emote"
+            label={leadingShare.label}
+            value={leadingShare.value}
+            hint={leadingShare.sub}
+            title={leadingShare.title}
           />
         </div>
       </div>
@@ -489,9 +510,9 @@ export function EmoteEconomyPanel({
   )
 }
 
-function EconStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function EconStat({ label, value, hint, title }: { label: string; value: string; hint?: string; title?: string }) {
   return (
-    <div className="hx-econstat" title={hint}>
+    <div className="hx-econstat" title={title ?? hint}>
       <span className="lbl">{label}</span>
       {hint ? <span className="hx-econstat__hint">{hint}</span> : null}
       <strong className="val">{value}</strong>

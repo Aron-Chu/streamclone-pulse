@@ -17,7 +17,7 @@ npm run typecheck && npm test && npm run build
 | `npm run dev:local` | `http://localhost:8090` (via `.env.development.local.example`) |
 | Production build / Pages deploy | `https://api.streampulse.stream` only (`check:backend-url` fails on localhost in bundle) |
 
-Copy `.env.development.local.example` to `.env.development.local` when you need a persistent local override during `npm run dev`.
+Copy `.env.development.localhost.example` to `.env.development.localhost` when you need `npm run dev:local` against the Streamclone stack.
 
 ## Production deploy (Cloudflare Pages)
 

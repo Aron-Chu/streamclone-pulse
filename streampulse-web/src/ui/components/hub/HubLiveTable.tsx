@@ -3,7 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ChevronDown, Radio } from 'lucide-react'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
-import { compact, coverageMeta, formatStreamUptime } from '../analytics/hubFormat'
+import {
+  compact,
+  coverageMeta,
+  formatStreamUptime,
+  hubChatPerMinDisplay,
+  isMetadataOnlyCoverage,
+} from '../analytics/hubFormat'
 import { Avatar, Delta, EmptyState, Skeleton } from './primitives'
 
 type SortKey = 'viewers' | 'chatPerMin' | 'emotesPerMin'
@@ -203,6 +209,8 @@ export function HubLiveTable({ channels, loading, embedded }: HubLiveTableProps)
                 const meta = coverageMeta(channel.coverageState)
                 const cov = coverageVisual(channel)
                 const uptime = formatStreamUptime(channel.startedAt)
+                const chatCell = hubChatPerMinDisplay(channel)
+                const metadataOnly = isMetadataOnlyCoverage(channel.coverageState)
                 return (
                   <tr
                     key={channel.login}
@@ -228,6 +236,12 @@ export function HubLiveTable({ channels, loading, embedded }: HubLiveTableProps)
                             {channel.category?.trim() || 'Uncategorised'}
                             {uptime ? ` · ${uptime} live` : ''}
                           </small>
+                          {metadataOnly ? (
+                            <span className={`hx-badge hx-badge--outline hx-badge--inline ${cov.cls}`}>
+                              <span className="dot" />
+                              {meta.label}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                     </td>
@@ -238,15 +252,30 @@ export function HubLiveTable({ channels, loading, embedded }: HubLiveTableProps)
                       </span>
                     </td>
                     <td className="r tnum">{compact(channel.viewers)}</td>
-                    <td className="r tnum chat">{compact(channel.chatPerMin)}</td>
+                    <td
+                      className={`r tnum chat${chatCell.muted ? ' hx-tbl__chat--muted' : ''}`}
+                      title={chatCell.title}
+                    >
+                      {chatCell.text}
+                    </td>
                     <td className="r tnum emote">{compact(Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin))}</td>
                     <td className="c">
                       {hasRollupSignal(channel) ? <Delta pct={channel.trendPct} /> : <span className="muted">no rollup</span>}
                     </td>
                     <td className="c" style={{ paddingRight: embedded ? '0.85rem' : '1.15rem' }}>
-                      <span className="hx-covbar" title={`${meta.label} · ${cov.pct}%`}>
-                        <i style={{ width: `${cov.pct}%`, background: cov.color }} />
-                      </span>
+                      {metadataOnly ? (
+                        <span
+                          className={`hx-badge hx-badge--outline hx-badge--compact ${cov.cls}`}
+                          title={chatCell.title ?? `${meta.label} · ${cov.pct}% IRC coverage`}
+                        >
+                          <span className="dot" />
+                          {meta.label}
+                        </span>
+                      ) : (
+                        <span className="hx-covbar" title={`${meta.label} · ${cov.pct}%`}>
+                          <i style={{ width: `${cov.pct}%`, background: cov.color }} />
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )

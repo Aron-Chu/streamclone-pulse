@@ -355,6 +355,13 @@
   font-size: 0.72rem;
   text-align: center;
 }
+.hubx .hx-chart-summary {
+  margin: 0.35rem 0 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: center;
+  font-family: var(--font-sans, inherit);
+}
 
 /* avatar — neutral placeholder (initials) until a real Twitch image loads */
 .hubx .hx-av {
@@ -1371,6 +1378,54 @@
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+.hubx .hx-chart-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+}
+.hubx .hx-chart-header__window {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.hubx .hx-chart-header__window .hx-range-tabs--window {
+  margin-right: 0;
+}
+.hubx .hx-provider-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding-left: 0.65rem;
+  margin-left: 0.15rem;
+  border-left: 1px solid hsl(var(--border));
+}
+.hubx .hx-provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.hubx .hx-provider-chip.is-active {
+  border-color: hsl(var(--primary) / 0.55);
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--foreground));
+}
+.hubx .hx-provider-chip:hover {
+  border-color: hsl(var(--primary) / 0.4);
+}
+.hubx .hx-econ-split__table {
+  min-width: 0;
+}
 .hubx .hx-range-tabs {
   display: inline-flex;
   align-items: center;
@@ -1449,17 +1504,17 @@
    volume backdrop. They stay faded/transparent by default so the lines read
    clearly, and only the bar directly under the cursor lights up bright blue. */
 .hubx .hx-chart2 .bars .hx-chat-bar {
-  fill: hsl(var(--chart-bar) / 0.12);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.12);
   opacity: 1;
   transition: fill 120ms ease, opacity 120ms ease;
 }
 .hubx .hx-chart2 .bars .hx-chat-bar.is-active {
-  fill: hsl(var(--chart-bar) / 0.92);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.92);
   opacity: 1;
 }
 .hubx .hx-chart2 .bars .hx-chat-bar.is-selected {
-  fill: hsl(var(--chart-bar));
-  stroke: hsl(var(--chart-bar) / 0.5);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)));
+  stroke: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.5);
   stroke-width: 0.5px;
   opacity: 1;
 }
@@ -1471,9 +1526,8 @@
   stroke-width: 1.6;
 }
 .hubx .hx-chart2 .hx-chart-line--viewers {
-  stroke: hsl(var(--chart-2));
-  stroke-width: 2.4;
-  filter: drop-shadow(0 0 5px hsl(var(--chart-2) / 0.35));
+  stroke: hsl(var(--sp-chart-viewers, var(--chart-2)));
+  stroke-width: 2;
 }
 /* Provider lines are secondary — softer weight so viewers + chat stay dominant. */
 .hubx .hx-chart2 .hx-chart-line--provider {
@@ -1520,13 +1574,134 @@
 }
 .hubx .hx-chart2 .ylab {
   position: absolute;
-  left: 2px;
-  top: 2px;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
+
+.hubx .hx-chart2 .ylab--viewers {
+  left: 2px;
+  top: 2px;
+}
+
+.hubx .hx-chart2 .ylab--chat {
+  right: 2px;
+  top: 2px;
+  text-align: right;
+}
+
+.hubx .hx-chart-axis-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0.15rem 0 0.35rem;
+  padding: 0 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Shared label/plot grid — chart, axis, and provider lanes align on one x scale. */
+.hubx .hx-plot-stack {
+  --hx-provider-label-w: 3.5rem;
+}
+.hubx .hx-plot-stack__row {
+  display: grid;
+  grid-template-columns: var(--hx-provider-label-w) minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: stretch;
+}
+.hubx .hx-plot-stack__gutter {
+  display: block;
+}
+.hubx .hx-plot-stack__plot {
+  min-width: 0;
+}
+.hubx .hx-plot-stack .hx-chart-axis-labels {
+  margin-top: 0;
+}
+.hubx .hx-plot-stack .hx-chart2 {
+  margin-top: 0;
+}
+.hubx .hx-plot-stack .hx-axis {
+  margin-top: 0.5rem;
+}
+
+.hubx .hx-provider-lanes {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid hsl(var(--border) / 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hubx .hx-provider-lanes-hidden {
+  margin: 0.35rem 0 0;
+  padding: 0.15rem 0;
+  font-size: 0.62rem;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+}
+.hubx .hx-provider-lane {
+  display: grid;
+  grid-template-columns: var(--hx-provider-label-w) minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  height: 20px;
+}
+.hubx .hx-provider-lane__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.62rem;
+  color: hsl(var(--muted-foreground));
+  text-align: left;
+}
+.hubx .hx-provider-lane__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.hubx .hx-provider-lane__plot {
+  position: relative;
+  height: 20px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: hsl(var(--background) / 0.45);
+  box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.35);
+}
+.hubx .hx-provider-lane__plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.hubx .hx-provider-lane__area {
+  opacity: 0.16;
+}
+.hubx .hx-provider-lane__line-underlay {
+  stroke: hsl(var(--background));
+  stroke-width: 2;
+  opacity: 0.92;
+}
+.hubx .hx-provider-lane__line {
+  stroke-width: 1.3;
+  opacity: 0.98;
+}
+.hubx .hx-provider-lane__cross {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: hsl(var(--foreground) / 0.22);
+  pointer-events: none;
+}
+
 .hubx .hx-chart2 .gap-fill {
   position: absolute;
   inset: 0 auto 0 0;
@@ -1539,6 +1714,15 @@
       hsl(var(--chart-4) / 0.03) 8px 16px
     ),
     hsl(var(--background) / 0.18);
+  pointer-events: none;
+}
+.hubx .hx-chart2 .gap-fill--internal {
+  top: 0;
+  bottom: 0;
+  right: auto;
+  border-right: none;
+  border-left: 1px dashed hsl(var(--chart-4) / 0.45);
+  border-radius: 0;
 }
 .hubx .hx-chart2 .gap-note {
   position: absolute;
@@ -1585,6 +1769,21 @@
   width: 1px;
   transform: translateX(-50%);
   background: hsl(var(--foreground) / 0.22);
+}
+.hubx .hx-chart2 .hx-crosshair {
+  will-change: left, top;
+}
+.figma-global-activity__chart-col[data-refreshing="true"] .hx-chart2 {
+  animation: hx-chart-refresh-pulse 0.45s ease;
+}
+@keyframes hx-chart-refresh-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.88;
+  }
 }
 .hubx .hx-chart2 .tip {
   position: absolute;
@@ -1704,48 +1903,13 @@
 .hubx .hx-axis {
   display: flex;
   justify-content: space-between;
-  margin-top: 0.5rem;
   font-family: var(--font-mono);
   font-size: 0.69rem;
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
 }
 
-/* Provider heatmap strip under the chart */
-.hubx .hx-heatstrip {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 0.45rem;
-  padding: 0.35rem 0;
-}
-.hubx .hx-heatstrip__row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 10px;
-}
-.hubx .hx-heatstrip__label {
-  font-family: var(--font-mono);
-  font-size: 0.58rem;
-  color: hsl(var(--muted-foreground));
-  width: 3.2rem;
-  flex-shrink: 0;
-  text-align: right;
-}
-.hubx .hx-heatstrip__cells {
-  display: flex;
-  flex: 1;
-  height: 100%;
-  gap: 0;
-  border-radius: 2px;
-  overflow: hidden;
-}
-.hubx .hx-heatstrip__cell {
-  flex: 1;
-  height: 100%;
-  min-width: 0;
-}
+/* Deprecated — replaced by hx-provider-lane sparklines. */
 
 /* Compare providers toggle */
 .hubx .hx-compare-toggle {
@@ -2014,6 +2178,40 @@
   margin-left: auto;
   font-weight: 700;
   color: hsl(var(--chart-2));
+}
+.hubx .hx-mover__metrics {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  line-height: 1.15;
+}
+.hubx .hx-mover__primary {
+  font-weight: 700;
+  color: hsl(var(--chart-2));
+  font-size: 0.83rem;
+}
+.hubx .hx-mover__secondary {
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.68rem;
+}
+.hubx .hx-mover__honesty {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+.hubx .hx-badge--inline {
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+}
+.hubx .hx-badge--compact {
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.hubx .hx-tbl__chat--muted {
+  color: hsl(var(--muted-foreground));
 }
 .hubx .hx-emrow {
   display: grid;

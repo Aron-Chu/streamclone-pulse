@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import type { PublicHub } from '../../../lib/publicHub'
 import { buildLiveSignalModel, type LiveSignalModel } from './landingData'
 import { seventvImageUrl } from './landingEmotes'
+import { startScrollScene } from './scrollScene'
 import './LiveSignalScrollGraph.css'
 /* ============================================================================
  * LiveSignalScrollGraph
@@ -10,7 +11,7 @@ import './LiveSignalScrollGraph.css'
  * A scroll-driven "live analytics replay" for the landing page. As the visitor
  * scrolls, the StreamPulse extension graph expands into a full-width signal map
  * of a Twitch stream: chat/min bars plus line, the 7TV/min aggregate, viewers
- * baseline, emote bursts, detected moments, and finally a multi-channel ledger.
+ * baseline, emote bursts, peak markers, and finally a multi-channel ledger.
  *
  * Scroll engine (no GSAP dependency — the project already ships a custom
  * rAF/IntersectionObserver scroll pattern that is SSR/prerender-safe):
@@ -28,7 +29,7 @@ import './LiveSignalScrollGraph.css'
  *                        left→right as the playhead sweeps (--wipe gates each bar).
  *   Beat 3  p 0.36–0.58  Emote velocity — total emotes/min line, then 7TV/min
  *                        dashed subset (--emo, --sv) with emote chips at spikes.
- *   Beat 4  p 0.58–0.78  Moments detected — peak markers + score badges light up
+ *   Beat 4  p 0.58–0.78  Peak markers + score badges light up
  *                        and the "Most reacted so far" card slides in (--moments).
  *   Beat 5  p 0.78–1.00  Every tracked channel — the panel eases back to reveal a
  *                        deck of tracked channels minute by minute (--channels).
@@ -288,71 +289,73 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
     setAnimate(true)
   }, [])
 
-  // Scroll engine — only attached in animated mode. Reads the scene's viewport
-  // offset into progress `p`, then writes the reveal vars the stylesheet uses.
+  // Scroll engine — only attached in animated mode. The shared scroll-scene
+  // engine (same one the extension tour uses) pins the stage with an exact GPU
+  // transform and hands us a *smoothed* progress `p`, which we turn into the
+  // reveal vars the stylesheet consumes. Smoothing is what makes wheel-step
+  // scrolling read as one fluid sweep instead of discrete jumps.
   useEffect(() => {
     if (!animate) return
     const root = rootRef.current
     const scene = sceneRef.current
     if (!root || !scene) return
 
-    let raf = 0
-    const measure = () => {
-      raf = 0
-      const vh = window.innerHeight || 1
-      const rect = scene.getBoundingClientRect()
-      const scrollable = scene.offsetHeight - vh
-      const p = scrollable > 0 ? clamp01(-rect.top / scrollable) : 0
+    // Cache last-written text so counters only touch the DOM (and trigger
+    // layout) when a rounded value actually changes.
+    let lastViewers = ''
+    let lastChat = ''
+    let lastEmotes = ''
+    let lastCap = ''
 
-      // Pin the stage in the viewport for the scroll duration. Native
-      // `position: sticky` can't be used here: the landing wrapper (.sp-landing)
-      // is a non-scrolling overflow container, so sticky never engages. We
-      // emulate it with a GPU transform that tracks the scene's viewport offset.
-      if (stickyRef.current) {
-        const pin = Math.min(Math.max(-rect.top, 0), Math.max(scrollable, 0))
-        stickyRef.current.style.transform = `translate3d(0, ${pin}px, 0)`
-      }
+    return startScrollScene({
+      scene,
+      sticky: stickyRef.current,
+      onProgress: (p) => {
+        const wipe = clamp01(p / 0.72) // left→right playhead reveal
+        const sigv = clamp01(p / 0.12) // viewers baseline + counters
+        const sigc = clamp01((p - 0.14) / 0.1) // chat bars layer
+        const emo = clamp01((p - 0.36) / 0.1) // total emotes/min line
+        const sv = clamp01((p - 0.48) / 0.1) // 7TV dashed line
+        const emotes = clamp01((p - 0.54) / 0.1) // emote chips at peaks
+        const moments = clamp01((p - 0.6) / 0.12) // peak markers + card
+        const channels = clamp01((p - 0.78) / 0.16) // multi-channel deck
+        const beat = p < 0.14 ? 1 : p < 0.36 ? 2 : p < 0.58 ? 3 : p < 0.78 ? 4 : 5
 
-      const wipe = clamp01(p / 0.72) // left→right playhead reveal
-      const sigv = clamp01(p / 0.12) // viewers baseline + counters
-      const sigc = clamp01((p - 0.14) / 0.1) // chat bars layer
-      const emo = clamp01((p - 0.36) / 0.1) // total emotes/min line
-      const sv = clamp01((p - 0.48) / 0.1) // 7TV dashed line
-      const emotes = clamp01((p - 0.54) / 0.1) // emote chips at peaks
-      const moments = clamp01((p - 0.6) / 0.12) // peak markers + card
-      const channels = clamp01((p - 0.78) / 0.16) // multi-channel deck
-      const beat = p < 0.14 ? 1 : p < 0.36 ? 2 : p < 0.58 ? 3 : p < 0.78 ? 4 : 5
+        const s = root.style
+        s.setProperty('--p', p.toFixed(4))
+        s.setProperty('--wipe', wipe.toFixed(4))
+        s.setProperty('--sigv', sigv.toFixed(4))
+        s.setProperty('--sigc', sigc.toFixed(4))
+        s.setProperty('--emo', emo.toFixed(4))
+        s.setProperty('--sv', sv.toFixed(4))
+        s.setProperty('--emotes', emotes.toFixed(4))
+        s.setProperty('--moments', moments.toFixed(4))
+        s.setProperty('--channels', channels.toFixed(4))
+        if (root.dataset.beat !== String(beat)) root.dataset.beat = String(beat)
 
-      const s = root.style
-      s.setProperty('--p', p.toFixed(4))
-      s.setProperty('--wipe', wipe.toFixed(4))
-      s.setProperty('--sigv', sigv.toFixed(4))
-      s.setProperty('--sigc', sigc.toFixed(4))
-      s.setProperty('--emo', emo.toFixed(4))
-      s.setProperty('--sv', sv.toFixed(4))
-      s.setProperty('--emotes', emotes.toFixed(4))
-      s.setProperty('--moments', moments.toFixed(4))
-      s.setProperty('--channels', channels.toFixed(4))
-      if (root.dataset.beat !== String(beat)) root.dataset.beat = String(beat)
-
-      const ease = sigv * sigv * (3 - 2 * sigv) // smoothstep for the counters
-      if (viewersRef.current) viewersRef.current.textContent = fmtInt(Math.round(kpiViewers * ease))
-      if (chatRef.current) chatRef.current.textContent = String(Math.round(kpiChat * ease))
-      if (emotesRef.current) emotesRef.current.textContent = String(Math.round(kpiEmotes * ease))
-      if (capRef.current) capRef.current.textContent = `${beat} · ${BEATS[beat - 1].title}`
-    }
-
-    const onScroll = () => {
-      if (!raf) raf = window.requestAnimationFrame(measure)
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll, { passive: true })
-    measure()
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      if (raf) window.cancelAnimationFrame(raf)
-    }
+        const ease = sigv * sigv * (3 - 2 * sigv) // smoothstep for the counters
+        const viewersText = fmtInt(Math.round(kpiViewers * ease))
+        if (viewersRef.current && viewersText !== lastViewers) {
+          viewersRef.current.textContent = viewersText
+          lastViewers = viewersText
+        }
+        const chatText = String(Math.round(kpiChat * ease))
+        if (chatRef.current && chatText !== lastChat) {
+          chatRef.current.textContent = chatText
+          lastChat = chatText
+        }
+        const emotesText = String(Math.round(kpiEmotes * ease))
+        if (emotesRef.current && emotesText !== lastEmotes) {
+          emotesRef.current.textContent = emotesText
+          lastEmotes = emotesText
+        }
+        const capText = `${beat} · ${BEATS[beat - 1].title}`
+        if (capRef.current && capText !== lastCap) {
+          capRef.current.textContent = capText
+          lastCap = capText
+        }
+      },
+    })
   }, [animate, kpiViewers, kpiChat, kpiEmotes])
   return (
     <div
@@ -389,7 +392,7 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
               <figure
                 className="lsg__panel"
                 role="img"
-                aria-label="StreamPulse live signal map — chat-per-minute bars and line, total emotes per minute, dashed 7TV per minute, viewer baseline, detected moment markers, top-emote leaderboard, most-reacted moment, and tracked channels."
+                aria-label="StreamPulse live signal map — chat-per-minute bars and line, total emotes per minute, dashed 7TV per minute, viewer baseline, peak markers, top-emote leaderboard, most-reacted moment, and tracked channels."
               >
                 <figcaption className="lsg__nowcap">
                   <span className="sl-dot" /> <span ref={capRef}>1 · The live signal starts</span>

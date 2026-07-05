@@ -14,6 +14,7 @@ const source = readFileSync(routesPath, 'utf8')
 const required = [
   '/analytics',
   '/analytics/:login',
+  '/analytics/:login/:streamId',
   '/analytics/:login/s/:streamId',
 ]
 

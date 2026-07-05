@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { parseDeepLinkOffset } from '@streamclone/analytics-console'
 import { Info } from 'lucide-react'
 import type { ChannelPageData } from '../../../hooks/useChannelPageData'
 import {
@@ -87,12 +88,21 @@ export interface FigmaChannelDashboardProps {
 }
 
 export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
+  const location = useLocation()
   const [selectedOffset, setSelectedOffset] = useState<number | undefined>(data.session.moments[0]?.offsetSeconds)
   const [plottedEmote, setPlottedEmote] = useState<PlottedEmote | undefined>(undefined)
   const selectedMoment = useMemo(
     () => data.session.moments.find((m) => m.offsetSeconds === selectedOffset) ?? data.session.moments[0] ?? null,
     [data.session.moments, selectedOffset],
   )
+
+  useEffect(() => {
+    if (data.loading || data.session.state !== 'ready') return
+    const offsetSeconds = parseDeepLinkOffset(location.hash, location.search)
+    if (offsetSeconds == null) return
+    const nearest = nearestMomentForOffset(data.session.moments, offsetSeconds)
+    setSelectedOffset(nearest?.offsetSeconds ?? offsetSeconds)
+  }, [data.loading, data.session.moments, data.session.state, location.hash, location.search])
 
   const handleChartSelectOffset = (offsetSeconds: number) => {
     const nearest = nearestMomentForOffset(data.session.moments, offsetSeconds)
@@ -152,6 +162,10 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
     state: 'ready' as const,
   }
 
+  const consoleHref = data.selectedStreamId
+    ? `/analytics/${encodeURIComponent(data.login)}/${encodeURIComponent(data.selectedStreamId)}`
+    : `/analytics/${encodeURIComponent(data.login)}`
+
   return (
     <section className="figma-session figma-channel-page" aria-label={`${title} analytics`}>
       <div className="figma-channel-page__head">
@@ -163,7 +177,7 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
             {data.summary?.metrics?.minutesWithData ? ` · ${compact(data.summary.metrics.minutesWithData)} minutes with data` : ''}
           </p>
         </div>
-        <Link className="figma-btn figma-btn--ghost" to={`/analytics/${data.login}`}>Full console</Link>
+        <Link className="figma-btn figma-btn--ghost" to={consoleHref}>Full console</Link>
       </div>
 
       {data.streams.length > 0 ? (
@@ -203,7 +217,7 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
           <Info size={14} aria-hidden="true" />
           <span>
             The minute-by-minute chart needs the timeline rollups, which aren’t available for this session on this backend.
-            Aggregate metrics below are live from the backend summary. Open the <Link to={`/analytics/${data.login}`}>full console</Link> for the raw timeline.
+            Aggregate metrics below are live from the backend summary. Open the <Link to={consoleHref}>full console</Link> for the raw timeline.
           </span>
         </div>
       )}

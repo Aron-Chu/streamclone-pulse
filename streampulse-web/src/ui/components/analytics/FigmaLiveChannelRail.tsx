@@ -4,6 +4,7 @@ import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import { compact } from './hubFormat'
 import { MomentumBadge } from './MomentumBadge'
+import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
 
 export interface FigmaLiveChannelRailProps {
   channels: HubLiveChannel[]
@@ -26,12 +27,15 @@ function TrendBadge({ pct, hasSignal }: { pct: number; hasSignal?: boolean }) {
 export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLiveChannelRailProps) {
   const gridRef = useRef<HTMLDivElement>(null)
   const [atEnd, setAtEnd] = useState(true)
+  const [fillsRow, setFillsRow] = useState(false)
 
   const updateEdges = useCallback(() => {
     const el = gridRef.current
     if (!el) return
     const maxScroll = el.scrollWidth - el.clientWidth
-    setAtEnd(maxScroll <= 2 || el.scrollLeft >= maxScroll - 2)
+    const scrollable = maxScroll > 2
+    setFillsRow(!scrollable)
+    setAtEnd(!scrollable || el.scrollLeft >= maxScroll - 2)
   }, [])
 
   useEffect(() => {
@@ -70,7 +74,7 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
   }
 
   return (
-    <div className={`figma-live-rail${atEnd ? ' is-end' : ''}`} aria-label="Live channel preview">
+    <div className={`figma-live-rail${atEnd ? ' is-end' : ''}${fillsRow ? ' is-fill' : ''}`} aria-label="Live channel preview">
       <div className="figma-live-rail__grid" ref={gridRef}>
         {channels.map((channel, index) => {
           const name = channel.displayName?.trim() || channel.login
@@ -110,7 +114,10 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
                   <strong>{name}</strong>
                 </span>
                 <span className="figma-live-rail__meta">
-                  <span>{channel.category?.trim() || 'Live now'}</span>
+                  <span title={channelCategoryLabel(channel.category)}>
+                    {channelCategoryLabel(channel.category)}
+                  </span>
+                  {channel.streamingTogether ? <StreamTogetherBadge channel={channel} /> : null}
                   <TrendBadge pct={channel.trendPct} hasSignal={channel.trendSignal} />
                 </span>
               </div>

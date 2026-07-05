@@ -7,6 +7,12 @@ import {
   resolveBackendSource,
 } from "../../../lib/backendSource";
 import {
+  DEV_BACKEND_ENDPOINTS,
+  devBackendSessionOverrideForPreset,
+  resolveDevBackendEndpointId,
+  type DevBackendEndpointId,
+} from "../../../lib/backendEndpoints";
+import {
   DEFAULT_PRODUCTION_BACKEND_URL,
   getBackendUrlOverride,
   setBackendUrlOverride,
@@ -16,6 +22,7 @@ export function HubBackendSourceBanner() {
   const [cleared, setCleared] = useState(false);
   const backendUrl = getBackendUrl();
   const source = resolveBackendSource(backendUrl);
+  const activePreset = resolveDevBackendEndpointId(backendUrl);
   const sessionOverrideRaw = useMemo(
     () => getBackendUrlOverride(),
     [cleared, backendUrl],
@@ -27,10 +34,14 @@ export function HubBackendSourceBanner() {
   const envLocalDefault = isEnvLocalBackendDefault() && !sessionOverride;
   const host = backendSourceHost(backendUrl);
 
-  function handleUseHosted() {
-    setBackendUrlOverride(null);
+  function applyBackendPreset(id: DevBackendEndpointId) {
+    setBackendUrlOverride(devBackendSessionOverrideForPreset(id));
     setCleared(true);
     window.location.reload();
+  }
+
+  function handleUseHosted() {
+    applyBackendPreset("hosted");
   }
 
   return (
@@ -62,7 +73,23 @@ export function HubBackendSourceBanner() {
         </span>
       ) : null}
       <span className="figma-hub-backend-banner__actions">
-        {sessionOverride || source !== "hosted" ? (
+        {import.meta.env.DEV ? (
+          <span className="figma-hub-backend-banner__presets" role="group" aria-label="Dev API endpoint">
+            {DEV_BACKEND_ENDPOINTS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`figma-hub-backend-banner__btn${activePreset === preset.id ? " figma-hub-backend-banner__btn--active" : ""}`}
+                title={preset.description}
+                aria-pressed={activePreset === preset.id}
+                onClick={() => applyBackendPreset(preset.id)}
+              >
+                {preset.shortLabel}
+              </button>
+            ))}
+          </span>
+        ) : null}
+        {!import.meta.env.DEV && (sessionOverride || source !== "hosted") ? (
           <button
             type="button"
             className="figma-hub-backend-banner__btn"

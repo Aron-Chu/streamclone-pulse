@@ -12,6 +12,7 @@ import {
   initial,
   MOMENTUM_COLUMN_TITLE,
 } from './hubFormat'
+import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
 import { MomentumBadge } from './MomentumBadge'
 
 export interface LiveChannelsMatrixProps {
@@ -19,6 +20,9 @@ export interface LiveChannelsMatrixProps {
   loading?: boolean
   updatedAgo?: string
   maxRows?: number
+  poolSize?: number
+  ircActive?: number
+  rosterLive?: number
 }
 
 type MatrixFilterKey = 'all' | 'synced' | 'partial' | 'stats'
@@ -73,6 +77,7 @@ function ChannelMatrixRow({ channel, href }: ChannelMatrixRowProps) {
   const barMeta = coveragePctMeta(pct)
   const emotesPerMin = channelEmotesPerMin(channel)
   const label = rowAriaLabel(channel)
+  const category = channelCategoryLabel(channel.category)
 
   const activate = () => navigate(href)
 
@@ -101,11 +106,14 @@ function ChannelMatrixRow({ channel, href }: ChannelMatrixRowProps) {
           </span>
           <span className="live-channels-matrix__channel-text">
             <strong>{displayName(channel.login, channel.displayName)}</strong>
-            <small>{channel.category || 'Live now'}</small>
+            <small title={category}>{category}</small>
+            {channel.streamingTogether ? <StreamTogetherBadge channel={channel} /> : null}
           </span>
         </span>
       </td>
-      <td className="live-channels-matrix__hide-md">{channel.category || '—'}</td>
+      <td className="live-channels-matrix__hide-md" title={category}>
+        {category}
+      </td>
       <td className="live-channels-matrix__num">{compact(channel.viewers)}</td>
       <td className="live-channels-matrix__num">
         {channel.chatPerMin > 0 ? compact(Math.round(channel.chatPerMin)) : '—'}
@@ -135,6 +143,7 @@ function ChannelMatrixRow({ channel, href }: ChannelMatrixRowProps) {
 function ChannelMatrixCard({ channel, href }: ChannelMatrixRowProps) {
   const meta = coverageMeta(channel.coverageState)
   const emotesPerMin = channelEmotesPerMin(channel)
+  const category = channelCategoryLabel(channel.category)
 
   return (
     <Link to={href} className="live-channels-matrix__card">
@@ -147,7 +156,8 @@ function ChannelMatrixCard({ channel, href }: ChannelMatrixRowProps) {
       </span>
       <span className="live-channels-matrix__card-main">
         <strong>{displayName(channel.login, channel.displayName)}</strong>
-        <small>{channel.category || 'Live now'}</small>
+        <small title={category}>{category}</small>
+        {channel.streamingTogether ? <StreamTogetherBadge channel={channel} /> : null}
         <span className="live-channels-matrix__card-stats">
           <span>{compact(channel.viewers)} viewers</span>
           <span>{channel.chatPerMin > 0 ? `${compact(Math.round(channel.chatPerMin))}/m chat` : '— chat'}</span>
@@ -172,7 +182,10 @@ export function LiveChannelsMatrix({
   channels,
   loading = false,
   updatedAgo,
-  maxRows = 24,
+  maxRows = 20,
+  poolSize,
+  ircActive,
+  rosterLive,
 }: LiveChannelsMatrixProps) {
   const [filter, setFilter] = useState<MatrixFilterKey>('all')
   const [sortKey, setSortKey] = useState<MatrixSortKey>('viewers')
@@ -248,8 +261,11 @@ export function LiveChannelsMatrix({
             Live tracked channels
           </h2>
           <p className="figma-block__sub">
-            Coverage state, chat velocity, and viewer totals for channels in the live pool — hover any row to open
-            channel analytics.
+            Top {maxRows} of {compact(channels.length)} hub rows
+            {poolSize != null && poolSize > 0 ? ` · ${compact(poolSize)} live in pool` : ''}
+            {ircActive != null && ircActive > 0 ? ` · ${compact(ircActive)} IRC collecting` : ''}
+            {rosterLive != null && rosterLive > 0 ? ` · ${compact(rosterLive)} roster live` : ''}
+            — coverage, chat velocity, and Helix viewer totals.
             {updatedAgo ? ` · as of ${updatedAgo}` : ''}
           </p>
         </div>

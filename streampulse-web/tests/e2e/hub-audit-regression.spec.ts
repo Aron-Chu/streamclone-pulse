@@ -174,10 +174,13 @@ test.describe('hub audit regression', () => {
     await installHubAuditMock(page)
   })
 
-  test('HUB-AUDIT-050 trend badges disclose vs prior 5 min', async ({ page }) => {
+  test('HUB-AUDIT-050 trend badges disclose momentum via accessible title', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    await expect(page.getByText('vs prior 5 min').first()).toBeVisible()
+    await page.locator('#section-live-rail').scrollIntoViewIfNeeded()
+    const trend = page.locator('.figma-live-rail__trend').first()
+    await expect(trend).toBeVisible()
+    await expect(trend).toHaveAttribute('title', /Momentum:/i)
     await assertNoConsoleErrors(page, errors)
   })
 
@@ -245,7 +248,7 @@ test.describe('hub audit regression', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     await expect(page.getByText(/As of \d+[smh] ago/).first()).toBeVisible()
-    await expect(page.getByText('Top emotes — across tracked channels')).toBeVisible()
+    await expect(page.getByText(/Top emotes —/).first()).toBeVisible()
     await assertNoConsoleErrors(page, errors)
   })
 

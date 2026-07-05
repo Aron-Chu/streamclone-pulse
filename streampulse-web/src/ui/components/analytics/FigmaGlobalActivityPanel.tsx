@@ -1,7 +1,11 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import {
   bucketMinutes,
+  chartActivityPoints,
   formatActivityWindowLabel,
+  peakActivityChatPerMin,
+  peakActivityViewers,
 } from "../../../lib/hubActivitySummary";
 import type { HubEmote, PublicHub } from "../../../lib/publicHub";
 import {
@@ -9,20 +13,18 @@ import {
   type HubActivityRangeControl,
 } from "../hub/HubActivityChart";
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
-import { TopEmotesPanel } from "./TopEmotesPanel";
+import { ActivityBucketInspector } from "./ActivityBucketInspector";
+import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
 import { HubFreshnessCaption } from "./HubFreshnessCaption";
+import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
 import { compact } from "./hubFormat";
+import { hubMetricLegend, livePoolViewerSum } from "../../../lib/hubMetricHelpers";
+import { useCommandCenterLabels } from "../../providers/AnalyticsThemeProvider";
+import { useAnalyticsMotion } from "../../motion/useAnalyticsMotion";
 import { Link } from "react-router-dom";
 import "../hub/hub.css";
 
-/**
- * Honest live-collector health note. Live chat/emote lines only exist for
- * channels that have an active IRC collector; when admission is disabled or the
- * roster metadata is stale, most live channels stay viewer-only. Surface that
- * truth instead of implying every live channel is chat-tracked. Renders nothing
- * when the roster is healthy (or the hub omits roster data).
- */
-function CollectorHealthNote({ hub }: { hub: PublicHub }) {
+function CollectorHealthChip({ hub }: { hub: PublicHub }) {
   const roster = hub.corpusPipeline.roster;
   const active = roster.collectorTracking || hub.corpusPipeline.collectorActive;
   const expected =
@@ -34,25 +36,29 @@ function CollectorHealthNote({ hub }: { hub: PublicHub }) {
     admissionStalled || deficit > 0 || (expected > 0 && active < expected);
   if (!hasIssue) return null;
 
-  const parts = [
-    `${compact(active)} active IRC collector${active === 1 ? "" : "s"}`,
-  ];
-  if (expected > 0) parts.push(`${compact(expected)} expected`);
-  if (deficit > 0) parts.push(`${compact(deficit)} live channels uncovered`);
+  const shortLabel = admissionStalled
+    ? `Coverage degraded · ${compact(active)}/${compact(expected)} IRC collecting`
+    : `Live chat limited · ${compact(active)}/${compact(expected)} IRC collecting`;
+
+  const detail = [
+    admissionStalled
+      ? "IRC admission disabled or roster metadata stale."
+      : "Live chat coverage limited.",
+    `${compact(active)} live rows with active IRC collectors`,
+    expected > 0 ? `${compact(expected)} expected from live roster` : null,
+    deficit > 0 ? `${compact(deficit)} live channels without IRC yet` : null,
+    "Chat and emote chart lines require an active IRC collector; viewer counts may still show from Helix.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className="figma-collector-note" role="status">
-      <span className="figma-collector-note__dot" aria-hidden="true" />
-      <span>
-        <strong>
-          {admissionStalled
-            ? "IRC admission disabled/stale"
-            : "Live chat coverage limited"}
-        </strong>{" "}
-        - {parts.join(" - ")}. Only channels with an active collector show
-        chat/emote lines; the rest are viewer-only.
-      </span>
-    </div>
+    <SystemStatusBadge
+      state="degraded"
+      label={shortLabel}
+      className="figma-global-activity__status-chip"
+      title={detail}
+    />
   );
 }
 
@@ -72,6 +78,8 @@ export function ChartSourceBanner({
 }) {
   const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
   const bucket = bucketMinutes(hub.activity.windowMinutes);
+  const poolSize = hub.poolSize;
+  const ircActive = hub.corpusPipeline.collectorActive;
 
   return (
     <div
@@ -88,6 +96,14 @@ export function ChartSourceBanner({
         <strong>Buckets:</strong> ~{bucket} min - {activitySummary.pointCount}/
         {activitySummary.expectedBuckets}
       </span>
+      {poolSize > 0 ? (
+        <span>
+          <strong>Pool:</strong> {compact(poolSize)} live in pool
+          {ircActive > 0 && hub.corpusPipeline.collectorMax > 0
+            ? ` · ${compact(ircActive)}/${compact(hub.corpusPipeline.collectorMax)} IRC`
+            : ''}
+        </span>
+      ) : null}
       <span className="figma-chart-source__links">
         <Link to="/status">Status</Link>
       </span>
@@ -110,9 +126,15 @@ export interface FigmaGlobalActivityPanelProps {
   chartBucketSelectEnabled?: boolean;
   selectedBucketT?: number | null;
   onBucketSelect?: (bucketT: number | null) => void;
+  /** Fired when the chart hover bucket changes (preview inspector). */
+  onBucketHover?: (bucketT: number | null) => void;
   showSearch?: boolean;
   updatedAgo?: string;
   activityRefreshing?: boolean;
+  /** Changes when the activity time window changes (24h/7d/…) — triggers crossfade. */
+  activityWindowKey?: string;
+  /** Emotes aggregated from bucket-filtered Pulse Moments (inspector fallback). */
+  bucketMomentEmotes?: HubEmote[];
 }
 
 function formatPeakTime(ts: number): string {
@@ -136,56 +158,168 @@ export function FigmaGlobalActivityPanel({
   chartBucketSelectEnabled = false,
   selectedBucketT = null,
   onBucketSelect,
+  onBucketHover,
   showSearch = true,
   updatedAgo,
   activityRefreshing = false,
+  activityWindowKey,
+  bucketMomentEmotes = [],
 }: FigmaGlobalActivityPanelProps) {
+  const labels = useCommandCenterLabels();
+  const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
+  const inspectorRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const prevWindowKeyRef = useRef(activityWindowKey);
   const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
-  const emoteImages = new Map<string, string>();
-  for (const emote of topEmotes) {
-    if (emote.imageUrl) emoteImages.set(emote.name.toLowerCase(), emote.imageUrl);
-  }
-  const peakPoint = hub.activity.points.reduce(
+  const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
+  const hoverIntentRef = useRef<number | null>(null);
+  const hoverIntentTimerRef = useRef<number | null>(null);
+
+  const emoteImages = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const emote of topEmotes) {
+      if (emote.imageUrl) map.set(emote.name.toLowerCase(), emote.imageUrl);
+    }
+    return map;
+  }, [topEmotes]);
+
+  const handleBucketHover = useCallback((bucketT: number | null) => {
+    if (bucketT == null) {
+      if (hoverIntentTimerRef.current != null) {
+        window.clearTimeout(hoverIntentTimerRef.current);
+        hoverIntentTimerRef.current = null;
+      }
+      hoverIntentRef.current = null;
+      setHoverBucketT(null);
+      return;
+    }
+    hoverIntentRef.current = bucketT;
+    if (hoverIntentTimerRef.current != null) {
+      window.clearTimeout(hoverIntentTimerRef.current);
+    }
+    hoverIntentTimerRef.current = window.setTimeout(() => {
+      hoverIntentTimerRef.current = null;
+      if (hoverIntentRef.current === bucketT) {
+        setHoverBucketT(bucketT);
+      }
+    }, 80);
+  }, []);
+
+  useEffect(() => () => {
+    if (hoverIntentTimerRef.current != null) {
+      window.clearTimeout(hoverIntentTimerRef.current);
+    }
+  }, []);
+
+  const chartPoints = useMemo(
+    () => chartActivityPoints(hub.activity.points, hub.activity.windowMinutes, undefined, livePoolViewerSum(hub)),
+    [hub.activity.points, hub.activity.windowMinutes, hub],
+  );
+  const peakViewers = peakActivityViewers(hub.activity.points, hub.activity.windowMinutes);
+  const peakChatPerMin = peakActivityChatPerMin(hub.activity.points, hub.activity.windowMinutes);
+  const peakPoint = chartPoints.reduce(
     (best, point) => (point.viewers > (best?.viewers ?? 0) ? point : best),
-    hub.activity.points[0],
+    chartPoints[0],
   );
-  const peakChatPoint = hub.activity.points.reduce(
+  const peakChatPoint = chartPoints.reduce(
     (best, point) => (point.chat > (best?.chat ?? 0) ? point : best),
-    hub.activity.points[0],
+    chartPoints[0],
   );
+  const poolSize = hub.poolSize;
+  const ircActive = hub.corpusPipeline.collectorActive;
+
+  const selectedPoint = useMemo(
+    () =>
+      selectedBucketT != null
+        ? chartPoints.find((p) => p.t === selectedBucketT) ?? null
+        : null,
+    [chartPoints, selectedBucketT],
+  );
+
+  const hoverPoint = useMemo(() => {
+    if (selectedPoint || hoverBucketT == null) return null;
+    return chartPoints.find((p) => p.t === hoverBucketT) ?? null;
+  }, [chartPoints, hoverBucketT, selectedPoint]);
+
+  useEffect(() => {
+    if (selectedPoint) {
+      onBucketHover?.(null);
+      return;
+    }
+    onBucketHover?.(hoverBucketT);
+  }, [hoverBucketT, onBucketHover, selectedPoint]);
+
+  const prevSelectedTRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const nextT = selectedPoint?.t ?? null;
+    if (nextT == null) {
+      prevSelectedTRef.current = null;
+      return;
+    }
+    if (prevSelectedTRef.current === nextT) return;
+    prevSelectedTRef.current = nextT;
+    transitionInspector(inspectorRef.current);
+  }, [selectedPoint?.t, transitionInspector]);
+
+  useEffect(() => {
+    if (!activityWindowKey || !motionEnabled) return;
+    if (prevWindowKeyRef.current === activityWindowKey) return;
+    prevWindowKeyRef.current = activityWindowKey;
+    fadeThemeCenter(bodyRef.current);
+  }, [activityWindowKey, fadeThemeCenter, motionEnabled]);
+
   const chartNote = chartBucketSelectEnabled
-    ? "Click a recent bucket (last ~3h) to highlight matching IRC peaks below."
+    ? "Click any activity bucket to filter Pulse Moments in this panel (older buckets load corpus peaks). In-progress bucket omitted from chart."
     : livePulseSource === "featured_fallback" ||
         livePulseSource === "legacy_fallback"
-      ? "Chart clicks don't filter fallback moments (no wall-clock peaks) — open a channel session for chart-to-moment."
-      : "Hover for bucket totals. Switch to 24h and click recent buckets to filter Pulse Moments below.";
+      ? "Chart clicks don't filter fallback moments — open a channel session for chart-to-moment. In-progress bucket omitted from chart."
+      : "Hover for bucket totals. Tracked IRC chat only (not all of Twitch). In-progress bucket omitted from chart.";
 
   return (
     <section
       className="figma-global-activity"
-      aria-label="Global emote activity"
+      aria-label={labels.liveActivity}
     >
       <div className="figma-global-activity__headline">
-        <h2 className="figma-block__title">Live activity</h2>
-        <p>
-          Viewer totals, chat velocity, and emote provider lines across {compact(hub.activity.channelCount)} tracked
-          channels — last {windowLabel}.
+        <div className="figma-global-activity__headline-row">
+          <h2 className="figma-block__title">{labels.liveActivity}</h2>
           {updatedAgo ? (
-            <>
-              {" "}
-              <HubFreshnessCaption updatedAgo={updatedAgo} className="figma-global-activity__freshness" />
-            </>
+            <HubFreshnessCaption updatedAgo={updatedAgo} className="figma-global-activity__freshness" />
           ) : null}
+        </div>
+        <p className="figma-global-activity__lede muted">
+          Peak concurrent viewers from corpus rollups plus Top-500 Helix when higher — last {windowLabel}.
+          Chat and emote lines are IRC-only.
         </p>
-        {peakPoint && peakPoint.viewers > 0 ? (
-          <p className="figma-global-activity__peak">
-            Peak: <strong>{compact(peakPoint.viewers)} viewers</strong>
-            {peakChatPoint && peakChatPoint.chat > 0
-              ? ` · ${compact(peakChatPoint.chat)} chat/min`
-              : ""}
-            {peakPoint.t ? ` · ${formatPeakTime(peakPoint.t)}` : ""}
-          </p>
+        <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
+        <ActivityViewerSanityBanner hub={hub} />
+        {peakPoint && peakViewers > 0 ? (
+          <div className="figma-global-activity__peak-row" role="group" aria-label="Peak summary">
+            <span className="figma-global-activity__peak-stat">
+              <span className="figma-global-activity__peak-label">Peak global viewers</span>
+              <strong>{compact(peakViewers)}</strong>
+            </span>
+            {livePoolViewerSum(hub) > 0 ? (
+              <span className="figma-global-activity__peak-stat">
+                <span className="figma-global-activity__peak-label">Live pool sum now</span>
+                <strong>{compact(livePoolViewerSum(hub))}</strong>
+              </span>
+            ) : null}
+            {peakChatPerMin > 0 ? (
+              <span className="figma-global-activity__peak-stat">
+                <span className="figma-global-activity__peak-label">Peak chat/min</span>
+                <strong>{compact(peakChatPerMin)}</strong>
+              </span>
+            ) : null}
+            {peakPoint.t ? (
+              <span className="figma-global-activity__peak-time muted">
+                {formatPeakTime(peakPoint.t)}
+              </span>
+            ) : null}
+          </div>
         ) : null}
+        <CollectorHealthChip hub={hub} />
       </div>
       {showSearch ? (
       <div
@@ -200,7 +334,6 @@ export function FigmaGlobalActivityPanel({
         />
       </div>
       ) : null}
-      <CollectorHealthNote hub={hub} />
       <p className="figma-global-activity__chart-note" role="note">
         {chartNote}
         {activityRefreshing ? (
@@ -210,30 +343,45 @@ export function FigmaGlobalActivityPanel({
           </span>
         ) : null}
       </p>
-      <div className="figma-global-activity__body">
-        <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
-          <HubActivityChart
-            points={hub.activity.points}
-            windowMinutes={hub.activity.windowMinutes}
-            channelCount={hub.activity.channelCount}
-            expectedBuckets={activitySummary.expectedBuckets}
-            missingBuckets={activitySummary.missingBuckets}
-            coveragePct={activitySummary.coveragePct}
-            loading={loading}
-            rangeControl={rangeControl}
-            selectedBucketT={selectedBucketT}
-            onBucketSelect={
-              chartBucketSelectEnabled ? onBucketSelect : undefined
-            }
-            emoteImages={emoteImages}
-          />
+      <div className="figma-global-activity__body" ref={bodyRef}>
+        <div
+          className="figma-global-activity__chart-col"
+          data-refreshing={activityRefreshing ? "true" : undefined}
+        >
+          <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
+            <HubActivityChart
+              points={hub.activity.points}
+              windowMinutes={hub.activity.windowMinutes}
+              channelCount={hub.activity.channelCount}
+              poolSize={hub.poolSize}
+              livePoolViewerSum={livePoolViewerSum(hub)}
+              expectedBuckets={activitySummary.expectedBuckets}
+              missingBuckets={activitySummary.missingBuckets}
+              coveragePct={activitySummary.coveragePct}
+              loading={loading}
+              footnote={activitySummary.footnote}
+              rangeControl={rangeControl}
+              selectedBucketT={selectedBucketT}
+              onBucketSelect={
+                chartBucketSelectEnabled ? onBucketSelect : undefined
+              }
+              onBucketHover={
+                selectedBucketT == null ? handleBucketHover : undefined
+              }
+              emoteImages={emoteImages}
+            />
+          </div>
         </div>
-        <div className="figma-global-activity__emotes">
-          <TopEmotesPanel
-            emotes={topEmotes}
-            windowLabel={`all providers - ${windowLabel}`}
-            className="figma-global-activity__emotes-panel"
+        <div className="figma-global-activity__inspector" ref={inspectorRef}>
+          <ActivityBucketInspector
+            rangeEmotes={topEmotes}
+            bucketMomentEmotes={bucketMomentEmotes}
+            windowLabel={windowLabel}
+            windowMinutes={hub.activity.windowMinutes}
             updatedAgo={updatedAgo}
+            selectedPoint={selectedPoint}
+            hoverPoint={hoverPoint}
+            className="figma-global-activity__inspector-panel"
           />
         </div>
       </div>

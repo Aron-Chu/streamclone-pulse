@@ -9,9 +9,8 @@ function buildAnalyticsHref({ login, streamId }) {
   return `/analytics/${safeLogin}/s/${encodeURIComponent(streamId)}`
 }
 
-function analyticsActionLabel(context) {
-  if (context === 'recent-session') return 'Open session'
-  return 'Open analytics'
+function analyticsActionLabel() {
+  return 'Analytics'
 }
 
 const cases = [
@@ -27,7 +26,7 @@ for (const { login, streamId, want } of cases) {
   }
 }
 
-if (analyticsActionLabel('recent-session') !== 'Open session') {
+if (analyticsActionLabel('recent-session') !== 'Analytics') {
   console.error('analyticsActionLabel(recent-session) regression')
   process.exit(1)
 }

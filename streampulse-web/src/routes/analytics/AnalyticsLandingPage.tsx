@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
 import { usePublicHubData } from "../../hooks/usePublicHubData";
 import { getBackendUrl } from "../../lib/apiClient";
 import {
@@ -8,9 +9,13 @@ import {
 import { HubBackendSourceBanner } from "../../ui/components/analytics/HubBackendSourceBanner";
 import { resolveLivePulseMoments } from "../../lib/figmaSessionAnalytics";
 import { summarizeActivity } from "../../lib/hubActivitySummary";
+import { aggregateEmotesFromMoments } from "../../ui/components/analytics/activityBucketInspectorUtils";
+import type { FigmaMomentRow } from "../../lib/figmaSessionAnalytics";
+import { filterMomentsByBucket } from "../../lib/pulseMomentsUtils";
 import {
-  enrichTopMoversWithAvatars,
+  HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
+  resolveHubTopMovers,
   type PublicHubActivityWindow,
 } from "../../lib/publicHub";
 import type { HubActivityRangeOption } from "../../ui/components/hub/HubActivityChart";
@@ -23,11 +28,14 @@ import {
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
 import { LiveChannelsMatrix } from "../../ui/components/analytics/LiveChannelsMatrix";
+import { HubLiveRailMoversStrip } from "../../ui/components/analytics/HubLiveRailMoversStrip";
 import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
 import { PulseMomentsLivePanel } from "../../ui/components/analytics/PulseMomentsLivePanel";
 import { HubSearch, type HubSuggestion } from "../../ui/components/hub/HubSearch";
 import type { HubSidebarSection } from "../../ui/components/analytics/AnalyticsHubSidebar";
 import { compact } from "../../ui/components/analytics/hubFormat";
+import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvider";
+import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
 import "../../ui/components/analytics/figma-analytics.css";
 
 const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
@@ -59,11 +67,16 @@ function formatUpdatedAgo(ts: number | null): string | undefined {
 }
 
 /** Public `/analytics` command-center landing. */
-export default function AnalyticsLandingPage() {
+function AnalyticsLandingContent() {
+  const labels = useCommandCenterLabels();
   const [activityWindow, setActivityWindow] =
-    useState<PublicHubActivityWindow>("7d");
+    useState<PublicHubActivityWindow>("24h");
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
+  const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
+  const [bucketMoments, setBucketMoments] = useState<FigmaMomentRow[]>([]);
+  const [poolMoments, setPoolMoments] = useState<FigmaMomentRow[]>([]);
   const hub = usePublicHubData({ enabled: true, activityWindow });
+  const recentLogins = useHubRecentLogins();
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
   const loadingInitial = hub.loading && !hub.data;
   const updatedAgo = formatUpdatedAgo(hub.lastUpdated);
@@ -72,15 +85,40 @@ export default function AnalyticsLandingPage() {
   const livePulseFeed = useMemo(() => resolveLivePulseMoments(data), [data]);
   const chartBucketSelectEnabled = livePulseFeed.source === "network";
 
+  const bucketMomentEmotes = useMemo(() => {
+    if (!chartBucketSelectEnabled) return [];
+    if (selectedBucketT != null) {
+      return aggregateEmotesFromMoments(bucketMoments);
+    }
+    if (hoverBucketT != null) {
+      const hovered = filterMomentsByBucket(
+        poolMoments,
+        hoverBucketT,
+        data.activity.windowMinutes,
+        data.liveChannels,
+      );
+      return aggregateEmotesFromMoments(hovered);
+    }
+    return [];
+  }, [
+    bucketMoments,
+    chartBucketSelectEnabled,
+    data.activity.windowMinutes,
+    data.liveChannels,
+    hoverBucketT,
+    poolMoments,
+    selectedBucketT,
+  ]);
+
   const activitySummary = useMemo(
     () =>
       summarizeActivity(
         data.activity.points,
         data.activity.windowMinutes,
-        data.activity.channelCount,
+        data.poolSize,
       ),
     [
-      data.activity.channelCount,
+      data.poolSize,
       data.activity.points,
       data.activity.windowMinutes,
     ],
@@ -95,7 +133,7 @@ export default function AnalyticsLandingPage() {
       seen.add(login);
       rows.push({ ...item, login });
     };
-    data.liveChannels.slice(0, 12).forEach((channel) =>
+    data.liveChannels.forEach((channel) =>
       add({
         login: channel.login,
         displayName: channel.displayName,
@@ -105,7 +143,7 @@ export default function AnalyticsLandingPage() {
         live: true,
       }),
     );
-    data.topMovers.slice(0, 8).forEach((mover) =>
+    data.topMovers.slice(0, HUB_TOP_MOVERS_CAP).forEach((mover) =>
       add({
         login: mover.login,
         displayName: mover.displayName,
@@ -117,28 +155,45 @@ export default function AnalyticsLandingPage() {
         ),
       }),
     );
-    return rows.length > 0 ? rows : FALLBACK_SUGGESTIONS;
-  }, [data.liveChannels, data.topMovers]);
+    recentLogins.forEach(({ login }) =>
+      add({
+        login,
+        live: data.liveChannels.some(
+          (ch) => ch.login.toLowerCase() === login.toLowerCase(),
+        ),
+      }),
+    );
+    FALLBACK_SUGGESTIONS.forEach((item) =>
+      add({
+        ...item,
+        live: data.liveChannels.some(
+          (ch) => ch.login.toLowerCase() === item.login.toLowerCase(),
+        ),
+      }),
+    );
+    return rows;
+  }, [data.liveChannels, data.topMovers, recentLogins]);
 
   const backendSource = resolveBackendSource(getBackendUrl());
   const localHubUnavailable =
     backendSource === "local" && !hub.hubEndpointOk && Boolean(hub.error);
   const showTrackedTable = data.liveChannels.length > 0;
+  const featuredChannels = data.liveChannels.slice(0, 12);
   const sidebarSections = useMemo<HubSidebarSection[]>(
     () => [
-      { id: "section-overview", label: "Overview" },
-      { id: "section-network", label: "Live Activity" },
-      { id: "section-pulse-moments", label: "Pulse Moments" },
-      { id: "section-emote-signal", label: "Emote Signal" },
-      { id: "section-tracked", label: "Tracked Channels", hidden: !showTrackedTable },
-      { id: "section-coverage", label: "Coverage" },
+      { id: "section-overview", label: labels.overview },
+      { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
+      { id: "section-network", label: labels.liveActivity },
+      { id: "section-pulse-moments", label: labels.pulseMoments },
+      { id: "section-emote-signal", label: labels.emoteSignal },
+      { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },
+      { id: "section-coverage", label: labels.coverage },
     ],
-    [showTrackedTable],
+    [featuredChannels.length, labels, showTrackedTable],
   );
 
-  const featuredChannels = data.liveChannels.slice(0, 8);
   const topMovers = useMemo(
-    () => enrichTopMoversWithAvatars(data.topMovers, data.liveChannels),
+    () => resolveHubTopMovers(data.topMovers, data.liveChannels),
     [data.topMovers, data.liveChannels],
   );
 
@@ -190,29 +245,32 @@ export default function AnalyticsLandingPage() {
         ) : null}
         <HubBackendSourceBanner />
 
-        <div id="section-overview">
+        <SectionReveal id="section-overview">
           <HubCommandHeader
             hub={data}
             activitySummary={activitySummary}
             loading={loadingInitial}
           />
-          <div className="hub-command-header__toolbar" role="search" aria-label="Channel search">
+          <div className="hub-command-search" role="search" aria-label="Channel search">
             <HubSearch
               suggestions={suggestions}
-              placeholder="Search channels, games, or moments..."
+              placeholder={labels.searchPlaceholder}
               showKbd
+              showOpenButton
+              validateChannel={false}
+              maxOptions={12}
             />
           </div>
-        </div>
+        </SectionReveal>
 
         {featuredChannels.length > 0 ? (
-          <section
+          <SectionReveal
+            as="section"
             id="section-live-rail"
             className="hub-live-rail-section"
-            aria-label="Featured live channels"
           >
             <div className="hub-live-rail-section__head">
-              <h2 className="hub-live-rail-section__title">Featured live channels</h2>
+              <h2 className="hub-live-rail-section__title">{labels.liveRail}</h2>
               <span className="hub-live-rail-section__meta">
                 Showing {featuredChannels.length} of {compact(data.liveChannels.length)} in pool
               </span>
@@ -222,67 +280,98 @@ export default function AnalyticsLandingPage() {
               colors={RAIL_COLORS}
               loading={loadingInitial}
             />
-          </section>
+            {topMovers.length > 0 ? (
+              <HubLiveRailMoversStrip movers={topMovers.slice(0, 6)} loading={loadingInitial} />
+            ) : null}
+          </SectionReveal>
         ) : null}
 
-        <div id="section-network">
-          <FigmaGlobalActivityPanel
-            hub={data}
-            activitySummary={activitySummary}
-            suggestions={suggestions}
-            topEmotes={data.topEmotes}
-            loading={chartLoading}
-            activityRefreshing={hub.activityRefreshing}
-            updatedAgo={updatedAgo}
-            livePulseSource={livePulseFeed.source}
-            chartBucketSelectEnabled={chartBucketSelectEnabled}
-            selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
-            onBucketSelect={
-              chartBucketSelectEnabled ? setSelectedBucketT : undefined
-            }
-            rangeControl={{
-              active: activityWindow,
-              options: ACTIVITY_WINDOW_OPTIONS,
-              onSelect: (key) => {
-                setActivityWindow(key as PublicHubActivityWindow);
-                setSelectedBucketT(null);
-              },
-            }}
-            showSearch={false}
-          />
-        </div>
+        <SectionReveal id="section-network">
+          <div className="figma-activity-hub">
+            <FigmaGlobalActivityPanel
+              hub={data}
+              activitySummary={activitySummary}
+              suggestions={suggestions}
+              topEmotes={data.topEmotes}
+              loading={chartLoading}
+              activityRefreshing={hub.activityRefreshing}
+              updatedAgo={updatedAgo}
+              livePulseSource={livePulseFeed.source}
+              chartBucketSelectEnabled={chartBucketSelectEnabled}
+              selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
+              onBucketSelect={
+                chartBucketSelectEnabled
+                  ? (bucketT) => {
+                      setSelectedBucketT(bucketT);
+                      setHoverBucketT(null);
+                    }
+                  : undefined
+              }
+              onBucketHover={chartBucketSelectEnabled ? setHoverBucketT : undefined}
+              rangeControl={{
+                active: activityWindow,
+                options: ACTIVITY_WINDOW_OPTIONS,
+                onSelect: (key) => {
+                  setActivityWindow(key as PublicHubActivityWindow);
+                  setSelectedBucketT(null);
+                  setHoverBucketT(null);
+                },
+              }}
+              showSearch={false}
+              activityWindowKey={activityWindow}
+              bucketMomentEmotes={bucketMomentEmotes}
+            />
+            <PulseMomentsLivePanel
+              hub={data}
+              feed={livePulseFeed}
+              topEmotes={data.topEmotes}
+              loading={loadingInitial}
+              layout="embedded"
+              selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
+              onClearBucketFilter={
+                chartBucketSelectEnabled ? () => setSelectedBucketT(null) : undefined
+              }
+              onBucketMomentsChange={chartBucketSelectEnabled ? setBucketMoments : undefined}
+              onPoolMomentsChange={chartBucketSelectEnabled ? setPoolMoments : undefined}
+              activityWindow={activityWindow}
+              activityWindowMinutes={data.activity.windowMinutes}
+              updatedAgo={updatedAgo}
+            />
+          </div>
+        </SectionReveal>
 
-        <div id="section-pulse-moments">
-          <PulseMomentsLivePanel
-            hub={data}
-            feed={livePulseFeed}
-            topEmotes={data.topEmotes}
-            loading={loadingInitial}
-            selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
-            activityWindow={activityWindow}
-            activityWindowMinutes={data.activity.windowMinutes}
-            updatedAgo={updatedAgo}
-          />
-        </div>
-
-        <div id="section-emote-signal">
+        <SectionReveal id="section-emote-signal">
           <FigmaEmoteSignalBlock
             intel={data.emoteIntel}
             topEmotes={data.topEmotes}
             topMovers={topMovers}
             loading={loadingInitial}
+            corpusPipeline={data.corpusPipeline}
+            poolSize={data.poolSize}
+            windowMinutes={data.activity.windowMinutes}
           />
-        </div>
+        </SectionReveal>
 
         {showTrackedTable ? (
-          <LiveChannelsMatrix channels={data.liveChannels} loading={loadingInitial} updatedAgo={updatedAgo} />
+          <SectionReveal>
+            <LiveChannelsMatrix
+              channels={data.liveChannels}
+              loading={loadingInitial}
+              updatedAgo={updatedAgo}
+              poolSize={data.poolSize}
+              ircActive={data.corpusPipeline.collectorActive}
+              rosterLive={data.corpusPipeline.roster?.live}
+            />
+          </SectionReveal>
         ) : null}
 
-        <HubCoverageTrustStrip
-          pipeline={data.corpusPipeline}
-          loading={loadingInitial}
-          updatedAgo={updatedAgo}
-        />
+        <SectionReveal>
+          <HubCoverageTrustStrip
+            pipeline={data.corpusPipeline}
+            loading={loadingInitial}
+            updatedAgo={updatedAgo}
+          />
+        </SectionReveal>
 
         <ChartSourceBanner
           hub={data}
@@ -292,4 +381,8 @@ export default function AnalyticsLandingPage() {
       </main>
     </AnalyticsFigmaShell>
   );
+}
+
+export default function AnalyticsLandingPage() {
+  return <AnalyticsLandingContent />;
 }
