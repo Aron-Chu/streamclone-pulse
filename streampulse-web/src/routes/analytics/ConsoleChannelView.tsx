@@ -36,7 +36,7 @@ export default function ConsoleChannelView() {
       backendStatus={{
         label: 'API',
         value: backendSourceLabel(backendSource),
-        tone: hub.error && !hub.data ? 'offline' : backendSource === 'local' ? 'degraded' : 'ready',
+        tone: hub.error && !hub.data ? 'offline' : 'ready',
       }}
     >
       <main className="figma-analytics__main hub-sec--console" id="analytics-main" aria-label={`Analytics for ${displayChannel}`}>
@@ -44,7 +44,7 @@ export default function ConsoleChannelView() {
           <AnalyticsConsole
             mode="public"
             shellNested
-            showGameSegments={true}
+            showGameSegments={Boolean(streamId?.trim())}
             enableSyncActions={usesLocalAnalyticsBackend()}
             buildSessionPath={portalSessionPath}
           />

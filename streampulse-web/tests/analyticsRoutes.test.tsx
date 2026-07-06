@@ -43,7 +43,7 @@ describe('public channel analytics routes', () => {
     renderPath('/analytics/xqc')
     expect(await screen.findByRole('main', { name: /analytics for xqc/i })).toBeTruthy()
     expect(screen.getByTestId('console-mode').textContent).toBe('public')
-    expect(screen.getByTestId('show-game-segments').textContent).toBe('true')
+    expect(screen.getByTestId('show-game-segments').textContent).toBe('false')
     expect(screen.getByTestId('stream-id').textContent).toBe('')
   })
 

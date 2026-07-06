@@ -68,7 +68,9 @@ interface PortalStreamDetail {
   vodAlignSeconds?: number
   syncPhase?: string
   chatCoveragePct?: number
+  analyticsQuality?: string
   dataSourceBadges?: Array<{ source: string; state: string; label?: string }>
+  viewerSource?: string
 }
 
 interface PortalMinutePoint {
@@ -87,6 +89,7 @@ interface PortalStreamMinutesResponse {
   streamId: string
   channel: string
   startedAt: string
+  coverageStartOffsetSeconds?: number
   minutes: PortalMinutePoint[]
   updatedAt: number
 }
@@ -149,6 +152,8 @@ interface PortalChannelLiveResponse {
   updatedAt: number
   vodId?: string
   syncPhase?: string
+  coverageStartOffsetSeconds?: number
+  viewerSource?: string
 }
 
 interface PortalChannelEmoteRow {
@@ -422,27 +427,16 @@ async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean
     portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
   ).catch(() => null)
 
-  const detailRes = await detailPromise
-  const login =
-    channelLogin?.trim()
-    || detailRes.data?.channel?.trim()
-    || detailRes.data?.stream?.login?.trim()
-    || ''
-  const channelEmotesPromise =
-    login && !usesLocalAnalyticsRoutes()
-      ? fetchPortalChannelEmotesCatalog(login)
-      : Promise.resolve([] as AnalyticsTopEmote[])
-
-  const [minutesRes, summaryRes, channelEmotes] = await Promise.all([
+  const [detailRes, minutesRes, summaryRes] = await Promise.all([
+    detailPromise,
     minutesPromise,
     summaryPromise,
-    channelEmotesPromise,
   ])
   return {
     detail: detailRes.data,
     minutes: minutesRes?.data ?? null,
     summary: summaryRes?.data ?? null,
-    channelEmotes,
+    channelEmotes: [] as AnalyticsTopEmote[],
     minutesFetchFailed,
     includeMinutes,
   }
@@ -509,6 +503,8 @@ function portalLiveResponseToAnalytics(
     updatedAt: data.updatedAt,
     vodId: data.vodId ?? stream?.vodId,
     syncPhase: data.syncPhase,
+    viewerSource: data.viewerSource,
+    coverageStartOffsetSeconds: data.coverageStartOffsetSeconds,
   }
 }
 function portalDetailToAnalytics(
@@ -568,7 +564,9 @@ function portalDetailToAnalytics(
     syncPhase: detail.syncPhase,
     chatCoveragePct: detail.chatCoveragePct,
     timelineMinutes: rawMinuteCount > 0 ? rawMinuteCount : rollups.length,
-    analyticsQuality: summary?.analyticsQuality,
+    analyticsQuality: summary?.analyticsQuality ?? detail.analyticsQuality,
+    viewerSource: detail.viewerSource,
+    coverageStartOffsetSeconds: minutes?.coverageStartOffsetSeconds,
     minutesUnavailable,
   }
 }
@@ -635,11 +633,10 @@ export const portalAnalyticsApi: AnalyticsApi = {
       }
     }
     try {
-      const [{ data }, channelEmotes] = await Promise.all([
-        apiClient<PortalChannelLiveResponse>(portalPath(`/channels/${encodeURIComponent(login)}/live`)),
-        fetchPortalChannelEmotesCatalog(login),
-      ])
-      return portalLiveResponseToAnalytics(data, channelEmotes)
+      const { data } = await apiClient<PortalChannelLiveResponse>(
+        portalPath(`/channels/${encodeURIComponent(login)}/live`),
+      )
+      return portalLiveResponseToAnalytics(data, [])
     } catch {
       return {
         channel: login,
@@ -725,10 +722,35 @@ export const portalAnalyticsApi: AnalyticsApi = {
   },
 
   async getChannelStreamHistory(login: string, period?: string) {
-    const suffix = period ? `?period=${encodeURIComponent(period)}` : ''
-    return apiClient(analyticsPath(`/channels/${encodeURIComponent(login)}/streams/ranked${suffix}`)).then(
-      (res) => res.data,
-    )
+    if (usesLocalAnalyticsRoutes()) {
+      const suffix = period ? `?period=${encodeURIComponent(period)}` : ''
+      return apiClient(analyticsPath(`/channels/${encodeURIComponent(login)}/streams/ranked${suffix}`)).then(
+        (res) => res.data,
+      )
+    }
+    const limit = period === 'all' ? 100 : 50
+    const { data } = await apiClient<{
+      channel: string
+      items: PortalStreamRecord[]
+      updatedAt: number
+    }>(portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${limit}`))
+    return {
+      channel: data.channel,
+      items: (data.items ?? []).map((item) => ({
+        streamId: item.streamId,
+        id: item.streamId,
+        displayName: item.displayName ?? item.login,
+        title: item.title,
+        category: item.category,
+        startedAt: item.startedAt,
+        endedAt: item.endedAt,
+        peakViewers: item.peakViewers,
+        viewerSamples: item.viewerSamples,
+        chatMessages: item.chatMessages,
+        vodId: item.vodId,
+      })),
+      updatedAt: data.updatedAt,
+    }
   },
 
   async watchAnalyticsChannel(login: string) {
@@ -847,7 +869,14 @@ export async function fetchPortalStreamSummary(streamId: string): Promise<Portal
   if (!streamId.trim()) return null
   try {
     const { data } = await apiClient<PortalStreamSummary>(portalPath(`/streams/${encodeURIComponent(streamId)}/summary`))
-    return data
+    if (!data.topEmotes?.length) return data
+    return {
+      ...data,
+      topEmotes: data.topEmotes.map((emote) => ({
+        ...emote,
+        imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+      })),
+    }
   } catch {
     return null
   }

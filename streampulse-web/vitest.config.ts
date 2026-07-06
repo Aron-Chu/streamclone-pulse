@@ -5,8 +5,14 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+const analyticsConsoleRoot = resolve(__dirname, '../../twitch-7tv-clone/packages/analytics-console')
+const pulseChartsRoot = resolve(__dirname, '../../twitch-7tv-clone/packages/pulse-charts')
+
 export default defineConfig({
   plugins: [react()],
+  esbuild: {
+    jsx: 'automatic',
+  },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
     alias: {
@@ -32,5 +38,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     exclude: ['tests/e2e/**', 'node_modules/**'],
+    server: {
+      deps: {
+        inline: [analyticsConsoleRoot, pulseChartsRoot],
+      },
+    },
   },
 })
