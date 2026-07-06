@@ -35,10 +35,10 @@ function renderPulseLive(onSelect = vi.fn()) {
 }
 
 describe('MostReactedMinutesTable pulse-live rows', () => {
-  it('uses div role=option rows without wrapping links in a button', () => {
+  it('uses semantic table rows without wrapping links in a button', () => {
     const { container } = renderPulseLive()
-    const row = screen.getByRole('option', { name: /Chat spike/i })
-    expect(row.tagName).toBe('DIV')
+    const row = screen.getByRole('row', { name: /Chat spike/i })
+    expect(row.tagName).toBe('TR')
     expect(container.querySelector('button.pulse-moments__leaderboard-row')).toBeNull()
     expect(within(row).getByRole('link', { name: /xQc/i })).toBeTruthy()
     expect(within(row).getByRole('link', { name: /KEKW on 7TV/i })).toBeTruthy()
@@ -51,7 +51,7 @@ describe('MostReactedMinutesTable pulse-live rows', () => {
     expect(screen.getByRole('heading', { name: /Pulse Moments/i })).toBeTruthy()
     expect(screen.getByText(/1 moment/i)).toBeTruthy()
     expect(screen.queryByText(/Live IRC/i)).toBeNull()
-    const row = screen.getByRole('option', { name: /Chat spike/i })
+    const row = screen.getByRole('row', { name: /Chat spike/i })
     fireEvent.click(row)
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ offsetSeconds: 120 }))
     onSelect.mockClear()

@@ -1,9 +1,13 @@
 import type { FigmaMomentRow } from './figmaSessionAnalytics'
 import { formatOffsetLabel } from './figmaSessionAnalytics'
 import { activityBucketKey, activityBucketMs } from './hubActivitySummary'
-import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
+import { absolutizeEmoteAssetUrl, preferResolvableEmoteUrl } from './emoteAssetUrl'
 import type { HubEmote, HubLiveChannel } from './publicHub'
-import { formatChatRate } from './momentMetricLabels'
+import {
+  formatChatRate,
+  formatMomentViewers,
+  formatMomentViewersLabel,
+} from './momentMetricLabels'
 
 export type PulseMomentFilter = 'all' | 'chat' | 'emotes' | 'mixed' | 'synced' | 'stream_opening'
 
@@ -38,6 +42,14 @@ export function emoteLookupKey(name: string, provider?: string): string {
   return p ? `${p}:${n}` : n
 }
 
+function providerAliasKeys(provider: string | undefined): string[] {
+  const p = (provider ?? '').trim().toLowerCase()
+  if (p === 'seventv' || p === '7tv') return ['seventv', '7tv']
+  if (p === 'ffz' || p === 'frankerfacez') return ['ffz', 'frankerfacez']
+  if (p === 'bttv' || p === 'betterttv') return ['bttv', 'betterttv']
+  return p ? [p] : []
+}
+
 export function buildEmoteLookup(emotes: HubEmote[]): Map<string, HubEmote> {
   const map = new Map<string, HubEmote>()
   for (const emote of emotes) {
@@ -48,8 +60,10 @@ export function buildEmoteLookup(emotes: HubEmote[]): Map<string, HubEmote> {
       imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
     }
     if (!map.has(nameKey)) map.set(nameKey, normalized)
-    const providerKey = emoteLookupKey(emote.name, emote.provider)
-    if (!map.has(providerKey)) map.set(providerKey, normalized)
+    for (const alias of providerAliasKeys(emote.provider)) {
+      const providerKey = `${alias}:${nameKey}`
+      if (!map.has(providerKey)) map.set(providerKey, normalized)
+    }
   }
   return map
 }
@@ -63,7 +77,7 @@ function resolveByName(
 ): ResolvedMomentEmote {
   const key = name.trim().toLowerCase()
   const hit = lookup.get(emoteLookupKey(name, provider)) ?? lookup.get(key)
-  const resolvedUrl = absolutizeEmoteAssetUrl(imageUrl ?? hit?.imageUrl)
+  const resolvedUrl = preferResolvableEmoteUrl(imageUrl, hit?.imageUrl)
   return {
     name,
     provider: provider ?? hit?.provider,
@@ -137,10 +151,45 @@ export function isEmoteSpikeMoment(moment: FigmaMomentRow): boolean {
 }
 
 export function momentEmoteRollupsEmptyHint(moment: FigmaMomentRow): string {
+  if (momentEmoteBreakdownUnavailable(moment)) {
+    return 'Emote breakdown unavailable — backend has emote counts but no emote names for this minute.'
+  }
   if (isEmoteSpikeMoment(moment)) {
     return 'No emote rollups for this minute yet — spike detected from chat velocity, not emote counts.'
   }
   return 'Viewer/chat spike — no emote breakdown for this minute.'
+}
+
+/** True when backend reports emote volume but no renderable emote identities. */
+export function momentEmoteBreakdownUnavailable(moment: FigmaMomentRow): boolean {
+  const rate = resolveMomentEmotesPerMin(moment)
+  if (rate == null || rate <= 0) return false
+  return !momentHasEmoteRollups(moment)
+}
+
+export function momentEmoteProviderLabel(provider?: string): string {
+  const p = (provider ?? '').trim().toLowerCase()
+  if (p === 'twitch') return 'Twitch'
+  if (p === 'ffz' || p === 'frankerfacez') return 'FFZ'
+  if (p === 'bttv' || p === 'betterttv') return 'BetterTTV'
+  if (p === 'seventv' || p === '7tv') return '7TV'
+  return provider?.trim() || '7TV'
+}
+
+export function momentEmoteExternalUrl(name: string, provider?: string): string {
+  const trimmed = name.trim()
+  const q = encodeURIComponent(trimmed)
+  const p = (provider ?? '').trim().toLowerCase()
+  if (p === 'twitch') {
+    return `https://www.twitch.tv/emotes?query=${q}`
+  }
+  if (p === 'ffz' || p === 'frankerfacez') {
+    return `https://www.frankerfacez.com/emoticons?q=${q}`
+  }
+  if (p === 'bttv' || p === 'betterttv') {
+    return `https://betterttv.com/emotes/${q}`
+  }
+  return `https://7tv.app/emotes?query=${q}`
 }
 
 export function momentContextParts(moment: FigmaMomentRow, channelLive?: boolean): string[] {
@@ -210,13 +259,22 @@ export function filterPulseMoments(moments: FigmaMomentRow[], filter: PulseMomen
   })
 }
 
-/** Resolve wall-clock peak time from backend `at` or channel stream start + offset. */
+/** Resolve wall-clock peak time from backend `at` or stream start + offset. */
 export function resolveMomentWallClockAt(
   moment: FigmaMomentRow,
   liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>>,
 ): number | undefined {
   if (moment.at != null && Number.isFinite(moment.at) && moment.at > 0) {
     return moment.at
+  }
+  if (
+    moment.streamStartedAt != null &&
+    Number.isFinite(moment.streamStartedAt) &&
+    moment.streamStartedAt > 0 &&
+    moment.offsetSeconds != null &&
+    Number.isFinite(moment.offsetSeconds)
+  ) {
+    return moment.streamStartedAt + moment.offsetSeconds * 1000
   }
   const login = moment.login?.trim().toLowerCase()
   if (!login || moment.offsetSeconds == null || !Number.isFinite(moment.offsetSeconds)) {
@@ -235,6 +293,69 @@ export function momentTotalEmoteUses(moment: FigmaMomentRow): number | undefined
   const rollups = moment.topEmotes?.filter((emote) => emote.count != null && Number.isFinite(emote.count)) ?? []
   if (rollups.length === 0) return undefined
   return rollups.reduce((sum, emote) => sum + (emote.count ?? 0), 0)
+}
+
+/** Total emote uses/min — prefers backend emotesPerMin, falls back to summed top-emote rows. */
+export function resolveMomentEmotesPerMin(moment: FigmaMomentRow): number | undefined {
+  if (moment.emotesPerMin != null && Number.isFinite(moment.emotesPerMin) && moment.emotesPerMin > 0) {
+    return moment.emotesPerMin
+  }
+  return momentTotalEmoteUses(moment)
+}
+
+/** CCU at the spike minute — prefers backend viewers, falls back to live pool snapshot. */
+export function resolveMomentViewers(
+  moment: FigmaMomentRow,
+  liveChannels: Array<Pick<HubLiveChannel, 'login'> & { viewers?: number }> = [],
+): number | undefined {
+  if (moment.viewers != null && Number.isFinite(moment.viewers) && moment.viewers > 0) {
+    return moment.viewers
+  }
+  const login = moment.login?.trim().toLowerCase()
+  if (!login) return undefined
+  const channel = liveChannels.find((ch) => ch.login.trim().toLowerCase() === login)
+  if (channel?.viewers != null && channel.viewers > 0) return channel.viewers
+  return undefined
+}
+
+export function momentViewersTitle(
+  moment: FigmaMomentRow,
+  liveChannels: Array<Pick<HubLiveChannel, 'login'> & { viewers?: number }> = [],
+): string {
+  const resolved = resolveMomentViewers(moment, liveChannels)
+  if (resolved == null) return 'Viewer count unavailable for this minute'
+  const label = formatMomentViewers(resolved)
+  if (moment.viewers != null && moment.viewers > 0) {
+    return `${label} viewers at this minute`
+  }
+  return `${label} viewers (live pool snapshot — minute rollup unavailable)`
+}
+
+export interface MomentViewerTableCell {
+  text: string
+  title: string
+  muted?: boolean
+}
+
+/** Pulse Moments table: concurrent viewers at the spike minute (not viewer delta). */
+export function resolveMomentViewerTableCell(
+  moment: FigmaMomentRow,
+  liveChannels: Array<Pick<HubLiveChannel, 'login'> & { viewers?: number }> = [],
+): MomentViewerTableCell {
+  const count = resolveMomentViewers(moment, liveChannels)
+  if (count == null) {
+    return {
+      text: '—',
+      title: 'Viewer count unavailable for this minute',
+      muted: true,
+    }
+  }
+  const fromMinute = moment.viewers != null && Number.isFinite(moment.viewers) && moment.viewers > 0
+  return {
+    text: formatMomentViewers(count),
+    title: momentViewersTitle(moment, liveChannels),
+    muted: !fromMinute,
+  }
 }
 
 /** Wall-clock label for inspector header; falls back to stream offset when unknown. */

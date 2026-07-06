@@ -10,11 +10,12 @@ import {
   type LivePulseMomentsResult,
 } from "../../../lib/figmaSessionAnalytics";
 import {
-  buildEmoteLookup,
+  buildEmoteLookupFromMoments,
+  enrichPulseMomentRows,
+} from "../../../lib/pulseMomentRow";
+import {
   countIrcRollupChannels,
-  filterMomentsByBucket,
   filterPulseMoments,
-  isBucketWithinLiveHorizon,
   momentEmoteRollupsEmptyHint,
   PULSE_MOMENT_FILTER_HINT,
   SCORE_EXPLANATION,
@@ -26,8 +27,6 @@ import {
   type PublicHub,
   type PublicHubActivityWindow,
 } from "../../../lib/publicHub";
-import { getBackendUrl } from "../../../lib/apiClient";
-import { resolveBackendSource } from "../../../lib/backendSource";
 import { FigmaMomentInspector } from "./FigmaMomentInspector";
 import { MostReactedMinutesTable } from "./MostReactedMinutesTable";
 import { TopEmoteBurstsPanel } from "./TopEmoteBurstsPanel";
@@ -93,88 +92,7 @@ export function PulseMomentsLivePanel({
   const isFallback =
     feed.source === "featured_fallback" || feed.source === "legacy_fallback";
   const [filter, setFilter] = useState<PulseMomentFilter>("all");
-  const [historicalMoments, setHistoricalMoments] = useState<
-    ReturnType<typeof mapHubPulseMoment>[]
-  >([]);
-  const [historicalLoading, setHistoricalLoading] = useState(false);
-  const [historicalStatus, setHistoricalStatus] = useState<
-    "idle" | "ready" | "empty" | "error"
-  >("idle");
-  const [historicalReason, setHistoricalReason] = useState<string | undefined>();
   const effectiveFilter: PulseMomentFilter = isFallback ? "all" : filter;
-  const liveBucketFiltered = useMemo(() => {
-    if (feed.source !== "network" || selectedBucketT == null) {
-      return feed.moments;
-    }
-    return filterMomentsByBucket(
-      feed.moments,
-      selectedBucketT,
-      activityWindowMinutes,
-      hub.liveChannels,
-    );
-  }, [
-    activityWindowMinutes,
-    feed.moments,
-    feed.source,
-    hub.liveChannels,
-    selectedBucketT,
-  ]);
-  const bucketOutsideLive =
-    selectedBucketT != null && !isBucketWithinLiveHorizon(selectedBucketT);
-  const liveBucketMiss =
-    feed.source === "network" &&
-    selectedBucketT != null &&
-    !bucketOutsideLive &&
-    liveBucketFiltered.length === 0 &&
-    feed.moments.length > 0;
-  const useHistoricalFetch = bucketOutsideLive || liveBucketMiss;
-
-  useEffect(() => {
-    if (!useHistoricalFetch || selectedBucketT == null || feed.source !== "network") {
-      setHistoricalMoments([]);
-      setHistoricalStatus("idle");
-      setHistoricalReason(undefined);
-      setHistoricalLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setHistoricalLoading(true);
-    fetchHistoricalHubMoments(
-      selectedBucketT,
-      activityWindow,
-      controller.signal,
-    )
-      .then((response) => {
-        const rows = response.moments.map(mapHubPulseMoment);
-        setHistoricalMoments(rows);
-        setHistoricalReason(response.reason);
-        setHistoricalStatus(
-          response.status === "ready" && rows.length > 0 ? "ready" : "empty",
-        );
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setHistoricalMoments([]);
-          setHistoricalReason(undefined);
-          setHistoricalStatus("error");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setHistoricalLoading(false);
-        }
-      });
-    return () => controller.abort();
-  }, [activityWindow, feed.source, selectedBucketT, useHistoricalFetch]);
-
-  const bucketFilterMiss =
-    feed.source === "network" &&
-    selectedBucketT != null &&
-    !useHistoricalFetch &&
-    liveBucketFiltered.length === 0 &&
-    feed.moments.length > 0;
-  const historicalSourceActive =
-    useHistoricalFetch && historicalStatus === "ready" && historicalMoments.length > 0;
   const categoryByLogin = useMemo(() => {
     const map = new Map<string, string>();
     for (const ch of hub.liveChannels) {
@@ -183,48 +101,78 @@ export function PulseMomentsLivePanel({
     }
     return map;
   }, [hub.liveChannels]);
-  const allMoments = useMemo(() => {
-    let base: typeof feed.moments;
-    if (feed.source !== "network" || selectedBucketT == null) {
-      base = feed.moments;
-    } else if (useHistoricalFetch) {
-      if (historicalMoments.length > 0) base = historicalMoments;
-      else if (historicalLoading) {
-        base = liveBucketFiltered.length > 0 ? liveBucketFiltered : feed.moments;
-      } else if (bucketOutsideLive) base = [];
-      else base = feed.moments;
-    } else if (liveBucketFiltered.length > 0) base = liveBucketFiltered;
-    else if (bucketFilterMiss) base = feed.moments;
-    else base = liveBucketFiltered;
+  const enrichCtx = useMemo(
+    () => ({ liveChannels: hub.liveChannels, categoryByLogin }),
+    [categoryByLogin, hub.liveChannels],
+  );
+  const [bucketMoments, setBucketMoments] = useState<
+    ReturnType<typeof mapHubPulseMoment>[]
+  >([]);
+  const [bucketLoading, setBucketLoading] = useState(false);
+  const [bucketStatus, setBucketStatus] = useState<
+    "idle" | "ready" | "empty" | "error"
+  >("idle");
+  const [bucketReason, setBucketReason] = useState<string | undefined>();
+  const bucketSelected =
+    feed.source === "network" && selectedBucketT != null;
 
-    return base.map((moment) => {
-      if (moment.category?.trim()) return moment;
-      const login = moment.login?.toLowerCase();
-      const category = login ? categoryByLogin.get(login) : undefined;
-      return category ? { ...moment, category } : moment;
-    });
+  useEffect(() => {
+    if (!bucketSelected || selectedBucketT == null) {
+      setBucketMoments([]);
+      setBucketStatus("idle");
+      setBucketReason(undefined);
+      setBucketLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setBucketLoading(true);
+    fetchHistoricalHubMoments(
+      selectedBucketT,
+      activityWindow,
+      controller.signal,
+    )
+      .then((response) => {
+        const rows = response.moments.map(mapHubPulseMoment);
+        setBucketMoments(rows);
+        setBucketReason(response.reason);
+        setBucketStatus(
+          response.status === "ready" && rows.length > 0 ? "ready" : "empty",
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setBucketMoments([]);
+          setBucketReason(undefined);
+          setBucketStatus("error");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setBucketLoading(false);
+        }
+      });
+    return () => controller.abort();
+  }, [activityWindow, bucketSelected, selectedBucketT]);
+
+  const allMoments = useMemo(() => {
+    const base =
+      bucketSelected && !bucketLoading
+        ? bucketMoments
+        : bucketSelected && bucketLoading
+          ? []
+          : feed.moments;
+    return enrichPulseMomentRows(base, enrichCtx);
   }, [
-    bucketFilterMiss,
-    bucketOutsideLive,
-    categoryByLogin,
+    bucketLoading,
+    bucketMoments,
+    bucketSelected,
+    enrichCtx,
     feed.moments,
-    feed.source,
-    historicalLoading,
-    historicalMoments,
-    liveBucketFiltered,
-    selectedBucketT,
-    useHistoricalFetch,
   ]);
 
   const poolMoments = useMemo(
-    () =>
-      feed.moments.map((moment) => {
-        if (moment.category?.trim()) return moment;
-        const login = moment.login?.toLowerCase();
-        const category = login ? categoryByLogin.get(login) : undefined;
-        return category ? { ...moment, category } : moment;
-      }),
-    [categoryByLogin, feed.moments],
+    () => enrichPulseMomentRows(feed.moments, enrichCtx),
+    [enrichCtx, feed.moments],
   );
 
   useEffect(() => {
@@ -236,22 +184,10 @@ export function PulseMomentsLivePanel({
     onBucketMomentsChange(selectedBucketT != null ? allMoments : []);
   }, [allMoments, onBucketMomentsChange, selectedBucketT]);
 
-  const emoteLookup = useMemo(() => {
-    const rows: PublicHub["topEmotes"] = [...topEmotes];
-    for (const moment of feed.moments) {
-      for (const emote of moment.topEmotes ?? []) {
-        if (!emote.name?.trim()) continue;
-        rows.push({
-          name: emote.name,
-          provider: emote.provider,
-          imageUrl: emote.imageUrl,
-          count: emote.count ?? 0,
-          sharePct: 0,
-        });
-      }
-    }
-    return buildEmoteLookup(rows);
-  }, [feed.moments, topEmotes]);
+  const emoteLookup = useMemo(
+    () => buildEmoteLookupFromMoments(allMoments, topEmotes),
+    [allMoments, topEmotes],
+  );
   const ircChannelCount = useMemo(
     () => countIrcRollupChannels(hub.liveChannels),
     [hub.liveChannels],
@@ -324,70 +260,51 @@ export function PulseMomentsLivePanel({
       activityPoints: hub.activity.points,
       liveMoments: feed.moments,
       liveChannels: hub.liveChannels,
-      historicalStatus,
-      historicalReason,
-      historicalCount: historicalMoments.length,
-      historicalLoading,
+      historicalStatus: bucketStatus,
+      historicalReason: bucketReason,
+      historicalCount: bucketMoments.length,
+      historicalLoading: bucketLoading,
     });
   }, [
     activityWindowMinutes,
+    bucketLoading,
+    bucketMoments.length,
+    bucketReason,
+    bucketStatus,
     feed.moments,
     feed.source,
-    historicalLoading,
-    historicalMoments.length,
-    historicalReason,
-    historicalStatus,
     hub.activity.points,
     hub.liveChannels,
     selectedBucketT,
   ]);
 
-  const hasNetworkMoments = feed.moments.length > 0 || historicalSourceActive;
-  const bucketFilterActive =
-    feed.source === "network" &&
-    selectedBucketT != null &&
-    !bucketFilterMiss &&
-    !useHistoricalFetch &&
-    liveBucketFiltered.length > 0;
+  const bucketSourceActive =
+    bucketSelected && bucketStatus === "ready" && bucketMoments.length > 0;
+  const hasNetworkMoments = feed.moments.length > 0 || bucketSourceActive;
   const bucketFilterEmpty =
-    selectedBucketT != null &&
-    !historicalLoading &&
-    allMoments.length === 0 &&
-    (useHistoricalFetch || bucketFilterActive);
-  const ready = hasNetworkMoments || (useHistoricalFetch && historicalLoading);
-  const backendSource = resolveBackendSource(getBackendUrl());
+    bucketSelected && !bucketLoading && allMoments.length === 0;
+  const ready = hasNetworkMoments || (bucketSelected && bucketLoading);
   const emptyReason =
     featured.state === "ready"
       ? "No backend peaks in the IRC tracking pool yet."
-      : backendSource === "local"
-        ? "Reading local Streamclone stack - switch to hosted API for live IRC peaks and emote economy."
-        : (EMPTY_REASONS[featured.reason ?? ""] ??
+      : (EMPTY_REASONS[featured.reason ?? ""] ??
           EMPTY_REASONS.no_qualifying_session);
 
   const feedBanner = useMemo(() => {
     if (selectedBucketT != null && feed.source === "network") {
-      if (historicalLoading) {
+      if (bucketLoading) {
         return "Loading moments for the selected chart bucket…";
       }
-      if (historicalSourceActive) {
-        return `Showing ${historicalMoments.length} moment${historicalMoments.length === 1 ? "" : "s"} from the selected chart bucket. Click the bucket again to clear.`;
+      if (bucketSourceActive) {
+        return `Showing ${bucketMoments.length} moment${bucketMoments.length === 1 ? "" : "s"} from the selected chart bucket. Click the bucket again to clear.`;
       }
-      if (useHistoricalFetch && historicalStatus === "empty") {
+      if (bucketStatus === "empty") {
         return bucketDiagnostics?.historicalReason === "no_corpus_peaks_in_bucket"
-          ? "This period has network activity but no stored moments yet. Clear the selection or try another time."
+          ? "No spikes in this bucket. Clear the selection or try another time."
           : `No stored moments for ${bucketDiagnostics?.bucketLabel ?? "this bucket"}.`;
       }
-      if (useHistoricalFetch && historicalStatus === "error") {
-        return "Could not load moments for this bucket — showing live moments when available.";
-      }
-      if (bucketFilterMiss) {
-        if (!isBucketWithinLiveHorizon(selectedBucketT)) {
-          return "Showing spikes from the time you selected on the chart.";
-        }
-        return "This bucket has activity but no spikes matched. Showing all current moments — click the chart again to clear.";
-      }
-      if (liveBucketFiltered.length > 0) {
-        return `Showing ${liveBucketFiltered.length} moment${liveBucketFiltered.length === 1 ? "" : "s"} from the selected chart bucket. Click the bucket again to clear.`;
+      if (bucketStatus === "error") {
+        return "Could not load moments for this bucket.";
       }
     }
     if (feed.banner) return feed.banner;
@@ -410,19 +327,18 @@ export function PulseMomentsLivePanel({
     }
     return undefined;
   }, [
-    bucketFilterMiss,
+    bucketDiagnostics?.bucketLabel,
+    bucketDiagnostics?.historicalReason,
+    bucketLoading,
+    bucketMoments.length,
+    bucketSourceActive,
+    bucketStatus,
     channelCount,
     feed.banner,
     feed.source,
-    historicalLoading,
-    historicalMoments.length,
-    historicalSourceActive,
-    historicalStatus,
     ircChannelCount,
-    liveBucketFiltered.length,
     activityWindow,
     selectedBucketT,
-    useHistoricalFetch,
   ]);
 
   const channelLabel =
@@ -481,7 +397,7 @@ export function PulseMomentsLivePanel({
         <div>
           <p className="pulse-moments-live__eyebrow">
             <span className="pulse-moments-live__live-dot" aria-hidden="true" />
-            {historicalSourceActive ? "Moments from selected time" : "Live moments"}
+            {bucketSourceActive ? "Moments from selected time" : "Live moments"}
           </p>
           <h2
             id="pulse-moments-live-title"
@@ -495,7 +411,7 @@ export function PulseMomentsLivePanel({
           >
             {isFallback
               ? "Moments are temporarily unavailable — try again shortly."
-              : historicalSourceActive
+              : bucketSourceActive
                 ? `Top spikes for the selected chart bucket — ${SCORE_EXPLANATION.toLowerCase()}`
                 : `Top spikes across tracked channels — ${SCORE_EXPLANATION.toLowerCase()}`}
             {updatedAgo ? ` · As of ${updatedAgo}` : ""}
@@ -616,9 +532,13 @@ export function PulseMomentsLivePanel({
 
       {loading && !ready ? (
         <div className="pulse-moments-live__empty" aria-busy="true">
-          {historicalLoading
-            ? "Loading corpus peaks for chart bucket..."
+          {bucketLoading
+            ? "Loading moments for the selected chart bucket…"
             : "Loading live IRC peaks..."}
+        </div>
+      ) : bucketLoading && selectedBucketT != null && filteredMoments.length === 0 ? (
+        <div className="pulse-moments-live__empty" aria-busy="true">
+          Loading moments for the selected chart bucket…
         </div>
       ) : !ready || filteredMoments.length === 0 ? (
         <div className="pulse-moments-live__empty">
@@ -626,26 +546,29 @@ export function PulseMomentsLivePanel({
             {!ready
               ? "Live peaks unavailable"
               : bucketFilterEmpty
-                ? "No peaks in this chart bucket"
+                ? "No spikes in this bucket"
                 : "No moments match this filter"}
           </strong>
           <p>
             {!ready
               ? emptyReason
               : bucketFilterEmpty
-                ? useHistoricalFetch
-                  ? historicalStatus === "error"
-                    ? "Corpus peak fetch failed for this bucket."
-                    : "No stored corpus peaks matched this chart bucket yet."
-                  : !isBucketWithinLiveHorizon(selectedBucketT)
-                    ? "Live peaks only cover the last ~3 hours. Corpus historical peaks load when you select an older bucket."
-                    : "No IRC peaks matched this bucket yet. Clear the chart selection to see all live peaks."
-                : bucketFilterMiss
-                  ? "Showing all live peaks because this bucket had activity but no matching IRC spike rows."
-                  : selectedBucketT != null
-                    ? "Clear the chart bucket selection or wait for more IRC rollups."
-                    : "Try another filter or wait for more IRC rollups across tracked channels."}
+                ? bucketStatus === "error"
+                  ? "Could not load moments for this bucket."
+                  : "No stored or live IRC peaks matched this chart bucket yet. Clear the selection to see all live peaks."
+                : selectedBucketT != null
+                  ? "Clear the chart bucket selection or wait for more IRC rollups."
+                  : "Try another filter or wait for more IRC rollups across tracked channels."}
           </p>
+          {bucketFilterEmpty && onClearBucketFilter ? (
+            <button
+              type="button"
+              className="pulse-moments-live__clear-bucket"
+              onClick={onClearBucketFilter}
+            >
+              Clear bucket
+            </button>
+          ) : null}
         </div>
       ) : isFallback ? (
         <div className="pulse-moments-live__fallback-card" ref={momentsListRef}>

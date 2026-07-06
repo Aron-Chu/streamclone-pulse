@@ -4782,7 +4782,48 @@
   color: var(--fma-accent-text);
 }
 
-/* Pulse Moments Live — carded peak rows (shadcn-style list items) */
+/* Pulse Moments Live — semantic table (replaces CSS grid pseudo-table) */
+.pulse-moments__table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 0 0.35rem 0.4rem;
+}
+
+.pulse-moments__table {
+  width: 100%;
+  min-width: 28rem;
+}
+
+.pulse-moments__table th.pulse-moments__num,
+.pulse-moments__table td.pulse-moments__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pulse-moments__table tbody tr.pulse-moments__peak-row {
+  cursor: pointer;
+}
+
+.pulse-moments__table tbody tr.pulse-moments__peak-row:hover {
+  background: var(--sp-surface-3-hover);
+}
+
+.pulse-moments__table tbody tr.pulse-moments__peak-row.is-active {
+  background: var(--sp-surface-active);
+}
+
+.pulse-moments__table .pulse-moments__peak-category {
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulse-moments__table td:last-child {
+  text-align: right;
+}
+
+/* Pulse Moments Live — carded peak rows (legacy grid; session view may still reference) */
 .pulse-moments__table-grid-wrap {
   overflow-x: auto;
   max-width: 100%;
@@ -4799,7 +4840,8 @@
     minmax(3.75rem, 0.75fr)
     minmax(4rem, 1fr)
     minmax(2.75rem, 3.75rem)
-    minmax(2.75rem, 4rem)
+    minmax(2.75rem, 3.75rem)
+    minmax(3.25rem, 4.5rem)
     minmax(2.5rem, auto);
   align-items: center;
   column-gap: 0.4rem;
@@ -4900,6 +4942,7 @@
 }
 
 .pulse-moments__peak-chat,
+.pulse-moments__peak-emotes-rate,
 .pulse-moments__peak-viewers {
   font-family: var(--fma-mono);
   font-size: 0.68rem;
@@ -4908,9 +4951,30 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: right;
+  justify-self: end;
+}
+
+.pulse-moments__table-grid-head span:nth-child(6),
+.pulse-moments__table-grid-head span:nth-child(7),
+.pulse-moments__table-grid-head span:nth-child(8) {
+  text-align: right;
+  justify-self: end;
+}
+
+.pulse-moments__peak-chat--flat {
+  color: var(--fma-muted);
 }
 
 .pulse-moments__peak-chat {
+  color: var(--fma-muted);
+}
+
+.pulse-moments__peak-emotes-rate {
+  color: hsl(var(--sp-chart-emotes, var(--chart-4)));
+}
+
+.pulse-moments__peak-emotes-rate--flat {
   color: var(--fma-muted);
 }
 
