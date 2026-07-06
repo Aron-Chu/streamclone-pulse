@@ -14,6 +14,9 @@ import {
   momentHasEmoteRollups,
   momentEmoteTitle,
   resolveMomentEmote,
+  resolveMomentEmotesPerMin,
+  resolveMomentViewerTableCell,
+  resolveMomentViewers,
 } from '../../../lib/pulseMomentsUtils'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { initial } from './hubFormat'
@@ -24,10 +27,6 @@ import {
   formatMomentViewers,
   formatReactionScore,
 } from '../../../lib/momentMetricLabels'
-import {
-  resolveMomentEmotesPerMin,
-  resolveMomentViewerTableCell,
-} from '../../../lib/pulseMomentsUtils'
 import { EmoteImg } from './EmoteImg'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
 
