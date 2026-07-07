@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, type ElementType, type ReactNode } from 'react'
 import gsap from 'gsap'
+import { Flip } from 'gsap/Flip'
 import { useAnalyticsThemeOptional } from '../providers/AnalyticsThemeProvider'
+
+let flipRegistered = false
+function ensureFlipPlugin(): void {
+  if (!flipRegistered) {
+    gsap.registerPlugin(Flip)
+    flipRegistered = true
+  }
+}
 
 export function useAnalyticsMotion() {
   const ctx = useAnalyticsThemeOptional()
@@ -56,7 +65,60 @@ export function useAnalyticsMotion() {
     [motionEnabled],
   )
 
-  return { revealSection, revealStagger, transitionInspector, fadeThemeCenter, motionEnabled }
+  const flipFrom = useCallback(
+    (state: Flip.FlipState | null | undefined) => {
+      if (!state || !motionEnabled) return
+      ensureFlipPlugin()
+      return Flip.from(state, { duration: 0.45, ease: 'power3.out' })
+    },
+    [motionEnabled],
+  )
+
+  const captureFlipState = useCallback(
+    (container: HTMLElement | null): Flip.FlipState | null => {
+      if (!container || !motionEnabled) return null
+      ensureFlipPlugin()
+      return Flip.getState(container.querySelectorAll('[data-flip-key]'))
+    },
+    [motionEnabled],
+  )
+
+  const animateBarWidth = useCallback(
+    (el: HTMLElement | null, widthPct: number) => {
+      if (!el || !motionEnabled) return
+      gsap.to(el, { width: `${widthPct}%`, duration: 0.5, ease: 'power2.out' })
+    },
+    [motionEnabled],
+  )
+
+  const animateEnter = useCallback(
+    (el: HTMLElement | null) => {
+      if (!el || !motionEnabled) return
+      gsap.from(el, { height: 0, opacity: 0, y: -8, duration: 0.4, ease: 'power3.out' })
+    },
+    [motionEnabled],
+  )
+
+  const animateEnterHorizontal = useCallback(
+    (el: HTMLElement | null) => {
+      if (!el || !motionEnabled) return
+      gsap.from(el, { x: -24, opacity: 0, duration: 0.35, ease: 'power3.out' })
+    },
+    [motionEnabled],
+  )
+
+  return {
+    revealSection,
+    revealStagger,
+    transitionInspector,
+    fadeThemeCenter,
+    flipFrom,
+    captureFlipState,
+    animateBarWidth,
+    animateEnter,
+    animateEnterHorizontal,
+    motionEnabled,
+  }
 }
 
 export interface SectionRevealProps {

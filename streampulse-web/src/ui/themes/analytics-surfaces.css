@@ -47,7 +47,7 @@
   --fma-bg: var(--sp-bg);
   --fma-nav-bg: rgba(9, 9, 11, 0.94);
   --fma-panel: var(--sp-surface-1);
-  --fma-panel-alt: rgba(255, 255, 255, 0.016);
+  --fma-panel-alt: var(--sp-surface-2);
   --fma-border: var(--sp-border);
   --fma-border-accent: var(--sp-border-strong);
   --fma-accent: var(--sp-accent);
@@ -86,6 +86,8 @@
   --chart-bar: 172 48% 52%;
   --sp-chart-viewers: 210 12% 78%;
   --sp-chart-chat: 172 48% 52%;
+  /* Warm amber — kept away from teal chat bars and white viewer line. */
+  --sp-chart-emotes: 38 92% 62%;
   --hx-bg: var(--sp-bg);
   --hx-accent: var(--sp-accent);
   --hx-accent-text: var(--sp-accent-strong);
@@ -123,3 +125,11 @@
 .figma-analytics .figma-burst-list__provider[data-provider='ffz'] {
   color: var(--sp-provider-ffz);
 }
+
+/*
+ * Design-system drift classification (P3-027):
+ * - Token definitions: --sp-* / --fma-* aliases in this file and command-center.css
+ * - Legacy rgba grids in figma-analytics.css / hub.css — decorative backgrounds only; migrate opportunistically
+ * - Dead/mockup: __mockups__/, unused Figma parity stubs — do not treat as production violations
+ * - Active surfaces: hub rail, figma session dashboard, analytics console embed — use --sp-surface-* for new panels
+ */
