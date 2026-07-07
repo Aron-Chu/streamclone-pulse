@@ -1,11 +1,13 @@
 # Streamclone Pulse (Chrome extension)
 
-MV3 overlay for Twitch that reads Pulse analytics from a running [Streamclone](https://github.com/Aron-Chu/streamclone) stack.
+MV3 overlay for Twitch that reads Pulse analytics from **StreamPulse hosted** (`https://api.streampulse.stream`) by default.
 
 ## Prerequisites
 
-1. Streamclone stack on `http://localhost:8090` (`make up` in the main repo).
-2. Node 20+.
+1. Node 20+.
+2. **Optional:** local Streamclone stack on `http://localhost:8090` (`make up` in the main repo) — only if you explicitly opt into local backend in Options.
+
+Public analytics at [streampulse.stream/analytics](https://streampulse.stream/analytics) uses the hosted API with **no beta key** and **no local stack**.
 
 ## Install & build
 
@@ -26,7 +28,15 @@ Open `https://www.twitch.tv/{channel}` — the overlay polls `GET /v1/extension/
 
 ## Configuration
 
-Extension **Options** (or toolbar popup): default backend URL `http://localhost:8090`, poll interval 30s.
+Extension **Options** (or toolbar popup) show the active **backend source** (Hosted corpus / Local stack / Custom API):
+
+| Source | URL | When |
+|--------|-----|------|
+| **Hosted corpus** (default) | `https://api.streampulse.stream` | Normal use — matches public portal |
+| **Local stack** | `http://localhost:8090` | Requires explicit save in Options (`localBackendOptIn`); stale localhost URLs auto-reset to hosted |
+| **Custom API** | any other HTTPS host | Advanced / staging only |
+
+Poll interval defaults to 30s. Beta keys are optional operator tools — **not required** for public `/analytics`.
 
 ## Tests
 

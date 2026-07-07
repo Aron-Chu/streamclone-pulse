@@ -1,6 +1,10 @@
 # Streamclone Pulse Extension — Requirements
 
-Status: **MVP shipped / in progress** (local Level 2.5 overlay). Canonical spec in this repo; implementation spans the **streamclone-pulse** extension and the streamclone backend. Related code: `@streamclone/pulse-core` (streamclone `packages/pulse-core/`), **this repo** `src/` (content script, service worker, `ui/Overlay.tsx`), streamclone `internal/analytics/extension_api.go` (BFF + Redis cache), `internal/analytics/bookmarks.go`, `internal/analytics/recap/`, streamclone frontend parity (`frontend/src/components/analytics/MostReactedLive.tsx`, `HeatmapLane.tsx`), `deploy/Caddyfile*` (`:8090`).
+Status: **MVP shipped / in progress**. Canonical spec in this repo; implementation spans the **streamclone-pulse** extension and the streamclone backend.
+
+> **2026-07 hosted default:** Production extension and StreamPulse portal use `https://api.streampulse.stream`. Public [`/analytics`](https://streampulse.stream/analytics) needs **no beta key** and **no local stack**. Local `http://localhost:8090` is explicit dev-only via extension Options.
+
+Related code: `@streamclone/pulse-core` (streamclone `packages/pulse-core/`), **this repo** `src/` (content script, service worker, `ui/Overlay.tsx`), streamclone `internal/analytics/extension_api.go` (BFF + Redis cache), `internal/analytics/bookmarks.go`, `internal/analytics/recap/`, streamclone frontend parity (`frontend/src/components/analytics/MostReactedLive.tsx`, `HeatmapLane.tsx`), `deploy/Caddyfile*` (`:8090`).
 
 ---
 
@@ -15,7 +19,7 @@ The Chrome extension is a **thin, Twitch-native Pulse viewer**, not a second ana
 
 **Design target:** *Native-feeling Twitch overlay, shared Streamclone logic, Streamclone backend as the source of truth.* The integration is **deep visually, light technically**.
 
-**MVP = Level 2.5:** Twitch overlay + local backend (`http://localhost:8090`) + shared `pulse-core`. No accounts, billing, public hosting, abuse limits, or multi-tenant privacy in the first build.
+**MVP = Level 2.5 (historical):** Twitch overlay + local backend (`http://localhost:8090`) + shared `pulse-core`. **Current default (2026-07):** hosted API + public `/analytics`; local stack remains explicit dev opt-in in extension Options.
 
 ### Core Pulse additions (shared — not extension-only)
 

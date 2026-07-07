@@ -32,7 +32,8 @@ For StreamPulse public website and portal work (the `streampulse.stream` site, *
 
 1. Read [`docs/pulse-extension/website-portal-requirements.md`](docs/pulse-extension/website-portal-requirements.md) for product requirements.
 2. Read [`docs/website-portal/design.md`](docs/website-portal/design.md) for architecture and implementation constraints.
-3. Execute from [`docs/website-portal/tasks.md`](docs/website-portal/tasks.md) in task-ID order (start with the "Recommended first implementation batch").
+3. Read [`docs/website-portal/analytics-command-center-layout.md`](docs/website-portal/analytics-command-center-layout.md) for hub landing section order, Pulse Moments side-by-side layout, chart rail inspector, and layout anti-regressions (2026-07).
+4. Execute from [`docs/website-portal/tasks.md`](docs/website-portal/tasks.md) in task-ID order (start with the "Recommended first implementation batch").
 
 Hard guardrails:
 
@@ -49,15 +50,37 @@ Hard guardrails:
 
 - **Content scripts:** `chrome.runtime.sendMessage` only — no `fetch`.
 - **Service worker:** all HTTP to Streamclone (`/v1/extension/*`, `/v1/analytics/.../watch`).
-- Default backend: `http://localhost:8090` (Caddy in streamclone).
+- **Extension** default backend: `https://api.streampulse.stream` (hosted). Local `http://localhost:8090` requires explicit opt-in in Options → Advanced.
+- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit `:8090` only.
 - New Go APIs → implement in streamclone `internal/analytics`, not here.
+- **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
 
 ## Commands
 
 ```bash
-npm run build      # dist/ for Load unpacked
+npm run build      # dist/ for Load unpacked (run after EVERY source change)
+npm run dev        # vite build --watch — rebuilds dist/ on save (Chrome still needs a manual reload)
 npm run typecheck
 npm test
 ```
+
+### Agents: always rebuild after editing extension code
+
+After **any** change under `src/`, `vite.config.ts`, or `manifest.json`:
+
+1. Run **`npm test`** when you touched logic covered by tests.
+2. Run **`npm run build`** — **required** before telling the user to reload; `dist/` is gitignored and Chrome loads the last build, not your working tree.
+3. Remind the user: `chrome://extensions` → **Reload** extension, then **hard-refresh** the Twitch tab.
+
+Skipping `npm run build` makes fixes look broken (stale `dist/content/twitch.js`).
+
+### Always rebuild before loading (avoid stale-bundle regressions)
+
+- `dist/` is a **build artifact** (gitignored). It reflects **whatever branch / working tree you last built from**, not your current checkout.
+- After **any** extension source change — and especially after **switching branches or applying a stash** — run `npm run build` before loading. Skipping this loads a stale bundle from another branch and looks like the extension "reverted" to an old version.
+- Chrome does **not** hot-reload an unpacked extension when `dist/` changes on disk. To actually see a new build:
+  1. `chrome://extensions` → **Reload** the Streamclone Pulse extension
+  2. Hard-refresh the Twitch tab
+- `npm run dev` (`vite build --watch`) rebuilds `dist/` automatically on save but still requires the manual Chrome reload above.
 
 Stack: `make up` in streamclone → `curl http://localhost:8090/v1/extension/health`.

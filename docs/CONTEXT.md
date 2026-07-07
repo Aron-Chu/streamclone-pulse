@@ -6,7 +6,8 @@
 | **Figma UI (PNG exports)** | `docs/pulse-extension/figma/` + `figma-handoff.md` |
 | Shared TS scoring | `../twitch-7tv-clone/packages/pulse-core` (`@streamclone/pulse-core`) |
 | BFF + health + bookmarks + recap | streamclone `internal/analytics/` |
-| Local stack | `http://localhost:8090` (Caddy in streamclone) |
+| Extension local stack | `http://localhost:8090` (Caddy in streamclone) |
+| StreamPulse portal (`streampulse-web`) | `https://api.streampulse.stream` (dev default); `npm run dev:local` → `:8090` opt-in |
 | Multi-root workspace | `../twitch-7tv-clone/streamclone-pulse-extension.code-workspace` |
 
 Sibling layout on disk:

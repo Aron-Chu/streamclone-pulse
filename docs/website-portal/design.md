@@ -62,6 +62,8 @@ StreamPulse is the **management, review, and setup layer** for the Streamclone P
 
 **Architectural rule:** StreamPulse owns *presentation + watchlist state*. It owns **no** Pulse scoring, no rollup math, no chat. Backend `peaks`/`coverage`/`recap`/`backfill` are the contract.
 
+**Design lab (optional):** UI experiments live in the sibling repo [streampulse-inspire](https://github.com/Aron-Chu/streampulse-inspire) — Next.js on port `5180`, three themes, fixture + hosted modes. Winners port back to `streampulse-web` (Vite on Cloudflare Pages) via that repo's `PORTING.md`. Production portal code in this repo is unchanged by inspire work.
+
 ---
 
 ## 2. Goals and non-goals
