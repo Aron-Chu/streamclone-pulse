@@ -17,8 +17,8 @@ describe('backendSource', () => {
   it('defaults to hosted production API', () => {
     expect(DEFAULT_BACKEND_URL).toBe(DEFAULT_PRODUCTION_BACKEND_URL)
     expect(resolveBackendSource(DEFAULT_PRODUCTION_BACKEND_URL)).toBe('hosted')
-    expect(backendSourceLabel('hosted')).toBe('Hosted corpus')
-    expect(backendSourceCaption(DEFAULT_PRODUCTION_BACKEND_URL)).toContain('Hosted corpus')
+    expect(backendSourceLabel('hosted')).toBe('Hosted API')
+    expect(backendSourceCaption(DEFAULT_PRODUCTION_BACKEND_URL)).toContain('Hosted API')
     expect(backendSourceCaption(DEFAULT_PRODUCTION_BACKEND_URL)).toContain('api.streampulse.stream')
   })
 

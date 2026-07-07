@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { mapViewerSourceBadge } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/sourceBadge.ts'
+import { mapViewerSourceBadge } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/sourceBadge.ts'
 import {
   deriveAnalyticsQualityLabel,
   type AnalyticsQualityLabel,
-} from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/streamQuality.ts'
+} from '../../twitch-7tv-clone/packages/analytics-console/src/utils/streamQuality.ts'
 
 describe('mapViewerSourceBadge', () => {
   it.each([

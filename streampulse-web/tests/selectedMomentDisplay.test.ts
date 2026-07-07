@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildSelectedMomentDisplay } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/selectedMomentDisplay.ts'
-import type { AnalyticsMinuteRollup } from '../../../twitch-7tv-clone/packages/analytics-console/src/apiTypes.ts'
+import { buildSelectedMomentDisplay } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/selectedMomentDisplay.ts'
+import type { AnalyticsMinuteRollup } from '../../twitch-7tv-clone/packages/analytics-console/src/apiTypes.ts'
 
 const rollup: AnalyticsMinuteRollup = {
   minuteTs: '2026-07-04T04:05:00.000Z',
@@ -38,7 +38,7 @@ describe('emote plot cap', () => {
 
   it('allows up to six plotted emotes', async () => {
     const { MAX_PLOTTED_EMOTES, toggleEmotePlotSelection, resolveChartEmoteKeys } = await import(
-      '../../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
+      '../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
     )
     expect(MAX_PLOTTED_EMOTES).toBe(6)
     let selection = toggleEmotePlotSelection('none', 'twitch:1:LUL', topEmotes, 'spikes')

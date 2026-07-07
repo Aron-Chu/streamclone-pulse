@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { deriveChartGameSegments, gameSegmentPlotBounds } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/gameSegmentChart.ts'
+import { deriveChartGameSegments, gameSegmentPlotBounds } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/gameSegmentChart.ts'
 
 describe('deriveChartGameSegments', () => {
   it('uses API segments when present', () => {

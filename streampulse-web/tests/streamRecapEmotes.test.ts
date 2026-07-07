@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 
-import { configureEmoteAssetBase } from '../../../twitch-7tv-clone/packages/analytics-console/src/configureApi.ts'
-import { getEmoteImageUrl } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/consoleFormat.ts'
-import { enrichRecapEmoteFromCatalog } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/recapEmoteEnrich.ts'
+import { configureEmoteAssetBase } from '../../twitch-7tv-clone/packages/analytics-console/src/configureApi.ts'
+import { getEmoteImageUrl } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/consoleFormat.ts'
+import { enrichRecapEmoteFromCatalog } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/recapEmoteEnrich.ts'
 
 describe('recap emote image URLs', () => {
   beforeEach(() => {

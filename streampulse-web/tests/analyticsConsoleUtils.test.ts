@@ -3,15 +3,15 @@ import {
   isDateSlugUnresolved,
   resolveMatchedStream,
   resolveTargetQueryStreamId,
-} from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/streamRouteResolution.ts'
+} from '../../twitch-7tv-clone/packages/analytics-console/src/utils/streamRouteResolution.ts'
 import {
   streamHasSyncedMinutes,
   streamSyncBadgeState,
   streamSyncBadgeLabel,
   resolveCanonicalSessionSlug,
   getAnalyticsStreamDateSlug,
-} from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/syncedLiveStream.ts'
-import type { AnalyticsStream } from '../../../twitch-7tv-clone/packages/analytics-console/src/apiTypes.ts'
+} from '../../twitch-7tv-clone/packages/analytics-console/src/utils/syncedLiveStream.ts'
+import type { AnalyticsStream } from '../../twitch-7tv-clone/packages/analytics-console/src/apiTypes.ts'
 
 const sampleStreams: AnalyticsStream[] = [
   {
@@ -173,7 +173,7 @@ describe('emotePlotSelection', () => {
 
   it('defaults to top 3 on spikes view', async () => {
     const { resolveChartEmoteKeys } = await import(
-      '../../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
+      '../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
     )
     const keys = resolveChartEmoteKeys('auto', topEmotes, 'spikes')
     expect(Array.from(keys)).toEqual(['twitch:1:LUL', 'twitch:2:Kappa', 'seventv:3:KEKW'])
@@ -181,7 +181,7 @@ describe('emotePlotSelection', () => {
 
   it('defaults to top 4 on emotes view', async () => {
     const { resolveChartEmoteKeys } = await import(
-      '../../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
+      '../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
     )
     const keys = resolveChartEmoteKeys('auto', topEmotes, 'emotes')
     expect(Array.from(keys)).toEqual(['twitch:1:LUL', 'twitch:2:Kappa', 'seventv:3:KEKW', 'twitch:4:Clap'])
@@ -189,7 +189,7 @@ describe('emotePlotSelection', () => {
 
   it('allows clearing all plotted emotes', async () => {
     const { resolveChartEmoteKeys, toggleEmotePlotSelection } = await import(
-      '../../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
+      '../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
     )
     let selection = toggleEmotePlotSelection('auto', 'twitch:1:LUL', topEmotes, 'spikes')
     selection = toggleEmotePlotSelection(selection, 'twitch:2:Kappa', topEmotes, 'spikes')
@@ -200,7 +200,7 @@ describe('emotePlotSelection', () => {
 
   it('expands activity zone fraction when expanded', async () => {
     const { activityZoneFraction, activityBandFractions } = await import(
-      '../../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
+      '../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
     )
     expect(activityZoneFraction(false)).toBe(0.36)
     expect(activityZoneFraction(true)).toBe(0.56)

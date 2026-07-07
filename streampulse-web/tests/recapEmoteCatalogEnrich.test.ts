@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { enrichRecapEmoteFromCatalog, enrichRecapEmotesFromCatalog } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/recapEmoteEnrich.ts'
+import { enrichRecapEmoteFromCatalog, enrichRecapEmotesFromCatalog } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/recapEmoteEnrich.ts'
 
 describe('recap emote catalog enrichment', () => {
   const catalog = [

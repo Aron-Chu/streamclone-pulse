@@ -9,6 +9,7 @@ import {
   isOpenActivityBucket,
   normalizeActivityPointsForChart,
   peakActivityChatPerMin,
+  peakActivityEmotesPerMin,
   peakActivityViewers,
   resolveChartBucketSelection,
   summarizeActivity,
@@ -169,13 +170,25 @@ describe('resolveChartBucketSelection', () => {
 })
 
 describe('summarizeActivity', () => {
-  it('footnote distinguishes corpus rollups from live pool size', () => {
+  it('footnote distinguishes network rollups from live pool size', () => {
     const summary = summarizeActivity(
       [{ t: Date.now(), chat: 10, seventv: 1, viewers: 1000 }],
       360,
       76,
     )
-    expect(summary.footnote).toContain('corpus-wide rollups')
+    expect(summary.footnote).toContain('network rollups')
     expect(summary.footnote).toContain('76 channels in live pool')
+  })
+})
+
+describe('peakActivityEmotesPerMin', () => {
+  it('normalizes coarse buckets to per-minute emote peaks', () => {
+    const windowMinutes = 24 * 60
+    const bucketMs = 6 * 60_000
+    const t = Math.floor(Date.now() / bucketMs) * bucketMs
+    const points = [
+      { t, chat: 0, seventv: 0, viewers: 0, emotes: 6000, bucketComplete: true },
+    ]
+    expect(peakActivityEmotesPerMin(points, windowMinutes)).toBe(1000)
   })
 })

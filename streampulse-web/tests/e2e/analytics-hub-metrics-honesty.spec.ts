@@ -178,24 +178,25 @@ test.describe('hub metrics honesty (mocked hub)', () => {
     await installHubUxMock(page)
   })
 
-  test('KPI header separates live pool, corpus streams, and live pool viewers', async ({ page }) => {
+  test('KPI header groups live snapshot and window peaks honestly', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     await expect(page.getByText('Live in pool', { exact: true })).toBeVisible()
-    await expect(page.getByText('Corpus streams', { exact: true })).toBeVisible()
-    await expect(page.getByText('Live pool viewers', { exact: true })).toBeVisible()
+    await expect(page.getByText('Live viewers now', { exact: true })).toBeVisible()
+    await expect(page.getByText('Peak emotes/min', { exact: true })).toBeVisible()
+    await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('1.2K', { exact: true }).first()).toBeVisible()
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('Live Activity legend lists pool, IRC, roster, and corpus separately', async ({ page }) => {
+  test('Live Activity legend lists pool, IRC, and roster separately', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     const legend = page.locator('.figma-global-activity__lede').nth(1)
     await expect(legend).toContainText(/96 live in pool/)
-    await expect(legend).toContainText(/40\/96 on IRC/)
-    await expect(legend).toContainText(/corpus streams total/)
+    await expect(legend).toContainText(/40\/96 IRC collectors/)
+    await expect(legend).not.toContainText(/corpus/i)
     await expect(legend).not.toContainText(/live tracked/i)
     await assertNoConsoleErrors(page, errors)
   })
@@ -302,14 +303,15 @@ test.describe('hub metrics honesty (hosted API)', () => {
     await page.goto('/analytics', { waitUntil: 'domcontentloaded' })
 
     await expect(page.getByText('Live in pool', { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('Corpus streams', { exact: true })).toBeVisible()
+    await expect(page.getByText('Live viewers now', { exact: true })).toBeVisible()
+    await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
 
     const legend = page.locator('.figma-global-activity .figma-global-activity__lede').nth(1)
     await expect(legend).toBeVisible({ timeout: 15_000 })
     await expect(legend).toContainText(/live in pool/)
-    await expect(legend).toContainText(/on IRC/)
-    await expect(legend).toContainText(/corpus streams total/)
+    await expect(legend).toContainText(/IRC collectors/)
+    await expect(legend).not.toContainText(/corpus streams total/)
 
     await assertNoConsoleErrors(page, errors)
   })

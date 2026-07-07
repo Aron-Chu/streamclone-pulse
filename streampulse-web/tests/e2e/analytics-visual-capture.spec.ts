@@ -60,7 +60,7 @@ test.describe('analytics visual capture (hosted API only)', () => {
           await expect(page.getByRole('img', { name: 'Analytics timeline chart' })).toBeVisible({ timeout: 15_000 })
           await expect(page.getByText(/\d+% chat coverage/i)).toBeVisible({ timeout: 15_000 })
         } else {
-          await expect(page.getByText(/Reading Hosted corpus/i).first()).toBeVisible({ timeout: 15_000 })
+          await expect(page.getByText(/Reading Hosted API/i).first()).toBeVisible({ timeout: 15_000 })
         }
 
         const outfile = testInfo.outputPath(`${viewport.name}-${target.slug}.png`)
