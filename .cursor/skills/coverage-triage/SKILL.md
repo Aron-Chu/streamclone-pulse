@@ -7,7 +7,7 @@ description: Triage Pulse live coverage, missing prefix, and VOD backfill UX aga
 
 ## Read first
 
-1. [`docs/pulse-extension/live-coverage-requirements.md`](../../docs/pulse-extension/live-coverage-requirements.md) — truth table, states, copy keys
+1. [live-coverage-requirements.md](https://github.com/Aron-Chu/streamclone-pulse/blob/master/docs/pulse-extension/live-coverage-requirements.md) — truth table, states, copy keys
 2. Backend: streamclone `internal/analytics/pulse_coverage.go`, `extension_api.go`
 
 ## Triage checklist
@@ -21,9 +21,18 @@ description: Triage Pulse live coverage, missing prefix, and VOD backfill UX aga
 ## Quick probes
 
 ```bash
-# streamclone checkout
-curl -s "http://localhost:8090/v1/extension/pulse?login=<login>" | jq '{coverage, backfill, peaks: (.peaks|length)}'
+# Hosted (StreamPulse / extension default)
+curl -s "https://api.streampulse.stream/v1/extension/pulse/channels/<login>?window=full" \
+  | jq '{state, coverageStartOffsetSeconds, canBackfill, peaks: (.peaks|length)}'
+
+curl -s "https://api.streampulse.stream/v1/extension/pulse/channels/<login>/coverage" \
+  | jq '{canBackfillMissedMoments, coverageStartOffsetSeconds}'
+
+# Local stack (Streamclone backend debugging only)
+curl -s "http://localhost:8090/v1/extension/pulse/channels/<login>?window=full" | head -c 2000
 ```
+
+Key fields: `state` (`waiting_for_vod`, `live_tracking`, …), `canBackfill`, `coverageStartOffsetSeconds`.
 
 ## Report format
 

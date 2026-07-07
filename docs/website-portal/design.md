@@ -193,11 +193,14 @@ Cloudflare side (not in repo): tunnel credentials in `deploy/cloudflared/config.
 
 | Mode | Backend URL | `PULSE_HOSTED_MODE` | Identity | Use |
 |------|-------------|---------------------|----------|-----|
-| **Local dev** | `http://localhost:8090` | unset/false | none | `make up`; extension + site dev against local stack |
+| **Portal dev (default)** | `https://api.streampulse.stream` | n/a (read-only public hub) | none | `npm run dev` in `streampulse-web` — no local stack required |
+| **Local stack (opt-in)** | `http://localhost:8090` | unset/false | none | `npm run dev:local` + `VITE_ALLOW_LOCAL_BACKEND=1`; Go BFF debugging only |
 | **Hosted beta** | `https://api.streampulse.stream` | `true` + beta keys | `betaKeyHash` | public beta on streampulse-vps via Cloudflare |
 | **Corpus / analytics** | internal | n/a | operator | full Streamclone app + sync tooling, not StreamPulse-gated |
 
 Site build targets are switched via `VITE_BACKEND_URL` (default differs per mode); the dashboard also lets the user override at runtime for local dev.
+
+**Portal local dev runbook:** [local-dev-runbook.md](./local-dev-runbook.md) — hosted-first checklist, stale-Vite troubleshooting, hub poll defaults (45s).
 
 ---
 

@@ -25,6 +25,7 @@ You are the frontend UX reviewer for Streamclone Pulse (extension) and StreamPul
 
 - `docs/pulse-extension/live-coverage-requirements.md` — truth table and copy keys
 - `docs/website-portal/design.md` — portal component boundaries
+- `docs/website-portal/analytics-command-center-layout.md` — hub Pulse Moments side-by-side layout, moment inspector KPI row, Selected minute emotes fill, chart rail bucket inspector, range/bucket streamer footers (2026-07)
 
 ## Review output
 

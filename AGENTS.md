@@ -24,6 +24,7 @@ Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep produc
 | Task ledger (P0–P6) | [`docs/pulse-extension/tasks.md`](docs/pulse-extension/tasks.md) |
 | **Figma UI (PNG + node IDs)** | [`docs/pulse-extension/figma-handoff.md`](docs/pulse-extension/figma-handoff.md) + [`figma/`](docs/pulse-extension/figma/) |
 | Repo wiring | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
+| **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) |
 | Extension code | `src/` |
 
 ## StreamPulse website / portal task router
@@ -51,8 +52,9 @@ Hard guardrails:
 - **Content scripts:** `chrome.runtime.sendMessage` only — no `fetch`.
 - **Service worker:** all HTTP to Streamclone (`/v1/extension/*`, `/v1/analytics/.../watch`).
 - **Extension** default backend: `https://api.streampulse.stream` (hosted). Local `http://localhost:8090` requires explicit opt-in in Options → Advanced.
-- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit `:8090` only.
+- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit `:8090` only. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (restart after branch switch; `npm install` for `@streamclone/*` links).
 - New Go APIs → implement in streamclone `internal/analytics`, not here.
+- ReplayForge / auto clipper work is not owned by the extension or portal. Use sibling streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md): Streamclone owns candidates/triggers/callback state, ReplayForge owns render/edit/export, and hosted production still deploys Streamclone GHCR images via private `streampulse-ops`.
 - **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
 
 ## Commands

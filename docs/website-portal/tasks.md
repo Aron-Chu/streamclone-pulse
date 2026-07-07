@@ -40,7 +40,8 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
     - `deploy/Caddyfile.pulse-api` / `deploy/Caddyfile.bearhost`
     - `docs/pulse-extension/bearhost-tunnel.md`
   - Implementation notes:
-    - Create the tunnel on BearHost (`cloudflared`), route `api.streampulse.stream` → internal Caddy `:8090`.
+    - Create the tunnel on **streampulse-vps** (`cloudflared`); route `api.streampulse.stream` → internal Caddy `:8090`. Operator runbook: private **streampulse-ops**.
+    - Legacy filenames (`deploy/Caddyfile.bearhost`, `docs/pulse-extension/bearhost-tunnel.md`) are rollback references only.
     - No public open ports on the VPS; tunnel is outbound only.
     - TLS terminates at Cloudflare; Caddy serves plain HTTP internally to the tunnel.
   - Acceptance criteria:
@@ -69,7 +70,8 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
   - Priority: P0
   - Depends on: INFRA-001
   - Files likely touched:
-    - `deploy/env/profile-bearhost-pulse.env`
+    - `deploy/env/profile-bearhost-pulse.env` (legacy example only)
+    - `streampulse-ops/env/production.local.env` (authoritative production — private repo)
     - `.env.example`
   - Implementation notes:
     - Define: `PULSE_HOSTED_MODE=true`, `PULSE_BETA_KEYS=...`, `PULSE_MAX_ACTIVE_CHANNELS`, `PULSE_MAX_BACKFILLS`, `PULSE_MAX_CHANNELS_PER_PRINCIPAL`, `PULSE_WATCH_RATE_PER_MIN`, `PULSE_BACKFILL_RATE_PER_HOUR`, `SEVENTV_EVENTAPI_ENABLED=true`, `STREAMCLONE_VERSION`.
@@ -227,7 +229,7 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
   - Priority: P0
   - Depends on: INFRA-001
   - Files likely touched:
-    - `deploy/Caddyfile.bearhost`
+    - `deploy/Caddyfile.bearhost` (legacy rollback filename)
     - `deploy/cloudflared/config.yml`
     - `docs/website-portal/design.md` (reference)
   - Implementation notes:
@@ -1321,7 +1323,7 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
 Get the **hosted surface real first** (infra + skeleton + auth + health) before any dashboard pages. Exact order:
 
 1. **INFRA-001** — Cloudflare DNS/Tunnel for `api.streampulse.stream` (health reachable end-to-end).
-2. **INFRA-003** — Hosted-mode environment variables on BearHost.
+2. **INFRA-003** — Hosted-mode environment variables on streampulse-vps (operator env in streampulse-ops).
 3. **API-001** — Validate beta-key gating (401 + hint).
 4. **WEB-001** — Scaffold Vite + React + TS app.
 5. **WEB-002** — Routing + chunk split.

@@ -9,7 +9,7 @@ import sys
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE = "http://localhost:8090"
+DEFAULT_BASE = "https://api.streampulse.stream"
 
 
 def get_json(url: str) -> dict:

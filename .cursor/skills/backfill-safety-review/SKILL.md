@@ -7,7 +7,7 @@ description: Review VOD backfill jobs, rate limits, and capacity before enabling
 
 ## Read first
 
-- [`docs/pulse-extension/live-coverage-requirements.md`](../../docs/pulse-extension/live-coverage-requirements.md) § backfill
+- [live-coverage-requirements.md § backfill](https://github.com/Aron-Chu/streamclone-pulse/blob/master/docs/pulse-extension/live-coverage-requirements.md) (sibling `docs/pulse-extension/live-coverage-requirements.md`)
 - streamclone: `internal/analytics/pulse_backfill.go`, `pulse_backfill_api.go`
 
 ## Safety checklist
@@ -22,8 +22,14 @@ description: Review VOD backfill jobs, rate limits, and capacity before enabling
 ## Script
 
 ```bash
-# From streamclone checkout — list recent backfill jobs if stack is up
-python .cursor/skills/backfill-safety-review/scripts/backfill-smoke.py --login <login>
+# streamclone-pulse checkout (canonical skill path)
+python .cursor/skills/backfill-safety-review/scripts/backfill-smoke.py --login <login> --base https://api.streampulse.stream
+
+# streamclone checkout (mirrored under pulse/)
+python .cursor/skills/pulse/backfill-safety-review/scripts/backfill-smoke.py --login <login> --base https://api.streampulse.stream
+
+# Local stack debugging only
+python .cursor/skills/backfill-safety-review/scripts/backfill-smoke.py --login <login> --base http://localhost:8090
 ```
 
 ## Block merge if

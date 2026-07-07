@@ -1,7 +1,7 @@
 # StreamPulse — Public Website &amp; User Portal Requirements
 
 > Product Requirements Document (PRD) for the public website and account portal of the **Streamclone Pulse** Chrome extension.
-> Domain: `streampulse.stream` · API: `https://api.streampulse.stream` · Backend: Streamclone analytics on BearHost, fronted by Cloudflare.
+> Domain: `streampulse.stream` · API: `https://api.streampulse.stream` · Backend: Streamclone analytics on **streampulse-vps**, fronted by Cloudflare (operator deploy in private **streampulse-ops**).
 
 | | |
 |---|---|
@@ -34,7 +34,9 @@ StreamPulse is the public home and account portal for the Streamclone Pulse Chro
 
 The visual language is **dark, Twitch-native, data-platform**: near-black surfaces, violet/purple primaries, and orange→yellow heatmap accents reserved for live intensity and peak scores. Structurally the site borrows the confident simplicity of a clean data product (clear hero, top nav, product/dashboard/resources links, a credibility statistics band, minimal layout) but reads as **stream intelligence**, not a fan page.
 
-The backend is the existing Streamclone analytics engine running on BearHost, fronted by Cloudflare DNS/Tunnel at `api.streampulse.stream`. The site is **read-mostly and rollup-first**: it never stores raw chat for all streams, never exposes unauthenticated tracking endpoints, and enforces a single shared tracking session per channel.
+The backend is the existing Streamclone analytics engine running on **streampulse-vps**, fronted by Cloudflare DNS/Tunnel at `api.streampulse.stream`. Production env and deploy live in private **streampulse-ops** — not public `profile-bearhost-pulse.env`. The site is **read-mostly and rollup-first**: it never stores raw chat for all streams, never exposes unauthenticated tracking endpoints, and enforces a single shared tracking session per channel.
+
+> **Historical:** BearHost (`141.11.243.103`) was pre-2026-07-02 production; it is **rollback/archive only**. See streamclone [`docs/streampulse-vps.md`](https://github.com/Aron-Chu/streamclone/blob/master/docs/streampulse-vps.md).
 
 **MVP** ships a marketing landing page, an extension setup page, a thin dashboard (watchlist, saved moments, past streams), beta-key/device auth, and a public backend status page — no billing, no heavy multi-tenant backfill. **V2** adds device auth, D1-backed user data, a clip-candidate queue, and shareable moment pages. **V3** adds paid hosted Pulse, tiers/billing, streamer-owned dashboards, and an official Twitch Extension.
 
@@ -721,7 +723,7 @@ The portal reads analytics through **layers**, by view depth:
 
 ---
 
-## 15. Cloudflare / BearHost hosting architecture
+## 15. Cloudflare / streampulse-vps hosting architecture
 
 ### 15.1 Topology
 
@@ -735,7 +737,7 @@ The portal reads analytics through **layers**, by view depth:
                                      │ cloudflared tunnel (no open ports)
                                      ▼
                      ┌──────────────────────────────────────────────┐
-                     │  BearHost VPS — docker compose                │
+                     │  streampulse-vps — docker compose           │
                      │   Caddy :8090  (internal reverse proxy)       │
                      │   analytics API (chi)  ← BFF, bookmarks, recap│
                      │   analytics-workers (IRC, rollups, scoring,   │
@@ -754,8 +756,8 @@ The portal reads analytics through **layers**, by view depth:
 
 | ID | Requirement |
 |----|-------------|
-| H1 | `streampulse.stream` SHALL serve the static website (Cloudflare Pages or similar); `api.streampulse.stream` SHALL route via Cloudflare Tunnel to BearHost Caddy `:8090`. |
-| H2 | TLS SHALL terminate at Cloudflare; no public open ports on BearHost (tunnel only). |
+| H1 | `streampulse.stream` SHALL serve the static website (Cloudflare Pages or similar); `api.streampulse.stream` SHALL route via Cloudflare Tunnel to **streampulse-vps** Caddy `:8090`. |
+| H2 | TLS SHALL terminate at Cloudflare; no public open ports on streampulse-vps (tunnel only). |
 | H3 | Cloudflare SHALL provide WAF + per-IP rate limiting in front of `/v1/*`; the BFF/backfill add per-key/Redis token-bucket limits (§18). |
 | H4 | D1/Workers are **optional, V2+**, for users/devices/watchlists/saved moments only — **never** rollups or raw chat. |
 | H5 | The architecture SHALL stay **rollup-first**: raw chat is not stored for all streams by default (only transient during backfill tokenization). |
@@ -764,7 +766,7 @@ The portal reads analytics through **layers**, by view depth:
 
 ### 15.3 Why this shape
 
-- Tunnel removes the "BearHost is IP-only HTTP" blocker (design.md §7.1) — Chrome's secure-context fetch needs HTTPS + a domain; Cloudflare provides both without exposing the VPS.
+- Tunnel removes the pre-cutover "IP-only HTTP" blocker (design.md §7.1) — Chrome's secure-context fetch needs HTTPS + a domain; Cloudflare provides both without exposing the VPS. Legacy `Caddyfile.bearhost` is rollback reference only.
 - Redis BFF cache (12s TTL, already implemented) decouples viewer count from compute: 1,000 viewers of one channel = 1 compute per cache window.
 - D1 is a good fit for tiny relational user data but a poor fit for high-write rollups — keep rollups in Postgres.
 
@@ -960,7 +962,7 @@ We don't read your Twitch login or cookies. Saved moments are private to you.
 
 | Phase | Theme | Deliverables |
 |-------|-------|--------------|
-| **P0 — Infra** | Make hosted real | Cloudflare DNS/Tunnel → BearHost, TLS at `api.streampulse.stream`, beta-key gating on, `/v1/public/stats` + `/v1/public/status`, rate limits, tracking-pool caps |
+| **P0 — Infra** | Make hosted real | Cloudflare DNS/Tunnel → streampulse-vps, TLS at `api.streampulse.stream`, beta-key gating on, `/v1/public/stats` + `/v1/public/status`, rate limits, tracking-pool caps |
 | **P1 — Marketing** | Landing + setup | `/`, `/setup`, `/docs`, `/status`, `/login`; hero, stats band, feature cards; install detection + health check |
 | **P2 — Dashboard core** | Thin portal | `/dashboard`, `/dashboard/watchlist`, `/dashboard/c/{login}`, `/dashboard/streams`, `/dashboard/moments`; coverage + load-missed-moments reuse |
 | **P3 — Admin** | Operability | `/admin` health/registry/jobs; alerts on caps |
