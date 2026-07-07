@@ -29,6 +29,7 @@ Backend changes → sibling **streamclone** checkout (`../twitch-7tv-clone`); im
 - No full timeline fetch on live polling
 - Backend coverage, peaks, sync, and backfill states are source of truth
 - D1 is user state only — never rollups, raw chat, VOD chat, TwitchTracker, or corpus data
+- No production topology (host IPs, SSH paths, operator runbooks) in docs/agents — private **streampulse-ops** only
 
 ## Cursor surfaces (this repo)
 
