@@ -5,6 +5,7 @@ import {
   isPulseBackfillTerminal,
   missedMomentsButtonLabel,
   missedMomentsButtonState,
+  backendResolvedVod,
   resolvePulseCoverage,
   shouldShowMissedMomentsBanner,
   shouldShowStreamStartAction,
@@ -199,5 +200,26 @@ describe('missedMoments helpers', () => {
     })
     expect(resolved?.message).toBe('VOD chat not published yet — IRC tracking continues live.')
     expect(resolved?.vodStatus).toBe('pending')
+  })
+
+  it('detects backend-resolved VOD from vodId or vodStatus', () => {
+    expect(backendResolvedVod({ vodId: '2797507897' })).toBe(true)
+    expect(backendResolvedVod({ coverage: { ...partialCoverage(), vodStatus: 'available' } })).toBe(true)
+    expect(backendResolvedVod({ coverage: partialCoverage({ vodStatus: 'pending' }) })).toBe(false)
+  })
+
+  it('offers load CTA when backend linked VOD despite local GQL failure path', () => {
+    const source = {
+      coverageStartOffsetSeconds: 900,
+      vodId: '2797507897',
+      isLive: true,
+      coverage: partialCoverage({
+        copyKey: 'missing_ranges_detected',
+        message: 'Fill missing start from Twitch VOD',
+        vodStatus: 'available',
+        manualRetryAllowed: true,
+      }),
+    }
+    expect(missedMomentsButtonState(source, false, false)).toBe('load')
   })
 })

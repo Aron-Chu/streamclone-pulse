@@ -26,7 +26,7 @@ describe('effectivePulseIsLive', () => {
     ).toBe(false)
   })
 
-  it('clears stale recap for display while backend catches up', () => {
+  it('preserves finished recap for display even when Twitch page looks live', () => {
     const withRecap = {
       ...payload,
       recap: {
@@ -40,8 +40,11 @@ describe('effectivePulseIsLive', () => {
         clipCandidates: [],
       },
     }
+    expect(
+      effectivePulseIsLive(withRecap, true, { kind: 'channel', login: 'test', vodId: null }),
+    ).toBe(false)
     const display = pulsePayloadForDisplay(withRecap, true, { kind: 'channel', login: 'test', vodId: null })
-    expect(display.isLive).toBe(true)
-    expect(display.recap).toBeNull()
+    expect(display.isLive).toBe(false)
+    expect(display.recap).not.toBeNull()
   })
 })

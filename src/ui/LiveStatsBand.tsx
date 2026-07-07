@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   MAX_TOP_EMOTES,
@@ -7,29 +7,42 @@ import {
   toLiveStatsInputFromExtension,
   trendArrowGlyph,
   type LiveConfidenceState,
+  type LiveHeatPoint,
   type LiveStats,
   type TrendDirection,
 } from '@streamclone/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
-import { ChatActivityChart } from './ChatActivityChart.tsx'
+import { getDefaultChartWindow } from '../shared/storage.ts'
+import { PulseEmoteImg } from './PulseEmoteImg.tsx'
+import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
+import { PulseOverviewChart } from './PulseOverviewChart.tsx'
+import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
-  chartAlignFromStart,
+  CHART_WINDOW_OPTIONS,
   chartEmptyMessage,
+  chartWindowNeedsFullFetch,
   describeRollupGap,
-  chartMaxPoints,
-  chatSeriesFromRollups,
   emoteAveragesFromRollups,
-  hasFullTimelineRollups,
-  emoteOverlayColor,
   emoteSelectionKey,
-  maxSeriesValue,
+  findChartIndexByOffset,
+  hasFullTimelineRollups,
+  MAX_PLOTTED_EMOTES,
   prepareChartRollups,
+  toggleEmotePlotKeys,
+  type ChartTimelineWindow,
 } from './chatActivityEmotes.ts'
+import { downsampleRollupsForChart } from './extensionChartPoints.ts'
+import { extensionGamesForOverviewChart } from './extensionChartAdapter.ts'
+import { firstViewerOffsetSeconds, minuteEmoteTotal } from './chartRollupUtils.ts'
+import { LiveMetricIcon } from './liveMetricIcons.tsx'
 import { emoteSyncStatusLabel, emoteSyncStatusTone } from './emoteSync.ts'
+import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
+import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
+import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
 
 export interface LiveStatsBandProps {
@@ -44,6 +57,16 @@ export interface LiveStatsBandProps {
   showLoadFromStart?: boolean
   loadFromStartBusy?: boolean
   onLoadFromStart?: () => void
+  onJumpToOffset?: (offsetSeconds: number) => void
+  onOpenAnalytics?: (offsetSeconds: number) => void
+  onOpenFullAnalytics?: () => void
+  onRequestFullTimeline?: () => Promise<void>
+  onPinOffset?: (offsetSeconds: number | null) => void
+  onSaveMoment?: (point: LiveHeatPoint) => void
+  saveMomentBusy?: boolean
+  pinOffsetSeconds?: number | null
+  previewOffsetSeconds?: number | null
+  hasVodContext?: boolean
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -72,33 +95,10 @@ const CONFIDENCE_STYLES: Record<
   },
 }
 
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false,
-  )
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(mq.matches)
-    onChange()
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    }
-    mq.addListener(onChange)
-    return () => mq.removeListener(onChange)
-  }, [])
-
-  return reduced
-}
-
 function formatSignedDelta(delta: number | null): string {
-  if (delta === null) return '—'
-  if (delta === 0) return '±0'
-  return delta > 0 ? `+${delta.toLocaleString()}` : `−${Math.abs(delta).toLocaleString()}`
+  if (delta === null) return '-'
+  if (delta === 0) return '0'
+  return delta > 0 ? `+${delta.toLocaleString()}` : `-${Math.abs(delta).toLocaleString()}`
 }
 
 function formatNumber(value: number): string {
@@ -133,13 +133,17 @@ function useCountUp(value: number, duration = 420): number {
 function AnimatedMetric({
   value,
   format,
+  valueStyle,
 }: {
   value: number
   format?: (value: number) => string
+  valueStyle?: CSSProperties
 }) {
   const animated = useCountUp(value)
   return (
-    <span style={styles.metricValue}>{format ? format(animated) : formatNumber(animated)}</span>
+    <span style={{ ...styles.metricValue, ...valueStyle }}>
+      {format ? format(animated) : formatNumber(animated)}
+    </span>
   )
 }
 
@@ -164,38 +168,166 @@ export function LiveStatsBand({
   showLoadFromStart = false,
   loadFromStartBusy = false,
   onLoadFromStart,
+  onJumpToOffset,
+  onOpenAnalytics,
+  onOpenFullAnalytics,
+  onRequestFullTimeline,
+  onPinOffset,
+  onSaveMoment,
+  saveMomentBusy = false,
+  pinOffsetSeconds = null,
+  previewOffsetSeconds = null,
+  hasVodContext = false,
 }: LiveStatsBandProps) {
-  const reducedMotion = useReducedMotion()
+  const chartInteractionRef = useRef<HTMLDivElement | null>(null)
   const stats: LiveStats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
   const hasFullRollups = hasFullTimelineRollups(payload)
-  const rollups = prepareChartRollups(payload, { fullTimeline, currentOffsetSeconds })
-  const chartPoints = chartMaxPoints(payload)
-  const chartAlignStart = chartAlignFromStart(payload)
-  const chartChatSeries = chatSeriesFromRollups(rollups)
-  const rollupGapNotice = hasFullRollups ? describeRollupGap(rollups) : null
+  const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('60m')
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const fullTimelineRequestedRef = useRef(false)
+  const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
+  const onRequestFullTimelineRef = useRef(onRequestFullTimeline)
+  onRequestFullTimelineRef.current = onRequestFullTimeline
+
+  useEffect(() => {
+    let mounted = true
+    void getDefaultChartWindow().then(window => {
+      if (!mounted) return
+      // Live sidebar charts stay recent-window by default; "All" is opt-in per stream.
+      const resolved = isLive && window === 'full' ? '60m' : window
+      setChartWindow(resolved)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [payload.streamId, payload.login, isLive])
+
+  const rollups = useMemo(
+    () =>
+      prepareChartRollups(payload, {
+        chartWindow,
+        currentOffsetSeconds,
+        coverageStartOffsetSeconds,
+      }),
+    [payload, chartWindow, currentOffsetSeconds, coverageStartOffsetSeconds],
+  )
+  const displayRollups = useMemo(() => downsampleRollupsForChart(rollups), [rollups])
+  const chartOffsets = useMemo(
+    () => displayRollups.map(rollup => rollup.offsetSeconds),
+    [displayRollups],
+  )
+  const rollupGapNotice = chartWindow === 'full' && hasFullRollups ? describeRollupGap(rollups) : null
+  const awaitingFullRollups =
+    chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds) && !hasFullRollups
+  const chartLoading = timelineLoading || awaitingFullRollups
   const chartEmpty = chartEmptyMessage({
     rollupCount: rollups.length,
-    fullTimelineRequested: fullTimeline,
+    chartWindow,
     hasFullRollups,
     confidence: stats.confidence,
     currentOffsetSeconds,
+    awaitingFullRollups,
   })
-  const chartHeader = hasFullRollups
-    ? 'Chat activity (full stream)'
-    : fullTimeline
-      ? 'Chat activity · waiting for rollups'
-      : 'Chat activity (last 60 min)'
   const canShowFullTimeline = hasFullRollups || fullTimeline || currentOffsetSeconds > 0
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  const topEmotesForChips = (() => {
+
+  useEffect(() => {
+    if (fullTimeline) setChartWindow('full')
+  }, [fullTimeline])
+
+  useEffect(() => {
+    fullTimelineRequestedRef.current = false
+  }, [payload.streamId, chartWindow])
+
+  useEffect(() => {
+    if (!chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)) {
+      return
+    }
+    if (hasFullRollups || fullTimelineRequestedRef.current) return
+    const request = onRequestFullTimelineRef.current
+    if (!request) return
+    fullTimelineRequestedRef.current = true
+    setTimelineLoading(true)
+    void request().finally(() => {
+      setTimelineLoading(false)
+      fullTimelineRequestedRef.current = false
+    })
+  }, [chartWindow, currentOffsetSeconds, hasFullRollups, payload])
+
+  useEffect(() => {
+    onPinOffset?.(null)
+  }, [payload.streamId, onPinOffset])
+
+  const pinChartIndex = useMemo(() => {
+    if (pinOffsetSeconds == null) return null
+    return findChartIndexByOffset(chartOffsets, pinOffsetSeconds, {
+      bucketed: chartWindow === 'full',
+    })
+  }, [pinOffsetSeconds, chartOffsets, chartWindow])
+
+  const previewChartIndex = useMemo(() => {
+    if (previewOffsetSeconds == null) return null
+    return findChartIndexByOffset(chartOffsets, previewOffsetSeconds, {
+      bucketed: chartWindow === 'full',
+    })
+  }, [previewOffsetSeconds, chartOffsets, chartWindow])
+
+  const previewRollup =
+    previewChartIndex != null ? displayRollups[previewChartIndex] : undefined
+
+  const selectedRollup =
+    pinChartIndex != null ? displayRollups[pinChartIndex] : undefined
+
+  const minuteAtRollup = useMemo(() => {
+    if (selectedRollup) return selectedRollup
+    if (chartHoverOffsetSeconds != null) {
+      return displayRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
+    }
+    if (previewRollup) return previewRollup
+    return undefined
+  }, [selectedRollup, chartHoverOffsetSeconds, displayRollups, previewRollup])
+
+  const minuteAtOffsetSeconds = minuteAtRollup?.offsetSeconds ?? 0
+  const showChartReadout = Boolean(
+    minuteAtRollup && (pinOffsetSeconds != null || chartHoverOffsetSeconds != null),
+  )
+
+  useEffect(() => {
+    if (pinChartIndex != null) {
+      setEmotePanelExpanded(false)
+    }
+  }, [pinChartIndex])
+
+  const topEmotesForChips = useMemo(() => {
     const fromRollups = aggregateChartEmotes(rollups, MAX_TOP_EMOTES)
     if (fromRollups.length > 0) return fromRollups
     return (payload.topEmotes?.length ? payload.topEmotes : stats.topEmotes).slice(0, MAX_TOP_EMOTES)
-  })()
-  const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
+  }, [payload.topEmotes, rollups, stats.topEmotes])
+
+  const selectedEmotesForOverlay = useMemo(
+    () =>
+      topEmotesForChips.filter(emote => selectedEmoteKeys.includes(emoteSelectionKey(emote))),
+    [topEmotesForChips, selectedEmoteKeys],
+  )
+  const emoteOverlays = useMemo(
+    () =>
+      selectedEmotesForOverlay.length > 0
+        ? buildEmoteOverlaySeries(displayRollups, selectedEmotesForOverlay, rollups)
+        : [],
+    [displayRollups, rollups, selectedEmotesForOverlay],
+  )
+
+  const selectedPlotColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    selectedEmotesForOverlay.forEach((emote, index) => {
+      map[emoteSelectionKey(emote)] = emoteOverlays[index]?.color ?? '#fb7185'
+    })
+    return map
+  }, [selectedEmotesForOverlay, emoteOverlays])
+
   const emoteSyncTone = emoteSyncStatusTone(payload.emoteSync)
   const emoteAvg5m = emoteAveragesFromRollups(rollups, 5)
   const emoteSyncStyle =
@@ -205,27 +337,67 @@ export function LiveStatsBand({
         ? { color: '#fcd34d' }
         : { color: theme.textMuted }
 
-  const selectedRollup = selectedIndex != null ? rollups[selectedIndex] : undefined
+  const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
   const selectedOffsetSeconds = selectedRollup?.offsetSeconds ?? null
-  const selectedOverlayEmotes = topEmotesForChips.filter(emote =>
-    selectedEmoteKeys.includes(emoteSelectionKey(emote)),
+
+  const chartGames = useMemo(
+    () => extensionGamesForOverviewChart(payload.games, payload.category, currentOffsetSeconds),
+    [payload.games, payload.category, currentOffsetSeconds],
   )
-  const emoteOverlays = buildEmoteOverlaySeries(rollups, selectedOverlayEmotes)
 
-  function toggleEmoteOverlay(emote: (typeof topEmotesForChips)[number]): void {
-    if (!emotePanelExpanded) return
+  function handleChartSelect(index: number): void {
+    const rollup = displayRollups[index]
+    if (!rollup || rollup.missing) return
+    onPinOffset?.(rollup.offsetSeconds)
+    setChartHoverOffsetSeconds(null)
+  }
+
+  function handleClearChartSelection(): void {
+    onPinOffset?.(null)
+    setChartHoverOffsetSeconds(null)
+  }
+
+  const chartHeight = sidebarFill ? 216 : 184
+
+  const metricsStyle = sidebarFill
+    ? { ...styles.metrics, ...styles.metricsSidebar }
+    : compact
+      ? { ...styles.metrics, ...styles.metricsCompact }
+      : styles.metrics
+
+  function toggleEmotePanelKey(emote: (typeof topEmotesForChips)[number]): void {
     const key = emoteSelectionKey(emote)
-    setSelectedEmoteKeys(current =>
-      current.includes(key) ? current.filter(item => item !== key) : [...current, key].slice(-3),
-    )
+    setSelectedEmoteKeys(current => toggleEmotePlotKeys(current, key, MAX_PLOTTED_EMOTES))
   }
 
-  function handleSparklineSelect(index: number): void {
-    setSelectedIndex(index)
-  }
+  const emoteMetaLine = (() => {
+    if (stats.hasProviderSplit) {
+      return stats.emoteProviderRates
+        .map(rate => `${rate.provider === 'Other' ? 'Other' : rate.provider} ${formatNumber(rate.perMinute)}`)
+        .join(' · ')
+    }
+    if (emoteAvg5m.minutes > 0) {
+      const avg = `${formatNumber(emoteAvg5m.sevenTvPerMin)} 7TV avg · 5m`
+      return emoteAvg5m.totalPerMin !== emoteAvg5m.sevenTvPerMin
+        ? `${avg} · ${formatNumber(emoteAvg5m.totalPerMin)} total`
+        : avg
+    }
+    return 'No emotes this minute'
+  })()
+  const emoteChartHint =
+    rollups.some(r => (r.totalEmoteCount ?? 0) > 0) && stats.totalEmotePerMin === 0
+      ? 'Chart uses full stream; metric is latest minute.'
+      : null
 
   const lateTracking = coverageStartOffsetSeconds > 60
-  const showTimelineMeta = isLive || currentOffsetSeconds > 0 || canShowFullTimeline
+  const showViewerStrip = rollups.some(rollup => (rollup.viewerCount ?? 0) > 0)
+  const viewerStartOffsetSeconds = Math.max(
+    0,
+    payload.viewerStartOffsetSeconds ?? firstViewerOffsetSeconds(rollups),
+  )
+  const lateViewerSamples =
+    showViewerStrip
+    && viewerStartOffsetSeconds > coverageStartOffsetSeconds + 60
 
   return (
     <PulseSectionCard
@@ -233,33 +405,35 @@ export function LiveStatsBand({
       titleTone="muted"
       style={{ marginBottom: sidebarFill ? 10 : 14, width: '100%' }}
       meta={
-        <span
-          style={{
-            background: confidenceStyle.background,
-            border: `1px solid ${confidenceStyle.border}`,
-            borderRadius: 999,
-            color: confidenceStyle.color,
-            fontSize: 10,
-            fontWeight: 800,
-            padding: '3px 8px',
-          }}
-        >
-          {stats.confidence}
+        <span style={styles.headerMeta}>
+          {onOpenFullAnalytics ? (
+            <button type="button" style={styles.analyticsHeaderLink} onClick={onOpenFullAnalytics}>
+              Open full analytics →
+            </button>
+          ) : null}
+          <span
+            style={{
+              background: confidenceStyle.background,
+              border: `1px solid ${confidenceStyle.border}`,
+              borderRadius: 999,
+              color: confidenceStyle.color,
+              fontSize: 10,
+              fontWeight: 800,
+              padding: '3px 8px',
+            }}
+          >
+            {stats.confidence}
+          </span>
         </span>
       }
     >
-      <div
-        style={
-          compact
-            ? { ...styles.metrics, ...styles.metricsCompact }
-            : sidebarFill
-              ? { ...styles.metrics, ...styles.metricsSidebar }
-              : styles.metrics
-        }
-      >
+      <div style={metricsStyle}>
         <div style={styles.metric}>
           <span style={styles.metricLabel}>Viewers</span>
-          <AnimatedMetric value={stats.currentViewers} format={formatNumber} />
+          <span style={styles.metricValueRow}>
+            <LiveMetricIcon kind="viewers" />
+            <AnimatedMetric value={stats.currentViewers} format={formatNumber} valueStyle={sidebarFill ? styles.metricValueSidebar : undefined} />
+          </span>
           <span
             style={{
               ...styles.metricMeta,
@@ -278,8 +452,9 @@ export function LiveStatsBand({
         </div>
         <div style={styles.metric}>
           <span style={styles.metricLabel}>Chat / min</span>
-          <span style={styles.metricRow}>
-            <AnimatedMetric value={stats.chatPerMin1m} format={formatNumber} />
+          <span style={styles.metricValueRow}>
+            <LiveMetricIcon kind="chat" />
+            <AnimatedMetric value={stats.chatPerMin1m} format={formatNumber} valueStyle={sidebarFill ? styles.metricValueSidebar : undefined} />
             <TrendArrow trend={stats.chatTrend} />
           </span>
           <span style={styles.metricMeta}>
@@ -287,103 +462,137 @@ export function LiveStatsBand({
           </span>
         </div>
         <div style={styles.metric}>
-          <span style={styles.metricLabel}>Emotes / min (this minute)</span>
-          <AnimatedMetric value={stats.totalEmotePerMin} format={formatNumber} />
-          {stats.hasProviderSplit ? (
-            <span style={styles.metricMeta}>
-              {stats.emoteProviderRates.map(rate => (
-                <span key={rate.provider} style={styles.providerRate}>
-                  {rate.provider === 'Other' ? 'Other' : rate.provider} {formatNumber(rate.perMinute)}
-                </span>
-              ))}
-            </span>
-          ) : (
-            <span style={styles.metricMeta}>No emotes this minute</span>
-          )}
-          {emoteAvg5m.minutes > 0 ? (
-            <span style={styles.metricMeta}>
-              {formatNumber(emoteAvg5m.sevenTvPerMin)} 7TV avg · 5m
-              {emoteAvg5m.totalPerMin !== emoteAvg5m.sevenTvPerMin
-                ? ` · ${formatNumber(emoteAvg5m.totalPerMin)} total`
-                : ''}
-            </span>
-          ) : null}
-          {rollups.some(r => (r.totalEmoteCount ?? 0) > 0) && stats.totalEmotePerMin === 0 ? (
-            <span style={styles.metricHint}>Chart uses full stream; metric is latest minute.</span>
-          ) : null}
+          <span style={styles.metricLabel}>Emotes / min</span>
+          <span style={styles.metricValueRow}>
+            <LiveMetricIcon kind="emotes" />
+            <AnimatedMetric value={stats.totalEmotePerMin} format={formatNumber} valueStyle={sidebarFill ? styles.metricValueSidebar : undefined} />
+          </span>
+          <span style={styles.metricMeta}>{emoteMetaLine}</span>
         </div>
       </div>
+
+      {emoteChartHint ? <p style={styles.metricHintBelow}>{emoteChartHint}</p> : null}
 
       {emoteSyncLabel ? (
         <p style={{ ...styles.emoteSyncNote, ...emoteSyncStyle }}>{emoteSyncLabel}</p>
       ) : null}
 
-      {showTimelineMeta ? (
-        <div style={styles.timelineBar}>
-          <div style={styles.timelineCopy}>
-            {lateTracking && !fullTimeline ? (
-              <span style={styles.timelineMeta}>
-                Pulse rollups since {formatHeatOffset(coverageStartOffsetSeconds)}
-              </span>
-            ) : (
-              <span style={styles.timelineMeta}>
-                {fullTimeline ? 'Full stream timeline' : isLive ? 'Live broadcast timeline' : 'Stream timeline'}
-              </span>
-            )}
-            {isLive && currentOffsetSeconds > 0 ? (
-              <span style={styles.timelineMetaMuted}>
-                Now {formatHeatOffset(currentOffsetSeconds)}
-              </span>
-            ) : null}
+      <div ref={sparklineBlockRef} style={styles.sparklineBlock}>
+        <GamesPlayedStrip games={chartGames} durationSeconds={currentOffsetSeconds} />
+        <div style={styles.chartReadoutSlot}>
+          <p
+            style={{
+              ...styles.chartReadout,
+              opacity: showChartReadout ? 1 : 0,
+            }}
+            aria-live="polite"
+            aria-hidden={!showChartReadout}
+          >
+            <span style={styles.chartReadoutTime}>
+              {formatHeatOffset(minuteAtOffsetSeconds)}
+            </span>
+            <span style={styles.chartReadoutSep}>·</span>
+            <span>chat {formatNumber(minuteAtRollup?.chatCount ?? 0)}/min</span>
+            <span style={styles.chartReadoutSep}>·</span>
+            <span>
+              emotes {formatNumber(minuteAtRollup ? minuteEmoteTotal(minuteAtRollup) : 0)}/min
+            </span>
+          </p>
+        </div>
+        <div style={styles.chartLeadIn}>
+          <StreamActivityChartHeader
+            overlayLegend={
+              selectedEmotesForOverlay.length > 0 ? (
+                <>
+                  {selectedEmotesForOverlay.map((emote, index) => {
+                    const plotColor = emoteOverlays[index]?.color ?? '#fb7185'
+                    return (
+                      <span
+                        key={emoteSelectionKey(emote)}
+                        style={{
+                          ...styles.overlayLegendChipImg,
+                          borderColor: plotColor,
+                          boxShadow: `inset 2px 0 0 ${plotColor}`,
+                        }}
+                        aria-label={emote.name}
+                        title={emote.name}
+                      >
+                        <PulseEmoteImg
+                          emote={emote}
+                          backendUrl={backendUrl}
+                          width={18}
+                          height={18}
+                          style={styles.overlayLegendEmoteImg}
+                        />
+                      </span>
+                    )
+                  })}
+                </>
+              ) : undefined
+            }
+          />
+          {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || lateViewerSamples || (showLoadFromStart && onLoadFromStart) ? (
+            <p style={styles.timelineHint}>
+              {lateTracking && (chartWindow === 'full' || !fullTimeline) ? (
+                <span>Rollups since {formatHeatOffset(coverageStartOffsetSeconds)}</span>
+              ) : null}
+              {lateTracking && (chartWindow === 'full' || !fullTimeline) && lateViewerSamples ? (
+                <span style={styles.timelineHintSep}> · </span>
+              ) : null}
+              {lateViewerSamples ? (
+                <span>Viewer samples from {formatHeatOffset(viewerStartOffsetSeconds)}</span>
+              ) : null}
+              {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || lateViewerSamples ? (
+                showLoadFromStart && onLoadFromStart ? (
+                  <span style={styles.timelineHintSep}> · </span>
+                ) : null
+              ) : null}
+              {showLoadFromStart && onLoadFromStart ? (
+                <button
+                  type="button"
+                  style={styles.streamStartLink}
+                  disabled={loadFromStartBusy}
+                  title="Expand the activity chart from stream start and jump the player when a VOD is available."
+                  onClick={onLoadFromStart}
+                >
+                  {loadFromStartBusy ? 'Loading…' : 'Load full stream chart'}
+                </button>
+              ) : null}
+            </p>
+          ) : null}
+          <div style={styles.chartRangeRow}>
+            <PulseThemedSelect
+              label="Range"
+              value={chartWindow}
+              options={CHART_WINDOW_OPTIONS}
+              disabled={timelineLoading}
+              ariaLabel="Chart time range"
+              onChange={setChartWindow}
+            />
           </div>
-          {showLoadFromStart && onLoadFromStart ? (
-            <button
-              type="button"
-              style={styles.timelineButton}
-              disabled={loadFromStartBusy}
-              onClick={onLoadFromStart}
-            >
-              {loadFromStartBusy ? 'Loading…' : 'From stream start'}
-            </button>
-          ) : null}
         </div>
-      ) : null}
-
-      <div style={styles.sparklineBlock}>
-        <div style={styles.sparklineHeader}>
-          <span style={styles.sparklineLabel}>{chartHeader}</span>
-          {selectedOverlayEmotes.length > 0 ? (
-            <div style={styles.overlayLegendRow}>
-              {selectedOverlayEmotes.map((emote, index) => {
-                const series = emoteOverlays[index]
-                const peak = series ? maxSeriesValue(series.values) : 0
-                const color = emoteOverlayColor(index)
-                return (
-                  <span key={emoteSelectionKey(emote)} style={styles.overlayLegendChip}>
-                    <span style={{ ...styles.overlayLegendDot, background: color }} aria-hidden="true" />
-                    <span style={styles.overlayLegendName}>{emote.name}</span>
-                    <span style={styles.overlayLegendMeta}>
-                      max {formatNumber(peak)}
-                      {index === 0 ? ' · focus' : ''}
-                    </span>
-                  </span>
-                )
-              })}
-            </div>
-          ) : null}
+        <div ref={chartInteractionRef} style={styles.chartStack}>
+          <PulseOverviewChart
+            rollups={displayRollups}
+            games={chartGames}
+            durationSeconds={currentOffsetSeconds}
+            streamStartedAt={payload.startedAt}
+            height={chartHeight}
+            selectedIndex={pinChartIndex}
+            previewIndex={previewChartIndex}
+            showViewerStrip={showViewerStrip}
+            onSelectIndex={handleChartSelect}
+            onClearSelection={handleClearChartSelection}
+            clearSelectionBoundaryRef={chartInteractionRef}
+            onHoverOffsetChange={setChartHoverOffsetSeconds}
+            overlayLines={emoteOverlays}
+            emptyMessage={chartEmpty}
+            loading={chartLoading}
+            isLive={isLive}
+            emoteSyncTone={emoteSyncTone}
+          />
         </div>
-        <ChatActivityChart
-          chatSeries={chartChatSeries}
-          offsets={rollups.map(r => r.offsetSeconds)}
-          overlays={emoteOverlays}
-          reducedMotion={reducedMotion}
-          selectedIndex={selectedIndex}
-          onSelectIndex={handleSparklineSelect}
-          maxPoints={chartPoints}
-          height={96}
-          emptyMessage={chartEmpty}
-          alignFromStart={chartAlignStart}
-        />
+        <AnalyticsHubCta backendUrl={backendUrl} compact={sidebarFill} />
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <SevenTvEmotePanel
@@ -393,8 +602,11 @@ export function LiveStatsBand({
             rollups={rollups}
             topEmotes={topEmotesForChips}
             selectedKeys={selectedEmoteKeys}
-            onToggleEmote={toggleEmoteOverlay}
+            onToggleEmote={toggleEmotePanelKey}
             selectedOffsetSeconds={selectedOffsetSeconds}
+            sidebarCompact
+            selectedPlotColors={selectedPlotColors}
+            maxSelected={MAX_PLOTTED_EMOTES}
           />
         ) : null}
       </div>
@@ -409,10 +621,12 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     marginBottom: 10,
     width: '100%',
+    alignItems: 'end',
   },
-  metricsSidebar: { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
+  metricsSidebar: { gap: 6, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
   metricsCompact: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
   metric: { display: 'grid', gap: 2, minWidth: 0 },
+  metricValueSidebar: { fontSize: 18, lineHeight: 1.05 },
   metricLabel: {
     color: theme.textMuted,
     fontSize: 9,
@@ -421,41 +635,65 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
   },
   metricValue: { fontSize: 22, fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' },
+  metricValueRow: { alignItems: 'flex-end', display: 'flex', gap: 5, minWidth: 0 },
   metricRow: { alignItems: 'center', display: 'flex', gap: 4 },
-  metricMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 600 },
+  metricMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 600, minHeight: 14 },
+  metricHintBelow: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35, margin: '0 0 8px' },
   metricHint: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35 },
   providerRate: { marginRight: 8 },
   trendArrow: { fontSize: 11, fontWeight: 900 },
   emoteSyncNote: { fontSize: 10, fontWeight: 700, margin: '8px 0 0' },
-  timelineBar: {
+  timelineHint: {
+    color: theme.textMuted,
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    margin: 0,
+  },
+  timelineHintSep: { color: theme.textMuted },
+  streamStartLink: {
+    ...overlayTextLinkButton,
+    fontSize: 10,
+  },
+  chartReadoutSlot: {
     alignItems: 'center',
-    background: 'rgba(255,255,255,0.03)',
-    border: `1px solid ${theme.border}`,
-    borderRadius: 10,
+    display: 'flex',
+    minHeight: 20,
+    margin: 0,
+  },
+  chartReadout: {
+    color: theme.textSecondary,
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'space-between',
-    marginTop: 10,
-    padding: '8px 10px',
-  },
-  timelineCopy: { display: 'grid', gap: 2, minWidth: 0 },
-  timelineMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 700 },
-  timelineMetaMuted: { color: theme.textMuted, fontSize: 10, fontWeight: 600 },
-  timelineButton: {
-    background: 'rgba(139, 92, 246, 0.14)',
-    border: '1px solid rgba(167, 139, 250, 0.35)',
-    borderRadius: 8,
-    color: '#ddd6fe',
-    cursor: 'pointer',
-    flexShrink: 0,
     fontSize: 10,
-    fontWeight: 800,
-    letterSpacing: '0.03em',
-    padding: '6px 10px',
-    textTransform: 'uppercase',
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 700,
+    gap: 4,
+    lineHeight: '20px',
+    margin: 0,
+    minHeight: 20,
+    width: '100%',
   },
-  sparklineBlock: { display: 'grid', gap: 6, marginTop: 10, minHeight: 96 },
+  chartReadoutTime: { color: theme.textPrimary, fontWeight: 800 },
+  chartReadoutSep: { color: theme.textMuted },
+  chartRangeRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    margin: 0,
+    minHeight: 26,
+  },
+  chartLeadIn: {
+    display: 'grid',
+    gap: 4,
+  },
+  sparklineBlock: {
+    display: 'grid',
+    gap: 6,
+    marginTop: 8,
+    minWidth: 0,
+    overflow: 'visible',
+    width: '100%',
+  },
   gapNotice: {
     color: theme.textSecondary,
     fontSize: 10,
@@ -463,25 +701,123 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.35,
     margin: 0,
   },
-  sparklineHeader: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
-  overlayLegendRow: { display: 'flex', flex: 1, flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end', minWidth: 0 },
+  sparklineHeader: { display: 'grid', gap: 6, minWidth: 0, overflow: 'visible' },
+  sparklineHeaderTop: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 8,
+    justifyContent: 'space-between',
+    minWidth: 0,
+  },
+  overlayLegendRow: { display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 },
   overlayLegendChip: {
     alignItems: 'center',
     background: 'rgba(255, 255, 255, 0.04)',
     border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: 999,
+    color: theme.textSecondary,
+    cursor: 'pointer',
     display: 'inline-flex',
+    font: 'inherit',
     gap: 5,
     padding: '3px 7px',
   },
+  overlayLegendChipImg: {
+    alignItems: 'center',
+    background: 'rgba(255, 255, 255, 0.04)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: 6,
+    display: 'inline-flex',
+    flexShrink: 0,
+    padding: '2px 5px',
+  },
+  overlayLegendEmoteImg: { display: 'block', objectFit: 'contain' },
+  overlayLegendChipHidden: {
+    background: 'rgba(255, 255, 255, 0.02)',
+    border: '1px solid rgba(255, 255, 255, 0.04)',
+    opacity: 0.55,
+  },
+  overlayLegendChipAlt: {
+    background: 'rgba(139, 92, 246, 0.08)',
+    border: '1px solid rgba(167, 139, 250, 0.14)',
+  },
   overlayLegendDot: { borderRadius: 999, flexShrink: 0, height: 7, width: 7 },
-  overlayLegendName: { color: theme.textPrimary, fontSize: 9, fontWeight: 800 },
-  overlayLegendMeta: { color: theme.textMuted, fontSize: 8, fontWeight: 700, textTransform: 'uppercase' },
+  overlayLegendName: { color: theme.textSecondary, fontSize: 9, fontWeight: 700 },
+  overlayLegendNameHidden: { color: theme.textMuted },
   sparklineLabel: {
     color: theme.textMuted,
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
+  },
+  chartLegend: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    minWidth: 0,
+  },
+  chartLegendItem: {
+    alignItems: 'center',
+    color: theme.textMuted,
+    display: 'inline-flex',
+    fontSize: 9,
+    fontWeight: 700,
+    gap: 4,
+  },
+  chartLegendDot: {
+    borderRadius: 999,
+    flexShrink: 0,
+    height: 6,
+    width: 6,
+  },
+  chartLegendStroke: {
+    background: 'transparent',
+    border: '1.5px solid #d4d4d8',
+    borderRadius: 1,
+    flexShrink: 0,
+    height: 0,
+    width: 10,
+  },
+  chartStack: {
+    minWidth: 0,
+    position: 'relative',
+    width: '100%',
+  },
+  headerMeta: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  analyticsHeaderLink: {
+    background: 'transparent',
+    border: 0,
+    color: '#c4b5fd',
+    cursor: 'pointer',
+    fontSize: 10,
+    fontWeight: 800,
+    padding: '2px 0',
+    whiteSpace: 'nowrap',
+  },
+  sparklineHeaderControls: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    flexShrink: 0,
+    gap: 6,
+  },
+  expandButton: {
+    background: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 8,
+    color: theme.textSecondary,
+    cursor: 'pointer',
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: '0.03em',
+    padding: '5px 8px',
+    textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
   },
 }

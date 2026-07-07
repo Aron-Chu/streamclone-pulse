@@ -10,6 +10,10 @@ const RESERVED = new Set([
   'friends',
   'bits',
   'prime',
+  'clips',
+  'drops',
+  'moderator',
+  'dashboard',
 ])
 
 export type TwitchPageKind = 'channel' | 'vod' | 'non-channel'

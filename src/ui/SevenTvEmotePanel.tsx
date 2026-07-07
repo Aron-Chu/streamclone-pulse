@@ -1,15 +1,8 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
-import {
-  buildSelectedEmoteSeries,
-  emoteAveragesFromRollups,
-  emoteOverlayColor,
-  emoteSelectionKey,
-  maxSeriesValue,
-  streamSevenTvTotal,
-} from './chatActivityEmotes.ts'
+import { emoteSelectionKey } from './chatActivityEmotes.ts'
+import { hexToRgba } from './chartTheme.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
 import { theme } from './theme.ts'
@@ -25,42 +18,31 @@ export interface SevenTvEmotePanelProps {
   selectedKeys: string[]
   onToggleEmote: (emote: ExtensionEmote) => void
   selectedOffsetSeconds: number | null
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    notation: value >= 10_000 ? 'compact' : 'standard',
-    maximumFractionDigits: 1,
-  }).format(value)
-}
-
-function providerBadge(provider?: string): string {
-  const lower = (provider ?? '').trim().toLowerCase()
-  if (lower === '7tv' || lower === 'seventv') return '7TV'
-  if (lower === 'twitch') return 'TW'
-  if (lower === 'ffz') return 'FFZ'
-  return provider?.slice(0, 3).toUpperCase() ?? '—'
+  sidebarCompact?: boolean
+  selectedPlotColors?: Record<string, string>
+  maxSelected?: number
 }
 
 export function SevenTvEmotePanel({
   expanded,
   onToggleExpanded,
   backendUrl,
-  rollups,
   topEmotes,
   selectedKeys,
   onToggleEmote,
-  selectedOffsetSeconds,
+  sidebarCompact = false,
+  selectedPlotColors,
+  maxSelected = 4,
 }: SevenTvEmotePanelProps) {
   const [showAllChips, setShowAllChips] = useState(false)
 
   if (topEmotes.length === 0) return null
 
   const selectedEmotes = topEmotes.filter(emote => selectedKeys.includes(emoteSelectionKey(emote)))
-  const previewNames = topEmotes.slice(0, 3).map(emote => emote.name).join(' · ')
+  const previewEmotes = topEmotes.slice(0, 3)
+  const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
   const visibleEmotes = showAllChips ? topEmotes : topEmotes.slice(0, VISIBLE_CHIP_LIMIT)
   const hiddenCount = Math.max(0, topEmotes.length - VISIBLE_CHIP_LIMIT)
-  const stream7tvTotal = streamSevenTvTotal(rollups)
 
   return (
     <div className="pulse-seven-tv-panel" style={styles.panel}>
@@ -71,12 +53,23 @@ export function SevenTvEmotePanel({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
       >
-        <span style={styles.toggleLabel}>Emote lanes</span>
-        {!expanded && previewNames ? (
-          <span style={styles.togglePreview}>{previewNames}</span>
+        <span style={styles.toggleLabel}>Plot on chart (0–{maxSelected})</span>
+        {!expanded && previewEmotes.length > 0 ? (
+          <span style={styles.togglePreview} title={previewNames}>
+            {previewEmotes.map(emote => (
+              <PulseEmoteImg
+                key={emoteSelectionKey(emote)}
+                emote={emote}
+                backendUrl={backendUrl}
+                width={18}
+                height={18}
+                style={styles.previewImg}
+              />
+            ))}
+          </span>
         ) : null}
         {selectedEmotes.length > 0 ? (
-          <span style={styles.toggleFocus}>{selectedEmotes.length} on chart</span>
+          <span style={styles.toggleFocus}>{selectedEmotes.length}/{maxSelected} on chart</span>
         ) : null}
         <span style={styles.chevron} aria-hidden="true">
           {expanded ? '▾' : '▸'}
@@ -85,74 +78,54 @@ export function SevenTvEmotePanel({
 
       {expanded ? (
         <div style={styles.body}>
-          {selectedOffsetSeconds != null ? (
-            <p style={styles.sliceNote}>
-              Chart slice · {formatHeatOffset(selectedOffsetSeconds)} — click emotes to toggle chart lines
-            </p>
-          ) : (
-            <p style={styles.sliceNote}>Click emotes to toggle chart lines.</p>
-          )}
-          {stream7tvTotal > 0 ? (
-            <p style={styles.streamTotal}>
-              {formatCount(stream7tvTotal)} 7TV uses in chart window · lanes plot 7TV emotes only
-            </p>
-          ) : null}
-
-          {selectedEmotes.length > 0 ? (
-            <div style={styles.legendRow}>
-              {selectedEmotes.map((emote, index) => {
-                const series = buildSelectedEmoteSeries(rollups, emote)
-                const peak = maxSeriesValue(series)
-                const color = emoteOverlayColor(index)
-                return (
-                  <span key={emoteSelectionKey(emote)} className="pulse-seven-tv-legend" style={styles.legendChip}>
-                    <span style={{ ...styles.legendDot, background: color }} aria-hidden="true" />
-                    <span style={styles.legendName}>{emote.name}</span>
-                    <span style={styles.legendMeta}>
-                      max {formatNumber(peak)}
-                      {index === 0 ? ' · focus' : ''}
-                    </span>
-                  </span>
-                )
-              })}
-            </div>
-          ) : null}
-
-          <div className="pulse-no-scrollbar" style={styles.pillRow}>
-            {visibleEmotes.map(emote => {
+          <div className="pulse-no-scrollbar" style={styles.rowList}>
+            {visibleEmotes.map((emote, index) => {
               const key = emoteSelectionKey(emote)
               const selected = selectedKeys.includes(key)
-              const selectedIndex = selectedKeys.indexOf(key)
-              const activeColor = selectedIndex >= 0 ? emoteOverlayColor(selectedIndex) : undefined
+              const plotColor = selected ? selectedPlotColors?.[key] : undefined
+              const usePlotColor = Boolean(selected && plotColor)
               return (
                 <button
                   type="button"
                   key={key}
-                  className={`pulse-seven-tv-pill${selected ? ' pulse-seven-tv-pill-active' : ''}`}
+                  className={
+                    usePlotColor ? 'pulse-seven-tv-row' : `pulse-seven-tv-row${selected ? ' pulse-seven-tv-row-active' : ''}`
+                  }
                   style={{
-                    ...styles.pill,
-                    ...(selected && activeColor
+                    ...styles.row,
+                    ...(index % 2 === 1 && !usePlotColor ? styles.rowAlt : null),
+                    ...(sidebarCompact ? styles.rowCompact : null),
+                    ...(usePlotColor
                       ? {
-                          borderColor: `${activeColor}88`,
-                          boxShadow: `inset 0 0 0 1px ${activeColor}33`,
+                          background: hexToRgba(plotColor!, 0.12),
+                          borderColor: plotColor,
                         }
-                      : {}),
+                      : null),
                   }}
                   aria-pressed={selected}
-                  title={`${emote.name} · ${formatCount(emote.count)} uses · toggle chart line`}
+                  title={
+                    !selected && selectedKeys.length >= maxSelected
+                      ? `Max ${maxSelected} emotes on chart`
+                      : `${emote.name} · ${formatCount(emote.count)} uses · toggle chart line`
+                  }
                   onClick={() => onToggleEmote(emote)}
                 >
-                  <span style={styles.chipMarker} aria-hidden="true">{selected ? '●' : '○'}</span>
                   <PulseEmoteImg
                     emote={emote}
                     backendUrl={backendUrl}
-                    width={20}
-                    height={20}
-                    style={styles.pillImg}
+                    width={sidebarCompact ? 20 : 22}
+                    height={sidebarCompact ? 20 : 22}
+                    style={styles.rowImg}
                   />
-                  <span style={styles.pillName}>{emote.name}</span>
-                  <span style={styles.providerBadge}>{providerBadge(emote.provider)}</span>
-                  <span style={styles.pillCount}>{formatCount(emote.count)}</span>
+                  <span style={styles.rowName}>{emote.name}</span>
+                  <span
+                    style={{
+                      ...styles.rowCount,
+                      ...(usePlotColor ? { color: plotColor } : null),
+                    }}
+                  >
+                    {formatCount(emote.count)}
+                  </span>
                 </button>
               )
             })}
@@ -184,7 +157,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: 'pointer',
     display: 'flex',
     gap: 8,
-    padding: '9px 12px',
+    padding: '8px 10px',
     textAlign: 'left',
     width: '100%',
   },
@@ -197,90 +170,79 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
   },
   togglePreview: {
-    color: theme.textSecondary,
+    alignItems: 'center',
+    display: 'inline-flex',
     flex: 1,
-    fontSize: 10,
-    fontWeight: 700,
+    gap: 5,
     minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
+  previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
   toggleFocus: {
-    color: theme.rank1,
+    color: theme.textMuted,
     flexShrink: 0,
     fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
+    fontWeight: 700,
+    letterSpacing: '0.03em',
     textTransform: 'uppercase',
   },
-  chevron: { color: theme.accentSoft, flexShrink: 0, fontSize: 11, fontWeight: 900 },
+  chevron: { color: theme.accentSoft, flexShrink: 0, fontSize: 11, fontWeight: 900, marginLeft: 'auto' },
   body: {
     borderTop: '1px solid rgba(255, 255, 255, 0.06)',
     display: 'grid',
-    gap: 10,
-    padding: '10px 12px 12px',
-  },
-  sliceNote: {
-    color: theme.textMuted,
-    fontSize: 10,
-    fontWeight: 600,
-    lineHeight: 1.35,
-    margin: 0,
-  },
-  streamTotal: {
-    color: theme.textSecondary,
-    fontSize: 10,
-    fontWeight: 600,
-    lineHeight: 1.35,
-    margin: 0,
-  },
-  legendRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  legendChip: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: 999,
-    display: 'inline-flex',
     gap: 6,
-    padding: '4px 8px',
+    padding: '6px 8px 8px',
   },
-  legendDot: { borderRadius: 999, flexShrink: 0, height: 8, width: 8 },
-  legendName: { color: theme.textPrimary, fontSize: 10, fontWeight: 800 },
-  legendMeta: { color: theme.textMuted, fontSize: 9, fontWeight: 700, textTransform: 'uppercase' },
-  pillRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
-    maxHeight: 112,
+  rowList: {
+    display: 'grid',
+    gap: 4,
+    maxHeight: 180,
     overflowY: 'auto',
   },
-  pill: {
+  row: {
     alignItems: 'center',
     background: 'rgba(255, 255, 255, 0.04)',
     border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: 8,
     color: theme.textPrimary,
     cursor: 'pointer',
-    display: 'inline-flex',
-    flexShrink: 0,
+    display: 'grid',
+    gap: 8,
+    gridTemplateColumns: '22px 1fr auto',
+    padding: '7px 10px',
+    textAlign: 'left',
+    width: '100%',
+  },
+  rowCompact: {
     gap: 6,
+    gridTemplateColumns: '20px 1fr auto',
     padding: '5px 8px',
   },
-  chipMarker: { color: theme.accentSoft, fontSize: 10, lineHeight: 1, width: 10 },
-  pillImg: { display: 'block', objectFit: 'contain' },
-  pillName: { fontSize: 11, fontWeight: 800, maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  providerBadge: {
-    color: theme.textMuted,
-    fontSize: 8,
-    fontWeight: 900,
-    letterSpacing: '0.04em',
+  rowAlt: {
+    background: 'rgba(255, 255, 255, 0.02)',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
   },
-  pillCount: { color: theme.accentSoft, fontSize: 10, fontVariantNumeric: 'tabular-nums', fontWeight: 800 },
+  rowImg: { display: 'block', objectFit: 'contain' },
+  rowName: {
+    color: theme.textPrimary,
+    fontSize: 11,
+    fontWeight: 800,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  rowCount: {
+    color: theme.accentSoft,
+    fontSize: 10,
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 800,
+    minWidth: 28,
+    textAlign: 'right',
+  },
   moreButton: {
     background: 'transparent',
     border: 0,
-    color: '#c4b5fd',
+    color: theme.accentSoft,
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,

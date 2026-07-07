@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from 'vitest'
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import {
   computeLivePollDelayMs,
   createLivePollController,
@@ -98,33 +98,48 @@ vi.mock('../src/shared/storage.ts', () => ({
 }))
 
 describe('createLivePollController backoff', () => {
-  afterEach(() => {
+  let randomSpy: ReturnType<typeof vi.spyOn> | undefined
+  let controller: ReturnType<typeof createLivePollController> | undefined
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+  })
+
+  afterEach(async () => {
+    controller?.stop()
+    controller = undefined
+    randomSpy?.mockRestore()
+    await vi.runOnlyPendingTimersAsync()
+    vi.clearAllTimers()
     vi.useRealTimers()
     vi.clearAllMocks()
   })
 
   it('schedules a longer delay after GET_PULSE failures', async () => {
-    vi.useFakeTimers()
     const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
     vi.mocked(sendBackgroundMessage).mockRejectedValue(new Error('network'))
 
-    const controller = createLivePollController(() => ({
+    controller = createLivePollController(() => ({
       kind: 'channel',
       login: 'xqc',
       vodId: null,
     }))
     controller.sync('xqc', { kind: 'channel', login: 'xqc', vodId: null }, true, true)
 
-    await vi.waitFor(() => {
-      expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
-    })
-
-    await vi.advanceTimersByTimeAsync(29_000)
+    for (let i = 0; i < 8; i += 1) {
+      await Promise.resolve()
+    }
     expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
 
-    await vi.advanceTimersByTimeAsync(5_000)
-    await vi.waitFor(() => {
-      expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
-    })
+    const retryDelayMs = computeLivePollDelayMs(30_000, 1, () => 0.5)
+    await vi.advanceTimersByTimeAsync(retryDelayMs - 1)
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    for (let i = 0; i < 8; i += 1) {
+      await Promise.resolve()
+    }
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
   })
 })

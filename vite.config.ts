@@ -3,6 +3,19 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 
+const root = __dirname
+
+/** One React instance for overlay + @streamclone/pulse-charts (nested package react breaks hooks). */
+function extensionResolve() {
+  return {
+    dedupe: ['react', 'react-dom'],
+    alias: {
+      react: resolve(root, 'node_modules/react'),
+      'react-dom': resolve(root, 'node_modules/react-dom'),
+    },
+  }
+}
+
 const sharedOutput = {
   entryFileNames: '[name].js',
   chunkFileNames: 'chunks/[name].js',
@@ -27,6 +40,7 @@ function chromeExtensionPlugin() {
         await viteBuild({
           configFile: false,
           plugins: [react()],
+          resolve: extensionResolve(),
           build: {
             outDir: 'dist',
             emptyOutDir: false,
@@ -61,6 +75,7 @@ function chromeExtensionPlugin() {
 
 export default defineConfig({
   plugins: [react(), chromeExtensionPlugin()],
+  resolve: extensionResolve(),
   build: {
     outDir: 'dist',
     emptyOutDir: true,

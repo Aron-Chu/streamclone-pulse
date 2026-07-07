@@ -9,7 +9,9 @@ import {
   peakReasonLabel,
   resolveMostReactedHeat,
   resolveSelectedMomentKey,
+  reactionRankValue,
   selectedMomentKey,
+  sortLiveHeatPoints,
 } from '../src/ui/mostReacted.ts'
 
 describe('peakReasonLabel', () => {
@@ -33,7 +35,7 @@ describe('peakReasonLabel', () => {
       reasons: ['seventv_spike'],
       dominantSignal: 'seventv',
     }
-    expect(peakReasonLabel(peak)).toBe('7TV emote spike')
+    expect(peakReasonLabel(peak)).toBe('Emote spike')
   })
 })
 
@@ -111,6 +113,168 @@ describe('resolveMostReactedHeat', () => {
     const heat = resolveMostReactedHeat(makePayload({ peaks: undefined }))
     expect(heat.visible).toBe(true)
     expect(heat.points.some(point => point.estimated)).toBe(true)
+  })
+
+  it('drops viewer-only peaks with zero chat and emotes', () => {
+    const heat = resolveMostReactedHeat(
+      makePayload({
+        peaks: [
+          {
+            offsetSeconds: 2760,
+            score: 57,
+            reasons: ['viewer_spike'],
+            reasonLabel: 'Viewer spike',
+            dominantSignal: 'viewers',
+            chatCount: 0,
+            emoteCount: 0,
+          },
+          {
+            offsetSeconds: 120,
+            score: 38,
+            reasons: ['seventv_spike'],
+            reasonLabel: 'Emote spike',
+            dominantSignal: 'seventv',
+            chatCount: 680,
+            emoteCount: 692,
+          },
+        ],
+      }),
+    )
+    expect(heat.points).toHaveLength(1)
+    expect(heat.points[0]?.reasonLabel).toBe('Emote spike')
+  })
+
+  it('enriches peak counts from rollups when backend sends zeros', () => {
+    const heat = resolveMostReactedHeat(
+      makePayload({
+        rollups: [
+          {
+            offsetSeconds: 2760,
+            chatCount: 410,
+            sevenTvEmoteCount: 120,
+            totalEmoteCount: 155,
+            topEmotes: [{ name: 'KEKW', count: 40 }],
+          },
+        ],
+        peaks: [
+          {
+            offsetSeconds: 2760,
+            score: 57,
+            reasons: ['chat_spike'],
+            reasonLabel: 'Chat spike',
+            dominantSignal: 'chat',
+            chatCount: 0,
+            emoteCount: 0,
+          },
+        ],
+      }),
+    )
+    expect(heat.points[0]?.chatCount).toBe(410)
+    expect(heat.points[0]?.emoteCount).toBe(155)
+  })
+
+  it('drops viewer spikes even when rollups enrich chat and emote counts', () => {
+    const heat = resolveMostReactedHeat(
+      makePayload({
+        rollups: [
+          {
+            offsetSeconds: 2760,
+            chatCount: 410,
+            sevenTvEmoteCount: 120,
+            totalEmoteCount: 155,
+            topEmotes: [{ name: 'KEKW', count: 40 }],
+          },
+        ],
+        peaks: [
+          {
+            offsetSeconds: 2760,
+            score: 57,
+            reasons: ['viewer_spike'],
+            reasonLabel: 'Viewer spike',
+            dominantSignal: 'viewers',
+            chatCount: 0,
+            emoteCount: 0,
+          },
+          {
+            offsetSeconds: 120,
+            score: 38,
+            reasons: ['seventv_spike'],
+            reasonLabel: 'Emote spike',
+            dominantSignal: 'seventv',
+            chatCount: 680,
+            emoteCount: 692,
+          },
+        ],
+      }),
+    )
+    expect(heat.points).toHaveLength(1)
+    expect(heat.points[0]?.reasonLabel).toBe('Emote spike')
+  })
+})
+
+describe('reactionRankValue', () => {
+  it('ranks chat spikes by chat count', () => {
+    const point = {
+      minuteTs: '',
+      offsetSeconds: 120,
+      score: 20,
+      estimated: false,
+      reason: 'chat_spike' as const,
+      reasonLabel: 'Chat spike',
+      chatCount: 400,
+      emoteCount: 50,
+      topEmotes: [],
+      collecting: false,
+    }
+    expect(reactionRankValue(point)).toBe(400)
+  })
+
+  it('ranks emote spikes by emote count', () => {
+    const point = {
+      minuteTs: '',
+      offsetSeconds: 120,
+      score: 20,
+      estimated: false,
+      reason: 'seventv_spike' as const,
+      reasonLabel: 'Emote spike',
+      chatCount: 400,
+      emoteCount: 900,
+      topEmotes: [],
+      collecting: false,
+    }
+    expect(reactionRankValue(point)).toBe(900)
+  })
+})
+
+describe('sortLiveHeatPoints', () => {
+  const chatSpike = {
+    minuteTs: '',
+    offsetSeconds: 120,
+    score: 20,
+    estimated: false,
+    reason: 'chat_spike' as const,
+    reasonLabel: 'Chat spike',
+    chatCount: 500,
+    emoteCount: 10,
+    topEmotes: [],
+    collecting: false,
+  }
+  const emoteSpike = {
+    minuteTs: '',
+    offsetSeconds: 240,
+    score: 19,
+    estimated: false,
+    reason: 'seventv_spike' as const,
+    reasonLabel: 'Emote spike',
+    chatCount: 100,
+    emoteCount: 800,
+    topEmotes: [],
+    collecting: false,
+  }
+
+  it('sorts reaction mode by dominant signal', () => {
+    const sorted = sortLiveHeatPoints([chatSpike, emoteSpike], 'reaction')
+    expect(sorted[0]?.reason).toBe('seventv_spike')
   })
 })
 

@@ -11,9 +11,16 @@
     "zip": "node scripts/zip-dist.mjs"
   },
   "dependencies": {
+    "@streamclone/pulse-charts": "file:../twitch-7tv-clone/packages/pulse-charts",
     "@streamclone/pulse-core": "file:../twitch-7tv-clone/packages/pulse-core",
     "react": "18.3.1",
     "react-dom": "18.3.1"
+  },
+  "overrides": {
+    "@streamclone/pulse-charts": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

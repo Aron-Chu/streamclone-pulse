@@ -16,3 +16,9 @@ export function emoteSyncStatusTone(sync?: EmoteSyncSnapshot): 'ok' | 'warn' | '
       return 'muted'
   }
 }
+
+export function emoteSyncDotColor(tone: 'ok' | 'warn' | 'muted'): string {
+  if (tone === 'ok') return '#34d399'
+  if (tone === 'warn') return '#f97316'
+  return '#6b7280'
+}

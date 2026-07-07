@@ -1,6 +1,7 @@
 import type {
   CreatePulseBookmarkInput,
   ExtensionClip,
+  ExtensionCoverageTierResponse,
   ExtensionHealthResponse,
   PastVodRow,
   PulseBackfillJob,
@@ -71,6 +72,21 @@ export async function fetchPulseChannel(
     lastRollupTotal: lastRollup?.totalEmoteCount ?? null,
   })
   return payload
+}
+
+export async function fetchExtensionCoverage(
+  login: string,
+  baseUrl?: string,
+): Promise<ExtensionCoverageTierResponse> {
+  const root = baseUrl ?? await getBackendUrl()
+  const res = await fetch(
+    `${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/coverage`,
+    { headers: await pulseRequestHeaders() },
+  )
+  if (!res.ok) {
+    throw new Error(`coverage ${res.status}`)
+  }
+  return await res.json() as ExtensionCoverageTierResponse
 }
 
 export interface PulseBackfillRequest {

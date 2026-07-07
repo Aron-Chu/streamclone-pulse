@@ -4,22 +4,38 @@ import { sendBackgroundMessage } from '../content/bridge.ts'
 import {
   DEFAULT_AUTO_TRACK_POLICY,
   DEFAULT_BACKEND_URL,
+  DEFAULT_DEFAULT_CHART_WINDOW,
   DEFAULT_OVERLAY_PLACEMENT,
   DEFAULT_POLL_INTERVAL_MS,
+  DEFAULT_THEME_PREFERENCE,
   POLL_INTERVAL_OPTIONS_MS,
   getAutoTrackPolicy,
   getBackendUrl,
   getBetaKey,
+  getChatClosedPulseDockEnabled,
+  getDefaultChartWindow,
   getOverlayPlacement,
   getPollIntervalMs,
+  getThemePreference,
+  isLocalStackBackendUrl,
   setAutoTrackPolicy,
   setBackendUrl,
   setBetaKey,
+  setChatClosedPulseDockEnabled,
+  setDefaultChartWindow,
   setOverlayPlacement,
   setPollIntervalMs,
+  setThemePreference,
   type AutoTrackPolicy,
+  type DefaultChartWindow,
   type OverlayPlacement,
+  type ThemePreference,
 } from '../shared/storage.ts'
+import {
+  extensionBackendSourceCaption,
+  resolveExtensionBackendSource,
+} from '../shared/backendSource.ts'
+import { ACCENT_THEME_OPTIONS, applyAccentTheme } from '../ui/overlayTheme.ts'
 import { normalizeLogin } from '../shared/login.ts'
 import {
   clearPulseDebugLog,
@@ -35,7 +51,10 @@ function OptionsApp() {
   const [betaKey, setBetaKeyState] = useState('')
   const [pollMs, setPollMsState] = useState(DEFAULT_POLL_INTERVAL_MS)
   const [placement, setPlacementState] = useState<OverlayPlacement>(DEFAULT_OVERLAY_PLACEMENT)
+  const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
   const [autoTrackPolicy, setAutoTrackPolicyState] = useState<AutoTrackPolicy>(DEFAULT_AUTO_TRACK_POLICY)
+  const [themePref, setThemePrefState] = useState<ThemePreference>(DEFAULT_THEME_PREFERENCE)
+  const [chartWindow, setChartWindowState] = useState<DefaultChartWindow>(DEFAULT_DEFAULT_CHART_WINDOW)
   const [watchlist, setWatchlistState] = useState<string[]>([])
   const [channelInput, setChannelInput] = useState('')
   const [saved, setSaved] = useState(false)
@@ -44,6 +63,9 @@ function OptionsApp() {
   const [debugLogging, setDebugLogging] = useState(false)
   const [debugLog, setDebugLog] = useState<PulseDebugEntry[]>([])
   const [debugCopied, setDebugCopied] = useState(false)
+  const localStackBackend = isLocalStackBackendUrl(backendUrl)
+  const backendSource = resolveExtensionBackendSource(backendUrl)
+  const hostedBackend = backendSource === 'hosted'
 
   useEffect(() => {
     void (async () => {
@@ -52,7 +74,12 @@ function OptionsApp() {
       setBetaKeyState(await getBetaKey())
       setPollMsState(await getPollIntervalMs())
       setPlacementState(await getOverlayPlacement())
+      setChatClosedDockEnabledState(await getChatClosedPulseDockEnabled())
       setAutoTrackPolicyState(await getAutoTrackPolicy())
+      const storedTheme = await getThemePreference()
+      setThemePrefState(storedTheme)
+      applyAccentTheme(storedTheme)
+      setChartWindowState(await getDefaultChartWindow())
       setDebugLogging(await getPulseDebugEnabled())
       await refreshWatchlist()
       await refreshDebugLog()
@@ -76,8 +103,12 @@ function OptionsApp() {
       setBetaKey(betaKey),
       setPollIntervalMs(pollMs),
       setOverlayPlacement(placement),
+      setChatClosedPulseDockEnabled(chatClosedDockEnabled),
       setAutoTrackPolicy(autoTrackPolicy),
+      setThemePreference(themePref),
+      setDefaultChartWindow(chartWindow),
     ])
+    applyAccentTheme(themePref)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
     await probeHealth()
@@ -176,16 +207,53 @@ function OptionsApp() {
       </header>
 
       <section style={styles.section}>
+        <span style={styles.groupLabel}>Backend source</span>
+        <div
+          style={{
+            ...styles.backendBanner,
+            ...(hostedBackend ? styles.backendBannerHosted : styles.backendBannerWarn),
+          }}
+          role="status"
+        >
+          <strong>{extensionBackendSourceCaption(backendUrl)}</strong>
+          {hostedBackend ? (
+            <p style={styles.help}>
+              Default production API — matches the public StreamPulse portal at{' '}
+              <code>streampulse.stream/analytics</code>. No local stack required.
+            </p>
+          ) : localStackBackend ? (
+            <p style={styles.help}>
+              Local Streamclone stack (<code>make up</code> on port 8090). Charts and IRC coverage can differ from
+              hosted public analytics — use only for backend development.
+            </p>
+          ) : (
+            <p style={styles.help}>
+              Custom API host — verify it matches the portal you expect. Hosted production is{' '}
+              <code>{DEFAULT_BACKEND_URL}</code>.
+            </p>
+          )}
+          {!hostedBackend ? (
+            <button
+              type="button"
+              style={styles.secondaryButton}
+              onClick={() => {
+                setBackendUrlState(DEFAULT_BACKEND_URL)
+              }}
+            >
+              Reset to hosted API
+            </button>
+          ) : null}
+        </div>
         <label style={styles.label}>
           <span>Backend URL</span>
           <input value={backendUrl} onChange={e => setBackendUrlState(e.target.value)} placeholder={DEFAULT_BACKEND_URL} style={styles.input} />
         </label>
         <label style={styles.label}>
-          <span>Beta key (hosted API only)</span>
+          <span>Beta key (optional — hosted operator tools only)</span>
           <input
             value={betaKey}
             onChange={e => setBetaKeyState(e.target.value)}
-            placeholder="X-Streamclone-Beta-Key — leave empty for localhost"
+            placeholder="X-Streamclone-Beta-Key — not required for public /analytics"
             style={styles.input}
             autoComplete="off"
           />
@@ -194,9 +262,12 @@ function OptionsApp() {
       </section>
 
       <section style={styles.section}>
-        <span style={styles.groupLabel}>Watchlist</span>
+        <span style={styles.groupLabel}>Watchlist / Protect</span>
         <p style={styles.help}>
-          Channels here are synced to Streamclone always-tracked and polled in the background, even when you are not on their Twitch page.
+          On <strong>hosted</strong> StreamPulse, saved channels sync as backend Protect for when capacity scales —
+          they do <strong>not</strong> enable live Pulse or backfill in the extension today. Use the{' '}
+          <strong>Analytics hub</strong> to browse actively tracked channels. On a <strong>local</strong> stack (
+          <code>localhost:8090</code>), watchlist entries also start IRC while your stack runs.
         </p>
         <div style={styles.watchRow}>
           <input
@@ -212,7 +283,9 @@ function OptionsApp() {
         </div>
         {watchlistError ? <p style={styles.errorText}>{watchlistError}</p> : null}
         {watchlist.length === 0 ? (
-          <p style={styles.help}>No watchlist channels yet. Add logins to track them 24/7 while your local stack is running.</p>
+          <p style={styles.help}>
+            No channels yet. On hosted, adding a login saves Protect for later — live Pulse stays hub-only until we scale.
+          </p>
         ) : (
           <ul style={styles.watchlist}>
             {watchlist.map(login => (
@@ -223,6 +296,49 @@ function OptionsApp() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section style={styles.section}>
+        <span style={styles.groupLabel}>Accent theme</span>
+        <p style={styles.help}>Recolors Pulse sidebar accents. Matches the in-overlay Settings picker.</p>
+        <div style={styles.swatchRow}>
+          {ACCENT_THEME_OPTIONS.map(option => {
+            const active = themePref === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                style={{
+                  ...styles.swatch,
+                  ...(active ? styles.swatchActive : null),
+                }}
+                onClick={() => {
+                  setThemePrefState(option.value)
+                  applyAccentTheme(option.value)
+                }}
+              >
+                <span style={{ ...styles.swatchDot, background: option.swatch }} />
+                <span>{option.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      <section style={styles.section}>
+        <span style={styles.groupLabel}>Default chart window</span>
+        <div style={styles.segmented}>
+          {(['15m', '30m', '60m', '2h', '4h', 'full'] as const).map(value => (
+            <button
+              key={value}
+              type="button"
+              style={chartWindow === value ? styles.segmentActive : styles.segment}
+              onClick={() => setChartWindowState(value)}
+            >
+              {value.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section style={styles.section}>
@@ -242,15 +358,34 @@ function OptionsApp() {
       </section>
 
       <section style={styles.section}>
+        <span style={styles.groupLabel}>Chat-closed dock</span>
+        <label style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={chatClosedDockEnabled}
+            onChange={event => setChatClosedDockEnabledState(event.target.checked)}
+          />
+          Show Pulse dock when chat is closed
+        </label>
+        <p style={styles.help}>
+          CHAT/PULSE tabs always show when Twitch chat is open. This option adds a bottom-right Pulse panel only when the chat column is hidden.
+        </p>
+      </section>
+
+      <section style={styles.section}>
         <span style={styles.groupLabel}>Overlay placement</span>
-        <select value={placement} onChange={e => setPlacementState(e.target.value as OverlayPlacement)} style={styles.input}>
+        <select
+          value={placement}
+          onChange={e => setPlacementState(e.target.value as OverlayPlacement)}
+          style={styles.input}
+        >
           <option value="sidebar">Sidebar tab (snap to chat) — recommended</option>
           <option value="right">Right dock</option>
           <option value="bottom">Bottom bar</option>
           <option value="hidden">Hidden</option>
         </select>
         <p style={styles.help}>
-          Sidebar tab overlays Pulse on Twitch&apos;s chat column with a Chat | Pulse toggle in a top chrome bar. The panel covers only the message area so gift headers stay clickable. If chat is popped out or hidden, Pulse falls back to the right dock.
+          Sidebar tab overlays Pulse on Twitch&apos;s chat column with a Chat | Pulse toggle in a top chrome bar. The panel covers only the message area so gift headers stay clickable.
         </p>
         <p style={styles.help}>
           Using the <strong>7TV</strong> browser extension too? Choose <strong>Chat</strong> in the Pulse chrome bar for normal Twitch chat with 7TV emotes; choose <strong>Pulse</strong> for Streamclone analytics. See{' '}
@@ -260,11 +395,20 @@ function OptionsApp() {
 
       <section style={styles.section}>
         <span style={styles.groupLabel}>Auto-track on Twitch</span>
-        <select value={autoTrackPolicy} onChange={e => setAutoTrackPolicyState(e.target.value as AutoTrackPolicy)} style={styles.input}>
-          <option value="followed">Track the channel page you open</option>
-          <option value="ask">Ask before tracking (watchlist still auto-tracks)</option>
-          <option value="off">Manual only — use Track channel in the overlay</option>
+        <select
+          value={autoTrackPolicy}
+          onChange={e => setAutoTrackPolicyState(e.target.value as AutoTrackPolicy)}
+          style={styles.input}
+          disabled={!localStackBackend}
+        >
+          <option value="off">Manual only — use Track channel in the overlay (local stack)</option>
+          <option value="followed">Track the channel page you open (local stack only)</option>
+          <option value="ask">Ask before tracking (watchlist still auto-tracks on local stack)</option>
         </select>
+        <p style={styles.help}>
+          Only applies when backend URL is your local Streamclone stack. On hosted (
+          <code>api.streampulse.stream</code>), IRC is managed by the top live pool — this control is ignored.
+        </p>
       </section>
 
       <section style={styles.section}>
@@ -341,12 +485,32 @@ const styles: Record<string, React.CSSProperties> = {
   help: { color: '#8b8ba0', fontSize: 12, lineHeight: 1.45, margin: 0 },
   input: { background: '#181820', border: '1px solid #3f3f50', borderRadius: 8, color: '#fafafc', font: 'inherit', padding: '10px 12px' },
   status: { color: '#a1a1b2', fontSize: 12, fontWeight: 700 },
+  backendBanner: { borderRadius: 8, display: 'grid', gap: 8, padding: '12px 14px' },
+  backendBannerHosted: { background: '#14291f', border: '1px solid #166534', color: '#bbf7d0' },
+  backendBannerWarn: { background: '#2a2214', border: '1px solid #92400e', color: '#fde68a' },
   watchRow: { display: 'grid', gap: 8, gridTemplateColumns: '1fr auto' },
   watchlist: { display: 'grid', gap: 8, listStyle: 'none', margin: 0, padding: 0 },
   watchItem: { alignItems: 'center', background: '#181820', border: '1px solid #30303a', borderRadius: 8, display: 'flex', justifyContent: 'space-between', padding: '10px 12px' },
   linkButton: { background: 'transparent', border: 0, color: '#c4b5fd', cursor: 'pointer', fontWeight: 800, padding: 0 },
   errorText: { color: '#fca5a5', fontSize: 12, margin: 0 },
   segmented: { display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, 1fr)' },
+  swatchRow: { display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
+  swatch: {
+    alignItems: 'center',
+    background: '#20202a',
+    border: '1px solid #3f3f50',
+    borderRadius: 10,
+    color: '#c7c7d4',
+    cursor: 'pointer',
+    display: 'grid',
+    fontSize: 12,
+    fontWeight: 800,
+    gap: 6,
+    justifyItems: 'center',
+    padding: '10px 8px',
+  },
+  swatchActive: { borderColor: '#a78bfa', boxShadow: 'inset 0 0 0 1px rgba(167, 139, 250, 0.45)' },
+  swatchDot: { borderRadius: 999, display: 'block', height: 18, width: 18 },
   segment: { background: '#20202a', border: '1px solid #3f3f50', borderRadius: 8, color: '#c7c7d4', cursor: 'pointer', fontWeight: 900, padding: '10px 12px' },
   segmentActive: { background: '#7c3aed', border: '1px solid #a78bfa', borderRadius: 8, color: '#fff', cursor: 'pointer', fontWeight: 900, padding: '10px 12px' },
   primaryButton: { background: '#8b5cf6', border: 0, borderRadius: 8, color: '#fff', cursor: 'pointer', fontWeight: 900, padding: '12px 14px' },

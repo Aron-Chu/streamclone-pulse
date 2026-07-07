@@ -3,9 +3,12 @@ import type { CSSProperties } from 'react'
 import type { PulseBackfillJob } from '../shared/messages.ts'
 import {
   coverageCardCopy,
+  backendResolvedVod,
+  missedMomentsButtonLabel,
   missedMomentsButtonState,
   type PulseCoverageSource,
 } from './missedMoments.ts'
+import { formatPulseApiError } from './pulseApiErrors.ts'
 import { theme } from './theme.ts'
 
 export interface CoverageCardProps {
@@ -54,6 +57,7 @@ export function CoverageCard({
   debugDetail,
   onLoad,
   onCheckVod,
+  onOpenSettings,
 }: CoverageCardProps) {
   const reducedMotion = useReducedMotion()
   const copy = coverageCardCopy(source)
@@ -64,6 +68,8 @@ export function CoverageCard({
   const waitingVod = buttonState === 'check_vod' || buttonState === 'waiting_vod'
   const failed = buttonState === 'failed' || Boolean(checkError)
   const loadReady = buttonState === 'load' && !busy
+  const backendVod = backendResolvedVod(source)
+  const localDiscoveryNote = debugDetail?.trim() || null
 
   const pct = job?.progress?.percent
   const hasRealProgress = typeof pct === 'number' && pct > 0
@@ -72,17 +78,19 @@ export function CoverageCard({
   const helixBlocked = source.helixEnabled === false
   const errorText = helixBlocked
     ? 'Streamclone backend is missing Twitch API credentials (TWITCH_OAUTH_CLIENT_ID / SECRET). VOD lookup cannot run.'
-    : checkError ?? (buttonState === 'failed' ? job?.error : null)
+    : formatPulseApiError(checkError ?? (buttonState === 'failed' ? job?.error : null))
 
   let statusLine = copy.body
   if (backfilling) {
     statusLine = hasRealProgress
-      ? `Loading missed moments… ${Math.round(pct!)}%`
-      : job?.message ?? 'Loading missed moments…'
+      ? `Loading VOD chat… ${Math.round(pct!)}%`
+      : job?.message ?? 'Loading VOD chat via Twitch…'
   } else if (waitingVod) {
     statusLine = copy.body
   } else if (loadReady) {
-    statusLine = 'Ready to load missed moments'
+    statusLine = copy.body.includes('Fill missing')
+      ? copy.body
+      : 'Fill missing start from Twitch VOD'
   }
 
   return (
@@ -115,7 +123,7 @@ export function CoverageCard({
 
       {loadReady ? (
         <button type="button" style={styles.loadLink} onClick={onLoad}>
-          Load missed moments
+          {missedMomentsButtonLabel('load')}
         </button>
       ) : null}
 
@@ -125,12 +133,21 @@ export function CoverageCard({
         </button>
       ) : null}
 
-      {waitingVod && debugDetail ? (
-        <p style={styles.debugDetail}>{debugDetail}</p>
+      {localDiscoveryNote && (waitingVod || loadReady) ? (
+        <p style={styles.debugDetail}>
+          {backendVod ? 'Local page note: ' : ''}
+          {localDiscoveryNote}
+        </p>
       ) : null}
 
       {failed && errorText ? (
         <p style={styles.error}>{errorText}</p>
+      ) : null}
+
+      {onOpenSettings && (helixBlocked || checkError) ? (
+        <button type="button" style={styles.loadLink} onClick={onOpenSettings}>
+          Open settings
+        </button>
       ) : null}
 
       {failed && buttonState === 'failed' ? (
@@ -148,7 +165,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '8px 10px',
     borderRadius: 8,
     border: `1px solid ${theme.border}`,
-    background: 'rgba(139, 92, 246, 0.06)',
+    background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.06)',
   },
   status: {
     color: theme.textSecondary,
@@ -164,7 +181,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: 'hidden',
   },
   progressFill: {
-    background: '#a78bfa',
+    background: 'var(--pulse-accent-soft, #a78bfa)',
     borderRadius: 999,
     display: 'block',
     height: '100%',
@@ -177,7 +194,7 @@ const styles: Record<string, CSSProperties> = {
     appearance: 'none',
     background: 'transparent',
     border: 0,
-    color: '#c4b5fd',
+    color: 'var(--pulse-accent-soft, #c4b5fd)',
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,
@@ -199,7 +216,7 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 0 6px',
   },
   debugDetail: {
-    color: '#c4b5fd',
+    color: 'var(--pulse-accent-soft, #c4b5fd)',
     fontSize: 10,
     lineHeight: 1.45,
     margin: '6px 0 0',

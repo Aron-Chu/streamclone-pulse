@@ -16,6 +16,15 @@ function normalizedVodId(source: PulseCoverageSource): string {
   return String(source.vodId ?? '').trim()
 }
 
+const BACKEND_VOD_READY_STATUSES = new Set(['available', 'linked', 'published', 'ready'])
+
+/** Backend Helix / payload linked a VOD — local page GQL discovery is non-authoritative. */
+export function backendResolvedVod(source: PulseCoverageSource): boolean {
+  if (normalizedVodId(source)) return true
+  const status = String(source.coverage?.vodStatus ?? '').trim().toLowerCase()
+  return BACKEND_VOD_READY_STATUSES.has(status)
+}
+
 /** Backend sent authoritative coverage copy — skip legacy client derivation. */
 function isBackendCoverageAuthoritative(coverage: PulseCoverage): boolean {
   if (coverage.copyKey?.trim()) return true

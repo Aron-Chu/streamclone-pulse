@@ -91,8 +91,20 @@ export async function pulseDebug(
 }
 
 /** Format the latest VOD-related log lines for overlay error copy. */
-export async function summarizeVodDebugBlockers(): Promise<string | null> {
+export async function summarizeVodDebugBlockers(
+  options?: { backendVodResolved?: boolean },
+): Promise<string | null> {
   const entries = await getPulseDebugLog()
+  return summarizeVodDebugBlockersFromEntries(entries, options)
+}
+
+export function summarizeVodDebugBlockersFromEntries(
+  entries: PulseDebugEntry[],
+  options?: { backendVodResolved?: boolean },
+): string | null {
+  if (options?.backendVodResolved) {
+    return vodLocalDiscoveryDiagnostic(entries)
+  }
   return interpretVodDebugBlockers(entries)
 }
 
@@ -115,6 +127,28 @@ export function interpretVodDebugBlockers(entries: PulseDebugEntry[]): string | 
   if (pulse?.data?.vodId == null) {
     parts.push('API vodId still null')
   }
+
+  appendLocalVodDiscoveryNotes(vodEntries, parts)
+
+  const hint = last('vod.hint.api')
+  if (hint?.level === 'warn') {
+    parts.push('vod-hint route missing on backend (404 until redeploy)')
+  }
+
+  const backfill = last('vod.backfill.start')
+  if (backfill?.level === 'error') {
+    parts.push(String(backfill.message))
+  }
+
+  if (parts.length === 0) {
+    const latest = vodEntries.slice(-3)
+    return latest.map(entry => `${entry.step}: ${entry.message}`).join(' · ')
+  }
+  return parts.join(' · ')
+}
+
+function appendLocalVodDiscoveryNotes(vodEntries: PulseDebugEntry[], parts: string[]): void {
+  const last = (step: PulseDebugStep) => [...vodEntries].reverse().find(entry => entry.step === step)
 
   const dom = last('vod.discover.dom')
   if (dom?.message.includes('no archive')) {
@@ -155,20 +189,13 @@ export function interpretVodDebugBlockers(entries: PulseDebugEntry[]): string | 
       }
     }
   }
+}
 
-  const hint = last('vod.hint.api')
-  if (hint?.level === 'warn') {
-    parts.push('vod-hint route missing on backend (404 until redeploy)')
-  }
-
-  const backfill = last('vod.backfill.start')
-  if (backfill?.level === 'error') {
-    parts.push(String(backfill.message))
-  }
-
-  if (parts.length === 0) {
-    const latest = vodEntries.slice(-3)
-    return latest.map(entry => `${entry.step}: ${entry.message}`).join(' · ')
-  }
-  return parts.join(' · ')
+/** Local page/GQL discovery notes only — for footnotes when backend already linked the VOD. */
+export function vodLocalDiscoveryDiagnostic(entries: PulseDebugEntry[]): string | null {
+  const vodEntries = entries.filter(entry => entry.step.startsWith('vod.discover.'))
+  if (vodEntries.length === 0) return null
+  const parts: string[] = []
+  appendLocalVodDiscoveryNotes(vodEntries, parts)
+  return parts.length > 0 ? parts.join(' · ') : null
 }

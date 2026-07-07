@@ -14,7 +14,7 @@ export interface MiniDockProps {
   sidebarFill?: boolean
   onExpand: () => void
   onHide: () => void
-  onTrack: () => void
+  onTrack?: () => void
 }
 
 export function MiniDock({
@@ -63,7 +63,7 @@ export function MiniDock({
       </button>
 
       <div style={styles.actions} aria-label="Mini dock controls">
-        {!tracking ? (
+        {!tracking && onTrack ? (
           <button
             type="button"
             style={styles.trackButton}

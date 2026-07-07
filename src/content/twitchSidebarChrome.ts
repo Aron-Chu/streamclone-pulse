@@ -12,10 +12,12 @@ const HIDE_RULES = `
   [data-a-target="collapse-chat"],
   [data-a-target="chat-viewers"],
   [data-a-target="community-tab"],
+  [data-test-selector="chat-viewer-list"],
   button[aria-label*="Collapse" i][data-a-target="right-column__toggle-collapse-btn"],
   button[aria-label*="Expand" i][data-a-target="right-column__toggle-collapse-btn"],
   button[aria-label*="Community" i],
-  button[aria-label*="Users in chat" i] {
+  button[aria-label*="Users in chat" i],
+  button[aria-label*="Go back to Chat" i] {
     visibility: hidden !important;
     pointer-events: none !important;
   }

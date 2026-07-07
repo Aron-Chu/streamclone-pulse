@@ -178,6 +178,8 @@ export interface ExtensionEmote {
   imageUrl?: string
   count: number
   provider?: string
+  zeroWidth?: boolean
+  animated?: boolean
 }
 
 export type EmoteSyncState = 'ready' | 'syncing' | 'stale' | 'unavailable' | 'aggregate_only'
@@ -297,6 +299,8 @@ export interface PulseStreamRecap {
     count: number
   }
   clipCandidates: PulseRecapMoment[]
+  /** Backend emote catalog enrichment state for recap rows. */
+  emoteEnrichmentStatus?: 'complete' | 'partial' | 'missing' | string
 }
 
 export interface GetPulseDebugLogMessage {
@@ -391,6 +395,8 @@ export interface PulsePayload {
   vodId?: string | null
   startedAt?: string
   endedAt?: string
+  /** Legacy alias when backend sends latest stream end without endedAt. */
+  latestEndedAt?: string
   title?: string
   category?: string
   peakViewers?: number
@@ -431,7 +437,15 @@ export interface ExtensionCoverageTierResponse {
     available?: boolean
     source?: string
     isLive?: boolean | null
+    streamId?: string | null
+    title?: string | null
+    category?: string | null
+    startedAt?: string | null
     viewerCount?: number | null
+    language?: string | null
+    tags?: string[]
+    snapshotTime?: string | null
+    freshnessSeconds?: number | null
   }
   reasonCodes?: string[]
 }

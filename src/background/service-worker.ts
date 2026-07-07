@@ -2,6 +2,7 @@ import {
   createPulseBookmark,
   deletePulseBookmark,
   fetchAlwaysTracked,
+  fetchExtensionCoverage,
   fetchExtensionHealth,
   fetchPastVodRows,
   fetchPulseBackfillStatus,
@@ -15,8 +16,8 @@ import {
 } from './api.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin, untrackLogin } from './tracking.ts'
-import type { BackgroundRequest, BackgroundResponse, PastVodRow, PulseUpdateMessage } from '../shared/messages.ts'
-import { getAutoUpdateEnabled, getPollIntervalMs, getSessionPulse, setAutoUpdateEnabled, setSessionPulse } from '../shared/storage.ts'
+import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage } from '../shared/messages.ts'
+import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
 import {
   addToWatchlist,
   getWatchlist,
@@ -24,37 +25,120 @@ import {
 } from '../shared/watchlist.ts'
 import { initPulseDebug, getPulseDebugLog, pulseDebug } from '../shared/pulseDebug.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
+import {
+  awaitPulsePrefetchInFlight,
+  handleTwitchTabNavigation,
+} from './pulsePrefetch.ts'
 
 void initPulseDebug()
 
-async function refreshPulse(login: string, window: 'recent' | 'full' = 'recent'): Promise<void> {
-  try {
-    const payload = await fetchPulseChannel(login, { window })
-    await setSessionPulse(login, { payload, fetchedAt: Date.now() })
-    broadcastPulse(login, payload)
-  } catch (err) {
-    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
-  }
+async function hostedBackend(): Promise<boolean> {
+  return isHostedBackendUrl(await getBackendUrl())
 }
 
-async function peekPulse(login: string, window: 'recent' | 'full' = 'recent'): Promise<PulseUpdateMessage['payload']> {
+async function loadCoverageTier(
+  login: string,
+  force = false,
+): Promise<ExtensionCoverageTierResponse | null> {
+  if (!force) {
+    const cached = await getSessionCoverage(login)
+    if (cached) return cached.coverageTier
+  }
   try {
-    const payload = await fetchPulseChannel(login, { window })
-    await setSessionPulse(login, { payload, fetchedAt: Date.now() })
-    return payload
+    const coverageTier = await fetchExtensionCoverage(login)
+    if (coverageTier) {
+      await setSessionCoverage(login, { coverageTier, fetchedAt: Date.now() })
+    }
+    return coverageTier
   } catch {
     return null
   }
 }
 
-function broadcastPulse(login: string, payload: PulseUpdateMessage['payload'], error?: string): void {
-  const message: PulseUpdateMessage = { type: 'PULSE_UPDATE', login, payload, error }
-  chrome.runtime.sendMessage(message).catch(() => {
-    // No listeners when overlay is closed.
+async function cachePulseIfEnabled(
+  login: string,
+  payload: NonNullable<PulseUpdateMessage['payload']>,
+  window: PulseCacheWindow,
+): Promise<void> {
+  await cacheSessionPulseIfEnabled(login, {
+    payload,
+    fetchedAt: Date.now(),
+    window,
+    streamId: String(payload.streamId ?? '').trim(),
   })
 }
 
+async function refreshPulse(
+  login: string,
+  window: PulseCacheWindow = 'recent',
+  forceCoverage = false,
+): Promise<void> {
+  try {
+    const [payload, coverageTier] = await Promise.all([
+      fetchPulseChannel(login, { window }),
+      loadCoverageTier(login, forceCoverage),
+    ])
+    await cachePulseIfEnabled(login, payload, window)
+    broadcastPulse(login, payload, undefined, coverageTier)
+  } catch (err) {
+    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+  }
+}
+
+async function peekPulse(
+  login: string,
+  window: PulseCacheWindow = 'recent',
+  forceCoverage = false,
+): Promise<{
+  payload: PulseUpdateMessage['payload']
+  coverageTier: ExtensionCoverageTierResponse | null
+}> {
+  try {
+    const [payload, coverageTier] = await Promise.all([
+      fetchPulseChannel(login, { window }),
+      loadCoverageTier(login, forceCoverage),
+    ])
+    await cachePulseIfEnabled(login, payload, window)
+    return { payload, coverageTier }
+  } catch {
+    return { payload: null, coverageTier: null }
+  }
+}
+
+async function revalidatePulse(login: string, window: PulseCacheWindow, forceCoverage = false): Promise<void> {
+  try {
+    const { payload, coverageTier } = await peekPulse(login, window, forceCoverage)
+    broadcastPulse(login, payload, undefined, coverageTier)
+  } catch (err) {
+    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+  }
+}
+
+function broadcastPulse(
+  login: string,
+  payload: PulseUpdateMessage['payload'],
+  error?: string,
+  coverageTier?: ExtensionCoverageTierResponse | null,
+): void {
+  const message: PulseUpdateMessage = { type: 'PULSE_UPDATE', login, payload, error, coverageTier }
+  chrome.runtime.sendMessage(message).catch(() => {
+    // No listeners when overlay is closed.
+  })
+  void chrome.tabs
+    .query({ url: ['*://*.twitch.tv/*'] })
+    .then(tabs => {
+      for (const tab of tabs) {
+        if (!tab.id) continue
+        chrome.tabs.sendMessage(tab.id, message).catch(() => {})
+      }
+    })
+    .catch(() => {})
+}
+
 async function ensureTracked(login: string): Promise<void> {
+  if (await hostedBackend()) {
+    return
+  }
   trackLogin(login)
   await postWatchChannel(login)
   const intervalMs = await getPollIntervalMs()
@@ -93,9 +177,11 @@ async function syncWatchlistToBackend(): Promise<string[]> {
       .map(login => setAlwaysTracked(login, false)),
   ])
 
-  for (const login of channels) {
-    if (!isTracked(login)) {
-      await ensureTracked(login)
+  if (!(await hostedBackend())) {
+    for (const login of channels) {
+      if (!isTracked(login)) {
+        await ensureTracked(login)
+      }
     }
   }
 
@@ -138,8 +224,18 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
     try {
       switch (message.type) {
         case 'TRACK': {
+          if (await hostedBackend()) {
+            const cached = await getSessionPulse(message.login, 'recent')
+            sendResponse({
+              type: 'PULSE_UPDATE',
+              login: message.login,
+              payload: cached?.payload ?? null,
+              error: 'extension_watch_disabled',
+            } satisfies PulseUpdateMessage)
+            return
+          }
           await ensureTracked(message.login)
-          const cached = await getSessionPulse(message.login)
+          const cached = await getSessionPulse(message.login, 'recent')
           sendResponse({
             type: 'PULSE_UPDATE',
             login: message.login,
@@ -153,26 +249,82 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           return
         }
         case 'GET_PULSE': {
-          const window = message.window === 'full' ? 'full' : 'recent'
-          if (message.watch) {
+          const window: PulseCacheWindow = message.window === 'full' ? 'full' : 'recent'
+          const hosted = await hostedBackend()
+          const allowWatch = Boolean(message.watch) && !hosted
+          await awaitPulsePrefetchInFlight(message.login)
+          const cached = await getSessionPulse(message.login, window, message.streamId)
+          const cachedCoverage = await getSessionCoverage(message.login)
+
+          if (cached) {
+            sendResponse({
+              type: 'PULSE_UPDATE',
+              login: message.login,
+              payload: cached.payload,
+              coverageTier: cachedCoverage?.coverageTier ?? null,
+            } satisfies PulseUpdateMessage)
+            void revalidatePulse(message.login, window)
+            return
+          }
+
+          if (allowWatch) {
             await ensureTracked(message.login)
           } else if (isTracked(message.login)) {
             await refreshPulse(message.login, window)
           } else {
-            const payload = await peekPulse(message.login, window)
+            const { payload, coverageTier } = await peekPulse(message.login, window)
             sendResponse({
               type: 'PULSE_UPDATE',
               login: message.login,
               payload,
+              coverageTier,
             } satisfies PulseUpdateMessage)
             return
           }
-          const fresh = await getSessionPulse(message.login)
+          const fresh = await getSessionPulse(message.login, window, message.streamId)
+          const coverageTier = fresh
+            ? (await getSessionCoverage(message.login))?.coverageTier ?? null
+            : cachedCoverage?.coverageTier ?? null
           sendResponse({
             type: 'PULSE_UPDATE',
             login: message.login,
             payload: fresh?.payload ?? null,
+            coverageTier,
           } satisfies PulseUpdateMessage)
+          return
+        }
+        case 'GET_COVERAGE': {
+          try {
+            const cachedCoverage = await getSessionCoverage(message.login)
+            const coverageTier = cachedCoverage?.coverageTier ?? await loadCoverageTier(message.login)
+            const pulseCache = await getSessionPulse(message.login, 'recent')
+            sendResponse({
+              type: 'PULSE_UPDATE',
+              login: message.login,
+              payload: pulseCache?.payload ?? null,
+              coverageTier,
+            } satisfies PulseUpdateMessage)
+          } catch (err) {
+            sendResponse({
+              type: 'PULSE_UPDATE',
+              login: message.login,
+              payload: null,
+              error: err instanceof Error ? err.message : 'coverage_failed',
+            } satisfies PulseUpdateMessage)
+          }
+          return
+        }
+        case 'GET_ALWAYS_TRACKED': {
+          try {
+            const channels = await fetchAlwaysTracked()
+            sendResponse({ type: 'ALWAYS_TRACKED', channels } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({
+              type: 'ALWAYS_TRACKED',
+              channels: [],
+              error: err instanceof Error ? err.message : 'always_tracked_failed',
+            } satisfies BackgroundResponse)
+          }
           return
         }
         case 'DISCOVER_LIVE_VOD': {
@@ -203,7 +355,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
               streamId: message.streamId,
               vodId: message.vodId,
             })
-            await refreshPulse(message.login, 'full')
+            await refreshPulse(message.login, 'full', true)
             sendResponse({ ok: true, vodId: result.vodId ?? message.vodId })
           } catch (err) {
             await pulseDebug(
@@ -224,7 +376,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
             toOffsetSeconds: message.toOffsetSeconds,
           })
           if (job.status === 'already_available' || job.status === 'done') {
-            await refreshPulse(message.login, 'full')
+            await refreshPulse(message.login, 'full', true)
           }
           sendResponse({ type: 'PULSE_BACKFILL', job } satisfies BackgroundResponse)
           return
@@ -234,7 +386,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           if (job.status === 'done' || job.status === 'already_available') {
             const login = job.login
             if (login) {
-              await refreshPulse(login, 'full')
+              await refreshPulse(login, 'full', true)
             }
           }
           sendResponse({ type: 'PULSE_BACKFILL_STATUS', job } satisfies BackgroundResponse)
@@ -376,6 +528,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
 chrome.runtime.onStartup.addListener(() => {
   void (async () => {
     await syncWatchlistToBackend()
+    if (await hostedBackend()) return
     for (const login of listTrackedLogins()) {
       await ensureTracked(login)
     }
@@ -384,6 +537,16 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.runtime.onInstalled.addListener(() => {
   void syncWatchlistToBackend()
+})
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  if (changeInfo.url) {
+    handleTwitchTabNavigation(changeInfo.url)
+    return
+  }
+  if (changeInfo.status === 'complete') {
+    handleTwitchTabNavigation(tab.url)
+  }
 })
 
 export {}

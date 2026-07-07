@@ -19,7 +19,7 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage", "scripting"],
+  "permissions": ["storage", "scripting", "tabs"],
   "host_permissions": [
     "http://localhost:8090/*",
     "http://127.0.0.1:8090/*",

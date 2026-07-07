@@ -1,6 +1,6 @@
 import { formatHeatOffset } from '@streamclone/pulse-core'
 import type { PulseBackfillJob } from '../shared/messages.ts'
-import { isPulseBackfillTerminal, resolvePulseCoverage, type PulseCoverageSource } from './missedMoments.ts'
+import { isPulseBackfillTerminal, backendResolvedVod, resolvePulseCoverage, type PulseCoverageSource } from './missedMoments.ts'
 
 export interface CoverageCheckItem {
   label: string
@@ -25,6 +25,7 @@ export function coverageDiagnostics(
   const checks: CoverageCheckItem[] = []
   const tracking = Boolean(source.tracking)
   const hasVod = Boolean(String(source.vodId ?? '').trim())
+  const backendVod = backendResolvedVod(source)
   const hasStream = Boolean(String(source.streamId ?? '').trim())
 
   checks.push({
@@ -35,10 +36,12 @@ export function coverageDiagnostics(
 
   checks.push({
     label: 'Twitch VOD link',
-    ok: hasVod,
+    ok: hasVod || backendVod,
     detail: hasVod
       ? `VOD ${String(source.vodId).slice(0, 8)}… linked`
-      : 'Waiting for Twitch to assign a VOD ID (needed for earlier chat)',
+      : backendVod
+        ? 'Backend linked VOD via Helix — local page discovery is optional'
+        : 'Waiting for Twitch to assign a VOD ID (needed for earlier chat)',
   })
 
   const backfillActive = job != null && !isPulseBackfillTerminal(job.status)
@@ -66,8 +69,8 @@ export function coverageDiagnostics(
   } else if (coverage && coverage.coverageStartOffsetSeconds > 120 && !coverage.hasFullStreamCoverage) {
     checks.push({
       label: 'Early stream chat',
-      ok: hasVod,
-      detail: hasVod
+      ok: hasVod || backendVod,
+      detail: hasVod || backendVod
         ? `Ready to load before ${formatHeatOffset(coverage.coverageStartOffsetSeconds)}`
         : 'Needs VOD link before backfill can run',
     })

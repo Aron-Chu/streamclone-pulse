@@ -1,290 +1,230 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  formatHeatOffset,
-  LIVE_HEAT_COLLECTING_LABEL,
-  LIVE_HEAT_MAX_EMOTES,
   LIVE_HEAT_SUBTITLE,
   LIVE_HEAT_TITLE,
+  extensionRollupsForDerivation,
   type LiveHeatPoint,
 } from '@streamclone/pulse-core'
-import type { PulsePayload } from '../shared/messages.ts'
-import { PulseEmoteImg } from './PulseEmoteImg.tsx'
+import type { ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 import {
-  formatCount,
+  hasFullTimelineRollups,
+  prepareChartRollups,
+  resolvePayloadCoverageStartOffset,
+} from './chatActivityEmotes.ts'
+import { downsampleRollupsForChart } from './extensionChartPoints.ts'
+import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
+import {
+  MOST_REACTED_VISIBLE_COUNT,
+  heatPointMatchesOffset,
   resolveMostReactedHeat,
-  resolveSelectedMomentKey,
-  selectedMomentKey,
+  sortLiveHeatPoints,
+  type MomentSortMode,
 } from './mostReacted.ts'
-import { SelectedMomentCard } from './SelectedMomentCard.tsx'
+import { PulseMomentRow } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
+import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { theme } from './theme.ts'
 
 export interface MostReactedSectionProps {
   payload: PulsePayload
   backendUrl: string
+  sidebarFill?: boolean
+  pinnedOffsetSeconds?: number | null
   onJump: (point: LiveHeatPoint) => void
   onSave: (point: LiveHeatPoint) => void | Promise<void>
   onAnalytics: (point: LiveHeatPoint) => void
+  onHighlightOffset?: (offsetSeconds: number | null) => void
+  onPinOffset?: (offsetSeconds: number | null) => void
   saveBusy?: boolean
+  hasVodContext?: boolean
 }
 
-function ScoreBadge({
-  score,
-  estimated,
-  muted,
-}: {
-  score: number
-  estimated?: boolean
-  muted?: boolean
-}) {
-  return (
-    <span
-      style={{
-        ...styles.scoreBadge,
-        ...(muted ? styles.scoreBadgeMuted : styles.scoreBadgeActive),
-      }}
-      title={
-        estimated
-          ? 'Estimated from local rollups until heatmap scoring is available.'
-          : 'Backend replay heatmap score.'
-      }
-    >
-      {estimated ? `~${score}` : score}
-    </span>
-  )
-}
+const SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
+  { value: 'reaction', label: 'Strongest reaction' },
+  { value: 'chat', label: 'Chat activity' },
+  { value: 'emotes', label: 'Emote activity' },
+]
 
-function EmoteStack({
-  point,
-  backendUrl,
-}: {
-  point: LiveHeatPoint
-  backendUrl: string
-}) {
-  if (point.topEmotes.length === 0) return null
-  return (
-    <div style={styles.emoteStack}>
-      {point.topEmotes.slice(0, LIVE_HEAT_MAX_EMOTES).map(emote => (
-        <span
-          key={emote.key}
-          className="pulse-top-emote-chip"
-          style={styles.emoteItem}
-          title={`${emote.name}${emote.provider ? ` · ${emote.provider}` : ''} · ${formatCount(emote.count)}`}
-        >
-          <PulseEmoteImg emote={emote} backendUrl={backendUrl} width={20} height={20} style={styles.emoteImg} showHoverPreview />
-        </span>
-      ))}
-    </div>
-  )
-}
-
-function MomentRow({
-  point,
-  backendUrl,
-  selected,
-  onSelect,
-}: {
-  point: LiveHeatPoint
-  backendUrl: string
-  selected: boolean
-  onSelect: (point: LiveHeatPoint) => void
-}) {
-  const offsetLabel = formatHeatOffset(point.offsetSeconds)
-  const collecting = point.collecting
-
-  const body = (
-    <div
-      className={
-        collecting
-          ? undefined
-          : `pulse-moment-row${selected && !collecting ? ' pulse-moment-row-selected' : ''}`
-      }
-      style={{
-        ...styles.momentRow,
-        ...(collecting ? styles.momentRowCollecting : {}),
-      }}
-    >
-      <div style={styles.momentRowInner}>
-        <ScoreBadge score={point.score} estimated={point.estimated} muted={collecting} />
-        <div style={styles.momentMain}>
-          <span style={styles.momentTitleRow}>
-            <span style={styles.offsetLabel}>{offsetLabel}</span>
-            {collecting ? (
-              <span style={styles.collectingBadge}>{LIVE_HEAT_COLLECTING_LABEL}</span>
-            ) : (
-              <span style={styles.reasonLabel}>{point.reasonLabel}</span>
-            )}
-          </span>
-          <span style={styles.countsLine}>
-            {formatCount(point.chatCount)} chat · {formatCount(point.emoteCount)} emotes
-          </span>
-        </div>
-        <EmoteStack point={point} backendUrl={backendUrl} />
-      </div>
-    </div>
-  )
-
-  if (collecting) {
-    return body
-  }
-
-  return (
-    <button
-      type="button"
-      className="pulse-moment-row-button"
-      style={styles.momentButton}
-      onClick={event => {
-        onSelect(point)
-        event.currentTarget.blur()
-      }}
-      aria-pressed={selected}
-      aria-label={`Select ${offsetLabel}, score ${point.score}, ${point.reasonLabel}`}
-    >
-      {body}
-    </button>
-  )
+function resolveJumpLabel(payload: PulsePayload, hasVodContext?: boolean): string {
+  if (hasVodContext || payload.vodId) return 'Jump in VOD'
+  return 'Jump in player'
 }
 
 export function MostReactedSection({
   payload,
   backendUrl,
+  sidebarFill: _sidebarFill = false,
+  pinnedOffsetSeconds = null,
   onJump,
   onSave,
   onAnalytics,
+  onHighlightOffset,
+  onPinOffset,
   saveBusy = false,
+  hasVodContext = false,
 }: MostReactedSectionProps) {
   const heat = resolveMostReactedHeat(payload)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const rollups = extensionRollupsForDerivation(payload) as ExtensionRollup[]
+  const chartRollups = useMemo(
+    () =>
+      downsampleRollupsForChart(
+        prepareChartRollups(payload, {
+          chartWindow: hasFullTimelineRollups(payload) ? 'full' : '60m',
+          currentOffsetSeconds: Math.max(0, payload.currentOffsetSeconds ?? 0),
+          coverageStartOffsetSeconds: resolvePayloadCoverageStartOffset(payload),
+        }),
+      ),
+    [payload],
+  )
+  const [sortMode, setSortMode] = useState<MomentSortMode>('reaction')
+  const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
+  const [listExpanded, setListExpanded] = useState(false)
+  const selectedRowRef = useRef<HTMLDivElement | null>(null)
+  const selectedCardRef = useRef<HTMLDivElement | null>(null)
+
+  const sortedPoints = useMemo(
+    () => sortLiveHeatPoints(heat.points, sortMode),
+    [heat.points, sortMode],
+  )
+
+  const pinnedMomentPoint = useMemo(
+    () =>
+      resolvePinnedMomentPoint({
+        pinOffsetSeconds: pinnedOffsetSeconds,
+        heatPoints: heat.points,
+        rollups,
+        chartRollups,
+        startedAt: payload.startedAt,
+        catalog: payload.topEmotes,
+      }),
+    [pinnedOffsetSeconds, heat.points, rollups, chartRollups, payload.startedAt, payload.topEmotes],
+  )
+
+  const visiblePoints = listExpanded
+    ? sortedPoints
+    : sortedPoints.slice(0, MOST_REACTED_VISIBLE_COUNT)
+  const hiddenPointCount = Math.max(0, sortedPoints.length - MOST_REACTED_VISIBLE_COUNT)
+  const jumpLabel = resolveJumpLabel(payload, hasVodContext)
 
   useEffect(() => {
-    setSelectedKey(current => resolveSelectedMomentKey(payload.streamId, heat.points, current))
-  }, [payload.streamId, heat.points])
+    setListExpanded(false)
+  }, [payload.streamId, sortMode])
 
-  if (!heat.visible) return null
+  useEffect(() => {
+    onHighlightOffset?.(hoveredOffset)
+  }, [hoveredOffset, onHighlightOffset])
 
-  const selectedPoint =
-    selectedKey != null
-      ? heat.points.find(point => selectedMomentKey(payload.streamId, point) === selectedKey) ?? null
-      : null
+  useEffect(() => {
+    if (pinnedOffsetSeconds == null) return
+    const frame = requestAnimationFrame(() => {
+      selectedRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [pinnedOffsetSeconds, sortMode, listExpanded])
+
+  if (!heat.visible && !pinnedMomentPoint) return null
 
   return (
-    <PulseSectionCard title={LIVE_HEAT_TITLE} subtitle={LIVE_HEAT_SUBTITLE}>
-      {selectedPoint ? (
-        <SelectedMomentCard
-          point={selectedPoint}
-          backendUrl={backendUrl}
-          onJump={onJump}
-          onSave={onSave}
-          onAnalytics={onAnalytics}
-          saveBusy={saveBusy}
-        />
+    <PulseSectionCard
+      title={LIVE_HEAT_TITLE}
+      subtitle={LIVE_HEAT_SUBTITLE}
+      meta={
+        heat.visible ? (
+          <PulseThemedSelect
+            label="Sort"
+            value={sortMode}
+            options={SORT_OPTIONS}
+            ariaLabel="Sort most reacted moments"
+            onChange={setSortMode}
+          />
+        ) : undefined
+      }
+    >
+      {pinnedOffsetSeconds != null && pinnedMomentPoint ? (
+        <div
+          ref={selectedCardRef}
+          style={{
+            ...styles.selectedSlot,
+            minHeight: 132,
+          }}
+        >
+          <SelectedMomentCard
+            point={pinnedMomentPoint}
+            backendUrl={backendUrl}
+            jumpLabel={jumpLabel}
+            onJump={onJump}
+            onSave={onSave}
+            saveBusy={saveBusy}
+            onAnalytics={onAnalytics}
+          />
+        </div>
       ) : null}
       <div style={styles.momentList}>
-        {heat.points.map(point => (
-          <MomentRow
-            key={`${point.offsetSeconds}-${point.reason}-${point.minuteTs}`}
-            point={point}
-            backendUrl={backendUrl}
-            selected={selectedMomentKey(payload.streamId, point) === selectedKey}
-            onSelect={next => {
-              const key = selectedMomentKey(payload.streamId, next)
-              setSelectedKey(current => (current === key ? null : key))
-            }}
-          />
-        ))}
+        {visiblePoints.map(point => {
+          const selected =
+            pinnedOffsetSeconds != null && heatPointMatchesOffset(point, pinnedOffsetSeconds)
+          return (
+            <PulseMomentRow
+              key={`${point.offsetSeconds}-${point.reason}-${point.minuteTs}`}
+              point={point}
+              backendUrl={backendUrl}
+              selected={selected}
+              scrollRef={selected ? node => { selectedRowRef.current = node } : undefined}
+              onHighlight={setHoveredOffset}
+              onSelect={next => {
+                onPinOffset?.(next.offsetSeconds)
+                setHoveredOffset(null)
+              }}
+            />
+          )
+        })}
         {heat.collectingPoint ? (
-          <MomentRow
+          <PulseMomentRow
             point={heat.collectingPoint}
             backendUrl={backendUrl}
             selected={false}
+            onHighlight={() => {}}
             onSelect={() => {}}
           />
         ) : null}
       </div>
+      {hiddenPointCount > 0 ? (
+        <button
+          type="button"
+          style={styles.expandButton}
+          onClick={() => setListExpanded(expanded => !expanded)}
+        >
+          <span>
+            {listExpanded
+              ? 'Show less'
+              : `Show ${hiddenPointCount} more moment${hiddenPointCount === 1 ? '' : 's'}`}
+          </span>
+          <span style={styles.expandChevron} aria-hidden="true">
+            {listExpanded ? '▾' : '▸'}
+          </span>
+        </button>
+      ) : null}
     </PulseSectionCard>
   )
 }
 
 const styles: Record<string, CSSProperties> = {
-  momentList: { display: 'grid', gap: 8 },
-  momentButton: {
+  selectedSlot: { flexShrink: 0 },
+  momentList: { display: 'grid', gap: 4 },
+  expandButton: {
+    alignItems: 'center',
     background: 'transparent',
     border: 0,
-    color: 'inherit',
+    color: theme.accentSoft,
     cursor: 'pointer',
-    display: 'block',
-    outline: 'none',
-    padding: 0,
-    textAlign: 'left',
-    width: '100%',
-  },
-  momentRow: {
-    borderRadius: 8,
-    padding: '8px 12px',
-    transition: 'box-shadow 0.15s ease, background 0.15s ease',
-  },
-  momentRowCollecting: {
-    background: 'rgba(255, 255, 255, 0.02)',
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-    opacity: 0.6,
-  },
-  momentRowInner: {
-    alignItems: 'center',
     display: 'flex',
-    gap: 12,
-    justifyContent: 'space-between',
-    width: '100%',
+    fontSize: 10,
+    fontWeight: 700,
+    gap: 4,
+    marginTop: 2,
+    padding: '4px 0',
   },
-  scoreBadge: {
-    borderRadius: 6,
-    display: 'inline-block',
-    flexShrink: 0,
-    fontSize: 12,
-    fontWeight: 900,
-    minWidth: 36,
-    padding: '4px 6px',
-    textAlign: 'center',
-    fontVariantNumeric: 'tabular-nums',
-  },
-  scoreBadgeActive: {
-    background: 'rgba(139, 92, 246, 0.15)',
-    border: '1px solid rgba(167, 139, 250, 0.3)',
-    color: '#ddd6fe',
-  },
-  scoreBadgeMuted: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    color: theme.textMuted,
-  },
-  momentMain: { display: 'grid', flex: 1, gap: 3, minWidth: 0 },
-  momentTitleRow: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
-  offsetLabel: {
-    color: theme.textSecondary,
-    fontSize: 12,
-    fontWeight: 800,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  reasonLabel: { color: theme.textMuted, fontSize: 11, fontWeight: 700 },
-  countsLine: { color: theme.textMuted, fontSize: 11, fontWeight: 600 },
-  collectingBadge: {
-    background: 'rgba(245, 158, 11, 0.1)',
-    border: '1px solid rgba(245, 158, 11, 0.3)',
-    borderRadius: 999,
-    color: '#fde68a',
-    fontSize: 9,
-    fontWeight: 900,
-    letterSpacing: '0.04em',
-    padding: '2px 8px',
-    textTransform: 'uppercase',
-  },
-  emoteStack: { alignItems: 'center', display: 'flex', flexShrink: 0, gap: 4 },
-  emoteItem: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid transparent',
-    borderRadius: 4,
-    display: 'inline-flex',
-    overflow: 'hidden',
-  },
-  emoteImg: { display: 'block', height: 20, objectFit: 'contain', width: 20 },
+  expandChevron: { fontSize: 9, lineHeight: 1 },
 }
