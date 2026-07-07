@@ -60,7 +60,7 @@ Steps:
   - rollback tag
   - known scraper exception, if scraper remains separate
   - smoke evidence
-- Confirm health `STREAMCLONE_VERSION` matches intended `IMAGE_TAG`.
+- Confirm health deployed version matches intended `IMAGE_TAG` (field may appear as `STREAMCLONE_VERSION` in health JSON until renamed).
 
 Acceptance:
 

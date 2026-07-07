@@ -12,7 +12,8 @@ You are the ops diagnostics reviewer for Streamclone hosted Pulse API and Stream
 
 ## Scope
 
-- streamclone: `docs/streampulse-vps.md`, `docs/hosted-production-ops.md`
+- streamclone: `docs/streampulse-vps.md`, `docs/hosted-production-ops.md`, `docs/production-promotion-contract.md`
+- streamclone: sibling `streamclone-pulse/docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md` (before prod image name changes)
 - streamclone: `deploy/Caddyfile*`, `deploy/docker-compose.streampulse-vps-production.yml` (public examples)
 - streamclone: `deploy/cloudflared/` (tunnel config examples)
 - Legacy rollback paths (do not treat as production): `deploy/docker-compose.bearhost-pulse.yml`, `scripts/bearhost-pulse*.sh`, `docs/pulse-extension/bearhost-tunnel.md`

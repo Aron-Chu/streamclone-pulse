@@ -8,6 +8,7 @@
 | BFF + health + bookmarks + recap | streamclone `internal/analytics/` |
 | Extension local stack | `http://localhost:8090` (Caddy in streamclone) |
 | StreamPulse portal (`streampulse-web`) | `https://api.streampulse.stream` (dev default); `npm run dev:local` → `:8090` opt-in |
+| Hosted production images (promotion) | streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md), [image exit audit](pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) |
 | Multi-root workspace | `../twitch-7tv-clone/streamclone-pulse-extension.code-workspace` |
 | Optional ecosystem workspace | `../twitch-7tv-clone/streamclone-full.code-workspace` (Clip Studio / auto clipper only) |
 
@@ -25,5 +26,14 @@ Edit product spec here in `docs/pulse-extension/` (requirements status reflects 
 ReplayForge is only relevant when working on Clip Studio, auto clipper, Streamclone Analytics moment export, or the ReplayForge integration contract. Normal Pulse extension, StreamPulse portal, and public website work does not require opening or editing ReplayForge.
 
 Treat `streamclone-full.code-workspace` as an optional ecosystem workspace, not the default StreamPulse workspace. It exists for cross-repo clipper integration convenience only; it does not make ReplayForge part of the StreamPulse portal or extension product boundary.
+
+## Context modes (extension vs portal)
+
+| Mode | Scope | Do not load by default |
+|------|-------|------------------------|
+| **Extension** | `src/`, extension docs | Portal e2e, `streampulse-web` unless needed |
+| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Content scripts, service worker unless API contract |
+
+Workspace matrix: streamclone [`docs/workspace.md`](../twitch-7tv-clone/docs/workspace.md).
 
 Agent skills for the streamclone sibling live in two mirrored trees: **Cursor** `.cursor/skills/streamclone/` and **Codex** `.agents/skills/streamclone/` (sync via `make codex-sync-skills` in streamclone).

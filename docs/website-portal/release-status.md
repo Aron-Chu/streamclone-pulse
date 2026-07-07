@@ -50,12 +50,23 @@ Last updated: 2026-07-07 (Gate 1 commits done; Gate 2 remote evidence captured; 
 
 ## Current production identity (audit 2026-07-07)
 
+**Image namespace exit (in progress):** production manifests target promoted `ghcr.io/aron-chu/streampulse/*` by digest. Pre-cutover private ops may still pin `streamclone/*` source images.
+
+| Doc | Purpose |
+|-----|---------|
+| [streamclone-image-exit-audit-2026-07.md](../pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) | Active migration spec, cutover checklist, VPS reconcile |
+| [production-artifact-decision-2026-07.md](../pulse-extension/evidence/production-artifact-decision-2026-07.md) | Launch hardening on source images until cutover |
+| streamclone [production-promotion-contract.md](../../../twitch-7tv-clone/docs/production-promotion-contract.md) | Public promotion contract |
+
 | Field | Value |
 |-------|-------|
 | Health version | `v0.3.0-rc18` |
 | Intended `IMAGE_TAG` | `v0.3.0-rc18` (reconcile via ops) |
-| Rollback tag | Document in streampulse-ops manifest |
+| Source / production digests | Record in streampulse-ops manifest |
+| Rollback tag + digests | Document in streampulse-ops manifest |
 | Scraper tag exception | Document if not rc18 |
+
+**Blocker for cutover:** Phase 0 VPS reconcile + digest promotion in private **streampulse-ops** before public docs claim `streampulse/*` is live.
 
 Manifest lives in private **streampulse-ops** (`docs/deployments/YYYY-MM-DD-<tag>-<note>.md`).
 

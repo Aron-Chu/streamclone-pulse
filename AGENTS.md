@@ -24,6 +24,7 @@ Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep produc
 | Task ledger (P0–P6) | [`docs/pulse-extension/tasks.md`](docs/pulse-extension/tasks.md) |
 | **Figma UI (PNG + node IDs)** | [`docs/pulse-extension/figma-handoff.md`](docs/pulse-extension/figma-handoff.md) + [`figma/`](docs/pulse-extension/figma/) |
 | Repo wiring | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
+| **Image namespace exit (hosted prod)** | [`docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md`](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md), streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) |
 | **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) |
 | Extension code | `src/` |
 
@@ -47,6 +48,15 @@ Hard guardrails:
 - Use backend peaks, coverage, sync, and backfill states as the source of truth.
 - Portal analytics must be sanitized **server-side** (`/v1/portal/analytics/*`), not by client-only stripping.
 
+## Context modes (one repo, two products)
+
+| Mode | Scope | Default workspace |
+|------|-------|-------------------|
+| **Extension** | `src/`, `docs/pulse-extension/`, MV3 build/test | `streamclone-pulse` only — see streamclone [`streampulse-extension.code-workspace`](../twitch-7tv-clone/streampulse-extension.code-workspace) |
+| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Same repo; do not load extension service-worker context unless API contract work |
+
+Cross-repo workspace matrix: streamclone [`docs/workspace.md`](../twitch-7tv-clone/docs/workspace.md).
+
 ## Rules
 
 - **Content scripts:** `chrome.runtime.sendMessage` only — no `fetch`.
@@ -54,7 +64,7 @@ Hard guardrails:
 - **Extension** default backend: `https://api.streampulse.stream` (hosted). Local `http://localhost:8090` requires explicit opt-in in Options → Advanced.
 - **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit `:8090` only. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (restart after branch switch; `npm install` for `@streamclone/*` links).
 - New Go APIs → implement in streamclone `internal/analytics`, not here.
-- ReplayForge / auto clipper work is not owned by the extension or portal. Use sibling streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md): Streamclone owns candidates/triggers/callback state, ReplayForge owns render/edit/export, and hosted production still deploys Streamclone GHCR images via private `streampulse-ops`.
+- ReplayForge / auto clipper work is not owned by the extension or portal. Use sibling streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md): Streamclone owns candidates/triggers/callback state, ReplayForge owns render/edit/export. Hosted production promotion: streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) and [image exit audit](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) — pre-cutover manifests may still use `streamclone/*` source images via private `streampulse-ops`.
 - **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
 
 ## Commands

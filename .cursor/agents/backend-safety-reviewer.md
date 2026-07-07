@@ -17,6 +17,7 @@ You are the backend safety reviewer for Streamclone Pulse / StreamPulse.
 
 - Sibling `streamclone-pulse/docs/pulse-extension/live-coverage-requirements.md`
 - Sibling `streamclone-pulse/docs/website-portal/design.md`
+- Before hosted production image or compose changes: sibling [streamclone-image-exit-audit-2026-07.md](../../docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md), streamclone `docs/production-promotion-contract.md`
 
 ## Must block (Critical)
 
