@@ -7,21 +7,20 @@ import type { HubEmote, HubLiveChannel } from '../../../lib/publicHub'
 import { buildVodTimestampUrl } from '../../../lib/figmaSessionAnalytics'
 import {
   momentActivityBadge,
-  momentEmoteTitle,
   momentHasEmoteRollups,
-  momentTotalEmoteUses,
   momentWallClockLabel,
   resolveMomentEmote,
+  resolveMomentEmotesPerMin,
+  resolveMomentViewers,
   ROLLUP_CONFIDENCE_TITLE,
   sourceLabel,
   vodStateLabel,
 } from '../../../lib/pulseMomentsUtils'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
-import { compact, initial, providerCssVarKey, providerLabel } from './hubFormat'
-import { formatChatRate, formatReactionScore, formatViewerDelta, REACTION_SCORE_TOOLTIP } from '../../../lib/momentMetricLabels'
+import { compact } from './hubFormat'
+import { formatChatRate, formatMomentViewersLabel, formatReactionScore, REACTION_SCORE_TOOLTIP } from '../../../lib/momentMetricLabels'
 import type { MomentChannelContext } from './MostReactedMinutesTable'
-import { BACKEND_SHARE_TITLE, formatSharePctLabel } from '../../../lib/emoteShare'
-import { EmoteImg } from './EmoteImg'
+import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
 
 export interface FigmaMomentInspectorProps {
   moment?: FigmaMomentRow | null
@@ -34,20 +33,6 @@ export interface FigmaMomentInspectorProps {
   variant?: 'default' | 'pulse-live'
   /** False when the channel is known offline — stops stale "Live IRC" copy. */
   channelLive?: boolean
-}
-
-function InspectorEmoteImage({ src, name, hero }: { src: string; name: string; hero?: boolean }) {
-  return (
-    <EmoteImg
-      src={src}
-      name={name}
-      fallbackClassName={
-        hero
-          ? 'pulse-moments__inspector-top-emote-fallback pulse-moments__inspector-top-emote-fallback--hero'
-          : 'pulse-moments__inspector-top-emote-fallback'
-      }
-    />
-  )
 }
 
 function InfoAffordance({ description, label }: { description: string; label: string }) {
@@ -107,105 +92,45 @@ export function MomentContextSpans({ moment, channelLive }: { moment: FigmaMomen
   )
 }
 
-function InspectorTopEmoteCard({
-  emote,
-  emoteTitle,
-  topShare,
-}: {
-  emote: NonNullable<ReturnType<typeof resolveMomentEmote>>
-  emoteTitle: string
-  topShare?: number
-}) {
-  return (
-    <div className="pulse-moments__inspector-emote-card" title={emoteTitle}>
-      <div className="pulse-moments__inspector-emote-card-head">
-        <span className="pulse-moments__inspector-top-emote-label">Top emote this minute</span>
-        <InfoAffordance description={emoteTitle} label={`Emote details for ${emote.name}`} />
-      </div>
-      <div className="pulse-moments__inspector-emote-card-body">
-        <div className="pulse-moments__inspector-emote-frame">
-          {emote.imageUrl ? (
-            <InspectorEmoteImage src={emote.imageUrl} name={emote.name} hero />
-          ) : (
-            <span
-              className="pulse-moments__inspector-top-emote-fallback pulse-moments__inspector-top-emote-fallback--hero"
-              aria-hidden="true"
-            >
-              {initial(emote.name)}
-            </span>
-          )}
-        </div>
-        <div className="pulse-moments__inspector-emote-details">
-          <div className="pulse-moments__inspector-emote-title-row">
-            <span className="pulse-moments__inspector-top-emote-name" title={emote.name}>
-              {emote.name}
-            </span>
-            {emote.provider ? (
-              <span
-                className="pulse-moments__inspector-provider"
-                data-provider={providerCssVarKey(emote.provider)}
-              >
-                {providerLabel(emote.provider)}
-              </span>
-            ) : null}
-          </div>
-          {emote.count != null ? (
-            <p className="pulse-moments__inspector-emote-stat-row">
-              <span className="pulse-moments__inspector-emote-stat-group">
-                <strong>{compact(emote.count)}</strong>
-                <span className="pulse-moments__inspector-emote-stat-unit">uses this minute</span>
-              </span>
-            </p>
-          ) : null}
-          {topShare != null && Number.isFinite(topShare) ? (
-            <p className="pulse-moments__inspector-emote-share-row">
-              <span
-                className="pulse-moments__inspector-emote-share-line"
-                title={`${formatSharePctLabel(topShare)} — ${BACKEND_SHARE_TITLE}`}
-              >
-                {formatSharePctLabel(topShare)} of emotes
-              </span>
-            </p>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function InspectorHero({
   moment,
   emoteLookup,
   liveChannels,
   showScore,
+  liveCompact = false,
 }: {
   moment: FigmaMomentRow
   emoteLookup?: Map<string, HubEmote>
   liveChannels?: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>>
   showScore?: boolean
+  liveCompact?: boolean
 }) {
   const hasEmotes = momentHasEmoteRollups(moment)
   const emote = hasEmotes ? resolveMomentEmote(moment, emoteLookup ?? new Map()) : null
-  const emoteTitle = emote ? momentEmoteTitle(emote) : ''
-  const totalEmotes = momentTotalEmoteUses(moment)
-  const viewerDelta = formatViewerDelta(moment.viewerDelta)
-  const viewerDisplay = viewerDelta === '—' ? 'no change' : viewerDelta
+  const totalEmotes = resolveMomentEmotesPerMin(moment)
+  const viewerCount = resolveMomentViewers(moment, liveChannels)
+  const viewerDisplay = formatMomentViewersLabel(viewerCount)
   const activityBadge = momentActivityBadge(moment)
   const topShare = moment.topEmotes?.[0]?.sharePct
 
   return (
     <div className="pulse-moments__inspector-hero">
       {emote ? (
-        <InspectorTopEmoteCard emote={emote} emoteTitle={emoteTitle} topShare={topShare} />
+        <InspectorTopEmoteCard
+          emote={emote}
+          headline="Top emote this minute"
+          countUnit="uses this minute"
+          topShare={topShare}
+        />
       ) : (
         <p className="muted pulse-moments__inspector-empty-emote">No emote rollups for this minute.</p>
       )}
 
       <div
-        className={`pulse-moments__inspector-kpi-row${showScore ? ' pulse-moments__inspector-kpi-row--session' : ''}`}
+        className={`pulse-moments__inspector-kpi-row${showScore ? ' pulse-moments__inspector-kpi-row--session' : ''}${liveCompact ? ' pulse-moments__inspector-kpi-row--live-compact' : ''}`}
       >
         <div className="pulse-moments__inspector-stat pulse-moments__inspector-stat--emote">
-          <small>Total emote uses</small>
+          <small>Emotes / min</small>
           <strong>{totalEmotes != null ? compact(totalEmotes) : '—'}</strong>
         </div>
         <div className="pulse-moments__inspector-stat">
@@ -213,7 +138,7 @@ function InspectorHero({
           <strong>{formatChatRate(moment.chatPerMin)}</strong>
         </div>
         <div className="pulse-moments__inspector-stat pulse-moments__inspector-stat--high">
-          <small>Viewer change</small>
+          <small>Viewers</small>
           <strong>{viewerDisplay}</strong>
         </div>
         {showScore ? (
@@ -297,6 +222,7 @@ export function FigmaMomentInspector({
         emoteLookup={emoteLookup}
         liveChannels={liveChannels}
         showScore={!isLive}
+        liveCompact={isLive}
       />
 
       {!isLive ? (

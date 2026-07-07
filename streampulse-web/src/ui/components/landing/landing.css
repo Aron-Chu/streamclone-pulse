@@ -497,7 +497,7 @@
 
 .sl-xtour__scene {
   position: relative;
-  height: 255vh;
+  height: 280vh;
 }
 
 .sl-xtour__sticky {
@@ -669,8 +669,8 @@
   will-change: transform;
   backface-visibility: hidden;
 }
-.sl-ext__scroll.is-playing > .sl-ext__card { opacity: 0.45; transform: scale(0.985); }
-.sl-ext__scroll.is-playing > .sl-ext__card.is-live { opacity: 1; transform: none; border-color: rgba(var(--xp-rgb), 0.56); box-shadow: 0 0 0 1px rgba(var(--xp-rgb), 0.34), 0 16px 40px -22px rgba(var(--xp-rgb), 0.7); }
+.sl-ext__scroll.is-playing > [data-tour-step] { opacity: 0.45; transform: scale(0.985); }
+.sl-ext__scroll.is-playing > [data-tour-step].is-live { opacity: 1; transform: none; border-color: rgba(var(--xp-rgb), 0.56); box-shadow: 0 0 0 1px rgba(var(--xp-rgb), 0.34), 0 16px 40px -22px rgba(var(--xp-rgb), 0.7); }
 
 .sl-ext__card {
   margin: 0 1.1rem 1rem;
@@ -701,6 +701,78 @@
 .sl-segpair { display: inline-flex; gap: 2px; margin-bottom: 0.55rem; padding: 2px; border-radius: 0.35rem; background: hsl(var(--sc-secondary) / 0.55); }
 .sl-segpair i { padding: 0.16rem 0.55rem; border-radius: 0.28rem; color: hsl(var(--sc-muted-foreground)); font-style: normal; font-size: 0.6rem; font-weight: 900; }
 .sl-segpair i.is-active { color: var(--xp-on); background: var(--xp-accent); }
+.sl-segpair--wide { display: flex; width: 100%; }
+.sl-segpair--wide i { flex: 1; text-align: center; }
+
+.sl-plotrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+.sl-plotrow__label {
+  width: 100%;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sl-plotchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  padding: 0.18rem 0.42rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: 999px;
+  background: hsl(var(--sc-secondary) / 0.35);
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+.sl-plotchip.is-active {
+  border-color: rgba(var(--xp-rgb), 0.55);
+  background: rgba(var(--xp-rgb), 0.14);
+  color: var(--xp-accent);
+}
+.sl-plotchip img {
+  width: 1.12rem;
+  height: 1.12rem;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.sl-plotchip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sl-gamebands {
+  display: flex;
+  gap: 2px;
+  margin-top: 0.38rem;
+  margin-bottom: 0.15rem;
+  padding: 2px;
+  border-radius: 0.35rem;
+  background: hsl(var(--sc-secondary) / 0.4);
+}
+.sl-gamebands span {
+  flex: 1;
+  padding: 0.22rem 0.35rem;
+  border-radius: 0.28rem;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.sl-gamebands span:last-child {
+  color: var(--xp-on);
+  background: var(--xp-accent);
+}
 
 .sl-xlegend2,
 .sl-ext__axis { display: flex; justify-content: space-between; gap: 0.7rem; color: hsl(var(--sc-muted-foreground)); font-size: 0.6rem; }
@@ -868,6 +940,28 @@
   text-align: center;
 }
 
+/* Static / reduced-motion / no-JS / mobile: native panel scroll */
+.sl-xtour[data-static] .sl-xtour__scene {
+  height: auto;
+}
+.sl-xtour[data-static] .sl-xtour__sticky {
+  position: static;
+  min-height: 0;
+  transform: none !important;
+}
+.sl-xtour[data-static] .sl-ext__scrollport,
+.sl-xtour[data-static] .sl-ext__scrollport.is-playing {
+  overflow-y: auto;
+}
+.sl-xtour[data-static] .sl-ext__scroll,
+.sl-xtour[data-static] .sl-ext__scroll.is-playing {
+  transform: none !important;
+}
+.sl-xtour[data-static] .sl-ext__scroll > [data-tour-step] {
+  opacity: 1;
+  transform: none;
+}
+
 @media (max-width: 960px) {
   .sl-menu { display: none; }
   .sl-chatbg { display: none; }
@@ -876,6 +970,18 @@
   .sl-xtour__grid { grid-template-columns: 1fr; }
   .sl-xtour__rail { display: none; }
   .sl-ext { height: auto; max-height: 78vh; }
+  .sl-xtour .sl-ext__scrollport,
+  .sl-xtour .sl-ext__scrollport.is-playing {
+    overflow-y: auto;
+  }
+  .sl-xtour .sl-ext__scroll,
+  .sl-xtour .sl-ext__scroll.is-playing {
+    transform: none !important;
+  }
+  .sl-xtour .sl-ext__scroll > [data-tour-step] {
+    opacity: 1;
+    transform: none;
+  }
   .sl-featgrid,
   .sl-steps,
   .sl-resgrid { grid-template-columns: 1fr; }

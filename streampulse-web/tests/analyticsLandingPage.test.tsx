@@ -1,8 +1,20 @@
+/**
+ * Unit coverage for analytics landing / hub render paths.
+ *
+ * Known debt: the stats-fallback case can OOM or hang under full vitest runs (~50 min observed).
+ * Until the render memory issue is isolated, treat e2e
+ * `tests/e2e/analytics-hub-metrics-honesty.spec.ts` as authority for stats-fallback honesty.
+ */
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import DashboardHome from "../src/routes/dashboard/Home";
 import AnalyticsLandingPage from "../src/routes/analytics/AnalyticsLandingPage";
+
+const hubMockOpts = vi.hoisted(() => ({
+  loadSource: "full" as "full" | "stats-fallback" | "cache",
+  hubEndpointOk: true,
+}));
 
 vi.mock("../src/hooks/usePublicHubData", () => ({
   usePublicHubData: () => ({
@@ -126,8 +138,8 @@ vi.mock("../src/hooks/usePublicHubData", () => ({
     loading: false,
     refreshing: false,
     error: null,
-    loadSource: "full",
-    hubEndpointOk: true,
+    loadSource: hubMockOpts.loadSource,
+    hubEndpointOk: hubMockOpts.hubEndpointOk,
     liveEmpty: true,
     lastUpdated: Date.now(),
     refresh: vi.fn(),
@@ -139,6 +151,11 @@ vi.mock("../src/hooks/useHubRecentLogins", () => ({
 }));
 
 describe("/analytics landing (AnalyticsLandingPage)", () => {
+  afterEach(() => {
+    hubMockOpts.loadSource = "full";
+    hubMockOpts.hubEndpointOk = true;
+  });
+
   it("renders Pulse Moments Live without the removed Moments feed", async () => {
     render(
       <MemoryRouter>
@@ -212,6 +229,23 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     expect(moverRow?.querySelector("img")?.getAttribute("src")).toContain(
       "cdn.example/xqc.png",
     );
+  });
+
+  it("shows degraded hub copy and static Live Wire on stats-fallback", async () => {
+    hubMockOpts.loadSource = "stats-fallback";
+    hubMockOpts.hubEndpointOk = false;
+
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(/Public hub unavailable/i),
+    ).toBeTruthy();
+    expect(screen.getAllByText(/hub unavailable — live network feed paused/i).length).toBe(1);
+    expect(screen.queryByText("NEW")).toBeNull();
   });
 });
 

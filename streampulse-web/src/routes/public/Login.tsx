@@ -7,6 +7,8 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 
 const REQUEST_ACCESS_GITHUB = 'https://github.com/Aron-Chu/streamclone-pulse'
 const REQUEST_ACCESS_DISCORD = 'https://discord.gg/streampulse'
+const CHROME_EXTENSION_URL =
+  'https://chrome.google.com/webstore/detail/streamclone-pulse/placeholder'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -44,7 +46,12 @@ export default function Login() {
     <PublicLayout>
       <section className="panel panel--elevated" style={{ maxWidth: '32rem', margin: '0 auto' }}>
         <h1>Connect StreamPulse</h1>
-        <p className="muted">Enter your beta key to open the hosted dashboard.</p>
+        <p className="muted">
+          <strong>Private operator route.</strong> Public analytics at{' '}
+          <Link to="/analytics">/analytics</Link> does not require a beta key. This screen is for
+          private dashboard access only.
+        </p>
+        <p className="muted">Enter your beta key to open the private workspace dashboard.</p>
 
         <form className="stack-md" onSubmit={(event) => void handleSubmit(event)}>
           <div>
@@ -84,8 +91,12 @@ export default function Login() {
           .
         </p>
 
-        <p style={{ marginTop: '1rem' }}>
-          <Link to="/setup">Need to connect the extension first?</Link>
+        <p className="muted" style={{ marginTop: '1rem' }}>
+          Need the Twitch overlay?{' '}
+          <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
+            Install the Chrome extension
+          </a>{' '}
+          and set backend URL or beta key in extension Options — not on this page.
         </p>
       </section>
     </PublicLayout>

@@ -13,13 +13,10 @@ interface ExtensionDemoCardProps {
   onTabChange?: (tab: SidebarDemoTab) => void
   /** Render only the tab row (for chat mode shell). */
   tabsOnly?: boolean
+  /** Show page-scroll tour hint (desktop animated mode). */
+  showTourHint?: boolean
 }
 
-/**
- * Deterministic chart geometry. The chat/min line, its min–max band, and the
- * 7TV/min series all share one vertical scale so they stay aligned — mirroring
- * the shipped analytics chart, which overlays a 7TV series on the chat line.
- */
 const CHART_W = 600
 const CHART_H = 100
 const CHART_PAD = 8
@@ -31,11 +28,13 @@ function chartPoint(value: number, index: number, count: number): readonly [numb
   const y = Math.round(CHART_H - CHART_PAD - norm * (CHART_H - CHART_PAD * 2))
   return [x, y] as const
 }
+
 function chartLine(values: number[]): string {
   return values
     .map((v, i) => `${i === 0 ? 'M' : 'L'}${chartPoint(v, i, values.length).join(',')}`)
     .join(' ')
 }
+
 function chartBand(hi: number[], lo: number[]): string {
   const top = chartLine(hi)
   const bottom = lo
@@ -56,7 +55,6 @@ const CHAT_BAND = chartBand(CHAT_MAX, CHAT_MIN)
 const SV_LINE = chartLine(SEVENTV)
 const SV_AREA = `${SV_LINE} L${CHART_W},${CHART_H} L0,${CHART_H} Z`
 
-/** Top-emote leaderboard — 7TV-heavy with Speed-culture wide emotes up top. */
 const TOP_EMOTES: ReadonlyArray<{ name: string; count: number; emote: LandingEmote; pct: number }> = [
   { name: 'widespeedlaugh', count: 37, emote: findLandingEmote('widespeedlaugh')!, pct: 100 },
   { name: 'degloved', count: 28, emote: findLandingEmote('degloved')!, pct: 76 },
@@ -76,31 +74,23 @@ const MORE_SPIKES: ReadonlyArray<{ time: string; kind: string; stats: string; em
   {
     time: '00:42:00',
     kind: '7TV emote spike',
-    stats: '52 chat · 45 emotes · score 37',
+    stats: '52 chat - 45 emotes - score 37',
     emotes: [findLandingEmote('widespeedlaugh')!, findLandingEmote('degloved')!, findLandingEmote('Clap')!],
   },
   {
     time: '00:14:00',
     kind: '7TV emote spike',
-    stats: '22 chat · 17 emotes · score 33',
+    stats: '22 chat - 17 emotes - score 33',
     emotes: [findLandingEmote('widereacting')!, findLandingEmote('PepePls')!],
   },
 ]
 
-/** Past streams — VOD history with per-stream analytics, mirroring the panel's footer card. */
-const PAST_VODS: ReadonlyArray<{ title: string; date: string; len: string; status: string; tone: 'live' | 'synced' | 'analytics' }> = [
-  { title: 'Subathon finale — day 3', date: 'Live now', len: '1:42', status: 'Live', tone: 'live' },
-  { title: 'Ranked grind to top 500', date: 'Yesterday', len: '5:47', status: 'Synced', tone: 'synced' },
-  { title: 'Just Chatting + watch party', date: '2 days ago', len: '4:12', status: 'Analytics', tone: 'analytics' },
+const PAST_VODS: ReadonlyArray<{ title: string; date: string; len: string; status: string }> = [
+  { title: 'Rank grind + patch notes', date: 'Apr 12', len: '4:22', status: 'Synced' },
+  { title: 'Scrim block w/ chat Q&A', date: 'Apr 9', len: '2:18', status: 'Stats' },
+  { title: 'Community games night', date: 'Apr 5', len: '3:41', status: 'Synced' },
 ]
 
-const PlayGlyph = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M8 5v14l11-7z" fill="currentColor" />
-  </svg>
-)
-
-/** Tiny line icons for the Live-now tiles, matching the shipped panel. */
 const ICON_VIEWERS = (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="8" cy="5" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
@@ -133,15 +123,6 @@ const ICON_EMOTE = (
   </svg>
 )
 
-/**
- * Picture-perfect replica of the shipped StreamPulse "Pulse" panel: the Twitch
- * sidebar tab row, the Stream Pulse header with LIVE badge, tracking button and
- * auto-updating toggle, then a scrolling body with Data coverage, the Live-now
- * KPIs, the 60-minute chat-velocity chart, the Top-emote leaderboard, and the
- * Most-reacted moments. Accent surfaces read from `--xp-*` custom properties
- * keyed by `data-theme`. Decorative (role=img); seeded with the live channel
- * name when present.
- */
 function DemoTabRow({
   activeTab,
   onTabChange,
@@ -189,8 +170,27 @@ export function ExtensionDemoCard({
   activeTab = 'pulse',
   onTabChange,
   tabsOnly = false,
+  showTourHint = false,
 }: ExtensionDemoCardProps) {
-  const channel = model?.channel ?? 'the channel'
+  const ext = model ?? {
+    channel: 'the channel',
+    category: 'Just Chatting',
+    connectionOk: true,
+    syncLabel: 'syncing',
+    tiles: [
+      { label: 'Viewers', value: '351', sub: '+17 - 5m' },
+      { label: 'Chat/min', value: '13', sub: '11.6 avg - 5m' },
+      { label: '7TV/min', value: '11', sub: '7TV share 84%' },
+    ],
+    wavePath: CHAT_LINE,
+    reacted: [],
+  }
+  const channel = ext.channel
+  const viewerTile = ext.tiles[0] ?? { label: 'Viewers', value: '351', sub: '+17 - 5m' }
+  const chatTile = ext.tiles[1] ?? { label: 'Chat/min', value: '13', sub: '11.6 avg - 5m' }
+  const tvTile = ext.tiles[2] ?? { label: '7TV/min', value: '11', sub: '7TV share 84%' }
+  const synced = ext.syncLabel === 'syncing'
+  const syncPill = synced ? 'Synced' : ext.syncLabel
 
   if (tabsOnly) {
     return (
@@ -205,7 +205,7 @@ export function ExtensionDemoCard({
       className="sl-ext"
       data-theme={theme}
       role="img"
-      aria-label={`StreamPulse Pulse panel for ${channel} — live data coverage, viewer and chat KPIs, the 60-minute chat-velocity chart, the top-emote leaderboard, the most-reacted moments of the stream, and past VODs with full analytics`}
+      aria-label={`StreamPulse Pulse panel for ${channel} with live data coverage, viewer and chat KPIs, Stream Activity chart, top emotes, most reacted moments, and past VODs`}
     >
       <DemoTabRow activeTab={activeTab} onTabChange={onTabChange} />
 
@@ -221,7 +221,7 @@ export function ExtensionDemoCard({
         </div>
         <div className="sl-ext__sub">based on chat and emote activity</div>
         <div className="sl-ext__trackbtn" aria-hidden="true">
-          Tracking
+          Tracking {channel}
         </div>
         <div className="sl-ext__autorow">
           <span>Auto-updating</span>
@@ -231,42 +231,37 @@ export function ExtensionDemoCard({
 
       <div className="sl-ext__scrollport" ref={scrollportRef}>
         <div className="sl-ext__scroll">
-          {/* Live now — first card so the demo rests on KPIs + chart */}
-          <div className="sl-ext__card">
+          <div className="sl-ext__card" data-tour-step="1">
             <div className="sl-ext__cardh">
               <span>Live now</span>
-              <span className="sl-pill ok">Synced</span>
+              <span className={`sl-pill ${synced ? 'ok' : 'warn'}`}>{syncPill}</span>
             </div>
             <div className="sl-ln-grid">
               <div className="sl-ln-tile">
-                <small>{ICON_VIEWERS} Viewers</small>
-                <b>351</b>
-                <span className="up">+17 · 5m</span>
+                <small>{ICON_VIEWERS} {viewerTile.label}</small>
+                <b>{viewerTile.value}</b>
+                <span className={viewerTile.sub.startsWith('-') ? 'dn' : 'up'}>{viewerTile.sub}</span>
               </div>
               <div className="sl-ln-tile">
-                <small>{ICON_CHAT} Chat / min</small>
+                <small>{ICON_CHAT} {chatTile.label}</small>
                 <b>
-                  13 <i className="sl-ln-trend">▲</i>
+                  {chatTile.value} <i className="sl-ln-trend">▲</i>
                 </b>
-                <span className="meta">11.6 avg · 5m</span>
+                <span className="meta">{chatTile.sub}</span>
               </div>
               <div className="sl-ln-tile">
-                <small>{ICON_EMOTE} Emotes / min</small>
-                <b>11</b>
-                <span className="meta">
-                  <em>7TV</em> 11 · Other 0
-                </span>
-                <span className="meta2">0 – 7 (5m avg)</span>
+                <small>{ICON_EMOTE} {tvTile.label}</small>
+                <b>{tvTile.value}</b>
+                <span className="meta">{tvTile.sub}</span>
               </div>
             </div>
           </div>
 
-          {/* Chat-velocity chart + top emotes */}
-          <div className="sl-ext__card">
+          <div className="sl-ext__card" data-tour-step="2">
             <div className="sl-ext__cardh">
-              <span>Chat / min (last 60 min)</span>
+              <span>Stream Activity</span>
             </div>
-            <div className="sl-ext__hint">stream time · per minute</div>
+            <div className="sl-ext__hint">chat, viewers, emotes - stream time</div>
             <div className="sl-segpair sl-segpair--wide" aria-hidden="true">
               <i className="is-active">60M</i>
               <i>4H</i>
@@ -277,11 +272,20 @@ export function ExtensionDemoCard({
                 <i className="chat" />Chat/min
               </span>
               <span>
-                <i className="band" />min–max
+                <i className="band" />min-max
               </span>
               <span>
                 <i className="sv" />7TV/min
               </span>
+            </div>
+            <div className="sl-plotrow" aria-hidden="true">
+              <span className="sl-plotrow__label">Plot on chart (0-4)</span>
+              {TOP_EMOTES.slice(0, 4).map((emote, index) => (
+                <span className={`sl-plotchip${index === 0 ? ' is-active' : ''}`} key={emote.name}>
+                  <img src={landingEmoteImageUrl(emote.emote, '1x')} alt="" loading="lazy" decoding="async" />
+                  <span>{emote.name}</span>
+                </span>
+              ))}
             </div>
             <div className="sl-xchart2" aria-hidden="true">
               <svg viewBox="0 0 600 100" preserveAspectRatio="none">
@@ -296,6 +300,10 @@ export function ExtensionDemoCard({
               <span>00:38:00</span>
               <span>01:07:00</span>
               <span>Now</span>
+            </div>
+            <div className="sl-gamebands" aria-hidden="true">
+              <span>Just Chatting</span>
+              <span>Fortnite</span>
             </div>
 
             <div className="sl-te__head">
@@ -325,62 +333,61 @@ export function ExtensionDemoCard({
               Show all 19
             </div>
             <div className="sl-te__stale" aria-hidden="true">
-              7TV stale — using cached set
+              7TV stale - using cached set
             </div>
           </div>
 
-          {/* Data coverage */}
-          <div className="sl-ext__card sl-cov">
+          <div className="sl-ext__card sl-cov" data-tour-step="3">
             <div className="sl-cov__head">
               <span className="sl-cov__k">Data coverage</span>
-              <span className="sl-cov__live">
+              <span className={`sl-cov__live${synced ? '' : ' is-waiting'}`}>
                 <span className="sl-dot" aria-hidden="true" />
-                Live analytics active
+                {synced ? 'Live analytics active' : 'Stats-only until chat sync'}
               </span>
             </div>
             <p className="sl-cov__copy">
-              Live chat and emote rollups are updating each minute from stream start.
+              Live chat and emote rollups update each minute, with the visible coverage window reported by the backend.
             </p>
             <div className="sl-cov__rows">
               <div>
-                <span>Stream started</span>
-                <b>6/27/2026, 12:02:22 PM</b>
+                <span>Viewer source</span>
+                <b>live rollups</b>
               </div>
               <div>
-                <span>Collector attached</span>
-                <b>6/27/2026, 12:02:22 PM</b>
+                <span>Coverage start</span>
+                <b>+1:42</b>
               </div>
               <div>
-                <span>Metadata</span>
-                <b>6/27/2026, 1:40:00 PM</b>
+                <span>Live window</span>
+                <b>1:42:18</b>
               </div>
             </div>
+            <div className="sl-cov__note">Late-start windows stay visible; StreamPulse does not fabricate earlier chat.</div>
           </div>
 
-          {/* Most reacted so far */}
-          <div className="sl-ext__card">
+          <div className="sl-ext__card" data-tour-step="4">
             <div className="sl-ext__cardh">
-              <span>Most reacted so far</span>
+              <span>Most Reacted So Far</span>
             </div>
             <div className="sl-ext__hint">
-              Biggest chat &amp; emote spikes this broadcast · updates live as stronger moments land.
+              Top backend-detected moment from chat, viewer, and emote signals.
             </div>
             <div className="sl-mrhero">
               <div className="sl-mrhero__top">
                 <span className="sl-mrhero__badge">Top moment</span>
-                <span className="sl-mrhero__time">00:01:00</span>
+                <span className="sl-mrhero__time">00:18:42</span>
                 <span className="sl-mrhero__score">
-                  <b>37</b>
+                  <b>61</b>
                   <small>score</small>
                 </span>
               </div>
               <div className="sl-mrhero__reason">Chat spike</div>
               <div className="sl-mrhero__metrics">
                 <span>
-                  <b>56</b> chat / min
+                  <b>827</b> chat max
                 </span>
                 <span>
-                  <b>19</b> emotes / min
+                  <b>530</b> emote peak
                 </span>
               </div>
               <div className="sl-mrhero__thumbs" aria-hidden="true">
@@ -413,39 +420,37 @@ export function ExtensionDemoCard({
             </div>
           </div>
 
-          {/* Past streams — past VODs + full analytics shortcut */}
-          <div className="sl-ext__card sl-pv">
+          <div className="sl-ext__card" data-tour-step="5">
             <div className="sl-ext__cardh">
               <span>Past streams</span>
-              <span className="sl-pv__count">{PAST_VODS.length}</span>
+              <span className="sl-pv__count">3</span>
             </div>
-            <div className="sl-ext__hint">Watch a VOD or open its analytics</div>
-            <div className="sl-pv__list">
+            <div className="sl-ext__hint">Ended broadcasts with sync status and one-tap analytics.</div>
+            <div className="sl-pv__list" aria-hidden="true">
               {PAST_VODS.map((vod) => (
                 <div className="sl-pv__row" key={vod.title}>
-                  <span className="sl-pv__thumb" data-tone={vod.tone} aria-hidden="true">
+                  <span className="sl-pv__thumb">
                     <span className="sl-pv__len">{vod.len}</span>
-                    <span className="sl-pv__play">
-                      <PlayGlyph />
-                    </span>
                   </span>
                   <span className="sl-pv__meta">
-                    <strong className="sl-pv__title">{vod.title}</strong>
+                    <span className="sl-pv__title">{vod.title}</span>
                     <span className="sl-pv__date">{vod.date}</span>
                   </span>
-                  <span className={`sl-pv__status is-${vod.tone}`}>{vod.status}</span>
+                  <span className="sl-pv__status">{vod.status}</span>
                 </div>
               ))}
             </div>
             <div className="sl-pv__foot" aria-hidden="true">
-              View full analytics →
+              View all past streams
             </div>
           </div>
         </div>
       </div>
-      <p className="sl-ext__scrollhint" aria-hidden="true">
-        Scroll for moments
-      </p>
+      {showTourHint ? (
+        <p className="sl-ext__scrollhint" aria-hidden="true">
+          Scroll the page to tour each card
+        </p>
+      ) : null}
     </div>
   )
 }

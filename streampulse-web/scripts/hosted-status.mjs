@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * IRC + corpus status against the configured hosted API (default: api.streampulse.stream).
- * Usage: npm run status:hosted
+ * Usage: VITE_BACKEND_URL=https://api.streampulse.stream npm run status:hosted
+ *
+ * Ignores localhost from .env files and from CLI VITE_BACKEND_URL — status:hosted always probes production.
  */
 
 import { readFileSync, existsSync } from 'node:fs'
@@ -10,16 +12,36 @@ import { fileURLToPath } from 'node:url'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DEFAULT_API = 'https://api.streampulse.stream'
+const LOCAL_PATTERN = /localhost|127\.0\.0\.1|laptopworker|:8090/i
+
+function isLocalBackend(url) {
+  return LOCAL_PATTERN.test(url)
+}
 
 function readBackendUrl() {
+  const cli = process.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '')
+  if (cli) {
+    if (isLocalBackend(cli)) {
+      console.warn('[status:hosted] ignoring localhost VITE_BACKEND_URL — using hosted default')
+      return DEFAULT_API
+    }
+    return cli
+  }
   for (const name of ['.env.development.local', '.env.local', '.env']) {
     const path = resolve(webRoot, name)
     if (!existsSync(path)) continue
     const text = readFileSync(path, 'utf8')
     const match = text.match(/^VITE_BACKEND_URL=(.+)$/m)
-    if (match) return match[1].trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '')
+    if (match) {
+      const fromFile = match[1].trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '')
+      if (isLocalBackend(fromFile)) {
+        console.warn(`[status:hosted] ignoring localhost in ${name} — using hosted default`)
+        return DEFAULT_API
+      }
+      return fromFile
+    }
   }
-  return process.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '') || DEFAULT_API
+  return DEFAULT_API
 }
 
 async function fetchJson(url) {
@@ -36,8 +58,23 @@ function line(label, value) {
   console.log(`  ${label.padEnd(22)} ${value}`)
 }
 
+function requireKeys(obj, keys, label) {
+  const missing = keys.filter((k) => obj?.[k] === undefined)
+  if (missing.length > 0) {
+    throw new Error(`${label} missing keys: ${missing.join(', ')}`)
+  }
+}
+
 const base = readBackendUrl()
-console.log(`\nStreamPulse hosted status\n  API: ${base}\n`)
+let portalVersion = 'dev'
+try {
+  const pkg = JSON.parse(readFileSync(resolve(webRoot, 'package.json'), 'utf8'))
+  portalVersion = pkg.version ?? 'dev'
+} catch {
+  /* ignore */
+}
+
+console.log(`\nStreamPulse hosted status\n  API: ${base}\n  Portal pkg: ${portalVersion}\n`)
 
 try {
   const { data: health, latencyMs: healthMs } = await fetchJson(`${base}/v1/extension/health`)
@@ -58,7 +95,19 @@ try {
 }
 
 try {
+  const { data: status, latencyMs: statusMs } = await fetchJson(`${base}/v1/public/status`)
+  requireKeys(status, ['status', 'api', 'degraded', 'updatedAt'], 'public status')
+  line('Public status', `${status.status} (${statusMs}ms)`)
+  line('Status degraded', String(status.degraded))
+  line('Status updated', status.updatedAt ?? '—')
+} catch (err) {
+  console.error(`  Public status FAIL: ${err instanceof Error ? err.message : err}`)
+  process.exitCode = 1
+}
+
+try {
   const { data: hub, latencyMs: hubMs } = await fetchJson(`${base}/v1/public/hub`)
+  requireKeys(hub, ['generatedAt', 'poolSize', 'coverage', 'corpus', 'corpusPipeline'], 'public hub')
   const pipe = hub.corpusPipeline ?? {}
   const roster = pipe.roster ?? {}
   const cov = hub.coverage ?? {}
@@ -86,8 +135,23 @@ try {
   line('Gold jobs', formatTier(pipe.gold))
   line('Hub live rows', String((hub.liveChannels ?? []).length))
   line('Activity points', String((hub.activity?.points ?? []).length))
+  line('Live moments status', String(hub.livePulseMomentsStatus ?? '—'))
 } catch (err) {
   console.error(`  Hub/corpus FAIL: ${err instanceof Error ? err.message : err}`)
+  process.exitCode = 1
+}
+
+try {
+  const bucketT = Math.floor(Date.now() / 1000 / 60) * 60
+  const { data: moments, latencyMs } = await fetchJson(
+    `${base}/v1/public/hub/moments?bucketT=${bucketT}&limit=5`,
+  )
+  requireKeys(moments, ['status', 'moments', 'bucketT'], 'hub moments')
+  line('\nHub moments sample', `HTTP OK (${latencyMs}ms)`)
+  line('  status', moments.status ?? '—')
+  line('  count', String((moments.moments ?? []).length))
+} catch (err) {
+  console.error(`  Hub moments FAIL: ${err instanceof Error ? err.message : err}`)
   process.exitCode = 1
 }
 
@@ -105,7 +169,7 @@ try {
 
 console.log('\nDev backend hints')
 line('Portal env file', existsSync(resolve(webRoot, '.env.development.local')) ? 'present' : 'missing (uses code default)')
-line('Expected VITE_BACKEND_URL', base)
+line('Resolved API', base)
 console.log(
   '\nIf charts still load localhost data in the browser, clear sessionStorage:\n  sessionStorage.removeItem("sp.backendUrlOverride")\n',
 )

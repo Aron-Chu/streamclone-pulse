@@ -40,9 +40,30 @@ export function formatViewerDelta(delta: number | string | null | undefined): st
   return `${prefix}${compact(delta)} viewers`
 }
 
+/** Compact emote rate for dense table cells. */
+export function formatEmoteRateCompact(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${compact(value)}/m`
+}
+
+/** Compact viewer count for Pulse Moments table cells (CCU at that minute). */
+export function formatMomentViewers(viewers: number | null | undefined): string {
+  if (viewers == null || !Number.isFinite(viewers) || viewers <= 0) return '—'
+  return compact(viewers)
+}
+
+/** Inspector label for viewers at the spike minute. */
+export function formatMomentViewersLabel(viewers: number | null | undefined): string {
+  if (viewers == null || !Number.isFinite(viewers) || viewers <= 0) return '—'
+  return `${compact(viewers)} viewers`
+}
+
 /** Compact viewer delta for dense Pulse Moments table cells (always Δ, never live CCU). */
 export function formatViewerDeltaCompact(delta: number | string | null | undefined): string {
+  if (delta == null) return '—'
+  if (typeof delta === 'string' && !delta.trim()) return '—'
   const full = formatViewerDelta(delta)
-  if (full === '—' || /no change/i.test(full)) return '—'
+  if (full === '—') return '—'
+  if (/no change/i.test(full)) return '0'
   return full.replace(/\s+viewers$/i, '')
 }

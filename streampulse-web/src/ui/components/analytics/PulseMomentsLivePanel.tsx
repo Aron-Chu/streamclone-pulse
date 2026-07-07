@@ -15,6 +15,7 @@ import {
 } from "../../../lib/pulseMomentRow";
 import {
   countIrcRollupChannels,
+  filterMomentsByBucket,
   filterPulseMoments,
   momentEmoteRollupsEmptyHint,
   PULSE_MOMENT_FILTER_HINT,
@@ -27,6 +28,10 @@ import {
   type PublicHub,
   type PublicHubActivityWindow,
 } from "../../../lib/publicHub";
+import {
+  readBucketMomentsCache,
+  writeBucketMomentsCache,
+} from "../../../lib/bucketMomentsCache";
 import { FigmaMomentInspector } from "./FigmaMomentInspector";
 import { MostReactedMinutesTable } from "./MostReactedMinutesTable";
 import { TopEmoteBurstsPanel } from "./TopEmoteBurstsPanel";
@@ -61,14 +66,21 @@ export interface PulseMomentsLivePanelProps {
   feed?: LivePulseMomentsResult;
   layout?: "standalone" | "embedded";
   selectedBucketT?: number | null;
+  /** Chart hover bucket — prefetch historical peaks for faster lock-on-click. */
+  hoverBucketT?: number | null;
   onClearBucketFilter?: () => void;
   activityWindow?: PublicHubActivityWindow;
   activityWindowMinutes?: number;
   updatedAgo?: string;
   /** Fires when bucket-filtered moments change (for chart inspector emote fallback). */
   onBucketMomentsChange?: (moments: FigmaMomentRow[]) => void;
+  /** Fires when historical bucket fetch loading state changes. */
+  onBucketLoadingChange?: (loading: boolean) => void;
   /** Full enriched live peak pool (for hover-bucket emote aggregation). */
   onPoolMomentsChange?: (moments: FigmaMomentRow[]) => void;
+  /** Hub embedded: controlled row selection for chart rail inspector. */
+  selectedMomentKey?: string | null;
+  onSelectMoment?: (moment: FigmaMomentRow) => void;
 }
 
 export function PulseMomentsLivePanel({
@@ -78,14 +90,20 @@ export function PulseMomentsLivePanel({
   feed: feedProp,
   layout = "standalone",
   selectedBucketT = null,
+  hoverBucketT = null,
   onClearBucketFilter,
   activityWindow = "24h",
   activityWindowMinutes = 180,
   updatedAgo,
   onBucketMomentsChange,
+  onBucketLoadingChange,
   onPoolMomentsChange,
+  selectedMomentKey: selectedMomentKeyProp = null,
+  onSelectMoment,
 }: PulseMomentsLivePanelProps) {
   const labels = useCommandCenterLabels();
+  const isEmbedded = layout === "embedded";
+  const isHubControlled = isEmbedded && Boolean(onSelectMoment);
   const featured = useMemo(() => featuredSessionFromPublicHub(hub), [hub]);
   const resolvedFeed = useMemo(() => resolveLivePulseMoments(hub), [hub]);
   const feed = feedProp ?? resolvedFeed;
@@ -116,6 +134,70 @@ export function PulseMomentsLivePanel({
   const bucketSelected =
     feed.source === "network" && selectedBucketT != null;
 
+  const poolMoments = useMemo(
+    () => enrichPulseMomentRows(feed.moments, enrichCtx),
+    [enrichCtx, feed.moments],
+  );
+
+  const optimisticBucketMoments = useMemo(() => {
+    if (!bucketSelected || selectedBucketT == null) return [];
+    return filterMomentsByBucket(
+      poolMoments,
+      selectedBucketT,
+      activityWindowMinutes,
+      hub.liveChannels,
+    );
+  }, [
+    activityWindowMinutes,
+    bucketSelected,
+    hub.liveChannels,
+    poolMoments,
+    selectedBucketT,
+  ]);
+
+  useEffect(() => {
+    if (
+      !bucketSelected ||
+      selectedBucketT == null ||
+      bucketMoments.length > 0 ||
+      !bucketLoading
+    ) {
+      return;
+    }
+    if (optimisticBucketMoments.length === 0) return;
+    setBucketMoments(optimisticBucketMoments);
+    setBucketStatus("ready");
+    setBucketLoading(false);
+  }, [
+    bucketLoading,
+    bucketMoments.length,
+    bucketSelected,
+    optimisticBucketMoments,
+    selectedBucketT,
+  ]);
+
+  useEffect(() => {
+    if (
+      feed.source !== "network" ||
+      hoverBucketT == null ||
+      selectedBucketT != null
+    ) {
+      return;
+    }
+    if (readBucketMomentsCache(hoverBucketT, activityWindow)?.length) return;
+
+    const controller = new AbortController();
+    fetchHistoricalHubMoments(hoverBucketT, activityWindow, controller.signal)
+      .then((response) => {
+        const rows = response.moments.map(mapHubPulseMoment);
+        writeBucketMomentsCache(hoverBucketT, activityWindow, rows);
+      })
+      .catch(() => {
+        /* ignore prefetch errors */
+      });
+    return () => controller.abort();
+  }, [activityWindow, feed.source, hoverBucketT, selectedBucketT]);
+
   useEffect(() => {
     if (!bucketSelected || selectedBucketT == null) {
       setBucketMoments([]);
@@ -124,8 +206,20 @@ export function PulseMomentsLivePanel({
       setBucketLoading(false);
       return;
     }
+    const cached = readBucketMomentsCache(selectedBucketT, activityWindow) ?? [];
+    const interim =
+      cached.length > 0 ? cached : filterMomentsByBucket(
+        poolMoments,
+        selectedBucketT,
+        activityWindowMinutes,
+        hub.liveChannels,
+      );
+    setBucketMoments(interim);
+    setBucketStatus(interim.length > 0 ? "ready" : "idle");
+    setBucketReason(undefined);
+    setBucketLoading(interim.length === 0);
+
     const controller = new AbortController();
-    setBucketLoading(true);
     fetchHistoricalHubMoments(
       selectedBucketT,
       activityWindow,
@@ -133,6 +227,7 @@ export function PulseMomentsLivePanel({
     )
       .then((response) => {
         const rows = response.moments.map(mapHubPulseMoment);
+        writeBucketMomentsCache(selectedBucketT, activityWindow, rows);
         setBucketMoments(rows);
         setBucketReason(response.reason);
         setBucketStatus(
@@ -140,7 +235,7 @@ export function PulseMomentsLivePanel({
         );
       })
       .catch(() => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && interim.length === 0) {
           setBucketMoments([]);
           setBucketReason(undefined);
           setBucketStatus("error");
@@ -155,29 +250,17 @@ export function PulseMomentsLivePanel({
   }, [activityWindow, bucketSelected, selectedBucketT]);
 
   const allMoments = useMemo(() => {
-    const base =
-      bucketSelected && !bucketLoading
-        ? bucketMoments
-        : bucketSelected && bucketLoading
-          ? []
-          : feed.moments;
+    const base = bucketSelected ? bucketMoments : feed.moments;
     return enrichPulseMomentRows(base, enrichCtx);
-  }, [
-    bucketLoading,
-    bucketMoments,
-    bucketSelected,
-    enrichCtx,
-    feed.moments,
-  ]);
-
-  const poolMoments = useMemo(
-    () => enrichPulseMomentRows(feed.moments, enrichCtx),
-    [enrichCtx, feed.moments],
-  );
+  }, [bucketMoments, bucketSelected, enrichCtx, feed.moments]);
 
   useEffect(() => {
     onPoolMomentsChange?.(poolMoments);
   }, [onPoolMomentsChange, poolMoments]);
+
+  useEffect(() => {
+    onBucketLoadingChange?.(bucketSelected ? bucketLoading : false);
+  }, [bucketLoading, bucketSelected, onBucketLoadingChange]);
 
   useEffect(() => {
     if (!onBucketMomentsChange) return;
@@ -207,27 +290,40 @@ export function PulseMomentsLivePanel({
     () => new Set(hub.liveChannels.map((ch) => ch.login.toLowerCase())),
     [hub.liveChannels],
   );
-  const [selectedKey, setSelectedKey] = useState<string | undefined>(
+  const [internalSelectedKey, setInternalSelectedKey] = useState<string | undefined>(
     filteredMoments[0] ? momentRowKey(filteredMoments[0]) : undefined,
   );
 
+  const selectedKey = isHubControlled
+    ? (selectedMomentKeyProp ?? undefined)
+    : internalSelectedKey;
+
   useEffect(() => {
+    if (isHubControlled) return;
     const next = filteredMoments[0]
       ? momentRowKey(filteredMoments[0])
       : undefined;
-    setSelectedKey((current) => {
+    setInternalSelectedKey((current) => {
       if (current && filteredMoments.some((m) => momentRowKey(m) === current))
         return current;
       return next;
     });
-  }, [filteredMoments]);
+  }, [filteredMoments, isHubControlled]);
+
+  const handleSelectMoment = (moment: FigmaMomentRow) => {
+    if (isHubControlled) {
+      onSelectMoment?.(moment);
+      return;
+    }
+    setInternalSelectedKey(momentRowKey(moment));
+  };
 
   const selectedMoment = useMemo(
     () =>
       filteredMoments.find((m) => momentRowKey(m) === selectedKey) ??
-      filteredMoments[0] ??
+      (!isHubControlled ? filteredMoments[0] : null) ??
       null,
-    [filteredMoments, selectedKey],
+    [filteredMoments, isHubControlled, selectedKey],
   );
 
   const selectedSessionHref = useMemo(() => {
@@ -350,7 +446,6 @@ export function PulseMomentsLivePanel({
           ? `${channelCount} channel${channelCount === 1 ? "" : "s"}`
           : undefined;
 
-  const isEmbedded = layout === "embedded";
   const sectionClass = `pulse-moments-live${isFallback ? " pulse-moments-live--fallback" : ""}${isEmbedded ? " pulse-moments-live--embedded" : ""}`;
   const filterStaggerKey = effectiveFilter;
   const momentsListRef = useRef<HTMLDivElement>(null);
@@ -570,21 +665,11 @@ export function PulseMomentsLivePanel({
             </button>
           ) : null}
         </div>
-      ) : isFallback ? (
-        <div className="pulse-moments-live__fallback-card" ref={momentsListRef}>
-          <MostReactedMinutesTable
-            moments={filteredMoments}
-            selectedKey={selectedKey}
-            emoteLookup={emoteLookup}
-            variant="pulse-live"
-            liveLogins={liveLogins}
-            liveChannels={hub.liveChannels}
-            headerMeta={tableHeaderMeta}
-            onSelect={(moment) => setSelectedKey(momentRowKey(moment))}
-          />
-        </div>
       ) : (
-        <div className="pulse-moments-live__grid" ref={momentsListRef}>
+        <div
+          className={`pulse-moments-live__grid${isFallback ? " pulse-moments-live__grid--fallback" : ""}`}
+          ref={momentsListRef}
+        >
           <MostReactedMinutesTable
             moments={filteredMoments}
             selectedKey={selectedKey}
@@ -593,7 +678,7 @@ export function PulseMomentsLivePanel({
             liveLogins={liveLogins}
             liveChannels={hub.liveChannels}
             headerMeta={tableHeaderMeta}
-            onSelect={(moment) => setSelectedKey(momentRowKey(moment))}
+            onSelect={handleSelectMoment}
           />
           <div className="pulse-moments-live__side">
             <FigmaMomentInspector

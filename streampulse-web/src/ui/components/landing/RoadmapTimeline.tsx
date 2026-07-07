@@ -26,10 +26,9 @@ const ITEMS: RoadmapItem[] = [
   {
     title: 'ReplayForge — Clip Studio',
     tag: 'ReplayForge',
-    status: 'Beta',
-    state: 'progress',
-    progress: 48,
-    copy: 'Turn the loudest detected minutes into shareable clips — ReplayForge renders and trims them straight from the moment feed.',
+    status: 'Planned',
+    state: 'planned',
+    copy: 'Planned operator workflow: turn detected peaks into shareable clips via ReplayForge. Stays in the private dashboard — not a public launch surface yet.',
   },
   {
     title: 'ClipTrace — reverse VOD origin resolver',

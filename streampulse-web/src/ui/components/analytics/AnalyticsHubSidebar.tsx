@@ -66,10 +66,11 @@ export function AnalyticsHubSidebar({
           .map((section) => {
             const active = section.id === activeId
             return (
-              <li key={section.id}>
+              <li key={section.id} data-section-id={section.id}>
                 <button
                   type="button"
                   className={`analytics-hub-sidebar__link${active ? ' is-active' : ''}`}
+                  data-section-id={section.id}
                   aria-current={active ? 'true' : undefined}
                   onClick={() => {
                     setActiveId(section.id)

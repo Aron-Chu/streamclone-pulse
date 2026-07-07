@@ -8,20 +8,19 @@ import {
 import { DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/auth'
 
 describe('backendEndpoints', () => {
-  it('defines hosted production and local stack presets', () => {
-    expect(DEV_BACKEND_ENDPOINTS).toHaveLength(2)
+  it('defines hosted production preset only (no local :8090)', () => {
+    expect(DEV_BACKEND_ENDPOINTS).toHaveLength(1)
     expect(DEV_BACKEND_ENDPOINTS[0]?.url).toBe(DEFAULT_PRODUCTION_BACKEND_URL)
-    expect(DEV_BACKEND_ENDPOINTS[1]?.url).toBe('http://localhost:8090')
   })
 
-  it('resolves localhost variants to local preset', () => {
-    expect(resolveDevBackendEndpointId('http://localhost:8090')).toBe('local')
-    expect(resolveDevBackendEndpointId('http://127.0.0.1:8090/')).toBe('local')
+  it('treats localhost as custom, not a portal preset', () => {
+    expect(resolveDevBackendEndpointId('http://localhost:8090')).toBe('custom')
+    expect(resolveDevBackendEndpointId('http://127.0.0.1:8090/')).toBe('custom')
+    expect(resolveDevBackendEndpointId(DEFAULT_PRODUCTION_BACKEND_URL)).toBe('hosted')
   })
 
   it('maps hosted preset to cleared session override', () => {
     expect(devBackendSessionOverrideForPreset('hosted')).toBeNull()
-    expect(devBackendSessionOverrideForPreset('local')).toBe('http://localhost:8090')
   })
 
   it('normalizes trailing slashes', () => {

@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, RefreshCw, Save, Scissors, Send, X } from 'lucide-react'
 import {
+  clipCandidateCanQueueReplayForge,
+  clipCandidateConfidenceLabel,
+  clipCandidateInboxLabel,
+  clipCandidatePickReason,
   clipCandidateRangeLabel,
+  clipCandidateReasonLabel,
+  clipCandidateRenderabilityLabel,
+  clipCandidateResolvedInboxState,
+  clipCandidateResolvedRenderability,
+  clipCandidateResolvedStatusCopy,
   clipCandidateStatus,
   clipJobDisplayStatus,
   fetchClipCandidates,
@@ -28,20 +37,21 @@ function statusLabel(status: ClipCandidateStatus): string {
   return 'New'
 }
 
-function reasonLabel(reason: string): string {
-  return reason
+function reasonLabel(candidate: ClipCandidate): string {
+  return clipCandidateReasonLabel(clipCandidatePickReason(candidate))
 }
 
-function sourceWarning(candidate: ClipCandidate): string | null {
-  if (candidate.sourceStatus === 'missing') return 'Source unavailable'
-  if (candidate.sourceStatus === 'restricted') return 'Source restricted'
-  if (candidate.coverageState && candidate.coverageState !== 'ready') return `Coverage ${candidate.coverageState}`
-  return null
-}
-
-function confidenceLabel(value?: number): string {
-  if (!Number.isFinite(value ?? NaN)) return 'Confidence unknown'
-  return `${Math.round((value ?? 0) * 100)}% confidence`
+function inboxBadgeVariant(state?: ClipCandidate['inboxState']): 'info' | 'warning' | 'success' | 'outline' {
+  switch (state) {
+    case 'needs_source':
+      return 'warning'
+    case 'low_confidence':
+      return 'warning'
+    case 'queueable':
+      return 'success'
+    default:
+      return 'info'
+  }
 }
 
 interface ClipCandidateCardProps {
@@ -71,9 +81,11 @@ function ClipCandidateCard({
   onRefreshReplayForge,
 }: ClipCandidateCardProps) {
   const status = clipCandidateStatus(candidate)
-  const warning = sourceWarning(candidate)
+  const inboxLabel = clipCandidateInboxLabel(clipCandidateResolvedInboxState(candidate))
+  const renderabilityLabel = clipCandidateRenderabilityLabel(clipCandidateResolvedRenderability(candidate))
+  const statusCopy = clipCandidateResolvedStatusCopy(candidate)
   const title = candidate.state?.titleOverride || candidate.streamTitle || `${candidate.login} moment`
-  const canSendReplayForge = candidate.sourceStatus === 'available' && Boolean(candidate.vodId)
+  const canSendReplayForge = clipCandidateCanQueueReplayForge(candidate)
   const replayForgeStatus = replayForgeLabel(job)
 
   return (
@@ -83,11 +95,17 @@ function ClipCandidateCard({
           <Badge variant={status === 'saved' ? 'success' : status === 'dismissed' ? 'warning' : 'info'}>
             {statusLabel(status)}
           </Badge>
-          <Badge variant="outline">{reasonLabel(candidate.reason)}</Badge>
-          {warning ? <Badge variant="warning">{warning}</Badge> : null}
-          {replayForgeStatus ? <Badge variant={job?.status === 'queued' ? 'info' : job?.status === 'ready' ? 'success' : 'warning'}>{replayForgeStatus}</Badge> : null}
+          <Badge variant={inboxBadgeVariant(clipCandidateResolvedInboxState(candidate))}>{inboxLabel}</Badge>
+          <Badge variant="outline">{reasonLabel(candidate)}</Badge>
+          {renderabilityLabel ? <Badge variant="outline">{renderabilityLabel}</Badge> : null}
+          {replayForgeStatus ? (
+            <Badge variant={job?.status === 'queued' ? 'info' : job?.status === 'ready' ? 'warning' : 'warning'}>
+              {replayForgeStatus}
+            </Badge>
+          ) : null}
         </div>
         <h2>{title}</h2>
+        {statusCopy ? <p className="clips-card__status-copy muted">{statusCopy}</p> : null}
         <div className="clips-card__subline">
           <span>{candidate.login}</span>
           {candidate.streamCategory ? <span>{candidate.streamCategory}</span> : null}
@@ -95,7 +113,7 @@ function ClipCandidateCard({
         </div>
         <div className="clips-card__metrics" aria-label="Clip signal metrics">
           <span><b>{candidate.score}</b> score</span>
-          <span>{confidenceLabel(candidate.confidence)}</span>
+          <span>{clipCandidateConfidenceLabel(candidate.confidence, candidate.confidenceBand)}</span>
           {candidate.chatCount ? <span>{candidate.chatCount} chat/min</span> : null}
           {candidate.emoteCount ? <span>{candidate.emoteCount} emotes</span> : null}
         </div>
@@ -134,7 +152,13 @@ function ClipCandidateCard({
           size="sm"
           variant="outline"
           disabled={sendBusy || !canSendReplayForge || job?.status === 'queued' || job?.status === 'ready'}
-          title={canSendReplayForge ? 'Queue this candidate in ReplayForge' : 'Source video is unavailable'}
+          title={
+            canSendReplayForge
+              ? 'Queue this candidate in ReplayForge'
+              : candidate.sourceStatus === 'missing' || clipCandidateResolvedInboxState(candidate) === 'needs_source'
+                ? 'Source video is unavailable'
+                : 'ReplayForge is blocked until source and renderability checks pass'
+          }
           onClick={() => onSendReplayForge(candidate)}
         >
           <Send size={15} aria-hidden="true" />

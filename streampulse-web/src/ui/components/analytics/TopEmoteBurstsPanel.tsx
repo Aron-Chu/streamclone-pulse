@@ -11,6 +11,8 @@ export interface TopEmoteBurstsPanelProps {
   emoteLookup?: Map<string, HubEmote>
   variant?: 'default' | 'pulse-live'
   emptyHint?: string
+  maxRows?: number
+  className?: string
   /** When set, rows are clickable for chart plotting (session dashboards only). */
   selectedCode?: string
   onSelectBurst?: (burst: FigmaEmoteBurst) => void
@@ -23,18 +25,20 @@ export function TopEmoteBurstsPanel({
   emoteLookup,
   variant = 'default',
   emptyHint,
+  maxRows,
+  className = '',
   selectedCode,
   onSelectBurst,
   plotDisabledHint = 'No peak anchor from backend for this burst yet.',
 }: TopEmoteBurstsPanelProps) {
   const isLive = variant === 'pulse-live'
   const plotEnabled = Boolean(onSelectBurst)
-  const ranked = withComputedBurstShare(bursts)
+  const ranked = withComputedBurstShare(bursts).slice(0, maxRows ?? bursts.length)
   const maxCount = Math.max(...ranked.map((b) => b.count), 1)
 
   return (
     <section
-      className={`figma-panel figma-panel--bursts${isLive ? ' pulse-moments__bursts figma-panel--scope-minute' : ''}`}
+      className={`figma-panel figma-panel--bursts${isLive ? ' pulse-moments__bursts figma-panel--scope-minute' : ''}${className ? ` ${className}` : ''}`}
       aria-label="Top emote bursts"
     >
       <header>

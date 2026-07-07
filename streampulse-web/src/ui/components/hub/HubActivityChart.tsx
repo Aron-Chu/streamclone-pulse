@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
-import { internalGapCount, maxConnectedGapMs, chartActivityPoints, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
+import { internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
 import { useSmoothedScalar } from '../../motion/useSmoothedScalar'
 import { compact, getProviderColor } from '../analytics/hubFormat'
+import { preferResolvableEmoteUrl } from '../../../lib/emoteAssetUrl'
 import { EmoteProviderIcon } from '../analytics/EmoteProviderIcon'
 import { EmptyState, Skeleton } from './primitives'
 
@@ -36,6 +37,8 @@ export interface HubActivityChartProps {
   rangeControl?: HubActivityRangeControl
   /** Unix ms for the selected activity bucket (network moments filtering). */
   selectedBucketT?: number | null
+  /** Soft highlight for a bucket tied to a moment row (no table filter). */
+  accentBucketT?: number | null
   /** When set, chart clicks toggle bucket selection for Pulse Moments Live. */
   onBucketSelect?: (bucketT: number | null) => void
   /** Hover preview for bucket inspector rail. */
@@ -103,8 +106,9 @@ function saveEnabledProviders(enabled: Set<ProviderKey>) {
 }
 
 function emoteCount(point: HubActivityPoint): number {
-  return Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
+  return hubActivityEmoteCount(point)
 }
+
 
 function providerValue(point: HubActivityPoint, key: ProviderKey): number {
   switch (key) {
@@ -234,6 +238,7 @@ export function HubActivityChart({
   footnote,
   rangeControl,
   selectedBucketT = null,
+  accentBucketT = null,
   onBucketSelect,
   onBucketHover,
   showProviderOverlay = false,
@@ -264,7 +269,7 @@ export function HubActivityChart({
       (poolSize ?? channelCount) > 0
         ? `${poolSize ?? channelCount} channels in live pool`
         : 'tracked streams'
-    const base = `Corpus-wide viewers and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
+    const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
     return bucketSelectEnabled
       ? `${base}. Click a bucket to filter Pulse Moments Live.`
       : base
@@ -319,6 +324,7 @@ export function HubActivityChart({
     const atEmoteY = (value: number): number => PAD + (1 - value / emoteMax) * (100 - PAD)
     const viewers = chartPoints.map((p, i) => ({ x: xs[i], y: atViewerY(p.viewers) }))
     const chat = chartPoints.map((p, i) => ({ x: xs[i], y: atChatY(p.chat) }))
+    const totalEmotes = chartPoints.map((p, i) => ({ x: xs[i], y: atEmoteY(emoteCount(p)) }))
     const providerLines = PROVIDER_KEYS.reduce(
       (acc, key) => {
         acc[key] = splitLinePaths(
@@ -397,12 +403,19 @@ export function HubActivityChart({
       lastT,
       viewers,
       chat,
+      totalEmotes,
       viewerLines: splitLinePaths(
         viewers,
         chartPoints,
         windowMinutes,
         undefined,
         chartPoints.map((p) => p.hasViewerRollup || p.viewers > 0),
+      ),
+      totalEmoteLines: splitLinePaths(
+        totalEmotes,
+        chartPoints,
+        windowMinutes,
+        chartPoints.map((p) => emoteCount(p)),
       ),
       providerLines,
       providerLaneLines,
@@ -414,6 +427,8 @@ export function HubActivityChart({
       internalGaps: internalGapCount(chartPoints, windowMinutes),
       peakViewers: chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0),
       peakChat: chartPoints.reduce((a, p) => Math.max(a, p.chat), 0),
+      peakEmotes: chartPoints.reduce((a, p) => Math.max(a, emoteCount(p)), 0),
+      emoteMax,
       peakViewerAt: (() => {
         let idx = 0
         for (let i = 0; i < chartPoints.length; i += 1) {
@@ -454,26 +469,37 @@ export function HubActivityChart({
   const shownProviders = showProviderOverlay
     ? availableProviders
     : availableProviders.filter((key) => resolvedEnabledProviders.has(key))
+  const hasTotalEmotes = useMemo(
+    () => chartPoints.some((p) => emoteCount(p) > 0),
+    [chartPoints],
+  )
 
   const { motionEnabled } = useAnalyticsMotion()
 
   const crosshairTargets = useMemo(() => {
     if (hover == null) {
-      return { hx: 0, hy: 0, hasViewer: false }
+      return { hx: 0, hy: 0, emoteHy: 0, hasViewer: false, hasEmote: false }
     }
     const hp = chartPoints[hover]
+    const emoteVal = hp ? emoteCount(hp) : 0
     return {
       hx: model.chat[hover]?.x ?? 0,
       hy: hp && hp.viewers > 0 ? (model.viewers[hover]?.y ?? 0) : 0,
+      emoteHy: emoteVal > 0 ? (model.totalEmotes[hover]?.y ?? 0) : 0,
       hasViewer: Boolean(hp && hp.viewers > 0),
+      hasEmote: emoteVal > 0,
     }
-  }, [hover, chartPoints, model.chat, model.viewers])
+  }, [hover, chartPoints, model.chat, model.viewers, model.totalEmotes])
 
   const crosshairEnabled = hover != null && motionEnabled
   const smoothHx = useSmoothedScalar(crosshairTargets.hx, crosshairEnabled)
   const smoothHy = useSmoothedScalar(
     crosshairTargets.hy,
     crosshairEnabled && crosshairTargets.hasViewer,
+  )
+  const smoothEmoteHy = useSmoothedScalar(
+    crosshairTargets.emoteHy,
+    crosshairEnabled && crosshairTargets.hasEmote,
   )
 
   const flushHover = useCallback((index: number | null) => {
@@ -552,6 +578,7 @@ export function HubActivityChart({
     viewers,
     chat,
     viewerLines,
+    totalEmoteLines,
     providerLines,
     providerLaneLines,
     internalGapBands,
@@ -562,6 +589,7 @@ export function HubActivityChart({
     internalGaps,
     peakViewers,
     peakChat,
+    peakEmotes,
     peakViewerAt,
     peakChatAt,
   } = model
@@ -621,14 +649,19 @@ export function HubActivityChart({
   const selectedIndex =
     selectedBucketT != null ? chartPoints.findIndex((point) => point.t === selectedBucketT) : -1
 
+  const accentIndex =
+    accentBucketT != null && selectedBucketT == null
+      ? chartPoints.findIndex((point) => point.t === accentBucketT)
+      : -1
+
   const hp = hover != null ? chartPoints[hover] : null
   const hx = crosshairEnabled ? smoothHx : crosshairTargets.hx
   const hy =
     crosshairEnabled && crosshairTargets.hasViewer ? smoothHy : crosshairTargets.hy
-  // The tooltip is rendered below the plot (see .tip CSS) so it never covers the
-  // graph. Horizontally it tracks the cursor but clamps near the edges so it
-  // stays within the chart width.
+  const emoteHy =
+    crosshairEnabled && crosshairTargets.hasEmote ? smoothEmoteHy : crosshairTargets.emoteHy
   const tipShift = hx < 18 ? '0%' : hx > 82 ? '-100%' : '-50%'
+  const tipStyle = { left: `${hx}%`, transform: `translateX(${tipShift})` }
   const minutesAgo = hp != null ? Math.max(0, Math.round((lastT - hp.t) / 60_000)) : 0
 
   function toggleProvider(key: ProviderKey) {
@@ -657,9 +690,15 @@ export function HubActivityChart({
               Viewers
             </span>
             <span>
-              <span className="sw sw--bar" style={{ background: 'hsl(var(--sp-chart-chat))' }} />
+              <span className="sw sw--bar sw--chat" />
               Tracked IRC chat / min
             </span>
+            {hasTotalEmotes ? (
+              <span>
+                <span className="sw sw--dash sw--emotes" />
+                Total emotes/min
+              </span>
+            ) : null}
           </div>
         {availableProviders.length > 0 && !showProviderOverlay ? (
           <div className="hx-provider-chips" role="group" aria-label="Emote provider lanes">
@@ -694,6 +733,9 @@ export function HubActivityChart({
           <div className="hx-plot-stack__plot">
             <div className="hx-chart-axis-labels" aria-hidden="true">
               <span className="hx-chart-axis-labels__left">Viewers</span>
+              {hasTotalEmotes && !showProviderOverlay ? (
+                <span className="hx-chart-axis-labels__center">Total emotes/min</span>
+              ) : null}
               <span className="hx-chart-axis-labels__right">Tracked IRC chat/min</span>
             </div>
           </div>
@@ -724,7 +766,7 @@ export function HubActivityChart({
                 <rect
                   key={bar.index}
                   data-index={bar.index}
-                  className={`hx-chat-bar${hover === bar.index ? ' is-active' : ''}${selectedIndex === bar.index ? ' is-selected' : ''}`}
+                  className={`hx-chat-bar${hover === bar.index ? ' is-active' : ''}${selectedIndex === bar.index ? ' is-selected' : ''}${accentIndex === bar.index && selectedIndex !== bar.index ? ' is-accent' : ''}`}
                   x={bar.x}
                   y={bar.y}
                   width={bar.w}
@@ -758,6 +800,28 @@ export function HubActivityChart({
               strokeLinejoin="round"
             />
           ))}
+          {hasTotalEmotes && !showProviderOverlay
+            ? totalEmoteLines.map((line, i) => (
+                <g key={`emote-${i}`}>
+                  <path
+                    className="hx-chart-line hx-chart-line-underlay hx-chart-line-underlay--emotes"
+                    d={line}
+                    fill="none"
+                    vectorEffect="non-scaling-stroke"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    className="hx-chart-line hx-chart-line--emotes"
+                    d={line}
+                    fill="none"
+                    vectorEffect="non-scaling-stroke"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              ))
+            : null}
           {showProviderOverlay
             ? shownProviders.map((key) =>
                 providerLines[key].map((line, i) => (
@@ -780,6 +844,9 @@ export function HubActivityChart({
         <div className="hx-chart2__layer">
           <span className="ylab ylab--viewers">{compact(peakViewers)} peak viewers</span>
           <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>
+          {hasTotalEmotes && !showProviderOverlay ? (
+            <span className="ylab ylab--emotes">{compact(peakEmotes)}/m peak emotes</span>
+          ) : null}
           {sampleNote ? (
             <>
               <span className="gap-fill" style={{ width: `${Math.max(0, firstActiveX)}%` }} />
@@ -824,60 +891,85 @@ export function HubActivityChart({
                   style={{ left: `${hx}%`, top: `${hy}%`, background: 'hsl(var(--sp-chart-viewers))' }}
                 />
               ) : null}
-              <div className="tip" style={{ left: `${hx}%`, transform: `translateX(${tipShift})` }}>
-                <div className="t">{axisLabel(minutesAgo)}</div>
-                <div className="row">
-                  <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
-                  Viewers&nbsp;<b>{compact(hp?.viewers ?? 0)}</b>
-                </div>
-                <div className="row">
-                  <span className="sw sw--bar" style={{ background: 'hsl(var(--sp-chart-chat))' }} />
-                  Tracked IRC chat&nbsp;<b>{compact(hp?.chat ?? 0)}</b>/m
-                </div>
-                {shownProviders.map((key) => (
-                  <div className="row" key={key}>
-                    <span className="sw" style={{ background: providerMeta[key].color }} />
-                    {providerMeta[key].label}&nbsp;<b>{compact(hp ? providerValue(hp, key) : 0)}</b>/m
-                  </div>
-                ))}
-                {hp?.topEmotes && hp.topEmotes.length > 0 ? (
-                  <div className="tip-emotes">
-                    <span className="tip-emotes__label">Top emotes this bucket</span>
-                    <ol className="tip-emotes__list">
-                      {hp.topEmotes.slice(0, 3).map((emote, i) => {
-                        const img = emoteImages?.get(emote.name.toLowerCase())
-                        return (
-                          <li key={`${emote.name}-${i}`}>
-                            <span className="tip-emotes__name">
-                              {img ? (
-                                <img
-                                  className="tip-emotes__img"
-                                  src={img}
-                                  alt=""
-                                  loading="lazy"
-                                  decoding="async"
-                                />
-                              ) : (
-                                <span
-                                  className="tip-emotes__dot"
-                                  style={{ background: getProviderColor(emote.provider) }}
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {emote.name}
-                            </span>
-                            <b>{compact(emote.count)}</b>
-                          </li>
-                        )
-                      })}
-                    </ol>
-                  </div>
-                ) : null}
-              </div>
+              {hasTotalEmotes && !showProviderOverlay && hp && emoteCount(hp) > 0 ? (
+                <span className="hdot hx-crosshair hx-crosshair--emotes" style={{ left: `${hx}%`, top: `${emoteHy}%` }} />
+              ) : null}
             </>
           )}
         </div>
             </div>
+          </div>
+        </div>
+        <div className="hx-plot-stack__row">
+          <span className="hx-plot-stack__gutter" aria-hidden="true" />
+          <div className="hx-chart-tip-slot" aria-live="polite">
+            {hover != null && hp ? (
+              <div className="tip" style={tipStyle}>
+                <div className="t">{axisLabel(minutesAgo)}</div>
+                <div className="tip-metrics">
+                  <div className="row">
+                    <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
+                    Viewers&nbsp;<b>{compact(hp.viewers)}</b>
+                  </div>
+                  <div className="row">
+                    <span className="sw sw--bar sw--chat" />
+                    Tracked IRC chat&nbsp;<b>{compact(hp.chat)}</b>/m
+                  </div>
+                  {hasTotalEmotes ? (
+                    <div className="row">
+                      <span className="sw sw--dash sw--emotes" />
+                      Total emotes&nbsp;<b>{compact(emoteCount(hp))}</b>/m
+                    </div>
+                  ) : null}
+                  {shownProviders.map((key) => (
+                    <div className="row" key={key}>
+                      <span className="sw" style={{ background: providerMeta[key].color }} />
+                      {providerMeta[key].label}&nbsp;<b>{compact(providerValue(hp, key))}</b>/m
+                    </div>
+                  ))}
+                </div>
+                <div
+                  className={`tip-emotes${hp.topEmotes && hp.topEmotes.length > 0 ? '' : ' tip-emotes--empty'}`}
+                >
+                  {hp.topEmotes && hp.topEmotes.length > 0 ? (
+                    <>
+                      <span className="tip-emotes__label">Top emotes this bucket</span>
+                      <ol className="tip-emotes__list">
+                        {hp.topEmotes.slice(0, 3).map((emote, i) => {
+                          const img = preferResolvableEmoteUrl(
+                            emote.imageUrl,
+                            emoteImages?.get(emote.name.toLowerCase()),
+                          )
+                          return (
+                            <li key={`${emote.name}-${i}`}>
+                              <span className="tip-emotes__name">
+                                {img ? (
+                                  <img
+                                    className="tip-emotes__img"
+                                    src={img}
+                                    alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                ) : (
+                                  <span
+                                    className="tip-emotes__dot"
+                                    style={{ background: getProviderColor(emote.provider) }}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {emote.name}
+                              </span>
+                              <b>{compact(emote.count)}</b>
+                            </li>
+                          )
+                        })}
+                      </ol>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="hx-plot-stack__row">
@@ -960,7 +1052,7 @@ export function HubActivityChart({
         ) : null}
       </div>
       <p className="hx-chart-footnote muted">
-        {footnote ?? 'Viewers and tracked IRC chat use separate scales.'}
+        {footnote ?? 'Viewers, tracked IRC chat, and total emotes use separate scales.'}
       </p>
     </>
   )

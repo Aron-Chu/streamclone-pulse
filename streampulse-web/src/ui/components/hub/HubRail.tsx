@@ -390,22 +390,6 @@ const PROVIDER_COLORS = [
   'hsl(var(--chart-5))',
 ]
 
-function providerSharesFromTopEmotes(emotes: HubEmote[]): HubProviderShare[] {
-  const counts = new Map<string, number>()
-  let total = 0
-  for (const emote of emotes) {
-    const count = Math.max(0, emote.count ?? 0)
-    if (count === 0) continue
-    const provider = providerLabel(emote.provider)
-    counts.set(provider, (counts.get(provider) ?? 0) + count)
-    total += count
-  }
-  if (total === 0) return []
-  return [...counts.entries()]
-    .map(([provider, count]) => ({ provider, count, sharePct: (count / total) * 100 }))
-    .sort((a, b) => b.count - a.count || a.provider.localeCompare(b.provider))
-}
-
 function providerRing(shares: HubProviderShare[]): string {
   if (shares.length === 0) return 'conic-gradient(hsl(var(--secondary)) 0 100%)'
   let cursor = 0
@@ -428,8 +412,9 @@ export function EmoteEconomyPanel({
   loading?: boolean
 }) {
   const backendProviderShares = intel.providerShares ?? []
-  const providerShares = backendProviderShares.length > 0 ? backendProviderShares : providerSharesFromTopEmotes(topEmotes)
-  const leadingProvider = providerShares[0]
+  const providerShares = backendProviderShares
+  const hasProviderRollups = providerShares.length > 0
+  const leadingProvider = hasProviderRollups ? providerShares[0] : undefined
   const ring = providerRing(providerShares)
   const leadingShare = formatLeadingEmoteShare(topEmotes, intel.topEmoteSharePct)
   if (loading && topEmotes.length === 0) {
@@ -452,26 +437,35 @@ export function EmoteEconomyPanel({
           style={{ background: ring }}
           role="img"
           aria-label={
-            leadingProvider
+            hasProviderRollups && leadingProvider
               ? `${leadingProvider.provider} accounts for ${Math.round(leadingProvider.sharePct)}% of tracked emote traffic`
-              : 'No provider share is available for tracked emote traffic'
+              : 'Provider breakdown unavailable — hourly rollup data not loaded for this window'
           }
         >
           <span className="lbl">
             <b className="tnum">{Math.round(leadingProvider?.sharePct ?? 0)}%</b>
-            <small>{leadingProvider?.provider ?? 'No data'}</small>
+            <small>{hasProviderRollups ? (leadingProvider?.provider ?? 'No data') : 'Unavailable'}</small>
           </span>
         </div>
         <div className="leg">
-          {(providerShares.length > 0 ? providerShares : [{ provider: 'No provider data', count: 0, sharePct: 0 }]).slice(0, 5).map((share) => (
+          {(hasProviderRollups
+            ? providerShares
+            : [{ provider: 'Provider breakdown unavailable', count: 0, sharePct: 0 }]
+          )
+            .slice(0, 5)
+            .map((share) => (
             <span key={share.provider} className="hx-donut__legend-item">
-              <EmoteProviderIcon provider={share.provider} size={14} />
+              {hasProviderRollups ? <EmoteProviderIcon provider={share.provider} size={14} /> : null}
               <span className="hx-donut__legend-provider">{share.provider}</span>
-              <span className="hx-donut__legend-pct tnum">{Math.round(share.sharePct)}%</span>
+              {hasProviderRollups ? (
+                <span className="hx-donut__legend-pct tnum">{Math.round(share.sharePct)}%</span>
+              ) : null}
             </span>
           ))}
           <span className="muted" style={{ fontSize: '0.72rem' }}>
-            {compact(intel.uniqueEmotes)} unique emotes seen
+            {hasProviderRollups
+              ? `${compact(intel.uniqueEmotes)} unique emotes seen`
+              : 'Aggregate emote counts only — provider hourly rollups not available for this window'}
           </span>
         </div>
       </div>

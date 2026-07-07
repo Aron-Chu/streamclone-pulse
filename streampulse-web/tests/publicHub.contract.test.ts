@@ -78,4 +78,11 @@ describe('PublicHub portal contract', () => {
     expect(got).toContain('live')
     expect(got).toContain('collectorTracking')
   })
+
+  it('PublicHubMomentsResponse exposes fields required by bucket click flow', () => {
+    const got = interfaceFieldNames(source, 'PublicHubMomentsResponse')
+    for (const key of ['status', 'moments', 'bucketT', 'reason'] as const) {
+      expect(got, `PublicHubMomentsResponse missing ${key}`).toContain(key)
+    }
+  })
 })

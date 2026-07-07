@@ -11,7 +11,7 @@ function clampPct(value: number): number {
   return Math.max(0, Math.min(100, value))
 }
 
-export type HubTopEmotesLayout = 'table' | 'leaderboard'
+export type HubTopEmotesLayout = 'table' | 'leaderboard' | 'inspector'
 
 export interface HubTopEmotesTableProps {
   emotes: HubEmote[]
@@ -54,6 +54,63 @@ export function HubTopEmotesTable({
       <p className={`hub-top-emotes-table__empty muted${className ? ` ${className}` : ''}`}>
         No emote traffic in the current window.
       </p>
+    )
+  }
+
+  if (layout === 'inspector') {
+    return (
+      <ul
+        className={`hub-top-emotes-inspector${fill ? ' hub-top-emotes-inspector--fill' : ''}${className ? ` ${className}` : ''}`}
+        role="list"
+        aria-label="Top emotes ranked by use count"
+      >
+        {top.map((emote, index) => {
+          const rank = index + 1
+          return (
+            <li
+              key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
+              data-rank={rank}
+            >
+              <span className="hub-top-emotes-inspector__rank tnum" aria-hidden="true">
+                {rank}
+              </span>
+              <span className="figma-emote-chip hub-top-emotes-inspector__chip">
+                <EmoteImg
+                  src={emote.imageUrl}
+                  name={emote.name}
+                  width={18}
+                  height={18}
+                  fallbackClassName="figma-emote-chip__fallback"
+                />
+                <span className="hub-top-emotes-inspector__chip-text">
+                  <span className="hub-top-emotes-inspector__chip-name" title={emote.name}>
+                    {emote.name}
+                  </span>
+                  {emote.provider ? (
+                    <span
+                      className="pulse-moments__inspector-provider hub-top-emotes-inspector__provider"
+                      data-provider={providerCssVarKey(emote.provider)}
+                    >
+                      {providerLabel(emote.provider)}
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+              <span className="hub-top-emotes-inspector__count tnum">{compact(emote.count)}</span>
+              <span className="hub-top-emotes-inspector__share-cell">
+                <span className="hub-top-emotes-inspector__bar" aria-hidden="true">
+                  <i style={{ width: `${clampPct((emote.count / max) * 100)}%` }} />
+                </span>
+                <SharePctDisplay
+                  sharePct={emote.sharePct}
+                  shareEstimated={(emote as HubEmoteWithShare).shareEstimated}
+                  className="hub-top-emotes-inspector__share"
+                />
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     )
   }
 

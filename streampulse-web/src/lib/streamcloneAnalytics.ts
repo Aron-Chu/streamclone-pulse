@@ -19,6 +19,7 @@ import type {
 } from '@streamclone/analytics-console'
 import { apiClient, getBackendUrl } from './apiClient'
 import { resolveBackendSource } from './backendSource'
+import { hasBetaKey } from './auth'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore } from './timelineDownsample'
 
@@ -166,6 +167,19 @@ interface PortalChannelEmoteRow {
 
 export function usesLocalAnalyticsBackend(): boolean {
   return resolveBackendSource(getBackendUrl()) === 'local'
+}
+
+/** Bookmarks require a beta-key principal — not available on public no-login /analytics. */
+export function portalBookmarksSupported(): boolean {
+  return hasBetaKey()
+}
+
+function bookmarkUnavailableResponse() {
+  return {
+    items: [] as unknown[],
+    supported: false as const,
+    reason: 'private_beta' as const,
+  }
 }
 
 function usesLocalAnalyticsRoutes(): boolean {
@@ -680,7 +694,10 @@ export const portalAnalyticsApi: AnalyticsApi = {
   },
 
   async getPulseBookmarks(_params?: PulseBookmarkQuery) {
-    return { items: [] }
+    if (!portalBookmarksSupported()) {
+      return bookmarkUnavailableResponse()
+    }
+    return { items: [], supported: true as const }
   },
 
   async getPulseStreamRecap(streamId: string): Promise<PulseStreamRecap | null> {
@@ -697,11 +714,17 @@ export const portalAnalyticsApi: AnalyticsApi = {
   },
 
   async createPulseBookmark() {
-    throw new Error('Bookmarks require a beta key — sign in to save moments.')
+    if (!portalBookmarksSupported()) {
+      throw new Error('Saved moments are a private beta feature — public analytics is read-only.')
+    }
+    throw new Error('Bookmarks require a beta key — use the private dashboard.')
   },
 
   async deletePulseBookmark() {
-    throw new Error('Bookmarks require a beta key — sign in to remove saved moments.')
+    if (!portalBookmarksSupported()) {
+      throw new Error('Saved moments are a private beta feature — public analytics is read-only.')
+    }
+    throw new Error('Bookmarks require a beta key — use the private dashboard.')
   },
 
   async prefetchAnalyticsTracker(streamId: string, channel: string) {
@@ -790,6 +813,9 @@ export const portalAnalyticsApi: AnalyticsApi = {
   },
 
   async startHistoricalSync(streamId: string, login?: string, options?: StartHistoricalSyncOptions) {
+    if (!usesLocalAnalyticsRoutes()) {
+      throw new Error('Operator sync is not available on the public StreamPulse portal.')
+    }
     const params = new URLSearchParams()
     if (login) params.set('channel', login)
     if (options?.viewersOnly) params.set('viewers_only', 'true')

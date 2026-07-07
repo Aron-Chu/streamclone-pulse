@@ -369,7 +369,7 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
           <div className="lsg__grid">
             {/* Left: sticky narrative steps (copy lives in BEATS) */}
             <aside className="lsg__narrative" aria-hidden="true">
-              <span className="lsg__eyebrow">Live analytics replay</span>
+              <span className="lsg__eyebrow">Illustrative analytics replay</span>
               <ol className="lsg__steps">
                 {BEATS.map((beat, idx) => (
                   <li className="lsg__step" data-step={idx + 1} data-tone={beat.tone} key={beat.kicker}>
@@ -392,7 +392,7 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
               <figure
                 className="lsg__panel"
                 role="img"
-                aria-label="StreamPulse live signal map — chat-per-minute bars and line, total emotes per minute, dashed 7TV per minute, viewer baseline, peak markers, top-emote leaderboard, most-reacted moment, and tracked channels."
+                aria-label="Illustrative StreamPulse signal map — sample chat-per-minute bars, emote rates, viewer baseline, peak markers, and tracked channels. Not live backend data."
               >
                 <figcaption className="lsg__nowcap">
                   <span className="sl-dot" /> <span ref={capRef}>1 · The live signal starts</span>

@@ -2,22 +2,26 @@
 
 Vite + React portal for StreamPulse. Requires sibling **streamclone** checkout at `../../twitch-7tv-clone` for `@streamclone/pulse-core` and `@streamclone/analytics-console`.
 
+**Public `/analytics` is no-login** — it reads hosted production data by default. No beta key, no local Streamclone stack, and no `/setup` flow required for browsing.
+
 ```bash
 npm install
 npm run dev:hosted   # http://localhost:5173 → https://api.streampulse.stream (default)
-npm run dev:local    # explicit local stack at http://localhost:8090
+npm run dev:local    # explicit local stack at http://localhost:8090 (requires opt-in env)
 npm run typecheck && npm test && npm run build
 ```
 
 ## API targeting
 
-| Command | Backend |
-|---------|---------|
-| `npm run dev` / `dev:hosted` | `https://api.streampulse.stream` |
-| `npm run dev:local` | `http://localhost:8090` (via `.env.development.local.example`) |
-| Production build / Pages deploy | `https://api.streampulse.stream` only (`check:backend-url` fails on localhost in bundle) |
+| Command | Backend | Notes |
+|---------|---------|-------|
+| `npm run dev` / `dev:hosted` | `https://api.streampulse.stream` | Default — matches production portal |
+| `npm run dev:local` | `http://localhost:8090` | Copy `.env.development.localhost.example` → `.env.development.localhost` (sets `VITE_ALLOW_LOCAL_BACKEND=1`) |
+| Production build / Pages deploy | `https://api.streampulse.stream` only | `check:backend-url` fails on localhost in bundle |
 
-Copy `.env.development.localhost.example` to `.env.development.localhost` when you need `npm run dev:local` against the Streamclone stack.
+When not per-session override or local dev backend is active, the hub and channel console show a **warning banner** (`HubBackendSourceBanner`) naming the API source.
+
+Copy `.env.development.localhost.example` to `.env.development.localhost` when you need `npm run dev:local` against the Streamclone stack. Without `VITE_ALLOW_LOCAL_BACKEND=1`, a localhost `VITE_BACKEND_URL` is ignored and the portal stays on hosted production.
 
 ## Production deploy (Cloudflare Pages)
 

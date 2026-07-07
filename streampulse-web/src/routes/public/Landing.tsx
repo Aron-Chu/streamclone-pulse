@@ -254,7 +254,10 @@ export default function Landing() {
           <div className="sl-container">
             <div className="sl-section-head" data-reveal>
               <h2 id="roadmap-title">Roadmap</h2>
-              <p>What is live today and what is coming next across StreamPulse, ReplayForge, and ClipTrace.</p>
+              <p>
+                What is live today and what is on the roadmap. ReplayForge clip tooling remains a
+                planned private operator workflow — not publicly linked from the hub or analytics console.
+              </p>
             </div>
             <div data-reveal>
               <RoadmapTimeline />

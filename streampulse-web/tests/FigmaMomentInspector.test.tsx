@@ -90,7 +90,7 @@ describe('FigmaMomentInspector pulse-live hero', () => {
 
             chatPerMin: 752,
 
-            viewerDelta: '+9.5K viewers',
+            viewers: 9500,
 
             topEmotes: [{ name: 'KEKW', provider: '7tv', count: 527, sharePct: 39.2 }],
 
@@ -104,11 +104,9 @@ describe('FigmaMomentInspector pulse-live hero', () => {
 
 
 
-    expect(screen.getByText('Total emote uses')).toBeTruthy()
-
     expect(screen.getByText('Chat / min')).toBeTruthy()
 
-    expect(screen.getByText('Viewer change')).toBeTruthy()
+    expect(screen.getByText('Viewers')).toBeTruthy()
 
     expect(screen.getByText('Top emote this minute')).toBeTruthy()
     expect(screen.getByText('KEKW')).toBeTruthy()
@@ -118,7 +116,7 @@ describe('FigmaMomentInspector pulse-live hero', () => {
     expect(document.querySelector('.pulse-moments__inspector-emote-share-line')?.textContent).toContain('of emotes')
 
     expect(screen.queryByRole('status')).toBeNull()
-    expect(screen.getByText('+9.5K viewers')).toBeTruthy()
+    expect(screen.getByText('9.5K viewers')).toBeTruthy()
     const momentHead = document.querySelector('.pulse-moments__inspector-moment-head')
     expect(momentHead?.textContent).toContain('Viewer spike')
     expect(momentHead?.textContent).toContain('ROBLOX')

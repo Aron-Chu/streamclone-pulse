@@ -8,6 +8,8 @@ import {
   streamHasSyncedMinutes,
   streamSyncBadgeState,
   streamSyncBadgeLabel,
+  resolveCanonicalSessionSlug,
+  getAnalyticsStreamDateSlug,
 } from '../../../twitch-7tv-clone/packages/analytics-console/src/utils/syncedLiveStream.ts'
 import type { AnalyticsStream } from '../../../twitch-7tv-clone/packages/analytics-console/src/apiTypes.ts'
 
@@ -67,6 +69,97 @@ describe('syncedLiveStream badges', () => {
         streamSyncBadgeState({ streamId: 'x', login: 'x', startedAt: '', viewerSamples: 0, chatMessages: 0 }),
       ),
     ).toBe('Stats only')
+  })
+})
+
+describe('resolveCanonicalSessionSlug', () => {
+  const syncedToday: AnalyticsStream = {
+    streamId: '2640123456',
+    login: 'caedrel',
+    startedAt: '2026-07-05T18:00:00.000Z',
+    viewerSamples: 420,
+    chatMessages: 1200,
+  }
+
+  const syncedOlder: AnalyticsStream = {
+    streamId: '2639999999',
+    login: 'caedrel',
+    startedAt: '2026-07-04T14:00:00.000Z',
+    viewerSamples: 300,
+    chatMessages: 800,
+  }
+
+  const statsOnly: AnalyticsStream = {
+    streamId: '2638888888',
+    login: 'caedrel',
+    startedAt: '2026-07-03T10:00:00.000Z',
+    viewerSamples: 0,
+    chatMessages: 0,
+    peakViewers: 5000,
+  }
+
+  const sidebarStreams = [syncedToday, syncedOlder, statsOnly]
+
+  it('returns date slug for live route with synced current stream', () => {
+    expect(
+      resolveCanonicalSessionSlug({
+        isLiveRoute: true,
+        listsLoading: false,
+        sidebarStreams,
+        targetStreamId: syncedToday.streamId,
+        liveHasChartMinutes: true,
+      }),
+    ).toBe(getAnalyticsStreamDateSlug(syncedToday.startedAt))
+  })
+
+  it('redirects empty live collector to newest synced session slug', () => {
+    expect(
+      resolveCanonicalSessionSlug({
+        isLiveRoute: true,
+        listsLoading: false,
+        sidebarStreams,
+        targetStreamId: 'live-collector-empty',
+        liveHasChartMinutes: false,
+        isActiveLiveCollector: false,
+        currentViewers: 0,
+        liveStreamId: 'live-collector-empty',
+      }),
+    ).toBe(getAnalyticsStreamDateSlug(syncedToday.startedAt))
+  })
+
+  it('returns undefined for stats-only stream on live route', () => {
+    expect(
+      resolveCanonicalSessionSlug({
+        isLiveRoute: true,
+        listsLoading: false,
+        sidebarStreams: [statsOnly],
+        targetStreamId: statsOnly.streamId,
+        liveHasChartMinutes: true,
+      }),
+    ).toBeUndefined()
+  })
+
+  it('returns undefined on session (historical) route', () => {
+    expect(
+      resolveCanonicalSessionSlug({
+        isLiveRoute: false,
+        listsLoading: false,
+        sidebarStreams,
+        targetStreamId: syncedToday.streamId,
+        liveHasChartMinutes: true,
+      }),
+    ).toBeUndefined()
+  })
+
+  it('returns undefined while stream lists are loading', () => {
+    expect(
+      resolveCanonicalSessionSlug({
+        isLiveRoute: true,
+        listsLoading: true,
+        sidebarStreams,
+        targetStreamId: syncedToday.streamId,
+      }),
+    ).toBeUndefined()
   })
 })
 

@@ -415,6 +415,34 @@ export function momentsHaveWallClockAt(
   return moments.some((moment) => resolveMomentWallClockAt(moment, liveChannels) != null)
 }
 
+/** Match a moment's wall-clock time to the nearest hub activity chart bucket `t`. */
+export function resolveMomentChartBucketT(
+  moment: FigmaMomentRow,
+  windowMinutes: number,
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>>,
+  activityPoints: Array<{ t: number }>,
+): number | null {
+  const wallMs = resolveMomentWallClockAt(moment, liveChannels)
+  if (wallMs == null || !Number.isFinite(wallMs) || activityPoints.length === 0) return null
+  const targetKey = activityBucketKey(wallMs, windowMinutes)
+  let best: { t: number; delta: number } | null = null
+  for (const point of activityPoints) {
+    if (!Number.isFinite(point.t)) continue
+    const pointKey = activityBucketKey(point.t, windowMinutes)
+    if (pointKey !== targetKey) continue
+    const delta = Math.abs(point.t - wallMs)
+    if (!best || delta < best.delta) best = { t: point.t, delta }
+  }
+  if (best) return best.t
+  let nearest: { t: number; delta: number } | null = null
+  for (const point of activityPoints) {
+    if (!Number.isFinite(point.t)) continue
+    const delta = Math.abs(point.t - wallMs)
+    if (!nearest || delta < nearest.delta) nearest = { t: point.t, delta }
+  }
+  return nearest?.t ?? null
+}
+
 export function scoreTone(score: number): 'high' | 'mid' | 'low' {
   if (score >= 90) return 'high'
   if (score >= 75) return 'mid'

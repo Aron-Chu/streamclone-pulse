@@ -82,6 +82,7 @@ export interface HubCorpusPipeline {
 export interface HubBucketEmote {
   name: string
   provider?: string
+  imageUrl?: string
   count: number
 }
 
@@ -210,6 +211,8 @@ export interface HubFeaturedMoment {
   kind?: string
   source?: string
   chatPerMin?: number
+  emotesPerMin?: number
+  viewers?: number
   viewerDelta?: string
   topEmoteCode?: string
   topEmotes?: HubEmote[]
@@ -713,7 +716,12 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
       ? point.topEmotes
           .filter((e) => e && typeof e.name === 'string' && e.name.length > 0)
           .slice(0, 10)
-          .map((e) => ({ name: e.name, provider: e.provider, count: Number(e.count) || 0 }))
+          .map((e) => ({
+            name: e.name,
+            provider: e.provider,
+            imageUrl: absolutizeEmoteAssetUrl(e.imageUrl),
+            count: Number(e.count) || 0,
+          }))
       : undefined,
   }))
 }

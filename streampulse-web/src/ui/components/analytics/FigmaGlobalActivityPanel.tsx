@@ -7,7 +7,8 @@ import {
   peakActivityChatPerMin,
   peakActivityViewers,
 } from "../../../lib/hubActivitySummary";
-import type { HubEmote, PublicHub } from "../../../lib/publicHub";
+import type { FigmaMomentRow } from "../../../lib/figmaSessionAnalytics";
+import type { HubEmote, HubLiveChannel, PublicHub } from "../../../lib/publicHub";
 import {
   HubActivityChart,
   type HubActivityRangeControl,
@@ -135,6 +136,19 @@ export interface FigmaGlobalActivityPanelProps {
   activityWindowKey?: string;
   /** Emotes aggregated from bucket-filtered Pulse Moments (inspector fallback). */
   bucketMomentEmotes?: HubEmote[];
+  /** Pulse Moments rows in the active chart bucket (selected or hover preview). */
+  bucketMoments?: FigmaMomentRow[];
+  /** Historical bucket fetch in flight (selected bucket only). */
+  bucketMomentsLoading?: boolean;
+  /** Pulse Moments row shown in the chart rail (hub only). */
+  focusedMoment?: FigmaMomentRow | null;
+  emoteLookup?: Map<string, HubEmote>;
+  liveChannels?: HubLiveChannel[];
+  channelLive?: boolean;
+  lockedBucketLabel?: string | null;
+  onBackToBucket?: () => void;
+  /** Visual-only bucket highlight when a moment is selected without a locked bucket. */
+  accentBucketT?: number | null;
 }
 
 function formatPeakTime(ts: number): string {
@@ -164,6 +178,15 @@ export function FigmaGlobalActivityPanel({
   activityRefreshing = false,
   activityWindowKey,
   bucketMomentEmotes = [],
+  bucketMoments = [],
+  bucketMomentsLoading = false,
+  focusedMoment = null,
+  emoteLookup,
+  liveChannels = [],
+  channelLive,
+  lockedBucketLabel = null,
+  onBackToBucket,
+  accentBucketT = null,
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
   const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
@@ -184,6 +207,7 @@ export function FigmaGlobalActivityPanel({
   }, [topEmotes]);
 
   const handleBucketHover = useCallback((bucketT: number | null) => {
+    if (focusedMoment) return;
     if (bucketT == null) {
       if (hoverIntentTimerRef.current != null) {
         window.clearTimeout(hoverIntentTimerRef.current);
@@ -203,7 +227,7 @@ export function FigmaGlobalActivityPanel({
         setHoverBucketT(bucketT);
       }
     }, 80);
-  }, []);
+  }, [focusedMoment]);
 
   useEffect(() => () => {
     if (hoverIntentTimerRef.current != null) {
@@ -237,9 +261,9 @@ export function FigmaGlobalActivityPanel({
   );
 
   const hoverPoint = useMemo(() => {
-    if (selectedPoint || hoverBucketT == null) return null;
+    if (focusedMoment || selectedPoint || hoverBucketT == null) return null;
     return chartPoints.find((p) => p.t === hoverBucketT) ?? null;
-  }, [chartPoints, hoverBucketT, selectedPoint]);
+  }, [chartPoints, focusedMoment, hoverBucketT, selectedPoint]);
 
   useEffect(() => {
     if (selectedPoint) {
@@ -259,7 +283,10 @@ export function FigmaGlobalActivityPanel({
     }
     if (prevSelectedTRef.current === nextT) return;
     prevSelectedTRef.current = nextT;
-    transitionInspector(inspectorRef.current);
+    const chrome = inspectorRef.current?.querySelector(
+      ".activity-bucket-inspector__chrome",
+    );
+    transitionInspector(chrome instanceof HTMLElement ? chrome : null);
   }, [selectedPoint?.t, transitionInspector]);
 
   useEffect(() => {
@@ -362,11 +389,12 @@ export function FigmaGlobalActivityPanel({
               footnote={activitySummary.footnote}
               rangeControl={rangeControl}
               selectedBucketT={selectedBucketT}
+              accentBucketT={selectedBucketT == null ? accentBucketT : null}
               onBucketSelect={
                 chartBucketSelectEnabled ? onBucketSelect : undefined
               }
               onBucketHover={
-                selectedBucketT == null ? handleBucketHover : undefined
+                selectedBucketT == null && !focusedMoment ? handleBucketHover : undefined
               }
               emoteImages={emoteImages}
             />
@@ -376,11 +404,22 @@ export function FigmaGlobalActivityPanel({
           <ActivityBucketInspector
             rangeEmotes={topEmotes}
             bucketMomentEmotes={bucketMomentEmotes}
+            bucketMoments={bucketMoments}
+            bucketMomentsLoading={bucketMomentsLoading}
             windowLabel={windowLabel}
             windowMinutes={hub.activity.windowMinutes}
             updatedAgo={updatedAgo}
+            emoteIntel={hub.emoteIntel}
+            topEmoteName={topEmotes[0]?.name}
             selectedPoint={selectedPoint}
             hoverPoint={hoverPoint}
+            focusedMoment={focusedMoment}
+            emoteLookup={emoteLookup}
+            liveChannels={liveChannels}
+            channelLive={channelLive}
+            lockedBucketT={selectedBucketT}
+            lockedBucketLabel={lockedBucketLabel}
+            onBackToBucket={onBackToBucket}
             className="figma-global-activity__inspector-panel"
           />
         </div>

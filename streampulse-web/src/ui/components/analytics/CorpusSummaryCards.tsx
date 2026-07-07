@@ -53,7 +53,7 @@ export function CorpusSummaryCards({ corpus, loading = false }: CorpusSummaryCar
       key: 'emotes',
       label: 'Emotes indexed',
       value: corpus.emotesIndexed,
-      sub: '7TV · BTTV · FFZ observed',
+      sub: 'tracked emote events',
       accent: 'hsl(var(--sc-chart-3))',
       tone: 'hsl(var(--sc-chart-3) / 0.15)',
       icon: <Smile aria-hidden="true" />,

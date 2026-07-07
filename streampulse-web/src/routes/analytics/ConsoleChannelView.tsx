@@ -5,6 +5,7 @@ import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
 import { resolveBackendSource, backendSourceLabel } from '../../lib/backendSource'
 import { usesLocalAnalyticsBackend } from '../../lib/streamcloneAnalytics'
+import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { useAnalyticsMotion } from '../../ui/motion/useAnalyticsMotion'
 import '../../ui/analytics-tailwind.css'
@@ -40,6 +41,7 @@ export default function ConsoleChannelView() {
       }}
     >
       <main className="figma-analytics__main hub-sec--console" id="analytics-main" aria-label={`Analytics for ${displayChannel}`}>
+        <HubBackendSourceBanner />
         <div ref={consoleRef} className="sc-analytics-console">
           <AnalyticsConsole
             mode="public"

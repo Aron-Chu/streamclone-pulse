@@ -539,4 +539,77 @@ describe('streamcloneAnalytics adapter', () => {
       })
     })
   })
+
+  describe('portal history + live honesty', () => {
+    it('getChannelStreamHistory uses portal /channels streams on hosted (period ignored)', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      apiClientMock.mockResolvedValue({
+        data: {
+          channel: 'xqc',
+          items: [
+            {
+              streamId: 's1',
+              login: 'xqc',
+              displayName: 'xQc',
+              title: 'test',
+              category: 'Just Chatting',
+              startedAt: '2026-07-05T19:00:00.000Z',
+              endedAt: null,
+              peakViewers: 1000,
+              viewerSamples: 50,
+              chatMessages: 200,
+            },
+          ],
+          updatedAt: Date.now(),
+        },
+      })
+
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      configureAnalyticsApi(portalAnalyticsApi)
+      const history = (await portalAnalyticsApi.getChannelStreamHistory('xqc', 'all')) as {
+        items: Array<{ streamId?: string; id?: string }>
+      }
+
+      expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/xqc/streams?limit=100')
+      expect(history.items[0]?.streamId ?? history.items[0]?.id).toBe('s1')
+    })
+
+    it('getAnalyticsLive maps coverageStartOffsetSeconds and viewerSource', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      apiClientMock.mockResolvedValue({
+        data: {
+          channel: 'xqc',
+          state: 'live',
+          stream: {
+            streamId: 's1',
+            login: 'xqc',
+            displayName: 'xQc',
+            category: 'Just Chatting',
+            startedAt: '2026-07-05T19:00:00.000Z',
+          },
+          rollups: [{ offsetSeconds: 180, chatCount: 5, viewerAvg: 1000 }],
+          topEmotes: [],
+          sources: [],
+          updatedAt: Date.now(),
+          coverageStartOffsetSeconds: 180,
+          viewerSource: 'live',
+        },
+      })
+
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      configureAnalyticsApi(portalAnalyticsApi)
+      const detail = (await portalAnalyticsApi.getAnalyticsLive('xqc')) as AnalyticsStreamDetail
+
+      expect(detail.coverageStartOffsetSeconds).toBe(180)
+      expect(detail.viewerSource).toBe('live')
+    })
+
+    it('rejects operator historical sync on hosted portal routes', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      await expect(portalAnalyticsApi.startHistoricalSync('s1', 'xqc')).rejects.toThrow(
+        /not available on the public StreamPulse portal/i,
+      )
+    })
+  })
 })

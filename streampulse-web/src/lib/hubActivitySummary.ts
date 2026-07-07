@@ -1,5 +1,10 @@
 import type { HubActivityPoint } from './publicHub'
 
+/** All-provider emote uses for a hub activity bucket (7TV + Twitch + BTTV + FFZ). */
+export function hubActivityEmoteCount(point: HubActivityPoint): number {
+  return Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
+}
+
 /** Mirrors hubActivityMaxPoints in streamclone internal/analytics/hub_overview.go */
 export const HUB_ACTIVITY_MAX_POINTS = 240
 

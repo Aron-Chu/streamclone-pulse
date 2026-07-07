@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
 import { usePublicHubData } from "../../hooks/usePublicHubData";
 import { getBackendUrl } from "../../lib/apiClient";
@@ -7,12 +7,15 @@ import {
   backendSourceLabel,
 } from "../../lib/backendSource";
 import { HubBackendSourceBanner } from "../../ui/components/analytics/HubBackendSourceBanner";
-import { resolveLivePulseMoments } from "../../lib/figmaSessionAnalytics";
+import { HubDataHealthBanner } from "../../ui/components/hub/HubDataHealthBanner";
+import { resolveLivePulseMoments, mapHubPulseMoment } from "../../lib/figmaSessionAnalytics";
 import { summarizeActivity } from "../../lib/hubActivitySummary";
 import { aggregateEmotesFromMoments } from "../../ui/components/analytics/activityBucketInspectorUtils";
 import type { FigmaMomentRow } from "../../lib/figmaSessionAnalytics";
 import { filterMomentsByBucket } from "../../lib/pulseMomentsUtils";
+import { readBucketMomentsCache, writeBucketMomentsCache } from "../../lib/bucketMomentsCache";
 import {
+  fetchHistoricalHubMoments,
   HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   resolveHubTopMovers,
@@ -28,7 +31,7 @@ import {
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
 import { LiveChannelsMatrix } from "../../ui/components/analytics/LiveChannelsMatrix";
-import { HubLiveRailMoversStrip } from "../../ui/components/analytics/HubLiveRailMoversStrip";
+import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
 import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
 import { PulseMomentsLivePanel } from "../../ui/components/analytics/PulseMomentsLivePanel";
 import { HubSearch, type HubSuggestion } from "../../ui/components/hub/HubSearch";
@@ -74,6 +77,9 @@ function AnalyticsLandingContent() {
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const [bucketMoments, setBucketMoments] = useState<FigmaMomentRow[]>([]);
+  const [bucketMomentsLoading, setBucketMomentsLoading] = useState(false);
+  const [hoverBucketMoments, setHoverBucketMoments] = useState<FigmaMomentRow[]>([]);
+  const [hoverBucketMomentsLoading, setHoverBucketMomentsLoading] = useState(false);
   const [poolMoments, setPoolMoments] = useState<FigmaMomentRow[]>([]);
   const hub = usePublicHubData({ enabled: true, activityWindow });
   const recentLogins = useHubRecentLogins();
@@ -85,29 +91,128 @@ function AnalyticsLandingContent() {
   const livePulseFeed = useMemo(() => resolveLivePulseMoments(data), [data]);
   const chartBucketSelectEnabled = livePulseFeed.source === "network";
 
-  const bucketMomentEmotes = useMemo(() => {
-    if (!chartBucketSelectEnabled) return [];
-    if (selectedBucketT != null) {
-      return aggregateEmotesFromMoments(bucketMoments);
-    }
-    if (hoverBucketT != null) {
-      const hovered = filterMomentsByBucket(
+  const optimisticBucketMoments = useCallback(
+    (bucketT: number) =>
+      filterMomentsByBucket(
         poolMoments,
-        hoverBucketT,
+        bucketT,
         data.activity.windowMinutes,
         data.liveChannels,
-      );
-      return aggregateEmotesFromMoments(hovered);
+      ),
+    [data.activity.windowMinutes, data.liveChannels, poolMoments],
+  );
+
+  const activeBucketMoments = useMemo(() => {
+    if (!chartBucketSelectEnabled) return [];
+    if (selectedBucketT != null) {
+      if (bucketMoments.length > 0) return bucketMoments;
+      const cached = readBucketMomentsCache(selectedBucketT, activityWindow) ?? [];
+      if (cached.length > 0) return cached;
+      return optimisticBucketMoments(selectedBucketT);
+    }
+    if (hoverBucketT != null) {
+      if (hoverBucketMoments.length > 0) return hoverBucketMoments;
+      const cached = readBucketMomentsCache(hoverBucketT, activityWindow) ?? [];
+      if (cached.length > 0) return cached;
+      return optimisticBucketMoments(hoverBucketT);
     }
     return [];
   }, [
+    activityWindow,
     bucketMoments,
     chartBucketSelectEnabled,
+    hoverBucketMoments,
+    hoverBucketT,
+    optimisticBucketMoments,
+    selectedBucketT,
+  ]);
+
+  const bucketMomentEmotes = useMemo(() => {
+    if (!chartBucketSelectEnabled || activeBucketMoments.length === 0) return [];
+    return aggregateEmotesFromMoments(activeBucketMoments);
+  }, [activeBucketMoments, chartBucketSelectEnabled]);
+
+  const inspectorBucketMomentsLoading =
+    selectedBucketT != null
+      ? bucketMomentsLoading
+      : hoverBucketT != null
+        ? hoverBucketMomentsLoading
+        : false;
+
+  useEffect(() => {
+    if (hoverBucketT == null || selectedBucketT != null) {
+      setHoverBucketMoments([]);
+      setHoverBucketMomentsLoading(false);
+      return;
+    }
+
+    const cached = readBucketMomentsCache(hoverBucketT, activityWindow) ?? [];
+    if (cached.length > 0) {
+      setHoverBucketMoments(cached);
+      setHoverBucketMomentsLoading(false);
+      return;
+    }
+
+    const optimistic = optimisticBucketMoments(hoverBucketT);
+    if (optimistic.length > 0) {
+      setHoverBucketMoments(optimistic);
+      setHoverBucketMomentsLoading(false);
+      return;
+    }
+
+    setHoverBucketMoments([]);
+    setHoverBucketMomentsLoading(true);
+
+    const controller = new AbortController();
+    fetchHistoricalHubMoments(hoverBucketT, activityWindow, controller.signal)
+      .then((response) => {
+        const rows = response.moments.map(mapHubPulseMoment);
+        writeBucketMomentsCache(hoverBucketT, activityWindow, rows);
+        setHoverBucketMoments(rows);
+        setHoverBucketMomentsLoading(false);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setHoverBucketMomentsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    activityWindow,
+    hoverBucketT,
+    optimisticBucketMoments,
+    selectedBucketT,
+  ]);
+
+  const handleClearBucketFilter = useCallback(() => {
+    setSelectedBucketT(null);
+    setHoverBucketT(null);
+  }, []);
+
+  const handleBucketSelect = useCallback((bucketT: number | null) => {
+    setSelectedBucketT(bucketT);
+    setHoverBucketT(null);
+    if (bucketT == null) {
+      setBucketMoments([]);
+      setBucketMomentsLoading(false);
+      return;
+    }
+    const cached = readBucketMomentsCache(bucketT, activityWindow) ?? [];
+    const optimistic = filterMomentsByBucket(
+      poolMoments,
+      bucketT,
+      data.activity.windowMinutes,
+      data.liveChannels,
+    );
+    const interim = cached.length > 0 ? cached : optimistic;
+    setBucketMoments(interim);
+    setBucketMomentsLoading(interim.length === 0);
+  }, [
+    activityWindow,
     data.activity.windowMinutes,
     data.liveChannels,
-    hoverBucketT,
     poolMoments,
-    selectedBucketT,
   ]);
 
   const activitySummary = useMemo(
@@ -175,14 +280,13 @@ function AnalyticsLandingContent() {
   }, [data.liveChannels, data.topMovers, recentLogins]);
 
   const backendSource = resolveBackendSource(getBackendUrl());
-  const localHubUnavailable =
-    backendSource === "local" && !hub.hubEndpointOk && Boolean(hub.error);
   const showTrackedTable = data.liveChannels.length > 0;
   const featuredChannels = data.liveChannels.slice(0, 12);
   const sidebarSections = useMemo<HubSidebarSection[]>(
     () => [
       { id: "section-overview", label: labels.overview },
       { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
+      { id: "section-live-wire", label: "Live Wire" },
       { id: "section-network", label: labels.liveActivity },
       { id: "section-pulse-moments", label: labels.pulseMoments },
       { id: "section-emote-signal", label: labels.emoteSignal },
@@ -197,6 +301,15 @@ function AnalyticsLandingContent() {
     [data.topMovers, data.liveChannels],
   );
 
+  const liveWireFeedProps = {
+    hub: data,
+    feed: livePulseFeed,
+    activityWindow,
+    loading: loadingInitial,
+    hubEndpointOk: hub.hubEndpointOk,
+    loadSource: hub.loadSource ?? "full" as const,
+  };
+
   return (
     <AnalyticsFigmaShell
       backendStatus={{
@@ -205,11 +318,7 @@ function AnalyticsLandingContent() {
         tone:
           hub.error && !hub.data
             ? "offline"
-            : backendSource === "local" && !hub.hubEndpointOk
-              ? "degraded"
-              : backendSource === "local"
-                ? "degraded"
-                : "ready",
+            : "ready",
       }}
       sidebarStatusLabel={backendSourceLabel(backendSource)}
       sidebarSections={sidebarSections}
@@ -219,13 +328,6 @@ function AnalyticsLandingContent() {
         id="analytics-main"
         aria-label="StreamPulse analytics"
       >
-        {localHubUnavailable ? (
-          <div className="figma-hub-fallback-banner" role="status">
-            Local API selected - <code>/v1/public/hub</code> unavailable -
-            rebuild analytics and restart <code>local-proxy</code>, or switch to
-            hosted API.
-          </div>
-        ) : null}
         {hub.loadSource === "cache" && hub.refreshing ? (
           <div
             className="figma-hub-fallback-banner figma-hub-fallback-banner--info"
@@ -243,14 +345,19 @@ function AnalyticsLandingContent() {
             reflect tracked channels only; backfill may still fill historical gaps.
           </div>
         ) : null}
+        <HubDataHealthBanner
+          loadSource={hub.loadSource ?? "full"}
+          hubEndpointOk={hub.hubEndpointOk}
+          activitySummary={activitySummary}
+          pipeline={data.corpusPipeline}
+          liveRosterCount={data.coverage.liveChannels}
+          error={hub.error}
+          backendUrl={getBackendUrl()}
+        />
         <HubBackendSourceBanner />
 
         <SectionReveal id="section-overview">
-          <HubCommandHeader
-            hub={data}
-            activitySummary={activitySummary}
-            loading={loadingInitial}
-          />
+          <HubCommandHeader hub={data} loading={loadingInitial} />
           <div className="hub-command-search" role="search" aria-label="Channel search">
             <HubSearch
               suggestions={suggestions}
@@ -280,14 +387,14 @@ function AnalyticsLandingContent() {
               colors={RAIL_COLORS}
               loading={loadingInitial}
             />
-            {topMovers.length > 0 ? (
-              <HubLiveRailMoversStrip movers={topMovers.slice(0, 6)} loading={loadingInitial} />
-            ) : null}
           </SectionReveal>
         ) : null}
 
         <SectionReveal id="section-network">
           <div className="figma-activity-hub">
+            <SectionReveal id="section-live-wire">
+              <HubLiveWireFeed {...liveWireFeedProps} layout="ticker" />
+            </SectionReveal>
             <FigmaGlobalActivityPanel
               hub={data}
               activitySummary={activitySummary}
@@ -300,14 +407,11 @@ function AnalyticsLandingContent() {
               chartBucketSelectEnabled={chartBucketSelectEnabled}
               selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
               onBucketSelect={
-                chartBucketSelectEnabled
-                  ? (bucketT) => {
-                      setSelectedBucketT(bucketT);
-                      setHoverBucketT(null);
-                    }
-                  : undefined
+                chartBucketSelectEnabled ? handleBucketSelect : undefined
               }
-              onBucketHover={chartBucketSelectEnabled ? setHoverBucketT : undefined}
+              onBucketHover={
+                chartBucketSelectEnabled ? setHoverBucketT : undefined
+              }
               rangeControl={{
                 active: activityWindow,
                 options: ACTIVITY_WINDOW_OPTIONS,
@@ -320,6 +424,9 @@ function AnalyticsLandingContent() {
               showSearch={false}
               activityWindowKey={activityWindow}
               bucketMomentEmotes={bucketMomentEmotes}
+              bucketMoments={activeBucketMoments}
+              bucketMomentsLoading={inspectorBucketMomentsLoading}
+              liveChannels={data.liveChannels}
             />
             <PulseMomentsLivePanel
               hub={data}
@@ -328,10 +435,14 @@ function AnalyticsLandingContent() {
               loading={loadingInitial}
               layout="embedded"
               selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
+              hoverBucketT={chartBucketSelectEnabled ? hoverBucketT : null}
               onClearBucketFilter={
-                chartBucketSelectEnabled ? () => setSelectedBucketT(null) : undefined
+                chartBucketSelectEnabled ? handleClearBucketFilter : undefined
               }
               onBucketMomentsChange={chartBucketSelectEnabled ? setBucketMoments : undefined}
+              onBucketLoadingChange={
+                chartBucketSelectEnabled ? setBucketMomentsLoading : undefined
+              }
               onPoolMomentsChange={chartBucketSelectEnabled ? setPoolMoments : undefined}
               activityWindow={activityWindow}
               activityWindowMinutes={data.activity.windowMinutes}

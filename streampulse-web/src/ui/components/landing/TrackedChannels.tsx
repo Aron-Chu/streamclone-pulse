@@ -140,10 +140,16 @@ export function TrackedChannels({ hub }: { hub: PublicHub | null }) {
         })
       : FALLBACK_CHANNELS
 
+  const usingFallbackChannels = live.length === 0
   const liveCount = hub?.coverage?.liveChannels || rows.length
 
   return (
     <div className={cn('sl-tc', active && 'is-in')} ref={rootRef}>
+      {usingFallbackChannels ? (
+        <p className="sl-tc__illus muted" aria-hidden="false">
+          Illustrative sample channels — connect to the hosted API for live tracked rooms.
+        </p>
+      ) : null}
       <div className="sl-tc__counters">
         {counters.map((counter, index) => (
           <div className="sl-tc__counter" key={counter.key} style={{ '--d': `${index * 80}ms` } as CSSProperties}>

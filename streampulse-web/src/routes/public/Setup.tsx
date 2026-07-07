@@ -123,7 +123,11 @@ export default function Setup() {
 
           <article className="panel step-card">
             <h2>Step 2 — Connect</h2>
-            <p>Set the backend URL and beta key used by the extension options.</p>
+        <p className="muted">
+          <strong>Deprecated.</strong> Public analytics lives at <Link to="/analytics">/analytics</Link> with no
+          beta key. This page was for extension setup — use extension Options instead.
+        </p>
+        <p>Set the backend URL and optional beta key for the Chrome extension (operator tools).</p>
             <div className="stack-sm">
               <label className="field-label" htmlFor="backend-url">
                 Backend URL
@@ -159,8 +163,8 @@ export default function Setup() {
                 autoComplete="off"
               />
               <CopyConfig backendUrl={backendUrl} betaKey={betaKeyInput} />
-              <Link to="/login" className="btn btn-secondary" style={{ width: 'fit-content' }}>
-                Get a beta key
+              <Link to="/analytics" className="btn btn-secondary" style={{ width: 'fit-content' }}>
+                Open public analytics
               </Link>
             </div>
           </article>
@@ -207,8 +211,9 @@ export default function Setup() {
           <article className="panel step-card">
             <h2>Step 4 — Track</h2>
             <p>
-              Open any Twitch channel, click Pulse, and start tracking. Your dashboard will reflect
-              watched channels once P2 pages land.
+              Open any Twitch channel, click Pulse in the extension overlay, and start tracking.
+              Public session analytics live at <Link to="/analytics">/analytics</Link> — no dashboard
+              signup required.
             </p>
             <a
               className="btn btn-secondary"
@@ -222,7 +227,8 @@ export default function Setup() {
         </div>
 
         <p className="muted">
-          Local dev backend default: <code>{DEFAULT_BACKEND_URL}</code>
+          Extension backend defaults to hosted API (<code>{DEFAULT_PRODUCTION_BACKEND_URL}</code>).
+          Local dev (<code>{DEFAULT_BACKEND_URL}</code>) is explicit opt-in in extension Options only.
         </p>
       </section>
     </PublicLayout>

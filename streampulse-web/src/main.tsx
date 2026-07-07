@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AppRoutes } from './routes/index'
-import { clearBetaKey, refreshPrincipal } from './lib/auth'
+import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal } from './lib/auth'
 import { setupStreamcloneAnalyticsApi } from './lib/streamcloneAnalytics'
 import { shadowStyles } from './ui/theme'
 import './ui/global.css'
@@ -53,6 +53,7 @@ function AuthRejectedListener() {
 }
 
 async function bootstrap() {
+  clearStaleLocalBackendOverride()
   await refreshPrincipal()
   const style = document.createElement('style')
   style.textContent = shadowStyles

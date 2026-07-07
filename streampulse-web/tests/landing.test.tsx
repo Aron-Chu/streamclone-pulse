@@ -58,7 +58,7 @@ describe('landing page', () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    expect(screen.getByRole('heading', { name: /twitch sidebar/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /^roadmap$/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /how it works/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /^resources$/i })).toBeTruthy()
@@ -72,16 +72,17 @@ describe('landing page', () => {
     const heroScope = within(hero as HTMLElement)
 
     expect(heroScope.getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
-    expect(heroScope.getByRole('link', { name: /install chrome extension/i }).getAttribute('href')).toBe('/setup')
+    expect(heroScope.getByRole('link', { name: /install extension/i }).getAttribute('href')).toBe('/docs#extension')
   })
 
-  it('exposes sign-in and install in the top nav', async () => {
+  it('does not expose legacy /setup or /login nav CTAs', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
-    const nav = screen.getByRole('navigation', { name: /primary/i })
+    const nav = screen.getByRole('navigation', { name: /streampulse/i })
     const navScope = within(nav)
-    expect(navScope.getByRole('link', { name: /sign in/i }).getAttribute('href')).toBe('/login')
-    expect(navScope.getByRole('link', { name: /install extension/i }).getAttribute('href')).toBe('/setup')
+    expect(navScope.queryByRole('link', { name: /sign in/i })).toBeNull()
+    expect(navScope.queryByRole('link', { name: /\/setup/i })).toBeNull()
+    expect(navScope.getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
   })
 
   it('shows the live emote and mover tickers', async () => {

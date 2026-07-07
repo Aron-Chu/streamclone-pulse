@@ -8,6 +8,9 @@ import {
   nearestMomentForOffset,
   type FigmaEmoteBurst,
 } from '../../../lib/figmaSessionAnalytics'
+import { absolutizeEmoteAssetUrl } from '../../../lib/emoteAssetUrl'
+import { buildEmoteLookup } from '../../../lib/pulseMomentsUtils'
+import type { HubEmote } from '../../../lib/publicHub'
 import { CoverageTruthPanel } from './CoverageTruthPanel'
 import { FigmaMomentInspector } from './FigmaMomentInspector'
 import { FigmaSessionHeaderStrip } from './FigmaSessionHeaderStrip'
@@ -43,7 +46,7 @@ function SessionMetricsPanel({ summary }: { summary: PortalStreamSummary | null 
     { label: 'Viewer momentum 5m', value: m.viewer_momentum_5m ? `+${num(m.viewer_momentum_5m)}` : '—' },
     { label: 'Minutes with data', value: m.minutesWithData ? compact(m.minutesWithData) : '—' },
     { label: 'Viewer samples', value: m.viewerSampleCount ? compact(m.viewerSampleCount) : '—' },
-    { label: 'Sync health', value: m.sync_health_state ?? '—' },
+    { label: 'Data sync state', value: m.sync_health_state ?? '—' },
   ]
   return (
     <section className="figma-panel figma-panel--metrics" aria-label="Session metrics">
@@ -71,7 +74,7 @@ function TopEmotesPanel({ summary }: { summary: PortalStreamSummary | null }) {
         <ul className="figma-burst-list figma-burst-list--ranked">
           {emotes.slice(0, 8).map((emote) => (
             <li key={emote.key ?? emote.name}>
-              <EmoteImg src={emote.imageUrl} name={emote.name} width={18} height={18} />
+              <EmoteImg src={absolutizeEmoteAssetUrl(emote.imageUrl)} name={emote.name} width={18} height={18} />
               <strong>{emote.name}</strong>
               <span className="figma-burst-list__provider">{providerLabel(emote.provider)}</span>
               <span className="figma-burst-list__count">{compact(emote.count)}</span>
@@ -162,6 +165,42 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
     state: 'ready' as const,
   }
 
+  const emoteLookup = useMemo(() => {
+    const catalog: HubEmote[] = []
+    for (const emote of data.summary?.topEmotes ?? []) {
+      catalog.push({
+        name: emote.name,
+        provider: emote.provider,
+        imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+        count: emote.count,
+        sharePct: 0,
+      })
+    }
+    for (const moment of data.session.moments) {
+      for (const emote of moment.topEmotes ?? []) {
+        if (!emote.name?.trim()) continue
+        catalog.push({
+          name: emote.name,
+          provider: emote.provider,
+          imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+          count: emote.count ?? 0,
+          sharePct: emote.sharePct ?? 0,
+        })
+      }
+    }
+    for (const burst of data.session.bursts) {
+      if (!burst.code?.trim()) continue
+      catalog.push({
+        name: burst.code,
+        provider: burst.provider,
+        imageUrl: absolutizeEmoteAssetUrl(burst.imageUrl),
+        count: burst.count,
+        sharePct: 0,
+      })
+    }
+    return buildEmoteLookup(catalog)
+  }, [data.session.bursts, data.session.moments, data.summary?.topEmotes])
+
   const consoleHref = data.selectedStreamId
     ? `/analytics/${encodeURIComponent(data.login)}/${encodeURIComponent(data.selectedStreamId)}`
     : `/analytics/${encodeURIComponent(data.login)}`
@@ -242,11 +281,13 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
               moment={selectedMoment}
               vodId={data.session.vodId}
               sessionHref={data.session.sessionHref}
+              emoteLookup={emoteLookup}
             />
           ) : null}
           {data.session.bursts.length > 0 ? (
             <TopEmoteBurstsPanel
               bursts={data.session.bursts}
+              emoteLookup={emoteLookup}
               selectedCode={plottedEmote?.code}
               onSelectBurst={handleSelectBurst}
             />

@@ -1,5 +1,6 @@
 import { buildAnalyticsHref } from './analyticsLinks'
 import { apiClient } from './apiClient'
+import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import type { HubFeaturedCoverageRow, HubFeaturedSession, PublicHub } from './publicHub'
 import { formatStreamOffset } from './streamcloneAnalytics'
 import { PORTAL_MINUTES_TIMEOUT_MS } from './timelineDownsample'
@@ -15,6 +16,8 @@ export interface FigmaMomentRow {
   kind?: string
   source?: string
   chatPerMin?: number
+  emotesPerMin?: number
+  viewers?: number
   viewerDelta?: string
   topEmoteCode?: string
   topEmotes?: Array<{ name: string; provider?: string; count?: number; imageUrl?: string; sharePct?: number }>
@@ -83,6 +86,7 @@ export interface PortalPeak {
   dominantSignal: string
   chatCount: number
   emoteCount: number
+  viewers?: number
   viewerDelta?: string
   confidence?: number
   vodState?: string
@@ -179,6 +183,8 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     kind: moment.kind,
     source: moment.source,
     chatPerMin: moment.chatPerMin,
+    emotesPerMin: moment.emotesPerMin,
+    viewers: moment.viewers,
     viewerDelta: moment.viewerDelta,
     topEmoteCode: moment.topEmoteCode,
     topEmotes: moment.topEmotes?.map((emote) => ({
@@ -249,6 +255,8 @@ function featuredFallbackMoments(hub: PublicHub): FigmaMomentRow[] {
     kind: moment.kind,
     source: moment.source,
     chatPerMin: moment.chatPerMin,
+    emotesPerMin: moment.emotesPerMin,
+    viewers: moment.viewers,
     viewerDelta: moment.viewerDelta,
     topEmoteCode: moment.topEmoteCode,
     topEmotes: moment.topEmotes?.map((emote) => ({
@@ -377,6 +385,7 @@ export function mapFeaturedSession(featured: HubFeaturedSession): FigmaSessionVi
       kind: moment.kind,
       source: moment.source,
       chatPerMin: moment.chatPerMin,
+      viewers: moment.viewers,
       viewerDelta: moment.viewerDelta,
       topEmoteCode: moment.topEmoteCode,
       topEmotes: moment.topEmotes?.map((emote) => ({
@@ -605,8 +614,15 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
       score: peak.score,
       label: peak.reasonLabel,
       chatPerMin: peak.chatCount,
+      viewers: peak.viewers,
       viewerDelta: peak.viewerDelta,
       topEmoteCode: peak.topEmotes?.[0]?.name,
+      topEmotes: peak.topEmotes?.map((emote) => ({
+        name: emote.name,
+        provider: emote.provider,
+        count: emote.count,
+        imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+      })),
       confidence: peak.confidence,
       vodState: peak.vodState,
       href: resolvedLogin
@@ -617,6 +633,8 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
     bursts: peaks.flatMap((peak) =>
       (peak.topEmotes ?? []).slice(0, 1).map((emote) => ({
         code: emote.name,
+        provider: emote.provider,
+        imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
         count: emote.count,
         peakOffset: formatStreamOffset(peak.offsetSeconds),
         peakOffsetSeconds: peak.offsetSeconds,

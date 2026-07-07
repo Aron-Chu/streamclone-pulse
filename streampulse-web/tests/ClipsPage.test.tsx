@@ -103,9 +103,9 @@ describe('ClipsPage', () => {
     expect(await screen.findByRole('heading', { name: /streamPulse clips/i })).toBeTruthy()
     expect(screen.getByText('Playable set')).toBeTruthy()
     expect(screen.getByText('Late night set')).toBeTruthy()
-    expect(screen.getByText('emote_spike')).toBeTruthy()
+    expect(screen.getByText('Emote spike')).toBeTruthy()
     expect(screen.getByText('KEKW')).toBeTruthy()
-    expect(screen.getByText(/source unavailable/i)).toBeTruthy()
+    expect(screen.getByText(/Needs source/i)).toBeTruthy()
     const availableCard = screen.getByText('Playable set').closest('article') as HTMLElement
     const missingCard = screen.getByText('Late night set').closest('article') as HTMLElement
     expect((within(missingCard).getByRole('button', { name: /render/i }) as HTMLButtonElement).disabled).toBe(true)
@@ -120,7 +120,7 @@ describe('ClipsPage', () => {
     fireEvent.click(within(availableCard).getByRole('button', { name: /send to replayforge/i }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
-    expect(await screen.findByText(/ReplayForge queued/i)).toBeTruthy()
+    expect(await screen.findByText(/Rendering queued/i)).toBeTruthy()
   })
 
   it('shows an honest empty state when no candidates exist', async () => {
@@ -180,7 +180,7 @@ describe('ClipsPage', () => {
     )
 
     const card = (await screen.findByText('Already queued')).closest('article') as HTMLElement
-    expect(within(card).getByText(/ReplayForge queued/i)).toBeTruthy()
+    expect(within(card).getByText(/Rendering queued/i)).toBeTruthy()
     expect((within(card).getByRole('button', { name: /^Queued$/i }) as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -239,7 +239,7 @@ describe('ClipsPage', () => {
     const card = (await screen.findByText('Queued candidate')).closest('article') as HTMLElement
     fireEvent.click(within(card).getByRole('button', { name: /refresh replayforge/i }))
 
-    expect(await within(card).findByText(/ReplayForge ready/i)).toBeTruthy()
+    expect(await within(card).findByText(/Worker ready \(playback not verified\)/i)).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/pulse/clips/cc_queued/replayforge'), expect.anything())
   })
 })

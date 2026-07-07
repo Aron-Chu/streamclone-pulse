@@ -3,12 +3,19 @@ import {
   backendSourceCaption,
   backendSourceLabel,
   isEnvLocalBackendDefault,
+  localBackendDevCaption,
   resolveBackendSource,
 } from '../src/lib/backendSource'
-import { DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/auth'
+import {
+  DEFAULT_BACKEND_URL,
+  DEFAULT_PRODUCTION_BACKEND_URL,
+  isLocalDevBackendUrl,
+  resolvePortalDefaultBackendUrl,
+} from '../src/lib/auth'
 
 describe('backendSource', () => {
   it('defaults to hosted production API', () => {
+    expect(DEFAULT_BACKEND_URL).toBe(DEFAULT_PRODUCTION_BACKEND_URL)
     expect(resolveBackendSource(DEFAULT_PRODUCTION_BACKEND_URL)).toBe('hosted')
     expect(backendSourceLabel('hosted')).toBe('Hosted corpus')
     expect(backendSourceCaption(DEFAULT_PRODUCTION_BACKEND_URL)).toContain('Hosted corpus')
@@ -24,12 +31,25 @@ describe('backendSource', () => {
     expect(resolveBackendSource('https://staging.example.com')).toBe('custom')
   })
 
-  it('reports env local default only when VITE_BACKEND_URL is local', () => {
-    const envDefault = import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '')
-    if (envDefault === 'http://localhost:8090') {
-      expect(isEnvLocalBackendDefault()).toBe(true)
-    } else {
-      expect(isEnvLocalBackendDefault()).toBe(false)
-    }
+  it('never treats portal env default as local without dev:local opt-in', () => {
+    expect(isEnvLocalBackendDefault()).toBe(false)
+    expect(resolvePortalDefaultBackendUrl({ viteBackendUrl: 'http://localhost:8090', allowLocal: false })).toBe(
+      DEFAULT_PRODUCTION_BACKEND_URL,
+    )
+  })
+
+  it('allows explicit local dev when opt-in flag is set', () => {
+    expect(
+      resolvePortalDefaultBackendUrl({ viteBackendUrl: 'http://localhost:8090', allowLocal: true }),
+    ).toBe('http://localhost:8090')
+  })
+
+  it('documents local dev divergence copy', () => {
+    expect(localBackendDevCaption()).toContain('api.streampulse.stream')
+  })
+
+  it('detects local dev URLs consistently with auth helper', () => {
+    expect(isLocalDevBackendUrl('http://localhost:8090')).toBe(true)
+    expect(isLocalDevBackendUrl('https://api.streampulse.stream')).toBe(false)
   })
 })

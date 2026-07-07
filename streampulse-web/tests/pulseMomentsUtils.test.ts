@@ -11,6 +11,8 @@ import {
   momentEmoteTitle,
   momentHasEmoteRollups,
   resolveMomentEmote,
+  resolveMomentEmotesPerMin,
+  resolveMomentViewers,
   ROLLUP_CONFIDENCE_LABEL,
   sourceLabel,
   vodStateLabel,
@@ -309,5 +311,77 @@ describe('momentWhatHappenedSummary', () => {
     expect(summary).toContain('Just went live')
     expect(summary).toContain('Just Chatting')
     expect(summary).toContain('KEKW')
+  })
+})
+
+describe('resolveMomentEmotesPerMin', () => {
+  it('prefers backend emotesPerMin over summed top emotes', () => {
+    expect(
+      resolveMomentEmotesPerMin({
+        offsetSeconds: 60,
+        score: 80,
+        label: 'Emote spike',
+        emotesPerMin: 420,
+        topEmotes: [{ name: 'KEKW', count: 50 }],
+      }),
+    ).toBe(420)
+  })
+
+  it('falls back to summed top emote counts', () => {
+    expect(
+      resolveMomentEmotesPerMin({
+        offsetSeconds: 60,
+        score: 80,
+        label: 'Emote spike',
+        topEmotes: [
+          { name: 'KEKW', count: 50 },
+          { name: 'LUL', count: 30 },
+        ],
+      }),
+    ).toBe(80)
+  })
+})
+
+describe('resolveMomentViewers', () => {
+  it('uses backend viewers when present', () => {
+    expect(
+      resolveMomentViewers(
+        { offsetSeconds: 60, score: 80, label: 'Chat spike', viewers: 8420, login: 'xqc' },
+        [{ login: 'xqc', viewers: 12000 }],
+      ),
+    ).toBe(8420)
+  })
+
+  it('falls back to live pool viewers for the channel', () => {
+    expect(
+      resolveMomentViewers(
+        { offsetSeconds: 60, score: 80, label: 'Chat spike', login: 'caseoh' },
+        [{ login: 'caseoh', viewers: 18500 }],
+      ),
+    ).toBe(18500)
+  })
+})
+
+describe('resolveMomentViewerTableCell', () => {
+  it('shows minute CCU when backend sends viewers at spike', async () => {
+    const { resolveMomentViewerTableCell } = await import('../src/lib/pulseMomentsUtils')
+    const cell = resolveMomentViewerTableCell(
+      { offsetSeconds: 60, score: 80, label: 'Emote spike', viewers: 4900 },
+      [],
+    )
+    expect(cell.text).toBe('4.9K')
+    expect(cell.title).toContain('at this minute')
+    expect(cell.muted).toBe(false)
+  })
+
+  it('falls back to live pool with muted styling when minute CCU is missing', async () => {
+    const { resolveMomentViewerTableCell } = await import('../src/lib/pulseMomentsUtils')
+    const cell = resolveMomentViewerTableCell(
+      { offsetSeconds: 60, score: 80, label: 'Emote spike', login: 'forsen', viewerDelta: '+67' },
+      [{ login: 'forsen', viewers: 12000 }],
+    )
+    expect(cell.text).toBe('12K')
+    expect(cell.muted).toBe(true)
+    expect(cell.title).toContain('live pool snapshot')
   })
 })

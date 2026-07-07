@@ -1,4 +1,4 @@
-import { DEFAULT_BACKEND_URL, DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
+import { DEFAULT_PRODUCTION_BACKEND_URL, isLocalDevBackendUrl } from './auth'
 import { getBackendUrl } from './apiClient'
 
 export type BackendSource = 'hosted' | 'local' | 'custom'
@@ -11,13 +11,7 @@ function normalizeUrl(url: string): string {
 export function resolveBackendSource(url?: string): BackendSource {
   const resolved = normalizeUrl(url ?? getBackendUrl())
   if (resolved === normalizeUrl(DEFAULT_PRODUCTION_BACKEND_URL)) return 'hosted'
-  try {
-    const host = new URL(resolved).hostname.toLowerCase()
-    if (host === 'localhost' || host === '127.0.0.1') return 'local'
-  } catch {
-    /* fall through */
-  }
-  if (normalizeUrl(DEFAULT_BACKEND_URL) === resolved) return 'local'
+  if (isLocalDevBackendUrl(resolved)) return 'local'
   return 'custom'
 }
 
@@ -46,10 +40,16 @@ export function backendSourceCaption(url?: string): string {
   return `Reading ${backendSourceLabel(source)} · ${backendSourceHost(url)}`
 }
 
-/** True when dev env default (not session override) points at local stack. */
+/** True when raw Vite env still points at local stack (ignored unless dev:local opt-in). */
 export function isEnvLocalBackendDefault(): boolean {
-  const envDefault =
-    import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '') ||
-    DEFAULT_PRODUCTION_BACKEND_URL
-  return resolveBackendSource(envDefault) === 'local'
+  const envDefault = import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '')
+  return Boolean(envDefault && isLocalDevBackendUrl(envDefault))
+}
+
+export function isNonHostedBackend(url?: string): boolean {
+  return resolveBackendSource(url) !== 'hosted'
+}
+
+export function localBackendDevCaption(): string {
+  return 'Local dev stack — charts and IRC pool differ from public hosted analytics at api.streampulse.stream.'
 }
