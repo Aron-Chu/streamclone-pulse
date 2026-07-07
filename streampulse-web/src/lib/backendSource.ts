@@ -18,7 +18,7 @@ export function resolveBackendSource(url?: string): BackendSource {
 export function backendSourceLabel(source: BackendSource): string {
   switch (source) {
     case 'hosted':
-      return 'Hosted corpus'
+      return 'Hosted API'
     case 'local':
       return 'Local stack'
     case 'custom':

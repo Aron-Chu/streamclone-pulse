@@ -176,6 +176,14 @@ export function peakActivityChatPerMin(points: HubActivityPoint[], windowMinutes
   )
 }
 
+/** Peak network emotes/min after coarse-bucket normalization — matches chart tooltip emotes. */
+export function peakActivityEmotesPerMin(points: HubActivityPoint[], windowMinutes: number): number {
+  return chartActivityPoints(points, windowMinutes).reduce(
+    (max, point) => Math.max(max, hubActivityEmoteCount(point)),
+    0,
+  )
+}
+
 function chartPointHasSignal(point: HubActivityPoint): boolean {
   return (
     point.chat > 0 ||
@@ -294,7 +302,7 @@ export function summarizeActivity(
   const windowLabel = formatActivityWindowLabel(windowMinutes)
   const updatedSuffix = updatedAgo ? ` · updated ${updatedAgo}` : ''
   const poolLabel = poolSize > 0 ? `${poolSize} channels in live pool` : 'live pool'
-  const footnote = `${pointCount}/${expectedBuckets} buckets · ~${bucket} min each · corpus-wide rollups · ${poolLabel}${updatedSuffix}`
+  const footnote = `${pointCount}/${expectedBuckets} buckets · ~${bucket} min each · network rollups · ${poolLabel}${updatedSuffix}`
 
   return {
     pointCount,
