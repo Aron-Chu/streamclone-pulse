@@ -1,3 +1,4 @@
+/** @deprecated Route `/login` redirects to `/analytics`. Quarantined beta-key screen. */
 import { FormEvent, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiClient, type ApiError } from '../../lib/apiClient'

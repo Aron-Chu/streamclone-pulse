@@ -463,10 +463,11 @@ export function EmoteEconomyPanel({
           </span>
         </div>
         <div className="leg">
-          {(providerShares.length > 0 ? providerShares : [{ provider: 'No provider data', count: 0, sharePct: 0 }]).slice(0, 5).map((share, index) => (
-            <span key={share.provider}>
+          {(providerShares.length > 0 ? providerShares : [{ provider: 'No provider data', count: 0, sharePct: 0 }]).slice(0, 5).map((share) => (
+            <span key={share.provider} className="hx-donut__legend-item">
               <EmoteProviderIcon provider={share.provider} size={14} />
-              {Math.round(share.sharePct)}%
+              <span className="hx-donut__legend-provider">{share.provider}</span>
+              <span className="hx-donut__legend-pct tnum">{Math.round(share.sharePct)}%</span>
             </span>
           ))}
           <span className="muted" style={{ fontSize: '0.72rem' }}>

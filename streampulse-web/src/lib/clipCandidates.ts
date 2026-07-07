@@ -125,8 +125,24 @@ export async function sendClipCandidateToReplayForge(id: string): Promise<ClipCa
   return result.data
 }
 
+export async function refreshClipCandidateReplayForgeJob(id: string): Promise<ClipCandidateJob> {
+  const result = await apiClient<ClipCandidateJob>(clipPath(`/${encodeURIComponent(id)}/replayforge`), {
+    gated: true,
+  })
+  return result.data
+}
+
 export function clipCandidateStatus(candidate: ClipCandidate): ClipCandidateStatus {
   return candidate.state?.status ?? 'new'
+}
+
+/** User-visible ReplayForge job label — worker ready is not portal playable. */
+export function clipJobDisplayStatus(job: ClipCandidateJob): string {
+  if (job.status === 'queued') return 'Rendering queued'
+  if (job.status === 'ready') return 'Worker ready (playback not verified)'
+  if (job.status === 'source_unavailable') return 'Source unavailable'
+  if (job.status === 'failed') return 'Render failed'
+  return job.status
 }
 
 export function clipCandidateRangeLabel(candidate: Pick<ClipCandidate, 'startSeconds' | 'endSeconds'>): string {
