@@ -9,6 +9,7 @@ import {
   describeRollupGap,
   emoteSelectionKey,
   findChartIndexByOffset,
+  fullRollupsMissingStreamPrefix,
   hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
   toggleEmotePlotKeys,
@@ -157,7 +158,12 @@ export function RecapTimelineChart({
   }, [payload.streamId])
 
   useEffect(() => {
-    if (hasFullRollups || fullTimelineRequestedRef.current) return
+    if (
+      (hasFullRollups && !fullRollupsMissingStreamPrefix(payload))
+      || fullTimelineRequestedRef.current
+    ) {
+      return
+    }
     const request = onRequestFullRollupsRef.current
     if (!request) return
     fullTimelineRequestedRef.current = true

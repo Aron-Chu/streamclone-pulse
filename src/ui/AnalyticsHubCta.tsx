@@ -40,7 +40,7 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.25,
   },
   subtitle: {
-    color: 'rgba(221, 214, 254, 0.82)',
+    color: 'var(--pulse-accent-soft, rgba(161, 161, 178, 0.9))',
     display: 'block',
     fontSize: 10,
     fontWeight: 600,

@@ -37,6 +37,16 @@ describe('extensionChartPoints', () => {
     expect(sampled.some(point => (point.chatCount ?? 0) === 999)).toBe(true)
   })
 
+  it('downsample merges peak viewer counts from each bucket onto the activity leader', () => {
+    const rollups: ExtensionRollup[] = Array.from({ length: 240 }, (_, i) =>
+      rollup(i * 60, 100, 0),
+    )
+    rollups[50] = { offsetSeconds: 50 * 60, chatCount: 1, sevenTvEmoteCount: 0, viewerCount: 42_000 }
+
+    const sampled = downsampleRollupsForChart(rollups, 60)
+    expect(sampled.some(point => (point.viewerCount ?? 0) === 42_000)).toBe(true)
+  })
+
   it('finds nearest chart point by offset', () => {
     const points = chartPointsFromExtensionRollups([
       rollup(0, 1),

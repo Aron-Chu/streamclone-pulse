@@ -15,6 +15,10 @@ import {
   mergeEmoteOverlaySeries,
   overlaySeriesAxisMax,
   prepareChartRollups,
+  densifyRollupsForTimeline,
+  resolveFullChartDensifyFromOffset,
+  fullRollupsMissingStreamPrefix,
+  FULL_CHART_DEAD_ZONE_CLIP_SEC,
   resolveFullChartFromOffset,
   resolvePayloadCoverageStartOffset,
   FULL_CHART_STREAM_START_TOLERANCE_SEC,
@@ -240,6 +244,23 @@ describe('chatActivityEmotes', () => {
     expect(rollups[4]?.chatCount).toBe(9)
   })
 
+  it('densifyRollupsForTimeline bucketing keeps averaged viewer samples per bucket', () => {
+    const rollups = [
+      { offsetSeconds: 0, chatCount: 10, viewerCount: 10_000 },
+      { offsetSeconds: 60, chatCount: 12, viewerCount: 12_000 },
+      { offsetSeconds: 120, chatCount: 8, viewerCount: 8_000 },
+    ]
+    const densified = densifyRollupsForTimeline(rollups, {
+      fromOffset: 0,
+      toOffset: 600 * 60,
+      maxPoints: 480,
+    })
+    expect(densified.length).toBe(480)
+    expect(densified.some(bucket => (bucket.viewerCount ?? 0) > 0)).toBe(true)
+    const firstBucket = densified[0]
+    expect(firstBucket?.viewerCount).toBe(10_000)
+  })
+
   describe('late-start full-timeline honesty (P1-008)', () => {
     const coverage45m = 45 * 60
 
@@ -326,15 +347,118 @@ describe('chatActivityEmotes', () => {
       expect(resolveFullChartFromOffset(120, 120)).toBe(0)
     })
 
-    it('aligns at coverage start when tracking began after the tolerance', () => {
+    it('aligns at coverage start for true late joins with a missing prefix', () => {
       const coverage45m = 45 * 60
       expect(resolveFullChartFromOffset(coverage45m, coverage45m)).toBe(coverage45m)
-      expect(resolveFullChartFromOffset(121, 121)).toBe(121)
+      expect(
+        resolveFullChartFromOffset(coverage45m, coverage45m, {
+          state: 'missing_ranges_detected',
+          coverageStartOffsetSeconds: coverage45m,
+          coverageEndOffsetSeconds: coverage45m + 900,
+          hasFullStreamCoverage: false,
+          hasGaps: true,
+          missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: coverage45m - 60 }],
+          canBackfill: false,
+          message: '',
+        }),
+      ).toBe(coverage45m)
     })
 
-    it('uses the earlier of coverage start and first rollup offset', () => {
-      expect(resolveFullChartFromOffset(3600, 3540)).toBe(3540)
-      expect(resolveFullChartFromOffset(3600, 3660)).toBe(3600)
+    it('still spans from 00:00 for quiet openings before the first chat minute', () => {
+      expect(resolveFullChartFromOffset(240, 240)).toBe(0)
+      expect(
+        resolveFullChartFromOffset(240, 240, {
+          state: 'partial_tracking',
+          coverageStartOffsetSeconds: 240,
+          coverageEndOffsetSeconds: 3600,
+          hasFullStreamCoverage: false,
+          hasGaps: false,
+          canBackfill: false,
+          message: '',
+        }),
+      ).toBe(0)
+    })
+
+    it('uses the earlier of coverage start and first rollup offset for late joins', () => {
+      const coverage45m = 45 * 60
+      const lateCoverage = {
+        state: 'missing_ranges_detected' as const,
+        coverageStartOffsetSeconds: coverage45m,
+        coverageEndOffsetSeconds: coverage45m + 900,
+        hasFullStreamCoverage: false,
+        hasGaps: true,
+        missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: coverage45m - 60 }],
+        canBackfill: false,
+        message: '',
+      }
+      expect(resolveFullChartFromOffset(coverage45m, 3540, lateCoverage)).toBe(coverage45m)
+      expect(resolveFullChartFromOffset(coverage45m, 3660, lateCoverage)).toBe(coverage45m)
+    })
+  })
+
+  describe('resolveFullChartDensifyFromOffset', () => {
+    it('clips long dead zones before the first active rollup minute', () => {
+      const payload: PulsePayload = {
+        login: 'test',
+        isLive: true,
+        tracking: true,
+        currentOffsetSeconds: 7200,
+        coverageStartOffsetSeconds: 240,
+        rollups: [],
+        fullRollups: [
+          { offsetSeconds: 2400, chatCount: 12, sevenTvEmoteCount: 4, viewerCount: 18_000 },
+          { offsetSeconds: 2460, chatCount: 18, sevenTvEmoteCount: 6, viewerCount: 18_400 },
+        ],
+        lanes: { composite: [], chat: [], seventv: [] },
+        peaks: [],
+        recap: null,
+      }
+      expect(FULL_CHART_DEAD_ZONE_CLIP_SEC).toBe(600)
+      expect(resolveFullChartDensifyFromOffset(payload, payload.fullRollups!)).toBe(2400)
+      const rollups = prepareChartRollups(payload, { chartWindow: 'full', currentOffsetSeconds: 7200 })
+      expect(rollups[0]?.offsetSeconds).toBe(2400)
+    })
+  })
+
+  describe('fullRollupsMissingStreamPrefix', () => {
+    it('detects tail-trimmed fullRollups on long streams', () => {
+      const payload: PulsePayload = {
+        login: 'test',
+        isLive: true,
+        tracking: true,
+        currentOffsetSeconds: 532 * 60,
+        coverageStartOffsetSeconds: 0,
+        rollups: [],
+        fullRollups: Array.from({ length: 480 }, (_, i) => ({
+          offsetSeconds: (52 * 60) + i * 60,
+          chatCount: 10,
+          sevenTvEmoteCount: 5,
+        })),
+        lanes: { composite: [], chat: [], seventv: [] },
+        peaks: [],
+        recap: null,
+      }
+      expect(fullRollupsMissingStreamPrefix(payload)).toBe(true)
+    })
+
+    it('returns false when fullRollups span from stream start', () => {
+      const payload: PulsePayload = {
+        login: 'test',
+        isLive: true,
+        tracking: true,
+        currentOffsetSeconds: 532 * 60,
+        coverageStartOffsetSeconds: 0,
+        rollups: [],
+        fullRollups: Array.from({ length: 480 }, (_, i) => ({
+          offsetSeconds: i * 60,
+          chatCount: 10,
+          sevenTvEmoteCount: 5,
+        })),
+        lanes: { composite: [], chat: [], seventv: [] },
+        peaks: [],
+        recap: null,
+      }
+      expect(fullRollupsMissingStreamPrefix(payload)).toBe(false)
     })
   })
 

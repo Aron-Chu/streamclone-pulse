@@ -16,7 +16,7 @@ import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
 import type { ExtensionClip, ExtensionCoverageTierResponse, PulseBackfillJob, PulsePayload } from '../shared/messages.ts'
-import { openHubAnalytics, openStreamAnalytics } from '../shared/analyticsLinks.ts'
+import { openStreamAnalytics } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
@@ -36,6 +36,7 @@ import {
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { resolvePulsePanelSections } from './pulsePanelLayout.ts'
+import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
@@ -51,6 +52,7 @@ import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLi
 import { isPulseTop500Supported } from './pulseEligibility.ts'
 import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
 import { PulseNotTrackedPanel } from './PulseNotTrackedPanel.tsx'
+import { PulseRosterUnsupportedPanel } from './PulseRosterUnsupportedPanel.tsx'
 import { PulseSidebarSkeleton } from './PulseSidebarSkeleton.tsx'
 import { resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
 import {
@@ -328,7 +330,7 @@ export function Overlay({
     if (!isPulseTop500Supported(payload)) {
       setNotice({
         kind: 'info',
-        text: 'StreamPulse live chat is only available for channels in the hosted top-500 roster.',
+        text: 'StreamPulse live chat is only available for channels on the actively tracked roster.',
       })
       return
     }
@@ -1016,12 +1018,9 @@ export function Overlay({
       {showHostedOfflineFallback ? (
         <PulseSectionCard title="Channel offline" titleTone="muted">
           <p style={styles.stateText}>
-            No live Pulse session for this channel right now. Browse history and tracked channels on the Analytics hub, or check back when they go live.
+            No live Pulse session for this channel right now. Check back when they go live, or use Analytics Hub above to browse tracked channels.
           </p>
           <div style={styles.footerActions}>
-            <button type="button" style={styles.hubLinkButton} onClick={() => openHubAnalytics(backendUrl)}>
-              Analytics hub →
-            </button>
             <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>
               Refresh
             </button>
@@ -1045,14 +1044,13 @@ export function Overlay({
         <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openSettings} />
       ) : null}
 
-      {!error && payload && !pulseSupported && (!hostedBackend || !uiIsLive) ? (
-        <Top500UnsupportedState login={login} />
+      {!error && payload && !pulseSupported ? (
+        <PulseRosterUnsupportedPanel login={login} />
       ) : null}
 
-      {!error && hostedBackend && uiIsLive && pulseLiveAccess.state !== 'full_live' ? (
+      {!error && hostedBackend && uiIsLive && pulseSupported && pulseLiveAccess.state !== 'full_live' ? (
         <PulseNotTrackedPanel
           login={login}
-          backendUrl={backendUrl}
           hostedActiveCount={pulseLiveAccess.hostedActiveCount}
           hostedActiveLimit={pulseLiveAccess.hostedActiveLimit}
         />
@@ -1062,7 +1060,6 @@ export function Overlay({
         <PulseLiveUnavailablePanel
           variant="not_irc_tracked"
           login={login}
-          backendUrl={backendUrl}
           coverageStartOffsetSeconds={pulseLiveAccess.coverageStartOffsetSeconds}
           hostedActiveCount={pulseLiveAccess.hostedActiveCount}
           hostedActiveLimit={pulseLiveAccess.hostedActiveLimit}
@@ -1074,7 +1071,6 @@ export function Overlay({
         <PulseLiveUnavailablePanel
           variant="late_session"
           login={login}
-          backendUrl={backendUrl}
           coverageStartOffsetSeconds={pulseLiveAccess.coverageStartOffsetSeconds}
           hostedActiveCount={pulseLiveAccess.hostedActiveCount}
           hostedActiveLimit={pulseLiveAccess.hostedActiveLimit}
@@ -1270,7 +1266,7 @@ function StreamPulseHeader({
       ? 'Live chart'
       : 'Not tracked'
     : !pulseSupported
-      ? 'Top 500 only'
+      ? 'Limited roster'
       : pulseLiveAccess === 'full_live'
         ? 'Live chart'
         : pulseLiveAccess === 'late_session'
@@ -1290,19 +1286,11 @@ function StreamPulseHeader({
           </span>
         </div>
         <p style={styles.streamPulseLead}>{LIVE_HEAT_SUBTITLE}</p>
-        <button
-          type="button"
-          style={styles.headerHubLink}
-          title="Full history, moments, and tracked channels"
-          onClick={() => openHubAnalytics(backendUrl)}
-        >
-          Analytics hub →
-        </button>
       </div>
       <div style={actionsStyle}>
         {!pulseSupported && !hostedBackend ? (
-          <span style={trackButtonStyle} aria-label="Top 500 roster only">
-            Top 500 only
+          <span style={trackButtonStyle} aria-label="Limited tracked roster">
+            Limited roster
           </span>
         ) : hostedBackend ? (
           <span style={trackButtonStyle} aria-label={statusLabel}>
@@ -1343,6 +1331,7 @@ function StreamPulseHeader({
           )}
         </div>
       </div>
+      <AnalyticsHubCta backendUrl={backendUrl} compact={sidebarFill} />
     </header>
   )
 }
@@ -1568,18 +1557,6 @@ function WarmingState({
   )
 }
 
-function Top500UnsupportedState({ login }: { login: string }) {
-  return (
-    <section style={styles.stateBlock}>
-      <h2 style={styles.stateTitle}>Not in StreamPulse top 500</h2>
-      <p style={styles.stateText}>
-        <strong>{login}</strong> is outside the hosted top-500 roster, so live Pulse chat analytics is not available here. StreamPulse tracks IRC rollups for top-500 channels only — there is no VOD archive to backfill mid-stream for everyone else.
-      </p>
-      <p style={styles.muted}>Open a top-500 streamer to use Pulse Live, or check back if this channel joins the roster.</p>
-    </section>
-  )
-}
-
 function BackendError({ backendUrl, onRetry, onSettings }: { backendUrl: string; onRetry: () => void; onSettings: () => void }) {
   return (
     <section style={styles.errorBlock}>
@@ -1712,11 +1689,13 @@ const styles: Record<string, CSSProperties> = {
   streamPulseLead: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, lineHeight: 1.4, margin: '6px 0 0' },
   headerHubLink: {
     ...overlayTextLinkButton,
+    flexBasis: '100%',
     fontSize: 10,
     fontWeight: 800,
     letterSpacing: '0.04em',
-    marginTop: 6,
+    marginTop: 2,
     textTransform: 'uppercase',
+    width: '100%',
   },
   streamPulseHeaderActions: { alignItems: 'flex-end', display: 'flex', flexDirection: 'column', flexShrink: 0, gap: 8 },
   streamPulseHeaderActionsSidebar: { alignItems: 'stretch', display: 'flex', flexDirection: 'column', gap: 10, width: '100%' },

@@ -58,6 +58,7 @@ export function downsampleRollupsForChart(
 
     let best = rollups[start]!
     let bestScore = rollupActivityScore(best)
+    let peakViewers = chartViewerValue(best)
     for (let i = start + 1; i < end; i += 1) {
       const rollup = rollups[i]!
       const score = rollupActivityScore(rollup)
@@ -65,8 +66,13 @@ export function downsampleRollupsForChart(
         best = rollup
         bestScore = score
       }
+      peakViewers = Math.max(peakViewers, chartViewerValue(rollup))
     }
-    out.push(best)
+    if (peakViewers > chartViewerValue(best)) {
+      out.push({ ...best, viewerCount: peakViewers })
+    } else {
+      out.push(best)
+    }
   }
   return out
 }

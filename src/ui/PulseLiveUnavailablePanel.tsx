@@ -1,13 +1,12 @@
 import type { CSSProperties } from 'react'
 import { formatHeatOffset } from '@streamclone/pulse-core'
-import { openHubAnalytics } from '../shared/analyticsLinks.ts'
 import type { PulseLiveAccessState } from './resolvePulseLiveAccess.ts'
+import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { theme } from './theme.ts'
 
 export interface PulseLiveUnavailablePanelProps {
   variant: Extract<PulseLiveAccessState, 'not_irc_tracked' | 'late_session'>
   login: string
-  backendUrl: string
   coverageStartOffsetSeconds: number
   hostedActiveCount: number | null
   hostedActiveLimit: number | null
@@ -27,7 +26,6 @@ function formatPoolLabel(activeCount: number | null, activeLimit: number | null)
 export function PulseLiveUnavailablePanel({
   variant,
   login,
-  backendUrl,
   coverageStartOffsetSeconds,
   hostedActiveCount,
   hostedActiveLimit,
@@ -46,52 +44,22 @@ export function PulseLiveUnavailablePanel({
       : `StreamPulse is tracking this stream from ${formatHeatOffset(coverageStartOffsetSeconds)}, but you opened the channel late. Full live charts are available for protected watchlist channels or when you open a stream within the first 2 minutes.`
 
   return (
-    <section style={styles.block}>
-      <h2 style={styles.title}>{title}</h2>
+    <PulseSectionCard title={title}>
       <p style={styles.text}>{body}</p>
-      <p style={styles.muted}>
-        See which channels are actively tracked on the StreamPulse Analytics hub.
-      </p>
-      <div style={styles.actions}>
-        <button
-          type="button"
-          style={styles.primaryButton}
-          onClick={() => openHubAnalytics(backendUrl)}
-        >
-          Open Analytics hub
-        </button>
-        {onOpenSettings ? (
+      {onOpenSettings ? (
+        <div style={styles.actions}>
           <button type="button" style={styles.secondaryButton} onClick={onOpenSettings}>
             {variant === 'late_session' ? 'Protect for future streams' : 'Extension settings'}
           </button>
-        ) : null}
-      </div>
-    </section>
+        </div>
+      ) : null}
+    </PulseSectionCard>
   )
 }
 
 const styles: Record<string, CSSProperties> = {
-  block: {
-    background: theme.panelElevated,
-    border: `1px solid ${theme.border}`,
-    borderRadius: theme.radiusPanel,
-    marginBottom: 14,
-    padding: '14px 16px',
-  },
-  title: { fontSize: 16, fontWeight: 800, lineHeight: 1.2, margin: '0 0 8px' },
-  text: { color: theme.textSecondary, fontSize: 12, fontWeight: 600, lineHeight: 1.5, margin: '0 0 8px' },
-  muted: { color: theme.textMuted, fontSize: 11, fontWeight: 600, lineHeight: 1.45, margin: '0 0 12px' },
+  text: { color: theme.textSecondary, fontSize: 12, fontWeight: 600, lineHeight: 1.5, margin: 0 },
   actions: { display: 'flex', flexWrap: 'wrap', gap: 8 },
-  primaryButton: {
-    background: theme.accent,
-    border: 0,
-    borderRadius: theme.radiusButton,
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 800,
-    padding: '8px 12px',
-  },
   secondaryButton: {
     background: theme.panel,
     border: `1px solid ${theme.border}`,

@@ -1,7 +1,8 @@
 import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streamclone/pulse-core'
 import { CHART_THEME, emoteChartColor } from './chartTheme.ts'
-import type { ExtensionEmote, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
+import type { ExtensionEmote, ExtensionRollup, PulseCoverage, PulsePayload } from '../shared/messages.ts'
 import { chartBucketRanges } from './extensionChartPoints.ts'
+import { firstActiveRollupOffset } from './chartRollupUtils.ts'
 
 export const MAX_PAST_STREAM_ROWS = 3
 export const CHAT_INSPECTOR_EMOTE_LIMIT = 8
@@ -101,7 +102,9 @@ export function chartWindowNeedsFullFetch(
   currentOffsetSeconds = 0,
 ): boolean {
   if (window !== '2h' && window !== '4h' && window !== 'full') return false
-  if (payload && hasFullTimelineRollups(payload)) return false
+  if (payload && hasFullTimelineRollups(payload) && !fullRollupsMissingStreamPrefix(payload)) {
+    return false
+  }
 
   if (!payload || currentOffsetSeconds <= 0) {
     return window === 'full'
@@ -115,6 +118,25 @@ export function chartWindowNeedsFullFetch(
   const needFrom = Math.max(0, currentOffsetSeconds - windowSeconds)
   const earliestRecent = recent[0]?.offsetSeconds ?? currentOffsetSeconds
   return earliestRecent > needFrom + 90
+}
+
+/**
+ * Default BFF polls tail-trim fullRollups to FULL_TIMELINE_MAX_POINTS (480) minutes.
+ * Long streams look "complete" but drop the opening ~ (duration - 480) minutes.
+ */
+export function fullRollupsMissingStreamPrefix(payload: PulsePayload | null | undefined): boolean {
+  if (!payload?.fullRollups?.length) return true
+  const full = payload.fullRollups
+  const current = Math.max(0, payload.currentOffsetSeconds ?? 0)
+  if (current <= FULL_TIMELINE_MAX_POINTS * 60) return false
+
+  const first = full[0]?.offsetSeconds ?? 0
+  const coverageStart = resolvePayloadCoverageStartOffset(payload)
+  if (first <= coverageStart + FULL_CHART_STREAM_START_TOLERANCE_SEC) return false
+
+  const expectedTailStart = Math.max(0, current - FULL_TIMELINE_MAX_POINTS * 60)
+  const toleranceSec = 20 * 60
+  return first >= expectedTailStart - toleranceSec
 }
 
 export function chartTimelineWindowLabel(window: ChartTimelineWindow): string {
@@ -229,6 +251,29 @@ function mergeTopEmotesAcrossMinutes(emoteLists: ExtensionEmote[][]): ExtensionE
 /** Matches backend coverageStartToleranceSec and resolvePulseLiveAccess. */
 export const FULL_CHART_STREAM_START_TOLERANCE_SEC = 120
 
+/** Skip zero-filling long dead zones before the first chat/emote/viewer minute. */
+export const FULL_CHART_DEAD_ZONE_CLIP_SEC = 10 * 60
+
+export function resolveFullChartDensifyFromOffset(
+  payload: PulsePayload,
+  raw: ExtensionRollup[],
+  coverageStartOffsetSeconds?: number,
+): number {
+  const coverageStart = resolvePayloadCoverageStartOffset(payload, coverageStartOffsetSeconds)
+  const firstDataOffset = raw.length > 0 ? raw[0]!.offsetSeconds : coverageStart
+  let fromOffset = resolveFullChartFromOffset(coverageStart, firstDataOffset, payload.coverage)
+
+  const firstActive = firstActiveRollupOffset(raw)
+  if (
+    firstActive != null
+    && firstActive > fromOffset + FULL_CHART_DEAD_ZONE_CLIP_SEC
+    && !hasMissingPrefixFromStreamStart(payload.coverage)
+  ) {
+    fromOffset = firstActive
+  }
+  return fromOffset
+}
+
 export function resolvePayloadCoverageStartOffset(
   payload: Pick<PulsePayload, 'coverageStartOffsetSeconds' | 'coverage'>,
   override?: number,
@@ -242,14 +287,50 @@ export function resolvePayloadCoverageStartOffset(
   )
 }
 
-/** Full-stream chart densification start — 0 when tracked from stream start. */
+/** True when backend reports a missing prefix from 00:00 (joined mid-stream), not a quiet opening. */
+export function hasMissingPrefixFromStreamStart(coverage?: PulseCoverage | null): boolean {
+  if (!coverage) return false
+  if (coverage.hasFullStreamCoverage || coverage.trackedFromStart) return false
+  const coverageStart = Math.max(0, coverage.coverageStartOffsetSeconds ?? 0)
+  if (coverageStart <= FULL_CHART_STREAM_START_TOLERANCE_SEC) return false
+  const ranges = coverage.missingRanges ?? []
+  if (
+    ranges.some(
+      range =>
+        range.fromOffsetSeconds <= FULL_CHART_STREAM_START_TOLERANCE_SEC
+        && range.toOffsetSeconds >= coverageStart - 60,
+    )
+  ) {
+    return true
+  }
+  if (coverage.state === 'missing_ranges_detected') {
+    return true
+  }
+  // Late join without explicit missingRanges: a large coverage start implies 00:00 was not tracked.
+  return coverageStart >= 15 * 60
+}
+
+/**
+ * Full-stream chart densification start.
+ * Quiet openings (chat/viewers warm up a few minutes in) still span 00:00 → now.
+ * Late joins keep the honest coverage-start clip.
+ */
 export function resolveFullChartFromOffset(
   coverageStartOffsetSeconds: number,
   firstDataOffsetSeconds: number,
+  coverage?: PulseCoverage | null,
 ): number {
+  if (coverage?.trackedFromStart || coverage?.hasFullStreamCoverage) return 0
   const coverageStart = Math.max(0, coverageStartOffsetSeconds)
   if (coverageStart <= FULL_CHART_STREAM_START_TOLERANCE_SEC) return 0
-  return Math.min(coverageStart, Math.max(0, firstDataOffsetSeconds))
+  if (hasMissingPrefixFromStreamStart(coverage)) {
+    return Math.min(coverageStart, Math.max(0, firstDataOffsetSeconds))
+  }
+  // Without nested coverage, treat long offsets as late join; short ones as warm-up.
+  if (!coverage && coverageStart > 15 * 60) {
+    return Math.min(coverageStart, Math.max(0, firstDataOffsetSeconds))
+  }
+  return 0
 }
 
 export function densifyRollupsForTimeline(
@@ -290,6 +371,8 @@ export function densifyRollupsForTimeline(
     let chatSum = 0
     let sevenTvSum = 0
     let totalEmoteSum = 0
+    let viewerSum = 0
+    let viewerSamples = 0
     const bucketTopEmotes: ExtensionEmote[][] = []
     for (let off = bucketStart; off < bucketEnd; off += step) {
       const rollup = byOffset.get(off)
@@ -297,6 +380,11 @@ export function densifyRollupsForTimeline(
       chatSum += rollup.chatCount ?? 0
       sevenTvSum += rollup.sevenTvEmoteCount ?? 0
       totalEmoteSum += rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0
+      const viewerCount = rollup.viewerCount ?? 0
+      if (viewerCount > 0) {
+        viewerSum += viewerCount
+        viewerSamples += 1
+      }
       if (rollup.topEmotes?.length) bucketTopEmotes.push(rollup.topEmotes)
     }
     const minutesInBucket = Math.max(1, Math.floor((bucketEnd - bucketStart) / step))
@@ -305,6 +393,7 @@ export function densifyRollupsForTimeline(
       chatCount: Math.round(chatSum / minutesInBucket),
       sevenTvEmoteCount: Math.round(sevenTvSum / minutesInBucket),
       totalEmoteCount: totalEmoteSum > 0 ? Math.round(totalEmoteSum / minutesInBucket) : undefined,
+      viewerCount: viewerSamples > 0 ? Math.round(viewerSum / viewerSamples) : undefined,
       topEmotes: mergeTopEmotesAcrossMinutes(bucketTopEmotes),
     })
   }
@@ -345,8 +434,7 @@ export function prepareChartRollups(
   if (toOffset <= 60) return raw
 
   const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
-  const firstDataOffset = raw.length > 0 ? raw[0]!.offsetSeconds : coverageStart
-  const fromOffset = resolveFullChartFromOffset(coverageStart, firstDataOffset)
+  const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
 
   return densifyRollupsForTimeline(raw, {
     fromOffset,
@@ -478,10 +566,7 @@ export function chartEmptyMessage(options: {
   if (awaitingFullRollups) {
     return 'Loading full stream rollups from Streamclone…'
   }
-  if (rollupCount >= 2) return ''
-  if (rollupCount === 1) {
-    return 'First minute collected — sparkline appears after one more completed minute.'
-  }
+  if (rollupCount >= 1) return ''
   if (confidence === 'Waiting for first minute') {
     return 'Collecting the first minute of chat rollups. The graph appears here automatically.'
   }

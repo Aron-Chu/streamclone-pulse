@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { gameSegmentPlotBounds } from '@streamclone/pulse-charts'
 import {
   chartBarBucketOpacity,
+  extendViewerSeriesToLeadingEdge,
   firstViewerOffsetSeconds,
   linePathInBand,
   plotY,
@@ -145,6 +146,18 @@ describe('firstViewerOffsetSeconds', () => {
   it('prefers payload fallback when rollups have no viewers', () => {
     const rollups = [{ offsetSeconds: 60, chatCount: 1, viewerCount: 0 }]
     expect(firstViewerOffsetSeconds(rollups, 300)).toBe(300)
+  })
+})
+
+describe('extendViewerSeriesToLeadingEdge', () => {
+  it('carries the first viewer sample back across earlier chat minutes', () => {
+    const rollups = [
+      { offsetSeconds: 120, chatCount: 40, viewerCount: 0 },
+      { offsetSeconds: 180, chatCount: 55, viewerCount: 0 },
+      { offsetSeconds: 300, chatCount: 60, viewerCount: 41_000 },
+    ]
+    const values = [null, null, 41_000] as Array<number | null>
+    expect(extendViewerSeriesToLeadingEdge(rollups, values)).toEqual([41_000, 41_000, 41_000])
   })
 })
 

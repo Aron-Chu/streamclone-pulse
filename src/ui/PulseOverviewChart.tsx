@@ -27,6 +27,7 @@ import {
   smoothNullableSeriesValues,
   smoothSeriesValues,
   trendSmoothingWindow,
+  extendViewerSeriesToLeadingEdge,
 } from './chartRollupUtils.ts'
 import { resolveChartCrosshairMode } from './chartCrosshair.ts'
 import { prefersReducedMotion, useSmoothedScalar } from './motion/useSmoothedScalar.ts'
@@ -235,6 +236,14 @@ export function PulseOverviewChart({
   )
 
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
+  const viewerTrendValues = useMemo(
+    () =>
+      extendViewerSeriesToLeadingEdge(
+        rollups,
+        smoothNullableSeriesValues(viewers, trendWindow),
+      ),
+    [rollups, viewers, trendWindow],
+  )
   const chatTrendValues = useMemo(
     () => smoothNullableSeriesValues(chat, trendWindow),
     [chat, trendWindow],
@@ -244,7 +253,7 @@ export function PulseOverviewChart({
     [emotes, trendWindow],
   )
 
-  const viewerMax = seriesMax(viewers)
+  const viewerMax = seriesMax(viewerTrendValues)
   const chatMax = seriesMax(chat)
   const emoteMax = seriesMax(emotes)
   const chatTrendAxisMax = Math.max(chatMax, 1)
@@ -339,7 +348,7 @@ export function PulseOverviewChart({
   const viewerAreaPath = useMemo(() => {
     if (viewerMax <= 0) return ''
     return areaPath(
-      viewers,
+      viewerTrendValues,
       viewerAxisMax,
       width,
       height,
@@ -348,12 +357,12 @@ export function PulseOverviewChart({
       viewerBandTop,
       viewerBandBottom,
     )
-  }, [viewers, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
+  }, [viewerTrendValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
 
   const viewerLinePath = useMemo(() => {
     if (viewerMax <= 0) return ''
     return linePath(
-      viewers,
+      viewerTrendValues,
       viewerAxisMax,
       width,
       height,

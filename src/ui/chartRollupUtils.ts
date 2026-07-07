@@ -45,6 +45,14 @@ export function rollupHasMinuteData(point: ExtensionRollup): boolean {
   )
 }
 
+/** Earliest rollup minute with chat, emotes, or viewer samples. */
+export function firstActiveRollupOffset(rollups: ExtensionRollup[]): number | null {
+  for (const rollup of rollups) {
+    if (rollupHasMinuteData(rollup)) return rollup.offsetSeconds
+  }
+  return null
+}
+
 export function decimateSeriesForRender(
   values: Array<number | null>,
   maxPoints: number,
@@ -176,6 +184,27 @@ export function firstViewerOffsetSeconds(
   }
   if (earliest >= 0) return earliest
   return Math.max(0, fallback)
+}
+
+/**
+ * Chart-only: carry the first Helix viewer sample backward across earlier chat minutes
+ * so the viewer lane does not leave a multi-minute dead zone before samples arrive.
+ */
+export function extendViewerSeriesToLeadingEdge(
+  rollups: ExtensionRollup[],
+  values: Array<number | null>,
+): Array<number | null> {
+  const firstIndex = values.findIndex(value => value != null && value > 0)
+  if (firstIndex <= 0) return values
+  const anchor = values[firstIndex]!
+  const out = [...values]
+  for (let i = 0; i < firstIndex; i += 1) {
+    const rollup = rollups[i]
+    if (!rollup) continue
+    const hasActivity = (rollup.chatCount ?? 0) > 0 || minuteEmoteTotal(rollup) > 0
+    if (hasActivity) out[i] = anchor
+  }
+  return out
 }
 
 export function indexFromChartClick(

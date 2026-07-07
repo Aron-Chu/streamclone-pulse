@@ -16,7 +16,6 @@ import { getDefaultChartWindow } from '../shared/storage.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
-import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
@@ -27,6 +26,7 @@ import {
   emoteAveragesFromRollups,
   emoteSelectionKey,
   findChartIndexByOffset,
+  fullRollupsMissingStreamPrefix,
   hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
   prepareChartRollups,
@@ -35,7 +35,7 @@ import {
 } from './chatActivityEmotes.ts'
 import { downsampleRollupsForChart } from './extensionChartPoints.ts'
 import { extensionGamesForOverviewChart } from './extensionChartAdapter.ts'
-import { firstViewerOffsetSeconds, minuteEmoteTotal } from './chartRollupUtils.ts'
+import { firstViewerOffsetSeconds, firstActiveRollupOffset, minuteEmoteTotal } from './chartRollupUtils.ts'
 import { LiveMetricIcon } from './liveMetricIcons.tsx'
 import { emoteSyncStatusLabel, emoteSyncStatusTone } from './emoteSync.ts'
 import { overlayTextLinkButton } from './momentReasonStyles.ts'
@@ -219,7 +219,8 @@ export function LiveStatsBand({
   )
   const rollupGapNotice = chartWindow === 'full' && hasFullRollups ? describeRollupGap(rollups) : null
   const awaitingFullRollups =
-    chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds) && !hasFullRollups
+    chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)
+    && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload))
   const chartLoading = timelineLoading || awaitingFullRollups
   const chartEmpty = chartEmptyMessage({
     rollupCount: rollups.length,
@@ -246,7 +247,12 @@ export function LiveStatsBand({
     if (!chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)) {
       return
     }
-    if (hasFullRollups || fullTimelineRequestedRef.current) return
+    if (
+      (hasFullRollups && !fullRollupsMissingStreamPrefix(payload))
+      || fullTimelineRequestedRef.current
+    ) {
+      return
+    }
     const request = onRequestFullTimelineRef.current
     if (!request) return
     fullTimelineRequestedRef.current = true
@@ -398,6 +404,14 @@ export function LiveStatsBand({
   const lateViewerSamples =
     showViewerStrip
     && viewerStartOffsetSeconds > coverageStartOffsetSeconds + 60
+  const firstActivityOffsetSeconds = useMemo(
+    () => firstActiveRollupOffset(rollups),
+    [rollups],
+  )
+  const sparseActivityWarmup =
+    chartWindow === 'full'
+    && firstActivityOffsetSeconds != null
+    && firstActivityOffsetSeconds > coverageStartOffsetSeconds + 10 * 60
 
   return (
     <PulseSectionCard
@@ -531,18 +545,24 @@ export function LiveStatsBand({
               ) : undefined
             }
           />
-          {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || lateViewerSamples || (showLoadFromStart && onLoadFromStart) ? (
+          {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || sparseActivityWarmup || lateViewerSamples || (showLoadFromStart && onLoadFromStart) ? (
             <p style={styles.timelineHint}>
               {lateTracking && (chartWindow === 'full' || !fullTimeline) ? (
                 <span>Rollups since {formatHeatOffset(coverageStartOffsetSeconds)}</span>
               ) : null}
-              {lateTracking && (chartWindow === 'full' || !fullTimeline) && lateViewerSamples ? (
+              {lateTracking && (chartWindow === 'full' || !fullTimeline) && sparseActivityWarmup ? (
+                <span style={styles.timelineHintSep}> · </span>
+              ) : null}
+              {sparseActivityWarmup && firstActivityOffsetSeconds != null ? (
+                <span>Activity chart from {formatHeatOffset(firstActivityOffsetSeconds)}</span>
+              ) : null}
+              {(lateTracking && (chartWindow === 'full' || !fullTimeline) || sparseActivityWarmup) && lateViewerSamples ? (
                 <span style={styles.timelineHintSep}> · </span>
               ) : null}
               {lateViewerSamples ? (
                 <span>Viewer samples from {formatHeatOffset(viewerStartOffsetSeconds)}</span>
               ) : null}
-              {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || lateViewerSamples ? (
+              {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || sparseActivityWarmup || lateViewerSamples ? (
                 showLoadFromStart && onLoadFromStart ? (
                   <span style={styles.timelineHintSep}> · </span>
                 ) : null
@@ -592,7 +612,6 @@ export function LiveStatsBand({
             emoteSyncTone={emoteSyncTone}
           />
         </div>
-        <AnalyticsHubCta backendUrl={backendUrl} compact={sidebarFill} />
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <SevenTvEmotePanel
