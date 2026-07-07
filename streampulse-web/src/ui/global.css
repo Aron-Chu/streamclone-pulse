@@ -227,6 +227,27 @@ select {
   gap: 1rem;
 }
 
+.analytics-route-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analytics-route-fallback__spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: analytics-route-fallback-spin 0.8s linear infinite;
+}
+
+@keyframes analytics-route-fallback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .muted {
   color: var(--text-muted);
 }

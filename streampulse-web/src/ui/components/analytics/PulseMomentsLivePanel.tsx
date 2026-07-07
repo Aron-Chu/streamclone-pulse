@@ -24,14 +24,11 @@ import {
 } from "../../../lib/pulseMomentsUtils";
 import { buildPulseMomentsBucketDiagnostics } from "../../../lib/pulseMomentsBucketDiagnostics";
 import {
-  fetchHistoricalHubMoments,
-  type PublicHub,
-  type PublicHubActivityWindow,
-} from "../../../lib/publicHub";
-import {
+  hasBucketMomentsCache,
   readBucketMomentsCache,
-  writeBucketMomentsCache,
 } from "../../../lib/bucketMomentsCache";
+import { requestHubBucketMoments } from "../../../lib/prefetchHubBucketMoments";
+import type { PublicHub, PublicHubActivityWindow } from "../../../lib/publicHub";
 import { FigmaMomentInspector } from "./FigmaMomentInspector";
 import { MostReactedMinutesTable } from "./MostReactedMinutesTable";
 import { TopEmoteBurstsPanel } from "./TopEmoteBurstsPanel";
@@ -184,19 +181,19 @@ export function PulseMomentsLivePanel({
     ) {
       return;
     }
-    if (readBucketMomentsCache(hoverBucketT, activityWindow)?.length) return;
+    if (hasBucketMomentsCache(hoverBucketT, activityWindow)) return;
 
     const controller = new AbortController();
-    fetchHistoricalHubMoments(hoverBucketT, activityWindow, controller.signal)
-      .then((response) => {
-        const rows = response.moments.map(mapHubPulseMoment);
-        writeBucketMomentsCache(hoverBucketT, activityWindow, rows);
-      })
-      .catch(() => {
-        /* ignore prefetch errors */
-      });
+    requestHubBucketMoments({
+      bucketT: hoverBucketT,
+      activityWindow,
+      activityWindowMinutes,
+      signal: controller.signal,
+    }).catch(() => {
+      /* ignore prefetch errors */
+    });
     return () => controller.abort();
-  }, [activityWindow, feed.source, hoverBucketT, selectedBucketT]);
+  }, [activityWindow, activityWindowMinutes, feed.source, hoverBucketT, selectedBucketT]);
 
   useEffect(() => {
     if (!bucketSelected || selectedBucketT == null) {
@@ -219,15 +216,20 @@ export function PulseMomentsLivePanel({
     setBucketReason(undefined);
     setBucketLoading(interim.length === 0);
 
+    if (hasBucketMomentsCache(selectedBucketT, activityWindow)) {
+      setBucketLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
-    fetchHistoricalHubMoments(
-      selectedBucketT,
+    requestHubBucketMoments({
+      bucketT: selectedBucketT,
       activityWindow,
-      controller.signal,
-    )
+      activityWindowMinutes,
+      signal: controller.signal,
+    })
       .then((response) => {
         const rows = response.moments.map(mapHubPulseMoment);
-        writeBucketMomentsCache(selectedBucketT, activityWindow, rows);
         setBucketMoments(rows);
         setBucketReason(response.reason);
         setBucketStatus(
@@ -247,7 +249,14 @@ export function PulseMomentsLivePanel({
         }
       });
     return () => controller.abort();
-  }, [activityWindow, bucketSelected, selectedBucketT]);
+  }, [
+    activityWindow,
+    activityWindowMinutes,
+    bucketSelected,
+    hub.liveChannels,
+    poolMoments,
+    selectedBucketT,
+  ]);
 
   const allMoments = useMemo(() => {
     const base = bucketSelected ? bucketMoments : feed.moments;

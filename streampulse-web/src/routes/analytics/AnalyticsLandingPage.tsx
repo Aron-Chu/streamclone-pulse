@@ -13,9 +13,9 @@ import { summarizeActivity } from "../../lib/hubActivitySummary";
 import { aggregateEmotesFromMoments } from "../../ui/components/analytics/activityBucketInspectorUtils";
 import type { FigmaMomentRow } from "../../lib/figmaSessionAnalytics";
 import { filterMomentsByBucket } from "../../lib/pulseMomentsUtils";
-import { readBucketMomentsCache, writeBucketMomentsCache } from "../../lib/bucketMomentsCache";
+import { hasBucketMomentsCache, readBucketMomentsCache } from "../../lib/bucketMomentsCache";
+import { requestHubBucketMoments } from "../../lib/prefetchHubBucketMoments";
 import {
-  fetchHistoricalHubMoments,
   HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   resolveHubTopMovers,
@@ -146,9 +146,9 @@ function AnalyticsLandingContent() {
       return;
     }
 
-    const cached = readBucketMomentsCache(hoverBucketT, activityWindow) ?? [];
-    if (cached.length > 0) {
-      setHoverBucketMoments(cached);
+    if (hasBucketMomentsCache(hoverBucketT, activityWindow)) {
+      const rows = readBucketMomentsCache(hoverBucketT, activityWindow) ?? [];
+      setHoverBucketMoments(rows);
       setHoverBucketMomentsLoading(false);
       return;
     }
@@ -164,10 +164,15 @@ function AnalyticsLandingContent() {
     setHoverBucketMomentsLoading(true);
 
     const controller = new AbortController();
-    fetchHistoricalHubMoments(hoverBucketT, activityWindow, controller.signal)
-      .then((response) => {
-        const rows = response.moments.map(mapHubPulseMoment);
-        writeBucketMomentsCache(hoverBucketT, activityWindow, rows);
+    requestHubBucketMoments({
+      bucketT: hoverBucketT,
+      activityWindow,
+      activityWindowMinutes: data.activity.windowMinutes,
+      signal: controller.signal,
+      includeAdjacent: true,
+    })
+      .then(() => {
+        const rows = readBucketMomentsCache(hoverBucketT, activityWindow) ?? [];
         setHoverBucketMoments(rows);
         setHoverBucketMomentsLoading(false);
       })
@@ -180,6 +185,7 @@ function AnalyticsLandingContent() {
     return () => controller.abort();
   }, [
     activityWindow,
+    data.activity.windowMinutes,
     hoverBucketT,
     optimisticBucketMoments,
     selectedBucketT,
