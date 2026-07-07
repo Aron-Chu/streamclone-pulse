@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { buildAnalyticsMomentLink } from '@streamclone/pulse-core'
 import type { PastVodRow } from '../shared/messages.ts'
+import { openHubAnalytics, openStreamAnalytics } from '../shared/analyticsLinks.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import {
   buildTwitchVodUrl,
@@ -75,8 +75,11 @@ export function PastVodsSection({
   const hiddenCount = Math.max(0, rows.length - MAX_PAST_STREAM_ROWS)
 
   function openAnalytics(streamId: string): void {
-    const path = buildAnalyticsMomentLink(login, 0, streamId)
-    window.open(`${backendUrl}${path}`, '_blank', 'noopener,noreferrer')
+    openStreamAnalytics({
+      apiBaseUrl: backendUrl,
+      channelLogin: login,
+      streamId,
+    })
   }
 
   function openTwitchVod(row: PastVodRow): void {
@@ -85,7 +88,7 @@ export function PastVodsSection({
   }
 
   function openAllAnalytics(): void {
-    window.open(`${backendUrl}/analytics/${encodeURIComponent(login)}`, '_blank', 'noopener,noreferrer')
+    openHubAnalytics(backendUrl)
   }
 
   return (
@@ -183,14 +186,14 @@ function PastVodRowCard({
           </span>
         </div>
       </button>
-      <div style={styles.rowActions}>
+      <div className="pulse-past-vod-actions">
         {onFromStart ? (
-          <button type="button" className="pulse-past-vod-action pulse-past-vod-action-from-start" onClick={onFromStart}>
+          <button type="button" className="pulse-past-vod-action pulse-past-vod-action-start" onClick={onFromStart}>
             From start
           </button>
         ) : null}
         <button type="button" className="pulse-past-vod-action" onClick={onAnalytics}>
-          Pulse
+          Analytics
         </button>
         {row.videoId ? (
           <button type="button" className="pulse-past-vod-action pulse-past-vod-action-vod" onClick={onTwitchVod}>
@@ -281,13 +284,5 @@ const styles: Record<string, CSSProperties> = {
     padding: '2px 6px',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-  },
-  rowActions: {
-    alignItems: 'center',
-    display: 'flex',
-    flexDirection: 'column',
-    flexShrink: 0,
-    gap: 4,
-    justifyContent: 'center',
   },
 }
