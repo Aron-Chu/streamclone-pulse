@@ -3,7 +3,9 @@ import { Download, RefreshCw, Save, Scissors, Send, X } from 'lucide-react'
 import {
   clipCandidateRangeLabel,
   clipCandidateStatus,
+  clipJobDisplayStatus,
   fetchClipCandidates,
+  refreshClipCandidateReplayForgeJob,
   sendClipCandidateToReplayForge,
   updateClipCandidateState,
   type ClipCandidate,
@@ -47,19 +49,27 @@ interface ClipCandidateCardProps {
   job?: ClipCandidateJob
   busy: boolean
   sendBusy: boolean
+  refreshBusy: boolean
   onSetStatus: (candidate: ClipCandidate, status: ClipCandidateStatus) => void
   onSendReplayForge: (candidate: ClipCandidate) => void
+  onRefreshReplayForge: (candidate: ClipCandidate) => void
 }
 
 function replayForgeLabel(job?: ClipCandidateJob): string | null {
   if (!job) return null
-  if (job.status === 'queued') return 'ReplayForge queued'
-  if (job.status === 'ready') return 'ReplayForge ready'
-  if (job.status === 'source_unavailable') return 'ReplayForge blocked'
-  return 'ReplayForge failed'
+  return clipJobDisplayStatus(job)
 }
 
-function ClipCandidateCard({ candidate, job, busy, sendBusy, onSetStatus, onSendReplayForge }: ClipCandidateCardProps) {
+function ClipCandidateCard({
+  candidate,
+  job,
+  busy,
+  sendBusy,
+  refreshBusy,
+  onSetStatus,
+  onSendReplayForge,
+  onRefreshReplayForge,
+}: ClipCandidateCardProps) {
   const status = clipCandidateStatus(candidate)
   const warning = sourceWarning(candidate)
   const title = candidate.state?.titleOverride || candidate.streamTitle || `${candidate.login} moment`
@@ -130,6 +140,18 @@ function ClipCandidateCard({ candidate, job, busy, sendBusy, onSetStatus, onSend
           <Send size={15} aria-hidden="true" />
           {job?.status === 'queued' ? 'Queued' : canSendReplayForge ? 'Send to ReplayForge' : 'ReplayForge blocked'}
         </Button>
+        {job?.status === 'queued' ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={refreshBusy}
+            title="Refresh ReplayForge job status"
+            onClick={() => onRefreshReplayForge(candidate)}
+          >
+            <RefreshCw size={15} aria-hidden="true" />
+            Refresh ReplayForge
+          </Button>
+        ) : null}
         <Button size="sm" variant="outline" disabled title="Rendering starts in Phase 2">
           <Scissors size={15} aria-hidden="true" />
           Render
@@ -150,6 +172,7 @@ export default function ClipsPage() {
   const [error, setError] = useState<string | null>(null)
   const [busyID, setBusyID] = useState<string | null>(null)
   const [sendBusyID, setSendBusyID] = useState<string | null>(null)
+  const [refreshBusyID, setRefreshBusyID] = useState<string | null>(null)
   const [jobsByCandidate, setJobsByCandidate] = useState<Record<string, ClipCandidateJob>>({})
 
   const load = useCallback(async () => {
@@ -210,6 +233,19 @@ export default function ClipsPage() {
     }
   }
 
+  async function refreshCandidateJob(candidate: ClipCandidate) {
+    setRefreshBusyID(candidate.id)
+    setError(null)
+    try {
+      const job = await refreshClipCandidateReplayForgeJob(candidate.id)
+      setJobsByCandidate((current) => ({ ...current, [candidate.id]: job }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh ReplayForge job')
+    } finally {
+      setRefreshBusyID(null)
+    }
+  }
+
   return (
     <section className="clips-page" aria-labelledby="clips-title">
       <div className="clips-page__header">
@@ -258,8 +294,10 @@ export default function ClipsPage() {
               job={jobsByCandidate[candidate.id]}
               busy={busyID === candidate.id}
               sendBusy={sendBusyID === candidate.id}
+              refreshBusy={refreshBusyID === candidate.id}
               onSetStatus={setCandidateStatus}
               onSendReplayForge={sendCandidate}
+              onRefreshReplayForge={refreshCandidateJob}
             />
           ))}
         </div>

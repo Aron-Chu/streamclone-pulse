@@ -206,6 +206,7 @@ test.describe('hub metrics honesty (mocked hub)', () => {
     const sub = page.locator('.live-channels-matrix .figma-block__sub')
     await expect(sub).toContainText(/live in pool/)
     await expect(sub).toContainText(/IRC collecting/)
+    await expect(sub).toContainText(/roster live/)
     await assertNoConsoleErrors(page, errors)
   })
 

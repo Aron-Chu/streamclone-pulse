@@ -2,6 +2,8 @@ export type MessageType =
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
+  | 'GET_COVERAGE'
+  | 'GET_ALWAYS_TRACKED'
   | 'GET_CLIP'
   | 'HEALTH'
   | 'OPEN_OPTIONS'
@@ -29,12 +31,23 @@ export interface UntrackMessage {
   login: string
 }
 
+export interface GetCoverageMessage {
+  type: 'GET_COVERAGE'
+  login: string
+}
+
+export interface GetAlwaysTrackedMessage {
+  type: 'GET_ALWAYS_TRACKED'
+}
+
 export interface GetPulseMessage {
   type: 'GET_PULSE'
   login: string
   /** When true, POST /watch and start polling. Default false — use TRACK for that. */
   watch?: boolean
   window?: 'recent' | 'full'
+  /** Reject cached pulse when the viewer moved to a different live stream. */
+  streamId?: string
 }
 
 export interface GetClipMessage {
@@ -138,6 +151,8 @@ export type BackgroundRequest =
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
+  | GetCoverageMessage
+  | GetAlwaysTrackedMessage
   | GetClipMessage
   | HealthMessage
   | OpenOptionsMessage
@@ -242,12 +257,24 @@ export interface PulseRecapEmote {
   code: string
   count: number
   provider?: string
+  id?: string
+  imageUrl?: string
+}
+
+export interface ExtensionGameSegment {
+  gameName: string
+  boxArtUrl?: string
+  offsetSeconds: number
+  durationSeconds: number
 }
 
 export interface PulseRecapMoment {
   offsetSeconds: number
   score: number
   reasons: string[]
+  chatCount?: number
+  emoteCount?: number
+  viewerCount?: number
   topEmotes?: PulseRecapEmote[]
 }
 
@@ -321,10 +348,21 @@ export interface PulseCoverage {
   coverageStartOffsetSeconds: number
   coverageEndOffsetSeconds: number
   hasFullStreamCoverage: boolean
+  /** True when IRC rollups begin within backend stream-start tolerance. */
+  trackedFromStart?: boolean
   hasGaps: boolean
   missingRanges?: PulseCoverageRange[]
   canBackfill: boolean
   backfillReason?: string
+  /** Backend VOD availability hint for backfill gating. */
+  vodStatus?: string
+  /** Whether the user may trigger a manual VOD retry from the extension. */
+  manualRetryAllowed?: boolean
+  /** Primary chat rollup source (irc, vod, etc.). */
+  chatSource?: string
+  chatSourceDetail?: string
+  /** Stable copy id for UI — prefer with message over client derivation. */
+  copyKey?: string
   message: string
 }
 
@@ -352,8 +390,15 @@ export interface PulsePayload {
   streamId?: string
   vodId?: string | null
   startedAt?: string
+  endedAt?: string
+  title?: string
+  category?: string
+  peakViewers?: number
+  peakEmotePerMin?: number
+  durationSeconds?: number
   currentOffsetSeconds: number
   coverageStartOffsetSeconds?: number
+  viewerStartOffsetSeconds?: number
   coverage?: PulseCoverage
   topEmotes?: ExtensionEmote[]
   rollups: ExtensionRollup[]
@@ -361,8 +406,34 @@ export interface PulsePayload {
   lanes: ExtensionLanes
   peaks?: ExtensionPeak[]
   recap: PulseStreamRecap | null
+  games?: ExtensionGameSegment[]
   emoteSync?: EmoteSyncSnapshot
   helixEnabled?: boolean
+  /** Hosted extension gate — false when login is outside the top-500 roster. */
+  top500Eligible?: boolean
+}
+
+export interface ExtensionHostedCapStatus {
+  activeLimit: number
+  activeCount: number | null
+  activeAvailable: boolean
+  backfillLimit?: number | null
+  backfillActive?: number | null
+}
+
+export interface ExtensionCoverageTierResponse {
+  login: string
+  channelId?: string | null
+  displayName?: string | null
+  coverageTier: string
+  hostedCap: ExtensionHostedCapStatus
+  liveMetadata?: {
+    available?: boolean
+    source?: string
+    isLive?: boolean | null
+    viewerCount?: number | null
+  }
+  reasonCodes?: string[]
 }
 
 export interface PulseUpdateMessage {
@@ -370,6 +441,7 @@ export interface PulseUpdateMessage {
   login: string
   payload: PulsePayload | null
   error?: string
+  coverageTier?: ExtensionCoverageTierResponse | null
 }
 
 export type BackgroundResponse =
@@ -386,5 +458,6 @@ export type BackgroundResponse =
   | { type: 'EMOTE_IMAGE'; mimeType?: string; buffer?: ArrayBuffer; error?: string }
   | { type: 'PULSE_BACKFILL'; job: PulseBackfillJob | null; error?: string }
   | { type: 'PULSE_BACKFILL_STATUS'; job: PulseBackfillJob | null; error?: string }
+  | { type: 'ALWAYS_TRACKED'; channels: string[]; error?: string }
   | { type: 'DISCOVER_LIVE_VOD'; result: import('./twitchVodGql.ts').GqlVodDiscoveryResult; error?: string }
   | { ok: boolean; error?: string }

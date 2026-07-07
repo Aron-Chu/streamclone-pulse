@@ -1,4 +1,3 @@
-import type { ActivitySummary } from '../../../lib/hubActivitySummary'
 import {
   formatActivityWindowLabel,
   peakActivityChatPerMin,
@@ -12,20 +11,21 @@ import { KpiCard } from './primitives/KpiCard'
 
 export interface HubCommandHeaderProps {
   hub: PublicHub
-  activitySummary: ActivitySummary
   loading?: boolean
 }
 
-export function HubCommandHeader({ hub, activitySummary, loading }: HubCommandHeaderProps) {
+export function HubCommandHeader({ hub, loading }: HubCommandHeaderProps) {
   const labels = useCommandCenterLabels()
   const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes)
   const peakViewers = peakActivityViewers(hub.activity.points, hub.activity.windowMinutes)
   const peakChat = peakActivityChatPerMin(hub.activity.points, hub.activity.windowMinutes)
   const liveInPool = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
+  const rosterLive = hub.corpusPipeline.roster?.live ?? 0
+  const collectorActive = hub.corpusPipeline.collectorActive
+  const collectorMax = hub.corpusPipeline.collectorMax
   const ircLabel =
-    hub.corpusPipeline.collectorMax > 0
-      ? `${hub.corpusPipeline.collectorActive}/${hub.corpusPipeline.collectorMax} IRC`
-      : null
+    collectorMax > 0 ? `${collectorActive}/${collectorMax} IRC` : null
+  const rosterDiffersFromPool = rosterLive > 0 && rosterLive !== liveInPool
 
   const kpis = [
     {
@@ -35,6 +35,17 @@ export function HubCommandHeader({ hub, activitySummary, loading }: HubCommandHe
       showLiveDot: true,
       title: 'Channels currently live in the bounded rollup pool (not corpus lifetime total).',
     },
+    ...(rosterDiffersFromPool
+      ? [
+          {
+            label: 'Roster live',
+            value: compact(rosterLive),
+            tone: 'neutral' as const,
+            title:
+              'Top-500 roster channels marked live by metadata — may exceed IRC-collecting pool capacity.',
+          },
+        ]
+      : []),
     {
       label: 'Corpus streams',
       value: compact(hub.corpus.streamsTracked),
@@ -66,12 +77,6 @@ export function HubCommandHeader({ hub, activitySummary, loading }: HubCommandHe
       label: 'Emotes/min',
       value: hub.emoteIntel.emotesPerMin > 0 ? compact(hub.emoteIntel.emotesPerMin) : '—',
       tone: 'chat' as const,
-    },
-    {
-      label: 'Activity buckets',
-      value: loading ? '…' : `${activitySummary.pointCount}/${activitySummary.expectedBuckets}`,
-      tone: 'neutral' as const,
-      sub: `${Math.round(activitySummary.coveragePct)}% filled`,
     },
   ]
 
