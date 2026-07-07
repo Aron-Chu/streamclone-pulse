@@ -1,12 +1,21 @@
-import { onPulseUpdate, sendBackgroundMessage } from './bridge.ts'
+import { onPulseUpdate, onVodPulseUpdate, sendBackgroundMessage } from './bridge.ts'
 
 import { createLivePollController } from './livePoll.ts'
 
-import { mountOverlay, unmountOverlay, updateOverlayContext, updateOverlayPayload } from './mount.tsx'
+import {
+  mountOverlay,
+  unmountOverlay,
+  updateOverlayContext,
+  updateOverlayLogin,
+  updateOverlayPayload,
+  updateOverlayVodState,
+} from './mount.tsx'
+
+import { overlaySessionKey, placeholderLoginForContext, shouldActivateOverlay } from './contentActivation.ts'
 
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
-import type { PulseUpdateMessage } from '../shared/messages.ts'
+import type { PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
 
 import {
   getAutoTrackPolicy,
@@ -18,15 +27,21 @@ import {
 
 import { getWatchlist } from '../shared/watchlist.ts'
 
-import { isPulseTop500Supported } from '../ui/pulseEligibility.ts'
+import { isPulseRosterEligible } from '../ui/pulseEligibility.ts'
 
-let activeLogin: string | null = null
+import { vodPulseToChannelPayload } from '../vod/vodPulseToChannelPayload.ts'
+
+type ActiveSession =
+  | { kind: 'channel'; login: string }
+  | { kind: 'vod'; vodId: string; login: string }
+
+let activeSession: ActiveSession | null = null
 
 let lastPageIsLive = false
 
 let lastCollecting = false
 
-let lastTop500Eligible = true
+let lastRosterEligible = true
 
 let sessionOpenedAtMs: number | null = null
 
@@ -42,16 +57,21 @@ function installOverlayPrefsListener(): void {
     if (area !== 'sync') return
     if (!changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY] && !changes.overlayPlacement) return
     const context = parseTwitchPage(window.location.pathname)
-    if (!activeLogin || !context.login || context.login !== activeLogin) return
-    updateOverlayContext(context)
+    if (!activeSession) return
+    if (context.kind === 'channel' && activeSession.kind === 'channel' && context.login === activeSession.login) {
+      updateOverlayContext(context)
+    }
+    if (context.kind === 'vod' && activeSession.kind === 'vod' && context.vodId === activeSession.vodId) {
+      updateOverlayContext(context)
+    }
   })
 }
 
-async function refreshPulse(login: string): Promise<void> {
+async function refreshChannelPulse(login: string): Promise<void> {
   await sendBackgroundMessage({ type: 'GET_PULSE', login, watch: false })
 }
 
-async function fetchPulse(login: string): Promise<PulseUpdateMessage> {
+async function fetchChannelPulse(login: string): Promise<PulseUpdateMessage> {
   const response = await sendBackgroundMessage({ type: 'GET_PULSE', login, watch: false })
   if ('type' in response && response.type === 'PULSE_UPDATE') {
     return response
@@ -59,14 +79,14 @@ async function fetchPulse(login: string): Promise<PulseUpdateMessage> {
   return { type: 'PULSE_UPDATE', login, payload: null }
 }
 
-async function loadInitialPayload(
+async function loadInitialChannelPayload(
   login: string,
   autoTrack: boolean,
   hosted: boolean,
 ): Promise<PulseUpdateMessage> {
-  const response = await fetchPulse(login)
+  const response = await fetchChannelPulse(login)
 
-  if (hosted || !autoTrack || !isPulseTop500Supported(response.payload)) {
+  if (hosted || !autoTrack || !isPulseRosterEligible(response.payload)) {
     return response
   }
 
@@ -78,9 +98,44 @@ async function loadInitialPayload(
   return response
 }
 
-async function activate(context: TwitchPageContext): Promise<void> {
-  const login = context.login
+function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
+  if (!activeSession || activeSession.kind !== 'vod' || activeSession.vodId !== message.vodId) {
+    return
+  }
 
+  updateOverlayVodState({
+    vodPulse: message.vodPulse,
+    loading: false,
+  })
+
+  const payload = message.vodPulse ? vodPulseToChannelPayload(message.vodPulse) : null
+  const channelLogin = message.vodPulse?.channelLogin?.trim().toLowerCase()
+
+  if (channelLogin && channelLogin !== activeSession.login) {
+    activeSession = { kind: 'vod', vodId: message.vodId, login: channelLogin }
+    updateOverlayLogin(channelLogin)
+  }
+
+  updateOverlayPayload(payload, message.error ?? (payload ? undefined : message.vodPulse?.coverageMessage))
+}
+
+async function fetchVodPulse(vodId: string): Promise<void> {
+  updateOverlayVodState({ loading: true })
+  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId })
+  if ('type' in response && response.type === 'VOD_PULSE_UPDATE') {
+    applyVodPulseMessage(response)
+    return
+  }
+  applyVodPulseMessage({
+    type: 'VOD_PULSE_UPDATE',
+    vodId,
+    vodPulse: null,
+    error: 'vod_pulse_failed',
+  })
+}
+
+async function activateChannel(context: TwitchPageContext): Promise<void> {
+  const login = context.login
   if (!login) {
     deactivate()
     return
@@ -93,49 +148,88 @@ async function activate(context: TwitchPageContext): Promise<void> {
   const hosted = isHostedBackendUrl(backendUrl)
   const localStack = isLocalStackBackendUrl(backendUrl)
 
-  if (activeLogin === login) {
+  if (activeSession?.kind === 'channel' && activeSession.login === login) {
     updateOverlayContext(context)
+    updateOverlayVodState({ vodPulse: null, loading: false })
     if (pageIsLive !== lastPageIsLive) {
-      void refreshPulse(login)
+      void refreshChannelPulse(login)
     }
     lastPageIsLive = pageIsLive
-    livePoll.sync(login, context, lastCollecting && lastTop500Eligible, hosted)
+    livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted)
     return
   }
 
-  activeLogin = login
+  activeSession = { kind: 'channel', login }
   sessionOpenedAtMs = Date.now()
   lastCollecting = false
-  lastTop500Eligible = true
+  lastRosterEligible = true
   lastPageIsLive = pageIsLive
 
-  mountOverlay(login, null, context, { sessionOpenedAtMs })
+  mountOverlay(login, null, context, {
+    sessionOpenedAtMs,
+    onPulseRefresh: () => refreshChannelPulse(login),
+  })
+  updateOverlayVodState({ vodPulse: null, loading: false })
   livePoll.sync(login, context, false, hosted)
 
   const [policy, watchlist] = await Promise.all([getAutoTrackPolicy(), getWatchlist()])
   const onWatchlist = watchlist.includes(login.toLowerCase())
   const autoTrack = localStack && (policy === 'followed' || (policy === 'ask' && onWatchlist))
-  const message = await loadInitialPayload(login, autoTrack, hosted)
+  const message = await loadInitialChannelPayload(login, autoTrack, hosted)
   const payload = message.payload
   lastCollecting = payload?.tracking ?? false
-  lastTop500Eligible = isPulseTop500Supported(payload)
+  lastRosterEligible = isPulseRosterEligible(payload)
 
   mountOverlay(login, payload, context, {
     sessionOpenedAtMs,
     coverageTier: message.coverageTier ?? null,
-    pendingTrackPrompt: localStack && policy === 'ask' && !autoTrack && !payload?.tracking && lastTop500Eligible,
+    pendingTrackPrompt: localStack && policy === 'ask' && !autoTrack && !payload?.tracking && lastRosterEligible,
+    onPulseRefresh: () => refreshChannelPulse(login),
   })
 
-  livePoll.sync(login, context, lastCollecting && lastTop500Eligible, hosted)
+  livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted)
+}
+
+async function activateVod(context: TwitchPageContext): Promise<void> {
+  const vodId = context.vodId
+  if (!vodId) {
+    deactivate()
+    return
+  }
+
+  installOverlayPrefsListener()
+  livePoll.stop()
+
+  const login = placeholderLoginForContext(context)
+
+  if (activeSession?.kind === 'vod' && activeSession.vodId === vodId) {
+    updateOverlayContext(context)
+    return
+  }
+
+  activeSession = { kind: 'vod', vodId, login }
+  sessionOpenedAtMs = Date.now()
+  lastCollecting = false
+  lastRosterEligible = true
+  lastPageIsLive = false
+
+  mountOverlay(login, null, context, {
+    sessionOpenedAtMs,
+    onPulseRefresh: () => fetchVodPulse(vodId),
+  })
+  updateOverlayVodState({ vodPulse: null, loading: true })
+
+  await fetchVodPulse(vodId)
 }
 
 function deactivate(): void {
-  activeLogin = null
+  activeSession = null
   sessionOpenedAtMs = null
   lastPageIsLive = false
   lastCollecting = false
-  lastTop500Eligible = true
+  lastRosterEligible = true
   livePoll.stop()
+  updateOverlayVodState({ vodPulse: null, loading: false })
   unmountOverlay()
 }
 
@@ -144,29 +238,40 @@ const NAV_DEBOUNCE_MS = 350
 function syncFromLocation(): void {
   const context = parseTwitchPage(window.location.pathname)
 
-  if (context.kind === 'non-channel' || !context.login) {
+  if (!shouldActivateOverlay(context)) {
     deactivate()
     return
   }
 
-  void activate(context)
+  if (context.kind === 'vod') {
+    void activateVod(context)
+    return
+  }
+
+  void activateChannel(context)
 }
 
 onPulseUpdate((message: PulseUpdateMessage) => {
-  if (!activeLogin || message.login !== activeLogin) return
+  if (!activeSession || activeSession.kind !== 'channel' || message.login !== activeSession.login) {
+    return
+  }
 
   updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null)
 
   lastCollecting = message.payload?.tracking ?? false
-  lastTop500Eligible = isPulseTop500Supported(message.payload)
+  lastRosterEligible = isPulseRosterEligible(message.payload)
 
   const context = parseTwitchPage(window.location.pathname)
 
-  if (context.login === activeLogin) {
+  if (context.kind === 'channel' && context.login === activeSession.login) {
     void getBackendUrl().then(url => {
-      livePoll.sync(activeLogin!, context, lastCollecting && lastTop500Eligible, isHostedBackendUrl(url))
+      livePoll.sync(activeSession!.login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
     })
   }
+})
+
+onVodPulseUpdate((message: VodPulseUpdateMessage) => {
+  applyVodPulseMessage(message)
 })
 
 let navTimer: ReturnType<typeof setTimeout> | null = null
@@ -196,20 +301,22 @@ history.replaceState = (...args) => {
 }
 
 setInterval(() => {
-  if (!activeLogin) return
+  if (!activeSession || activeSession.kind !== 'channel') return
 
   const context = parseTwitchPage(window.location.pathname)
+  const sessionKey = overlaySessionKey(context)
 
-  if (context.login !== activeLogin) return
+  if (sessionKey !== activeSession.login) return
 
   const pageIsLive = detectTwitchChannelLive(context)
+  const login = activeSession.login
 
   if (pageIsLive !== lastPageIsLive) {
-    void refreshPulse(activeLogin)
+    void refreshChannelPulse(login)
     lastPageIsLive = pageIsLive
     updateOverlayContext(context)
     void getBackendUrl().then(url => {
-      livePoll.sync(activeLogin!, context, lastCollecting && lastTop500Eligible, isHostedBackendUrl(url))
+      livePoll.sync(login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
     })
   }
 }, 5000)

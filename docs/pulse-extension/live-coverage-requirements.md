@@ -5,7 +5,7 @@
 | **Status** | Draft v1 — requirements |
 | **Owner** | Aron-Chu |
 | **Scope** | Chrome MV3 extension + **streampulse-vps** hosted analytics backend (+ StreamPulse portal parity) |
-| **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · streamclone `internal/analytics/pulse_coverage.go` · `extension_api.go` |
+| **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · streamclone [`roster-naming-truth-table.md`](../../twitch-7tv-clone/docs/pulse-extension/roster-naming-truth-table.md) · `internal/analytics/pulse_coverage.go` · `extension_api.go` |
 | **Repos** | Extension: **streamclone-pulse**. Backend: **streamclone** (hosted at `https://api.streampulse.stream` on **streampulse-vps**; operator deploy in private **streampulse-ops**). BearHost is rollback/archive only. |
 
 ---
@@ -247,6 +247,7 @@ stateDiagram-v2
 | UX-5 | Show **Load missed moments** only when `canBackfill === true` **and** `vodId` is non-empty (or backend explicitly allows hint-only backfill with body `vodId`). |
 | UX-6 | Show **Protect this channel** when coverage is partial and backfill is unavailable, waiting, or `vod_unavailable`. |
 | UX-7 | Show **Tracked from stream start** when `trackedFromStart === true` (or `coverageStartOffsetSeconds <= 120`). |
+| UX-COV-8 | Do **not** show the late-start banner when `trackedFromStart` or offset ≤ 120. For **`active_live_coverage`** + tracking + offset 121–600s, use soft copy (“Live chat from {time} — earlier minutes need VOD replay”); reserve harsh “Rollups since … tracking started after stream start” for large gaps, out-of-cap joins, or when backfill is not yet actionable. |
 | UX-8 | **No fake progress** — indeterminate shimmer only while a real backfill job or explicit VOD check is in flight. |
 | UX-9 | **Never imply live tracking is broken** when only backfill is blocked. Live chart/peaks must still update. |
 | UX-10 | Display coverage start: **“Live from {offset} → now”** (e.g. `00:15:00`). |
@@ -319,7 +320,7 @@ Chart expanded from stream start — chat data begins at {coverageStart}. Backfi
 | PRO-2 | Protection sets backend **`alwaysTrack=true`** for the login (watchlist row or always-tracked table). |
 | PRO-3 | **One shared IRC/rollup session per channel**, refcounted across users — not one session per user. |
 | PRO-4 | Protected channels **preempt** normal watched channels when tracking cap is reached. |
-| PRO-5 | On go-live, tracking starts within **30–120 seconds** (SLA target). |
+| PRO-5 | On go-live, tracking starts within **30–120 seconds** (SLA target). Hosted cap admission defaults **`PULSE_TOP500_ADMISSION_INTERVAL=30s`** and **`PULSE_PROTECTED_GOLIVE_INTERVAL=30s`** until EventSub (GL-4) ships. |
 | PRO-6 | If `coverageStartOffsetSeconds ≤ 120`, set **`trackedFromStart=true`**. |
 | PRO-7 | User can disable protection; backend stops prioritizing; eviction rules apply after idle TTL. |
 | PRO-8 | Extension shows **Protected** badge when backend confirms `alwaysTrack` for current login. |
@@ -362,7 +363,7 @@ curl -H "X-Streamclone-Beta-Key: $KEY" \
 
 | ID | Requirement |
 |----|-------------|
-| GL-1 | Poll protected + always-track roster every **60–120s**. |
+| GL-1 | Poll protected + always-track roster every **30–120s** (hosted default **30s**). Top-N live admission uses the same interval target via `PULSE_TOP500_ADMISSION_INTERVAL`. |
 | GL-2 | On live detection, invoke internal **`POST /v1/analytics/channels/{login}/watch`** path. |
 | GL-3 | Acceptable for beta if EventSub not wired. |
 
@@ -389,6 +390,14 @@ curl -H "X-Streamclone-Beta-Key: $KEY" \
 | `MAX_CONCURRENT_TRACKED_CHANNELS` | Max simultaneous live IRC joins (prod profile: **200**; pulse dev profile: **10**) |
 | `BRONZE_TOP_N` | Roster size (**500** in prod corpus profile) |
 | `PULSE_MAX_ACTIVE_CHANNELS` | Hosted beta cap per deployment |
+| `PULSE_TOP500_ADMISSION_INTERVAL` | Helix top-live admission poll (hosted default **30s**) |
+| `PULSE_PROTECTED_GOLIVE_INTERVAL` | Protected / always-track go-live poll (hosted default **30s**) |
+
+### 9.4 Ops — late cap-start observability
+
+| ID | Requirement |
+|----|-------------|
+| OPS-LATE-1 | When a cap-tier source (`top_roster`, `always_track`, `protected`) writes its first rollup **>120s** after Twitch stream start, increment **`pulse_late_cap_start_total{source}`** and surface alert guidance in [`pulse-metrics-runbook.md`](../../twitch-7tv-clone/docs/pulse-extension/pulse-metrics-runbook.md) §8. |
 
 ---
 

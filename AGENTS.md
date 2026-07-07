@@ -25,6 +25,7 @@ Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep produc
 | **Figma UI (PNG + node IDs)** | [`docs/pulse-extension/figma-handoff.md`](docs/pulse-extension/figma-handoff.md) + [`figma/`](docs/pulse-extension/figma/) |
 | Repo wiring | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
 | **Image namespace exit (hosted prod)** | [`docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md`](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md), streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) |
+| **VPS SSH (operator / Gate 2 ops)** | streamclone [`docs/streampulse-vps.md`](../twitch-7tv-clone/docs/streampulse-vps.md) — `root@streampulse-vps`, key `~/.ssh/id_ed25519` in WSL |
 | **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) |
 | Extension code | `src/` |
 

@@ -55,6 +55,7 @@ import { PulseNotTrackedPanel } from './PulseNotTrackedPanel.tsx'
 import { PulseRosterUnsupportedPanel } from './PulseRosterUnsupportedPanel.tsx'
 import { PulseSidebarSkeleton } from './PulseSidebarSkeleton.tsx'
 import { resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
+import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
 import {
   evaluateBackfillRefresh,
   isPulseBackfillTerminal,
@@ -69,6 +70,10 @@ import { resolveMostReactedHeat } from './mostReacted.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
+import { resolveJumpMomentAction } from './jumpMomentAction.ts'
+import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
+import { resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
+import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
@@ -93,6 +98,9 @@ interface OverlayProps {
   overlayMode?: OverlayMode
   onSidebarTabChange?: (tab: SidebarTab) => void
   onOverlayModeChange?: (mode: OverlayMode) => void
+  onPulseRefresh?: () => Promise<void>
+  vodPulse?: ExtensionVodPulseResponse | null
+  vodPulseLoading?: boolean
 }
 
 type NoticeKind = 'ok' | 'warn' | 'info'
@@ -115,6 +123,9 @@ export function Overlay({
   overlayMode: overlayModeProp,
   onSidebarTabChange,
   onOverlayModeChange,
+  onPulseRefresh,
+  vodPulse = null,
+  vodPulseLoading = false,
 }: OverlayProps) {
   const [mode, setModeState] = useState<OverlayMode>('expanded')
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
@@ -269,6 +280,7 @@ export function Overlay({
   const showSidebarTabs = sidebarSnapped && resolvedPlacement === 'sidebar' && sidebarPart !== 'body'
   const sidebarBodyOnly = sidebarPart === 'body'
   const sidebarTabsOnly = sidebarPart === 'tabs'
+  const isVodPage = context.kind === 'vod'
   const hasLivePanel = Boolean(
     !error && payload && pulseSupported && pulseLiveAccess.state === 'full_live',
   )
@@ -276,7 +288,8 @@ export function Overlay({
     !error && payload && pulseSupported && panelSections?.showRecap,
   )
   const showHostedOfflineFallback = Boolean(
-    sidebarBodyOnly
+    !isVodPage
+    && sidebarBodyOnly
     && !uiIsLive
     && hostedBackend
     && payload
@@ -353,6 +366,16 @@ export function Overlay({
   }
 
   async function refreshPulse(full = false): Promise<PulsePayload | null> {
+    if (context.kind === 'vod' && context.vodId) {
+      setTrackBusy(true)
+      try {
+        await onPulseRefresh?.()
+        return payload
+      } finally {
+        setTrackBusy(false)
+      }
+    }
+
     setTrackBusy(true)
     try {
       const response = await sendBackgroundMessage({
@@ -777,7 +800,7 @@ export function Overlay({
     setNotice({
       kind: 'info',
       text:
-        coverageStart > 60
+        coverageStart > PULSE_STREAM_START_TOLERANCE_SEC
           ? `Chart expanded from stream start — chat data begins at ${formatHeatOffset(coverageStart)}. Backfill still needs a Twitch VOD link.`
           : 'Chart expanded from stream start.',
     })
@@ -864,46 +887,61 @@ export function Overlay({
 
   function jumpMoment(point: LiveHeatPoint): void {
     setNotice(null)
-    const vodId = payload?.vodId ?? context.vodId ?? undefined
+    const action = resolveJumpMomentAction({
+      context,
+      payloadVodId: payload?.vodId ?? context.vodId,
+      payloadIsLive: payload?.isLive,
+      liveCurrentOffset: payload?.currentOffsetSeconds,
+      offsetSeconds: point.offsetSeconds,
+    })
 
-    if (vodId) {
-      if (context.kind === 'vod' && context.vodId === vodId) {
-        const result = seekPlaybackOffset(getPrimaryVideo(), point.offsetSeconds, { isLive: false })
-        setNotice({
-          kind: result.ok ? 'ok' : 'warn',
-          text: result.ok
-            ? `Jumped to ${formatHeatOffset(point.offsetSeconds)} in the VOD player.`
-            : `Scrub the VOD player to ${formatHeatOffset(point.offsetSeconds)}.`,
-        })
-        return
-      }
-      window.open(buildTwitchVodUrl(vodId, point.offsetSeconds), '_blank', 'noopener,noreferrer')
+    if (action.kind === 'seek-vod') {
+      const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
       setNotice({
-        kind: 'ok',
-        text: `Opened Twitch VOD at ${formatHeatOffset(point.offsetSeconds)}.`,
+        kind: result.ok ? 'ok' : 'warn',
+        text: result.ok
+          ? `Jumped to ${formatHeatOffset(action.offsetSeconds)} in the VOD player.`
+          : `Scrub the VOD player to ${formatHeatOffset(action.offsetSeconds)}.`,
       })
       return
     }
 
-    if (!payload?.isLive || context.kind === 'vod') {
-      openAnalytics(point.offsetSeconds)
+    if (action.kind === 'open-vod-tab') {
+      window.open(buildTwitchVodUrl(action.vodId, action.offsetSeconds), '_blank', 'noopener,noreferrer')
+      setNotice({
+        kind: 'ok',
+        text: `Opened Twitch VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
+      })
       return
     }
 
-    const result = seekPlaybackOffset(getPrimaryVideo(), point.offsetSeconds, {
-      isLive: true,
-      liveCurrentOffset: payload.currentOffsetSeconds,
-    })
-    if (result.ok) {
-      setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(point.offsetSeconds)} inside the live DVR buffer.` })
+    if (action.kind === 'open-analytics') {
+      openAnalytics(action.offsetSeconds)
       return
     }
+
+    if (action.kind === 'seek-live-dvr') {
+      const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, {
+        isLive: true,
+        liveCurrentOffset: action.liveCurrentOffset,
+      })
+      if (result.ok) {
+        setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
+        return
+      }
+      setNotice({
+        kind: 'warn',
+        text:
+          result.reason === 'outside_buffer'
+            ? `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer.`
+            : 'Open in Streamclone once VOD context is available.',
+      })
+      return
+    }
+
     setNotice({
       kind: 'warn',
-      text:
-        result.reason === 'outside_buffer'
-          ? `Replay after VOD: ${formatHeatOffset(point.offsetSeconds)} is outside the live DVR buffer.`
-          : 'Open in Streamclone once VOD context is available.',
+      text: `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer.`,
     })
   }
 
@@ -1028,7 +1066,7 @@ export function Overlay({
         </PulseSectionCard>
       ) : null}
 
-      {awaitingTrack && localStackBackend && pulseSupported && !payload?.tracking ? (
+      {awaitingTrack && !isVodPage && localStackBackend && pulseSupported && !payload?.tracking ? (
         <section style={styles.trackPrompt}>
           <p style={styles.stateText}>Track <strong>{login}</strong> to collect live chat and 7TV rollups from your Streamclone stack.</p>
           <div style={styles.footerActions}>
@@ -1048,7 +1086,7 @@ export function Overlay({
         <PulseRosterUnsupportedPanel login={login} />
       ) : null}
 
-      {!error && hostedBackend && uiIsLive && pulseSupported && pulseLiveAccess.state !== 'full_live' ? (
+      {!error && !isVodPage && hostedBackend && uiIsLive && pulseSupported && pulseLiveAccess.state !== 'full_live' ? (
         <PulseNotTrackedPanel
           login={login}
           hostedActiveCount={pulseLiveAccess.hostedActiveCount}
@@ -1056,7 +1094,7 @@ export function Overlay({
         />
       ) : null}
 
-      {!error && !hostedBackend && payload && pulseSupported && pulseLiveAccess.state === 'not_irc_tracked' ? (
+      {!error && !isVodPage && !hostedBackend && payload && pulseSupported && pulseLiveAccess.state === 'not_irc_tracked' ? (
         <PulseLiveUnavailablePanel
           variant="not_irc_tracked"
           login={login}
@@ -1067,7 +1105,7 @@ export function Overlay({
         />
       ) : null}
 
-      {!error && !hostedBackend && payload && pulseSupported && pulseLiveAccess.state === 'late_session' ? (
+      {!error && !isVodPage && !hostedBackend && payload && pulseSupported && pulseLiveAccess.state === 'late_session' ? (
         <PulseLiveUnavailablePanel
           variant="late_session"
           login={login}
@@ -1078,7 +1116,7 @@ export function Overlay({
         />
       ) : null}
 
-      {!error && payload && pulseSupported && pulseLiveAccess.state === 'full_live' ? (
+      {!error && !isVodPage && payload && pulseSupported && pulseLiveAccess.state === 'full_live' ? (
         <>
           {displayPayload && (panelSections?.showLiveStatsBand || panelSections?.showMostReacted) ? (
             <div>
@@ -1105,6 +1143,7 @@ export function Overlay({
                   saveMomentBusy={saveBusy}
                   previewOffsetSeconds={chartPreviewOffset}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
+                  coverageTier={coverageTierState?.coverageTier ?? null}
                 />
               ) : null}
 
@@ -1152,6 +1191,15 @@ export function Overlay({
         </>
       ) : null}
 
+      {isVodPage && !hasRecapPanel ? (
+        <VodPulseStatusCard
+          vodPulse={vodPulse}
+          loading={vodPulseLoading}
+          error={error}
+          onRetry={() => void refreshPulse()}
+        />
+      ) : null}
+
       {!error && payload && pulseSupported ? (
         <>
           {panelSections?.showRecap && payload ? (
@@ -1163,6 +1211,7 @@ export function Overlay({
               coverage={recapCoverageTier}
               pollError={error ?? null}
               sidebarFill={sidebarSnapped}
+              hideHubLink
               onJump={jumpMoment}
               onAnalytics={openAnalyticsForMoment}
               onOpenAnalytics={openAnalytics}
@@ -1173,8 +1222,9 @@ export function Overlay({
 
           {notice ? <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p> : null}
 
-          {topClip ? <ClipSpikeCard clip={topClip} /> : null}
+          {topClip && !isVodPage ? <ClipSpikeCard clip={topClip} /> : null}
 
+          {!isVodPage ? (
           <PastVodsSection
             login={login}
             backendUrl={backendUrl}
@@ -1183,6 +1233,7 @@ export function Overlay({
             channelOffline={!uiIsLive}
             onOpenFromStart={openStreamStartToLive}
           />
+          ) : null}
 
           {sidebarBodyOnly && panelView === 'pulse' && !sidebarChatOnly ? (
             <div style={styles.settingsFabDock}>
@@ -1333,6 +1384,61 @@ function StreamPulseHeader({
       </div>
       <AnalyticsHubCta backendUrl={backendUrl} compact={sidebarFill} />
     </header>
+  )
+}
+
+function vodPulseStatusKind(state: ReturnType<typeof resolveVodPulseState>): PulseStatusKind {
+  switch (state.status) {
+    case 'ready':
+      return 'replay-synced'
+    case 'partial':
+      return 'partial'
+    case 'syncing':
+    case 'loading':
+      return 'syncing'
+    case 'missing':
+      return 'missing'
+    default:
+      return 'backend-error'
+  }
+}
+
+function VodPulseStatusCard({
+  vodPulse,
+  loading,
+  error,
+  onRetry,
+}: {
+  vodPulse: ExtensionVodPulseResponse | null
+  loading?: boolean
+  error?: string
+  onRetry?: () => void
+}) {
+  const state = resolveVodPulseState(vodPulse, error, loading)
+  const status = vodPulseStatusKind(state)
+  const subtitle =
+    state.status === 'loading'
+      ? 'Loading replay analytics…'
+      : state.status === 'syncing'
+        ? state.reason ?? 'Replay analytics are still syncing for this VOD.'
+        : state.status === 'missing'
+          ? state.reason ?? 'No replay analytics have been indexed for this VOD yet.'
+          : state.status === 'error'
+            ? state.message
+            : 'Replay analytics are partially available.'
+
+  return (
+    <PulseSectionCard title="Replay Pulse">
+      <div style={styles.vodStateWrap}>
+        <PulseStatusPill status={status} />
+        <p style={styles.stateText}>{subtitle}</p>
+        {onRetry ? (
+          <button type="button" style={styles.secondaryButton} onClick={onRetry}>
+            Retry
+          </button>
+        ) : null}
+      </div>
+    </PulseSectionCard>
   )
 }
 
@@ -1539,7 +1645,7 @@ function WarmingState({
   }
 
   const progress = Math.min(1, count / LIVE_HEAT_MIN_COMPLETED_ROLLUPS)
-  const lateTracking = coverageStart > 60
+  const lateTracking = coverageStart > PULSE_STREAM_START_TOLERANCE_SEC
   const firstMinutePending = count === 0
   return (
     <section style={styles.stateBlock}>
@@ -1650,6 +1756,7 @@ const styles: Record<string, CSSProperties> = {
   stateBlock: { background: '#1f1f27', borderRadius: 12, marginTop: 16, padding: 16 },
   stateTitle: { fontSize: 18, margin: '0 0 10px' },
   stateText: { color: '#b7b7c6', fontSize: 13, lineHeight: 1.35, margin: '0 0 14px' },
+  vodStateWrap: { display: 'grid', gap: 8 },
   progressTrack: { background: '#33333d', borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
   progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },
   errorBlock: { background: '#1f1f27', borderRadius: 12, padding: 16 },

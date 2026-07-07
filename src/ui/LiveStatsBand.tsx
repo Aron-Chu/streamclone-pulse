@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  MAX_TOP_EMOTES,
   deriveLiveStats,
   formatHeatOffset,
   toLiveStatsInputFromExtension,
@@ -29,6 +28,7 @@ import {
   fullRollupsMissingStreamPrefix,
   hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
+  PLOT_PICKER_EMOTE_LIMIT,
   prepareChartRollups,
   toggleEmotePlotKeys,
   type ChartTimelineWindow,
@@ -44,6 +44,7 @@ import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
+import { resolveCoverageStartHint } from './coverageStartHint.ts'
 
 export interface LiveStatsBandProps {
   payload: PulsePayload
@@ -67,6 +68,7 @@ export interface LiveStatsBandProps {
   pinOffsetSeconds?: number | null
   previewOffsetSeconds?: number | null
   hasVodContext?: boolean
+  coverageTier?: string | null
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -178,6 +180,7 @@ export function LiveStatsBand({
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
   hasVodContext = false,
+  coverageTier = null,
 }: LiveStatsBandProps) {
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
   const stats: LiveStats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
@@ -234,6 +237,8 @@ export function LiveStatsBand({
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
+  const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
+  const [activityExpanded, setActivityExpanded] = useState(false)
 
   useEffect(() => {
     if (fullTimeline) setChartWindow('full')
@@ -308,9 +313,9 @@ export function LiveStatsBand({
   }, [pinChartIndex])
 
   const topEmotesForChips = useMemo(() => {
-    const fromRollups = aggregateChartEmotes(rollups, MAX_TOP_EMOTES)
+    const fromRollups = aggregateChartEmotes(rollups, PLOT_PICKER_EMOTE_LIMIT)
     if (fromRollups.length > 0) return fromRollups
-    return (payload.topEmotes?.length ? payload.topEmotes : stats.topEmotes).slice(0, MAX_TOP_EMOTES)
+    return (payload.topEmotes?.length ? payload.topEmotes : stats.topEmotes).slice(0, PLOT_PICKER_EMOTE_LIMIT)
   }, [payload.topEmotes, rollups, stats.topEmotes])
 
   const selectedEmotesForOverlay = useMemo(
@@ -333,6 +338,16 @@ export function LiveStatsBand({
     })
     return map
   }, [selectedEmotesForOverlay, emoteOverlays])
+
+  useEffect(() => {
+    if (selectedEmotesForOverlay.length > 0) {
+      setActivityExpanded(true)
+    }
+  }, [selectedEmotesForOverlay.length])
+
+  const toggleSeriesFocus = useCallback((seriesKey: string) => {
+    setFocusedSeriesKey(current => (current === seriesKey ? null : seriesKey))
+  }, [])
 
   const emoteSyncTone = emoteSyncStatusTone(payload.emoteSync)
   const emoteAvg5m = emoteAveragesFromRollups(rollups, 5)
@@ -395,7 +410,16 @@ export function LiveStatsBand({
       ? 'Chart uses full stream; metric is latest minute.'
       : null
 
-  const lateTracking = coverageStartOffsetSeconds > 60
+  const coverageHint = resolveCoverageStartHint({
+    coverageStartOffsetSeconds,
+    trackedFromStart: payload.coverage?.trackedFromStart,
+    canBackfill: payload.coverage?.canBackfill,
+    coverageTier,
+    tracking: payload.tracking,
+    isLive,
+  })
+  const showCoverageStartHint =
+    coverageHint.show && (chartWindow === 'full' || !fullTimeline)
   const showViewerStrip = rollups.some(rollup => (rollup.viewerCount ?? 0) > 0)
   const viewerStartOffsetSeconds = Math.max(
     0,
@@ -515,21 +539,48 @@ export function LiveStatsBand({
         </div>
         <div style={styles.chartLeadIn}>
           <StreamActivityChartHeader
+            showViewerLegend={showViewerStrip}
+            focusedSeriesKey={focusedSeriesKey}
+            onToggleSeriesFocus={toggleSeriesFocus}
+            expandControl={
+              <button
+                type="button"
+                className={`pulse-chart-expand-btn${activityExpanded ? ' pulse-chart-expand-btn-active' : ''}`}
+                style={{
+                  ...styles.expandButton,
+                  ...(activityExpanded ? styles.expandButtonActive : null),
+                }}
+                onClick={() => setActivityExpanded(value => !value)}
+                aria-pressed={activityExpanded}
+              >
+                {activityExpanded ? 'Reset' : 'Expand'}
+              </button>
+            }
             overlayLegend={
               selectedEmotesForOverlay.length > 0 ? (
                 <>
                   {selectedEmotesForOverlay.map((emote, index) => {
+                    const key = emoteSelectionKey(emote)
                     const plotColor = emoteOverlays[index]?.color ?? '#fb7185'
+                    const overlayKey = emoteOverlays[index]?.key ?? key
+                    const isFocused = focusedSeriesKey === overlayKey
+                    const isDimmed = focusedSeriesKey != null && !isFocused
                     return (
-                      <span
-                        key={emoteSelectionKey(emote)}
+                      <button
+                        key={key}
+                        type="button"
+                        className="pulse-chart-overlay-legend-chip"
                         style={{
                           ...styles.overlayLegendChipImg,
                           borderColor: plotColor,
                           boxShadow: `inset 2px 0 0 ${plotColor}`,
+                          opacity: isDimmed ? 0.4 : 1,
+                          cursor: 'pointer',
                         }}
                         aria-label={emote.name}
-                        title={emote.name}
+                        aria-pressed={isFocused}
+                        title={isFocused ? 'Show all series' : `Highlight ${emote.name}`}
+                        onClick={() => toggleSeriesFocus(overlayKey)}
                       >
                         <PulseEmoteImg
                           emote={emote}
@@ -538,31 +589,39 @@ export function LiveStatsBand({
                           height={18}
                           style={styles.overlayLegendEmoteImg}
                         />
-                      </span>
+                      </button>
                     )
                   })}
                 </>
               ) : undefined
             }
           />
-          {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || sparseActivityWarmup || lateViewerSamples || (showLoadFromStart && onLoadFromStart) ? (
+          {(showCoverageStartHint || sparseActivityWarmup || lateViewerSamples || (showLoadFromStart && onLoadFromStart)) ? (
             <p style={styles.timelineHint}>
-              {lateTracking && (chartWindow === 'full' || !fullTimeline) ? (
-                <span>Rollups since {formatHeatOffset(coverageStartOffsetSeconds)}</span>
+              {showCoverageStartHint ? (
+                <span
+                  style={
+                    coverageHint.tone === 'warn'
+                      ? styles.timelineHintWarn
+                      : undefined
+                  }
+                >
+                  {coverageHint.text}
+                </span>
               ) : null}
-              {lateTracking && (chartWindow === 'full' || !fullTimeline) && sparseActivityWarmup ? (
+              {showCoverageStartHint && sparseActivityWarmup ? (
                 <span style={styles.timelineHintSep}> · </span>
               ) : null}
               {sparseActivityWarmup && firstActivityOffsetSeconds != null ? (
                 <span>Activity chart from {formatHeatOffset(firstActivityOffsetSeconds)}</span>
               ) : null}
-              {(lateTracking && (chartWindow === 'full' || !fullTimeline) || sparseActivityWarmup) && lateViewerSamples ? (
+              {(showCoverageStartHint || sparseActivityWarmup) && lateViewerSamples ? (
                 <span style={styles.timelineHintSep}> · </span>
               ) : null}
               {lateViewerSamples ? (
                 <span>Viewer samples from {formatHeatOffset(viewerStartOffsetSeconds)}</span>
               ) : null}
-              {(lateTracking && (chartWindow === 'full' || !fullTimeline)) || sparseActivityWarmup || lateViewerSamples ? (
+              {(showCoverageStartHint || sparseActivityWarmup || lateViewerSamples) ? (
                 showLoadFromStart && onLoadFromStart ? (
                   <span style={styles.timelineHintSep}> · </span>
                 ) : null
@@ -601,6 +660,10 @@ export function LiveStatsBand({
             selectedIndex={pinChartIndex}
             previewIndex={previewChartIndex}
             showViewerStrip={showViewerStrip}
+            activityExpanded={activityExpanded}
+            normalizeOverlaySeries={activityExpanded && selectedEmotesForOverlay.length > 0}
+            focusedSeriesKey={focusedSeriesKey}
+            onFocusedSeriesKeyChange={setFocusedSeriesKey}
             onSelectIndex={handleChartSelect}
             onClearSelection={handleClearChartSelection}
             clearSelectionBoundaryRef={chartInteractionRef}
@@ -668,6 +731,9 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     lineHeight: 1.35,
     margin: 0,
+  },
+  timelineHintWarn: {
+    color: '#fcd34d',
   },
   timelineHintSep: { color: theme.textMuted },
   streamStartLink: {
@@ -838,5 +904,10 @@ const styles: Record<string, CSSProperties> = {
     padding: '5px 8px',
     textTransform: 'uppercase',
     whiteSpace: 'nowrap',
+  },
+  expandButtonActive: {
+    background: 'rgba(139, 92, 246, 0.12)',
+    borderColor: 'rgba(167, 139, 250, 0.35)',
+    color: '#ddd6fe',
   },
 }

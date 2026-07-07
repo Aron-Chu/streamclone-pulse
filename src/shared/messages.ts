@@ -19,7 +19,9 @@ export type MessageType =
   | 'FETCH_EMOTE_IMAGE'
   | 'HINT_VOD'
   | 'DISCOVER_LIVE_VOD'
+  | 'GET_PULSE_VOD'
   | 'PULSE_UPDATE'
+  | 'VOD_PULSE_UPDATE'
 
 export interface TrackMessage {
   type: 'TRACK'
@@ -168,6 +170,7 @@ export type BackgroundRequest =
   | FetchEmoteImageMessage
   | HintVodMessage
   | DiscoverLiveVodMessage
+  | GetPulseVodMessage
   | GetPulseDebugLogMessage
   | LoadMissedMomentsMessage
   | GetPulseBackfillStatusMessage
@@ -314,6 +317,11 @@ export interface HintVodMessage {
   vodId: string
 }
 
+export interface GetPulseVodMessage {
+  type: 'GET_PULSE_VOD'
+  vodId: string
+}
+
 export interface DiscoverLiveVodMessage {
   type: 'DISCOVER_LIVE_VOD'
   login: string
@@ -415,7 +423,9 @@ export interface PulsePayload {
   games?: ExtensionGameSegment[]
   emoteSync?: EmoteSyncSnapshot
   helixEnabled?: boolean
-  /** Hosted extension gate — false when login is outside the top-500 roster. */
+  /** Hosted extension gate — false when login is outside the Pulse roster / cap tier. */
+  rosterEligible?: boolean
+  /** @deprecated Read rosterEligible; kept for one release of dual-emit from hosted BFF. */
   top500Eligible?: boolean
 }
 
@@ -458,8 +468,16 @@ export interface PulseUpdateMessage {
   coverageTier?: ExtensionCoverageTierResponse | null
 }
 
+export interface VodPulseUpdateMessage {
+  type: 'VOD_PULSE_UPDATE'
+  vodId: string
+  vodPulse: import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse | null
+  error?: string
+}
+
 export type BackgroundResponse =
   | PulseUpdateMessage
+  | VodPulseUpdateMessage
   | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }
   | { type: 'HEALTH'; ok: boolean; version?: string; helixEnabled?: boolean; error?: string }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
