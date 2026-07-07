@@ -1,6 +1,6 @@
 ---
 name: capacity-governor-review
-description: Review tracking pool caps, always-track eviction, rate limits, and hosted beta capacity before scaling collectors or watchlists. Use when changing always-track, watchlist size, Helix polling, or streampulse-vps hosted capacity.
+description: Review tracking pool caps, always-track eviction, rate limits, and hosted beta capacity before scaling collectors or watchlists. Use when changing always-track, watchlist size, Helix polling, or hosted-production-vps capacity.
 ---
 
 # Capacity governor review
@@ -8,9 +8,9 @@ description: Review tracking pool caps, always-track eviction, rate limits, and 
 ## Read first
 
 - [website-portal/design.md](https://github.com/Aron-Chu/streamclone-pulse/blob/master/docs/website-portal/design.md) — tracking pool, principal scoping
-- [docs/streampulse-vps.md](https://github.com/Aron-Chu/streamclone/blob/master/docs/streampulse-vps.md) — current hosted production SoT
+- [docs/hosted-production-ops.md](https://github.com/Aron-Chu/streamclone/blob/master/docs/hosted-production-ops.md) — hosted production contract (operator runbooks in private streampulse-ops)
 - streamclone: `pulse_hosted.go`, [`docs/pulse-extension/collector-service.md`](https://github.com/Aron-Chu/streamclone/blob/master/docs/pulse-extension/collector-service.md)
-- Production env (private): **streampulse-ops** `env/production.local.env`
+- Production env (private): **streampulse-ops** — never commit paths or values
 - Legacy example only: `deploy/env/profile-bearhost-pulse.env`
 
 ## Checklist
@@ -27,16 +27,13 @@ description: Review tracking pool caps, always-track eviction, rate limits, and 
 ## Probes
 
 ```bash
-# Hosted (default for StreamPulse / extension)
 curl -s https://api.streampulse.stream/v1/extension/health
-curl -s https://api.streampulse.stream/v1/public/hub | head -c 500
-
-# Local stack (Streamclone backend debugging only)
+curl -s https://api.streampulse.stream/v1/public/hub
 curl -s http://localhost:8090/v1/extension/health
 ```
 
-Live caps are operator-configured on streampulse-vps — check health/hub for current values.
+Live caps are operator-configured on hosted-production-vps — check health/hub for current values.
 
 ## Escalate to ops-diagnostics-reviewer subagent when
 
-Tunnel, Caddy route, or compose profile changes touch the **streampulse-vps / streampulse-ops** deploy boundary.
+Tunnel, Caddy route, or compose profile changes touch the **hosted-production-vps / streampulse-ops** deploy boundary.

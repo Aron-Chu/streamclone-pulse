@@ -25,7 +25,7 @@ Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep produc
 | **Figma UI (PNG + node IDs)** | [`docs/pulse-extension/figma-handoff.md`](docs/pulse-extension/figma-handoff.md) + [`figma/`](docs/pulse-extension/figma/) |
 | Repo wiring | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
 | **Image namespace exit (hosted prod)** | [`docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md`](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md), streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) |
-| **VPS SSH (operator / Gate 2 ops)** | streamclone [`docs/streampulse-vps.md`](../twitch-7tv-clone/docs/streampulse-vps.md) — `root@streampulse-vps`, key `~/.ssh/id_ed25519` in WSL |
+| **Hosted production ops (operator)** | streamclone [`docs/hosted-production-ops.md`](../twitch-7tv-clone/docs/hosted-production-ops.md) — deploy/smoke/SSH runbooks live in private **streampulse-ops** only; public check: `curl https://api.streampulse.stream/v1/extension/health` |
 | **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) |
 | Extension code | `src/` |
 
@@ -67,6 +67,7 @@ Cross-repo workspace matrix: streamclone [`docs/workspace.md`](../twitch-7tv-clo
 - New Go APIs → implement in streamclone `internal/analytics`, not here.
 - ReplayForge / auto clipper work is not owned by the extension or portal. Use sibling streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md): Streamclone owns candidates/triggers/callback state, ReplayForge owns render/edit/export. Hosted production promotion: streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) and [image exit audit](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) — pre-cutover manifests may still use `streamclone/*` source images via private `streampulse-ops`.
 - **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
+- **Public ops boundary:** never commit host IPs, SSH paths/key names, operator runbooks, or production env file paths to this repo — private **streampulse-ops** only. See [`.cursor/rules/public-repo-boundary.mdc`](.cursor/rules/public-repo-boundary.mdc).
 
 ## Commands
 

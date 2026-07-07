@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | Draft v1 — requirements |
 | **Owner** | Aron-Chu |
-| **Scope** | Chrome MV3 extension + **streampulse-vps** hosted analytics backend (+ StreamPulse portal parity) |
+| **Scope** | Chrome MV3 extension + hosted analytics backend at `https://api.streampulse.stream` (+ StreamPulse portal parity) |
 | **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · streamclone [`roster-naming-truth-table.md`](../../twitch-7tv-clone/docs/pulse-extension/roster-naming-truth-table.md) · `internal/analytics/pulse_coverage.go` · `extension_api.go` |
-| **Repos** | Extension: **streamclone-pulse**. Backend: **streamclone** (hosted at `https://api.streampulse.stream` on **streampulse-vps**; operator deploy in private **streampulse-ops**). BearHost is rollback/archive only. |
+| **Repos** | Extension: **streamclone-pulse**. Backend: **streamclone** (hosted at `https://api.streampulse.stream`; operator deploy in private **streampulse-ops**). Legacy rollback host is archive only. |
 
 ---
 
@@ -32,7 +32,7 @@ This feature area makes Pulse **honest and reliable** when a user joins late:
 | Show what Pulse has tracked live | Chart and copy reflect **coverage start → now**, not fake 00:00 data |
 | Backfill earlier chat only when possible | **Load missed moments** runs only when VOD chat replay exists and backend approves |
 | Offer a path when backfill is impossible | **Protect this channel** for *future* streams (proactive go-live tracking) |
-| Keep surfaces consistent | Extension, hosted API (streampulse-vps), and StreamPulse portal use the **same coverage state model and copy keys** |
+| Keep surfaces consistent | Extension, hosted API (`api.streampulse.stream`), and StreamPulse portal use the **same coverage state model and copy keys** |
 
 ### Two data paths (must never be conflated in UX)
 
@@ -329,7 +329,7 @@ Chart expanded from stream start — chat data begins at {coverageStart}. Backfi
 
 ---
 
-# 8. Hosted backend requirements (streampulse-vps)
+# 8. Hosted backend requirements (api.streampulse.stream)
 
 | ID | Requirement |
 |----|-------------|

@@ -1,6 +1,6 @@
 # Streamclone Pulse Extension — Design
 
-Companion to [`requirements.md`](./requirements.md) (R1–R12) and [`tasks.md`](./tasks.md). This is the architecture/decision document: repo strategy, data flow, schema, API contract, how the extension talks to the Streamclone backend, what it takes to scale on **streampulse-vps**, edge cases, and performance.
+Companion to [`requirements.md`](./requirements.md) (R1–R12) and [`tasks.md`](./tasks.md). This is the architecture/decision document: repo strategy, data flow, schema, API contract, how the extension talks to the Streamclone backend, what it takes to scale on the **hosted production stack**, edge cases, and performance.
 
 **UI visuals:** [`figma-handoff.md`](./figma-handoff.md) and PNG exports in [`figma/`](./figma/) — use these for implementation parity (Codex-friendly; no Figma MCP required).
 
@@ -91,7 +91,7 @@ streamclone-pulse (new repo)
 | CORS | `httpx.CORS` (`Access-Control-Allow-Origin: *`) is fine because MVP sends **no credentials** | If device tokens go in `Authorization` header (not cookies), `*` still works. If ever cookie-based, must echo the specific origin + `Allow-Credentials: true` (use `CORSForOrigin`). |
 | Preflight | `OPTIONS` already handled by `httpx.CORS` (204) | same |
 
-> **Hard constraint:** Chrome blocks fetching `http://` (non-localhost) from the extension's secure context. A public/hosted extension therefore **cannot** point at a bare IP-only HTTP endpoint — it needs HTTPS + a domain (e.g. `api.streampulse.stream` via Cloudflare Tunnel to streampulse-vps). Pre-cutover BearHost used IP-only HTTP; that path is rollback/archive only.
+> **Hard constraint:** Chrome blocks fetching `http://` (non-localhost) from the extension's secure context. A public/hosted extension therefore **cannot** point at a bare IP-only HTTP endpoint — it needs HTTPS + a domain (e.g. `api.streampulse.stream` via Cloudflare Tunnel to hosted-production-vps). Pre-cutover legacy-rollback-host used IP-only HTTP; that path is rollback/archive only.
 
 ### Request lifecycle
 
@@ -224,9 +224,9 @@ Returns cached payload (top 10 moments, top emotes, biggest chat spike, funniest
 
 ---
 
-## 7. Scaling on streampulse-vps — what else is needed
+## 7. Scaling on hosted production — what else is needed
 
-Today **streampulse-vps** runs the hosted compose stack: Caddy (internal `:8090` behind Cloudflare Tunnel), `analytics` (API) + `analytics-workers` (IRC/rollups/scoring), `postgres`, `redis`, `scraper`, `metadata`, `video`, `emote`, `frontend`. Operator deploy and env live in private **streampulse-ops**. For a **local-only MVP nothing changes** — the extension talks to `http://localhost:8090`. To go **hosted/public**, in priority order:
+Today **hosted-production-vps** runs the hosted compose stack: Caddy (internal `:8090` behind Cloudflare Tunnel), `analytics` (API) + `analytics-workers` (IRC/rollups/scoring), `postgres`, `redis`, `scraper`, `metadata`, `video`, `emote`, `frontend`. Operator deploy and env live in private **streampulse-ops**. For a **local-only MVP nothing changes** — the extension talks to `http://localhost:8090`. To go **hosted/public**, in priority order:
 
 1. **TLS + domain (blocker).** Terminate HTTPS at Caddy for `api.streamclone.app` (Let's Encrypt). Without this, Chrome blocks the extension's fetches (mixed content). This is the single hard requirement before any external user can install.
 2. **BFF read caching (cheap, high-leverage).** Redis-cache the BFF payload 10–15s per login so 1,000 viewers of one channel = 1 compute every 15s, not 1,000. Already designed into §6.1.
@@ -238,7 +238,7 @@ Today **streampulse-vps** runs the hosted compose stack: Caddy (internal `:8090`
 8. **Data growth.** Bookmarks are tiny. Rollups already exist. Recap cache is one row/stream. Add a retention/janitor job only if bookmark volume ever warrants it.
 9. **Managed dependencies (when one VPS isn't enough).** Move Postgres to managed/replica, Redis to managed, put a real LB in front. Not MVP; note the path so the single-VPS design doesn't paint us into a corner.
 
-**Summary:** local MVP needs nothing new on streampulse-vps beyond dev stack. Hosted needs, minimally, **TLS+domain + BFF cache + a shared tracking pool + rate limits**; everything else is incremental.
+**Summary:** local MVP needs nothing new on hosted-production-vps beyond dev stack. Hosted needs, minimally, **TLS+domain + BFF cache + a shared tracking pool + rate limits**; everything else is incremental.
 
 ---
 

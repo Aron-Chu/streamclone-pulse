@@ -17,7 +17,7 @@ This larger box has current headroom, but the safety law is inverted: Q4 corpus 
 
 ## Evidence Collected
 
-Read-only checks run from WSL against current production `streampulse-vps` (`23.173.152.156`) and public API:
+Read-only checks run against hosted API `https://api.streampulse.stream` and public probes:
 
 | Check | Result |
 | --- | --- |

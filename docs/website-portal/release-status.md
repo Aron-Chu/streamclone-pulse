@@ -70,20 +70,14 @@ Last updated: 2026-07-07 (Gate 1 commits done; Gate 2 remote evidence captured; 
 
 Manifest lives in private **streampulse-ops** (`docs/deployments/YYYY-MM-DD-<tag>-<note>.md`).
 
-## VPS SSH (operator)
-
-Agent session could not authenticate to streampulse-vps (`aron-wsl` key missing; Tailscale SSH needs browser approval). Remote laptop probes are in [`release-gap-2026-07-07-remote.md`](../../../twitch-7tv-clone/docs/ops/evidence/release-gap-2026-07-07-remote.md).
-
-After SSH works:
+## Hosted production checks (public)
 
 ```bash
-export PULSE_PROBE_SSH_TARGET=streampulse-vps
-export PULSE_PROBE_SSH_KEY=~/.ssh/aron-wsl
-export PULSE_PROBE_REMOTE_APP=/opt/streamclone/app
-bash scripts/ops/ssh-access-preflight.sh
-bash scripts/ops/release-gap-vps-execute.sh
-RELEASE_CHECK_HOURS=2 bash scripts/load/hosted-release-check-soak-loop.sh
+curl -fsS https://api.streampulse.stream/v1/extension/health
+curl -fsS https://api.streampulse.stream/v1/public/status
 ```
+
+Gate 2 soak evidence, SSH probes, and promotion manifests live in private **streampulse-ops** — not this public repo. Operator runbook: streamclone [`docs/hosted-production-ops.md`](https://github.com/Aron-Chu/streamclone/blob/master/docs/hosted-production-ops.md).
 
 ## Commit slices
 
