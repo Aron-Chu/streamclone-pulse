@@ -29,3 +29,7 @@ link_package() {
 link_package pulse-core src/liveHeat.ts
 link_package analytics-console src/index.tsx
 link_package pulse-charts src/index.ts
+
+if [[ -f "${PACKAGES_ROOT}/pulse-charts/package-lock.json" ]]; then
+  npm ci --prefix "${PACKAGES_ROOT}/pulse-charts" --ignore-scripts
+fi
