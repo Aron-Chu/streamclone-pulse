@@ -55,9 +55,10 @@ test.describe('analytics visual capture (hosted API only)', () => {
         await page.locator(target.readySelector).first().waitFor({ state: 'visible', timeout: 45_000 })
 
         if (target.slug === 'channel-console') {
-          await page.getByRole('region', { name: 'Stream recap' }).waitFor({ state: 'visible', timeout: 45_000 })
+          await expect(page.getByRole('heading', { name: 'Stream Recap' })).toBeVisible({ timeout: 45_000 })
           await expect(page.getByText(/analytics db ready/i)).toHaveCount(0)
-          await expect(page.getByText(/Coverage: \d+% of stream minutes/i)).toBeVisible({ timeout: 15_000 })
+          await expect(page.getByRole('img', { name: 'Analytics timeline chart' })).toBeVisible({ timeout: 15_000 })
+          await expect(page.getByText(/\d+% chat coverage/i)).toBeVisible({ timeout: 15_000 })
         } else {
           await expect(page.getByText(/Reading Hosted corpus/i).first()).toBeVisible({ timeout: 15_000 })
         }

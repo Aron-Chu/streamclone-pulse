@@ -14,7 +14,12 @@ const candidate = {
   endSeconds: 160,
   score: 93,
   confidence: 0.82,
+  confidenceBand: 'high',
   reason: 'emote_spike',
+  pickReason: 'emote_spike',
+  inboxState: 'queueable',
+  renderabilityStatus: 'queueable',
+  statusCopy: 'Deterministic recap pick (emote spike). Source available; renderability is not verified until ReplayForge completes.',
   sourceKind: 'recap',
   sourceStatus: 'available',
   coverageState: 'ready',
@@ -70,6 +75,21 @@ test.describe('dashboard clips queue', () => {
       })
     })
     await page.route(/\/v1\/pulse\/clips\/cc-live-1\/replayforge$/, async (route) => {
+      if (route.request().method() === 'GET') {
+        job = {
+          id: 'ccj-live-1',
+          candidateId: candidate.id,
+          status: 'ready',
+          replayForgeJobId: 'rf-live-1',
+          replayForgeState: 'ready',
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(job),
+        })
+        return
+      }
       job = {
         id: 'ccj-live-1',
         candidateId: candidate.id,
@@ -88,7 +108,9 @@ test.describe('dashboard clips queue', () => {
 
     await expect(page.getByRole('heading', { name: /StreamPulse Clips/i })).toBeVisible()
     await expect(page.getByText('Late night set')).toBeVisible()
-    await expect(page.getByText('emote_spike')).toBeVisible()
+    await expect(page.locator('.clips-card').getByText('Emote spike', { exact: true })).toBeVisible()
+    await expect(page.getByText('Ready to queue')).toBeVisible()
+    await expect(page.getByText(/renderability is not verified/i)).toBeVisible()
     await expect(page.getByText('KEKW')).toBeVisible()
     await expect(page.getByRole('button', { name: /Render/i })).toBeDisabled()
     await expect(page.getByRole('button', { name: /Export/i })).toBeDisabled()
@@ -104,10 +126,13 @@ test.describe('dashboard clips queue', () => {
     await expect(page.locator('.clips-card').getByText(/^Dismissed$/)).toBeVisible()
 
     await page.getByRole('button', { name: /Send to ReplayForge/i }).click()
-    await expect(page.locator('.clips-card').getByText(/ReplayForge queued/i)).toBeVisible()
+    await expect(page.locator('.clips-card').getByText(/Rendering queued/i)).toBeVisible()
+
+    await page.getByRole('button', { name: /Refresh ReplayForge/i }).click()
+    await expect(page.locator('.clips-card').getByText(/Worker ready \(playback not verified\)/i)).toBeVisible()
 
     await page.getByRole('button', { name: /Refresh/i }).click()
-    await expect(page.locator('.clips-card').getByText(/ReplayForge queued/i)).toBeVisible()
+    await expect(page.locator('.clips-card').getByText(/Worker ready \(playback not verified\)/i)).toBeVisible()
 
     await assertNoConsoleErrors(page, errors)
   })

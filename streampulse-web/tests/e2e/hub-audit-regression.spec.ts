@@ -184,13 +184,14 @@ test.describe('hub audit regression', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('HUB-AUDIT-053 pulse moments listbox supports arrow navigation', async ({ page }) => {
+  test('HUB-AUDIT-053 pulse moments table supports arrow navigation', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    const listbox = page.getByRole('listbox', { name: 'Top live peaks' })
-    await expect(listbox).toBeVisible()
-    const first = listbox.getByRole('option').first()
-    await first.focus()
+    const table = page.getByRole('table', { name: /pulse moments/i })
+    await expect(table).toBeVisible()
+    const rows = page.locator('.pulse-moments__peak-row')
+    await expect(rows).toHaveCount(2)
+    await rows.first().focus()
     await page.keyboard.press('ArrowDown')
     const focusedText = await page.evaluate(() => document.activeElement?.textContent ?? '')
     expect(focusedText).toContain('sodapoppin')
@@ -275,6 +276,7 @@ test.describe('hub audit regression', () => {
       maxDiffPixelRatio: 0.03,
     })
     await page.locator('.pulse-moments__peak-row, .pulse-moments__leaderboard-row').first().click()
+    await expect(page.locator('.pulse-moments-live__side .pulse-moments__inspector')).toBeVisible()
     await expect(page.locator('.pulse-moments__inspector')).toHaveScreenshot('moment-inspector-compact.png', {
       maxDiffPixelRatio: 0.03,
     })
