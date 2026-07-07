@@ -54,6 +54,8 @@ jobs:
     defaults:
       run:
         working-directory: streampulse-web
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -75,5 +77,5 @@ jobs:
           cache: npm
           cache-dependency-path: streampulse-web/package-lock.json
       - run: npm ci
-      - run: npm test -- --pool=forks --maxWorkers=4
+      - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
       - run: npx vite build
