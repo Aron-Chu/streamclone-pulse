@@ -4,13 +4,13 @@
 |-------|----------|
 | **Spec (requirements, design, tasks)** | **This repo** `docs/pulse-extension/` |
 | **Figma UI (PNG exports)** | `docs/pulse-extension/figma/` + `figma-handoff.md` |
-| Shared TS scoring | `../twitch-7tv-clone/packages/pulse-core` (`@streamclone/pulse-core`) |
+| Shared TS scoring | `../../twitch-7tv-clone/packages/pulse-core` (`@streamclone/pulse-core`) |
 | BFF + health + bookmarks + recap | streamclone `internal/analytics/` |
 | Extension local stack | `http://localhost:8090` (Caddy in streamclone) |
 | StreamPulse portal (`streampulse-web`) | `https://api.streampulse.stream` (dev default); `npm run dev:local` → `:8090` opt-in |
-| Hosted production images (promotion) | streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md), [image exit audit](pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) |
-| Multi-root workspace | `../twitch-7tv-clone/streamclone-pulse-extension.code-workspace` |
-| Optional ecosystem workspace | `../twitch-7tv-clone/streamclone-full.code-workspace` (Clip Studio / auto clipper only) |
+| Hosted production images (promotion) | streamclone [`production-promotion-contract.md`](../../twitch-7tv-clone/docs/production-promotion-contract.md), [image exit audit](pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) |
+| Multi-root workspace | `../../twitch-7tv-clone/streamclone-pulse-extension.code-workspace` |
+| Optional ecosystem workspace | `../../twitch-7tv-clone/streamclone-full.code-workspace` (Clip Studio / auto clipper only) |
 
 Sibling layout on disk:
 
@@ -34,6 +34,6 @@ Treat `streamclone-full.code-workspace` as an optional ecosystem workspace, not 
 | **Extension** | `src/`, extension docs | Portal e2e, `streampulse-web` unless needed |
 | **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Content scripts, service worker unless API contract |
 
-Workspace matrix: streamclone [`docs/workspace.md`](../twitch-7tv-clone/docs/workspace.md).
+Workspace matrix: streamclone [`docs/workspace.md`](../../twitch-7tv-clone/docs/workspace.md).
 
 Agent skills for the streamclone sibling live in two mirrored trees: **Cursor** `.cursor/skills/streamclone/` and **Codex** `.agents/skills/streamclone/` (sync via `make codex-sync-skills` in streamclone).
