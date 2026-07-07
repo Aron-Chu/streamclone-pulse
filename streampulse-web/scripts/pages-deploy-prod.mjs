@@ -32,7 +32,7 @@ function run(cmd, args, env = {}) {
 }
 
 console.log('Running production deploy gates')
-run('npx', ['tsc', '--noEmit'])
+run('npx', ['tsc', '--noEmit', '-p', 'tsconfig.json'])
 run('node', ['scripts/check-analytics-routes-spa.mjs'])
 run('node', ['scripts/check-analytics-links.mjs'])
 

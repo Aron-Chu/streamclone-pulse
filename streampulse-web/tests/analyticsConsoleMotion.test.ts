@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { lerpScalar } from '../../twitch-7tv-clone/packages/analytics-console/src/motion/useSmoothedScalar.ts'
-import { lerpActivityLayout } from '../../twitch-7tv-clone/packages/analytics-console/src/utils/emotePlotSelection.ts'
+import { lerpScalar } from '@streamclone/analytics-console/motion/useSmoothedScalar'
+import { lerpActivityLayout } from '@streamclone/analytics-console/utils/emotePlotSelection'
 
 describe('lerpScalar', () => {
   it('steps toward target with alpha', () => {

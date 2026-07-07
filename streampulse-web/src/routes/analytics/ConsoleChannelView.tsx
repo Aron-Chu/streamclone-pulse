@@ -4,7 +4,7 @@ import { AnalyticsConsole } from '@streamclone/analytics-console'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
 import { resolveBackendSource, backendSourceLabel } from '../../lib/backendSource'
-import { usesLocalAnalyticsBackend } from '../../lib/streamcloneAnalytics'
+import { setupStreamcloneAnalyticsApi, usesLocalAnalyticsBackend } from '../../lib/streamcloneAnalytics'
 import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { useAnalyticsMotion } from '../../ui/motion/useAnalyticsMotion'
@@ -12,6 +12,8 @@ import '../../ui/analytics-tailwind.css'
 import '../../ui/components/analytics/analytics-console.css'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../../../../twitch-7tv-clone/packages/pulse-charts/pulse-chart-motion.css'
+
+setupStreamcloneAnalyticsApi()
 
 function portalSessionPath(login: string, streamId: string): string {
   return `/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}`

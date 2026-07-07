@@ -3,6 +3,8 @@ import { MemoryRouter, useLocation, useParams } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@streamclone/analytics-console', () => ({
+  configureAnalyticsApi: vi.fn(),
+  configureEmoteAssetBase: vi.fn(),
   AnalyticsConsole: ({
     mode,
     showGameSegments,

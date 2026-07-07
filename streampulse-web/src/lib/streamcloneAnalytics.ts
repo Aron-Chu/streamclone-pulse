@@ -488,6 +488,9 @@ function portalLiveResponseToAnalytics(
     channelEmotes,
   )
   const rollups = alignRollupEmoteKeys(minutesResult?.rollups ?? [], topEmotes)
+  const chartRollups = rollups.length > 240
+    ? downsampleTimeline(rollups, undefined, rollupChartActivityScore)
+    : rollups
   return {
     channel: data.channel,
     state: data.state,
@@ -507,7 +510,8 @@ function portalLiveResponseToAnalytics(
           vodId: stream.vodId ?? data.vodId,
         }
       : undefined,
-    rollups,
+    rollups: chartRollups,
+    momentRollups: rollups.length > 0 ? rollups : undefined,
     topEmotes,
     sources: (data.sources ?? []).map((source) => ({
       source: source.source,

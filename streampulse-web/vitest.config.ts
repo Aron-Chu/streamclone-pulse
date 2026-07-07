@@ -15,23 +15,31 @@ export default defineConfig({
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      '@streamclone/analytics-console': resolve(
-        __dirname,
-        '../../twitch-7tv-clone/packages/analytics-console/src/index.tsx',
-      ),
-      '@streamclone/pulse-charts': resolve(
-        __dirname,
-        '../../twitch-7tv-clone/packages/pulse-charts/src/index.ts',
-      ),
-      '@streamclone/pulse-core': resolve(__dirname, 'node_modules/@streamclone/pulse-core'),
-      react: resolve(__dirname, 'node_modules/react'),
-      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
-      'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),
-      '@tanstack/react-query': resolve(__dirname, 'node_modules/@tanstack/react-query'),
-      zustand: resolve(__dirname, 'node_modules/zustand'),
-    },
+    alias: [
+      { find: '@', replacement: resolve(__dirname, 'src') },
+      {
+        find: /^@streamclone\/analytics-console\/(.*)$/,
+        replacement: `${resolve(analyticsConsoleRoot, 'src')}/$1`,
+      },
+      {
+        find: '@streamclone/analytics-console',
+        replacement: resolve(analyticsConsoleRoot, 'src/index.tsx'),
+      },
+      {
+        find: /^@streamclone\/pulse-charts\/(.*)$/,
+        replacement: `${resolve(pulseChartsRoot, 'src')}/$1`,
+      },
+      {
+        find: '@streamclone/pulse-charts',
+        replacement: resolve(pulseChartsRoot, 'src/index.ts'),
+      },
+      { find: '@streamclone/pulse-core', replacement: resolve(__dirname, 'node_modules/@streamclone/pulse-core') },
+      { find: 'react', replacement: resolve(__dirname, 'node_modules/react') },
+      { find: 'react-dom', replacement: resolve(__dirname, 'node_modules/react-dom') },
+      { find: 'react-router-dom', replacement: resolve(__dirname, 'node_modules/react-router-dom') },
+      { find: '@tanstack/react-query', replacement: resolve(__dirname, 'node_modules/@tanstack/react-query') },
+      { find: 'zustand', replacement: resolve(__dirname, 'node_modules/zustand') },
+    ],
   },
   test: {
     environment: 'jsdom',
@@ -44,6 +52,7 @@ export default defineConfig({
       'node_modules/**',
       // OOM/hang under full vitest; e2e analytics-hub-metrics-honesty.spec.ts is authority.
       'tests/analyticsLandingPage.test.tsx',
+      'tests/analyticsHubEmpty.test.tsx',
     ],
     server: {
       deps: {

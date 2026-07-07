@@ -3,13 +3,13 @@ import {
   buildTwitchVodUrl,
   resolveAnalyticsVodId,
   resolveVodLinkState,
-} from '../../twitch-7tv-clone/packages/analytics-console/src/utils/twitchVodUrl.ts'
+} from '@streamclone/analytics-console/utils/twitchVodUrl'
 
 describe('resolveAnalyticsVodId', () => {
   it('falls back to recap vod id when stream detail has none', () => {
     expect(
       resolveAnalyticsVodId(
-        { vodId: undefined, stream: { vodId: '1' } },
+        { vodId: undefined, stream: {} },
         '2809816759',
       ),
     ).toBe('2809816759')
