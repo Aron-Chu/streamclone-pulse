@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
 import {
@@ -131,6 +131,7 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.poolSize).toBe(8)
     expect(result.current.loadSource).toBe('cache')
     expect(result.current.cachedAt).not.toBeNull()
+    await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalled())
   })
 
   it('fetches fresh data after cache hydration', async () => {
@@ -219,9 +220,11 @@ describe('usePublicHubData', () => {
 
     expect(result.current.data?.poolSize).toBe(7)
 
-    rerender({ activityWindow: '24h' })
+    act(() => {
+      rerender({ activityWindow: '24h' })
+    })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(24))
     expect(result.current.loading).toBe(false)
-    expect(result.current.data?.poolSize).toBe(24)
     expect(result.current.loadSource).toBe('cache')
   })
 })

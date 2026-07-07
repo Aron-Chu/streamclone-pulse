@@ -1,6 +1,13 @@
 # StreamPulse release status
 
-Last updated: 2026-07-07 (portal release gate green; VPS ops pending SSH)
+Last updated: 2026-07-07 (Gate 1 commits done; Gate 2 remote evidence captured; VPS SSH pending operator key)
+
+## Gate 1 — local commits (done)
+
+| Repo | Commits | Notes |
+|------|---------|-------|
+| streamclone-pulse | slices A–E | `perf`/`fix`/`feat`/`docs` — see [`release-commit-slices.md`](./release-commit-slices.md) |
+| streamclone | A-backend + F | hub cache tests + ops runbooks |
 
 ## Release target
 
@@ -20,11 +27,11 @@ Last updated: 2026-07-07 (portal release gate green; VPS ops pending SSH)
 | Portal `npm run build` (app-only tsc) | Done (local) | `streampulse-web`: split `tsconfig.json` / `tsconfig.test.json` |
 | Portal `npm test` | Done (local) | 62 files / 342 tests; hub landing empty tests excluded (known hang — e2e authority) |
 | Console API setup before render | Done | `ConsoleChannelView.tsx` module-top `setupStreamcloneAnalyticsApi()` |
-| Promotion manifest + `IMAGE_TAG` reconcile | **Operator (SSH)** | [`promotion-manifest-rc18.example.md`](../../../twitch-7tv-clone/docs/ops/examples/promotion-manifest-rc18.example.md), `scripts/ops/release-gap-vps-execute.sh`; remote health `v0.3.0-rc18` — [`release-gap-2026-07-07-remote.md`](../../../twitch-7tv-clone/docs/ops/evidence/release-gap-2026-07-07-remote.md) |
+| Promotion manifest + `IMAGE_TAG` reconcile | **Operator (SSH)** | Preflight: `scripts/ops/ssh-access-preflight.sh`; remote health `v0.3.0-rc18` — [`release-gap-2026-07-07-remote.md`](../../../twitch-7tv-clone/docs/ops/evidence/release-gap-2026-07-07-remote.md) |
 | Redis bounded + TTL audit | **Operator (SSH)** | `scripts/ops/hosted-redis-audit.sh`, [`hosted-redis-bounds-runbook.md`](../../../twitch-7tv-clone/docs/ops/hosted-redis-bounds-runbook.md) |
 | Staged container limits | **Operator (SSH)** | [`hosted-limits-staged-runbook.md`](../../../twitch-7tv-clone/docs/ops/hosted-limits-staged-runbook.md), `release-gap-vps-execute.sh --limits-redis` |
-| Focused cap-250 stability (2–6h) | **Operator (SSH)** | `hosted-release-check-soak-loop.sh` with `RELEASE_CHECK_HOURS=2` |
-| Cloudflare hub cache | **Operator (dashboard)** | Probe: origin `X-Cache: HIT`, `CF-Cache-Status: DYNAMIC` — enable rule per [`hub-fanout-edge-cache.md`](./hub-fanout-edge-cache.md) |
+| Focused cap-250 stability (2–6h) | **Operator (SSH)** | Sample monitor: `twitch-7tv-clone/runtime/evidence/cap250-soak/day-release-check-monitor-20260707T134629Z.txt`; full gate: `hosted-release-check-soak-loop.sh` `RELEASE_CHECK_HOURS=2` |
+| Cloudflare hub cache | **Operator (dashboard)** | 2026-07-07 probe: origin `X-Cache: HIT`, `CF-Cache-Status: DYNAMIC` — enable rule per [`hub-fanout-edge-cache.md`](./hub-fanout-edge-cache.md) |
 | Cloudflare `/v1/public/*` WAF | **Operator (dashboard)** | [`cloudflare-public-hub-waf.md`](../../../twitch-7tv-clone/docs/ops/cloudflare-public-hub-waf.md) |
 | Extension build + CWS checklist | **Operator submit** | [`chrome-web-store-review-checklist.md`](../pulse-extension/chrome-web-store-review-checklist.md) |
 
@@ -62,6 +69,7 @@ After SSH works:
 export PULSE_PROBE_SSH_TARGET=streampulse-vps
 export PULSE_PROBE_SSH_KEY=~/.ssh/aron-wsl
 export PULSE_PROBE_REMOTE_APP=/opt/streamclone/app
+bash scripts/ops/ssh-access-preflight.sh
 bash scripts/ops/release-gap-vps-execute.sh
 RELEASE_CHECK_HOURS=2 bash scripts/load/hosted-release-check-soak-loop.sh
 ```
