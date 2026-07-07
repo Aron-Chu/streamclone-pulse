@@ -280,6 +280,8 @@ function AnalyticsLandingContent() {
   }, [data.liveChannels, data.topMovers, recentLogins]);
 
   const backendSource = resolveBackendSource(getBackendUrl());
+  const isHostedBackend = backendSource === "hosted";
+  const hubUnavailable = Boolean(hub.error && !hub.data);
   const showTrackedTable = data.liveChannels.length > 0;
   const featuredChannels = data.liveChannels.slice(0, 12);
   const sidebarSections = useMemo<HubSidebarSection[]>(
@@ -312,15 +314,26 @@ function AnalyticsLandingContent() {
 
   return (
     <AnalyticsFigmaShell
-      backendStatus={{
-        label: "API",
-        value: backendSourceLabel(backendSource),
-        tone:
-          hub.error && !hub.data
-            ? "offline"
-            : "ready",
-      }}
-      sidebarStatusLabel={backendSourceLabel(backendSource)}
+      backendStatus={
+        isHostedBackend
+          ? {
+              label: "Status",
+              value: hubUnavailable ? "Unavailable" : "Live",
+              tone: hubUnavailable ? "offline" : "ready",
+            }
+          : {
+              label: "API",
+              value: backendSourceLabel(backendSource),
+              tone: hubUnavailable ? "offline" : "ready",
+            }
+      }
+      sidebarStatusLabel={
+        isHostedBackend
+          ? hubUnavailable
+            ? "Unavailable"
+            : "Live"
+          : backendSourceLabel(backendSource)
+      }
       sidebarSections={sidebarSections}
     >
       <main

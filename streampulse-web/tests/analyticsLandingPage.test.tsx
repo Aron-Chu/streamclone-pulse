@@ -231,6 +231,21 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     );
   });
 
+  it("does not expose hosted API hostname on the public landing", async () => {
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Command center/i });
+    expect(screen.queryByText(/Reading Hosted API/i)).toBeNull();
+    expect(screen.queryByText(/api\.streampulse\.stream/i)).toBeNull();
+    expect(
+      screen.queryByText(/Imported VOD sessions never fill this global graph/i),
+    ).toBeNull();
+  });
+
   it("shows degraded hub copy and static Live Wire on stats-fallback", async () => {
     hubMockOpts.loadSource = "stats-fallback";
     hubMockOpts.hubEndpointOk = false;
@@ -242,15 +257,15 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     );
 
     expect(
-      await screen.findByText(/Public hub unavailable/i),
+      await screen.findByText(/Hub temporarily unavailable/i),
     ).toBeTruthy();
     expect(screen.getAllByText(/hub unavailable — live network feed paused/i).length).toBe(1);
     expect(screen.queryByText("NEW")).toBeNull();
   });
 });
 
-describe("/analytics hub (DashboardHome at /analytics/hub)", () => {
-  it("renders the aggregate analytics hub when public hub data is empty", async () => {
+describe("/analytics hub (DashboardHome quarantine)", () => {
+  it("renders private workspace landing, not the public analytics hub", async () => {
     render(
       <MemoryRouter>
         <DashboardHome />
@@ -260,23 +275,13 @@ describe("/analytics hub (DashboardHome at /analytics/hub)", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: /Stream intelligence/i,
+        name: /StreamPulse workspace/i,
       }),
     ).toBeTruthy();
+    expect(screen.getByRole("link", { name: /\/analytics/i })).toBeTruthy();
+    expect(screen.queryByRole("main", { name: /StreamPulse analytics hub/i })).toBeNull();
     expect(
-      screen.getByRole("main", { name: /StreamPulse analytics hub/i }),
-    ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Emote signal/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /24h/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /7d/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /1mo/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /1 year/i })).toBeTruthy();
-    expect(
-      screen.getByText(/Imported VOD sessions never fill this global graph/i),
-    ).toBeTruthy();
-    expect(screen.getByText(/DonkPls/i)).toBeTruthy();
-    expect(screen.getAllByText(/no rollup/i).length).toBeGreaterThan(0);
-    expect(document.querySelector(".hubx")).toBeTruthy();
-    expect(document.querySelector(".figma-analytics")).toBeNull();
+      screen.queryByText(/Imported VOD sessions never fill this global graph/i),
+    ).toBeNull();
   });
 });

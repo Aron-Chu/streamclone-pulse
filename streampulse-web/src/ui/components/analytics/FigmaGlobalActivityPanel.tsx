@@ -88,7 +88,7 @@ export function ChartSourceBanner({
       aria-label="Chart rollup source"
     >
       <span>
-        <strong>Source:</strong> Hosted API + live IRC collector plane
+        <strong>Source:</strong> Live IRC collector plane
       </span>
       <span>
         <strong>Window:</strong> last {windowLabel}
@@ -316,7 +316,7 @@ export function FigmaGlobalActivityPanel({
           ) : null}
         </div>
         <p className="figma-global-activity__lede muted">
-          Peak concurrent viewers from corpus rollups plus Top-500 Helix when higher — last {windowLabel}.
+          Network viewer peaks from minute rollups plus Top-N Helix when higher — last {windowLabel}.
           Chat and emote lines are IRC-only.
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>

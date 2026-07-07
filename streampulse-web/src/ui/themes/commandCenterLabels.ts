@@ -19,7 +19,7 @@ export const COMMAND_CENTER_LABELS: CommandCenterLabels = {
   hubTitle: 'Command center',
   hubEyebrow: 'Stream intelligence',
   hubLede:
-    'What is happening across tracked Twitch channels right now — live spikes, network activity, and emote velocity from the hosted API.',
+    'Live IRC pool status, current viewer totals, and network peaks from tracked channels — not all of Twitch.',
   overview: 'Overview',
   liveRail: 'Featured live channels',
   liveActivity: 'Live Activity',
@@ -30,7 +30,7 @@ export const COMMAND_CENTER_LABELS: CommandCenterLabels = {
   inspector: 'Moment Inspector',
   liveFeedActive: 'Live feed active',
   searchPlaceholder: 'Search channels…',
-  apiStatus: 'Hosted API',
+  apiStatus: 'Live',
 }
 
 export function sidebarLabelFor(

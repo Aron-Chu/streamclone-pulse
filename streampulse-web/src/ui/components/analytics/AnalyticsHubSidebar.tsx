@@ -29,7 +29,7 @@ function scrollToSection(id: string) {
 
 export function AnalyticsHubSidebar({
   sections = DEFAULT_SECTIONS,
-  statusLabel = 'Reading hosted API',
+  statusLabel = 'Live',
   statusTone = 'ready',
 }: AnalyticsHubSidebarProps) {
   const [activeId, setActiveId] = useState(sections[0]?.id ?? '')

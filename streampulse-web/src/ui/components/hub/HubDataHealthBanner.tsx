@@ -1,7 +1,7 @@
 import { AlertTriangle, Info } from 'lucide-react'
 import type { HubCorpusPipeline } from '../../../lib/publicHub'
 import type { PublicHubLoadSource } from '../../../lib/publicHub'
-import { backendSourceCaption } from '../../../lib/backendSource'
+import { backendSourceCaption, resolveBackendSource } from '../../../lib/backendSource'
 import type { ActivitySummary } from '../../../lib/hubActivitySummary'
 
 export interface HubDataHealthBannerProps {
@@ -35,7 +35,7 @@ export function HubDataHealthBanner({
   if (loadSource === 'stats-fallback') {
   messages.push({
   tone: 'warn',
-  text: 'Public hub unavailable - showing aggregate stats only. Deploy `/v1/public/hub` on this backend or switch backend in Setup.',
+  text: 'Hub temporarily unavailable — showing aggregate stats only.',
   })
   } else if (hubEndpointOk && activitySummary.pointCount < 2) {
   messages.push({
@@ -76,14 +76,12 @@ export function HubDataHealthBanner({
     })
   }
 
-  messages.push({
-  tone: 'info',
-  text: 'Live network activity uses backend minute rollups only from the hosted API and IRC worker plane. Imported VOD sessions never fill this global graph.',
-  })
-
   if (messages.length === 0) return null
 
-  const caption = backendSourceCaption(backendUrl)
+  const showBackendCaption =
+    backendUrl &&
+    resolveBackendSource(backendUrl) !== 'hosted'
+  const caption = showBackendCaption ? backendSourceCaption(backendUrl) : null
 
   return (
   <div className="hx-health-banner" role="status" aria-live="polite">
@@ -99,7 +97,7 @@ export function HubDataHealthBanner({
   </div>
   )
   })}
-  <div className="hx-health-banner__caption muted">{caption}</div>
+  {caption ? <div className="hx-health-banner__caption muted">{caption}</div> : null}
   </div>
   )
 }

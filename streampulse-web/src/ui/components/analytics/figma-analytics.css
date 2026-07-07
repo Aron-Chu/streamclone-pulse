@@ -500,6 +500,26 @@
   color: var(--fma-sub);
 }
 
+.hub-command-header__kpi-groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.hub-command-header__kpi-group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.hub-command-header__kpi-group-label {
+  margin: 0;
+  font-family: var(--fma-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fma-muted);
+}
+
 .hub-command-header__kpis {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -513,8 +533,12 @@
 }
 
 @media (min-width: 1200px) {
-  .hub-command-header__kpis {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+  .hub-command-header__kpi-group:first-child .hub-command-header__kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hub-command-header__kpi-group:last-child .hub-command-header__kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -607,7 +631,7 @@
 }
 
 .hub-command-header__kpi--viewers .hub-command-header__kpi-value {
-  color: hsl(270 85% 72%);
+  color: var(--fma-accent-text);
 }
 
 .hub-command-header__kpi--chat .hub-command-header__kpi-value {
@@ -6296,13 +6320,23 @@
 
 .pulse-moments__inspector-provider[data-provider='7tv'],
 .pulse-moments__inspector-provider[data-provider='seventv'] {
-  color: var(--fma-cyan);
-  border-color: color-mix(in srgb, var(--fma-cyan) 35%, var(--sp-border));
+  color: var(--sp-provider-7tv);
+  border-color: color-mix(in srgb, var(--sp-provider-7tv) 35%, var(--sp-border));
 }
 
 .pulse-moments__inspector-provider[data-provider='twitch'] {
-  color: hsl(270 70% 72%);
-  border-color: color-mix(in srgb, hsl(270 70% 72%) 35%, var(--sp-border));
+  color: var(--sp-provider-twitch);
+  border-color: color-mix(in srgb, var(--sp-provider-twitch) 35%, var(--sp-border));
+}
+
+.pulse-moments__inspector-provider[data-provider='bttv'] {
+  color: var(--sp-provider-bttv);
+  border-color: color-mix(in srgb, var(--sp-provider-bttv) 35%, var(--sp-border));
+}
+
+.pulse-moments__inspector-provider[data-provider='ffz'] {
+  color: var(--sp-provider-ffz);
+  border-color: color-mix(in srgb, var(--sp-provider-ffz) 35%, var(--sp-border));
 }
 
 .pulse-moments__inspector-top-emote-metric {
