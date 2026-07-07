@@ -14,7 +14,7 @@ describe('HubTopEmotesTable inspector layout', () => {
       />,
     )
 
-    expect(screen.getByText('TWITCH')).toBeTruthy()
+    expect(screen.getByText('Twitch')).toBeTruthy()
     expect(screen.getByText('7TV')).toBeTruthy()
   })
 })

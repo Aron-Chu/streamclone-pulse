@@ -28,3 +28,4 @@ link_package() {
 
 link_package pulse-core src/liveHeat.ts
 link_package analytics-console src/index.tsx
+link_package pulse-charts src/index.ts

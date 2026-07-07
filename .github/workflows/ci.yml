@@ -35,6 +35,7 @@ jobs:
           sparse-checkout: |
             packages/pulse-core
             packages/analytics-console
+            packages/pulse-charts
           sparse-checkout-cone-mode: false
       - name: Link pulse-core from Streamclone
         run: bash scripts/ci-link-pulse-core.sh
@@ -63,6 +64,7 @@ jobs:
           sparse-checkout: |
             packages/pulse-core
             packages/analytics-console
+            packages/pulse-charts
           sparse-checkout-cone-mode: false
       - name: Link Streamclone packages
         working-directory: ${{ github.workspace }}
