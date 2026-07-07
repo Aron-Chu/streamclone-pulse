@@ -36,7 +36,7 @@ export interface PublicHubState {
   refresh: () => void
 }
 
-const DEFAULT_POLL_MS = 30_000
+const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
 const RETRY_MS_NO_DATA = 5_000
 
 function hydrateFromCache(activityWindow: PublicHubActivityWindow) {

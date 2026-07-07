@@ -17,7 +17,7 @@
 | **Streamclone** | Backend engine + existing analytics stack (Go, Postgres, Redis, workers). |
 | **Streamclone Pulse** | Chrome MV3 extension — the live Twitch overlay. |
 | **StreamPulse** | This product: public website + user portal at `streampulse.stream`. |
-| **Hosted API** | `https://api.streampulse.stream` (Cloudflare Tunnel → BearHost Caddy `:8090`). |
+| **Hosted API** | `https://api.streampulse.stream` (Cloudflare Tunnel → **streampulse-vps** Caddy `:8090`; operator config in private **streampulse-ops**). |
 
 ### Decisions resolved in this design (the ambiguities)
 
@@ -121,7 +121,7 @@ StreamPulse is the **management, review, and setup layer** for the Streamclone P
                    │ cloudflared tunnel (outbound from VPS; NO open ports)
                    ▼
    ┌──────────────────────────────────────────────────────────────────────┐
-   │ BearHost VPS (docker compose)                                          │
+   │ streampulse-vps (docker compose)                                       │
    │  Caddy :8090 (internal reverse proxy)                                  │
    │    └─ analytics API (chi)    → BFF, bookmarks, recap, backfill, watch  │
    │    └─ analytics-workers      → IRC collector, rollups, scoring,        │
@@ -135,13 +135,15 @@ StreamPulse is the **management, review, and setup layer** for the Streamclone P
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
+**Hub fanout (launch hardening):** portal poll cadence defaults to 45s; origin sends short `Cache-Control` on `/v1/public/hub`. Edge cache + WAF limits: [`hub-fanout-edge-cache.md`](hub-fanout-edge-cache.md).
+
 ### 3.2 V2 optional Cloudflare Worker / D1 path
 
 ```text
 Browser ─▶ Cloudflare Worker (edge) ─▶ D1 (users, devices, watchlist, clip_candidate_state)
                   │
                   └─▶ proxies/augments api.streampulse.stream for user-state reads
-   D1 holds ONLY tiny relational user state. Pulse data still comes from BearHost Postgres.
+   D1 holds ONLY tiny relational user state. Pulse data still comes from streampulse-vps Postgres.
 ```
 
 ### 3.3 Why D1 is not used for rollups
@@ -152,7 +154,7 @@ Browser ─▶ Cloudflare Worker (edge) ─▶ D1 (users, devices, watchlist, cl
 | Volume | Large, growing corpus | Kilobytes per user |
 | Query shape | Time-series, joins, scoring | Key lookups |
 | Locality | Co-located with workers/IRC | Edge-friendly |
-| Verdict | **Postgres on BearHost** | **D1 fine in V2** |
+| Verdict | **Postgres on streampulse-vps** | **D1 fine in V2** |
 
 D1 is a small, edge-replicated SQLite — excellent for user/device/watchlist rows, wrong for high-write time-series. Rollups, raw/transient chat, peaks, recaps, and backfill state **never** go to D1.
 
@@ -169,7 +171,9 @@ D1 is a small, edge-replicated SQLite — excellent for user/device/watchlist ro
 | `grafana.streampulse.stream` | Cloudflare Access → Grafana | operator | never public, never indexed |
 | `app.streampulse.stream` | (deferred) | — | optional V2 split, see §21 |
 
-### 4.2 Environment (hosted mode, BearHost)
+### 4.2 Environment (hosted mode, streampulse-vps)
+
+Production values live in private **streampulse-ops** (`env/production.local.env`). Public repo examples below are illustrative only — not authoritative production config.
 
 | Var | Example | Purpose |
 |-----|---------|---------|
@@ -190,7 +194,7 @@ Cloudflare side (not in repo): tunnel credentials in `deploy/cloudflared/config.
 | Mode | Backend URL | `PULSE_HOSTED_MODE` | Identity | Use |
 |------|-------------|---------------------|----------|-----|
 | **Local dev** | `http://localhost:8090` | unset/false | none | `make up`; extension + site dev against local stack |
-| **Hosted beta** | `https://api.streampulse.stream` | `true` + beta keys | `betaKeyHash` | public beta on BearHost via Cloudflare |
+| **Hosted beta** | `https://api.streampulse.stream` | `true` + beta keys | `betaKeyHash` | public beta on streampulse-vps via Cloudflare |
 | **Corpus / analytics** | internal | n/a | operator | full Streamclone app + sync tooling, not StreamPulse-gated |
 
 Site build targets are switched via `VITE_BACKEND_URL` (default differs per mode); the dashboard also lets the user override at runtime for local dev.
@@ -979,7 +983,7 @@ Reuse `pulse-core` existing tests where logic is shared (coverage/backfill/forma
 
 | Phase | Deliverables | Backend work |
 |-------|--------------|--------------|
-| **P0 — Infra** | Cloudflare DNS/Tunnel → BearHost; `api.streampulse.stream` TLS; turn on beta-key gating; `/v1/public/stats` + `/v1/public/status`; edge + Redis rate limits; tracking-pool caps + idle eviction. | new public endpoints; rate buckets; pool caps; env (§4.2) |
+| **P0 — Infra** | Cloudflare DNS/Tunnel → streampulse-vps; `api.streampulse.stream` TLS; turn on beta-key gating; `/v1/public/stats` + `/v1/public/status`; edge + Redis rate limits; tracking-pool caps + idle eviction. | new public endpoints; rate buckets; pool caps; env (§4.2) |
 | **P1 — Marketing** | Vite+React app skeleton; prerendered `/`, `/setup`, `/docs`, `/status`, `/login`; hero/stats/feature cards; install detection + health check; `apiClient` + auth/`principalId`. | none (reads health/public) |
 | **P2 — Dashboard core** | `/dashboard`, `/dashboard/watchlist`, `/dashboard/c/:login`, `/dashboard/c/:login/s/:streamId`, `/dashboard/moments`, `/dashboard/streams`, `/dashboard/connection`; load-missed-moments reuse; status badges; coverage cards. | `pulse_watchlist` table + `GET/POST/DELETE /v1/pulse/watchlist`; bookmark principal scoping |
 | **P3 — Admin** | `/admin` health/registry/jobs/abuse; evict/cancel/revoke; Cloudflare Access. | `/v1/admin/*`; metrics surface |
