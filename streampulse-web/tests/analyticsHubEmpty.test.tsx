@@ -1,20 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
-import DashboardHome from '../src/routes/dashboard/Home'
+import AnalyticsLandingPage from '../src/routes/analytics/AnalyticsLandingPage'
 
-vi.mock('../src/hooks/useAnalyticsHubData', () => ({
-  useAnalyticsHubData: () => ({
-    loading: false,
-    error: null,
-    watchlistEntries: [],
-    pulseByLogin: {},
-    liveRows: [],
-    recentSessions: [],
-    historyUnavailable: false,
-    watchlistEmpty: true,
-    reload: vi.fn(),
-  }),
+vi.mock('../src/hooks/useHubRecentLogins', () => ({
+  useHubRecentLogins: () => [],
 }))
 
 vi.mock('../src/hooks/usePublicHubData', () => ({
@@ -34,7 +24,14 @@ vi.mock('../src/hooks/usePublicHubData', () => ({
         state: 'operational',
       },
       activity: { points: [], windowMinutes: 30, channelCount: 0 },
-      emoteIntel: { emotesPerMin: 0, topEmoteSharePct: 0, uniqueEmotes: 0, biggestPeakPerMin: 0, seventvSharePct: 0 },
+      emoteIntel: {
+        emotesPerMin: 0,
+        topEmoteSharePct: 0,
+        uniqueEmotes: 0,
+        biggestPeakPerMin: 0,
+        seventvSharePct: 0,
+        providerShares: [],
+      },
       topEmotes: [],
       topMovers: [],
       liveChannels: [],
@@ -66,6 +63,8 @@ vi.mock('../src/hooks/usePublicHubData', () => ({
     loading: false,
     refreshing: false,
     error: null,
+    loadSource: 'full',
+    hubEndpointOk: true,
     liveEmpty: true,
     lastUpdated: Date.now(),
     refresh: vi.fn(),
@@ -76,15 +75,15 @@ describe('Analytics hub empty watchlist (HUB-P4)', () => {
   it('still renders hub sections with honest empty states', async () => {
     render(
       <MemoryRouter>
-        <DashboardHome />
+        <AnalyticsLandingPage />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('heading', { level: 1, name: /Stream intelligence/i })).toBeTruthy()
-    expect(screen.getByRole('search')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: /Global activity/i })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: /Live collector/i })).toBeTruthy()
-    // No live pool: carousel shows an honest empty state, not a fake row.
+    expect(await screen.findByRole('heading', { level: 1, name: /Command center/i })).toBeTruthy()
+    expect(screen.getByText(/Stream intelligence/i)).toBeTruthy()
+    expect(screen.getByRole('search', { name: /Channel search/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Live Activity/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Live collector readiness/i })).toBeTruthy()
     expect(screen.getAllByText(/No channels live right now/i).length).toBeGreaterThan(0)
     expect(screen.queryByText(/add channels to your watchlist to see live analytics/i)).toBeNull()
   })
