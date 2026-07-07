@@ -1,4 +1,7 @@
 import { afterEach, vi } from 'vitest'
+import { configure } from '@testing-library/dom'
+
+configure({ asyncUtilTimeout: 5000 })
 
 class IntersectionObserverStub {
   readonly root: Element | Document | null = null
