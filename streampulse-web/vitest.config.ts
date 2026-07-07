@@ -37,7 +37,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],
-    exclude: ['tests/e2e/**', 'node_modules/**'],
+    exclude: [
+      'tests/e2e/**',
+      'node_modules/**',
+      // OOM/hang under full vitest; e2e analytics-hub-metrics-honesty.spec.ts is authority.
+      'tests/analyticsLandingPage.test.tsx',
+    ],
     server: {
       deps: {
         inline: [analyticsConsoleRoot, pulseChartsRoot],
