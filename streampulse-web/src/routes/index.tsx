@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { RequireAuth } from './guards'
+import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
@@ -12,14 +13,6 @@ const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const AdminShell = lazy(() => import('./admin/AdminShell'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 const StreamsHubPlaceholder = lazy(() => import('./analytics/StreamsHubPlaceholder'))
-
-function RouteFallback() {
-  return (
-    <div className="app-main">
-      <p className="muted">Loading…</p>
-    </div>
-  )
-}
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.
@@ -34,7 +27,7 @@ function SessionAliasRedirect() {
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<RouteFallback />}>
+    <Suspense fallback={<AnalyticsRouteFallback />}>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/setup" element={<Navigate to="/analytics" replace />} />

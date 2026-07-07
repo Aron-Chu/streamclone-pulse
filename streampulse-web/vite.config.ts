@@ -40,6 +40,13 @@ function devConnectSrcPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devConnectSrcPlugin()],
+  optimizeDeps: {
+    include: [
+      '@streamclone/pulse-charts',
+      '@streamclone/pulse-core',
+      '@streamclone/analytics-console',
+    ],
+  },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
     alias: {
