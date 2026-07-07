@@ -4,8 +4,8 @@ import { RequireAuth } from './guards'
 import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
-import AnalyticsLandingPage from './analytics/AnalyticsLandingPage'
 
+const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))

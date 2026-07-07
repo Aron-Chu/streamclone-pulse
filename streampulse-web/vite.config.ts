@@ -62,5 +62,17 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules') && !id.includes('packages/')) return
+          if (id.includes('gsap')) return 'vendor-gsap'
+          if (id.includes('analytics-console') || id.includes('pulse-charts')) {
+            return 'vendor-analytics-console'
+          }
+          if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
+        },
+      },
+    },
   },
 })

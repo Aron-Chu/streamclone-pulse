@@ -140,10 +140,48 @@ describe('usePublicHubData', () => {
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
 
     expect(result.current.data?.poolSize).toBe(8)
+    expect(result.current.loadSource).toBe('cache')
     await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
     expect(fetchPublicHubBase).toHaveBeenCalled()
     expect(result.current.loadSource).toBe('full')
     expect(result.current.refreshing).toBe(false)
+  })
+
+  it('shows refreshing while background fetch runs after cache hydration', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
+    fetchPublicHubBase.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve(hubResult(42)), 40)
+        }),
+    )
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    expect(result.current.loadSource).toBe('cache')
+    expect(result.current.refreshing).toBe(true)
+    await waitFor(() => expect(result.current.refreshing).toBe(false))
+    expect(result.current.data?.poolSize).toBe(42)
+  })
+
+  it('manual refresh aborts an in-flight fetch and applies the latest result', async () => {
+    let resolveFirst: ((value: ReturnType<typeof hubResult>) => void) | undefined
+    fetchPublicHubBase
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      .mockResolvedValueOnce(hubResult(99))
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(1))
+
+    result.current.refresh()
+    resolveFirst?.(hubResult(1))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
   })
 
   it('writes successful fresh hub data to cache', async () => {

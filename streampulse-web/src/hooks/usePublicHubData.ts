@@ -83,6 +83,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   )
 
   const controllerRef = useRef<AbortController | null>(null)
+  const inFlightRef = useRef(false)
+  const lastFetchAtRef = useRef(0)
   const mountedRef = useRef(true)
   const hasDataRef = useRef(initial.hasData)
   const prevActivityWindowRef = useRef(activityWindow)
@@ -102,10 +104,13 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     [activityWindow],
   )
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    if (inFlightRef.current && !force) return
+
     controllerRef.current?.abort()
     const controller = new AbortController()
     controllerRef.current = controller
+    inFlightRef.current = true
 
     if (hasDataRef.current) setRefreshing(true)
     else setLoading(true)
@@ -130,6 +135,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (controller.signal.aborted || !mountedRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load live hub data')
     } finally {
+      if (controllerRef.current === controller) {
+        inFlightRef.current = false
+        lastFetchAtRef.current = Date.now()
+      }
       if (mountedRef.current) {
         setLoading(false)
         setRefreshing(false)
@@ -138,7 +147,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   }, [activityWindow, applySuccessfulLoad])
 
   const refresh = useCallback(() => {
-    void load()
+    void load(true)
   }, [load])
 
   useEffect(() => {
@@ -189,7 +198,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     }, RETRY_MS_NO_DATA)
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void load()
+      if (document.visibilityState !== 'visible') return
+      const sinceLastFetch = Date.now() - lastFetchAtRef.current
+      if (sinceLastFetch < Math.min(pollMs / 2, 15_000)) return
+      void load()
     }
     document.addEventListener('visibilitychange', onVisible)
 

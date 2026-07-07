@@ -4,12 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AppRoutes } from './routes/index'
 import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal } from './lib/auth'
-import { setupStreamcloneAnalyticsApi } from './lib/streamcloneAnalytics'
 import { shadowStyles } from './ui/theme'
 import './ui/global.css'
-
-// Portal analytics console queries run on first paint — configure before React mounts.
-setupStreamcloneAnalyticsApi()
 
 const queryClient = new QueryClient({
   defaultOptions: {
