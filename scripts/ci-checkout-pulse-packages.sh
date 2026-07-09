@@ -13,16 +13,18 @@ sparse_clone() {
   local token="${3:-}"
 
   rm -rf "${DEST}"
-  mkdir -p "${DEST}"
+  mkdir -p "${ROOT}"
 
   local auth_url="https://github.com/${repo}.git"
   if [[ -n "${token}" ]]; then
     auth_url="https://x-access-token:${token}@github.com/${repo}.git"
   fi
 
-  git -C "${ROOT}" clone --depth 1 --filter=blob:none --sparse "${auth_url}" "${DEST}"
-  git -C "${DEST}" checkout "${ref}"
-  git -C "${DEST}" sparse-checkout set "${PACKAGES[@]/#/packages/}"
+  git -C "${ROOT}" clone --depth 1 --branch "${ref}" --filter=blob:none --sparse "${auth_url}" "${DEST}"
+  git -C "${DEST}" sparse-checkout set \
+    packages/pulse-core \
+    packages/analytics-console \
+    packages/pulse-charts
 }
 
 if [[ -n "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN:-}" ]]; then
