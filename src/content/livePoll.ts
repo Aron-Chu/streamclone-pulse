@@ -1,5 +1,5 @@
 import { sendBackgroundMessage } from './bridge.ts'
-import { getAutoUpdateEnabled, getPollIntervalMs } from '../shared/storage.ts'
+import { getAutoUpdateEnabled, getPollIntervalMs, type PulseCacheWindow } from '../shared/storage.ts'
 import { detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
 /** True when the open Twitch watch tab should drive live pulse refresh. */
@@ -48,6 +48,7 @@ export type LivePollController = {
     tracking?: boolean,
     hosted?: boolean,
   ) => void
+  setPollWindow: (window: PulseCacheWindow) => void
   stop: () => void
 }
 
@@ -66,6 +67,7 @@ export function createLivePollController(
   let collecting = false
   let hostedBackend = true
   let consecutiveFailures = 0
+  let pollWindow: PulseCacheWindow = 'recent'
 
   function stopTimer(): void {
     if (timer) {
@@ -102,7 +104,12 @@ export function createLivePollController(
     }
     tickInFlight = true
     try {
-      await sendBackgroundMessage({ type: 'GET_PULSE', login: activeLogin, watch: false })
+      await sendBackgroundMessage({
+        type: 'GET_PULSE',
+        login: activeLogin,
+        watch: false,
+        window: pollWindow,
+      })
       consecutiveFailures = 0
     } catch {
       consecutiveFailures += 1
@@ -140,9 +147,13 @@ export function createLivePollController(
         void tick()
       })
     },
+    setPollWindow(window: PulseCacheWindow) {
+      pollWindow = window
+    },
     stop() {
       activeLogin = null
       consecutiveFailures = 0
+      pollWindow = 'recent'
       stopTimer()
     },
   }

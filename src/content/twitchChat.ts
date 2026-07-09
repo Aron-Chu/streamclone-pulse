@@ -5,6 +5,8 @@
 // When no usable chat column is found (popout chat, theater, layout change,
 // zero-width), the caller falls back to the floating right dock.
 
+import { isTwitchVodPath } from './twitch.ts'
+
 export interface RectLike {
   readonly width: number
   readonly height: number
@@ -62,6 +64,8 @@ export const CHAT_BOTTOM_CLAMP_SELECTORS: readonly string[] = [
   '[data-a-target="community-highlight-summary"]',
   '[data-a-target="community-highlight-conversation"]',
   '[data-a-target="channel-leaderboard-header"]',
+  '[data-a-target="video-chat"]',
+  '[data-a-target="video-chat-input"]',
 ]
 
 /** Stream Chat title text inside the header row. */
@@ -113,12 +117,24 @@ export const CHAT_GIFT_ROW_SELECTORS: readonly string[] = [
   '[data-a-target="chat-room-buy-button"]',
 ]
 
+/** In-chat notices / pinned highlights below the header row. */
+export const CHAT_TOP_NOTICE_SELECTORS: readonly string[] = [
+  '[data-a-target="community-highlight-stack"]',
+  '[data-a-target="user-notice-message"]',
+  '[data-test-selector="user-notice-line"]',
+  '.user-notice-line',
+  '[data-a-target="pinned-chat-messages-list"]',
+  '[data-a-target="chat-notification"]',
+]
+
 export const DEFAULT_CHAT_HEADER_HEIGHT = 52
 export const HEADER_TABS_FALLBACK_INSET = 36
 export const SIDEBAR_MINI_PANEL_HEIGHT = 72
 export const SIDEBAR_COLLAPSED_PILL_HEIGHT = 52
 /** Reserve space when Twitch input selectors are not found. */
 export const CHAT_BOTTOM_RESERVE_PX = 150
+/** Tighter reserve on VOD watch pages where input chrome is shorter. */
+export const VOD_CHAT_BOTTOM_RESERVE_PX = 48
 export const MIN_PANEL_HEIGHT = 80
 
 /**
@@ -258,6 +274,50 @@ export function resolveChatBottomBound(
   }
 
   return bound
+}
+
+/** Keep mini/collapsed docks above Twitch bottom banners (subs, highlights, scroll chip). */
+export function resolveChatDockBottomY(
+  doc: Document,
+  panelBottom: number,
+  column: ChatRectSnapshot,
+): number {
+  let bottom = panelBottom
+  const lowerStart = column.top + column.height * 0.35
+  const dockClearSelectors = [
+    ...CHAT_BOTTOM_CLAMP_SELECTORS,
+    '[data-a-target="chat-scrollable-area__scroll-button"]',
+    'button[aria-label*="Scroll to bottom" i]',
+    'button[aria-label*="scroll to recent" i]',
+    'button[aria-label*="New messages" i]',
+  ] as const
+
+  for (const selector of dockClearSelectors) {
+    let nodes: NodeListOf<Element>
+    try {
+      nodes = doc.querySelectorAll(selector)
+    } catch {
+      continue
+    }
+    for (const element of Array.from(nodes)) {
+      const rect = element.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) continue
+      if (rect.top < lowerStart) continue
+      if (rect.top >= bottom - 4) continue
+      if (rect.right < column.left + 8 || rect.left > column.left + column.width - 8) continue
+      bottom = Math.min(bottom, rect.top - 4)
+    }
+  }
+
+  const bottomBound = resolveChatBottomBound(
+    doc,
+    new DOMRect(column.left, column.top, column.width, column.height),
+  )
+  if (bottomBound != null) {
+    bottom = Math.min(bottom, bottomBound - 2)
+  }
+
+  return Math.max(column.top + 28, bottom)
 }
 
 /** Clamp a panel snapshot so it ends above chat input / bottom banners. */
@@ -418,15 +478,16 @@ export function resolveChatHeaderBarRect(
   })
 }
 
-/** Bottom edge of the gift / bits / sub banner row below the title header. */
-export function resolveChatGiftRowBottom(
+function resolveChatTopBannerBottom(
   doc: Document,
   headerBottom: number,
   column: { readonly top: number; readonly bottom: number; readonly left: number; readonly width: number },
+  selectors: readonly string[],
+  maxTopOffset: number,
 ): number {
   let bottom = headerBottom
-  const maxGiftTop = headerBottom + 140
-  for (const selector of CHAT_GIFT_ROW_SELECTORS) {
+  const maxBannerTop = headerBottom + maxTopOffset
+  for (const selector of selectors) {
     let nodes: NodeListOf<Element>
     try {
       nodes = doc.querySelectorAll(selector)
@@ -436,12 +497,30 @@ export function resolveChatGiftRowBottom(
     for (const element of Array.from(nodes)) {
       const rect = element.getBoundingClientRect()
       if (rect.width <= 0 || rect.height <= 0) continue
-      if (rect.top < headerBottom - 6 || rect.top > maxGiftTop) continue
+      if (rect.top < headerBottom - 6 || rect.top > maxBannerTop) continue
       if (rect.right < column.left + 8 || rect.left > column.left + column.width - 8) continue
       bottom = Math.max(bottom, rect.bottom)
     }
   }
   return bottom
+}
+
+/** Bottom edge of the gift / bits / sub banner row below the title header. */
+export function resolveChatGiftRowBottom(
+  doc: Document,
+  headerBottom: number,
+  column: { readonly top: number; readonly bottom: number; readonly left: number; readonly width: number },
+): number {
+  return resolveChatTopBannerBottom(doc, headerBottom, column, CHAT_GIFT_ROW_SELECTORS, 140)
+}
+
+/** Bottom edge of in-chat notices / pinned highlights below the header. */
+export function resolveChatTopNoticeBottom(
+  doc: Document,
+  headerBottom: number,
+  column: { readonly top: number; readonly bottom: number; readonly left: number; readonly width: number },
+): number {
+  return resolveChatTopBannerBottom(doc, headerBottom, column, CHAT_TOP_NOTICE_SELECTORS, 220)
 }
 
 /** Top of the message list: below gift row and aligned with scrollable chat when found. */
@@ -451,6 +530,7 @@ export function resolveChatContentTop(
   column: ChatRectSnapshot,
 ): number {
   let top = resolveChatGiftRowBottom(doc, headerBottom, column)
+  top = Math.max(top, resolveChatTopNoticeBottom(doc, headerBottom, column))
   const messages = resolveChatMessagesRect(doc)
   if (messages && messages.top >= headerBottom - 8 && messages.height >= 40) {
     top = Math.max(top, messages.top)
@@ -562,15 +642,23 @@ export function resolveChatPanelRect(doc: Document = document): ChatRectSnapshot
 
   const top = resolveChatContentTop(doc, headerBottom, columnSnapshot)
 
-  const messages = resolveChatMessagesRect(doc)
-  let bottom = column.bottom
-  if (messages) bottom = messages.bottom
-  if (bottomBound != null) bottom = Math.min(bottom, bottomBound - 2)
-  else bottom = column.bottom - CHAT_BOTTOM_RESERVE_PX
+  const pathname = doc.defaultView?.location?.pathname ?? ''
+  const isVodPage = isTwitchVodPath(pathname)
+  const bottom = resolvePanelBottomY(column.bottom, bottomBound, { isVodPage })
 
   const height = bottom - top
   if (height < MIN_PANEL_HEIGHT) return null
   return toChatRectSnapshot({ top, left: column.left, width: column.width, height })
+}
+
+/** Pure bottom Y for panel body — used by resolveChatPanelRect and unit tests. */
+export function resolvePanelBottomY(
+  columnBottom: number,
+  bottomBound: number | null,
+  options?: { isVodPage?: boolean },
+): number {
+  const reserve = options?.isVodPage ? VOD_CHAT_BOTTOM_RESERVE_PX : CHAT_BOTTOM_RESERVE_PX
+  return bottomBound != null ? bottomBound - 2 : columnBottom - reserve
 }
 
 /** Sidebar snap: column + header row + inset tab slot + panel body. */

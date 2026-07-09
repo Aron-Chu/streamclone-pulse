@@ -1,4 +1,4 @@
-import type { OverlayPlacement } from '../shared/storage.ts'
+import type { OverlayPlacement, SidebarTab } from '../shared/storage.ts'
 
 export const SIDEBAR_FLOAT_FALLBACK_MS = 800
 
@@ -8,6 +8,7 @@ export interface OverlayHostVisibilityInput {
   sidebarFallbackToFloat: boolean
   placementResolved: boolean
   chatClosedPulseDockEnabled: boolean
+  sidebarTab?: SidebarTab
 }
 
 export type OverlayHostVisibilityMode = 'hidden' | 'sidebar' | 'floating'
@@ -25,6 +26,7 @@ export function resolveOverlayHostVisibility(input: OverlayHostVisibilityInput):
     sidebarFallbackToFloat,
     placementResolved,
     chatClosedPulseDockEnabled,
+    sidebarTab = 'pulse',
   } = input
 
   if (!placementResolved) {
@@ -43,7 +45,7 @@ export function resolveOverlayHostVisibility(input: OverlayHostVisibilityInput):
     return { effectivePlacement: 'sidebar', sidebarSnapped: true, mode: 'sidebar' }
   }
 
-  if (chatClosedPulseDockEnabled && sidebarFallbackToFloat) {
+  if (chatClosedPulseDockEnabled && sidebarFallbackToFloat && sidebarTab === 'pulse') {
     return { effectivePlacement: 'right', sidebarSnapped: false, mode: 'floating' }
   }
 
