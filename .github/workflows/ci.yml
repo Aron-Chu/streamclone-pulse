@@ -27,29 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        if: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN != '' }}
-        with:
-          repository: Aron-Chu/streampulse-backend
-          ref: master
-          path: _streampulse-backend
-          token: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-          sparse-checkout: |
-            packages/pulse-core
-            packages/analytics-console
-            packages/pulse-charts
-          sparse-checkout-cone-mode: false
-      - uses: actions/checkout@v4
-        if: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN == '' }}
-        with:
-          repository: Aron-Chu/streamclone
-          ref: v0.3.0-rc27
-          path: _streampulse-backend
-          sparse-checkout: |
-            packages/pulse-core
-            packages/analytics-console
-            packages/pulse-charts
-          sparse-checkout-cone-mode: false
+      - name: Checkout pulse packages
+        env:
+          STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+        run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link pulse packages from streampulse-backend
         run: bash scripts/ci-link-streamclone-packages.sh
       - uses: actions/setup-node@v4
@@ -71,29 +52,11 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        if: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN != '' }}
-        with:
-          repository: Aron-Chu/streampulse-backend
-          ref: master
-          path: _streampulse-backend
-          token: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-          sparse-checkout: |
-            packages/pulse-core
-            packages/analytics-console
-            packages/pulse-charts
-          sparse-checkout-cone-mode: false
-      - uses: actions/checkout@v4
-        if: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN == '' }}
-        with:
-          repository: Aron-Chu/streamclone
-          ref: v0.3.0-rc27
-          path: _streampulse-backend
-          sparse-checkout: |
-            packages/pulse-core
-            packages/analytics-console
-            packages/pulse-charts
-          sparse-checkout-cone-mode: false
+      - name: Checkout pulse packages
+        working-directory: ${{ github.workspace }}
+        env:
+          STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+        run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link StreamPulse packages
         working-directory: ${{ github.workspace }}
         run: bash scripts/ci-link-streamclone-packages.sh
