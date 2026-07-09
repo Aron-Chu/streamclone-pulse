@@ -32,6 +32,11 @@ export function isTwitchChannelPage(pathname: string): boolean {
   return parseTwitchPage(pathname).kind !== 'non-channel'
 }
 
+/** True on `/videos/{id}` or `/{login}/videos/{id}` watch pages. */
+export function isTwitchVodPath(pathname: string): boolean {
+  return parseTwitchPage(pathname).kind === 'vod'
+}
+
 export function parseTwitchPage(pathname: string): TwitchPageContext {
   const parts = pathname.split('/').filter(Boolean)
   if (!parts.length) return { kind: 'non-channel', login: null, vodId: null }

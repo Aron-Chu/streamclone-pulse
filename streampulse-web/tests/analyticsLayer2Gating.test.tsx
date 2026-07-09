@@ -37,6 +37,24 @@ const liveDetail = {
   updatedAt: Date.now(),
 }
 
+const channelDoorDetail = {
+  channel: LOGIN,
+  state: 'offline' as const,
+  rollups: [],
+  topEmotes: [],
+  sources: [],
+  updatedAt: Date.now(),
+}
+
+function createChannelDoorApi(overrides: Partial<AnalyticsApi> = {}): AnalyticsApi {
+  return createMockApi({
+    getAnalyticsLive: vi.fn().mockResolvedValue(channelDoorDetail),
+    getAnalyticsStreams: vi.fn().mockResolvedValue({ items: [] }),
+    getChannelStreamHistory: vi.fn().mockResolvedValue({ items: [] }),
+    ...overrides,
+  })
+}
+
 function PortalConsoleShell() {
   const { streamId } = useParams<{ login: string; streamId?: string }>()
   return (
@@ -127,28 +145,30 @@ describe('analytics console Layer 2 gating', () => {
   })
 
   it('does not fetch Layer 2 endpoints on the channel door route', async () => {
-    renderConsole(`/analytics/${LOGIN}`, api)
+    const doorApi = createChannelDoorApi()
+    renderConsole(`/analytics/${LOGIN}`, doorApi)
 
     await waitFor(() => {
-      expect(api.getAnalyticsLive).toHaveBeenCalled()
+      expect(doorApi.getAnalyticsLive).toHaveBeenCalled()
     })
 
     await waitFor(() => {
-      expect(api.getAnalyticsStreams).toHaveBeenCalled()
+      expect(doorApi.getAnalyticsStreams).toHaveBeenCalled()
     })
 
-    expect(api.getStreamGameSegments).not.toHaveBeenCalled()
-    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
-    expect(api.getReplayHeatmap).not.toHaveBeenCalled()
-    expect(api.getStreamSummary).not.toHaveBeenCalled()
-    expect(api.getSyncStatus).not.toHaveBeenCalled()
+    expect(doorApi.getStreamGameSegments).not.toHaveBeenCalled()
+    expect(doorApi.getPulseStreamRecap).not.toHaveBeenCalled()
+    expect(doorApi.getReplayHeatmap).not.toHaveBeenCalled()
+    expect(doorApi.getStreamSummary).not.toHaveBeenCalled()
+    expect(doorApi.getSyncStatus).not.toHaveBeenCalled()
   })
 
   it('does not fetch Layer 2 endpoints when Refresh is clicked on the channel door', async () => {
-    renderConsole(`/analytics/${LOGIN}`, api)
+    const doorApi = createChannelDoorApi()
+    renderConsole(`/analytics/${LOGIN}`, doorApi)
 
     await waitFor(() => {
-      expect(api.getAnalyticsLive).toHaveBeenCalled()
+      expect(doorApi.getAnalyticsLive).toHaveBeenCalled()
     })
 
     vi.clearAllMocks()
@@ -156,14 +176,14 @@ describe('analytics console Layer 2 gating', () => {
     fireEvent.click(screen.getByRole('button', { name: /refresh data/i }))
 
     await waitFor(() => {
-      expect(api.getAnalyticsLive).toHaveBeenCalled()
+      expect(doorApi.getAnalyticsLive).toHaveBeenCalled()
     })
 
-    expect(api.getStreamGameSegments).not.toHaveBeenCalled()
-    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
-    expect(api.getReplayHeatmap).not.toHaveBeenCalled()
-    expect(api.getStreamSummary).not.toHaveBeenCalled()
-    expect(api.getSyncStatus).not.toHaveBeenCalled()
+    expect(doorApi.getStreamGameSegments).not.toHaveBeenCalled()
+    expect(doorApi.getPulseStreamRecap).not.toHaveBeenCalled()
+    expect(doorApi.getReplayHeatmap).not.toHaveBeenCalled()
+    expect(doorApi.getStreamSummary).not.toHaveBeenCalled()
+    expect(doorApi.getSyncStatus).not.toHaveBeenCalled()
   })
 
   it('fetches Layer 2 endpoints on the explicit session route', async () => {

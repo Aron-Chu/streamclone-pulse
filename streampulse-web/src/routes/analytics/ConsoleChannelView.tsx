@@ -24,7 +24,7 @@ function portalSessionPath(login: string, streamId: string): string {
  * Streamclone analytics console (default channel view) inside the portal shell.
  */
 export default function ConsoleChannelView() {
-  const { login = '' } = useParams<{ login: string; streamId?: string }>()
+  const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
   const consoleRef = useRef<HTMLDivElement>(null)
   const { fadeThemeCenter } = useAnalyticsMotion()
   const hub = usePublicHubData({ enabled: true, activityWindow: '30m' })
@@ -50,7 +50,7 @@ export default function ConsoleChannelView() {
           <AnalyticsConsole
             mode="public"
             shellNested
-            showGameSegments
+            showGameSegments={Boolean(streamId?.trim())}
             enableSyncActions={usesLocalAnalyticsBackend()}
             buildSessionPath={portalSessionPath}
           />
