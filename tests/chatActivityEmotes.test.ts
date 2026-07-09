@@ -463,14 +463,16 @@ describe('chatActivityEmotes', () => {
   })
 
   it('caps plotted emote toggles at MAX_PLOTTED_EMOTES', () => {
-    expect(MAX_PLOTTED_EMOTES).toBe(4)
+    expect(MAX_PLOTTED_EMOTES).toBe(6)
     let keys = toggleEmotePlotKeys([], 'a')
     keys = toggleEmotePlotKeys(keys, 'b')
     keys = toggleEmotePlotKeys(keys, 'c')
     keys = toggleEmotePlotKeys(keys, 'd')
-    expect(keys).toEqual(['a', 'b', 'c', 'd'])
-    expect(toggleEmotePlotKeys(keys, 'e')).toEqual(['a', 'b', 'c', 'd'])
-    expect(toggleEmotePlotKeys(keys, 'b')).toEqual(['a', 'c', 'd'])
+    keys = toggleEmotePlotKeys(keys, 'e')
+    keys = toggleEmotePlotKeys(keys, 'f')
+    expect(keys).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    expect(toggleEmotePlotKeys(keys, 'g')).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    expect(toggleEmotePlotKeys(keys, 'b')).toEqual(['a', 'c', 'd', 'e', 'f'])
   })
 
   it('normalizes overlay axis per series when expanded', () => {
