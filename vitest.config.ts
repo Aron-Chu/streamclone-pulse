@@ -3,6 +3,14 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    exclude: ['**/node_modules/**', '**/dist/**', 'streampulse-web/**', '_streamclone/**', '../twitch-7tv-clone/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'streampulse-web/**',
+      '_streamclone/**',
+      '_streampulse-backend/**',
+      '../twitch-7tv-clone/**',
+      '../streampulse-backend/**',
+    ],
   },
 })
