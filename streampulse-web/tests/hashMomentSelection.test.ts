@@ -4,8 +4,8 @@ import {
   parseDeepLinkOffset,
   parseMomentHash,
   rollupOffsetSeconds,
-} from '@streamclone/analytics-console'
-import type { AnalyticsMinuteRollup } from '@streamclone/analytics-console'
+} from '@streampulse/analytics-console'
+import type { AnalyticsMinuteRollup } from '@streampulse/analytics-console'
 
 function minute(minuteTs: string, chatCount: number, missing?: boolean): AnalyticsMinuteRollup {
   return {

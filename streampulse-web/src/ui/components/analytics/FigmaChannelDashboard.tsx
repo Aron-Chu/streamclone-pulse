@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { parseDeepLinkOffset } from '@streamclone/analytics-console'
+import { parseDeepLinkOffset } from '@streampulse/analytics-console'
 import { Info } from 'lucide-react'
 import type { ChannelPageData } from '../../../hooks/useChannelPageData'
 import {

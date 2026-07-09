@@ -3,13 +3,13 @@ import {
   isDateSlugUnresolved,
   resolveMatchedStream,
   resolveTargetQueryStreamId,
-} from '@streamclone/analytics-console/utils/streamRouteResolution'
+} from '@streampulse/analytics-console/utils/streamRouteResolution'
 import {
   streamHasSyncedMinutes,
   streamSyncBadgeState,
   streamSyncBadgeLabel,
-} from '@streamclone/analytics-console/utils/syncedLiveStream'
-import type { AnalyticsStream } from '@streamclone/analytics-console/apiTypes'
+} from '@streampulse/analytics-console/utils/syncedLiveStream'
+import type { AnalyticsStream } from '@streampulse/analytics-console/apiTypes'
 
 const sampleStreams: AnalyticsStream[] = [
   {
@@ -70,6 +70,38 @@ describe('syncedLiveStream badges', () => {
   })
 })
 
+describe('resolveCanonicalLiveSessionTarget', () => {
+  it('prefers synced row matching live stream id', async () => {
+    const { resolveCanonicalLiveSessionTarget } = await import(
+      '@streampulse/analytics-console/utils/syncedLiveStream'
+    )
+    const target = resolveCanonicalLiveSessionTarget(sampleStreams, {
+      liveStreamId: '12345',
+      channelLive: true,
+    })
+    expect(target?.streamId).toBe('12345')
+  })
+
+  it('does not borrow another sidebar stream when current live row has no vod', async () => {
+    const { resolveCanonicalLiveSessionTarget } = await import(
+      '@streampulse/analytics-console/utils/syncedLiveStream'
+    )
+    const target = resolveCanonicalLiveSessionTarget(
+      [
+        { streamId: '222', login: 'x', startedAt: '2026-07-08T10:00:00Z', viewerSamples: 10, chatMessages: 10 },
+        { streamId: '111', login: 'x', startedAt: '2026-07-08T12:00:00Z', viewerSamples: 0, chatMessages: 0 },
+      ],
+      {
+        liveStreamId: '999',
+        channelLive: true,
+        channelLogin: 'x',
+        startedAt: '2026-07-08T14:00:00Z',
+      },
+    )
+    expect(target?.streamId).toBe('999')
+  })
+})
+
 // resolveCanonicalSessionSlug was removed from analytics-console; live-route slug
 // redirects are covered by integration/e2e. Drop unit block until API is restored.
 
@@ -83,7 +115,7 @@ describe('emotePlotSelection', () => {
 
   it('defaults to top 3 on spikes view', async () => {
     const { resolveChartEmoteKeys } = await import(
-      '@streamclone/analytics-console/utils/emotePlotSelection'
+      '@streampulse/analytics-console/utils/emotePlotSelection'
     )
     const keys = resolveChartEmoteKeys('auto', topEmotes, 'spikes')
     expect(Array.from(keys)).toEqual(['twitch:1:LUL', 'twitch:2:Kappa', 'seventv:3:KEKW'])
@@ -91,7 +123,7 @@ describe('emotePlotSelection', () => {
 
   it('defaults to top 4 on emotes view', async () => {
     const { resolveChartEmoteKeys } = await import(
-      '@streamclone/analytics-console/utils/emotePlotSelection'
+      '@streampulse/analytics-console/utils/emotePlotSelection'
     )
     const keys = resolveChartEmoteKeys('auto', topEmotes, 'emotes')
     expect(Array.from(keys)).toEqual(['twitch:1:LUL', 'twitch:2:Kappa', 'seventv:3:KEKW', 'twitch:4:Clap'])
@@ -99,7 +131,7 @@ describe('emotePlotSelection', () => {
 
   it('allows clearing all plotted emotes', async () => {
     const { resolveChartEmoteKeys, toggleEmotePlotSelection } = await import(
-      '@streamclone/analytics-console/utils/emotePlotSelection'
+      '@streampulse/analytics-console/utils/emotePlotSelection'
     )
     let selection = toggleEmotePlotSelection('auto', 'twitch:1:LUL', topEmotes, 'spikes')
     selection = toggleEmotePlotSelection(selection, 'twitch:2:Kappa', topEmotes, 'spikes')
@@ -110,7 +142,7 @@ describe('emotePlotSelection', () => {
 
   it('expands activity zone fraction when expanded', async () => {
     const { activityZoneFraction, activityBandFractions } = await import(
-      '@streamclone/analytics-console/utils/emotePlotSelection'
+      '@streampulse/analytics-console/utils/emotePlotSelection'
     )
     expect(activityZoneFraction(false)).toBe(0.36)
     expect(activityZoneFraction(true)).toBe(0.56)

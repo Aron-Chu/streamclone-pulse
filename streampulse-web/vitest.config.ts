@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const analyticsConsoleRoot = resolve(__dirname, '../../twitch-7tv-clone/packages/analytics-console')
-const pulseChartsRoot = resolve(__dirname, '../../twitch-7tv-clone/packages/pulse-charts')
+const analyticsConsoleRoot = resolve(__dirname, '../../streampulse-backend/packages/analytics-console')
+const pulseChartsRoot = resolve(__dirname, '../../streampulse-backend/packages/pulse-charts')
 
 export default defineConfig({
   plugins: [react()],
@@ -18,22 +18,22 @@ export default defineConfig({
     alias: [
       { find: '@', replacement: resolve(__dirname, 'src') },
       {
-        find: /^@streamclone\/analytics-console\/(.*)$/,
+        find: /^@streampulse\/analytics-console\/(.*)$/,
         replacement: `${resolve(analyticsConsoleRoot, 'src')}/$1`,
       },
       {
-        find: '@streamclone/analytics-console',
+        find: '@streampulse/analytics-console',
         replacement: resolve(analyticsConsoleRoot, 'src/index.tsx'),
       },
       {
-        find: /^@streamclone\/pulse-charts\/(.*)$/,
+        find: /^@streampulse\/pulse-charts\/(.*)$/,
         replacement: `${resolve(pulseChartsRoot, 'src')}/$1`,
       },
       {
-        find: '@streamclone/pulse-charts',
+        find: '@streampulse/pulse-charts',
         replacement: resolve(pulseChartsRoot, 'src/index.ts'),
       },
-      { find: '@streamclone/pulse-core', replacement: resolve(__dirname, 'node_modules/@streamclone/pulse-core') },
+      { find: '@streampulse/pulse-core', replacement: resolve(__dirname, 'node_modules/@streampulse/pulse-core') },
       { find: 'react', replacement: resolve(__dirname, 'node_modules/react') },
       { find: 'react-dom', replacement: resolve(__dirname, 'node_modules/react-dom') },
       { find: 'react-router-dom', replacement: resolve(__dirname, 'node_modules/react-router-dom') },
@@ -50,7 +50,6 @@ export default defineConfig({
     exclude: [
       'tests/e2e/**',
       'node_modules/**',
-      // OOM/hang under full vitest; e2e analytics-hub-metrics-honesty.spec.ts is authority.
       'tests/analyticsLandingPage.test.tsx',
       'tests/analyticsHubEmpty.test.tsx',
     ],

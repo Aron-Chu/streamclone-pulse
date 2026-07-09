@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { mapViewerSourceBadge } from '@streamclone/analytics-console/utils/sourceBadge'
+import { mapViewerSourceBadge } from '@streampulse/analytics-console/utils/sourceBadge'
 import {
   deriveAnalyticsQualityLabel,
   type AnalyticsQualityLabel,
-} from '@streamclone/analytics-console/utils/streamQuality'
+} from '@streampulse/analytics-console/utils/streamQuality'
 
 describe('mapViewerSourceBadge', () => {
   it.each([

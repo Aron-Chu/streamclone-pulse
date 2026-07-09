@@ -7,7 +7,7 @@ import {
   AnalyticsConsole,
   configureAnalyticsApi,
   type AnalyticsApi,
-} from '@streamclone/analytics-console'
+} from '@streampulse/analytics-console'
 
 const STREAM_ID = '317839735654'
 const LOGIN = 'xqc'

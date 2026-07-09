@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { deriveChartGameSegments, gameSegmentPlotBounds } from '@streamclone/analytics-console/utils/gameSegmentChart'
+import { deriveChartGameSegments, gameSegmentPlotBounds } from '@streampulse/analytics-console/utils/gameSegmentChart'
 
 describe('deriveChartGameSegments', () => {
   it('uses API segments when present', () => {

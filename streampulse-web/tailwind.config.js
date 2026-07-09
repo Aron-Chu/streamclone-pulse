@@ -2,7 +2,7 @@
 
 /**
  * Embedded workspace packages that emit Tailwind class names for the analytics console.
- * When adding a new file: dependency under @streamclone/* used inside .sc-analytics-console,
+ * When adding a new file: dependency under @streampulse/* used inside .sc-analytics-console,
  * add its src glob here AND run `npm run check:analytics-tailwind`.
  *
  * SVG paint (fill-*) also needs explicit fallbacks in src/ui/analytics-tailwind.css —
@@ -11,9 +11,9 @@
 export default {  content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
-    '../../twitch-7tv-clone/packages/analytics-console/src/**/*.{js,ts,jsx,tsx}',
+    '../../streampulse-backend/packages/analytics-console/src/**/*.{js,ts,jsx,tsx}',
     // pulse-charts owns PulseMultiSignalChart SVG axis labels (fill-cyan-*, fill-zinc-*, …)
-    '../../twitch-7tv-clone/packages/pulse-charts/src/**/*.{js,ts,jsx,tsx}',
+    '../../streampulse-backend/packages/pulse-charts/src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {},

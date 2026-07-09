@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { lerpScalar } from '@streamclone/analytics-console/motion/useSmoothedScalar'
-import { lerpActivityLayout } from '@streamclone/analytics-console/utils/emotePlotSelection'
+import { lerpScalar } from '@streampulse/analytics-console/motion/useSmoothedScalar'
+import { lerpActivityLayout } from '@streampulse/analytics-console/utils/emotePlotSelection'
 
 describe('lerpScalar', () => {
   it('steps toward target with alpha', () => {

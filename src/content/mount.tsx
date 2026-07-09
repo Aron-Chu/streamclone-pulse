@@ -1,6 +1,9 @@
 import { createRoot, type Root } from 'react-dom/client'
 import { Overlay } from '../ui/Overlay.tsx'
-import type { ExtensionCoverageTierResponse, PulsePayload } from '../shared/messages.ts'
+import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
+import type { ExtensionCoverageTierResponse, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
+import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
+import type { PulseCacheWindow } from '../shared/storage.ts'
 import {
   DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED,
   DEFAULT_OVERLAY_MODE,
@@ -25,6 +28,7 @@ import {
   buildSidebarBodyRect,
   SIDEBAR_MINI_PANEL_HEIGHT,
   SIDEBAR_COLLAPSED_PILL_HEIGHT,
+  resolveChatDockBottomY,
   type ChatRectSnapshot,
   type SidebarSnapLayout,
 } from './twitchChat.ts'
@@ -60,6 +64,17 @@ export interface OverlayMountOptions {
   onTrackStarted?: () => void
   sessionOpenedAtMs?: number | null
   coverageTier?: ExtensionCoverageTierResponse | null
+  onPulseRefresh?: () => Promise<void>
+  onLivePollWindowChange?: (window: PulseCacheWindow) => void
+}
+
+export function applyOverlayPayloadUpdate(
+  previous: PulsePayload | null,
+  incoming: PulsePayload | null,
+): PulsePayload | null {
+  if (!incoming) return previous
+  const sameStream = !previous?.streamId || previous.streamId === incoming.streamId
+  return sameStream && previous ? mergePulsePayload(previous, incoming) : incoming
 }
 
 const BASE_STYLE = `
@@ -171,6 +186,8 @@ let tabsHostEl: HTMLElement | null = null
 let panelHostEl: HTMLElement | null = null
 let currentLogin = ''
 let currentContext: TwitchPageContext = { kind: 'non-channel', login: null, vodId: null }
+let currentVodPulse: ExtensionVodPulseResponse | null = null
+let currentVodPulseLoading = false
 let currentOptions: OverlayMountOptions = {}
 let stopObserve: (() => void) | null = null
 let sidebarLayout: SidebarSnapLayout | null = null
@@ -252,10 +269,25 @@ function scheduleSidebarFallback(): void {
   }, SIDEBAR_FLOAT_FALLBACK_MS)
 }
 
+function buildDockHostRect(
+  bodyRect: ChatRectSnapshot,
+  column: ChatRectSnapshot,
+  dockHeight: number,
+): ChatRectSnapshot {
+  const dockBottom = resolveChatDockBottomY(document, bodyRect.bottom, column)
+  const top = Math.max(bodyRect.top, dockBottom - dockHeight)
+  return {
+    ...bodyRect,
+    top,
+    height: Math.max(28, dockBottom - top),
+    bottom: dockBottom,
+  }
+}
+
 function applySidebarSnapLayout(): void {
   if (!sidebarLayout) return
 
-  applyTwitchSidebarChromeHides(true)
+  applyTwitchSidebarChromeHides(true, currentSidebarTab === 'pulse')
   applyFixedRect(tabsHostEl, sidebarLayout.header, true)
 
   const showPanel = currentSidebarTab === 'pulse'
@@ -268,24 +300,18 @@ function applySidebarSnapLayout(): void {
   const bodyRect = buildSidebarBodyRect(sidebarLayout)
 
   if (currentOverlayMode === 'collapsed') {
-    const collapsedRect: ChatRectSnapshot = {
-      ...bodyRect,
-      top: bodyRect.bottom - SIDEBAR_COLLAPSED_PILL_HEIGHT,
-      height: SIDEBAR_COLLAPSED_PILL_HEIGHT,
-      bottom: bodyRect.bottom,
-    }
+    const collapsedRect = buildDockHostRect(
+      bodyRect,
+      sidebarLayout.column,
+      SIDEBAR_COLLAPSED_PILL_HEIGHT,
+    )
     applyFixedRect(panelHostEl, collapsedRect, true)
     if (panelHostEl) panelHostEl.style.overflow = 'visible'
     return
   }
 
   if (currentOverlayMode === 'mini') {
-    const miniRect: ChatRectSnapshot = {
-      ...bodyRect,
-      top: bodyRect.bottom - SIDEBAR_MINI_PANEL_HEIGHT,
-      height: SIDEBAR_MINI_PANEL_HEIGHT,
-      bottom: bodyRect.bottom,
-    }
+    const miniRect = buildDockHostRect(bodyRect, sidebarLayout.column, SIDEBAR_MINI_PANEL_HEIGHT)
     applyFixedRect(panelHostEl, miniRect, true)
     if (panelHostEl) panelHostEl.style.overflow = 'hidden'
     return
@@ -321,6 +347,7 @@ function currentHostVisibility(): OverlayHostVisibility {
     sidebarFallbackToFloat,
     placementResolved,
     chatClosedPulseDockEnabled,
+    sidebarTab: currentSidebarTab,
   })
 }
 
@@ -386,6 +413,13 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
       currentOverlayMode = mode
       renderOverlay(currentPayload, currentError)
     },
+    onPulseRefresh: currentOptions.onPulseRefresh,
+    onPulsePayloadUpdate: (message: PulseUpdateMessage) => {
+      updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null)
+    },
+    onLivePollWindowChange: currentOptions.onLivePollWindowChange,
+    vodPulse: currentVodPulse,
+    vodPulseLoading: currentVodPulseLoading,
   }
 
   if (sidebarSnapped) {
@@ -481,16 +515,39 @@ export function updateOverlayPayload(
   coverageTier?: ExtensionCoverageTierResponse | null,
 ): void {
   if (!panelRoot || !currentLogin) return
-  currentPayload = payload
-  currentError = error
+  if (payload) {
+    currentPayload = applyOverlayPayloadUpdate(currentPayload, payload)
+  }
+  if (error !== undefined) {
+    currentError = error
+  }
   if (coverageTier !== undefined) {
     currentCoverageTier = coverageTier
   }
-  renderOverlay(payload, error)
+  renderOverlay(currentPayload, currentError)
 }
 
 export function updateOverlayContext(context: TwitchPageContext): void {
   currentContext = context
+  renderOverlay(currentPayload, currentError)
+}
+
+export function updateOverlayLogin(login: string): void {
+  if (!login || login === currentLogin) return
+  currentLogin = login
+  renderOverlay(currentPayload, currentError)
+}
+
+export function updateOverlayVodState(input: {
+  vodPulse?: ExtensionVodPulseResponse | null
+  loading?: boolean
+}): void {
+  if (input.vodPulse !== undefined) {
+    currentVodPulse = input.vodPulse
+  }
+  if (input.loading !== undefined) {
+    currentVodPulseLoading = input.loading
+  }
   renderOverlay(currentPayload, currentError)
 }
 
@@ -511,6 +568,8 @@ export function unmountOverlay(): void {
   tabsHostEl = null
   panelHostEl = null
   currentLogin = ''
+  currentVodPulse = null
+  currentVodPulseLoading = false
   currentOptions = {}
   currentPayload = null
   currentError = undefined

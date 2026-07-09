@@ -7,7 +7,7 @@ import {
   type PulseBookmarkQuery,
   type SetupWelcome,
   type StartHistoricalSyncOptions,
-} from '@streamclone/analytics-console'
+} from '@streampulse/analytics-console'
 import type {
   AnalyticsMinuteRollup,
   AnalyticsStreamDetail,
@@ -18,7 +18,7 @@ import type {
   PulseRecapMoment,
   PulseStreamRecap,
   SyncStatus,
-} from '@streamclone/analytics-console'
+} from '@streampulse/analytics-console'
 import { apiClient, getBackendUrl } from './apiClient'
 import { resolveBackendSource } from './backendSource'
 import { hasBetaKey } from './auth'
@@ -26,16 +26,16 @@ import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore } from './timelineDownsample'
 
 /**
- * Portal analytics adapter — reshapes hosted `/v1/portal/analytics/*` for
- * `@streamclone/analytics-console`.
+ * Portal analytics adapter ΓÇö reshapes hosted `/v1/portal/analytics/*` for
+ * `@streampulse/analytics-console`.
  *
  * - **Chart minutes:** `downsampleTimeline()` to ~240 points on hosted API (prod).
  *   Local `:8090` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
- * - **Top emotes:** `mergePortalTopEmotes()` — stream summary totals win over
+ * - **Top emotes:** `mergePortalTopEmotes()` ΓÇö stream summary totals win over
  *   per-minute bucket catalog counts; channel emote identity (`/channels/{login}/emotes`)
  *   fills imageUrl/id gaps for recap-only or low-usage emotes.
  * - **VOD links:** client resolves `detail.vodId ?? stream.vodId ?? recap.vodId`
- *   for Selected Moment “Open on Twitch”.
+ *   for Selected Moment ΓÇ£Open on TwitchΓÇ¥.
  */
 
 export class PortalChannelEmotesError extends Error {
@@ -177,7 +177,7 @@ export function usesLocalAnalyticsBackend(): boolean {
   return resolveBackendSource(getBackendUrl()) === 'local'
 }
 
-/** Bookmarks require a beta-key principal — not available on public no-login /analytics. */
+/** Bookmarks require a beta-key principal ΓÇö not available on public no-login /analytics. */
 export function portalBookmarksSupported(): boolean {
   return hasBetaKey()
 }
@@ -194,7 +194,7 @@ function usesLocalAnalyticsRoutes(): boolean {
   return usesLocalAnalyticsBackend()
 }
 
-const PLACEHOLDER_CATEGORIES = /^(live|syncing\.{3}|syncing…)$/i
+const PLACEHOLDER_CATEGORIES = /^(live|syncing\.{3}|syncingΓÇª)$/i
 
 /** Synthesize one chart segment from stream category + rollup span when games API is empty. */
 export function deriveClientGameSegments(
@@ -395,7 +395,7 @@ function normalizePulseStreamRecap(recap: PulseStreamRecap): PulseStreamRecap {
 
 /**
  * Per-minute bucket emotes are sanitized server-side (name + provider + a
- * pre-resolved public CDN `imageUrl`, no raw provider id — see BucketEmote in
+ * pre-resolved public CDN `imageUrl`, no raw provider id ΓÇö see BucketEmote in
  * portal_analytics_api.go). The synthetic key below only needs to be stable
  * and unique per name+provider; the image renders straight from `imageUrl`
  * via `resolveEmoteImageUrl`'s imageUrl-first precedence, so no real provider
@@ -772,16 +772,16 @@ export const portalAnalyticsApi: AnalyticsApi = {
 
   async createPulseBookmark() {
     if (!portalBookmarksSupported()) {
-      throw new Error('Saved moments are a private beta feature — public analytics is read-only.')
+      throw new Error('Saved moments are a private beta feature ΓÇö public analytics is read-only.')
     }
-    throw new Error('Bookmarks require a beta key — use the private dashboard.')
+    throw new Error('Bookmarks require a beta key ΓÇö use the private dashboard.')
   },
 
   async deletePulseBookmark() {
     if (!portalBookmarksSupported()) {
-      throw new Error('Saved moments are a private beta feature — public analytics is read-only.')
+      throw new Error('Saved moments are a private beta feature ΓÇö public analytics is read-only.')
     }
-    throw new Error('Bookmarks require a beta key — use the private dashboard.')
+    throw new Error('Bookmarks require a beta key ΓÇö use the private dashboard.')
   },
 
   async prefetchAnalyticsTracker(streamId: string, channel: string) {

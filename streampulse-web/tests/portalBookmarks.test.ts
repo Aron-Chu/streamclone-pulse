@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { setupStreamcloneAnalyticsApi, portalBookmarksSupported } from '../src/lib/streamcloneAnalytics'
-import { getConfiguredAnalyticsApi } from '@streamclone/analytics-console'
+import { getConfiguredAnalyticsApi } from '@streampulse/analytics-console'
 
 describe('portal bookmarks (public console)', () => {
   beforeEach(() => {

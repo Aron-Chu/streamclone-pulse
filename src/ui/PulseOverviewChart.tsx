@@ -786,7 +786,6 @@ export function PulseOverviewChart({
             gameBandTop={PAD_TOP + 1}
             gameBandHeight={gameBandHeight - 2}
             minLabelWidth={24}
-            highlightedSegmentKey={highlightedGameSegmentKey}
           />
         ) : null}
 

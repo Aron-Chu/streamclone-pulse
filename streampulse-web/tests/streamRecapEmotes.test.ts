@@ -1,8 +1,14 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 
-import { configureEmoteAssetBase } from '@streamclone/analytics-console/configureApi'
-import { getEmoteImageUrl } from '@streamclone/analytics-console/utils/consoleFormat'
-import { enrichRecapEmoteFromCatalog } from '@streamclone/analytics-console/utils/recapEmoteEnrich'
+import { configureEmoteAssetBase } from '@streampulse/analytics-console/configureApi'
+import { getEmoteImageUrl } from '@streampulse/analytics-console/utils/consoleFormat'
+import {
+  enrichRecapEmoteFromCatalog,
+  findPeakEmoteMinuteFromRollups,
+  resolveBurstDisplayEmote,
+  resolveRecapBurstHighlight,
+  resolveRecapDisplayEmotes,
+} from '@streampulse/analytics-console/utils/recapEmoteEnrich'
 
 describe('recap emote image URLs', () => {
   beforeEach(() => {
@@ -107,5 +113,111 @@ describe('recap emote catalog enrichment', () => {
       ],
     )
     expect(enriched.imageUrl).toBe('https://cdn.7tv.app/emote/01ABC/4x.webp')
+  })
+})
+
+describe('resolveRecapDisplayEmotes', () => {
+  it('merges recap seventv-only rows with multi-provider session catalog', () => {
+    const merged = resolveRecapDisplayEmotes(
+      [{ code: 'BasedGod', count: 500, provider: 'seventv' }],
+      [
+        {
+          key: 'twitch:1:Kappa',
+          name: 'Kappa',
+          provider: 'twitch',
+          count: 800,
+        },
+        {
+          key: 'seventv:2:BasedGod',
+          name: 'BasedGod',
+          provider: 'seventv',
+          count: 500,
+        },
+        {
+          key: 'bttv:3:KEKW',
+          name: 'KEKW',
+          provider: 'bttv',
+          count: 300,
+        },
+      ],
+      5,
+    )
+    expect(merged.map((emote) => emote.code)).toEqual(['Kappa', 'BasedGod', 'KEKW'])
+    expect(merged.some((emote) => emote.provider === 'twitch')).toBe(true)
+  })
+})
+
+describe('peak emote minute highlight', () => {
+  const catalog = [
+    {
+      key: 'seventv:lol-id:LOL',
+      name: 'LOL',
+      id: 'lol-id',
+      provider: 'seventv',
+      imageUrl: '/emotes/lol-id/1x.webp',
+      count: 13_100,
+    },
+    {
+      key: 'seventv:forsen-id:forsenPls',
+      name: 'forsenPls',
+      id: 'forsen-id',
+      provider: 'seventv',
+      imageUrl: '/emotes/forsen-id/1x.webp',
+      count: 4,
+    },
+  ]
+
+  const streamStartedAt = '2026-07-07T08:00:00.000Z'
+  const rollups = [
+    {
+      minuteTs: '2026-07-07T10:53:00.000Z',
+      chatCount: 100,
+      emotes: { 'seventv:forsen-id:forsenPls': 4 },
+    },
+    {
+      minuteTs: '2026-07-07T10:56:00.000Z',
+      chatCount: 480,
+      emotes: { 'seventv:lol-id:LOL': 297 },
+    },
+  ]
+
+  beforeEach(() => {
+    configureEmoteAssetBase(() => 'https://api.streampulse.stream')
+  })
+
+  it('findPeakEmoteMinuteFromRollups picks highest per-minute emote count', () => {
+    const peak = findPeakEmoteMinuteFromRollups({
+      rollups,
+      streamStartedAt,
+      topEmotesCatalog: catalog,
+    })
+    expect(peak?.emote.code).toBe('LOL')
+    expect(peak?.emote.count).toBe(297)
+    expect(peak?.offsetSeconds).toBe(10_560)
+  })
+
+  it('resolveRecapBurstHighlight ignores stale recap burst code when rollups disagree', () => {
+    const highlight = resolveRecapBurstHighlight({
+      burst: { offsetSeconds: 10_380, code: 'forsenPls', count: 4, provider: 'seventv' },
+      rollups,
+      streamStartedAt,
+      topEmotesCatalog: catalog,
+    })
+    expect(highlight?.emote.code).toBe('LOL')
+    expect(highlight?.emote.id).toBe('lol-id')
+    expect(getEmoteImageUrl({
+      provider: highlight?.emote.provider,
+      id: highlight?.emote.id,
+      imageUrl: highlight?.emote.imageUrl,
+    })).toBeTruthy()
+  })
+
+  it('resolveBurstDisplayEmote matches catalog by name across providers', () => {
+    const out = resolveBurstDisplayEmote(
+      { code: 'LOL', count: 12, provider: 'twitch' },
+      catalog,
+    )
+    expect(out.id).toBe('lol-id')
+    expect(out.count).toBe(12)
   })
 })

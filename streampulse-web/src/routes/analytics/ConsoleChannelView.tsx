@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { AnalyticsConsole } from '@streamclone/analytics-console'
+import { AnalyticsConsole } from '@streampulse/analytics-console'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
 import { resolveBackendSource, backendSourceLabel } from '../../lib/backendSource'
@@ -11,7 +11,8 @@ import { useAnalyticsMotion } from '../../ui/motion/useAnalyticsMotion'
 import '../../ui/analytics-tailwind.css'
 import '../../ui/components/analytics/analytics-console.css'
 import '../../ui/components/analytics/figma-analytics.css'
-import '../../../../../twitch-7tv-clone/packages/pulse-charts/pulse-chart-motion.css'
+import '../../../../../streampulse-backend/packages/analytics-console/src/analytics-chart-motion.css'
+import '../../../../../streampulse-backend/packages/pulse-charts/pulse-chart-motion.css'
 
 setupStreamcloneAnalyticsApi()
 
@@ -23,7 +24,7 @@ function portalSessionPath(login: string, streamId: string): string {
  * Streamclone analytics console (default channel view) inside the portal shell.
  */
 export default function ConsoleChannelView() {
-  const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
+  const { login = '' } = useParams<{ login: string; streamId?: string }>()
   const consoleRef = useRef<HTMLDivElement>(null)
   const { fadeThemeCenter } = useAnalyticsMotion()
   const hub = usePublicHubData({ enabled: true, activityWindow: '30m' })
@@ -32,10 +33,11 @@ export default function ConsoleChannelView() {
 
   useEffect(() => {
     fadeThemeCenter(consoleRef.current)
-  }, [fadeThemeCenter, login, streamId])
+  }, [fadeThemeCenter, login])
 
   return (
     <AnalyticsFigmaShell
+      hideSidebar
       backendStatus={{
         label: 'API',
         value: backendSourceLabel(backendSource),
@@ -48,7 +50,7 @@ export default function ConsoleChannelView() {
           <AnalyticsConsole
             mode="public"
             shellNested
-            showGameSegments={Boolean(streamId?.trim())}
+            showGameSegments
             enableSyncActions={usesLocalAnalyticsBackend()}
             buildSessionPath={portalSessionPath}
           />

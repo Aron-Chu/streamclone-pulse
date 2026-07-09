@@ -5,17 +5,6 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// The committed index.html CSP is production-clean: connect-src/img-src only allow
-// 'self', https:, and the hosted API (https://api.streampulse.stream). Local dev
-// backends (localhost / 127.0.0.1 / a laptopworker tailnet hub) are injected here
-// ONLY for `vite` / `vite dev` (apply: 'serve'), so production builds never carry a
-// dependency on a developer machine. check-backend-url enforces this on dist.
-//
-// img-src needs the same dev hosts as connect-src: locally-synced 7TV/FFZ/BTTV
-// emote thumbnails are served from the analytics backend itself (e.g.
-// `/emotes/{uuid}/1x.webp`, resolved to an absolute `http://127.0.0.1:8090/...`
-// URL client-side) — without this, those <img> tags are silently CSP-blocked
-// even though the URL itself is correct.
 function devConnectSrcPlugin(): Plugin {
   const devHosts = [
     'http://localhost:8090',
@@ -42,24 +31,24 @@ export default defineConfig({
   plugins: [react(), devConnectSrcPlugin()],
   optimizeDeps: {
     include: [
-      '@streamclone/pulse-charts',
-      '@streamclone/pulse-core',
-      '@streamclone/analytics-console',
+      '@streampulse/pulse-charts',
+      '@streampulse/pulse-core',
+      '@streampulse/analytics-console',
     ],
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
     alias: {
       '@': resolve(__dirname, 'src'),
-      '@streamclone/analytics-console': resolve(
+      '@streampulse/analytics-console': resolve(
         __dirname,
-        '../../twitch-7tv-clone/packages/analytics-console/src/index.tsx',
+        'node_modules/@streampulse/analytics-console/src/index.tsx',
       ),
-      '@streamclone/pulse-charts': resolve(
+      '@streampulse/pulse-charts': resolve(
         __dirname,
-        '../../twitch-7tv-clone/packages/pulse-charts/src/index.ts',
+        'node_modules/@streampulse/pulse-charts/src/index.ts',
       ),
-      '@streamclone/pulse-core': resolve(__dirname, 'node_modules/@streamclone/pulse-core'),
+      '@streampulse/pulse-core': resolve(__dirname, 'node_modules/@streampulse/pulse-core'),
       react: resolve(__dirname, 'node_modules/react'),
       'react-dom': resolve(__dirname, 'node_modules/react-dom'),
       'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),

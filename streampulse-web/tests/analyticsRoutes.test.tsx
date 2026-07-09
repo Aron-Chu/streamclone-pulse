@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation, useParams } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@streamclone/analytics-console', () => ({
+vi.mock('@streampulse/analytics-console', () => ({
   configureAnalyticsApi: vi.fn(),
   configureEmoteAssetBase: vi.fn(),
   AnalyticsConsole: ({

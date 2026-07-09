@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildSelectedMomentDisplay } from '@streamclone/analytics-console/utils/selectedMomentDisplay'
-import type { AnalyticsMinuteRollup } from '@streamclone/analytics-console/apiTypes'
+import { buildSelectedMomentDisplay } from '@streampulse/analytics-console/utils/selectedMomentDisplay'
+import type { AnalyticsMinuteRollup } from '@streampulse/analytics-console/apiTypes'
 
 const rollup: AnalyticsMinuteRollup = {
   minuteTs: '2026-07-04T04:05:00.000Z',
@@ -38,7 +38,7 @@ describe('emote plot cap', () => {
 
   it('allows up to six plotted emotes', async () => {
     const { MAX_PLOTTED_EMOTES, toggleEmotePlotSelection, resolveChartEmoteKeys } = await import(
-      '@streamclone/analytics-console/utils/emotePlotSelection'
+      '@streampulse/analytics-console/utils/emotePlotSelection'
     )
     expect(MAX_PLOTTED_EMOTES).toBe(6)
     let selection = toggleEmotePlotSelection('none', 'twitch:1:LUL', topEmotes, 'spikes')

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureAnalyticsApi } from '@streamclone/analytics-console'
-import type { AnalyticsStreamDetail } from '@streamclone/analytics-console'
+import { configureAnalyticsApi } from '@streampulse/analytics-console'
+import type { AnalyticsStreamDetail } from '@streampulse/analytics-console'
 
 const apiClientMock = vi.fn()
-const getBackendUrlMock = vi.fn(() => 'http://127.0.0.1:8090')
+const getBackendUrlMock = vi.fn(() => 'http://127.0.0.1:8081')
 
 vi.mock('../src/lib/apiClient', () => ({
   apiClient: (...args: unknown[]) => apiClientMock(...args),
@@ -25,7 +25,7 @@ describe('streamcloneAnalytics adapter', () => {
 
   beforeEach(() => {
     apiClientMock.mockReset()
-    getBackendUrlMock.mockReset().mockReturnValue('http://127.0.0.1:8090')
+    getBackendUrlMock.mockReset().mockReturnValue('http://127.0.0.1:8081')
     vi.resetModules()
   })
 
@@ -309,7 +309,7 @@ describe('streamcloneAnalytics adapter', () => {
       })
     })
 
-    const { topEmotesFromRollup } = await import('@streamclone/pulse-core')
+    const { topEmotesFromRollup } = await import('@streampulse/pulse-core')
     const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
     configureAnalyticsApi(portalAnalyticsApi)
     const detail = (await portalAnalyticsApi.getAnalyticsStream('317548790616')) as AnalyticsStreamDetail

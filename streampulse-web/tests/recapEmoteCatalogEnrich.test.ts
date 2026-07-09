@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { enrichRecapEmoteFromCatalog, enrichRecapEmotesFromCatalog } from '@streamclone/analytics-console/utils/recapEmoteEnrich'
+import { enrichRecapEmoteFromCatalog, enrichRecapEmotesFromCatalog } from '@streampulse/analytics-console/utils/recapEmoteEnrich'
 
 describe('recap emote catalog enrichment', () => {
   const catalog = [

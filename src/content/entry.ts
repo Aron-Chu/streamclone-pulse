@@ -49,6 +49,14 @@ let overlayPrefsListenerInstalled = false
 
 const livePoll = createLivePollController(() => parseTwitchPage(window.location.pathname))
 
+function setLivePollWindow(window: 'recent' | 'full'): void {
+  livePoll.setPollWindow(window)
+}
+
+const overlayMountOptions = {
+  onLivePollWindowChange: setLivePollWindow,
+} as const
+
 function installOverlayPrefsListener(): void {
   if (overlayPrefsListenerInstalled) return
   if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return
@@ -168,6 +176,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   mountOverlay(login, null, context, {
     sessionOpenedAtMs,
     onPulseRefresh: () => refreshChannelPulse(login),
+    ...overlayMountOptions,
   })
   updateOverlayVodState({ vodPulse: null, loading: false })
   livePoll.sync(login, context, false, hosted)
@@ -185,6 +194,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     coverageTier: message.coverageTier ?? null,
     pendingTrackPrompt: localStack && policy === 'ask' && !autoTrack && !payload?.tracking && lastRosterEligible,
     onPulseRefresh: () => refreshChannelPulse(login),
+    ...overlayMountOptions,
   })
 
   livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted)
