@@ -611,5 +611,60 @@ describe('streamcloneAnalytics adapter', () => {
         /not available on the public StreamPulse portal/i,
       )
     })
+
+    it('getAnalyticsStream merges channel emotes catalog on hosted portal routes', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      apiClientMock.mockImplementation((path: string) => {
+        if (path.includes('/streams/s1') && !path.includes('/minutes') && !path.includes('/summary')) {
+          return Promise.resolve({
+            data: {
+              channel: 'jynxzi',
+              state: 'ended',
+              stream: {
+                streamId: 's1',
+                login: 'jynxzi',
+                startedAt: '2026-07-08T18:52:41Z',
+              },
+              sources: [],
+              updatedAt: Date.now(),
+            },
+          })
+        }
+        if (path.includes('/minutes')) {
+          return Promise.resolve({ data: { minutes: [] } })
+        }
+        if (path.includes('/summary')) {
+          return Promise.resolve({ data: { topEmotes: [] } })
+        }
+        if (path.includes('/channels/jynxzi/emotes')) {
+          return Promise.resolve({
+            data: {
+              topEmotes: [
+                {
+                  provider: 'seventv',
+                  providerEmoteId: '01ABC',
+                  name: '67',
+                  imageUrl: 'https://cdn.7tv.app/emote/01ABC/4x.webp',
+                  useCount: 100,
+                },
+              ],
+            },
+          })
+        }
+        return Promise.reject(new Error(`unexpected ${path}`))
+      })
+
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      configureAnalyticsApi(portalAnalyticsApi)
+      const detail = (await portalAnalyticsApi.getAnalyticsStream('s1', {
+        sparse: false,
+        channel: 'jynxzi',
+      })) as AnalyticsStreamDetail
+
+      expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/jynxzi/emotes?range=30d')
+      expect(detail.topEmotes?.find((emote) => emote.name === '67')).toMatchObject({
+        imageUrl: 'https://cdn.7tv.app/emote/01ABC/4x.webp',
+      })
+    })
   })
 })

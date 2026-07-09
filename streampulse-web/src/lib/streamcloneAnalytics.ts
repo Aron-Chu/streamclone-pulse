@@ -14,6 +14,8 @@ import type {
   AnalyticsStreamsResponse,
   AnalyticsTopEmote,
   GameSegment,
+  PulseRecapEmote,
+  PulseRecapMoment,
   PulseStreamRecap,
   SyncStatus,
 } from '@streamclone/analytics-console'
@@ -123,6 +125,7 @@ export interface PortalRecapMoment {
   reasons?: string[]
   chatCount?: number
   emoteCount?: number
+  viewerCount?: number
   topEmotes?: Array<{ code: string; count: number; provider?: string }>
 }
 
@@ -131,9 +134,14 @@ export interface PortalStreamRecapResponse {
   login: string
   vodId?: string
   durationSeconds?: number
+  totalMessages?: number
   peakChatPerMin?: number
   topMoments?: PortalRecapMoment[]
-  funniestEmoteBurst?: { offsetSeconds: number; code?: string; count: number }
+  topEmotes?: Array<{ code: string; count: number; provider?: string; id?: string; imageUrl?: string }>
+  biggestChatSpike?: { offsetSeconds: number; chatPerMin: number }
+  funniestEmoteBurst?: { offsetSeconds: number; code?: string; count: number; provider?: string }
+  clipCandidates?: PortalRecapMoment[]
+  emoteEnrichmentStatus?: 'complete' | 'partial' | 'missing' | string
 }
 
 interface PortalSyncStatus {
@@ -361,6 +369,30 @@ async function fetchPortalChannelEmotesCatalog(login: string): Promise<Analytics
   }
 }
 
+function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {
+  return {
+    ...emote,
+    imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+  }
+}
+
+function absolutizeRecapMoment(moment: PulseRecapMoment): PulseRecapMoment {
+  if (!moment.topEmotes?.length) return moment
+  return {
+    ...moment,
+    topEmotes: moment.topEmotes.map(absolutizeRecapEmote),
+  }
+}
+
+function normalizePulseStreamRecap(recap: PulseStreamRecap): PulseStreamRecap {
+  return {
+    ...recap,
+    topEmotes: recap.topEmotes?.map(absolutizeRecapEmote),
+    topMoments: recap.topMoments?.map(absolutizeRecapMoment),
+    clipCandidates: recap.clipCandidates?.map(absolutizeRecapMoment),
+  }
+}
+
 /**
  * Per-minute bucket emotes are sanitized server-side (name + provider + a
  * pre-resolved public CDN `imageUrl`, no raw provider id — see BucketEmote in
@@ -440,17 +472,36 @@ async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean
   const summaryPromise = apiClient<PortalStreamSummary>(
     portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
   ).catch(() => null)
+  const channelEmotesPromise =
+    channelLogin?.trim() && !usesLocalAnalyticsRoutes()
+      ? fetchPortalChannelEmotesCatalog(channelLogin.trim())
+      : null
 
   const [detailRes, minutesRes, summaryRes] = await Promise.all([
     detailPromise,
     minutesPromise,
     summaryPromise,
   ])
+
+  let channelEmotes: AnalyticsTopEmote[] = []
+  if (channelEmotesPromise) {
+    channelEmotes = await channelEmotesPromise
+  } else if (!usesLocalAnalyticsRoutes()) {
+    const login =
+      channelLogin?.trim()
+      || detailRes.data.stream?.login?.trim()
+      || detailRes.data.channel?.trim()
+      || ''
+    if (login) {
+      channelEmotes = await fetchPortalChannelEmotesCatalog(login)
+    }
+  }
+
   return {
     detail: detailRes.data,
     minutes: minutesRes?.data ?? null,
     summary: summaryRes?.data ?? null,
-    channelEmotes: [] as AnalyticsTopEmote[],
+    channelEmotes,
     minutesFetchFailed,
     includeMinutes,
   }
@@ -651,10 +702,12 @@ export const portalAnalyticsApi: AnalyticsApi = {
       }
     }
     try {
+      const channelEmotesPromise = fetchPortalChannelEmotesCatalog(login)
       const { data } = await apiClient<PortalChannelLiveResponse>(
         portalPath(`/channels/${encodeURIComponent(login)}/live`),
       )
-      return portalLiveResponseToAnalytics(data, [])
+      const channelEmotes = await channelEmotesPromise
+      return portalLiveResponseToAnalytics(data, channelEmotes)
     } catch {
       return {
         channel: login,
@@ -707,7 +760,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
   async getPulseStreamRecap(streamId: string): Promise<PulseStreamRecap | null> {
     try {
       const { data } = await apiClient<PulseStreamRecap>(portalPath(`/streams/${encodeURIComponent(streamId)}/recap`))
-      return data
+      return normalizePulseStreamRecap(data)
     } catch {
       return null
     }
