@@ -5,7 +5,7 @@ import { resolve, dirname } from 'node:path'
 
 const root = __dirname
 
-/** One React instance for overlay + @streamclone/pulse-charts (nested package react breaks hooks). */
+/** One React instance for overlay + @streampulse/pulse-charts (nested package react breaks hooks). */
 function extensionResolve() {
   return {
     dedupe: ['react', 'react-dom'],

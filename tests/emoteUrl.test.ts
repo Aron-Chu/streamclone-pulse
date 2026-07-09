@@ -9,10 +9,10 @@ describe('extensionEmoteImageUrl', () => {
         provider: 'seventv',
         imageUrl: '/emotes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1x.webp',
       },
-      'http://localhost:8090',
+      'http://localhost:8081',
     )
     expect(url).toBe(
-      'http://localhost:8090/emotes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1x.webp',
+      'http://localhost:8081/emotes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1x.webp',
     )
   })
 
@@ -23,7 +23,7 @@ describe('extensionEmoteImageUrl', () => {
         provider: 'seventv',
         imageUrl: 'https://cdn.7tv.app/emote/12345/4x.webp',
       },
-      'http://localhost:8090',
+      'http://localhost:8081',
     )
     expect(url).toBe('https://cdn.7tv.app/emote/12345/4x.webp')
   })
@@ -34,7 +34,7 @@ describe('extensionEmoteImageUrl', () => {
         id: '12345',
         provider: 'seventv',
       },
-      'http://localhost:8090',
+      'http://localhost:8081',
     )
     expect(url).toBe('https://cdn.7tv.app/emote/12345/4x.webp')
   })
@@ -46,7 +46,7 @@ describe('extensionEmoteImageUrl', () => {
         provider: '7TV',
         imageUrl: '/emotes/62a3bf572b964d6cc2766004/1x.webp',
       },
-      'http://localhost:8090',
+      'http://localhost:8081',
     )
     expect(url).toBe('https://cdn.7tv.app/emote/62a3bf572b964d6cc2766004/4x.webp')
   })

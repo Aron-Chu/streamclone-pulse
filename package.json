@@ -8,21 +8,23 @@
     "build": "vite build",
     "typecheck": "npx tsc --noEmit",
     "test": "vitest run",
+    "capture:extension-goldens": "npx tsx scripts/capture-extension-goldens.mts",
     "zip": "node scripts/zip-dist.mjs"
   },
   "dependencies": {
-    "@streamclone/pulse-charts": "file:../twitch-7tv-clone/packages/pulse-charts",
-    "@streamclone/pulse-core": "file:../twitch-7tv-clone/packages/pulse-core",
+    "@streampulse/pulse-charts": "file:../streampulse-backend/packages/pulse-charts",
+    "@streampulse/pulse-core": "file:../streampulse-backend/packages/pulse-core",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "overrides": {
-    "@streamclone/pulse-charts": {
+    "@streampulse/pulse-charts": {
       "react": "$react",
       "react-dom": "$react-dom"
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/chrome": "^0.0.287",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",

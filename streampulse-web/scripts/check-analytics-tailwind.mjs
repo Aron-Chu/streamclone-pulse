@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Guardrail: embedded @streamclone/* packages use Tailwind utilities, but the portal
+ * Guardrail: embedded @streampulse/* packages use Tailwind utilities, but the portal
  * only generates CSS for classes found in tailwind.config.js `content` (and explicit
  * fallbacks in analytics-tailwind.css). SVG <text> uses fill — missing utilities render black.
  *
@@ -14,12 +14,12 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(here, '..')
-const streamcloneRoot = join(webRoot, '../../twitch-7tv-clone')
+const backendRoot = join(webRoot, '../../streampulse-backend')
 
 /** Packages whose TSX may emit Tailwind classes consumed under .sc-analytics-console */
 const EMBED_PACKAGE_SRC = [
-  join(streamcloneRoot, 'packages/analytics-console/src'),
-  join(streamcloneRoot, 'packages/pulse-charts/src'),
+  join(backendRoot, 'packages/analytics-console/src'),
+  join(backendRoot, 'packages/pulse-charts/src'),
 ]
 
 const tailwindConfigPath = join(webRoot, 'tailwind.config.js')
@@ -68,7 +68,7 @@ const analyticsCss = readText(analyticsTailwindCssPath)
 let failed = false
 
 for (const srcRoot of EMBED_PACKAGE_SRC) {
-  const rel = relative(streamcloneRoot, srcRoot).replace(/\\/g, '/')
+  const rel = relative(backendRoot, srcRoot).replace(/\\/g, '/')
   const needle = `packages/${rel.split('/').slice(1).join('/')}`
   if (!tailwindConfig.includes(needle)) {
     console.error(

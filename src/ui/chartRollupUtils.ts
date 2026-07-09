@@ -274,7 +274,7 @@ export function linePath(
   let started = false
   for (let i = 0; i < n; i += 1) {
     const value = values[i]
-    if (value === null || value <= 0) {
+    if (value === null || value < 0) {
       started = false
       continue
     }
@@ -284,6 +284,126 @@ export function linePath(
     started = true
   }
   return d
+}
+
+function collectBandLinePoints(
+  values: Array<number | null>,
+  max: number,
+  width: number,
+  height: number,
+  padLeft: number,
+  padRight: number,
+  bandTop: number,
+  bandBottom: number,
+  min = 0,
+): Array<{ x: number; y: number } | null> {
+  const n = values.length
+  if (n === 0 || max <= 0) return []
+  const plotWidth = width - padLeft - padRight
+  const padBottom = height - bandBottom
+  return values.map((value, index) => {
+    if (value === null || value < 0) return null
+    return {
+      x: plotXForIndex(index, n, padLeft, plotWidth),
+      y: plotY(value, max, height, bandTop, padBottom, min),
+    }
+  })
+}
+
+function smoothLineSegment(
+  segment: Array<{ x: number; y: number }>,
+  bandTop: number,
+  bandBottom: number,
+  linear = false,
+): string {
+  if (segment.length === 0) return ''
+  if (segment.length === 1) return `M ${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+  if (segment.length === 2 || linear) {
+    let d = `M ${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+    for (let i = 1; i < segment.length; i += 1) {
+      d += ` L ${segment[i].x.toFixed(1)} ${segment[i].y.toFixed(1)}`
+    }
+    return d
+  }
+
+  let d = `M ${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+  const slopes: number[] = new Array(segment.length)
+  for (let i = 0; i < segment.length; i += 1) {
+    if (i === 0) {
+      slopes[i] = (segment[1].y - segment[0].y) / Math.max(1e-6, segment[1].x - segment[0].x)
+    } else if (i === segment.length - 1) {
+      slopes[i] = (segment[i].y - segment[i - 1].y) / Math.max(1e-6, segment[i].x - segment[i - 1].x)
+    } else {
+      const dx1 = segment[i].x - segment[i - 1].x
+      const dy1 = segment[i].y - segment[i - 1].y
+      const dx2 = segment[i + 1].x - segment[i].x
+      const dy2 = segment[i + 1].y - segment[i].y
+      slopes[i] = (dy1 / Math.max(1e-6, dx1) + dy2 / Math.max(1e-6, dx2)) / 2
+    }
+  }
+
+  for (let i = 0; i < segment.length - 1; i += 1) {
+    const p1 = segment[i]
+    const p2 = segment[i + 1]
+    const dx = p2.x - p1.x
+    const cp1x = p1.x + dx * 0.35
+    const cp1y = Math.max(bandTop, Math.min(bandBottom, p1.y + slopes[i] * dx * 0.35))
+    const cp2x = p2.x - dx * 0.35
+    const cp2y = Math.max(bandTop, Math.min(bandBottom, p2.y - slopes[i + 1] * dx * 0.35))
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+  }
+  return d
+}
+
+function smoothLinePathFromPoints(
+  points: Array<{ x: number; y: number } | null>,
+  bandTop: number,
+  bandBottom: number,
+  linear = false,
+): string {
+  let path = ''
+  let segment: Array<{ x: number; y: number }> = []
+  for (const point of points) {
+    if (point === null) {
+      if (segment.length > 0) {
+        path += `${path ? ' ' : ''}${smoothLineSegment(segment, bandTop, bandBottom, linear)}`
+        segment = []
+      }
+    } else {
+      segment.push(point)
+    }
+  }
+  if (segment.length > 0) {
+    path += `${path ? ' ' : ''}${smoothLineSegment(segment, bandTop, bandBottom, linear)}`
+  }
+  return path
+}
+
+/** Cubic-bezier trend line inside a vertical band (portal chart parity). */
+export function smoothLinePathInBand(
+  values: Array<number | null>,
+  max: number,
+  width: number,
+  height: number,
+  padLeft: number,
+  padRight: number,
+  bandTop: number,
+  bandBottom: number,
+  min = 0,
+  linear = false,
+): string {
+  const points = collectBandLinePoints(
+    values,
+    max,
+    width,
+    height,
+    padLeft,
+    padRight,
+    bandTop,
+    bandBottom,
+    min,
+  )
+  return smoothLinePathFromPoints(points, bandTop, bandBottom, linear)
 }
 
 /** Plot a line inside a band defined by y-coordinates (bandTop, bandBottom). */
@@ -316,11 +436,37 @@ export function smoothSeriesValues(values: number[], window = 3): number[] {
   })
 }
 
-/** Adaptive window for aggregate chat/emote trend lines (longer timelines → smoother). */
+/** Adaptive window for aggregate chat/emote trend lines (longer timelines → slightly smoother). */
 export function trendSmoothingWindow(pointCount: number): number {
-  if (pointCount <= 30) return 5
-  if (pointCount <= 90) return 7
-  return 9
+  if (pointCount <= 30) return 3
+  if (pointCount <= 90) return 5
+  return 7
+}
+
+/** Ease-in-out cubic — gradual rise at stream start (TwitchTracker-style ramp). */
+export function easeInOutCubic(t: number): number {
+  if (t <= 0) return 0
+  if (t >= 1) return 1
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+/**
+ * Chart display: ramp from 0 at stream start to the first positive sample so
+ * trend/area lines rise gradually instead of jumping or backfilling flat.
+ */
+export function rampNullableSeriesFromStreamStart(
+  values: Array<number | null>,
+): Array<number | null> {
+  const firstIndex = values.findIndex(value => value != null && value > 0)
+  if (firstIndex <= 0) return values
+  const anchor = values[firstIndex]!
+  const out = [...values]
+  out[0] = 0
+  for (let i = 1; i <= firstIndex; i += 1) {
+    const t = i / firstIndex
+    out[i] = anchor * easeInOutCubic(t)
+  }
+  return out
 }
 
 /** Centered moving average for nullable minute series — gaps stay null. */
@@ -364,7 +510,7 @@ export function areaPath(
   let firstX = padLeft
   for (let i = 0; i < n; i += 1) {
     const value = values[i]
-    if (value === null || value <= 0) continue
+    if (value === null || value < 0) continue
     const x = plotXForIndex(i, n, padLeft, plotWidth)
     const y = plotY(value, max, height, padTop, padBottom, min)
     if (!started) {
@@ -378,6 +524,21 @@ export function areaPath(
   if (!started) return ''
   const lastX = plotXForIndex(n - 1, n, padLeft, plotWidth)
   return `${d} L ${lastX} ${baseline} L ${firstX} ${baseline} Z`
+}
+
+/** Plot a filled area inside a vertical band (matches linePathInBand). */
+export function areaPathInBand(
+  values: Array<number | null>,
+  max: number,
+  width: number,
+  height: number,
+  padLeft: number,
+  padRight: number,
+  bandTop: number,
+  bandBottom: number,
+  min = 0,
+): string {
+  return areaPath(values, max, width, height, padLeft, padRight, bandTop, height - bandBottom, min)
 }
 
 /** Bar fill opacity: faint at rest; one bucket highlighted on hover or pin. */

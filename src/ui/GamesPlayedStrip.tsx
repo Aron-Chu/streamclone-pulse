@@ -1,12 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
-import { hasMeaningfulGameSegments, normalizeGameSegments } from '@streamclone/pulse-charts'
+import { formatHeatOffset } from '@streampulse/pulse-core'
+import {
+  gameSegmentKey,
+  gameSegmentOverlapsOffsetRange,
+  gameSegmentVisibleSecondsInRange,
+  hasMeaningfulGameSegments,
+  normalizeGameSegments,
+} from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { theme } from './theme.ts'
+
+export interface GamesPlayedVisibleRange {
+  startOffset: number
+  endOffset: number
+}
 
 export interface GamesPlayedStripProps {
   games?: ExtensionGameSegment[]
   durationSeconds: number
+  highlightedKey?: string | null
+  onHighlightKey?: (key: string | null) => void
+  visibleRange?: GamesPlayedVisibleRange | null
 }
 
 const CARD_WIDTH = 104
@@ -20,7 +34,38 @@ function formatStreamDuration(durationSeconds: number): string {
   return `${total}s`
 }
 
-export function GamesPlayedStrip({ games, durationSeconds }: GamesPlayedStripProps) {
+function segmentTitle(
+  segment: ExtensionGameSegment,
+  visibleRange: GamesPlayedVisibleRange | null | undefined,
+): string {
+  const base = `${segment.gameName} · ${formatHeatOffset(segment.offsetSeconds)} · ${formatStreamDuration(segment.durationSeconds)}`
+  if (!visibleRange) return base
+
+  const inRange = gameSegmentOverlapsOffsetRange(
+    segment,
+    visibleRange.startOffset,
+    visibleRange.endOffset,
+  )
+  if (!inRange) return `${base} · Not in current range`
+
+  const visibleSeconds = gameSegmentVisibleSecondsInRange(
+    segment,
+    visibleRange.startOffset,
+    visibleRange.endOffset,
+  )
+  if (visibleSeconds > 0 && visibleSeconds < segment.durationSeconds - 30) {
+    return `${base} · ${formatStreamDuration(visibleSeconds)} in view`
+  }
+  return base
+}
+
+export function GamesPlayedStrip({
+  games,
+  durationSeconds,
+  highlightedKey = null,
+  onHighlightKey,
+  visibleRange = null,
+}: GamesPlayedStripProps) {
   const segments = useMemo(
     () => normalizeGameSegments(games ?? [], durationSeconds),
     [games, durationSeconds],
@@ -59,10 +104,18 @@ export function GamesPlayedStrip({ games, durationSeconds }: GamesPlayedStripPro
     track.scrollBy({ left: direction * step, behavior: 'smooth' })
   }
 
+  function handleStripLeave(): void {
+    onHighlightKey?.(null)
+  }
+
   const showNav = segments.length > 1
 
   return (
-    <div style={styles.gamesStrip} aria-label="Games played">
+    <div
+      style={styles.gamesStrip}
+      aria-label="Games played"
+      onMouseLeave={handleStripLeave}
+    >
       <div style={styles.headerRow}>
         <span style={styles.gamesLabel}>Games played</span>
         {showNav ? (
@@ -90,24 +143,56 @@ export function GamesPlayedStrip({ games, durationSeconds }: GamesPlayedStripPro
           </button>
         ) : null}
         <div ref={trackRef} className="pulse-no-scrollbar" style={styles.track}>
-          {segments.map((segment, index) => (
-            <span
-              key={`${segment.gameName}-${segment.offsetSeconds}-${index}`}
-              style={styles.gameCard}
-              title={`${segment.gameName} · ${formatHeatOffset(segment.offsetSeconds)} · ${formatStreamDuration(segment.durationSeconds)}`}
-            >
-              <span style={styles.gameName}>{segment.gameName}</span>
-              <span style={styles.gameMeta}>
-                <span style={styles.gameStart}>{formatHeatOffset(segment.offsetSeconds)}</span>
-                <span style={styles.gameMetaSep} aria-hidden="true">
-                  ·
-                </span>
-                <span style={styles.gameDuration}>
-                  {formatStreamDuration(segment.durationSeconds)}
+          {segments.map((segment, index) => {
+            const key = gameSegmentKey(segment)
+            const isHighlighted = highlightedKey === key
+            const inRange = visibleRange
+              ? gameSegmentOverlapsOffsetRange(
+                  segment,
+                  visibleRange.startOffset,
+                  visibleRange.endOffset,
+                )
+              : true
+            const cardStyle: CSSProperties = {
+              ...styles.gameCard,
+              ...(inRange ? null : styles.gameCardOutOfRange),
+              ...(isHighlighted && inRange
+                ? styles.gameCardActive
+                : isHighlighted && !inRange
+                  ? styles.gameCardActiveOutOfRange
+                  : null),
+            }
+
+            return (
+              <span
+                key={`${segment.gameName}-${segment.offsetSeconds}-${index}`}
+                role="button"
+                tabIndex={0}
+                style={cardStyle}
+                title={segmentTitle(segment, visibleRange)}
+                onMouseEnter={() => onHighlightKey?.(key)}
+                onFocus={() => onHighlightKey?.(key)}
+                onBlur={() => onHighlightKey?.(null)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onHighlightKey?.(key)
+                  }
+                }}
+              >
+                <span style={styles.gameName}>{segment.gameName}</span>
+                <span style={styles.gameMeta}>
+                  <span style={styles.gameStart}>{formatHeatOffset(segment.offsetSeconds)}</span>
+                  <span style={styles.gameMetaSep} aria-hidden="true">
+                    ·
+                  </span>
+                  <span style={styles.gameDuration}>
+                    {formatStreamDuration(segment.durationSeconds)}
+                  </span>
                 </span>
               </span>
-            </span>
-          ))}
+            )
+          })}
         </div>
         {showNav ? (
           <button
@@ -195,13 +280,31 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(249, 115, 22, 0.05)',
     border: '1px solid rgba(249, 115, 22, 0.32)',
     borderRadius: 8,
+    cursor: 'default',
     display: 'grid',
     flex: `0 0 ${CARD_WIDTH}px`,
     gap: 2,
     minHeight: 44,
+    outline: 'none',
     padding: '5px 8px',
     scrollSnapAlign: 'start',
     width: CARD_WIDTH,
+  },
+  gameCardOutOfRange: {
+    opacity: 0.55,
+    borderStyle: 'dashed',
+  },
+  gameCardActive: {
+    background: 'rgba(249, 115, 22, 0.14)',
+    border: '1px solid rgba(249, 115, 22, 0.62)',
+    boxShadow: '0 0 0 1px rgba(249, 115, 22, 0.18)',
+    cursor: 'pointer',
+  },
+  gameCardActiveOutOfRange: {
+    background: 'rgba(249, 115, 22, 0.06)',
+    border: '1px dashed rgba(249, 115, 22, 0.4)',
+    cursor: 'pointer',
+    opacity: 0.7,
   },
   gameName: {
     color: '#fdba74',

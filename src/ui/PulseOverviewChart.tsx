@@ -1,33 +1,34 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, RefObject } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   GameSegmentOverlay,
+  gameSegmentKey,
+  gameSegmentPlotBounds,
   normalizeGameSegments as normalizeChartGameSegments,
   type ChartGameSegment,
   type ChartMinuteRollup,
-} from '@streamclone/pulse-charts'
+} from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment, ExtensionRollup } from '../shared/messages.ts'
 import { activityAxisBoundsFromZero, overlaySeriesAxisMax } from './chatActivityEmotes.ts'
 import type { EmoteOverlaySeries } from './chatActivityEmotes.ts'
 import { CHART_INTERACTION, CHART_LANE, CHART_THEME, hexToRgba } from './chartTheme.ts'
 import {
-  areaPath,
+  areaPathInBand,
   barDisplayAxisMax,
   chartBarBucketOpacity,
   chartDurationSeconds,
   chartViewerValue,
   indexFromChartClick,
-  linePath,
-  linePathInBand,
   minuteEmoteTotal,
   plotXForIndex,
+  rampNullableSeriesFromStreamStart,
   rollupsToChartMinuteRollups,
   seriesMax,
+  smoothLinePathInBand,
   smoothNullableSeriesValues,
   smoothSeriesValues,
   trendSmoothingWindow,
-  extendViewerSeriesToLeadingEdge,
 } from './chartRollupUtils.ts'
 import { resolveChartCrosshairMode } from './chartCrosshair.ts'
 import { prefersReducedMotion, useSmoothedScalar } from './motion/useSmoothedScalar.ts'
@@ -54,6 +55,9 @@ export interface PulseOverviewChartProps {
   overlayLines?: EmoteOverlaySeries[]
   normalizeOverlaySeries?: boolean
   reducedMotion?: boolean
+  focusedSeriesKey?: string | null
+  onFocusedSeriesKeyChange?: (key: string | null) => void
+  highlightedGameSegmentKey?: string | null
 }
 
 const DEFAULT_WIDTH = 320
@@ -80,8 +84,47 @@ const EMOTE_TREND_OPACITY = CHART_THEME.emote.line
 const TRACE_LANE_MIN_HEIGHT = 16
 const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
+const FOCUS_DIM_FACTOR = 0.14
+const FOCUS_LANE_BOOST = 0.78
 
 type ActivityZone = 'activity-chat' | 'activity-emote-trace' | 'activity-emote'
+
+function seriesFocusOpacity(
+  focusedSeriesKey: string | null | undefined,
+  seriesKey: string,
+  base: number,
+): number {
+  if (!focusedSeriesKey) return base
+  if (seriesKey === focusedSeriesKey) return base
+  const emoteFamily = seriesKey === 'emotes' || seriesKey.includes(':')
+  if (focusedSeriesKey === 'emotes' && emoteFamily) return base
+  return base * FOCUS_DIM_FACTOR
+}
+
+function rebalanceFractionsForFocus(
+  focusedSeriesKey: string | null | undefined,
+  activityExpanded: boolean,
+  chatFraction: number,
+  traceFraction: number,
+  emoteFraction: number,
+): { chat: number; trace: number; emote: number } {
+  if (!focusedSeriesKey || !activityExpanded) {
+    return { chat: chatFraction, trace: traceFraction, emote: emoteFraction }
+  }
+  const rest = 1 - FOCUS_LANE_BOOST
+  const halfRest = rest / 2
+  switch (focusedSeriesKey) {
+    case 'chat':
+      return { chat: FOCUS_LANE_BOOST, trace: halfRest, emote: halfRest }
+    case 'emotes':
+      return { chat: halfRest, trace: halfRest, emote: FOCUS_LANE_BOOST }
+    default:
+      if (focusedSeriesKey.includes(':')) {
+        return { chat: halfRest, trace: FOCUS_LANE_BOOST, emote: halfRest }
+      }
+      return { chat: chatFraction, trace: traceFraction, emote: emoteFraction }
+  }
+}
 
 function plotBandForActivityZone(
   activityTop: number,
@@ -159,6 +202,9 @@ export function PulseOverviewChart({
   normalizeOverlaySeries = false,
   reducedMotion = false,
   isLive = false,
+  focusedSeriesKey = null,
+  onFocusedSeriesKeyChange,
+  highlightedGameSegmentKey = null,
 }: PulseOverviewChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(DEFAULT_WIDTH)
@@ -238,18 +284,17 @@ export function PulseOverviewChart({
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
   const viewerTrendValues = useMemo(
     () =>
-      extendViewerSeriesToLeadingEdge(
-        rollups,
+      rampNullableSeriesFromStreamStart(
         smoothNullableSeriesValues(viewers, trendWindow),
       ),
-    [rollups, viewers, trendWindow],
+    [viewers, trendWindow],
   )
   const chatTrendValues = useMemo(
-    () => smoothNullableSeriesValues(chat, trendWindow),
+    () => rampNullableSeriesFromStreamStart(smoothNullableSeriesValues(chat, trendWindow)),
     [chat, trendWindow],
   )
   const emoteTrendValues = useMemo(
-    () => smoothNullableSeriesValues(emotes, trendWindow),
+    () => rampNullableSeriesFromStreamStart(smoothNullableSeriesValues(emotes, trendWindow)),
     [emotes, trendWindow],
   )
 
@@ -262,10 +307,12 @@ export function PulseOverviewChart({
   const emoteBarAxisMax = barDisplayAxisMax(emotes)
   const viewerAxisMax = Math.max(viewerMax, 1)
 
-  const viewerStripShare = showViewerStrip
-    ? activityExpanded
-      ? VIEWER_STRIP_SHARE_EXPANDED
-      : VIEWER_STRIP_SHARE_COLLAPSED
+  let viewerStripShare = showViewerStrip
+    ? activityExpanded && focusedSeriesKey === 'viewers'
+      ? 0.42
+      : activityExpanded
+        ? VIEWER_STRIP_SHARE_EXPANDED
+        : VIEWER_STRIP_SHARE_COLLAPSED
     : 0
 
   const hasOverlayTraces = overlayLines.some(series => series.dashed)
@@ -294,6 +341,17 @@ export function PulseOverviewChart({
     }
   }
 
+  const rebalanced = rebalanceFractionsForFocus(
+    focusedSeriesKey,
+    activityExpanded,
+    chatFraction,
+    traceFraction,
+    emoteFraction,
+  )
+  chatFraction = rebalanced.chat
+  traceFraction = rebalanced.trace
+  emoteFraction = rebalanced.emote
+
   const plotWidth = width - PAD_LEFT - PAD_RIGHT
   const gameBandHeight = chartGames.length > 0 ? GAME_BAND_HEIGHT : 0
   const plotTop = PAD_TOP + 4 + gameBandHeight
@@ -303,6 +361,20 @@ export function PulseOverviewChart({
   const viewerBandBottom = plotTop + plotHeight * viewerStripShare
   const activityTop = viewerBandBottom + (showViewerStrip ? 4 : 0)
   const activityBottom = plotBottom
+
+  const highlightedGamePlotBounds = useMemo(() => {
+    if (!highlightedGameSegmentKey || chartGames.length === 0) return null
+    const segment = chartGames.find(game => gameSegmentKey(game) === highlightedGameSegmentKey)
+    if (!segment) return null
+    return gameSegmentPlotBounds(
+      segment,
+      chartMinuteRollups,
+      streamStartedAt,
+      PAD_LEFT,
+      plotWidth,
+    )
+  }, [highlightedGameSegmentKey, chartGames, chartMinuteRollups, streamStartedAt, plotWidth])
+
   const activityHeight = Math.max(24, activityBottom - activityTop)
   const crosshairTop = plotTop
   const crosshairBottom = plotBottom
@@ -347,7 +419,7 @@ export function PulseOverviewChart({
 
   const viewerAreaPath = useMemo(() => {
     if (viewerMax <= 0) return ''
-    return areaPath(
+    return areaPathInBand(
       viewerTrendValues,
       viewerAxisMax,
       width,
@@ -361,7 +433,7 @@ export function PulseOverviewChart({
 
   const viewerLinePath = useMemo(() => {
     if (viewerMax <= 0) return ''
-    return linePath(
+    return smoothLinePathInBand(
       viewerTrendValues,
       viewerAxisMax,
       width,
@@ -371,11 +443,11 @@ export function PulseOverviewChart({
       viewerBandTop,
       viewerBandBottom,
     )
-  }, [viewers, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
+  }, [viewerTrendValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
 
   const chatLinePath = useMemo(() => {
     if (chatMax <= 0) return ''
-    return linePathInBand(
+    return smoothLinePathInBand(
       chatTrendValues,
       chatTrendAxisMax,
       width,
@@ -389,7 +461,7 @@ export function PulseOverviewChart({
 
   const emoteLinePath = useMemo(() => {
     if (emoteMax <= 0) return ''
-    return linePathInBand(
+    return smoothLinePathInBand(
       emoteTrendValues,
       emoteTrendAxisMax,
       width,
@@ -426,11 +498,13 @@ export function PulseOverviewChart({
   const tracePaths = useMemo(() => {
     return dashedOverlays.map(series => {
       const smoothed = smoothSeriesValues(series.values, 3)
-      const values = smoothed.map(value => (value > 0 ? value : null))
+      const values = rampNullableSeriesFromStreamStart(
+        smoothed.map(value => (value > 0 ? value : null)),
+      )
       const axisMax = overlaySeriesAxisMax(values, normalizeOverlaySeries, traceAxis.max)
       const axisMin = normalizeOverlaySeries ? 0 : traceAxis.min
       const path =
-        linePathInBand(
+        smoothLinePathInBand(
           values,
           axisMax,
           width,
@@ -454,28 +528,39 @@ export function PulseOverviewChart({
   ])
 
   const barOpacity = (index: number, hasValue: boolean): number => {
-    if (!hasValue) return CHART_THEME.emote.barBaseline * 0.6
-    if (pinIndex === index) return Math.min(CHART_THEME.emote.barSpike * 1.15, 0.98)
-    if (hoverPreviewIndex === index) return Math.min(CHART_THEME.emote.barSpike * 0.92, 0.82)
-    return chartBarBucketOpacity({
-      index,
-      activeIndex: pinIndex ?? hoverPreviewIndex ?? null,
-      baseOpacity: CHART_THEME.emote.bar,
-      highlightOpacity: CHART_THEME.emote.barSpike,
-    })
+    const base = (() => {
+      if (!hasValue) return CHART_THEME.emote.barBaseline * 0.6
+      if (pinIndex === index) return Math.min(CHART_THEME.emote.barSpike * 1.15, 0.98)
+      if (hoverPreviewIndex === index) return Math.min(CHART_THEME.emote.barSpike * 0.92, 0.82)
+      return chartBarBucketOpacity({
+        index,
+        activeIndex: pinIndex ?? hoverPreviewIndex ?? null,
+        baseOpacity: CHART_THEME.emote.bar,
+        highlightOpacity: CHART_THEME.emote.barSpike,
+      })
+    })()
+    return seriesFocusOpacity(focusedSeriesKey, 'emotes', base)
   }
 
   const chatBarOpacity = (index: number, hasValue: boolean): number => {
-    if (!hasValue) return CHART_THEME.chat.whisperBar * 0.6
-    if (pinIndex === index) return Math.min(CHART_THEME.chat.guide * 1.2, 0.92)
-    if (hoverPreviewIndex === index) return Math.min(CHART_THEME.chat.guide * 0.95, 0.78)
-    return chartBarBucketOpacity({
-      index,
-      activeIndex: pinIndex ?? hoverPreviewIndex ?? null,
-      baseOpacity: CHART_THEME.chat.whisperBar,
-      highlightOpacity: CHART_THEME.chat.guide,
-    })
+    const base = (() => {
+      if (!hasValue) return CHART_THEME.chat.whisperBar * 0.6
+      if (pinIndex === index) return Math.min(CHART_THEME.chat.guide * 1.2, 0.92)
+      if (hoverPreviewIndex === index) return Math.min(CHART_THEME.chat.guide * 0.95, 0.78)
+      return chartBarBucketOpacity({
+        index,
+        activeIndex: pinIndex ?? hoverPreviewIndex ?? null,
+        baseOpacity: CHART_THEME.chat.whisperBar,
+        highlightOpacity: CHART_THEME.chat.guide,
+      })
+    })()
+    return seriesFocusOpacity(focusedSeriesKey, 'chat', base)
   }
+
+  const toggleSeriesFocus = useCallback((seriesKey: string) => {
+    if (!onFocusedSeriesKeyChange) return
+    onFocusedSeriesKeyChange(focusedSeriesKey === seriesKey ? null : seriesKey)
+  }, [focusedSeriesKey, onFocusedSeriesKeyChange])
 
   const pinColumn = selectionColumnRect(
     pinIndex,
@@ -549,10 +634,26 @@ export function PulseOverviewChart({
     onHoverOffsetChange?.(null)
   }
 
+  function laneKeyFromPointerY(clientY: number, svgRect: DOMRect): string | null {
+    const y = ((clientY - svgRect.top) / svgRect.height) * height
+    if (showViewerStrip && y >= viewerBandTop && y <= viewerBandBottom) return 'viewers'
+    if (y >= chatLaneTop && y <= chatLaneBottom) return 'chat'
+    if (y >= traceLaneTop && y <= traceLaneBottom) return 'emotes'
+    if (y >= emoteLaneTop && y <= emoteLaneBottom) return 'emotes'
+    return null
+  }
+
   function handleClick(event: MouseEvent<SVGRectElement>): void {
     if (n === 0) return
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
+    if (onFocusedSeriesKeyChange && event.detail >= 2) {
+      const laneKey = laneKeyFromPointerY(event.clientY, rect)
+      if (laneKey) {
+        toggleSeriesFocus(laneKey)
+        return
+      }
+    }
     const index = indexFromChartClick(event.clientX, rect.left, rect.width, n)
     pendingHoverIndexRef.current = index
     if (hoverFrameRef.current != null) {
@@ -628,6 +729,14 @@ export function PulseOverviewChart({
           <clipPath id="pulseActivityClip">
             <rect x={PAD_LEFT} y={activityTop} width={plotWidth} height={activityBottom - activityTop} />
           </clipPath>
+          <clipPath id="pulseViewerClip">
+            <rect
+              x={PAD_LEFT}
+              y={viewerBandTop}
+              width={plotWidth}
+              height={Math.max(1, viewerBandBottom - viewerBandTop)}
+            />
+          </clipPath>
           <clipPath id="pulseChatLaneClip">
             <rect x={PAD_LEFT} y={chatLaneTop} width={plotWidth} height={chatLaneHeight} />
           </clipPath>
@@ -677,10 +786,21 @@ export function PulseOverviewChart({
             gameBandTop={PAD_TOP + 1}
             gameBandHeight={gameBandHeight - 2}
             minLabelWidth={24}
+            highlightedSegmentKey={highlightedGameSegmentKey}
           />
         ) : null}
 
         <g clipPath="url(#pulsePlotClip)">
+          {highlightedGamePlotBounds ? (
+            <rect
+              x={highlightedGamePlotBounds.startX}
+              y={viewerBandTop}
+              width={Math.max(1, highlightedGamePlotBounds.endX - highlightedGamePlotBounds.startX)}
+              height={activityBottom - viewerBandTop}
+              fill="rgba(249, 115, 22, 0.08)"
+              pointerEvents="none"
+            />
+          ) : null}
           {showViewerStrip ? (
             <rect
               x={PAD_LEFT}
@@ -691,18 +811,26 @@ export function PulseOverviewChart({
             />
           ) : null}
           {showViewerStrip && viewerAreaPath ? (
-            <path d={viewerAreaPath} fill="url(#pulseViewerAreaGradient)" opacity={0.35} />
+            <g clipPath="url(#pulseViewerClip)">
+              <path
+                d={viewerAreaPath}
+                fill="url(#pulseViewerAreaGradient)"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', 0.35)}
+              />
+            </g>
           ) : null}
           {showViewerStrip && viewerLinePath ? (
-            <path
-              d={viewerLinePath}
-              fill="none"
-              stroke={CHART_THEME.viewer.color}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.25"
-              opacity={0.62}
-            />
+            <g clipPath="url(#pulseViewerClip)">
+              <path
+                d={viewerLinePath}
+                fill="none"
+                stroke={CHART_THEME.viewer.color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.25"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', 0.62)}
+              />
+            </g>
           ) : null}
 
           <rect
@@ -773,7 +901,7 @@ export function PulseOverviewChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={EMOTE_TREND_STROKE}
-                opacity={EMOTE_TREND_OPACITY}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', EMOTE_TREND_OPACITY)}
                 pointerEvents="none"
               />
             ) : null}
@@ -796,7 +924,7 @@ export function PulseOverviewChart({
           <g clipPath="url(#pulseEmoteTraceClip)">
             {tracePaths.map(series => {
               if (!series.path) return null
-              const overlayOpacity =
+              const baseOpacity =
                 activeIndex != null || hovering
                   ? activeIndex != null
                     ? TRACE_LINE_OPACITY
@@ -812,7 +940,7 @@ export function PulseOverviewChart({
                   strokeLinejoin="round"
                   strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
                   strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
-                  opacity={overlayOpacity}
+                  opacity={seriesFocusOpacity(focusedSeriesKey, series.key, baseOpacity)}
                 />
               )
             })}
@@ -877,7 +1005,7 @@ export function PulseOverviewChart({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={CHAT_TREND_STROKE}
-              opacity={CHAT_TREND_OPACITY}
+              opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', CHAT_TREND_OPACITY)}
             />
           </g>
         ) : null}

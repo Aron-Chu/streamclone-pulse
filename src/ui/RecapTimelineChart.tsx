@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { deriveLiveStats, formatHeatOffset, MAX_TOP_EMOTES, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streamclone/pulse-core'
+import { deriveLiveStats, formatHeatOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionEmote, PulsePayload } from '../shared/messages.ts'
 import {
   aggregateChartEmotes,
@@ -12,6 +12,7 @@ import {
   fullRollupsMissingStreamPrefix,
   hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
+  PLOT_PICKER_EMOTE_LIMIT,
   toggleEmotePlotKeys,
 } from './chatActivityEmotes.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
@@ -33,6 +34,7 @@ export interface RecapTimelineChartProps {
   pinOffsetSeconds?: number | null
   previewOffsetSeconds?: number | null
   sidebarFill?: boolean
+  highlightedGameSegmentKey?: string | null
   onSelectPoint: (point: LiveHeatPoint) => void
   onRequestFullRollups?: () => Promise<void>
 }
@@ -52,6 +54,7 @@ export function RecapTimelineChart({
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
   sidebarFill: _sidebarFill = false,
+  highlightedGameSegmentKey = null,
   onSelectPoint,
   onRequestFullRollups,
 }: RecapTimelineChartProps) {
@@ -62,6 +65,7 @@ export function RecapTimelineChart({
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [tracesExpanded, setTracesExpanded] = useState(false)
   const [userCollapsedTraces, setUserCollapsedTraces] = useState(false)
+  const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
   const onRequestFullRollupsRef = useRef(onRequestFullRollups)
   onRequestFullRollupsRef.current = onRequestFullRollups
@@ -102,12 +106,20 @@ export function RecapTimelineChart({
     currentOffsetSeconds,
   })
   const rollupGapNotice = hasFullRollups ? describeRollupGap(pickRecapRollups(payload)) : null
+  const sourceRollups = pickRecapRollups(payload)
+  const firstRollupOffset = sourceRollups[0]?.offsetSeconds ?? 0
+  const rollupSinceHint =
+    firstRollupOffset > 0
+      ? `Rollups since ${formatHeatOffset(firstRollupOffset)}`
+      : (!hasFullRollups || fullRollupsMissingStreamPrefix(payload)) && timelineLoading
+        ? 'Loading full stream…'
+        : null
   const showViewerStrip = minuteRollups.some(rollup => (rollup.viewerCount ?? 0) > 0)
 
   const topEmotesForPicker = useMemo(() => {
-    const fromRollups = aggregateChartEmotes(minuteRollups, MAX_TOP_EMOTES)
+    const fromRollups = aggregateChartEmotes(minuteRollups, PLOT_PICKER_EMOTE_LIMIT)
     if (fromRollups.length > 0) return fromRollups
-    return catalog.filter(emote => (emote.count ?? 0) > 0).slice(0, MAX_TOP_EMOTES)
+    return catalog.filter(emote => (emote.count ?? 0) > 0).slice(0, PLOT_PICKER_EMOTE_LIMIT)
   }, [minuteRollups, catalog])
 
   const selectedEmotesForOverlay = useMemo(
@@ -150,8 +162,19 @@ export function RecapTimelineChart({
       return displayRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
     }
     if (previewRollup) return previewRollup
-    return displayRollups[displayRollups.length - 1]
+    return undefined
   }, [chartHoverOffsetSeconds, displayRollups, pinRollup, previewRollup])
+
+  const showChartReadout = Boolean(
+    readoutRollup
+      && (pinOffsetSeconds != null || chartHoverOffsetSeconds != null || previewOffsetSeconds != null),
+  )
+
+  const chartInteractionRef = useRef<HTMLDivElement | null>(null)
+
+  function handleClearChartHover(): void {
+    setChartHoverOffsetSeconds(null)
+  }
 
   useEffect(() => {
     fullTimelineRequestedRef.current = false
@@ -226,50 +249,67 @@ export function RecapTimelineChart({
   }
 
   const chartHeight = 216
-  const readoutOpen = Boolean(readoutRollup)
   const hasPlottedEmotes = selectedEmotesForOverlay.length > 0
+
+  const toggleSeriesFocus = useCallback((seriesKey: string) => {
+    setFocusedSeriesKey(current => (current === seriesKey ? null : seriesKey))
+  }, [])
 
   return (
     <div style={styles.block}>
       <StreamActivityChartHeader
-        rightControl={<span style={styles.rangeMeta}>Full stream</span>}
-        toolbar={
-          hasPlottedEmotes ? (
-            <button
-              type="button"
-              style={styles.expandButton}
-              onClick={() => {
-                if (tracesExpanded) {
-                  setUserCollapsedTraces(true)
-                  setTracesExpanded(false)
-                } else {
-                  setUserCollapsedTraces(false)
-                  setTracesExpanded(true)
-                }
-              }}
-              aria-pressed={tracesExpanded}
-            >
-              {tracesExpanded ? 'Collapse traces' : 'Expand traces'}
-            </button>
-          ) : (
-            <span style={styles.toolbarHint}>Select emotes below to plot on chart</span>
-          )
+        showViewerLegend={showViewerStrip}
+        focusedSeriesKey={focusedSeriesKey}
+        onToggleSeriesFocus={toggleSeriesFocus}
+        rightControl={
+          <div style={styles.rangeMetaWrap}>
+            <span style={styles.rangeMeta}>Full stream</span>
+            {rollupSinceHint ? <span style={styles.rollupSince}>{rollupSinceHint}</span> : null}
+          </div>
+        }
+        expandControl={
+          <button
+            type="button"
+            className={`pulse-chart-expand-btn${tracesExpanded ? ' pulse-chart-expand-btn-active' : ''}`}
+            style={styles.expandButton}
+            onClick={() => {
+              if (tracesExpanded) {
+                setUserCollapsedTraces(true)
+                setTracesExpanded(false)
+              } else {
+                setUserCollapsedTraces(false)
+                setTracesExpanded(true)
+              }
+            }}
+            aria-pressed={tracesExpanded}
+          >
+            {tracesExpanded ? 'Reset' : 'Expand'}
+          </button>
         }
         overlayLegend={
           hasPlottedEmotes ? (
             <>
               {selectedEmotesForOverlay.map((emote, index) => {
+                const key = emoteSelectionKey(emote)
                 const plotColor = emoteOverlays[index]?.color ?? '#fb7185'
+                const overlayKey = emoteOverlays[index]?.key ?? key
+                const isFocused = focusedSeriesKey === overlayKey
+                const isDimmed = focusedSeriesKey != null && !isFocused
                 return (
-                  <span
-                    key={emoteSelectionKey(emote)}
+                  <button
+                    key={key}
+                    type="button"
+                    className="pulse-chart-overlay-legend-chip"
                     style={{
                       ...styles.overlayLegendChip,
                       borderColor: plotColor,
                       boxShadow: `inset 2px 0 0 ${plotColor}`,
+                      opacity: isDimmed ? 0.4 : 1,
                     }}
                     aria-label={emote.name}
-                    title={emote.name}
+                    aria-pressed={isFocused}
+                    title={isFocused ? 'Show all series' : `Highlight ${emote.name}`}
+                    onClick={() => toggleSeriesFocus(overlayKey)}
                   >
                     <PulseEmoteImg
                       emote={emote}
@@ -278,7 +318,7 @@ export function RecapTimelineChart({
                       height={18}
                       style={styles.overlayLegendEmoteImg}
                     />
-                  </span>
+                  </button>
                 )
               })}
             </>
@@ -286,37 +326,43 @@ export function RecapTimelineChart({
         }
       />
 
-      {readoutOpen && readoutRollup ? (
-        <p style={styles.readout} aria-live="polite">
-          <span style={styles.readoutTime}>
-            {formatHeatOffset(pinOffsetSeconds ?? readoutRollup.offsetSeconds)}
-          </span>
-          <span style={styles.readoutSep}>·</span>
-          <span>chat {formatCompactNumber(readoutRollup.chatCount ?? 0)}/min</span>
-          <span style={styles.readoutSep}>·</span>
-          <span>emotes {formatCompactNumber(minuteEmoteTotal(readoutRollup))}/min</span>
-        </p>
-      ) : null}
-
-      <PulseOverviewChart
-        rollups={displayRollups}
-        games={payload.games}
-        durationSeconds={currentOffsetSeconds}
-        streamStartedAt={payload.startedAt}
-        height={chartHeight}
-        selectedIndex={pinChartIndex}
-        previewIndex={previewChartIndex}
-        showViewerStrip={showViewerStrip}
-        activityExpanded={tracesExpanded}
-        normalizeOverlaySeries={tracesExpanded}
-        onSelectIndex={handleChartSelect}
-        onHoverOffsetChange={setChartHoverOffsetSeconds}
-        overlayLines={emoteOverlays}
-        emptyMessage={chartEmpty || 'Loading full stream rollups…'}
-        loading={timelineLoading || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
-        isLive={false}
-        reducedMotion
-      />
+      <div ref={chartInteractionRef} style={styles.chartStack}>
+        {showChartReadout && readoutRollup ? (
+          <p style={styles.readout} aria-live="polite">
+            <span style={styles.readoutTime}>
+              {formatHeatOffset(pinOffsetSeconds ?? readoutRollup.offsetSeconds)}
+            </span>
+            <span style={styles.readoutSep}>·</span>
+            <span>chat {formatCompactNumber(readoutRollup.chatCount ?? 0)}/min</span>
+            <span style={styles.readoutSep}>·</span>
+            <span>emotes {formatCompactNumber(minuteEmoteTotal(readoutRollup))}/min</span>
+          </p>
+        ) : null}
+        <PulseOverviewChart
+          rollups={displayRollups}
+          games={payload.games}
+          durationSeconds={currentOffsetSeconds}
+          streamStartedAt={payload.startedAt}
+          height={chartHeight}
+          selectedIndex={pinChartIndex}
+          previewIndex={previewChartIndex}
+          showViewerStrip={showViewerStrip}
+          activityExpanded={tracesExpanded}
+          normalizeOverlaySeries={tracesExpanded}
+          focusedSeriesKey={focusedSeriesKey}
+          onFocusedSeriesKeyChange={setFocusedSeriesKey}
+          onSelectIndex={handleChartSelect}
+          onClearSelection={handleClearChartHover}
+          clearSelectionBoundaryRef={chartInteractionRef}
+          onHoverOffsetChange={setChartHoverOffsetSeconds}
+          highlightedGameSegmentKey={highlightedGameSegmentKey}
+          overlayLines={emoteOverlays}
+          emptyMessage={chartEmpty || 'Loading full stream rollups…'}
+          loading={timelineLoading || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
+          isLive={false}
+          reducedMotion
+        />
+      </div>
 
       {topEmotesForPicker.length > 0 ? (
         <SevenTvEmotePanel
@@ -341,12 +387,21 @@ export function RecapTimelineChart({
 
 const styles: Record<string, CSSProperties> = {
   block: { display: 'grid', gap: 6 },
+  chartStack: { display: 'grid', gap: 0 },
+  rangeMetaWrap: { display: 'grid', gap: 2, justifyItems: 'end' },
   rangeMeta: {
     color: theme.textMuted,
     fontSize: 9,
     fontWeight: 700,
     letterSpacing: '0.03em',
     textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
+  },
+  rollupSince: {
+    color: theme.textMuted,
+    fontSize: 9,
+    fontWeight: 600,
+    lineHeight: 1.3,
     whiteSpace: 'nowrap',
   },
   readout: {

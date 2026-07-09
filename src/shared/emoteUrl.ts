@@ -1,4 +1,4 @@
-import { isBrokenLocalEmotePath, resolveEmoteImageUrl } from '@streamclone/pulse-core'
+import { isBrokenLocalEmotePath, resolveEmoteImageUrl } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from './messages.ts'
 
 const LEGACY_SEVEN_TV_ID = /^[0-9a-fA-F]{24}$/

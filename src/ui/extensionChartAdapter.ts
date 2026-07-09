@@ -1,10 +1,13 @@
 import {
+  gameSegmentKey,
+  gameSegmentOverlapsOffsetRange,
   hasMeaningfulGameSegments,
   normalizeGameSegments,
   type ChartGameSegment,
   type ChartMinuteRollup,
-} from '@streamclone/pulse-charts'
+} from '@streampulse/pulse-charts'
 import type { ExtensionEmote, ExtensionGameSegment, ExtensionRollup } from '../shared/messages.ts'
+import type { GamesPlayedVisibleRange } from './GamesPlayedStrip.tsx'
 import { emoteSelectionKey } from './chatActivityEmotes.ts'
 
 function minuteTsFromOffset(startedAt: string | undefined, offsetSeconds: number): string {
@@ -75,6 +78,35 @@ export function extensionGamesToChartGames(
   )
   if (!hasMeaningfulGameSegments(normalized, durationSeconds)) return []
   return normalized
+}
+
+export function chartVisibleRangeFromRollups(
+  rollups: Array<{ offsetSeconds: number }>,
+): GamesPlayedVisibleRange | null {
+  if (rollups.length === 0) return null
+  return {
+    startOffset: rollups[0]!.offsetSeconds,
+    endOffset: rollups[rollups.length - 1]!.offsetSeconds,
+  }
+}
+
+export function chartHighlightedGameKey(
+  hoveredGameKey: string | null,
+  games: ExtensionGameSegment[] | undefined,
+  durationSeconds: number,
+  visibleRange: GamesPlayedVisibleRange | null,
+): string | null {
+  if (!hoveredGameKey || !visibleRange) return null
+  const segments = normalizeGameSegments(games ?? [], durationSeconds)
+  const segment = segments.find(game => gameSegmentKey(game) === hoveredGameKey)
+  if (!segment) return null
+  return gameSegmentOverlapsOffsetRange(
+    segment,
+    visibleRange.startOffset,
+    visibleRange.endOffset,
+  )
+    ? hoveredGameKey
+    : null
 }
 
 export function emoteKeysFromExtension(

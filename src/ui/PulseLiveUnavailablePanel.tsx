@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { PulseLiveAccessState } from './resolvePulseLiveAccess.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { theme } from './theme.ts'

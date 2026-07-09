@@ -63,7 +63,7 @@ function tailnetDevHost(): string {
   return TAILNET_DEV_HOST_PARTS.join('')
 }
 
-/** True for localhost / laptopworker Streamclone Caddy — not used by StreamPulse portal dev. */
+/** True for localhost / laptopworker StreamPulse backend dev — not used by default portal dev. */
 export function isLocalDevBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '')
   if (!normalized) return false
@@ -71,11 +71,11 @@ export function isLocalDevBackendUrl(url: string): boolean {
     const host = new URL(normalized).hostname.toLowerCase()
     return host === 'localhost' || host === '127.0.0.1' || host === tailnetDevHost()
   } catch {
-    return /localhost|127\.0\.0\.1|:8090/i.test(normalized) || normalized.toLowerCase().includes(tailnetDevHost())
+    return /localhost|127\.0\.0\.1|:8081/i.test(normalized) || normalized.toLowerCase().includes(tailnetDevHost())
   }
 }
 
-/** True when `npm run dev:local` (or env) explicitly opts into localhost :8090. */
+/** True when `npm run dev:local` (or env) explicitly opts into localhost :8081. */
 export function allowsExplicitLocalBackend(): boolean {
   return import.meta.env.DEV && import.meta.env.VITE_ALLOW_LOCAL_BACKEND === '1'
 }
@@ -95,7 +95,7 @@ export function resolvePortalDefaultBackendUrl(opts?: {
 
 export const DEFAULT_BACKEND_URL = resolvePortalDefaultBackendUrl()
 
-/** Drop stale session overrides that pointed at local :8090 from older portal builds. */
+/** Drop stale session overrides that pointed at local backend from older portal builds. */
 export function clearStaleLocalBackendOverride(): void {
   if (import.meta.env.PROD) return
   try {

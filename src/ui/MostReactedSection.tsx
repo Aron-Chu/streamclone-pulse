@@ -5,7 +5,7 @@ import {
   LIVE_HEAT_TITLE,
   extensionRollupsForDerivation,
   type LiveHeatPoint,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type { ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 import {
   hasFullTimelineRollups,
@@ -39,6 +39,7 @@ export interface MostReactedSectionProps {
   onPinOffset?: (offsetSeconds: number | null) => void
   saveBusy?: boolean
   hasVodContext?: boolean
+  demoMode?: boolean
 }
 
 const SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
@@ -64,6 +65,7 @@ export function MostReactedSection({
   onPinOffset,
   saveBusy = false,
   hasVodContext = false,
+  demoMode = false,
 }: MostReactedSectionProps) {
   const heat = resolveMostReactedHeat(payload)
   const rollups = extensionRollupsForDerivation(payload) as ExtensionRollup[]
@@ -137,6 +139,7 @@ export function MostReactedSection({
             value={sortMode}
             options={SORT_OPTIONS}
             ariaLabel="Sort most reacted moments"
+            disabled={demoMode}
             onChange={setSortMode}
           />
         ) : undefined
@@ -154,10 +157,10 @@ export function MostReactedSection({
             point={pinnedMomentPoint}
             backendUrl={backendUrl}
             jumpLabel={jumpLabel}
-            onJump={onJump}
-            onSave={onSave}
+            onJump={demoMode ? () => undefined : onJump}
+            onSave={demoMode ? () => undefined : onSave}
             saveBusy={saveBusy}
-            onAnalytics={onAnalytics}
+            onAnalytics={demoMode ? () => undefined : onAnalytics}
           />
         </div>
       ) : null}
@@ -172,8 +175,8 @@ export function MostReactedSection({
               backendUrl={backendUrl}
               selected={selected}
               scrollRef={selected ? node => { selectedRowRef.current = node } : undefined}
-              onHighlight={setHoveredOffset}
-              onSelect={next => {
+              onHighlight={demoMode ? () => undefined : setHoveredOffset}
+              onSelect={demoMode ? () => undefined : next => {
                 onPinOffset?.(next.offsetSeconds)
                 setHoveredOffset(null)
               }}
@@ -194,7 +197,8 @@ export function MostReactedSection({
         <button
           type="button"
           style={styles.expandButton}
-          onClick={() => setListExpanded(expanded => !expanded)}
+          disabled={demoMode}
+          onClick={demoMode ? undefined : () => setListExpanded(expanded => !expanded)}
         >
           <span>
             {listExpanded

@@ -9,7 +9,7 @@ import {
 
 describe('defaultWebAnalyticsBaseUrlForApi', () => {
   it('maps local API to streampulse-web dev port', () => {
-    expect(defaultWebAnalyticsBaseUrlForApi('http://localhost:8090')).toBe('http://localhost:5173')
+    expect(defaultWebAnalyticsBaseUrlForApi('http://localhost:8081')).toBe('http://localhost:5173')
   })
 
   it('maps hosted API to streampulse.stream', () => {
@@ -53,7 +53,7 @@ describe('buildAnalyticsUrl', () => {
       streamId: '319abc',
     })
     expect(href).not.toContain('api.streampulse.stream')
-    expect(href).not.toContain('localhost:8090')
+    expect(href).not.toContain('localhost:8081')
   })
 
   it('returns null when channel login missing', () => {

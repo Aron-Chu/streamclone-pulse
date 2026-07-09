@@ -1,4 +1,4 @@
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 
 export const PULSE_STREAM_START_TOLERANCE_SEC = 120
 export const COVERAGE_START_SOFT_MAX_SEC = 600

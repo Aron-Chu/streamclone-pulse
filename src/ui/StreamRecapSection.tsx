@@ -4,7 +4,7 @@ import {
   formatHeatOffset,
   peaksToLiveHeatPoints,
   type LiveHeatPoint,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type {
   ExtensionEmote,
   ExtensionGameSegment,
@@ -15,7 +15,7 @@ import type {
   PulseStreamRecap,
 } from '../shared/messages.ts'
 import { lastStreamPeakStats } from './lastStreamSummary.ts'
-import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
+import { GamesPlayedStrip, type GamesPlayedVisibleRange } from './GamesPlayedStrip.tsx'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { RecapAnalyticsNav } from './RecapAnalyticsNav.tsx'
@@ -32,6 +32,10 @@ import {
 } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog, resolveRecapEmotes } from './recapEmotes.ts'
 import { pickRecapRollups, recapMomentToLiveHeatPoint } from './recapMomentMetrics.ts'
+import {
+  chartHighlightedGameKey,
+  chartVisibleRangeFromRollups,
+} from './extensionChartAdapter.ts'
 import type { RecapUiState } from './recapUiState.ts'
 import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import { PulseMomentRow } from './PulseMomentRow.tsx'
@@ -52,6 +56,7 @@ export interface StreamRecapSectionProps {
   onRetry?: () => void
   onRequestFullRollups?: () => Promise<void>
   sidebarFill?: boolean
+  hideHubLink?: boolean
 }
 
 function formatNumber(value: number): string {
@@ -128,11 +133,25 @@ function RecapStatBand({
 function RecapGamesStrip({
   games,
   durationSeconds,
+  highlightedKey,
+  onHighlightKey,
+  visibleRange,
 }: {
   games?: ExtensionGameSegment[]
   durationSeconds: number
+  highlightedKey?: string | null
+  onHighlightKey?: (key: string | null) => void
+  visibleRange?: GamesPlayedVisibleRange | null
 }) {
-  return <GamesPlayedStrip games={games} durationSeconds={durationSeconds} />
+  return (
+    <GamesPlayedStrip
+      games={games}
+      durationSeconds={durationSeconds}
+      highlightedKey={highlightedKey}
+      onHighlightKey={onHighlightKey}
+      visibleRange={visibleRange}
+    />
+  )
 }
 
 function recapHighlightSpikeKey(streamId: string | undefined, offsetSeconds: number): string {
@@ -174,6 +193,7 @@ function RecapHighlightStrip({
       {spike ? (
         <button
           type="button"
+          className={`pulse-recap-highlight-btn${spikeSelected ? ' pulse-recap-highlight-btn-selected' : ''}`}
           style={{
             ...styles.highlightButton,
             ...(spikeSelected ? styles.highlightButtonSelected : {}),
@@ -190,6 +210,7 @@ function RecapHighlightStrip({
       {burst ? (
         <button
           type="button"
+          className={`pulse-recap-highlight-btn${burstSelected ? ' pulse-recap-highlight-btn-selected' : ''}`}
           style={{
             ...styles.highlightButton,
             ...(burstSelected ? styles.highlightButtonSelected : {}),
@@ -304,7 +325,7 @@ function RecapMomentsList({
         })}
       </div>
       {moments.length > RECAP_MOMENTS_COLLAPSED_COUNT ? (
-        <button type="button" style={styles.momentsExpandButton} onClick={onToggleExpanded}>
+        <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} onClick={onToggleExpanded}>
           <span>
             {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
           </span>
@@ -324,6 +345,7 @@ function RecapReadyContent({
   catalog,
   coverage,
   sidebarFill = false,
+  hideHubLink = false,
   onJump,
   onAnalytics,
   onRequestFullRollups,
@@ -334,6 +356,7 @@ function RecapReadyContent({
   catalog: ExtensionEmote[]
   coverage?: ExtensionCoverageResponse | null
   sidebarFill?: boolean
+  hideHubLink?: boolean
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
   onRequestFullRollups?: () => Promise<void>
@@ -344,6 +367,7 @@ function RecapReadyContent({
   )
   const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
+  const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   const visibleMoments = momentsExpanded
     ? mergedMoments
     : mergedMoments.slice(0, RECAP_MOMENTS_COLLAPSED_COUNT)
@@ -427,6 +451,19 @@ function RecapReadyContent({
     () => resolveRecapChartPeakOffsets(mergedMoments, payload.peaks),
     [mergedMoments, payload.peaks],
   )
+  const recapDurationSeconds = recapStreamDurationSeconds(payload)
+  const recapVisibleRange = useMemo(
+    () => chartVisibleRangeFromRollups(pickRecapRollups(payload)),
+    [payload],
+  )
+  const recapChartHighlightedGameKey = useMemo(
+    () => chartHighlightedGameKey(hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange),
+    [hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange],
+  )
+
+  useEffect(() => {
+    setHoveredGameKey(null)
+  }, [payload.streamId])
 
   const duration = formatStreamDuration(recap.durationSeconds)
   const meta = duration
@@ -440,6 +477,7 @@ function RecapReadyContent({
         channelLogin={payload.login}
         streamId={payload.streamId}
         offsetSeconds={selectedPoint?.offsetSeconds ?? null}
+        hideHubLink={hideHubLink}
       />
       <RecapStatBand
         peakChat={recap.peakChatPerMin}
@@ -464,6 +502,7 @@ function RecapReadyContent({
         pinOffsetSeconds={selectedPoint?.offsetSeconds ?? null}
         previewOffsetSeconds={hoveredOffset}
         sidebarFill={sidebarFill}
+        highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onSelectPoint={point => {
           markUserSelected()
           if (selectedPoint?.offsetSeconds === point.offsetSeconds) {
@@ -478,7 +517,13 @@ function RecapReadyContent({
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      <RecapGamesStrip games={payload.games} durationSeconds={recapStreamDurationSeconds(payload)} />
+      <RecapGamesStrip
+        games={payload.games}
+        durationSeconds={recapDurationSeconds}
+        highlightedKey={hoveredGameKey}
+        onHighlightKey={setHoveredGameKey}
+        visibleRange={recapVisibleRange}
+      />
       {selectedPoint ? (
         <SelectedMomentCard
           point={selectedPoint}
@@ -524,6 +569,7 @@ function OfflineFallbackContent({
   backendUrl,
   coverage,
   sidebarFill = false,
+  hideHubLink = false,
   onJump,
   onAnalytics,
   onOpenAnalytics,
@@ -533,6 +579,7 @@ function OfflineFallbackContent({
   backendUrl: string
   coverage?: ExtensionCoverageResponse | null
   sidebarFill?: boolean
+  hideHubLink?: boolean
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
   onOpenAnalytics: (offsetSeconds?: number) => void
@@ -556,6 +603,7 @@ function OfflineFallbackContent({
   )
   const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
+  const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   const visiblePeakPoints = momentsExpanded
     ? peakPoints
     : peakPoints.slice(0, RECAP_MOMENTS_COLLAPSED_COUNT)
@@ -581,6 +629,19 @@ function OfflineFallbackContent({
     () => resolveRecapChartPeakOffsets(undefined, payload.peaks),
     [payload.peaks],
   )
+  const recapDurationSeconds = recapStreamDurationSeconds(payload)
+  const recapVisibleRange = useMemo(
+    () => chartVisibleRangeFromRollups(pickRecapRollups(payload)),
+    [payload],
+  )
+  const recapChartHighlightedGameKey = useMemo(
+    () => chartHighlightedGameKey(hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange),
+    [hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange],
+  )
+
+  useEffect(() => {
+    setHoveredGameKey(null)
+  }, [payload.streamId])
 
   const duration = formatStreamDuration(payload.durationSeconds)
   const endedAgo = formatRelativeTime(payload.endedAt ?? payload.latestEndedAt)
@@ -595,6 +656,7 @@ function OfflineFallbackContent({
         channelLogin={payload.login}
         streamId={payload.streamId}
         offsetSeconds={selectedPoint?.offsetSeconds ?? null}
+        hideHubLink={hideHubLink}
       />
       {meta?.title ? <div style={styles.offlineTitle}>{meta.title}</div> : null}
       {payload.category ?? meta?.category ? (
@@ -602,7 +664,7 @@ function OfflineFallbackContent({
       ) : null}
       {peakPoints.length === 0 && (peakChat > 0 || totalMessages > 0) ? (
         <div style={styles.fallbackCta}>
-          <button type="button" style={styles.actionPrimary} onClick={() => onOpenAnalytics()}>
+          <button type="button" className="pulse-recap-analytics-cta" style={styles.actionPrimary} onClick={() => onOpenAnalytics()}>
             Open analytics
           </button>
         </div>
@@ -621,6 +683,7 @@ function OfflineFallbackContent({
         pinOffsetSeconds={selectedPoint?.offsetSeconds ?? null}
         previewOffsetSeconds={hoveredOffset}
         sidebarFill={sidebarFill}
+        highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onSelectPoint={point => {
           const key = offlinePointKey(point)
           setSelectedKey(key)
@@ -630,7 +693,13 @@ function OfflineFallbackContent({
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      <RecapGamesStrip games={payload.games} durationSeconds={recapStreamDurationSeconds(payload)} />
+      <RecapGamesStrip
+        games={payload.games}
+        durationSeconds={recapDurationSeconds}
+        highlightedKey={hoveredGameKey}
+        onHighlightKey={setHoveredGameKey}
+        visibleRange={recapVisibleRange}
+      />
       {selectedPoint ? (
         <SelectedMomentCard
           point={selectedPoint}
@@ -664,6 +733,7 @@ function OfflineFallbackContent({
           {peakPoints.length > RECAP_MOMENTS_COLLAPSED_COUNT ? (
             <button
               type="button"
+              className="pulse-secondary-btn"
               style={styles.momentsExpandButton}
               onClick={() => setMomentsExpanded(value => !value)}
             >
@@ -701,6 +771,7 @@ export function StreamRecapSection({
   onRetry,
   onRequestFullRollups,
   sidebarFill = false,
+  hideHubLink = false,
 }: StreamRecapSectionProps) {
   if (isLive) return null
 
@@ -733,7 +804,7 @@ export function StreamRecapSection({
             {pollError?.trim() || 'Stream recap is unavailable right now.'}
           </p>
           {onRetry ? (
-            <button type="button" style={styles.secondaryButton} onClick={onRetry}>
+            <button type="button" className="pulse-secondary-btn" style={styles.secondaryButton} onClick={onRetry}>
               Retry
             </button>
           ) : null}
@@ -763,6 +834,7 @@ export function StreamRecapSection({
           catalog={catalog}
           coverage={coverage}
           sidebarFill={sidebarFill}
+          hideHubLink={hideHubLink}
           onJump={onJump}
           onAnalytics={onAnalytics}
           onRequestFullRollups={onRequestFullRollups}
@@ -773,6 +845,7 @@ export function StreamRecapSection({
           backendUrl={backendUrl}
           coverage={coverage}
           sidebarFill={sidebarFill}
+          hideHubLink={hideHubLink}
           onJump={onJump}
           onAnalytics={onAnalytics}
           onOpenAnalytics={onOpenAnalytics}

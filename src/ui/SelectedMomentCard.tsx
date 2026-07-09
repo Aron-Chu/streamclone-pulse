@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { displayMomentReasonLabel, formatHeatOffset, type LiveHeatPoint } from '@streamclone/pulse-core'
+import { displayMomentReasonLabel, formatHeatOffset, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatSelectedMomentActivity } from './momentActivity.ts'
 import { momentReasonLabelStyle, overlayGhostChipButton } from './momentReasonStyles.ts'
@@ -89,6 +89,7 @@ export function SelectedMomentCard({
         <div style={styles.actions}>
           <button
             type="button"
+            className="pulse-action-chip pulse-action-chip-primary"
             style={styles.actionPrimary}
             onPointerDown={event => event.stopPropagation()}
             onClick={() => onJump(point)}
@@ -98,6 +99,7 @@ export function SelectedMomentCard({
           {onSave ? (
             <button
               type="button"
+              className="pulse-action-chip"
               style={styles.action}
               disabled={saveBusy}
               onPointerDown={event => event.stopPropagation()}
@@ -108,6 +110,7 @@ export function SelectedMomentCard({
           ) : null}
           <button
             type="button"
+            className="pulse-action-chip"
             style={styles.action}
             onPointerDown={event => event.stopPropagation()}
             onClick={() => onAnalytics(point)}

@@ -1,9 +1,8 @@
 import type { ExtensionCoverageTierResponse, PulsePayload } from '../shared/messages.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
+import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
 
-/** Matches backend coverageStartToleranceSec in pulse_coverage.go */
-export const PULSE_STREAM_START_TOLERANCE_SEC = 120
-
+export { PULSE_STREAM_START_TOLERANCE_SEC }
 export const COVERAGE_TIER_ACTIVE_LIVE = 'active_live_coverage'
 
 export type PulseLiveAccessState =

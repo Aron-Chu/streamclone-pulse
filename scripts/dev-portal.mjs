@@ -28,7 +28,7 @@ let restartTimer = null
 function startVite() {
   const env = { ...process.env }
   const viteBackend = env.VITE_BACKEND_URL?.trim()
-  if (viteBackend && /localhost|127\.0\.0\.1|laptopworker|:8090/i.test(viteBackend)) {
+  if (viteBackend && /localhost|127\.0\.0\.1|laptopworker|:8081|:8090/i.test(viteBackend)) {
     delete env.VITE_BACKEND_URL
     console.log('[dev-portal] ignoring localhost VITE_BACKEND_URL — portal dev uses hosted API')
   }

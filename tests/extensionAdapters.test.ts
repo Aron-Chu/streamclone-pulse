@@ -6,7 +6,7 @@ import {
   toLiveStatsInputFromExtension,
   toLiveHeatInputFromExtension,
   deriveLiveHeat,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type { PulsePayload } from '../src/shared/messages.ts'
 
 describe('extension adapter integration', () => {

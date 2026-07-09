@@ -1,4 +1,4 @@
-import { formatMomentActivityLine, type LiveHeatPoint } from '@streamclone/pulse-core'
+import { formatMomentActivityLine, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { formatCount } from './mostReacted.ts'
 
 export function formatMomentMetricsLine(

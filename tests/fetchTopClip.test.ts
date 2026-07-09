@@ -20,19 +20,19 @@ describe('fetchTopClip', () => {
   })
 
   it('returns highest viewCount clip', async () => {
-    const clip = await fetchTopClip('streamer', { isLive: false }, 'http://localhost:8090')
+    const clip = await fetchTopClip('streamer', { isLive: false }, 'http://localhost:8081')
     expect(clip?.id).toBe('high')
   })
 
   it('returns null on non-200', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })))
-    const clip = await fetchTopClip('streamer', undefined, 'http://localhost:8090')
+    const clip = await fetchTopClip('streamer', undefined, 'http://localhost:8081')
     expect(clip).toBeNull()
   })
 
   it('returns null on fetch error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network') }))
-    const clip = await fetchTopClip('streamer', undefined, 'http://localhost:8090')
+    const clip = await fetchTopClip('streamer', undefined, 'http://localhost:8081')
     expect(clip).toBeNull()
   })
 })

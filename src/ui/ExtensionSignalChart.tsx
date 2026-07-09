@@ -1,6 +1,6 @@
 import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { CHART_THEME } from './chartTheme.ts'
 import {

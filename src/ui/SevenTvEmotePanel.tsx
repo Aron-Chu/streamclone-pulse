@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
 import { emoteSelectionKey } from './chatActivityEmotes.ts'
@@ -7,7 +7,7 @@ import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
 import { theme } from './theme.ts'
 
-const VISIBLE_CHIP_LIMIT = 5
+const VISIBLE_CHIP_LIMIT = 3
 
 export interface SevenTvEmotePanelProps {
   expanded: boolean
@@ -32,14 +32,21 @@ export function SevenTvEmotePanel({
   onToggleEmote,
   sidebarCompact = false,
   selectedPlotColors,
-  maxSelected = 4,
+  maxSelected = 6,
 }: SevenTvEmotePanelProps) {
   const [showAllChips, setShowAllChips] = useState(false)
+
+  useEffect(() => {
+    if (!expanded) setShowAllChips(false)
+  }, [expanded])
 
   if (topEmotes.length === 0) return null
 
   const selectedEmotes = topEmotes.filter(emote => selectedKeys.includes(emoteSelectionKey(emote)))
-  const previewEmotes = topEmotes.slice(0, 3)
+  const previewEmotes =
+    selectedEmotes.length > 0
+      ? selectedEmotes.slice(0, maxSelected)
+      : topEmotes.slice(0, Math.min(6, maxSelected))
   const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
   const visibleEmotes = showAllChips ? topEmotes : topEmotes.slice(0, VISIBLE_CHIP_LIMIT)
   const hiddenCount = Math.max(0, topEmotes.length - VISIBLE_CHIP_LIMIT)
@@ -130,9 +137,17 @@ export function SevenTvEmotePanel({
               )
             })}
           </div>
-          {hiddenCount > 0 && !showAllChips ? (
-            <button type="button" style={styles.moreButton} onClick={() => setShowAllChips(true)}>
-              More ({hiddenCount})
+          {hiddenCount > 0 ? (
+            <button
+              type="button"
+              className="pulse-secondary-btn"
+              style={styles.moreButton}
+              onClick={() => setShowAllChips(value => !value)}
+              aria-expanded={showAllChips}
+            >
+              {showAllChips
+                ? 'Show less'
+                : `Show ${hiddenCount} more emote${hiddenCount === 1 ? '' : 's'}`}
             </button>
           ) : null}
         </div>
@@ -195,7 +210,7 @@ const styles: Record<string, CSSProperties> = {
   rowList: {
     display: 'grid',
     gap: 4,
-    maxHeight: 180,
+    maxHeight: 220,
     overflowY: 'auto',
   },
   row: {
@@ -241,13 +256,15 @@ const styles: Record<string, CSSProperties> = {
   },
   moreButton: {
     background: 'transparent',
-    border: 0,
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
     color: theme.accentSoft,
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,
-    justifySelf: 'start',
-    padding: 0,
-    textTransform: 'uppercase',
+    justifySelf: 'stretch',
+    padding: '6px 10px',
+    textAlign: 'center',
+    width: '100%',
   },
 }

@@ -1,4 +1,4 @@
-import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streamclone/pulse-core'
+import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streampulse/pulse-core'
 import { CHART_THEME, emoteChartColor } from './chartTheme.ts'
 import type { ExtensionEmote, ExtensionRollup, PulseCoverage, PulsePayload } from '../shared/messages.ts'
 import { chartBucketRanges } from './extensionChartPoints.ts'
@@ -6,7 +6,9 @@ import { firstActiveRollupOffset } from './chartRollupUtils.ts'
 
 export const MAX_PAST_STREAM_ROWS = 3
 export const CHAT_INSPECTOR_EMOTE_LIMIT = 8
-export const MAX_PLOTTED_EMOTES = 4
+export const MAX_PLOTTED_EMOTES = 6
+/** Emotes listed in Plot on chart picker; plotting remains capped at MAX_PLOTTED_EMOTES. */
+export const PLOT_PICKER_EMOTE_LIMIT = 24
 
 export function toggleEmotePlotKeys(
   keys: string[],

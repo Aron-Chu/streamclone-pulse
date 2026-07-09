@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import type { CurrentMomentInsight } from '../vod/vodCurrentMoment.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'

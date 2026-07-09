@@ -1,6 +1,6 @@
 # Agent guide — Streamclone Pulse extension
 
-Chrome MV3 extension. Backend, migrations, and `pulse-core` live in the sibling **streamclone** checkout (`../twitch-7tv-clone` on disk; **streamclone** folder in multi-root workspace).
+Chrome MV3 extension + StreamPulse portal. **StreamPulse backend** (Go BFF, ingest, packages) lives in sibling **`../streampulse-backend`**. Public **Streamclone** (`../twitch-7tv-clone`) is the desktop Twitch replica only — not the extension/portal API source after boundary split.
 
 ## Cursor vs generic agents
 
@@ -9,7 +9,7 @@ Chrome MV3 extension. Backend, migrations, and `pulse-core` live in the sibling 
 | **This file** | `AGENTS.md` | Repo router — requirements, commands, cross-repo wiring (works in Cursor, Codex, etc.) |
 | **Cursor rules** | `.cursor/rules/streamclone.mdc` | Always-on Pulse/StreamPulse guardrails |
 | **Cursor skills** | `.cursor/skills/*/` | Reusable workflows (`coverage-triage`, `streamclone-task-runner`, …) |
-| **Cursor subagents** | `.cursor/agents/` | Three reviewers: backend-safety, frontend-ux, ops-diagnostics |
+| **Cursor subagents** | `.cursor/agents/` | Reviewers: backend-safety (backend repo), frontend-ux, ops-diagnostics (ops repo) |
 | **Cursor hooks** | `.cursor/hooks.json` | Lightweight lint/secret guards — not full test suites |
 
 Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep product truth in docs, routing here, Cursor-specific behavior under `.cursor/`.
@@ -24,8 +24,8 @@ Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep produc
 | Task ledger (P0–P6) | [`docs/pulse-extension/tasks.md`](docs/pulse-extension/tasks.md) |
 | **Figma UI (PNG + node IDs)** | [`docs/pulse-extension/figma-handoff.md`](docs/pulse-extension/figma-handoff.md) + [`figma/`](docs/pulse-extension/figma/) |
 | Repo wiring | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
-| **Image namespace exit (hosted prod)** | [`docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md`](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md), streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) |
-| **Hosted production ops (operator)** | streamclone [`docs/hosted-production-ops.md`](../twitch-7tv-clone/docs/hosted-production-ops.md) — deploy/smoke/SSH runbooks live in private **streampulse-ops** only; public check: `curl https://api.streampulse.stream/v1/extension/health` |
+| **StreamPulse backend (Go/packages)** | [`../streampulse-backend/AGENTS.md`](../streampulse-backend/AGENTS.md) |
+| **Hosted production ops (operator)** | private **streampulse-ops** — public check: `curl https://api.streampulse.stream/v1/extension/health` |
 | **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) |
 | Extension code | `src/` |
 
@@ -48,24 +48,25 @@ Hard guardrails:
 - Do not fetch full-stream timelines (or Layer 2 analytics) during normal live polling.
 - Use backend peaks, coverage, sync, and backfill states as the source of truth.
 - Portal analytics must be sanitized **server-side** (`/v1/portal/analytics/*`), not by client-only stripping.
+- **One UI stack per surface** — delete or gate old analytics mounts before adding new ones. Run `cd streampulse-web && npm run check:analytics-overlap` before deploy (also in `build` / `pages:deploy:prod`). See [`.cursor/rules/analytics-no-duplicate-stack.mdc`](.cursor/rules/analytics-no-duplicate-stack.mdc).
 
 ## Context modes (one repo, two products)
 
 | Mode | Scope | Default workspace |
 |------|-------|-------------------|
-| **Extension** | `src/`, `docs/pulse-extension/`, MV3 build/test | `streamclone-pulse` only — see streamclone [`streampulse-extension.code-workspace`](../twitch-7tv-clone/streampulse-extension.code-workspace) |
+| **Extension** | `src/`, `docs/pulse-extension/`, MV3 build/test | `streamclone-pulse` only |
 | **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Same repo; do not load extension service-worker context unless API contract work |
 
-Cross-repo workspace matrix: streamclone [`docs/workspace.md`](../twitch-7tv-clone/docs/workspace.md).
+Cross-repo layout: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
 ## Rules
 
 - **Content scripts:** `chrome.runtime.sendMessage` only — no `fetch`.
-- **Service worker:** all HTTP to Streamclone (`/v1/extension/*`, `/v1/analytics/.../watch`).
-- **Extension** default backend: `https://api.streampulse.stream` (hosted). Local `http://localhost:8090` requires explicit opt-in in Options → Advanced.
-- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit `:8090` only. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (restart after branch switch; `npm install` for `@streamclone/*` links).
-- New Go APIs → implement in streamclone `internal/analytics`, not here.
-- ReplayForge / auto clipper work is not owned by the extension or portal. Use sibling streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md): Streamclone owns candidates/triggers/callback state, ReplayForge owns render/edit/export. Hosted production promotion: streamclone [`production-promotion-contract.md`](../twitch-7tv-clone/docs/production-promotion-contract.md) and [image exit audit](docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) — pre-cutover manifests may still use `streamclone/*` source images via private `streampulse-ops`.
+- **Service worker:** all HTTP to StreamPulse backend (`/v1/extension/*`, `/v1/analytics/.../watch`).
+- **Extension** default backend: `https://api.streampulse.stream` (hosted). Local BFF override → **streampulse-backend** compose (e.g. `http://localhost:8081`), not Streamclone `:8090`.
+- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit local backend only. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (restart after branch switch; `npm install` for `@streampulse/*` links).
+- New Go APIs → implement in **streampulse-backend** `internal/analytics`, not here or in public Streamclone.
+- ReplayForge / auto clipper: candidates/triggers live in streampulse-backend; ReplayForge owns render/edit/export. See streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md) for integration contract during transition.
 - **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
 - **Public ops boundary:** never commit host IPs, SSH paths/key names, operator runbooks, or production env file paths to this repo — private **streampulse-ops** only. See [`.cursor/rules/public-repo-boundary.mdc`](.cursor/rules/public-repo-boundary.mdc).
 
@@ -97,4 +98,4 @@ Skipping `npm run build` makes fixes look broken (stale `dist/content/twitch.js`
   2. Hard-refresh the Twitch tab
 - `npm run dev` (`vite build --watch`) rebuilds `dist/` automatically on save but still requires the manual Chrome reload above.
 
-Stack: `make up` in streamclone → `curl http://localhost:8090/v1/extension/health`.
+Local StreamPulse backend: `make up` (TODO) in **streampulse-backend** → `curl http://localhost:8081/v1/extension/health`. Streamclone `:8090` is watch-only — not extension/portal BFF.

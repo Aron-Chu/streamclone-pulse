@@ -1,4 +1,4 @@
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { PulseBackfillJob, PulseCoverage } from '../shared/messages.ts'
 
 const LATE_START_SEC = 120
@@ -250,7 +250,7 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
   const missingEnd = coverage.missingRanges?.[0]?.toOffsetSeconds
   const missingMinutes = missingEnd != null ? formatHeatOffset(missingEnd) : null
 
-  if (coverage.hasFullStreamCoverage || coverage.coverageStartOffsetSeconds <= 60) {
+  if (coverage.hasFullStreamCoverage || coverage.coverageStartOffsetSeconds <= LATE_START_SEC) {
     return {
       title: 'Full stream tracked',
       body: 'Moments from 00:00 → live',

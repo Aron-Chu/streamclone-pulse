@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { VodTimelinePoint } from '../types/vodPulseTypes.ts'
 import { normalizeTimelineValues, seekOffsetFromGraphClick, timelineYValue } from '../vod/vodCurrentMoment.ts'
 import { theme } from './theme.ts'

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
-import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streamclone/pulse-core'
+import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streampulse/pulse-core'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import { findChartIndexByOffset, mapPeakOffsetsToBucketedChartIndices, mapPeakOffsetsToChartIndices, sparklineIndexFromClick, type EmoteOverlaySeries } from './chatActivityEmotes.ts'
 import {

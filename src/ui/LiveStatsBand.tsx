@@ -9,7 +9,7 @@ import {
   type LiveHeatPoint,
   type LiveStats,
   type TrendDirection,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
 import { getDefaultChartWindow } from '../shared/storage.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
@@ -19,7 +19,9 @@ import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
   CHART_WINDOW_OPTIONS,
+  CHART_WINDOW_SECONDS,
   chartEmptyMessage,
+  chartTimelineWindowLabel,
   chartWindowNeedsFullFetch,
   describeRollupGap,
   emoteAveragesFromRollups,
@@ -34,7 +36,11 @@ import {
   type ChartTimelineWindow,
 } from './chatActivityEmotes.ts'
 import { downsampleRollupsForChart } from './extensionChartPoints.ts'
-import { extensionGamesForOverviewChart } from './extensionChartAdapter.ts'
+import {
+  chartHighlightedGameKey,
+  chartVisibleRangeFromRollups,
+  extensionGamesForOverviewChart,
+} from './extensionChartAdapter.ts'
 import { firstViewerOffsetSeconds, firstActiveRollupOffset, minuteEmoteTotal } from './chartRollupUtils.ts'
 import { LiveMetricIcon } from './liveMetricIcons.tsx'
 import { emoteSyncStatusLabel, emoteSyncStatusTone } from './emoteSync.ts'
@@ -62,6 +68,7 @@ export interface LiveStatsBandProps {
   onOpenAnalytics?: (offsetSeconds: number) => void
   onOpenFullAnalytics?: () => void
   onRequestFullTimeline?: () => Promise<void>
+  onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
   onSaveMoment?: (point: LiveHeatPoint) => void
   saveMomentBusy?: boolean
@@ -69,6 +76,8 @@ export interface LiveStatsBandProps {
   previewOffsetSeconds?: number | null
   hasVodContext?: boolean
   coverageTier?: string | null
+  /** Marketing landing — read-only panel with no navigation or chart pinning. */
+  demoMode?: boolean
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -174,6 +183,7 @@ export function LiveStatsBand({
   onOpenAnalytics,
   onOpenFullAnalytics,
   onRequestFullTimeline,
+  onChartWindowChange,
   onPinOffset,
   onSaveMoment,
   saveMomentBusy = false,
@@ -181,6 +191,7 @@ export function LiveStatsBand({
   previewOffsetSeconds = null,
   hasVodContext = false,
   coverageTier = null,
+  demoMode = false,
 }: LiveStatsBandProps) {
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
   const stats: LiveStats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
@@ -194,17 +205,25 @@ export function LiveStatsBand({
   onRequestFullTimelineRef.current = onRequestFullTimeline
 
   useEffect(() => {
+    if (demoMode) {
+      setChartWindow('60m')
+      return
+    }
     let mounted = true
     void getDefaultChartWindow().then(window => {
       if (!mounted) return
-      // Live sidebar charts stay recent-window by default; "All" is opt-in per stream.
+      if (fullTimeline) {
+        setChartWindow('full')
+        return
+      }
+      // Live sidebar charts stay recent-window by default; "Full stream" is opt-in per session.
       const resolved = isLive && window === 'full' ? '60m' : window
       setChartWindow(resolved)
     })
     return () => {
       mounted = false
     }
-  }, [payload.streamId, payload.login, isLive])
+  }, [payload.streamId, payload.login, isLive, fullTimeline, demoMode])
 
   const rollups = useMemo(
     () =>
@@ -239,13 +258,20 @@ export function LiveStatsBand({
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const [activityExpanded, setActivityExpanded] = useState(false)
+  const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (fullTimeline) setChartWindow('full')
   }, [fullTimeline])
 
+  const handleChartWindowChange = (window: ChartTimelineWindow): void => {
+    setChartWindow(window)
+    onChartWindowChange?.(window)
+  }
+
   useEffect(() => {
     fullTimelineRequestedRef.current = false
+    setHoveredGameKey(null)
   }, [payload.streamId, chartWindow])
 
   useEffect(() => {
@@ -366,9 +392,21 @@ export function LiveStatsBand({
     [payload.games, payload.category, currentOffsetSeconds],
   )
 
+  const visibleRange = useMemo(
+    () => chartVisibleRangeFromRollups(displayRollups),
+    [displayRollups],
+  )
+
+  const chartHighlightedGameKeyValue = useMemo(
+    () => chartHighlightedGameKey(hoveredGameKey, chartGames, currentOffsetSeconds, visibleRange),
+    [hoveredGameKey, chartGames, currentOffsetSeconds, visibleRange],
+  )
+
   function handleChartSelect(index: number): void {
     const rollup = displayRollups[index]
     if (!rollup || rollup.missing) return
+    setSelectedEmoteKeys([])
+    setFocusedSeriesKey(null)
     onPinOffset?.(rollup.offsetSeconds)
     setChartHoverOffsetSeconds(null)
   }
@@ -436,6 +474,12 @@ export function LiveStatsBand({
     chartWindow === 'full'
     && firstActivityOffsetSeconds != null
     && firstActivityOffsetSeconds > coverageStartOffsetSeconds + 10 * 60
+  const partialRangeHint =
+    chartWindow !== 'full'
+    && currentOffsetSeconds
+      > (CHART_WINDOW_SECONDS[chartWindow as keyof typeof CHART_WINDOW_SECONDS] ?? 0) + 120
+      ? `Showing last ${chartTimelineWindowLabel(chartWindow)} — pick Full stream for the entire broadcast.`
+      : null
 
   return (
     <PulseSectionCard
@@ -444,7 +488,7 @@ export function LiveStatsBand({
       style={{ marginBottom: sidebarFill ? 10 : 14, width: '100%' }}
       meta={
         <span style={styles.headerMeta}>
-          {onOpenFullAnalytics ? (
+          {onOpenFullAnalytics && !demoMode ? (
             <button type="button" style={styles.analyticsHeaderLink} onClick={onOpenFullAnalytics}>
               Open full analytics →
             </button>
@@ -516,7 +560,13 @@ export function LiveStatsBand({
       ) : null}
 
       <div ref={sparklineBlockRef} style={styles.sparklineBlock}>
-        <GamesPlayedStrip games={chartGames} durationSeconds={currentOffsetSeconds} />
+        <GamesPlayedStrip
+          games={chartGames}
+          durationSeconds={currentOffsetSeconds}
+          highlightedKey={hoveredGameKey}
+          onHighlightKey={setHoveredGameKey}
+          visibleRange={visibleRange}
+        />
         <div style={styles.chartReadoutSlot}>
           <p
             style={{
@@ -644,30 +694,34 @@ export function LiveStatsBand({
               label="Range"
               value={chartWindow}
               options={CHART_WINDOW_OPTIONS}
-              disabled={timelineLoading}
+              disabled={timelineLoading || demoMode}
               ariaLabel="Chart time range"
-              onChange={setChartWindow}
+              onChange={handleChartWindowChange}
             />
+            {partialRangeHint ? (
+              <span style={styles.partialRangeHint}>{partialRangeHint}</span>
+            ) : null}
           </div>
         </div>
-        <div ref={chartInteractionRef} style={styles.chartStack}>
+        <div ref={chartInteractionRef} style={{ ...styles.chartStack, ...(demoMode ? { pointerEvents: 'none' as const } : undefined) }}>
           <PulseOverviewChart
             rollups={displayRollups}
             games={chartGames}
             durationSeconds={currentOffsetSeconds}
             streamStartedAt={payload.startedAt}
             height={chartHeight}
-            selectedIndex={pinChartIndex}
-            previewIndex={previewChartIndex}
+            selectedIndex={demoMode ? null : pinChartIndex}
+            previewIndex={demoMode ? null : previewChartIndex}
             showViewerStrip={showViewerStrip}
             activityExpanded={activityExpanded}
             normalizeOverlaySeries={activityExpanded && selectedEmotesForOverlay.length > 0}
-            focusedSeriesKey={focusedSeriesKey}
-            onFocusedSeriesKeyChange={setFocusedSeriesKey}
-            onSelectIndex={handleChartSelect}
-            onClearSelection={handleClearChartSelection}
+            focusedSeriesKey={demoMode ? null : focusedSeriesKey}
+            onFocusedSeriesKeyChange={demoMode ? undefined : setFocusedSeriesKey}
+            onSelectIndex={demoMode ? undefined : handleChartSelect}
+            onClearSelection={demoMode ? undefined : handleClearChartSelection}
             clearSelectionBoundaryRef={chartInteractionRef}
             onHoverOffsetChange={setChartHoverOffsetSeconds}
+            highlightedGameSegmentKey={chartHighlightedGameKeyValue}
             overlayLines={emoteOverlays}
             emptyMessage={chartEmpty}
             loading={chartLoading}
@@ -679,7 +733,7 @@ export function LiveStatsBand({
         {topEmotesForChips.length > 0 ? (
           <SevenTvEmotePanel
             expanded={emotePanelExpanded}
-            onToggleExpanded={() => setEmotePanelExpanded(open => !open)}
+            onToggleExpanded={demoMode ? () => undefined : () => setEmotePanelExpanded(open => !open)}
             backendUrl={backendUrl}
             rollups={rollups}
             topEmotes={topEmotesForChips}
@@ -762,10 +816,22 @@ const styles: Record<string, CSSProperties> = {
   chartReadoutTime: { color: theme.textPrimary, fontWeight: 800 },
   chartReadoutSep: { color: theme.textMuted },
   chartRangeRow: {
+    alignItems: 'center',
     display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
     justifyContent: 'flex-end',
     margin: 0,
     minHeight: 26,
+  },
+  partialRangeHint: {
+    color: theme.textMuted,
+    flex: '1 1 180px',
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    minWidth: 0,
+    textAlign: 'right',
   },
   chartLeadIn: {
     display: 'grid',

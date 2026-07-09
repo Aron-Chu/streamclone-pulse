@@ -223,8 +223,9 @@ function OptionsApp() {
             </p>
           ) : localStackBackend ? (
             <p style={styles.help}>
-              Local Streamclone stack (<code>make up</code> on port 8090). Charts and IRC coverage can differ from
-              hosted public analytics — use only for backend development.
+              Local StreamPulse backend (<code>make up</code> in <code>streampulse-backend</code> on port 8081).
+              Charts and IRC coverage can differ from hosted public analytics — use only for BFF development.
+              Streamclone <code>:8090</code> is watch/HLS/chat only and does not serve extension APIs.
             </p>
           ) : (
             <p style={styles.help}>
@@ -266,8 +267,8 @@ function OptionsApp() {
         <p style={styles.help}>
           On <strong>hosted</strong> StreamPulse, saved channels sync as backend Protect for when capacity scales —
           they do <strong>not</strong> enable live Pulse or backfill in the extension today. Use the{' '}
-          <strong>Analytics hub</strong> to browse actively tracked channels. On a <strong>local</strong> stack (
-          <code>localhost:8090</code>), watchlist entries also start IRC while your stack runs.
+          <strong>Analytics hub</strong> to browse actively tracked channels. On a <strong>local</strong> backend (
+          <code>localhost:8081</code>), watchlist entries also start IRC while your stack runs.
         </p>
         <div style={styles.watchRow}>
           <input

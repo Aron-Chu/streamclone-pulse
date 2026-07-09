@@ -41,15 +41,22 @@ export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
-/** True when the URL targets the local Streamclone Caddy stack (not hosted IRC/API). */
+/** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
 export function isLocalStackBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
   if (!normalized) return false
   return (
-    normalized.includes('localhost:8090')
-    || normalized.includes('127.0.0.1:8090')
-    || normalized.includes('laptopworker')
+    normalized.includes('localhost:8081')
+    || normalized.includes('127.0.0.1:8081')
+    || normalized.includes('laptopworker:8081')
+    || (normalized.includes('laptopworker') && !normalized.includes(':8090'))
   )
+}
+
+/** Legacy Streamclone Caddy :8090 — watch-only after boundary split; auto-reset to hosted. */
+export function isLegacyStreamcloneBackendUrl(url: string): boolean {
+  const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
+  return normalized.includes('localhost:8090') || normalized.includes('127.0.0.1:8090')
 }
 
 /** True when the extension should use hosted Pulse Live gating (no extension-initiated IRC watch). */
@@ -70,6 +77,14 @@ export async function getBackendUrl(): Promise<string> {
   const stored = await chrome.storage.sync.get([BACKEND_URL_KEY, LOCAL_BACKEND_OPT_IN_KEY])
   const raw = String(stored[BACKEND_URL_KEY] ?? DEFAULT_BACKEND_URL).trim()
   const url = raw.replace(/\/+$/, '')
+
+  if (isLegacyStreamcloneBackendUrl(url)) {
+    await chrome.storage.sync.set({
+      [BACKEND_URL_KEY]: DEFAULT_BACKEND_URL,
+      [LOCAL_BACKEND_OPT_IN_KEY]: false,
+    })
+    return DEFAULT_BACKEND_URL
+  }
 
   if (isLocalStackBackendUrl(url) && !stored[LOCAL_BACKEND_OPT_IN_KEY]) {
     await chrome.storage.sync.set({

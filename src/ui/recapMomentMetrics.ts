@@ -2,7 +2,7 @@ import {
   momentScoreReasonLabel,
   type LiveHeatPoint,
   type LiveHeatReason,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type { ExtensionEmote, ExtensionPeak, ExtensionRollup, PulseRecapMoment } from '../shared/messages.ts'
 import { resolveRecapEmotes } from './recapEmotes.ts'
 

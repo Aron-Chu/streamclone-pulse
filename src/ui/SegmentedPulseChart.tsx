@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import type { BucketMomentPin } from './bucketMoments.ts'
 import {

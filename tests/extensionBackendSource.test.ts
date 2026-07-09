@@ -14,9 +14,9 @@ describe('extension backendSource', () => {
   })
 
   it('classifies localhost as local stack', () => {
-    expect(resolveExtensionBackendSource('http://localhost:8090')).toBe('local')
+    expect(resolveExtensionBackendSource('http://localhost:8081')).toBe('local')
     expect(extensionBackendSourceLabel('local')).toBe('Local stack')
-    expect(extensionBackendSourceCaption('http://localhost:8090')).toContain('localhost:8090')
+    expect(extensionBackendSourceCaption('http://localhost:8081')).toContain('localhost:8081')
   })
 
   it('classifies other hosts as custom', () => {

@@ -4,7 +4,7 @@ import {
   displayMomentReasonLabel,
   formatHeatOffset,
   type LiveHeatPoint,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatMomentMetricsLine } from './momentActivity.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'

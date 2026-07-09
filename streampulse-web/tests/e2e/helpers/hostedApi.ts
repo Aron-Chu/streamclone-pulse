@@ -3,9 +3,9 @@ import { expect, type Page } from '@playwright/test'
 /** Hosted StreamPulse API — default for portal e2e and visual capture. */
 export const HOSTED_API_URL = 'https://api.streampulse.stream'
 
-const LOCAL_API_PATTERN = /https?:\/\/(localhost|127\.0\.0\.1|laptopworker):8090/i
+const LOCAL_API_PATTERN = /https?:\/\/(localhost|127\.0\.0\.1|laptopworker):(8081|8090)/i
 
-/** Clear session overrides that can repoint the portal at a local Streamclone stack. */
+/** Clear session overrides that can repoint the portal at a local backend stack. */
 export async function clearBackendOverrides(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {
@@ -17,7 +17,7 @@ export async function clearBackendOverrides(page: Page): Promise<void> {
   })
 }
 
-/** Fail the test if any request hits a local :8090 backend (hosted-only guard). */
+/** Fail the test if any request hits a local backend (hosted-only guard). */
 export function attachHostedApiGuard(page: Page): string[] {
   const violations: string[] = []
   page.on('request', (request) => {

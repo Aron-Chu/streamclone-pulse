@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
   formatHeatOffset,
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
   LIVE_HEAT_SUBTITLE,
   type LiveHeatPoint,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import { CollapsedPill } from './CollapsedPill.tsx'
 import { MiniDock } from './MiniDock.tsx'
 import { LiveStatsBand } from './LiveStatsBand.tsx'
@@ -15,7 +15,7 @@ import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
-import type { ExtensionClip, ExtensionCoverageTierResponse, PulseBackfillJob, PulsePayload } from '../shared/messages.ts'
+import type { ExtensionClip, ExtensionCoverageTierResponse, PulseBackfillJob, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
 import { openStreamAnalytics } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
@@ -33,6 +33,7 @@ import {
   type OverlayMode,
   type OverlayPlacement,
   type SidebarTab,
+  type PulseCacheWindow,
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { resolvePulsePanelSections } from './pulsePanelLayout.ts'
@@ -71,9 +72,11 @@ import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
 import { resolveJumpMomentAction } from './jumpMomentAction.ts'
+import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
+import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
@@ -99,6 +102,8 @@ interface OverlayProps {
   onSidebarTabChange?: (tab: SidebarTab) => void
   onOverlayModeChange?: (mode: OverlayMode) => void
   onPulseRefresh?: () => Promise<void>
+  onPulsePayloadUpdate?: (message: PulseUpdateMessage) => void
+  onLivePollWindowChange?: (window: PulseCacheWindow) => void
   vodPulse?: ExtensionVodPulseResponse | null
   vodPulseLoading?: boolean
 }
@@ -124,6 +129,8 @@ export function Overlay({
   onSidebarTabChange,
   onOverlayModeChange,
   onPulseRefresh,
+  onPulsePayloadUpdate,
+  onLivePollWindowChange,
   vodPulse = null,
   vodPulseLoading = false,
 }: OverlayProps) {
@@ -146,6 +153,7 @@ export function Overlay({
   const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
+  const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
   const [chartPreviewOffset, setChartPreviewOffset] = useState<number | null>(null)
   const [alwaysTrackedLogins, setAlwaysTrackedLogins] = useState<string[]>([])
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
@@ -155,6 +163,53 @@ export function Overlay({
   useEffect(() => {
     setCoverageTierState(coverageTierProp)
   }, [coverageTierProp, login])
+
+  useEffect(() => {
+    onLivePollWindowChange?.(fullTimeline ? 'full' : 'recent')
+  }, [fullTimeline, onLivePollWindowChange])
+
+  const prevStreamIdRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const streamId = payload?.streamId
+    if (prevStreamIdRef.current !== undefined && prevStreamIdRef.current !== streamId) {
+      setFullTimeline(false)
+    }
+    prevStreamIdRef.current = streamId
+  }, [payload?.streamId])
+
+  function applyPulseResponse(
+    response: PulseUpdateMessage | { type?: string; payload?: PulsePayload | null },
+  ): PulsePayload | null {
+    if (response.type !== 'PULSE_UPDATE') return null
+    const message = response as PulseUpdateMessage
+    if (message.payload) {
+      onPulsePayloadUpdate?.(message)
+      return message.payload
+    }
+    return null
+  }
+
+  function handleChartWindowChange(window: ChartTimelineWindow): void {
+    if (window !== 'full') {
+      setFullTimeline(false)
+    }
+  }
+
+  const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
+    setMostReactedPinOffset(offsetSeconds)
+    if (offsetSeconds != null) {
+      setChartPinOffset(offsetSeconds)
+      setChartPreviewOffset(null)
+    }
+  }, [])
+
+  const handleChartPin = useCallback((offsetSeconds: number | null) => {
+    setChartPinOffset(offsetSeconds)
+    if (offsetSeconds != null) {
+      setMostReactedPinOffset(offsetSeconds)
+      setChartPreviewOffset(null)
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -235,6 +290,7 @@ export function Overlay({
     setCoverageCheckError(null)
     setPanelView('pulse')
     setChartPinOffset(null)
+    setMostReactedPinOffset(null)
     setChartPreviewOffset(null)
   }, [payload?.streamId, payload?.login])
 
@@ -386,6 +442,7 @@ export function Overlay({
         streamId: payload?.streamId,
       })
       if (full) {
+        applyPulseResponse(response as PulseUpdateMessage)
         setFullTimeline(true)
       }
       if ('type' in response && response.type === 'PULSE_UPDATE') {
@@ -754,6 +811,7 @@ export function Overlay({
   async function loadStreamFromStart(): Promise<void> {
     setFullTimeline(true)
     setNotice(null)
+    void requestFullTimeline()
     if (!payload?.vodId) {
       await submitPageVodHint()
     }
@@ -865,13 +923,14 @@ export function Overlay({
 
   async function requestFullTimeline(): Promise<void> {
     try {
-      await sendBackgroundMessage({
+      const response = await sendBackgroundMessage({
         type: 'GET_PULSE',
         login,
         watch: false,
         window: 'full',
         streamId: payload?.streamId,
       })
+      applyPulseResponse(response as PulseUpdateMessage)
       setFullTimeline(true)
     } catch (err) {
       setNotice({
@@ -949,6 +1008,10 @@ export function Overlay({
     return null
   }
 
+  if (sidebarBodyOnly && resolvedSidebarTab === 'chat') {
+    return null
+  }
+
   if (sidebarTabsOnly) {
     const tabsShellClass = ['pulse-shell', `placement-${resolvedPlacement}`, 'pulse-sidebar-header-tabs'].join(' ')
     return (
@@ -1002,7 +1065,7 @@ export function Overlay({
     >
       {showSidebarTabs ? (
         <div className="pulse-sidebar-tabs-wrap" style={styles.sidebarTabsWrap}>
-          <SidebarTabStrip active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
+          <PulseSidebarTabs active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
         </div>
       ) : null}
 
@@ -1137,7 +1200,8 @@ export function Overlay({
                   onOpenAnalytics={openAnalytics}
                   onOpenFullAnalytics={() => openAnalytics()}
                   onRequestFullTimeline={requestFullTimeline}
-                  onPinOffset={setChartPinOffset}
+                  onChartWindowChange={handleChartWindowChange}
+                  onPinOffset={handleChartPin}
                   pinOffsetSeconds={chartPinOffset}
                   onSaveMoment={point => void saveMoment(point)}
                   saveMomentBusy={saveBusy}
@@ -1152,12 +1216,12 @@ export function Overlay({
                   payload={displayPayload}
                   backendUrl={backendUrl}
                   sidebarFill={sidebarSnapped}
-                  pinnedOffsetSeconds={chartPinOffset}
+                  pinnedOffsetSeconds={mostReactedPinOffset}
                   onJump={jumpMoment}
                   onSave={point => void saveMoment(point)}
                   onAnalytics={openAnalyticsForMoment}
                   onHighlightOffset={setChartPreviewOffset}
-                  onPinOffset={setChartPinOffset}
+                  onPinOffset={handleMostReactedPin}
                   saveBusy={saveBusy}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                 />
@@ -1499,7 +1563,7 @@ function SidebarHeaderBar({
       >
         <PanelCollapseIcon />
       </button>
-      <SidebarTabStrip active={active} onChange={onChange} compact />
+      <PulseSidebarTabs active={active} onChange={onChange} compact />
       <button
         type="button"
         className={`pulse-sidebar-header-edge${chattersOpen ? ' pulse-sidebar-header-edge-active' : ''}`}
@@ -1538,43 +1602,6 @@ function ChattersIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
       <path d="M5.5 7a2.25 2.25 0 1 0 0-4.5A2.25 2.25 0 0 0 5.5 7Zm5 0a2.25 2.25 0 1 0 0-4.5A2.25 2.25 0 0 0 10.5 7ZM2 12.25c0-1.933 1.567-3.5 3.5-3.5s3.5 1.567 3.5 3.5H2Zm5 0c0-1.567 1.015-2.896 2.422-3.364A3.49 3.49 0 0 0 10.5 8c.96 0 1.83.388 2.458 1.014A3.49 3.49 0 0 0 10.5 12.25H7Z" />
     </svg>
-  )
-}
-
-function SidebarTabStrip({
-  active,
-  onChange,
-  compact = false,
-}: {
-  active: SidebarTab
-  onChange: (tab: SidebarTab) => void
-  compact?: boolean
-}) {
-  return (
-    <div
-      className={`pulse-sidebar-tabs${compact ? ' pulse-sidebar-tabs-compact' : ''}`}
-      role="tablist"
-      aria-label="Chat or Pulse"
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={active === 'chat'}
-        className={`pulse-sidebar-tab${active === 'chat' ? ' active' : ''}`}
-        onClick={() => onChange('chat')}
-      >
-        Chat
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={active === 'pulse'}
-        className={`pulse-sidebar-tab${active === 'pulse' ? ' active' : ''}`}
-        onClick={() => onChange('pulse')}
-      >
-        Pulse
-      </button>
-    </div>
   )
 }
 

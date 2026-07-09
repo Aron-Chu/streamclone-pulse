@@ -76,16 +76,25 @@ export function normalizeChartValue(value: number, max: number): number {
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)))
 }
 
+export function bucketRollupsToMinutes(rollups: ExtensionRollup[]): Map<number, ExtensionRollup> {
+  const buckets = new Map<number, ExtensionRollup>()
+  for (const rollup of rollups) {
+    const bucketOffset = Math.floor(rollup.offsetSeconds / 60) * 60
+    const existing = buckets.get(bucketOffset)
+    if (!existing || rollupChartActivityScore(rollup) > rollupChartActivityScore(existing)) {
+      buckets.set(bucketOffset, { ...rollup, offsetSeconds: bucketOffset })
+    }
+  }
+  return buckets
+}
+
 export function zeroFillRollupsForRecap(
   rollups: ExtensionRollup[],
   fromOffset: number,
   toOffset: number,
 ): ExtensionRollup[] {
   if (toOffset <= fromOffset) return rollups
-  const byOffset = new Map<number, ExtensionRollup>()
-  for (const rollup of rollups) {
-    byOffset.set(rollup.offsetSeconds, rollup)
-  }
+  const byOffset = bucketRollupsToMinutes(rollups)
   const step = 60
   const out: ExtensionRollup[] = []
   for (let off = fromOffset; off <= toOffset; off += step) {

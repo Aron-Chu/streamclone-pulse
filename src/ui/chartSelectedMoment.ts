@@ -7,7 +7,7 @@ import {
   topEmotesFromRollup,
   type LiveHeatPoint,
   type LiveHeatReason,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
 import { emoteSelectionKey } from './chatActivityEmotes.ts'
 import { nearestRollupForOffset } from './extensionChartPoints.ts'

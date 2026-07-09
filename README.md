@@ -5,7 +5,7 @@ MV3 overlay for Twitch that reads Pulse analytics from **StreamPulse hosted** (`
 ## Prerequisites
 
 1. Node 20+.
-2. **Optional:** local Streamclone stack on `http://localhost:8090` (`make up` in the main repo) — only if you explicitly opt into local backend in Options.
+2. **Optional:** local StreamPulse backend on `http://localhost:8081` (`make up` in **streampulse-backend**) — only if you explicitly opt into local backend in Options. Public Streamclone `:8090` is watch-only and does not serve extension BFF routes.
 
 Public analytics at [streampulse.stream/analytics](https://streampulse.stream/analytics) uses the hosted API with **no beta key** and **no local stack**.
 
@@ -16,7 +16,7 @@ npm install
 npm run build
 ```
 
-`@streamclone/pulse-core` is linked from `../twitch-7tv-clone/packages/pulse-core` via `file:` in `package.json`. Adjust the path if your checkout folder name differs.
+`@streampulse/pulse-core` and `@streampulse/pulse-charts` are linked from `../streampulse-backend/packages/*` via `file:` in `package.json`.
 
 ## Load in Chrome
 
@@ -33,17 +33,19 @@ Extension **Options** (or toolbar popup) show the active **backend source** (Hos
 | Source | URL | When |
 |--------|-----|------|
 | **Hosted corpus** (default) | `https://api.streampulse.stream` | Normal use — matches public portal |
-| **Local stack** | `http://localhost:8090` | Requires explicit save in Options (`localBackendOptIn`); stale localhost URLs auto-reset to hosted |
+| **Local backend** | `http://localhost:8081` | Requires explicit save in Options (`localBackendOptIn`); stale localhost URLs auto-reset to hosted |
 | **Custom API** | any other HTTPS host | Advanced / staging only |
 
 Poll interval defaults to 30s. Beta keys are optional operator tools — **not required** for public `/analytics`.
+
+Popup **“Backend OK (v0.3.0-rc18)”** (or similar) is the **hosted API deploy version** from `/v1/extension/health` — not the extension manifest version. Private ops pins which tag runs; release tags are still built from public streamclone. See streamclone [`docs/ops-migration-truth-table.md`](../twitch-7tv-clone/docs/ops-migration-truth-table.md).
 
 ## Tests
 
 ```bash
 npm run typecheck
 npm test
-go test ./internal/analytics/...   # run in streamclone repo for BFF
+go test ./internal/analytics/...   # run in streampulse-backend repo for BFF
 ```
 
 ## GitHub repo (manual)

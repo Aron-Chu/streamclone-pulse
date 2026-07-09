@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { isEmoteSpikeReason, isViewerSpikeReason } from '@streamclone/pulse-core'
+import { isEmoteSpikeReason, isViewerSpikeReason } from '@streampulse/pulse-core'
 import { theme } from './theme.ts'
 
 export function momentReasonLabelStyle(

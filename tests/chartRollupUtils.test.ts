@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { gameSegmentPlotBounds } from '@streamclone/pulse-charts'
+import { gameSegmentPlotBounds } from '@streampulse/pulse-charts'
 import {
+  areaPathInBand,
   chartBarBucketOpacity,
+  easeInOutCubic,
   extendViewerSeriesToLeadingEdge,
   firstViewerOffsetSeconds,
   linePathInBand,
   plotY,
+  rampNullableSeriesFromStreamStart,
   barDisplayAxisMax,
   rollupsToChartMinuteRollups,
+  smoothLinePathInBand,
   smoothNullableSeriesValues,
   smoothSeriesValues,
   trendSmoothingWindow,
@@ -98,10 +102,10 @@ describe('chartBarBucketOpacity', () => {
 })
 
 describe('trendSmoothingWindow', () => {
-  it('uses wider windows for longer timelines', () => {
-    expect(trendSmoothingWindow(20)).toBe(5)
-    expect(trendSmoothingWindow(60)).toBe(7)
-    expect(trendSmoothingWindow(200)).toBe(9)
+  it('uses lighter windows so trend lines stay closer to minute data', () => {
+    expect(trendSmoothingWindow(20)).toBe(3)
+    expect(trendSmoothingWindow(60)).toBe(5)
+    expect(trendSmoothingWindow(200)).toBe(7)
   })
 })
 
@@ -161,7 +165,47 @@ describe('extendViewerSeriesToLeadingEdge', () => {
   })
 })
 
+describe('rampNullableSeriesFromStreamStart', () => {
+  it('ramps from 0 at stream start to the first positive sample', () => {
+    const values = [null, null, 1000, 900] as Array<number | null>
+    const ramped = rampNullableSeriesFromStreamStart(values)
+    expect(ramped[0]).toBe(0)
+    expect(ramped[1]).toBeGreaterThan(0)
+    expect(ramped[1]).toBeLessThan(1000)
+    expect(ramped[2]).toBe(1000)
+    expect(ramped[3]).toBe(900)
+  })
+
+  it('ease-in-out reaches the anchor at the first positive index', () => {
+    expect(easeInOutCubic(0)).toBe(0)
+    expect(easeInOutCubic(1)).toBe(1)
+  })
+})
+
+describe('smoothLinePathInBand', () => {
+  it('returns cubic-bezier paths for multi-point series', () => {
+    const path = smoothLinePathInBand([0, 500, 1200, 800], 1200, 320, 160, 4, 12, 80, 140, 0)
+    expect(path).toMatch(/^M/)
+    expect(path).toContain('C')
+  })
+})
+
 describe('linePathInBand', () => {
+  it('plots viewer-strip y coordinates inside bandTop and bandBottom', () => {
+    const height = 160
+    const bandTop = 30
+    const bandBottom = 65
+    const values = [1000, 5000, 8000, 3000]
+    const path = linePathInBand(values, 8000, 320, height, 4, 12, bandTop, bandBottom, 0)
+    expect(path.length).toBeGreaterThan(0)
+    const yMatches = [...path.matchAll(/[\d.]+/g)].map(match => Number(match[0]))
+    const yCoords = yMatches.filter((_, index) => index % 2 === 1)
+    for (const y of yCoords) {
+      expect(y).toBeGreaterThanOrEqual(bandTop - 0.5)
+      expect(y).toBeLessThanOrEqual(bandBottom + 0.5)
+    }
+  })
+
   it('plots middle-band y coordinates inside bandTop and bandBottom', () => {
     const height = 200
     const bandTop = 110
@@ -189,6 +233,14 @@ describe('linePathInBand', () => {
     const path = linePathInBand(smoothed, 100, 320, 200, 4, 12, 150, 170, 0)
     expect(path.length).toBeGreaterThan(0)
     expect(path).toMatch(/^M/)
+  })
+})
+
+describe('areaPathInBand', () => {
+  it('returns a closed area path within the viewer band', () => {
+    const path = areaPathInBand([1000, 5000, 8000], 8000, 320, 160, 4, 12, 30, 65, 0)
+    expect(path.length).toBeGreaterThan(0)
+    expect(path).toMatch(/ Z$/)
   })
 })
 

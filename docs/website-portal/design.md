@@ -6,7 +6,7 @@
 |---|---|
 | **Status** | Draft v1 — design for build |
 | **Owner** | Aron-Chu |
-| **Source of truth** | Streamclone analytics backend (`internal/analytics/*`) + Postgres |
+| **Source of truth** | **streampulse-backend** (`internal/analytics/*`) + Postgres |
 | **Companion PRD** | [`website-portal-requirements.md`](../pulse-extension/website-portal-requirements.md) |
 | **Backend specs** | [`../pulse-extension/design.md`](../pulse-extension/design.md), [`../pulse-extension/requirements.md`](../pulse-extension/requirements.md) |
 
@@ -14,10 +14,11 @@
 
 | Term | Meaning |
 |------|---------|
-| **Streamclone** | Backend engine + existing analytics stack (Go, Postgres, Redis, workers). |
+| **Streamclone** | Public desktop Twitch replica (watch / HLS / chat / emotes) — **not** StreamPulse BFF after boundary split. |
+| **streampulse-backend** | Private StreamPulse Go API (extension BFF, portal BFF, ingest, hub). |
 | **Streamclone Pulse** | Chrome MV3 extension — the live Twitch overlay. |
 | **StreamPulse** | This product: public website + user portal at `streampulse.stream`. |
-| **Hosted API** | `https://api.streampulse.stream` (Cloudflare Tunnel → **hosted-production-vps** Caddy `:8090`; operator config in private **streampulse-ops**). |
+| **Hosted API** | `https://api.streampulse.stream` (Cloudflare Tunnel → **hosted-production-vps**; operator config in private **streampulse-ops**). |
 
 ### Decisions resolved in this design (the ambiguities)
 
@@ -25,7 +26,7 @@
 |---|----------|------------|
 | D-1 | **MVP watchlist storage** | Beta-key-scoped, **server-side in Postgres** (`pulse_watchlist`, keyed by `principal_id = betaKeyHash`). Not browser-only. Migrates/mirrors to D1 in V2. (§10.1) |
 | D-2 | **MVP identity** | `principalId = sha256(betaKey)` truncated. V2 = `deviceId`; V3 = account `userId`. Single `principalId` abstraction everywhere. (§7.4) |
-| D-3 | **Framework** | **Vite + React + TypeScript**, static-prerendered landing, SPA dashboard, deployed on Cloudflare Pages. Reuses `@streamclone/pulse-core` / `pulse-ui`. (§5.1) |
+| D-3 | **Framework** | **Vite + React + TypeScript**, static-prerendered landing, SPA dashboard, deployed on Cloudflare Pages. Reuses `@streampulse/pulse-core` / `@streampulse/pulse-charts`. (§5.1) |
 | D-4 | **Dashboard URL** | Path-based `/dashboard` (single Pages app) for MVP; `app.` subdomain deferred. (§21) |
 | D-5 | **Saved moments storage** | Stay **Postgres-only** (single source with extension `pulse_bookmarks`); never copied into D1. (§12) |
 
@@ -33,14 +34,14 @@
 
 ## 1. Overview
 
-StreamPulse is the **management, review, and setup layer** for the Streamclone Pulse experience. It is not a second analytics engine and not a copy of the Twitch overlay. It is a thin client over the existing Streamclone backend, plus a small amount of website-owned user state (watchlists).
+StreamPulse is the **management, review, and setup layer** for the Streamclone Pulse experience. It is not a second analytics engine and not a copy of the Twitch overlay. It is a thin client over the **StreamPulse backend** (`streampulse-backend`), plus a small amount of website-owned user state (watchlists).
 
 ### 1.1 Three surfaces, one engine
 
 ```text
 ┌────────────────────┬──────────────────────────────┬──────────────────────────────┐
-│ Streamclone Pulse  │ StreamPulse (this document)   │ Streamclone analytics app     │
-│ (Chrome extension) │ (website / portal)            │ (existing power-user app)     │
+│ Streamclone Pulse  │ StreamPulse (this document)   │ StreamPulse operator console  │
+│ (Chrome extension) │ (website / portal)            │ (power-user / legacy analytics UI) │
 ├────────────────────┼──────────────────────────────┼──────────────────────────────┤
 │ Live Twitch overlay│ Landing, setup, dashboard,    │ Deep analytics, sync controls,│
 │ on the page        │ watchlist, saved moments,     │ full heatmap tooling          │
@@ -194,7 +195,7 @@ Cloudflare side (not in repo): tunnel credentials in `deploy/cloudflared/config.
 | Mode | Backend URL | `PULSE_HOSTED_MODE` | Identity | Use |
 |------|-------------|---------------------|----------|-----|
 | **Portal dev (default)** | `https://api.streampulse.stream` | n/a (read-only public hub) | none | `npm run dev` in `streampulse-web` — no local stack required |
-| **Local stack (opt-in)** | `http://localhost:8090` | unset/false | none | `npm run dev:local` + `VITE_ALLOW_LOCAL_BACKEND=1`; Go BFF debugging only |
+| **Local backend (opt-in)** | `http://localhost:8081` | unset/false | none | `npm run dev:local` + `VITE_ALLOW_LOCAL_BACKEND=1`; **streampulse-backend** compose — not Streamclone `:8090` |
 | **Hosted beta** | `https://api.streampulse.stream` | `true` + beta keys | `betaKeyHash` | public beta on hosted-production-vps via Cloudflare |
 | **Corpus / analytics** | internal | n/a | operator | full Streamclone app + sync tooling, not StreamPulse-gated |
 
@@ -212,12 +213,12 @@ Site build targets are switched via `VITE_BACKEND_URL` (default differs per mode
 
 | Option | Verdict |
 |--------|---------|
-| **Vite + React (chosen)** | Reuses `@streamclone/pulse-core` (scoring/format/types) and `pulse-ui` (lanes, peak list) shared with the extension; static-prerender the landing; SPA for the dashboard; trivial Pages deploy. Lowest drift with the extension. |
+| **Vite + React (chosen)** | Reuses `@streampulse/pulse-core` (scoring/format/types) and `pulse-ui` (lanes, peak list) shared with the extension; static-prerender the landing; SPA for the dashboard; trivial Pages deploy. Lowest drift with the extension. |
 | Next.js / Remix | SSR is unnecessary (dashboard is auth-gated, landing is static); adds a server runtime we don't need on Pages. Reconsider only if SEO-heavy share pages (`/m/:id`, V2) demand SSR. |
 
 - **Landing + docs + status**: prerendered to static HTML at build (`vite-plugin-ssg` or route-level prerender) so first paint needs **no** live API call.
 - **Dashboard**: client-rendered SPA behind a beta-key gate, lazy-loaded chunk (not in the landing critical path).
-- **Shared packages**: `@streamclone/pulse-core` for `formatHeatOffset`, coverage/backfill types, peak adapters; `pulse-ui` for `MiniHeatmapLane`, `SignalLanes`, `PeakList`. The website imports, never re-implements.
+- **Shared packages**: `@streampulse/pulse-core` for `formatHeatOffset`, coverage/backfill types, peak adapters; `pulse-ui` for `MiniHeatmapLane`, `SignalLanes`, `PeakList`. The website imports, never re-implements.
 
 ### 5.2 Bundle / route split
 
@@ -851,7 +852,7 @@ type MomentRef = {
 }
 ```
 
-- Lives in `@streamclone/pulse-core` (`momentRef.ts`), consumed by both the extension and the website. `offsetSeconds` is canonical; `vodId` resolves later. A moment saved in the extension opens the same moment on the website and vice versa.
+- Lives in `@streampulse/pulse-core` (`momentRef.ts`), consumed by both the extension and the website. `offsetSeconds` is canonical; `vodId` resolves later. A moment saved in the extension opens the same moment on the website and vice versa.
 
 ---
 

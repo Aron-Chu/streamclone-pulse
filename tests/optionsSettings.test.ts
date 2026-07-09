@@ -68,13 +68,14 @@ describe('polling slider formatting', () => {
 describe('segmented + helpers', () => {
   it('derives a readable backend host', () => {
     expect(backendHost('https://api.streampulse.stream')).toBe('api.streampulse.stream')
-    expect(backendHost('http://localhost:8090')).toBe('localhost:8090')
+    expect(backendHost('http://localhost:8081')).toBe('localhost:8081')
     expect(backendHost('not a url')).toBe('not a url')
   })
 
   it('detects local stack backend URLs', () => {
-    expect(isLocalStackBackendUrl('http://localhost:8090')).toBe(true)
-    expect(isLocalStackBackendUrl('http://127.0.0.1:8090')).toBe(true)
+    expect(isLocalStackBackendUrl('http://localhost:8081')).toBe(true)
+    expect(isLocalStackBackendUrl('http://127.0.0.1:8081')).toBe(true)
+    expect(isLocalStackBackendUrl('http://localhost:8090')).toBe(false)
     expect(isLocalStackBackendUrl('https://api.streampulse.stream')).toBe(false)
   })
 
@@ -165,21 +166,28 @@ describe('settings persistence (mocked chrome.storage)', () => {
     expect(sessionStore['unrelated']).toBe(true)
   })
 
-  it('migrates stale localhost backend URLs to hosted prod', async () => {
+  it('migrates legacy Streamclone :8090 URLs to hosted prod', async () => {
     syncStore.backendUrl = 'http://localhost:8090'
     expect(await getBackendUrl()).toBe(DEFAULT_BACKEND_URL)
     expect(syncStore.backendUrl).toBe(DEFAULT_BACKEND_URL)
     expect(syncStore.localBackendOptIn).toBe(false)
   })
 
+  it('migrates stale localhost backend URLs without opt-in to hosted prod', async () => {
+    syncStore.backendUrl = 'http://localhost:8081'
+    expect(await getBackendUrl()).toBe(DEFAULT_BACKEND_URL)
+    expect(syncStore.backendUrl).toBe(DEFAULT_BACKEND_URL)
+    expect(syncStore.localBackendOptIn).toBe(false)
+  })
+
   it('keeps localhost when the user explicitly opts in', async () => {
-    await setBackendUrl('http://localhost:8090')
+    await setBackendUrl('http://localhost:8081')
     expect(syncStore.localBackendOptIn).toBe(true)
-    expect(await getBackendUrl()).toBe('http://localhost:8090')
+    expect(await getBackendUrl()).toBe('http://localhost:8081')
   })
 
   it('clears local opt-in when switching back to hosted', async () => {
-    await setBackendUrl('http://localhost:8090')
+    await setBackendUrl('http://localhost:8081')
     await setBackendUrl(DEFAULT_BACKEND_URL)
     expect(syncStore.localBackendOptIn).toBe(false)
     expect(await getBackendUrl()).toBe(DEFAULT_BACKEND_URL)

@@ -1,4 +1,4 @@
-import { formatHeatOffset } from '@streamclone/pulse-core'
+import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { PulseBackfillJob } from '../shared/messages.ts'
 import { isPulseBackfillTerminal, backendResolvedVod, resolvePulseCoverage, type PulseCoverageSource } from './missedMoments.ts'
 

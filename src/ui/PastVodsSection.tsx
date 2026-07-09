@@ -21,6 +21,9 @@ export interface PastVodsSectionProps {
   isLive?: boolean
   channelOffline?: boolean
   onOpenFromStart?: () => void
+  /** When set, skip background fetch and render these rows (landing demo). */
+  demoRows?: PastVodRow[]
+  demoMode?: boolean
 }
 
 export function PastVodsSection({
@@ -30,13 +33,21 @@ export function PastVodsSection({
   isLive,
   channelOffline = false,
   onOpenFromStart,
+  demoRows,
+  demoMode = false,
 }: PastVodsSectionProps) {
-  const [rows, setRows] = useState<PastVodRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [rows, setRows] = useState<PastVodRow[]>(demoRows ?? [])
+  const [loading, setLoading] = useState(!demoRows)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
+    if (demoRows) {
+      setRows(demoRows)
+      setLoading(false)
+      setError(null)
+      return
+    }
     let mounted = true
     setLoading(true)
     setError(null)
@@ -65,7 +76,7 @@ export function PastVodsSection({
     return () => {
       mounted = false
     }
-  }, [login, liveStreamId, isLive])
+  }, [login, liveStreamId, isLive, demoRows])
 
   const subtitle = channelOffline
     ? 'Recent broadcasts'
@@ -123,18 +134,18 @@ export function PastVodsSection({
               <PastVodRowCard
                 key={row.streamId}
                 row={row}
-                onAnalytics={() => openAnalytics(row.streamId)}
-                onTwitchVod={() => openTwitchVod(row)}
+                onAnalytics={demoMode ? () => undefined : () => openAnalytics(row.streamId)}
+                onTwitchVod={demoMode ? () => undefined : () => openTwitchVod(row)}
                 onFromStart={row.analyticsStatus === 'current-live' ? onOpenFromStart : undefined}
               />
             ))}
           </div>
           {hiddenCount > 0 && !expanded ? (
-            <button type="button" className="pulse-past-vod-footer" onClick={() => setExpanded(true)}>
+            <button type="button" className="pulse-past-vod-footer" disabled={demoMode} onClick={demoMode ? undefined : () => setExpanded(true)}>
               View all ({rows.length}) →
             </button>
           ) : (
-            <button type="button" className="pulse-past-vod-footer" onClick={openAllAnalytics}>
+            <button type="button" className="pulse-past-vod-footer" disabled={demoMode} onClick={demoMode ? undefined : openAllAnalytics}>
               Open all stream history →
             </button>
           )}

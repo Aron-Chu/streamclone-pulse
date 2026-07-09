@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset, type LiveHeatReason } from '@streamclone/pulse-core'
+import { formatHeatOffset, type LiveHeatReason } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'

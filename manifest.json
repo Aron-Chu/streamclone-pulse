@@ -21,8 +21,8 @@
   ],
   "permissions": ["storage", "scripting", "tabs"],
   "host_permissions": [
-    "http://localhost:8090/*",
-    "http://127.0.0.1:8090/*",
+    "http://localhost:8081/*",
+    "http://127.0.0.1:8081/*",
     "https://api.streampulse.stream/*",
     "https://cdn.7tv.app/*",
     "https://static-cdn.jtvnw.net/*",

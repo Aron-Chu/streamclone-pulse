@@ -13,6 +13,8 @@ export interface RecapAnalyticsNavProps {
   channelLogin: string
   streamId?: string
   offsetSeconds?: number | null
+  /** When true, omit hub link (header AnalyticsHubCta is visible). */
+  hideHubLink?: boolean
 }
 
 export function RecapAnalyticsNav({
@@ -20,6 +22,7 @@ export function RecapAnalyticsNav({
   channelLogin,
   streamId,
   offsetSeconds = null,
+  hideHubLink = false,
 }: RecapAnalyticsNavProps) {
   const webAnalyticsBaseUrl = useMemo(
     () => defaultWebAnalyticsBaseUrlForApi(backendUrl),
@@ -42,11 +45,11 @@ export function RecapAnalyticsNav({
     [webAnalyticsBaseUrl, channelLogin, streamId, offsetSeconds],
   )
 
-  if (!hubHref && !streamHref) return null
+  if ((!hubHref || hideHubLink) && !streamHref) return null
 
   return (
     <div style={styles.wrap}>
-      {hubHref ? (
+      {hubHref && !hideHubLink ? (
         <div style={styles.hubRow}>
           <button
             type="button"
@@ -60,6 +63,7 @@ export function RecapAnalyticsNav({
       {streamHref ? (
         <button
           type="button"
+          className="pulse-recap-analytics-cta"
           style={styles.streamCta}
           onClick={() => openAnalyticsHref(streamHref)}
         >

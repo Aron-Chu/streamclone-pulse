@@ -1,5 +1,5 @@
-import { peaksToLiveHeatPoints } from '@streamclone/pulse-core'
-import type { LiveHeatPoint, LiveHeatReason } from '@streamclone/pulse-core'
+import { mergeRecapMoments as mergeRecapMomentsCore, peaksToLiveHeatPoints } from '@streampulse/pulse-core'
+import type { LiveHeatPoint, LiveHeatReason } from '@streampulse/pulse-core'
 import type {
   ExtensionEmote,
   ExtensionPeak,
@@ -12,37 +12,11 @@ import { pickRecapRollups, recapMomentToLiveHeatPoint, rollupAtOffset, rollupEmo
 import { nearestMomentForOffset } from './chartRollupUtils.ts'
 
 const MOMENT_SELECT_TOLERANCE_SECONDS = 90
-const MOMENT_DEDUPE_TOLERANCE_SECONDS = 60
-
-function momentHasReactionData(moment: PulseRecapMoment): boolean {
-  return (moment.chatCount ?? 0) > 0 || (moment.emoteCount ?? 0) > 0
-}
 
 function streamHasReactionCoverageFromRollups(rollups: readonly ExtensionRollup[]): boolean {
   return rollups.some(rollup =>
     !rollup.missing && ((rollup.chatCount ?? 0) > 0 || rollupEmoteCount(rollup) > 0),
   )
-}
-
-function compareMomentRank(
-  a: PulseRecapMoment,
-  b: PulseRecapMoment,
-  hasReactionCoverage: boolean,
-): number {
-  if (hasReactionCoverage) {
-    const rankA = momentHasReactionData(a) ? 0 : 1
-    const rankB = momentHasReactionData(b) ? 0 : 1
-    if (rankA !== rankB) return rankA - rankB
-  }
-  if (a.score !== b.score) return b.score - a.score
-  return a.offsetSeconds - b.offsetSeconds
-}
-
-function sortMomentsByRank(
-  moments: PulseRecapMoment[],
-  hasReactionCoverage: boolean,
-): PulseRecapMoment[] {
-  return [...moments].sort((a, b) => compareMomentRank(a, b, hasReactionCoverage))
 }
 
 export function recapMomentSelectionKey(
@@ -135,46 +109,23 @@ export function mergeRecapMoments(
   limit = 20,
   rollups: readonly ExtensionRollup[] = [],
 ): PulseRecapMoment[] {
-  const hasReactionCoverage = streamHasReactionCoverageFromRollups(rollups)
-  const candidates: PulseRecapMoment[] = []
-  for (const moment of recap?.topMoments ?? []) {
-    candidates.push(moment)
-  }
-  for (const moment of recap?.clipCandidates ?? []) {
-    candidates.push(moment)
-  }
-  for (const peak of peaks ?? []) {
-    candidates.push({
+  return mergeRecapMomentsCore(
+    recap,
+    peaks?.map(peak => ({
       offsetSeconds: peak.offsetSeconds,
       score: peak.score,
       reasons: peak.reasons,
       chatCount: peak.chatCount,
       emoteCount: peak.emoteCount,
       topEmotes: peak.topEmotes?.map(emote => ({
-        code: emote.name,
+        name: emote.name,
         count: emote.count,
         provider: emote.provider,
       })),
-    })
-  }
-
-  candidates.sort((a, b) => compareMomentRank(a, b, hasReactionCoverage))
-  const merged: PulseRecapMoment[] = []
-  for (const moment of candidates) {
-    const duplicate = merged.find(
-      existing => Math.abs(existing.offsetSeconds - moment.offsetSeconds) <= MOMENT_DEDUPE_TOLERANCE_SECONDS,
-    )
-    if (duplicate) {
-      if (compareMomentRank(moment, duplicate, hasReactionCoverage) < 0) {
-        const index = merged.indexOf(duplicate)
-        merged[index] = moment
-      }
-      continue
-    }
-    merged.push(moment)
-    if (merged.length >= limit) break
-  }
-  return sortMomentsByRank(merged, hasReactionCoverage)
+    })),
+    limit,
+    streamHasReactionCoverageFromRollups(rollups),
+  ) as PulseRecapMoment[]
 }
 
 /** Peak dart offsets for recap chart — recap moments first, then payload peaks. */

@@ -8,16 +8,16 @@ const DATE_SLUGS = (process.env.ANALYTICS_E2E_DATE_SLUGS ?? '2026-06-09,2026-06-
   .filter(Boolean)
 
 const LOCAL_BACKEND =
-  process.env.VITE_BACKEND_URL?.includes('8090') ||
+  process.env.VITE_BACKEND_URL?.includes('8081') ||
   process.env.PLAYWRIGHT_LOCAL_ANALYTICS === '1'
 
 test.describe('analytics console local sessions', () => {
   test.beforeEach(({ page: _page }, testInfo) => {
-    test.skip(!LOCAL_BACKEND, 'Set VITE_BACKEND_URL=http://127.0.0.1:8090 or PLAYWRIGHT_LOCAL_ANALYTICS=1')
+    test.skip(!LOCAL_BACKEND, 'Set VITE_BACKEND_URL=http://127.0.0.1:8081 or PLAYWRIGHT_LOCAL_ANALYTICS=1')
     testInfo.setTimeout(120_000)
   })
 
-  test('live channel route mounts without console errors', async ({ page }) => {
+  test('live channel route redirects to canonical session when available', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     const consoleRoot = page.locator('.sc-analytics-console')
 
@@ -28,7 +28,9 @@ test.describe('analytics console local sessions', () => {
     })
     await consoleRoot.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(consoleRoot.getByText('Streams', { exact: true })).toBeVisible()
-    await expect(consoleRoot.getByText('Live / Current')).toBeVisible()
+
+    const pathname = new URL(page.url()).pathname
+    expect(pathname).toMatch(new RegExp(`^/analytics/${LOGIN}/`))
 
     await assertNoConsoleErrors(page, errors)
   })

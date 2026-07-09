@@ -12,7 +12,7 @@ import {
   type LiveHeatEmote,
   type LiveHeatPoint,
   type LiveHeatResult,
-} from '@streamclone/pulse-core'
+} from '@streampulse/pulse-core'
 import type { ExtensionEmote, ExtensionPeak, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 
 export function peakReasonLabel(peak: ExtensionPeak): string {

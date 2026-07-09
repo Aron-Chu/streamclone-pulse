@@ -2,9 +2,9 @@
 
 Status: **MVP shipped / in progress**. Canonical spec in this repo; implementation spans the **streamclone-pulse** extension and the streamclone backend.
 
-> **2026-07 hosted default:** Production extension and StreamPulse portal use `https://api.streampulse.stream`. Public [`/analytics`](https://streampulse.stream/analytics) needs **no beta key** and **no local stack**. Local `http://localhost:8090` is explicit dev-only via extension Options.
+> **2026-07 hosted default:** Production extension and StreamPulse portal use `https://api.streampulse.stream`. Public [`/analytics`](https://streampulse.stream/analytics) needs **no beta key** and **no local stack**. Local BFF debugging uses `http://localhost:8081` (**streampulse-backend** compose) via explicit opt-in in extension Options — not Streamclone `:8090` (watch-only after boundary split).
 
-Related code: `@streamclone/pulse-core` (streamclone `packages/pulse-core/`), **this repo** `src/` (content script, service worker, `ui/Overlay.tsx`), streamclone `internal/analytics/extension_api.go` (BFF + Redis cache), `internal/analytics/bookmarks.go`, `internal/analytics/recap/`, streamclone frontend parity (`frontend/src/components/analytics/MostReactedLive.tsx`, `HeatmapLane.tsx`), `deploy/Caddyfile*` (`:8090`).
+Related code: `@streampulse/pulse-core` (**streampulse-backend** `packages/pulse-core/`), **this repo** `src/` (content script, service worker, `ui/Overlay.tsx`), **streampulse-backend** `internal/analytics/extension_api.go` (BFF + Redis cache), `bookmarks.go`, `recap/`.
 
 ---
 
@@ -19,7 +19,7 @@ The Chrome extension is a **thin, Twitch-native Pulse viewer**, not a second ana
 
 **Design target:** *Native-feeling Twitch overlay, shared Streamclone logic, Streamclone backend as the source of truth.* The integration is **deep visually, light technically**.
 
-**MVP = Level 2.5 (historical):** Twitch overlay + local backend (`http://localhost:8090`) + shared `pulse-core`. **Current default (2026-07):** hosted API + public `/analytics`; local stack remains explicit dev opt-in in extension Options.
+**MVP = Level 2.5 (historical):** Twitch overlay + local backend (`http://localhost:8081` streampulse-backend) + shared `@streampulse/pulse-core`. **Current default (2026-07):** hosted API + public `/analytics`; local BFF remains explicit dev opt-in in extension Options.
 
 ### Core Pulse additions (shared — not extension-only)
 
@@ -328,7 +328,7 @@ The overlay SHALL render the composite Pulse score **and** its component lanes, 
 When a tracked live stream ends, Pulse SHALL transition from "Most Reacted So Far" to a **Stream Recap**.
 
 - R12.1 On stream end (`isLive` false for a previously-live tracked stream), the overlay SHALL replace the live header with `Stream Recap` for that `streamId`.
-- R12.2 The recap SHALL show: top 10 moments, most-used 7TV emotes, biggest chat spike, funniest emote burst, best clip candidates, total messages, and peak `chat/min`, sourced from `GET /v1/pulse/streams/{streamID}/recap`.
+- R12.2 The recap SHALL show: top 10 moments, most-used emotes (all providers), biggest chat spike, funniest emote burst, best clip candidates, total messages, and peak `chat/min`, sourced from `GET /v1/pulse/streams/{streamID}/recap`.
 - R12.3 Recap is an **explicit Pulse feature**, distinct from the offline/error states (R8.3); offline-with-no-stream still shows last-stream/VOD context, but a just-ended tracked stream shows the full recap.
 - R12.4 Recap moments and clip candidates SHALL support `Save Moment` (R10) and `Jump` / VOD deep link (R7) once the VOD resolves.
 - R12.5 The recap SHALL be derived from the same rollups/scoring as live Pulse (`pulse-core`) so live ranking and recap ranking agree.

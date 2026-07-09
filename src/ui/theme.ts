@@ -151,6 +151,97 @@ export const shadowStyles = `
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28) !important;
   }
+  .pulse-chart-legend-chip {
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
+      color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+  .pulse-chart-legend-chip:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+    color: ${theme.textPrimary} !important;
+    transform: translateY(-1px);
+  }
+  .pulse-chart-legend-chip-focused {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+    color: ${theme.textPrimary} !important;
+  }
+  .pulse-chart-legend-chip-focused:hover {
+    background: rgba(255, 255, 255, 0.14) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45) !important;
+  }
+  .pulse-chart-legend-chip-dimmed {
+    opacity: 0.4;
+  }
+  .pulse-chart-legend-chip-dimmed:hover {
+    opacity: 0.72 !important;
+  }
+  .pulse-chart-overlay-legend-chip {
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  }
+  .pulse-chart-overlay-legend-chip:hover {
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.55) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32), inset 2px 0 0 currentColor;
+    transform: translateY(-1px) scale(1.06);
+  }
+  .pulse-chart-expand-btn {
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  }
+  .pulse-chart-expand-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    transform: translateY(-1px);
+  }
+  .pulse-chart-expand-btn-active:hover {
+    background: rgba(139, 92, 246, 0.2) !important;
+    border-color: rgba(167, 139, 250, 0.5) !important;
+  }
+  .pulse-recap-analytics-cta {
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .pulse-recap-analytics-cta:hover {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.92) !important;
+    box-shadow: 0 6px 18px rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.35);
+    transform: translateY(-1px);
+  }
+  .pulse-recap-highlight-btn {
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .pulse-recap-highlight-btn:hover {
+    background: rgba(255, 255, 255, 0.07) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+    transform: translateY(-1px);
+  }
+  .pulse-recap-highlight-btn-selected:hover {
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.55) !important;
+  }
+  .pulse-action-chip {
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .pulse-action-chip:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    transform: translateY(-1px);
+  }
+  .pulse-action-chip-primary:hover {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45) !important;
+    box-shadow: 0 4px 12px rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22);
+  }
+  .pulse-secondary-btn {
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .pulse-secondary-btn:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: ${theme.textPrimary} !important;
+    transform: translateY(-1px);
+  }
   .pulse-emote-hover-wrap {
     display: inline-flex;
     position: relative;
@@ -809,12 +900,11 @@ export const shadowStyles = `
   .pulse-sidebar-header-tabs.pulse-shell {
     animation: none;
     backdrop-filter: none;
-    background: #0e0e10;
+    background: transparent;
     border: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0;
     box-shadow: none;
-    overflow: hidden;
+    overflow: visible;
     pointer-events: none;
   }
   .pulse-sidebar-header-row {
