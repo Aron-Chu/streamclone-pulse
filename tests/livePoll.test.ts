@@ -142,4 +142,59 @@ describe('createLivePollController backoff', () => {
     }
     expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
   })
+
+  it('defaults recurring live poll to window=recent (not full)', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({
+      type: 'PULSE_UPDATE',
+      login: 'xqc',
+      payload: null,
+    })
+
+    controller = createLivePollController(() => ({
+      kind: 'channel',
+      login: 'xqc',
+      vodId: null,
+    }))
+    controller.sync('xqc', { kind: 'channel', login: 'xqc', vodId: null }, true, true)
+
+    for (let i = 0; i < 8; i += 1) {
+      await Promise.resolve()
+    }
+
+    expect(sendBackgroundMessage).toHaveBeenCalledWith({
+      type: 'GET_PULSE',
+      login: 'xqc',
+      watch: false,
+      window: 'recent',
+    })
+  })
+
+  it('ignores setPollWindow(full) — recurring polls stay recent', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({
+      type: 'PULSE_UPDATE',
+      login: 'xqc',
+      payload: null,
+    })
+
+    controller = createLivePollController(() => ({
+      kind: 'channel',
+      login: 'xqc',
+      vodId: null,
+    }))
+    controller.setPollWindow('full')
+    controller.sync('xqc', { kind: 'channel', login: 'xqc', vodId: null }, true, true)
+
+    for (let i = 0; i < 8; i += 1) {
+      await Promise.resolve()
+    }
+
+    expect(sendBackgroundMessage).toHaveBeenCalledWith({
+      type: 'GET_PULSE',
+      login: 'xqc',
+      watch: false,
+      window: 'recent',
+    })
+  })
 })

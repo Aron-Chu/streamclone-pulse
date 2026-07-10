@@ -29,12 +29,12 @@ Start from the "Recommended first implementation batch" section at the bottom of
 | Area | Repo |
 |------|------|
 | Portal UI, extension | streamclone-pulse |
-| Go BFF, migrations, hosted env | streamclone (`../twitch-7tv-clone`) |
-| pulse-core types | streamclone `packages/pulse-core/` |
+| Go BFF, migrations, packages | **streampulse-backend** (`../streampulse-backend`) |
+| pulse-core types | **streampulse-backend** `packages/pulse-core/` |
 
 ## Endpoint defaults
 
-Portal and analytics hub (`/analytics`) use **`https://api.streampulse.stream`** by default. Use `http://localhost:8090` only when explicitly debugging the Streamclone backend stack.
+Portal and analytics hub (`/analytics`) use **`https://api.streampulse.stream`** by default. Use `http://localhost:8081` only when explicitly debugging the **streampulse-backend** local stack (not `:8090`).
 
 ## Verification commands
 
@@ -48,8 +48,8 @@ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5173/analytics
 npm run typecheck && npm test
 npx playwright test tests/e2e/analytics-hub-ux.spec.ts tests/e2e/hub-audit-regression.spec.ts --workers=1
 
-# Backend (streamclone)
-make test-analytics
+# Backend (streampulse-backend)
+cd ../streampulse-backend && make test-analytics
 curl -s https://api.streampulse.stream/v1/extension/health
 curl -s "https://api.streampulse.stream/v1/public/hub" | head -c 500
 ```

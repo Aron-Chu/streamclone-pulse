@@ -5,10 +5,13 @@ description: Triage Pulse live coverage, missing prefix, and VOD backfill UX aga
 
 # Coverage triage
 
+> **Go/backend work:** canonical skill is `../streampulse-backend/.cursor/skills/pulse/coverage-triage/SKILL.md`.
+> This copy owns the **UX triage checklist** — coverage card copy, state labels, stepper honesty, UI-layer fixes.
+
 ## Read first
 
 1. [live-coverage-requirements.md](https://github.com/Aron-Chu/streamclone-pulse/blob/master/docs/pulse-extension/live-coverage-requirements.md) — truth table, states, copy keys
-2. Backend: streamclone `internal/analytics/pulse_coverage.go`, `extension_api.go`
+2. Backend Go: **streampulse-backend** `internal/analytics/pulse_coverage.go`, `extension_api.go`
 
 ## Triage checklist
 
@@ -18,21 +21,19 @@ description: Triage Pulse live coverage, missing prefix, and VOD backfill UX aga
 - [ ] Progress/stepper reflects real job status from `GET /v1/extension/pulse/backfill/{jobId}`
 - [ ] `full_stream_tracked` only when `coverageStartOffsetSeconds ≤ 120s` tolerance
 
-## Quick probes
+## Quick probes (hosted API only)
 
 ```bash
-# Hosted (StreamPulse / extension default)
 curl -s "https://api.streampulse.stream/v1/extension/pulse/channels/<login>?window=full" \
   | jq '{state, coverageStartOffsetSeconds, canBackfill, peaks: (.peaks|length)}'
 
 curl -s "https://api.streampulse.stream/v1/extension/pulse/channels/<login>/coverage" \
   | jq '{canBackfillMissedMoments, coverageStartOffsetSeconds}'
-
-# Local stack (Streamclone backend debugging only)
-curl -s "http://localhost:8090/v1/extension/pulse/channels/<login>?window=full" | head -c 2000
 ```
 
 Key fields: `state` (`waiting_for_vod`, `live_tracking`, …), `canBackfill`, `coverageStartOffsetSeconds`.
+
+For local BFF debugging use **streampulse-backend** compose (`:8081`), not `:8090`.
 
 ## Report format
 

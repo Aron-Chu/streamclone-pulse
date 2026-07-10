@@ -22,6 +22,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  context-contract:
+    name: Owner-local context + public topology
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Owner-local context contract
+        run: bash scripts/ci-context-contract.sh
+      - name: Public topology scan
+        run: bash scripts/ci-public-topology-scan.sh
+
   extension-unit:
     name: extension-unit
     runs-on: ubuntu-latest
@@ -67,4 +79,4 @@ jobs:
           cache-dependency-path: streampulse-web/package-lock.json
       - run: npm ci
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
-      - run: npx vite build
+      - run: npm run build

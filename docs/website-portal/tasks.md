@@ -14,7 +14,7 @@ This plan builds **StreamPulse**, the public website and user portal for the Str
 
 Tasks are **ordered** and can be checked off. Each has an ID, area, priority, dependencies, files, notes, acceptance criteria, and tests. Follow IDs in dependency order; the recommended starting batch is in the final section.
 
-Naming: **Streamclone** = backend engine · **Streamclone Pulse** = extension · **StreamPulse** = this website · Hosted API = `https://api.streampulse.stream`.
+Naming: **streampulse-backend** = backend engine (Go BFF, ingest, packages) · **Streamclone** = public Twitch watch replica (watch-only after boundary split; NOT the BFF) · **Streamclone Pulse** = this extension repo · **StreamPulse** = this website · Hosted API = `https://api.streampulse.stream`.
 
 ## 2. Status legend
 
@@ -31,23 +31,20 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
 
 ## 3. Phase P0 — Infrastructure and backend readiness
 
-- [ ] INFRA-001: Cloudflare DNS + Tunnel for `api.streampulse.stream`
+- [x] INFRA-001: Cloudflare DNS + Tunnel for `api.streampulse.stream` — **done**
   - Area: infra
   - Priority: P0
   - Depends on: none
-  - Files likely touched:
-    - `deploy/cloudflared/config.yml` (from `config.yml.example`)
-    - `deploy/Caddyfile.pulse-api` / `deploy/Caddyfile.bearhost`
-    - `docs/pulse-extension/bearhost-tunnel.md`
+  - Files touched: operator config in private **streampulse-ops** (not this public repo).
+    - `deploy/cloudflared/config.yml`, Caddyfile, and runbooks live in **streampulse-ops** only.
+    - Legacy filenames (`deploy/Caddyfile.bearhost`, `docs/pulse-extension/bearhost-tunnel.md`) were rollback references — now archive.
   - Implementation notes:
-    - Create the Cloudflare tunnel on **hosted-production-vps** (`cloudflared`); route `api.streampulse.stream` → internal Caddy `:8090`. Operator runbook: private **streampulse-ops**.
-    - Legacy filenames (`deploy/Caddyfile.bearhost`, `docs/pulse-extension/bearhost-tunnel.md`) are rollback references only.
-    - No public open ports on the VPS; tunnel is outbound only.
-    - TLS terminates at Cloudflare; Caddy serves plain HTTP internally to the tunnel.
+    - Cloudflare tunnel on **hosted-production-vps** routes `api.streampulse.stream` → internal Caddy. No public open ports on the VPS; tunnel is outbound only. TLS terminates at Cloudflare.
+    - Operator runbook: private **streampulse-ops** — never committed here.
   - Acceptance criteria:
     - `curl https://api.streampulse.stream/v1/extension/health` returns `{ok:true,...}` over Cloudflare with no direct VPS port exposed.
   - Tests:
-    - manual: health curl from outside the VPS; confirm VPS firewall has no inbound API port open.
+    - manual: health curl from outside the VPS; VPS firewall has no inbound API port open.
 
 - [ ] INFRA-002: Cloudflare Pages project for `streampulse.stream`
   - Area: infra
@@ -70,9 +67,9 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
   - Priority: P0
   - Depends on: INFRA-001
   - Files likely touched:
-    - `deploy/env/profile-bearhost-pulse.env` (legacy example only)
-    - private streampulse-ops production env (authoritative — never commit paths or values)
-    - `.env.example`
+    - `deploy/env/profile-bearhost-pulse.env` (legacy example — archive; real env in **streampulse-ops**)
+    - private streampulse-ops production env (authoritative — never commit paths or values here)
+    - `.env.example` in **streampulse-backend** (values redacted)
   - Implementation notes:
     - Define: `PULSE_HOSTED_MODE=true`, `PULSE_BETA_KEYS=...`, `PULSE_MAX_ACTIVE_CHANNELS`, `PULSE_MAX_BACKFILLS`, `PULSE_MAX_CHANNELS_PER_PRINCIPAL`, `PULSE_WATCH_RATE_PER_MIN`, `PULSE_BACKFILL_RATE_PER_HOUR`, `SEVENTV_EVENTAPI_ENABLED=true`, `STREAMCLONE_VERSION`.
     - Document each in `.env.example` (values redacted); never commit real beta keys.
@@ -89,13 +86,14 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
     - `internal/analytics/pulse_hosted.go`
     - `internal/analytics/extension_api.go`
   - Implementation notes:
-    - Confirm `BetaKeyRequired()` gates `/v1/extension/pulse/*` group when `PULSE_HOSTED_MODE=true` + keys set.
-    - Ensure `POST /v1/analytics/channels/{login}/watch` is also gated in hosted mode (see API-006).
-    - 401 returns `{error:"unauthorized", hint:"Set X-Streamclone-Beta-Key header (Pulse extension options)"}`.
+    - Confirm beta-key gating for principal-scoped extension routes when keys are configured.
+    - `POST /v1/analytics/channels/{login}/watch` in hosted mode blocks **arbitrary** non-always-track admission (`403 extension_watch_disabled` / capacity gates). Guest/wrong-key callers may fall through to guest principal — do not require a blanket 401.
+    - Invalid keys used for principal-scoped mutation/list endpoints still return 401 + hint where those routes require a principal.
   - Acceptance criteria:
-    - Request without/with-bad key → 401 + hint; valid key → 200.
+    - Non-always-track hosted `/watch` without admission eligibility → 403 (or honest rate-limit), not public collector open season.
+    - Valid beta-key principal → 200 for authorized routes.
   - Tests:
-    - backend: table test for `authorized()` (valid/invalid/missing); handler 401 shape.
+    - backend: assert real hosted status codes (403/rate-limit) rather than aspirational blanket 401; principal isolation for bookmarks.
 
 - [ ] API-002: `GET /v1/public/stats` aggregate endpoint
   - Area: backend
@@ -216,13 +214,13 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
     - `internal/analytics/extension_api.go`
     - `internal/analytics/bookmarks.go`
   - Implementation notes:
-    - In hosted mode `POST /v1/analytics/channels/{login}/watch` requires a valid beta key (no unauthenticated public watch).
+    - In hosted mode `POST /v1/analytics/channels/{login}/watch` must not open public collector admission for arbitrary channels. Prefer Protect / always-track; guest callers still hit always-track gates (`403 extension_watch_disabled` when ineligible).
     - Add `principal_id`/`principal_kind` to `pulse_bookmarks` (nullable local, set hosted); scope bookmark queries by principal.
     - Bookmarks remain Postgres-only (no D1).
   - Acceptance criteria:
-    - `/watch` 401 without key; bookmarks list returns only the principal's rows in hosted mode.
+    - Arbitrary non-eligible `/watch` → 403 (or honest capacity/rate-limit); bookmarks list returns only the principal's rows when keyed.
   - Tests:
-    - backend: `/watch` unauthenticated → 401; bookmark principal isolation.
+    - backend: `/watch` non-always-track guest → 403; bookmark principal isolation.
 
 - [ ] INFRA-004: Admin/Grafana private access decision
   - Area: infra / security

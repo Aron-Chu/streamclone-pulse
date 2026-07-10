@@ -2,6 +2,8 @@
 
 Chrome MV3 extension + StreamPulse portal. **StreamPulse backend** (Go BFF, ingest, packages) lives in sibling **`../streampulse-backend`**. Public **Streamclone** (`../twitch-7tv-clone`) is the desktop Twitch replica only — not the extension/portal API source after boundary split.
 
+**Cross-repo index:** [`../streampulse-sdlc/AGENTS.md`](../streampulse-sdlc/AGENTS.md) · workspace: [`../streampulse-sdlc/streampulse-sdlc.code-workspace`](../streampulse-sdlc/streampulse-sdlc.code-workspace).
+
 ## Cursor vs generic agents
 
 | Layer | Path | Role |
@@ -41,11 +43,11 @@ For StreamPulse public website and portal work (the `streampulse.stream` site, *
 Hard guardrails:
 
 - Do not store rollups / raw chat / VOD chat / TwitchTracker / corpus data in D1.
-- Do not expose unauthenticated `/watch`.
 - Do not expose Grafana / admin publicly.
 - Do not require Twitch OAuth for MVP.
-- Do not compute Pulse scores client-side.
-- Do not fetch full-stream timelines (or Layer 2 analytics) during normal live polling.
+- Do not invent a second client scoring engine (pulse-core display fallbacks OK — see `../streampulse-sdlc/docs/guardrail-policy.md`).
+- Do not make the **default** live poll `?window=full` (user chart action only).
+- Do not open public unauthenticated collector admission for arbitrary channels.
 - Use backend peaks, coverage, sync, and backfill states as the source of truth.
 - Portal analytics must be sanitized **server-side** (`/v1/portal/analytics/*`), not by client-only stripping.
 - **One UI stack per surface** — delete or gate old analytics mounts before adding new ones. Run `cd streampulse-web && npm run check:analytics-overlap` before deploy (also in `build` / `pages:deploy:prod`). See [`.cursor/rules/analytics-no-duplicate-stack.mdc`](.cursor/rules/analytics-no-duplicate-stack.mdc).
@@ -55,7 +57,7 @@ Hard guardrails:
 | Mode | Scope | Default workspace |
 |------|-------|-------------------|
 | **Extension** | `src/`, `docs/pulse-extension/`, MV3 build/test | `streamclone-pulse` only |
-| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Same repo; do not load extension service-worker context unless API contract work |
+| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Same repo; do not load extension service-worker context unless API contract work. Landing showcase may import extension UI via Vite `@pulse-ext/ui` → `src/ui` (chrome shims only). |
 
 Cross-repo layout: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
@@ -66,9 +68,13 @@ Cross-repo layout: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 - **Extension** default backend: `https://api.streampulse.stream` (hosted). Local BFF override → **streampulse-backend** compose (e.g. `http://localhost:8081`), not Streamclone `:8090`.
 - **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit local backend only. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (restart after branch switch; `npm install` for `@streampulse/*` links).
 - New Go APIs → implement in **streampulse-backend** `internal/analytics`, not here or in public Streamclone.
-- ReplayForge / auto clipper: candidates/triggers live in streampulse-backend; ReplayForge owns render/edit/export. See streamclone [`docs/agents-streamclone-and-replayforge.md`](../twitch-7tv-clone/docs/agents-streamclone-and-replayforge.md) for integration contract during transition.
+- ReplayForge / auto clipper: candidates live in **streampulse-backend**; ReplayForge owns render/edit/export. Canonical contract: [`../replayforge/docs/INTEGRATION.md`](../replayforge/docs/INTEGRATION.md). **Current** handoff: `POST /v1/sources/streampulse/import` (RF fetches `GET /v1/pulse/clips/{id}`). Treat `POST /v1/triggers/manual` as legacy fallback only. Do not add new features to Streamclone `/v1/clipper` or `/studio`.
 - **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
 - **Public ops boundary:** never commit host IPs, SSH paths/key names, operator runbooks, or production env file paths to this repo — private **streampulse-ops** only. See [`.cursor/rules/public-repo-boundary.mdc`](.cursor/rules/public-repo-boundary.mdc).
+
+## Commits (agents)
+
+**Aron-Chu only** — no `Co-authored-by:` trailers. Cross-read streamclone [`.cursor/rules/commits.mdc`](../twitch-7tv-clone/.cursor/rules/commits.mdc) and [`AGENTS.md`](../twitch-7tv-clone/AGENTS.md) § Commits (agents). Cursor may append `Co-authored-by: Cursor`; strip before push via `git commit-tree` + `git update-ref` (`git -c alias.commit-tree= commit-tree …` on Windows). Squash/rebase when needed; commit only when the user asks.
 
 ## Commands
 

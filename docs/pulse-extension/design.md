@@ -1,42 +1,40 @@
 # Streamclone Pulse Extension — Design
 
-Companion to [`requirements.md`](./requirements.md) (R1–R12) and [`tasks.md`](./tasks.md). This is the architecture/decision document: repo strategy, data flow, schema, API contract, how the extension talks to the Streamclone backend, what it takes to scale on the **hosted production stack**, edge cases, and performance.
+Companion to [`requirements.md`](./requirements.md) (R1–R12) and [`tasks.md`](./tasks.md). This is the architecture/decision document: repo strategy, data flow, schema, API contract, how the extension talks to the **streampulse-backend** BFF, what it takes to scale on the **hosted production stack**, edge cases, and performance.
 
 **UI visuals:** [`figma-handoff.md`](./figma-handoff.md) and PNG exports in [`figma/`](./figma/) — use these for implementation parity (Codex-friendly; no Figma MCP required).
 
-**Scope of the MVP:** a Twitch-native overlay (Chrome MV3) that reads Pulse from the existing Streamclone analytics backend. Backend stays the source of truth. The extension is thin: detect channel → ask to track → render Pulse → jump/save moments → recap on end. New product features (Moment memory R10, per-signal lanes R11, session recap R12) live in **core Pulse**, surfaced first in the extension.
+**Scope of the MVP:** a Twitch-native overlay (Chrome MV3) that reads Pulse from the **streampulse-backend** BFF (hosted default `https://api.streampulse.stream`; local dev opt-in `http://localhost:8081`). Backend stays the source of truth. The extension is thin: detect channel → ask to track → render Pulse → jump/save moments → recap on end. New product features (Moment memory R10, per-signal lanes R11, session recap R12) live in **core Pulse**, surfaced first in the extension.
 
 ---
 
 ## 1. Repo strategy — do we need a new repo?
 
-**Recommendation: yes, a separate repo for the extension; backend stays in the main `streamclone` repo; share logic through a published package.**
+**Decision (as shipped):** separate repo for the extension; BFF lives in **streampulse-backend** (not the public Streamclone main repo); share logic through a published package.
 
 | Option | Verdict |
 |--------|---------|
-| Add the extension as a folder in `streamclone` (`apps/chrome-extension`) | Tightest sharing, but bloats the main repo's CI (Go + compose + scraper) with a JS build target, and couples the extension's fast release cadence to backend releases. Rejected for MVP. |
-| **Separate repo `streamclone-pulse` + shared `@streamclone/pulse-core` package** | **Chosen.** Independent CI, store-release cadence, and permissions. Shared scoring/formatting logic is consumed as a versioned package, not copy-paste. |
+| Add the extension as a folder in `streamclone` (`apps/chrome-extension`) | Tightest sharing initially, but bloats the main repo's CI (Go + compose + scraper) with a JS build target, and couples the extension's fast release cadence to backend releases. Rejected. |
+| **Separate repo `streamclone-pulse` + BFF in `streampulse-backend` + shared `@streampulse/pulse-core` package** | **Chosen (current).** Independent CI, store-release cadence, and permissions. Shared scoring/formatting logic is consumed as a versioned package, not copy-paste. BFF ownership is streampulse-backend, not public Streamclone. |
 | Separate repo, copy-paste the helpers | Fast today, drift tomorrow. The whole point of R3.2/R11.3 is parity with the web app. Rejected. |
 
 ### How the shared code is shared
 
-The valuable, already-tested helpers in `frontend/src/utils/` (`liveHeat.ts`, `vodDeepLink.ts`, `momentScoring.ts`, `momentScore.ts`) are pure and DOM-free. Extract them into a package and publish to **GitHub Packages** (private npm registry, free for the org):
+The core helpers are pure and DOM-free, extracted into a package published to **GitHub Packages** (private npm registry):
 
 ```
-streamclone (main repo)
-  packages/pulse-core/         # extracted pure logic + types, published as @streamclone/pulse-core
-  frontend/                    # web app now consumes @streamclone/pulse-core instead of ../utils
-  internal/analytics/          # backend BFF + bookmarks + recap (Go) lives here
+streampulse-backend (private repo — BFF owner)
+  packages/pulse-core/         # extracted pure logic + types, published as @streampulse/pulse-core
+  internal/analytics/          # BFF + bookmarks + recap (Go) lives here
 
-streamclone-pulse (new repo)
-  package.json                 # depends on @streamclone/pulse-core@^x
-  src/...                      # extension only
+streamclone-pulse (this repo)
+  package.json                 # depends on @streampulse/pulse-core@^x
+  src/...                      # extension + streampulse-web portal
 ```
 
-- **Day-1 unblock:** while the package is being set up, the extension repo can vendor `pulse-core` as a **git submodule** pointing at `streamclone/packages/pulse-core`, then switch the import to the published package once CI publishes it. (Tracked as task P0-2.)
 - **`pulse-ui`** (React components) is extension/web-shared too, but ships **after** `pulse-core` — it has heavier deps (React/Tailwind) and the extension uses Shadow DOM, so keep it a separate publishable package and only extract once the extension's render layer stabilizes.
 
-**Net:** new repo for the extension app, no new repo for the backend (it extends the existing analytics service), one new published package for shared logic.
+**Net:** this repo owns the extension app and portal UI; **streampulse-backend** owns the BFF and shared packages; public Streamclone (`twitch-7tv-clone`) is watch-only after boundary split.
 
 ---
 
@@ -54,15 +52,17 @@ streamclone-pulse (new repo)
 │   - backend base URL + (later) device token      │
 │   - poll BFF, retry/backoff, cache in storage    │
 └────────────│─────────────────────────────────────┘
-             │ fetch (https in prod, http://localhost dev)
+             │ fetch
+             │  hosted (default): https://api.streampulse.stream
+             │  local dev opt-in: http://localhost:8081 (streampulse-backend compose)
              ▼
-┌─ Streamclone backend (Caddy :8090 / domain) ────┐
+┌─ streampulse-backend (BFF owner) ───────────────┐
 │  analytics service (chi)                         │
 │   /v1/extension/pulse/channels/{login}  (BFF)    │
 │   /v1/extension/health                           │
 │   /v1/pulse/bookmarks  (CRUD)                    │
 │   /v1/pulse/streams/{id}/recap                   │
-│   /v1/analytics/channels/{login}/watch (existing)│
+│   /v1/analytics/channels/{login}/watch           │
 │            │                  │                   │
 │   Redis (BFF cache,           Postgres            │
 │    tracking pool)              (rollups, peaks,   │
@@ -70,6 +70,9 @@ streamclone-pulse (new repo)
 │  analytics-workers: IRC collector, 7TV tokenize, │
 │   minute rollups, heatmap scoring, recap builder │
 └──────────────────────────────────────────────────┘
+  Note: public Streamclone (twitch-7tv-clone) watch stack
+  uses http://localhost:8090 for HLS/chat/emotes only —
+  not extension/portal BFF after boundary split.
 ```
 
 ### Why the service worker, not the content script (R5.1)
@@ -84,11 +87,11 @@ streamclone-pulse (new repo)
 
 ### Transport & origin rules
 
-| Concern | MVP (local) | Hosted |
-|---------|-------------|--------|
-| Backend URL | `http://localhost:8090` (mixed-content **exempt**) | `https://api.streamclone.app` (**TLS required** — see §7) |
+| Concern | Local dev opt-in | Hosted (default) |
+|---------|-----------------|------------------|
+| Backend URL | http://localhost:8081 — streampulse-backend compose (mixed-content **exempt** for localhost) | https://api.streampulse.stream (**TLS required** — see §7) |
 | Caller origin | `chrome-extension://<id>` | same |
-| CORS | `httpx.CORS` (`Access-Control-Allow-Origin: *`) is fine because MVP sends **no credentials** | If device tokens go in `Authorization` header (not cookies), `*` still works. If ever cookie-based, must echo the specific origin + `Allow-Credentials: true` (use `CORSForOrigin`). |
+| CORS | `httpx.CORS` (`Access-Control-Allow-Origin: *`) is fine because extension currently sends **no credentials** | If device tokens go in `Authorization` header (not cookies), `*` still works. If ever cookie-based, must echo the specific origin + `Allow-Credentials: true` (use `CORSForOrigin`). |
 | Preflight | `OPTIONS` already handled by `httpx.CORS` (204) | same |
 
 > **Hard constraint:** Chrome blocks fetching `http://` (non-localhost) from the extension's secure context. A public/hosted extension therefore **cannot** point at a bare IP-only HTTP endpoint — it needs HTTPS + a domain (e.g. `api.streampulse.stream` via Cloudflare Tunnel to hosted-production-vps). Pre-cutover legacy-rollback-host used IP-only HTTP; that path is rollback/archive only.
@@ -102,8 +105,10 @@ streamclone-pulse (new repo)
 
 ### Auth model
 
-- **MVP:** none. Local backend, single user, no accounts (R9.1).
-- **Hosted:** anonymous **device token** minted at `POST /v1/extension/auth/device` (opaque, stored in `chrome.storage.local`), sent as `Authorization: Bearer <token>`. Bookmarks become `user_id`-scoped. No Twitch OAuth required for read/track; OAuth only if we later need "your followed channels".
+- **Local (non-hosted):** beta key optional; local stacks intentionally allow watch without a key for developer convenience.
+- **Hosted default:** optional `X-Streamclone-Beta-Key`. Guest/wrong-key callers fall through to a guest principal and still hit always-track / top-roster gates. Arbitrary unauthenticated collector admission for non-tracked channels is blocked (`403 extension_watch_disabled`), not necessarily a blanket `401`.
+- Bookmarks/watchlists remain principal-scoped when a beta key is present. No Twitch OAuth required for read/track; OAuth only if we later need "your followed channels".
+- See [`../streampulse-sdlc/docs/guardrail-policy.md`](../../../streampulse-sdlc/docs/guardrail-policy.md) for honesty notes vs aspirational prose.
 
 ---
 
@@ -121,7 +126,7 @@ streamclone-pulse/
       mount.ts                  # SPA-nav watcher, Shadow DOM host, single-instance guard
       twitch.ts                 # login/VOD/live detection, <video> handle, seek
       bridge.ts                 # sendMessage wrappers + typed responses
-    ui/                         # consumes @streamclone/pulse-ui (or local until extracted)
+    ui/                         # consumes @streampulse/pulse-ui (or local until extracted)
       Overlay.tsx               # collapsed / mini / expanded modes (R4)
       SignalLanes.tsx           # R11
       SavedMoments.tsx          # R10
@@ -136,18 +141,18 @@ streamclone-pulse/
   .github/workflows/ci.yml      # typecheck, test, build, zip artifact
 ```
 
-Backend additions live in the main repo:
+Backend additions live in **streampulse-backend** (not public Streamclone):
 
 ```text
-streamclone/
+streampulse-backend/
   internal/analytics/
-    extension_api.go            # BFF + health handlers (new)
-    bookmarks.go                # CRUD store + handlers (new)
-    recap.go                    # recap builder + cache read (new)
+    extension_api.go            # BFF + health handlers
+    bookmarks.go                # CRUD store + handlers
+    recap.go                    # recap builder + cache read
   internal/analytics/recap/     # pure recap aggregation (mirrors pulse-core/recap.ts)
   migrations/000038_pulse_bookmarks.up.sql / .down.sql
   migrations/000039_pulse_stream_recap.up.sql / .down.sql   # optional cache table
-  packages/pulse-core/          # extracted shared TS logic
+  packages/pulse-core/          # extracted shared TS logic, published as @streampulse/pulse-core
 ```
 
 ---
@@ -210,7 +215,7 @@ Single compact payload (see `requirements.md` for the full shape): `isLive`, `tr
 
 ### 6.3 Bookmarks — R10
 | Method | Path | Body / Query | Notes |
-|--------|------|--------------|-------|
+|| Concern | Local dev opt-in | Hosted (default) |\r\n|---------|-------------|--------|\r\n| Backend URL | http://localhost:8081 � streampulse-backend compose (mixed-content **exempt** for localhost) ||------|| Concern | Local dev opt-in | Hosted (default) |\r\n|---------|-------------|--------|\r\n| Backend URL | http://localhost:8081 � streampulse-backend compose (mixed-content **exempt** for localhost) |-|-------|
 | GET | `/v1/pulse/bookmarks` | `?login=&streamId=&vodId=&limit=50&cursor=` | Cursor pagination on `created_at`. User-scoped when hosted. |
 | POST | `/v1/pulse/bookmarks` | `{streamId,vodId,offsetSeconds,label,notes,score,source}` | Returns created record w/ `id`. Server stamps `created_at`. |
 | PATCH | `/v1/pulse/bookmarks/{id}` | `{label?,notes?}` | 404 if not owner. |
@@ -226,9 +231,9 @@ Returns cached payload (top 10 moments, top emotes, biggest chat spike, funniest
 
 ## 7. Scaling on hosted production — what else is needed
 
-Today **hosted-production-vps** runs the hosted compose stack: Caddy (internal `:8090` behind Cloudflare Tunnel), `analytics` (API) + `analytics-workers` (IRC/rollups/scoring), `postgres`, `redis`, `scraper`, `metadata`, `video`, `emote`, `frontend`. Operator deploy and env live in private **streampulse-ops**. For a **local-only MVP nothing changes** — the extension talks to `http://localhost:8090`. To go **hosted/public**, in priority order:
+Today **hosted-production-vps** runs the hosted compose stack (streampulse-backend images): Caddy (internal port behind Cloudflare Tunnel at `api.streampulse.stream`), `analytics` (API) + `analytics-workers` (IRC/rollups/scoring), `postgres`, `redis`, `scraper`, `metadata`, `video`, `emote`. Operator deploy and env live in private **streampulse-ops**. The extension default is already hosted — `https://api.streampulse.stream`. Local dev uses `http://localhost:8081` (streampulse-backend compose). To go **fully public / multi-tenant**, in priority order:
 
-1. **TLS + domain (blocker).** Terminate HTTPS at Caddy for `api.streamclone.app` (Let's Encrypt). Without this, Chrome blocks the extension's fetches (mixed content). This is the single hard requirement before any external user can install.
+1. **TLS + domain — already done.** `api.streampulse.stream` terminates HTTPS at Cloudflare (Tunnel → internal Caddy). Chrome allows the extension's fetches. *(This requirement was the pre-cutover blocker; it is now resolved.)*
 2. **BFF read caching (cheap, high-leverage).** Redis-cache the BFF payload 10–15s per login so 1,000 viewers of one channel = 1 compute every 15s, not 1,000. Already designed into §6.1.
 3. **Shared tracking pool / fan-out caps.** "Who can track what" (R9.2): a channel tracked by many users must map to **one** IRC join + rollup pipeline, not one per user. Add a tracked-channel registry with refcounts + a global cap and an LRU eviction for idle channels. Protects `analytics-workers` and the scraper from a thundering herd.
 4. **Rate limiting / abuse.** Per-IP and per-device-token limits at Caddy (`rate_limit`) or a Redis token bucket in the BFF. Cap `watch` requests hardest (they create load).
@@ -238,17 +243,17 @@ Today **hosted-production-vps** runs the hosted compose stack: Caddy (internal `
 8. **Data growth.** Bookmarks are tiny. Rollups already exist. Recap cache is one row/stream. Add a retention/janitor job only if bookmark volume ever warrants it.
 9. **Managed dependencies (when one VPS isn't enough).** Move Postgres to managed/replica, Redis to managed, put a real LB in front. Not MVP; note the path so the single-VPS design doesn't paint us into a corner.
 
-**Summary:** local MVP needs nothing new on hosted-production-vps beyond dev stack. Hosted needs, minimally, **TLS+domain + BFF cache + a shared tracking pool + rate limits**; everything else is incremental.
+**Summary:** hosted default is live — extension points at `https://api.streampulse.stream`. Local dev opt-in is `http://localhost:8081` (streampulse-backend compose). Full public / multi-tenant needs, minimally, **BFF cache + shared tracking pool + rate limits + device auth**; everything else is incremental.
 
 ---
 
 ## 8. Edge cases & error handling
 
 | Case | Behavior |
-|------|----------|
+|------|| Concern | Local dev opt-in | Hosted (default) |\r\n|---------|-------------|--------|\r\n| Backend URL | http://localhost:8081 � streampulse-backend compose (mixed-content **exempt** for localhost) |--|
 | Twitch SPA navigation (no reload) | Re-detect debounced; update overlay in place; never double-mount (R1.1/R1.4). |
 | Twitch DOM/class changes | Resilient selectors + fallback dock; overlay degrades to a floating panel rather than crashing. |
-| Backend down / wrong URL | Health probe fails → actionable "Can't reach Streamclone at <url>" with Retry + Open settings (R8.1). Never zeroed charts. |
+| Backend down / wrong URL | Health probe fails → actionable "Can't reach StreamPulse at <url>" with Retry + Open settings (R8.1). Never zeroed charts. |
 | `< 5` completed rollups | Warming state with progress, not an empty Top Moments shown as final (R8.2). |
 | Live seek outside DVR buffer | `Replay after VOD` / `Open in Streamclone`; never promise "jump anywhere live" (R7.3/R7.4). |
 | VOD not yet resolved | Bookmark/peak keeps `offsetSeconds`; jump resolves once `vodId` exists (R10.5). |
@@ -278,3 +283,4 @@ Today **hosted-production-vps** runs the hosted compose stack: Caddy (internal `
 - `pulse-ui` extraction timing: after `pulse-core` proves out (P3), or inline in the extension first.
 - Device-token storage rotation policy (hosted only).
 - Whether recap cache (000039) ships in MVP or recap computes on-demand first. Default: on-demand first, add cache when read volume warrants.
+

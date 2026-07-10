@@ -164,9 +164,11 @@ export function Overlay({
     setCoverageTierState(coverageTierProp)
   }, [coverageTierProp, login])
 
+  // Recurring live poll always stays on window=recent. Explicit full-timeline
+  // actions (requestFullTimeline) are one-shot fetches; do not flip the poll window.
   useEffect(() => {
-    onLivePollWindowChange?.(fullTimeline ? 'full' : 'recent')
-  }, [fullTimeline, onLivePollWindowChange])
+    onLivePollWindowChange?.('recent')
+  }, [onLivePollWindowChange])
 
   const prevStreamIdRef = useRef<string | undefined>(undefined)
   useEffect(() => {

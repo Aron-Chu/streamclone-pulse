@@ -48,6 +48,7 @@ export type LivePollController = {
     tracking?: boolean,
     hosted?: boolean,
   ) => void
+  /** Kept for overlay wiring; recurring polls always use `recent`. */
   setPollWindow: (window: PulseCacheWindow) => void
   stop: () => void
 }
@@ -67,7 +68,9 @@ export function createLivePollController(
   let collecting = false
   let hostedBackend = true
   let consecutiveFailures = 0
-  let pollWindow: PulseCacheWindow = 'recent'
+  // Recurring live poll is always recent. Explicit full-window chart loads are
+  // one-shot GET_PULSE calls from the overlay, not a persistent poll mode.
+  const pollWindow: PulseCacheWindow = 'recent'
 
   function stopTimer(): void {
     if (timer) {
@@ -147,13 +150,12 @@ export function createLivePollController(
         void tick()
       })
     },
-    setPollWindow(window: PulseCacheWindow) {
-      pollWindow = window
+    setPollWindow(_window: PulseCacheWindow) {
+      // no-op: recurring polls never leave recent
     },
     stop() {
       activeLogin = null
       consecutiveFailures = 0
-      pollWindow = 'recent'
       stopTimer()
     },
   }
