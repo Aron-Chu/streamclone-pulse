@@ -10,6 +10,7 @@
     "dev:hosted": "node ../scripts/dev-portal.mjs",
     "dev:local": "vite --env-file .env.development.localhost",
     "build": "tsc --noEmit -p tsconfig.json && node scripts/check-analytics-tailwind.mjs && node scripts/check-analytics-overlap.mjs && vite build && node scripts/prerender.mjs && node scripts/check-backend-url.mjs",
+    "build:ci": "node scripts/check-analytics-tailwind.mjs && node scripts/check-analytics-overlap.mjs && vite build && node scripts/prerender.mjs && node scripts/check-backend-url.mjs",
     "build:vite": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --config vitest.config.ts",
