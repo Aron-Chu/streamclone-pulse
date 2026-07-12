@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * Production Cloudflare Pages deploy for streampulse.stream.
- * Requires CLOUDFLARE_API_TOKEN (and optionally CLOUDFLARE_ACCOUNT_ID).
+ *
+ * Auth: CLOUDFLARE_API_TOKEN **or** logged-in wrangler OAuth (`wrangler login`).
+ *
+ * Account: set CLOUDFLARE_ACCOUNT_ID to the Gmail account that owns apex
+ * `streampulse.stream` (Pages project `streampulse-web`). A second same-named
+ * project on the ASU account serves `app.streampulse.stream` only — deploying
+ * without the apex account ID silently updates the wrong project.
  *
  * When VITE_SENTRY_DSN is set, also requires:
  *   SENTRY_AUTH_TOKEN, SENTRY_ORG (default streampulse), SENTRY_PROJECT (default streampulse-portal)
@@ -150,9 +156,11 @@ if (viteSentryDsn) {
   console.log(`Sentry source maps uploaded for ${portalRelease}; removed ${removed} local .map files`)
 }
 
-if (!process.env.CLOUDFLARE_API_TOKEN?.trim()) {
-  console.error('pages:deploy:prod requires CLOUDFLARE_API_TOKEN')
-  process.exit(1)
+const hasApiToken = Boolean(process.env.CLOUDFLARE_API_TOKEN?.trim())
+if (!hasApiToken) {
+  console.warn(
+    'pages:deploy:prod: CLOUDFLARE_API_TOKEN unset; using wrangler OAuth credentials (wrangler login)',
+  )
 }
 
 // Production branch is `master` (not `main`) — `main` only updates preview alias.
@@ -160,7 +168,9 @@ if (!process.env.CLOUDFLARE_API_TOKEN?.trim()) {
 // --account-id (removed from `pages deploy` and causes a hard failure).
 const deployArgs = ['pages', 'deploy', 'dist', '--project-name', projectName, '--branch', 'master']
 if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
-  console.warn('pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler will use its default account')
+  console.warn(
+    'pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler may deploy the ASU app.* project instead of apex — set the Gmail account id that owns streampulse.stream',
+  )
 }
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)
