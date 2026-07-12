@@ -107,6 +107,18 @@ describe('fillActivityPoints', () => {
     expect(filled[filled.length - 2]?.chat).toBe(120)
     expect(filled[0]?.chat).toBe(0)
   })
+
+  it('keeps legacy rollup status absent and marks only generated gaps false', () => {
+    const sparse: HubActivityPoint[] = [
+      { t: alignedEnd - bucketMs, chat: 0, seventv: 0, viewers: 40_000, hasChatRollup: true },
+      { t: alignedEnd, chat: 12, seventv: 1, viewers: 55_000 },
+    ]
+    const filled = fillActivityPoints(sparse, 7 * 24 * 60)
+
+    expect(filled[filled.length - 2]?.hasChatRollup).toBe(true)
+    expect(filled[filled.length - 1]?.hasChatRollup).toBeUndefined()
+    expect(filled[0]?.hasChatRollup).toBe(false)
+  })
 })
 
 describe('normalizeActivityPointsForChart', () => {

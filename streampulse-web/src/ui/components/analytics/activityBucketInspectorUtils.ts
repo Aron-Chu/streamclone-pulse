@@ -10,7 +10,7 @@ import { buildEmoteLookup } from '../../../lib/pulseMomentsUtils'
 import { withComputedSharePct, type HubEmoteWithShare } from '../../../lib/emoteShare'
 import { compact } from './hubFormat'
 
-export type InspectorMode = 'range' | 'preview' | 'selected' | 'moment'
+export type InspectorMode = 'range' | 'preview' | 'selected'
 
 export interface InspectorRangeStats {
   stat1Label: string
@@ -66,27 +66,51 @@ export interface BucketStreamerPeak {
   emotesPerMin: number
 }
 
+/** Shared activity comparator — Hottest live rail and inspector footer must stay aligned. */
+export function compareLiveChannelsByActivity(a: HubLiveChannel, b: HubLiveChannel): number {
+  const chatA = a.chatPerMin ?? 0
+  const emotesA = a.emotesPerMin ?? 0
+  const chatB = b.chatPerMin ?? 0
+  const emotesB = b.emotesPerMin ?? 0
+  const peakA = Math.max(chatA, emotesA)
+  const peakB = Math.max(chatB, emotesB)
+  if (peakB !== peakA) return peakB - peakA
+  const viewersA = a.viewers ?? 0
+  const viewersB = b.viewers ?? 0
+  if (viewersB !== viewersA) return viewersB - viewersA
+  return chatB + emotesB - (chatA + emotesA)
+}
+
+/** Full live-channel rows ranked by chat/emote activity (not raw viewers). */
+export function rankLiveChannelsByActivity(
+  channels: HubLiveChannel[],
+  limit?: number,
+): HubLiveChannel[] {
+  const sorted = [...channels]
+    .filter((channel) => channel.login?.trim())
+    .sort(compareLiveChannelsByActivity)
+  return limit != null ? sorted.slice(0, limit) : sorted
+}
+
+/** Display-only reason label — not a Pulse score. */
+export function hottestLiveReason(channel: HubLiveChannel): string {
+  const chat = channel.chatPerMin ?? 0
+  const emotes = channel.emotesPerMin ?? 0
+  if (emotes >= chat && emotes > 0) return 'emote-led'
+  if (chat > 0) return 'chat-led'
+  if ((channel.viewers ?? 0) > 0) return 'viewer-led'
+  return 'quiet'
+}
+
 /** Top live pool channels by chat/emote rate (range-mode inspector footer). */
 export function resolveTopLiveStreamers(channels: HubLiveChannel[], limit = 5): BucketStreamerPeak[] {
-  return [...channels]
-    .filter((channel) => channel.login?.trim())
-    .map((channel) => ({
-      login: channel.login.trim().toLowerCase(),
-      displayName: channel.displayName,
-      profileImageUrl: channel.profileImageUrl,
-      chatPerMin: channel.chatPerMin ?? 0,
-      emotesPerMin: channel.emotesPerMin ?? 0,
-      viewers: channel.viewers ?? 0,
-    }))
-    .sort((a, b) => {
-      const peakA = Math.max(a.chatPerMin, a.emotesPerMin)
-      const peakB = Math.max(b.chatPerMin, b.emotesPerMin)
-      if (peakB !== peakA) return peakB - peakA
-      if (b.viewers !== a.viewers) return b.viewers - a.viewers
-      return b.chatPerMin + b.emotesPerMin - (a.chatPerMin + a.emotesPerMin)
-    })
-    .slice(0, limit)
-    .map(({ viewers: _viewers, ...row }) => row)
+  return rankLiveChannelsByActivity(channels, limit).map((channel) => ({
+    login: channel.login.trim().toLowerCase(),
+    displayName: channel.displayName,
+    profileImageUrl: channel.profileImageUrl,
+    chatPerMin: channel.chatPerMin ?? 0,
+    emotesPerMin: channel.emotesPerMin ?? 0,
+  }))
 }
 
 export function aggregateEmotesFromMoments(moments: FigmaMomentRow[], max = 10): HubEmote[] {

@@ -8,6 +8,8 @@ export interface KpiCardProps {
   tone?: KpiTone
   loading?: boolean
   showLiveDot?: boolean
+  /** Stable selector for Playwright data-ready gates. */
+  testId?: string
 }
 
 export function KpiCard({
@@ -18,12 +20,14 @@ export function KpiCard({
   tone = 'neutral',
   loading,
   showLiveDot,
+  testId,
 }: KpiCardProps) {
   return (
     <div
       className={`hub-command-header__kpi hub-command-header__kpi--${tone}`}
       aria-busy={loading || undefined}
       title={title}
+      data-testid={testId}
     >
       <span className="hub-command-header__kpi-label">
         {showLiveDot ? (

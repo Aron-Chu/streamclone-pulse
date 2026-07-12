@@ -140,7 +140,7 @@ function MomentEmotesCell({
   if (rollups.length > 0) {
     return (
       <span className="pulse-moments__peak-emotes" aria-label="Top emotes this minute">
-        {rollups.slice(0, 3).map((emote) => {
+        {rollups.slice(0, 3).map((emote, index) => {
           const resolved = resolveMomentEmote(
             { ...moment, topEmotes: [emote], topEmoteCode: emote.name },
             lookup ?? new Map(),
@@ -150,7 +150,7 @@ function MomentEmotesCell({
           const href = momentEmoteExternalUrl(resolved.name, resolved.provider)
           return (
             <a
-              key={`${emote.provider ?? 'emote'}-${emote.name}`}
+              key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
               className={`pulse-moments__peak-emote${resolved.imageUnavailable ? ' pulse-moments__peak-emote--text-only' : ''}`}
               href={href}
               target="_blank"
@@ -197,6 +197,18 @@ function MomentEmotesCell({
     return (
       <span className="pulse-moments__peak-emotes-empty" title={momentEmoteRollupsEmptyHint(moment)}>
         No emotes
+      </span>
+    )
+  }
+
+  const opening =
+    (moment.kind ?? '').trim().toLowerCase() === 'stream_opening' ||
+    (moment.activityTag ?? '').trim().toLowerCase() === 'early_stream' ||
+    moment.label.toLowerCase().includes('just went live')
+  if (opening) {
+    return (
+      <span className="pulse-moments__peak-emotes-empty" title={momentEmoteRollupsEmptyHint(moment)}>
+        Opening
       </span>
     )
   }

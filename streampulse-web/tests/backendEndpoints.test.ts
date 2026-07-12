@@ -14,8 +14,8 @@ describe('backendEndpoints', () => {
   })
 
   it('treats localhost as custom, not a portal preset', () => {
-    expect(resolveDevBackendEndpointId('http://localhost:8090')).toBe('custom')
-    expect(resolveDevBackendEndpointId('http://127.0.0.1:8090/')).toBe('custom')
+    expect(resolveDevBackendEndpointId('http://localhost:8081')).toBe('custom')
+    expect(resolveDevBackendEndpointId('http://127.0.0.1:8081/')).toBe('custom')
     expect(resolveDevBackendEndpointId(DEFAULT_PRODUCTION_BACKEND_URL)).toBe('hosted')
   })
 

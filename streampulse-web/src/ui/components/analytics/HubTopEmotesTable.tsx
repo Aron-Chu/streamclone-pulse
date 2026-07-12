@@ -82,19 +82,19 @@ export function HubTopEmotesTable({
                   height={18}
                   fallbackClassName="figma-emote-chip__fallback"
                 />
-                <span className="hub-top-emotes-inspector__chip-text">
-                  <span className="hub-top-emotes-inspector__chip-name" title={emote.name}>
-                    {emote.name}
-                  </span>
-                  {emote.provider ? (
-                    <span
-                      className="pulse-moments__inspector-provider hub-top-emotes-inspector__provider"
-                      data-provider={providerCssVarKey(emote.provider)}
-                    >
-                      {providerLabel(emote.provider)}
-                    </span>
-                  ) : null}
+                <span className="hub-top-emotes-inspector__chip-name" title={emote.name}>
+                  {emote.name}
                 </span>
+              </span>
+              <span className="hub-top-emotes-inspector__provider-slot">
+                {emote.provider ? (
+                  <span
+                    className="pulse-moments__inspector-provider hub-top-emotes-inspector__provider"
+                    data-provider={providerCssVarKey(emote.provider)}
+                  >
+                    {providerLabel(emote.provider)}
+                  </span>
+                ) : null}
               </span>
               <span className="hub-top-emotes-inspector__count tnum">{compact(emote.count)}</span>
               <span className="hub-top-emotes-inspector__share-cell">

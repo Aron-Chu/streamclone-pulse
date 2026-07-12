@@ -31,6 +31,8 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
     "@radix-ui/react-tabs": "^1.1.15",
+    "@sentry/react": "^10.65.0",
+    "@sentry/vite-plugin": "^5.4.0",
     "@streampulse/analytics-console": "file:../../streampulse-backend/packages/analytics-console",
     "@streampulse/pulse-charts": "file:../../streampulse-backend/packages/pulse-charts",
     "@streampulse/pulse-core": "file:../../streampulse-backend/packages/pulse-core",
@@ -56,6 +58,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "6.0.3",
     "vite": "8.0.16",
-    "vitest": "3.2.4"
+    "vitest": "3.2.4",
+    "wrangler": "^4.110.0"
   }
 }

@@ -26,6 +26,20 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
     IntersectionObserverStub as unknown as typeof IntersectionObserver
 }
 
+class ResizeObserverStub {
+  constructor(_callback: ResizeObserverCallback) {}
+
+  observe(): void {}
+
+  unobserve(): void {}
+
+  disconnect(): void {}
+}
+
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+}
+
 if (typeof window.matchMedia !== 'function') {
   window.matchMedia = (query: string): MediaQueryList => ({
     matches: false,

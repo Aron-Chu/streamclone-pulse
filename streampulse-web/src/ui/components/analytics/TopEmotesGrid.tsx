@@ -37,7 +37,7 @@ export function TopEmotesGrid({ emotes, loading = false }: TopEmotesGridProps) {
       <div className="hub-empty">
         <Smile size={22} aria-hidden="true" />
         <strong>No emote activity yet</strong>
-        <span>Top 7TV emotes across live rooms appear here once chat starts flowing.</span>
+        <span>Top emotes across live rooms appear here once chat starts flowing.</span>
       </div>
     )
   }

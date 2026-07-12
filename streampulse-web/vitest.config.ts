@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const pulseRoot = resolve(__dirname, '..')
 
 const analyticsConsoleRoot = resolve(__dirname, '../../streampulse-backend/packages/analytics-console')
 const pulseChartsRoot = resolve(__dirname, '../../streampulse-backend/packages/pulse-charts')
@@ -17,6 +18,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
     alias: [
       { find: '@', replacement: resolve(__dirname, 'src') },
+      { find: '@pulse-ext/ui', replacement: resolve(pulseRoot, 'src/ui') },
       {
         find: /^@streampulse\/analytics-console\/(.*)$/,
         replacement: `${resolve(analyticsConsoleRoot, 'src')}/$1`,

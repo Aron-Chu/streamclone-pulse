@@ -88,13 +88,15 @@
 
 .sc-analytics-console .sc-console-scroll,
 .sc-analytics-console .sc-moment-list {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
 }
 
 .sc-analytics-console .sc-console-scroll::-webkit-scrollbar,
 .sc-analytics-console .sc-moment-list::-webkit-scrollbar {
-  width: 6px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .sc-analytics-console .sc-console-scroll::-webkit-scrollbar-button,
@@ -106,13 +108,25 @@
 
 .sc-analytics-console .sc-console-scroll::-webkit-scrollbar-thumb,
 .sc-analytics-console .sc-moment-list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
+  display: none;
+  background: transparent;
 }
 
 .sc-analytics-console .sc-console-scroll::-webkit-scrollbar-track,
 .sc-analytics-console .sc-moment-list::-webkit-scrollbar-track {
+  display: none;
   background: transparent;
+}
+
+.sc-analytics-console :is(.overflow-y-auto, .overflow-x-auto, .overflow-auto) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sc-analytics-console :is(.overflow-y-auto, .overflow-x-auto, .overflow-auto)::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /*

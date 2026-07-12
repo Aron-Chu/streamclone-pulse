@@ -310,7 +310,7 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
     return startScrollScene({
       scene,
       sticky: stickyRef.current,
-      onProgress: (p) => {
+      onProgress: (p, _raw) => {
         const wipe = clamp01(p / 0.72) // left→right playhead reveal
         const sigv = clamp01(p / 0.12) // viewers baseline + counters
         const sigc = clamp01((p - 0.14) / 0.1) // chat bars layer

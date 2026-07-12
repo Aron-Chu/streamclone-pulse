@@ -25,8 +25,8 @@
   --chart-3: 160 84% 45%;
   --chart-4: 43 96% 56%;
   --chart-5: 347 89% 65%;
-  /* chat-volume bars — teal, pairs with lavender viewers line */
-  --chart-bar: 168 78% 64%;
+  /* chat-volume bars — muted purple backdrop behind velocity lines */
+  --chart-bar: 258 42% 58%;
   --radius: 0.5rem;
   /* Figma Make slate / indigo alignment */
   --hx-bg: #09090b;
@@ -1371,6 +1371,32 @@
   color: hsl(var(--muted-foreground));
   flex-wrap: wrap;
 }
+.hubx .hx-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.hubx .hx-legend-chip:hover {
+  border-color: hsl(var(--border));
+  background: hsl(var(--sp-surface-2, var(--secondary)) / 0.35);
+}
+.hubx .hx-legend-chip.is-focused {
+  border-color: hsl(var(--border));
+  background: hsl(var(--sp-surface-2, var(--secondary)) / 0.55);
+  color: hsl(var(--foreground));
+}
+.hubx .hx-legend-chip.is-dimmed {
+  opacity: 0.4;
+}
 .hubx .hx-chart-actions {
   display: flex;
   align-items: center;
@@ -1380,15 +1406,23 @@
 }
 .hubx .hx-chart-header {
   display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  margin-bottom: 0.65rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem 0.75rem;
+  margin-bottom: 0.45rem;
 }
 .hubx .hx-chart-header__window {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.35rem;
+  flex: 0 0 auto;
+}
+.hubx .hx-chart-header .hx-chart-actions {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .hubx .hx-chart-header__window .hx-range-tabs--window {
   margin-right: 0;
@@ -1477,8 +1511,9 @@
   outline: none;
   box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
 }
-.hubx .hx-legend span {
-  display: flex;
+.hubx .hx-legend span,
+.hubx .hx-legend-chip {
+  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
 }
@@ -1508,25 +1543,25 @@
   background: hsl(var(--sp-chart-chat, var(--chart-bar))) !important;
 }
 /* activity chart — chat-volume bars sit BEHIND the velocity lines as a subtle
-   volume backdrop. They stay faded/transparent by default so the lines read
-   clearly, and only the bar directly under the cursor lights up bright blue. */
+   faded-purple volume backdrop. Default fill stays quiet so lines dominate;
+   hover/selection only slightly lift opacity. */
 .hubx .hx-chart2 .bars .hx-chat-bar {
-  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.12);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.08);
   opacity: 1;
   transition: fill 120ms ease, opacity 120ms ease;
 }
 .hubx .hx-chart2 .bars .hx-chat-bar.is-active {
-  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.92);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.42);
   opacity: 1;
 }
 .hubx .hx-chart2 .bars .hx-chat-bar.is-selected {
-  fill: hsl(var(--sp-chart-chat, var(--chart-bar)));
-  stroke: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.5);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.55);
+  stroke: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.35);
   stroke-width: 0.5px;
   opacity: 1;
 }
 .hubx .hx-chart2 .bars .hx-chat-bar.is-accent {
-  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.55);
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.38);
   stroke: hsl(var(--fma-amber) / 0.65);
   stroke-width: 0.5px;
   opacity: 1;
@@ -1650,21 +1685,24 @@
   justify-self: end;
 }
 
-/* Shared label/plot grid — chart, axis, and provider lanes align on one x scale. */
-.hubx .hx-plot-stack {
-  --hx-provider-label-w: 3.5rem;
-}
+/* Shared label/plot grid — provider lanes overlay abbrev pills on full-width plots. */
 .hubx .hx-plot-stack__row {
   display: grid;
-  grid-template-columns: var(--hx-provider-label-w) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.55rem;
   align-items: stretch;
 }
+.hubx .hx-plot-stack__row--full {
+  grid-template-columns: minmax(0, 1fr);
+}
 .hubx .hx-plot-stack__gutter {
-  display: block;
+  display: none;
 }
 .hubx .hx-plot-stack__plot {
   min-width: 0;
+}
+.hubx .hx-plot-stack__plot--chart {
+  position: relative;
 }
 .hubx .hx-plot-stack .hx-chart-axis-labels {
   margin-top: 0;
@@ -1673,13 +1711,20 @@
   margin-top: 0;
 }
 .hubx .hx-plot-stack .hx-axis {
-  margin-top: 0.5rem;
+  margin-top: 0.12rem;
 }
 
 .hubx .hx-chart-tip-slot {
-  position: relative;
-  min-height: 3.5rem;
-  margin-top: 0.35rem;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: visible;
+  pointer-events: none;
 }
 
 .hubx .hx-provider-lanes {
@@ -1698,19 +1743,28 @@
   color: hsl(var(--muted-foreground));
 }
 .hubx .hx-provider-lane {
-  display: grid;
-  grid-template-columns: var(--hx-provider-label-w) minmax(0, 1fr);
-  gap: 0.55rem;
-  align-items: center;
+  display: block;
   height: 20px;
 }
 .hubx .hx-provider-lane__label {
+  position: absolute;
+  left: 0.35rem;
+  top: 50%;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.62rem;
+  gap: 0.28rem;
+  padding: 0.06rem 0.32rem 0.06rem 0.24rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border) / 0.55);
+  background: hsl(var(--background) / 0.82);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: hsl(var(--muted-foreground));
   text-align: left;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 .hubx .hx-provider-lane__dot {
   width: 6px;
@@ -1824,8 +1878,153 @@
 .hubx .hx-chart2 .hx-crosshair {
   will-change: left, top;
 }
+.hubx .hx-chart2 .hx-bucket-cue {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 0;
+  transform: translateX(-50%);
+  color: hsl(var(--fma-amber));
+  pointer-events: none;
+}
+.hubx .hx-chart2 .hx-bucket-cue__line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    currentColor 16%,
+    currentColor 84%,
+    transparent
+  );
+  opacity: 0.82;
+  box-shadow: 0 0 18px hsl(var(--fma-amber) / 0.36);
+}
+.hubx .hx-chart2 .hx-bucket-cue__node {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.68rem;
+  height: 0.68rem;
+  transform: translate(-50%, -50%);
+  border: 2px solid hsl(var(--background));
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow:
+    0 0 0 1px currentColor,
+    0 0 18px hsl(var(--fma-amber) / 0.45);
+}
+.hubx .hx-chart2 .hx-bucket-cue__ring {
+  position: absolute;
+  inset: -0.42rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  opacity: 0;
+}
+.hubx .hx-chart2 .hx-bucket-cue__label {
+  position: absolute;
+  top: 0.45rem;
+  left: 50%;
+  max-width: 8rem;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid hsl(var(--fma-amber) / 0.34);
+  border-radius: 999px;
+  background: hsl(var(--background) / 0.82);
+  box-shadow: 0 10px 24px -16px hsl(var(--fma-amber) / 0.65);
+  color: hsl(var(--fma-amber));
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 750;
+  line-height: 1;
+  padding: 0.28rem 0.46rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hubx .hx-chart2 .hx-bucket-cue[data-edge='start'] .hx-bucket-cue__label {
+  left: 0;
+  transform: translateX(0);
+}
+.hubx .hx-chart2 .hx-bucket-cue[data-edge='end'] .hx-bucket-cue__label {
+  right: 0;
+  left: auto;
+  transform: translateX(0);
+}
+.hubx .hx-chart2 .hx-bucket-cue--accent {
+  color: hsl(var(--sp-chart-emotes, var(--chart-4)));
+}
+.hubx .hx-chart2 .hx-bucket-cue--accent .hx-bucket-cue__label {
+  border-color: hsl(var(--sp-chart-emotes, var(--chart-4)) / 0.32);
+  color: hsl(var(--sp-chart-emotes, var(--chart-4)));
+}
+.hubx .hx-chart2 .hx-bucket-cue--motion.hx-bucket-cue--selected .hx-bucket-cue__node {
+  animation: hx-bucket-cue-bounce 0.56s cubic-bezier(0.2, 1.45, 0.35, 1) both;
+}
+.hubx .hx-chart2 .hx-bucket-cue--motion.hx-bucket-cue--selected .hx-bucket-cue__ring {
+  animation: hx-bucket-cue-ring 1.45s ease-out 2;
+}
+
+.hubx .hx-moment-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.hubx .hx-moment-marker {
+  position: absolute;
+  top: 12%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sp-accent, #5eead4);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sp-bg, #09090b) 70%, transparent);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.hubx .hx-moment-marker:hover,
+.hubx .hx-moment-marker.is-selected {
+  transform: scale(1.25);
+  background: var(--sp-accent-strong, #99f6e4);
+}
+
+.hubx .hx-moment-marker:focus-visible {
+  outline: 2px solid var(--sp-accent, #5eead4);
+  outline-offset: 2px;
+}
+
 .figma-global-activity__chart-col[data-refreshing="true"] .hx-chart2 {
   animation: hx-chart-refresh-pulse 0.45s ease;
+}
+@keyframes hx-bucket-cue-bounce {
+  0% {
+    transform: translate(-50%, -50%) scale(0.74);
+  }
+  58% {
+    transform: translate(-50%, -50%) scale(1.22);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes hx-bucket-cue-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.62);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
 }
 @keyframes hx-chart-refresh-pulse {
   0%,
@@ -1838,7 +2037,8 @@
 }
 .hubx .hx-chart-tip-slot .tip {
   position: absolute;
-  top: 0;
+  top: auto;
+  bottom: 0.35rem;
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -3244,6 +3444,14 @@
   }
   .hubx .hx-chart-actions {
     justify-content: flex-start;
+  }
+  .hubx .hx-chart-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+  .hubx .hx-chart-header .hx-chart-actions {
+    flex: 1 1 auto;
   }
 }
 @media (max-width: 560px) {

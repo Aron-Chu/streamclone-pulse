@@ -2,16 +2,9 @@ import { test, expect } from '@playwright/test'
 import {
   attachConsoleErrorGuard,
   assertNoConsoleErrors,
+  assertNoPageHorizontalOverflow,
 } from './helpers/assertions'
 import { installHubUxMock } from './helpers/hubUxMock'
-
-async function assertNoHorizontalOverflow(page: import('@playwright/test').Page): Promise<void> {
-  const overflow = await page.evaluate(() => {
-    const doc = document.documentElement
-    return doc.scrollWidth > doc.clientWidth + 1
-  })
-  expect(overflow, 'page-level horizontal overflow detected').toBe(false)
-}
 
 const VIEWPORTS = [
   { width: 390, height: 844 },
@@ -35,13 +28,17 @@ test.describe('analytics hub Live Wire ticker layout', () => {
 
       await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
       await expect(page.locator('#section-live-wire')).toBeVisible()
-      await expect(page.locator('.hub-live-wire--ticker')).toBeVisible()
+      await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
+      await expect(page.locator('.figma-global-activity__annotation-lane')).toBeVisible()
       await expect(page.locator('.hub-live-wire__ticker-viewport--marquee')).toHaveCount(0)
       await expect(page.locator('.hub-live-wire__chip-event').first()).toBeVisible()
 
       const activityHub = page.locator('.figma-activity-hub')
       await expect(activityHub).toBeVisible()
       await expect(activityHub.locator('#section-live-wire')).toBeVisible()
+      await expect(
+        page.locator('.figma-global-activity__chart-col #section-live-wire'),
+      ).toBeVisible()
 
       const order = await page.evaluate(() => {
         const wire = document.getElementById('section-live-wire')
@@ -49,11 +46,11 @@ test.describe('analytics hub Live Wire ticker layout', () => {
         if (!wire || !chart) return null
         const wireBeforeChart =
           wire.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING
-        const hub = document.querySelector('.figma-activity-hub')
-        const wireInHub = hub?.contains(wire) ?? false
-        return wireBeforeChart && wireInHub ? 'ticker-above-chart-in-hub' : 'other'
+        const chartCol = document.querySelector('.figma-global-activity__chart-col')
+        const wireInChartCol = chartCol?.contains(wire) ?? false
+        return wireBeforeChart && wireInChartCol ? 'lane-above-chart-in-col' : 'other'
       })
-      expect(order).toBe('ticker-above-chart-in-hub')
+      expect(order).toBe('lane-above-chart-in-col')
 
       if (viewport.width >= 1100) {
         const grid = page.locator('.pulse-moments-live--embedded .pulse-moments-live__grid')
@@ -65,7 +62,7 @@ test.describe('analytics hub Live Wire ticker layout', () => {
         expect(gridBox!.x + gridBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 2)
       }
 
-      await assertNoHorizontalOverflow(page)
+      await assertNoPageHorizontalOverflow(page)
       await assertNoConsoleErrors(page, errors)
     })
   }
@@ -79,9 +76,9 @@ test.describe('analytics hub Live Wire ticker layout', () => {
     const errors = attachConsoleErrorGuard(page)
     await installHubUxMock(page)
     await page.goto('/analytics')
-    await expect(page.locator('.hub-live-wire--ticker')).toBeVisible()
+    await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
     await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
-    await assertNoHorizontalOverflow(page)
+    await assertNoPageHorizontalOverflow(page)
     await assertNoConsoleErrors(page, errors)
     await context.close()
   })

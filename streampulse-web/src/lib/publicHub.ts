@@ -2,14 +2,26 @@ import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
 import { apiClient, getBackendUrl } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
+import {
+  normalizeHubChannelScreenerFields,
+  type HubChannelScreenerFields,
+} from './channelScreenerContract'
+import {
+  normalizeHubEmoteMarket,
+  type HubEmoteMarket,
+} from './emoteMarketContract'
+import {
+  normalizeHubPublicClips,
+  type HubPublicClip,
+} from './publicClipsContract'
 
 /**
- * Mirrors PublicHubResponse from twitch-7tv-clone/internal/analytics/hub_overview.go.
+ * Mirrors PublicHubResponse from streampulse-backend/internal/analytics/hub_overview.go.
  * The /v1/public/hub endpoint is unauthenticated and hosted-safe: it only ever
  * returns aggregate corpus counts and bounded per-minute activity, never raw
  * rollups, emote maps, or principals.
  */
-/** Matches hubMoversCap in streamclone internal/analytics/hub_overview.go. */
+/** Matches hubMoversCap in streampulse-backend internal/analytics/hub_overview.go. */
 export const HUB_TOP_MOVERS_CAP = 12
 
 export interface HubCorpus {
@@ -43,9 +55,123 @@ export interface HubRosterSummary {
   admissionDisabled: number
   capacityBlocked: number
   warming: number
+  /** IRC-connected configured-roster rows aged past warming without chat. */
+  connectedQuiet?: number
   collecting: number
   viewerOnly: number
   zeroChatAfterAge: number
+  /** Configured-roster rows with confirmed chat/emote rollup signal. */
+  configuredRosterConfirmed?: number
+  /** IRC-active configured-roster rows still unresolved after canonical lookup. */
+  configuredRosterUnresolved?: number
+}
+
+/**
+ * Single semantic owner for configured-roster display totals.
+ * Conservation: confirmed + unresolved == live (when live > 0 and payload is consistent).
+ * Warming / connected-quiet are diagnostic subcategories — never folded into unresolved.
+ */
+export interface ConfiguredRosterDisplay {
+  live: number
+  confirmed: number
+  unresolved: number
+  warming: number
+  connectedQuiet: number
+  /** True when counts are finite, non-negative, and conserve against live. */
+  consistent: boolean
+  /** Present when the payload is impossible or overflows; UI should degrade visibly. */
+  inconsistencyReason?: string
+}
+
+function sanitizeRosterCount(value: unknown): { count: number; invalid: boolean } {
+  if (value == null || value === '') return { count: 0, invalid: false }
+  const n = Number(value)
+  if (!Number.isFinite(n)) return { count: 0, invalid: true }
+  if (n < 0) return { count: 0, invalid: true }
+  return { count: Math.floor(n), invalid: false }
+}
+
+/**
+ * Resolve display totals for configured-roster confirmed/unresolved.
+ * Does not invent healthy totals when the backend is inconsistent — keeps
+ * server-owned unresolved (never warming+quiet) and marks `consistent=false`.
+ * Legacy payloads without configuredRoster* fields skip conservation errors.
+ */
+export function resolveConfiguredRosterDisplay(
+  roster: Pick<
+    HubRosterSummary,
+    | 'live'
+    | 'collecting'
+    | 'warming'
+    | 'connectedQuiet'
+    | 'configuredRosterConfirmed'
+    | 'configuredRosterUnresolved'
+  >,
+): ConfiguredRosterDisplay {
+  const liveParsed = sanitizeRosterCount(roster.live)
+  const warmingParsed = sanitizeRosterCount(roster.warming)
+  const quietParsed = sanitizeRosterCount(roster.connectedQuiet ?? 0)
+  const hasExplicitConfirmed = roster.configuredRosterConfirmed != null
+  const hasExplicitUnresolved = roster.configuredRosterUnresolved != null
+  const confirmedSource = hasExplicitConfirmed
+    ? roster.configuredRosterConfirmed
+    : roster.collecting
+  const confirmedParsed = sanitizeRosterCount(confirmedSource)
+
+  let unresolvedParsed: { count: number; invalid: boolean }
+  if (hasExplicitUnresolved) {
+    unresolvedParsed = sanitizeRosterCount(roster.configuredRosterUnresolved)
+  } else if (hasExplicitConfirmed && liveParsed.count > 0 && !confirmedParsed.invalid) {
+    unresolvedParsed = {
+      count: Math.max(0, liveParsed.count - confirmedParsed.count),
+      invalid: false,
+    }
+  } else {
+    unresolvedParsed = { count: 0, invalid: false }
+  }
+
+  const live = liveParsed.count
+  const confirmed = confirmedParsed.count
+  const unresolved = unresolvedParsed.count
+  const warming = warmingParsed.count
+  const connectedQuiet = quietParsed.count
+
+  const invalidBits = [
+    liveParsed.invalid ? 'live' : '',
+    confirmedParsed.invalid ? 'confirmed' : '',
+    unresolvedParsed.invalid ? 'unresolved' : '',
+    warmingParsed.invalid ? 'warming' : '',
+    quietParsed.invalid ? 'connectedQuiet' : '',
+  ].filter(Boolean)
+
+  let consistent = invalidBits.length === 0
+  let inconsistencyReason: string | undefined
+  const conservationApplicable = hasExplicitConfirmed || hasExplicitUnresolved
+
+  if (invalidBits.length > 0) {
+    inconsistencyReason = `Invalid roster counts: ${invalidBits.join(', ')}`
+  } else if (conservationApplicable && live > 0 && confirmed + unresolved !== live) {
+    consistent = false
+    inconsistencyReason = `confirmed (${confirmed}) + unresolved (${unresolved}) != live (${live})`
+  } else if (
+    conservationApplicable &&
+    live > 0 &&
+    (warming > unresolved || connectedQuiet > unresolved)
+  ) {
+    // Subcategories may overlap each other but must not exceed the unresolved bucket.
+    consistent = false
+    inconsistencyReason = `warming/connectedQuiet overflow unresolved (${unresolved})`
+  }
+
+  return {
+    live,
+    confirmed,
+    unresolved,
+    warming,
+    connectedQuiet,
+    consistent,
+    inconsistencyReason,
+  }
 }
 
 /** Aggregate backfill job counts for a corpus tier (hosted-safe). */
@@ -58,6 +184,33 @@ export interface HubTierCounts {
   total: number
   eligible: number
   oldestQueuedSeconds?: number
+}
+
+/**
+ * Ingest-core observability block from streampulse-backend hub_ingest.go.
+ * activeCollectors alone is not proof chat rollups are writing — pair with
+ * chatActive5m / roster.configuredRosterConfirmed.
+ */
+export interface HubIngest {
+  tieringEnabled: boolean
+  coreEnabled: boolean
+  dualReadMode: boolean
+  shadowMode: boolean
+  desiredCollectors: number
+  activeCollectors: number
+  boundCollectors?: number
+  /** Bound-stream proxy until ROOMSTATE join-ack is exposed. */
+  joinAcknowledged?: number
+  awaitingJoin?: number
+  connectedQuiet?: number
+  chatActive5m?: number
+  chatActive15m?: number
+  reconnecting?: number
+  unexpectedParts?: number
+  admitLagSeconds: number
+  joinRate1m: number
+  partRate1m: number
+  state: 'operational' | 'admit_lag' | 'saturated' | 'legacy' | string
 }
 
 /**
@@ -96,6 +249,11 @@ export interface HubActivityPoint {
   bttv?: number
   ffz?: number
   viewers: number
+  /**
+   * Three-valued chat measurement contract:
+   * true = measured (including a legitimate zero), false = known gap,
+   * undefined = legacy payload with unknown measurement provenance.
+   */
   hasChatRollup?: boolean
   hasViewerRollup?: boolean
   /** False when the bucket period has not ended yet (open/in-progress). */
@@ -182,6 +340,8 @@ export interface HubLiveChannel {
   streamingTogether?: boolean
   hostLogin?: string
   togetherWith?: string[]
+  /** Backend-owned screener fields — never invent from client poll history. */
+  screener?: HubChannelScreenerFields
 }
 
 export type HubMomentKind =
@@ -289,6 +449,8 @@ export interface PublicHub {
   corpus: HubCorpus
   coverage: HubCoverage
   corpusPipeline: HubCorpusPipeline
+  /** Present when analytics runs ingest-core; omit/legacy when unset. */
+  ingest?: HubIngest
   activity: HubActivity
   emoteIntel: HubEmoteIntel
   topEmotes: HubEmote[]
@@ -299,6 +461,10 @@ export interface PublicHub {
   livePulseMomentsStatus?: 'ready' | 'fallback' | 'no_peaks' | string
   livePulseMomentsReason?: string
   featuredSession: HubFeaturedSession
+  /** Optional Emote Market breadth/rotation — gated until backend ships fields. */
+  emoteMarket?: HubEmoteMarket | null
+  /** Optional public published clips — never beta candidate queue. */
+  publicClips?: HubPublicClip[]
 }
 
 interface PublicStatsSnapshot {
@@ -425,12 +591,13 @@ export async function fetchPublicHubBase(
   }
 }
 
-export async function fetchPublicHub(signal?: AbortSignal, activityWindow?: PublicHubActivityWindow): Promise<FetchPublicHubResult> {
-  const baseResult = await fetchPublicHubBase(signal, activityWindow)
-  if (baseResult.hubEndpointOk) {
-    return baseResult
-  }
-
+/**
+ * Stats/status fallback only — never re-fetches `/v1/public/hub`.
+ * Use after `fetchPublicHubBase` reports the hub endpoint unhealthy.
+ */
+export async function fetchPublicHubStatsFallback(
+  signal?: AbortSignal,
+): Promise<FetchPublicHubResult> {
   const [stats, status] = await Promise.all([
     fetchOptionalFromBackendCandidates<PublicStatsSnapshot>('/v1/public/stats', signal),
     fetchOptionalFromBackendCandidates<PublicStatusSnapshot>('/v1/public/status', signal),
@@ -471,6 +638,14 @@ export async function fetchPublicHub(signal?: AbortSignal, activityWindow?: Publ
       ? 'Local /v1/public/hub unavailable — rebuild analytics and restart local-proxy, or switch to hosted API.'
       : 'Public hub unavailable',
   )
+}
+
+export async function fetchPublicHub(signal?: AbortSignal, activityWindow?: PublicHubActivityWindow): Promise<FetchPublicHubResult> {
+  const baseResult = await fetchPublicHubBase(signal, activityWindow)
+  if (baseResult.hubEndpointOk) {
+    return baseResult
+  }
+  return fetchPublicHubStatsFallback(signal)
 }
 
 function backendCandidates(): string[] {
@@ -602,7 +777,14 @@ export function resolveHubTopMovers(
 
 function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLiveChannel[] {
   if (!channels) return []
-  return channels.map((channel) => ({ ...channel, profileImageUrl: absoluteAssetUrl(channel.profileImageUrl) }))
+  return channels.map((channel) => {
+    const screener = normalizeHubChannelScreenerFields(channel.screener)
+    return {
+      ...channel,
+      profileImageUrl: absoluteAssetUrl(channel.profileImageUrl),
+      screener: screener ?? undefined,
+    }
+  })
 }
 
 function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
@@ -637,6 +819,7 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       state: coverageStateWithPipeline(raw?.coverage?.state ?? 'operational', corpusPipeline.state),
     },
     corpusPipeline,
+    ingest: normalizeIngest(raw?.ingest),
     activity: {
       points: normalizeActivityPoints(raw?.activity?.points),
       windowMinutes: raw?.activity?.windowMinutes ?? 7 * 24 * 60,
@@ -660,6 +843,34 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
     livePulseMomentsStatus: raw?.livePulseMomentsStatus,
     livePulseMomentsReason: raw?.livePulseMomentsReason,
     featuredSession: normalizeFeaturedSession(raw?.featuredSession),
+    emoteMarket: normalizeHubEmoteMarket(raw?.emoteMarket),
+    publicClips: normalizeHubPublicClips(raw?.publicClips),
+  }
+}
+
+function normalizeIngest(raw: Partial<HubIngest> | undefined): HubIngest | undefined {
+  if (!raw) return undefined
+  const active = raw.activeCollectors ?? 0
+  const chat5m = raw.chatActive5m ?? 0
+  return {
+    tieringEnabled: Boolean(raw.tieringEnabled),
+    coreEnabled: Boolean(raw.coreEnabled),
+    dualReadMode: Boolean(raw.dualReadMode),
+    shadowMode: Boolean(raw.shadowMode),
+    desiredCollectors: raw.desiredCollectors ?? 0,
+    activeCollectors: active,
+    boundCollectors: raw.boundCollectors ?? 0,
+    joinAcknowledged: raw.joinAcknowledged ?? raw.boundCollectors ?? active,
+    awaitingJoin: raw.awaitingJoin ?? Math.max(0, (raw.desiredCollectors ?? 0) - active),
+    connectedQuiet: raw.connectedQuiet ?? Math.max(0, active - chat5m),
+    chatActive5m: chat5m,
+    chatActive15m: raw.chatActive15m ?? 0,
+    reconnecting: raw.reconnecting ?? 0,
+    unexpectedParts: raw.unexpectedParts ?? 0,
+    admitLagSeconds: raw.admitLagSeconds ?? 0,
+    joinRate1m: raw.joinRate1m ?? 0,
+    partRate1m: raw.partRate1m ?? 0,
+    state: raw.state ?? 'legacy',
   }
 }
 
@@ -709,8 +920,8 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
     twitch: point.twitch ?? 0,
     bttv: point.bttv ?? 0,
     ffz: point.ffz ?? 0,
-    hasChatRollup: Boolean(point.hasChatRollup),
-    hasViewerRollup: Boolean(point.hasViewerRollup),
+    hasChatRollup: point.hasChatRollup,
+    hasViewerRollup: point.hasViewerRollup,
     bucketComplete: point.bucketComplete,
     topEmotes: Array.isArray(point.topEmotes)
       ? point.topEmotes
@@ -786,9 +997,12 @@ function normalizeCorpusPipeline(
       admissionDisabled: raw?.roster?.admissionDisabled ?? 0,
       capacityBlocked: raw?.roster?.capacityBlocked ?? 0,
       warming: raw?.roster?.warming ?? 0,
+      connectedQuiet: raw?.roster?.connectedQuiet ?? 0,
       collecting: raw?.roster?.collecting ?? 0,
       viewerOnly: raw?.roster?.viewerOnly ?? 0,
       zeroChatAfterAge: raw?.roster?.zeroChatAfterAge ?? 0,
+      configuredRosterConfirmed: raw?.roster?.configuredRosterConfirmed,
+      configuredRosterUnresolved: raw?.roster?.configuredRosterUnresolved,
     },
     silver: normalizeTierCounts(raw?.silver ?? emptyTierCounts()),
     gold: normalizeTierCounts(raw?.gold ?? emptyTierCounts()),
@@ -888,6 +1102,36 @@ export function validatePublicHubInvariants(hub: PublicHub): HubValidationIssue[
         message: `Long-window activity peak viewers (${peakActivityViewers}) is below the live pool sum (${livePoolViewers}); chart may be single-channel not global.`,
       })
     }
+  }
+
+  const activeCollectors = hub.ingest?.activeCollectors ?? 0
+  const collecting = hub.corpusPipeline.roster.collecting
+  if (activeCollectors > 0 && collecting === 0) {
+    issues.push({
+      code: 'irc_collectors_without_chat_rollups',
+      severity: 'error',
+      message: `ingest.activeCollectors=${activeCollectors} but roster.collecting=0 — IRC joined without live chat rollups (check BindStream / ingest flush).`,
+    })
+  }
+
+  const chatNz = hub.activity.points.filter((p) => (p.chat ?? 0) > 0).length
+  if (activeCollectors > 0 && hub.activity.points.length >= 2 && chatNz === 0) {
+    issues.push({
+      code: 'irc_active_but_activity_chat_empty',
+      severity: 'warn',
+      message: 'IRC collectors are active but activity.points have no chat>0 buckets (viewer-only / drought).',
+    })
+  }
+
+  const rosterDisplay = resolveConfiguredRosterDisplay(hub.corpusPipeline.roster)
+  if (!rosterDisplay.consistent) {
+    issues.push({
+      code: 'configured_roster_conservation',
+      severity: 'error',
+      message:
+        rosterDisplay.inconsistencyReason ??
+        'configuredRosterConfirmed + configuredRosterUnresolved must equal roster.live',
+    })
   }
 
   return issues

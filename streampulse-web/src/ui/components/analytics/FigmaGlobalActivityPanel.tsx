@@ -2,24 +2,29 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import {
   bucketMinutes,
-  chartActivityPoints,
   formatActivityWindowLabel,
-  peakActivityChatPerMin,
-  peakActivityViewers,
 } from "../../../lib/hubActivitySummary";
+import {
+  deriveHubChartActivityModel,
+  selectHubChartActivityInputs,
+} from "../../../lib/hubChartActivityModel";
 import type { FigmaMomentRow } from "../../../lib/figmaSessionAnalytics";
 import type { HubEmote, HubLiveChannel, PublicHub } from "../../../lib/publicHub";
 import {
   HubActivityChart,
+  type HubActivityMomentMarker,
   type HubActivityRangeControl,
 } from "../hub/HubActivityChart";
+import { HubLiveWireFeed } from "./HubLiveWireFeed";
+import type { LivePulseMomentsResult } from "../../../lib/figmaSessionAnalytics";
+import type { PublicHubActivityWindow, PublicHubLoadSource } from "../../../lib/publicHub";
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
 import { ActivityBucketInspector } from "./ActivityBucketInspector";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
 import { HubFreshnessCaption } from "./HubFreshnessCaption";
 import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
 import { compact } from "./hubFormat";
-import { hubMetricLegend, livePoolViewerSum } from "../../../lib/hubMetricHelpers";
+import { hubMetricLegend } from "../../../lib/hubMetricHelpers";
 import { useCommandCenterLabels } from "../../providers/AnalyticsThemeProvider";
 import { useAnalyticsMotion } from "../../motion/useAnalyticsMotion";
 import { Link } from "react-router-dom";
@@ -140,15 +145,26 @@ export interface FigmaGlobalActivityPanelProps {
   bucketMoments?: FigmaMomentRow[];
   /** Historical bucket fetch in flight (selected bucket only). */
   bucketMomentsLoading?: boolean;
-  /** Pulse Moments row shown in the chart rail (hub only). */
-  focusedMoment?: FigmaMomentRow | null;
-  emoteLookup?: Map<string, HubEmote>;
+  /** Compact link to selected Pulse Moments row (detail stays in table inspector). */
+  linkedMoment?: {
+    login: string;
+    displayName?: string;
+    label: string;
+  } | null;
+  onClearLinkedMoment?: () => void;
   liveChannels?: HubLiveChannel[];
-  channelLive?: boolean;
-  lockedBucketLabel?: string | null;
-  onBackToBucket?: () => void;
   /** Visual-only bucket highlight when a moment is selected without a locked bucket. */
   accentBucketT?: number | null;
+  momentMarkers?: HubActivityMomentMarker[];
+  selectedMomentKey?: string | null;
+  onSelectMoment?: (moment: FigmaMomentRow) => void;
+  onSelectMomentKey?: (key: string) => void;
+  /** Live Wire annotation lane feed (mounted above the plot). */
+  annotationFeed?: LivePulseMomentsResult | null;
+  annotationLoading?: boolean;
+  annotationHubEndpointOk?: boolean;
+  annotationLoadSource?: PublicHubLoadSource;
+  annotationActivityWindow?: PublicHubActivityWindow;
 }
 
 function formatPeakTime(ts: number): string {
@@ -180,23 +196,31 @@ export function FigmaGlobalActivityPanel({
   bucketMomentEmotes = [],
   bucketMoments = [],
   bucketMomentsLoading = false,
-  focusedMoment = null,
-  emoteLookup,
+  linkedMoment = null,
+  onClearLinkedMoment,
   liveChannels = [],
-  channelLive,
-  lockedBucketLabel = null,
-  onBackToBucket,
   accentBucketT = null,
+  momentMarkers = [],
+  selectedMomentKey = null,
+  onSelectMoment,
+  onSelectMomentKey,
+  annotationFeed = null,
+  annotationLoading = false,
+  annotationHubEndpointOk,
+  annotationLoadSource,
+  annotationActivityWindow = "24h",
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
   const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
   const inspectorRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const chartAreaRef = useRef<HTMLDivElement>(null);
   const prevWindowKeyRef = useRef(activityWindowKey);
   const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const hoverIntentRef = useRef<number | null>(null);
   const hoverIntentTimerRef = useRef<number | null>(null);
+  const hasLinkedMoment = Boolean(linkedMoment);
 
   const emoteImages = useMemo(() => {
     const map = new Map<string, string>();
@@ -207,7 +231,7 @@ export function FigmaGlobalActivityPanel({
   }, [topEmotes]);
 
   const handleBucketHover = useCallback((bucketT: number | null) => {
-    if (focusedMoment) return;
+    if (hasLinkedMoment) return;
     if (bucketT == null) {
       if (hoverIntentTimerRef.current != null) {
         window.clearTimeout(hoverIntentTimerRef.current);
@@ -227,7 +251,7 @@ export function FigmaGlobalActivityPanel({
         setHoverBucketT(bucketT);
       }
     }, 80);
-  }, [focusedMoment]);
+  }, [hasLinkedMoment]);
 
   useEffect(() => () => {
     if (hoverIntentTimerRef.current != null) {
@@ -235,12 +259,55 @@ export function FigmaGlobalActivityPanel({
     }
   }, []);
 
-  const chartPoints = useMemo(
-    () => chartActivityPoints(hub.activity.points, hub.activity.windowMinutes, undefined, livePoolViewerSum(hub)),
-    [hub.activity.points, hub.activity.windowMinutes, hub],
+  const clearBucketFocus = useCallback(() => {
+    if (hoverIntentTimerRef.current != null) {
+      window.clearTimeout(hoverIntentTimerRef.current);
+      hoverIntentTimerRef.current = null;
+    }
+    hoverIntentRef.current = null;
+    setHoverBucketT(null);
+    onBucketHover?.(null);
+    if (selectedBucketT != null) onBucketSelect?.(null);
+  }, [onBucketHover, onBucketSelect, selectedBucketT]);
+
+  const prevSelectedBucketTRef = useRef(selectedBucketT);
+  useEffect(() => {
+    const wasSelected = prevSelectedBucketTRef.current != null;
+    prevSelectedBucketTRef.current = selectedBucketT;
+    if (!wasSelected || selectedBucketT != null) return;
+    if (hoverIntentTimerRef.current != null) {
+      window.clearTimeout(hoverIntentTimerRef.current);
+      hoverIntentTimerRef.current = null;
+    }
+    hoverIntentRef.current = null;
+    setHoverBucketT(null);
+    onBucketHover?.(null);
+  }, [onBucketHover, selectedBucketT]);
+
+  useEffect(() => {
+    const bucketFocused = selectedBucketT != null || hoverBucketT != null;
+    if (!bucketFocused) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const chartArea = chartAreaRef.current;
+      if (!chartArea) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (chartArea.contains(target)) return;
+      clearBucketFocus();
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [clearBucketFocus, hoverBucketT, selectedBucketT]);
+
+  // Chart inputs ignore trust-line / refresh metadata — only activity fields + live pool sum.
+  const chartInputs = selectHubChartActivityInputs(hub);
+  const chartModel = useMemo(
+    () => deriveHubChartActivityModel(chartInputs),
+    [chartInputs.points, chartInputs.windowMinutes, chartInputs.livePoolViewerSum],
   );
-  const peakViewers = peakActivityViewers(hub.activity.points, hub.activity.windowMinutes);
-  const peakChatPerMin = peakActivityChatPerMin(hub.activity.points, hub.activity.windowMinutes);
+  const { chartPoints, peakViewers, peakChatPerMin } = chartModel;
   const peakPoint = chartPoints.reduce(
     (best, point) => (point.viewers > (best?.viewers ?? 0) ? point : best),
     chartPoints[0],
@@ -252,18 +319,21 @@ export function FigmaGlobalActivityPanel({
   const poolSize = hub.poolSize;
   const ircActive = hub.corpusPipeline.collectorActive;
 
-  const selectedPoint = useMemo(
-    () =>
-      selectedBucketT != null
-        ? chartPoints.find((p) => p.t === selectedBucketT) ?? null
-        : null,
-    [chartPoints, selectedBucketT],
-  );
+  const selectedPoint = useMemo(() => {
+    if (selectedBucketT != null) {
+      return chartPoints.find((p) => p.t === selectedBucketT) ?? null;
+    }
+    // Moment selection: show that bucket's preview in the rail (not a second inspector).
+    if (accentBucketT != null) {
+      return chartPoints.find((p) => p.t === accentBucketT) ?? null;
+    }
+    return null;
+  }, [accentBucketT, chartPoints, selectedBucketT]);
 
   const hoverPoint = useMemo(() => {
-    if (focusedMoment || selectedPoint || hoverBucketT == null) return null;
+    if (hasLinkedMoment || selectedBucketT != null || hoverBucketT == null) return null;
     return chartPoints.find((p) => p.t === hoverBucketT) ?? null;
-  }, [chartPoints, focusedMoment, hoverBucketT, selectedPoint]);
+  }, [chartPoints, hasLinkedMoment, hoverBucketT, selectedBucketT]);
 
   useEffect(() => {
     if (selectedPoint) {
@@ -301,7 +371,7 @@ export function FigmaGlobalActivityPanel({
     : livePulseSource === "featured_fallback" ||
         livePulseSource === "legacy_fallback"
       ? "Chart clicks don't filter fallback moments — open a channel session for chart-to-moment. In-progress bucket omitted from chart."
-      : "Hover for bucket totals. Tracked IRC chat only (not all of Twitch). In-progress bucket omitted from chart.";
+      : "Hover for bucket totals. Tracked chat only (not all of Twitch). In-progress bucket omitted from chart.";
 
   return (
     <section
@@ -316,8 +386,8 @@ export function FigmaGlobalActivityPanel({
           ) : null}
         </div>
         <p className="figma-global-activity__lede muted">
-          Network viewer peaks from minute rollups plus Top-N Helix when higher — last {windowLabel}.
-          Chat and emote lines are IRC-only.
+          Network viewer peaks from tracked channels — last {windowLabel}.
+          Chat and emote lines come from the live tracking pool.
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
         <ActivityViewerSanityBanner hub={hub} />
@@ -327,10 +397,10 @@ export function FigmaGlobalActivityPanel({
               <span className="figma-global-activity__peak-label">Peak global viewers</span>
               <strong>{compact(peakViewers)}</strong>
             </span>
-            {livePoolViewerSum(hub) > 0 ? (
+            {chartInputs.livePoolViewerSum > 0 ? (
               <span className="figma-global-activity__peak-stat">
                 <span className="figma-global-activity__peak-label">Live pool sum now</span>
-                <strong>{compact(livePoolViewerSum(hub))}</strong>
+                <strong>{compact(chartInputs.livePoolViewerSum)}</strong>
               </span>
             ) : null}
             {peakChatPerMin > 0 ? (
@@ -373,15 +443,31 @@ export function FigmaGlobalActivityPanel({
       <div className="figma-global-activity__body" ref={bodyRef}>
         <div
           className="figma-global-activity__chart-col"
+          ref={chartAreaRef}
           data-refreshing={activityRefreshing ? "true" : undefined}
         >
+          {annotationFeed ? (
+            <div className="figma-global-activity__annotation-lane" id="section-live-wire">
+              <HubLiveWireFeed
+                hub={hub}
+                feed={annotationFeed}
+                activityWindow={annotationActivityWindow}
+                loading={annotationLoading}
+                hubEndpointOk={annotationHubEndpointOk}
+                loadSource={annotationLoadSource}
+                layout="lane"
+                selectedMomentKey={selectedMomentKey}
+                onSelectMoment={onSelectMoment}
+              />
+            </div>
+          ) : null}
           <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
             <HubActivityChart
-              points={hub.activity.points}
-              windowMinutes={hub.activity.windowMinutes}
+              points={chartInputs.points}
+              windowMinutes={chartInputs.windowMinutes}
               channelCount={hub.activity.channelCount}
               poolSize={hub.poolSize}
-              livePoolViewerSum={livePoolViewerSum(hub)}
+              livePoolViewerSum={chartInputs.livePoolViewerSum}
               expectedBuckets={activitySummary.expectedBuckets}
               missingBuckets={activitySummary.missingBuckets}
               coveragePct={activitySummary.coveragePct}
@@ -394,8 +480,13 @@ export function FigmaGlobalActivityPanel({
                 chartBucketSelectEnabled ? onBucketSelect : undefined
               }
               onBucketHover={
-                selectedBucketT == null && !focusedMoment ? handleBucketHover : undefined
+                selectedBucketT == null && !hasLinkedMoment
+                  ? handleBucketHover
+                  : undefined
               }
+              momentMarkers={momentMarkers}
+              selectedMomentKey={selectedMomentKey}
+              onSelectMomentKey={onSelectMomentKey}
               emoteImages={emoteImages}
             />
           </div>
@@ -413,13 +504,10 @@ export function FigmaGlobalActivityPanel({
             topEmoteName={topEmotes[0]?.name}
             selectedPoint={selectedPoint}
             hoverPoint={hoverPoint}
-            focusedMoment={focusedMoment}
-            emoteLookup={emoteLookup}
+            linkedMoment={linkedMoment}
+            onClearLinkedMoment={onClearLinkedMoment}
+            bucketLocked={selectedBucketT != null}
             liveChannels={liveChannels}
-            channelLive={channelLive}
-            lockedBucketT={selectedBucketT}
-            lockedBucketLabel={lockedBucketLabel}
-            onBackToBucket={onBackToBucket}
             className="figma-global-activity__inspector-panel"
           />
         </div>

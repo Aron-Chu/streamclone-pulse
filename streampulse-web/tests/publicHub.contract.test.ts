@@ -13,6 +13,7 @@ const GOLDEN_HUB_KPI_INTERFACE_KEYS = [
   'corpusPipeline',
   'coverage',
   'emoteIntel',
+  'ingest',
   'liveChannels',
   'poolSize',
 ] as const
@@ -21,6 +22,13 @@ const GOLDEN_CORPUS_PIPELINE_KEYS = [
   'collectorActive',
   'collectorMax',
   'roster',
+] as const
+
+const GOLDEN_HUB_INGEST_KEYS = [
+  'activeCollectors',
+  'coreEnabled',
+  'desiredCollectors',
+  'state',
 ] as const
 
 function interfaceFieldNames(source: string, interfaceName: string): string[] {
@@ -73,10 +81,26 @@ describe('PublicHub portal contract', () => {
     }
   })
 
+  it('HubIngest exposes IRC health fields from hub_ingest.go', () => {
+    const got = interfaceFieldNames(source, 'HubIngest')
+    for (const key of GOLDEN_HUB_INGEST_KEYS) {
+      expect(got, `HubIngest missing ${key}`).toContain(key)
+    }
+  })
+
   it('HubRosterSummary exposes live count for roster-vs-IRC labels', () => {
     const got = interfaceFieldNames(source, 'HubRosterSummary')
     expect(got).toContain('live')
     expect(got).toContain('collectorTracking')
+    expect(got).toContain('configuredRosterConfirmed')
+    expect(got).toContain('connectedQuiet')
+  })
+
+  it('HubIngest exposes aggregate IRC chat-active fields', () => {
+    const got = interfaceFieldNames(source, 'HubIngest')
+    expect(got).toContain('chatActive5m')
+    expect(got).toContain('boundCollectors')
+    expect(got).toContain('connectedQuiet')
   })
 
   it('PublicHubMomentsResponse exposes fields required by bucket click flow', () => {

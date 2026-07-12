@@ -1,0 +1,41 @@
+/* Scroll-driven chart wipe (uses --chart-wipe from page scroll, like LSG --wipe) */
+.pulse-landing-panel[data-tour-active] {
+  --chart-wipe: 0;
+  --tour-p: 0;
+  --tour-drive: 0;
+}
+
+.pulse-landing-chart-reveal .pulse-sparkline-wrap {
+  overflow: hidden;
+  position: relative;
+}
+
+.pulse-landing-chart-reveal .pulse-sparkline-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 calc(var(--chart-wipe, 0) * 100%);
+  width: 14%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(17, 17, 23, 0.9));
+  opacity: calc(1 - var(--chart-wipe, 0));
+}
+
+.pulse-landing-chart-reveal .pulse-sparkline-wrap svg {
+  clip-path: inset(0 calc((1 - var(--chart-wipe, 0)) * 100%) 0 0);
+  will-change: clip-path;
+}
+
+.pulse-landing-chart-reveal.is-live .pulse-sparkline-wrap svg,
+.pulse-landing-chart-reveal[data-tour-step-active] .pulse-sparkline-wrap svg {
+  /* No one-shot animation — wipe is driven by --chart-wipe from scroll progress */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-landing-chart-reveal .pulse-sparkline-wrap svg {
+    clip-path: inset(0 0 0 0);
+  }
+
+  .pulse-landing-chart-reveal .pulse-sparkline-wrap::after {
+    display: none;
+  }
+}

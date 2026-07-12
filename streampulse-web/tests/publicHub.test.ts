@@ -4,6 +4,7 @@ import {
   enrichTopMoversWithAvatars,
   fetchPublicHub,
   fetchPublicHubBase,
+  fetchPublicHubStatsFallback,
   fetchHistoricalHubMoments,
   HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
@@ -24,6 +25,26 @@ vi.mock('../src/lib/backendSource', () => ({
 }))
 
 describe('normalizePublicHub', () => {
+  it('preserves true, false, and absent chat rollup states', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 30,
+        channelCount: 1,
+        points: [
+          { t: 1, chat: 0, seventv: 0, viewers: 1000, hasChatRollup: true },
+          { t: 2, chat: 0, seventv: 0, viewers: 1000, hasChatRollup: false },
+          { t: 3, chat: 0, seventv: 0, viewers: 1000 },
+        ],
+      },
+    })
+
+    expect(hub.activity.points.map((point) => point.hasChatRollup)).toEqual([
+      true,
+      false,
+      undefined,
+    ])
+  })
+
   it('keeps total emotes at least as high as 7TV activity', () => {
     const hub = normalizePublicHub({
       activity: {
@@ -189,6 +210,24 @@ describe('fetchPublicHub performance', () => {
     const result = await fetchPublicHub()
     expect(result.loadSource).toBe('stats-fallback')
     expect(apiClient.mock.calls.every((call) => !String(call[0]).includes('/readiness'))).toBe(true)
+    const hubCalls = apiClient.mock.calls.filter((call) => String(call[0]).includes('/v1/public/hub'))
+    expect(hubCalls).toHaveLength(1)
+  })
+
+  it('fetchPublicHubStatsFallback never re-fetches the full hub', async () => {
+    apiClient.mockResolvedValueOnce({
+      data: { streamsTracked: 1, emotesIndexed: 1, updatedAt: new Date().toISOString() },
+      status: 200,
+    })
+    apiClient.mockResolvedValueOnce({
+      data: { status: 'operational', degraded: false, updatedAt: new Date().toISOString() },
+      status: 200,
+    })
+
+    const result = await fetchPublicHubStatsFallback()
+    expect(result.loadSource).toBe('stats-fallback')
+    expect(result.hubEndpointOk).toBe(false)
+    expect(apiClient.mock.calls.every((call) => !String(call[0]).includes('/v1/public/hub'))).toBe(true)
   })
 
   it('fetchPublicHubBase never calls readiness endpoints', async () => {

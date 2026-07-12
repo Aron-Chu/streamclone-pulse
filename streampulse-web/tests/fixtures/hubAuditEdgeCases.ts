@@ -57,9 +57,12 @@ export function hubAuditEdgeCaseHub(): PublicHub {
         admissionDisabled: 0,
         capacityBlocked: 0,
         warming: 0,
+        connectedQuiet: 0,
         collecting: 1,
         viewerOnly: 0,
         zeroChatAfterAge: 0,
+        configuredRosterConfirmed: 1,
+        configuredRosterUnresolved: 0,
       },
       silver: {
         queued: 0,

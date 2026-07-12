@@ -91,6 +91,72 @@ describe('streamcloneAnalytics adapter', () => {
     expect(segments[0]?.durationSeconds).toBe(28_800)
   })
 
+  it('getAnalyticsStream + getPulseStreamRecap pass through remapped portal streamId (no rewrite to request id)', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const requestId = 'alias-stream-A'
+    const remappedId = 'canonical-stream-B'
+    const startedAt = '2026-07-11T18:00:00.000Z'
+    apiClientMock.mockImplementation((path: string) => {
+      if (path.includes('/channels/') && path.includes('/emotes')) {
+        return Promise.resolve({ data: { topEmotes: [] } })
+      }
+      expect(path).toContain(`/streams/${encodeURIComponent(requestId)}`)
+      if (path.endsWith('/minutes')) {
+        return Promise.resolve({
+          data: {
+            streamId: remappedId,
+            channel: 'denims',
+            startedAt,
+            minutes: [{ offsetSeconds: 0, chatCount: 1 }],
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      if (path.endsWith('/summary')) {
+        return Promise.resolve({
+          data: {
+            channel: 'denims',
+            stream: { streamId: remappedId, login: 'denims', startedAt },
+            topEmotes: [],
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      if (path.endsWith('/recap')) {
+        return Promise.resolve({
+          data: {
+            streamId: remappedId,
+            login: 'denims',
+            topMoments: [],
+            topEmotes: [],
+          },
+        })
+      }
+      return Promise.resolve({
+        data: {
+          channel: 'denims',
+          state: 'historical',
+          stream: {
+            streamId: remappedId,
+            login: 'denims',
+            startedAt,
+          },
+          sources: [],
+          updatedAt: Date.now(),
+        },
+      })
+    })
+
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const detail = (await portalAnalyticsApi.getAnalyticsStream(requestId)) as AnalyticsStreamDetail
+    const recap = await portalAnalyticsApi.getPulseStreamRecap(requestId)
+
+    expect(detail.stream?.streamId).toBe(remappedId)
+    expect(detail.stream?.streamId).not.toBe(requestId)
+    expect(recap?.streamId).toBe(remappedId)
+    expect(recap?.streamId).not.toBe(requestId)
+  })
+
   it('getAnalyticsLive maps viewerSamples and chatMessages from portal stream record', async () => {
     getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
     apiClientMock.mockImplementation((path: string) => {
@@ -124,6 +190,111 @@ describe('streamcloneAnalytics adapter', () => {
     const detail = (await portalAnalyticsApi.getAnalyticsLive('eliasn97')) as AnalyticsStreamDetail
     expect(detail.stream?.viewerSamples).toBe(42)
     expect(detail.stream?.chatMessages).toBe(12_345)
+  })
+
+  it('passes validated signal provenance through detail, full rollups, chart rollups, and recap moments', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const measuredZero = {
+      state: 'measured',
+      observedAt: '2026-07-11T18:00:00.000Z',
+      source: 'live',
+      value: 0,
+    }
+    const partial = {
+      state: 'partial',
+      observedAt: '2026-07-11T18:00:00.000Z',
+      coveragePct: 70,
+      source: 'ivr',
+    }
+    const staleWatermark = {
+      state: 'stale',
+      observedThrough: '2026-07-11T18:05:00.000Z',
+      coveragePct: 82,
+      source: 'live',
+    }
+    const confirmedPeak = {
+      state: 'measured',
+      observedAt: '2026-07-11T18:04:00.000Z',
+      confirmed: true,
+      detector: 'heatmap:chat_spike',
+      value: 88,
+    }
+    const minutes = Array.from({ length: 300 }, (_, index) => ({
+      offsetSeconds: index * 60,
+      viewerAvg: 0,
+      viewerLatest: 0,
+      viewerSamples: 0,
+      chatCount: index,
+      signalObservations: { chat: measuredZero, emotes: partial },
+    }))
+    apiClientMock.mockImplementation((path: string) => {
+      if (path.endsWith('/minutes')) {
+        return Promise.resolve({
+          data: {
+            streamId: 'provenance-stream',
+            channel: 'denims',
+            startedAt: '2026-07-11T18:00:00.000Z',
+            minutes,
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      if (path.endsWith('/summary')) {
+        return Promise.resolve({ data: { channel: 'denims', topEmotes: [], updatedAt: Date.now() } })
+      }
+      if (path.endsWith('/recap')) {
+        return Promise.resolve({
+          data: {
+            streamId: 'provenance-stream',
+            login: 'denims',
+            topMoments: [
+              { offsetSeconds: 240, score: 88, peakObservation: confirmedPeak },
+              {
+                offsetSeconds: 300,
+                score: 50,
+                peakObservation: { ...confirmedPeak, value: undefined },
+              },
+            ],
+          },
+        })
+      }
+      return Promise.resolve({
+        data: {
+          channel: 'denims',
+          state: 'historical',
+          stream: {
+            streamId: 'provenance-stream',
+            login: 'denims',
+            startedAt: '2026-07-11T18:00:00.000Z',
+          },
+          signalWatermarks: { chat: staleWatermark },
+          sources: [],
+          updatedAt: Date.now(),
+        },
+      })
+    })
+
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const detail = await portalAnalyticsApi.getAnalyticsStream('provenance-stream') as AnalyticsStreamDetail & {
+      signalWatermarks?: { chat?: typeof staleWatermark }
+      rollups: Array<AnalyticsStreamDetail['rollups'][number] & {
+        signalObservations?: { chat?: typeof measuredZero; emotes?: typeof partial }
+      }>
+      momentRollups?: Array<AnalyticsStreamDetail['rollups'][number] & {
+        signalObservations?: { chat?: typeof measuredZero; emotes?: typeof partial }
+      }>
+    }
+    const recap = await portalAnalyticsApi.getPulseStreamRecap('provenance-stream') as {
+      topMoments?: Array<{ peakObservation?: typeof confirmedPeak }>
+    }
+
+    expect(detail.signalWatermarks?.chat).toEqual(staleWatermark)
+    expect(detail.rollups[0]?.viewerSamples).toBe(0)
+    expect(detail.rollups[0]?.signalObservations).toEqual({ chat: measuredZero, emotes: partial })
+    expect(detail.momentRollups).toHaveLength(300)
+    expect(detail.momentRollups?.[0]?.signalObservations).toEqual({ chat: measuredZero, emotes: partial })
+    expect(recap.topMoments?.[0]?.peakObservation).toEqual(confirmedPeak)
+    expect(recap.topMoments?.[1]?.peakObservation).toBeUndefined()
   })
 
   it('getAnalyticsStream resolves per-minute emote images from sanitized BucketEmote.imageUrl, not a fabricated id', async () => {

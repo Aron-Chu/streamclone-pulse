@@ -129,7 +129,7 @@ function InspectorHero({
       <div
         className={`pulse-moments__inspector-kpi-row${showScore ? ' pulse-moments__inspector-kpi-row--session' : ''}${liveCompact ? ' pulse-moments__inspector-kpi-row--live-compact' : ''}`}
       >
-        <div className="pulse-moments__inspector-stat pulse-moments__inspector-stat--emote">
+        <div className="pulse-moments__inspector-stat">
           <small>Emotes / min</small>
           <strong>{totalEmotes != null ? compact(totalEmotes) : '—'}</strong>
         </div>
@@ -137,12 +137,12 @@ function InspectorHero({
           <small>Chat / min</small>
           <strong>{formatChatRate(moment.chatPerMin)}</strong>
         </div>
-        <div className="pulse-moments__inspector-stat pulse-moments__inspector-stat--high">
+        <div className="pulse-moments__inspector-stat">
           <small>Viewers</small>
           <strong>{viewerDisplay}</strong>
         </div>
         {showScore ? (
-          <div className="pulse-moments__inspector-stat pulse-moments__inspector-stat--mid" title={REACTION_SCORE_TOOLTIP}>
+          <div className="pulse-moments__inspector-stat" title={REACTION_SCORE_TOOLTIP}>
             <small>Reaction score</small>
             <strong>{formatReactionScore(moment.score)}</strong>
           </div>
@@ -198,22 +198,18 @@ export function FigmaMomentInspector({
       aria-label={labels.inspector}
     >
       <header className="pulse-moments__inspector-head pulse-moments__inspector-head--split">
-        <h3>{labels.inspector}</h3>
+        <div className="pulse-moments__inspector-head-main">
+          <h3>{labels.inspector}</h3>
+          <p className="pulse-moments__inspector-moment-head">
+            <strong>{moment.label}</strong>
+            {category ? <span className="pulse-moments__inspector-game"> · {category}</span> : null}
+          </p>
+        </div>
         <div className="pulse-moments__inspector-time-badge">
           <span className="pulse-moments__inspector-time-badge-primary">{timeLabel.primary}</span>
           {timeLabel.secondary ? (
             <span className="pulse-moments__inspector-time-badge-secondary">{timeLabel.secondary}</span>
           ) : null}
-          {isLive ? (
-            <p className="pulse-moments__inspector-moment-head">
-              <strong>{moment.label}</strong>
-              {category ? <span className="pulse-moments__inspector-game"> · {category}</span> : null}
-            </p>
-          ) : (
-            <p className="pulse-moments__inspector-moment-head">
-              <strong>{moment.label}</strong>
-            </p>
-          )}
         </div>
       </header>
 

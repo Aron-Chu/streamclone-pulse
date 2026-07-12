@@ -13,7 +13,7 @@ import {
 import { Avatar, Delta, EmptyState, Skeleton } from './primitives'
 
 type SortKey = 'viewers' | 'chatPerMin' | 'emotesPerMin'
-type FilterKey = 'all' | 'synced' | 'collecting' | 'partial' | 'tracked'
+type FilterKey = 'all' | 'chat' | 'warming' | 'metadata'
 
 export interface HubLiveTableProps {
   channels: HubLiveChannel[]
@@ -24,27 +24,24 @@ export interface HubLiveTableProps {
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'synced', label: 'Synced' },
-  { key: 'collecting', label: 'Collecting' },
-  { key: 'partial', label: 'Partial' },
-  { key: 'tracked', label: 'Metadata' },
+  { key: 'chat', label: 'Chat tracked (IRC)' },
+  { key: 'warming', label: 'Warming' },
+  { key: 'metadata', label: 'Metadata only — no chat coverage' },
 ]
 
 const COLLAPSED_ROWS = 10
 
 function filterOf(channel: HubLiveChannel): FilterKey {
   switch (coverageMeta(channel.coverageState).tone) {
-    case 'synced':
-      return 'synced'
-    case 'collecting':
     case 'warming':
-      return 'collecting'
+      return 'warming'
+    case 'synced':
+    case 'collecting':
     case 'chat':
-    case 'viewer':
     case 'partial':
-      return 'partial'
+      return 'chat'
     default:
-      return 'tracked'
+      return 'metadata'
   }
 }
 
@@ -76,7 +73,7 @@ export function HubLiveTable({ channels, loading, embedded }: HubLiveTableProps)
   const [expanded, setExpanded] = useState(false)
 
   const counts = useMemo(() => {
-    const acc: Record<FilterKey, number> = { all: channels.length, synced: 0, collecting: 0, partial: 0, tracked: 0 }
+    const acc: Record<FilterKey, number> = { all: channels.length, chat: 0, warming: 0, metadata: 0 }
     for (const channel of channels) acc[filterOf(channel)] += 1
     return acc
   }, [channels])

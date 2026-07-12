@@ -1,8 +1,15 @@
-# Context — Streamclone Pulse extension
+# Context — Streamclone Pulse hub worktree
+
+**Active portal worktree:** `streamclone-pulse-hub` on `wip/hub-landing`.
+It owns the current Command Center / `/analytics` portal until the branch
+merges. The main `streamclone-pulse` checkout owns extension `src/` work; its
+portal is stale while this WIP branch is active. After merge, retire this
+worktree and return portal ownership to the main checkout.
 
 | Piece | Location |
 |-------|----------|
-| **Spec (requirements, design, tasks)** | **This repo** `docs/pulse-extension/` |
+| Extension source + spec | main `streamclone-pulse` checkout: `src/`, `docs/pulse-extension/` |
+| **Current Command Center portal** | **This worktree** `streamclone-pulse-hub/streampulse-web/` on `wip/hub-landing` |
 | **Figma UI (PNG exports)** | `docs/pulse-extension/figma/` + `figma-handoff.md` |
 | Shared TS scoring | sibling `streampulse-backend/packages/pulse-core` (`@streampulse/pulse-core`) |
 | Session analytics console UI | sibling `streampulse-backend/packages/analytics-console` (`file:` link in `streampulse-web`) |
@@ -24,13 +31,16 @@ Sibling layout on disk (folder names only — no machine paths):
 <workspace>/
   twitch-7tv-clone/       # public Streamclone — desktop Twitch replica (core only after split)
   streampulse-backend/    # private StreamPulse Go BFF + packages
-  streamclone-pulse/      # this repo — extension + streampulse-web portal
+  streamclone-pulse/      # extension owner; portal becomes current again after hub merge
+  streamclone-pulse-hub/  # current Command Center portal worktree (wip/hub-landing)
   streampulse-ops/        # private hosted deploy / smoke / evidence
   replayforge/            # Clip Studio + clipper — required for clip handoff
   streampulse-sdlc/       # private multi-repo agent control plane
 ```
 
-Edit product spec here in `docs/pulse-extension/`. Public streamclone `docs/pulse-extension/` holds redirect stubs only until deleted.
+Edit extension product spec in the main `streamclone-pulse` checkout. Make
+current Command Center portal changes in this hub worktree. Public Streamclone
+`docs/pulse-extension/` holds redirect stubs only until deleted.
 
 ReplayForge is required for Clip Studio / auto clipper handoff (candidates → import → render). Normal Pulse extension and StreamPulse portal analytics work does not require a running ReplayForge stack.
 
@@ -51,8 +61,8 @@ These paths are **not** normative context for active development. Reading them w
 
 | Mode | Scope | Do not load by default |
 |------|-------|------------------------|
-| **Extension** | `src/`, extension docs | Portal e2e, `streampulse-web` unless needed |
-| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Content scripts, service worker unless API contract |
+| **Extension** | main `streamclone-pulse`: `src/`, extension docs | Hub portal e2e, `streampulse-web` unless needed |
+| **Portal / web** | this worktree: `streampulse-web/`, `docs/website-portal/` | Content scripts, service worker unless API contract |
 
 ## Terminology (boundary split)
 

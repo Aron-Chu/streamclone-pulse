@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  coverageMeta,
   formatLeadingEmoteShare,
   formatMoverVelocity,
   formatTopMoversHonestyNote,
@@ -54,11 +55,24 @@ describe('hubChatPerMinDisplay', () => {
     const cell = hubChatPerMinDisplay({ chatPerMin: 0, coverageState: 'stats_only' })
     expect(cell.text).toBe('—')
     expect(cell.muted).toBe(true)
-    expect(cell.title).toContain('Stats-only')
+    expect(cell.title).toContain('Metadata only — no chat coverage')
   })
 
   it('shows compact chat when rollups exist', () => {
     const cell = hubChatPerMinDisplay({ chatPerMin: 1200, coverageState: 'synced' })
     expect(cell.text).toBe('1.2K')
+  })
+})
+
+describe('coverageMeta', () => {
+  it.each([
+    ['synced', 'Chat tracked (IRC)'],
+    ['collecting', 'Chat tracked (IRC)'],
+    ['chat_only', 'Chat tracked (IRC)'],
+    ['warming', 'Warming'],
+    ['viewer_only', 'Metadata only — no chat coverage'],
+    ['stats_only', 'Metadata only — no chat coverage'],
+  ] as const)('maps %s to the canonical coverage label', (state, label) => {
+    expect(coverageMeta(state).label).toBe(label)
   })
 })

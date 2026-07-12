@@ -22,7 +22,7 @@ grep -q 'https://api.streampulse.stream' AGENTS.md \
 grep -qE 'localhost:8081|http://localhost:8081' AGENTS.md \
   || fail "AGENTS.md must document local Pulse BFF :8081"
 
-if grep -nE 'default.*backend.*localhost:8090|Backend URL \(default `?http://localhost:8090' \
+if grep -nE 'default.*backend.*localhost:80[9]0|Backend URL \(default `?http://localhost:80[9]0' \
   AGENTS.md .cursor/rules/*.mdc 2>/dev/null | grep -viE 'watch-only|not |never |only for'; then
   fail "product agent surface still teaches :8090 as BFF"
 fi

@@ -1,5 +1,8 @@
 import { Database, Radar } from 'lucide-react'
-import type { HubCorpusPipeline } from '../../../lib/publicHub'
+import {
+  resolveConfiguredRosterDisplay,
+  type HubCorpusPipeline,
+} from '../../../lib/publicHub'
 import { compact } from '../analytics/hubFormat'
 import { Skeleton } from './primitives'
 
@@ -32,10 +35,26 @@ export function CorpusPipelineCard({
   pipeline.roster.zeroChatAfterAge > 0 ? `${compact(pipeline.roster.zeroChatAfterAge)} zero-chat aged` : '',
   ].filter(Boolean)
 
+  const rosterDisplay = resolveConfiguredRosterDisplay(pipeline.roster)
   const rosterStats: Array<{ label: string; value: number; tone?: 'warn' | 'bad' }> = [
-  { label: 'Live', value: pipeline.roster.live },
-  { label: 'Collecting chat', value: pipeline.roster.collecting },
-  { label: 'Metadata only', value: pipeline.roster.metadataOnly },
+  { label: 'Live', value: rosterDisplay.live },
+  {
+    label: 'Configured roster confirmed',
+    value: rosterDisplay.confirmed,
+    tone: rosterDisplay.consistent ? undefined : 'bad',
+  },
+  { label: 'Connected quiet', value: rosterDisplay.connectedQuiet },
+  { label: 'Warming', value: rosterDisplay.warming },
+  {
+    label: 'Unresolved',
+    value: rosterDisplay.unresolved,
+    tone: !rosterDisplay.consistent
+      ? 'bad'
+      : rosterDisplay.unresolved > 0
+        ? 'warn'
+        : undefined,
+  },
+  { label: 'Metadata only — no chat coverage', value: pipeline.roster.metadataOnly },
   {
   label: 'Stale metadata',
   value: pipeline.roster.metadataStale,
@@ -73,7 +92,7 @@ export function CorpusPipelineCard({
   Top-{pipeline.topN} live <b>{compact(pipeline.roster.live)}</b>
   </span>
   <span className="cp__strip-stat">
-  Collecting <b>{compact(pipeline.roster.collecting)}</b>
+  Chat tracked (IRC) <b>{compact(pipeline.roster.collecting)}</b>
   </span>
   <span className="cp__strip-stat">
   Uncovered <b>{compact(pipeline.roster.liveCollectorDeficitRows)}</b>

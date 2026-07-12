@@ -264,13 +264,13 @@ All backend communication SHALL go through the MV3 service worker.
 - R5.1 The content script SHALL communicate with the backend only via `chrome.runtime.sendMessage` to the service worker (no direct cross-origin fetch from the page context).
 - R5.2 The service worker SHALL poll `/v1/extension/pulse/channels/{login}` on a configurable interval (default 30s, matching `LIVE_HEAT_REFRESH_MS`) with retry/backoff and jitter.
 - R5.3 The service worker SHALL cache the latest successful payload per login and serve it to the overlay on (re)mount before the next poll completes.
-- R5.4 Backend host (`http://localhost:8090` by default) SHALL be configurable in settings; the worker SHALL request only the host permissions it needs.
+- R5.4 Backend host SHALL default to `https://api.streampulse.stream`; an explicit local override MAY use the StreamPulse BFF at `http://localhost:8081`. The worker SHALL request only the host permissions it needs.
 
 ### R6 — Settings (P1)
 
 The extension SHALL expose user settings.
 
-- R6.1 Backend URL (default `http://localhost:8090`).
+- R6.1 Backend URL (default `https://api.streampulse.stream`; explicit local BFF override `http://localhost:8081`).
 - R6.2 Polling interval (15s / 30s / 60s).
 - R6.3 Overlay placement (Bottom bar / Right dock / Hidden).
 - R6.4 Auto-track policy (Off / Followed channels / Always ask).
@@ -295,12 +295,15 @@ The overlay SHALL surface failures honestly, never fake data.
 - R8.2 Channel not yet collected or `< 5` completed rollups SHALL show a "warming up / collecting" state (consistent with `LIVE_HEAT_MIN_COMPLETED_ROLLUPS`), not an empty Top Moments list presented as final.
 - R8.3 Offline channels SHALL clearly indicate offline + offer last-stream/VOD context where available. The overlay SHALL show a dense **Past streams** list (preview thumbnail + title + sync badge) below live Pulse content whenever the backend is reachable. The overlay SHALL also show a dense **Past streams** list (thumbnail + title rows) below live Pulse content whenever backend context is connected, sourced from metadata stream history + analytics stream list.
 
-### R9 — Local-only first; hosted later (P2)
+### R9 — Hosted-first with explicit local BFF (P2)
 
-The extension SHALL ship local-only before any public/hosted mode.
+The extension SHALL use the hosted StreamPulse API by default. Local BFF work is
+an explicit development mode.
 
-- R9.1 MVP SHALL target a locally running Streamclone (`localhost:8090`) with no accounts.
-- R9.2 Hosted mode (device auth, `api.streamclone.app`, rate limits, multi-tenant privacy, "who can track what") SHALL be a later, separately-scoped phase and SHALL NOT block the local MVP.
+- R9.1 Local development SHALL target the StreamPulse BFF at `localhost:8081`,
+  never the Streamclone watch stack at `localhost:8090`.
+- R9.2 Hosted access, device auth, rate limits, and multi-tenant privacy remain
+  separately scoped; they SHALL NOT block explicit local BFF development.
 
 ### R10 — Moment memory / bookmarks (P1, core Pulse)
 
@@ -386,18 +389,18 @@ Build **Level 2.5 first**: Twitch overlay + local backend + shared `pulse-core`.
 ## Suggested checks
 
 ```sh
-# Backend BFF endpoint (once added)
-curl http://localhost:8090/v1/extension/health
-curl http://localhost:8090/v1/extension/pulse/channels/xqc        # includes lanes + recap fields
+# Backend BFF endpoint (local explicit mode)
+curl http://localhost:8081/v1/extension/health
+curl http://localhost:8081/v1/extension/pulse/channels/xqc        # includes lanes + recap fields
 
 # Moment memory / bookmarks (R10)
-curl -X POST http://localhost:8090/v1/pulse/bookmarks \
+curl -X POST http://localhost:8081/v1/pulse/bookmarks \
   -H 'content-type: application/json' \
   -d '{"streamId":"319","offsetSeconds":4365,"label":"funny team wipe","source":"extension","score":95,"notes":"maybe clip later"}'
-curl 'http://localhost:8090/v1/pulse/bookmarks?login=xqc'
+curl 'http://localhost:8081/v1/pulse/bookmarks?login=xqc'
 
 # Session recap (R12)
-curl http://localhost:8090/v1/pulse/streams/319/recap
+curl http://localhost:8081/v1/pulse/streams/319/recap
 
 # Shared logic parity (reuse existing tests after extraction)
 cd frontend && npm test -- liveHeat vodDeepLink

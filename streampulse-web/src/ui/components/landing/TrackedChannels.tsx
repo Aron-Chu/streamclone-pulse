@@ -35,11 +35,13 @@ const FALLBACK_CHANNELS: ChannelRow[] = [
 ]
 
 const COVERAGE_LABEL: Record<string, string> = {
-  synced: 'Synced',
-  chat_only: 'Chat only',
-  viewer_only: 'Viewers only',
-  partial: 'Partial',
-  stats_only: 'Stats only',
+  synced: 'Chat tracked (IRC)',
+  collecting: 'Chat tracked (IRC)',
+  chat_only: 'Chat tracked (IRC)',
+  partial: 'Chat tracked (IRC)',
+  warming: 'Warming',
+  viewer_only: 'Metadata only — no chat coverage',
+  stats_only: 'Metadata only — no chat coverage',
 }
 
 function prefersReducedMotion(): boolean {

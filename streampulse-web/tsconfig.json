@@ -14,7 +14,7 @@
     "ignoreDeprecations": "6.0",
     "types": ["vite/client", "node"]
   },
-  "include": ["src"],
+  "include": ["src", "src/types/pulse-ext-ui.d.ts"],
   "exclude": [
     "src/routes/analytics/StreamsHubPage.tsx"
   ]

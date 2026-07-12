@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -149,7 +149,9 @@ function renderFeed(
   reducedMotion = false,
   loadSource: 'full' | 'stats-fallback' | 'cache' = 'full',
   hubEndpointOk = true,
-  layout: 'section' | 'ticker' = 'section',
+  layout: 'section' | 'ticker' | 'lane' = 'section',
+  onSelectMoment?: (moment: import('../src/lib/figmaSessionAnalytics').FigmaMomentRow) => void,
+  selectedMomentKey?: string | null,
 ) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: reducedMotion && query.includes('prefers-reduced-motion'),
@@ -172,6 +174,8 @@ function renderFeed(
           loadSource={loadSource}
           hubEndpointOk={hubEndpointOk}
           layout={layout}
+          onSelectMoment={onSelectMoment}
+          selectedMomentKey={selectedMomentKey}
         />
       </AnalyticsThemeProvider>
     </MemoryRouter>,
@@ -199,7 +203,7 @@ describe('HubLiveWireFeed', () => {
     expect(screen.getByText(/Twitch emote spike/)).toBeTruthy()
   })
 
-  it('animates only newly introduced moments on re-render', async () => {
+  it('animates only newly introduced peak moments on re-render', async () => {
     const now = Date.now()
     const { rerender } = renderFeed(networkFeed(now), sampleHub(), false)
 
@@ -211,9 +215,9 @@ describe('HubLiveWireFeed', () => {
         streamId: 's3',
         offsetSeconds: 60,
         score: 77,
-        label: 'Just went live',
-        kind: 'stream_opening',
-        chatPerMin: 50,
+        label: 'Chat spike',
+        kind: 'chat_spike',
+        chatPerMin: 420,
         emotesPerMin: 20,
         at: now - 30_000,
       },
@@ -233,7 +237,34 @@ describe('HubLiveWireFeed', () => {
       expect(gsapFrom).toHaveBeenCalled()
     })
     expect(screen.getByText('Jynxzi')).toBeTruthy()
-    expect(document.querySelector('.hub-live-wire__kind')?.textContent).toContain('Just went live')
+    expect(document.querySelector('.hub-live-wire__kind')?.textContent).toContain('Chat spike')
+  })
+
+  it('filters lifecycle kinds out of Live Wire (Pool Wire owns openings)', () => {
+    const now = Date.now()
+    const hub = sampleHub()
+    hub.livePulseMoments = [
+      {
+        login: 'jynxzi',
+        displayName: 'Jynxzi',
+        streamId: 's3',
+        offsetSeconds: 60,
+        score: 77,
+        label: 'Just went live',
+        kind: 'stream_opening',
+        chatPerMin: 50,
+        emotesPerMin: 20,
+        at: now - 30_000,
+      },
+      ...hub.livePulseMoments!,
+    ]
+    const feed = resolveLivePulseMoments(hub)
+    expect(feed.moments.some((m) => m.kind === 'stream_opening')).toBe(true)
+    renderFeed(feed, hub)
+    expect(screen.queryByText('Jynxzi')).toBeNull()
+    expect(screen.queryByText(/Just went live/i)).toBeNull()
+    const kinds = [...document.querySelectorAll('.hub-live-wire__kind')].map((el) => el.textContent ?? '')
+    expect(kinds.every((k) => !/went live|live attach/i.test(k))).toBe(true)
   })
 
   it('does not animate when prefers-reduced-motion is set', async () => {
@@ -265,6 +296,68 @@ describe('HubLiveWireFeed', () => {
     expect(screen.getByText(/snapshot — not live network cadence/i)).toBeTruthy()
   })
 
+  it('hides events older than 30 minutes and shows quiet empty copy', () => {
+    const now = Date.now()
+    const hub = sampleHub()
+    hub.livePulseMoments = [
+      {
+        login: 'xqc',
+        displayName: 'xQc',
+        streamId: 's1',
+        offsetSeconds: 120,
+        score: 92,
+        label: 'Twitch emote spike',
+        kind: 'emote_spike',
+        chatPerMin: 393,
+        emotesPerMin: 133,
+        at: now - 18 * 60 * 60_000,
+        topEmotes: [{ name: 'DinoDance', provider: 'twitch', count: 123, sharePct: 39 }],
+      },
+    ]
+    const feed = resolveLivePulseMoments(hub)
+    renderFeed(feed, hub)
+    expect(screen.queryByText('xQc')).toBeNull()
+    expect(screen.getByText(/No network breakouts in the last 30m/i)).toBeTruthy()
+    expect(screen.queryByText('NEW')).toBeNull()
+  })
+
+  it('never badges NEW on aged events even when first observed this poll', () => {
+    const now = Date.now()
+    const hub = sampleHub()
+    hub.livePulseMoments = [
+      {
+        login: 'xqc',
+        displayName: 'xQc',
+        streamId: 's1',
+        offsetSeconds: 120,
+        score: 92,
+        label: 'Twitch emote spike',
+        kind: 'emote_spike',
+        chatPerMin: 393,
+        emotesPerMin: 133,
+        at: now - 45 * 60_000,
+      },
+      {
+        login: 'sodapoppin',
+        displayName: 'sodapoppin',
+        streamId: 's2',
+        offsetSeconds: 90,
+        score: 80,
+        label: 'Chat spike',
+        kind: 'chat_spike',
+        chatPerMin: 200,
+        emotesPerMin: 40,
+        at: now - 2 * 60_000,
+      },
+    ]
+    const feed = resolveLivePulseMoments(hub)
+    renderFeed(feed, hub)
+    expect(screen.queryByText('xQc')).toBeNull()
+    expect(screen.getByText('sodapoppin')).toBeTruthy()
+    // sodapoppin is fresh and first-seen — NEW may appear; xQc must not
+    expect(screen.queryByText(/DinoDance/)).toBeNull()
+  })
+
   it('shows empty reason when feed has no moments', () => {
     const hub = sampleHub()
     hub.livePulseMomentsReason = 'insufficient_peaks'
@@ -279,7 +372,7 @@ describe('HubLiveWireFeed', () => {
 
   it('does not present network-live cadence when hub is stats-fallback', () => {
     renderFeed(networkFeed(), sampleHub(), false, 'stats-fallback', false)
-    expect(screen.getByText(/hub unavailable — live network feed paused/i)).toBeTruthy()
+    expect(screen.getByText(/live network feed paused/i)).toBeTruthy()
     expect(screen.getByText(/aggregate stats only/i)).toBeTruthy()
     expect(screen.queryByText('NEW')).toBeNull()
   })
@@ -298,7 +391,7 @@ describe('HubLiveWireFeed', () => {
     expect(screen.queryByText('133 emotes/m')).toBeNull()
   })
 
-  it('animates horizontally on new moments when layout is ticker', async () => {
+  it('animates horizontally on new peak moments when layout is ticker', async () => {
     const now = Date.now()
     const { rerender } = renderFeed(networkFeed(now), sampleHub(), false, 'full', true, 'ticker')
 
@@ -315,9 +408,9 @@ describe('HubLiveWireFeed', () => {
         streamId: 's3',
         offsetSeconds: 60,
         score: 77,
-        label: 'Just went live',
-        kind: 'stream_opening',
-        chatPerMin: 50,
+        label: 'Chat spike',
+        kind: 'chat_spike',
+        chatPerMin: 420,
         emotesPerMin: 20,
         at: now - 30_000,
       },
@@ -341,5 +434,18 @@ describe('HubLiveWireFeed', () => {
       expect.objectContaining({ x: -24, opacity: 0 }),
     )
     expect(screen.getByText('Jynxzi')).toBeTruthy()
+  })
+
+  it('lane layout selects moments instead of navigating', () => {
+    const onSelect = vi.fn()
+    const feed = networkFeed()
+    renderFeed(feed, sampleHub(), false, 'full', true, 'lane', onSelect)
+    expect(document.querySelector('.hub-live-wire--lane')).toBeTruthy()
+    const buttons = screen.getAllByRole('button')
+    const chip = buttons.find((el) => el.classList.contains('hub-live-wire__chip'))
+    expect(chip).toBeTruthy()
+    fireEvent.click(chip!)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect.mock.calls[0]?.[0]?.login).toBe('xqc')
   })
 })

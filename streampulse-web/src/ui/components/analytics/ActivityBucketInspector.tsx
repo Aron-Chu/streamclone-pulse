@@ -3,9 +3,8 @@ import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import type { HubActivityPoint, HubEmote, HubEmoteIntel, HubLiveChannel } from '../../../lib/publicHub'
 import { bucketMinutes, hubActivityEmoteCount } from '../../../lib/hubActivitySummary'
 import type { HubEmoteWithShare } from '../../../lib/emoteShare'
-import { compact, initial } from './hubFormat'
+import { compact, displayName, initial } from './hubFormat'
 import { HubTopEmotesTable } from './HubTopEmotesTable'
-import { HubMomentRailBody } from './HubMomentRailBody'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
 import {
   type InspectorMode,
@@ -16,6 +15,13 @@ import {
   type BucketStreamerPeak,
 } from './activityBucketInspectorUtils'
 import '../hub/hub.css'
+
+/** Compact chart-rail link to the Pulse Moments selection — not a second inspector. */
+export interface LinkedMomentSummary {
+  login: string
+  displayName?: string
+  label: string
+}
 
 export interface ActivityBucketInspectorProps {
   rangeEmotes: HubEmote[]
@@ -30,27 +36,22 @@ export interface ActivityBucketInspectorProps {
   bucketMoments?: FigmaMomentRow[]
   /** Historical bucket fetch in flight (selected bucket only). */
   bucketMomentsLoading?: boolean
-  /** Locked bucket from chart click */
+  /** Locked or accent-driven bucket point */
   selectedPoint: HubActivityPoint | null
-  /** Hover preview bucket (when not locked) */
+  /** Hover preview bucket (when not locked / linked) */
   hoverPoint: HubActivityPoint | null
-  /** Pulse Moments row focus — replaces bucket/range body in the chart rail. */
-  focusedMoment?: FigmaMomentRow | null
-  emoteLookup?: Map<string, HubEmote>
+  /** Short link to the selected Pulse Moments row (detail stays in the table inspector). */
+  linkedMoment?: LinkedMomentSummary | null
+  onClearLinkedMoment?: () => void
+  /** True when selectedPoint comes from an explicit chart lock (not moment accent). */
+  bucketLocked?: boolean
   liveChannels?: HubLiveChannel[]
-  channelLive?: boolean
-  lockedBucketT?: number | null
-  lockedBucketLabel?: string | null
-  onBackToBucket?: () => void
   className?: string
 }
-
-type InspectorStatTone = 'high' | 'mid' | 'emote' | 'neutral'
 
 interface InspectorStat {
   label: string
   value: string
-  tone?: InspectorStatTone
 }
 
 function formatBucketTime(ts: number): string {
@@ -170,10 +171,36 @@ const InspectorStreamersFooter = memo(function InspectorStreamersFooter({
   )
 })
 
-function inspectorStatToneClass(tone?: InspectorStatTone): string {
-  if (!tone || tone === 'neutral') return ''
-  return ` pulse-moments__inspector-stat--${tone}`
-}
+const LinkedMomentStrip = memo(function LinkedMomentStrip({
+  linked,
+  onClear,
+}: {
+  linked: LinkedMomentSummary
+  onClear?: () => void
+}) {
+  const name = displayName(linked.login, linked.displayName)
+  return (
+    <div className="activity-bucket-inspector__linked" data-testid="bucket-inspector-linked-moment">
+      <div className="activity-bucket-inspector__linked-copy">
+        <span className="activity-bucket-inspector__linked-eyebrow">Linked to selected moment</span>
+        <span className="activity-bucket-inspector__linked-line">
+          <strong>{name}</strong>
+          <span aria-hidden="true"> · </span>
+          <span>{linked.label}</span>
+        </span>
+      </div>
+      {onClear ? (
+        <button
+          type="button"
+          className="activity-bucket-inspector__linked-clear"
+          onClick={onClear}
+        >
+          Clear
+        </button>
+      ) : null}
+    </div>
+  )
+})
 
 const InspectorChrome = memo(function InspectorChrome({
   headLabel,
@@ -206,10 +233,7 @@ const InspectorChrome = memo(function InspectorChrome({
 
       <div className="pulse-moments__inspector-grid activity-bucket-inspector__stats">
         {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className={`pulse-moments__inspector-stat${inspectorStatToneClass(stat.tone)}`}
-          >
+          <div key={stat.label} className="pulse-moments__inspector-stat">
             <small>{stat.label}</small>
             <strong>{stat.value}</strong>
           </div>
@@ -258,17 +282,14 @@ export function ActivityBucketInspector({
   emoteIntel,
   topEmoteName,
   bucketMomentEmotes = [],
-  bucketMoments = [],
-  bucketMomentsLoading = false,
+  bucketMoments: _bucketMoments = [],
+  bucketMomentsLoading: _bucketMomentsLoading = false,
   selectedPoint,
   hoverPoint,
-  focusedMoment = null,
-  emoteLookup,
+  linkedMoment = null,
+  onClearLinkedMoment,
+  bucketLocked = false,
   liveChannels = [],
-  channelLive,
-  lockedBucketT = null,
-  lockedBucketLabel = null,
-  onBackToBucket,
   className,
 }: ActivityBucketInspectorProps) {
   const bucketMode: InspectorMode = selectedPoint
@@ -276,7 +297,6 @@ export function ActivityBucketInspector({
     : hoverPoint
       ? 'preview'
       : 'range'
-  const mode: InspectorMode = focusedMoment ? 'moment' : bucketMode
 
   const activePoint = selectedPoint ?? hoverPoint
   const bucketHasEmotes = (activePoint?.topEmotes?.length ?? 0) > 0
@@ -291,19 +311,18 @@ export function ActivityBucketInspector({
   )
 
   const leadingEmote = tableEmotes[0]
+  const linkedActive = Boolean(linkedMoment) && !bucketLocked && bucketMode === 'selected'
 
   const headLabel =
-    mode === 'moment'
-      ? 'Moment inspector'
-      : bucketMode === 'selected'
-        ? `Selected bucket · ${formatBucketTime(activePoint!.t)}`
-        : bucketMode === 'preview'
-          ? `Preview · ${formatBucketTime(activePoint!.t)}`
-          : `Top emotes — ${windowLabel}`
+    bucketMode === 'selected'
+      ? `Selected bucket · ${formatBucketTime(activePoint!.t)}`
+      : bucketMode === 'preview'
+        ? `Preview · ${formatBucketTime(activePoint!.t)}`
+        : `Top emotes — ${windowLabel}`
 
   const headBadge =
-    mode === 'moment'
-      ? 'Moment'
+    linkedActive
+      ? 'Linked'
       : bucketMode === 'selected'
         ? 'Selected'
         : bucketMode === 'preview'
@@ -316,13 +335,11 @@ export function ActivityBucketInspector({
   )
 
   const headMeta =
-    mode === 'moment'
-      ? focusedMoment?.label ?? null
-      : bucketMode === 'range'
-        ? (updatedAgo ? `as of ${updatedAgo}` : null)
-        : activePoint
-          ? bucketHeadMeta(activePoint, windowMinutes, momentFallbackActive, bucketHasEmotes)
-          : null
+    bucketMode === 'range'
+      ? (updatedAgo ? `as of ${updatedAgo}` : null)
+      : activePoint
+        ? bucketHeadMeta(activePoint, windowMinutes, momentFallbackActive, bucketHasEmotes)
+        : null
 
   const bucketFill = bucketMode === 'selected' || bucketMode === 'preview'
   const topLiveStreamers = useMemo(
@@ -337,17 +354,16 @@ export function ActivityBucketInspector({
   const stats: InspectorStat[] =
     bucketMode === 'range'
       ? [
-          { label: rangeStats.stat1Label, value: rangeStats.stat1Value, tone: 'neutral' },
-          { label: rangeStats.stat2Label, value: rangeStats.stat2Value, tone: 'emote' },
-          { label: rangeStats.stat3Label, value: rangeStats.stat3Value, tone: 'mid' },
+          { label: rangeStats.stat1Label, value: rangeStats.stat1Value },
+          { label: rangeStats.stat2Label, value: rangeStats.stat2Value },
+          { label: rangeStats.stat3Label, value: rangeStats.stat3Value },
         ]
       : [
-          { label: 'Viewers then', value: displayPoint ? compact(displayPoint.viewers) : '—', tone: 'mid' },
-          { label: statsChatLabel, value: displayPoint ? compact(displayPoint.chat) : '—', tone: 'high' },
+          { label: 'Viewers then', value: displayPoint ? compact(displayPoint.viewers) : '—' },
+          { label: statsChatLabel, value: displayPoint ? compact(displayPoint.chat) : '—' },
           {
             label: 'Emotes then',
             value: displayPoint ? compact(hubActivityEmoteCount(displayPoint)) : '—',
-            tone: 'emote',
           },
         ]
 
@@ -367,53 +383,20 @@ export function ActivityBucketInspector({
     ) : null
 
   const modeClass =
-    mode === 'moment'
-      ? ' activity-bucket-inspector--moment'
-      : bucketMode === 'selected'
-        ? ' activity-bucket-inspector--active'
-        : bucketMode === 'preview'
-          ? ' activity-bucket-inspector--preview'
-          : ''
-
-  if (mode === 'moment' && focusedMoment) {
-    return (
-      <aside
-        className={`activity-bucket-inspector${modeClass}${className ? ` ${className}` : ''}`}
-        aria-label="Moment inspector"
-      >
-        <div className="activity-bucket-inspector__head activity-bucket-inspector__head--moment">
-          <div className="activity-bucket-inspector__head-row">
-            <span className="activity-bucket-inspector__head-label pulse-moments__inspector-top-emote-label">
-              {headLabel}
-            </span>
-            {headBadge ? (
-              <span className="activity-bucket-inspector__mode-badge">{headBadge}</span>
-            ) : null}
-          </div>
-          {headMeta ? (
-            <span className="activity-bucket-inspector__head-meta">{headMeta}</span>
-          ) : null}
-        </div>
-        <div className="activity-bucket-inspector__moment-slot">
-          <HubMomentRailBody
-            moment={focusedMoment}
-            emoteLookup={emoteLookup}
-            liveChannels={liveChannels}
-            channelLive={channelLive}
-            lockedBucketT={lockedBucketT}
-            lockedBucketLabel={lockedBucketLabel}
-            onBackToBucket={onBackToBucket}
-          />
-        </div>
-      </aside>
-    )
-  }
+    bucketMode === 'selected'
+      ? ' activity-bucket-inspector--active'
+      : bucketMode === 'preview'
+        ? ' activity-bucket-inspector--preview'
+        : ''
 
   return (
     <aside
       className={`activity-bucket-inspector${modeClass}${className ? ` ${className}` : ''}`}
       aria-label="Activity bucket inspector"
     >
+      {linkedMoment ? (
+        <LinkedMomentStrip linked={linkedMoment} onClear={onClearLinkedMoment} />
+      ) : null}
       <InspectorChrome
         headLabel={headLabel}
         headBadge={headBadge}

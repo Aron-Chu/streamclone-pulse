@@ -20,6 +20,12 @@ export interface HubActivityRangeControl {
   onSelect: (key: string) => void
 }
 
+export interface HubActivityMomentMarker {
+  key: string
+  bucketT: number
+  kind?: string
+}
+
 export interface HubActivityChartProps {
   points: HubActivityPoint[]
   windowMinutes: number
@@ -43,6 +49,10 @@ export interface HubActivityChartProps {
   onBucketSelect?: (bucketT: number | null) => void
   /** Hover preview for bucket inspector rail. */
   onBucketHover?: (bucketT: number | null) => void
+  /** Fresh peak markers pinned to chart buckets. */
+  momentMarkers?: HubActivityMomentMarker[]
+  selectedMomentKey?: string | null
+  onSelectMomentKey?: (key: string) => void
   /** When true, draw provider overlay lines on the main chart (power-user mode). */
   showProviderOverlay?: boolean
   /** Lowercase emote name → image URL, used to render bucket emote thumbnails in the tooltip. */
@@ -50,10 +60,50 @@ export interface HubActivityChartProps {
 }
 
 type ProviderKey = 'sevenTv' | 'twitch' | 'bttv' | 'ffz'
+type CoreSeriesKey = 'viewers' | 'chat' | 'emotes'
+
+const FOCUS_DIM_FACTOR = 0.14
+
+function seriesFocusOpacity(
+  focusedSeriesKey: CoreSeriesKey | null,
+  seriesKey: string,
+  base = 1,
+): number {
+  if (!focusedSeriesKey) return base
+  if (seriesKey === focusedSeriesKey) return base
+  const emoteFamily = seriesKey === 'emotes' || seriesKey.startsWith('provider:')
+  if (focusedSeriesKey === 'emotes' && emoteFamily) return base
+  return base * FOCUS_DIM_FACTOR
+}
 
 interface Pt {
   x: number
   y: number
+}
+
+interface BucketSelectionCueProps {
+  x: number
+  label?: string | null
+  tone: 'selected' | 'accent'
+  motionEnabled: boolean
+}
+
+function BucketSelectionCue({ x, label, tone, motionEnabled }: BucketSelectionCueProps) {
+  const edge = x < 14 ? 'start' : x > 86 ? 'end' : 'center'
+  return (
+    <span
+      className={`hx-bucket-cue hx-bucket-cue--${tone}${motionEnabled ? ' hx-bucket-cue--motion' : ''}`}
+      data-edge={edge}
+      style={{ left: `${x}%` }}
+      aria-hidden="true"
+    >
+      <span className="hx-bucket-cue__line" />
+      <span className="hx-bucket-cue__node">
+        <span className="hx-bucket-cue__ring" />
+      </span>
+      {label ? <span className="hx-bucket-cue__label">{label}</span> : null}
+    </span>
+  )
 }
 
 const PROVIDER_KEYS: ProviderKey[] = ['sevenTv', 'twitch', 'bttv', 'ffz']
@@ -62,6 +112,13 @@ const PROVIDER_LABELS: Record<ProviderKey, string> = {
   sevenTv: '7TV',
   twitch: 'Twitch',
   bttv: 'BTTV',
+  ffz: 'FFZ',
+}
+
+const PROVIDER_SHORT_LABELS: Record<ProviderKey, string> = {
+  sevenTv: '7TV',
+  twitch: 'TW',
+  bttv: 'BT',
   ffz: 'FFZ',
 }
 
@@ -146,7 +203,7 @@ function activePoint(point: HubActivityPoint): boolean {
   return (
     point.hasChatRollup ||
     point.hasViewerRollup ||
-    point.chat > 0 ||
+    (point.hasChatRollup !== false && point.chat > 0) ||
     point.seventv > 0 ||
     emoteCount(point) > 0 ||
     point.viewers > 0
@@ -241,6 +298,9 @@ export function HubActivityChart({
   accentBucketT = null,
   onBucketSelect,
   onBucketHover,
+  momentMarkers = [],
+  selectedMomentKey = null,
+  onSelectMomentKey,
   showProviderOverlay = false,
   emoteImages,
 }: HubActivityChartProps) {
@@ -250,6 +310,11 @@ export function HubActivityChart({
   const hoverRafRef = useRef<number | null>(null)
   const lastBucketTRef = useRef<number | null | undefined>(undefined)
   const [enabledProviders, setEnabledProviders] = useState<Set<ProviderKey> | null>(null)
+  const [focusedSeriesKey, setFocusedSeriesKey] = useState<CoreSeriesKey | null>(null)
+
+  const toggleSeriesFocus = useCallback((seriesKey: CoreSeriesKey) => {
+    setFocusedSeriesKey((current) => (current === seriesKey ? null : seriesKey))
+  }, [])
 
   useEffect(() => () => {
     if (hoverRafRef.current != null) {
@@ -270,10 +335,14 @@ export function HubActivityChart({
         ? `${poolSize ?? channelCount} channels in live pool`
         : 'tracked streams'
     const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
+    const selectedCopy =
+      selectedBucketT != null
+        ? ` Selected bucket: ${formatActivityAxisTick(selectedBucketT, windowMinutes)}.`
+        : ''
     return bucketSelectEnabled
-      ? `${base}. Click a bucket to filter Pulse Moments Live.`
-      : base
-  }, [poolSize, channelCount, windowMinutes, bucketSelectEnabled])
+      ? `${base}.${selectedCopy} Click a bucket to filter Pulse Moments Live.`
+      : `${base}.${selectedCopy}`
+  }, [poolSize, channelCount, windowMinutes, bucketSelectEnabled, selectedBucketT])
 
   const providerMeta = useMemo(
     () =>
@@ -281,12 +350,13 @@ export function HubActivityChart({
         (acc, key) => {
           acc[key] = {
             label: PROVIDER_LABELS[key],
+            shortLabel: PROVIDER_SHORT_LABELS[key],
             color: getProviderColor(PROVIDER_COLOR_KEYS[key]),
             dash: PROVIDER_DASH[key],
           }
           return acc
         },
-        {} as Record<ProviderKey, { label: string; color: string; dash?: string }>,
+        {} as Record<ProviderKey, { label: string; shortLabel: string; color: string; dash?: string }>,
       ),
     [],
   )
@@ -299,7 +369,9 @@ export function HubActivityChart({
   const model = useMemo(() => {
     const n = chartPoints.length
     const viewerMax = chartPoints.reduce((acc, p) => Math.max(acc, p.viewers), 0) || 1
-    const chatMax = chartPoints.reduce((acc, p) => Math.max(acc, p.chat), 0) || 1
+    const measuredChatValue = (point: HubActivityPoint): number =>
+      point.hasChatRollup === false ? 0 : point.chat
+    const chatMax = chartPoints.reduce((acc, p) => Math.max(acc, measuredChatValue(p)), 0) || 1
     const emoteMax =
       chartPoints.reduce(
         (acc, p) =>
@@ -323,7 +395,7 @@ export function HubActivityChart({
     const atChatY = (value: number): number => PAD + (1 - value / chatMax) * (100 - PAD)
     const atEmoteY = (value: number): number => PAD + (1 - value / emoteMax) * (100 - PAD)
     const viewers = chartPoints.map((p, i) => ({ x: xs[i], y: atViewerY(p.viewers) }))
-    const chat = chartPoints.map((p, i) => ({ x: xs[i], y: atChatY(p.chat) }))
+    const chat = chartPoints.map((p, i) => ({ x: xs[i], y: atChatY(measuredChatValue(p)) }))
     const totalEmotes = chartPoints.map((p, i) => ({ x: xs[i], y: atEmoteY(emoteCount(p)) }))
     const providerLines = PROVIDER_KEYS.reduce(
       (acc, key) => {
@@ -370,7 +442,7 @@ export function HubActivityChart({
     const barW = Math.max(0.35, Math.min(slotWidth * 0.78, 3.5))
     const bars = chartPoints.map((p, i) => {
       const cx = xs[i]
-      const h = (p.chat / chatMax) * (100 - PAD)
+      const h = (measuredChatValue(p) / chatMax) * (100 - PAD)
       let x = cx - barW / 2
       let w = barW
       if (x < 0) {
@@ -380,6 +452,23 @@ export function HubActivityChart({
       if (x + w > 100) w = 100 - x
       return { x, w, y: 100 - h, h, index: i }
     })
+    const chatGapBands: { left: number; width: number }[] = []
+    let chatGapStart = -1
+    const flushChatGap = (endIndex: number) => {
+      if (chatGapStart < 0 || endIndex < chatGapStart) return
+      const left = Math.max(0, (xs[chatGapStart] ?? 0) - slotWidth / 2)
+      const right = Math.min(100, (xs[endIndex] ?? 100) + slotWidth / 2)
+      chatGapBands.push({ left, width: Math.max(0.5, right - left) })
+      chatGapStart = -1
+    }
+    for (let i = 0; i < chartPoints.length; i += 1) {
+      if (chartPoints[i].hasChatRollup === false) {
+        if (chatGapStart < 0) chatGapStart = i
+      } else {
+        flushChatGap(i - 1)
+      }
+    }
+    flushChatGap(chartPoints.length - 1)
     const active = chartPoints.filter(activePoint)
     const firstActive = active[0]
     const firstActiveIndex = firstActive ? chartPoints.findIndex((p) => p.t === firstActive.t) : -1
@@ -420,13 +509,14 @@ export function HubActivityChart({
       providerLines,
       providerLaneLines,
       internalGapBands,
+      chatGapBands,
       bars,
       firstActiveX,
       lastViewerIdx,
       sampleNote,
       internalGaps: internalGapCount(chartPoints, windowMinutes),
       peakViewers: chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0),
-      peakChat: chartPoints.reduce((a, p) => Math.max(a, p.chat), 0),
+      peakChat: chartPoints.reduce((a, p) => Math.max(a, measuredChatValue(p)), 0),
       peakEmotes: chartPoints.reduce((a, p) => Math.max(a, emoteCount(p)), 0),
       emoteMax,
       peakViewerAt: (() => {
@@ -439,7 +529,7 @@ export function HubActivityChart({
       peakChatAt: (() => {
         let idx = 0
         for (let i = 0; i < chartPoints.length; i += 1) {
-          if (chartPoints[i].chat >= chartPoints[idx].chat) idx = i
+          if (measuredChatValue(chartPoints[i]) >= measuredChatValue(chartPoints[idx])) idx = i
         }
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
@@ -582,6 +672,7 @@ export function HubActivityChart({
     providerLines,
     providerLaneLines,
     internalGapBands,
+    chatGapBands,
     bars,
     firstActiveX,
     lastViewerIdx,
@@ -639,6 +730,7 @@ export function HubActivityChart({
 
   function handleClick(event: ReactMouseEvent<HTMLDivElement>) {
     if (!onBucketSelect) return
+    setFocusedSeriesKey(null)
     const best = nearestPointIndex(event.clientX)
     const point = chartPoints[best]
     const next = resolveChartBucketSelection(point, selectedBucketT)
@@ -684,20 +776,38 @@ export function HubActivityChart({
           </div>
         ) : null}
         <div className="hx-chart-actions" aria-label="Chart series toggles">
-          <div className="hx-legend">
-            <span>
-              <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
+          <div className="hx-legend" role="group" aria-label="Chart series">
+            <button
+              type="button"
+              className={`hx-legend-chip${focusedSeriesKey === 'viewers' ? ' is-focused' : ''}${focusedSeriesKey != null && focusedSeriesKey !== 'viewers' ? ' is-dimmed' : ''}`}
+              aria-pressed={focusedSeriesKey === 'viewers'}
+              title={focusedSeriesKey === 'viewers' ? 'Click to show all series' : 'Highlight Viewers'}
+              onClick={() => toggleSeriesFocus('viewers')}
+            >
+              <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} aria-hidden="true" />
               Viewers
-            </span>
-            <span>
-              <span className="sw sw--bar sw--chat" />
+            </button>
+            <button
+              type="button"
+              className={`hx-legend-chip${focusedSeriesKey === 'chat' ? ' is-focused' : ''}${focusedSeriesKey != null && focusedSeriesKey !== 'chat' ? ' is-dimmed' : ''}`}
+              aria-pressed={focusedSeriesKey === 'chat'}
+              title={focusedSeriesKey === 'chat' ? 'Click to show all series' : 'Highlight Tracked IRC chat'}
+              onClick={() => toggleSeriesFocus('chat')}
+            >
+              <span className="sw sw--bar sw--chat" aria-hidden="true" />
               Tracked IRC chat / min
-            </span>
+            </button>
             {hasTotalEmotes ? (
-              <span>
-                <span className="sw sw--dash sw--emotes" />
+              <button
+                type="button"
+                className={`hx-legend-chip${focusedSeriesKey === 'emotes' ? ' is-focused' : ''}${focusedSeriesKey != null && focusedSeriesKey !== 'emotes' ? ' is-dimmed' : ''}`}
+                aria-pressed={focusedSeriesKey === 'emotes'}
+                title={focusedSeriesKey === 'emotes' ? 'Click to show all series' : 'Highlight Total emotes/min'}
+                onClick={() => toggleSeriesFocus('emotes')}
+              >
+                <span className="sw sw--dash sw--emotes" aria-hidden="true" />
                 Total emotes/min
-              </span>
+              </button>
             ) : null}
           </div>
         {availableProviders.length > 0 && !showProviderOverlay ? (
@@ -728,8 +838,7 @@ export function HubActivityChart({
         </p>
       ) : null}
       <div className="hx-plot-stack">
-        <div className="hx-plot-stack__row">
-          <span className="hx-plot-stack__gutter" aria-hidden="true" />
+        <div className="hx-plot-stack__row hx-plot-stack__row--full">
           <div className="hx-plot-stack__plot">
             <div className="hx-chart-axis-labels" aria-hidden="true">
               <span className="hx-chart-axis-labels__left">Viewers</span>
@@ -740,9 +849,8 @@ export function HubActivityChart({
             </div>
           </div>
         </div>
-        <div className="hx-plot-stack__row">
-          <span className="hx-plot-stack__gutter" aria-hidden="true" />
-          <div className="hx-plot-stack__plot">
+        <div className="hx-plot-stack__row hx-plot-stack__row--full">
+          <div className="hx-plot-stack__plot hx-plot-stack__plot--chart">
             <div
               ref={wrapRef}
               className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}`}
@@ -760,7 +868,7 @@ export function HubActivityChart({
               <line key={y} x1="0" y1={y} x2="100" y2={y} vectorEffect="non-scaling-stroke" />
             ))}
           </g>
-          <g className="bars" aria-hidden="true">
+          <g className="bars" aria-hidden="true" opacity={seriesFocusOpacity(focusedSeriesKey, 'chat')}>
             {bars.map((bar) =>
               bar.h > 0.35 ? (
                 <rect
@@ -778,6 +886,7 @@ export function HubActivityChart({
           </g>
           {/* Dark underlay stroked behind the viewers line so it reads crisply over
               the chat-volume bars and provider lines regardless of what's behind. */}
+          <g opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers')}>
           {viewerLines.map((line, i) => (
             <path
               key={`view-underlay-${i}`}
@@ -800,8 +909,11 @@ export function HubActivityChart({
               strokeLinejoin="round"
             />
           ))}
+          </g>
           {hasTotalEmotes && !showProviderOverlay
-            ? totalEmoteLines.map((line, i) => (
+            ? (
+              <g opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes')}>
+              {totalEmoteLines.map((line, i) => (
                 <g key={`emote-${i}`}>
                   <path
                     className="hx-chart-line hx-chart-line-underlay hx-chart-line-underlay--emotes"
@@ -820,11 +932,14 @@ export function HubActivityChart({
                     strokeLinejoin="round"
                   />
                 </g>
-              ))
+              ))}
+              </g>
+            )
             : null}
           {showProviderOverlay
-            ? shownProviders.map((key) =>
-                providerLines[key].map((line, i) => (
+            ? shownProviders.map((key) => (
+              <g key={key} opacity={seriesFocusOpacity(focusedSeriesKey, `provider:${key}`)}>
+                {providerLines[key].map((line, i) => (
                   <path
                     key={`${key}-${i}`}
                     className="hx-chart-line hx-chart-line--provider"
@@ -836,12 +951,54 @@ export function HubActivityChart({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
-                )),
-              )
+                ))}
+              </g>
+            ))
             : null}
         </svg>
 
         <div className="hx-chart2__layer">
+          {selectedIndex >= 0 ? (
+            <BucketSelectionCue
+              key={`selected-${chartPoints[selectedIndex]?.t ?? selectedIndex}`}
+              x={xs[selectedIndex] ?? 0}
+              tone="selected"
+              motionEnabled={motionEnabled}
+            />
+          ) : accentIndex >= 0 ? (
+            <BucketSelectionCue
+              key={`accent-${chartPoints[accentIndex]?.t ?? accentIndex}`}
+              x={xs[accentIndex] ?? 0}
+              label="Moment bucket"
+              tone="accent"
+              motionEnabled={motionEnabled}
+            />
+          ) : null}
+          {momentMarkers.length > 0 ? (
+            <div className="hx-moment-markers" aria-label="Fresh network peaks">
+              {momentMarkers.map((marker) => {
+                const idx = chartPoints.findIndex((point) => point.t === marker.bucketT)
+                if (idx < 0) return null
+                const x = xs[idx]
+                if (x == null) return null
+                const selected = selectedMomentKey === marker.key
+                return (
+                  <button
+                    key={marker.key}
+                    type="button"
+                    className={`hx-moment-marker${selected ? ' is-selected' : ''}`}
+                    style={{ left: `${x}%` }}
+                    title={marker.kind ?? 'Peak'}
+                    aria-pressed={selected}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onSelectMomentKey?.(marker.key)
+                    }}
+                  />
+                )
+              })}
+            </div>
+          ) : null}
           <span className="ylab ylab--viewers">{compact(peakViewers)} peak viewers</span>
           <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>
           {hasTotalEmotes && !showProviderOverlay ? (
@@ -867,6 +1024,22 @@ export function HubActivityChart({
               <span className="gap-note" style={{ left: '18%' }}>
                 Data gap — no measurements recorded for this period
               </span>
+            </>
+          ) : null}
+          {!sampleNote ? (
+            <>
+              {chatGapBands.map((band, i) => (
+                <span
+                  key={`chat-gap-band-${i}`}
+                  className="gap-fill gap-fill--internal gap-fill--chat-rollup"
+                  style={{ left: `${band.left}%`, width: `${band.width}%` }}
+                />
+              ))}
+              {chatGapBands.length > 0 && internalGaps === 0 ? (
+                <span className="gap-note" style={{ left: '18%' }}>
+                  Chat gap — no IRC measurement recorded for this period
+                </span>
+              ) : null}
             </>
           ) : null}
           {!sampleNote && (missingBuckets > 0 || internalGaps > 0) ? (
@@ -898,11 +1071,7 @@ export function HubActivityChart({
           )}
         </div>
             </div>
-          </div>
-        </div>
-        <div className="hx-plot-stack__row">
-          <span className="hx-plot-stack__gutter" aria-hidden="true" />
-          <div className="hx-chart-tip-slot" aria-live="polite">
+            <div className="hx-chart-tip-slot" aria-live="polite">
             {hover != null && hp ? (
               <div className="tip" style={tipStyle}>
                 <div className="t">{axisLabel(minutesAgo)}</div>
@@ -913,7 +1082,13 @@ export function HubActivityChart({
                   </div>
                   <div className="row">
                     <span className="sw sw--bar sw--chat" />
-                    Tracked IRC chat&nbsp;<b>{compact(hp.chat)}</b>/m
+                    {hp.hasChatRollup === false ? (
+                      <>Tracked IRC chat&nbsp;<b>no measurement</b></>
+                    ) : hp.hasChatRollup === undefined ? (
+                      <>Tracked IRC chat&nbsp;<b>legacy status unknown</b></>
+                    ) : (
+                      <>Tracked IRC chat&nbsp;<b>{compact(hp.chat)}</b>/m</>
+                    )}
                   </div>
                   {hasTotalEmotes ? (
                     <div className="row">
@@ -971,9 +1146,9 @@ export function HubActivityChart({
               </div>
             ) : null}
           </div>
+          </div>
         </div>
-        <div className="hx-plot-stack__row">
-          <span className="hx-plot-stack__gutter" aria-hidden="true" />
+        <div className="hx-plot-stack__row hx-plot-stack__row--full">
           <div className="hx-plot-stack__plot">
             <div className="hx-axis" aria-hidden="true">
               {ticks.map((label, i) => (
@@ -994,14 +1169,14 @@ export function HubActivityChart({
                     role="img"
                     aria-label={`${meta.label} emote uses per minute over the last ${windowLabel(windowMinutes)}`}
                   >
-                    <span className="hx-provider-lane__label" aria-hidden="true">
-                      <span
-                        className="hx-provider-lane__dot"
-                        style={{ background: meta.color }}
-                      />
-                      {meta.label}
-                    </span>
                     <div className="hx-provider-lane__plot" aria-hidden="true">
+                      <span className="hx-provider-lane__label">
+                        <span
+                          className="hx-provider-lane__dot"
+                          style={{ background: meta.color }}
+                        />
+                        {meta.shortLabel}
+                      </span>
                       <svg viewBox="0 0 100 100" preserveAspectRatio="none">
                         {providerLaneLines[key].map((line, i) => (
                           <g key={i}>

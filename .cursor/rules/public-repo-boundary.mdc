@@ -28,7 +28,8 @@ curl -fsS https://api.streampulse.stream/v1/extension/health
 curl -fsS https://api.streampulse.stream/v1/public/status
 ```
 
-Local stack (Streamclone checkout): `curl http://localhost:8090/v1/extension/health`
+Local StreamPulse BFF: `curl http://localhost:8081/v1/extension/health`.
+`localhost:8090` is watch-only and not an extension or portal BFF.
 
 ## When adding docs
 

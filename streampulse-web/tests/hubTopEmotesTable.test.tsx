@@ -16,5 +16,8 @@ describe('HubTopEmotesTable inspector layout', () => {
 
     expect(screen.getByText('Twitch')).toBeTruthy()
     expect(screen.getByText('7TV')).toBeTruthy()
+    const twitchBadge = screen.getByText('Twitch')
+    expect(twitchBadge.getAttribute('data-provider')).toBe('twitch')
+    expect(twitchBadge.closest('.hub-top-emotes-inspector__provider-slot')).toBeTruthy()
   })
 })

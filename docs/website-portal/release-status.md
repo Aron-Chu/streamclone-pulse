@@ -48,25 +48,32 @@ Last updated: 2026-07-07 (Gate 1 commits done; Gate 2 remote evidence captured; 
 - **In:** 250-channel live tracking stability, portal/API GA, extension store submission
 - **Out:** corpus expansion, Top500 widen, broad 7-day corpus soak, ReplayForge auto-clipper GA
 
-## Current production identity (audit 2026-07-07)
+## Current production identity (public check 2026-07-09)
 
-**Image namespace exit (in progress):** production manifests target promoted `ghcr.io/aron-chu/streampulse/*` by digest. Pre-cutover private ops may still pin `streamclone/*` source images.
+**Backend image exit is live for the Pulse BFF.** Public health reports streampulse-backend identity, not Streamclone rc18:
+
+```bash
+curl -fsS https://api.streampulse.stream/v1/extension/health
+# {"ok":true,"version":"v0.1.1","hostedMode":true,...}
+```
+
+Ops still uses **dual tags** (`IMAGE_TAG` for remaining streamclone watch-core images; `BACKEND_IMAGE_TAG` for `ghcr.io/aron-chu/streampulse/{analytics,migrate,analytics-workers}`). See private **streampulse-ops** `AGENTS.md`.
 
 | Doc | Purpose |
 |-----|---------|
-| [streamclone-image-exit-audit-2026-07.md](../pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) | Active migration spec, cutover checklist, VPS reconcile |
-| [production-artifact-decision-2026-07.md](../pulse-extension/evidence/production-artifact-decision-2026-07.md) | Launch hardening on source images until cutover |
+| [streamclone-image-exit-audit-2026-07.md](../pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) | Historical migration options / cutover checklist (pre-`v0.1.1` health) |
+| [production-artifact-decision-2026-07.md](../pulse-extension/evidence/production-artifact-decision-2026-07.md) | Launch hardening notes until cutover |
 | streamclone [production-promotion-contract.md](../../../twitch-7tv-clone/docs/production-promotion-contract.md) | Public promotion contract |
 
 | Field | Value |
 |-------|-------|
-| Health version | `v0.3.0-rc18` |
-| Intended `IMAGE_TAG` | `v0.3.0-rc18` (reconcile via ops) |
+| Health version (public) | `v0.1.1` (`hostedMode: true`) — Pulse BFF from **streampulse-backend** |
+| `BACKEND_IMAGE_TAG` | Pin in streampulse-ops (must match analytics / migrate / workers) |
+| `IMAGE_TAG` | Remaining streamclone watch-core services only (metadata/video/chat/emote/…) |
 | Source / production digests | Record in streampulse-ops manifest |
-| Rollback tag + digests | Document in streampulse-ops manifest |
-| Scraper tag exception | Document if not rc18 |
+| Rollback tags + digests | Document in streampulse-ops manifest |
 
-**Blocker for cutover:** Phase 0 VPS reconcile + digest promotion in private **streampulse-ops** before public docs claim `streampulse/*` is live.
+**Remaining ops work:** keep dual-tag digests reconciled in private **streampulse-ops**; do not treat Streamclone `v0.3.0-rc18` as the live Pulse API identity.
 
 Manifest lives in private **streampulse-ops** (`docs/deployments/YYYY-MM-DD-<tag>-<note>.md`).
 
