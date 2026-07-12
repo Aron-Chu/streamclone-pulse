@@ -1,0 +1,18 @@
+{
+  "mode": "vod",
+  "vodId": "2806037629",
+  "streamId": "stream-fixture-prev",
+  "channelLogin": "fixturechan",
+  "channelDisplayName": "fixturechan",
+  "title": "Fixture VOD syncing",
+  "startedAt": "2026-07-10T12:00:00.000Z",
+  "durationSeconds": 3600,
+  "coverageStatus": "syncing",
+  "coverageMessage": "Replay Pulse is syncing this VOD",
+  "timeline": {
+    "bucketSeconds": 60,
+    "points": []
+  },
+  "topMoments": [],
+  "topEmotes": []
+}

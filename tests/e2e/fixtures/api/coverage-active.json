@@ -1,0 +1,18 @@
+{
+  "login": "fixturechan",
+  "coverageTier": "active_live_coverage",
+  "hostedCap": {
+    "activeLimit": 250,
+    "activeCount": 120,
+    "activeAvailable": true
+  },
+  "liveMetadata": {
+    "available": true,
+    "isLive": true,
+    "streamId": "stream-fixture-1",
+    "title": "Fixture live stream",
+    "category": "Just Chatting",
+    "startedAt": "2026-07-11T18:00:00.000Z",
+    "viewerCount": 1200
+  }
+}

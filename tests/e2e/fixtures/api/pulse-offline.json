@@ -1,0 +1,47 @@
+{
+  "login": "fixturechan",
+  "isLive": false,
+  "tracking": false,
+  "streamId": "stream-fixture-prev",
+  "vodId": "2806037629",
+  "startedAt": "2026-07-10T12:00:00.000Z",
+  "endedAt": "2026-07-10T16:00:00.000Z",
+  "title": "Previous stream",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 0,
+  "coverageStartOffsetSeconds": 0,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 0,
+    "coverageEndOffsetSeconds": 14400,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Channel offline"
+  },
+  "topEmotes": [],
+  "rollups": [],
+  "lanes": { "composite": [], "chat": [], "seventv": [] },
+  "peaks": [],
+  "recap": {
+    "streamId": "stream-fixture-prev",
+    "login": "fixturechan",
+    "durationSeconds": 14400,
+    "totalMessages": 9000,
+    "peakChatPerMin": 220,
+    "topMoments": [],
+    "topEmotes": [],
+    "clipCandidates": []
+  },
+  "games": [
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 0,
+      "durationSeconds": 14400
+    }
+  ]
+}

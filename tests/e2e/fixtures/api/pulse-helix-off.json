@@ -1,0 +1,63 @@
+{
+  "login": "fixturechan",
+  "isLive": true,
+  "tracking": true,
+  "streamId": "stream-fixture-1",
+  "vodId": null,
+  "startedAt": "2026-07-11T18:00:00.000Z",
+  "title": "Fixture helix off",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 1800,
+  "coverageStartOffsetSeconds": 30,
+  "helixEnabled": false,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 30,
+    "coverageEndOffsetSeconds": 1800,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Tracked without Helix metadata"
+  },
+  "topEmotes": [],
+  "rollups": [
+    {
+      "offsetSeconds": 1680,
+      "chatCount": 40,
+      "totalEmoteCount": 8,
+      "sevenTvEmoteCount": 3,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 1740,
+      "chatCount": 50,
+      "totalEmoteCount": 10,
+      "sevenTvEmoteCount": 4,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 1800,
+      "chatCount": 55,
+      "totalEmoteCount": 12,
+      "sevenTvEmoteCount": 5,
+      "topEmotes": []
+    }
+  ],
+  "lanes": {
+    "composite": [0.3, 0.35, 0.4],
+    "chat": [0.3, 0.35, 0.4],
+    "seventv": [0.2, 0.25, 0.3]
+  },
+  "peaks": [],
+  "recap": null,
+  "games": [
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 0,
+      "durationSeconds": 1800
+    }
+  ]
+}

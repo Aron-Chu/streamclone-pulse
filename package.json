@@ -8,6 +8,9 @@
     "build": "vite build",
     "typecheck": "npx tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test --project=extension-mocked",
+    "test:e2e:mocked": "playwright test --project=extension-mocked",
+    "test:e2e:live": "playwright test --project=live-twitch",
     "capture:extension-goldens": "npx tsx scripts/capture-extension-goldens.mts",
     "zip": "node scripts/zip-dist.mjs"
   },
