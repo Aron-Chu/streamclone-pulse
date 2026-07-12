@@ -156,9 +156,11 @@ if (!process.env.CLOUDFLARE_API_TOKEN?.trim()) {
 }
 
 // Production branch is `master` (not `main`) — `main` only updates preview alias.
+// Wrangler 4+ reads CLOUDFLARE_ACCOUNT_ID from the environment; do not pass
+// --account-id (removed from `pages deploy` and causes a hard failure).
 const deployArgs = ['pages', 'deploy', 'dist', '--project-name', projectName, '--branch', 'master']
-if (process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
-  deployArgs.push('--account-id', process.env.CLOUDFLARE_ACCOUNT_ID.trim())
+if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
+  console.warn('pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler will use its default account')
 }
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)
