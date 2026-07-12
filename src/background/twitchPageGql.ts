@@ -36,28 +36,55 @@ function resultFromPageScrape(page: PageVodScrapeResult): GqlVodDiscoveryResult 
   }
 }
 
-async function runInPageAsync<T>(tabId: number, func: () => Promise<T>): Promise<T | null> {
-  const [injection] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func,
-  })
+async function runInPageAsync<T, A extends unknown[]>(
+  tabId: number,
+  func: (...args: A) => Promise<T>,
+  args: A,
+): Promise<T | null> {
+  const [injection] = await chrome.scripting.executeScript(
+    mainWorldExecuteScriptOptions(tabId, func, args),
+  )
   return (injection?.result ?? null) as T | null
 }
 
-async function runInPage<T>(tabId: number, func: () => T): Promise<T | null> {
-  const [injection] = await chrome.scripting.executeScript({
+async function runInPage<T, A extends unknown[]>(
+  tabId: number,
+  func: (...args: A) => T,
+  args: A = [] as unknown as A,
+): Promise<T | null> {
+  const [injection] = await chrome.scripting.executeScript(
+    mainWorldExecuteScriptOptions(tabId, func, args),
+  )
+  return (injection?.result ?? null) as T | null
+}
+
+/**
+ * Build chrome.scripting.executeScript options for MAIN-world injection.
+ * Always pass module functions by reference with explicit `args` — never wrap
+ * them in a closure (minified free vars throw ReferenceError in the page).
+ */
+export function mainWorldExecuteScriptOptions<T, A extends unknown[]>(
+  tabId: number,
+  func: (...args: A) => T,
+  args: A,
+): {
+  target: { tabId: number }
+  world: 'MAIN'
+  func: (...args: A) => T
+  args: A
+} {
+  return {
     target: { tabId },
     world: 'MAIN',
     func,
-  })
-  return (injection?.result ?? null) as T | null
+    args,
+  }
 }
 
 export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string): Promise<GqlVodDiscoveryResult> {
   let pageScrape: PageVodScrapeResult | null = null
   try {
-    pageScrape = await runInPage(tabId, scrapePageVodState)
+    pageScrape = await runInPage(tabId, scrapePageVodState, [])
   } catch (err) {
     await pulseDebug(
       'vod.discover.page',
@@ -86,7 +113,9 @@ export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string
 
   let gqlPage: Awaited<ReturnType<typeof gqlDiscoverVodInPage>> | null = null
   try {
-    gqlPage = await runInPageAsync(tabId, () => gqlDiscoverVodInPage(login))
+    // Pass login via args — closures over module bindings break after minify
+    // (MAIN world sees ReferenceError: <minifiedName> is not defined).
+    gqlPage = await runInPageAsync(tabId, gqlDiscoverVodInPage, [login])
   } catch (err) {
     return {
       vodId: null,

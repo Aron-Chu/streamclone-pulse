@@ -149,7 +149,9 @@ export function detectTwitchChannelLive(context: TwitchPageContext): boolean {
   if (document.querySelector('[data-a-target="channel-offline-header"]')) return false
 
   const video = document.querySelector('video')
-  if (video && Number.isFinite(video.duration) && video.duration === Infinity) {
+  // Live HLS often reports duration as Infinity. Number.isFinite(Infinity) is false,
+  // so do not gate this branch on isFinite.
+  if (video && video.duration === Infinity) {
     return true
   }
 

@@ -8,6 +8,7 @@ import {
   fetchPulseBackfillStatus,
   fetchPulseBookmarks,
   fetchPulseChannel,
+  fetchPulseVod,
   fetchTopClip,
   postPulseBackfill,
   postVodHint,
@@ -16,7 +17,7 @@ import {
 } from './api.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin, untrackLogin } from './tracking.ts'
-import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage } from '../shared/messages.ts'
+import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
 import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
 import {
   addToWatchlist,
@@ -29,8 +30,12 @@ import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabNavigation,
 } from './pulsePrefetch.ts'
+import { shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
 
 void initPulseDebug()
+
+const revalidateInFlight = new Set<string>()
+const lastRevalidateAt = new Map<string, number>()
 
 async function hostedBackend(): Promise<boolean> {
   return isHostedBackendUrl(await getBackendUrl())
@@ -106,11 +111,20 @@ async function peekPulse(
 }
 
 async function revalidatePulse(login: string, window: PulseCacheWindow, forceCoverage = false): Promise<void> {
+  const key = `${login.toLowerCase()}:${window}:${forceCoverage ? '1' : '0'}`
+  if (revalidateInFlight.has(key)) return
+  if (!shouldAllowPulseRevalidate(lastRevalidateAt.get(key), Date.now(), { force: forceCoverage })) {
+    return
+  }
+  revalidateInFlight.add(key)
   try {
     const { payload, coverageTier } = await peekPulse(login, window, forceCoverage)
     broadcastPulse(login, payload, undefined, coverageTier)
+    lastRevalidateAt.set(key, Date.now())
   } catch (err) {
     broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+  } finally {
+    revalidateInFlight.delete(key)
   }
 }
 
@@ -273,6 +287,9 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
             await refreshPulse(message.login, window)
           } else {
             const { payload, coverageTier } = await peekPulse(message.login, window)
+            if (payload) {
+              broadcastPulse(message.login, payload, undefined, coverageTier)
+            }
             sendResponse({
               type: 'PULSE_UPDATE',
               login: message.login,
@@ -291,6 +308,24 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
             payload: fresh?.payload ?? null,
             coverageTier,
           } satisfies PulseUpdateMessage)
+          return
+        }
+        case 'GET_PULSE_VOD': {
+          try {
+            const vodPulse = await fetchPulseVod(message.vodId)
+            sendResponse({
+              type: 'VOD_PULSE_UPDATE',
+              vodId: message.vodId,
+              vodPulse,
+            } satisfies VodPulseUpdateMessage)
+          } catch (err) {
+            sendResponse({
+              type: 'VOD_PULSE_UPDATE',
+              vodId: message.vodId,
+              vodPulse: null,
+              error: err instanceof Error ? err.message : 'vod_pulse_failed',
+            } satisfies VodPulseUpdateMessage)
+          }
           return
         }
         case 'GET_COVERAGE': {
@@ -511,6 +546,14 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           return
         case 'LIST_PAST_VODS':
           sendResponse({ type: 'PAST_VODS', items: [], error: messageText } satisfies BackgroundResponse)
+          return
+        case 'GET_PULSE_VOD':
+          sendResponse({
+            type: 'VOD_PULSE_UPDATE',
+            vodId: 'vodId' in message ? message.vodId : '',
+            vodPulse: null,
+            error: messageText,
+          } satisfies VodPulseUpdateMessage)
           return
         default:
           sendResponse({

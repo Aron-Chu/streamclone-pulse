@@ -146,6 +146,10 @@ export function createLivePollController(
           stopTimer()
           return
         }
+        // Avoid restarting the poll on every sync. PULSE_UPDATE handlers and SPA
+        // re-entrancy call sync frequently; an immediate tick each time would create
+        // an uncontrolled GET_PULSE loop (observed ~500+/s in extension e2e).
+        if (tickInFlight || timer) return
         consecutiveFailures = 0
         void tick()
       })

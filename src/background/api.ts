@@ -16,6 +16,7 @@ import {
 } from '../shared/pastVods.ts'
 import { getBackendUrl, getBetaKey } from '../shared/storage.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
+import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
 
 async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
   const headers: Record<string, string> = {}
@@ -70,6 +71,26 @@ export async function fetchPulseChannel(
     emoteSyncState: payload.emoteSync?.state ?? null,
     lastRollupSevenTv: lastRollup?.sevenTvEmoteCount ?? null,
     lastRollupTotal: lastRollup?.totalEmoteCount ?? null,
+  })
+  return payload
+}
+
+export async function fetchPulseVod(
+  vodId: string,
+  options?: { baseUrl?: string },
+): Promise<import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse> {
+  const root = options?.baseUrl ?? await getBackendUrl()
+  const res = await fetch(`${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}`, {
+    headers: await pulseRequestHeaders(),
+  })
+  const payload = await normalizeVodPulseHttpResponse(vodId, res)
+  await pulseDebug('vod.pulse.api', 'vod pulse payload received', {
+    vodId,
+    streamId: payload.streamId ?? null,
+    channelLogin: payload.channelLogin ?? null,
+    coverageStatus: payload.coverageStatus,
+    timelinePoints: payload.timeline?.points.length ?? 0,
+    topMoments: payload.topMoments?.length ?? 0,
   })
   return payload
 }

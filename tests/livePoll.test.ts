@@ -197,4 +197,42 @@ describe('createLivePollController backoff', () => {
       window: 'recent',
     })
   })
+
+  it('does not kick a second immediate tick when sync is re-entered while polling', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    vi.mocked(sendBackgroundMessage).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          setTimeout(() => {
+            resolve({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+          }, 50)
+        }),
+    )
+
+    controller = createLivePollController(() => ({
+      kind: 'channel',
+      login: 'xqc',
+      vodId: null,
+    }))
+    const ctx = { kind: 'channel' as const, login: 'xqc', vodId: null }
+    controller.sync('xqc', ctx, true, true)
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+
+    // Simulate PULSE_UPDATE → sync re-entry while first tick is in flight.
+    controller.sync('xqc', ctx, true, true)
+    controller.sync('xqc', ctx, true, true)
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(50)
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
+
+    // After the scheduled interval, exactly one more poll fires.
+    const nextDelay = computeLivePollDelayMs(30_000, 0, () => 0.5)
+    await vi.advanceTimersByTimeAsync(nextDelay)
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
+  })
 })
