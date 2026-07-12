@@ -3,16 +3,9 @@ import type { CSSProperties } from 'react'
 import {
   LIVE_HEAT_SUBTITLE,
   LIVE_HEAT_TITLE,
-  extensionRollupsForDerivation,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
-import type { ExtensionRollup, PulsePayload } from '../shared/messages.ts'
-import {
-  hasFullTimelineRollups,
-  prepareChartRollups,
-  resolvePayloadCoverageStartOffset,
-} from './chatActivityEmotes.ts'
-import { downsampleRollupsForChart } from './extensionChartPoints.ts'
+import type { PulsePayload } from '../shared/messages.ts'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import {
   MOST_REACTED_VISIBLE_COUNT,
@@ -68,18 +61,6 @@ export function MostReactedSection({
   demoMode = false,
 }: MostReactedSectionProps) {
   const heat = resolveMostReactedHeat(payload)
-  const rollups = extensionRollupsForDerivation(payload) as ExtensionRollup[]
-  const chartRollups = useMemo(
-    () =>
-      downsampleRollupsForChart(
-        prepareChartRollups(payload, {
-          chartWindow: hasFullTimelineRollups(payload) ? 'full' : '60m',
-          currentOffsetSeconds: Math.max(0, payload.currentOffsetSeconds ?? 0),
-          coverageStartOffsetSeconds: resolvePayloadCoverageStartOffset(payload),
-        }),
-      ),
-    [payload],
-  )
   const [sortMode, setSortMode] = useState<MomentSortMode>('reaction')
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [listExpanded, setListExpanded] = useState(false)
@@ -96,12 +77,8 @@ export function MostReactedSection({
       resolvePinnedMomentPoint({
         pinOffsetSeconds: pinnedOffsetSeconds,
         heatPoints: heat.points,
-        rollups,
-        chartRollups,
-        startedAt: payload.startedAt,
-        catalog: payload.topEmotes,
       }),
-    [pinnedOffsetSeconds, heat.points, rollups, chartRollups, payload.startedAt, payload.topEmotes],
+    [pinnedOffsetSeconds, heat.points],
   )
 
   const visiblePoints = listExpanded

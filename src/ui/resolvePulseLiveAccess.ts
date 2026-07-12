@@ -4,6 +4,22 @@ import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
 
 export { PULSE_STREAM_START_TOLERANCE_SEC }
 export const COVERAGE_TIER_ACTIVE_LIVE = 'active_live_coverage'
+export const COVERAGE_TIER_WARMING = 'warming'
+
+export type CoverageTierStatusLabel =
+  | 'Chat tracked (IRC)'
+  | 'Warming'
+  | 'Metadata only — no chat coverage'
+
+export function coverageTierStatusLabel(
+  coverageTier: string | null | undefined,
+  tracking = false,
+): CoverageTierStatusLabel {
+  if (coverageTier === COVERAGE_TIER_ACTIVE_LIVE) return 'Chat tracked (IRC)'
+  if (coverageTier === COVERAGE_TIER_WARMING) return 'Warming'
+  if (coverageTier?.trim()) return 'Metadata only — no chat coverage'
+  return tracking ? 'Warming' : 'Metadata only — no chat coverage'
+}
 
 export type PulseLiveAccessState =
   | 'not_in_roster'

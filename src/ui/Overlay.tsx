@@ -55,7 +55,7 @@ import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
 import { PulseNotTrackedPanel } from './PulseNotTrackedPanel.tsx'
 import { PulseRosterUnsupportedPanel } from './PulseRosterUnsupportedPanel.tsx'
 import { PulseSidebarSkeleton } from './PulseSidebarSkeleton.tsx'
-import { resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
+import { coverageTierStatusLabel, resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
 import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
 import {
   evaluateBackfillRefresh,
@@ -1252,6 +1252,7 @@ export function Overlay({
               count={mostReactedHeat?.completedRollupCount ?? 0}
               coverageStart={coverageStart}
               tracking={payload?.tracking ?? false}
+              coverageTier={coverageTierState?.coverageTier}
             />
           ) : null}
         </>
@@ -1657,17 +1658,20 @@ function WarmingState({
   count,
   coverageStart = 0,
   tracking = true,
+  coverageTier,
 }: {
   count: number
   coverageStart?: number
   tracking?: boolean
+  coverageTier?: string
 }) {
-  if (!tracking) {
+  const statusLabel = coverageTierStatusLabel(coverageTier, tracking)
+  if (statusLabel === 'Metadata only — no chat coverage') {
     return (
       <section style={styles.stateBlock}>
-        <h2 style={styles.stateTitle}>Chat not collecting</h2>
+        <h2 style={styles.stateTitle}>{statusLabel}</h2>
         <p style={styles.stateText}>
-          This channel is not in the live IRC collector pool yet — viewer metadata may still update, but Most reacted needs minute chat rollups. Track or protect the channel when a collector slot opens.
+          Viewer metadata may still update, but this channel has no IRC chat coverage right now. Most reacted requires measured minute chat rollups.
         </p>
       </section>
     )
@@ -1678,7 +1682,7 @@ function WarmingState({
   const firstMinutePending = count === 0
   return (
     <section style={styles.stateBlock}>
-      <h2 style={styles.stateTitle}>{firstMinutePending ? 'Collecting first minute' : 'Warming up'}</h2>
+      <h2 style={styles.stateTitle}>{statusLabel}</h2>
       <p style={styles.stateText}>
         {firstMinutePending
           ? 'IRC chat rollups close once per minute. The chart and Top Moments fill in automatically — nothing to load from stream start yet.'
