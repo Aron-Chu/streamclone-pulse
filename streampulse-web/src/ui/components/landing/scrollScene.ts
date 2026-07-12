@@ -19,8 +19,8 @@ export interface ScrollSceneOptions {
   scene: HTMLElement
   /** Stage to pin while the scene scrolls past (transform-pinned). */
   sticky?: HTMLElement | null
-  /** Called once per animation frame with smoothed progress 0–1. */
-  onProgress: (p: number) => void
+  /** Called each animation frame with smoothed progress (reveals) and raw scroll progress (position). */
+  onProgress: (smoothed: number, raw: number) => void
   /**
    * Easing rate in 1/s — how fast applied progress chases the scroll target.
    * Higher = snappier, lower = floatier. ~14 settles in roughly a quarter second.
@@ -56,7 +56,7 @@ export function startScrollScene({ scene, sticky, onProgress, stiffness = 14 }: 
       current += (target - current) * (1 - Math.exp(-stiffness * dt))
       if (Math.abs(target - current) < 0.0006) current = target
     }
-    onProgress(current)
+    onProgress(current, target)
 
     if (current !== target) {
       schedule()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ChevronLeft, ChevronRight, MessageSquare, Radio, TrendingUp, Zap } from 'lucide-react'
+import { Activity, ChevronLeft, ChevronRight, MessageSquare, Radio, TrendingUp } from 'lucide-react'
 import {
   compareMomentsChronologically,
   momentRowKey,
@@ -13,26 +13,41 @@ import {
 } from '../../../lib/pulseMomentRow'
 import { resolveMomentEmote } from '../../../lib/pulseMomentsUtils'
 import type { PublicHub, PublicHubActivityWindow, PublicHubLoadSource } from '../../../lib/publicHub'
+import { isHubNetworkDegraded } from '../../../lib/hubUiState'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
 import { compact, displayName } from './hubFormat'
 import { EmoteImg } from './EmoteImg'
 import { Avatar } from '../hub/primitives'
+import { isLifecycleMomentKind } from '../../../lib/poolWireReducer'
 
 const VISIBLE_CAP_SECTION = 10
 const VISIBLE_CAP_TICKER = 12
 const DEDUPE_WINDOW_MS = 10 * 60 * 1000
 const MAX_NEW_ANIMATIONS_PER_POLL = 3
+/** Hard client freshness window — events older than this never render on Live Wire. */
+export const LIVE_WIRE_MAX_AGE_MS = 30 * 60 * 1000
+const LIVE_WIRE_QUIET_EMPTY = 'No network breakouts in the last 30m'
 
 const EMPTY_REASONS: Record<string, string> = {
   no_qualifying_session:
-    'No live channel currently qualifies. StreamPulse needs IRC-tracked rooms with minute rollups and detected peaks.',
-  store_unavailable:
-    'Analytics store unavailable — featured moments need Postgres rollups.',
+    'No live channel currently qualifies. Peaks appear once tracked rooms have enough chat activity.',
+  store_unavailable: 'Analytics store unavailable — live moments will return when storage recovers.',
   stream_unavailable: 'The picked live stream could not be loaded.',
-  rollup_unavailable:
-    'Minute rollups are missing — IRC collector may still be warming up.',
+  rollup_unavailable: 'Minute activity is still warming up for the tracking pool.',
   insufficient_peaks:
-    'Rollups exist but no peaks were detected yet. Give the stream a few minutes of chat activity.',
+    'Activity is flowing but no peaks were detected yet. Give the stream a few minutes.',
+}
+
+export function momentAtMs(at: number | undefined): number | null {
+  if (at == null || !Number.isFinite(at) || at <= 0) return null
+  return at > 1e12 ? at : at * 1000
+}
+
+/** True when the event occurred within the Live Wire freshness window. */
+export function isLiveWireEventFresh(at: number | undefined, nowMs: number): boolean {
+  const ms = momentAtMs(at)
+  if (ms == null) return false
+  return nowMs - ms <= LIVE_WIRE_MAX_AGE_MS
 }
 
 export interface HubLiveWireFeedProps {
@@ -42,8 +57,10 @@ export interface HubLiveWireFeedProps {
   loading?: boolean
   hubEndpointOk?: boolean
   loadSource?: PublicHubLoadSource
-  layout?: 'section' | 'ticker'
+  layout?: 'section' | 'ticker' | 'lane'
   titleId?: string
+  selectedMomentKey?: string | null
+  onSelectMoment?: (moment: FigmaMomentRow) => void
 }
 
 function kindMeta(kind: string | undefined): { label: string; icon: ReactNode } {
@@ -59,15 +76,12 @@ function kindMeta(kind: string | undefined): { label: string; icon: ReactNode } 
   ) {
     return { label: 'Emote spike', icon: <TrendingUp aria-hidden="true" /> }
   }
-  if (normalized === 'stream_opening') {
-    return { label: 'Just went live', icon: <Zap aria-hidden="true" /> }
-  }
   return { label: 'Peak', icon: <Activity aria-hidden="true" /> }
 }
 
 function relativeTime(at: number | undefined, now: number): string {
-  if (at == null || !Number.isFinite(at) || at <= 0) return ''
-  const ms = at > 1e12 ? at : at * 1000
+  const ms = momentAtMs(at)
+  if (ms == null) return ''
   const deltaSec = Math.max(0, Math.round((now - ms) / 1000))
   if (deltaSec < 60) return `${deltaSec}s ago`
   const min = Math.round(deltaSec / 60)
@@ -92,12 +106,6 @@ function strongestMetric(moment: FigmaMomentRow): string | null {
 /** Feed detail for ticker chips — avoid duplicating the emote-velocity leaderboard. */
 function chipFeedDetail(moment: FigmaMomentRow): string | null {
   const normalized = (moment.kind ?? '').trim().toLowerCase()
-  if (normalized === 'stream_opening') {
-    if (moment.viewers != null && moment.viewers > 0) {
-      return `${compact(moment.viewers)} viewers`
-    }
-    return 'Now live'
-  }
   if (normalized === 'chat' || normalized === 'chat_spike') {
     if (moment.chatPerMin != null && moment.chatPerMin > 0) {
       return `${compact(moment.chatPerMin)} chat/m`
@@ -151,10 +159,12 @@ function collectFreshKeys(
   moments: FigmaMomentRow[],
   prevSeen: Set<string>,
   maxCount: number,
+  nowMs: number,
 ): Set<string> {
   const fresh = new Set<string>()
   let animCount = 0
   for (const moment of moments) {
+    if (!isLiveWireEventFresh(moment.at, nowMs)) continue
     const key = momentRowKey(moment)
     if (!prevSeen.has(key) && animCount < maxCount) {
       fresh.add(key)
@@ -256,15 +266,18 @@ export function HubLiveWireFeed({
   feed,
   activityWindow = '24h',
   loading,
-  hubEndpointOk = true,
-  loadSource = 'full',
+  hubEndpointOk,
+  loadSource,
   layout = 'section',
   titleId = 'hub-live-wire-title',
+  selectedMomentKey = null,
+  onSelectMoment,
 }: HubLiveWireFeedProps) {
   const isTicker = layout === 'ticker'
-  const visibleCap = isTicker ? VISIBLE_CAP_TICKER : VISIBLE_CAP_SECTION
+  const isLane = layout === 'lane'
+  const visibleCap = isTicker || isLane ? VISIBLE_CAP_TICKER : VISIBLE_CAP_SECTION
   const { animateEnter, animateEnterHorizontal, motionEnabled } = useAnalyticsMotion()
-  const hubDegraded = loadSource === 'stats-fallback' || hubEndpointOk === false
+  const hubDegraded = isHubNetworkDegraded(loadSource, hubEndpointOk)
   const isLiveNetwork = feed.source === 'network' && !hubDegraded
   const prevSeenRef = useRef<Set<string>>(new Set())
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map())
@@ -296,10 +309,20 @@ export function HubLiveWireFeed({
   )
 
   const visibleMoments = useMemo(() => {
-    const enriched = enrichPulseMomentRows(feed.moments, enrichCtx)
-    const sorted = [...enriched].sort(compareMomentsChronologically)
+    const nowMs = Date.now()
+    const peakOnly = feed.moments.filter((m) => !isLifecycleMomentKind(m.kind))
+    const enriched = enrichPulseMomentRows(peakOnly, enrichCtx)
+    const freshOnly = enriched.filter((m) => isLiveWireEventFresh(m.at, nowMs))
+    const sorted = [...freshOnly].sort(compareMomentsChronologically)
     return dedupeMomentsByLogin(sorted, visibleCap)
   }, [enrichCtx, feed.moments, visibleCap])
+
+  const hadStalePeaksOnly = useMemo(() => {
+    const nowMs = Date.now()
+    const peakOnly = feed.moments.filter((m) => !isLifecycleMomentKind(m.kind))
+    if (peakOnly.length === 0) return false
+    return peakOnly.every((m) => !isLiveWireEventFresh(m.at, nowMs))
+  }, [feed.moments])
 
   const emoteLookup = useMemo(
     () => buildEmoteLookupFromMoments(visibleMoments, hub.topEmotes),
@@ -322,27 +345,37 @@ export function HubLiveWireFeed({
       visibleMoments,
       prevSeenRef.current,
       MAX_NEW_ANIMATIONS_PER_POLL,
+      Date.now(),
     )
 
     setActiveNewKeys(freshKeys)
-    const animate = isTicker ? animateEnterHorizontal : animateEnter
+    const animate = isTicker || isLane ? animateEnterHorizontal : animateEnter
     for (const key of freshKeys) {
       const el = rowRefs.current.get(key)
       if (el) animate(el)
     }
 
     prevSeenRef.current = new Set(visibleMoments.map(momentRowKey))
-  }, [animateEnter, animateEnterHorizontal, isLiveNetwork, isTicker, motionEnabled, visibleMoments])
+  }, [
+    animateEnter,
+    animateEnterHorizontal,
+    isLiveNetwork,
+    isLane,
+    isTicker,
+    motionEnabled,
+    visibleMoments,
+  ])
 
   const metaLabel = isLiveNetwork
-    ? 'network peaks · newest first'
+    ? 'last 30m · newest first'
     : hubDegraded
-      ? 'hub unavailable — live network feed paused'
+      ? 'live network feed paused'
       : 'snapshot — not live network cadence'
   const emptyReason = hubDegraded
-    ? 'Public hub is unavailable on this backend — Live Wire needs `/v1/public/hub` minute rollups and network peaks.'
-    : (feed.reason && EMPTY_REASONS[feed.reason]) ||
-      'No network peaks detected in the tracking pool yet. Moments appear as IRC rollups find chat and emote spikes.'
+    ? 'Live network moments need a healthy hub connection. Showing aggregate stats only until the feed recovers.'
+    : hadStalePeaksOnly
+      ? LIVE_WIRE_QUIET_EMPTY
+      : (feed.reason && EMPTY_REASONS[feed.reason]) || LIVE_WIRE_QUIET_EMPTY
 
   const renderChip = (moment: FigmaMomentRow) => {
     const key = momentRowKey(moment)
@@ -351,7 +384,9 @@ export function HubLiveWireFeed({
     const meta = kindMeta(moment.kind)
     const detail = chipFeedDetail(moment)
     const timeLabel = relativeTime(moment.at, now)
-    const isNew = isLiveNetwork && activeNewKeys.has(key)
+    const isNew =
+      isLiveNetwork && activeNewKeys.has(key) && isLiveWireEventFresh(moment.at, now)
+    const isSelected = selectedMomentKey === key
     const href = moment.href ?? (login ? `/analytics/${encodeURIComponent(login)}` : '#')
     const profileImageUrl =
       moment.profileImageUrl ?? profileImageByLogin.get(login.toLowerCase())
@@ -359,16 +394,8 @@ export function HubLiveWireFeed({
       (moment.topEmotes?.length ?? 0) > 0 &&
       !(detail?.includes(moment.topEmotes?.[0]?.name?.trim() ?? ''))
 
-    return (
-      <Link
-        key={key}
-        to={href}
-        className={`hub-live-wire__chip${isNew ? ' hub-live-wire__chip--new' : ''}`}
-        ref={(el) => {
-          if (el) rowRefs.current.set(key, el)
-          else rowRefs.current.delete(key)
-        }}
-      >
+    const body = (
+      <>
         <span className="hub-live-wire__chip-kind" aria-hidden="true">
           {meta.icon}
         </span>
@@ -413,14 +440,52 @@ export function HubLiveWireFeed({
           </span>
         ) : null}
         {isNew ? <span className="hub-live-wire__chip-new">NEW</span> : null}
+      </>
+    )
+
+    const className = `hub-live-wire__chip${isNew ? ' hub-live-wire__chip--new' : ''}${
+      isSelected ? ' hub-live-wire__chip--selected' : ''
+    }`
+
+    if (onSelectMoment) {
+      return (
+        <button
+          key={key}
+          type="button"
+          className={className}
+          aria-pressed={isSelected}
+          ref={(el) => {
+            if (el) rowRefs.current.set(key, el)
+            else rowRefs.current.delete(key)
+          }}
+          onClick={() => onSelectMoment(moment)}
+        >
+          {body}
+        </button>
+      )
+    }
+
+    return (
+      <Link
+        key={key}
+        to={href}
+        className={className}
+        ref={(el) => {
+          if (el) rowRefs.current.set(key, el)
+          else rowRefs.current.delete(key)
+        }}
+      >
+        {body}
       </Link>
     )
   }
 
-  const rootClass = `hub-live-wire${isTicker ? ' hub-live-wire--ticker' : ''}`
+  const rootClass = `hub-live-wire${isTicker || isLane ? ' hub-live-wire--ticker' : ''}${
+    isLane ? ' hub-live-wire--lane' : ''
+  }`
 
   if (loading && visibleMoments.length === 0) {
-    if (isTicker) {
+    if (isTicker || isLane) {
       return (
         <section className={rootClass} aria-labelledby={titleId} aria-busy="true">
           <WireHeader titleId={titleId} metaLabel={metaLabel} />
@@ -449,14 +514,14 @@ export function HubLiveWireFeed({
     )
   }
 
-  if (isTicker) {
+  if (isTicker || isLane) {
     return (
       <section className={rootClass} aria-labelledby={titleId}>
         <WireHeader titleId={titleId} metaLabel={metaLabel} />
 
         {hubDegraded ? (
           <p className="hub-live-wire__banner hub-live-wire__banner--warn" role="status">
-            Showing aggregate stats only — network live moments require a healthy public hub endpoint.
+            Showing aggregate stats only — live network moments will resume when the hub feed recovers.
           </p>
         ) : null}
 
@@ -486,7 +551,7 @@ export function HubLiveWireFeed({
 
       {hubDegraded ? (
         <p className="hub-live-wire__banner hub-live-wire__banner--warn" role="status">
-          Showing aggregate stats only — network live moments require a healthy public hub endpoint.
+          Showing aggregate stats only — live network moments will resume when the hub feed recovers.
         </p>
       ) : null}
 
@@ -510,7 +575,8 @@ export function HubLiveWireFeed({
             const category = moment.category?.trim()
             const meta = kindMeta(moment.kind)
             const metric = strongestMetric(moment)
-            const isNew = isLiveNetwork && activeNewKeys.has(key)
+            const isNew =
+              isLiveNetwork && activeNewKeys.has(key) && isLiveWireEventFresh(moment.at, now)
             const href = moment.href ?? (login ? `/analytics/${encodeURIComponent(login)}` : '#')
 
             return (

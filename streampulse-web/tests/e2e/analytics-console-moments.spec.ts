@@ -39,8 +39,14 @@ test.describe('analytics console moments + emotes (hosted)', () => {
     }
 
     await consoleRoot.getByRole('button', { name: 'Moments', exact: true }).click()
-    const momentRows = consoleRoot
-      .getByText('Top Moments')
+    const pulseMomentsHeading = consoleRoot.getByText('Pulse Moments')
+    const topMomentsHeading = consoleRoot.getByText('Top Moments')
+    const hasPulseMoments = await pulseMomentsHeading.isVisible().catch(() => false)
+    const hasTopMoments = await topMomentsHeading.isVisible().catch(() => false)
+    expect(hasPulseMoments || hasTopMoments).toBe(true)
+    expect(hasPulseMoments && hasTopMoments).toBe(false)
+
+    const momentRows = (hasPulseMoments ? pulseMomentsHeading : topMomentsHeading)
       .locator('xpath=following::button[contains(@class,"grid-cols")]')
     await expect(momentRows.first()).toBeVisible({ timeout: 30_000 })
     const rowCount = await momentRows.count()

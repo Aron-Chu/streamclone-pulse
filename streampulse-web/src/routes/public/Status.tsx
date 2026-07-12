@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getBackendUrl } from '../../lib/apiClient'
 import { backendSourceCaption, resolveBackendSource } from '../../lib/backendSource'
+import { portalReleaseShort } from '../../lib/sentry'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 
 interface PublicStatusPayload {
@@ -17,7 +18,7 @@ interface ExtensionHealthPayload {
   version?: string
 }
 
-const PORTAL_VERSION = import.meta.env.VITE_PORTAL_VERSION?.trim() || 'dev'
+const PORTAL_VERSION_DISPLAY = portalReleaseShort()
 
 export default function Status() {
   const backendUrl = getBackendUrl()
@@ -75,7 +76,7 @@ export default function Status() {
         <dl className="stack-sm" style={{ marginTop: '1rem' }}>
           <div>
             <dt className="muted">Portal build</dt>
-            <dd>{PORTAL_VERSION}</dd>
+            <dd>{PORTAL_VERSION_DISPLAY}</dd>
           </div>
           <div>
             <dt className="muted">API source</dt>

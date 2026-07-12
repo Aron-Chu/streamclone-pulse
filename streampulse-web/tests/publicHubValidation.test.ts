@@ -77,4 +77,44 @@ describe('validatePublicHubInvariants', () => {
     expect(liveSum).toBeGreaterThan(peakActivity * 1.5)
     expect(validatePublicHubInvariants(hub).some((issue) => issue.code === 'activity_viewers_below_live_pool')).toBe(true)
   })
+
+  it('errors when IRC collectors are up but roster collecting is zero', () => {
+    const hub = normalizePublicHub({
+      ingest: {
+        tieringEnabled: true,
+        coreEnabled: true,
+        dualReadMode: false,
+        shadowMode: false,
+        activeCollectors: 250,
+        desiredCollectors: 250,
+        boundCollectors: 250,
+        joinAcknowledged: 250,
+        awaitingJoin: 0,
+        connectedQuiet: 250,
+        chatActive5m: 0,
+        chatActive15m: 0,
+        reconnecting: 0,
+        unexpectedParts: 0,
+        admitLagSeconds: 0,
+        joinRate1m: 1,
+        partRate1m: 1,
+        state: 'operational',
+      },
+      corpusPipeline: {
+        roster: { live: 100, collecting: 0, warming: 100, collectorTracking: 100 },
+      },
+      activity: {
+        windowMinutes: 30,
+        channelCount: 100,
+        points: [
+          { t: 1, chat: 0, seventv: 0, viewers: 1000 },
+          { t: 60_001, chat: 0, seventv: 0, viewers: 1100 },
+        ],
+      },
+    })
+
+    const issues = validatePublicHubInvariants(hub)
+    expect(issues.some((issue) => issue.code === 'irc_collectors_without_chat_rollups')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'irc_active_but_activity_chat_empty')).toBe(true)
+  })
 })

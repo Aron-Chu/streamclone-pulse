@@ -26,18 +26,18 @@
   --sp-provider-ffz: #FBBF24;
 
   --sp-type-label: 0.6875rem;
-  --sp-type-meta: 0.75rem;
+  --sp-type-meta: 0.72rem;
   --sp-type-body: 0.8125rem;
-  --sp-type-title-sm: 0.9375rem;
-  --sp-type-title: 1.125rem;
-  --sp-type-display: clamp(1.45rem, 2.4vw, 1.85rem);
-  --sp-leading-body: 1.45;
-  --sp-tracking-label: 0.04em;
+  --sp-type-title-sm: 0.875rem;
+  --sp-type-title: 1.0625rem;
+  --sp-type-display: clamp(1.35rem, 2.2vw, 1.7rem);
+  --sp-leading-body: 1.4;
+  --sp-tracking-label: 0.06em;
 
-  --sp-radius-sm: 6px;
-  --sp-radius-md: 10px;
-  --sp-radius-lg: 12px;
-  --sp-radius-xl: 16px;
+  --sp-radius-sm: 4px;
+  --sp-radius-md: 8px;
+  --sp-radius-lg: 10px;
+  --sp-radius-xl: 12px;
   --sp-chart-fill-opacity: 0.12;
   --sp-chart-stroke-width: 1.5;
 
@@ -83,10 +83,10 @@
   --chart-3: 160 84% 45%;
   --chart-4: 43 96% 56%;
   --chart-5: 347 89% 65%;
-  --chart-bar: 172 48% 52%;
+  --chart-bar: 258 42% 58%;
   --sp-chart-viewers: 210 12% 78%;
-  --sp-chart-chat: 172 48% 52%;
-  /* Warm amber — kept away from teal chat bars and white viewer line. */
+  --sp-chart-chat: 258 42% 58%;
+  /* Warm amber — kept away from purple chat bars and white viewer line. */
   --sp-chart-emotes: 38 92% 62%;
   --hx-bg: var(--sp-bg);
   --hx-accent: var(--sp-accent);

@@ -65,6 +65,10 @@ function mapStripItem(stream: ChannelStreamItem, login: string, defaultSource: s
   }
 }
 
+export function portalChannelStreamsPath(login: string, limit = 24): string {
+  return `/v1/portal/analytics/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`
+}
+
 export function useChannelPageData(loginParam: string, streamIdParam?: string): ChannelPageData {
   const login = normalizeTwitchLogin(loginParam)
   const [loading, setLoading] = useState(true)
@@ -93,7 +97,7 @@ export function useChannelPageData(loginParam: string, streamIdParam?: string): 
     setError(undefined)
     try {
       const { data } = await apiClient<AnalyticsStreamsResponse>(
-        `/v1/analytics/channels/${encodeURIComponent(login)}/streams?limit=24`,
+        portalChannelStreamsPath(login),
       )
       const defaultSource = sourceLabelFromDetail(data.sources, data.dataSourceBadges)
       const strip = (data.items ?? []).map((item) => mapStripItem(item, login, defaultSource))

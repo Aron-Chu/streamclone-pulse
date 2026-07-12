@@ -1,0 +1,70 @@
+{
+  "login": "xqc",
+  "isLive": true,
+  "tracking": true,
+  "streamId": "319999888777",
+  "startedAt": "2026-07-07T20:00:00.000Z",
+  "title": "Just Chatting",
+  "category": "Just Chatting",
+  "peakViewers": 412,
+  "currentOffsetSeconds": 3540,
+  "coverageStartOffsetSeconds": 102,
+  "viewerStartOffsetSeconds": 0,
+  "coverage": {
+    "state": "partial_tracking",
+    "coverageStartOffsetSeconds": 102,
+    "coverageEndOffsetSeconds": 3540,
+    "hasFullStreamCoverage": false,
+    "trackedFromStart": false,
+    "hasGaps": false,
+    "canBackfill": false,
+    "chatSource": "irc",
+    "chatSourceDetail": "live rollups",
+    "copyKey": "live_window",
+    "message": "Live chat and emote rollups update each minute with honest coverage windows."
+  },
+  "topEmotes": [
+    { "id": "1", "name": "widespeedlaugh", "provider": "7TV", "count": 37 },
+    { "id": "2", "name": "degloved", "provider": "7TV", "count": 28 },
+    { "id": "3", "name": "widereacting", "provider": "7TV", "count": 21 },
+    { "id": "4", "name": "peepoHappy", "provider": "7TV", "count": 17 },
+    { "id": "5", "name": "forsenPls", "provider": "7TV", "count": 12 },
+    { "id": "6", "name": "Kappa", "provider": "Twitch", "count": 9 }
+  ],
+  "rollupCount": 60,
+  "games": [
+    { "gameName": "Just Chatting", "offsetSeconds": 0, "durationSeconds": 2280 },
+    { "gameName": "Fortnite", "offsetSeconds": 2280, "durationSeconds": 1260 }
+  ],
+  "emoteSync": { "state": "ready", "provider": "7TV" },
+  "rosterEligible": true,
+  "top500Eligible": true,
+  "pastVods": [
+    {
+      "streamId": "319253683932",
+      "videoId": "2467890123",
+      "title": "Rank grind + patch notes",
+      "category": "Just Chatting",
+      "startedAt": "2026-04-12T18:00:00.000Z",
+      "durationMinutes": 262,
+      "analyticsStatus": "synced"
+    },
+    {
+      "streamId": "319240001111",
+      "videoId": "2467000001",
+      "title": "Scrim block w/ chat Q&A",
+      "category": "Fortnite",
+      "startedAt": "2026-04-09T20:00:00.000Z",
+      "durationMinutes": 138,
+      "analyticsStatus": "stats-only"
+    },
+    {
+      "streamId": "319230009999",
+      "title": "Community games night",
+      "category": "Just Chatting",
+      "startedAt": "2026-04-05T22:00:00.000Z",
+      "durationMinutes": 221,
+      "analyticsStatus": "synced"
+    }
+  ]
+}

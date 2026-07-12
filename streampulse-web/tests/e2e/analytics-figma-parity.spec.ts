@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { attachConsoleErrorGuard, assertNoConsoleErrors } from './helpers/assertions'
+import { attachConsoleErrorGuard, assertNoConsoleErrors, assertNoPageHorizontalOverflow } from './helpers/assertions'
 import { installMockApi } from './helpers/mockApi'
 
 async function mockPortalSessionUnavailable(page: import('@playwright/test').Page): Promise<void> {
@@ -20,14 +20,6 @@ const VIEWPORTS = [
   { width: 1600, height: 900 },
 ] as const
 
-async function assertNoHorizontalOverflow(page: import('@playwright/test').Page): Promise<void> {
-  const overflow = await page.evaluate(() => {
-    const doc = document.documentElement
-    return doc.scrollWidth > doc.clientWidth + 1
-  })
-  expect(overflow, 'page-level horizontal overflow detected').toBe(false)
-}
-
 for (const viewport of VIEWPORTS) {
   test.describe(`analytics hub @ ${viewport.width}px`, () => {
     test.use({ viewport })
@@ -46,7 +38,7 @@ for (const viewport of VIEWPORTS) {
       }
       await expect(page.locator('#section-pulse-moments')).toBeVisible()
       await expect(page.locator('.figma-global-activity__hub-chart .hx-chart2')).toBeVisible()
-      await assertNoHorizontalOverflow(page)
+      await assertNoPageHorizontalOverflow(page)
       await assertNoConsoleErrors(page, errors)
     })
 
@@ -56,7 +48,7 @@ for (const viewport of VIEWPORTS) {
       await mockPortalSessionUnavailable(page)
       await page.goto('/analytics/xqc')
       await expect(page.getByRole('main', { name: /Analytics for xqc/i })).toBeVisible()
-      await assertNoHorizontalOverflow(page)
+      await assertNoPageHorizontalOverflow(page)
       await assertNoConsoleErrors(page, errors)
     })
 
@@ -66,7 +58,7 @@ for (const viewport of VIEWPORTS) {
       await mockPortalSessionUnavailable(page)
       await page.goto('/analytics/xqc/s/fixture-stream')
       await expect(page.getByRole('main', { name: /Analytics for xqc/i })).toBeVisible()
-      await assertNoHorizontalOverflow(page)
+      await assertNoPageHorizontalOverflow(page)
       await assertNoConsoleErrors(page, errors)
     })
   })

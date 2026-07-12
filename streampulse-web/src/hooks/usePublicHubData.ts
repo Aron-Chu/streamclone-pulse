@@ -4,9 +4,8 @@ import {
   writePublicHubCacheForCurrentBackend,
 } from '../lib/publicHubCache'
 import {
-  fetchPublicHub,
   fetchPublicHubBase,
-  normalizePublicHub,
+  fetchPublicHubStatsFallback,
   type PublicHub,
   type PublicHubActivityWindow,
   type PublicHubLoadSource,
@@ -30,7 +29,18 @@ export interface PublicHubState {
   hubEndpointOk: boolean
   /** Loaded successfully but no live channels in the pool. */
   liveEmpty: boolean
+  /**
+   * Wall time of the last successful hub apply (network or validated cache hydrate).
+   * Does not advance while the API is failing — use for trust-line "UPDATED … AGO".
+   */
   lastUpdated: number | null
+  /** Alias of lastUpdated — last successful poll receipt time. */
+  lastSuccessfulPollAt: number | null
+  /**
+   * Monotonic counter incremented only when a successful hub snapshot is applied.
+   * Pool Wire and other reducers must consume each sequence at most once.
+   */
+  pollSequence: number
   /** When data was read from browser cache (ms since epoch). */
   cachedAt: number | null
   refresh: () => void
@@ -46,6 +56,7 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow) {
       data: null as PublicHub | null,
       loading: true,
       loadSource: null as PublicHubLoadSource | null,
+      hubEndpointOk: false,
       lastUpdated: null as number | null,
       cachedAt: null as number | null,
       hasData: false,
@@ -56,6 +67,8 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow) {
     data: cached.data,
     loading: false,
     loadSource: 'cache' as PublicHubLoadSource,
+    // Cache implies a prior successful hub payload — do not start as "endpoint failed".
+    hubEndpointOk: true,
     lastUpdated: cached.cachedAt,
     cachedAt: cached.cachedAt,
     hasData: true,
@@ -69,17 +82,20 @@ function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: Publ
 
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
   const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h' } = options
-  const initial = hydrateFromCache(activityWindow)
-  const [data, setData] = useState<PublicHub | null>(initial.data)
-  const [loading, setLoading] = useState(initial.loading)
+  // Mount-only cache hydrate — do not re-read localStorage on every render (P4-L01).
+  // Later activity-window transitions read cache only in the effect below.
+  const [initial] = useState(() => hydrateFromCache(activityWindow))
+  const [data, setData] = useState<PublicHub | null>(() => initial.data)
+  const [loading, setLoading] = useState(() => initial.loading)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(initial.loadSource)
-  const [hubEndpointOk, setHubEndpointOk] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<number | null>(initial.lastUpdated)
-  const [cachedAt, setCachedAt] = useState<number | null>(initial.cachedAt)
+  const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(() => initial.loadSource)
+  const [hubEndpointOk, setHubEndpointOk] = useState(() => initial.hubEndpointOk)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(() => initial.lastUpdated)
+  const [cachedAt, setCachedAt] = useState<number | null>(() => initial.cachedAt)
+  const [pollSequence, setPollSequence] = useState(() => (initial.hasData ? 1 : 0))
   const [loadedActivityWindow, setLoadedActivityWindow] = useState<PublicHubActivityWindow | null>(
-    initial.loadedActivityWindow,
+    () => initial.loadedActivityWindow,
   )
 
   const controllerRef = useRef<AbortController | null>(null)
@@ -88,6 +104,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const mountedRef = useRef(true)
   const hasDataRef = useRef(initial.hasData)
   const prevActivityWindowRef = useRef(activityWindow)
+  const pollSequenceRef = useRef(initial.hasData ? 1 : 0)
 
   const applySuccessfulLoad = useCallback(
     (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean) => {
@@ -97,6 +114,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setError(null)
       setLastUpdated(Date.now())
       setCachedAt(null)
+      pollSequenceRef.current += 1
+      setPollSequence(pollSequenceRef.current)
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
       persistSuccessfulHub(activityWindow, hub)
@@ -116,24 +135,23 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     else setLoading(true)
 
     try {
+      // One full-hub origin request per poll. Stats/status fallback is a different endpoint.
       const base = await fetchPublicHubBase(controller.signal, activityWindow)
       if (!mountedRef.current || controller.signal.aborted) return
 
       if (base.hubEndpointOk) {
-        applySuccessfulLoad(normalizePublicHub(base.data), base.loadSource, true)
+        applySuccessfulLoad(base.data, base.loadSource, true)
         return
       }
 
-      const fallback = await fetchPublicHub(controller.signal, activityWindow)
+      const fallback = await fetchPublicHubStatsFallback(controller.signal)
       if (!mountedRef.current || controller.signal.aborted) return
-      applySuccessfulLoad(
-        normalizePublicHub(fallback.data),
-        fallback.loadSource,
-        fallback.hubEndpointOk,
-      )
+      applySuccessfulLoad(fallback.data, fallback.loadSource, fallback.hubEndpointOk)
     } catch (err) {
       if (controller.signal.aborted || !mountedRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load live hub data')
+      // Cache hydrate may have set hubEndpointOk=true; a total network miss must clear it.
+      setHubEndpointOk(false)
     } finally {
       if (controllerRef.current === controller) {
         inFlightRef.current = false
@@ -158,8 +176,11 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setData(cached.data)
       setLoading(false)
       setLoadSource('cache')
+      setHubEndpointOk(true)
       setLastUpdated(cached.cachedAt)
       setCachedAt(cached.cachedAt)
+      pollSequenceRef.current += 1
+      setPollSequence(pollSequenceRef.current)
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
       return
@@ -232,6 +253,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     hubEndpointOk,
     liveEmpty: Boolean(data) && (data?.poolSize ?? 0) === 0,
     lastUpdated,
+    lastSuccessfulPollAt: lastUpdated,
+    pollSequence,
     cachedAt,
     refresh,
   }

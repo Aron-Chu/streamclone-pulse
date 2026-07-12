@@ -5,16 +5,16 @@
     "types": ["vite/client", "vitest/globals", "node"],
     "paths": {
       "@/*": ["./src/*"],
-      "@streamclone/analytics-console": [
-        "../../twitch-7tv-clone/packages/analytics-console/src/index.tsx"
+      "@streampulse/analytics-console": [
+        "../../streampulse-backend/packages/analytics-console/src/index.tsx"
       ],
-      "@streamclone/analytics-console/*": [
-        "../../twitch-7tv-clone/packages/analytics-console/src/*"
+      "@streampulse/analytics-console/*": [
+        "../../streampulse-backend/packages/analytics-console/src/*"
       ],
-      "@streamclone/pulse-charts": [
-        "../../twitch-7tv-clone/packages/pulse-charts/src/index.ts"
+      "@streampulse/pulse-charts": [
+        "../../streampulse-backend/packages/pulse-charts/src/index.ts"
       ],
-      "@streamclone/pulse-charts/*": ["../../twitch-7tv-clone/packages/pulse-charts/src/*"]
+      "@streampulse/pulse-charts/*": ["../../streampulse-backend/packages/pulse-charts/src/*"]
     }
   },
   "include": ["tests", "src/vite-env.d.ts"]

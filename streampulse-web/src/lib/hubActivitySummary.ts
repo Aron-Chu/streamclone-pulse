@@ -112,8 +112,10 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
     if (!existing || point.t >= existing.t) {
       byBucket.set(key, {
         ...point,
-        hasChatRollup: Boolean(existing?.hasChatRollup || point.hasChatRollup || point.chat > 0 || (point.emotes ?? 0) > 0),
-        hasViewerRollup: Boolean(existing?.hasViewerRollup || point.hasViewerRollup || point.viewers > 0),
+        // Preserve the API's three-valued measurement flags. Legacy payloads
+        // omit these fields and must not be rewritten as explicit gap markers.
+        hasChatRollup: point.hasChatRollup,
+        hasViewerRollup: point.hasViewerRollup,
       })
     }
   }

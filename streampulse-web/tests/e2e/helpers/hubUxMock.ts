@@ -71,6 +71,19 @@ export async function installHubUxMock(page: Page): Promise<void> {
   const liveChannels = buildLiveChannels(14)
   const activityPoints = build24hActivityPoints(now)
 
+  await page.addInitScript(() => {
+    const clearStoragePrefix = (storage: Storage, prefix: string) => {
+      const keys: string[] = []
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i)
+        if (key?.startsWith(prefix)) keys.push(key)
+      }
+      keys.forEach((key) => storage.removeItem(key))
+    }
+    clearStoragePrefix(window.localStorage, 'sp:publicHub:v1:')
+    clearStoragePrefix(window.sessionStorage, 'sp:bucketMoments:v1:')
+  })
+
   await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, async (route) => {
     await route.fulfill({
       status: 200,

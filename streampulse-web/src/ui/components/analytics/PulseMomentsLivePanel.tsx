@@ -36,6 +36,7 @@ import { withComputedBurstShare } from "../../../lib/emoteShare";
 import { compact } from "./hubFormat";
 import { useCommandCenterLabels } from "../../providers/AnalyticsThemeProvider";
 import { useAnalyticsMotion } from "../../motion/useAnalyticsMotion";
+import { resolveSelectedPulseMoment } from "../../../lib/resolveSelectedPulseMoment";
 
 const NETWORK_FILTERS: Array<{ key: PulseMomentFilter; label: string }> = [
   { key: "all", label: "All" },
@@ -95,7 +96,7 @@ export function PulseMomentsLivePanel({
   onBucketMomentsChange,
   onBucketLoadingChange,
   onPoolMomentsChange,
-  selectedMomentKey: selectedMomentKeyProp = null,
+  selectedMomentKey: selectedMomentKeyProp,
   onSelectMoment,
 }: PulseMomentsLivePanelProps) {
   const labels = useCommandCenterLabels();
@@ -327,13 +328,14 @@ export function PulseMomentsLivePanel({
     setInternalSelectedKey(momentRowKey(moment));
   };
 
-  const selectedMoment = useMemo(
-    () =>
-      filteredMoments.find((m) => momentRowKey(m) === selectedKey) ??
-      (!isHubControlled ? filteredMoments[0] : null) ??
-      null,
-    [filteredMoments, isHubControlled, selectedKey],
-  );
+  const selectedMoment = useMemo(() => {
+    const fromFiltered = resolveSelectedPulseMoment(filteredMoments, selectedKey);
+    if (fromFiltered) return fromFiltered;
+    if (selectedKey) {
+      return resolveSelectedPulseMoment(allMoments, selectedKey);
+    }
+    return null;
+  }, [allMoments, filteredMoments, selectedKey]);
 
   const selectedSessionHref = useMemo(() => {
     if (!selectedMoment?.login) return undefined;
@@ -401,7 +403,7 @@ export function PulseMomentsLivePanel({
         return "Loading moments for the selected chart bucket…";
       }
       if (bucketSourceActive) {
-        return `Showing ${bucketMoments.length} moment${bucketMoments.length === 1 ? "" : "s"} from the selected chart bucket. Click the bucket again to clear.`;
+        return undefined;
       }
       if (bucketStatus === "empty") {
         return bucketDiagnostics?.historicalReason === "no_corpus_peaks_in_bucket"
@@ -416,6 +418,7 @@ export function PulseMomentsLivePanel({
     if (
       feed.source === "network" &&
       selectedBucketT == null &&
+      allMoments.length === 0 &&
       activityWindow !== "30m"
     ) {
       return "Click an activity chart bucket to see spikes for that period.";
@@ -439,6 +442,7 @@ export function PulseMomentsLivePanel({
     bucketSourceActive,
     bucketStatus,
     channelCount,
+    allMoments.length,
     feed.banner,
     feed.source,
     ircChannelCount,
@@ -555,11 +559,16 @@ export function PulseMomentsLivePanel({
       ) : null}
 
       {selectedBucketT != null && onClearBucketFilter && feed.source === "network" ? (
-        <p className="pulse-moments-live__bucket-filter" role="status">
-          Filtered to chart bucket ·{" "}
+        <p className="pulse-moments-live__bucket-filter" role="status" aria-live="polite">
+          <span className="pulse-moments-live__bucket-filter-dot" aria-hidden="true" />
+          <span className="pulse-moments-live__bucket-filter-copy">
+            <strong>Selected bucket</strong>
+            {bucketDiagnostics?.bucketLabel ? ` · ${bucketDiagnostics.bucketLabel}` : ""}
+          </span>
           <button
             type="button"
             className="pulse-moments-live__bucket-filter-clear"
+            aria-label="Clear selected chart bucket"
             onClick={onClearBucketFilter}
           >
             Clear

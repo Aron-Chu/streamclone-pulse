@@ -252,14 +252,56 @@ describe('vodStateLabel', () => {
 })
 
 describe('filterPulseMoments stream_opening filter', () => {
-  it('matches stream_opening kind and activity tag', () => {
+  it('matches stream_opening kind, early_stream tag, and just went live label', () => {
     const moments = [
       { offsetSeconds: 1, score: 90, label: 'Just went live', kind: 'stream_opening' },
       { offsetSeconds: 2, score: 80, label: 'Chat spike', kind: 'chat_spike' },
-      { offsetSeconds: 3, score: 70, label: 'Viewer spike', activityTag: 'early_stream' },
+      { offsetSeconds: 3, score: 70, label: 'Chat spike', activityTag: 'early_stream' },
+      { offsetSeconds: 4, score: 60, label: 'Emote spike', kind: 'emote_spike' },
     ]
     const filtered = filterPulseMoments(moments, 'stream_opening')
-    expect(filtered.map((m) => m.offsetSeconds)).toEqual([1])
+    expect(filtered.map((m) => m.offsetSeconds)).toEqual([1, 3])
+  })
+})
+
+describe('momentActivityBadge', () => {
+  it('prefers Just went live for stream_opening over early_stream tag', async () => {
+    const { momentActivityBadge } = await import('../src/lib/pulseMomentsUtils')
+    expect(
+      momentActivityBadge({
+        offsetSeconds: 60,
+        score: 80,
+        label: '7TV emote spike',
+        kind: 'stream_opening',
+        activityTag: 'early_stream',
+      }),
+    ).toBe('Just went live')
+  })
+
+  it('maps late_stream activity tag', async () => {
+    const { momentActivityBadge } = await import('../src/lib/pulseMomentsUtils')
+    expect(
+      momentActivityBadge({
+        offsetSeconds: 3500,
+        score: 70,
+        label: 'Chat spike',
+        activityTag: 'late_stream',
+      }),
+    ).toBe('Late stream')
+  })
+})
+
+describe('momentEmoteRollupsEmptyHint opening copy', () => {
+  it('uses opening-minute copy for early stream chat spikes', async () => {
+    const { momentEmoteRollupsEmptyHint } = await import('../src/lib/pulseMomentsUtils')
+    expect(
+      momentEmoteRollupsEmptyHint({
+        offsetSeconds: 60,
+        score: 80,
+        label: 'Chat spike',
+        activityTag: 'early_stream',
+      }),
+    ).toMatch(/Opening minute/i)
   })
 })
 

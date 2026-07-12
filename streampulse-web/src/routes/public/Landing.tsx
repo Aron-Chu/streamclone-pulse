@@ -12,7 +12,7 @@ import { ExtensionShowcase } from '../../ui/components/landing/ExtensionShowcase
 import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScrollGraph'
 import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
-import { buildEmoteTicker, buildExtModel, buildMoverTicker } from '../../ui/components/landing/landingData'
+import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 
 const CHROME_EXTENSION_URL = '/docs#extension'
 const EXTENSION_BETA_LABEL = 'Install extension (beta)'
@@ -176,7 +176,6 @@ export default function Landing() {
   const { data } = usePublicHubData({ pollMs: 45_000 })
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
-  const extModel = useMemo(() => buildExtModel(data), [data])
   const mainRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
@@ -219,7 +218,7 @@ export default function Landing() {
                 loudest moments, and past VODs.
               </p>
             </div>
-            <ExtensionShowcase model={extModel} />
+            <ExtensionShowcase />
           </div>
         </section>
 

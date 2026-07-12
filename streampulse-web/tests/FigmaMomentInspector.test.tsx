@@ -120,6 +120,8 @@ describe('FigmaMomentInspector pulse-live hero', () => {
     const momentHead = document.querySelector('.pulse-moments__inspector-moment-head')
     expect(momentHead?.textContent).toContain('Viewer spike')
     expect(momentHead?.textContent).toContain('ROBLOX')
+    expect(momentHead?.closest('.pulse-moments__inspector-head-main')).toBeTruthy()
+    expect(momentHead?.closest('.pulse-moments__inspector-time-badge')).toBeNull()
 
   })
 

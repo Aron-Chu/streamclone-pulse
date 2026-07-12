@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
+import * as publicHubCache from '../src/lib/publicHubCache'
 import {
   clearPublicHubCacheForTests,
   publicHubCacheKey,
@@ -10,16 +11,22 @@ import {
 import { normalizePublicHub, type PublicHub, type PublicHubActivityWindow } from '../src/lib/publicHub'
 
 const fetchPublicHubBase = vi.fn()
+const fetchPublicHubStatsFallback = vi.fn()
 const fetchPublicHub = vi.fn()
 
 vi.mock('../src/lib/publicHub', async () => {
   const actual = await vi.importActual<typeof import('../src/lib/publicHub')>('../src/lib/publicHub')
   return {
     ...actual,
-    fetchPublicHubBase: (signal?: AbortSignal, activityWindow?: import('../src/lib/publicHub').PublicHubActivityWindow) =>
-      fetchPublicHubBase(signal, activityWindow),
-    fetchPublicHub: (signal?: AbortSignal, activityWindow?: import('../src/lib/publicHub').PublicHubActivityWindow) =>
-      fetchPublicHub(signal, activityWindow),
+    fetchPublicHubBase: (
+      signal?: AbortSignal,
+      activityWindow?: import('../src/lib/publicHub').PublicHubActivityWindow,
+    ) => fetchPublicHubBase(signal, activityWindow),
+    fetchPublicHubStatsFallback: (signal?: AbortSignal) => fetchPublicHubStatsFallback(signal),
+    fetchPublicHub: (
+      signal?: AbortSignal,
+      activityWindow?: import('../src/lib/publicHub').PublicHubActivityWindow,
+    ) => fetchPublicHub(signal, activityWindow),
   }
 })
 
@@ -68,21 +75,36 @@ function hubResult(poolSize: number) {
   }
 }
 
+function hubDown() {
+  return {
+    data: normalizePublicHub(null),
+    loadSource: 'full' as const,
+    hubEndpointOk: false,
+    status: 0,
+  }
+}
+
+function statsFallbackResult(poolSize: number) {
+  return {
+    data: sampleHub(poolSize),
+    loadSource: 'stats-fallback' as const,
+    hubEndpointOk: false,
+    status: 200,
+  }
+}
+
 describe('usePublicHubData', () => {
   beforeEach(() => {
     clearPublicHubCacheForTests()
     fetchPublicHub.mockReset()
     fetchPublicHubBase.mockReset()
-    fetchPublicHubBase.mockResolvedValue({
-      data: normalizePublicHub(null),
-      loadSource: 'full',
-      hubEndpointOk: false,
-      status: 0,
-    })
+    fetchPublicHubStatsFallback.mockReset()
+    fetchPublicHubBase.mockResolvedValue(hubDown())
+    fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
   })
 
   it('loads, then exposes normalized data with liveEmpty false when channels exist', async () => {
-    fetchPublicHub.mockResolvedValue(hubResult(3))
+    fetchPublicHubBase.mockResolvedValue(hubResult(3))
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
 
     expect(result.current.loading).toBe(true)
@@ -95,10 +117,12 @@ describe('usePublicHubData', () => {
     expect(result.current.loadSource).toBe('full')
     expect(result.current.hubEndpointOk).toBe(true)
     expect(result.current.lastUpdated).not.toBeNull()
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    expect(fetchPublicHub).not.toHaveBeenCalled()
   })
 
   it('marks liveEmpty when the pool is empty', async () => {
-    fetchPublicHub.mockResolvedValue(hubResult(0))
+    fetchPublicHubBase.mockResolvedValue(hubResult(0))
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
@@ -106,7 +130,7 @@ describe('usePublicHubData', () => {
   })
 
   it('surfaces an error message when the fetch rejects', async () => {
-    fetchPublicHub.mockRejectedValue(new Error('hub offline'))
+    fetchPublicHubStatsFallback.mockRejectedValue(new Error('hub offline'))
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
@@ -117,8 +141,9 @@ describe('usePublicHubData', () => {
   it('does not fetch when disabled', async () => {
     const { result } = renderHook(() => usePublicHubData({ enabled: false, pollMs: 0 }))
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(fetchPublicHub).not.toHaveBeenCalled()
     expect(fetchPublicHubBase).not.toHaveBeenCalled()
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    expect(fetchPublicHub).not.toHaveBeenCalled()
   })
 
   it('initializes from cache immediately and does not stay in loading state', async () => {
@@ -226,5 +251,176 @@ describe('usePublicHubData', () => {
     await waitFor(() => expect(result.current.data?.poolSize).toBe(24))
     expect(result.current.loading).toBe(false)
     expect(result.current.loadSource).toBe('cache')
+  })
+
+  it('reads public-hub cache once on mount across unrelated rerenders', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
+    fetchPublicHubBase.mockResolvedValue(hubResult(42))
+    const spy = vi.spyOn(publicHubCache, 'readPublicHubCacheForCurrentBackend')
+
+    const { result, rerender } = renderHook(
+      ({ tick }: { tick: number }) => usePublicHubData({ pollMs: 0, activityWindow: '24h' }),
+      { initialProps: { tick: 0 } },
+    )
+
+    expect(result.current.data?.poolSize).toBe(8)
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      rerender({ tick: 1 })
+      rerender({ tick: 2 })
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('reads public-hub cache once per real activity-window transition', async () => {
+    writePublicHubCache(getBackendUrl(), '7d', sampleHub(7))
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(24))
+    fetchPublicHubBase.mockResolvedValue(hubResult(100))
+    const spy = vi.spyOn(publicHubCache, 'readPublicHubCacheForCurrentBackend')
+
+    const { result, rerender } = renderHook(
+      ({ activityWindow }: { activityWindow: PublicHubActivityWindow }) =>
+        usePublicHubData({ pollMs: 0, activityWindow }),
+      { initialProps: { activityWindow: '7d' as PublicHubActivityWindow } },
+    )
+
+    expect(result.current.data?.poolSize).toBe(7)
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      rerender({ activityWindow: '24h' })
+    })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(24))
+    expect(spy).toHaveBeenCalledTimes(2)
+
+    act(() => {
+      rerender({ activityWindow: '24h' })
+    })
+    expect(spy).toHaveBeenCalledTimes(2)
+    spy.mockRestore()
+  })
+
+  it('uses stats fallback without a second full-hub request when base is unhealthy', async () => {
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(2))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.data?.poolSize).toBe(2)
+    expect(result.current.loadSource).toBe('stats-fallback')
+    expect(result.current.hubEndpointOk).toBe(false)
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHub).not.toHaveBeenCalled()
+  })
+
+  it('does not call stats fallback after a successful base hub fetch', async () => {
+    fetchPublicHubBase.mockResolvedValue(hubResult(9))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(9))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+  })
+
+  it('clears hubEndpointOk when a refresh fails after cache hydration', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
+    fetchPublicHubBase.mockResolvedValue(hubDown())
+    fetchPublicHubStatsFallback.mockRejectedValue(new Error('hub offline'))
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    expect(result.current.loadSource).toBe('cache')
+    expect(result.current.hubEndpointOk).toBe(true)
+
+    await waitFor(() => expect(result.current.error).toBe('hub offline'))
+    expect(result.current.data?.poolSize).toBe(8)
+    expect(result.current.hubEndpointOk).toBe(false)
+  })
+
+  describe('visibility controls (P4-L05)', () => {
+    let visibilityState = 'visible'
+
+    beforeEach(() => {
+      visibilityState = 'visible'
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => visibilityState,
+      })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      visibilityState = 'visible'
+    })
+
+    it('skips interval fetch while the tab is hidden', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      fetchPublicHubBase.mockResolvedValue(hubResult(3))
+
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 10_000 }))
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+      visibilityState = 'hidden'
+      fetchPublicHubBase.mockClear()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000)
+      })
+
+      expect(fetchPublicHubBase).not.toHaveBeenCalled()
+    })
+
+    it('catch-up fetches when the tab becomes visible after the poll window', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      fetchPublicHubBase.mockResolvedValue(hubResult(3))
+
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 10_000 }))
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+      visibilityState = 'hidden'
+      fetchPublicHubBase.mockClear()
+
+      // Expire catch-up gate: sinceLastFetch < min(pollMs/2, 15s) → 5s for pollMs=10s
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6_000)
+      })
+      expect(fetchPublicHubBase).not.toHaveBeenCalled()
+
+      visibilityState = 'visible'
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+
+      await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(1))
+    })
+
+    it('does not catch-up when becoming visible inside the debounce window', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      fetchPublicHubBase.mockResolvedValue(hubResult(3))
+
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 10_000 }))
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+
+      visibilityState = 'hidden'
+      fetchPublicHubBase.mockClear()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+
+      visibilityState = 'visible'
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+
+      expect(fetchPublicHubBase).not.toHaveBeenCalled()
+    })
   })
 })

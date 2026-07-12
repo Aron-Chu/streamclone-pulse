@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react'
 import { Database, Layers, Radar, Sparkles } from 'lucide-react'
-import type { HubCorpusPipeline, HubTierCounts } from '../../../lib/publicHub'
+import {
+  resolveConfiguredRosterDisplay,
+  type HubCorpusPipeline,
+  type HubTierCounts,
+} from '../../../lib/publicHub'
 import { Skeleton } from '../../primitives'
 import { compact } from './hubFormat'
 
@@ -103,10 +107,27 @@ export function CorpusPipelineCard({
     pipeline.roster.zeroChatAfterAge > 0 ? `${compact(pipeline.roster.zeroChatAfterAge)} zero-chat aged` : '',
   ].filter(Boolean)
 
+  const rosterDisplay = resolveConfiguredRosterDisplay(pipeline.roster)
   const rosterStats: Array<{ label: string; value: number; tone?: 'warn' | 'bad' }> = [
-    { label: 'Live', value: pipeline.roster.live },
-    { label: 'Collecting chat', value: pipeline.roster.collecting },
-    { label: 'Metadata only', value: pipeline.roster.metadataOnly },
+    { label: 'Live', value: rosterDisplay.live },
+    { label: 'IRC collectors', value: pipeline.collectorActive },
+    {
+      label: 'Configured roster confirmed',
+      value: rosterDisplay.confirmed,
+      tone: rosterDisplay.consistent ? undefined : 'bad',
+    },
+    { label: 'Connected quiet', value: rosterDisplay.connectedQuiet },
+    { label: 'Warming', value: rosterDisplay.warming },
+    {
+      label: 'Unresolved',
+      value: rosterDisplay.unresolved,
+      tone: !rosterDisplay.consistent
+        ? 'bad'
+        : rosterDisplay.unresolved > 0
+          ? 'warn'
+          : undefined,
+    },
+    { label: 'Metadata only — no chat coverage', value: pipeline.roster.metadataOnly },
     {
       label: 'Stale metadata',
       value: pipeline.roster.metadataStale,

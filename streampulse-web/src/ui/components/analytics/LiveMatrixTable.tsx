@@ -13,7 +13,7 @@ interface LiveMatrixTableProps {
 }
 
 type SortKey = 'viewers' | 'chatPerMin' | 'emotesPerMin'
-type FilterKey = 'all' | 'synced' | 'partial' | 'stats'
+type FilterKey = 'all' | 'chat' | 'warming' | 'metadata'
 
 function coveragePercent(state: HubLiveChannel['coverageState']): number {
   switch (state) {
@@ -33,9 +33,11 @@ function coveragePercent(state: HubLiveChannel['coverageState']): number {
 
 function filterOf(state: HubLiveChannel['coverageState']): FilterKey {
   const tone = coverageMeta(state).tone
-  if (tone === 'synced') return 'synced'
-  if (tone === 'partial') return 'partial'
-  return 'stats'
+  if (tone === 'warming') return 'warming'
+  if (tone === 'synced' || tone === 'collecting' || tone === 'chat' || tone === 'partial') {
+    return 'chat'
+  }
+  return 'metadata'
 }
 
 function miniSpark(trendPct: number, seed: number): { points: string; color: string } {
@@ -60,7 +62,12 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
   const [sortKey, setSortKey] = useState<SortKey>('viewers')
 
   const counts = useMemo(() => {
-    const c = { all: channels.length, synced: 0, partial: 0, stats: 0 }
+    const c: Record<FilterKey, number> = {
+      all: channels.length,
+      chat: 0,
+      warming: 0,
+      metadata: 0,
+    }
     for (const channel of channels) c[filterOf(channel.coverageState)] += 1
     return c
   }, [channels])
@@ -74,9 +81,9 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
 
   const tabs: Array<{ key: FilterKey; label: string }> = [
     { key: 'all', label: 'All' },
-    { key: 'synced', label: 'Synced' },
-    { key: 'partial', label: 'Partial' },
-    { key: 'stats', label: 'Stats-only' },
+    { key: 'chat', label: 'Chat tracked (IRC)' },
+    { key: 'warming', label: 'Warming' },
+    { key: 'metadata', label: 'Metadata only — no chat coverage' },
   ]
 
   const sortHeader = (key: SortKey, label: string) => (

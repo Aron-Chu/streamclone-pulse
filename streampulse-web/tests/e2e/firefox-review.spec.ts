@@ -18,7 +18,7 @@ test.describe('@firefox StreamPulse design review (Firefox)', () => {
     await page.goto('/')
     await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15_000 })
     // Real install + analytics CTAs are present and point at real routes.
-    await expect(page.getByRole('link', { name: /Install Chrome Extension/i }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: /Install extension \(beta\)/i }).first()).toBeVisible()
     await expect(page.getByRole('link', { name: /Open Analytics/i }).first()).toBeVisible()
     await page.screenshot({ path: 'firefox-review/landing.png', fullPage: true })
   })

@@ -21,7 +21,7 @@ describe('health helpers', () => {
 
   it('detects mixed-content backend URLs', () => {
     expect(detectMixedContent('http://api.example.com')).toBe(true)
-    expect(detectMixedContent('http://localhost:8090')).toBe(false)
+    expect(detectMixedContent('http://localhost:8081')).toBe(false)
     expect(detectMixedContent('https://api.streampulse.stream')).toBe(false)
   })
 })

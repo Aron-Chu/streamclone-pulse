@@ -44,27 +44,27 @@ export function deltaLabel(pct: number | null | undefined): DeltaLabel {
 export interface CoverageMeta {
   /** css modifier suffix: synced | collecting | warming | chat | viewer | partial | stats */
   tone: 'synced' | 'collecting' | 'warming' | 'chat' | 'viewer' | 'partial' | 'stats'
-  label: string
+  label: 'Chat tracked (IRC)' | 'Warming' | 'Metadata only — no chat coverage'
 }
 
 export function coverageMeta(state: HubCoverageState): CoverageMeta {
   switch (state) {
     case 'synced':
-      return { tone: 'synced', label: 'Synced' }
+      return { tone: 'synced', label: 'Chat tracked (IRC)' }
     case 'collecting':
-      return { tone: 'collecting', label: 'Collecting' }
+      return { tone: 'collecting', label: 'Chat tracked (IRC)' }
     case 'warming':
       return { tone: 'warming', label: 'Warming' }
     case 'chat_only':
-      return { tone: 'chat', label: 'Chat only' }
+      return { tone: 'chat', label: 'Chat tracked (IRC)' }
     case 'viewer_only':
-      return { tone: 'viewer', label: 'Viewers only' }
+      return { tone: 'viewer', label: 'Metadata only — no chat coverage' }
     case 'partial':
-      return { tone: 'partial', label: 'Partial' }
+      return { tone: 'partial', label: 'Chat tracked (IRC)' }
     case 'stats_only':
-      return { tone: 'stats', label: 'Stats-only' }
+      return { tone: 'stats', label: 'Metadata only — no chat coverage' }
     default:
-      return { tone: 'stats', label: 'Tracked' }
+      return { tone: 'stats', label: 'Metadata only — no chat coverage' }
   }
 }
 

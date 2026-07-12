@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
 import { usePublicHubData } from "../../hooks/usePublicHubData";
+import { usePoolWireEvents } from "../../hooks/usePoolWireEvents";
 import { getBackendUrl } from "../../lib/apiClient";
 import {
   resolveBackendSource,
@@ -8,9 +9,12 @@ import {
 } from "../../lib/backendSource";
 import { HubBackendSourceBanner } from "../../ui/components/analytics/HubBackendSourceBanner";
 import { HubDataHealthBanner } from "../../ui/components/hub/HubDataHealthBanner";
-import { resolveLivePulseMoments, mapHubPulseMoment } from "../../lib/figmaSessionAnalytics";
-import { summarizeActivity } from "../../lib/hubActivitySummary";
-import { aggregateEmotesFromMoments } from "../../ui/components/analytics/activityBucketInspectorUtils";
+import { resolveLivePulseMoments, mapHubPulseMoment, momentRowKey } from "../../lib/figmaSessionAnalytics";
+import { summarizeActivity, activityBucketKey } from "../../lib/hubActivitySummary";
+import {
+  aggregateEmotesFromMoments,
+  rankLiveChannelsByActivity,
+} from "../../ui/components/analytics/activityBucketInspectorUtils";
 import type { FigmaMomentRow } from "../../lib/figmaSessionAnalytics";
 import { filterMomentsByBucket } from "../../lib/pulseMomentsUtils";
 import { hasBucketMomentsCache, readBucketMomentsCache } from "../../lib/bucketMomentsCache";
@@ -21,6 +25,8 @@ import {
   resolveHubTopMovers,
   type PublicHubActivityWindow,
 } from "../../lib/publicHub";
+import { resolveHubUiState } from "../../lib/hubUiState";
+import { isLifecycleMomentKind } from "../../lib/poolWireReducer";
 import type { HubActivityRangeOption } from "../../ui/components/hub/HubActivityChart";
 import { AnalyticsFigmaShell } from "../../ui/components/analytics/AnalyticsFigmaShell";
 import { FigmaEmoteSignalBlock } from "../../ui/components/analytics/FigmaEmoteSignalBlock";
@@ -31,9 +37,10 @@ import {
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
 import { LiveChannelsMatrix } from "../../ui/components/analytics/LiveChannelsMatrix";
-import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
+import { isLiveWireEventFresh } from "../../ui/components/analytics/HubLiveWireFeed";
 import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
 import { PulseMomentsLivePanel } from "../../ui/components/analytics/PulseMomentsLivePanel";
+import { TopClipsShelf } from "../../ui/components/analytics/TopClipsShelf";
 import { HubSearch, type HubSuggestion } from "../../ui/components/hub/HubSearch";
 import type { HubSidebarSection } from "../../ui/components/analytics/AnalyticsHubSidebar";
 import { compact } from "../../ui/components/analytics/hubFormat";
@@ -76,6 +83,7 @@ function AnalyticsLandingContent() {
     useState<PublicHubActivityWindow>("24h");
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
+  const [selectedMomentKey, setSelectedMomentKey] = useState<string | null>(null);
   const [bucketMoments, setBucketMoments] = useState<FigmaMomentRow[]>([]);
   const [bucketMomentsLoading, setBucketMomentsLoading] = useState(false);
   const [hoverBucketMoments, setHoverBucketMoments] = useState<FigmaMomentRow[]>([]);
@@ -85,10 +93,57 @@ function AnalyticsLandingContent() {
   const recentLogins = useHubRecentLogins();
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
   const loadingInitial = hub.loading && !hub.data;
+  const hubUiState = resolveHubUiState({
+    loading: hub.loading,
+    data: hub.data,
+    error: hub.error,
+    hubEndpointOk: hub.hubEndpointOk,
+    loadSource: hub.loadSource,
+  });
   const updatedAgo = formatUpdatedAgo(hub.lastUpdated);
   const chartLoading = loadingInitial || hub.activityRefreshing;
 
+  const poolWire = usePoolWireEvents({
+    hub: hub.data ? data : null,
+    pollSequence: hub.pollSequence,
+    lastSuccessfulPollAt: hub.lastSuccessfulPollAt,
+    hubEndpointOk: hub.hubEndpointOk,
+    healthy: hubUiState === "ready" || hubUiState === "empty",
+  });
+
+  const [pulseLiveChannels, setPulseLiveChannels] = useState(false);
+  const seenWentLiveRef = useRef<Set<string>>(new Set());
+  const poolWireSeededRef = useRef(false);
+  useEffect(() => {
+    const wentLive = poolWire.events.filter((e) => e.kind === "went_live");
+    if (!poolWire.initialized) return;
+    if (!poolWireSeededRef.current) {
+      poolWireSeededRef.current = true;
+      for (const event of wentLive) seenWentLiveRef.current.add(event.id);
+      return;
+    }
+    let newest = false;
+    for (const event of wentLive) {
+      if (!seenWentLiveRef.current.has(event.id)) {
+        seenWentLiveRef.current.add(event.id);
+        newest = true;
+      }
+    }
+    if (!newest) return;
+    setPulseLiveChannels(true);
+    const t = window.setTimeout(() => setPulseLiveChannels(false), 700);
+    return () => window.clearTimeout(t);
+  }, [poolWire.events, poolWire.initialized]);
+
   const livePulseFeed = useMemo(() => resolveLivePulseMoments(data), [data]);
+  /** Live Wire is peaks/momentum only — lifecycle belongs in Pool Wire. */
+  const liveWireFeed = useMemo(
+    () => ({
+      ...livePulseFeed,
+      moments: livePulseFeed.moments.filter((m) => !isLifecycleMomentKind(m.kind)),
+    }),
+    [livePulseFeed],
+  );
   const chartBucketSelectEnabled = livePulseFeed.source === "network";
 
   const optimisticBucketMoments = useCallback(
@@ -194,11 +249,13 @@ function AnalyticsLandingContent() {
   const handleClearBucketFilter = useCallback(() => {
     setSelectedBucketT(null);
     setHoverBucketT(null);
+    setSelectedMomentKey(null);
   }, []);
 
   const handleBucketSelect = useCallback((bucketT: number | null) => {
     setSelectedBucketT(bucketT);
     setHoverBucketT(null);
+    setSelectedMomentKey(null);
     if (bucketT == null) {
       setBucketMoments([]);
       setBucketMomentsLoading(false);
@@ -287,9 +344,9 @@ function AnalyticsLandingContent() {
 
   const backendSource = resolveBackendSource(getBackendUrl());
   const isHostedBackend = backendSource === "hosted";
-  const hubUnavailable = Boolean(hub.error && !hub.data);
+  const hubUnavailable = hubUiState === "error";
   const showTrackedTable = data.liveChannels.length > 0;
-  const featuredChannels = data.liveChannels.slice(0, 12);
+  const featuredChannels = rankLiveChannelsByActivity(data.liveChannels, 12);
   const sidebarSections = useMemo<HubSidebarSection[]>(
     () => [
       { id: "section-overview", label: labels.overview },
@@ -311,12 +368,57 @@ function AnalyticsLandingContent() {
 
   const liveWireFeedProps = {
     hub: data,
-    feed: livePulseFeed,
+    feed: liveWireFeed,
     activityWindow,
-    loading: loadingInitial,
+    loading: loadingInitial || hubUiState === "loading",
     hubEndpointOk: hub.hubEndpointOk,
-    loadSource: hub.loadSource ?? "full" as const,
+    // Do not default to "full" — that made pending hubEndpointOk=false look like a confirmed outage.
+    loadSource: hub.loadSource ?? undefined,
   };
+
+  const momentLookupPool = useMemo(() => {
+    const byKey = new Map<string, FigmaMomentRow>();
+    for (const moment of [...poolMoments, ...bucketMoments, ...liveWireFeed.moments]) {
+      byKey.set(momentRowKey(moment), moment);
+    }
+    return byKey;
+  }, [bucketMoments, liveWireFeed.moments, poolMoments]);
+
+  const selectedMoment = useMemo(() => {
+    if (!selectedMomentKey) return null;
+    return momentLookupPool.get(selectedMomentKey) ?? null;
+  }, [momentLookupPool, selectedMomentKey]);
+
+  const accentBucketT = useMemo(() => {
+    if (!selectedMoment?.at) return null;
+    return activityBucketKey(selectedMoment.at, data.activity.windowMinutes);
+  }, [data.activity.windowMinutes, selectedMoment]);
+
+  const handleSelectMoment = useCallback((moment: FigmaMomentRow) => {
+    const key = momentRowKey(moment);
+    setSelectedMomentKey(key);
+    if (moment.at != null && Number.isFinite(moment.at)) {
+      setSelectedBucketT(null);
+      setHoverBucketT(null);
+    }
+  }, []);
+
+  const momentMarkers = useMemo(() => {
+    const now = Date.now();
+    const markers: { key: string; bucketT: number; kind?: string }[] = [];
+    for (const moment of liveWireFeed.moments) {
+      if (!isLiveWireEventFresh(moment.at, now)) continue;
+      if (moment.at == null || !Number.isFinite(moment.at)) continue;
+      const key = momentRowKey(moment);
+      markers.push({
+        key,
+        bucketT: activityBucketKey(moment.at, data.activity.windowMinutes),
+        kind: moment.kind,
+      });
+      if (markers.length >= 12) break;
+    }
+    return markers;
+  }, [data.activity.windowMinutes, liveWireFeed.moments]);
 
   return (
     <AnalyticsFigmaShell
@@ -346,6 +448,7 @@ function AnalyticsLandingContent() {
         className="figma-analytics__main"
         id="analytics-main"
         aria-label="StreamPulse analytics"
+        data-hub-state={hubUiState}
       >
         {hub.loadSource === "cache" && hub.refreshing ? (
           <div
@@ -355,28 +458,29 @@ function AnalyticsLandingContent() {
             Cached snapshot - refreshing...
           </div>
         ) : null}
-        {(data.coverage.state === "critical" || data.corpusPipeline.state === "critical") ? (
-          <div
-            className="figma-hub-fallback-banner figma-hub-fallback-banner--warn"
-            role="status"
-          >
-            Partial live IRC coverage — collector admission is limited. Charts and moments
-            reflect tracked channels only; backfill may still fill historical gaps.
-          </div>
-        ) : null}
         <HubDataHealthBanner
-          loadSource={hub.loadSource ?? "full"}
+          loadSource={hub.loadSource}
           hubEndpointOk={hub.hubEndpointOk}
           activitySummary={activitySummary}
           pipeline={data.corpusPipeline}
           liveRosterCount={data.coverage.liveChannels}
           error={hub.error}
           backendUrl={getBackendUrl()}
+          loading={loadingInitial || hubUiState === "loading"}
         />
         <HubBackendSourceBanner />
 
         <SectionReveal id="section-overview">
-          <HubCommandHeader hub={data} loading={loadingInitial} />
+          <HubCommandHeader
+            hub={data}
+            loading={loadingInitial || hubUiState === "loading"}
+            lastSuccessfulPollAt={hub.lastSuccessfulPollAt}
+            hubEndpointOk={hub.hubEndpointOk}
+            error={hub.error}
+            poolWireEvents={poolWire.events}
+            poolWireInitialized={poolWire.initialized}
+            pulseLiveChannels={pulseLiveChannels}
+          />
           <div className="hub-command-search" role="search" aria-label="Channel search">
             <HubSearch
               suggestions={suggestions}
@@ -398,7 +502,8 @@ function AnalyticsLandingContent() {
             <div className="hub-live-rail-section__head">
               <h2 className="hub-live-rail-section__title">{labels.liveRail}</h2>
               <span className="hub-live-rail-section__meta">
-                Showing {featuredChannels.length} of {compact(data.liveChannels.length)} in pool
+                Showing top {featuredChannels.length} by activity of{" "}
+                {compact(data.liveChannels.length)} in pool
               </span>
             </div>
             <FigmaLiveChannelRail
@@ -411,9 +516,6 @@ function AnalyticsLandingContent() {
 
         <SectionReveal id="section-network">
           <div className="figma-activity-hub">
-            <SectionReveal id="section-live-wire">
-              <HubLiveWireFeed {...liveWireFeedProps} layout="ticker" />
-            </SectionReveal>
             <FigmaGlobalActivityPanel
               hub={data}
               activitySummary={activitySummary}
@@ -438,6 +540,7 @@ function AnalyticsLandingContent() {
                   setActivityWindow(key as PublicHubActivityWindow);
                   setSelectedBucketT(null);
                   setHoverBucketT(null);
+                  setSelectedMomentKey(null);
                 },
               }}
               showSearch={false}
@@ -446,6 +549,29 @@ function AnalyticsLandingContent() {
               bucketMoments={activeBucketMoments}
               bucketMomentsLoading={inspectorBucketMomentsLoading}
               liveChannels={data.liveChannels}
+              linkedMoment={
+                selectedMoment?.login
+                  ? {
+                      login: selectedMoment.login,
+                      displayName: selectedMoment.displayName,
+                      label: selectedMoment.label,
+                    }
+                  : null
+              }
+              onClearLinkedMoment={() => setSelectedMomentKey(null)}
+              accentBucketT={accentBucketT}
+              momentMarkers={momentMarkers}
+              selectedMomentKey={selectedMomentKey}
+              onSelectMoment={handleSelectMoment}
+              onSelectMomentKey={(key) => {
+                const moment = momentLookupPool.get(key);
+                if (moment) handleSelectMoment(moment);
+              }}
+              annotationFeed={liveWireFeed}
+              annotationLoading={liveWireFeedProps.loading}
+              annotationHubEndpointOk={hub.hubEndpointOk}
+              annotationLoadSource={hub.loadSource ?? undefined}
+              annotationActivityWindow={activityWindow}
             />
             <PulseMomentsLivePanel
               hub={data}
@@ -466,6 +592,8 @@ function AnalyticsLandingContent() {
               activityWindow={activityWindow}
               activityWindowMinutes={data.activity.windowMinutes}
               updatedAgo={updatedAgo}
+              selectedMomentKey={selectedMomentKey}
+              onSelectMoment={handleSelectMoment}
             />
           </div>
         </SectionReveal>
@@ -479,8 +607,15 @@ function AnalyticsLandingContent() {
             corpusPipeline={data.corpusPipeline}
             poolSize={data.poolSize}
             windowMinutes={data.activity.windowMinutes}
+            emoteMarket={data.emoteMarket}
           />
         </SectionReveal>
+
+        {(data.publicClips?.length ?? 0) > 0 ? (
+          <SectionReveal id="section-top-clips">
+            <TopClipsShelf clips={data.publicClips ?? []} loading={loadingInitial} />
+          </SectionReveal>
+        ) : null}
 
         {showTrackedTable ? (
           <SectionReveal>
@@ -498,6 +633,7 @@ function AnalyticsLandingContent() {
         <SectionReveal>
           <HubCoverageTrustStrip
             pipeline={data.corpusPipeline}
+            ingest={data.ingest}
             loading={loadingInitial}
             updatedAgo={updatedAgo}
           />

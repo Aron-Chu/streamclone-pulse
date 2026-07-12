@@ -10,8 +10,8 @@ const DEFAULT_SECTIONS: HubSidebarSection[] = [
   { id: 'section-overview', label: 'Overview' },
   { id: 'section-network', label: 'Live Activity' },
   { id: 'section-pulse-moments', label: 'Pulse Moments' },
-  { id: 'section-emote-signal', label: 'Emote Signal' },
-  { id: 'section-tracked', label: 'Tracked Channels' },
+  { id: 'section-emote-signal', label: 'Emote Market' },
+  { id: 'section-tracked', label: 'Channel Screener' },
   { id: 'section-coverage', label: 'Coverage' },
 ]
 

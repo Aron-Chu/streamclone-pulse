@@ -4,8 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AppRoutes } from './routes/index'
 import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal } from './lib/auth'
+import { initPortalSentry } from './lib/sentry'
+import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
 import { shadowStyles } from './ui/theme'
 import './ui/global.css'
+
+initPortalSentry()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,12 +64,14 @@ async function bootstrap() {
 
   createRoot(root).render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AuthRejectedListener />
-          <AppRoutes />
-        </BrowserRouter>
-      </QueryClientProvider>
+      <PortalErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AuthRejectedListener />
+            <AppRoutes />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </PortalErrorBoundary>
     </StrictMode>,
   )
 }

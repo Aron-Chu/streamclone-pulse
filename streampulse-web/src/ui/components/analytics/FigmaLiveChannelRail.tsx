@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
+import { hottestLiveReason } from './activityBucketInspectorUtils'
 import { compact } from './hubFormat'
 import { MomentumBadge } from './MomentumBadge'
 import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
@@ -74,11 +75,14 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
   }
 
   return (
-    <div className={`figma-live-rail${atEnd ? ' is-end' : ''}${fillsRow ? ' is-fill' : ''}`} aria-label="Live channel preview">
+    <div className={`figma-live-rail${atEnd ? ' is-end' : ''}${fillsRow ? ' is-fill' : ''}`} aria-label="Hottest live channels">
       <div className="figma-live-rail__grid" ref={gridRef}>
         {channels.map((channel, index) => {
           const name = channel.displayName?.trim() || channel.login
           const href = buildAnalyticsHref({ login: channel.login, streamId: channel.streamId })
+          const chat = channel.chatPerMin ?? 0
+          const emotes = channel.emotesPerMin ?? 0
+          const reason = hottestLiveReason(channel)
           return (
             <Link
               key={channel.login}
@@ -99,7 +103,7 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
                     event.currentTarget.style.display = 'none'
                   }}
                 />
-                <span className="figma-live-rail__badge">LIVE</span>
+                <span className="figma-live-rail__badge">#{index + 1}</span>
                 <span className="figma-live-rail__viewers">{compact(channel.viewers)}</span>
               </div>
               <div className="figma-live-rail__body">
@@ -113,7 +117,12 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
                   )}
                   <strong>{name}</strong>
                 </span>
+                <span className="figma-live-rail__rates">
+                  <span>{chat > 0 ? `${compact(Math.round(chat))} chat/m` : '— chat/m'}</span>
+                  <span>{emotes > 0 ? `${compact(Math.round(emotes))} emotes/m` : '— emotes/m'}</span>
+                </span>
                 <span className="figma-live-rail__meta">
+                  <span className="figma-live-rail__reason">{reason}</span>
                   <span title={channelCategoryLabel(channel.category)}>
                     {channelCategoryLabel(channel.category)}
                   </span>

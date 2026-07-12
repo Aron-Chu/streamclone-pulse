@@ -20,6 +20,8 @@ export interface AnalyticsFigmaShellProps {
   backendStatus?: { label: string; value: string; tone?: 'ready' | 'degraded' | 'offline' | 'checking' }
   sidebarStatusLabel?: string
   sidebarSections?: Array<{ id: string; label: string; hidden?: boolean }>
+  /** Hide hub section nav (session console routes use in-page chrome instead). */
+  hideSidebar?: boolean
   children: ReactNode
 }
 
@@ -27,6 +29,7 @@ function AnalyticsFigmaShellInner({
   backendStatus,
   sidebarStatusLabel,
   sidebarSections,
+  hideSidebar = false,
   children,
 }: AnalyticsFigmaShellProps) {
   const { labels } = useAnalyticsTheme()
@@ -58,14 +61,16 @@ function AnalyticsFigmaShellInner({
             : undefined
         }
       />
-      <div className="figma-analytics__frame">
-        <aside className="figma-analytics__sidebar" aria-label="Hub section navigation">
-          <AnalyticsHubSidebar
-            sections={resolvedSections}
-            statusLabel={sidebarStatusLabel ?? labels.apiStatus}
-            statusTone={sidebarTone}
-          />
-        </aside>
+      <div className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}`}>
+        {hideSidebar ? null : (
+          <aside className="figma-analytics__sidebar" aria-label="Hub section navigation">
+            <AnalyticsHubSidebar
+              sections={resolvedSections}
+              statusLabel={sidebarStatusLabel ?? labels.apiStatus}
+              statusTone={sidebarTone}
+            />
+          </aside>
+        )}
 
         <div ref={centerRef} className="figma-analytics__center figma-analytics__center--themed">
           {children}

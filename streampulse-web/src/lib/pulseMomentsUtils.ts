@@ -154,6 +154,14 @@ export function momentEmoteRollupsEmptyHint(moment: FigmaMomentRow): string {
   if (momentEmoteBreakdownUnavailable(moment)) {
     return 'Emote breakdown unavailable — backend has emote counts but no emote names for this minute.'
   }
+  const tag = (moment.activityTag ?? '').trim().toLowerCase()
+  const opening =
+    momentKind(moment) === 'stream_opening' ||
+    tag === 'early_stream' ||
+    moment.label.toLowerCase().includes('just went live')
+  if (opening) {
+    return 'Opening minute — emote breakdown not ready yet.'
+  }
   if (isEmoteSpikeMoment(moment)) {
     return 'No emote rollups for this minute yet — spike detected from chat velocity, not emote counts.'
   }
@@ -208,8 +216,9 @@ export function momentContextParts(moment: FigmaMomentRow, channelLive?: boolean
 
 function momentActivityBadge(moment: FigmaMomentRow): string | null {
   const tag = (moment.activityTag ?? '').trim().toLowerCase()
-  if (tag === 'early_stream') return 'Early stream'
   if ((moment.kind ?? '').trim().toLowerCase() === 'stream_opening') return 'Just went live'
+  if (tag === 'early_stream') return 'Early stream'
+  if (tag === 'late_stream') return 'Late stream'
   return null
 }
 
@@ -252,7 +261,11 @@ export function filterPulseMoments(moments: FigmaMomentRow[], filter: PulseMomen
       case 'synced':
         return (moment.vodState ?? '').toLowerCase() === 'synced'
       case 'stream_opening':
-        return kind === 'stream_opening' || label.includes('just went live')
+        return (
+          kind === 'stream_opening' ||
+          (moment.activityTag ?? '').trim().toLowerCase() === 'early_stream' ||
+          label.includes('just went live')
+        )
       default:
         return true
     }
@@ -368,8 +381,6 @@ export function momentWallClockLabel(
     const primary = new Date(wallMs).toLocaleString(undefined, {
       hour: 'numeric',
       minute: '2-digit',
-      timeZone: 'UTC',
-      timeZoneName: 'short',
     })
     return { primary, secondary: `${formatOffsetLabel(moment.offsetSeconds)} into stream` }
   }
