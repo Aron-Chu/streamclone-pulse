@@ -131,4 +131,6 @@ jobs:
           cache-dependency-path: streampulse-web/package-lock.json
       - run: npm ci
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
-      - run: npm run build
+      # build:ci = overlap + vite + prerender (skips tsc across file:-linked package *source*;
+      # full `npm run build` still typechecks locally when package node_modules exist).
+      - run: npm run build:ci
