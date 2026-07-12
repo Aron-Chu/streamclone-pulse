@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   COVERAGE_TIER_ACTIVE_LIVE,
+  coverageTierStatusLabel,
   PULSE_STREAM_START_TOLERANCE_SEC,
   resolvePulseLiveAccess,
   secondsSinceStreamStartAt,
@@ -29,6 +30,18 @@ const hostedCap: ExtensionCoverageTierResponse = {
   coverageTier: COVERAGE_TIER_ACTIVE_LIVE,
   hostedCap: { activeLimit: 250, activeCount: 120, activeAvailable: true },
 }
+
+describe('coverageTierStatusLabel', () => {
+  it.each([
+    ['active_live_coverage', true, 'Chat tracked (IRC)'],
+    ['warming', true, 'Warming'],
+    ['top500_metadata_only', false, 'Metadata only — no chat coverage'],
+    [undefined, true, 'Warming'],
+    [undefined, false, 'Metadata only — no chat coverage'],
+  ] as const)('maps backend tier %s to canonical status copy', (tier, tracking, label) => {
+    expect(coverageTierStatusLabel(tier, tracking)).toBe(label)
+  })
+})
 
 describe('secondsSinceStreamStartAt', () => {
   it('returns seconds between stream start and tab open', () => {
