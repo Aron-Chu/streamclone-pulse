@@ -275,6 +275,11 @@
     gap: 1.25rem;
     padding: 0 1.25rem 2rem;
   }
+
+  .figma-analytics__frame--no-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }
 
 .figma-analytics__sidebar {
