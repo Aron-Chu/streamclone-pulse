@@ -18,6 +18,10 @@ import { dirname, join } from 'node:path'
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
 const repoRoot = join(webRoot, '..')
+const localWrangler = join(
+  webRoot,
+  process.platform === 'win32' ? 'node_modules/.bin/wrangler.cmd' : 'node_modules/.bin/wrangler',
+)
 
 const backendUrl = process.env.VITE_BACKEND_URL?.trim() || 'https://api.streampulse.stream'
 if (!backendUrl.includes('api.streampulse.stream')) {
@@ -56,6 +60,22 @@ function resolveGitSha() {
   return sha
 }
 
+function assertCleanGitTree() {
+  const result = spawnSync('git', ['status', '--porcelain'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  })
+  if (result.status !== 0) {
+    console.error('pages:deploy:prod could not inspect git status')
+    process.exit(1)
+  }
+  if ((result.stdout || '').trim() && process.env.ALLOW_DIRTY_PAGES_DEPLOY !== '1') {
+    console.error('pages:deploy:prod refuses a dirty tree; set ALLOW_DIRTY_PAGES_DEPLOY=1 to override')
+    process.exit(1)
+  }
+}
+
 function deleteMapFiles(dir) {
   if (!existsSync(dir)) return 0
   let n = 0
@@ -88,6 +108,9 @@ const sha = resolveGitSha()
 const portalRelease = `streampulse-portal@${sha}`
 const viteSentryDsn = process.env.VITE_SENTRY_DSN?.trim() || ''
 const sentryAuth = process.env.SENTRY_AUTH_TOKEN?.trim() || ''
+
+console.log(`Deploying git SHA ${sha}`)
+assertCleanGitTree()
 
 if (viteSentryDsn && !sentryAuth) {
   console.error('pages:deploy:prod: VITE_SENTRY_DSN is set but SENTRY_AUTH_TOKEN is missing')
@@ -139,4 +162,4 @@ if (process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
 }
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)
-run('npx', ['wrangler', ...deployArgs])
+run(localWrangler, deployArgs)
