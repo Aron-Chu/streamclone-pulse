@@ -53,6 +53,58 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      - name: Upload extension dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: dist/
+          retention-days: 3
+
+  extension-e2e:
+    name: extension-e2e
+    runs-on: ubuntu-latest
+    needs: extension-unit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pulse packages
+        env:
+          STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+        run: bash scripts/ci-checkout-pulse-packages.sh
+      - name: Link pulse packages from streampulse-backend
+        run: bash scripts/ci-link-streamclone-packages.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Record toolchain versions
+        run: |
+          {
+            echo "node: $(node --version)"
+            echo "npm: $(npm --version)"
+            echo "playwright: $(npx playwright --version)"
+            chromium --version 2>/dev/null || google-chrome --version 2>/dev/null || true
+          } | tee extension-e2e-versions.txt
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+      - name: Download extension dist
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-dist
+          path: dist
+      - name: Run mocked extension e2e
+        # Headed Chromium under xvfb — MV3 unpacked extensions are unreliable in headless.
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
+      - name: Upload Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-e2e-evidence
+          path: |
+            test-results/extension/
+            playwright-report/extension/
+            extension-e2e-versions.txt
+          retention-days: 14
 
   portal:
     name: portal
