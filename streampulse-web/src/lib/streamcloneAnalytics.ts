@@ -26,16 +26,20 @@ import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore } from './timelineDownsample'
 
 /**
- * Portal analytics adapter ΓÇö reshapes hosted `/v1/portal/analytics/*` for
+ * Portal analytics adapter — reshapes hosted `/v1/portal/analytics/*` for
  * `@streampulse/analytics-console`.
  *
  * - **Chart minutes:** `downsampleTimeline()` to ~240 points on hosted API (prod).
  *   Local `:8090` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
- * - **Top emotes:** `mergePortalTopEmotes()` ΓÇö stream summary totals win over
+ * - **Top emotes:** `mergePortalTopEmotes()` — stream summary totals win over
  *   per-minute bucket catalog counts; channel emote identity (`/channels/{login}/emotes`)
  *   fills imageUrl/id gaps for recap-only or low-usage emotes.
  * - **VOD links:** client resolves `detail.vodId ?? stream.vodId ?? recap.vodId`
- *   for Selected Moment ΓÇ£Open on TwitchΓÇ¥.
+ *   for Selected Moment “Open on Twitch”.
+ * - **streamId identity:** request path may use alias/canonical id A; mapped
+ *   `AnalyticsStreamDetail.stream.streamId` and recap `streamId` are whatever the
+ *   portal JSON returns (including remapped B). Never rewrite response ids to the
+ *   request id.
  */
 
 export class PortalChannelEmotesError extends Error {
@@ -61,6 +65,32 @@ interface PortalStreamRecord {
   vodId?: string
 }
 
+interface PortalSignalObservation {
+  state: string
+  observedAt: string
+  coveragePct?: number
+  source?: string
+  value?: number
+}
+
+interface PortalSignalWatermark {
+  state: string
+  observedThrough: string
+  coveragePct?: number
+  source?: string
+}
+
+interface PortalPeakObservation {
+  state: string
+  observedAt: string
+  confirmed?: boolean
+  detector?: string
+  value: number
+}
+
+type PortalSignalObservations = Record<string, PortalSignalObservation>
+type PortalSignalWatermarks = Record<string, PortalSignalWatermark>
+
 interface PortalStreamDetail {
   channel: string
   state: string
@@ -74,6 +104,7 @@ interface PortalStreamDetail {
   analyticsQuality?: string
   dataSourceBadges?: Array<{ source: string; state: string; label?: string }>
   viewerSource?: string
+  signalWatermarks?: PortalSignalWatermarks
 }
 
 interface PortalMinutePoint {
@@ -81,11 +112,13 @@ interface PortalMinutePoint {
   viewerAvg?: number
   viewerMax?: number
   viewerLatest?: number
+  viewerSamples?: number
   chatCount?: number
   totalEmoteCount?: number
   seventvEmoteCount?: number
   missing?: boolean
   topEmotes?: Array<{ name: string; provider?: string; imageUrl?: string; count: number }>
+  signalObservations?: PortalSignalObservations
 }
 
 interface PortalStreamMinutesResponse {
@@ -95,6 +128,7 @@ interface PortalStreamMinutesResponse {
   coverageStartOffsetSeconds?: number
   minutes: PortalMinutePoint[]
   updatedAt: number
+  signalWatermarks?: PortalSignalWatermarks
 }
 
 export interface PortalStreamSummary {
@@ -127,6 +161,7 @@ export interface PortalRecapMoment {
   emoteCount?: number
   viewerCount?: number
   topEmotes?: Array<{ code: string; count: number; provider?: string }>
+  peakObservation?: PortalPeakObservation
 }
 
 export interface PortalStreamRecapResponse {
@@ -163,6 +198,7 @@ interface PortalChannelLiveResponse {
   syncPhase?: string
   coverageStartOffsetSeconds?: number
   viewerSource?: string
+  signalWatermarks?: PortalSignalWatermarks
 }
 
 interface PortalChannelEmoteRow {
@@ -376,15 +412,85 @@ function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {
   }
 }
 
-function absolutizeRecapMoment(moment: PulseRecapMoment): PulseRecapMoment {
-  if (!moment.topEmotes?.length) return moment
-  return {
-    ...moment,
-    topEmotes: moment.topEmotes.map(absolutizeRecapEmote),
-  }
+function isValidTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value))
 }
 
-function normalizePulseStreamRecap(recap: PulseStreamRecap): PulseStreamRecap {
+function isValidProvenanceNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function validSignalObservations(
+  observations: PortalSignalObservations | undefined,
+): PortalSignalObservations | undefined {
+  if (!observations || typeof observations !== 'object') return undefined
+  const valid = Object.fromEntries(
+    Object.entries(observations).filter(([, observation]) =>
+      typeof observation.state === 'string'
+      && observation.state.length > 0
+      && isValidTimestamp(observation.observedAt)
+      && (observation.coveragePct == null || (
+        isValidProvenanceNumber(observation.coveragePct)
+        && observation.coveragePct >= 0
+        && observation.coveragePct <= 100
+      ))
+      && (observation.source == null || typeof observation.source === 'string')
+      && (observation.value == null || isValidProvenanceNumber(observation.value)),
+    ),
+  )
+  return Object.keys(valid).length > 0 ? valid : undefined
+}
+
+function validSignalWatermarks(
+  watermarks: PortalSignalWatermarks | undefined,
+): PortalSignalWatermarks | undefined {
+  if (!watermarks || typeof watermarks !== 'object') return undefined
+  const valid = Object.fromEntries(
+    Object.entries(watermarks).filter(([, watermark]) =>
+      typeof watermark.state === 'string'
+      && watermark.state.length > 0
+      && isValidTimestamp(watermark.observedThrough)
+      && (watermark.coveragePct == null || (
+        isValidProvenanceNumber(watermark.coveragePct)
+        && watermark.coveragePct >= 0
+        && watermark.coveragePct <= 100
+      ))
+      && (watermark.source == null || typeof watermark.source === 'string'),
+    ),
+  )
+  return Object.keys(valid).length > 0 ? valid : undefined
+}
+
+function validPeakObservation(
+  peakObservation: PortalPeakObservation | undefined,
+): PortalPeakObservation | undefined {
+  if (
+    !peakObservation
+    || typeof peakObservation.state !== 'string'
+    || !peakObservation.state
+    || !isValidTimestamp(peakObservation.observedAt)
+    || !isValidProvenanceNumber(peakObservation.value)
+    || (peakObservation.confirmed != null && typeof peakObservation.confirmed !== 'boolean')
+    || (peakObservation.detector != null && typeof peakObservation.detector !== 'string')
+  ) {
+    return undefined
+  }
+  return peakObservation
+}
+
+function absolutizeRecapMoment(moment: PortalRecapMoment): PulseRecapMoment {
+  const { peakObservation, ...rest } = moment
+  const normalized = {
+    ...rest,
+    topEmotes: moment.topEmotes?.map(absolutizeRecapEmote),
+    ...(validPeakObservation(peakObservation)
+      ? { peakObservation }
+      : {}),
+  }
+  return normalized as PulseRecapMoment
+}
+
+function normalizePulseStreamRecap(recap: PortalStreamRecapResponse): PulseStreamRecap {
   return {
     ...recap,
     topEmotes: recap.topEmotes?.map(absolutizeRecapEmote),
@@ -442,12 +548,17 @@ function portalMinutesToRollups(
       viewerAvg: minute.viewerAvg ?? 0,
       viewerMax: minute.viewerMax ?? 0,
       viewerLatest,
-      viewerSamples: viewerLatest > 0 ? 1 : 0,
+      ...(isValidProvenanceNumber(minute.viewerSamples) && minute.viewerSamples >= 0
+        ? { viewerSamples: minute.viewerSamples }
+        : {}),
       chatCount: chat,
       totalEmoteCount,
       seventvEmoteCount: seventv,
       emotes,
       missing: minute.missing,
+      ...(validSignalObservations(minute.signalObservations)
+        ? { signalObservations: minute.signalObservations }
+        : {}),
     }
   })
   return { rollups, catalog: Array.from(catalogByKey.values()) }
@@ -574,7 +685,10 @@ function portalLiveResponseToAnalytics(
     syncPhase: data.syncPhase,
     viewerSource: data.viewerSource,
     coverageStartOffsetSeconds: data.coverageStartOffsetSeconds,
-  }
+    ...(validSignalWatermarks(data.signalWatermarks)
+      ? { signalWatermarks: data.signalWatermarks }
+      : {}),
+  } as AnalyticsStreamDetail
 }
 function portalDetailToAnalytics(
   detail: PortalStreamDetail,
@@ -637,7 +751,10 @@ function portalDetailToAnalytics(
     viewerSource: detail.viewerSource,
     coverageStartOffsetSeconds: minutes?.coverageStartOffsetSeconds,
     minutesUnavailable,
-  }
+    ...(validSignalWatermarks(detail.signalWatermarks ?? minutes?.signalWatermarks)
+      ? { signalWatermarks: detail.signalWatermarks ?? minutes?.signalWatermarks }
+      : {}),
+  } as AnalyticsStreamDetail
 }
 
 export const portalAnalyticsApi: AnalyticsApi = {
@@ -759,7 +876,9 @@ export const portalAnalyticsApi: AnalyticsApi = {
 
   async getPulseStreamRecap(streamId: string): Promise<PulseStreamRecap | null> {
     try {
-      const { data } = await apiClient<PulseStreamRecap>(portalPath(`/streams/${encodeURIComponent(streamId)}/recap`))
+      const { data } = await apiClient<PortalStreamRecapResponse>(
+        portalPath(`/streams/${encodeURIComponent(streamId)}/recap`),
+      )
       return normalizePulseStreamRecap(data)
     } catch {
       return null
