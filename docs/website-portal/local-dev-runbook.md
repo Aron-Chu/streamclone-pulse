@@ -2,10 +2,26 @@
 
 After launch hardening (2026-07), portal dev defaults to the **hosted production API** — not a local stack. Use this checklist before `/analytics` work, hub QA, or portal screenshots.
 
+## Which checkout (Command Center WIP)
+
+| Role | Path | Branch |
+|------|------|--------|
+| **Current portal (this tree)** | `C:\Users\Aron\streamclone-pulse-hub` | `wip/hub-landing` |
+| Extension / stale portal | `C:\Users\Aron\streamclone-pulse` | do **not** use for `/analytics` until hub merges |
+
+```bash
+git -C C:/Users/Aron/streamclone-pulse-hub branch --show-current   # must be wip/hub-landing
+cd C:/Users/Aron/streamclone-pulse-hub/streampulse-web
+npm install   # after branch switch or @streampulse/* changes
+npm run dev   # or npm run dev:hosted
+```
+
+Both worktrees bind **`:5173`**. Before trusting `http://127.0.0.1:5173`, kill any Vite started from the other checkout and confirm the process cwd is `streamclone-pulse-hub/streampulse-web`. See [`docs/contributing-wip-split.md`](../contributing-wip-split.md).
+
 ## Prerequisites
 
 1. Sibling **streampulse-backend** checkout at `../../streampulse-backend` (for `@streampulse/analytics-console`, `@streampulse/pulse-core`, `@streampulse/pulse-charts` file deps).
-2. From `streampulse-web/`:
+2. From **this hub** `streampulse-web/` (not the main `streamclone-pulse` tree):
 
 ```bash
 npm install
@@ -20,7 +36,7 @@ Public **Streamclone** (`../../twitch-7tv-clone`, `:8090`) is the desktop watch 
 ## Default dev (hosted API)
 
 ```bash
-cd streampulse-web
+cd C:/Users/Aron/streamclone-pulse-hub/streampulse-web
 npm run dev
 # or: npm run dev:hosted
 ```
@@ -90,7 +106,8 @@ flowchart TD
 |---------|--------------|-----|
 | `/analytics` hangs on “Loading…” 30s+ (dev) | Cold Vite compile of lazy hub chunk; or `localhost` IPv6 stall | Use **`http://127.0.0.1:5173/analytics`**; wait for Vite terminal to finish first compile; hard refresh |
 | Blank black page, empty `#root` | Stale Vite on `:5173` after long session or git rebase | Kill process on port 5173, restart `npm run dev`, hard refresh (Ctrl+Shift+R) |
-| Port 5173 serves old bundle | Zombie dev server | `netstat -ano \| findstr :5173` (Windows) → kill PID → restart |
+| Port 5173 serves old bundle | Zombie dev server **or wrong worktree** (`streamclone-pulse` vs hub) | Confirm Vite cwd is `streamclone-pulse-hub/streampulse-web` on `wip/hub-landing`; `netstat -ano \| findstr :5173` → kill PID → restart from hub |
+| Looks like “old” Command Center | Started Vite from `streamclone-pulse` | Use this hub worktree — see **Which checkout** above |
 | Module / `@streampulse/*` errors | Missing `npm install` or sibling checkout | `npm install` in `streampulse-web`; confirm `../../streampulse-backend/packages/` exists |
 | Hub empty but page renders | Off-peak live pool or wrong backend | Confirm hosted hub: `curl -sI https://api.streampulse.stream/v1/public/hub` |
 | Unexpected local backend | Session override or env | DevTools → Application → `sessionStorage.sp.backendUrlOverride`; check `.env.development.local*` |
@@ -140,6 +157,7 @@ When on hosted (default): no `HubBackendSourceBanner` warning; hub KPIs reflect 
 
 ## Related docs
 
+- [contributing-wip-split.md](../contributing-wip-split.md) — hub vs main checkout roles
 - [design.md](./design.md) — portal architecture
 - [hub-fanout-edge-cache.md](./hub-fanout-edge-cache.md) — Day 6 fanout / poll discipline
 - [streampulse-web/README.md](../../streampulse-web/README.md) — npm scripts and deploy

@@ -1,0 +1,24 @@
+---
+description: Portal Command Center must use streamclone-pulse-hub worktree
+globs:
+  - streampulse-web/**
+  - docs/website-portal/**
+alwaysApply: false
+---
+
+# Portal worktree (Command Center WIP)
+
+While `wip/hub-landing` is active, **do not** start portal Vite from `streamclone-pulse`.
+
+| Task | Checkout | Branch |
+|------|----------|--------|
+| `/analytics`, Command Center, hub landing, portal QA | `C:\Users\Aron\streamclone-pulse-hub` | `wip/hub-landing` |
+| Extension `src/` overlay | `C:\Users\Aron\streamclone-pulse` | whatever extension branch |
+
+```bash
+git -C C:/Users/Aron/streamclone-pulse-hub branch --show-current   # expect wip/hub-landing
+cd C:/Users/Aron/streamclone-pulse-hub/streampulse-web
+npm run dev   # or npm run dev:hosted
+```
+
+Both worktrees use port `:5173`. Kill any Vite started from the other tree before trusting `http://127.0.0.1:5173`. See `docs/contributing-wip-split.md` and `docs/website-portal/local-dev-runbook.md`.

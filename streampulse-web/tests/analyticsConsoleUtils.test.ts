@@ -70,6 +70,35 @@ describe('syncedLiveStream badges', () => {
   })
 })
 
+describe('displayStreamTitle', () => {
+  it('never surfaces Syncing... placeholders as the stream title', async () => {
+    const { displayStreamTitle } = await import('@streampulse/analytics-console/utils/consoleFormat')
+    expect(
+      displayStreamTitle(
+        {
+          streamId: '1',
+          login: 'xqc',
+          startedAt: '2026-07-10T01:00:00Z',
+          title: 'Syncing...',
+        },
+        'xqc',
+        ['Untitled stream'],
+      ),
+    ).toBe('Untitled stream')
+    expect(
+      displayStreamTitle(
+        {
+          streamId: '1',
+          login: 'xqc',
+          startedAt: '2026-07-10T01:00:00Z',
+          title: '🐆LIVE🐆LOCK IN🐆',
+        },
+        'xqc',
+      ),
+    ).toBe('🐆LIVE🐆LOCK IN🐆')
+  })
+})
+
 describe('resolveCanonicalLiveSessionTarget', () => {
   it('prefers synced row matching live stream id', async () => {
     const { resolveCanonicalLiveSessionTarget } = await import(

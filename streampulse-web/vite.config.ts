@@ -59,7 +59,9 @@ if (viteSentryDsn && sentryAuth && sentryRelease) {
 export default defineConfig({
   plugins,
   optimizeDeps: {
-    include: [
+    // Linked local packages are aliased to source — prebundling freezes a stale
+    // snapshot and silently drops props like highlightedGameSegmentKey after edits.
+    exclude: [
       '@streampulse/pulse-charts',
       '@streampulse/pulse-core',
       '@streampulse/analytics-console',

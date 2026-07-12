@@ -43,9 +43,9 @@ Backend changes → sibling **streamclone** checkout (`../twitch-7tv-clone`); im
 ## Backend targeting
 
 - **StreamPulse website / portal (`streampulse-web`, `/analytics`, website portal docs) uses hosted API by default:** `https://api.streampulse.stream`.
-- Never switch portal dev, QA screenshots, hub checks, or emote verification to `http://localhost:8090` unless the user explicitly asks for local-stack debugging. Local `:8090` is the Streamclone developer stack and usually has a tiny/non-representative IRC pool.
+- Never switch portal dev, QA screenshots, hub checks, emote verification, or extension API checks to `http://localhost:8090`. Use the hosted API by default or the explicit local StreamPulse BFF at `http://localhost:8081`.
 - Before portal work, check `streampulse-web/.env.development.local`, `/setup`, and `sessionStorage.sp.backendUrlOverride`; if any points at `localhost:8090`, switch back to hosted or warn before relying on hub/moment/emote data.
-- Local `http://localhost:8090` is only for Streamclone backend implementation, extension local testing, and explicit `/v1/extension/*` smoke checks.
+- Local `http://localhost:8090` is Streamclone watch-only; it is never the extension or portal BFF.
 - **Hosted production promotion** is not the Streamclone registry path: see streamclone [`production-promotion-contract.md`](../../../twitch-7tv-clone/docs/production-promotion-contract.md) and [image exit audit](../../docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md). Pre-cutover private ops may still pin `streamclone/*` source images.
 - Content scripts: `chrome.runtime.sendMessage` only — no `fetch`.
 - **Analytics surfaces:** no new `rgba(255,255,255,…)` backgrounds on cards, rows, chips, or panels under `streampulse-web/src/ui/components/analytics`. Use `--sp-surface-*` tokens from `streampulse-web/src/ui/themes/analytics-surfaces.css`.

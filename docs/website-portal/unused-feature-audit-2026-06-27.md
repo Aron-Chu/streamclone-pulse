@@ -37,7 +37,8 @@ Recommendation: treat the current site as a public StreamPulse analytics hub fir
 
 ### Browser Routes Swept With Playwright
 
-Tested against `http://localhost:5173` with the local backend at `http://localhost:8090` responding.
+Tested against `http://localhost:5173` with the local StreamPulse BFF at
+`http://localhost:8081` responding.
 
 | Route | Result | Notes |
 |---|---|---|

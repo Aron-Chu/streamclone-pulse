@@ -23,7 +23,7 @@ Goal: a new extension repo that builds, and a shared package the web app + exten
 
 Goal: one compact endpoint the overlay can render directly, plus a reachability probe. All in the existing `analytics` service (chi).
 
-- [x] **P1-1** `internal/analytics/extension_api.go`: register `/v1/extension` route group; `GET /v1/extension/health` → `{ok,version,time}`. _Satisfies:_ R8.1. _Check:_ `curl http://localhost:8090/v1/extension/health`.
+- [x] **P1-1** `internal/analytics/extension_api.go`: register `/v1/extension` route group; `GET /v1/extension/health` → `{ok,version,time}`. _Satisfies:_ R8.1. _Check:_ `curl http://localhost:8081/v1/extension/health`.
 - [x] **P1-2** `GET /v1/extension/pulse/channels/{login}` BFF: assemble `isLive/tracking/streamId/vodId/currentOffsetSeconds/rollups/peaks` from existing store + heatmap scoring (reuse `deriveLiveHeat` logic / `heatmap.Cache`). _Satisfies:_ R3.1, R3.3. _Check:_ payload matches web app's "Most Reacted So Far" for the same stream.
 - [x] **P1-3** Add `lanes{composite,chat,seventv,viewers?,keywords?}` (normalized 0–100, 1:1 with rollups) + `dominantSignal` per peak. Omit optional lanes when unavailable (no zero-fill). _Satisfies:_ R11.1–R11.4. _Check:_ unit test on lane derivation; viewers/keywords absent when source missing.
 - [x] **P1-4** Redis-cache BFF payload 10–15s keyed `ext:pulse:{login}`. Implemented in `internal/analytics/extension_api.go` (12s TTL, `X-Cache: HIT|MISS` headers). _Satisfies:_ design §9. _Check:_ second request within TTL is a cache hit (`X-Cache: HIT`).
@@ -113,11 +113,11 @@ Goal: anyone can install. Requires the infra from design §7.
 
 ```sh
 # Backend
-curl http://localhost:8090/v1/extension/health
-curl http://localhost:8090/v1/extension/pulse/channels/<login>     # lanes + recap fields
-curl -X POST http://localhost:8090/v1/pulse/bookmarks -H 'content-type: application/json' \
+curl http://localhost:8081/v1/extension/health
+curl http://localhost:8081/v1/extension/pulse/channels/<login>     # lanes + recap fields
+curl -X POST http://localhost:8081/v1/pulse/bookmarks -H 'content-type: application/json' \
   -d '{"streamId":"319","offsetSeconds":4365,"label":"funny team wipe","source":"extension","score":95}'
-curl http://localhost:8090/v1/pulse/streams/319/recap
+curl http://localhost:8081/v1/pulse/streams/319/recap
 
 # Shared logic parity
 cd frontend && npm test -- liveHeat vodDeepLink
