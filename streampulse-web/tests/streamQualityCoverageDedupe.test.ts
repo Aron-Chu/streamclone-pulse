@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { diagnoseStreamQuality } from '@streampulse/analytics-console/utils/streamQuality'
 
-describe('diagnoseStreamQuality coverage banner ownership', () => {
-  it('skips live_viewer_warmup when CoverageStartBanner would already show', () => {
+describe('diagnoseStreamQuality live viewer warmup', () => {
+  it('reports live_viewer_warmup when early chat precedes viewer samples', () => {
     const startedAt = '2026-07-10T12:00:00.000Z'
     const rollups = Array.from({ length: 20 }, (_, i) => {
       const minuteTs = Date.parse(startedAt) + i * 60_000
@@ -32,19 +32,13 @@ describe('diagnoseStreamQuality coverage banner ownership', () => {
       rollups,
     } as unknown as Parameters<typeof diagnoseStreamQuality>[0]['detail']
 
-    const withBanner = diagnoseStreamQuality({
+    // CoverageStartBanner is a separate UI surface; diagnoseStreamQuality still
+    // owns the live_viewer_warmup quality issue when viewer samples lag chat.
+    const diagnosis = diagnoseStreamQuality({
       detail,
       isLive: true,
-      coverageStartOffsetSeconds: 480,
     })
-    expect(withBanner?.issues.includes('live_viewer_warmup') ?? false).toBe(false)
-
-    const withoutBanner = diagnoseStreamQuality({
-      detail,
-      isLive: true,
-      coverageStartOffsetSeconds: 60,
-    })
-    expect(withoutBanner?.issues).toContain('live_viewer_warmup')
-    expect(withoutBanner?.message).toMatch(/Viewer samples started at/i)
+    expect(diagnosis?.issues).toContain('live_viewer_warmup')
+    expect(diagnosis?.message).toMatch(/Viewer samples started at/i)
   })
 })

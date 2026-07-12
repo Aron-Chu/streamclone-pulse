@@ -306,11 +306,15 @@ describe('momentEmoteRollupsEmptyHint opening copy', () => {
 })
 
 describe('momentWallClockLabel', () => {
-  it('formats UTC wall clock when moment.at is present', async () => {
+  it('formats local wall clock when moment.at is present', async () => {
     const { momentWallClockLabel } = await import('../src/lib/pulseMomentsUtils')
     const at = Date.parse('2026-07-04T04:06:00.000Z')
     const label = momentWallClockLabel({ offsetSeconds: 120, score: 1, label: 'x', at })
-    expect(label.primary).toMatch(/UTC/)
+    const expected = new Date(at).toLocaleString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+    expect(label.primary).toBe(expected)
     expect(label.secondary).toContain('into stream')
   })
 

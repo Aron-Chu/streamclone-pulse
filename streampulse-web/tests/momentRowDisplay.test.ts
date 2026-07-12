@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildSelectedMomentDisplay } from '@streampulse/analytics-console/utils/selectedMomentDisplay'
 import { resolveMomentRowStats, resolveRollupDisplayEmotes } from '@streampulse/analytics-console/utils/momentRowDisplay'
 
 describe('resolveMomentRowStats', () => {
@@ -67,18 +66,10 @@ describe('resolveRollupDisplayEmotes', () => {
     expect(emotes[0].name).toBe('DinoDance')
     expect(emotes[0].count).toBe(2)
   })
-})
-
-describe('buildSelectedMomentDisplay', () => {
-  const vodLinkState = { status: 'linked' as const, label: 'Open VOD', vodId: '123', detail: '' }
-  const rollups = [{ minuteTs: '2026-07-07T12:05:00.000Z', chatCount: 0 }]
 
   it('uses recap topEmotes when rollup has no emote map', () => {
-    const display = buildSelectedMomentDisplay({
-      rollup: rollups[0],
-      rollups,
-      startedAt: '2026-07-07T12:00:00.000Z',
-      vodLinkState,
+    const emotes = resolveRollupDisplayEmotes({
+      rollup: { minuteTs: '2026-07-07T12:05:00.000Z', chatCount: 0 },
       recapMoment: {
         offsetSeconds: 300,
         score: 80,
@@ -86,10 +77,10 @@ describe('buildSelectedMomentDisplay', () => {
         emoteCount: 6,
         topEmotes: [{ code: 'EZ', count: 3, provider: 'seventv' }],
       },
+      limit: 3,
     })
-    expect(display.momentEmotes).toHaveLength(1)
-    expect(display.momentEmotes[0].name).toBe('EZ')
-    expect(display.activityLine).toContain('12 chat')
-    expect(display.activityLine).toContain('6 emotes')
+    expect(emotes).toHaveLength(1)
+    expect(emotes[0].name).toBe('EZ')
+    expect(emotes[0].count).toBe(3)
   })
 })
