@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
 import {
   closeExtensionContext,
@@ -22,10 +24,22 @@ export type ExtensionTestFixtures = {
 }
 
 export const test = base.extend<ExtensionTestFixtures>({
-  extension: async ({}, use) => {
+  extension: async ({}, use, testInfo) => {
     const launched = await launchExtensionContext()
     await use(launched)
-    await closeExtensionContext(launched)
+    const failed = testInfo.status !== testInfo.expectedStatus
+    // Close context first so recordVideo finalizes .webm files.
+    await closeExtensionContext(launched, { retainVideoDir: failed })
+    if (failed) {
+      const videos = fs.existsSync(launched.videoDir)
+        ? fs.readdirSync(launched.videoDir).filter(name => name.endsWith('.webm'))
+        : []
+      for (const name of videos) {
+        const full = path.join(launched.videoDir, name)
+        await testInfo.attach(name, { path: full, contentType: 'video/webm' })
+      }
+      fs.rmSync(launched.videoDir, { recursive: true, force: true })
+    }
   },
 
   api: async ({ extension }, use) => {
@@ -43,6 +57,11 @@ export const test = base.extend<ExtensionTestFixtures>({
     await use(evidence)
     if (testInfo.status !== testInfo.expectedStatus) {
       await evidence.attachAll(testInfo)
+      const shot = testInfo.outputPath('pulse-failure.png')
+      await extension.page.screenshot({ path: shot, fullPage: true }).catch(() => undefined)
+      if (fs.existsSync(shot)) {
+        await testInfo.attach('pulse-failure.png', { path: shot, contentType: 'image/png' })
+      }
     }
     evidence.dispose()
   },

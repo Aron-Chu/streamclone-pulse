@@ -26,6 +26,8 @@ export interface LaunchedExtension {
   userDataDir: string
   extensionId: string
   serviceWorker: Worker
+  /** Directory containing Playwright recordVideo output for this context. */
+  videoDir: string
 }
 
 function assertDistPresent(): void {
@@ -40,6 +42,7 @@ export async function launchExtensionContext(
   assertDistPresent()
 
   const userDataDir = options?.userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-e2e-'))
+  const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-video-'))
   const headless = options?.headless ?? false
 
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -50,13 +53,15 @@ export async function launchExtensionContext(
       '--disable-blink-features=AutomationControlled',
     ],
     viewport: { width: 1440, height: 900 },
+    // Config use.video does not apply to manually launched persistent contexts.
+    recordVideo: { dir: videoDir, size: { width: 1440, height: 900 } },
   })
 
   const serviceWorker = await waitForExtensionServiceWorker(context)
   const extensionId = extensionIdFromWorker(serviceWorker)
   const page = context.pages()[0] ?? (await context.newPage())
 
-  return { context, page, userDataDir, extensionId, serviceWorker }
+  return { context, page, userDataDir, extensionId, serviceWorker, videoDir }
 }
 
 export async function waitForExtensionServiceWorker(
@@ -119,17 +124,21 @@ export async function readExtensionStorage(
 export async function relaunchExtensionContext(
   previous: LaunchedExtension,
 ): Promise<LaunchedExtension> {
-  const { userDataDir } = previous
+  const { userDataDir, videoDir } = previous
   await previous.context.close().catch(() => undefined)
+  fs.rmSync(videoDir, { recursive: true, force: true })
   return launchExtensionContext({ userDataDir })
 }
 
 export async function closeExtensionContext(
   launched: LaunchedExtension,
-  options?: { retainUserDataDir?: boolean },
+  options?: { retainUserDataDir?: boolean; retainVideoDir?: boolean },
 ): Promise<void> {
   await launched.context.close().catch(() => undefined)
   if (!options?.retainUserDataDir) {
     fs.rmSync(launched.userDataDir, { recursive: true, force: true })
+  }
+  if (!options?.retainVideoDir) {
+    fs.rmSync(launched.videoDir, { recursive: true, force: true })
   }
 }
