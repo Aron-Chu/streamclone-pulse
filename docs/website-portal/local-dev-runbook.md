@@ -2,26 +2,22 @@
 
 After launch hardening (2026-07), portal dev defaults to the **hosted production API** — not a local stack. Use this checklist before `/analytics` work, hub QA, or portal screenshots.
 
-## Which checkout (Command Center WIP)
+## Which checkout
 
-| Role | Path | Branch |
-|------|------|--------|
-| **Current portal (this tree)** | `C:\Users\Aron\streamclone-pulse-hub` | `wip/hub-landing` |
-| Extension / stale portal | `C:\Users\Aron\streamclone-pulse` | do **not** use for `/analytics` until hub merges |
+`wip/hub-landing` merged in [PR #25](https://github.com/Aron-Chu/streamclone-pulse/pull/25). Use the main `streamclone-pulse` checkout for portal and extension.
 
 ```bash
-git -C C:/Users/Aron/streamclone-pulse-hub branch --show-current   # must be wip/hub-landing
-cd C:/Users/Aron/streamclone-pulse-hub/streampulse-web
+cd C:/Users/Aron/streamclone-pulse/streampulse-web
 npm install   # after branch switch or @streampulse/* changes
 npm run dev   # or npm run dev:hosted
 ```
 
-Both worktrees bind **`:5173`**. Before trusting `http://127.0.0.1:5173`, kill any Vite started from the other checkout and confirm the process cwd is `streamclone-pulse-hub/streampulse-web`. See [`docs/contributing-wip-split.md`](../contributing-wip-split.md).
+See [`docs/contributing-wip-split.md`](../contributing-wip-split.md).
 
 ## Prerequisites
 
 1. Sibling **streampulse-backend** checkout at `../../streampulse-backend` (for `@streampulse/analytics-console`, `@streampulse/pulse-core`, `@streampulse/pulse-charts` file deps).
-2. From **this hub** `streampulse-web/` (not the main `streamclone-pulse` tree):
+2. From `streampulse-web/`:
 
 ```bash
 npm install
@@ -36,7 +32,7 @@ Public **Streamclone** (`../../twitch-7tv-clone`, `:8090`) is the desktop watch 
 ## Default dev (hosted API)
 
 ```bash
-cd C:/Users/Aron/streamclone-pulse-hub/streampulse-web
+cd C:/Users/Aron/streamclone-pulse/streampulse-web
 npm run dev
 # or: npm run dev:hosted
 ```

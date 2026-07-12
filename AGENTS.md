@@ -28,15 +28,15 @@ Do not duplicate guardrails across `AGENTS.md` and `.cursor/rules/`; keep produc
 | Repo wiring | [`docs/CONTEXT.md`](docs/CONTEXT.md) |
 | **StreamPulse backend (Go/packages)** | [`../streampulse-backend/AGENTS.md`](../streampulse-backend/AGENTS.md) |
 | **Hosted production ops (operator)** | private **streampulse-ops** — public check: `curl https://api.streampulse.stream/v1/extension/health` |
-| **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) — **this hub worktree** (`wip/hub-landing`) |
-| WIP checkout map | [`docs/contributing-wip-split.md`](docs/contributing-wip-split.md) |
+| **Portal local dev (hosted-first)** | [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) — main `streamclone-pulse` checkout (`master`) |
+| Post-hub merge checkout map | [`docs/contributing-wip-split.md`](docs/contributing-wip-split.md) |
 | Extension code | `src/` |
 
 ## StreamPulse website / portal task router
 
 For StreamPulse public website and portal work (the `streampulse.stream` site, **not** the extension overlay):
 
-0. **Checkout:** this tree (`streamclone-pulse-hub`) on `wip/hub-landing` is the current Command Center. Do not start portal Vite from sibling `streamclone-pulse` until this branch merges. After merge, retire this worktree and restore the main checkout as the portal owner. See [`docs/contributing-wip-split.md`](docs/contributing-wip-split.md).
+0. **Checkout:** main `streamclone-pulse` on `master` (hub worktree retired after [PR #25](https://github.com/Aron-Chu/streamclone-pulse/pull/25)). See [`docs/contributing-wip-split.md`](docs/contributing-wip-split.md).
 1. Read [`docs/pulse-extension/website-portal-requirements.md`](docs/pulse-extension/website-portal-requirements.md) for product requirements.
 2. Read [`docs/website-portal/design.md`](docs/website-portal/design.md) for architecture and implementation constraints.
 3. Read [`docs/website-portal/analytics-command-center-layout.md`](docs/website-portal/analytics-command-center-layout.md) for hub landing section order, Pulse Moments side-by-side layout, chart rail inspector, and layout anti-regressions (2026-07).
@@ -59,7 +59,7 @@ Hard guardrails:
 | Mode | Scope | Default workspace |
 |------|-------|-------------------|
 | **Extension** | `src/`, `docs/pulse-extension/`, MV3 build/test | sibling `streamclone-pulse` |
-| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | **This worktree** (`streamclone-pulse-hub` / `wip/hub-landing`); do not load extension service-worker context unless API contract work. Landing showcase may import extension UI via Vite `@pulse-ext/ui` → `src/ui` (chrome shims only). |
+| **Portal / web** | `streampulse-web/`, `docs/website-portal/` | Main `streamclone-pulse` checkout; do not load extension service-worker context unless API contract work. Landing showcase may import extension UI via Vite `@pulse-ext/ui` → `src/ui` (chrome shims only). |
 
 Cross-repo layout: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
