@@ -3,6 +3,13 @@ dist/
 *.zip
 .DS_Store
 
+# Playwright (uploaded by CI on failure; never commit)
+test-results/
+playwright-report/
+playwright/.cache/
+*.webm
+**/trace.zip
+
 _overlay*.tsx*
 _split_overlay.*
 .overlay-full.patch

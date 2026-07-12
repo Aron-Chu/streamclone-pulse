@@ -6,6 +6,7 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
+      'tests/e2e/**',
       'streampulse-web/**',
       '_streamclone/**',
       '_streampulse-backend/**',

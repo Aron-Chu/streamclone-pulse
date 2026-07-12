@@ -16,8 +16,6 @@
   },
   "include": ["src"],
   "exclude": [
-    "src/routes/analytics/ChannelDatePage.tsx",
-    "src/routes/analytics/ChannelSessionKeyRoute.tsx",
     "src/routes/analytics/StreamsHubPage.tsx"
   ]
 }
