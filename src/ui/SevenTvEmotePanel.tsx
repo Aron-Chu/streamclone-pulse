@@ -5,9 +5,13 @@ import { emoteSelectionKey } from './chatActivityEmotes.ts'
 import { hexToRgba } from './chartTheme.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
+import {
+  EMOTE_PICKER_PAGE_SIZE,
+  nextEmoteRevealCount,
+} from './sevenTvEmoteReveal.ts'
 import { theme } from './theme.ts'
 
-const VISIBLE_CHIP_LIMIT = 3
+const VISIBLE_CHIP_LIMIT = EMOTE_PICKER_PAGE_SIZE
 
 export interface SevenTvEmotePanelProps {
   expanded: boolean
@@ -34,11 +38,17 @@ export function SevenTvEmotePanel({
   selectedPlotColors,
   maxSelected = 6,
 }: SevenTvEmotePanelProps) {
-  const [showAllChips, setShowAllChips] = useState(false)
+  // Reveal in pages of VISIBLE_CHIP_LIMIT so the CTA matches what appears next
+  // ("Show 3 more"), not the full remaining catalog (e.g. "Show 21 more").
+  const [visibleLimit, setVisibleLimit] = useState(VISIBLE_CHIP_LIMIT)
 
   useEffect(() => {
-    if (!expanded) setShowAllChips(false)
+    if (!expanded) setVisibleLimit(VISIBLE_CHIP_LIMIT)
   }, [expanded])
+
+  useEffect(() => {
+    setVisibleLimit(limit => Math.min(Math.max(VISIBLE_CHIP_LIMIT, limit), Math.max(VISIBLE_CHIP_LIMIT, topEmotes.length)))
+  }, [topEmotes.length])
 
   if (topEmotes.length === 0) return null
 
@@ -48,8 +58,10 @@ export function SevenTvEmotePanel({
       ? selectedEmotes.slice(0, maxSelected)
       : topEmotes.slice(0, Math.min(6, maxSelected))
   const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
-  const visibleEmotes = showAllChips ? topEmotes : topEmotes.slice(0, VISIBLE_CHIP_LIMIT)
-  const hiddenCount = Math.max(0, topEmotes.length - VISIBLE_CHIP_LIMIT)
+  const visibleEmotes = topEmotes.slice(0, visibleLimit)
+  const remainingCount = Math.max(0, topEmotes.length - visibleLimit)
+  const nextRevealCount = nextEmoteRevealCount(topEmotes.length, visibleLimit)
+  const canCollapse = visibleLimit > VISIBLE_CHIP_LIMIT
 
   return (
     <div className="pulse-seven-tv-panel" style={styles.panel}>
@@ -137,17 +149,25 @@ export function SevenTvEmotePanel({
               )
             })}
           </div>
-          {hiddenCount > 0 ? (
+          {remainingCount > 0 || canCollapse ? (
             <button
               type="button"
               className="pulse-secondary-btn"
               style={styles.moreButton}
-              onClick={() => setShowAllChips(value => !value)}
-              aria-expanded={showAllChips}
+              onClick={() => {
+                if (remainingCount > 0) {
+                  setVisibleLimit(limit =>
+                    Math.min(topEmotes.length, limit + VISIBLE_CHIP_LIMIT),
+                  )
+                  return
+                }
+                setVisibleLimit(VISIBLE_CHIP_LIMIT)
+              }}
+              aria-expanded={canCollapse}
             >
-              {showAllChips
-                ? 'Show less'
-                : `Show ${hiddenCount} more emote${hiddenCount === 1 ? '' : 's'}`}
+              {remainingCount > 0
+                ? `Show ${nextRevealCount} more emote${nextRevealCount === 1 ? '' : 's'}`
+                : 'Show less'}
             </button>
           ) : null}
         </div>
@@ -159,7 +179,7 @@ export function SevenTvEmotePanel({
 const styles: Record<string, CSSProperties> = {
   panel: {
     background: 'rgba(17, 17, 23, 0.72)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(103, 232, 249, 0.1)',
     borderRadius: 10,
     marginTop: 8,
     overflow: 'hidden',
