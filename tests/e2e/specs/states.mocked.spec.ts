@@ -1,6 +1,8 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import {
   assertExactlyOnePulseRoot,
+  assertGameDividersSpanPlot,
+  assertNoPulseVodDiscoverWarnings,
   assertNoUncaughtErrors,
   assertPulseShadowContains,
   waitForPulseRoot,
@@ -18,6 +20,56 @@ test.describe('extension mocked states', () => {
     await waitForPulseRoot(extension.page)
     await assertExactlyOnePulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /Pulse|Chat tracked|Just Chatting|fixturechan/i)
+    assertNoUncaughtErrors(evidence)
+    assertNoPulseVodDiscoverWarnings(evidence)
+  })
+
+  test('live ready game dividers span viewers through emote lane', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertPulseShadowContains(extension.page, /League of Legends|Just Chatting/i)
+    await assertGameDividersSpanPlot(extension.page)
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('live ready chart range change stays free of storage/SVG console noise', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        defaultChartWindow: 'full',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertPulseShadowContains(extension.page, /Range|Full|30|Games played|Pulse/i)
+
+    // Drive the range control inside the shadow root (open → pick 30 min).
+    const changed = await extension.page.evaluate(rootId => {
+      const host = document.getElementById(rootId)
+      const root = host?.shadowRoot
+      if (!root) return false
+      const trigger = [...root.querySelectorAll('button')].find(button =>
+        /full stream|full|30\s*min|60\s*min|range/i.test(button.textContent ?? ''),
+      )
+      if (!trigger) return false
+      trigger.click()
+      return true
+    }, 'streamclone-pulse-root')
+    expect(changed, 'expected a chart range trigger in the Pulse shadow tree').toBe(true)
+
+    // Give hydration + resize a beat, then assert no storage/context/SVG noise.
+    await extension.page.waitForTimeout(750)
     assertNoUncaughtErrors(evidence)
   })
 

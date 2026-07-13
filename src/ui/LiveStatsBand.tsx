@@ -216,18 +216,22 @@ export function LiveStatsBand({
     }
     let mounted = true
     void (async () => {
-      // One-time: legacy sticky windows → Full stream (poll stays recent).
-      await migrateDefaultChartWindowToFullOnce()
-      const window = await getDefaultChartWindow()
-      if (!mounted) return
-      // First click Full→30m was getting overwritten when this async finished.
-      if (chartWindowUserPickedRef.current) return
-      if (fullTimeline) {
-        setChartWindow('full')
-        return
+      try {
+        // One-time: legacy sticky windows → Full stream (poll stays recent).
+        await migrateDefaultChartWindowToFullOnce()
+        const window = await getDefaultChartWindow()
+        if (!mounted) return
+        // First click Full→30m was getting overwritten when this async finished.
+        if (chartWindowUserPickedRef.current) return
+        if (fullTimeline) {
+          setChartWindow('full')
+          return
+        }
+        // Default product range is Full stream (live poll stays recent; Full is chart UI only).
+        setChartWindow(window)
+      } catch {
+        // Storage denied / extension context invalidated — keep in-memory default.
       }
-      // Default product range is Full stream (live poll stays recent; Full is chart UI only).
-      setChartWindow(window)
     })()
     return () => {
       mounted = false

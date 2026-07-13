@@ -5,6 +5,7 @@ import {
   GameSegmentOverlay,
   gameSegmentKey,
   gameSegmentPlotBounds,
+  gameSegmentPlotBoundsByOffsets,
   normalizeGameSegments as normalizeChartGameSegments,
   type ChartGameSegment,
   type ChartMinuteRollup,
@@ -19,8 +20,11 @@ import {
   chartBarBucketOpacity,
   chartDurationSeconds,
   chartViewerValue,
+  extendSeriesToTrailingEdge,
+  extendViewerSeriesToTrailingEdge,
   indexFromChartClick,
   minuteEmoteTotal,
+  overviewBarWidth,
   plotXForIndex,
   rampNullableSeriesFromStreamStart,
   rollupsToChartMinuteRollups,
@@ -66,7 +70,6 @@ const PAD_LEFT = 4
 const PAD_RIGHT = 12
 const PAD_TOP = 14
 const PAD_BOTTOM = 12
-const GAME_BAND_HEIGHT = 20
 const VIEWER_STRIP_SHARE_COLLAPSED = 0.28
 const VIEWER_STRIP_SHARE_EXPANDED = 0.16
 const ACTIVITY_CHAT_FRACTION = 0.54
@@ -177,7 +180,7 @@ function selectionColumnRect(
   fill: string,
 ): { x: number; y: number; width: number; height: number; fill: string } | null {
   if (index == null || n <= 0) return null
-  const barWidth = Math.max(1, plotWidth / Math.max(n, 1) - 0.5)
+  const barWidth = overviewBarWidth(plotWidth, n)
   const x = plotXForIndex(index, n, PAD_LEFT, plotWidth) - barWidth / 2
   return { x, y: top, width: barWidth, height: Math.max(1, bottom - top), fill }
 }
@@ -215,12 +218,18 @@ export function PulseOverviewChart({
   useLayoutEffect(() => {
     const node = containerRef.current
     if (!node || typeof ResizeObserver === 'undefined') return
+    const minPlotWidth = PAD_LEFT + PAD_RIGHT + 40
+    const applyWidth = (raw: number) => {
+      const next = Math.round(raw)
+      // Tiny pre-layout widths (e.g. 1px) make plotWidth = width-pads = -15 and SVG rects throw.
+      setWidth(next >= minPlotWidth ? next : DEFAULT_WIDTH)
+    }
     const observer = new ResizeObserver(entries => {
       const next = entries[0]?.contentRect.width
-      if (next && next > 0) setWidth(Math.round(next))
+      if (next && next > 0) applyWidth(next)
     })
     observer.observe(node)
-    setWidth(Math.max(1, Math.round(node.getBoundingClientRect().width)) || DEFAULT_WIDTH)
+    applyWidth(node.getBoundingClientRect().width)
     return () => observer.disconnect()
   }, [])
 
@@ -273,7 +282,7 @@ export function PulseOverviewChart({
     [rollups],
   )
   const chat = useMemo(
-    () => rollups.map(point => (point.missing ? null : point.chatCount ?? null)),
+    () => rollups.map(point => (point.missing ? null : (point.chatCount ?? 0) || null)),
     [rollups],
   )
   const emotes = useMemo(
@@ -285,16 +294,28 @@ export function PulseOverviewChart({
   const viewerTrendValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
-        smoothNullableSeriesValues(viewers, trendWindow),
+        extendViewerSeriesToTrailingEdge(
+          smoothNullableSeriesValues(viewers, trendWindow),
+        ),
       ),
     [viewers, trendWindow],
   )
   const chatTrendValues = useMemo(
-    () => rampNullableSeriesFromStreamStart(smoothNullableSeriesValues(chat, trendWindow)),
+    () =>
+      rampNullableSeriesFromStreamStart(
+        extendSeriesToTrailingEdge(
+          smoothNullableSeriesValues(chat, trendWindow),
+        ),
+      ),
     [chat, trendWindow],
   )
   const emoteTrendValues = useMemo(
-    () => rampNullableSeriesFromStreamStart(smoothNullableSeriesValues(emotes, trendWindow)),
+    () =>
+      rampNullableSeriesFromStreamStart(
+        extendSeriesToTrailingEdge(
+          smoothNullableSeriesValues(emotes, trendWindow),
+        ),
+      ),
     [emotes, trendWindow],
   )
 
@@ -352,20 +373,29 @@ export function PulseOverviewChart({
   traceFraction = rebalanced.trace
   emoteFraction = rebalanced.emote
 
-  const plotWidth = width - PAD_LEFT - PAD_RIGHT
-  const gameBandHeight = chartGames.length > 0 ? GAME_BAND_HEIGHT : 0
-  const plotTop = PAD_TOP + 4 + gameBandHeight
+  const plotWidth = Math.max(1, width - PAD_LEFT - PAD_RIGHT)
+  // Games are vertical dashed dividers only — do not reserve a top game band.
+  const plotTop = PAD_TOP + 4
   const plotBottom = height - PAD_BOTTOM
   const plotHeight = Math.max(48, plotBottom - plotTop)
   const viewerBandTop = plotTop
   const viewerBandBottom = plotTop + plotHeight * viewerStripShare
   const activityTop = viewerBandBottom + (showViewerStrip ? 4 : 0)
   const activityBottom = plotBottom
+  const chartOffsets = useMemo(
+    () => rollups.map(point => point.offsetSeconds),
+    [rollups],
+  )
+  const gameBandTop = PAD_TOP + 1
+  const gameDividerExtent = Math.max(48, plotBottom - gameBandTop)
 
   const highlightedGamePlotBounds = useMemo(() => {
     if (!highlightedGameSegmentKey || chartGames.length === 0) return null
     const segment = chartGames.find(game => gameSegmentKey(game) === highlightedGameSegmentKey)
     if (!segment) return null
+    if (chartOffsets.length > 0) {
+      return gameSegmentPlotBoundsByOffsets(segment, chartOffsets, PAD_LEFT, plotWidth)
+    }
     return gameSegmentPlotBounds(
       segment,
       chartMinuteRollups,
@@ -373,7 +403,14 @@ export function PulseOverviewChart({
       PAD_LEFT,
       plotWidth,
     )
-  }, [highlightedGameSegmentKey, chartGames, chartMinuteRollups, streamStartedAt, plotWidth])
+  }, [
+    highlightedGameSegmentKey,
+    chartGames,
+    chartOffsets,
+    chartMinuteRollups,
+    streamStartedAt,
+    plotWidth,
+  ])
 
   const activityHeight = Math.max(24, activityBottom - activityTop)
   const crosshairTop = plotTop
@@ -583,7 +620,7 @@ export function PulseOverviewChart({
 
   const emoteBars = useMemo(() => {
     if (n === 0) return []
-    const barWidth = Math.max(1, plotWidth / Math.max(n, 1) - 0.5)
+    const barWidth = overviewBarWidth(plotWidth, n)
     return emotes.map((value, index) => {
       const x = plotXForIndex(index, n, PAD_LEFT, plotWidth) - barWidth / 2
       const v = value ?? 0
@@ -595,7 +632,7 @@ export function PulseOverviewChart({
 
   const chatBars = useMemo(() => {
     if (n === 0) return []
-    const barWidth = Math.max(1, plotWidth / Math.max(n, 1) - 0.5)
+    const barWidth = overviewBarWidth(plotWidth, n)
     return chat.map((value, index) => {
       const x = plotXForIndex(index, n, PAD_LEFT, plotWidth) - barWidth / 2
       const v = value ?? 0
@@ -776,30 +813,7 @@ export function PulseOverviewChart({
           opacity={showViewerStrip ? 1 : 0}
         />
 
-        {chartGames.length > 0 ? (
-          <GameSegmentOverlay
-            segments={chartGames}
-            rollups={chartMinuteRollups}
-            streamStartedAt={streamStartedAt}
-            padLeft={PAD_LEFT}
-            plotWidth={plotWidth}
-            gameBandTop={PAD_TOP + 1}
-            gameBandHeight={gameBandHeight - 2}
-            minLabelWidth={24}
-          />
-        ) : null}
-
         <g clipPath="url(#pulsePlotClip)">
-          {highlightedGamePlotBounds ? (
-            <rect
-              x={highlightedGamePlotBounds.startX}
-              y={viewerBandTop}
-              width={Math.max(1, highlightedGamePlotBounds.endX - highlightedGamePlotBounds.startX)}
-              height={activityBottom - viewerBandTop}
-              fill="rgba(249, 115, 22, 0.08)"
-              pointerEvents="none"
-            />
-          ) : null}
           {showViewerStrip ? (
             <rect
               x={PAD_LEFT}
@@ -945,6 +959,56 @@ export function PulseOverviewChart({
             })}
           </g>
         </g>
+
+        {/* Paint game dividers above chat/emote bars so they stay visible through the full plot. */}
+        {chartGames.length > 0 ? (
+          <GameSegmentOverlay
+            segments={chartGames}
+            rollups={chartMinuteRollups}
+            streamStartedAt={streamStartedAt}
+            chartOffsets={chartOffsets}
+            padLeft={PAD_LEFT}
+            plotWidth={plotWidth}
+            gameBandTop={gameBandTop}
+            gameBandHeight={0}
+            dividerExtent={gameDividerExtent}
+            isLive={isLive}
+          />
+        ) : null}
+
+        {/* Games-played hover band above series (portal parity) so it is actually visible. */}
+        {highlightedGamePlotBounds ? (
+          <g
+            pointerEvents="none"
+            aria-hidden="true"
+            data-game-highlight={highlightedGameSegmentKey ?? undefined}
+          >
+            <rect
+              x={highlightedGamePlotBounds.startX}
+              y={viewerBandTop}
+              width={Math.max(1, highlightedGamePlotBounds.endX - highlightedGamePlotBounds.startX)}
+              height={Math.max(1, activityBottom - viewerBandTop)}
+              fill="rgba(249, 115, 22, 0.22)"
+            />
+            <line
+              x1={highlightedGamePlotBounds.startX}
+              x2={highlightedGamePlotBounds.startX}
+              y1={viewerBandTop}
+              y2={activityBottom}
+              stroke="rgba(249, 115, 22, 0.95)"
+              strokeWidth={2.5}
+            />
+            <line
+              x1={highlightedGamePlotBounds.endX}
+              x2={highlightedGamePlotBounds.endX}
+              y1={viewerBandTop}
+              y2={activityBottom}
+              stroke="rgba(249, 115, 22, 0.7)"
+              strokeWidth={2}
+              strokeDasharray="4 3"
+            />
+          </g>
+        ) : null}
 
         {hoverLineX != null ? (
           <line

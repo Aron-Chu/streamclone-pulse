@@ -18,6 +18,14 @@ export interface ExtensionStorageSeed {
   themePreference?: 'aurora' | 'volt' | 'azure'
   chatClosedPulseDockEnabled?: boolean
   defaultChartWindow?: '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
+  /**
+   * When true, skips the one-time sticky→full migration so a seeded
+   * non-full defaultChartWindow survives mount (for range-UI tests).
+   * When omitted/false, migrateDefaultChartWindowToFullOnce runs normally.
+   */
+  defaultChartWindowMigratedToFullV1?: boolean
+  /** Guest path: omit / null / '' — no beta key. */
+  betaKey?: string | null
 }
 
 export interface LaunchedExtension {
@@ -87,7 +95,7 @@ export async function seedExtensionStorage(
   serviceWorker: Worker,
   seed: ExtensionStorageSeed = {},
 ): Promise<void> {
-  const payload = {
+  const payload: Record<string, unknown> = {
     backendUrl: seed.backendUrl ?? 'https://api.streampulse.stream',
     localBackendOptIn: false,
     overlayMode: seed.overlayMode ?? 'expanded',
@@ -97,8 +105,16 @@ export async function seedExtensionStorage(
     pollIntervalMs: seed.pollIntervalMs ?? 60_000,
     themePreference: seed.themePreference ?? 'aurora',
     chatClosedPulseDockEnabled: seed.chatClosedPulseDockEnabled ?? false,
-    defaultChartWindow: seed.defaultChartWindow ?? '60m',
+    defaultChartWindow: seed.defaultChartWindow ?? 'full',
     keepLocalCache: true,
+  }
+
+  if (seed.defaultChartWindowMigratedToFullV1 === true) {
+    payload.defaultChartWindowMigratedToFullV1 = true
+  }
+
+  if (seed.betaKey !== undefined) {
+    payload.betaKey = seed.betaKey?.trim() ?? ''
   }
 
   await serviceWorker.evaluate(async storage => {

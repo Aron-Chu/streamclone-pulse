@@ -1,4 +1,4 @@
-import { getBetaKey } from './storage.ts'
+import { getBetaKey, isExtensionContextAlive } from './storage.ts'
 
 const GUEST_BOOKMARK_EXPLAINER_SEEN_KEY = 'guestBookmarkExplainerSeen'
 
@@ -17,6 +17,7 @@ export function hasBetaKey(betaKey: string | null | undefined): boolean {
 }
 
 export async function getGuestBookmarkExplainerSeen(): Promise<boolean> {
+  if (!isExtensionContextAlive()) return false
   try {
     const stored = await chrome.storage.sync.get(GUEST_BOOKMARK_EXPLAINER_SEEN_KEY)
     return Boolean(stored[GUEST_BOOKMARK_EXPLAINER_SEEN_KEY])
@@ -26,6 +27,7 @@ export async function getGuestBookmarkExplainerSeen(): Promise<boolean> {
 }
 
 export async function setGuestBookmarkExplainerSeen(seen: boolean): Promise<void> {
+  if (!isExtensionContextAlive()) return
   try {
     await chrome.storage.sync.set({ [GUEST_BOOKMARK_EXPLAINER_SEEN_KEY]: seen })
   } catch {

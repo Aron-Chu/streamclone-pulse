@@ -70,13 +70,83 @@ export function clampPollIntervalMs(ms: number): number {
   return Math.round(clamped / step) * step
 }
 
+/** False after extension reload/disable while a Twitch page still holds an old content script. */
+export function isExtensionContextAlive(): boolean {
+  try {
+    return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.id)
+  } catch {
+    return false
+  }
+}
+
+function isBenignStorageError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '')
+  return /Access to storage is not allowed|Extension context invalidated|storage is not allowed from this context/i.test(
+    message,
+  )
+}
+
+async function syncStorageGet(
+  keys?: string | string[] | Record<string, unknown> | null,
+): Promise<Record<string, unknown>> {
+  if (!isExtensionContextAlive()) return {}
+  try {
+    return (await chrome.storage.sync.get(keys ?? null)) as Record<string, unknown>
+  } catch (err) {
+    if (isBenignStorageError(err)) return {}
+    throw err
+  }
+}
+
+async function syncStorageSet(items: Record<string, unknown>): Promise<void> {
+  if (!isExtensionContextAlive()) return
+  try {
+    await chrome.storage.sync.set(items)
+  } catch (err) {
+    if (isBenignStorageError(err)) return
+    throw err
+  }
+}
+
+async function sessionStorageGet(
+  keys?: string | string[] | Record<string, unknown> | null,
+): Promise<Record<string, unknown>> {
+  if (!isExtensionContextAlive()) return {}
+  try {
+    return (await chrome.storage.session.get(keys ?? null)) as Record<string, unknown>
+  } catch (err) {
+    if (isBenignStorageError(err)) return {}
+    throw err
+  }
+}
+
+async function sessionStorageSet(items: Record<string, unknown>): Promise<void> {
+  if (!isExtensionContextAlive()) return
+  try {
+    await chrome.storage.session.set(items)
+  } catch (err) {
+    if (isBenignStorageError(err)) return
+    throw err
+  }
+}
+
+async function sessionStorageRemove(keys: string | string[]): Promise<void> {
+  if (!isExtensionContextAlive()) return
+  try {
+    await chrome.storage.session.remove(keys)
+  } catch (err) {
+    if (isBenignStorageError(err)) return
+    throw err
+  }
+}
+
 export async function getBackendUrl(): Promise<string> {
-  const stored = await chrome.storage.sync.get([BACKEND_URL_KEY, LOCAL_BACKEND_OPT_IN_KEY])
+  const stored = await syncStorageGet([BACKEND_URL_KEY, LOCAL_BACKEND_OPT_IN_KEY])
   const raw = String(stored[BACKEND_URL_KEY] ?? DEFAULT_BACKEND_URL).trim()
   const url = raw.replace(/\/+$/, '')
 
   if (isLegacyStreamcloneBackendUrl(url)) {
-    await chrome.storage.sync.set({
+    await syncStorageSet({
       [BACKEND_URL_KEY]: DEFAULT_BACKEND_URL,
       [LOCAL_BACKEND_OPT_IN_KEY]: false,
     })
@@ -84,7 +154,7 @@ export async function getBackendUrl(): Promise<string> {
   }
 
   if (isLocalStackBackendUrl(url) && !stored[LOCAL_BACKEND_OPT_IN_KEY]) {
-    await chrome.storage.sync.set({
+    await syncStorageSet({
       [BACKEND_URL_KEY]: DEFAULT_BACKEND_URL,
       [LOCAL_BACKEND_OPT_IN_KEY]: false,
     })
@@ -97,57 +167,57 @@ export async function getBackendUrl(): Promise<string> {
 export async function setBackendUrl(url: string): Promise<void> {
   const trimmed = url.trim().replace(/\/+$/, '')
   const localOptIn = isLocalStackBackendUrl(trimmed)
-  await chrome.storage.sync.set({
+  await syncStorageSet({
     [BACKEND_URL_KEY]: trimmed,
     [LOCAL_BACKEND_OPT_IN_KEY]: localOptIn,
   })
 }
 
 export async function getBetaKey(): Promise<string> {
-  const stored = await chrome.storage.sync.get(BETA_KEY_KEY)
+  const stored = await syncStorageGet(BETA_KEY_KEY)
   return String(stored[BETA_KEY_KEY] ?? '').trim()
 }
 
 export async function setBetaKey(key: string): Promise<void> {
-  await chrome.storage.sync.set({ [BETA_KEY_KEY]: key.trim() })
+  await syncStorageSet({ [BETA_KEY_KEY]: key.trim() })
 }
 
 export async function getPollIntervalMs(): Promise<number> {
-  const stored = await chrome.storage.sync.get(POLL_INTERVAL_MS_KEY)
+  const stored = await syncStorageGet(POLL_INTERVAL_MS_KEY)
   const value = Number(stored[POLL_INTERVAL_MS_KEY])
   return Number.isFinite(value) && value >= 15_000 ? value : DEFAULT_POLL_INTERVAL_MS
 }
 
 export async function setPollIntervalMs(ms: number): Promise<void> {
   const safe = clampPollIntervalMs(ms)
-  await chrome.storage.sync.set({ [POLL_INTERVAL_MS_KEY]: safe })
+  await syncStorageSet({ [POLL_INTERVAL_MS_KEY]: safe })
 }
 
 export async function getOverlayMode(): Promise<OverlayMode> {
-  const stored = await chrome.storage.sync.get(OVERLAY_MODE_KEY)
+  const stored = await syncStorageGet(OVERLAY_MODE_KEY)
   return normalizeOverlayMode(stored[OVERLAY_MODE_KEY])
 }
 
 export async function setOverlayMode(mode: OverlayMode): Promise<void> {
-  await chrome.storage.sync.set({ [OVERLAY_MODE_KEY]: normalizeOverlayMode(mode) })
+  await syncStorageSet({ [OVERLAY_MODE_KEY]: normalizeOverlayMode(mode) })
 }
 
 export async function getOverlayPlacement(): Promise<OverlayPlacement> {
-  const stored = await chrome.storage.sync.get(OVERLAY_PLACEMENT_KEY)
+  const stored = await syncStorageGet(OVERLAY_PLACEMENT_KEY)
   return normalizeOverlayPlacement(stored[OVERLAY_PLACEMENT_KEY])
 }
 
 export async function setOverlayPlacement(placement: OverlayPlacement): Promise<void> {
-  await chrome.storage.sync.set({ [OVERLAY_PLACEMENT_KEY]: normalizeOverlayPlacement(placement) })
+  await syncStorageSet({ [OVERLAY_PLACEMENT_KEY]: normalizeOverlayPlacement(placement) })
 }
 
 export async function getSidebarTab(): Promise<SidebarTab> {
-  const stored = await chrome.storage.sync.get(SIDEBAR_TAB_KEY)
+  const stored = await syncStorageGet(SIDEBAR_TAB_KEY)
   return normalizeSidebarTab(stored[SIDEBAR_TAB_KEY])
 }
 
 export async function setSidebarTab(tab: SidebarTab): Promise<void> {
-  await chrome.storage.sync.set({ [SIDEBAR_TAB_KEY]: normalizeSidebarTab(tab) })
+  await syncStorageSet({ [SIDEBAR_TAB_KEY]: normalizeSidebarTab(tab) })
 }
 
 export function resolveChatClosedPulseDockEnabled(stored: boolean | undefined): boolean {
@@ -156,7 +226,7 @@ export function resolveChatClosedPulseDockEnabled(stored: boolean | undefined): 
 }
 
 export async function getChatClosedPulseDockEnabled(): Promise<boolean> {
-  const stored = await chrome.storage.sync.get([
+  const stored = await syncStorageGet([
     CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY,
     LEGACY_SIDEBAR_PULSE_TAB_ENABLED_KEY,
   ])
@@ -167,42 +237,42 @@ export async function getChatClosedPulseDockEnabled(): Promise<boolean> {
   const legacy = stored[LEGACY_SIDEBAR_PULSE_TAB_ENABLED_KEY]
   if (legacy !== undefined) {
     const migrated = resolveChatClosedPulseDockEnabled(Boolean(legacy))
-    await chrome.storage.sync.set({ [CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]: migrated })
+    await syncStorageSet({ [CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]: migrated })
     return migrated
   }
   return DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED
 }
 
 export async function setChatClosedPulseDockEnabled(enabled: boolean): Promise<void> {
-  await chrome.storage.sync.set({ [CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]: enabled })
+  await syncStorageSet({ [CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]: enabled })
 }
 
 export async function getAutoTrackPolicy(): Promise<AutoTrackPolicy> {
-  const stored = await chrome.storage.sync.get(AUTO_TRACK_POLICY_KEY)
+  const stored = await syncStorageGet(AUTO_TRACK_POLICY_KEY)
   return normalizeAutoTrackPolicy(stored[AUTO_TRACK_POLICY_KEY])
 }
 
 export async function setAutoTrackPolicy(policy: AutoTrackPolicy): Promise<void> {
-  await chrome.storage.sync.set({ [AUTO_TRACK_POLICY_KEY]: normalizeAutoTrackPolicy(policy) })
+  await syncStorageSet({ [AUTO_TRACK_POLICY_KEY]: normalizeAutoTrackPolicy(policy) })
 }
 
 export async function getAutoUpdateEnabled(): Promise<boolean> {
-  const stored = await chrome.storage.sync.get(AUTO_UPDATE_ENABLED_KEY)
+  const stored = await syncStorageGet(AUTO_UPDATE_ENABLED_KEY)
   if (stored[AUTO_UPDATE_ENABLED_KEY] === undefined) return true
   return Boolean(stored[AUTO_UPDATE_ENABLED_KEY])
 }
 
 export async function setAutoUpdateEnabled(enabled: boolean): Promise<void> {
-  await chrome.storage.sync.set({ [AUTO_UPDATE_ENABLED_KEY]: enabled })
+  await syncStorageSet({ [AUTO_UPDATE_ENABLED_KEY]: enabled })
 }
 
 export async function getThemePreference(): Promise<ThemePreference> {
-  const stored = await chrome.storage.sync.get(THEME_PREFERENCE_KEY)
+  const stored = await syncStorageGet(THEME_PREFERENCE_KEY)
   return normalizeThemePreference(stored[THEME_PREFERENCE_KEY])
 }
 
 export async function setThemePreference(pref: ThemePreference): Promise<void> {
-  await chrome.storage.sync.set({ [THEME_PREFERENCE_KEY]: normalizeThemePreference(pref) })
+  await syncStorageSet({ [THEME_PREFERENCE_KEY]: normalizeThemePreference(pref) })
 }
 
 /**
@@ -212,12 +282,12 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
  */
 export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
   try {
-    const stored = await chrome.storage.sync.get([
+    const stored = await syncStorageGet([
       DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY,
       DEFAULT_CHART_WINDOW_KEY,
     ])
     if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]) return
-    await chrome.storage.sync.set({
+    await syncStorageSet({
       [DEFAULT_CHART_WINDOW_KEY]: DEFAULT_DEFAULT_CHART_WINDOW,
       [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
     })
@@ -227,50 +297,50 @@ export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
 }
 
 export async function getDefaultChartWindow(): Promise<DefaultChartWindow> {
-  const stored = await chrome.storage.sync.get(DEFAULT_CHART_WINDOW_KEY)
+  const stored = await syncStorageGet(DEFAULT_CHART_WINDOW_KEY)
   return normalizeDefaultChartWindow(stored[DEFAULT_CHART_WINDOW_KEY])
 }
 
 export async function setDefaultChartWindow(window: DefaultChartWindow): Promise<void> {
-  await chrome.storage.sync.set({
+  await syncStorageSet({
     [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(window),
     [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
   })
 }
 
 export async function getKeepLocalCache(): Promise<boolean> {
-  const stored = await chrome.storage.sync.get(KEEP_LOCAL_CACHE_KEY)
+  const stored = await syncStorageGet(KEEP_LOCAL_CACHE_KEY)
   if (stored[KEEP_LOCAL_CACHE_KEY] === undefined) return DEFAULT_KEEP_LOCAL_CACHE
   return Boolean(stored[KEEP_LOCAL_CACHE_KEY])
 }
 
 export async function setKeepLocalCache(keep: boolean): Promise<void> {
-  await chrome.storage.sync.set({ [KEEP_LOCAL_CACHE_KEY]: keep })
+  await syncStorageSet({ [KEEP_LOCAL_CACHE_KEY]: keep })
 }
 
 export async function countSessionPulseEntries(): Promise<number> {
-  const stored = await chrome.storage.session.get(null)
+  const stored = await sessionStorageGet(null)
   return Object.keys(stored).filter(key => key.startsWith('pulse:')).length
 }
 
 export async function clearSessionPulseCache(): Promise<void> {
-  const stored = await chrome.storage.session.get(null)
+  const stored = await sessionStorageGet(null)
   const keys = Object.keys(stored).filter(
     key => key.startsWith('pulse:') || key.startsWith('coverage:'),
   )
   if (keys.length === 0) return
-  await chrome.storage.session.remove(keys)
+  await sessionStorageRemove(keys)
 }
 
 const DEBUG_LOGGING_KEY = 'debugLoggingEnabled'
 
 export async function getDebugLoggingEnabled(): Promise<boolean> {
-  const stored = await chrome.storage.sync.get(DEBUG_LOGGING_KEY)
+  const stored = await syncStorageGet(DEBUG_LOGGING_KEY)
   return Boolean(stored[DEBUG_LOGGING_KEY])
 }
 
 export async function setDebugLoggingEnabled(enabled: boolean): Promise<void> {
-  await chrome.storage.sync.set({ [DEBUG_LOGGING_KEY]: enabled })
+  await syncStorageSet({ [DEBUG_LOGGING_KEY]: enabled })
 }
 
 export const PULSE_CACHE_TTL_MS = 45_000
@@ -284,7 +354,7 @@ export async function getSessionPulse(
   expectedStreamId?: string | null,
 ): Promise<PulseCacheEntry | null> {
   const key = pulseSessionKey(login, window)
-  const stored = await chrome.storage.session.get(key)
+  const stored = await sessionStorageGet(key)
   const entry = stored[key] as PulseCacheEntry | undefined
   if (!entry) return null
   if (entry.window !== window) return null
@@ -295,7 +365,7 @@ export async function getSessionPulse(
 }
 
 export async function setSessionPulse(login: string, entry: PulseCacheEntry): Promise<void> {
-  await chrome.storage.session.set({ [pulseSessionKey(login, entry.window)]: entry })
+  await sessionStorageSet({ [pulseSessionKey(login, entry.window)]: entry })
 }
 
 /** Respects the "Remember recently opened channels" setting before writing session cache. */
@@ -318,7 +388,7 @@ export interface CoverageCacheEntry {
 
 export async function getSessionCoverage(login: string): Promise<CoverageCacheEntry | null> {
   const key = coverageSessionKey(login)
-  const stored = await chrome.storage.session.get(key)
+  const stored = await sessionStorageGet(key)
   const entry = stored[key] as CoverageCacheEntry | undefined
   if (!entry) return null
   if (Date.now() - entry.fetchedAt > COVERAGE_CACHE_TTL_MS) return null
@@ -326,7 +396,7 @@ export async function getSessionCoverage(login: string): Promise<CoverageCacheEn
 }
 
 export async function setSessionCoverage(login: string, entry: CoverageCacheEntry): Promise<void> {
-  await chrome.storage.session.set({ [coverageSessionKey(login)]: entry })
+  await sessionStorageSet({ [coverageSessionKey(login)]: entry })
 }
 
 function pulseSessionKey(login: string, window: PulseCacheWindow): string {
