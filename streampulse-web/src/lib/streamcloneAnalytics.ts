@@ -507,7 +507,8 @@ function normalizePulseStreamRecap(recap: PortalStreamRecapResponse): PulseStrea
  * via `resolveEmoteImageUrl`'s imageUrl-first precedence, so no real provider
  * id is required for the emote thumbnail to load correctly on the portal.
  */
-function portalMinutesToRollups(
+/** @internal exported for unit tests — rebuilds chart rollups from portal /minutes. */
+export function portalMinutesToRollups(
   startedAt: string,
   minutes: PortalMinutePoint[],
 ): { rollups: AnalyticsMinuteRollup[]; catalog: AnalyticsTopEmote[] } {

@@ -711,6 +711,56 @@ describe('streamcloneAnalytics adapter', () => {
     })
   })
 
+  describe('portalMinutesToRollups plot series', () => {
+    it('keeps mid-rank stream-top emotes plottable (EDM-style)', async () => {
+      const { portalMinutesToRollups, alignRollupEmoteKeys } = await import(
+        '../src/lib/streamcloneAnalytics'
+      )
+      const { buildChartSeries } = await import('@streampulse/pulse-charts')
+      const startedAt = '2026-07-13T18:00:00.000Z'
+      const minutes = [
+        {
+          offsetSeconds: 0,
+          chatCount: 200,
+          totalEmoteCount: 290,
+          topEmotes: [
+            { name: 'LOL', provider: 'twitch', count: 100 },
+            { name: 'GG', provider: 'twitch', count: 80 },
+            { name: 'CTE', provider: 'twitch', count: 70 },
+            { name: 'EDM', provider: 'twitch', count: 40 },
+          ],
+        },
+        {
+          offsetSeconds: 60,
+          chatCount: 210,
+          totalEmoteCount: 295,
+          topEmotes: [
+            { name: 'LOL', provider: 'twitch', count: 105 },
+            { name: 'GG', provider: 'twitch', count: 80 },
+            { name: 'CTE', provider: 'twitch', count: 70 },
+            { name: 'EDM', provider: 'twitch', count: 40 },
+          ],
+        },
+      ]
+      const { rollups } = portalMinutesToRollups(startedAt, minutes)
+      const topEmotes = [
+        { key: 'twitch:1:LOL', name: 'LOL', provider: 'twitch', count: 205 },
+        { key: 'twitch:4:EDM', name: 'EDM', provider: 'twitch', count: 80 },
+      ]
+      const aligned = alignRollupEmoteKeys(rollups, topEmotes)
+      const series = buildChartSeries(
+        aligned,
+        new Set(['twitch:4:EDM']),
+        0,
+        0,
+        false,
+      )
+      const edm = series.find(item => item.key === 'twitch:4:EDM' || item.label === 'EDM')
+      expect(edm).toBeTruthy()
+      expect(edm!.max).toBeGreaterThan(0)
+    })
+  })
+
   describe('portal history + live honesty', () => {
     it('getChannelStreamHistory uses portal /channels streams on hosted (period ignored)', async () => {
       getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
