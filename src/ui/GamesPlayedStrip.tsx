@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
+  buildGamesPlayedTimelineSlots,
   gameSegmentKey,
-  gameSegmentOverlapsOffsetRange,
-  gameSegmentVisibleSecondsInRange,
   hasMeaningfulGameSegments,
   normalizeGameSegments,
+  resolveGamesPlayedTimelineRange,
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { theme } from './theme.ts'
@@ -21,9 +21,10 @@ export interface GamesPlayedStripProps {
   highlightedKey?: string | null
   onHighlightKey?: (key: string | null) => void
   visibleRange?: GamesPlayedVisibleRange | null
+  /** Match overview chart plot insets when provided. */
+  plotPadLeft?: number
+  plotPadRight?: number
 }
-
-const CARD_WIDTH = 104
 
 function formatStreamDuration(durationSeconds: number): string {
   const total = Math.round(durationSeconds)
@@ -34,180 +35,116 @@ function formatStreamDuration(durationSeconds: number): string {
   return `${total}s`
 }
 
-function segmentTitle(
-  segment: ExtensionGameSegment,
-  visibleRange: GamesPlayedVisibleRange | null | undefined,
-): string {
-  const base = `${segment.gameName} · ${formatHeatOffset(segment.offsetSeconds)} · ${formatStreamDuration(segment.durationSeconds)}`
-  if (!visibleRange) return base
-
-  const inRange = gameSegmentOverlapsOffsetRange(
-    segment,
-    visibleRange.startOffset,
-    visibleRange.endOffset,
-  )
-  if (!inRange) return `${base} · Not in current range`
-
-  const visibleSeconds = gameSegmentVisibleSecondsInRange(
-    segment,
-    visibleRange.startOffset,
-    visibleRange.endOffset,
-  )
-  if (visibleSeconds > 0 && visibleSeconds < segment.durationSeconds - 30) {
-    return `${base} · ${formatStreamDuration(visibleSeconds)} in view`
-  }
-  return base
+function formatWindowLabel(startOffset: number, endOffset: number): string {
+  const span = Math.max(0, endOffset - startOffset)
+  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${formatStreamDuration(span)}`
 }
 
+/** Full-width proportional Games played bar aligned to the overview chart window. */
 export function GamesPlayedStrip({
   games,
   durationSeconds,
   highlightedKey = null,
   onHighlightKey,
   visibleRange = null,
+  plotPadLeft = 0,
+  plotPadRight = 0,
 }: GamesPlayedStripProps) {
   const segments = useMemo(
     () => normalizeGameSegments(games ?? [], durationSeconds),
     [games, durationSeconds],
   )
-  const trackRef = useRef<HTMLDivElement>(null)
-  const [canScrollLeft, setCanScrollLeft] = useState(false)
-  const [canScrollRight, setCanScrollRight] = useState(false)
 
-  const updateScrollState = useCallback(() => {
-    const track = trackRef.current
-    if (!track) return
-    const maxScroll = track.scrollWidth - track.clientWidth
-    setCanScrollLeft(track.scrollLeft > 2)
-    setCanScrollRight(maxScroll - track.scrollLeft > 2)
-  }, [])
+  const timelineRange = useMemo(
+    () => resolveGamesPlayedTimelineRange(visibleRange, durationSeconds, segments),
+    [durationSeconds, segments, visibleRange],
+  )
 
-  useEffect(() => {
-    updateScrollState()
-    const track = trackRef.current
-    if (!track) return
-    track.addEventListener('scroll', updateScrollState, { passive: true })
-    const observer = new ResizeObserver(updateScrollState)
-    observer.observe(track)
-    return () => {
-      track.removeEventListener('scroll', updateScrollState)
-      observer.disconnect()
-    }
-  }, [segments, updateScrollState])
+  const slots = useMemo(() => {
+    if (!timelineRange) return []
+    return buildGamesPlayedTimelineSlots(segments, timelineRange)
+  }, [segments, timelineRange])
 
-  if (!hasMeaningfulGameSegments(segments, durationSeconds)) return null
-
-  function scrollGames(direction: -1 | 1): void {
-    const track = trackRef.current
-    if (!track) return
-    const step = Math.max(CARD_WIDTH + 5, Math.floor(track.clientWidth * 0.85))
-    track.scrollBy({ left: direction * step, behavior: 'smooth' })
+  if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || slots.length === 0) {
+    return null
   }
 
   function handleStripLeave(): void {
     onHighlightKey?.(null)
   }
 
-  const showNav = segments.length > 1
-
   return (
     <div
       style={styles.gamesStrip}
       aria-label="Games played"
-      onMouseLeave={handleStripLeave}
+      onPointerLeave={handleStripLeave}
     >
       <div style={styles.headerRow}>
         <span style={styles.gamesLabel}>Games played</span>
-        {showNav ? (
+        {segments.length > 1 ? (
           <span style={styles.countBadge}>{segments.length}</span>
         ) : null}
       </div>
       <div
         style={{
-          ...styles.carouselRow,
-          ...(showNav ? null : { gridTemplateColumns: '1fr' }),
+          ...styles.timelinePad,
+          paddingLeft: plotPadLeft,
+          paddingRight: plotPadRight,
         }}
+        data-games-timeline
+        data-timeline-start={timelineRange.startOffset}
+        data-timeline-end={timelineRange.endOffset}
       >
-        {showNav ? (
-          <button
-            type="button"
-            style={{
-              ...styles.navButton,
-              ...(canScrollLeft ? null : styles.navButtonDisabled),
-            }}
-            disabled={!canScrollLeft}
-            aria-label="Previous games"
-            onClick={() => scrollGames(-1)}
-          >
-            ‹
-          </button>
-        ) : null}
-        <div ref={trackRef} className="pulse-no-scrollbar" style={styles.track}>
-          {segments.map((segment, index) => {
+        <div style={styles.timelineTrack} role="list">
+          {slots.map((slot, index) => {
+            if (slot.kind === 'gap') {
+              return (
+                <div
+                  key={`gap-${slot.startOffset}-${index}`}
+                  role="presentation"
+                  aria-hidden="true"
+                  style={{ ...styles.gap, flexGrow: slot.flexGrow }}
+                />
+              )
+            }
+
+            const { segment } = slot
             const key = gameSegmentKey(segment)
             const isHighlighted = highlightedKey === key
-            const inRange = visibleRange
-              ? gameSegmentOverlapsOffsetRange(
-                  segment,
-                  visibleRange.startOffset,
-                  visibleRange.endOffset,
-                )
-              : true
+            const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd)}${
+              slot.clipped ? ' · clipped to chart' : ''
+            }`
             const cardStyle: CSSProperties = {
               ...styles.gameCard,
-              ...(inRange ? null : styles.gameCardOutOfRange),
-              ...(isHighlighted && inRange
-                ? styles.gameCardActive
-                : isHighlighted && !inRange
-                  ? styles.gameCardActiveOutOfRange
-                  : null),
+              flexGrow: slot.flexGrow,
+              ...(slot.clipped ? styles.gameCardClipped : null),
+              ...(isHighlighted ? styles.gameCardActive : null),
             }
 
             return (
-              <span
+              <button
                 key={`${segment.gameName}-${segment.offsetSeconds}-${index}`}
-                role="button"
-                tabIndex={0}
+                type="button"
+                role="listitem"
                 style={cardStyle}
-                title={segmentTitle(segment, visibleRange)}
-                onMouseEnter={() => onHighlightKey?.(key)}
+                title={title}
+                aria-label={title}
+                onPointerEnter={() => onHighlightKey?.(key)}
                 onFocus={() => onHighlightKey?.(key)}
                 onBlur={() => onHighlightKey?.(null)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onHighlightKey?.(key)
-                  }
-                }}
               >
                 <span style={styles.gameName}>{segment.gameName}</span>
                 <span style={styles.gameMeta}>
-                  <span style={styles.gameStart}>{formatHeatOffset(segment.offsetSeconds)}</span>
+                  <span style={styles.gameStart}>{formatHeatOffset(slot.visibleStart)}</span>
                   <span style={styles.gameMetaSep} aria-hidden="true">
-                    ·
+                    –
                   </span>
-                  <span style={styles.gameDuration}>
-                    {formatStreamDuration(segment.durationSeconds)}
-                  </span>
+                  <span style={styles.gameDuration}>{formatHeatOffset(slot.visibleEnd)}</span>
                 </span>
-              </span>
+              </button>
             )
           })}
         </div>
-        {showNav ? (
-          <button
-            type="button"
-            style={{
-              ...styles.navButton,
-              ...(canScrollRight ? null : styles.navButtonDisabled),
-            }}
-            disabled={!canScrollRight}
-            aria-label="Next games"
-            onClick={() => scrollGames(1)}
-          >
-            ›
-          </button>
-        ) : null}
       </div>
     </div>
   )
@@ -239,78 +176,54 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1,
     padding: '3px 7px',
   },
-  carouselRow: {
+  timelinePad: {
+    minWidth: 0,
+  },
+  timelineTrack: {
     alignItems: 'stretch',
-    display: 'grid',
-    gap: 4,
-    gridTemplateColumns: 'auto 1fr auto',
-    minWidth: 0,
-  },
-  navButton: {
-    alignSelf: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 6,
-    color: theme.textPrimary,
-    cursor: 'pointer',
-    flexShrink: 0,
-    fontSize: 14,
-    fontWeight: 900,
-    height: 44,
-    lineHeight: 1,
-    padding: 0,
-    width: 18,
-  },
-  navButtonDisabled: {
-    color: theme.textMuted,
-    cursor: 'default',
-    opacity: 0.35,
-  },
-  track: {
     display: 'flex',
-    flexWrap: 'nowrap',
-    gap: 5,
-    minWidth: 0,
-    overflowX: 'auto',
-    overflowY: 'hidden',
-    scrollSnapType: 'x proximity',
-    WebkitOverflowScrolling: 'touch',
-  },
-  gameCard: {
-    background: 'rgba(249, 115, 22, 0.05)',
-    border: '1px solid rgba(249, 115, 22, 0.32)',
-    borderRadius: 8,
-    cursor: 'default',
-    display: 'grid',
-    flex: `0 0 ${CARD_WIDTH}px`,
     gap: 2,
     minHeight: 44,
-    outline: 'none',
-    padding: '5px 8px',
-    scrollSnapAlign: 'start',
-    width: CARD_WIDTH,
+    minWidth: 0,
+    width: '100%',
   },
-  gameCardOutOfRange: {
-    opacity: 0.55,
+  gap: {
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 4,
+    flexBasis: 0,
+    minWidth: 0,
+  },
+  gameCard: {
+    alignItems: 'center',
+    background: 'rgba(249, 115, 22, 0.07)',
+    border: '1px solid rgba(249, 115, 22, 0.32)',
+    borderRadius: 8,
+    cursor: 'pointer',
+    display: 'flex',
+    flexBasis: 0,
+    flexDirection: 'column',
+    gap: 2,
+    justifyContent: 'center',
+    minWidth: 0,
+    outline: 'none',
+    overflow: 'hidden',
+    padding: '5px 6px',
+    textAlign: 'center',
+  },
+  gameCardClipped: {
     borderStyle: 'dashed',
   },
   gameCardActive: {
-    background: 'rgba(249, 115, 22, 0.14)',
-    border: '1px solid rgba(249, 115, 22, 0.62)',
-    boxShadow: '0 0 0 1px rgba(249, 115, 22, 0.18)',
-    cursor: 'pointer',
-  },
-  gameCardActiveOutOfRange: {
-    background: 'rgba(249, 115, 22, 0.06)',
-    border: '1px dashed rgba(249, 115, 22, 0.4)',
-    cursor: 'pointer',
-    opacity: 0.7,
+    background: 'rgba(249, 115, 22, 0.22)',
+    border: '1px solid rgba(249, 115, 22, 0.85)',
+    boxShadow: '0 0 0 1px rgba(249, 115, 22, 0.35)',
   },
   gameName: {
     color: '#fdba74',
     fontSize: 9,
     fontWeight: 800,
     lineHeight: 1.25,
+    maxWidth: '100%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -322,13 +235,18 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 8,
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 600,
-    gap: 3,
+    gap: 2,
+    maxWidth: '100%',
     minWidth: 0,
   },
   gameStart: {
     color: theme.textSecondary,
-    flexShrink: 0,
+    flexShrink: 1,
     fontWeight: 700,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   gameMetaSep: { flexShrink: 0, opacity: 0.65 },
   gameDuration: {

@@ -11,7 +11,7 @@ import {
   type TrendDirection,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
-import { getDefaultChartWindow } from '../shared/storage.ts'
+import { getDefaultChartWindow, migrateDefaultChartWindowToFullOnce } from '../shared/storage.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
@@ -19,7 +19,6 @@ import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
   CHART_WINDOW_OPTIONS,
-  CHART_WINDOW_SECONDS,
   chartEmptyMessage,
   chartTimelineWindowLabel,
   chartWindowNeedsFullFetch,
@@ -197,7 +196,7 @@ export function LiveStatsBand({
   const stats: LiveStats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
   const hasFullRollups = hasFullTimelineRollups(payload)
-  const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('60m')
+  const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('full')
   const [timelineLoading, setTimelineLoading] = useState(false)
   const fullTimelineRequestedRef = useRef(false)
   const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
@@ -210,20 +209,22 @@ export function LiveStatsBand({
       return
     }
     let mounted = true
-    void getDefaultChartWindow().then(window => {
+    void (async () => {
+      // One-time: legacy sticky windows → Full stream (poll stays recent).
+      await migrateDefaultChartWindowToFullOnce()
+      const window = await getDefaultChartWindow()
       if (!mounted) return
       if (fullTimeline) {
         setChartWindow('full')
         return
       }
-      // Live sidebar charts stay recent-window by default; "Full stream" is opt-in per session.
-      const resolved = isLive && window === 'full' ? '60m' : window
-      setChartWindow(resolved)
-    })
+      // Default product range is Full stream (live poll stays recent; Full is chart UI only).
+      setChartWindow(window)
+    })()
     return () => {
       mounted = false
     }
-  }, [payload.streamId, payload.login, isLive, fullTimeline, demoMode])
+  }, [payload.streamId, payload.login, fullTimeline, demoMode])
 
   const rollups = useMemo(
     () =>
@@ -243,7 +244,10 @@ export function LiveStatsBand({
   const awaitingFullRollups =
     chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)
     && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload))
-  const chartLoading = timelineLoading || awaitingFullRollups
+  // Only block the chart while a full-timeline request is in flight, or when we
+  // have nothing provisional to draw. Never stay on "Loading timeline…" forever
+  // if window=full returns without fullRollups (mock / degraded BFF).
+  const chartLoading = timelineLoading || (awaitingFullRollups && rollups.length === 0)
   const chartEmpty = chartEmptyMessage({
     rollupCount: rollups.length,
     chartWindow,
@@ -474,12 +478,7 @@ export function LiveStatsBand({
     chartWindow === 'full'
     && firstActivityOffsetSeconds != null
     && firstActivityOffsetSeconds > coverageStartOffsetSeconds + 10 * 60
-  const partialRangeHint =
-    chartWindow !== 'full'
-    && currentOffsetSeconds
-      > (CHART_WINDOW_SECONDS[chartWindow as keyof typeof CHART_WINDOW_SECONDS] ?? 0) + 120
-      ? `Showing last ${chartTimelineWindowLabel(chartWindow)} — pick Full stream for the entire broadcast.`
-      : null
+  const showPartialRangeStatus = chartWindow !== 'full'
 
   return (
     <PulseSectionCard
@@ -566,6 +565,8 @@ export function LiveStatsBand({
           highlightedKey={hoveredGameKey}
           onHighlightKey={setHoveredGameKey}
           visibleRange={visibleRange}
+          plotPadLeft={4}
+          plotPadRight={12}
         />
         <div style={styles.chartReadoutSlot}>
           <p
@@ -698,8 +699,20 @@ export function LiveStatsBand({
               ariaLabel="Chart time range"
               onChange={handleChartWindowChange}
             />
-            {partialRangeHint ? (
-              <span style={styles.partialRangeHint}>{partialRangeHint}</span>
+            {showPartialRangeStatus ? (
+              <span style={styles.partialRangeHint} aria-live="polite">
+                Showing last {chartTimelineWindowLabel(chartWindow)}
+                <span style={styles.timelineHintSep}> · </span>
+                <button
+                  type="button"
+                  style={styles.streamStartLink}
+                  disabled={timelineLoading || demoMode}
+                  title="Show the entire broadcast on the chart (does not change live poll)"
+                  onClick={() => handleChartWindowChange('full')}
+                >
+                  Full stream
+                </button>
+              </span>
             ) : null}
           </div>
         </div>
