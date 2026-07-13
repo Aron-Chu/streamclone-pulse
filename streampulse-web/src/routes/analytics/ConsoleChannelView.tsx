@@ -41,7 +41,7 @@ export default function ConsoleChannelView() {
         <AnalyticsConsole
           mode="public"
           shellNested
-          showGameSegments={Boolean(streamId?.trim())}
+          showGameSegments
           enableSyncActions={usesLocalAnalyticsBackend()}
           buildSessionPath={portalSessionPath}
         />
