@@ -217,6 +217,26 @@ export async function setDefaultChartWindow(window: DefaultChartWindow): Promise
   await chrome.storage.sync.set({ [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(window) })
 }
 
+const DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY = 'defaultChartWindowMigratedToFullV1'
+
+/** One-time: sticky legacy windows → Full stream (live poll stays recent). */
+export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
+  try {
+    const stored = await chrome.storage.sync.get([
+      DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY,
+      DEFAULT_CHART_WINDOW_KEY,
+    ])
+    if (stored[DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY]) return
+    const current = normalizeDefaultChartWindow(stored[DEFAULT_CHART_WINDOW_KEY])
+    if (current !== 'full') {
+      await chrome.storage.sync.set({ [DEFAULT_CHART_WINDOW_KEY]: 'full' })
+    }
+    await chrome.storage.sync.set({ [DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY]: true })
+  } catch {
+    /* ignore storage errors in restricted contexts */
+  }
+}
+
 export async function getKeepLocalCache(): Promise<boolean> {
   const stored = await chrome.storage.sync.get(KEEP_LOCAL_CACHE_KEY)
   if (stored[KEEP_LOCAL_CACHE_KEY] === undefined) return DEFAULT_KEEP_LOCAL_CACHE
