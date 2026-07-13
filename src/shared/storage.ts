@@ -13,8 +13,9 @@ const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
 export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY }
 const DEFAULT_CHART_WINDOW_KEY = 'defaultChartWindow'
+/** One-time sync flag: legacy sticky non-full defaults → Full stream. */
+const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY = 'defaultChartWindowMigratedToFullV1'
 const KEEP_LOCAL_CACHE_KEY = 'keepLocalCache'
-const PULSE_DOCK_PREFERENCE_KEY = 'pulseDockPreference'
 
 export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
 export const DEFAULT_POLL_INTERVAL_MS = 30_000
@@ -28,17 +29,13 @@ export type AutoTrackPolicy = 'off' | 'followed' | 'ask'
 export type ThemePreference = 'aurora' | 'volt' | 'azure'
 export type DefaultChartWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
 
-export interface PulseDockPreference {
-  show7TVSignalLabels: boolean
-}
-
 export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
 export const DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED = false
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
 export const DEFAULT_AUTO_TRACK_POLICY: AutoTrackPolicy = 'off'
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
-export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
+export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
 /** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
@@ -208,33 +205,37 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await chrome.storage.sync.set({ [THEME_PREFERENCE_KEY]: normalizeThemePreference(pref) })
 }
 
+/**
+ * One-time migration: sticky legacy chart defaults (e.g. 60m from an older product
+ * default) become Full stream. Explicit setDefaultChartWindow writes also mark the
+ * flag so a deliberate preference is not overwritten later.
+ */
+export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
+  try {
+    const stored = await chrome.storage.sync.get([
+      DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY,
+      DEFAULT_CHART_WINDOW_KEY,
+    ])
+    if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]) return
+    await chrome.storage.sync.set({
+      [DEFAULT_CHART_WINDOW_KEY]: DEFAULT_DEFAULT_CHART_WINDOW,
+      [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
+    })
+  } catch {
+    /* ignore storage errors in restricted contexts */
+  }
+}
+
 export async function getDefaultChartWindow(): Promise<DefaultChartWindow> {
   const stored = await chrome.storage.sync.get(DEFAULT_CHART_WINDOW_KEY)
   return normalizeDefaultChartWindow(stored[DEFAULT_CHART_WINDOW_KEY])
 }
 
 export async function setDefaultChartWindow(window: DefaultChartWindow): Promise<void> {
-  await chrome.storage.sync.set({ [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(window) })
-}
-
-const DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY = 'defaultChartWindowMigratedToFullV1'
-
-/** One-time: sticky legacy windows → Full stream (live poll stays recent). */
-export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
-  try {
-    const stored = await chrome.storage.sync.get([
-      DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY,
-      DEFAULT_CHART_WINDOW_KEY,
-    ])
-    if (stored[DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY]) return
-    const current = normalizeDefaultChartWindow(stored[DEFAULT_CHART_WINDOW_KEY])
-    if (current !== 'full') {
-      await chrome.storage.sync.set({ [DEFAULT_CHART_WINDOW_KEY]: 'full' })
-    }
-    await chrome.storage.sync.set({ [DEFAULT_CHART_WINDOW_FULL_MIGRATION_KEY]: true })
-  } catch {
-    /* ignore storage errors in restricted contexts */
-  }
+  await chrome.storage.sync.set({
+    [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(window),
+    [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
+  })
 }
 
 export async function getKeepLocalCache(): Promise<boolean> {
@@ -245,22 +246,6 @@ export async function getKeepLocalCache(): Promise<boolean> {
 
 export async function setKeepLocalCache(keep: boolean): Promise<void> {
   await chrome.storage.sync.set({ [KEEP_LOCAL_CACHE_KEY]: keep })
-}
-
-export async function getPulseDockPreference(): Promise<PulseDockPreference> {
-  const stored = await chrome.storage.sync.get(PULSE_DOCK_PREFERENCE_KEY)
-  const raw = stored[PULSE_DOCK_PREFERENCE_KEY] as Partial<PulseDockPreference> | undefined
-  return {
-    show7TVSignalLabels: raw?.show7TVSignalLabels !== false,
-  }
-}
-
-export async function setPulseDockPreference(pref: PulseDockPreference): Promise<void> {
-  await chrome.storage.sync.set({
-    [PULSE_DOCK_PREFERENCE_KEY]: {
-      show7TVSignalLabels: pref.show7TVSignalLabels !== false,
-    },
-  })
 }
 
 export async function countSessionPulseEntries(): Promise<number> {

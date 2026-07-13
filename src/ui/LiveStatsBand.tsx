@@ -199,9 +199,15 @@ export function LiveStatsBand({
   const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('full')
   const [timelineLoading, setTimelineLoading] = useState(false)
   const fullTimelineRequestedRef = useRef(false)
+  /** After the user picks a range, ignore late async default hydration for this stream. */
+  const chartWindowUserPickedRef = useRef(false)
   const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
   const onRequestFullTimelineRef = useRef(onRequestFullTimeline)
   onRequestFullTimelineRef.current = onRequestFullTimeline
+
+  useEffect(() => {
+    chartWindowUserPickedRef.current = false
+  }, [payload.streamId])
 
   useEffect(() => {
     if (demoMode) {
@@ -214,6 +220,8 @@ export function LiveStatsBand({
       await migrateDefaultChartWindowToFullOnce()
       const window = await getDefaultChartWindow()
       if (!mounted) return
+      // First click Full→30m was getting overwritten when this async finished.
+      if (chartWindowUserPickedRef.current) return
       if (fullTimeline) {
         setChartWindow('full')
         return
@@ -265,10 +273,14 @@ export function LiveStatsBand({
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
   useEffect(() => {
-    if (fullTimeline) setChartWindow('full')
+    if (!fullTimeline) return
+    // Only force Full when the user has not already chosen another range.
+    if (chartWindowUserPickedRef.current) return
+    setChartWindow('full')
   }, [fullTimeline])
 
   const handleChartWindowChange = (window: ChartTimelineWindow): void => {
+    chartWindowUserPickedRef.current = true
     setChartWindow(window)
     onChartWindowChange?.(window)
   }
