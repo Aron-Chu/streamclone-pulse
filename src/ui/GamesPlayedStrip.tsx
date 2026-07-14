@@ -10,6 +10,9 @@ import {
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { theme } from './theme.ts'
 
+/** Equal chip floor so short late games stay readable (not crushed by flexGrow). */
+export const GAMES_PLAYED_CHIP_MIN_WIDTH_PX = 96
+
 export interface GamesPlayedVisibleRange {
   startOffset: number
   endOffset: number
@@ -40,7 +43,10 @@ function formatWindowLabel(startOffset: number, endOffset: number): string {
   return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${formatStreamDuration(span)}`
 }
 
-/** Full-width proportional Games played bar aligned to the overview chart window. */
+/**
+ * Readable equal-width game chips for the overview chart.
+ * Hover still maps to chart highlight via segment key; chip width is not a mini-timeline.
+ */
 export function GamesPlayedStrip({
   games,
   durationSeconds,
@@ -60,12 +66,14 @@ export function GamesPlayedStrip({
     [durationSeconds, segments, visibleRange],
   )
 
-  const slots = useMemo(() => {
+  const gameSlots = useMemo(() => {
     if (!timelineRange) return []
-    return buildGamesPlayedTimelineSlots(segments, timelineRange)
+    return buildGamesPlayedTimelineSlots(segments, timelineRange).filter(
+      (slot): slot is Extract<typeof slot, { kind: 'segment' }> => slot.kind === 'segment',
+    )
   }, [segments, timelineRange])
 
-  if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || slots.length === 0) {
+  if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
     return null
   }
 
@@ -95,19 +103,8 @@ export function GamesPlayedStrip({
         data-timeline-start={timelineRange.startOffset}
         data-timeline-end={timelineRange.endOffset}
       >
-        <div style={styles.timelineTrack} role="list">
-          {slots.map((slot, index) => {
-            if (slot.kind === 'gap') {
-              return (
-                <div
-                  key={`gap-${slot.startOffset}-${index}`}
-                  role="presentation"
-                  aria-hidden="true"
-                  style={{ ...styles.gap, flexGrow: slot.flexGrow }}
-                />
-              )
-            }
-
+        <div className="pulse-no-scrollbar" style={styles.timelineTrack} role="list">
+          {gameSlots.map((slot, index) => {
             const { segment } = slot
             const key = gameSegmentKey(segment)
             const isHighlighted = highlightedKey === key
@@ -116,7 +113,6 @@ export function GamesPlayedStrip({
             }`
             const cardStyle: CSSProperties = {
               ...styles.gameCard,
-              flexGrow: slot.flexGrow,
               ...(slot.clipped ? styles.gameCardClipped : null),
               ...(isHighlighted ? styles.gameCardActive : null),
             }
@@ -182,16 +178,11 @@ const styles: Record<string, CSSProperties> = {
   timelineTrack: {
     alignItems: 'stretch',
     display: 'flex',
-    gap: 2,
+    gap: 4,
     minHeight: 44,
     minWidth: 0,
+    overflowX: 'auto',
     width: '100%',
-  },
-  gap: {
-    background: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: 4,
-    flexBasis: 0,
-    minWidth: 0,
   },
   gameCard: {
     alignItems: 'center',
@@ -200,14 +191,14 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     cursor: 'pointer',
     display: 'flex',
-    flexBasis: 0,
+    flex: `1 1 ${GAMES_PLAYED_CHIP_MIN_WIDTH_PX}px`,
     flexDirection: 'column',
     gap: 2,
     justifyContent: 'center',
-    minWidth: 0,
+    minWidth: GAMES_PLAYED_CHIP_MIN_WIDTH_PX,
     outline: 'none',
     overflow: 'hidden',
-    padding: '5px 6px',
+    padding: '6px 8px',
     textAlign: 'center',
   },
   gameCardClipped: {
@@ -220,7 +211,7 @@ const styles: Record<string, CSSProperties> = {
   },
   gameName: {
     color: '#fdba74',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
     lineHeight: 1.25,
     maxWidth: '100%',
