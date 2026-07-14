@@ -13,7 +13,7 @@ export const DEFAULT_AUTO_UPDATE_ENABLED = true
 export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
-export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
+export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 
 export function isLocalStackBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '')
@@ -45,6 +45,19 @@ export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
 
 export async function getBackendUrl(): Promise<string> {
   return DEFAULT_BACKEND_URL
+}
+
+/** Portal has no extension runtime — always treat storage as unavailable. */
+export function isExtensionContextAlive(): boolean {
+  return false
+}
+
+export async function getBetaKey(): Promise<string> {
+  return ''
+}
+
+export async function setBetaKey(_key: string): Promise<void> {
+  /* no-op */
 }
 
 export async function getOverlayMode(): Promise<OverlayMode> {
