@@ -27,8 +27,7 @@ sparse_clone() {
     packages/pulse-charts
 }
 
-# PULSE_PACKAGES_REF pins a backend branch/tag when master packages are incomplete.
-# Default stays master; release-gap CI pins the analytics-console consistency fix.
+# Optional override: PULSE_PACKAGES_REF=<branch|tag> (defaults to master).
 BACKEND_REF="${PULSE_PACKAGES_REF:-master}"
 
 if [[ -n "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN:-}" ]]; then

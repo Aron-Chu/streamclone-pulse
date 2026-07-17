@@ -42,8 +42,6 @@ jobs:
       - name: Checkout pulse packages
         env:
           STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-          # Pin until streampulse-backend master lands analytics-console consistency (no broken SessionSignalTape imports).
-          PULSE_PACKAGES_REF: fix/analytics-console-master-consistency
         run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link pulse packages from streampulse-backend
         run: bash scripts/ci-link-streamclone-packages.sh
@@ -95,7 +93,6 @@ jobs:
       - name: Checkout pulse packages
         env:
           STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-          PULSE_PACKAGES_REF: fix/analytics-console-master-consistency
         run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link pulse packages from streampulse-backend
         run: bash scripts/ci-link-streamclone-packages.sh
@@ -147,7 +144,6 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-          PULSE_PACKAGES_REF: fix/analytics-console-master-consistency
         run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link StreamPulse packages
         working-directory: ${{ github.workspace }}
@@ -158,7 +154,6 @@ jobs:
           cache: npm
           cache-dependency-path: streampulse-web/package-lock.json
       - run: npm ci
-      # Packages pinned via PULSE_PACKAGES_REF (analytics-console consistency fix).
       - run: npm run typecheck
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
       - run: npm run check:analytics-overlap

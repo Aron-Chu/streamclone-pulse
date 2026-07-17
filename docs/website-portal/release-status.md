@@ -52,7 +52,7 @@ These are **not** new product features for this release-gap track; they are kept
 - Cloudflare Access evidence for `/v1/admin/*` (Sol/ops)
 - Store screenshots + listing copy + human submission (draft under local `.artifacts/cws-listing/`, not committed)
 - Capacity / canary vs non-canary backend tag (Sol/ops)
-- Backend package tree: `streampulse-backend@master` still has incomplete SessionSignalTape imports until `fix/analytics-console-master-consistency` (`641e379`) merges; this candidate pins `PULSE_PACKAGES_REF` to that fix branch for CI
+- Backend package consistency restored via streampulse-backend#22 (`3e81669`); CI checks out `streampulse-backend@master` (no temporary branch pin)
 - Dirty WIP in other checkouts must not be shipped
 - Extension icon PNGs on this branch are still tiny stubs (human artwork replacement before CWS)
 
