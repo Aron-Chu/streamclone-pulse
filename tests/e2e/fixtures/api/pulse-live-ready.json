@@ -78,12 +78,12 @@
     {
       "gameName": "League of Legends",
       "offsetSeconds": 0,
-      "durationSeconds": 1800
+      "durationSeconds": 3510
     },
     {
       "gameName": "Just Chatting",
-      "offsetSeconds": 1800,
-      "durationSeconds": 1800
+      "offsetSeconds": 3510,
+      "durationSeconds": 90
     }
   ]
 }
