@@ -19,7 +19,7 @@ Live health at audit time was still a canary tag (`v0.1.33-helix-top300-canary`)
 - Real `/privacy` route + footer/nav link + route tests (Twitch session wording; GitHub Issues interim contact)
 - Filtered `streampulse-extension.zip` from the packable dist file set (Info-ZIP / tar / Windows .NET ZipArchive) + fail-closed entry validation + checksum check
 - `tabs` removed; localhost moved to optional host permissions
-- Portal typecheck required in CI (`npm run typecheck` + `npm run build`)
+- Portal CI: tests + `check:analytics-overlap` + `build:ci` (same shape as `origin/master`). Full portal `npm run typecheck` remains a **local** gate — CI `streampulse-backend@master` `analytics-console` currently imports SessionSignalTape / stream-route helpers that are not present on that ref, so remote typecheck fails outside this repo
 - Public `/admin` is a 404, not an operator console placeholder
 
 ## Origin/master baseline repairs retained
@@ -52,6 +52,7 @@ These are **not** new product features for this release-gap track; they are kept
 - Cloudflare Access evidence for `/v1/admin/*` (Sol/ops)
 - Store screenshots + listing copy + human submission (draft under local `.artifacts/cws-listing/`, not committed)
 - Capacity / canary vs non-canary backend tag (Sol/ops)
+- Backend package tree on `streampulse-backend@master`: `AnalyticsConsole.tsx` references missing `signals/*` and unexported stream-route helpers — blocks portal CI typecheck until fixed in that repo
 - Dirty WIP in other checkouts must not be shipped
 - Extension icon PNGs on this branch are still tiny stubs (human artwork replacement before CWS)
 
