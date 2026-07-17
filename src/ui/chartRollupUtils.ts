@@ -207,6 +207,40 @@ export function extendViewerSeriesToLeadingEdge(
   return out
 }
 
+/**
+ * Chart-only: carry the last Helix viewer sample forward across trailing empty minutes
+ * so the viewer line reaches Now (Helix often lags the latest chat rollups).
+ */
+export function extendViewerSeriesToTrailingEdge(
+  values: Array<number | null>,
+): Array<number | null> {
+  return extendSeriesToTrailingEdge(values)
+}
+
+/**
+ * Chart-only: carry the last positive sample forward across trailing null/zero gaps
+ * (viewers, chat trends, emote trends).
+ */
+export function extendSeriesToTrailingEdge(
+  values: Array<number | null>,
+): Array<number | null> {
+  let lastIndex = -1
+  let lastValue = 0
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i]
+    if (value != null && value > 0) {
+      lastIndex = i
+      lastValue = value
+    }
+  }
+  if (lastIndex < 0 || lastIndex >= values.length - 1) return values
+  const out = [...values]
+  for (let i = lastIndex + 1; i < out.length; i += 1) {
+    out[i] = lastValue
+  }
+  return out
+}
+
 export function indexFromChartClick(
   clientX: number,
   rectLeft: number,
@@ -227,6 +261,18 @@ export function plotXForIndex(
 ): number {
   if (pointCount <= 1) return padLeft
   return padLeft + (index / (pointCount - 1)) * plotWidth
+}
+
+/** Cap early-stream bar width so 1–2 minutes never become half-chart slabs. */
+export const OVERVIEW_CHART_MAX_BAR_WIDTH_PX = 14
+
+export function overviewBarWidth(
+  plotWidth: number,
+  pointCount: number,
+  maxBarPx = OVERVIEW_CHART_MAX_BAR_WIDTH_PX,
+): number {
+  const natural = Math.max(1, plotWidth / Math.max(pointCount, 1) - 0.5)
+  return Math.min(natural, maxBarPx)
 }
 
 export function plotY(

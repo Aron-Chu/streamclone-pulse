@@ -168,7 +168,11 @@ describe('peak emote minute highlight', () => {
   ]
 
   const streamStartedAt = '2026-07-07T08:00:00.000Z'
-  const rollups = [
+  const rollups: Array<{
+    minuteTs: string
+    chatCount: number
+    emotes: Record<string, number>
+  }> = [
     {
       minuteTs: '2026-07-07T10:53:00.000Z',
       chatCount: 100,

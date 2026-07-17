@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureAnalyticsApi } from '@streampulse/analytics-console'
-import type { AnalyticsStreamDetail } from '@streampulse/analytics-console'
+import type { AnalyticsStreamDetail, PulseStreamRecap } from '@streampulse/analytics-console'
 
 const apiClientMock = vi.fn()
 const getBackendUrlMock = vi.fn(() => 'http://127.0.0.1:8081')
@@ -149,7 +149,7 @@ describe('streamcloneAnalytics adapter', () => {
 
     const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
     const detail = (await portalAnalyticsApi.getAnalyticsStream(requestId)) as AnalyticsStreamDetail
-    const recap = await portalAnalyticsApi.getPulseStreamRecap(requestId)
+    const recap = (await portalAnalyticsApi.getPulseStreamRecap(requestId)) as PulseStreamRecap | null
 
     expect(detail.stream?.streamId).toBe(remappedId)
     expect(detail.stream?.streamId).not.toBe(requestId)

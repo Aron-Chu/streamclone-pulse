@@ -10,7 +10,7 @@ const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
 const indexHtml = readFileSync(join(dist, 'index.html'), 'utf8')
 
-const publicRoutes = ['setup', 'docs', 'status', 'login']
+const publicRoutes = ['setup', 'docs', 'status', 'login', 'privacy']
 
 for (const route of publicRoutes) {
   const dir = join(dist, route)
@@ -21,4 +21,4 @@ for (const route of publicRoutes) {
 mkdirSync(join(dist, 'docs', 'getting-started'), { recursive: true })
 copyFileSync(join(dist, 'docs', 'index.html'), join(dist, 'docs', 'getting-started', 'index.html'))
 
-console.log('prerender: wrote public route shells for /, /setup, /docs, /status, /login')
+console.log('prerender: wrote public route shells for /, /setup, /docs, /status, /login, /privacy')

@@ -34,12 +34,20 @@ describe('extensionGamesForOverviewChart', () => {
 })
 
 describe('extensionGamesToChartGames', () => {
-  it('returns empty when only synthetic full-stream category', () => {
+  it('keeps a single named full-stream game for Games played / hover', () => {
+    // Matches @streampulse/pulse-charts hasMeaningfulGameSegments (named segment kept).
     const games = extensionGamesToChartGames(
       [{ gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 3600 }],
       3600,
     )
-    expect(games).toEqual([])
+    expect(games).toEqual([
+      {
+        gameName: 'Just Chatting',
+        boxArtUrl: undefined,
+        offsetSeconds: 0,
+        durationSeconds: 3600,
+      },
+    ])
   })
 })
 

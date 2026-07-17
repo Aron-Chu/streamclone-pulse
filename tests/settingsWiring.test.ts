@@ -20,6 +20,7 @@ describe('settings runtime wiring', () => {
     syncStore = {}
     sessionStore = {}
     vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension' },
       storage: {
         sync: {
           get: vi.fn(async (keys: string | string[] | null) => {

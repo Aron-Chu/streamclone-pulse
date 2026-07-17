@@ -27,9 +27,12 @@ sparse_clone() {
     packages/pulse-charts
 }
 
+# Optional override: PULSE_PACKAGES_REF=<branch|tag> (defaults to master).
+BACKEND_REF="${PULSE_PACKAGES_REF:-master}"
+
 if [[ -n "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN:-}" ]]; then
-  echo "ci-checkout-pulse-packages: using streampulse-backend@master"
-  sparse_clone "Aron-Chu/streampulse-backend" "master" "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN}"
+  echo "ci-checkout-pulse-packages: using streampulse-backend@${BACKEND_REF}"
+  sparse_clone "Aron-Chu/streampulse-backend" "${BACKEND_REF}" "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN}"
 else
   echo "ci-checkout-pulse-packages: no PAT — using streamclone@${FALLBACK_REF} packages"
   sparse_clone "Aron-Chu/streamclone" "${FALLBACK_REF}"

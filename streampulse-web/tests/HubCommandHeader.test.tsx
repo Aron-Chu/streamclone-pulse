@@ -31,8 +31,9 @@ function renderHeader(
     },
     activity: {
       windowMinutes: 1440,
+      channelCount: 81,
       points: [
-        { t: Date.now() - 60_000, viewers: 500000, chatPerMin: 8000, emotesPerMin: 4000 },
+        { t: Date.now() - 60_000, viewers: 500000, chat: 8000, emotes: 4000, seventv: 4000 },
       ],
       livePoolViewerSum: 330800,
     },

@@ -7,22 +7,24 @@ export const PULSE_ROOT_ID = 'streamclone-pulse-root'
 export const PULSE_TABS_ID = 'streamclone-pulse-tabs'
 
 /** Permissions intentionally allowed in the production manifest. */
-export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting', 'tabs'] as const
+export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting'] as const
 
 /**
- * Host permissions intentionally allowed.
- * localhost:8081 / 127.0.0.1:8081 are the documented local StreamPulse BFF opt-in
- * (see src/shared/storage.ts isLocalStackBackendUrl) — not removed by this suite.
+ * Required host permissions for the production / CWS package.
+ * Localhost BFF hosts are optional_host_permissions (dev opt-in only).
  */
 export const EXPECTED_HOST_PERMISSIONS = [
-  'http://localhost:8081/*',
-  'http://127.0.0.1:8081/*',
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
   'https://gql.twitch.tv/*',
   'https://*.twitch.tv/*',
+] as const
+
+export const EXPECTED_OPTIONAL_HOST_PERMISSIONS = [
+  'http://localhost:8081/*',
+  'http://127.0.0.1:8081/*',
 ] as const
 
 const FORBIDDEN_HOST_SUBSTRINGS = [':8090', ':9876', 'localhost:3000', '127.0.0.1:3000']
@@ -276,10 +278,14 @@ export function assertProductionManifestPermissions(): void {
   const manifest = JSON.parse(fs.readFileSync(EXTENSION_MANIFEST_PATH, 'utf8')) as {
     permissions?: string[]
     host_permissions?: string[]
+    optional_host_permissions?: string[]
+    name?: string
   }
 
+  expect(manifest.name).toBe('StreamPulse')
   expect(manifest.permissions ?? []).toEqual([...EXPECTED_MANIFEST_PERMISSIONS])
   expect(manifest.host_permissions ?? []).toEqual([...EXPECTED_HOST_PERMISSIONS])
+  expect(manifest.optional_host_permissions ?? []).toEqual([...EXPECTED_OPTIONAL_HOST_PERMISSIONS])
 
   for (const host of manifest.host_permissions ?? []) {
     for (const forbidden of FORBIDDEN_HOST_SUBSTRINGS) {

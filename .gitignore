@@ -1,7 +1,15 @@
 node_modules/
 dist/
 *.zip
+*.zip.sha256
 .DS_Store
+
+# Local env / secrets (never commit)
+.env
+.env.*
+!.env.example
+*.local
+.env.local
 
 # Playwright (uploaded by CI on failure; never commit)
 test-results/
@@ -13,3 +21,7 @@ playwright/.cache/
 _overlay*.tsx*
 _split_overlay.*
 .overlay-full.patch
+
+# Local release / CWS prep artifacts (never commit)
+.artifacts/
+listing-assets/

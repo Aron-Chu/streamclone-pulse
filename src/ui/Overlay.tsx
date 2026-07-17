@@ -1030,7 +1030,7 @@ export function Overlay({
   // Body host visibility is owned by mount.tsx (hidden entirely on Chat tab).
   if (resolvedMode === 'collapsed') {
     return (
-      <section className={shellClass} style={styles.collapsedHost} aria-label="Streamclone Pulse collapsed">
+      <section className={shellClass} style={styles.collapsedHost} aria-label="StreamPulse collapsed">
         <CollapsedPill
           tracking={payload?.tracking ?? false}
           isLive={uiIsLive}
@@ -1043,7 +1043,7 @@ export function Overlay({
 
   if (resolvedMode === 'mini') {
     return (
-      <section className={shellClass} style={styles.miniHost} aria-label="Streamclone Pulse mini overlay">
+      <section className={shellClass} style={styles.miniHost} aria-label="StreamPulse mini overlay">
         <MiniDock
           login={login}
           payload={payload}
@@ -1063,7 +1063,7 @@ export function Overlay({
     <section
       className={shellClass}
       style={{ ...styles.panel, height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 20 }}
-      aria-label="Streamclone Pulse overlay"
+      aria-label="StreamPulse overlay"
     >
       {showSidebarTabs ? (
         <div className="pulse-sidebar-tabs-wrap" style={styles.sidebarTabsWrap}>

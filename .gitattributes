@@ -1,0 +1,16 @@
+# Normalize text files to LF in the repository to avoid CRLF/LF churn on Windows.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary
+*.webm binary
+*.mp4 binary
