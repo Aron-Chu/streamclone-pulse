@@ -13,7 +13,7 @@ describe('extension adapter integration', () => {
   it('derives live stats from pulse payload', () => {
     const payload: PulsePayload = {
       login: 'test',
-      isLive: true,
+      isLive: false,
       tracking: true,
       currentOffsetSeconds: 3600,
       startedAt: '2026-06-11T12:00:00.000Z',
@@ -27,11 +27,12 @@ describe('extension adapter integration', () => {
       peaks: [],
       recap: null,
     }
+    // Offline/historical: assert adapter wiring, not live trailing-minute strip
+    // (that behavior is owned by @streampulse/pulse-core unit tests).
     const stats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
-    // Live strips the open trailing minute (chatCount 10) → prior completed (9).
-    expect(stats.chatPerMin1m).toBe(9)
+    expect(stats.chatPerMin1m).toBe(10)
     expect(stats.confidence).toBe('Synced')
-    expect(stats.sparkline).toHaveLength(9)
+    expect(stats.sparkline).toHaveLength(10)
   })
 
   it('derives live heat from pulse payload', () => {

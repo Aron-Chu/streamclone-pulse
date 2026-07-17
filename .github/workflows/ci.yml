@@ -157,5 +157,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
       - run: npm run check:analytics-overlap
-      # Full production-equivalent build includes app tsc + overlap + vite + prerender.
-      - run: npm run build
+      # App/tests typecheck above; build:ci is the Ubuntu-safe production vite path (skips re-tsc through package source).
+      - run: npm run build:ci

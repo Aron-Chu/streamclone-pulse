@@ -33,7 +33,7 @@ These are **not** new product features for this release-gap track; they are kept
 | Beta key sync→local migration + optional localhost host permission helpers | Required for CWS privacy/permission packaging |
 | Test mocks adding `chrome.runtime.id` / `permissions` / `storage.local` | Required so settings/prefetch tests match the optional-permission + local beta-key paths |
 | Dirty-tracking fixture `chartWindow: '15m'` | Stale-test fix — default is already `'full'`, so `'full'` was not a dirty change |
-| Live-stats expectations (completed-minute strip) | Stale-test alignment with existing `pulse-core` live-stat behavior |
+| Adapter live-stats test uses offline/historical input | Avoids coupling to uncommitted local `pulse-core` trailing-minute WIP vs CI `streampulse-backend@master` |
 | `extensionGamesToChartGames` keeps named full-stream game | Stale-test alignment with linked `@streampulse/pulse-charts` `hasMeaningfulGameSegments` (named single segment is meaningful) |
 | Portal momentListDisplay / branding test string updates | Align fixtures/labels with StreamPulse naming and heatmap field shape already expected by code |
 

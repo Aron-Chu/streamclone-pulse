@@ -30,6 +30,14 @@ link_package pulse-core src/liveHeat.ts
 link_package analytics-console src/index.tsx
 link_package pulse-charts src/index.ts
 
+# Install package deps so portal `tsc` can resolve peers (react, etc.) through
+# source path mappings on Ubuntu CI. pulse-charts already needed this for charts.
 if [[ -f "${PACKAGES_ROOT}/pulse-charts/package-lock.json" ]]; then
   npm ci --prefix "${PACKAGES_ROOT}/pulse-charts" --ignore-scripts
+fi
+if [[ -f "${PACKAGES_ROOT}/analytics-console/package-lock.json" ]]; then
+  npm ci --prefix "${PACKAGES_ROOT}/analytics-console" --ignore-scripts
+fi
+if [[ -f "${PACKAGES_ROOT}/pulse-core/package-lock.json" ]]; then
+  npm ci --prefix "${PACKAGES_ROOT}/pulse-core" --ignore-scripts
 fi
