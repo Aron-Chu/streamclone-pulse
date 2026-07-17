@@ -1,7 +1,7 @@
 import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AnalyticsConsole,
@@ -56,11 +56,10 @@ function createChannelDoorApi(overrides: Partial<AnalyticsApi> = {}): AnalyticsA
 }
 
 function PortalConsoleShell() {
-  const { streamId } = useParams<{ login: string; streamId?: string }>()
   return (
     <AnalyticsConsole
       mode="public"
-      showGameSegments={Boolean(streamId?.trim())}
+      showGameSegments
     />
   )
 }

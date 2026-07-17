@@ -12,7 +12,9 @@
     "test:e2e:mocked": "playwright test --project=extension-mocked",
     "test:e2e:live": "playwright test --project=live-twitch",
     "capture:extension-goldens": "npx tsx scripts/capture-extension-goldens.mts",
-    "zip": "node scripts/zip-dist.mjs"
+    "zip": "node scripts/zip-dist.mjs",
+    "validate:package": "node scripts/validate-extension-package.mjs",
+    "package:cws": "npm run build && npm run zip && npm run validate:package"
   },
   "dependencies": {
     "@streampulse/pulse-charts": "file:../streampulse-backend/packages/pulse-charts",

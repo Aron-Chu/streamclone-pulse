@@ -20,6 +20,7 @@ import {
 
 function stubChromeStorage(sessionStore: Record<string, unknown> = {}) {
   vi.stubGlobal('chrome', {
+    runtime: { id: 'test-extension' },
     storage: {
       sync: {
         get: vi.fn(async (keys: string | string[] | null) => {
@@ -138,6 +139,7 @@ describe('pulse prefetch', () => {
 
   it('skips prefetch when local session cache is disabled', async () => {
     vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension' },
       storage: {
         sync: {
           get: vi.fn(async (keys: string | string[] | null) => {

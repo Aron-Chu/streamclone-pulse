@@ -99,7 +99,7 @@ export default function Setup() {
     <PublicLayout>
       <section className="stack-md">
         <div>
-          <h1>Connect Streamclone Pulse</h1>
+          <h1>Connect StreamPulse</h1>
           <p className="muted">
             Install the extension, point it at the hosted API, verify health, then start tracking on
             Twitch.

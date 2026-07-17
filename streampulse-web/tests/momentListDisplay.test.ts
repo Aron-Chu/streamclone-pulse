@@ -56,12 +56,22 @@ describe('enrichRecapMomentsFromHeatmap', () => {
       [{ offsetSeconds: 120, score: 70, reasons: ['chat_spike'] }],
       [
         {
+          offsetSeconds: 600,
+          durationSeconds: 60,
+          confidence: 0.9,
+          vodId: null,
+          streamId: 'stream-1',
           minuteTs: '2026-07-07T12:10:00.000Z',
           score: 88,
           reason: 'twitch_emote_spike',
           topEmotes: [],
         },
         {
+          offsetSeconds: 900,
+          durationSeconds: 60,
+          confidence: 0.8,
+          vodId: null,
+          streamId: 'stream-1',
           minuteTs: '2026-07-07T12:15:00.000Z',
           score: 75,
           reason: 'chat_spike',
@@ -86,7 +96,19 @@ describe('enrichRecapMomentsFromHeatmap', () => {
     }))
     const enriched = enrichRecapMomentsFromHeatmap(
       recap,
-      [{ minuteTs: '2026-07-07T12:30:00.000Z', score: 99, reason: 'chat_spike', topEmotes: [] }],
+      [
+        {
+          offsetSeconds: 1800,
+          durationSeconds: 60,
+          confidence: 0.95,
+          vodId: null,
+          streamId: 'stream-1',
+          minuteTs: '2026-07-07T12:30:00.000Z',
+          score: 99,
+          reason: 'chat_spike',
+          topEmotes: [],
+        },
+      ],
       '2026-07-07T12:00:00.000Z',
       undefined,
       MOMENTS_MAX_VISIBLE,

@@ -1,81 +1,71 @@
 # StreamPulse release status
 
-Last updated: 2026-07-07 (Gate 1 commits done; Gate 2 remote evidence captured; VPS SSH pending operator key)
+Last updated: 2026-07-16 (public-release gap closure candidate — application/CI only)
 
-## Gate 1 — local commits (done)
+## Current posture (do not over-claim)
 
-| Repo | Commits | Notes |
-|------|---------|-------|
-| streamclone-pulse | slices A–E | `perf`/`fix`/`feat`/`docs` — see [`release-commit-slices.md`](./release-commit-slices.md) |
-| streamclone | A-backend + F | hub cache tests + ops runbooks |
+| Track | Decision | Notes |
+|-------|----------|-------|
+| Portal soft public beta | Soft GO (conditional) | Keep beta framing; `/privacy` lands in this candidate |
+| Extension / Chrome Web Store | **NO-GO** | Packaging + identity gaps closing in code; dedicated privacy email, screenshots, Sol/ops, unpacked Chrome smoke still open |
+| Marketing / creator blast | **NO-GO** | Requires Sol capacity/abuse sign-off |
+| Collector capacity | **HOLD_AT_300 / NO_GO_350** | Controlling ops decision — not changed by this repo |
 
-## Release target
+Live health at audit time was still a canary tag (`v0.1.33-helix-top300-canary`). This document does **not** claim GA, 350 readiness, CWS submission, or a non-canary production promote.
 
-**Full StreamPulse GA** — public website + hosted API + Chrome Web Store extension.
+## What this candidate closes (code)
 
-## Sign-off tracks
+- User-facing extension name **StreamPulse**
+- Real `/privacy` route + footer/nav link + route tests (Twitch session wording; GitHub Issues interim contact)
+- Filtered `streampulse-extension.zip` from the packable dist file set (Info-ZIP / tar / Windows .NET ZipArchive) + fail-closed entry validation + checksum check
+- `tabs` removed; localhost moved to optional host permissions
+- Portal typecheck required in CI (`npm run typecheck` + `npm run build`)
+- Public `/admin` is a 404, not an operator console placeholder
 
-| Track | Meaning | Blocks website/API ship? |
-|-------|---------|--------------------------|
-| **A — GA release readiness** | Portal build green, hosted API stable, extension submit-ready, ops evidence | **Yes** |
-| **B — CWS approval complete** | Chrome Web Store listing approved | **No** (Landing CTA swap only) |
+## Origin/master baseline repairs retained
 
-## Track A checklist
+These are **not** new product features for this release-gap track; they are kept because `origin/master` already imports or requires them:
 
-| Gate | Status | Evidence |
-|------|--------|----------|
-| Portal `npm run build` (app-only tsc) | Done (local) | `streampulse-web`: split `tsconfig.json` / `tsconfig.test.json` |
-| Portal `npm test` | Done (local) | 62 files / 342 tests; hub landing empty tests excluded (known hang — e2e authority) |
-| Console API setup before render | Done | `ConsoleChannelView.tsx` module-top `setupStreamcloneAnalyticsApi()` |
-| Promotion manifest + `IMAGE_TAG` reconcile | **Operator (SSH)** | Preflight: `scripts/ops/ssh-access-preflight.sh`; remote health `v0.3.0-rc18` — [`release-gap-2026-07-07-remote.md`](../../../twitch-7tv-clone/docs/ops/evidence/release-gap-2026-07-07-remote.md) |
-| Redis bounded + TTL audit | **Operator (SSH)** | `scripts/ops/hosted-redis-audit.sh`, [`hosted-redis-bounds-runbook.md`](../../../twitch-7tv-clone/docs/ops/hosted-redis-bounds-runbook.md) |
-| Staged container limits | **Operator (SSH)** | [`hosted-limits-staged-runbook.md`](../../../twitch-7tv-clone/docs/ops/hosted-limits-staged-runbook.md), `release-gap-vps-execute.sh --limits-redis` |
-| Focused cap-250 stability (2–6h) | **Operator (SSH)** | Sample monitor: `twitch-7tv-clone/runtime/evidence/cap250-soak/day-release-check-monitor-20260707T134629Z.txt`; full gate: `hosted-release-check-soak-loop.sh` `RELEASE_CHECK_HOURS=2` |
-| Cloudflare hub cache | **Operator (dashboard)** | 2026-07-07 probe: origin `X-Cache: HIT`, `CF-Cache-Status: DYNAMIC` — enable rule per [`hub-fanout-edge-cache.md`](./hub-fanout-edge-cache.md) |
-| Cloudflare `/v1/public/*` WAF | **Operator (dashboard)** | [`cloudflare-public-hub-waf.md`](../../../twitch-7tv-clone/docs/ops/cloudflare-public-hub-waf.md) |
-| Extension build + CWS checklist | **Operator submit** | [`chrome-web-store-review-checklist.md`](../pulse-extension/chrome-web-store-review-checklist.md) |
+| Change | Why retained |
+|--------|----------------|
+| `extendSeriesToTrailingEdge` / `overviewBarWidth` in `chartRollupUtils.ts` | Required for typecheck/build — `PulseOverviewChart` already imports them on `origin/master` but exports were missing |
+| `getPulseDockPreference` / `setPulseDockPreference` in `storage.ts` | Required for typecheck/build — `PulseSettingsPanel` already imports them on `origin/master` but exports were missing |
+| Beta key sync→local migration + optional localhost host permission helpers | Required for CWS privacy/permission packaging |
+| Test mocks adding `chrome.runtime.id` / `permissions` / `storage.local` | Required so settings/prefetch tests match the optional-permission + local beta-key paths |
+| Dirty-tracking fixture `chartWindow: '15m'` | Stale-test fix — default is already `'full'`, so `'full'` was not a dirty change |
+| Live-stats expectations (completed-minute strip) | Stale-test alignment with existing `pulse-core` live-stat behavior |
+| `extensionGamesToChartGames` keeps named full-stream game | Stale-test alignment with linked `@streampulse/pulse-charts` `hasMeaningfulGameSegments` (named single segment is meaningful) |
+| Portal momentListDisplay / branding test string updates | Align fixtures/labels with StreamPulse naming and heatmap field shape already expected by code |
 
-## Track B checklist
+**Not introduced as new product work in this track:** chart trailing-edge / bar-width helpers and PulseDock preference APIs are compile repairs for imports already present on `origin/master`.
 
-| Gate | Status |
-|------|--------|
-| CWS listing submitted | Pending operator |
-| CWS approved | Pending Google review |
-| Landing store CTA | Pending post-approval |
+## Packaging notes
 
-## Scope lock (this release)
+- Lexical entry order is enforced.
+- Byte-identical ZIP bytes across OS/tools are **not** claimed (timestamps/extra fields may differ).
+- Artifacts: `streampulse-extension.zip`, `streampulse-extension.zip.sha256` (checksum file is gitignored).
 
-- **In:** 250-channel live tracking stability, portal/API GA, extension store submission
-- **Out:** corpus expansion, Top500 widen, broad 7-day corpus soak, ReplayForge auto-clipper GA
+## Explicitly still open
 
-## Current production identity (public check 2026-07-09)
+- Dedicated privacy email (interim public contact on `/privacy` is https://github.com/Aron-Chu/streamclone-pulse/issues per product origin; note the product repo is private so anonymous visitors may see 404 — dedicated email remains a CWS blocker)
+- Unpacked Chrome smoke: automatable gates passed on this candidate (SW, StreamPulse name, no `tabs`, Options/popup, hosted API requests on Twitch, beta-key local storage, settings persistence). **Manual remaining:** localhost optional-permission prompt requires a real Options user gesture.
+- Cloudflare Access evidence for `/v1/admin/*` (Sol/ops)
+- Store screenshots + listing copy + human submission (draft under local `.artifacts/cws-listing/`, not committed)
+- Capacity / canary vs non-canary backend tag (Sol/ops)
+- Dirty WIP in other checkouts must not be shipped
+- Extension icon PNGs on this branch are still tiny stubs (human artwork replacement before CWS)
 
-**Backend image exit is live for the Pulse BFF.** Public health reports streampulse-backend identity, not Streamclone rc18:
+## Packaging commands
 
 ```bash
-curl -fsS https://api.streampulse.stream/v1/extension/health
-# {"ok":true,"version":"v0.1.1","hostedMode":true,...}
+npm run typecheck
+npm test
+npm run build
+node --check scripts/zip-dist.mjs
+node --check scripts/validate-extension-package.mjs
+npm run zip
+npm run validate:package
 ```
-
-Ops still uses **dual tags** (`IMAGE_TAG` for remaining streamclone watch-core images; `BACKEND_IMAGE_TAG` for `ghcr.io/aron-chu/streampulse/{analytics,migrate,analytics-workers}`). See private **streampulse-ops** `AGENTS.md`.
-
-| Doc | Purpose |
-|-----|---------|
-| [streamclone-image-exit-audit-2026-07.md](../pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md) | Historical migration options / cutover checklist (pre-`v0.1.1` health) |
-| [production-artifact-decision-2026-07.md](../pulse-extension/evidence/production-artifact-decision-2026-07.md) | Launch hardening notes until cutover |
-| streamclone [production-promotion-contract.md](../../../twitch-7tv-clone/docs/production-promotion-contract.md) | Public promotion contract |
-
-| Field | Value |
-|-------|-------|
-| Health version (public) | `v0.1.1` (`hostedMode: true`) — Pulse BFF from **streampulse-backend** |
-| `BACKEND_IMAGE_TAG` | Pin in streampulse-ops (must match analytics / migrate / workers) |
-| `IMAGE_TAG` | Remaining streamclone watch-core services only (metadata/video/chat/emote/…) |
-| Source / production digests | Record in streampulse-ops manifest |
-| Rollback tags + digests | Document in streampulse-ops manifest |
-
-**Remaining ops work:** keep dual-tag digests reconciled in private **streampulse-ops**; do not treat Streamclone `v0.3.0-rc18` as the live Pulse API identity.
-
-Manifest lives in private **streampulse-ops** (`docs/deployments/YYYY-MM-DD-<tag>-<note>.md`).
 
 ## Hosted production checks (public)
 
@@ -84,17 +74,9 @@ curl -fsS https://api.streampulse.stream/v1/extension/health
 curl -fsS https://api.streampulse.stream/v1/public/status
 ```
 
-Gate 2 soak evidence, SSH probes, and promotion manifests live in private **streampulse-ops** — not this public repo. Operator runbook: streamclone [`docs/hosted-production-ops.md`](https://github.com/Aron-Chu/streamclone/blob/master/docs/hosted-production-ops.md).
+Promotion manifests, soak evidence, and SSH probes live in private **streampulse-ops**.
 
-## Commit slices
+## Checklist pointers
 
-See [`release-commit-slices.md`](./release-commit-slices.md) and [`release-gap-closure-tasks.md`](./release-gap-closure-tasks.md).
-
-## Excluded Vitest unit tests
-
-Configured in [`streampulse-web/vitest.config.ts`](../../streampulse-web/vitest.config.ts) `test.exclude`. E2E owns hub landing honesty paths.
-
-| Excluded unit test | Reason | E2E owner |
-|--------------------|--------|-----------|
-| `analyticsLandingPage.test.tsx` | stats-fallback case OOM/hangs in full Vitest | [`tests/e2e/analytics-hub-metrics-honesty.spec.ts`](../../streampulse-web/tests/e2e/analytics-hub-metrics-honesty.spec.ts) |
-| `analyticsHubEmpty.test.tsx` | full landing render hang | same + [`tests/e2e/analytics-hub-ux.spec.ts`](../../streampulse-web/tests/e2e/analytics-hub-ux.spec.ts) |
+- CWS: [`../pulse-extension/chrome-web-store-review-checklist.md`](../pulse-extension/chrome-web-store-review-checklist.md)
+- Legacy IDs: [`../pulse-extension/legacy-identifiers.md`](../pulse-extension/legacy-identifiers.md)

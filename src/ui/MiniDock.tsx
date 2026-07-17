@@ -40,7 +40,7 @@ export function MiniDock({
     <section
       className="pulse-mini-dock"
       style={sidebarFill ? styles.shellSidebar : styles.shell}
-      aria-label="Streamclone Pulse mini dock"
+      aria-label="StreamPulse mini dock"
     >
       <button
         type="button"

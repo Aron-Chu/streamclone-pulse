@@ -11,6 +11,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <Link to="/analytics">Analytics</Link>
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
+          <Link to="/privacy">Privacy</Link>
         </nav>
       </header>
       <main className="app-main">{children}</main>

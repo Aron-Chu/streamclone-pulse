@@ -28,9 +28,10 @@ describe('extension adapter integration', () => {
       recap: null,
     }
     const stats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
-    expect(stats.chatPerMin1m).toBe(10)
+    // Live strips the open trailing minute (chatCount 10) → prior completed (9).
+    expect(stats.chatPerMin1m).toBe(9)
     expect(stats.confidence).toBe('Synced')
-    expect(stats.sparkline).toHaveLength(10)
+    expect(stats.sparkline).toHaveLength(9)
   })
 
   it('derives live heat from pulse payload', () => {

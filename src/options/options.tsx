@@ -200,7 +200,7 @@ function OptionsApp() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <h1 style={styles.title}>Streamclone Pulse</h1>
+          <h1 style={styles.title}>StreamPulse</h1>
           <p style={styles.lead}>Configure the overlay and manage channels Streamclone should keep in its tracking pool.</p>
         </div>
         <button type="button" style={styles.secondaryButton} onClick={() => void probeHealth()}>Probe backend</button>

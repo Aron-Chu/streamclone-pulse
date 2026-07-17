@@ -165,8 +165,9 @@ function Footer() {
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
           <Link to="/analytics">Analytics</Link>
+          <Link to="/privacy">Privacy</Link>
         </div>
-        <small>Public analytics for Streamclone Pulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
+        <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
       </div>
     </footer>
   )

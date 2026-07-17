@@ -34,7 +34,7 @@ describe('settings dirty-tracking model', () => {
     const changes: Array<Partial<SettingsForm>> = [
       { backendUrl: 'http://localhost:9090' },
       { theme: 'volt' },
-      { chartWindow: 'full' },
+      { chartWindow: '15m' },
       { autoUpdate: !DEFAULT_FORM.autoUpdate },
       { pollMs: DEFAULT_FORM.pollMs + 5000 },
       { autoTrack: 'followed' },
@@ -101,6 +101,11 @@ describe('settings persistence (mocked chrome.storage)', () => {
     syncStore = {}
     sessionStore = {}
     vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension' },
+      permissions: {
+        contains: vi.fn(async () => false),
+        request: vi.fn(async () => true),
+      },
       storage: {
         sync: {
           get: vi.fn(async (keys: string | string[] | null) => {
@@ -113,6 +118,15 @@ describe('settings persistence (mocked chrome.storage)', () => {
           set: vi.fn(async (items: Record<string, unknown>) => {
             Object.assign(syncStore, items)
           }),
+          remove: vi.fn(async (keys: string | string[]) => {
+            const list = Array.isArray(keys) ? keys : [keys]
+            for (const key of list) delete syncStore[key]
+          }),
+        },
+        local: {
+          get: vi.fn(async () => ({})),
+          set: vi.fn(async () => {}),
+          remove: vi.fn(async () => {}),
         },
         session: {
           get: vi.fn(async (key: string | null) =>

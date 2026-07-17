@@ -118,7 +118,13 @@ export async function seedExtensionStorage(
   }
 
   await serviceWorker.evaluate(async storage => {
-    await chrome.storage.sync.set(storage)
+    const { betaKey, ...syncRest } = storage as Record<string, unknown> & { betaKey?: string }
+    await chrome.storage.sync.set(syncRest)
+    if (betaKey !== undefined) {
+      if (betaKey) await chrome.storage.local.set({ betaKey })
+      else await chrome.storage.local.remove('betaKey')
+      await chrome.storage.sync.remove('betaKey')
+    }
   }, payload)
 }
 

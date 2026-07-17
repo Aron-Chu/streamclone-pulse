@@ -140,6 +140,72 @@ async function sessionStorageRemove(keys: string | string[]): Promise<void> {
   }
 }
 
+async function localStorageGet(
+  keys?: string | string[] | Record<string, unknown> | null,
+): Promise<Record<string, unknown>> {
+  if (!isExtensionContextAlive()) return {}
+  try {
+    return (await chrome.storage.local.get(keys ?? null)) as Record<string, unknown>
+  } catch (err) {
+    if (isBenignStorageError(err)) return {}
+    throw err
+  }
+}
+
+async function localStorageSet(items: Record<string, unknown>): Promise<void> {
+  if (!isExtensionContextAlive()) return
+  try {
+    await chrome.storage.local.set(items)
+  } catch (err) {
+    if (isBenignStorageError(err)) return
+    throw err
+  }
+}
+
+async function localStorageRemove(keys: string | string[]): Promise<void> {
+  if (!isExtensionContextAlive()) return
+  try {
+    await chrome.storage.local.remove(keys)
+  } catch (err) {
+    if (isBenignStorageError(err)) return
+    throw err
+  }
+}
+
+async function syncStorageRemove(keys: string | string[]): Promise<void> {
+  if (!isExtensionContextAlive()) return
+  try {
+    await chrome.storage.sync.remove(keys)
+  } catch (err) {
+    if (isBenignStorageError(err)) return
+    throw err
+  }
+}
+
+/** Local BFF hosts requested only when the user opts into localhost development. */
+export const LOCAL_BACKEND_OPTIONAL_HOSTS = [
+  'http://localhost:8081/*',
+  'http://127.0.0.1:8081/*',
+] as const
+
+/**
+ * Ensure optional host access for the local StreamPulse BFF when the user opts in.
+ * Production CWS builds keep localhost out of required host_permissions.
+ */
+export async function ensureLocalBackendHostPermission(url: string): Promise<boolean> {
+  if (!isLocalStackBackendUrl(url)) return true
+  if (!isExtensionContextAlive()) return false
+  if (typeof chrome.permissions?.request !== 'function') return true
+  try {
+    const origins = [...LOCAL_BACKEND_OPTIONAL_HOSTS]
+    const already = await chrome.permissions.contains({ origins })
+    if (already) return true
+    return await chrome.permissions.request({ origins })
+  } catch {
+    return false
+  }
+}
+
 export async function getBackendUrl(): Promise<string> {
   const stored = await syncStorageGet([BACKEND_URL_KEY, LOCAL_BACKEND_OPT_IN_KEY])
   const raw = String(stored[BACKEND_URL_KEY] ?? DEFAULT_BACKEND_URL).trim()
@@ -167,19 +233,47 @@ export async function getBackendUrl(): Promise<string> {
 export async function setBackendUrl(url: string): Promise<void> {
   const trimmed = url.trim().replace(/\/+$/, '')
   const localOptIn = isLocalStackBackendUrl(trimmed)
+  if (localOptIn) {
+    const granted = await ensureLocalBackendHostPermission(trimmed)
+    if (!granted) {
+      throw new Error(
+        'Local backend requires optional host permission for localhost:8081 / 127.0.0.1:8081',
+      )
+    }
+  }
   await syncStorageSet({
     [BACKEND_URL_KEY]: trimmed,
     [LOCAL_BACKEND_OPT_IN_KEY]: localOptIn,
   })
 }
 
+/**
+ * Beta / access keys stay device-local (chrome.storage.local), not sync.
+ * One-time migration copies a legacy sync value into local and clears sync.
+ */
 export async function getBetaKey(): Promise<string> {
-  const stored = await syncStorageGet(BETA_KEY_KEY)
-  return String(stored[BETA_KEY_KEY] ?? '').trim()
+  const local = await localStorageGet(BETA_KEY_KEY)
+  const localValue = String(local[BETA_KEY_KEY] ?? '').trim()
+  if (localValue) return localValue
+
+  const sync = await syncStorageGet(BETA_KEY_KEY)
+  const syncValue = String(sync[BETA_KEY_KEY] ?? '').trim()
+  if (!syncValue) return ''
+
+  await localStorageSet({ [BETA_KEY_KEY]: syncValue })
+  await syncStorageRemove(BETA_KEY_KEY)
+  return syncValue
 }
 
 export async function setBetaKey(key: string): Promise<void> {
-  await syncStorageSet({ [BETA_KEY_KEY]: key.trim() })
+  const trimmed = key.trim()
+  if (trimmed) {
+    await localStorageSet({ [BETA_KEY_KEY]: trimmed })
+  } else {
+    await localStorageRemove(BETA_KEY_KEY)
+  }
+  // Clear any legacy sync copy so the key does not reappear via Chrome sync.
+  await syncStorageRemove(BETA_KEY_KEY)
 }
 
 export async function getPollIntervalMs(): Promise<number> {
@@ -245,6 +339,41 @@ export async function getChatClosedPulseDockEnabled(): Promise<boolean> {
 
 export async function setChatClosedPulseDockEnabled(enabled: boolean): Promise<void> {
   await syncStorageSet({ [CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]: enabled })
+}
+
+const PULSE_DOCK_PREFERENCE_KEY = 'pulseDockPreference'
+
+export type PulseDockPreference = {
+  show7TVSignalLabels: boolean
+}
+
+export const DEFAULT_PULSE_DOCK_PREFERENCE: PulseDockPreference = {
+  show7TVSignalLabels: true,
+}
+
+function normalizePulseDockPreference(raw: unknown): PulseDockPreference {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_PULSE_DOCK_PREFERENCE }
+  const record = raw as Record<string, unknown>
+  return {
+    show7TVSignalLabels:
+      record.show7TVSignalLabels === undefined
+        ? DEFAULT_PULSE_DOCK_PREFERENCE.show7TVSignalLabels
+        : Boolean(record.show7TVSignalLabels),
+  }
+}
+
+export async function getPulseDockPreference(): Promise<PulseDockPreference> {
+  const stored = await syncStorageGet(PULSE_DOCK_PREFERENCE_KEY)
+  return normalizePulseDockPreference(stored[PULSE_DOCK_PREFERENCE_KEY])
+}
+
+export async function setPulseDockPreference(
+  patch: Partial<PulseDockPreference>,
+): Promise<void> {
+  const current = await getPulseDockPreference()
+  await syncStorageSet({
+    [PULSE_DOCK_PREFERENCE_KEY]: normalizePulseDockPreference({ ...current, ...patch }),
+  })
 }
 
 export async function getAutoTrackPolicy(): Promise<AutoTrackPolicy> {

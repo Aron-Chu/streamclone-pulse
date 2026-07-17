@@ -5,12 +5,13 @@ import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
+import Privacy from './public/Privacy'
+import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
-const AdminShell = lazy(() => import('./admin/AdminShell'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 const StreamsHubPlaceholder = lazy(() => import('./analytics/StreamsHubPlaceholder'))
 
@@ -34,6 +35,7 @@ export function AppRoutes() {
         <Route path="/docs" element={<Docs />} />
         <Route path="/docs/*" element={<Docs />} />
         <Route path="/status" element={<Status />} />
+        <Route path="/privacy" element={<Privacy />} />
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
@@ -61,9 +63,11 @@ export function AppRoutes() {
           </Route>
         </Route>
 
-        <Route path="/admin/*" element={<AdminShell />} />
+        {/* /admin is not a public operator console. Cloudflare Access for API
+            /v1/admin/* remains an external ops/promotion blocker. */}
+        <Route path="/admin/*" element={<NotFound />} />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
   )

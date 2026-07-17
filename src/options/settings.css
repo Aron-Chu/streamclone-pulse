@@ -1,5 +1,5 @@
 /*
- * Streamclone Pulse — extension settings surface.
+ * StreamPulse — extension settings surface.
  * Ported from the shadcn-03-settings mockup. Injected at runtime by
  * options.tsx (?inline) so it works with the custom Vite extension build.
  * Everything is scoped under `.set-root`; the page background is set on body.

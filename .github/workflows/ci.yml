@@ -53,12 +53,36 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      - name: Check packaging scripts
+        run: |
+          node --check scripts/zip-dist.mjs
+          node --check scripts/validate-extension-package.mjs
+          node --check scripts/extension-package-lib.mjs
+      - name: Build CWS zip and validate package
+        run: |
+          npm run zip
+          npm run validate:package
+          test -f streampulse-extension.zip
+          test -f streampulse-extension.zip.sha256
+          echo "ZIP_SHA256=$(cut -d' ' -f1 streampulse-extension.zip.sha256)"
+          # Avoid SIGPIPE under pipefail: list a bounded prefix without piping to head.
+          mapfile -t ZIP_ENTRIES < <(unzip -Z1 streampulse-extension.zip)
+          echo "ZIP_ENTRY_COUNT=${#ZIP_ENTRIES[@]}"
+          printf '%s\n' "${ZIP_ENTRIES[@]:0:40}"
       - name: Upload extension dist
         uses: actions/upload-artifact@v4
         with:
           name: extension-dist
           path: dist/
           retention-days: 3
+      - name: Upload CWS zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: streampulse-extension-zip
+          path: |
+            streampulse-extension.zip
+            streampulse-extension.zip.sha256
+          retention-days: 14
 
   extension-e2e:
     name: extension-e2e
@@ -130,7 +154,8 @@ jobs:
           cache: npm
           cache-dependency-path: streampulse-web/package-lock.json
       - run: npm ci
+      - run: npm run typecheck
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
-      # build:ci = overlap + vite + prerender (skips tsc across file:-linked package *source*;
-      # full `npm run build` still typechecks locally when package node_modules exist).
-      - run: npm run build:ci
+      - run: npm run check:analytics-overlap
+      # Full production-equivalent build includes app tsc + overlap + vite + prerender.
+      - run: npm run build

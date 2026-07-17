@@ -89,7 +89,7 @@ describe('resolveVodLinkState', () => {
         { streamId: '222', vodId: '2814106332' },
         { streamId: '111' },
       ],
-      detail: { stream: { endedAt: '2026-07-07T08:00:00Z' } },
+      detail: { stream: {} },
     })
     expect(fallback).toBeUndefined()
     const state = resolveVodLinkState({
@@ -105,7 +105,7 @@ describe('resolveVodLinkState', () => {
     const fallback = resolveSessionFallbackVodId({
       targetQueryStreamId: '111',
       sidebarStreams: [{ streamId: '111', vodId: '2814106332' }],
-      detail: { stream: { endedAt: '2026-07-07T08:00:00Z' } },
+      detail: { stream: {} },
     })
     expect(fallback).toBe('2814106332')
     const state = resolveVodLinkState({

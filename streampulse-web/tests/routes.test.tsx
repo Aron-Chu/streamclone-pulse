@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../src/routes/index'
 
-const publicPaths = ['/', '/docs', '/status'] as const
+const publicPaths = ['/', '/docs', '/status', '/privacy'] as const
 
 describe('route smoke', () => {
   for (const path of publicPaths) {
