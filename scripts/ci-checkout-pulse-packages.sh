@@ -27,9 +27,13 @@ sparse_clone() {
     packages/pulse-charts
 }
 
+# PULSE_PACKAGES_REF pins a backend branch/tag when master packages are incomplete.
+# Default stays master; release-gap CI pins the analytics-console consistency fix.
+BACKEND_REF="${PULSE_PACKAGES_REF:-master}"
+
 if [[ -n "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN:-}" ]]; then
-  echo "ci-checkout-pulse-packages: using streampulse-backend@master"
-  sparse_clone "Aron-Chu/streampulse-backend" "master" "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN}"
+  echo "ci-checkout-pulse-packages: using streampulse-backend@${BACKEND_REF}"
+  sparse_clone "Aron-Chu/streampulse-backend" "${BACKEND_REF}" "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN}"
 else
   echo "ci-checkout-pulse-packages: no PAT — using streamclone@${FALLBACK_REF} packages"
   sparse_clone "Aron-Chu/streamclone" "${FALLBACK_REF}"

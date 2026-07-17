@@ -76,9 +76,14 @@
   "recap": null,
   "games": [
     {
-      "gameName": "Just Chatting",
+      "gameName": "League of Legends",
       "offsetSeconds": 0,
-      "durationSeconds": 3600
+      "durationSeconds": 1800
+    },
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 1800,
+      "durationSeconds": 1800
     }
   ]
 }

@@ -42,6 +42,8 @@ jobs:
       - name: Checkout pulse packages
         env:
           STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+          # Pin until streampulse-backend master lands analytics-console consistency (no broken SessionSignalTape imports).
+          PULSE_PACKAGES_REF: fix/analytics-console-master-consistency
         run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link pulse packages from streampulse-backend
         run: bash scripts/ci-link-streamclone-packages.sh
@@ -93,6 +95,7 @@ jobs:
       - name: Checkout pulse packages
         env:
           STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+          PULSE_PACKAGES_REF: fix/analytics-console-master-consistency
         run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link pulse packages from streampulse-backend
         run: bash scripts/ci-link-streamclone-packages.sh
@@ -144,6 +147,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+          PULSE_PACKAGES_REF: fix/analytics-console-master-consistency
         run: bash scripts/ci-checkout-pulse-packages.sh
       - name: Link StreamPulse packages
         working-directory: ${{ github.workspace }}
@@ -154,12 +158,9 @@ jobs:
           cache: npm
           cache-dependency-path: streampulse-web/package-lock.json
       - run: npm ci
-      # Portal typecheck stays a local gate: CI links streampulse-backend@master packages, and
-      # analytics-console on that ref currently imports SessionSignalTape / stream-route helpers
-      # that are not present on master (incomplete package tree). Full `npm run typecheck` against
-      # that checkout fails closed outside this repo. Local validation still runs typecheck when
-      # package sources are complete. build:ci = overlap-compatible vite + prerender without
-      # re-tsc through linked package source (same shape as origin/master portal CI).
+      # Packages pinned via PULSE_PACKAGES_REF (analytics-console consistency fix).
+      - run: npm run typecheck
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
       - run: npm run check:analytics-overlap
+      # build:ci = Ubuntu-safe vite + prerender (same production artifact path as origin/master).
       - run: npm run build:ci
