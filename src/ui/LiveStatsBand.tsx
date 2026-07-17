@@ -256,10 +256,10 @@ export function LiveStatsBand({
   const awaitingFullRollups =
     chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)
     && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload))
-  // Only block the chart while a full-timeline request is in flight, or when we
-  // have nothing provisional to draw. Never stay on "Loading timeline…" forever
-  // if window=full returns without fullRollups (mock / degraded BFF).
-  const chartLoading = timelineLoading || (awaitingFullRollups && rollups.length === 0)
+  // Only block the chart while a full-timeline request is in flight.
+  // After the fetch settles without fullRollups, show emptyMessage — never stay on
+  // "Loading timeline…" forever (mock / degraded BFF).
+  const chartLoading = timelineLoading
   const chartEmpty = chartEmptyMessage({
     rollupCount: rollups.length,
     chartWindow,
