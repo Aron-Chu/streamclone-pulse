@@ -29,7 +29,7 @@ Legacy identifiers (package name, DOM ids, `X-Streamclone-Beta-Key`, etc.): see 
 - [ ] Dedicated privacy email published: `privacy@streampulse.stream` (source ready; confirm live `/privacy` after Pages deploy)
 - [ ] Screenshots: Twitch overlay docked beside chat, settings panel, honest partial-coverage state
 - [ ] Single purpose: Twitch live/VOD Pulse analytics overlay powered by StreamPulse API (`streampulse-backend`)
-- [ ] **Icon artwork:** packaged `icon16` / `icon48` / `icon128` are still stub dimensions — CWS icon gate **OPEN** until real 16/48/128 PNGs are supplied and dimension-validated
+- [x] **Icon artwork:** Peak mark PNGs at exact 16/48/128 (generated from rand-peak.svg via scripts/gen-icons.mjs); package validator enforces PNG signature + dimensions + non-stub size
 
 ## Permissions (current candidate)
 
