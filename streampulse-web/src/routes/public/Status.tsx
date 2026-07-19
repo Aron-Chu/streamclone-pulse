@@ -11,6 +11,11 @@ interface PublicStatusPayload {
   degraded: boolean
   incident?: string | null
   updatedAt: string
+  components?: {
+    api?: string
+    coverage?: string
+    corpus?: string
+  }
 }
 
 interface ExtensionHealthPayload {
@@ -110,6 +115,22 @@ export default function Status() {
                 <dt className="muted">Degraded</dt>
                 <dd>{publicStatus.degraded ? 'yes' : 'no'}</dd>
               </div>
+              {publicStatus.components ? (
+                <>
+                  <div>
+                    <dt className="muted">API component</dt>
+                    <dd>{publicStatus.components.api ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="muted">Coverage</dt>
+                    <dd>{publicStatus.components.coverage ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="muted">Corpus</dt>
+                    <dd>{publicStatus.components.corpus ?? '—'}</dd>
+                  </div>
+                </>
+              ) : null}
               <div>
                 <dt className="muted">Updated</dt>
                 <dd>{publicStatus.updatedAt ? new Date(publicStatus.updatedAt).toLocaleString() : '—'}</dd>

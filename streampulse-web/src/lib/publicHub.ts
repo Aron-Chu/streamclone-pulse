@@ -478,8 +478,14 @@ interface PublicStatsSnapshot {
 
 interface PublicStatusSnapshot {
   status?: string
+  api?: string
   degraded?: boolean
   updatedAt?: string
+  components?: {
+    api?: string
+    coverage?: string
+    corpus?: string
+  }
 }
 
 export type PublicHubActivityWindow = 'all' | '1y' | '6m' | '3m' | '1m' | '7d' | '24h' | '30m' | 'recent'
@@ -623,8 +629,17 @@ export async function fetchPublicHubStatsFallback(
           backfillMax: 0,
           syncActive: 0,
           emotesIndexed: stats?.emotesIndexed ?? 0,
-          databaseOk: status?.degraded !== true,
-          state: status?.status ?? 'operational',
+          // Overall public status may be degraded for coverage/corpus while the
+          // API/DB host is still up — never map that to databaseOk=false.
+          databaseOk:
+            status?.components?.api != null
+              ? status.components.api === 'up'
+              : status?.api != null
+                ? status.api === 'up'
+                : true,
+          state:
+            status?.components?.coverage ??
+            (status?.degraded ? 'degraded' : (status?.status ?? 'operational')),
         },
       }),
       loadSource: 'stats-fallback',

@@ -230,6 +230,27 @@ describe('fetchPublicHub performance', () => {
     expect(apiClient.mock.calls.every((call) => !String(call[0]).includes('/v1/public/hub'))).toBe(true)
   })
 
+  it('stats fallback does not treat corpus-only degradation as database down', async () => {
+    apiClient.mockResolvedValueOnce({
+      data: { streamsTracked: 1, emotesIndexed: 1, updatedAt: new Date().toISOString() },
+      status: 200,
+    })
+    apiClient.mockResolvedValueOnce({
+      data: {
+        status: 'degraded',
+        api: 'up',
+        degraded: true,
+        components: { api: 'up', coverage: 'degraded', corpus: 'degraded' },
+        updatedAt: new Date().toISOString(),
+      },
+      status: 200,
+    })
+
+    const result = await fetchPublicHubStatsFallback()
+    expect(result.data.coverage.databaseOk).toBe(true)
+    expect(result.data.coverage.state).toBe('degraded')
+  })
+
   it('fetchPublicHubBase never calls readiness endpoints', async () => {
     apiClient.mockResolvedValueOnce({
       data: normalizePublicHub({ poolSize: 1, liveChannels: [{ login: 'xqc', viewers: 1, chatPerMin: 1, seventvPerMin: 0, coverageState: 'synced', trendPct: 0 }] }),
