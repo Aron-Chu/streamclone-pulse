@@ -11,7 +11,8 @@ export interface FigmaMomentRow {
   offsetSeconds: number
   /** Wall-clock peak time (unix ms) when known — used for cross-channel feed sort. */
   at?: number
-  score: number
+  /** Backend-authored Pulse / reaction score only. Never invent from magnitude or chat counts. */
+  score?: number
   label: string
   kind?: string
   source?: string
@@ -163,7 +164,9 @@ export function compareMomentsChronologically(a: FigmaMomentRow, b: FigmaMomentR
   const atA = a.at ?? 0
   const atB = b.at ?? 0
   if (atB !== atA) return atB - atA
-  if (b.score !== a.score) return b.score - a.score
+  const scoreA = a.score ?? 0
+  const scoreB = b.score ?? 0
+  if (scoreB !== scoreA) return scoreB - scoreA
   return b.offsetSeconds - a.offsetSeconds
 }
 
@@ -293,7 +296,8 @@ function hubMomentsFallback(hub: PublicHub): FigmaMomentRow[] {
       return {
         offsetSeconds: 0,
         at: moment.at,
-        score: Math.round(moment.magnitude ?? 0),
+        // Hub event-feed rows expose magnitude for ranking/display hints only —
+        // never reinterpret magnitude as a Pulse / reaction score.
         label: moment.label,
         kind: moment.kind,
         login: moment.login,

@@ -17,7 +17,8 @@ import {
 } from './api.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin, untrackLogin } from './tracking.ts'
-import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
+import type { BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
+import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
 import {
   addToWatchlist,
@@ -233,8 +234,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   void syncWatchlistToBackend()
 })
 
-chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   void (async () => {
+    const message = parseBackgroundRequest(rawMessage)
+    if (!message) {
+      sendResponse({ error: 'invalid_message' })
+      return
+    }
     try {
       switch (message.type) {
         case 'TRACK': {

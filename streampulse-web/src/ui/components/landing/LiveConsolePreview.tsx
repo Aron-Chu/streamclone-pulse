@@ -55,7 +55,6 @@ export function LiveConsolePreview({ model }: { model: PreviewModel }) {
               <span className="sl-mom__t">{moment.time}</span>
               <span className="sl-mom__s">{moment.summary}</span>
               {moment.emote ? <span className="sl-mom__em">{moment.emote}</span> : null}
-              <span className="sl-mom__sc">{moment.score}</span>
             </div>
           ))}
         </div>

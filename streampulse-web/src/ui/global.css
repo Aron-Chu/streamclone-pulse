@@ -79,9 +79,19 @@ select {
 }
 
 .app-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  text-decoration: none;
+}
+
+.app-nav__mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.46rem;
 }
 
 .app-nav__links {

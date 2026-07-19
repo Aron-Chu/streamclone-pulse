@@ -74,13 +74,13 @@ const MORE_SPIKES: ReadonlyArray<{ time: string; kind: string; stats: string; em
   {
     time: '00:42:00',
     kind: '7TV emote spike',
-    stats: '52 chat - 45 emotes - score 37',
+    stats: '52 chat - 45 emotes',
     emotes: [findLandingEmote('widespeedlaugh')!, findLandingEmote('degloved')!, findLandingEmote('Clap')!],
   },
   {
     time: '00:14:00',
     kind: '7TV emote spike',
-    stats: '22 chat - 17 emotes - score 33',
+    stats: '22 chat - 17 emotes',
     emotes: [findLandingEmote('widereacting')!, findLandingEmote('PepePls')!],
   },
 ]
@@ -376,10 +376,6 @@ export function ExtensionDemoCard({
               <div className="sl-mrhero__top">
                 <span className="sl-mrhero__badge">Top moment</span>
                 <span className="sl-mrhero__time">00:18:42</span>
-                <span className="sl-mrhero__score">
-                  <b>61</b>
-                  <small>score</small>
-                </span>
               </div>
               <div className="sl-mrhero__reason">Chat spike</div>
               <div className="sl-mrhero__metrics">

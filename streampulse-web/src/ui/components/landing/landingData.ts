@@ -129,7 +129,6 @@ export interface PreviewMoment {
   time: string
   summary: string
   emote?: string
-  score: number
 }
 
 export interface PreviewModel {
@@ -152,9 +151,9 @@ const FALLBACK_PREVIEW: PreviewModel = {
     4, 5, 6, 5, 7, 8, 6, 9, 12, 10, 14, 18, 15, 22, 28, 24, 19, 16, 13, 17, 21, 26, 31, 27, 20, 15, 11, 9,
   ]),
   moments: [
-    { time: '1:42:08', summary: 'Chat erupts — fall clip', emote: 'OMEGALUL', score: 98 },
-    { time: '1:18:51', summary: 'Donation read reaction', emote: 'Pog', score: 84 },
-    { time: '0:54:30', summary: 'Rage moment spike', emote: 'KEKW', score: 71 },
+    { time: '1:42:08', summary: 'Chat erupts — fall clip', emote: 'OMEGALUL' },
+    { time: '1:18:51', summary: 'Donation read reaction', emote: 'Pog' },
+    { time: '0:54:30', summary: 'Rage moment spike', emote: 'KEKW' },
   ],
 }
 
@@ -180,11 +179,10 @@ export function buildPreview(hub: PublicHub | null): PreviewModel {
   const moments = (hub?.moments ?? [])
     .filter((m) => m.kind === 'chat_spike' || m.kind === 'emote_spike')
     .slice(0, 3)
-    .map((m, index) => ({
+    .map((m) => ({
       time: shortAgo(m.at),
       summary: m.label,
       emote: m.detail,
-      score: Math.max(40, Math.min(99, Math.round(m.magnitude ?? 90 - index * 12))),
     }))
 
   const name = nameOf(top.login, top.displayName)
@@ -227,9 +225,9 @@ const FALLBACK_EXT: ExtModel = {
   ],
   wavePath: buildWavePath([6, 8, 7, 11, 16, 13, 22, 28, 21, 17, 25, 31, 24, 18, 14, 19], 600, 96),
   reacted: [
-    { time: '1:42:08', summary: 'Fall clip', emote: 'OMEGALUL', score: 98 },
-    { time: '1:18:51', summary: 'Donation read', emote: 'Pog', score: 84 },
-    { time: '0:54:30', summary: 'Rage spike', emote: 'KEKW', score: 71 },
+    { time: '1:42:08', summary: 'Fall clip', emote: 'OMEGALUL' },
+    { time: '1:18:51', summary: 'Donation read', emote: 'Pog' },
+    { time: '0:54:30', summary: 'Rage spike', emote: 'KEKW' },
   ],
 }
 
@@ -263,11 +261,10 @@ export function buildExtModel(hub: PublicHub | null): ExtModel {
   const reacted = (hub?.moments ?? [])
     .filter((m) => m.kind === 'chat_spike' || m.kind === 'emote_spike')
     .slice(0, 3)
-    .map((m, index) => ({
+    .map((m) => ({
       time: shortAgo(m.at),
       summary: m.label,
       emote: m.detail,
-      score: Math.max(40, Math.min(99, Math.round(m.magnitude ?? 90 - index * 12))),
     }))
 
   const coverage = hub?.coverage
@@ -290,7 +287,6 @@ export interface LiveSignalMoment {
   i: number
   time: string
   kind: string
-  score: number
   emoteImage: string
   count: number
   top?: boolean
@@ -311,7 +307,6 @@ export interface LiveSignalChannel {
 
 export interface LiveSignalFeaturedMoment {
   time: string
-  score: number
   kind: string
   chatPerMin: number
   emotesPerMin: number
@@ -379,12 +374,10 @@ function buildLiveSignalMoment(
 ): LiveSignalMoment {
   const chatVal = chat[index] ?? 0
   const emoteVal = emotes[index] ?? 0
-  const score = Math.min(99, Math.max(12, Math.round((chatVal + emoteVal) / 40)))
   return {
     i: index,
     time: formatAxisTime(points[index]?.t ?? Date.now()),
     kind: emoteVal > chatVal * 0.85 ? 'Emote spike' : 'Chat spike',
-    score,
     emoteImage,
     count: Math.max(chatVal, emoteVal),
     top,
@@ -457,7 +450,6 @@ export function buildLiveSignalModel(hub: PublicHub | null): LiveSignalModel | n
     axisMid: formatAxisTime(points[Math.floor(min / 2)]?.t ?? 0),
     featuredMoment: {
       time: featured?.time ?? formatAxisTime(points[loudestIndex]?.t ?? Date.now()),
-      score: featured?.score ?? 37,
       kind: featured?.kind ?? 'Chat spike',
       chatPerMin: chat[loudestIndex] ?? latestChat,
       emotesPerMin: emotes[loudestIndex] ?? latestEmotes,

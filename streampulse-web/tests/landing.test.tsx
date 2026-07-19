@@ -55,9 +55,10 @@ function renderLanding() {
 
 describe('landing page', () => {
   it('renders all major sections', async () => {
-    renderLanding()
+    const { container } = renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
+    expect(container.querySelectorAll('[data-brand-mark="peak"]')).toHaveLength(2)
     expect(screen.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /^roadmap$/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /how it works/i })).toBeTruthy()

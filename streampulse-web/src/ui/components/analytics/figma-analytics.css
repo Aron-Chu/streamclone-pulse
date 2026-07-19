@@ -100,21 +100,10 @@
 }
 
 .analytics-topnav__mark {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
 }
-
-.analytics-topnav__mark span {
-  width: 3px;
-  border-radius: 2px;
-  background: var(--fma-accent-text);
-}
-
-.analytics-topnav__mark span:nth-child(1) { height: 9px; }
-.analytics-topnav__mark span:nth-child(2) { height: 17px; background: var(--fma-cyan); }
-.analytics-topnav__mark span:nth-child(3) { height: 12px; }
 
 .analytics-topnav__brand-copy {
   display: flex;

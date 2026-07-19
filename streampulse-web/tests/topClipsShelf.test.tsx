@@ -35,9 +35,33 @@ describe('TopClipsShelf', () => {
     expect(screen.getByRole('heading', { name: 'Top clips' })).toBeTruthy()
     const play = screen.getByRole('link', { name: /Verified peak/i })
     expect(play.getAttribute('href')).toBe(clip.playbackUrl)
+    expect(play.getAttribute('rel')).toMatch(/noopener/)
     expect(screen.getByRole('link', { name: 'Analytics' }).getAttribute('href')).toBe(
       '/analytics/xqc',
     )
     fireEvent.click(play)
+  })
+
+  it('omits invalid secondary hrefs rather than rewriting them', () => {
+    const hostile: HubPublicClip = {
+      ...clip,
+      analyticsHref: undefined,
+      vodHref: undefined,
+    }
+    render(
+      <AnalyticsThemeProvider>
+        <TopClipsShelf
+          clips={[
+            {
+              ...hostile,
+              id: 'pub-2',
+              // Component trusts contract sanitization; invalid values must already be omitted.
+            },
+          ]}
+        />
+      </AnalyticsThemeProvider>,
+    )
+    expect(screen.queryByRole('link', { name: 'Analytics' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'VOD' })).toBeNull()
   })
 })
