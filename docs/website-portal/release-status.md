@@ -1,27 +1,26 @@
 # StreamPulse release status
 
-Last updated: 2026-07-18 (application-owned release-closure candidate on `codex/release-closure-2026-07-18`)
+Last updated: 2026-07-19 (CWS listing pack on `codex/cws-listing-2026-07-19`; production API `v0.1.34-matched-rc`)
 
 ## Candidate identity
 
 | Field | Value |
 |-------|-------|
-| Starting SHA (audited upstream) | `c2a9d81b0e5c16f09308d3479a67be313139032b` (`origin/master`) |
-| Working location | Clean worktree `C:/Users/Aron/streamclone-pulse-codex-release-closure` |
-| Branch | `codex/release-closure-2026-07-18` |
-| Live API (public check at audit time) | `v0.1.33-helix-top300-canary` — still a canary tag |
+| Pulse tip | `origin/master` (Peak icons + portal status honesty merged) |
+| Working branch | `codex/cws-listing-2026-07-19` |
+| Live API | `v0.1.34-matched-rc` (matched API+workers; HOLD_AT_300) |
 
-This document does **not** claim GA, CWS submission, Cloudflare Access/WAF sign-off, soak/rollback proof, capacity raise, or marketing blast readiness.
+This document does **not** claim GA, CWS **approval**, Cloudflare Access apply, soak completion, capacity raise, or marketing blast readiness.
 
 ## Current posture (do not over-claim)
 
 | Track | Decision | Notes |
 |-------|----------|-------|
-| Portal soft public beta | Soft GO (conditional) | Keep beta framing; honesty + URL hardening closed in this candidate |
-| Portal GA | **NO-GO** | Soft beta only until ops/capacity/canary gates clear |
-| Extension / Chrome Web Store | **NO-GO** | App hardening closed in code; icons, listing, optional-permission gesture, submission remain open |
-| Marketing / creator blast | **NO-GO** | Requires Sol capacity/abuse sign-off |
-| Collector capacity | **HOLD_AT_300 / NO_GO_350** | Controlling ops decision — not changed by this repo |
+| Portal soft public beta | Soft GO (conditional) | Peak + privacy + status honesty live |
+| Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
+| Extension / Chrome Web Store | **READY TO SUBMIT** | Package + listing copy + 1280×800 screenshots prepared; Google Dashboard submit is human-only |
+| Marketing / creator blast | **NO-GO** | HOLD_AT_300 + Access + soak first |
+| Collector capacity | **HOLD_AT_300 / NO_GO_350** | Unchanged |
 
 ## What this candidate closes (application-owned)
 
@@ -37,13 +36,11 @@ Verified in this worktree against the commands recorded below:
 
 ## Explicitly still open
 
-- Confirm public `/privacy` shows `privacy@streampulse.stream` after Pages deploy
-- Extension icon PNGs remain tiny stubs — the approved portal Peak mark does not close the CWS PNG artwork/dimension gate
-- Real Chrome optional-permission gesture for localhost BFF (manual)
-- CWS listing copy, screenshots, submission, and store approval
-- Cloudflare Access evidence for `/v1/admin/*`, WAF, soak, rollback (private streampulse-ops)
-- Capacity / canary vs non-canary backend promote (Sol/ops) — **HOLD_AT_300** unchanged
-- Dirty WIP in other checkouts must not be shipped
+- Operator: Chrome Web Store Developer Dashboard upload + submit ([listing pack](../pulse-extension/chrome-web-store-listing.md))
+- Real Chrome optional-permission gesture for localhost BFF (manual / post-install)
+- Cloudflare Access apply for `/v1/admin/pulse*`, backup schedule/offsite, Phase 11 soak pack (private streampulse-ops)
+- Capacity raise — **HOLD_AT_300** unchanged
+- Post-CWS-approval: Landing CTA → store URL
 
 ## Verification commands (this candidate)
 

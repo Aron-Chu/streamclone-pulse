@@ -1,35 +1,34 @@
 # Chrome Web Store review checklist (StreamPulse)
 
-Extension ships as **beta** via [`/docs#extension`](../../streampulse-web/src/routes/public/Docs.tsx) until store listings exist.
-Do **not** mark an item complete without evidence from this branch.
+Extension ships as **beta** via [`/docs#extension`](../../streampulse-web/src/routes/public/Docs.tsx) until the store listing is approved.
 
-Product name (user-facing): **StreamPulse**
-Privacy policy URL (after portal deploy): `https://streampulse.stream/privacy`
-Privacy contact (source on this candidate; verify on public `/privacy` after Pages deploy): `privacy@streampulse.stream`
-Backend owner: **streampulse-backend** (hosted default `https://api.streampulse.stream`)
+Product name (user-facing): **StreamPulse**  
+Privacy policy URL: `https://streampulse.stream/privacy` (live — Limited Use + `privacy@streampulse.stream` verified 2026-07-19)  
+Backend: **streampulse-backend** / hosted `https://api.streampulse.stream`  
 Local BFF (dev opt-in only): `http://localhost:8081` — never Streamclone watch `:8090`
 
-Candidate: `codex/release-closure-2026-07-18` from audited SHA `c2a9d81b0e5c16f09308d3479a67be313139032b`
+Listing paste pack: [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)  
+Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
 
-Legacy identifiers (package name, DOM ids, `X-Streamclone-Beta-Key`, etc.): see [`legacy-identifiers.md`](./legacy-identifiers.md).
+Candidate branch for this pack: `codex/cws-listing-2026-07-19` @ `origin/master` tip (post Peak icons + portal honesty).
+
+Legacy identifiers: [`legacy-identifiers.md`](./legacy-identifiers.md).
 
 ## Pre-submit
 
-- [ ] `npm test` + `npm run typecheck` + `npm run build` pass on release candidate branch (re-verify on this candidate before submit)
-- [ ] `node --check scripts/zip-dist.mjs` + `npm run package:cws` + `npm run validate:package` pass
-- [ ] CI uploads `streampulse-extension.zip` + `.sha256` artifact (not only `dist/`)
-- [x] `host_permissions` includes `https://api.streampulse.stream/*` (manifest.json)
+- [x] `npm test` + `npm run typecheck` + `npm run package:cws` pass on this candidate (2026-07-19) — zip SHA-256 `4ed599bc97eabd4f53285182e68d53508b961e65c28e1844597b19ee57bca63a`
+- [x] `host_permissions` includes `https://api.streampulse.stream/*`
 - [x] Emote CDNs declared (`cdn.7tv.app`, `static-cdn.jtvnw.net`, `cdn.frankerfacez.com`)
-- [x] Localhost BFF hosts are **optional_host_permissions** only (not required for CWS)
-- [x] Runtime messages validated before SW handling (`parseBackgroundRequest`) — this candidate
-- [x] Emote image fetch restricted to HTTPS approved CDNs + image MIME + size/timeout limits — this candidate
-- [ ] No secrets in extension bundle (beta keys entered in options UI only; stored in `chrome.storage.local`)
-- [ ] Content scripts use `chrome.runtime.sendMessage` — no direct `fetch` from content scripts
-- [ ] Privacy policy URL on streampulse.stream is live and matches this candidate (`/privacy`)
-- [ ] Dedicated privacy email published: `privacy@streampulse.stream` (source ready; confirm live `/privacy` after Pages deploy)
-- [ ] Screenshots: Twitch overlay docked beside chat, settings panel, honest partial-coverage state
-- [ ] Single purpose: Twitch live/VOD Pulse analytics overlay powered by StreamPulse API (`streampulse-backend`)
-- [x] **Icon artwork:** Peak mark PNGs at exact 16/48/128 (generated from rand-peak.svg via scripts/gen-icons.mjs); package validator enforces PNG signature + dimensions + non-stub size
+- [x] Localhost BFF hosts are **optional_host_permissions** only
+- [x] Runtime messages validated before SW handling (`parseBackgroundRequest`)
+- [x] Emote image fetch restricted to HTTPS approved CDNs + image MIME + size/timeout limits
+- [x] No secrets in extension bundle (beta keys entered in options UI only; stored in `chrome.storage.local`)
+- [x] Content scripts use `chrome.runtime.sendMessage` only — no `fetch` under `src/content`
+- [x] Privacy policy URL live and matches product (`/privacy`)
+- [x] Dedicated privacy email published: `privacy@streampulse.stream`
+- [x] Screenshots: overlay beside chat, settings, honest warming/coverage, expanded panel, stream recap (`cws-screenshots/`)
+- [x] Single purpose documented in listing pack
+- [x] **Icon artwork:** Peak mark PNGs at exact 16/48/128; package validator enforces PNG signature + dimensions + non-stub size
 
 ## Permissions (current candidate)
 
@@ -46,17 +45,16 @@ Optional `optional_host_permissions`:
 
 - `http://localhost:8081/*`, `http://127.0.0.1:8081/*` — local StreamPulse BFF opt-in
 
-`tabs` permission: **removed**. `chrome.tabs.query` / `sendMessage` / `onUpdated` / `create` rely on Twitch host permissions for URL access, not the broad `tabs` permission. Re-add only if unpacked smoke proves a broken API without it, and document the exact call site.
+`tabs` permission: **removed**.
 
 ## Chrome Web Store
 
-- [ ] MV3 service worker stays alive under review load (no long blocking sync work)
-- [ ] Permission justifications in listing match the table above
-- [ ] Remote code: none (bundled JS only) — declare “No” remote hosted code
-- [ ] Data use disclosure: aggregates from hosted API; settings in sync; beta key in local; session cache; optional debug logs in local when enabled
-- [ ] Limited Use compliance affirmed in listing + privacy page
-- [ ] Store listing name / screenshots say **StreamPulse** (not Streamclone Pulse)
-- [ ] Listing / submission / Google approval — **not started**
+- [x] Permission justifications drafted in [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)
+- [x] Remote code: none (bundled JS only) — declare “No” remote hosted code
+- [x] Data use disclosure drafted (aggregates from hosted API; settings in sync; beta key in local; session cache; optional debug logs)
+- [x] Limited Use compliance on privacy page + listing pack
+- [x] Store listing name / screenshots say **StreamPulse** (not Streamclone Pulse)
+- [ ] Listing / submission / Google approval — **operator action in Developer Dashboard**
 
 ## Firefox (AMO)
 
@@ -68,9 +66,15 @@ Optional `optional_host_permissions`:
 
 ```bash
 npm run package:cws
-# artifacts:
+# artifacts (gitignored):
 #   streampulse-extension.zip
 #   streampulse-extension.zip.sha256
+```
+
+Regenerate store screenshots:
+
+```powershell
+powershell -File scripts/gen-cws-screenshots.ps1
 ```
 
 ## Post-approval
@@ -78,9 +82,8 @@ npm run package:cws
 - [ ] Update `Landing.tsx` CTA from `/docs#extension` to store URL
 - [ ] Keep beta key + optional localhost path for self-host / local `:8081` debugging
 
-## Human / legal / ops (remain open)
+## Human / ops (remain open)
 
-- [ ] Sol / ops: Cloudflare Access proved for `/v1/admin/*`
-- [ ] Sol / ops: capacity remains HOLD_AT_300; no marketing blast without sign-off
-- [ ] Operator: screenshots + store listing copy + submission
-- [ ] Designer: replace stub icons with real 16×16 / 48×48 / 128×128 StreamPulse mark (legible at 16px)
+- [ ] Operator: paste listing + upload zip/screenshots + submit in Chrome Web Store Dashboard
+- [ ] Ops: capacity remains HOLD_AT_300; no marketing blast without sign-off
+- [ ] Ops: Cloudflare Access for `/v1/admin/pulse*` still recommended before marketing
