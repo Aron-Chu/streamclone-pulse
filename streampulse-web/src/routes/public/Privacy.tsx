@@ -146,14 +146,9 @@ export default function Privacy() {
 
         <h2>Contact</h2>
         <p data-testid="privacy-contact">
-          For privacy or support questions, open an issue at{' '}
-          <a
-            href="https://github.com/Aron-Chu/streamclone-pulse/issues"
-            target="_blank"
-            rel="noreferrer"
-            data-testid="privacy-contact-link"
-          >
-            github.com/Aron-Chu/streamclone-pulse/issues
+          For privacy or support questions, email{' '}
+          <a href="mailto:privacy@streampulse.stream" data-testid="privacy-contact-link">
+            privacy@streampulse.stream
           </a>
           .
         </p>

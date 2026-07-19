@@ -1,74 +1,82 @@
 # StreamPulse release status
 
-Last updated: 2026-07-16 (public-release gap closure candidate — application/CI only)
+Last updated: 2026-07-18 (application-owned release-closure candidate on `codex/release-closure-2026-07-18`)
+
+## Candidate identity
+
+| Field | Value |
+|-------|-------|
+| Starting SHA (audited upstream) | `c2a9d81b0e5c16f09308d3479a67be313139032b` (`origin/master`) |
+| Working location | Clean worktree `C:/Users/Aron/streamclone-pulse-codex-release-closure` |
+| Branch | `codex/release-closure-2026-07-18` |
+| Live API (public check at audit time) | `v0.1.33-helix-top300-canary` — still a canary tag |
+
+This document does **not** claim GA, CWS submission, Cloudflare Access/WAF sign-off, soak/rollback proof, capacity raise, or marketing blast readiness.
 
 ## Current posture (do not over-claim)
 
 | Track | Decision | Notes |
 |-------|----------|-------|
-| Portal soft public beta | Soft GO (conditional) | Keep beta framing; `/privacy` lands in this candidate |
-| Extension / Chrome Web Store | **NO-GO** | Packaging + identity gaps closing in code; dedicated privacy email, screenshots, Sol/ops, unpacked Chrome smoke still open |
+| Portal soft public beta | Soft GO (conditional) | Keep beta framing; honesty + URL hardening closed in this candidate |
+| Portal GA | **NO-GO** | Soft beta only until ops/capacity/canary gates clear |
+| Extension / Chrome Web Store | **NO-GO** | App hardening closed in code; icons, listing, optional-permission gesture, submission remain open |
 | Marketing / creator blast | **NO-GO** | Requires Sol capacity/abuse sign-off |
 | Collector capacity | **HOLD_AT_300 / NO_GO_350** | Controlling ops decision — not changed by this repo |
 
-Live health at audit time was still a canary tag (`v0.1.33-helix-top300-canary`). This document does **not** claim GA, 350 readiness, CWS submission, or a non-canary production promote.
+## What this candidate closes (application-owned)
 
-## What this candidate closes (code)
+Verified in this worktree against the commands recorded below:
 
-- User-facing extension name **StreamPulse**
-- Real `/privacy` route + footer/nav link + route tests (Twitch session wording; GitHub Issues interim contact)
-- Filtered `streampulse-extension.zip` from the packable dist file set (Info-ZIP / tar / Windows .NET ZipArchive) + fail-closed entry validation + checksum check
-- `tabs` removed; localhost moved to optional host permissions
-- Portal CI: tests + `check:analytics-overlap` + `build:ci` (same shape as `origin/master`). Full portal `npm run typecheck` remains a **local** gate — CI `streampulse-backend@master` `analytics-console` currently imports SessionSignalTape / stream-route helpers that are not present on that ref, so remote typecheck fails outside this repo
-- Public `/admin` is a 404, not an operator console placeholder
-
-## Origin/master baseline repairs retained
-
-These are **not** new product features for this release-gap track; they are kept because `origin/master` already imports or requires them:
-
-| Change | Why retained |
-|--------|----------------|
-| `extendSeriesToTrailingEdge` / `overviewBarWidth` in `chartRollupUtils.ts` | Required for typecheck/build — `PulseOverviewChart` already imports them on `origin/master` but exports were missing |
-| `getPulseDockPreference` / `setPulseDockPreference` in `storage.ts` | Required for typecheck/build — `PulseSettingsPanel` already imports them on `origin/master` but exports were missing |
-| Beta key sync→local migration + optional localhost host permission helpers | Required for CWS privacy/permission packaging |
-| Test mocks adding `chrome.runtime.id` / `permissions` / `storage.local` | Required so settings/prefetch tests match the optional-permission + local beta-key paths |
-| Dirty-tracking fixture `chartWindow: '15m'` | Stale-test fix — default is already `'full'`, so `'full'` was not a dirty change |
-| Adapter live-stats test uses offline/historical input | Avoids coupling to uncommitted local `pulse-core` trailing-minute WIP vs CI `streampulse-backend@master` |
-| `extensionGamesToChartGames` keeps named full-stream game | Stale-test alignment with linked `@streampulse/pulse-charts` `hasMeaningfulGameSegments` (named single segment is meaningful) |
-| Portal momentListDisplay / branding test string updates | Align fixtures/labels with StreamPulse naming and heatmap field shape already expected by code |
-
-**Not introduced as new product work in this track:** chart trailing-edge / bar-width helpers and PulseDock preference APIs are compile repairs for imports already present on `origin/master`.
-
-## Packaging notes
-
-- Lexical entry order is enforced.
-- Byte-identical ZIP bytes across OS/tools are **not** claimed (timestamps/extra fields may differ).
-- Artifacts: `streampulse-extension.zip`, `streampulse-extension.zip.sha256` (checksum file is gitignored).
+- Landing / hub honesty: no client-invented Pulse / moment scores from `magnitude`, chat+emote formulas, or demo intensity labeled as scoring truth
+- Portal route gate: `/setup` and `/login` deterministically redirect to `/analytics` (tests hardened for Navigate settlement)
+- Vitest upgraded to **3.2.7** (root + `streampulse-web`) for GHSA-5xrq-8626-4rwp
+- Public clip `analyticsHref` / `vodHref` sanitization (omit invalid; never rewrite)
+- Extension runtime message parsing + emote-image HTTPS/host/MIME/size/timeout hardening
+- Privacy contact source updated to `privacy@streampulse.stream` (public `/privacy` verification pending post-merge Pages deploy)
+- Canonical Peak branding on landing, analytics, shared public navigation, and favicon; desktop + 390px browser captures verified
 
 ## Explicitly still open
 
-- Dedicated privacy email (interim public contact on `/privacy` is https://github.com/Aron-Chu/streamclone-pulse/issues per product origin; note the product repo is private so anonymous visitors may see 404 — dedicated email remains a CWS blocker)
-- Unpacked Chrome smoke: automatable gates passed on this candidate (SW, StreamPulse name, no `tabs`, Options/popup, hosted API requests on Twitch, beta-key local storage, settings persistence). **Manual remaining:** localhost optional-permission prompt requires a real Options user gesture.
-- Cloudflare Access evidence for `/v1/admin/*` (Sol/ops)
-- Store screenshots + listing copy + human submission (draft under local `.artifacts/cws-listing/`, not committed)
-- Capacity / canary vs non-canary backend tag (Sol/ops)
-- Backend package consistency restored via streampulse-backend#22 (`3e81669`); CI checks out `streampulse-backend@master` (no temporary branch pin)
+- Confirm public `/privacy` shows `privacy@streampulse.stream` after Pages deploy
+- Extension icon PNGs remain tiny stubs — the approved portal Peak mark does not close the CWS PNG artwork/dimension gate
+- Real Chrome optional-permission gesture for localhost BFF (manual)
+- CWS listing copy, screenshots, submission, and store approval
+- Cloudflare Access evidence for `/v1/admin/*`, WAF, soak, rollback (private streampulse-ops)
+- Capacity / canary vs non-canary backend promote (Sol/ops) — **HOLD_AT_300** unchanged
 - Dirty WIP in other checkouts must not be shipped
-- Extension icon PNGs on this branch are still tiny stubs (human artwork replacement before CWS)
 
-## Packaging commands
+## Verification commands (this candidate)
+
+Extension / root:
 
 ```bash
+npm ci
 npm run typecheck
 npm test
 npm run build
 node --check scripts/zip-dist.mjs
 node --check scripts/validate-extension-package.mjs
-npm run zip
+npm run package:cws
 npm run validate:package
+npm audit --omit=dev
+npm audit
 ```
 
-## Hosted production checks (public)
+Portal (`streampulse-web/`):
+
+```bash
+cd streampulse-web
+npm ci
+npm run typecheck
+npm run check:analytics-overlap
+npx vitest run --config vitest.config.ts tests/routes.test.tsx tests/auth.test.tsx
+npm test
+npm run build
+npm audit --omit=dev
+npm audit
+```
+
+## Hosted production checks (public only)
 
 ```bash
 curl -fsS https://api.streampulse.stream/v1/extension/health

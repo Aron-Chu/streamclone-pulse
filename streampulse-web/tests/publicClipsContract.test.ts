@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   normalizeHubPublicClip,
   normalizeHubPublicClips,
+  sanitizeAnalyticsHref,
+  sanitizeTwitchVodHref,
 } from '../src/lib/publicClipsContract'
 
 const valid = {
@@ -63,5 +65,43 @@ describe('publicClipsContract', () => {
     })
     expect(clip?.topReaction?.name).toBe('KEKW')
     expect(clip?.topReaction?.provider).toBe('7tv')
+  })
+
+  it('accepts same-origin analytics paths and HTTPS Twitch VOD URLs', () => {
+    expect(
+      normalizeHubPublicClip({
+        ...valid,
+        analyticsHref: '/analytics/xqc/123',
+        vodHref: 'https://www.twitch.tv/videos/123456789',
+      }),
+    ).toMatchObject({
+      analyticsHref: '/analytics/xqc/123',
+      vodHref: 'https://www.twitch.tv/videos/123456789',
+    })
+    expect(
+      sanitizeAnalyticsHref('https://streampulse.stream/analytics/xqc'),
+    ).toBe('/analytics/xqc')
+  })
+
+  it('omits hostile analyticsHref / vodHref without rewriting destinations', () => {
+    const clip = normalizeHubPublicClip({
+      ...valid,
+      analyticsHref: 'javascript:alert(1)',
+      vodHref: 'data:text/html,hi',
+    })
+    expect(clip).not.toBeNull()
+    expect(clip?.analyticsHref).toBeUndefined()
+    expect(clip?.vodHref).toBeUndefined()
+
+    expect(sanitizeAnalyticsHref('//evil.example/analytics/xqc')).toBeUndefined()
+    expect(sanitizeAnalyticsHref('https://evil.example/analytics/xqc')).toBeUndefined()
+    expect(sanitizeAnalyticsHref('http://streampulse.stream/analytics/xqc')).toBeUndefined()
+    expect(sanitizeAnalyticsHref('https://streampulse.stream:444/analytics/xqc')).toBeUndefined()
+    expect(sanitizeAnalyticsHref('/dashboard/clips')).toBeUndefined()
+    expect(sanitizeTwitchVodHref('http://www.twitch.tv/videos/1')).toBeUndefined()
+    expect(sanitizeTwitchVodHref('https://evil.example/videos/1')).toBeUndefined()
+    expect(sanitizeTwitchVodHref('https://www.twitch.tv/videos/abc')).toBeUndefined()
+    expect(sanitizeTwitchVodHref('not a url')).toBeUndefined()
+    expect(sanitizeTwitchVodHref('//www.twitch.tv/videos/1')).toBeUndefined()
   })
 })

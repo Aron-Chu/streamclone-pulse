@@ -50,8 +50,8 @@ describe('privacy route', () => {
   it('exposes a real public support/contact link', async () => {
     renderPath('/privacy')
     const link = await screen.findByTestId('privacy-contact-link')
-    expect(link.getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/issues')
-    expect(screen.getByTestId('privacy-contact').textContent).toMatch(/privacy or support/i)
+    expect(link.getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
+    expect(screen.getByTestId('privacy-contact').textContent).toMatch(/privacy@streampulse\.stream/i)
   })
 
   it('exposes a Privacy link from the public layout used by /privacy', async () => {

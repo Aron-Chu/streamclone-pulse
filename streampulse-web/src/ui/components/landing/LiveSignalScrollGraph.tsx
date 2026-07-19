@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PublicHub } from '../../../lib/publicHub'
-import { buildLiveSignalModel, type LiveSignalModel } from './landingData'
+import { type LiveSignalModel } from './landingData'
 import { seventvImageUrl } from './landingEmotes'
 import { startScrollScene } from './scrollScene'
 import './LiveSignalScrollGraph.css'
@@ -29,7 +29,7 @@ import './LiveSignalScrollGraph.css'
  *                        left→right as the playhead sweeps (--wipe gates each bar).
  *   Beat 3  p 0.36–0.58  Emote velocity — total emotes/min line, then 7TV/min
  *                        dashed subset (--emo, --sv) with emote chips at spikes.
- *   Beat 4  p 0.58–0.78  Peak markers + score badges light up
+ *   Beat 4  p 0.58–0.78  Peak markers + emote chips light up
  *                        and the "Most reacted so far" card slides in (--moments).
  *   Beat 5  p 0.78–1.00  Every tracked channel — the panel eases back to reveal a
  *                        deck of tracked channels minute by minute (--channels).
@@ -130,9 +130,9 @@ const VIEW_MIN = Math.min(...VIEWERS)
 const VIEW_MAX = Math.max(...VIEWERS)
 
 const DEMO_MOMENTS: LiveSignalModel['moments'] = [
-  { i: 13, time: '00:51:00', kind: '7TV emote spike', score: 24, emoteImage: seventvImageUrl('01GB2ZJFBG000DTBJYANG8XYFP'), count: 28 },
-  { i: 31, time: '01:09:00', kind: 'Chat spike', score: 31, emoteImage: seventvImageUrl('01G98W833R0000BRQD106P0ZNT'), count: 41 },
-  { i: 42, time: '01:20:00', kind: 'Chat spike', score: 37, emoteImage: seventvImageUrl('01GAZ199Z8000FEWHS6AT5QZV0'), count: 56, top: true },
+  { i: 13, time: '00:51:00', kind: '7TV emote spike', emoteImage: seventvImageUrl('01GB2ZJFBG000DTBJYANG8XYFP'), count: 28 },
+  { i: 31, time: '01:09:00', kind: 'Chat spike', emoteImage: seventvImageUrl('01G98W833R0000BRQD106P0ZNT'), count: 41 },
+  { i: 42, time: '01:20:00', kind: 'Chat spike', emoteImage: seventvImageUrl('01GAZ199Z8000FEWHS6AT5QZV0'), count: 56, top: true },
 ]
 
 const DEMO_TOP_EMOTES: LiveSignalModel['topEmotes'] = [
@@ -172,7 +172,6 @@ function buildDemoLiveSignalModel(): LiveSignalModel {
     axisMid: '01:07:00',
     featuredMoment: {
       time: '01:20:00',
-      score: 37,
       kind: 'Chat spike',
       chatPerMin: 56,
       emotesPerMin: 19,
@@ -266,8 +265,10 @@ function prefersReducedMotion(): boolean {
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
 
-export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
-  const model = useMemo(() => buildLiveSignalModel(hub ?? null) ?? buildDemoLiveSignalModel(), [hub])
+export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
+  // Landing replay is always the deterministic illustrative demo — never mix live
+  // hub aggregates into a surface labeled "not live backend data."
+  const model = useMemo(() => buildDemoLiveSignalModel(), [])
   const geo = useMemo(() => computeGeometry(model), [model])
   const { kpiViewers, kpiChat, kpiEmotes, kpiSeventv, kpiViewerDelta } = model
 
@@ -473,7 +474,7 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
                     ))}
                   </div>
 
-                  {/* Peak callouts — stacked chip + score so labels never overlap */}
+                  {/* Peak callouts — emote chip only (no client-invented Pulse scores) */}
                   <div className="lsg__peaks">
                     {model.moments.map((moment, idx) => (
                       <span
@@ -490,7 +491,6 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
                             <img src={moment.emoteImage} alt="" loading="lazy" decoding="async" />
                             <span>+{moment.count}</span>
                           </span>
-                          <span className="lsg__peak-score">{moment.score}</span>
                         </span>
                         <span className="lsg__peak-dot" />
                       </span>
@@ -553,10 +553,6 @@ export function LiveSignalScrollGraph({ hub }: { hub?: PublicHub | null }) {
                     <div className="lsg__moment-top">
                       <span className="lsg__moment-badge">Most reacted so far</span>
                       <span className="lsg__moment-time">{model.featuredMoment.time}</span>
-                    </div>
-                    <div className="lsg__moment-score">
-                      <b>{model.featuredMoment.score}</b>
-                      <small>moment score</small>
                     </div>
                     <div className="lsg__moment-reason">{model.featuredMoment.kind}</div>
                     <div className="lsg__moment-metrics">

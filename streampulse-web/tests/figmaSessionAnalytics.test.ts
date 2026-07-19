@@ -196,6 +196,8 @@ describe('resolveLivePulseMoments legacy hub.moments fallback', () => {
     expect(result.banner).toContain('Legacy hub moments fallback')
     expect(result.moments).toHaveLength(1)
     expect(result.moments[0]?.login).toBe('eliasn97')
+    // magnitude must never become a Pulse / reaction score
+    expect(result.moments[0]?.score).toBeUndefined()
   })
 })
 

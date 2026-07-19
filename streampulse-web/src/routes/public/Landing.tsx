@@ -13,6 +13,7 @@ import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScr
 import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
+import { BrandMark } from '../../ui/components/BrandMark'
 
 const CHROME_EXTENSION_URL = '/docs#extension'
 const EXTENSION_BETA_LABEL = 'Install extension (beta)'
@@ -22,6 +23,7 @@ function TopNav() {
     <header className="sl-header">
       <nav className="sl-nav" aria-label="StreamPulse">
         <Link to="/" className="sl-brand">
+          <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
         </Link>
         <div className="sl-menu">
@@ -158,7 +160,7 @@ function Footer() {
     <footer className="sl-footer">
       <div className="sl-container sl-foot">
         <Link to="/" className="sl-brand">
-          <span className="sl-logo">SP</span>
+          <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
         </Link>
         <div className="sl-foot__links">

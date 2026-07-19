@@ -176,17 +176,11 @@
   letter-spacing: -0.015em;
 }
 
-.sl-logo {
+.sl-brand__mark {
   width: 1.7rem;
   height: 1.7rem;
   border-radius: 0.46rem;
-  display: grid;
-  place-items: center;
-  color: hsl(var(--sc-primary-foreground));
-  background: linear-gradient(135deg, hsl(var(--sc-chart-5)), hsl(var(--sc-chart-2)));
   box-shadow: 0 0 28px -10px hsl(var(--sc-chart-5));
-  font-size: 0.72rem;
-  font-weight: 900;
 }
 
 .sl-menu {

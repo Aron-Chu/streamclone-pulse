@@ -1,47 +1,74 @@
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../src/routes/index'
 
 const publicPaths = ['/', '/docs', '/status', '/privacy'] as const
 
+function LocationProbe() {
+  const { pathname } = useLocation()
+  return <span data-testid="pathname">{pathname}</span>
+}
+
+function renderPath(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
+      <AppRoutes />
+    </MemoryRouter>,
+  )
+}
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  localStorage.clear()
+  sessionStorage.clear()
+})
+
 describe('route smoke', () => {
   for (const path of publicPaths) {
     it(`renders ${path}`, async () => {
-      render(
-        <MemoryRouter initialEntries={[path]}>
-          <AppRoutes />
-        </MemoryRouter>,
-      )
+      renderPath(path)
       expect(await screen.findByRole('main')).toBeTruthy()
+      expect(screen.getByTestId('pathname').textContent).toBe(path)
     })
   }
 
   it('redirects legacy /setup to analytics', async () => {
-    render(
-      <MemoryRouter initialEntries={['/setup']}>
-        <AppRoutes />
-      </MemoryRouter>,
+    renderPath('/setup')
+    // Navigate can resolve after the initial MemoryRouter entry; wait for settlement.
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('pathname').textContent).toBe('/analytics')
+      },
+      { timeout: 10_000 },
     )
-    expect(await screen.findByRole('main', { name: /streampulse analytics/i })).toBeTruthy()
+    expect(
+      await screen.findByRole('main', { name: /streampulse analytics/i }, { timeout: 10_000 }),
+    ).toBeTruthy()
   })
 
   it('redirects the legacy /login path to the public analytics hub', async () => {
-    render(
-      <MemoryRouter initialEntries={['/login']}>
-        <AppRoutes />
-      </MemoryRouter>,
+    renderPath('/login')
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('pathname').textContent).toBe('/analytics')
+      },
+      { timeout: 10_000 },
     )
     // No beta-key login screen anymore — /login lands on the public analytics hub.
-    expect(await screen.findByRole('main')).toBeTruthy()
+    expect(await screen.findByRole('main', { name: /streampulse analytics/i }, { timeout: 10_000 })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: /connect streampulse/i })).toBeNull()
   })
 
   it('sends gated /dashboard to public analytics when there is no beta key', async () => {
-    render(
-      <MemoryRouter initialEntries={['/dashboard']}>
-        <AppRoutes />
-      </MemoryRouter>,
+    renderPath('/dashboard')
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('pathname').textContent).toBe('/analytics')
+      },
+      { timeout: 10_000 },
     )
     expect(await screen.findByRole('main')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: /connect streampulse/i })).toBeNull()
@@ -53,11 +80,7 @@ describe('route smoke', () => {
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ items: [] }), { status: 200 })),
     )
-    render(
-      <MemoryRouter initialEntries={['/dashboard/clips']}>
-        <AppRoutes />
-      </MemoryRouter>,
-    )
+    renderPath('/dashboard/clips')
     expect(await screen.findByRole('heading', { name: /streamPulse clips/i })).toBeTruthy()
   })
 })

@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router-dom'
+import { BrandMark } from '../BrandMark'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -30,11 +31,7 @@ export function AnalyticsTopNav({
         Skip to analytics content
       </a>
       <Link to="/analytics" className="analytics-topnav__brand" aria-label="StreamPulse analytics home">
-        <span className="analytics-topnav__mark" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
+        <BrandMark className="analytics-topnav__mark" size={30} />
         <span className="analytics-topnav__brand-copy">
           <strong>Stream<span>Pulse</span></strong>
           <small>Analytics Hub</small>

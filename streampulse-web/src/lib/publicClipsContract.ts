@@ -35,12 +35,83 @@ const REJECT_PRIVATE_KEYS = [
   'internalPath',
 ] as const
 
+const TWITCH_VOD_HOSTS = new Set(['www.twitch.tv', 'twitch.tv', 'm.twitch.tv'])
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
     return url.protocol === 'http:' || url.protocol === 'https:'
   } catch {
     return false
+  }
+}
+
+function hasCredentials(url: URL): boolean {
+  return Boolean(url.username || url.password)
+}
+
+/**
+ * Same-origin StreamPulse analytics path only.
+ * Accepts absolute https://streampulse.stream/analytics/... or relative /analytics/...
+ * Rejects protocol-relative, javascript:, foreign hosts, and non-analytics paths.
+ * Returns null when invalid — callers must omit the link (never rewrite destinations).
+ */
+export function sanitizeAnalyticsHref(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const raw = value.trim()
+  if (!raw) return undefined
+
+  // Protocol-relative and non-path schemes are never safe to render as analytics links.
+  if (
+    raw.startsWith('//') ||
+    (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith('https://') && !raw.startsWith('/'))
+  ) {
+    return undefined
+  }
+
+  try {
+    if (raw.startsWith('/')) {
+      if (!raw.startsWith('/analytics/') && raw !== '/analytics') return undefined
+      if (raw.includes('\\') || raw.includes('\0')) return undefined
+      return raw
+    }
+
+    const url = new URL(raw)
+    // Absolute analytics links must be HTTPS on the canonical host with no explicit port.
+    if (url.protocol !== 'https:' || url.port) return undefined
+    if (hasCredentials(url)) return undefined
+    const host = url.hostname.toLowerCase()
+    if (host !== 'streampulse.stream' && host !== 'www.streampulse.stream') return undefined
+    if (!url.pathname.startsWith('/analytics/') && url.pathname !== '/analytics') return undefined
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * HTTPS Twitch VOD destination only.
+ * Returns null when invalid — callers must omit the link (never rewrite destinations).
+ */
+export function sanitizeTwitchVodHref(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const raw = value.trim()
+  if (!raw || raw.startsWith('//')) return undefined
+
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:') return undefined
+    if (hasCredentials(url)) return undefined
+    if (!TWITCH_VOD_HOSTS.has(url.hostname.toLowerCase())) return undefined
+    // /videos/<id> or /<login>/video/<id> or /<login>/v/<id>
+    const path = url.pathname
+    const vodPath =
+      /^\/videos\/\d+\/?$/i.test(path) ||
+      /^\/[a-z0-9_]{2,25}\/(video|v)\/\d+\/?$/i.test(path)
+    if (!vodPath) return undefined
+    return url.toString()
+  } catch {
+    return undefined
   }
 }
 
@@ -76,6 +147,10 @@ export function normalizeHubPublicClip(raw: unknown): HubPublicClip | null {
   } else if (reactionRaw != null) {
     return null
   }
+
+  const analyticsHref = sanitizeAnalyticsHref(row.analyticsHref)
+  const vodHref = sanitizeTwitchVodHref(row.vodHref)
+
   return {
     id,
     login,
@@ -86,8 +161,8 @@ export function normalizeHubPublicClip(raw: unknown): HubPublicClip | null {
     durationSeconds,
     publishedAt,
     topReaction,
-    analyticsHref: typeof row.analyticsHref === 'string' ? row.analyticsHref : undefined,
-    vodHref: typeof row.vodHref === 'string' ? row.vodHref : undefined,
+    ...(analyticsHref ? { analyticsHref } : {}),
+    ...(vodHref ? { vodHref } : {}),
   }
 }
 

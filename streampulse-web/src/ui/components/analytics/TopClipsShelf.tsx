@@ -68,7 +68,12 @@ export function TopClipsShelf({ clips, loading = false }: TopClipsShelfProps) {
                   Analytics
                 </a>
               ) : clip.vodHref ? (
-                <a className="top-clips-shelf__secondary" href={clip.vodHref}>
+                <a
+                  className="top-clips-shelf__secondary"
+                  href={clip.vodHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   VOD
                 </a>
               ) : null}
