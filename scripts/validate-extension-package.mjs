@@ -10,6 +10,7 @@ import {
   listPackableDistFiles,
   listZipEntries,
   validateChecksumAgainstZip,
+  validateIconPngFiles,
 } from './extension-package-lib.mjs'
 
 const root = process.cwd()
@@ -145,7 +146,23 @@ function validateManifest(manifest) {
   for (const [size, iconPath] of Object.entries(manifest.icons ?? {})) {
     if (!existsSync(join(dist, iconPath))) fail(`icon ${size} missing: ${iconPath}`)
   }
-  ok('REQUIRED: icons present')
+  const iconCheck = validateIconPngFiles(dist)
+  if (!iconCheck.ok) {
+    for (const error of iconCheck.errors) fail(`REQUIRED: icon PNG gate: ${error}`)
+  } else {
+    ok('REQUIRED: icons present with PNG signature + exact 16/48/128 dimensions')
+  }
+
+  const expectedIconMap = {
+    '16': 'icons/icon16.png',
+    '48': 'icons/icon48.png',
+    '128': 'icons/icon128.png',
+  }
+  for (const [size, path] of Object.entries(expectedIconMap)) {
+    if (manifest.icons?.[size] !== path) {
+      fail(`manifest.icons[${size}] must be ${path}, got ${JSON.stringify(manifest.icons?.[size])}`)
+    }
+  }
 }
 
 function validateDistContents() {

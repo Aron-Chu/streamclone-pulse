@@ -63,6 +63,64 @@ export function sha256File(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex')
 }
 
+/** PNG signature + IHDR width/height. Throws on invalid / truncated buffers. */
+export function readPngDimensions(buf) {
+  const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf)
+  if (bytes.length < 24) {
+    throw new Error(`PNG too small (${bytes.length} bytes)`)
+  }
+  if (bytes.readUInt32BE(0) !== 0x89504e47 || bytes.readUInt32BE(4) !== 0x0d0a1a0a) {
+    throw new Error('missing PNG signature')
+  }
+  if (bytes.toString('ascii', 12, 16) !== 'IHDR') {
+    throw new Error('missing IHDR chunk')
+  }
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+    bytes: bytes.length,
+  }
+}
+
+/** Expected CWS icon paths → exact pixel size. */
+export const REQUIRED_ICON_SPECS = Object.freeze({
+  'icons/icon16.png': 16,
+  'icons/icon48.png': 48,
+  'icons/icon128.png': 128,
+})
+
+/**
+ * Validate icon PNGs under a root (dist/ or public/).
+ * Rejects missing files, wrong dimensions, and tiny stub payloads.
+ */
+export function validateIconPngFiles(rootDir, specs = REQUIRED_ICON_SPECS, minBytes = 200) {
+  const errors = []
+  for (const [rel, size] of Object.entries(specs)) {
+    const full = join(rootDir, rel)
+    if (!existsSync(full)) {
+      errors.push(`missing icon: ${rel}`)
+      continue
+    }
+    try {
+      const buf = readFileSync(full)
+      const dim = readPngDimensions(buf)
+      if (dim.width !== size || dim.height !== size) {
+        errors.push(`${rel} is ${dim.width}x${dim.height}, expected ${size}x${size}`)
+      }
+      if (dim.bytes < minBytes) {
+        errors.push(`${rel} is only ${dim.bytes} bytes (stub threshold ${minBytes})`)
+      }
+      // All three stubs historically shared an identical 16x16 buffer — catch that class.
+      if (size !== 16 && dim.width === 16 && dim.height === 16) {
+        errors.push(`${rel} is a stretched/duplicated 16x16 stub`)
+      }
+    } catch (err) {
+      errors.push(`${rel}: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+  return { ok: errors.length === 0, errors }
+}
+
 /**
  * List ZIP entry paths. Fail closed if entries cannot be inspected.
  * @returns {{ entries: string[], method: string }}

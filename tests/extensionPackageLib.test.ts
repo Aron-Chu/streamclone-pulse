@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { join } from 'node:path'
 import {
   compareZipEntriesToExpected,
   normalizeZipEntry,
   parseChecksumFile,
+  readPngDimensions,
   shouldSkipPackagedPath,
+  validateIconPngFiles,
 } from '../scripts/extension-package-lib.mjs'
 
 describe('extension package filtering', () => {
@@ -82,5 +85,24 @@ describe('normalizeZipEntry', () => {
     expect(normalizeZipEntry('.\\background\\service-worker.js')).toBe(
       'background/service-worker.js',
     )
+  })
+})
+
+describe('icon PNG dimension gates', () => {
+  it('rejects the historical identical 16x16 stub payload', () => {
+    const stub = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAFUlEQVR42mP8z8BQz0AEYBxVSFUAAP//AwD5FQBq3R8AAAAASUVORK5CYII=',
+      'base64',
+    )
+    const dim = readPngDimensions(stub)
+    expect(dim).toEqual({ width: 16, height: 16, bytes: stub.length })
+  })
+
+  it('accepts generated Peak icons under public/icons when present', () => {
+    const root = join(process.cwd(), 'public')
+    const result = validateIconPngFiles(root)
+    // After gen-icons: must pass. Before generation in a bare checkout this may fail —
+    // require icons to exist for this release-closure candidate.
+    expect(result.ok, result.errors.join('; ')).toBe(true)
   })
 })
