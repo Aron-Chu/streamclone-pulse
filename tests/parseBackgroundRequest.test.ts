@@ -51,4 +51,20 @@ describe('parseBackgroundRequest', () => {
       toOffsetSeconds: undefined,
     })
   })
+
+  it('normalizes optional LIST_BOOKMARKS login and rejects invalid logins', () => {
+    expect(parseBackgroundRequest({ type: 'LIST_BOOKMARKS' })).toEqual({
+      type: 'LIST_BOOKMARKS',
+      login: undefined,
+      streamId: undefined,
+      vodId: undefined,
+    })
+    expect(parseBackgroundRequest({ type: 'LIST_BOOKMARKS', login: 'XQC' })).toEqual({
+      type: 'LIST_BOOKMARKS',
+      login: 'xqc',
+      streamId: undefined,
+      vodId: undefined,
+    })
+    expect(parseBackgroundRequest({ type: 'LIST_BOOKMARKS', login: 'a' })).toBeNull()
+  })
 })

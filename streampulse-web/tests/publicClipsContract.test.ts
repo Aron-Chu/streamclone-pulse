@@ -95,6 +95,8 @@ describe('publicClipsContract', () => {
 
     expect(sanitizeAnalyticsHref('//evil.example/analytics/xqc')).toBeUndefined()
     expect(sanitizeAnalyticsHref('https://evil.example/analytics/xqc')).toBeUndefined()
+    expect(sanitizeAnalyticsHref('http://streampulse.stream/analytics/xqc')).toBeUndefined()
+    expect(sanitizeAnalyticsHref('https://streampulse.stream:444/analytics/xqc')).toBeUndefined()
     expect(sanitizeAnalyticsHref('/dashboard/clips')).toBeUndefined()
     expect(sanitizeTwitchVodHref('http://www.twitch.tv/videos/1')).toBeUndefined()
     expect(sanitizeTwitchVodHref('https://evil.example/videos/1')).toBeUndefined()

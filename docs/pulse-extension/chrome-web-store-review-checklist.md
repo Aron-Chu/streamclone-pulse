@@ -5,7 +5,7 @@ Do **not** mark an item complete without evidence from this branch.
 
 Product name (user-facing): **StreamPulse**
 Privacy policy URL (after portal deploy): `https://streampulse.stream/privacy`
-Privacy contact (deployed + source-aligned on this candidate): `privacy@streampulse.stream`
+Privacy contact (source on this candidate; verify on public `/privacy` after Pages deploy): `privacy@streampulse.stream`
 Backend owner: **streampulse-backend** (hosted default `https://api.streampulse.stream`)
 Local BFF (dev opt-in only): `http://localhost:8081` — never Streamclone watch `:8090`
 
@@ -26,7 +26,7 @@ Legacy identifiers (package name, DOM ids, `X-Streamclone-Beta-Key`, etc.): see 
 - [ ] No secrets in extension bundle (beta keys entered in options UI only; stored in `chrome.storage.local`)
 - [ ] Content scripts use `chrome.runtime.sendMessage` — no direct `fetch` from content scripts
 - [ ] Privacy policy URL on streampulse.stream is live and matches this candidate (`/privacy`)
-- [x] Dedicated privacy email published: `privacy@streampulse.stream` (source + deployed page)
+- [ ] Dedicated privacy email published: `privacy@streampulse.stream` (source ready; confirm live `/privacy` after Pages deploy)
 - [ ] Screenshots: Twitch overlay docked beside chat, settings panel, honest partial-coverage state
 - [ ] Single purpose: Twitch live/VOD Pulse analytics overlay powered by StreamPulse API (`streampulse-backend`)
 - [ ] **Icon artwork:** packaged `icon16` / `icon48` / `icon128` are still stub dimensions — CWS icon gate **OPEN** until real 16/48/128 PNGs are supplied and dimension-validated

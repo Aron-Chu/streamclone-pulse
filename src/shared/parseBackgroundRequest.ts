@@ -167,9 +167,15 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       return { type, jobId }
     }
     case 'LIST_BOOKMARKS': {
+      let login: string | undefined
+      if (raw.login != null) {
+        const normalized = requireLogin(raw.login)
+        if (!normalized) return null
+        login = normalized
+      }
       return {
         type,
-        login: optionalString(raw.login),
+        login,
         streamId: optionalString(raw.streamId),
         vodId: optionalString(raw.vodId),
       }

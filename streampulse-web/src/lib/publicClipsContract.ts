@@ -62,7 +62,10 @@ export function sanitizeAnalyticsHref(value: unknown): string | undefined {
   if (!raw) return undefined
 
   // Protocol-relative and non-path schemes are never safe to render as analytics links.
-  if (raw.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith('https://') && !raw.startsWith('http://') && !raw.startsWith('/')) {
+  if (
+    raw.startsWith('//') ||
+    (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith('https://') && !raw.startsWith('/'))
+  ) {
     return undefined
   }
 
@@ -74,7 +77,8 @@ export function sanitizeAnalyticsHref(value: unknown): string | undefined {
     }
 
     const url = new URL(raw)
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined
+    // Absolute analytics links must be HTTPS on the canonical host with no explicit port.
+    if (url.protocol !== 'https:' || url.port) return undefined
     if (hasCredentials(url)) return undefined
     const host = url.hostname.toLowerCase()
     if (host !== 'streampulse.stream' && host !== 'www.streampulse.stream') return undefined

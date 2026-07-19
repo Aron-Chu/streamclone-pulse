@@ -32,11 +32,12 @@ Verified in this worktree against the commands recorded below:
 - Vitest upgraded to **3.2.7** (root + `streampulse-web`) for GHSA-5xrq-8626-4rwp
 - Public clip `analyticsHref` / `vodHref` sanitization (omit invalid; never rewrite)
 - Extension runtime message parsing + emote-image HTTPS/host/MIME/size/timeout hardening
-- Privacy contact aligned to deployed `privacy@streampulse.stream`
+- Privacy contact source updated to `privacy@streampulse.stream` (public `/privacy` verification pending post-merge Pages deploy)
 - Canonical Peak branding on landing, analytics, shared public navigation, and favicon; desktop + 390px browser captures verified
 
 ## Explicitly still open
 
+- Confirm public `/privacy` shows `privacy@streampulse.stream` after Pages deploy
 - Extension icon PNGs remain tiny stubs — the approved portal Peak mark does not close the CWS PNG artwork/dimension gate
 - Real Chrome optional-permission gesture for localhost BFF (manual)
 - CWS listing copy, screenshots, submission, and store approval
@@ -64,6 +65,7 @@ npm audit
 Portal (`streampulse-web/`):
 
 ```bash
+cd streampulse-web
 npm ci
 npm run typecheck
 npm run check:analytics-overlap
