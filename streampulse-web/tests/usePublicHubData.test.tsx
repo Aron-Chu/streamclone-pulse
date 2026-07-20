@@ -423,4 +423,123 @@ describe('usePublicHubData', () => {
       expect(fetchPublicHubBase).not.toHaveBeenCalled()
     })
   })
+
+  describe('failure backoff + Retry-After', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('does not poll faster than healthy cadence after hub soft-failure', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase
+        .mockResolvedValueOnce(hubResult(5))
+        .mockResolvedValue(hubDown())
+
+      renderHook(() =>
+        usePublicHubData({ pollMs: 45_000, random: () => 0.5 }),
+      )
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(44_999)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+    })
+
+    it('honors 429 Retry-After when longer than healthy cadence', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase
+        .mockResolvedValueOnce(hubResult(5))
+        .mockRejectedValueOnce({
+          kind: 'rate_limited',
+          message: 'rate limited',
+          status: 429,
+          retryAfterMs: 75_000,
+        })
+        .mockResolvedValue(hubResult(5))
+
+      const { result } = renderHook(() =>
+        usePublicHubData({ pollMs: 45_000, random: () => 0.5 }),
+      )
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(result.current.data?.poolSize).toBe(5)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+      expect(result.current.hubEndpointOk).toBe(false)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(74_999)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+    })
+
+    it('floors short Retry-After at healthy cadence', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase
+        .mockResolvedValueOnce(hubResult(5))
+        .mockRejectedValueOnce({
+          kind: 'rate_limited',
+          message: 'rate limited',
+          status: 429,
+          retryAfterMs: 5_000,
+        })
+        .mockResolvedValue(hubResult(5))
+
+      renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0.5 }))
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(44_999)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+        await Promise.resolve()
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+    })
+  })
 })

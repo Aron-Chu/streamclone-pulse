@@ -10,12 +10,16 @@ import {
   type PublicHubActivityWindow,
   type PublicHubLoadSource,
 } from '../lib/publicHub'
+import { computeJitteredDelayMs } from '../lib/pollDelay'
+import { isApiError } from '../lib/apiClient'
 
 export interface UsePublicHubOptions {
   /** Poll cadence in ms. Matches the backend cache TTL (~30s) by default. */
   pollMs?: number
   enabled?: boolean
   activityWindow?: PublicHubActivityWindow
+  /** Injected RNG for deterministic tests. */
+  random?: () => number
 }
 
 export interface PublicHubState {
@@ -47,7 +51,6 @@ export interface PublicHubState {
 }
 
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
-const RETRY_MS_NO_DATA = 5_000
 
 function hydrateFromCache(activityWindow: PublicHubActivityWindow) {
   const cached = readPublicHubCacheForCurrentBackend(activityWindow)
@@ -81,7 +84,7 @@ function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: Publ
 }
 
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
-  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h' } = options
+  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h', random = Math.random } = options
   // Mount-only cache hydrate — do not re-read localStorage on every render (P4-L01).
   // Later activity-window transitions read cache only in the effect below.
   const [initial] = useState(() => hydrateFromCache(activityWindow))
@@ -105,6 +108,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const hasDataRef = useRef(initial.hasData)
   const prevActivityWindowRef = useRef(activityWindow)
   const pollSequenceRef = useRef(initial.hasData ? 1 : 0)
+  const consecutiveFailuresRef = useRef(0)
+  const nextRetryAfterMsRef = useRef<number | null>(null)
+  const randomRef = useRef(random)
+  randomRef.current = random
 
   const applySuccessfulLoad = useCallback(
     (hub: PublicHub, source: PublicHubLoadSource, endpointOk: boolean) => {
@@ -119,6 +126,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
       persistSuccessfulHub(activityWindow, hub)
+      consecutiveFailuresRef.current = 0
+      nextRetryAfterMsRef.current = null
     },
     [activityWindow],
   )
@@ -144,12 +153,31 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         return
       }
 
+      // On hub failure with existing data: keep stale UI; do not storm fallback.
+      if (hasDataRef.current) {
+        consecutiveFailuresRef.current += 1
+        setHubEndpointOk(false)
+        setError('hub offline')
+        return
+      }
+
       const fallback = await fetchPublicHubStatsFallback(controller.signal)
       if (!mountedRef.current || controller.signal.aborted) return
       applySuccessfulLoad(fallback.data, fallback.loadSource, fallback.hubEndpointOk)
     } catch (err) {
       if (controller.signal.aborted || !mountedRef.current) return
-      setError(err instanceof Error ? err.message : 'Failed to load live hub data')
+      consecutiveFailuresRef.current += 1
+      if (isApiError(err) && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
+        // Honor server Retry-After when present; never shorten below healthy cadence.
+        nextRetryAfterMsRef.current = Math.max(pollMs, err.retryAfterMs)
+      }
+      setError(
+        isApiError(err)
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to load live hub data',
+      )
       // Cache hydrate may have set hubEndpointOk=true; a total network miss must clear it.
       setHubEndpointOk(false)
     } finally {
@@ -162,7 +190,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         setRefreshing(false)
       }
     }
-  }, [activityWindow, applySuccessfulLoad])
+  }, [activityWindow, applySuccessfulLoad, pollMs])
 
   const refresh = useCallback(() => {
     void load(true)
@@ -204,19 +232,24 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     void load()
 
     let pollTimer: number | undefined
-    const tick = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      void load()
+    const scheduleNext = () => {
+      if (pollMs <= 0) return
+      const retryAfter = nextRetryAfterMsRef.current
+      nextRetryAfterMsRef.current = null
+      const delay =
+        retryAfter ??
+        computeJitteredDelayMs(pollMs, consecutiveFailuresRef.current, randomRef.current)
+      pollTimer = window.setTimeout(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          scheduleNext()
+          return
+        }
+        void load().finally(() => {
+          if (mountedRef.current) scheduleNext()
+        })
+      }, delay)
     }
-    if (pollMs > 0) {
-      pollTimer = window.setInterval(tick, pollMs)
-    }
-
-    const retryTimer = window.setInterval(() => {
-      if (hasDataRef.current) return
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      void load()
-    }, RETRY_MS_NO_DATA)
+    scheduleNext()
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
@@ -229,8 +262,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     return () => {
       mountedRef.current = false
       controllerRef.current?.abort()
-      if (pollTimer) window.clearInterval(pollTimer)
-      window.clearInterval(retryTimer)
+      if (pollTimer) window.clearTimeout(pollTimer)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [enabled, pollMs, load])

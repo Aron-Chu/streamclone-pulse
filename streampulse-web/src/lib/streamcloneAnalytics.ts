@@ -904,17 +904,13 @@ export const portalAnalyticsApi: AnalyticsApi = {
     throw new Error('Bookmarks require a beta key ΓÇö use the private dashboard.')
   },
 
-  async prefetchAnalyticsTracker(streamId: string, channel: string) {
-    try {
-      await apiClient(analyticsPath(`/streams/${encodeURIComponent(streamId)}/prefetch-tracker`), {
-        method: 'POST',
-        body: { channel },
-        gated: true,
-      })
-      return { status: 'ok' }
-    } catch {
-      return { status: 'skipped' }
-    }
+  /**
+   * Soft-beta portal does not hold operator credentials. Prefetch-tracker is
+   * operator-only (Access JWT / archive token) — do not POST with a beta key
+   * and silently map 401/403 to "skipped".
+   */
+  async prefetchAnalyticsTracker(_streamId: string, _channel: string) {
+    return { status: 'skipped' as const, reason: 'operator_only' as const }
   },
 
   async getChannel(login: string) {

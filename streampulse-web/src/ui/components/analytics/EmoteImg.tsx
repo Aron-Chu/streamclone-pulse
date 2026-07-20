@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 
+import { emoteDisplaySrc, emoteSrcSet } from '../../../lib/emoteAssetUrl'
 import { initial } from './hubFormat'
 
 interface EmoteImgProps {
@@ -10,6 +11,9 @@ interface EmoteImgProps {
   height?: number
   style?: CSSProperties
   fallbackClassName?: string
+  /** Hint for scale selection; defaults to width or 28. */
+  displayPx?: number
+  fetchPriority?: 'high' | 'low' | 'auto'
 }
 
 export function EmoteImg({
@@ -20,9 +24,14 @@ export function EmoteImg({
   height,
   style,
   fallbackClassName,
+  displayPx,
+  fetchPriority = 'low',
 }: EmoteImgProps) {
   const [failed, setFailed] = useState(false)
-  if (!src?.trim() || failed) {
+  const cssPx = displayPx ?? width ?? 28
+  const resolved = emoteDisplaySrc(src, cssPx)
+  const srcSet = emoteSrcSet(src)
+  if (!resolved?.trim() || failed) {
     return (
       <span className={fallbackClassName} aria-hidden="true">
         {initial(name)}
@@ -32,10 +41,14 @@ export function EmoteImg({
   return (
     <img
       className={className}
-      src={src}
+      src={resolved}
+      srcSet={srcSet}
+      sizes={`${cssPx}px`}
       alt=""
       loading="lazy"
       decoding="async"
+      // React 18 DOM: lowercase custom attribute for fetch priority hint.
+      {...{ fetchpriority: fetchPriority }}
       width={width}
       height={height}
       style={style}

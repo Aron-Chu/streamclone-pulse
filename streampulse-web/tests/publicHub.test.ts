@@ -18,6 +18,9 @@ const apiClient = vi.fn()
 vi.mock('../src/lib/apiClient', () => ({
   getBackendUrl: () => 'https://api.streampulse.stream',
   apiClient: (...args: unknown[]) => apiClient(...args),
+  // Used by fetchPublicHubBase to rethrow typed 429/Retry-After errors.
+  isApiError: (error: unknown) =>
+    Boolean(error && typeof error === 'object' && 'kind' in (error as object)),
 }))
 
 vi.mock('../src/lib/backendSource', () => ({

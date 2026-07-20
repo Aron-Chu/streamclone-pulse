@@ -1,5 +1,5 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
-import { apiClient, getBackendUrl } from './apiClient'
+import { apiClient, getBackendUrl, isApiError } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
@@ -588,6 +588,8 @@ export async function fetchPublicHubBase(
       status: primary.status,
     }
   } catch (error) {
+    // Preserve typed API errors (esp. 429 + Retry-After) for the poll hook.
+    if (isApiError(error)) throw error
     return {
       data: normalizePublicHub(null),
       loadSource: 'full',
