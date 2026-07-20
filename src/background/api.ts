@@ -18,6 +18,37 @@ import { getBackendUrl, getBetaKey } from '../shared/storage.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
 
+/** Default bound for extension BFF requests (health/pulse/coverage/watchlist). */
+export const EXTENSION_API_TIMEOUT_MS = 15_000
+
+export async function fetchWithTimeout(
+  input: string,
+  init?: RequestInit,
+  options?: { timeoutMs?: number; fetchImpl?: typeof fetch },
+): Promise<Response> {
+  const timeoutMs = options?.timeoutMs ?? EXTENSION_API_TIMEOUT_MS
+  const fetchImpl = options?.fetchImpl ?? fetch
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const upstream = init?.signal
+  const onUpstreamAbort = () => controller.abort()
+  if (upstream) {
+    if (upstream.aborted) controller.abort()
+    else upstream.addEventListener('abort', onUpstreamAbort, { once: true })
+  }
+  try {
+    return await fetchImpl(input, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('extension_api_timeout')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+    upstream?.removeEventListener('abort', onUpstreamAbort)
+  }
+}
+
 async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
   const headers: Record<string, string> = {}
   if (contentJson) {
@@ -32,7 +63,7 @@ async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
 
 export async function fetchExtensionHealth(baseUrl?: string): Promise<ExtensionHealthResponse> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/health`)
+  const res = await fetchWithTimeout(`${root}/v1/extension/health`)
   if (!res.ok) {
     throw new Error(`health ${res.status}`)
   }
@@ -51,7 +82,7 @@ export async function fetchPulseChannel(
 ): Promise<PulsePayload> {
   const root = options?.baseUrl ?? await getBackendUrl()
   const qs = options?.window === 'full' ? '?window=full' : ''
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${qs}`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${qs}`, {
     headers: await pulseRequestHeaders(),
   })
   if (!res.ok) {
@@ -80,7 +111,7 @@ export async function fetchPulseVod(
   options?: { baseUrl?: string },
 ): Promise<import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse> {
   const root = options?.baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}`, {
     headers: await pulseRequestHeaders(),
   })
   const payload = await normalizeVodPulseHttpResponse(vodId, res)
@@ -100,7 +131,7 @@ export async function fetchExtensionCoverage(
   baseUrl?: string,
 ): Promise<ExtensionCoverageTierResponse> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/coverage`,
     { headers: await pulseRequestHeaders() },
   )
@@ -124,7 +155,7 @@ export async function postPulseBackfill(
   baseUrl?: string,
 ): Promise<PulseBackfillJob> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/backfill`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/backfill`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ mode: 'missed', ...body }),
@@ -156,7 +187,7 @@ export async function postPulseBackfill(
 
 export async function fetchPulseBackfillStatus(jobId: string, baseUrl?: string): Promise<PulseBackfillJob> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/backfill/${encodeURIComponent(jobId)}`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/backfill/${encodeURIComponent(jobId)}`, {
     headers: await pulseRequestHeaders(),
   })
   if (!res.ok) {
@@ -171,7 +202,7 @@ export async function postVodHint(
   baseUrl?: string,
 ): Promise<{ ok: boolean; vodId?: string }> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/vod-hint`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/vod-hint`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify(body),
@@ -192,7 +223,7 @@ export async function postVodHint(
 
 export async function postWatchChannel(login: string, baseUrl?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/channels/${encodeURIComponent(login)}/watch`, {
+  const res = await fetchWithTimeout(`${root}/v1/analytics/channels/${encodeURIComponent(login)}/watch`, {
     method: 'POST',
     headers: await pulseRequestHeaders(),
   })
@@ -211,7 +242,7 @@ export async function fetchPulseBookmarks(
   if (params.streamId) qs.set('streamId', params.streamId)
   if (params.vodId) qs.set('vodId', params.vodId)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const res = await fetch(`${root}/v1/pulse/bookmarks${suffix}`, {
+  const res = await fetchWithTimeout(`${root}/v1/pulse/bookmarks${suffix}`, {
     headers: await pulseRequestHeaders(),
   })
   if (!res.ok) {
@@ -226,7 +257,7 @@ export async function createPulseBookmark(
   baseUrl?: string,
 ): Promise<PulseBookmark> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/pulse/bookmarks`, {
+  const res = await fetchWithTimeout(`${root}/v1/pulse/bookmarks`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify(bookmark),
@@ -239,7 +270,7 @@ export async function createPulseBookmark(
 
 export async function deletePulseBookmark(id: string, baseUrl?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
+  const res = await fetchWithTimeout(`${root}/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: await pulseRequestHeaders(),
   })
@@ -250,7 +281,9 @@ export async function deletePulseBookmark(id: string, baseUrl?: string): Promise
 
 export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/always-tracked`)
+  const res = await fetchWithTimeout(`${root}/v1/analytics/always-tracked`, {
+    headers: await pulseRequestHeaders(),
+  })
   if (!res.ok) {
     throw new Error(`always_tracked ${res.status}`)
   }
@@ -260,9 +293,9 @@ export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
 
 export async function setAlwaysTracked(login: string, track: boolean, baseUrl?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/always-tracked`, {
+  const res = await fetchWithTimeout(`${root}/v1/analytics/always-tracked`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ channel: login, track }),
   })
   if (!res.ok) {
@@ -288,7 +321,7 @@ export async function fetchChannelStreamHistory(
   baseUrl?: string,
 ): Promise<MetadataStreamHistoryItem[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/channels/${encodeURIComponent(login)}/streams/history?period=${encodeURIComponent(period)}`,
   )
   if (!res.ok) {
@@ -304,7 +337,7 @@ export async function fetchAnalyticsStreams(
   baseUrl?: string,
 ): Promise<AnalyticsStreamListItem[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/analytics/channels/${encodeURIComponent(login)}/streams?limit=${encodeURIComponent(limit)}`,
   )
   if (!res.ok) {
@@ -339,7 +372,7 @@ export async function fetchTopClip(
     const root = baseUrl ?? await getBackendUrl()
     const { startedAt, endedAt } = clipWindowBounds(options?.startedAt, options?.isLive)
     const qs = new URLSearchParams({ startedAt, endedAt, cursor: '' })
-    const res = await fetch(`${root}/v1/channels/${encodeURIComponent(login)}/clips?${qs}`)
+    const res = await fetchWithTimeout(`${root}/v1/channels/${encodeURIComponent(login)}/clips?${qs}`)
     if (!res.ok) return null
     const body = await res.json() as ClipsResponseBody
     return pickTopClip(body.items ?? [])

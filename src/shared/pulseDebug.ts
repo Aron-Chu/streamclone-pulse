@@ -20,11 +20,41 @@ export interface PulseDebugEntry {
 }
 
 const ENABLE_KEY = 'debugLoggingEnabled'
-const LOG_KEY = 'pulseDebugLog'
+export const PULSE_DEBUG_LOG_KEY = 'pulseDebugLog'
 const MAX_ENTRIES = 80
 
 let cachedEnabled = false
 let toggleListenerAttached = false
+
+/**
+ * Trusted extension pages (SW, options, popup) may use storage.local after
+ * setAccessLevel(TRUSTED_CONTEXTS). Content scripts on https://twitch.tv cannot.
+ */
+export function canAccessLocalStorageDirectly(): boolean {
+  try {
+    const href = String((globalThis as { location?: { href?: string } }).location?.href ?? '')
+    return href.startsWith('chrome-extension://') || href.startsWith('moz-extension://')
+  } catch {
+    return true
+  }
+}
+
+function sendDebugMessage<T>(message: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage(message, (response: T) => {
+        const err = chrome.runtime.lastError
+        if (err) {
+          reject(new Error(err.message))
+          return
+        }
+        resolve(response)
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
 
 export async function initPulseDebug(): Promise<void> {
   const stored = await chrome.storage.sync.get(ENABLE_KEY)
@@ -51,7 +81,7 @@ export async function setPulseDebugEnabled(enabled: boolean): Promise<void> {
   cachedEnabled = enabled
   await chrome.storage.sync.set({ [ENABLE_KEY]: enabled })
   if (!enabled) {
-    await chrome.storage.local.remove(LOG_KEY)
+    await clearPulseDebugLog()
   }
 }
 
@@ -60,13 +90,34 @@ export async function getPulseDebugEnabled(): Promise<boolean> {
   return Boolean(stored[ENABLE_KEY])
 }
 
+/** Trusted-context write used by the service worker message handler. */
+export async function appendPulseDebugEntryDirect(entry: PulseDebugEntry): Promise<void> {
+  const stored = await chrome.storage.local.get(PULSE_DEBUG_LOG_KEY)
+  const entries = (stored[PULSE_DEBUG_LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
+  entries.push(entry)
+  while (entries.length > MAX_ENTRIES) {
+    entries.shift()
+  }
+  await chrome.storage.local.set({ [PULSE_DEBUG_LOG_KEY]: entries })
+}
+
 export async function getPulseDebugLog(): Promise<PulseDebugEntry[]> {
-  const stored = await chrome.storage.local.get(LOG_KEY)
-  return (stored[LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
+  if (canAccessLocalStorageDirectly()) {
+    const stored = await chrome.storage.local.get(PULSE_DEBUG_LOG_KEY)
+    return (stored[PULSE_DEBUG_LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
+  }
+  const response = await sendDebugMessage<{ type: 'PULSE_DEBUG_LOG'; entries?: PulseDebugEntry[] }>({
+    type: 'GET_PULSE_DEBUG_LOG',
+  })
+  return response?.entries ?? []
 }
 
 export async function clearPulseDebugLog(): Promise<void> {
-  await chrome.storage.local.remove(LOG_KEY)
+  if (canAccessLocalStorageDirectly()) {
+    await chrome.storage.local.remove(PULSE_DEBUG_LOG_KEY)
+    return
+  }
+  await sendDebugMessage({ type: 'CLEAR_PULSE_DEBUG_LOG' })
 }
 
 export async function pulseDebug(
@@ -81,13 +132,15 @@ export async function pulseDebug(
   const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info
   logFn(`[Pulse ${step}]`, message, data ?? '')
 
-  const stored = await chrome.storage.local.get(LOG_KEY)
-  const entries = (stored[LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
-  entries.push(entry)
-  while (entries.length > MAX_ENTRIES) {
-    entries.shift()
+  if (canAccessLocalStorageDirectly()) {
+    await appendPulseDebugEntryDirect(entry)
+    return
   }
-  await chrome.storage.local.set({ [LOG_KEY]: entries })
+  try {
+    await sendDebugMessage({ type: 'APPEND_PULSE_DEBUG', entry })
+  } catch {
+    // Debug must never break overlay; SW may be restarting.
+  }
 }
 
 /** Format the latest VOD-related log lines for overlay error copy. */

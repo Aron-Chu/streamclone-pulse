@@ -172,6 +172,8 @@ export type BackgroundRequest =
   | DiscoverLiveVodMessage
   | GetPulseVodMessage
   | GetPulseDebugLogMessage
+  | AppendPulseDebugMessage
+  | ClearPulseDebugLogMessage
   | LoadMissedMomentsMessage
   | GetPulseBackfillStatusMessage
 
@@ -308,6 +310,15 @@ export interface PulseStreamRecap {
 
 export interface GetPulseDebugLogMessage {
   type: 'GET_PULSE_DEBUG_LOG'
+}
+
+export interface AppendPulseDebugMessage {
+  type: 'APPEND_PULSE_DEBUG'
+  entry: import('./pulseDebug.ts').PulseDebugEntry
+}
+
+export interface ClearPulseDebugLogMessage {
+  type: 'CLEAR_PULSE_DEBUG_LOG'
 }
 
 export interface HintVodMessage {

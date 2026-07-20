@@ -25,7 +25,14 @@ import {
   getWatchlist,
   removeFromWatchlist,
 } from '../shared/watchlist.ts'
-import { initPulseDebug, getPulseDebugLog, pulseDebug } from '../shared/pulseDebug.ts'
+import {
+  appendPulseDebugEntryDirect,
+  clearPulseDebugLog,
+  getPulseDebugEnabled,
+  getPulseDebugLog,
+  initPulseDebug,
+  pulseDebug,
+} from '../shared/pulseDebug.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
@@ -455,6 +462,18 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'PULSE_DEBUG_LOG', entries: await getPulseDebugLog() } satisfies BackgroundResponse)
           return
         }
+        case 'APPEND_PULSE_DEBUG': {
+          if (await getPulseDebugEnabled()) {
+            await appendPulseDebugEntryDirect(message.entry)
+          }
+          sendResponse({ ok: true } satisfies BackgroundResponse)
+          return
+        }
+        case 'CLEAR_PULSE_DEBUG_LOG': {
+          await clearPulseDebugLog()
+          sendResponse({ ok: true } satisfies BackgroundResponse)
+          return
+        }
         case 'OPEN_OPTIONS': {
           chrome.runtime.openOptionsPage()
           sendResponse({ ok: true })
@@ -585,8 +604,21 @@ chrome.runtime.onStartup.addListener(() => {
 })
 
 chrome.runtime.onInstalled.addListener(() => {
-  void syncWatchlistToBackend()
+  void (async () => {
+    const { restrictCredentialStorageAccess } = await import('../shared/storage.ts')
+    await restrictCredentialStorageAccess()
+    await syncWatchlistToBackend()
+  })()
 })
+
+void (async () => {
+  try {
+    const { restrictCredentialStorageAccess } = await import('../shared/storage.ts')
+    await restrictCredentialStorageAccess()
+  } catch {
+    // ignore
+  }
+})()
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.url) {

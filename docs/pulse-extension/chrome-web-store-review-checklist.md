@@ -16,7 +16,9 @@ Legacy identifiers: [`legacy-identifiers.md`](./legacy-identifiers.md).
 
 ## Pre-submit
 
-- [x] `npm test` + `npm run typecheck` + `npm run package:cws` pass on this candidate (2026-07-19) — zip SHA-256 `4ed599bc97eabd4f53285182e68d53508b961e65c28e1844597b19ee57bca63a`
+- [x] `npm test` + `npm run typecheck` + `npm run package:cws` pass on security gap-closure candidate (2026-07-20) — zip SHA-256 `0fc58f0df206ca149584240cb428e089fdad70e6b319d1012d2b7db60d89ef50`
+- [x] Content-script debug persistence goes through service-worker messaging after `storage.local` `TRUSTED_CONTEXTS` (see `tests/pulseDebugStorage.test.ts`)
+- [ ] **Unpacked smoke (required before CWS submit):** Load `dist/` → chrome://extensions Reload → hard-refresh a Twitch channel tab → enable debug logging in options → confirm overlay still mounts and no console storage-access errors
 - [x] `host_permissions` includes `https://api.streampulse.stream/*`
 - [x] Emote CDNs declared (`cdn.7tv.app`, `static-cdn.jtvnw.net`, `cdn.frankerfacez.com`)
 - [x] Localhost BFF hosts are **optional_host_permissions** only
