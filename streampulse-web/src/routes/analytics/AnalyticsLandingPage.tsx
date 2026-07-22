@@ -643,7 +643,7 @@ function AnalyticsLandingContent() {
               updatedAgo={updatedAgo}
               poolSize={data.poolSize}
               ircActive={data.corpusPipeline.collectorActive}
-              rosterLive={data.corpusPipeline.roster?.live}
+              rosterLive={data.coverage.liveChannels}
             />
           </SectionReveal>
         ) : null}

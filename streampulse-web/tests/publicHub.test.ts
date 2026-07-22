@@ -183,6 +183,30 @@ describe('normalizePublicHub', () => {
     expect(hub.poolSize).toBe(300)
     expect(hub.coverage.liveChannels).toBe(84)
   })
+
+  it('keeps legacy coverage.liveChannels when roster.live is absent', () => {
+    const hub = normalizePublicHub({
+      poolSize: 300,
+      coverage: {
+        liveChannels: 84,
+        trackingMax: 300,
+        backfillActive: 0,
+        backfillMax: 0,
+        syncActive: 0,
+        emotesIndexed: 0,
+        databaseOk: true,
+        state: 'operational',
+      },
+      corpusPipeline: {
+        collectorActive: 80,
+        collectorMax: 250,
+      },
+    })
+
+    expect(hub.poolSize).toBe(300)
+    expect(hub.corpusPipeline.roster.live).toBe(0)
+    expect(hub.coverage.liveChannels).toBe(84)
+  })
 })
 
 describe('coverageMeta', () => {
