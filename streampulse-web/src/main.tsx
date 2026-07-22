@@ -6,7 +6,9 @@ import { AppRoutes } from './routes/index'
 import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal } from './lib/auth'
 import { initPortalSentry } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
+import { PageMetadata } from './ui/PageMetadata'
 import { shadowStyles } from './ui/theme'
+import './ui/portal-fonts.css'
 import './ui/global.css'
 
 initPortalSentry()
@@ -67,6 +69,7 @@ async function bootstrap() {
       <PortalErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
+            <PageMetadata />
             <AuthRejectedListener />
             <AppRoutes />
           </BrowserRouter>

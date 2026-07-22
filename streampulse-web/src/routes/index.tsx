@@ -6,6 +6,7 @@ import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
 import Privacy from './public/Privacy'
+import Support from './public/Support'
 import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
@@ -36,6 +37,7 @@ export function AppRoutes() {
         <Route path="/docs/*" element={<Docs />} />
         <Route path="/status" element={<Status />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/support" element={<Support />} />
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}

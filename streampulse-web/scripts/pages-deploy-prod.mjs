@@ -125,6 +125,9 @@ if (viteSentryDsn && !sentryAuth) {
 
 console.log('Running production deploy gates')
 run('npx', ['tsc', '--noEmit', '-p', 'tsconfig.json'])
+run('npx', ['tsc', '--noEmit', '-p', 'tsconfig.test.json'])
+run('npm', ['test', '--', '--reporter=dot'])
+run('node', ['scripts/check-analytics-tailwind.mjs'])
 run('node', ['scripts/check-analytics-routes-spa.mjs'])
 run('node', ['scripts/check-analytics-links.mjs'])
 run('node', ['scripts/check-analytics-overlap.mjs'])
@@ -143,6 +146,8 @@ if (viteSentryDsn) {
 console.log(`Building with VITE_BACKEND_URL=${backendUrl}`)
 console.log(`Portal release ${portalRelease}`)
 run('npx', ['vite', 'build'], buildEnv)
+run('node', ['scripts/prerender.mjs'])
+run('node', ['scripts/check-public-pages.mjs'])
 run('node', ['scripts/check-backend-url.mjs'])
 
 // Ensure maps are gone from deploy artifact (plugin should already delete after upload).

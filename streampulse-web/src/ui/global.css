@@ -14,7 +14,7 @@
   --border: #3f3f50;
   --radius-panel: 14px;
   --radius-button: 9px;
-  --font: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font: 'Geist Variable', 'Geist', Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 *,
@@ -98,6 +98,24 @@ select {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.app-nav__install {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.app-nav__install:hover {
+  border-color: var(--accent, #8b5cf6);
 }
 
 .panel {
@@ -109,6 +127,38 @@ select {
 
 .panel--elevated {
   background: var(--bg-elevated);
+}
+
+.public-document {
+  line-height: 1.65;
+}
+
+.public-document h1 {
+  margin-top: 0;
+}
+
+.public-document h2 {
+  margin: 2rem 0 0.6rem;
+  font-size: 1.15rem;
+}
+
+.public-document p,
+.public-document li {
+  max-width: 76ch;
+}
+
+.public-document li + li {
+  margin-top: 0.45rem;
+}
+
+.public-document__back {
+  margin: 0 0 0.5rem;
+}
+
+.public-document__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .btn {

@@ -51,8 +51,6 @@ const PUBLIC_SCAN_ROOTS = [
 const EXCLUDE_PATH_PARTS = [
   `${join('src', 'routes', 'dashboard')}`,
   `${join('src', 'lib', 'clipCandidates.ts')}`,
-  `${join('src', 'routes', 'public', 'Login.tsx')}`,
-  `${join('src', 'routes', 'public', 'Setup.tsx')}`,
 ]
 
 const FORBIDDEN = [

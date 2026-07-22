@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { BrandMark } from './BrandMark'
+import { ChromeInstallCta } from './ChromeInstallCta'
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -13,7 +14,9 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <Link to="/analytics">Analytics</Link>
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
+          <Link to="/support">Support</Link>
           <Link to="/privacy">Privacy</Link>
+          <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
       </header>
       <main className="app-main">{children}</main>

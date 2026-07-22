@@ -42,6 +42,39 @@ export async function scrollTourToStep(page: Page, step: number): Promise<void> 
   })
 }
 
+export async function readPanelY(page: Page): Promise<number> {
+  const scroll = page.locator('.pulse-landing-panel .pulse-landing-scroll')
+  return scroll.evaluate(el => {
+    const y = getComputedStyle(el).getPropertyValue('--panel-y').trim()
+    return y === '' ? 0 : Number.parseFloat(y)
+  })
+}
+
+/** Asserts pinned tour is active and page scroll drives virtual panel scroll + step changes. */
+export async function assertAnimatedTourAdvances(page: Page): Promise<void> {
+  const tour = page.locator('.sl-xtour')
+  await expect(tour).not.toHaveAttribute('data-static')
+
+  await scrollTourToStep(page, 1)
+  const yAtStep1 = await readPanelY(page)
+
+  await scrollTourToStep(page, 3)
+  const yAtStep3 = await readPanelY(page)
+  expect(yAtStep3).toBeGreaterThan(yAtStep1)
+
+  await assertAnimatedTourHidesPanelScrollbar(page)
+  await assertPanelHasNoHorizontalOverflow(page)
+}
+
+export async function assertStaticTourNativeScroll(page: Page): Promise<void> {
+  const tour = page.locator('.sl-xtour')
+  await expect(tour).toHaveAttribute('data-static', '')
+
+  const scroll = page.locator('.pulse-landing-panel .pulse-landing-scroll')
+  const overflowY = await scroll.evaluate(el => getComputedStyle(el).overflowY)
+  expect(overflowY).toMatch(/auto|scroll/)
+}
+
 export async function assertPanelHasNoHorizontalOverflow(page: Page): Promise<void> {
   const scrollport = page.locator('.pulse-landing-panel .pulse-landing-scrollport')
   const overflow = await scrollport.evaluate(el => el.scrollWidth <= el.clientWidth + 1)

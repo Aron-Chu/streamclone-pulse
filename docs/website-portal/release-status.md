@@ -1,24 +1,38 @@
 # StreamPulse release status
 
-Last updated: 2026-07-19 (CWS listing pack on `codex/cws-listing-2026-07-19`; production API `v0.1.34-matched-rc`)
+Last updated: 2026-07-22 (analytics Command Center + CWS website integration)
 
-## Candidate identity
+## Published Chrome Web Store (live)
 
 | Field | Value |
 |-------|-------|
-| Pulse tip | `origin/master` (Peak icons + portal status honesty merged) |
-| Working branch | `codex/cws-listing-2026-07-19` |
-| Live API | `v0.1.34-matched-rc` (matched API+workers; HOLD_AT_300) |
+| Listing | https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg |
+| Extension ID | `nifgoonpcgmdhiffcpmhndjgkgahnelg` |
+| Hosted API | https://api.streampulse.stream |
 
-This document does **not** claim GA, CWS **approval**, Cloudflare Access apply, soak completion, capacity raise, or marketing blast readiness.
+Website install CTAs use `streampulse-web/src/lib/publicSiteConfig.ts` only.
+**Manual account gate (open):** change the live CWS Support URL from the Twitch channel
+to `https://streampulse.stream/support` in the publisher console.
+
+## Release identity
+
+| Field | Value |
+|-------|-------|
+| Repository base | `origin/master` at `d4e19be148058adb59c2e0ddc38b2c2e4ab0b0a8` |
+| Review branch | `release/analytics-cws-baseline-20260722` |
+| Live portal | `command-center-cws-2026-07-22` deployed; repository landing in review |
+| Live API | `v0.1.35-security-closure` (`HOLD_AT_300`) |
+
+This document does **not** claim repository merge, portal GA, Cloudflare Access apply,
+soak completion, capacity raise, or marketing blast readiness.
 
 ## Current posture (do not over-claim)
 
 | Track | Decision | Notes |
 |-------|----------|-------|
-| Portal soft public beta | Soft GO (conditional) | Peak + privacy + status honesty live |
+| Public site + analytics | **LIVE** | Command Center, CWS CTA, Privacy, Support, robots, and sitemap verified |
 | Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
-| Extension / Chrome Web Store | **READY TO SUBMIT** | Package + listing copy + 1280×800 screenshots prepared; Google Dashboard submit is human-only |
+| Extension / Chrome Web Store | **PUBLISHED v0.1.0** | Public listing and website install CTA are live |
 | Marketing / creator blast | **NO-GO** | HOLD_AT_300 + Access + soak first |
 | Collector capacity | **HOLD_AT_300 / NO_GO_350** | Unchanged |
 
@@ -31,16 +45,17 @@ Verified in this worktree against the commands recorded below:
 - Vitest upgraded to **3.2.7** (root + `streampulse-web`) for GHSA-5xrq-8626-4rwp
 - Public clip `analyticsHref` / `vodHref` sanitization (omit invalid; never rewrite)
 - Extension runtime message parsing + emote-image HTTPS/host/MIME/size/timeout hardening
-- Privacy contact source updated to `privacy@streampulse.stream` (public `/privacy` verification pending post-merge Pages deploy)
+- Privacy contact source updated to `privacy@streampulse.stream`; public Privacy and Support routes verified
 - Canonical Peak branding on landing, analytics, shared public navigation, and favicon; desktop + 390px browser captures verified
 
 ## Explicitly still open
 
-- Operator: Chrome Web Store Developer Dashboard upload + submit ([listing pack](../pulse-extension/chrome-web-store-listing.md))
+- Operator: change the live CWS Support URL to `https://streampulse.stream/support`
+- Repository: review and merge `release/analytics-cws-baseline-20260722`
+- Manual: run a real unpacked/published extension smoke on Twitch; automated mocked coverage is green
 - Real Chrome optional-permission gesture for localhost BFF (manual / post-install)
 - Cloudflare Access apply for `/v1/admin/pulse*`, backup schedule/offsite, Phase 11 soak pack (private streampulse-ops)
 - Capacity raise — **HOLD_AT_300** unchanged
-- Post-CWS-approval: Landing CTA → store URL
 
 ## Verification commands (this candidate)
 
