@@ -815,6 +815,7 @@ function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
  */
 export function normalizePublicHub(raw: PublicHubInput | null | undefined): PublicHub {
   const corpusPipeline = normalizeCorpusPipeline(raw?.corpusPipeline, raw?.generatedAt)
+  const hasAuthoritativeRosterLive = raw?.corpusPipeline?.roster?.live != null
   return {
     generatedAt: raw?.generatedAt ?? new Date().toISOString(),
     poolSize: raw?.poolSize ?? 0,
@@ -826,7 +827,12 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       vodsAnalyzed: raw?.corpus?.vodsAnalyzed ?? 0,
     },
     coverage: {
-      liveChannels: Math.max(raw?.coverage?.liveChannels ?? 0, corpusPipeline.roster.live),
+      // Older hub payloads used coverage.liveChannels for pool capacity. Once
+      // roster.live is present it is the authoritative count of channels that
+      // are actually live; do not present the tracked pool size as liveness.
+      liveChannels: hasAuthoritativeRosterLive
+        ? corpusPipeline.roster.live
+        : (raw?.coverage?.liveChannels ?? 0),
       trackingMax: raw?.coverage?.trackingMax ?? 0,
       backfillActive: raw?.coverage?.backfillActive ?? 0,
       backfillMax: raw?.coverage?.backfillMax ?? 0,

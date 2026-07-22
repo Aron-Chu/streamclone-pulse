@@ -1,0 +1,16 @@
+{
+  "generatedAt": "2026-07-22T17:32:25.290Z",
+  "dims": {
+    "width": 1280,
+    "height": 800
+  },
+  "kind": "extension_embedded_on_twitch_tv",
+  "harness": "tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts",
+  "note": "Real unpacked dist/ content script on *.twitch.tv fixture documents. Not the streampulse-web landing tour.",
+  "files": [
+    "01-live-pulse.png",
+    "02-coverage.png",
+    "03-vod-replay.png",
+    "04-most-reacted.png"
+  ]
+}

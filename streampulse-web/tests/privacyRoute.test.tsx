@@ -28,13 +28,13 @@ describe('privacy route', () => {
     expect(screen.getByText(/chrome\.storage\.local/i)).toBeTruthy()
   })
 
-  it('explains Twitch browser-session credentials without claiming cookie extraction', async () => {
+  it('explains Twitch page-context use without claiming cookie extraction', async () => {
     renderPath('/privacy')
-    const session = await screen.findByTestId('privacy-twitch-session')
-    expect(session.textContent).toMatch(/does not directly access or extract Twitch cookie values/i)
-    expect(session.textContent).toMatch(/active Twitch browser session/i)
-    expect(session.textContent).toMatch(/does not receive your Twitch cookies/i)
-    expect(screen.queryByText(/does not read Twitch cookies/i)).toBeNull()
+    const body = (await screen.findByTestId('privacy-policy')).textContent ?? ''
+    expect(body).toMatch(/does not request or transmit Twitch cookies/i)
+    expect(body).toMatch(/active Twitch browser session/i)
+    expect(body).toMatch(/does not receive your Twitch cookies/i)
+    expect(body).toMatch(/does not request, store, or send a StreamPulse beta key or access key/i)
   })
 
   it('avoids internal release-blocker / counsel commentary', async () => {
@@ -49,15 +49,16 @@ describe('privacy route', () => {
 
   it('exposes a real public support/contact link', async () => {
     renderPath('/privacy')
-    const link = await screen.findByTestId('privacy-contact-link')
-    expect(link.getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
-    expect(screen.getByTestId('privacy-contact').textContent).toMatch(/privacy@streampulse\.stream/i)
+    const contact = await screen.findByTestId('privacy-contact')
+    expect(contact.querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
+    expect(contact.textContent).toMatch(/privacy@streampulse\.stream/i)
+    expect(screen.getByRole('link', { name: /support page/i }).getAttribute('href')).toBe('/support')
   })
 
-  it('exposes a Privacy link from the public layout used by /privacy', async () => {
+  it('exposes Privacy and Support links from the public layout', async () => {
     renderPath('/privacy')
-    const link = await screen.findByRole('link', { name: /^privacy$/i })
-    expect(link.getAttribute('href')).toBe('/privacy')
+    expect((await screen.findByRole('link', { name: /^privacy$/i })).getAttribute('href')).toBe('/privacy')
+    expect(screen.getByRole('link', { name: /^support$/i }).getAttribute('href')).toBe('/support')
   })
 })
 

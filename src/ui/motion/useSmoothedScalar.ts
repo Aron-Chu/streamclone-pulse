@@ -68,5 +68,10 @@ export function useSmoothedScalar(target: number, enabled = true): number {
 
 export function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (!reducedMotionMq) {
+    reducedMotionMq = window.matchMedia('(prefers-reduced-motion: reduce)')
+  }
+  return reducedMotionMq.matches
 }
+
+let reducedMotionMq: MediaQueryList | null = null

@@ -14,7 +14,7 @@ import {
   type AnalyticsStreamListItem,
   type MetadataStreamHistoryItem,
 } from '../shared/pastVods.ts'
-import { getBackendUrl, getBetaKey } from '../shared/storage.ts'
+import { getBackendUrl } from '../shared/storage.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
 
@@ -53,10 +53,6 @@ async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
   const headers: Record<string, string> = {}
   if (contentJson) {
     headers['Content-Type'] = 'application/json'
-  }
-  const key = await getBetaKey()
-  if (key) {
-    headers['X-Streamclone-Beta-Key'] = key
   }
   return headers
 }
@@ -279,6 +275,14 @@ export async function deletePulseBookmark(id: string, baseUrl?: string): Promise
   }
 }
 
+export type AlwaysTrackedWriteResult =
+  | { ok: true }
+  | { ok: false; status: number; unauthorized: boolean }
+
+function isUnauthorizedStatus(status: number): boolean {
+  return status === 401 || status === 403
+}
+
 export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetchWithTimeout(`${root}/v1/analytics/always-tracked`, {
@@ -291,15 +295,26 @@ export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
   return body.channels ?? []
 }
 
-export async function setAlwaysTracked(login: string, track: boolean, baseUrl?: string): Promise<void> {
+/**
+ * Best-effort Protect write. Unauthorized responses are soft-failures so the
+ * public extension can keep a local Chrome-sync watchlist without inventing credentials.
+ */
+export async function setAlwaysTracked(
+  login: string,
+  track: boolean,
+  baseUrl?: string,
+): Promise<AlwaysTrackedWriteResult> {
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetchWithTimeout(`${root}/v1/analytics/always-tracked`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ channel: login, track }),
   })
-  if (!res.ok) {
-    throw new Error(`always_tracked_set ${res.status}`)
+  if (res.ok) return { ok: true }
+  return {
+    ok: false,
+    status: res.status,
+    unauthorized: isUnauthorizedStatus(res.status),
   }
 }
 

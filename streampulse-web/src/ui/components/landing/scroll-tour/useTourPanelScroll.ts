@@ -15,7 +15,7 @@ export interface UseTourPanelScrollOptions {
 /**
  * Old demo scroll model: one smoothed drive value maps linearly across the full
  * panel height (virtualScroll = drive * maxScroll). Same fluid feel as the
- * committed ExtensionDemoCard tour — no per-step offset snapping.
+ * committed landing tour — no per-step offset snapping.
  */
 export function useTourPanelScroll({
   enabled,

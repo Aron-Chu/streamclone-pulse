@@ -1,3 +1,4 @@
+import { StrictMode, type PropsWithChildren } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
@@ -121,6 +122,30 @@ describe('usePublicHubData', () => {
     expect(fetchPublicHub).not.toHaveBeenCalled()
   })
 
+  it('restarts an aborted initial load during StrictMode effect replay', async () => {
+    fetchPublicHubBase
+      .mockImplementationOnce(
+        (signal?: AbortSignal) =>
+          new Promise((_, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Aborted', 'AbortError')),
+              { once: true },
+            )
+          }),
+      )
+      .mockResolvedValueOnce(hubResult(3))
+
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <StrictMode>{children}</StrictMode>
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }), { wrapper })
+
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+    expect(result.current.loading).toBe(false)
+  })
+
   it('marks liveEmpty when the pool is empty', async () => {
     fetchPublicHubBase.mockResolvedValue(hubResult(0))
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
@@ -235,7 +260,15 @@ describe('usePublicHubData', () => {
   it('cache key changes by activityWindow', async () => {
     writePublicHubCache(getBackendUrl(), '7d', sampleHub(7))
     writePublicHubCache(getBackendUrl(), '24h', sampleHub(24))
-    fetchPublicHubBase.mockResolvedValue(hubResult(100))
+
+    // Defer network so cache hydrate can be asserted before the in-flight response lands.
+    const pendingResolvers: Array<(value: ReturnType<typeof hubResult>) => void> = []
+    fetchPublicHubBase.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pendingResolvers.push(resolve)
+        }),
+    )
 
     const { result, rerender } = renderHook(
       ({ activityWindow }: { activityWindow: PublicHubActivityWindow }) =>
@@ -244,13 +277,22 @@ describe('usePublicHubData', () => {
     )
 
     expect(result.current.data?.poolSize).toBe(7)
+    expect(result.current.loadSource).toBe('cache')
+    expect(result.current.loading).toBe(false)
 
     act(() => {
       rerender({ activityWindow: '24h' })
     })
-    await waitFor(() => expect(result.current.data?.poolSize).toBe(24))
-    expect(result.current.loading).toBe(false)
+    expect(result.current.data?.poolSize).toBe(24)
     expect(result.current.loadSource).toBe('cache')
+    expect(result.current.loading).toBe(false)
+
+    await act(async () => {
+      for (const resolve of pendingResolvers.splice(0)) {
+        resolve(hubResult(100))
+      }
+    })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(100))
   })
 
   it('reads public-hub cache once on mount across unrelated rerenders', async () => {

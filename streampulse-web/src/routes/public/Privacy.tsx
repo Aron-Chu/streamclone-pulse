@@ -1,162 +1,123 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 
-/**
- * Public privacy policy for StreamPulse (portal + Chrome extension).
- *
- * Wording is grounded in shipped code. Do not invent contact emails, legal
- * entities, fixed retention periods, or transfer inventories that are not verified.
- */
+/** Public privacy policy for StreamPulse (portal + Chrome extension). */
 export default function Privacy() {
   return (
     <PublicLayout>
-      <article className="panel privacy-policy" data-testid="privacy-policy">
-        <p className="muted" style={{ marginBottom: '0.5rem' }}>
+      <article className="panel public-document" data-testid="privacy-policy">
+        <p className="muted public-document__back">
           <Link to="/">← StreamPulse</Link>
         </p>
         <h1>Privacy Policy</h1>
         <p className="muted">
-          Last updated: 2026-07-16 · Applies to streampulse.stream and the StreamPulse Chrome
-          extension.
+          Last updated: July 21, 2026 · Applies to streampulse.stream and the StreamPulse Chrome extension.
         </p>
 
         <h2>Summary</h2>
         <p>
-          StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
-          API. The extension and public site are rollup-first: they do not expose raw chat messages or
-          chatter identity to users. The extension does not implement Twitch OAuth for the current
-          product.
+          StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse API. The
+          extension and public site are rollup-first: they do not expose raw chat messages or chatter identity to
+          users. The extension does not use Twitch OAuth and does not request StreamPulse beta or access keys.
         </p>
 
         <h2>What the Chrome extension observes on Twitch</h2>
         <ul>
-          <li>The Twitch page URL and channel login for the tab you are viewing.</li>
+          <li>The active Twitch page URL, channel login, and stream or VOD identifiers for the tab you are viewing.</li>
+          <li>Page-context Twitch metadata needed to resolve the current live stream or VOD for the overlay.</li>
           <li>
-            Page metadata needed to identify the current live stream or VOD (for example stream or
-            VOD identifiers available in the page context).
-          </li>
-          <li>
-            Twitch GraphQL requests performed in the page context when needed to resolve stream/VOD
-            identity for Pulse coverage and backfill flows.
+            Twitch GraphQL requests performed in the Twitch page context when needed to resolve stream or VOD identity
+            for Pulse coverage and backfill flows.
           </li>
         </ul>
-        <p data-testid="privacy-twitch-session">
-          The extension does not directly access or extract Twitch cookie values. Twitch GraphQL
-          requests made in the page context may use your active Twitch browser session through normal
-          browser credential handling (for example <code>credentials: &apos;include&apos;</code> on
-          requests to Twitch). Those Twitch requests go to Twitch; StreamPulse does not receive your
-          Twitch cookies or Twitch login credentials from the extension.
+        <p>
+          The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials, beta keys,
+          access keys, raw chat exports, or chatter identities. Page-context Twitch requests may use your active Twitch
+          browser session through normal browser credential handling. Those requests go to Twitch; StreamPulse does not
+          receive your Twitch cookies or Twitch login credentials from the extension.
         </p>
 
         <h2>What is sent to StreamPulse</h2>
         <p>
-          The extension service worker sends channel login, stream identifiers, and VOD identifiers
-          (as applicable) to the StreamPulse backend so Pulse rollups, coverage state, and related
-          analytics can be returned. Default API host:{' '}
-          <code>https://api.streampulse.stream</code>.
+          The extension service worker sends channel login, stream identifiers, and VOD identifiers, as applicable, plus
+          aggregate Pulse and coverage requests, to <code>https://api.streampulse.stream</code> so sanitized rollups,
+          coverage state, and analytics can be returned.
         </p>
         <p>
-          If you enter a beta / access key in Options, that key is sent on gated API requests via the{' '}
-          <code>X-Streamclone-Beta-Key</code> header (legacy header name retained for compatibility).
-          Public analytics on streampulse.stream does not require a beta key.
+          The current public-first extension does not request, store, or send a StreamPulse beta key or access key.
         </p>
 
         <h2>What is stored in the browser</h2>
         <ul>
           <li>
-            <strong>chrome.storage.sync</strong> — extension settings such as theme, overlay
-            placement, chart window preference, watchlist entries, and related preferences that may
-            sync with your Chrome profile when Chrome Sync is enabled.
+            <strong>chrome.storage.sync</strong> — extension preferences such as theme, color scheme, overlay
+            placement, chart range, watchlist entries, and related settings that may sync with your Chrome profile.
           </li>
           <li>
-            <strong>chrome.storage.local</strong> — beta / access key (device-local; not synced). If
-            a key was previously stored in sync storage, it is migrated to local storage and removed
-            from sync on next read. Optional debug log entries are also stored here only when debug
-            logging is enabled.
+            <strong>chrome.storage.session</strong> — short-lived Pulse and coverage caches for the current browser
+            session.
           </li>
           <li>
-            <strong>chrome.storage.session</strong> — short-lived Pulse / coverage cache for the
-            current browser session.
+            <strong>chrome.storage.local</strong> — optional debug log entries only when debug logging is enabled.
           </li>
           <li>
-            <strong>Portal localStorage</strong> — optional website keys such as{' '}
-            <code>sp.betaKey</code> (for gated dashboard features) and{' '}
-            <code>sp.backendUrlOverride</code> (developer override). Clearing site data removes them.
+            <strong>Portal localStorage</strong> — optional website keys for gated portal features and explicit
+            developer overrides. Clearing site data removes them.
           </li>
         </ul>
 
         <h2>External services that receive data</h2>
         <ul>
           <li>
-            <strong>StreamPulse API</strong> — <code>https://api.streampulse.stream</code> (default).
-            Local development may optionally use <code>http://localhost:8081</code> after you grant
-            optional host permission in the extension.
+            <strong>StreamPulse API</strong> — the hosted analytics service at
+            <code>https://api.streampulse.stream</code>.
           </li>
           <li>
-            <strong>Twitch</strong> — page context and GraphQL used to identify streams/VODs on
-            twitch.tv. Twitch may see your normal browser session for those requests; that is
-            separate from data sent to StreamPulse.
+            <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on twitch.tv.
           </li>
           <li>
-            <strong>Emote CDNs</strong> — image assets from 7TV, Twitch CDN, and FrankerFaceZ when
-            the UI displays emote art.
+            <strong>Emote CDNs</strong> — image assets from providers such as 7TV, Twitch CDN, BetterTTV, and
+            FrankerFaceZ when the overlay displays emote art in the browser.
           </li>
         </ul>
         <p>
-          The packaged extension ships its own bundled scripts. It is not designed to load remotely
-          hosted executable JavaScript or WebAssembly for its own product logic.
+          All executable JavaScript for the extension is packaged with the extension. The extension does not download
+          or evaluate remotely hosted JavaScript or WebAssembly for product logic.
         </p>
 
         <h2>Purpose</h2>
         <p>
-          Data is used to provide Pulse overlays on Twitch, honest coverage/backfill status, and
-          public aggregate analytics on streampulse.stream. It is not used to sell your personal
-          information, serve third-party advertising from this product, or build unrelated
-          advertising profiles.
+          Data is used to provide Pulse overlays on Twitch, honest coverage and backfill status, and public aggregate
+          analytics. Data is not sold, used for advertising, or used for unrelated profiling.
         </p>
 
         <h2>Retention and deletion</h2>
         <p>
-          Browser storage (settings, caches, optional beta key, optional debug logs) remains until
-          you clear it (for example via extension Options, Chrome’s extension storage / site data
-          controls, or uninstalling the extension). Uninstalling the extension removes the
-          extension’s local browser storage for that install; it does not by itself guarantee that
-          every server-side Pulse rollup or operational log tied to channels you viewed is erased.
+          Browser settings, caches, and optional debug logs remain until you clear them or uninstall the extension.
+          Uninstalling removes browser storage for that installation; it does not itself delete server-side aggregate
+          rollups or operational logs.
         </p>
         <p>
-          Server-side retention for rollups and operational logs is governed by StreamPulse backend /
-          ops configuration. This page does not define a fixed public retention period.
-        </p>
-        <p>
-          Clearing the beta key in Options (or clearing extension storage) stops sending that key.
-          Chrome Sync deletion behavior for synced settings depends on your Chrome account and sync
-          settings; clearing local extension storage may not immediately remove every previously
-          synced copy on other devices.
+          Server-side retention is governed by StreamPulse backend and operations configuration. This policy does not
+          claim a fixed public retention period.
         </p>
 
         <h2>Chrome Web Store limited use</h2>
         <p>
-          For Chrome Web Store Limited Use compliance: user data collected via the extension is used
-          only to provide or improve user-facing features of StreamPulse, is not sold, and is not
-          used for advertising or unrelated profiling. Transfers needed to operate the product
-          include the StreamPulse API, Twitch (for page-context identity requests), and emote CDNs
-          listed above. This section is not an exhaustive list of every infrastructure or vendor
-          subprocessors that may process operational traffic.
+          User data collected through the extension is used only to provide or improve user-facing StreamPulse
+          features. It is not sold or used for advertising or unrelated profiling. Transfers needed to operate the
+          product include the StreamPulse API, Twitch page-context requests, and the emote image CDNs described above.
         </p>
 
         <h2>Contact</h2>
         <p data-testid="privacy-contact">
           For privacy or support questions, email{' '}
-          <a href="mailto:privacy@streampulse.stream" data-testid="privacy-contact-link">
-            privacy@streampulse.stream
-          </a>
-          .
+          <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}
+          <Link to="/support">support page</Link>.
         </p>
 
         <h2>Changes</h2>
-        <p>
-          Material changes to this policy will be reflected on this page with an updated date.
-        </p>
+        <p>Material changes to this policy will be reflected on this page with an updated date.</p>
       </article>
     </PublicLayout>
   )

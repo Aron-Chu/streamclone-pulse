@@ -178,6 +178,60 @@
   gap: 0.65rem;
 }
 
+.analytics-topnav__install {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--text-primary, #f4f4f5);
+  text-decoration: none;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-onboarding-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.hub-onboarding-cta p {
+  margin: 0;
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-secondary, #c4c4cc);
+}
+
+.hub-onboarding-cta__link {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--text-primary, #f4f4f5);
+  text-decoration: none;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.18));
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
 .figma-analytics__center--themed {
   transition: opacity 0.15s ease;
 }
@@ -975,7 +1029,7 @@
   margin-bottom: 0.25rem;
 }
 
-/* Pulsing live indicator on the "Live in pool" tile. */
+/* Pulsing status indicator on the tracked-pool tile. */
 .hub-command-header__kpi-live {
   width: 0.5rem;
   height: 0.5rem;
@@ -7466,12 +7520,16 @@ button.hub-live-wire__chip {
 }
 
 .live-channels-matrix__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   border: 1px solid var(--fma-border);
   background: transparent;
   color: var(--fma-muted);
   border-radius: 999px;
-  padding: 0.25rem 0.55rem;
+  padding: 0.28rem 0.55rem;
   font-size: 0.72rem;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -7804,14 +7862,21 @@ button.hub-live-wire__chip {
 .live-channels-matrix__views {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.35rem;
   margin: 0 0 0.75rem;
+  padding-inline: 1.25rem;
+  box-sizing: border-box;
 }
 
 .emote-market__view-tab,
 .live-channels-matrix__view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
   font: inherit;
   font-size: 0.72rem;
+  line-height: 1;
   padding: 0.28rem 0.55rem;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--fma-border) 90%, transparent);
@@ -7836,9 +7901,13 @@ button.hub-live-wire__chip {
   opacity: 0.85;
 }
 
-.emote-market__view-hint {
+.emote-market__view-hint,
+.live-channels-matrix__view-hint {
+  display: inline;
   opacity: 0.65;
-  font-size: 0.65rem;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 500;
 }
 
 .emote-market__gated,
@@ -7897,11 +7966,6 @@ button.hub-live-wire__chip {
   text-align: left;
   padding: 0.4rem 0.5rem;
   border-bottom: 1px solid color-mix(in srgb, var(--fma-border) 80%, transparent);
-}
-
-.live-channels-matrix__view-hint {
-  opacity: 0.65;
-  font-size: 0.65rem;
 }
 
 .live-channels-matrix__pill {

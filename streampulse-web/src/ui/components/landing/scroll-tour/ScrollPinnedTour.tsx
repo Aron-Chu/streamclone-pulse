@@ -9,13 +9,11 @@ function prefersReducedMotion(): boolean {
   )
 }
 
+/** Same gate as LiveSignalScrollGraph — reduced-motion / missing APIs only (no width gate). */
 export function canAnimateScrollTour(): boolean {
-  if (prefersReducedMotion()) return false
   if (typeof window === 'undefined') return false
+  if (prefersReducedMotion()) return false
   if (typeof IntersectionObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') {
-    return false
-  }
-  if (typeof window.matchMedia === 'function' && !window.matchMedia('(min-width: 961px)').matches) {
     return false
   }
   return true
@@ -27,6 +25,8 @@ export interface ScrollPinnedTourProps {
   activeStep?: number
   ariaLabelledBy?: string
   onProgress?: (smoothed: number, raw: number) => void
+  /** Notified when animated vs static mode changes (keeps ExtensionShowcase in sync). */
+  onAnimateChange?: (animate: boolean) => void
   children: ReactNode
 }
 
@@ -38,6 +38,7 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
       activeStep = 1,
       ariaLabelledBy = 'demo-title',
       onProgress,
+      onAnimateChange,
       children,
     },
     ref,
@@ -47,9 +48,24 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
     const [animate, setAnimate] = useState(false)
 
     useEffect(() => {
-      if (!canAnimateScrollTour()) return
-      setAnimate(true)
-    }, [])
+      const apply = () => {
+        const next = canAnimateScrollTour()
+        setAnimate(next)
+        onAnimateChange?.(next)
+      }
+
+      apply()
+
+      if (typeof window.matchMedia !== 'function') return
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+      const onChange = () => apply()
+      if (typeof mq.addEventListener === 'function') {
+        mq.addEventListener('change', onChange)
+        return () => mq.removeEventListener('change', onChange)
+      }
+      mq.addListener(onChange)
+      return () => mq.removeListener(onChange)
+    }, [onAnimateChange])
 
     useEffect(() => {
       if (!animate || !onProgress) return

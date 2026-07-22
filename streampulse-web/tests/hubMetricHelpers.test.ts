@@ -59,10 +59,36 @@ describe('hubMetricHelpers', () => {
 
   it('builds honest metric legend', () => {
     const legend = hubMetricLegend(baseHub())
-    expect(legend).toContain('100 live in pool')
+    expect(legend).toContain('100 tracked in pool')
     expect(legend).toContain('80/250 IRC collectors')
     expect(legend).toContain('120 roster live')
     expect(legend).not.toMatch(/corpus/i)
+  })
+
+  it('uses legacy coverage.liveChannels when roster.live is absent from the payload', () => {
+    const hub = normalizePublicHub({
+      poolSize: 300,
+      coverage: {
+        liveChannels: 84,
+        trackingMax: 300,
+        backfillActive: 0,
+        backfillMax: 0,
+        syncActive: 0,
+        emotesIndexed: 0,
+        databaseOk: true,
+        state: 'operational',
+      },
+      corpusPipeline: {
+        state: 'healthy',
+        collectorActive: 80,
+        collectorMax: 250,
+      },
+    })
+    expect(hub.corpusPipeline.roster.live).toBe(0)
+    expect(hub.coverage.liveChannels).toBe(84)
+    const legend = hubMetricLegend(hub)
+    expect(legend).toContain('300 tracked in pool')
+    expect(legend).toContain('84 roster live')
   })
 
   it('flags activity viewers below live pool sum', () => {

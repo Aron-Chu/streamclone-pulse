@@ -122,6 +122,13 @@ function validateManifest(manifest) {
     ok(`REQUIRED: service worker present: ${sw}`)
   }
 
+  const contentMatches = manifest.content_scripts?.[0]?.matches ?? []
+  if (contentMatches.length !== 1 || contentMatches[0] !== 'https://*.twitch.tv/*') {
+    fail(`content_scripts matches must be https://*.twitch.tv/* only, got ${JSON.stringify(contentMatches)}`)
+  } else {
+    ok('REQUIRED: content_scripts match HTTPS Twitch only')
+  }
+
   const contentJs = manifest.content_scripts?.[0]?.js?.[0]
   if (!contentJs || !existsSync(join(dist, contentJs))) {
     fail(`content script missing from dist: ${contentJs ?? '(none)'}`)

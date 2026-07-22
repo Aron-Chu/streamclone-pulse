@@ -20,9 +20,11 @@ import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startP
 import type { BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
+import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
 import {
   addToWatchlist,
   getWatchlist,
+  normalizeWatchlist,
   removeFromWatchlist,
 } from '../shared/watchlist.ts'
 import {
@@ -33,17 +35,58 @@ import {
   initPulseDebug,
   pulseDebug,
 } from '../shared/pulseDebug.ts'
+import { tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabNavigation,
 } from './pulsePrefetch.ts'
 import { shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
+import {
+  planWatchlistStartupSync,
+  planWatchlistStorageDelta,
+} from './alwaysTrackedSync.ts'
 
 void initPulseDebug()
 
 const revalidateInFlight = new Set<string>()
 const lastRevalidateAt = new Map<string, number>()
+/** Suppress storage-listener sync while message handlers own the mutation. */
+let suppressWatchlistStorageSync = false
+
+async function applyAlwaysTrackedPlan(plan: {
+  trackTrue: string[]
+  trackFalse: string[]
+}): Promise<{ attempted: number; unauthorized: number; failed: number }> {
+  // Public hosted API has no guest Protect credentials — skip network writes to
+  // avoid unauthorized sync storms. Local BFF still receives best-effort sync.
+  if (await hostedBackend()) {
+    return { attempted: 0, unauthorized: 0, failed: 0 }
+  }
+
+  const writes = [
+    ...plan.trackTrue.map(login => setAlwaysTracked(login, true)),
+    ...plan.trackFalse.map(login => setAlwaysTracked(login, false)),
+  ]
+  const results = await Promise.all(writes)
+  let unauthorized = 0
+  let failed = 0
+  for (const result of results) {
+    if (result.ok) continue
+    if (result.unauthorized) unauthorized += 1
+    else failed += 1
+  }
+  return { attempted: results.length, unauthorized, failed }
+}
+
+async function withWatchlistMutationOwnership<T>(fn: () => Promise<T>): Promise<T> {
+  suppressWatchlistStorageSync = true
+  try {
+    return await fn()
+  } finally {
+    suppressWatchlistStorageSync = false
+  }
+}
 
 async function hostedBackend(): Promise<boolean> {
   return isHostedBackendUrl(await getBackendUrl())
@@ -94,7 +137,7 @@ async function refreshPulse(
     await cachePulseIfEnabled(login, payload, window)
     broadcastPulse(login, payload, undefined, coverageTier)
   } catch (err) {
-    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+    broadcastPulse(login, null, sanitizePulseErrorMessage(err))
   }
 }
 
@@ -105,6 +148,7 @@ async function peekPulse(
 ): Promise<{
   payload: PulseUpdateMessage['payload']
   coverageTier: ExtensionCoverageTierResponse | null
+  error?: string
 }> {
   try {
     const [payload, coverageTier] = await Promise.all([
@@ -113,8 +157,12 @@ async function peekPulse(
     ])
     await cachePulseIfEnabled(login, payload, window)
     return { payload, coverageTier }
-  } catch {
-    return { payload: null, coverageTier: null }
+  } catch (err) {
+    return {
+      payload: null,
+      coverageTier: null,
+      error: sanitizePulseErrorMessage(err),
+    }
   }
 }
 
@@ -126,11 +174,15 @@ async function revalidatePulse(login: string, window: PulseCacheWindow, forceCov
   }
   revalidateInFlight.add(key)
   try {
-    const { payload, coverageTier } = await peekPulse(login, window, forceCoverage)
-    broadcastPulse(login, payload, undefined, coverageTier)
-    lastRevalidateAt.set(key, Date.now())
+    const { payload, coverageTier, error } = await peekPulse(login, window, forceCoverage)
+    if (error) {
+      broadcastPulse(login, null, error)
+    } else {
+      broadcastPulse(login, payload, undefined, coverageTier)
+      lastRevalidateAt.set(key, Date.now())
+    }
   } catch (err) {
-    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+    broadcastPulse(login, null, sanitizePulseErrorMessage(err))
   } finally {
     revalidateInFlight.delete(key)
   }
@@ -151,6 +203,8 @@ function broadcastPulse(
     .then(tabs => {
       for (const tab of tabs) {
         if (!tab.id) continue
+        // Skip unrelated Twitch tabs; keep all tabs for this login (multi-tab OK).
+        if (!tabUrlMatchesPulseLogin(tab.url, login)) continue
         chrome.tabs.sendMessage(tab.id, message).catch(() => {})
       }
     })
@@ -181,25 +235,17 @@ async function applyAutoUpdateSetting(enabled: boolean): Promise<void> {
 }
 
 async function syncWatchlistToBackend(): Promise<string[]> {
-  const channels = await getWatchlist()
-  let backendChannels: string[] = []
+  let channels: string[] | null = null
   try {
-    backendChannels = await fetchAlwaysTracked()
+    channels = await getWatchlist()
   } catch {
-    backendChannels = []
+    channels = null
   }
 
-  const backendSet = new Set(backendChannels.map(item => item.toLowerCase()))
-  const localSet = new Set(channels)
+  const plan = planWatchlistStartupSync(channels, [])
+  await applyAlwaysTrackedPlan(plan)
 
-  await Promise.all([
-    ...channels.map(login => setAlwaysTracked(login, true)),
-    ...backendChannels
-      .filter(login => !localSet.has(login.toLowerCase()))
-      .map(login => setAlwaysTracked(login, false)),
-  ])
-
-  if (!(await hostedBackend())) {
+  if (channels && !(await hostedBackend())) {
     for (const login of channels) {
       if (!isTracked(login)) {
         await ensureTracked(login)
@@ -207,7 +253,18 @@ async function syncWatchlistToBackend(): Promise<string[]> {
     }
   }
 
-  return channels
+  return channels ?? []
+}
+
+async function syncWatchlistStorageDelta(
+  oldValue: unknown,
+  newValue: unknown,
+): Promise<void> {
+  const plan = planWatchlistStorageDelta(
+    normalizeWatchlist(oldValue),
+    normalizeWatchlist(newValue),
+  )
+  await applyAlwaysTrackedPlan(plan)
 }
 
 const PAST_VODS_CACHE_MS = 5 * 60 * 1000
@@ -238,7 +295,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     void applyAutoUpdateSetting(Boolean(changes.autoUpdateEnabled.newValue ?? true))
   }
   if (areaName !== 'sync' || !changes.watchlist) return
-  void syncWatchlistToBackend()
+  if (suppressWatchlistStorageSync) return
+  void syncWatchlistStorageDelta(changes.watchlist.oldValue, changes.watchlist.newValue)
 })
 
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
@@ -299,15 +357,18 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           } else if (isTracked(message.login)) {
             await refreshPulse(message.login, window)
           } else {
-            const { payload, coverageTier } = await peekPulse(message.login, window)
+            const { payload, coverageTier, error } = await peekPulse(message.login, window)
             if (payload) {
               broadcastPulse(message.login, payload, undefined, coverageTier)
+            } else if (error) {
+              broadcastPulse(message.login, null, error)
             }
             sendResponse({
               type: 'PULSE_UPDATE',
               login: message.login,
               payload,
               coverageTier,
+              error,
             } satisfies PulseUpdateMessage)
             return
           }
@@ -484,14 +545,21 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'ADD_WATCHLIST': {
-          const channels = await addToWatchlist(message.login)
-          await syncWatchlistToBackend()
+          const channels = await withWatchlistMutationOwnership(async () => {
+            // Local Chrome-sync list is source of truth for the public extension.
+            const next = await addToWatchlist(message.login)
+            await applyAlwaysTrackedPlan({ trackTrue: [message.login], trackFalse: [] })
+            return next
+          })
           sendResponse({ type: 'WATCHLIST', channels } satisfies BackgroundResponse)
           return
         }
         case 'REMOVE_WATCHLIST': {
-          const channels = await removeFromWatchlist(message.login)
-          await syncWatchlistToBackend()
+          const channels = await withWatchlistMutationOwnership(async () => {
+            const next = await removeFromWatchlist(message.login)
+            await applyAlwaysTrackedPlan({ trackTrue: [], trackFalse: [message.login] })
+            return next
+          })
           sendResponse({ type: 'WATCHLIST', channels } satisfies BackgroundResponse)
           return
         }

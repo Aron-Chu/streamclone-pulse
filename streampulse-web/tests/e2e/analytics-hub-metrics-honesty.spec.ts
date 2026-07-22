@@ -181,12 +181,14 @@ test.describe('hub metrics honesty (mocked hub)', () => {
   test('KPI header groups live snapshot and window peaks honestly', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    await expect(page.getByText('Live in pool', { exact: true })).toBeVisible()
-    await expect(page.getByText('Live viewers now', { exact: true })).toBeVisible()
-    await expect(page.getByText('Peak emotes/min', { exact: true })).toBeVisible()
+    await expect(page.getByText('Tracked channels', { exact: true })).toBeVisible()
+    await expect(page.getByText('Tracked live viewers', { exact: true })).toBeVisible()
+    const peaks = page.getByRole('region', { name: 'Activity peaks in the last 1 day' })
+    await expect(peaks.getByText('Emotes/min', { exact: true })).toBeVisible()
     await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('1.2K', { exact: true }).first()).toBeVisible()
+    // Tracked pool size from hubUxMock fixture (poolSize: 96), not corpus streamsTracked.
+    await expect(page.getByTestId('live-pool-size')).toHaveText('96')
     await assertNoConsoleErrors(page, errors)
   })
 
@@ -194,18 +196,18 @@ test.describe('hub metrics honesty (mocked hub)', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     const legend = page.locator('.figma-global-activity__lede').nth(1)
-    await expect(legend).toContainText(/96 live in pool/)
+    await expect(legend).toContainText(/96 tracked in pool/)
     await expect(legend).toContainText(/40\/96 IRC collectors/)
     await expect(legend).not.toContainText(/corpus/i)
     await expect(legend).not.toContainText(/live tracked/i)
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('Live channels matrix header distinguishes pool, IRC, and roster', async ({ page }) => {
+  test('Tracked channels matrix header distinguishes pool, IRC, and roster', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     const sub = page.locator('.live-channels-matrix .figma-block__sub')
-    await expect(sub).toContainText(/live in pool/)
+    await expect(sub).toContainText(/tracked in pool/)
     await expect(sub).toContainText(/IRC collecting/)
     await expect(sub).toContainText(/roster live/)
     await assertNoConsoleErrors(page, errors)
@@ -302,14 +304,14 @@ test.describe('hub metrics honesty (hosted API)', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics', { waitUntil: 'domcontentloaded' })
 
-    await expect(page.getByText('Live in pool', { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('Live viewers now', { exact: true })).toBeVisible()
+    await expect(page.getByText('Tracked channels', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Tracked live viewers', { exact: true })).toBeVisible()
     await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
 
     const legend = page.locator('.figma-global-activity .figma-global-activity__lede').nth(1)
     await expect(legend).toBeVisible({ timeout: 15_000 })
-    await expect(legend).toContainText(/live in pool/)
+    await expect(legend).toContainText(/tracked in pool/)
     await expect(legend).toContainText(/IRC collectors/)
     await expect(legend).not.toContainText(/corpus streams total/)
 

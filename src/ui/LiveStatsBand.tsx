@@ -105,6 +105,15 @@ const CONFIDENCE_STYLES: Record<
   },
 }
 
+const COMPACT_NUMBER = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+})
+const STANDARD_NUMBER = new Intl.NumberFormat('en-US', {
+  notation: 'standard',
+  maximumFractionDigits: 1,
+})
+
 function formatSignedDelta(delta: number | null): string {
   if (delta === null) return '-'
   if (delta === 0) return '0'
@@ -112,10 +121,7 @@ function formatSignedDelta(delta: number | null): string {
 }
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    notation: value >= 10_000 ? 'compact' : 'standard',
-    maximumFractionDigits: 1,
-  }).format(value)
+  return (value >= 10_000 ? COMPACT_NUMBER : STANDARD_NUMBER).format(value)
 }
 
 function useCountUp(value: number, duration = 420): number {
@@ -193,7 +199,10 @@ export function LiveStatsBand({
   demoMode = false,
 }: LiveStatsBandProps) {
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
-  const stats: LiveStats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
+  const stats: LiveStats = useMemo(
+    () => deriveLiveStats(toLiveStatsInputFromExtension(payload)),
+    [payload],
+  )
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
   const hasFullRollups = hasFullTimelineRollups(payload)
   const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('full')

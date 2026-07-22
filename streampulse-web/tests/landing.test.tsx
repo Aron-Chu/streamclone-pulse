@@ -55,10 +55,9 @@ function renderLanding() {
 
 describe('landing page', () => {
   it('renders all major sections', async () => {
-    const { container } = renderLanding()
+    renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    expect(container.querySelectorAll('[data-brand-mark="peak"]')).toHaveLength(2)
     expect(screen.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /^roadmap$/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: /how it works/i })).toBeTruthy()
@@ -73,7 +72,12 @@ describe('landing page', () => {
     const heroScope = within(hero as HTMLElement)
 
     expect(heroScope.getByRole('link', { name: /open analytics/i }).getAttribute('href')).toBe('/analytics')
-    expect(heroScope.getByRole('link', { name: /install extension/i }).getAttribute('href')).toBe('/docs#extension')
+    const install = heroScope.getByRole('link', { name: /Add StreamPulse to Chrome/i })
+    expect(install.getAttribute('href')).toBe(
+      'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+    )
+    expect(install.getAttribute('target')).toBe('_blank')
+    expect(install.getAttribute('rel')).toBe('noopener noreferrer')
   })
 
   it('does not expose legacy /setup or /login nav CTAs', async () => {

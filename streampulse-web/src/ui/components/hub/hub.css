@@ -1843,10 +1843,6 @@
   font-weight: 650;
   white-space: nowrap;
 }
-.hubx .hx-chart2 .now {
-  position: absolute;
-}
-.hubx .hx-chart2 .now i,
 .hubx .hx-chart2 .hdot {
   position: absolute;
   width: 9px;
@@ -1854,17 +1850,6 @@
   border-radius: 50%;
   border: 2px solid hsl(var(--card));
   transform: translate(-50%, -50%);
-}
-.hubx .hx-chart2 .now .halo {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  opacity: 0.5;
-  transform: translate(-50%, -50%);
-  animation: hx-ping 1.9s ease-out infinite;
-}
-.hubx .hx-chart2 .hdot {
   z-index: 2;
 }
 .hubx .hx-chart2 .cross {
@@ -2170,16 +2155,6 @@
 }
 .hubx .hx-chart-tip-slot .tip .tip-emotes b {
   font-variant-numeric: tabular-nums;
-}
-@keyframes hx-ping {
-  from {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.5;
-  }
-  to {
-    transform: translate(-50%, -50%) scale(3.4);
-    opacity: 0;
-  }
 }
 .hubx .hx-axis {
   display: flex;

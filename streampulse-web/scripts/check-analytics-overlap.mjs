@@ -16,6 +16,8 @@ const deadFiles = [
   join(webRoot, 'src/ui/components/analytics/GlobalActivityChart.tsx'),
   join(webRoot, 'src/routes/analytics/ChannelDatePage.tsx'),
   join(webRoot, 'src/routes/analytics/ChannelSessionKeyRoute.tsx'),
+  join(webRoot, 'src/routes/analytics/StreamsHubPage.tsx'),
+  join(webRoot, 'src/routes/analytics/StreamsHubPlaceholder.tsx'),
 ]
 
 /** @type {string[]} */

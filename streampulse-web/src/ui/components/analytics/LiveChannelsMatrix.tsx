@@ -375,7 +375,7 @@ export function LiveChannelsMatrix({
             moments list. Overview uses live hub rows now. Momentum acceleration and anomaly
             reasons appear only when the backend ships `screener` fields (never invented from
             browser poll history).
-            {poolSize != null && poolSize > 0 ? ` · ${compact(poolSize)} live in pool` : ''}
+            {poolSize != null && poolSize > 0 ? ` · ${compact(poolSize)} tracked in pool` : ''}
             {ircActive != null && ircActive > 0 ? ` · ${compact(ircActive)} IRC collecting` : ''}
             {rosterLive != null && rosterLive > 0 ? ` · ${compact(rosterLive)} roster live` : ''}
             {updatedAgo ? ` · as of ${updatedAgo}` : ''}

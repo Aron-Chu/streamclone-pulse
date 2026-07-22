@@ -23,9 +23,12 @@ export function hubMetricLegend(hub: PublicHub): string {
   const pool = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
   const ircActive = hub.corpusPipeline.collectorActive
   const ircMax = hub.corpusPipeline.collectorMax
-  const rosterLive = hub.corpusPipeline.roster?.live ?? hub.coverage.liveChannels
+  // normalizePublicHub already prefers corpusPipeline.roster.live and falls back
+  // to legacy coverage.liveChannels. Prefer coverage here: roster.live is always
+  // a number after normalize (default 0), so `??` never reaches the legacy path.
+  const rosterLive = hub.coverage.liveChannels
   const parts = [
-    `${pool} live in pool`,
+    `${pool} tracked in pool`,
     ircMax > 0 ? `${ircActive}/${ircMax} IRC collectors` : null,
     rosterLive > 0 ? `${rosterLive} roster live` : null,
   ].filter(Boolean)

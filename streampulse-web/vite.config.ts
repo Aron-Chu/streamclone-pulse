@@ -11,11 +11,10 @@ const pulseRoot = resolve(__dirname, '..')
 
 function devConnectSrcPlugin(): Plugin {
   const devHosts = [
-    'http://localhost:8090',
-    'http://127.0.0.1:8090',
-    'http://laptopworker:8090',
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
   ]
-  const devConnect = [...devHosts, 'ws://localhost:8090', 'ws://127.0.0.1:8090'].join(' ')
+  const devConnect = devHosts.join(' ')
   const devImg = devHosts.join(' ')
   return {
     name: 'streampulse-dev-connect-src',
