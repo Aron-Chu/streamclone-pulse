@@ -25,7 +25,7 @@ export function hubMetricLegend(hub: PublicHub): string {
   const ircMax = hub.corpusPipeline.collectorMax
   const rosterLive = hub.corpusPipeline.roster?.live ?? hub.coverage.liveChannels
   const parts = [
-    `${pool} live in pool`,
+    `${pool} tracked in pool`,
     ircMax > 0 ? `${ircActive}/${ircMax} IRC collectors` : null,
     rosterLive > 0 ? `${rosterLive} roster live` : null,
   ].filter(Boolean)

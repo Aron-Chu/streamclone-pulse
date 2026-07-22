@@ -184,10 +184,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (controllerRef.current === controller) {
         inFlightRef.current = false
         lastFetchAtRef.current = Date.now()
-      }
-      if (mountedRef.current) {
-        setLoading(false)
-        setRefreshing(false)
+        if (mountedRef.current) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     }
   }, [activityWindow, applySuccessfulLoad, pollMs])
@@ -225,7 +225,12 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setLoading(false)
       return () => {
         mountedRef.current = false
-        controllerRef.current?.abort()
+        const controller = controllerRef.current
+        controller?.abort()
+        if (controllerRef.current === controller) {
+          controllerRef.current = null
+          inFlightRef.current = false
+        }
       }
     }
 
@@ -261,7 +266,12 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
 
     return () => {
       mountedRef.current = false
-      controllerRef.current?.abort()
+      const controller = controllerRef.current
+      controller?.abort()
+      if (controllerRef.current === controller) {
+        controllerRef.current = null
+        inFlightRef.current = false
+      }
       if (pollTimer) window.clearTimeout(pollTimer)
       document.removeEventListener('visibilitychange', onVisible)
     }

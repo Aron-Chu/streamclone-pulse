@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom'
 import { BrandMark } from '../BrandMark'
+import { ChromeInstallCta } from '../ChromeInstallCta'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -26,14 +27,16 @@ export function AnalyticsTopNav({
   navigationLabel = 'Analytics navigation',
 }: AnalyticsTopNavProps) {
   return (
-    <header className="analytics-topnav">
+    <header className="analytics-topnav" data-analytics-build="command-center-cws-2026-07-22">
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
       <Link to="/analytics" className="analytics-topnav__brand" aria-label="StreamPulse analytics home">
         <BrandMark className="analytics-topnav__mark" size={30} />
         <span className="analytics-topnav__brand-copy">
-          <strong>Stream<span>Pulse</span></strong>
+          <strong>
+            Stream<span>Pulse</span>
+          </strong>
           <small>Analytics Hub</small>
         </span>
       </Link>
@@ -49,6 +52,7 @@ export function AnalyticsTopNav({
       ) : null}
 
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
+        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics" />
         {status ? (
           <div
             className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}

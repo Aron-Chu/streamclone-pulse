@@ -14,7 +14,6 @@ const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
-const StreamsHubPlaceholder = lazy(() => import('./analytics/StreamsHubPlaceholder'))
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.
@@ -49,7 +48,7 @@ export function AppRoutes() {
         <Route path="/analytics/hub" element={<Navigate to="/analytics" replace />} />
         <Route path="/analytics/emotes" element={<Navigate to="/analytics" replace />} />
         <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
-        <Route path="/analytics/streams" element={<StreamsHubPlaceholder />} />
+        <Route path="/analytics/streams" element={<Navigate to="/analytics" replace />} />
 
         {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />

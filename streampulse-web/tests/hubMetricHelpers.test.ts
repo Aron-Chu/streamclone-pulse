@@ -59,7 +59,7 @@ describe('hubMetricHelpers', () => {
 
   it('builds honest metric legend', () => {
     const legend = hubMetricLegend(baseHub())
-    expect(legend).toContain('100 live in pool')
+    expect(legend).toContain('100 tracked in pool')
     expect(legend).toContain('80/250 IRC collectors')
     expect(legend).toContain('120 roster live')
     expect(legend).not.toMatch(/corpus/i)

@@ -332,7 +332,7 @@ export function HubActivityChart({
   const chartAriaLabel = useMemo(() => {
     const poolLabel =
       (poolSize ?? channelCount) > 0
-        ? `${poolSize ?? channelCount} channels in live pool`
+        ? `${poolSize ?? channelCount} channels in tracked pool`
         : 'tracked streams'
     const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
     const selectedCopy =
@@ -473,13 +473,6 @@ export function HubActivityChart({
     const firstActive = active[0]
     const firstActiveIndex = firstActive ? chartPoints.findIndex((p) => p.t === firstActive.t) : -1
     const firstActiveX = firstActiveIndex >= 0 ? xAtIndex(firstActiveIndex) : 0
-    let lastViewerIdx = -1
-    for (let i = chartPoints.length - 1; i >= 0; i -= 1) {
-      if (chartPoints[i].viewers > 0) {
-        lastViewerIdx = i
-        break
-      }
-    }
     const sampleNote =
       firstActive && Math.max(0, Math.round((firstActive.t - startT) / 60_000)) > Math.max(15, windowMinutes * 0.2)
         ? `No live samples before ${axisLabel(Math.max(0, Math.round((lastT - firstActive.t) / 60_000)))}`
@@ -512,7 +505,6 @@ export function HubActivityChart({
       chatGapBands,
       bars,
       firstActiveX,
-      lastViewerIdx,
       sampleNote,
       internalGaps: internalGapCount(chartPoints, windowMinutes),
       peakViewers: chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0),
@@ -675,7 +667,6 @@ export function HubActivityChart({
     chatGapBands,
     bars,
     firstActiveX,
-    lastViewerIdx,
     sampleNote,
     internalGaps,
     peakViewers,
@@ -1037,7 +1028,7 @@ export function HubActivityChart({
               ))}
               {chatGapBands.length > 0 && internalGaps === 0 ? (
                 <span className="gap-note" style={{ left: '18%' }}>
-                  Chat gap — no IRC measurement recorded for this period
+                  No IRC chat rollups in this stretch
                 </span>
               ) : null}
             </>
@@ -1048,14 +1039,7 @@ export function HubActivityChart({
             </span>
           ) : null}
 
-          {hover == null ? (
-            lastViewerIdx >= 0 ? (
-              <span className="now" style={{ left: `${viewers[lastViewerIdx].x}%`, top: `${viewers[lastViewerIdx].y}%` }}>
-                <span className="halo" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
-                <i style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
-              </span>
-            ) : null
-          ) : (
+          {hover != null ? (
             <>
               <span className="cross hx-crosshair" style={{ left: `${hx}%` }} />
               {hp && hp.viewers > 0 ? (
@@ -1068,7 +1052,7 @@ export function HubActivityChart({
                 <span className="hdot hx-crosshair hx-crosshair--emotes" style={{ left: `${hx}%`, top: `${emoteHy}%` }} />
               ) : null}
             </>
-          )}
+          ) : null}
         </div>
             </div>
             <div className="hx-chart-tip-slot" aria-live="polite">
@@ -1083,7 +1067,7 @@ export function HubActivityChart({
                   <div className="row">
                     <span className="sw sw--bar sw--chat" />
                     {hp.hasChatRollup === false ? (
-                      <>Tracked IRC chat&nbsp;<b>no measurement</b></>
+                      <>Tracked IRC chat&nbsp;<b>no rollups</b></>
                     ) : hp.hasChatRollup === undefined ? (
                       <>Tracked IRC chat&nbsp;<b>legacy status unknown</b></>
                     ) : (
