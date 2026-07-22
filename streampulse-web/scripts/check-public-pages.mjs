@@ -31,8 +31,19 @@ for (const [relativePath, title, robots, canonical] of expected) {
   if (/https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(html)) failures.push(`${relativePath}: local URL leaked into artifact`)
 }
 
-for (const relativePath of ['robots.txt', 'sitemap.xml']) {
+for (const relativePath of ['robots.txt', 'sitemap.xml', '_redirects']) {
   if (!existsSync(join(dist, relativePath))) failures.push(`${relativePath}: missing`)
+}
+
+if (existsSync(join(dist, '_redirects'))) {
+  const redirects = readFileSync(join(dist, '_redirects'), 'utf8')
+  for (const rule of [
+    '/analytics/streams /analytics 301',
+    '/analytics/hub /analytics 301',
+    '/atlas /analytics 301',
+  ]) {
+    if (!redirects.includes(rule)) failures.push(`_redirects: missing ${rule}`)
+  }
 }
 
 if (failures.length > 0) {
