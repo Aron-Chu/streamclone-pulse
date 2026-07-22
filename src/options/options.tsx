@@ -11,7 +11,6 @@ import {
   POLL_INTERVAL_OPTIONS_MS,
   getAutoTrackPolicy,
   getBackendUrl,
-  getBetaKey,
   getChatClosedPulseDockEnabled,
   getDefaultChartWindow,
   getOverlayPlacement,
@@ -20,7 +19,6 @@ import {
   isLocalStackBackendUrl,
   setAutoTrackPolicy,
   setBackendUrl,
-  setBetaKey,
   setChatClosedPulseDockEnabled,
   setDefaultChartWindow,
   setOverlayPlacement,
@@ -48,7 +46,6 @@ import {
 
 function OptionsApp() {
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
-  const [betaKey, setBetaKeyState] = useState('')
   const [pollMs, setPollMsState] = useState(DEFAULT_POLL_INTERVAL_MS)
   const [placement, setPlacementState] = useState<OverlayPlacement>(DEFAULT_OVERLAY_PLACEMENT)
   const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
@@ -71,7 +68,6 @@ function OptionsApp() {
     void (async () => {
       await initPulseDebug()
       setBackendUrlState(await getBackendUrl())
-      setBetaKeyState(await getBetaKey())
       setPollMsState(await getPollIntervalMs())
       setPlacementState(await getOverlayPlacement())
       setChatClosedDockEnabledState(await getChatClosedPulseDockEnabled())
@@ -100,7 +96,6 @@ function OptionsApp() {
   async function save(): Promise<void> {
     await Promise.all([
       setBackendUrl(backendUrl),
-      setBetaKey(betaKey),
       setPollIntervalMs(pollMs),
       setOverlayPlacement(placement),
       setChatClosedPulseDockEnabled(chatClosedDockEnabled),
@@ -249,26 +244,17 @@ function OptionsApp() {
           <span>Backend URL</span>
           <input value={backendUrl} onChange={e => setBackendUrlState(e.target.value)} placeholder={DEFAULT_BACKEND_URL} style={styles.input} />
         </label>
-        <label style={styles.label}>
-          <span>Beta key (optional — hosted operator tools only)</span>
-          <input
-            value={betaKey}
-            onChange={e => setBetaKeyState(e.target.value)}
-            placeholder="X-Streamclone-Beta-Key — not required for public /analytics"
-            style={styles.input}
-            autoComplete="off"
-          />
-        </label>
         <div style={styles.status}>{health}</div>
       </section>
 
       <section style={styles.section}>
         <span style={styles.groupLabel}>Watchlist / Protect</span>
         <p style={styles.help}>
-          On <strong>hosted</strong> StreamPulse, saved channels sync as backend Protect for when capacity scales —
-          they do <strong>not</strong> enable live Pulse or backfill in the extension today. Use the{' '}
-          <strong>Analytics hub</strong> to browse actively tracked channels. On a <strong>local</strong> backend (
-          <code>localhost:8081</code>), watchlist entries also start IRC while your stack runs.
+          Saved channels are stored in <strong>Chrome sync</strong> on this device. On the public hosted API there is
+          no guest Protect credential, so the extension does <strong>not</strong> claim server-side protection and
+          does not enable live Pulse or backfill. Use the <strong>Analytics hub</strong> to browse actively tracked
+          channels. On a <strong>local</strong> backend (<code>localhost:8081</code>), watchlist entries also start
+          IRC while your stack runs.
         </p>
         <div style={styles.watchRow}>
           <input
@@ -285,7 +271,8 @@ function OptionsApp() {
         {watchlistError ? <p style={styles.errorText}>{watchlistError}</p> : null}
         {watchlist.length === 0 ? (
           <p style={styles.help}>
-            No channels yet. On hosted, adding a login saves Protect for later — live Pulse stays hub-only until we scale.
+            No channels yet. On hosted, adding a login saves a local Chrome-sync preference only — it does not claim
+            server-side Protect.
           </p>
         ) : (
           <ul style={styles.watchlist}>
@@ -468,7 +455,7 @@ function OptionsApp() {
       </section>
 
       <button type="button" onClick={() => void save()} style={styles.primaryButton}>Save settings</button>
-      {saved ? <p style={styles.saved}>Saved and watchlist synced.</p> : null}
+      {saved ? <p style={styles.saved}>Saved locally.</p> : null}
     </main>
   )
 }

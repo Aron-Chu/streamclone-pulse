@@ -1,7 +1,143 @@
-import type { ExtensionGameSegment, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
+import type { ExtensionEmote, ExtensionGameSegment, ExtensionPeak, ExtensionRollup, PulseCoverage, PulsePayload } from '../shared/messages.ts'
 
 function gameSegmentKey(segment: ExtensionGameSegment): string {
   return `${segment.gameName.trim().toLowerCase()}:${segment.offsetSeconds}`
+}
+
+function sameTopEmotes(
+  a: ExtensionEmote[] | undefined,
+  b: ExtensionEmote[] | undefined,
+): boolean {
+  if (a === b) return true
+  const left = a ?? []
+  const right = b ?? []
+  if (left.length !== right.length) return false
+  for (let i = 0; i < left.length; i += 1) {
+    const x = left[i]!
+    const y = right[i]!
+    if (x === y) continue
+    if (
+      x.id !== y.id
+      || x.name !== y.name
+      || x.provider !== y.provider
+      || (x.count ?? 0) !== (y.count ?? 0)
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function sameRollup(a: ExtensionRollup, b: ExtensionRollup): boolean {
+  if (a === b) return true
+  return (
+    a.offsetSeconds === b.offsetSeconds
+    && (a.chatCount ?? 0) === (b.chatCount ?? 0)
+    && (a.sevenTvEmoteCount ?? 0) === (b.sevenTvEmoteCount ?? 0)
+    && (a.totalEmoteCount ?? 0) === (b.totalEmoteCount ?? 0)
+    && (a.viewerCount ?? 0) === (b.viewerCount ?? 0)
+    && Boolean(a.missing) === Boolean(b.missing)
+    && sameTopEmotes(a.topEmotes, b.topEmotes)
+  )
+}
+
+function sameRollupArray(
+  previous: ExtensionRollup[] | undefined,
+  next: ExtensionRollup[] | undefined,
+): boolean {
+  if (previous === next) return true
+  if (!previous || !next || previous.length !== next.length) return false
+  for (let i = 0; i < previous.length; i += 1) {
+    if (!sameRollup(previous[i]!, next[i]!)) return false
+  }
+  return true
+}
+
+function preferStableRollups(
+  previous: ExtensionRollup[] | undefined,
+  next: ExtensionRollup[] | undefined,
+): ExtensionRollup[] | undefined {
+  if (next == null) return previous
+  if (previous == null) return next
+  return sameRollupArray(previous, next) ? previous : next
+}
+
+function samePeak(a: ExtensionPeak, b: ExtensionPeak): boolean {
+  if (a === b) return true
+  if (
+    a.offsetSeconds !== b.offsetSeconds
+    || a.score !== b.score
+    || a.dominantSignal !== b.dominantSignal
+  ) {
+    return false
+  }
+  const ar = a.reasons ?? []
+  const br = b.reasons ?? []
+  if (ar.length !== br.length) return false
+  for (let i = 0; i < ar.length; i += 1) {
+    if (ar[i] !== br[i]) return false
+  }
+  return true
+}
+
+function preferStablePeaks(
+  previous: ExtensionPeak[] | undefined,
+  next: ExtensionPeak[] | undefined,
+): ExtensionPeak[] | undefined {
+  if (next === previous) return previous
+  if (!next) return previous
+  if (!previous) return next
+  if (previous.length !== next.length) return next
+  for (let i = 0; i < previous.length; i += 1) {
+    if (!samePeak(previous[i]!, next[i]!)) return next
+  }
+  return previous
+}
+
+function sameGame(a: ExtensionGameSegment, b: ExtensionGameSegment): boolean {
+  if (a === b) return true
+  return (
+    a.gameName === b.gameName
+    && a.offsetSeconds === b.offsetSeconds
+    && a.durationSeconds === b.durationSeconds
+    && a.boxArtUrl === b.boxArtUrl
+  )
+}
+
+function preferStableGames(
+  previous: ExtensionGameSegment[] | undefined,
+  next: ExtensionGameSegment[] | undefined,
+): ExtensionGameSegment[] | undefined {
+  if (next === previous) return previous
+  if (!next) return previous
+  if (!previous) return next
+  if (previous.length !== next.length) return next
+  for (let i = 0; i < previous.length; i += 1) {
+    if (!sameGame(previous[i]!, next[i]!)) return next
+  }
+  return previous
+}
+
+function preferStableCoverage(
+  previous: PulseCoverage | undefined,
+  next: PulseCoverage | undefined,
+): PulseCoverage | undefined {
+  if (next === previous) return previous
+  if (!next) return previous
+  if (!previous) return next
+  if (
+    previous.state === next.state
+    && previous.coverageStartOffsetSeconds === next.coverageStartOffsetSeconds
+    && previous.coverageEndOffsetSeconds === next.coverageEndOffsetSeconds
+    && previous.hasFullStreamCoverage === next.hasFullStreamCoverage
+    && previous.hasGaps === next.hasGaps
+    && previous.canBackfill === next.canBackfill
+    && previous.message === next.message
+    && previous.trackedFromStart === next.trackedFromStart
+  ) {
+    return previous
+  }
+  return next
 }
 
 function mergeGamesBySegment(
@@ -42,14 +178,14 @@ export function mergePulsePayload(previous: PulsePayload | null | undefined, inc
 
   const prevFull = previous.fullRollups ?? []
   const nextFull = incoming.fullRollups ?? []
-  const fullRollups =
+  const mergedFull =
     nextFull.length >= prevFull.length && nextFull.length > 0
       ? nextFull
       : prevFull.length > 0
         ? prevFull
         : nextFull
 
-  const rollups = mergeRollupsByOffset(previous.rollups, incoming.rollups)
+  const mergedRollups = mergeRollupsByOffset(previous.rollups, incoming.rollups)
 
   const coverage =
     incoming.coverage ??
@@ -61,14 +197,57 @@ export function mergePulsePayload(previous: PulsePayload | null | undefined, inc
       ? { ...previous.coverage, ...incoming.coverage, hasFullStreamCoverage: previous.coverage.hasFullStreamCoverage }
       : coverage
 
-  return {
+  const mergedPeaks =
+    (incoming.peaks?.length ?? 0) >= (previous.peaks?.length ?? 0) ? incoming.peaks : previous.peaks
+
+  const rollups = preferStableRollups(previous.rollups, mergedRollups) ?? mergedRollups
+  const fullRollups = preferStableRollups(
+    previous.fullRollups,
+    mergedFull.length > 0 ? mergedFull : incoming.fullRollups,
+  )
+  const peaks = preferStablePeaks(previous.peaks, mergedPeaks)
+  const games = preferStableGames(
+    previous.games,
+    mergeGamesBySegment(previous.games, incoming.games),
+  )
+  const stableCoverage = preferStableCoverage(previous.coverage, mergedCoverage)
+
+  const next: PulsePayload = {
     ...incoming,
     rollups,
-    fullRollups: fullRollups.length > 0 ? fullRollups : incoming.fullRollups,
-    coverage: mergedCoverage,
-    peaks: (incoming.peaks?.length ?? 0) >= (previous.peaks?.length ?? 0) ? incoming.peaks : previous.peaks,
-    games: mergeGamesBySegment(previous.games, incoming.games),
+    fullRollups: fullRollups?.length ? fullRollups : incoming.fullRollups,
+    coverage: stableCoverage,
+    peaks,
+    games,
     peakEmotePerMin: incoming.peakEmotePerMin ?? previous.peakEmotePerMin,
     peakViewers: incoming.peakViewers ?? previous.peakViewers,
+    topEmotes: sameTopEmotes(previous.topEmotes, incoming.topEmotes)
+      ? previous.topEmotes
+      : incoming.topEmotes,
   }
+
+  // Identical polls often clone empty lane/recap objects; keep the previous root
+  // so overlay mounts can skip React work via reference equality.
+  if (
+    next.rollups === previous.rollups
+    && next.fullRollups === previous.fullRollups
+    && next.peaks === previous.peaks
+    && next.games === previous.games
+    && next.coverage === previous.coverage
+    && next.topEmotes === previous.topEmotes
+    && next.peakEmotePerMin === previous.peakEmotePerMin
+    && next.peakViewers === previous.peakViewers
+    && next.currentOffsetSeconds === previous.currentOffsetSeconds
+    && next.isLive === previous.isLive
+    && next.tracking === previous.tracking
+    && next.streamId === previous.streamId
+    && next.login === previous.login
+    && next.vodId === previous.vodId
+    && next.title === previous.title
+    && next.category === previous.category
+  ) {
+    return previous
+  }
+
+  return next
 }

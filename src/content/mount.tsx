@@ -1,6 +1,7 @@
 import { createRoot, type Root } from 'react-dom/client'
 import { Overlay } from '../ui/Overlay.tsx'
 import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
+import { resolveOverlayErrorState } from '../shared/pulseError.ts'
 import type { ExtensionCoverageTierResponse, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import type { PulseCacheWindow } from '../shared/storage.ts'
@@ -184,6 +185,10 @@ let tabsRoot: Root | null = null
 let panelRoot: Root | null = null
 let tabsHostEl: HTMLElement | null = null
 let panelHostEl: HTMLElement | null = null
+let lastTabsRenderKey = ''
+let lastPanelPayloadRef: PulsePayload | null | undefined = undefined
+let lastPanelError: string | undefined
+let lastPanelCoverageTier: ExtensionCoverageTierResponse | null | undefined = undefined
 let currentLogin = ''
 let currentContext: TwitchPageContext = { kind: 'non-channel', login: null, vodId: null }
 let currentVodPulse: ExtensionVodPulseResponse | null = null
@@ -423,9 +428,32 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
   }
 
   if (sidebarSnapped) {
-    tabsRoot?.render(<Overlay {...sharedProps} sidebarPart="tabs" />)
+    const tabsKey = [
+      effectivePlacement,
+      currentSidebarTab,
+      currentOverlayMode,
+      sidebarSnapped ? '1' : '0',
+    ].join('|')
+    if (tabsKey !== lastTabsRenderKey) {
+      lastTabsRenderKey = tabsKey
+      tabsRoot?.render(
+        <Overlay
+          login={currentLogin}
+          context={currentContext}
+          payload={null}
+          effectivePlacement={effectivePlacement}
+          sidebarSnapped
+          sidebarPart="tabs"
+          sidebarTab={currentSidebarTab}
+          overlayMode={currentOverlayMode}
+          onSidebarTabChange={sharedProps.onSidebarTabChange}
+          onOverlayModeChange={sharedProps.onOverlayModeChange}
+        />,
+      )
+    }
     panelRoot?.render(<Overlay {...sharedProps} sidebarPart="body" />)
   } else {
+    lastTabsRenderKey = ''
     tabsRoot?.render(null)
     panelRoot?.render(<Overlay {...sharedProps} sidebarPart="full" />)
   }
@@ -515,15 +543,26 @@ export function updateOverlayPayload(
   coverageTier?: ExtensionCoverageTierResponse | null,
 ): void {
   if (!panelRoot || !currentLogin) return
+  const previousPayload = currentPayload
   if (payload) {
     currentPayload = applyOverlayPayloadUpdate(currentPayload, payload)
   }
-  if (error !== undefined) {
-    currentError = error
-  }
+  currentError = resolveOverlayErrorState(currentError, payload, error)
   if (coverageTier !== undefined) {
     currentCoverageTier = coverageTier
   }
+  // Identical poll after merge: skip React work (tabs shell never needed chart payloads).
+  if (
+    currentPayload === previousPayload
+    && currentPayload === lastPanelPayloadRef
+    && currentError === lastPanelError
+    && currentCoverageTier === lastPanelCoverageTier
+  ) {
+    return
+  }
+  lastPanelPayloadRef = currentPayload
+  lastPanelError = currentError
+  lastPanelCoverageTier = currentCoverageTier
   renderOverlay(currentPayload, currentError)
 }
 
@@ -567,6 +606,10 @@ export function unmountOverlay(): void {
   panelHostEl?.remove()
   tabsHostEl = null
   panelHostEl = null
+  lastTabsRenderKey = ''
+  lastPanelPayloadRef = undefined
+  lastPanelError = undefined
+  lastPanelCoverageTier = undefined
   currentLogin = ''
   currentVodPulse = null
   currentVodPulseLoading = false

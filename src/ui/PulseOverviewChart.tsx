@@ -219,8 +219,11 @@ export function PulseOverviewChart({
     const node = containerRef.current
     if (!node || typeof ResizeObserver === 'undefined') return
     const minPlotWidth = PAD_LEFT + PAD_RIGHT + 40
+    let lastRounded = -1
     const applyWidth = (raw: number) => {
       const next = Math.round(raw)
+      if (next === lastRounded) return
+      lastRounded = next
       // Tiny pre-layout widths (e.g. 1px) make plotWidth = width-pads = -15 and SVG rects throw.
       setWidth(next >= minPlotWidth ? next : DEFAULT_WIDTH)
     }
@@ -319,13 +322,13 @@ export function PulseOverviewChart({
     [emotes, trendWindow],
   )
 
-  const viewerMax = seriesMax(viewerTrendValues)
-  const chatMax = seriesMax(chat)
-  const emoteMax = seriesMax(emotes)
+  const viewerMax = useMemo(() => seriesMax(viewerTrendValues), [viewerTrendValues])
+  const chatMax = useMemo(() => seriesMax(chat), [chat])
+  const emoteMax = useMemo(() => seriesMax(emotes), [emotes])
   const chatTrendAxisMax = Math.max(chatMax, 1)
   const emoteTrendAxisMax = Math.max(emoteMax, 1)
-  const chatBarAxisMax = barDisplayAxisMax(chat)
-  const emoteBarAxisMax = barDisplayAxisMax(emotes)
+  const chatBarAxisMax = useMemo(() => barDisplayAxisMax(chat), [chat])
+  const emoteBarAxisMax = useMemo(() => barDisplayAxisMax(emotes), [emotes])
   const viewerAxisMax = Math.max(viewerMax, 1)
 
   let viewerStripShare = showViewerStrip
@@ -525,7 +528,10 @@ export function PulseOverviewChart({
       : null
   const hovering = hoverIndex != null || listPreviewIndex != null
   const motionEnabled = !reducedMotion && !prefersReducedMotion()
-  const dashedOverlays = overlayLines.filter(series => series.dashed)
+  const dashedOverlays = useMemo(
+    () => overlayLines.filter(series => series.dashed),
+    [overlayLines],
+  )
 
   const traceAxis = useMemo(
     () => activityAxisBoundsFromZero(dashedOverlays.map(series => series.values)),
@@ -703,33 +709,21 @@ export function PulseOverviewChart({
 
   const pinTargetX =
     pinIndex != null && n > 0 ? plotXForIndex(pinIndex, n, PAD_LEFT, plotWidth) : 0
-  const hoverTargetX =
+  const hoverLineX =
     hoverPreviewIndex != null && n > 0
       ? plotXForIndex(hoverPreviewIndex, n, PAD_LEFT, plotWidth)
-      : pinTargetX
+      : null
   const listPreviewTargetX =
     listPreviewIndex != null && n > 0
       ? plotXForIndex(listPreviewIndex, n, PAD_LEFT, plotWidth)
       : 0
-  const highlightTargetX =
-    activeIndex != null && n > 0 ? plotXForIndex(activeIndex, n, PAD_LEFT, plotWidth) : 0
-  const smoothPinX = useSmoothedScalar(pinTargetX, false)
-  const smoothHoverX = useSmoothedScalar(
-    hoverTargetX,
-    motionEnabled && hoverPreviewIndex != null,
-  )
+  // Direct bucket X for pointer hover; RAF-smooth only list/external selection.
   const smoothListPreviewX = useSmoothedScalar(
     listPreviewTargetX,
     motionEnabled && listPreviewIndex != null,
   )
-  const smoothHighlightX = useSmoothedScalar(
-    highlightTargetX,
-    motionEnabled && activeIndex != null,
-  )
-  const pinX = pinIndex != null ? smoothPinX : null
-  const hoverLineX = hoverPreviewIndex != null ? smoothHoverX : null
+  const pinX = pinIndex != null ? pinTargetX : null
   const listPreviewLineX = listPreviewIndex != null ? smoothListPreviewX : null
-  const activeHighlightX = activeIndex != null ? smoothHighlightX : null
 
   if (loading) {
     return (
@@ -1044,17 +1038,6 @@ export function PulseOverviewChart({
             y2={crosshairBottom}
             stroke={CHART_INTERACTION.pinLine}
             strokeWidth="1.5"
-            pointerEvents="none"
-          />
-        ) : activeHighlightX != null && pinIndex == null ? (
-          <line
-            x1={activeHighlightX}
-            x2={activeHighlightX}
-            y1={crosshairTop}
-            y2={crosshairBottom}
-            stroke={CHART_INTERACTION.previewLine}
-            strokeWidth="1"
-            opacity={0.85}
             pointerEvents="none"
           />
         ) : null}

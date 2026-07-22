@@ -1,6 +1,5 @@
 const BACKEND_URL_KEY = 'backendUrl'
 const LOCAL_BACKEND_OPT_IN_KEY = 'localBackendOptIn'
-const BETA_KEY_KEY = 'betaKey'
 const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
 const OVERLAY_MODE_KEY = 'overlayMode'
 const OVERLAY_PLACEMENT_KEY = 'overlayPlacement'
@@ -265,31 +264,6 @@ export async function restrictCredentialStorageAccess(): Promise<void> {
   } catch {
     // Older Chrome or denied: SW/options remain the intended credential readers.
   }
-}
-
-export async function getBetaKey(): Promise<string> {
-  const local = await localStorageGet(BETA_KEY_KEY)
-  const localValue = String(local[BETA_KEY_KEY] ?? '').trim()
-  if (localValue) return localValue
-
-  const sync = await syncStorageGet(BETA_KEY_KEY)
-  const syncValue = String(sync[BETA_KEY_KEY] ?? '').trim()
-  if (!syncValue) return ''
-
-  await localStorageSet({ [BETA_KEY_KEY]: syncValue })
-  await syncStorageRemove(BETA_KEY_KEY)
-  return syncValue
-}
-
-export async function setBetaKey(key: string): Promise<void> {
-  const trimmed = key.trim()
-  if (trimmed) {
-    await localStorageSet({ [BETA_KEY_KEY]: trimmed })
-  } else {
-    await localStorageRemove(BETA_KEY_KEY)
-  }
-  // Clear any legacy sync copy so the key does not reappear via Chrome sync.
-  await syncStorageRemove(BETA_KEY_KEY)
 }
 
 export async function getPollIntervalMs(): Promise<number> {

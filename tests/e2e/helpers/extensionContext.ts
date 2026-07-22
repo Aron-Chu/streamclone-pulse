@@ -24,8 +24,6 @@ export interface ExtensionStorageSeed {
    * When omitted/false, migrateDefaultChartWindowToFullOnce runs normally.
    */
   defaultChartWindowMigratedToFullV1?: boolean
-  /** Guest path: omit / null / '' — no beta key. */
-  betaKey?: string | null
 }
 
 export interface LaunchedExtension {
@@ -113,18 +111,8 @@ export async function seedExtensionStorage(
     payload.defaultChartWindowMigratedToFullV1 = true
   }
 
-  if (seed.betaKey !== undefined) {
-    payload.betaKey = seed.betaKey?.trim() ?? ''
-  }
-
   await serviceWorker.evaluate(async storage => {
-    const { betaKey, ...syncRest } = storage as Record<string, unknown> & { betaKey?: string }
-    await chrome.storage.sync.set(syncRest)
-    if (betaKey !== undefined) {
-      if (betaKey) await chrome.storage.local.set({ betaKey })
-      else await chrome.storage.local.remove('betaKey')
-      await chrome.storage.sync.remove('betaKey')
-    }
+    await chrome.storage.sync.set(storage)
   }, payload)
 }
 
@@ -157,10 +145,19 @@ export async function closeExtensionContext(
   options?: { retainUserDataDir?: boolean; retainVideoDir?: boolean },
 ): Promise<void> {
   await launched.context.close().catch(() => undefined)
+  const removeQuietly = (dir: string) => {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch (err) {
+      // Windows often locks Chromium profile/video dirs briefly after close.
+      const code = err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code) : ''
+      if (code !== 'EPERM' && code !== 'EBUSY') throw err
+    }
+  }
   if (!options?.retainUserDataDir) {
-    fs.rmSync(launched.userDataDir, { recursive: true, force: true })
+    removeQuietly(launched.userDataDir)
   }
   if (!options?.retainVideoDir) {
-    fs.rmSync(launched.videoDir, { recursive: true, force: true })
+    removeQuietly(launched.videoDir)
   }
 }

@@ -1,6 +1,8 @@
 # Chrome Web Store listing copy — StreamPulse
 
-**Status:** Ready for operator paste into Chrome Web Store Developer Dashboard  
+**Status:** Published in the Chrome Web Store
+**Listing:** https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg
+**Extension ID:** `nifgoonpcgmdhiffcpmhndjgkgahnelg`
 **Package:** `npm run package:cws` → `streampulse-extension.zip` (+ `.sha256`)  
 **Privacy policy:** https://streampulse.stream/privacy  
 **Privacy contact:** privacy@streampulse.stream  
@@ -40,8 +42,8 @@ The extension reads the Twitch page context to identify the channel / stream / V
 Privacy
 See https://streampulse.stream/privacy — including Chrome Web Store Limited Use language and contact privacy@streampulse.stream.
 
-Beta / hosted access
-Some hosted features may require an access key entered in Options (stored locally, not synced). The public site does not require a beta key for public analytics.
+Public access
+The extension is public-first. It does not require Twitch OAuth or a StreamPulse beta/access key.
 
 Support
 Privacy & support: privacy@streampulse.stream
@@ -60,21 +62,20 @@ English (United States)
 
 | Asset | Path | Size |
 |-------|------|------|
-| Screenshots (required) | `docs/pulse-extension/cws-screenshots/01-…05-…png` | 1280×800 |
-| Small promo tile (optional) | `docs/pulse-extension/cws-screenshots/promo-small-tile-440x280.png` | 440×280 |
-| Store icons | packaged from `public/icons/icon{16,48,128}.png` | Peak mark |
+| Screenshots (required) | `store/cws/screenshots/{01-live-pulse,02-coverage,03-vod-replay,04-most-reacted}.png` | 1280×800 |
+| Small promo tile (optional) | `store/cws/icons/small-promo-440x280.png` | 440×280 |
+| Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
 
-Regenerate screenshots after Figma updates:
-```powershell
-powershell -File scripts/gen-cws-screenshots.ps1
+Regenerate the validated mocked screenshot set with:
+```bash
+npx playwright test --project=extension-mocked tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts
 ```
 
 Suggested upload order:
-1. Overlay beside chat  
-2. Expanded panel  
-3. Settings  
-4. Honest warming / coverage  
-5. Stream recap  
+1. Live Pulse overview
+2. Honest coverage state
+3. VOD Replay Pulse
+4. Most reacted region
 
 ---
 
@@ -82,7 +83,7 @@ Suggested upload order:
 
 ### storage
 ```
-Stores StreamPulse settings (theme, overlay placement, chart preferences, watchlist) in chrome.storage.sync, an optional beta/access key in chrome.storage.local, and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls.
+Stores StreamPulse settings (theme, overlay placement, chart preferences, and watchlist) in chrome.storage.sync, optional bounded diagnostic logs in chrome.storage.local, and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls. The extension does not store or transmit a beta/access key.
 ```
 
 ### scripting
@@ -125,6 +126,7 @@ Developer opt-in only: local StreamPulse BFF for debugging. Not required for nor
 | Sold to third parties? | No |
 | Used for ads / unrelated profiling? | No |
 | Remote hosted code? | **No** — bundled JS only |
+| Authentication information? | **No** — no Twitch OAuth and no StreamPulse beta/access key |
 | Privacy policy URL | https://streampulse.stream/privacy |
 | Limited Use | Affirmed on privacy page + this listing |
 
@@ -138,15 +140,14 @@ Provide a Twitch live/VOD Pulse analytics overlay powered by the StreamPulse API
 
 ---
 
-## Submission checklist (operator)
+## Published listing status
 
-1. [ ] `npm test && npm run typecheck && npm run package:cws` on the release commit  
-2. [ ] Upload `streampulse-extension.zip`  
-3. [ ] Paste name / summary / description from this doc  
-4. [ ] Upload 1280×800 screenshots from `cws-screenshots/`  
-5. [ ] Paste permission justifications  
-6. [ ] Set privacy URL + Limited Use / data disclosures  
-7. [ ] Submit for review  
-8. [ ] After approval: update Landing CTA from `/docs#extension` to the store URL  
+- [x] Version `0.1.0` is published at the canonical listing URL above.
+- [x] Website install CTAs use the canonical listing URL.
+- [x] Privacy and Support pages are live on `streampulse.stream`.
+- [x] The public-first build has no beta/access-key setting or request header.
+- [ ] **Manual account correction:** change the CWS Support URL from the Twitch channel currently shown by the listing to `https://streampulse.stream/support`.
+- [ ] Optional: replace the validated mocked screenshot set only after a reviewed live-Twitch capture.
 
-**Not automated:** Google account / Developer Dashboard submit — human only.
+Do not upload a replacement package without separate authorization. A code update requires a
+version greater than `0.1.0`, a newly validated ZIP, and Chrome Web Store review.
