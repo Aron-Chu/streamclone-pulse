@@ -13,6 +13,7 @@
  *   node scripts/capture-cws-pulse-screenshot.mjs --shot=01
  *   node scripts/capture-cws-pulse-screenshot.mjs --shot=02,03,04,05
  *   node scripts/capture-cws-pulse-screenshot.mjs --shot=closeout   # 02,03,04,05
+ *   node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=<40-hex> --shot=all
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -40,7 +41,17 @@ const DEVICE_SCALE = 2
 const TARGET_PANEL_W = 660
 const VIEWPORT = { width: 1920, height: 1200 }
 const BG = '12, 14, 18'
-const PACKAGE_BUILD_COMMIT = 'e238cab9919af958e03c93d229338eda060517a2'
+
+function parsePackageBuildCommit() {
+  const arg = process.argv.find(a => a.startsWith('--package-build-commit='))
+  const value = arg?.slice('--package-build-commit='.length).trim()
+  if (!value || !/^[0-9a-f]{40}$/i.test(value)) {
+    throw new Error('capture requires --package-build-commit=<40-hex commit>')
+  }
+  return value.toLowerCase()
+}
+
+const PACKAGE_BUILD_COMMIT = parsePackageBuildCommit()
 
 const ALL_SHOTS = ['01', '02', '03', '04', '05']
 const CAPTURE_INPUTS = [
@@ -50,6 +61,7 @@ const CAPTURE_INPUTS = [
   'vite.config.ts',
   'package.json',
   'package-lock.json',
+  'scripts/capture-cws-pulse-screenshot.mjs',
   'tests/e2e/fixtures/api/pulse-offline.json',
   'tests/e2e/helpers',
 ]
