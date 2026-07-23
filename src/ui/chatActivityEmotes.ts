@@ -402,6 +402,16 @@ export function densifyRollupsForTimeline(
   return out
 }
 
+type PrepareChartRollupsCache = {
+  payload: PulsePayload
+  chartWindow: ChartTimelineWindow
+  currentOffsetSeconds: number
+  coverageStartOffsetSeconds: number | undefined
+  result: ExtensionRollup[]
+}
+
+let prepareChartRollupsCache: PrepareChartRollupsCache | null = null
+
 export function prepareChartRollups(
   payload: PulsePayload,
   options: {
@@ -411,13 +421,24 @@ export function prepareChartRollups(
     coverageStartOffsetSeconds?: number
   },
 ): ExtensionRollup[] {
+  const cache = prepareChartRollupsCache
+  if (
+    cache
+    && cache.payload === payload
+    && cache.chartWindow === options.chartWindow
+    && cache.currentOffsetSeconds === options.currentOffsetSeconds
+    && cache.coverageStartOffsetSeconds === options.coverageStartOffsetSeconds
+  ) {
+    return cache.result
+  }
+
   const hasFull = hasFullTimelineRollups(payload)
   const useFullSource = hasFull || options.chartWindow === 'full'
   const raw = rollupSeries(payload, useFullSource ? 'full' : 'recent')
+  let result: ExtensionRollup[]
   if (options.chartWindow === 'full' && !hasFull) {
-    return []
-  }
-  if (options.chartWindow !== 'full') {
+    result = []
+  } else if (options.chartWindow !== 'full') {
     const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
     const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
     const fromOffset = Math.max(0, toOffset - chartWindowSeconds(options.chartWindow))
@@ -426,23 +447,32 @@ export function prepareChartRollups(
     )
     // Keep latest rollups visible when the window filter is empty but tracking has data.
     const source = windowed.length > 0 ? windowed : raw
-    return source.slice(-chartMaxPoints(payload, options.chartWindow))
+    result = source.slice(-chartMaxPoints(payload, options.chartWindow))
+  } else if (!hasFull) {
+    result = raw
+  } else {
+    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
+    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
+    if (toOffset <= 60) {
+      result = raw
+    } else {
+      const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
+      result = densifyRollupsForTimeline(raw, {
+        fromOffset,
+        toOffset,
+        maxPoints: chartMaxPoints(payload, options.chartWindow),
+      })
+    }
   }
 
-  if (!hasFull) return raw
-
-  const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-  const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
-  if (toOffset <= 60) return raw
-
-  const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
-  const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
-
-  return densifyRollupsForTimeline(raw, {
-    fromOffset,
-    toOffset,
-    maxPoints: chartMaxPoints(payload, options.chartWindow),
-  })
+  prepareChartRollupsCache = {
+    payload,
+    chartWindow: options.chartWindow,
+    currentOffsetSeconds: options.currentOffsetSeconds,
+    coverageStartOffsetSeconds: options.coverageStartOffsetSeconds,
+    result,
+  }
+  return result
 }
 
 export function chartAlignFromStart(_payload: PulsePayload, _window: ChartTimelineWindow = '60m'): boolean {
@@ -613,6 +643,38 @@ export function emoteSelectionKey(emote: Pick<ExtensionEmote, 'id' | 'name' | 'p
   return `${provider}:${id}:${emote.name}`
 }
 
+/** Per-emote count series indexed by rollup minute — avoids rescanning topEmotes per trace. */
+export type EmoteCountIndex = Map<string, number[]>
+
+const emoteCountIndexCache = new WeakMap<ExtensionRollup[], EmoteCountIndex>()
+
+export function buildEmoteCountIndex(rollups: ExtensionRollup[]): EmoteCountIndex {
+  const index: EmoteCountIndex = new Map()
+  const n = rollups.length
+  for (let i = 0; i < n; i += 1) {
+    const top = rollups[i]?.topEmotes
+    if (!top?.length) continue
+    for (const emote of top) {
+      const key = emoteSelectionKey(emote)
+      let series = index.get(key)
+      if (!series) {
+        series = new Array(n).fill(0)
+        index.set(key, series)
+      }
+      series[i] = Math.max(0, emote.count ?? 0)
+    }
+  }
+  return index
+}
+
+export function getEmoteCountIndex(rollups: ExtensionRollup[]): EmoteCountIndex {
+  const cached = emoteCountIndexCache.get(rollups)
+  if (cached) return cached
+  const built = buildEmoteCountIndex(rollups)
+  emoteCountIndexCache.set(rollups, built)
+  return built
+}
+
 export function sevenTvEmotesFromRollup(rollup: ExtensionRollup): ExtensionEmote[] {
   return (rollup.topEmotes ?? []).filter(emote => isSevenTvProvider(emote.provider))
 }
@@ -628,7 +690,10 @@ export function emoteCountAtRollup(rollup: ExtensionRollup, emote: ExtensionEmot
 }
 
 export function buildSelectedEmoteSeries(rollups: ExtensionRollup[], emote: ExtensionEmote): number[] {
-  return rollups.map(rollup => emoteCountAtRollup(rollup, emote))
+  const index = getEmoteCountIndex(rollups)
+  const series = index.get(emoteSelectionKey(emote))
+  if (series) return series.slice()
+  return rollups.map(() => 0)
 }
 
 /** Sum emote counts per downsample bucket so trace lines stay smooth on long streams. */
@@ -636,19 +701,27 @@ export function buildBucketedEmoteSeries(
   fullRollups: ExtensionRollup[],
   displayRollups: ExtensionRollup[],
   emote: ExtensionEmote,
+  countIndex?: EmoteCountIndex,
 ): number[] {
   if (fullRollups.length === 0) return []
   if (fullRollups.length === displayRollups.length) {
+    if (countIndex) {
+      const series = countIndex.get(emoteSelectionKey(emote))
+      return series ? series.slice() : fullRollups.map(() => 0)
+    }
     return buildSelectedEmoteSeries(fullRollups, emote)
   }
   const ranges = chartBucketRanges(fullRollups, displayRollups.length)
   if (ranges.length !== displayRollups.length) {
     return buildSelectedEmoteSeries(displayRollups, emote)
   }
+  const index = countIndex ?? getEmoteCountIndex(fullRollups)
+  const series = index.get(emoteSelectionKey(emote))
+  if (!series) return displayRollups.map(() => 0)
   return ranges.map(({ start, end }) => {
     let sum = 0
     for (let i = start; i < end; i += 1) {
-      sum += emoteCountAtRollup(fullRollups[i]!, emote)
+      sum += series[i] ?? 0
     }
     return sum
   })
@@ -785,11 +858,12 @@ export function buildEmoteOverlaySeries(
   fullRollups?: ExtensionRollup[],
 ): EmoteOverlaySeries[] {
   const source = fullRollups ?? displayRollups
+  const countIndex = getEmoteCountIndex(source)
   return emotes.map((emote, index) => ({
     key: emoteSelectionKey(emote),
     label: emote.name,
     color: emoteOverlayColor(index),
-    values: buildBucketedEmoteSeries(source, displayRollups, emote),
+    values: buildBucketedEmoteSeries(source, displayRollups, emote, countIndex),
     primary: index === 0,
     dashed: true,
   }))

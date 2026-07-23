@@ -35,6 +35,7 @@ import {
   FigmaGlobalActivityPanel,
 } from "../../ui/components/analytics/FigmaGlobalActivityPanel";
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
+import { ChromeInstallCta } from "../../ui/components/ChromeInstallCta";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
 import { LiveChannelsMatrix } from "../../ui/components/analytics/LiveChannelsMatrix";
 import { isLiveWireEventFresh } from "../../ui/components/analytics/HubLiveWireFeed";
@@ -481,6 +482,23 @@ function AnalyticsLandingContent() {
             poolWireInitialized={poolWire.initialized}
             pulseLiveChannels={pulseLiveChannels}
           />
+          {hubUiState === "empty" || hubUiState === "error" ? (
+            <div
+              className="hub-onboarding-cta"
+              data-testid="analytics-onboarding-cta"
+              role="region"
+              aria-label="Get StreamPulse on Twitch"
+            >
+              <p>
+                Install the StreamPulse Chrome extension to open Pulse on Twitch live and VOD
+                pages. This site does not detect install state — use the store listing.
+              </p>
+              <ChromeInstallCta
+                className="hub-onboarding-cta__link"
+                data-cta="chrome-install-analytics-onboarding"
+              />
+            </div>
+          ) : null}
           <div className="hub-command-search" role="search" aria-label="Channel search">
             <HubSearch
               suggestions={suggestions}
@@ -625,7 +643,7 @@ function AnalyticsLandingContent() {
               updatedAgo={updatedAgo}
               poolSize={data.poolSize}
               ircActive={data.corpusPipeline.collectorActive}
-              rosterLive={data.corpusPipeline.roster?.live}
+              rosterLive={data.coverage.liveChannels}
             />
           </SectionReveal>
         ) : null}

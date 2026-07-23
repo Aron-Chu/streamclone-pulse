@@ -12,6 +12,8 @@
     "test:e2e:mocked": "playwright test --project=extension-mocked",
     "test:e2e:live": "playwright test --project=live-twitch",
     "capture:extension-goldens": "npx tsx scripts/capture-extension-goldens.mts",
+    "icons:cws": "node scripts/gen-cws-icons.mjs",
+    "capture:cws:mocked": "npm run icons:cws && npm run build && playwright test tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts --project=extension-mocked",
     "zip": "node scripts/zip-dist.mjs",
     "validate:package": "node scripts/validate-extension-package.mjs",
     "package:cws": "npm run build && npm run zip && npm run validate:package"

@@ -1,0 +1,14 @@
+# Legacy public routes → Command Center (must be static; client-only Navigate
+# never runs when Pages returns 404.html for a missing path).
+/analytics/streams /analytics 301
+/analytics/streams/ /analytics/ 301
+/analytics/hub /analytics 301
+/analytics/hub/ /analytics/ 301
+/analytics/emotes /analytics 301
+/analytics/emotes/ /analytics/ 301
+/atlas /analytics 301
+/atlas/ /analytics/ 301
+/setup /analytics 301
+/setup/ /analytics/ 301
+/login /analytics 301
+/login/ /analytics/ 301

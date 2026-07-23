@@ -18,6 +18,9 @@ const apiClient = vi.fn()
 vi.mock('../src/lib/apiClient', () => ({
   getBackendUrl: () => 'https://api.streampulse.stream',
   apiClient: (...args: unknown[]) => apiClient(...args),
+  // Used by fetchPublicHubBase to rethrow typed 429/Retry-After errors.
+  isApiError: (error: unknown) =>
+    Boolean(error && typeof error === 'object' && 'kind' in (error as object)),
 }))
 
 vi.mock('../src/lib/backendSource', () => ({
@@ -155,6 +158,54 @@ describe('normalizePublicHub', () => {
     expect(hub.coverage.state).toBe('critical')
     expect(hub.corpusPipeline.roster.metadataStale).toBe(95)
     expect(hub.corpusPipeline.roster.liveCollectorDeficitRows).toBe(48)
+  })
+
+  it('uses authoritative roster liveness instead of tracked pool capacity', () => {
+    const hub = normalizePublicHub({
+      poolSize: 300,
+      coverage: {
+        liveChannels: 300,
+        trackingMax: 300,
+        backfillActive: 0,
+        backfillMax: 0,
+        syncActive: 0,
+        emotesIndexed: 0,
+        databaseOk: true,
+        state: 'operational',
+      },
+      corpusPipeline: {
+        collectorActive: 300,
+        collectorMax: 300,
+        roster: { live: 84 },
+      },
+    })
+
+    expect(hub.poolSize).toBe(300)
+    expect(hub.coverage.liveChannels).toBe(84)
+  })
+
+  it('keeps legacy coverage.liveChannels when roster.live is absent', () => {
+    const hub = normalizePublicHub({
+      poolSize: 300,
+      coverage: {
+        liveChannels: 84,
+        trackingMax: 300,
+        backfillActive: 0,
+        backfillMax: 0,
+        syncActive: 0,
+        emotesIndexed: 0,
+        databaseOk: true,
+        state: 'operational',
+      },
+      corpusPipeline: {
+        collectorActive: 80,
+        collectorMax: 250,
+      },
+    })
+
+    expect(hub.poolSize).toBe(300)
+    expect(hub.corpusPipeline.roster.live).toBe(0)
+    expect(hub.coverage.liveChannels).toBe(84)
   })
 })
 

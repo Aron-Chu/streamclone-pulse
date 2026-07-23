@@ -5,11 +5,14 @@ import {
   activityAxisBoundsFromZero,
   buildBaselineEmoteOverlays,
   buildBucketedEmoteSeries,
+  buildEmoteCountIndex,
+  buildEmoteOverlaySeries,
   buildSelectedEmoteSeries,
   chartMaxPoints,
   chartEmptyMessage,
   chartRollupSeries,
   chatSeriesFromRollups,
+  emoteCountAtRollup,
   emoteSelectionKey,
   isSevenTvProvider,
   mergeEmoteOverlaySeries,
@@ -69,6 +72,23 @@ describe('chatActivityEmotes', () => {
     ]
     expect(buildSelectedEmoteSeries(rollups, emote)).toEqual([2, 0, 5])
     expect(emoteSelectionKey(emote)).toBe('seventv:abc:KEKW')
+  })
+
+  it('indexed emote lookup matches scan and stays within display limits', () => {
+    const emote = { id: 'abc', name: 'KEKW', provider: 'seventv', count: 1 }
+    const rollups = [
+      { offsetSeconds: 0, topEmotes: [{ ...emote, count: 2 }, { id: 'z', name: 'Z', provider: 'seventv', count: 9 }] },
+      { offsetSeconds: 60, topEmotes: [{ name: 'OTHER', provider: 'seventv', count: 1 }] },
+      { offsetSeconds: 120, topEmotes: [{ ...emote, count: 5 }] },
+    ]
+    const index = buildEmoteCountIndex(rollups)
+    expect(index.get(emoteSelectionKey(emote))).toEqual([2, 0, 5])
+    expect(buildSelectedEmoteSeries(rollups, emote)).toEqual(
+      rollups.map(rollup => emoteCountAtRollup(rollup, emote)),
+    )
+    const overlays = buildEmoteOverlaySeries(rollups, [emote, { id: 'z', name: 'Z', provider: 'seventv', count: 1 }])
+    expect(overlays).toHaveLength(2)
+    expect(overlays[0]?.values).toEqual([2, 0, 5])
   })
 
   it('sums emote counts per downsample bucket for trace lines', () => {

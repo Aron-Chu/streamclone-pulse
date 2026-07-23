@@ -28,16 +28,16 @@ export function activityBucketKey(t: number, windowMinutes: number): number {
   return Math.floor(t / bucketMs) * bucketMs
 }
 
-/** True when the bucket period has not ended yet (API flag or client heuristic). */
+/** True when the bucket is incomplete for charting (API flag or unconfirmed tip). */
 export function isOpenActivityBucket(
   point: HubActivityPoint,
-  windowMinutes: number,
-  nowMs: number = Date.now(),
+  _windowMinutes: number,
+  _nowMs: number = Date.now(),
 ): boolean {
-  if (point.bucketComplete === false) return true
-  if (point.bucketComplete === true) return false
-  const bucketMs = activityBucketMs(windowMinutes)
-  return point.t + bucketMs > nowMs
+  // Only explicitly complete buckets stay on the chart tip. Omitted `bucketComplete`
+  // (API omitempty for false) previously kept Helix-floored partial tips after the
+  // client clock thought the period ended, crashing the emote line.
+  return point.bucketComplete !== true
 }
 
 /** Floor only the trailing open bucket — never paint a flat line across recent history. */
@@ -303,7 +303,7 @@ export function summarizeActivity(
   const coveragePct = expectedBuckets > 0 ? (pointCount / expectedBuckets) * 100 : 0
   const windowLabel = formatActivityWindowLabel(windowMinutes)
   const updatedSuffix = updatedAgo ? ` · updated ${updatedAgo}` : ''
-  const poolLabel = poolSize > 0 ? `${poolSize} channels in live pool` : 'live pool'
+  const poolLabel = poolSize > 0 ? `${poolSize} channels in tracked pool` : 'tracked pool'
   const footnote = `${pointCount}/${expectedBuckets} buckets · ~${bucket} min each · network rollups · ${poolLabel}${updatedSuffix}`
 
   return {

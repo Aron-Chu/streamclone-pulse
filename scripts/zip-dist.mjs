@@ -29,8 +29,10 @@ function zipWithInfoZip(files) {
 }
 
 function zipWithTar(files) {
-  const args = ['-a', '-cf', zipPath, '-C', dist, ...files]
-  const result = spawnSync('tar', args, { encoding: 'utf8' })
+  // Windows tar treats an absolute `C:\...` archive path as a remote host.
+  // Write from the repository root so the archive target is relative.
+  const args = ['-a', '-cf', ZIP_NAME, '-C', dist, ...files]
+  const result = spawnSync('tar', args, { cwd: process.cwd(), encoding: 'utf8' })
   if (result.status !== 0) {
     throw new Error(`tar zip exited with code ${result.status ?? 'unknown'}: ${result.stderr || ''}`)
   }
@@ -105,7 +107,8 @@ function zipViaStagingDir(files) {
   }
   const tarProbe = spawnSync('tar', ['--version'], { encoding: 'utf8' })
   if (tarProbe.status === 0) {
-    const result = spawnSync('tar', ['-a', '-cf', zipPath, '-C', stage, ...files], {
+    const result = spawnSync('tar', ['-a', '-cf', ZIP_NAME, '-C', stage, ...files], {
+      cwd: process.cwd(),
       encoding: 'utf8',
     })
     rmSync(stage, { recursive: true, force: true })
@@ -124,14 +127,14 @@ function createZip(files) {
     zipWithInfoZip(files)
     return 'info-zip'
   }
+  if (process.platform === 'win32') {
+    zipWithDotNetFiltered(files)
+    return 'dotnet-ZipArchive'
+  }
   const tarProbe = spawnSync('tar', ['--version'], { encoding: 'utf8' })
   if (tarProbe.status === 0) {
     zipWithTar(files)
     return 'tar'
-  }
-  if (process.platform === 'win32') {
-    zipWithDotNetFiltered(files)
-    return 'dotnet-ZipArchive'
   }
   zipViaStagingDir(files)
   return 'staged-fallback'

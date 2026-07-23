@@ -376,14 +376,15 @@ export function PulseSettingsPanel(props: {
           {watchlist.length === 0 ? (
             <div className="pulse-settings-hint">
               {isHosted
-                ? 'No saved channels. Adding one does not enable live Pulse in the extension until IRC capacity expands — use Full settings or the Analytics hub.'
+                ? 'No saved channels. Adding one stores a local Chrome-sync preference only — it does not enable live Pulse or claim server-side Protect on the public API.'
                 : 'No channels saved. Add them in Full settings or use Track in the overlay.'}
             </div>
           ) : (
             <div style={watchlistStyle}>
               {isHosted ? (
                 <p className="pulse-settings-hint">
-                  Saved for backend Protect when we scale — does not enable live Pulse or backfill in the extension today.
+                  Stored locally in Chrome sync. The public hosted API has no guest Protect credentials — this list does
+                  not enable live Pulse or backfill in the extension.
                 </p>
               ) : null}
               {watchlist.map(login => (

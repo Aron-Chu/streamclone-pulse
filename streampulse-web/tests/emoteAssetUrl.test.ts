@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   absolutizeEmoteAssetUrl,
+  emoteDisplaySrc,
+  emoteSrcSet,
+  emoteUrlForScale,
   isBackendEmoteProxyUrl,
   preferResolvableEmoteUrl,
 } from '../src/lib/emoteAssetUrl'
@@ -44,6 +47,41 @@ describe('preferResolvableEmoteUrl', () => {
   it('keeps direct CDN when bucket already has it', () => {
     const cdn = 'https://cdn.7tv.app/emote/abc/4x.webp'
     expect(preferResolvableEmoteUrl(cdn, 'https://cdn.example/fallback.webp')).toBe(cdn)
+  })
+})
+
+describe('emoteUrlForScale / emoteSrcSet', () => {
+  it('transforms 7TV URLs across 1x/2x/4x', () => {
+    const base = 'https://cdn.7tv.app/emote/abc/4x.webp'
+    expect(emoteUrlForScale(base, '1x')).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
+    expect(emoteUrlForScale(base, '2x')).toBe('https://cdn.7tv.app/emote/abc/2x.webp')
+    expect(emoteUrlForScale(base, '4x')).toBe('https://cdn.7tv.app/emote/abc/4x.webp')
+    expect(emoteSrcSet(base)).toBe(
+      'https://cdn.7tv.app/emote/abc/1x.webp 1x, https://cdn.7tv.app/emote/abc/2x.webp 2x, https://cdn.7tv.app/emote/abc/4x.webp 4x',
+    )
+  })
+
+  it('transforms Twitch CDN URLs across 1.0/2.0/3.0', () => {
+    const base = 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0'
+    expect(emoteUrlForScale(base, '1x')).toContain('/1.0')
+    expect(emoteUrlForScale(base, '2x')).toContain('/2.0')
+    expect(emoteUrlForScale(base, '4x')).toContain('/3.0')
+    expect(emoteSrcSet(base)).toContain('1x')
+    expect(emoteSrcSet(base)).toContain('2x')
+  })
+
+  it('transforms FFZ URLs across 1/2/4', () => {
+    const base = 'https://cdn.frankerfacez.com/emote/12345/4'
+    expect(emoteUrlForScale(base, '1x')).toBe('https://cdn.frankerfacez.com/emote/12345/1')
+    expect(emoteUrlForScale(base, '2x')).toBe('https://cdn.frankerfacez.com/emote/12345/2')
+    expect(emoteUrlForScale(base, '4x')).toBe('https://cdn.frankerfacez.com/emote/12345/4')
+    expect(emoteSrcSet(base)).toContain('1x')
+    expect(emoteSrcSet(base)).toContain('4x')
+  })
+
+  it('defaults small display src to 1x not 4x', () => {
+    const base = 'https://cdn.7tv.app/emote/abc/4x.webp'
+    expect(emoteDisplaySrc(base, 28)).toBe('https://cdn.7tv.app/emote/abc/1x.webp')
   })
 })
 

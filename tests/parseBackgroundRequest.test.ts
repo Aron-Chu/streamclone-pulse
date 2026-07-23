@@ -67,4 +67,20 @@ describe('parseBackgroundRequest', () => {
     })
     expect(parseBackgroundRequest({ type: 'LIST_BOOKMARKS', login: 'a' })).toBeNull()
   })
+
+  it('accepts APPEND_PULSE_DEBUG and CLEAR_PULSE_DEBUG_LOG', () => {
+    expect(parseBackgroundRequest({ type: 'CLEAR_PULSE_DEBUG_LOG' })).toEqual({
+      type: 'CLEAR_PULSE_DEBUG_LOG',
+    })
+    expect(parseBackgroundRequest({ type: 'APPEND_PULSE_DEBUG' })).toBeNull()
+    expect(
+      parseBackgroundRequest({
+        type: 'APPEND_PULSE_DEBUG',
+        entry: { ts: 1, step: 'ui.coverage', message: 'hi', level: 'info' },
+      }),
+    ).toEqual({
+      type: 'APPEND_PULSE_DEBUG',
+      entry: { ts: 1, step: 'ui.coverage', message: 'hi', level: 'info' },
+    })
+  })
 })

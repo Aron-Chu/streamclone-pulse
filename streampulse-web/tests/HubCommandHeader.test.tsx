@@ -31,7 +31,7 @@ function renderHeader(
     },
     activity: {
       windowMinutes: 1440,
-      channelCount: 81,
+      channelCount: 1,
       points: [
         { t: Date.now() - 60_000, viewers: 500000, chat: 8000, emotes: 4000, seventv: 4000 },
       ],
@@ -70,8 +70,8 @@ describe('HubCommandHeader command surface', () => {
     })
 
     expect(screen.getByTestId('live-pool-size')).toBeTruthy()
-    expect(screen.getByText(/Live channels/i)).toBeTruthy()
-    expect(screen.getByText(/Live pool viewers/i)).toBeTruthy()
+    expect(screen.getByText('Tracked channels', { exact: true })).toBeTruthy()
+    expect(screen.getByText(/Tracked live viewers/i)).toBeTruthy()
     expect(screen.getByText(/Last 1 day peaks/i)).toBeTruthy()
     expect(screen.getByTestId('hub-command-trust').textContent).toMatch(/IRC COVERAGE/)
     expect(screen.getByTestId('pool-wire')).toBeTruthy()

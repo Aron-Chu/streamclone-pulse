@@ -17,6 +17,8 @@ describe('HubActivityChart chat measurement honesty', () => {
     )
 
     expect(container.querySelectorAll('.gap-fill--chat-rollup')).toHaveLength(1)
+    expect(container.textContent).toContain('No IRC chat rollups in this stretch')
+    expect(container.querySelector('.now')).toBeNull()
 
     rerender(
       <HubActivityChart

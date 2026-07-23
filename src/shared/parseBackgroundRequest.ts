@@ -26,6 +26,8 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'LOAD_MISSED_MOMENTS',
   'GET_PULSE_BACKFILL_STATUS',
   'GET_PULSE_DEBUG_LOG',
+  'APPEND_PULSE_DEBUG',
+  'CLEAR_PULSE_DEBUG_LOG',
 ])
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -200,7 +202,33 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SYNC_WATCHLIST':
     case 'GET_ALWAYS_TRACKED':
     case 'GET_PULSE_DEBUG_LOG':
+    case 'CLEAR_PULSE_DEBUG_LOG':
       return { type }
+    case 'APPEND_PULSE_DEBUG': {
+      if (!isObject(raw.entry)) return null
+      const entry = raw.entry
+      if (typeof entry.ts !== 'number' || !Number.isFinite(entry.ts)) return null
+      if (typeof entry.step !== 'string' || !entry.step.trim()) return null
+      if (typeof entry.message !== 'string') return null
+      if (entry.level !== 'info' && entry.level !== 'warn' && entry.level !== 'error') return null
+      const data =
+        entry.data == null
+          ? undefined
+          : isObject(entry.data)
+            ? (entry.data as Record<string, unknown>)
+            : undefined
+      if (entry.data != null && data == null) return null
+      return {
+        type,
+        entry: {
+          ts: Math.floor(entry.ts),
+          step: entry.step as import('./pulseDebug.ts').PulseDebugStep,
+          message: entry.message,
+          level: entry.level,
+          ...(data ? { data } : {}),
+        },
+      }
+    }
     default:
       return null
   }

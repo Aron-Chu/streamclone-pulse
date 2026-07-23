@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   clearEmoteImageCacheForTests,
+  EMOTE_CACHE_MAX_TOTAL_BYTES,
   EMOTE_IMAGE_MAX_BYTES,
+  emoteImageCacheTotalBytesForTests,
   fetchEmoteImageBytes,
   isApprovedEmoteImageUrl,
 } from '../src/background/emoteImageFetch.ts'
@@ -37,8 +39,11 @@ describe('isApprovedEmoteImageUrl', () => {
     expect(isApprovedEmoteImageUrl('https://cdn.frankerfacez.com/emote/1/4')).toBe(true)
   })
 
-  it('rejects HTTP and unsupported hosts', () => {
+  it('rejects HTTP, userinfo, private, and unsupported hosts', () => {
     expect(isApprovedEmoteImageUrl('http://cdn.7tv.app/emote/abc/4x.webp')).toBe(false)
+    expect(isApprovedEmoteImageUrl('https://user:pass@cdn.7tv.app/emote/abc/4x.webp')).toBe(false)
+    expect(isApprovedEmoteImageUrl('https://127.0.0.1/emote.webp')).toBe(false)
+    expect(isApprovedEmoteImageUrl('https://localhost/emote.webp')).toBe(false)
     expect(isApprovedEmoteImageUrl('https://evil.example/emote.webp')).toBe(false)
     expect(isApprovedEmoteImageUrl('javascript:alert(1)')).toBe(false)
   })
@@ -53,6 +58,32 @@ describe('fetchEmoteImageBytes', () => {
     expect(first.buffer.byteLength).toBe(4)
     expect(second.buffer).toBe(first.buffer)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('dedupes in-flight fetches for the same URL', async () => {
+    let release!: (value: Response) => void
+    const gate = new Promise<Response>((resolve) => {
+      release = resolve
+    })
+    const fetchImpl = vi.fn(async () => gate)
+    const p1 = fetchEmoteImageBytes('https://cdn.7tv.app/emote/a/1x.webp', { fetchImpl })
+    const p2 = fetchEmoteImageBytes('https://cdn.7tv.app/emote/a/1x.webp', { fetchImpl })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    release(imageResponse({}))
+    const [a, b] = await Promise.all([p1, p2])
+    expect(a.buffer.byteLength).toBe(4)
+    expect(b.buffer).toBe(a.buffer)
+  })
+
+  it('evicts by total byte budget rather than entry count alone', async () => {
+    const chunk = Math.floor(EMOTE_CACHE_MAX_TOTAL_BYTES / 3) + 1024
+    expect(chunk).toBeLessThan(EMOTE_IMAGE_MAX_BYTES)
+    const fetchImpl = vi.fn(async () => imageResponse({ body: new ArrayBuffer(chunk) }))
+    await fetchEmoteImageBytes('https://cdn.7tv.app/emote/a/1x.webp', { fetchImpl })
+    await fetchEmoteImageBytes('https://cdn.7tv.app/emote/b/1x.webp', { fetchImpl })
+    await fetchEmoteImageBytes('https://cdn.7tv.app/emote/c/1x.webp', { fetchImpl })
+    expect(emoteImageCacheTotalBytesForTests()).toBeLessThanOrEqual(EMOTE_CACHE_MAX_TOTAL_BYTES)
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
   })
 
   it('rejects unsupported host before fetch', async () => {

@@ -14,9 +14,7 @@ import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
-
-const CHROME_EXTENSION_URL = '/docs#extension'
-const EXTENSION_BETA_LABEL = 'Install extension (beta)'
+import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 
 function TopNav() {
   return (
@@ -33,6 +31,7 @@ function TopNav() {
           <Link to="/docs">Docs</Link>
         </div>
         <div className="sl-nav__right">
+          <ChromeInstallCta className={buttonClass('outline', 'sm')} data-cta="chrome-install-nav" />
           <Link to="/analytics" className={buttonClass('outline', 'sm')}>
             Open Analytics
           </Link>
@@ -61,13 +60,14 @@ function Hero({
           Find the Twitch moments people <span className="sl-grad">actually reacted to</span>.
         </h1>
         <p>
-          StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and VODs.
+          StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and
+          VODs.
         </p>
         <div className="sl-hero__actions">
-          <Link to={CHROME_EXTENSION_URL} className={buttonClass('default', 'lg')}>
+          <ChromeInstallCta className={buttonClass('default', 'lg')} data-cta="chrome-install-hero">
             <PanelTopOpen size={17} aria-hidden="true" />
-            {EXTENSION_BETA_LABEL}
-          </Link>
+            Add StreamPulse to Chrome
+          </ChromeInstallCta>
           <Link to="/analytics" className={buttonClass('outline', 'lg')}>
             <LineChart size={17} aria-hidden="true" />
             Open Analytics
@@ -167,6 +167,7 @@ function Footer() {
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
           <Link to="/analytics">Analytics</Link>
+          <Link to="/support">Support</Link>
           <Link to="/privacy">Privacy</Link>
         </div>
         <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>

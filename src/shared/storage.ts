@@ -1,6 +1,5 @@
 const BACKEND_URL_KEY = 'backendUrl'
 const LOCAL_BACKEND_OPT_IN_KEY = 'localBackendOptIn'
-const BETA_KEY_KEY = 'betaKey'
 const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
 const OVERLAY_MODE_KEY = 'overlayMode'
 const OVERLAY_PLACEMENT_KEY = 'overlayPlacement'
@@ -249,31 +248,22 @@ export async function setBackendUrl(url: string): Promise<void> {
 
 /**
  * Beta / access keys stay device-local (chrome.storage.local), not sync.
+ * Local storage is device-local but not encrypted at rest by Chrome.
  * One-time migration copies a legacy sync value into local and clears sync.
+ * Where supported, restrict local storage to trusted extension contexts so
+ * content scripts cannot read credential keys directly.
  */
-export async function getBetaKey(): Promise<string> {
-  const local = await localStorageGet(BETA_KEY_KEY)
-  const localValue = String(local[BETA_KEY_KEY] ?? '').trim()
-  if (localValue) return localValue
-
-  const sync = await syncStorageGet(BETA_KEY_KEY)
-  const syncValue = String(sync[BETA_KEY_KEY] ?? '').trim()
-  if (!syncValue) return ''
-
-  await localStorageSet({ [BETA_KEY_KEY]: syncValue })
-  await syncStorageRemove(BETA_KEY_KEY)
-  return syncValue
-}
-
-export async function setBetaKey(key: string): Promise<void> {
-  const trimmed = key.trim()
-  if (trimmed) {
-    await localStorageSet({ [BETA_KEY_KEY]: trimmed })
-  } else {
-    await localStorageRemove(BETA_KEY_KEY)
+export async function restrictCredentialStorageAccess(): Promise<void> {
+  try {
+    const local = chrome.storage.local as typeof chrome.storage.local & {
+      setAccessLevel?: (accessLevel: { accessLevel: 'TRUSTED_CONTEXTS' | 'TRUSTED_AND_UNTRUSTED_CONTEXTS' }) => Promise<void>
+    }
+    if (typeof local.setAccessLevel === 'function') {
+      await local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+    }
+  } catch {
+    // Older Chrome or denied: SW/options remain the intended credential readers.
   }
-  // Clear any legacy sync copy so the key does not reappear via Chrome sync.
-  await syncStorageRemove(BETA_KEY_KEY)
 }
 
 export async function getPollIntervalMs(): Promise<number> {

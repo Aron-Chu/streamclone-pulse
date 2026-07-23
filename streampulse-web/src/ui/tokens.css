@@ -51,7 +51,7 @@
   --sc-radius: 0.6rem;
 
   --sc-font: 'Geist Variable', 'Geist', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --sc-font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Geist Mono', monospace;
+  --sc-font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
 }
 
 /* Shared micro-utilities used across the rebuilt surfaces. */

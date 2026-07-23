@@ -6,6 +6,7 @@ import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
 import Privacy from './public/Privacy'
+import Support from './public/Support'
 import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
@@ -13,7 +14,6 @@ const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
-const StreamsHubPlaceholder = lazy(() => import('./analytics/StreamsHubPlaceholder'))
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.
@@ -36,6 +36,7 @@ export function AppRoutes() {
         <Route path="/docs/*" element={<Docs />} />
         <Route path="/status" element={<Status />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/support" element={<Support />} />
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
@@ -47,7 +48,7 @@ export function AppRoutes() {
         <Route path="/analytics/hub" element={<Navigate to="/analytics" replace />} />
         <Route path="/analytics/emotes" element={<Navigate to="/analytics" replace />} />
         <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
-        <Route path="/analytics/streams" element={<StreamsHubPlaceholder />} />
+        <Route path="/analytics/streams" element={<Navigate to="/analytics" replace />} />
 
         {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />

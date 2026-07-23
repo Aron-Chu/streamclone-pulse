@@ -1,5 +1,5 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
-import { apiClient, getBackendUrl } from './apiClient'
+import { apiClient, getBackendUrl, isApiError } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
@@ -588,6 +588,8 @@ export async function fetchPublicHubBase(
       status: primary.status,
     }
   } catch (error) {
+    // Preserve typed API errors (esp. 429 + Retry-After) for the poll hook.
+    if (isApiError(error)) throw error
     return {
       data: normalizePublicHub(null),
       loadSource: 'full',
@@ -813,6 +815,7 @@ function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
  */
 export function normalizePublicHub(raw: PublicHubInput | null | undefined): PublicHub {
   const corpusPipeline = normalizeCorpusPipeline(raw?.corpusPipeline, raw?.generatedAt)
+  const hasAuthoritativeRosterLive = raw?.corpusPipeline?.roster?.live != null
   return {
     generatedAt: raw?.generatedAt ?? new Date().toISOString(),
     poolSize: raw?.poolSize ?? 0,
@@ -824,7 +827,12 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       vodsAnalyzed: raw?.corpus?.vodsAnalyzed ?? 0,
     },
     coverage: {
-      liveChannels: Math.max(raw?.coverage?.liveChannels ?? 0, corpusPipeline.roster.live),
+      // Older hub payloads used coverage.liveChannels for pool capacity. Once
+      // roster.live is present it is the authoritative count of channels that
+      // are actually live; do not present the tracked pool size as liveness.
+      liveChannels: hasAuthoritativeRosterLive
+        ? corpusPipeline.roster.live
+        : (raw?.coverage?.liveChannels ?? 0),
       trackingMax: raw?.coverage?.trackingMax ?? 0,
       backfillActive: raw?.coverage?.backfillActive ?? 0,
       backfillMax: raw?.coverage?.backfillMax ?? 0,

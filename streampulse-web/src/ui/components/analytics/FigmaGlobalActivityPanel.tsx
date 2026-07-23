@@ -104,7 +104,7 @@ export function ChartSourceBanner({
       </span>
       {poolSize > 0 ? (
         <span>
-          <strong>Pool:</strong> {compact(poolSize)} live in pool
+          <strong>Pool:</strong> {compact(poolSize)} tracked channels
           {ircActive > 0 && hub.corpusPipeline.collectorMax > 0
             ? ` · ${compact(ircActive)}/${compact(hub.corpusPipeline.collectorMax)} IRC`
             : ''}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { PulseLandingPanel } from './PulseLandingPanel'
-import { ScrollPinnedTour, canAnimateScrollTour } from './scroll-tour/ScrollPinnedTour'
+import { ScrollPinnedTour } from './scroll-tour/ScrollPinnedTour'
 import { TourRail } from './scroll-tour/TourRail'
 import { useTourPanelScroll } from './scroll-tour/useTourPanelScroll'
 import type { TourPanelScrollState, TourStep, TourTone } from './scroll-tour/types'
@@ -48,8 +48,8 @@ export function ExtensionShowcase() {
   const [animate, setAnimate] = useState(false)
   const [activeStep, setActiveStep] = useState(1)
 
-  useEffect(() => {
-    if (canAnimateScrollTour()) setAnimate(true)
+  const handleAnimateChange = useCallback((next: boolean) => {
+    setAnimate(next)
   }, [])
 
   const paintStepChange = useCallback((activeIndex: number, smoothed: number, drive: number) => {
@@ -142,6 +142,7 @@ export function ExtensionShowcase() {
       ref={tourRootRef}
       activeStep={activeStep}
       onProgress={animate ? handleProgress : undefined}
+      onAnimateChange={handleAnimateChange}
     >
       <div className="sl-xtour__grid">
         <TourRail steps={STEPS} activeStep={activeStep} id="demo-title" />

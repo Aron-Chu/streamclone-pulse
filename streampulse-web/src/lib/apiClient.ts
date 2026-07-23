@@ -18,6 +18,8 @@ export interface ApiError {
   code?: string
   body?: unknown
   hint?: string
+  /** Parsed Retry-After delay in ms when present (especially 429). */
+  retryAfterMs?: number
 }
 
 export interface ApiClientOptions extends Omit<RequestInit, 'body'> {
@@ -62,7 +64,11 @@ async function readBody(res: Response): Promise<unknown> {
   }
 }
 
-export function normalizeApiError(status: number, body: unknown): ApiError {
+export function normalizeApiError(
+  status: number,
+  body: unknown,
+  retryAfterHeader?: string | null,
+): ApiError {
   const record =
     body && typeof body === 'object' ? (body as Record<string, unknown>) : {}
   const hint = typeof record.hint === 'string' ? record.hint : undefined
@@ -73,11 +79,26 @@ export function normalizeApiError(status: number, body: unknown): ApiError {
         ? record.message
         : `HTTP ${status}`
   const code = typeof record.code === 'string' ? record.code : typeof record.error === 'string' ? record.error : undefined
+  let retryAfterMs: number | undefined
+  if (retryAfterHeader?.trim()) {
+    const raw = retryAfterHeader.trim()
+    if (/^\d+$/.test(raw)) {
+      const sec = Number(raw)
+      if (Number.isFinite(sec) && sec >= 0) {
+        retryAfterMs = Math.min(120_000, Math.max(1_000, Math.round(sec * 1000)))
+      }
+    } else {
+      const when = Date.parse(raw)
+      if (Number.isFinite(when)) {
+        retryAfterMs = Math.min(120_000, Math.max(1_000, when - Date.now()))
+      }
+    }
+  }
 
-  if (status === 401) return { kind: 'unauthorized', message, status, code, body, hint }
-  if (status === 429) return { kind: 'rate_limited', message, status, code, body, hint }
-  if (status >= 500) return { kind: 'server', message, status, code, body, hint }
-  return { kind: 'bad_request', message, status, code, body, hint }
+  if (status === 401) return { kind: 'unauthorized', message, status, code, body, hint, retryAfterMs }
+  if (status === 429) return { kind: 'rate_limited', message, status, code, body, hint, retryAfterMs }
+  if (status >= 500) return { kind: 'server', message, status, code, body, hint, retryAfterMs }
+  return { kind: 'bad_request', message, status, code, body, hint, retryAfterMs }
 }
 
 function parseCacheHeader(value: string | null): ApiClientResult<unknown>['cache'] {
@@ -89,7 +110,7 @@ function parseCacheHeader(value: string | null): ApiClientResult<unknown>['cache
   return undefined
 }
 
-function isApiError(value: unknown): value is ApiError {
+export function isApiError(value: unknown): value is ApiError {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -140,11 +161,12 @@ export async function apiClient<T = unknown>(
 
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth:rejected'))
-        throw normalizeApiError(401, payload)
+        throw normalizeApiError(401, payload, response.headers.get('Retry-After'))
       }
 
       if (!response.ok) {
-        const error = normalizeApiError(response.status, payload)
+        const error = normalizeApiError(response.status, payload, response.headers.get('Retry-After'))
+        // Do not auto-retry 429 — callers honor Retry-After / backoff.
         const retryable = response.status >= 500
         if (retryable && attempt === 0) {
           lastError = error

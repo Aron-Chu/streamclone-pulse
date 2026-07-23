@@ -51,7 +51,7 @@ export function HubCommandHeader({
   const peakViewers = chartModel.peakViewers
   const peakChat = chartModel.peakChatPerMin
   const peakEmotes = chartModel.peakEmotesPerMin
-  const liveInPool = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
+  const trackedPoolSize = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
   const liveViewersNow = chartInputs.livePoolViewerSum
   const collectorActive = hub.corpusPipeline.collectorActive
   const collectorMax = hub.corpusPipeline.collectorMax
@@ -93,27 +93,27 @@ export function HubCommandHeader({
 
       <div className="hub-command-header__body">
         <div className="hub-command-header__metrics">
-          <div className="hub-command-header__primary" aria-label="Live pool scale">
+          <div className="hub-command-header__primary" aria-label="Tracked pool scale">
             <div
               className={`hub-command-header__primary-stat${pulseLiveChannels ? ' hub-command-header__primary-stat--pulse' : ''}`}
-              title="Channels with active IRC collectors in the hosted live pool — not all of Twitch."
+              title="Channels in the hosted tracking pool — not the number currently live on Twitch."
             >
               <span className="hub-command-header__primary-label">
                 <span className="hub-command-header__kpi-live" aria-hidden="true" />
-                Live channels
+                Tracked channels
               </span>
               <strong
                 className="hub-command-header__primary-value hub-command-header__primary-value--accent"
                 data-testid="live-pool-size"
               >
-                <AnimatedCompact value={liveInPool} loading={loading} />
+                <AnimatedCompact value={trackedPoolSize} loading={loading} />
               </strong>
             </div>
             <div
               className="hub-command-header__primary-stat"
-              title="Sum of viewer counts on hub live-channel rows right now — tracked pool only, not all of Twitch."
+              title="Sum of viewer counts on currently live rows in the tracked pool — not all of Twitch."
             >
-              <span className="hub-command-header__primary-label">Live pool viewers</span>
+              <span className="hub-command-header__primary-label">Tracked live viewers</span>
               <strong className="hub-command-header__primary-value hub-command-header__primary-value--viewers">
                 <AnimatedCompact value={liveViewersNow} loading={loading} />
               </strong>

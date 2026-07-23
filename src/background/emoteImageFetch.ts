@@ -3,9 +3,10 @@
  * Content scripts must not fetch CDN bytes directly — they message the SW.
  */
 
-const MAX_CACHE = 48
 /** Reject declared or buffered bodies larger than this (5 MiB). */
 export const EMOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+/** Total byte budget for the in-memory SW emote cache (12 MiB). */
+export const EMOTE_CACHE_MAX_TOTAL_BYTES = 12 * 1024 * 1024
 /** Abort stalled CDN fetches. */
 export const EMOTE_IMAGE_TIMEOUT_MS = 10_000
 
@@ -18,9 +19,12 @@ const APPROVED_EMOTE_HOSTS = new Set([
 interface CachedEmoteBytes {
   mimeType: string
   buffer: ArrayBuffer
+  byteLength: number
 }
 
 const emoteBytesCache = new Map<string, CachedEmoteBytes>()
+const emoteInFlight = new Map<string, Promise<EmoteImageBytes>>()
+let emoteCacheTotalBytes = 0
 
 export interface EmoteImageBytes {
   mimeType: string
@@ -42,24 +46,52 @@ function isImageMime(mimeType: string): boolean {
   return mimeType.toLowerCase().startsWith('image/')
 }
 
-/** Test helper — clears the SW emote byte cache. */
-export function clearEmoteImageCacheForTests(): void {
-  emoteBytesCache.clear()
+function touchCacheEntry(url: string, entry: CachedEmoteBytes): void {
+  emoteBytesCache.delete(url)
+  emoteBytesCache.set(url, entry)
 }
 
-export async function fetchEmoteImageBytes(
+function evictUntilWithinBudget(incomingBytes: number): void {
+  const limit = Math.max(0, EMOTE_CACHE_MAX_TOTAL_BYTES - incomingBytes)
+  while (emoteCacheTotalBytes > limit && emoteBytesCache.size > 0) {
+    const firstKey = emoteBytesCache.keys().next().value
+    if (!firstKey) break
+    const stale = emoteBytesCache.get(firstKey)
+    emoteBytesCache.delete(firstKey)
+    if (stale) {
+      emoteCacheTotalBytes = Math.max(0, emoteCacheTotalBytes - stale.byteLength)
+    }
+  }
+}
+
+function putCacheEntry(url: string, mimeType: string, buffer: ArrayBuffer): void {
+  const byteLength = buffer.byteLength
+  const existing = emoteBytesCache.get(url)
+  if (existing) {
+    emoteCacheTotalBytes = Math.max(0, emoteCacheTotalBytes - existing.byteLength)
+    emoteBytesCache.delete(url)
+  }
+  evictUntilWithinBudget(byteLength)
+  emoteBytesCache.set(url, { mimeType, buffer, byteLength })
+  emoteCacheTotalBytes += byteLength
+}
+
+/** Test helper — clears the SW emote byte cache and in-flight map. */
+export function clearEmoteImageCacheForTests(): void {
+  emoteBytesCache.clear()
+  emoteInFlight.clear()
+  emoteCacheTotalBytes = 0
+}
+
+/** Test helper — current cache occupancy in bytes. */
+export function emoteImageCacheTotalBytesForTests(): number {
+  return emoteCacheTotalBytes
+}
+
+async function fetchEmoteImageBytesUncached(
   url: string,
   options?: { fetchImpl?: typeof fetch; timeoutMs?: number },
 ): Promise<EmoteImageBytes> {
-  if (!isApprovedEmoteImageUrl(url)) {
-    throw new Error('emote_image_host_rejected')
-  }
-
-  const cached = emoteBytesCache.get(url)
-  if (cached) {
-    return { mimeType: cached.mimeType, buffer: cached.buffer }
-  }
-
   const fetchImpl = options?.fetchImpl ?? fetch
   const timeoutMs = options?.timeoutMs ?? EMOTE_IMAGE_TIMEOUT_MS
   const controller = new AbortController()
@@ -89,12 +121,7 @@ export async function fetchEmoteImageBytes(
       throw new Error('emote_image_too_large')
     }
 
-    if (emoteBytesCache.size >= MAX_CACHE) {
-      const firstKey = emoteBytesCache.keys().next().value
-      if (firstKey) emoteBytesCache.delete(firstKey)
-    }
-    emoteBytesCache.set(url, { mimeType, buffer })
-
+    putCacheEntry(url, mimeType, buffer)
     return { mimeType, buffer }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -104,4 +131,30 @@ export async function fetchEmoteImageBytes(
   } finally {
     clearTimeout(timer)
   }
+}
+
+export async function fetchEmoteImageBytes(
+  url: string,
+  options?: { fetchImpl?: typeof fetch; timeoutMs?: number },
+): Promise<EmoteImageBytes> {
+  if (!isApprovedEmoteImageUrl(url)) {
+    throw new Error('emote_image_host_rejected')
+  }
+
+  const cached = emoteBytesCache.get(url)
+  if (cached) {
+    touchCacheEntry(url, cached)
+    return { mimeType: cached.mimeType, buffer: cached.buffer }
+  }
+
+  const existing = emoteInFlight.get(url)
+  if (existing) {
+    return existing
+  }
+
+  const pending = fetchEmoteImageBytesUncached(url, options).finally(() => {
+    emoteInFlight.delete(url)
+  })
+  emoteInFlight.set(url, pending)
+  return pending
 }

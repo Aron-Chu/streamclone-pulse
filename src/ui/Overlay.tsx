@@ -110,7 +110,93 @@ interface OverlayProps {
 
 type NoticeKind = 'ok' | 'warn' | 'info'
 
-export function Overlay({
+export function Overlay(props: OverlayProps) {
+  if (props.sidebarPart === 'tabs') {
+    return <OverlayTabsShell {...props} />
+  }
+  return <OverlayMain {...props} />
+}
+
+/** Lightweight CHAT/PULSE header — must not own data-fetch/recap/chart effects. */
+function OverlayTabsShell({
+  effectivePlacement,
+  sidebarTab: sidebarTabProp,
+  overlayMode: overlayModeProp,
+  onSidebarTabChange,
+  onOverlayModeChange,
+}: OverlayProps) {
+  const [placement, setPlacementState] = useState<OverlayPlacement>('right')
+  const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
+  const [mode, setModeState] = useState<OverlayMode>('expanded')
+
+  useEffect(() => {
+    let mounted = true
+    void (async () => {
+      const [storedMode, storedPlacement, storedSidebarTab] = await Promise.all([
+        getOverlayMode(),
+        getOverlayPlacement(),
+        getSidebarTab(),
+      ])
+      if (!mounted) return
+      setModeState(storedMode)
+      setPlacementState(storedPlacement)
+      setSidebarTabState(storedSidebarTab)
+      onSidebarTabChange?.(storedSidebarTab)
+    })()
+    const storageHandler = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: string,
+    ) => {
+      if (areaName !== 'sync') return
+      void getOverlayMode().then(next => {
+        setModeState(next)
+        onOverlayModeChange?.(next)
+      })
+      void getOverlayPlacement().then(setPlacementState)
+      void getSidebarTab().then(tab => {
+        setSidebarTabState(tab)
+        onSidebarTabChange?.(tab)
+      })
+    }
+    chrome.storage.onChanged.addListener(storageHandler)
+    return () => {
+      mounted = false
+      chrome.storage.onChanged.removeListener(storageHandler)
+    }
+  }, [onOverlayModeChange, onSidebarTabChange])
+
+  const resolvedPlacement = effectivePlacement ?? placement
+  const resolvedMode = overlayModeProp ?? mode
+  const resolvedSidebarTab = sidebarTabProp ?? sidebarTab
+
+  async function persistSidebarTab(next: SidebarTab): Promise<void> {
+    if (next === 'pulse' && resolvedMode === 'collapsed') {
+      setModeState('expanded')
+      await setOverlayMode('expanded')
+      onOverlayModeChange?.('expanded')
+    }
+    setSidebarTabState(next)
+    await setSidebarTab(next)
+    onSidebarTabChange?.(next)
+  }
+
+  if (resolvedPlacement === 'hidden') {
+    return null
+  }
+
+  const tabsShellClass = ['pulse-shell', `placement-${resolvedPlacement}`, 'pulse-sidebar-header-tabs'].join(' ')
+  return (
+    <section
+      className={tabsShellClass}
+      style={styles.headerTabsShell}
+      aria-label="Chat or Pulse"
+    >
+      <SidebarHeaderBar active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
+    </section>
+  )
+}
+
+function OverlayMain({
   login,
   context,
   payload,
@@ -337,7 +423,6 @@ export function Overlay({
   const resolvedSidebarTab = sidebarTabProp ?? sidebarTab
   const showSidebarTabs = sidebarSnapped && resolvedPlacement === 'sidebar' && sidebarPart !== 'body'
   const sidebarBodyOnly = sidebarPart === 'body'
-  const sidebarTabsOnly = sidebarPart === 'tabs'
   const isVodPage = context.kind === 'vod'
   const hasLivePanel = Boolean(
     !error && payload && pulseSupported && pulseLiveAccess.state === 'full_live',
@@ -709,7 +794,7 @@ export function Overlay({
         return
       }
       if (!('type' in response) || response.type !== 'PULSE_BACKFILL' || !response.job) {
-        setCoverageCheckError('Could not start backfill — check beta key and backend URL in settings.')
+        setCoverageCheckError('Could not start backfill — check backend URL in settings.')
         return
       }
       const job = response.job
@@ -1012,19 +1097,6 @@ export function Overlay({
 
   if (sidebarBodyOnly && resolvedSidebarTab === 'chat') {
     return null
-  }
-
-  if (sidebarTabsOnly) {
-    const tabsShellClass = ['pulse-shell', `placement-${resolvedPlacement}`, 'pulse-sidebar-header-tabs'].join(' ')
-    return (
-      <section
-        className={tabsShellClass}
-        style={styles.headerTabsShell}
-        aria-label="Chat or Pulse"
-      >
-        <SidebarHeaderBar active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
-      </section>
-    )
   }
 
   // Body host visibility is owned by mount.tsx (hidden entirely on Chat tab).
