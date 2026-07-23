@@ -1,20 +1,19 @@
 {
-  "shot": "02",
+  "shot": "01",
   "identity": "dff7b61 (codex/cws-live-screenshots-2026-07-19)",
-  "cropStory": "games/activity through Plot on chart",
+  "cropStory": "overview before Stream activity",
   "clip": {
     "x": 1384,
-    "y": 303,
+    "y": 56,
     "width": 520,
-    "height": 464
+    "height": 468
   },
   "rawMeta": {
     "width": 1040,
-    "height": 928,
+    "height": 936,
     "bitDepth": 8,
     "colorType": 2
   },
-  "targetW": 660,
   "shipping": {
     "hasHubSubtitle": true,
     "legendText": "ViewersChatEmotesChat trendEmote trend",
@@ -22,9 +21,9 @@
   },
   "css": {
     "x": 1384.800048828125,
-    "y": 303.3999938964844,
+    "y": 56,
     "width": 520,
-    "height": 463.99999618530273,
+    "height": 467.60003662109375,
     "vw": 1920,
     "vh": 1200,
     "dpr": 2.0000000298023224,

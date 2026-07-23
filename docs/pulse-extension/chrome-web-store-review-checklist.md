@@ -16,18 +16,18 @@ Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
 | Field | Value |
 |-------|--------|
 | Branch | `codex/cws-live-screenshots-2026-07-19` |
-| `PACKAGE_BUILD_COMMIT` | `e238cab9919af958e03c93d229338eda060517a2` (artifact commit; `npm run package:cws` ran from this tip) |
+| `PACKAGE_BUILD_COMMIT` | `dff7b61eedb980f604d7f66792197288b03b9b40` (artifact commit; `npm run package:cws` ran from this tip) |
 | ZIP | `streampulse-extension.zip` (gitignored) |
-| ZIP SHA-256 | `725ad432b697c4b6531c5a598fc5822373c3675ad45e9414064e8e4c514c7f13` |
-| Gates (2026-07-22) | `typecheck` OK · `npm test` **473**/473 · `test:e2e:mocked` **18**/18 · `package:cws` + `validate:package` OK |
+| ZIP size | 205,205 bytes |
+| ZIP SHA-256 | `fc04c7160f3bd5e825d49affa5a6bcfb60cf246543e03dba32e0b630165e601e` |
+| Gates (2026-07-22) | `typecheck` OK · `npm test` **512**/512 · `test:e2e:mocked` **29**/29 · `package:cws` + `validate:package` OK |
 
 The SHA identifies **exact ZIP bytes**. Do not regenerate the zip after the hash is locked (`scripts/zip-dist.mjs` does not guarantee byte-identical archives across runs/tools). Docs-only commits after packaging do not alter the packaged extension.
 
-**Blocked:** this historical ZIP uses `*://*.twitch.tv/*` for its content script.
-Current `master` requires `https://*.twitch.tv/*`, and current package validation
-rejects the locked ZIP. Preserve it for traceability only. Build a replacement
-candidate from current `master`, rerun every gate, recapture screenshots, and
-record a new package commit and SHA before upload.
+This replacement ZIP uses the required `https://*.twitch.tv/*` content-script
+match and passed current package validation. All five screenshots were captured
+from the unchanged packaging `dist/` at `PACKAGE_BUILD_COMMIT` and manually
+reviewed. Required PR checks and operator upload remain open.
 
 Portal install CTA stays **`pending_verification`** until Google approves the listing — no Landing store-URL flip and no Pages deploy from this pack.
 
@@ -35,9 +35,9 @@ Legacy identifiers: [`legacy-identifiers.md`](./legacy-identifiers.md).
 
 ## Pre-submit
 
-- [x] Historical gates passed on `PACKAGE_BUILD_COMMIT` (2026-07-22); preserve SHA `725ad432b697c4b6531c5a598fc5822373c3675ad45e9414064e8e4c514c7f13` for audit only
-- [ ] Create and fully validate a replacement package from current `master`; do not upload the historical ZIP
-- [ ] Recapture and approve all screenshots against the replacement packaging `dist/`
+- [x] Replacement package built once from `PACKAGE_BUILD_COMMIT`; exact SHA `fc04c7160f3bd5e825d49affa5a6bcfb60cf246543e03dba32e0b630165e601e` locked
+- [x] Typecheck, 512 unit tests, 29 headed mocked E2E tests, packaging, and current package validation passed
+- [x] All five screenshots recaptured and reviewed against the unchanged packaging `dist/`
 - [x] `host_permissions` includes `https://api.streampulse.stream/*`
 - [x] Emote CDNs declared (`cdn.7tv.app`, `static-cdn.jtvnw.net`, `cdn.frankerfacez.com`)
 - [x] Localhost BFF hosts are **optional_host_permissions** only
@@ -106,7 +106,7 @@ Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`
 The script fails instead of rebuilding if capture inputs or `dist/` differ:
 
 ```bash
-node scripts/capture-cws-pulse-screenshot.mjs --shot=all
+node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=dff7b61eedb980f604d7f66792197288b03b9b40 --shot=all
 ```
 
 ## Post-approval
@@ -117,6 +117,6 @@ node scripts/capture-cws-pulse-screenshot.mjs --shot=all
 
 ## Human / ops (remain open)
 
-- [ ] Operator: after replacement gates pass, upload the new locked ZIP + matching screenshots and submit in Chrome Web Store Dashboard
+- [ ] Operator: after the traceability PR checks run and pass, upload the locked ZIP + matching screenshots and submit in Chrome Web Store Dashboard
 - [ ] Ops: capacity remains HOLD_AT_300; no marketing blast without sign-off
 - [ ] Ops: Cloudflare Access for `/v1/admin/pulse*` still recommended before marketing
