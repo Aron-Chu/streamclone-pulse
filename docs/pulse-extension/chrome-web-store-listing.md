@@ -1,11 +1,16 @@
 # Chrome Web Store listing copy — StreamPulse
 
 **Status:** Ready for operator paste into Chrome Web Store Developer Dashboard  
-**Package:** `npm run package:cws` → `streampulse-extension.zip` (+ `.sha256`)  
+**Branch:** `codex/cws-live-screenshots-2026-07-19`  
+**`PACKAGE_BUILD_COMMIT`:** `e238cab9919af958e03c93d229338eda060517a2`  
+**Package:** `streampulse-extension.zip` (built once from `PACKAGE_BUILD_COMMIT`; do not regenerate after hash lock)  
+**ZIP SHA-256:** `725ad432b697c4b6531c5a598fc5822373c3675ad45e9414064e8e4c514c7f13`  
 **Privacy policy:** https://streampulse.stream/privacy  
+**Support URL:** https://streampulse.stream/support  
 **Privacy contact:** privacy@streampulse.stream  
 **Manifest name:** StreamPulse  
 **Version (current package):** 0.1.0  
+**Portal install mode until Google approval:** `pending_verification` (no Landing store-URL flip)
 
 Do **not** use “Streamclone Pulse” in store-facing fields.
 
@@ -44,7 +49,8 @@ Beta / hosted access
 Some hosted features may require an access key entered in Options (stored locally, not synced). The public site does not require a beta key for public analytics.
 
 Support
-Privacy & support: privacy@streampulse.stream
+Support page: https://streampulse.stream/support
+Privacy & support email: privacy@streampulse.stream
 Product docs: https://streampulse.stream/docs#extension
 ```
 
@@ -64,17 +70,17 @@ English (United States)
 | Small promo tile (optional) | `docs/pulse-extension/cws-screenshots/promo-small-tile-440x280.png` | 440×280 |
 | Store icons | packaged from `public/icons/icon{16,48,128}.png` | Peak mark |
 
-Regenerate screenshots after Figma updates:
-```powershell
-powershell -File scripts/gen-cws-screenshots.ps1
+Recapture from packaging `dist/` (retired: `scripts/gen-cws-screenshots.ps1`):
+```bash
+node scripts/capture-cws-pulse-screenshot.mjs --shot=all
 ```
 
 Suggested upload order:
-1. Overlay beside chat  
-2. Expanded panel  
-3. Settings  
-4. Honest warming / coverage  
-5. Stream recap  
+1. `01-live-pulse-panel-1280x800.png` — live Pulse panel  
+2. `02-stream-activity-chart-1280x800.png` — stream activity chart  
+3. `03-pulse-duo-1280x800.png` — Pulse duo  
+4. `04-moments-and-chart-1280x800.png` — moments + chart  
+5. `05-stream-recap-1280x800.png` — Stream Recap  
 
 ---
 
@@ -126,6 +132,7 @@ Developer opt-in only: local StreamPulse BFF for debugging. Not required for nor
 | Used for ads / unrelated profiling? | No |
 | Remote hosted code? | **No** — bundled JS only |
 | Privacy policy URL | https://streampulse.stream/privacy |
+| Support URL | https://streampulse.stream/support |
 | Limited Use | Affirmed on privacy page + this listing |
 
 ---
@@ -140,13 +147,13 @@ Provide a Twitch live/VOD Pulse analytics overlay powered by the StreamPulse API
 
 ## Submission checklist (operator)
 
-1. [ ] `npm test && npm run typecheck && npm run package:cws` on the release commit  
-2. [ ] Upload `streampulse-extension.zip`  
+1. [x] Gates already recorded on `PACKAGE_BUILD_COMMIT` — upload the locked zip (SHA above); do **not** re-run `package:cws` unless intentionally creating a new candidate  
+2. [ ] Upload `streampulse-extension.zip` (verify SHA-256 `725ad432…514c7f13` before submit)  
 3. [ ] Paste name / summary / description from this doc  
-4. [ ] Upload 1280×800 screenshots from `cws-screenshots/`  
+4. [ ] Upload the five 1280×800 screenshots in the order listed above  
 5. [ ] Paste permission justifications  
-6. [ ] Set privacy URL + Limited Use / data disclosures  
+6. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), + Limited Use / data disclosures  
 7. [ ] Submit for review  
-8. [ ] After approval: update Landing CTA from `/docs#extension` to the store URL  
+8. [ ] After approval: update Landing CTA from `/docs#extension` to the store URL; clear `pending_verification`  
 
 **Not automated:** Google account / Developer Dashboard submit — human only.
