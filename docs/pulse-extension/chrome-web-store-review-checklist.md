@@ -16,18 +16,19 @@ Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
 | Field | Value |
 |-------|--------|
 | Branch | `codex/cws-live-screenshots-2026-07-19` |
-| `PACKAGE_BUILD_COMMIT` | `dff7b61eedb980f604d7f66792197288b03b9b40` (artifact commit; `npm run package:cws` ran from this tip) |
+| `PACKAGE_BUILD_COMMIT` | `f290b0d82d7c1331560cce08f9b0bf5b42b650b1` (artifact commit; `npm run package:cws` ran from this tip) |
 | ZIP | `streampulse-extension.zip` (gitignored) |
 | ZIP size | 205,205 bytes |
-| ZIP SHA-256 | `fc04c7160f3bd5e825d49affa5a6bcfb60cf246543e03dba32e0b630165e601e` |
+| ZIP SHA-256 | `ad0154571b6aa07267fb8b18561d0f835c5e0686bf4e9d44fcd7d12366a23eb1` |
 | Gates (2026-07-22) | `typecheck` OK · `npm test` **512**/512 · `test:e2e:mocked` **29**/29 · `package:cws` + `validate:package` OK |
 
 The SHA identifies **exact ZIP bytes**. Do not regenerate the zip after the hash is locked (`scripts/zip-dist.mjs` does not guarantee byte-identical archives across runs/tools). Docs-only commits after packaging do not alter the packaged extension.
 
 This replacement ZIP uses the required `https://*.twitch.tv/*` content-script
 match and passed current package validation. All five screenshots were captured
-from the unchanged packaging `dist/` at `PACKAGE_BUILD_COMMIT` and manually
-reviewed. Required PR checks and operator upload remain open.
+from the unchanged packaging `dist/` at `PACKAGE_BUILD_COMMIT`, after verifying
+the complete file set and provenance hashes, and manually reviewed. Required PR
+checks and operator upload remain open.
 
 Portal install CTA stays **`pending_verification`** until Google approves the listing — no Landing store-URL flip and no Pages deploy from this pack.
 
@@ -35,7 +36,7 @@ Legacy identifiers: [`legacy-identifiers.md`](./legacy-identifiers.md).
 
 ## Pre-submit
 
-- [x] Replacement package built once from `PACKAGE_BUILD_COMMIT`; exact SHA `fc04c7160f3bd5e825d49affa5a6bcfb60cf246543e03dba32e0b630165e601e` locked
+- [x] Replacement package built once from `PACKAGE_BUILD_COMMIT`; exact SHA `ad0154571b6aa07267fb8b18561d0f835c5e0686bf4e9d44fcd7d12366a23eb1` locked
 - [x] Typecheck, 512 unit tests, 29 headed mocked E2E tests, packaging, and current package validation passed
 - [x] All five screenshots recaptured and reviewed against the unchanged packaging `dist/`
 - [x] `host_permissions` includes `https://api.streampulse.stream/*`
@@ -106,7 +107,7 @@ Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`
 The script fails instead of rebuilding if capture inputs or `dist/` differ:
 
 ```bash
-node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=dff7b61eedb980f604d7f66792197288b03b9b40 --shot=all
+node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=f290b0d82d7c1331560cce08f9b0bf5b42b650b1 --shot=all
 ```
 
 ## Post-approval
