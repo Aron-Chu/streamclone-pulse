@@ -17,6 +17,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -62,6 +63,7 @@ const CAPTURE_INPUTS = [
   'package.json',
   'package-lock.json',
   'scripts/capture-cws-pulse-screenshot.mjs',
+  'scripts/write-extension-build-provenance.mjs',
   'tests/e2e/fixtures/api/pulse-offline.json',
   'tests/e2e/helpers',
 ]
@@ -108,6 +110,34 @@ function assertPackageBuildInputs() {
   }
   if (result.status !== 0) {
     throw new Error(`could not verify PACKAGE_BUILD_COMMIT: ${result.stderr || result.stdout}`)
+  }
+}
+
+function assertBuildProvenance() {
+  const provenancePath = path.join(root, '.artifacts/extension-build-provenance.json')
+  if (!fs.existsSync(provenancePath)) {
+    throw new Error(`missing ${provenancePath}; run npm run build from PACKAGE_BUILD_COMMIT`)
+  }
+  const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'))
+  if (provenance.packageBuildCommit !== PACKAGE_BUILD_COMMIT) {
+    throw new Error(
+      `dist provenance is for ${provenance.packageBuildCommit}, expected ${PACKAGE_BUILD_COMMIT}`,
+    )
+  }
+  const expectedFiles = Object.entries(provenance.files ?? {})
+  if (expectedFiles.length === 0) throw new Error('build provenance contains no dist files')
+  const actualFiles = walkFiles(path.join(root, 'dist'))
+    .map(filePath => path.relative(path.join(root, 'dist'), filePath).replaceAll('\\', '/'))
+    .sort()
+  const expectedPaths = expectedFiles.map(([rel]) => rel).sort()
+  if (JSON.stringify(actualFiles) !== JSON.stringify(expectedPaths)) {
+    throw new Error('dist file set changed after build')
+  }
+  for (const [rel, expected] of expectedFiles) {
+    const filePath = path.join(root, 'dist', rel)
+    if (!fs.existsSync(filePath)) throw new Error(`provenance file missing from dist: ${rel}`)
+    const actual = createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+    if (actual !== expected) throw new Error(`dist hash changed after build: ${rel}`)
   }
 }
 
@@ -826,6 +856,7 @@ async function main() {
     throw new Error('CWS screenshot composition requires Windows PowerShell and System.Drawing')
   }
   assertPackageBuildInputs()
+  assertBuildProvenance()
   ensureFreshDist()
   fs.mkdirSync(sourcesDir, { recursive: true })
   const identity = gitIdentity()

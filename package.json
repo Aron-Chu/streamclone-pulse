@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
-    "build": "vite build",
+    "build": "vite build && node scripts/write-extension-build-provenance.mjs",
     "typecheck": "npx tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test --project=extension-mocked",
