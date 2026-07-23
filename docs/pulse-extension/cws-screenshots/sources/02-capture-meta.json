@@ -1,0 +1,33 @@
+{
+  "shot": "02",
+  "identity": "ada58be (codex/cws-live-screenshots-2026-07-19)",
+  "cropStory": "games/activity through Plot on chart",
+  "clip": {
+    "x": 1384,
+    "y": 303,
+    "width": 520,
+    "height": 464
+  },
+  "rawMeta": {
+    "width": 1040,
+    "height": 928,
+    "bitDepth": 8,
+    "colorType": 2
+  },
+  "targetW": 660,
+  "shipping": {
+    "hasHubSubtitle": true,
+    "legendText": "ViewersChatEmotesChat trendEmote trend",
+    "hasFiveLegend": true
+  },
+  "css": {
+    "x": 1384.800048828125,
+    "y": 303.3999938964844,
+    "width": 520,
+    "height": 463.99999618530273,
+    "vw": 1920,
+    "vh": 1200,
+    "dpr": 2.0000000298023224,
+    "overflowsViewport": false
+  }
+}

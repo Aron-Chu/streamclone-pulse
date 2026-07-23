@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { chatSeriesFromRollups, chartRollupSeries } from './chatActivityEmotes.ts'
 import type { PulsePayload } from '../shared/messages.ts'
 import { theme } from './theme.ts'
+import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 
 const MINI_HEAT_BARS = 12
 
@@ -13,6 +14,7 @@ export interface MiniDockProps {
   trackBusy: boolean
   sidebarFill?: boolean
   onExpand: () => void
+  onSettings: () => void
   onHide: () => void
   onTrack?: () => void
 }
@@ -25,6 +27,7 @@ export function MiniDock({
   trackBusy,
   sidebarFill = false,
   onExpand,
+  onSettings,
   onHide,
   onTrack,
 }: MiniDockProps) {
@@ -77,6 +80,19 @@ export function MiniDock({
             {trackBusy ? '…' : 'Track'}
           </button>
         ) : null}
+        <button
+          type="button"
+          className="pulse-settings-gear-btn"
+          style={styles.iconButton}
+          onClick={event => {
+            event.stopPropagation()
+            onSettings()
+          }}
+          title="Open settings"
+          aria-label="Open settings"
+        >
+          <SettingsGearIcon size={14} />
+        </button>
         <button
           type="button"
           style={styles.iconButton}

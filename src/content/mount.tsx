@@ -10,8 +10,7 @@ import {
   DEFAULT_OVERLAY_MODE,
   DEFAULT_OVERLAY_PLACEMENT,
   DEFAULT_SIDEBAR_TAB,
-  getOverlayMode,
-  getOverlayPlacement,
+  getOverlayDisplayPreferences,
   getSidebarTab,
   getChatClosedPulseDockEnabled,
   getThemePreference,
@@ -23,6 +22,7 @@ import {
   type ThemePreference,
 } from '../shared/storage.ts'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
+import { PulsePortalContext } from '../ui/pulsePortalContext.ts'
 import { shadowStyles, theme } from '../ui/theme.ts'
 import {
   observeChatSnapLayout,
@@ -207,6 +207,7 @@ let currentOverlayMode: OverlayMode = 'expanded'
 let currentPayload: PulsePayload | null = null
 let currentError: string | undefined
 let currentCoverageTier: ExtensionCoverageTierResponse | null = null
+let displayPreferenceRequestId = 0
 
 function createShadowHost(id: string): { host: HTMLElement; root: Root } {
   const host = document.createElement('div')
@@ -375,9 +376,15 @@ function installMountStorageListener(): void {
   mountStorageListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return
-    if (changes.overlayPlacement || changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]) {
-      void Promise.all([getOverlayPlacement(), getChatClosedPulseDockEnabled()]).then(([placement, dockEnabled]) => {
-        storedPlacement = placement
+    if (changes.overlayPlacement || changes.overlayMode || changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]) {
+      // Initial hydration performs a coherent read after legacy migrations. Let it
+      // finish instead of allowing the migration's own storage event to cancel it.
+      if (!placementResolved) return
+      const requestId = ++displayPreferenceRequestId
+      void Promise.all([getOverlayDisplayPreferences(), getChatClosedPulseDockEnabled()]).then(([display, dockEnabled]) => {
+        if (requestId !== displayPreferenceRequestId) return
+        storedPlacement = display.placement
+        currentOverlayMode = display.mode
         chatClosedPulseDockEnabled = dockEnabled
         if (!dockEnabled) {
           resetSidebarFallback()
@@ -437,25 +444,35 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     if (tabsKey !== lastTabsRenderKey) {
       lastTabsRenderKey = tabsKey
       tabsRoot?.render(
-        <Overlay
-          login={currentLogin}
-          context={currentContext}
-          payload={null}
-          effectivePlacement={effectivePlacement}
-          sidebarSnapped
-          sidebarPart="tabs"
-          sidebarTab={currentSidebarTab}
-          overlayMode={currentOverlayMode}
-          onSidebarTabChange={sharedProps.onSidebarTabChange}
-          onOverlayModeChange={sharedProps.onOverlayModeChange}
-        />,
+        <PulsePortalContext.Provider value={tabsHostEl?.shadowRoot ?? null}>
+          <Overlay
+            login={currentLogin}
+            context={currentContext}
+            payload={null}
+            effectivePlacement={effectivePlacement}
+            sidebarSnapped
+            sidebarPart="tabs"
+            sidebarTab={currentSidebarTab}
+            overlayMode={currentOverlayMode}
+            onSidebarTabChange={sharedProps.onSidebarTabChange}
+            onOverlayModeChange={sharedProps.onOverlayModeChange}
+          />
+        </PulsePortalContext.Provider>,
       )
     }
-    panelRoot?.render(<Overlay {...sharedProps} sidebarPart="body" />)
+    panelRoot?.render(
+      <PulsePortalContext.Provider value={panelHostEl?.shadowRoot ?? null}>
+        <Overlay {...sharedProps} sidebarPart="body" />
+      </PulsePortalContext.Provider>,
+    )
   } else {
     lastTabsRenderKey = ''
     tabsRoot?.render(null)
-    panelRoot?.render(<Overlay {...sharedProps} sidebarPart="full" />)
+    panelRoot?.render(
+      <PulsePortalContext.Provider value={panelHostEl?.shadowRoot ?? null}>
+        <Overlay {...sharedProps} sidebarPart="full" />
+      </PulsePortalContext.Provider>,
+    )
   }
 
   applyHostVisibility(visibility)
@@ -482,18 +499,21 @@ export function mountOverlay(
   context: TwitchPageContext,
   options: OverlayMountOptions = {},
 ): void {
+  const needsDisplayHydration = !tabsHostEl || !panelHostEl
   currentLogin = login
   currentContext = context
   currentOptions = options
   currentPayload = initial
   currentError = undefined
   currentCoverageTier = options.coverageTier ?? null
-  storedPlacement = DEFAULT_OVERLAY_PLACEMENT
-  currentOverlayMode = DEFAULT_OVERLAY_MODE
-  currentSidebarTab = DEFAULT_SIDEBAR_TAB
-  chatClosedPulseDockEnabled = DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED
-  placementResolved = true
-  resetSidebarFallback()
+  if (needsDisplayHydration) {
+    storedPlacement = DEFAULT_OVERLAY_PLACEMENT
+    currentOverlayMode = DEFAULT_OVERLAY_MODE
+    currentSidebarTab = DEFAULT_SIDEBAR_TAB
+    chatClosedPulseDockEnabled = DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED
+    placementResolved = false
+    resetSidebarFallback()
+  }
 
   if (!tabsHostEl) {
     const tabs = createShadowHost(TAB_HOST_ID)
@@ -512,26 +532,26 @@ export function mountOverlay(
   syncSidebarObserver()
   renderOverlay(currentPayload, currentError)
 
+  if (!needsDisplayHydration) return
+
+  const requestId = ++displayPreferenceRequestId
   void Promise.all([
-    getOverlayPlacement(),
-    getOverlayMode(),
+    getOverlayDisplayPreferences(),
     getSidebarTab(),
     getThemePreference(),
     getChatClosedPulseDockEnabled(),
-  ]).then(([placement, mode, tab, themePref, dockEnabled]) => {
+  ]).then(([display, tab, themePref, dockEnabled]) => {
+      if (requestId !== displayPreferenceRequestId || !panelRoot) return
       applyAccentTheme(themePref)
-      const placementChanged = placement !== storedPlacement
-      const dockChanged = dockEnabled !== chatClosedPulseDockEnabled
-      storedPlacement = placement
-      currentOverlayMode = mode
+      storedPlacement = display.placement
+      currentOverlayMode = display.mode
       currentSidebarTab = tab
       chatClosedPulseDockEnabled = dockEnabled
+      placementResolved = true
       if (!dockEnabled) {
         resetSidebarFallback()
       }
-      if (placementChanged || dockChanged) {
-        syncSidebarObserver()
-      }
+      syncSidebarObserver()
       renderOverlay(currentPayload, currentError)
     },
   )
@@ -591,6 +611,7 @@ export function updateOverlayVodState(input: {
 }
 
 export function unmountOverlay(): void {
+  displayPreferenceRequestId += 1
   stopObserve?.()
   stopObserve = null
   sidebarLayout = null

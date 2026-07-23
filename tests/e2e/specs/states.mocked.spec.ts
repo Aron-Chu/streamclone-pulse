@@ -5,8 +5,10 @@ import {
   assertNoPulseVodDiscoverWarnings,
   assertNoUncaughtErrors,
   assertPulseShadowContains,
+  selectChartRangeOption,
   waitForPulseRoot,
 } from '../helpers/assertions.ts'
+import { readExtensionStorage } from '../helpers/extensionContext.ts'
 import { openTwitchChannel, openTwitchVod } from '../helpers/mockTwitch.ts'
 
 test.describe('extension mocked states', () => {
@@ -54,23 +56,209 @@ test.describe('extension mocked states', () => {
     await waitForPulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /Range|Full|30|Games played|Pulse/i)
 
-    // Drive the range control inside the shadow root (open → pick 30 min).
-    const changed = await extension.page.evaluate(rootId => {
-      const host = document.getElementById(rootId)
-      const root = host?.shadowRoot
-      if (!root) return false
-      const trigger = [...root.querySelectorAll('button')].find(button =>
-        /full stream|full|30\s*min|60\s*min|range/i.test(button.textContent ?? ''),
-      )
-      if (!trigger) return false
-      trigger.click()
-      return true
-    }, 'streamclone-pulse-root')
-    expect(changed, 'expected a chart range trigger in the Pulse shadow tree').toBe(true)
+    await selectChartRangeOption(extension.page, '30 min')
 
     // Give hydration + resize a beat, then assert no storage/context/SVG noise.
     await extension.page.waitForTimeout(750)
     assertNoUncaughtErrors(evidence)
+  })
+
+  test('chart range supports keyboard selection and restores trigger focus', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        defaultChartWindow: 'full',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const trigger = extension.page.getByRole('combobox', { name: 'Chart time range' })
+    await expect(trigger).toBeVisible()
+    await trigger.focus()
+    await trigger.press('ArrowDown')
+    await expect(extension.page.getByRole('option', { name: 'Full stream', exact: true })).toBeVisible()
+    await trigger.press('Home')
+    await trigger.press('ArrowDown')
+    await trigger.press('Enter')
+
+    await expect(trigger).toContainText('30 min')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expect(trigger).toBeFocused()
+  })
+
+  test('chart range closes when keyboard focus leaves the control', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const trigger = extension.page.getByRole('combobox', { name: 'Chart time range' })
+    await trigger.focus()
+    await trigger.press('ArrowDown')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await trigger.press('Tab')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expect(trigger).not.toBeFocused()
+  })
+
+  test('sidebar settings default range uses pointer input and persists', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        overlayPlacement: 'sidebar',
+        overlayMode: 'expanded',
+        sidebarTab: 'pulse',
+        defaultChartWindow: 'full',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    await extension.page.getByRole('button', { name: 'Open settings' }).click()
+    const trigger = extension.page.getByRole('combobox', { name: 'Default chart range' })
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+    await extension.page.getByRole('option', { name: '2h', exact: true }).click()
+
+    await expect(trigger).toContainText('2h')
+    await expect.poll(async () => {
+      const stored = await readExtensionStorage(extension.serviceWorker, ['defaultChartWindow'])
+      return stored.defaultChartWindow
+    }).toBe('2h')
+  })
+
+  test('most reacted sort accepts pointer selection', async ({ extension, prepare }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        overlayPlacement: 'sidebar',
+        overlayMode: 'expanded',
+        sidebarTab: 'pulse',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const trigger = extension.page.getByRole('combobox', { name: 'Sort most reacted moments' })
+    await trigger.scrollIntoViewIfNeeded()
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+    await extension.page.getByRole('option', { name: 'Chat activity', exact: true }).click()
+
+    await expect(trigger).toContainText('Chat activity')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  test('mini hide keeps placement and exposes a reopenable pill', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        overlayPlacement: 'right',
+        overlayMode: 'mini',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const miniDock = extension.page.getByRole('region', { name: 'StreamPulse mini dock' })
+    await expect(miniDock).toBeVisible()
+    await expect(miniDock.getByRole('button', { name: 'Open settings' })).toBeVisible()
+    await expect(miniDock.getByRole('button', { name: 'Expand panel' })).toBeVisible()
+    await miniDock.getByRole('button', { name: 'Hide overlay' }).click()
+
+    const openPill = extension.page.getByRole('button', { name: 'Open Pulse panel' })
+    await expect(openPill).toBeVisible()
+    await expect.poll(async () => {
+      const stored = await readExtensionStorage(extension.serviceWorker, [
+        'overlayPlacement',
+        'overlayMode',
+      ])
+      return `${stored.overlayPlacement}:${stored.overlayMode}`
+    }).toBe('right:collapsed')
+
+    await openPill.click()
+    await expect(extension.page.getByRole('combobox', { name: 'Chart time range' })).toBeVisible()
+    await expect.poll(async () => {
+      const stored = await readExtensionStorage(extension.serviceWorker, [
+        'overlayPlacement',
+        'overlayMode',
+      ])
+      return `${stored.overlayPlacement}:${stored.overlayMode}`
+    }).toBe('right:expanded')
+  })
+
+  test('mini settings opens options and expand returns to the panel', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        overlayPlacement: 'right',
+        overlayMode: 'mini',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const miniDock = extension.page.getByRole('region', { name: 'StreamPulse mini dock' })
+    const optionsPagePromise = extension.context.waitForEvent('page')
+    await miniDock.getByRole('button', { name: 'Open settings' }).click()
+    const optionsPage = await optionsPagePromise
+    await expect(optionsPage).toHaveURL(/options\/index\.html/)
+    await optionsPage.close()
+
+    await miniDock.getByRole('button', { name: 'Expand panel' }).click()
+    await expect(extension.page.getByRole('combobox', { name: 'Chart time range' })).toBeVisible()
+  })
+
+  test('legacy hidden placement migrates to a collapsed sidebar pill', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: {
+        overlayPlacement: 'hidden',
+        overlayMode: 'expanded',
+        sidebarTab: 'pulse',
+        defaultChartWindowMigratedToFullV1: true,
+      },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    await expect(extension.page.getByRole('button', { name: 'Open Pulse panel' })).toBeVisible()
+    await expect.poll(async () => {
+      const stored = await readExtensionStorage(extension.serviceWorker, [
+        'overlayPlacement',
+        'overlayMode',
+      ])
+      return `${stored.overlayPlacement}:${stored.overlayMode}`
+    }).toBe('sidebar:collapsed')
   })
 
   test('live partial / starting surfaces not-tracked / starting copy', async ({

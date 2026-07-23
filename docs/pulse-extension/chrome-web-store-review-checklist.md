@@ -1,77 +1,123 @@
-# Chrome Web Store / AMO review checklist (StreamPulse)
+# Chrome Web Store review checklist (StreamPulse)
 
-Extension ships public-first for Twitch live/VOD Pulse analytics. Version `0.1.0`
-is published at https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg.
+Extension ships as **beta** via [`/docs#extension`](../../streampulse-web/src/routes/public/Docs.tsx) until the store listing is approved.
+
+Product name (user-facing): **StreamPulse**
+Privacy policy URL: `https://streampulse.stream/privacy` (live — Limited Use + `privacy@streampulse.stream` verified 2026-07-19)
+Support URL: `https://streampulse.stream/support`
+Backend: **streampulse-backend** / hosted `https://api.streampulse.stream`
+Local BFF (dev opt-in only): `http://localhost:8081` — never Streamclone watch `:8090`
+
+Listing paste pack: [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)
+Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
+
+## Traceability (this pack)
+
+| Field | Value |
+|-------|--------|
+| Branch | `codex/cws-live-screenshots-2026-07-19` |
+| `PACKAGE_BUILD_COMMIT` | `ada58beb620a0955030528f46a5bc66e3c3010cb` (artifact commit; `npm run package:cws` ran from this tip) |
+| ZIP | `streampulse-extension.zip` (gitignored) |
+| ZIP size | 205,205 bytes |
+| ZIP SHA-256 | `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075` |
+| Gates (2026-07-22) | `typecheck` OK · `npm test` **512**/512 · `test:e2e:mocked` **29**/29 · `package:cws` + `validate:package` OK |
+
+The SHA identifies **exact ZIP bytes**. Do not regenerate the zip after the hash is locked (`scripts/zip-dist.mjs` does not guarantee byte-identical archives across runs/tools). Docs-only commits after packaging do not alter the packaged extension.
+
+This replacement ZIP uses the required `https://*.twitch.tv/*` content-script
+match and passed current package validation. All five screenshots were captured
+from the unchanged packaging `dist/` at `PACKAGE_BUILD_COMMIT`, after verifying
+the complete file set and provenance hashes, and manually reviewed. Required PR
+checks and operator upload remain open.
+
+Portal install CTA stays **`pending_verification`** until Google approves the listing — no Landing store-URL flip and no Pages deploy from this pack.
+
+Legacy identifiers: [`legacy-identifiers.md`](./legacy-identifiers.md).
 
 ## Pre-submit
 
-- [x] Local RC verification: typecheck + unit tests + `package:cws` + mocked e2e (closeout 2026-07-21)
-- [x] Screenshots: RC mocked 1280×800 set under `store/cws/screenshots/` (final visual approval + optional live capture remain manual)
-- [x] Single purpose: Twitch live/VOD Pulse analytics overlay powered by StreamPulse hosted API
-- [x] Peak store icon + small promo tile — `npm run icons:cws` (128×128 **RGBA** PNG; see `store/cws/README.md`)
-- [ ] LIVE_TWITCH_SMOKE unpacked manual gate
-- [x] Publisher contact is visible on the published listing
-- [x] Version `0.1.0` upload and Chrome Web Store review completed
-- [ ] Manual account correction: set the listing Support URL to `https://streampulse.stream/support`
+- [x] Replacement package built once from `PACKAGE_BUILD_COMMIT`; exact SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075` locked
+- [x] Typecheck, 512 unit tests, 29 headed mocked E2E tests, packaging, and current package validation passed
+- [x] All five screenshots recaptured and reviewed against the unchanged packaging `dist/`
+- [x] `host_permissions` includes `https://api.streampulse.stream/*`
+- [x] Emote CDNs declared (`cdn.7tv.app`, `static-cdn.jtvnw.net`, `cdn.frankerfacez.com`)
+- [x] Localhost BFF hosts are **optional_host_permissions** only
+- [x] Runtime messages validated before SW handling (`parseBackgroundRequest`)
+- [x] Emote image fetch restricted to HTTPS approved CDNs + image MIME + size/timeout limits
+- [x] No secrets in extension bundle (beta keys entered in options UI only; stored in `chrome.storage.local`)
+- [x] Content scripts use `chrome.runtime.sendMessage` only — no `fetch` under `src/content`
+- [x] Privacy policy URL live and matches product (`/privacy`)
+- [x] Support URL live: `https://streampulse.stream/support`
+- [x] Dedicated privacy email published: `privacy@streampulse.stream`
+- [x] Screenshots (upload order): live Pulse panel → stream activity chart → Pulse duo → moments + chart → Stream Recap (`cws-screenshots/01-…05-…` names below)
+- [x] Single purpose documented in listing pack
+- [x] **Icon artwork:** Peak mark PNGs at exact 16/48/128; package validator enforces PNG signature + dimensions + non-stub size
 
-## Chrome Web Store (paste-ready)
+## Permissions (current candidate)
 
-- **Single purpose:** Twitch live/VOD Pulse analytics overlay powered by StreamPulse hosted API.
-- **Category:** Productivity
-- **Language:** English
-- **Host permission justification:** StreamPulse needs HTTPS access to Twitch pages to display its live/VOD analytics overlay and identify the current channel or video. It connects to the StreamPulse API for sanitized Pulse analytics and coverage data. Emote image assets are fetched by the service worker from approved CDN hosts (7TV, Twitch CDN / jtvnw, FrankerFaceZ). Optional local development may use a StreamPulse backend on localhost:8081 after the user grants optional host permission.
-- **Remote code:** No. All executable JavaScript is packaged with the extension; no remote JavaScript or WebAssembly is downloaded or evaluated.
-- **Scripting justification:** The extension uses bundled scripts to inspect the current Twitch page and resolve live/VOD metadata needed to display the Pulse overlay.
-- **Storage justification:** The extension stores user-selected overlay settings, theme preferences, watchlist settings, short-lived caches, and optional local debug logs.
-- **Authentication information:** No
-- **Website content:** Active Twitch URL and stream/VOD metadata for the overlay only. Do not disclose raw chat, personal communications, location, financial information, health information, or authentication information.
+Required `permissions`: `storage`, `scripting`
 
-## Permissions (audited)
+Required `host_permissions`:
 
-- [x] `permissions`: `storage`, `scripting` only (no `tabs`)
-- [x] Required `host_permissions`: hosted API + emote CDNs (7TV, jtvnw, FrankerFaceZ) + `https://gql.twitch.tv/*` + `https://*.twitch.tv/*`
-- [x] `optional_host_permissions`: `http://localhost:8081/*`, `http://127.0.0.1:8081/*`
-- [x] Content scripts: `https://*.twitch.tv/*` only
-- [x] Remote code: none (bundled JS only)
-- [x] Data use: aggregates from hosted API; no raw chat stored locally beyond UI/session cache
+- `https://api.streampulse.stream/*` — Pulse BFF
+- `https://cdn.7tv.app/*`, `https://static-cdn.jtvnw.net/*`, `https://cdn.frankerfacez.com/*` — emote images
+- `https://gql.twitch.tv/*` — stream/VOD identity GraphQL from page inject
+- `https://*.twitch.tv/*` — Twitch page access for content script / tab messaging under host grant
 
-## Data categories to select
+Optional `optional_host_permissions`:
 
-Select only what the build actually uses:
+- `http://localhost:8081/*`, `http://127.0.0.1:8081/*` — local StreamPulse BFF opt-in
 
-- Website content — active Twitch URL / page and stream or VOD metadata
-- Do **not** select: personal communications, location, financial, health, authentication credentials, unless a fresh audit proves otherwise
+`tabs` permission: **removed**.
+
+## Chrome Web Store
+
+- [x] Permission justifications drafted in [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)
+- [x] Remote code: none (bundled JS only) — declare “No” remote hosted code
+- [x] Data use disclosure drafted (aggregates from hosted API; settings in sync; beta key in local; session cache; optional debug logs)
+- [x] Limited Use compliance on privacy page + listing pack
+- [x] Store listing name / screenshots say **StreamPulse** (not Streamclone Pulse)
+- [ ] Listing / submission / Google approval — **operator action in Developer Dashboard**
 
 ## Firefox (AMO)
 
-- [ ] `browser_specific_settings.gecko.id` stable across releases
+- [ ] `browser_specific_settings.gecko.id` stable across releases (not configured yet)
 - [ ] Same host permission set as Chrome
 - [ ] Source upload / reproducible build notes if AMO requests them
-
-## Account-only follow-up
-
-- [ ] Correct the live listing Support URL to `https://streampulse.stream/support`
-- [ ] Optional: review and promote a live-Twitch screenshot set
 
 ## Packaging
 
 ```bash
+# From PACKAGE_BUILD_COMMIT only — then preserve those exact ZIP bytes.
 npm run package:cws
 # artifacts (gitignored):
-#   streampulse-extension.zip (or streamclone-pulse.zip from zip script)
+#   streampulse-extension.zip
+#   streampulse-extension.zip.sha256
 ```
 
-Regenerate store icons / mocked release screenshots:
+Store screenshots (operator upload order):
+
+1. `01-live-pulse-panel-1280x800.png`
+2. `02-stream-activity-chart-1280x800.png`
+3. `03-pulse-duo-1280x800.png`
+4. `04-moments-and-chart-1280x800.png`
+5. `05-stream-recap-1280x800.png`
+
+Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`.
+The script fails instead of rebuilding if capture inputs or `dist/` differ:
 
 ```bash
-npm run icons:cws
-npm run capture:cws:mocked
+node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=ada58beb620a0955030528f46a5bc66e3c3010cb --shot=all
 ```
 
-Live Twitch screenshots use a separate audited operator workflow and must not replace the
-mocked release set without explicit visual review and promotion.
+## Post-approval
 
-## Published integration
+- [ ] After approval, update the public install CTA to the store URL and clear `pending_verification`
+- [ ] Verify public install links resolve to the approved listing and no surface remains in beta/pending mode
+- [ ] Keep beta key + optional localhost path for self-host / local `:8081` debugging
 
-- [x] Website CTAs use the canonical Chrome Web Store listing URL
-- [x] Public-first extension has no beta-key or access-key setting
+## Human / ops (remain open)
+
+- [ ] Operator: after the traceability PR checks run and pass, upload the locked ZIP + matching screenshots and submit in Chrome Web Store Dashboard
+- [ ] Ops: capacity remains HOLD_AT_300; no marketing blast without sign-off
+- [ ] Ops: Cloudflare Access for `/v1/admin/pulse*` still recommended before marketing

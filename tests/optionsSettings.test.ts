@@ -15,6 +15,8 @@ import {
   DEFAULT_BACKEND_URL,
   getBackendUrl,
   getDefaultChartWindow,
+  getOverlayDisplayPreferences,
+  getOverlayPlacement,
   getKeepLocalCache,
   getThemePreference,
   isLocalStackBackendUrl,
@@ -154,6 +156,31 @@ describe('settings persistence (mocked chrome.storage)', () => {
     expect(await getThemePreference()).toBe('volt')
     expect(await getDefaultChartWindow()).toBe('4h')
     expect(await getKeepLocalCache()).toBe(false)
+  })
+
+  it('migrates legacy hidden placement to a reopenable collapsed sidebar', async () => {
+    syncStore.overlayPlacement = 'hidden'
+    syncStore.overlayMode = 'expanded'
+
+    await expect(getOverlayDisplayPreferences()).resolves.toEqual({
+      placement: 'sidebar',
+      mode: 'collapsed',
+    })
+    expect(syncStore.overlayPlacement).toBe('sidebar')
+    expect(syncStore.overlayMode).toBe('collapsed')
+    await expect(getOverlayPlacement()).resolves.toBe('sidebar')
+  })
+
+  it('preserves valid placement and mode preferences', async () => {
+    syncStore.overlayPlacement = 'right'
+    syncStore.overlayMode = 'mini'
+
+    await expect(getOverlayDisplayPreferences()).resolves.toEqual({
+      placement: 'right',
+      mode: 'mini',
+    })
+    expect(syncStore.overlayPlacement).toBe('right')
+    expect(syncStore.overlayMode).toBe('mini')
   })
 
   it('round-trips azure and migrates legacy theme ids', async () => {

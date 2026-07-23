@@ -21,14 +21,12 @@ import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
   getBackendUrl,
-  getOverlayMode,
-  getOverlayPlacement,
+  getOverlayDisplayPreferences,
   getSidebarTab,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
   setAutoUpdateEnabled,
   setOverlayMode,
-  setOverlayPlacement,
   setSidebarTab,
   type OverlayMode,
   type OverlayPlacement,
@@ -131,32 +129,53 @@ function OverlayTabsShell({
 
   useEffect(() => {
     let mounted = true
+    let displayRequestId = 0
+    let tabRequestId = 0
+    const refreshDisplay = () => {
+      const requestId = ++displayRequestId
+      void getOverlayDisplayPreferences().then(display => {
+        if (!mounted || requestId !== displayRequestId) return
+        setModeState(display.mode)
+        setPlacementState(display.placement)
+        onOverlayModeChange?.(display.mode)
+      })
+    }
+    const refreshTab = () => {
+      const requestId = ++tabRequestId
+      void getSidebarTab().then(tab => {
+        if (!mounted || requestId !== tabRequestId) return
+        setSidebarTabState(tab)
+        onSidebarTabChange?.(tab)
+      })
+    }
     void (async () => {
-      const [storedMode, storedPlacement, storedSidebarTab] = await Promise.all([
-        getOverlayMode(),
-        getOverlayPlacement(),
+      const displayId = ++displayRequestId
+      const tabId = ++tabRequestId
+      const [display, storedSidebarTab] = await Promise.all([
+        getOverlayDisplayPreferences(),
         getSidebarTab(),
       ])
       if (!mounted) return
-      setModeState(storedMode)
-      setPlacementState(storedPlacement)
-      setSidebarTabState(storedSidebarTab)
-      onSidebarTabChange?.(storedSidebarTab)
+      if (displayId === displayRequestId) {
+        setModeState(display.mode)
+        setPlacementState(display.placement)
+      }
+      if (tabId === tabRequestId) {
+        setSidebarTabState(storedSidebarTab)
+        onSidebarTabChange?.(storedSidebarTab)
+      }
     })()
     const storageHandler = (
       changes: Record<string, chrome.storage.StorageChange>,
       areaName: string,
     ) => {
       if (areaName !== 'sync') return
-      void getOverlayMode().then(next => {
-        setModeState(next)
-        onOverlayModeChange?.(next)
-      })
-      void getOverlayPlacement().then(setPlacementState)
-      void getSidebarTab().then(tab => {
-        setSidebarTabState(tab)
-        onSidebarTabChange?.(tab)
-      })
+      if (changes.overlayMode || changes.overlayPlacement) {
+        refreshDisplay()
+      }
+      if (changes.sidebarTab) {
+        refreshTab()
+      }
     }
     chrome.storage.onChanged.addListener(storageHandler)
     return () => {
@@ -322,39 +341,69 @@ function OverlayMain({
 
   useEffect(() => {
     let mounted = true
+    let displayRequestId = 0
+    let tabRequestId = 0
+    let backendRequestId = 0
+    let autoUpdateRequestId = 0
+    const refreshDisplay = () => {
+      const requestId = ++displayRequestId
+      void getOverlayDisplayPreferences().then(display => {
+        if (!mounted || requestId !== displayRequestId) return
+        setModeState(display.mode)
+        setPlacementState(display.placement)
+        onOverlayModeChange?.(display.mode)
+      })
+    }
     void (async () => {
-      const [storedMode, storedPlacement, storedBackend, storedSidebarTab, storedAutoUpdate] = await Promise.all([
-        getOverlayMode(),
-        getOverlayPlacement(),
+      const displayId = ++displayRequestId
+      const tabId = ++tabRequestId
+      const backendId = ++backendRequestId
+      const autoUpdateId = ++autoUpdateRequestId
+      const [display, storedBackend, storedSidebarTab, storedAutoUpdate] = await Promise.all([
+        getOverlayDisplayPreferences(),
         getBackendUrl(),
         getSidebarTab(),
         getAutoUpdateEnabled(),
       ])
       if (!mounted) return
-      setModeState(storedMode)
-      setPlacementState(storedPlacement)
-      setBackendUrlState(storedBackend)
-      setSidebarTabState(storedSidebarTab)
-      setAutoUpdate(storedAutoUpdate)
-      onSidebarTabChange?.(storedSidebarTab)
+      if (displayId === displayRequestId) {
+        setModeState(display.mode)
+        setPlacementState(display.placement)
+      }
+      if (backendId === backendRequestId) setBackendUrlState(storedBackend)
+      if (tabId === tabRequestId) {
+        setSidebarTabState(storedSidebarTab)
+        onSidebarTabChange?.(storedSidebarTab)
+      }
+      if (autoUpdateId === autoUpdateRequestId) setAutoUpdate(storedAutoUpdate)
     })()
     const storageHandler = (
       changes: Record<string, chrome.storage.StorageChange>,
       areaName: string,
     ) => {
       if (areaName !== 'sync') return
-      void getOverlayMode().then(mode => {
-        setModeState(mode)
-        onOverlayModeChange?.(mode)
-      })
-      void getOverlayPlacement().then(setPlacementState)
-      void getSidebarTab().then(tab => {
-        setSidebarTabState(tab)
-        onSidebarTabChange?.(tab)
-      })
-      void getBackendUrl().then(setBackendUrlState)
+      if (changes.overlayMode || changes.overlayPlacement) {
+        refreshDisplay()
+      }
+      if (changes.sidebarTab) {
+        const requestId = ++tabRequestId
+        void getSidebarTab().then(tab => {
+          if (!mounted || requestId !== tabRequestId) return
+          setSidebarTabState(tab)
+          onSidebarTabChange?.(tab)
+        })
+      }
+      if (changes.backendUrl) {
+        const requestId = ++backendRequestId
+        void getBackendUrl().then(next => {
+          if (mounted && requestId === backendRequestId) setBackendUrlState(next)
+        })
+      }
       if (changes.autoUpdateEnabled) {
-        void getAutoUpdateEnabled().then(setAutoUpdate)
+        const requestId = ++autoUpdateRequestId
+        void getAutoUpdateEnabled().then(next => {
+          if (mounted && requestId === autoUpdateRequestId) setAutoUpdate(next)
+        })
       }
     }
     chrome.storage.onChanged.addListener(storageHandler)
@@ -474,12 +523,7 @@ function OverlayMain({
   }
 
   async function hideOverlay(): Promise<void> {
-    if (sidebarSnapped) {
-      await persistMode('collapsed')
-      return
-    }
-    await persistMode('expanded')
-    await setOverlayPlacement('hidden')
+    await persistMode('collapsed')
   }
 
   async function startTracking(): Promise<void> {
@@ -1124,6 +1168,7 @@ function OverlayMain({
           trackBusy={trackBusy}
           sidebarFill={sidebarBodyOnly}
           onExpand={() => void persistMode('expanded')}
+          onSettings={openSettings}
           onHide={() => void hideOverlay()}
           onTrack={localStackBackend ? () => void startTracking() : undefined}
         />

@@ -1,13 +1,21 @@
 # Chrome Web Store listing copy — StreamPulse
 
-**Status:** Published in the Chrome Web Store
-**Listing:** https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg
-**Extension ID:** `nifgoonpcgmdhiffcpmhndjgkgahnelg`
-**Package:** `npm run package:cws` → `streampulse-extension.zip` (+ `.sha256`)  
-**Privacy policy:** https://streampulse.stream/privacy  
+**Status:** Candidate locked - pending PR checks and operator upload
+**Branch:** `codex/cws-live-screenshots-2026-07-19`
+**`PACKAGE_BUILD_COMMIT`:** `ada58beb620a0955030528f46a5bc66e3c3010cb`
+**Package:** `streampulse-extension.zip` (built once from `PACKAGE_BUILD_COMMIT`; do not regenerate after hash lock)
+**ZIP SHA-256:** `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075` (205,205 bytes)
+**Privacy policy:** https://streampulse.stream/privacy
+**Support URL:** https://streampulse.stream/support
 **Privacy contact:** privacy@streampulse.stream  
 **Manifest name:** StreamPulse  
 **Version (current package):** 0.1.0  
+**Portal install mode until Google approval:** `pending_verification` (no Landing store-URL flip)
+
+This replacement candidate uses the required HTTPS-only Twitch content-script
+match. Typecheck, 512 unit tests, 29 headed mocked extension tests, packaging,
+and current package validation passed before the ZIP hash was locked. The five
+screenshots were then recaptured from the unchanged packaging `dist/`.
 
 Do **not** use “Streamclone Pulse” in store-facing fields.
 
@@ -42,11 +50,12 @@ The extension reads the Twitch page context to identify the channel / stream / V
 Privacy
 See https://streampulse.stream/privacy — including Chrome Web Store Limited Use language and contact privacy@streampulse.stream.
 
-Public access
-The extension is public-first. It does not require Twitch OAuth or a StreamPulse beta/access key.
+Beta / hosted access
+Some hosted features may require an access key entered in Options (stored locally, not synced). The public site does not require a beta key for public analytics.
 
 Support
-Privacy & support: privacy@streampulse.stream
+Support page: https://streampulse.stream/support
+Privacy & support email: privacy@streampulse.stream
 Product docs: https://streampulse.stream/docs#extension
 ```
 
@@ -62,20 +71,24 @@ English (United States)
 
 | Asset | Path | Size |
 |-------|------|------|
-| Screenshots (required) | `store/cws/screenshots/{01-live-pulse,02-coverage,03-vod-replay,04-most-reacted}.png` | 1280×800 |
-| Small promo tile (optional) | `store/cws/icons/small-promo-440x280.png` | 440×280 |
-| Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
+| Screenshots (required) | `docs/pulse-extension/cws-screenshots/01-…05-…png` | 1280×800 |
+| Small promo tile (optional) | `docs/pulse-extension/cws-screenshots/promo-small-tile-440x280.png` | 440×280 |
+| Store icons | packaged from `public/icons/icon{16,48,128}.png` | Peak mark |
 
-Regenerate the validated mocked screenshot set with:
+Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`
+(retired: `scripts/gen-cws-screenshots.ps1`). The capture script fails instead
+of rebuilding when its inputs, complete `dist/` file set, provenance hashes, or
+build commit do not match the locked package source:
 ```bash
-npx playwright test --project=extension-mocked tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts
+  node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=ada58beb620a0955030528f46a5bc66e3c3010cb --shot=all
 ```
 
 Suggested upload order:
-1. Live Pulse overview
-2. Honest coverage state
-3. VOD Replay Pulse
-4. Most reacted region
+1. `01-live-pulse-panel-1280x800.png` — live Pulse panel
+2. `02-stream-activity-chart-1280x800.png` — stream activity chart
+3. `03-pulse-duo-1280x800.png` — Pulse duo
+4. `04-moments-and-chart-1280x800.png` — moments + chart
+5. `05-stream-recap-1280x800.png` — Stream Recap
 
 ---
 
@@ -83,7 +96,7 @@ Suggested upload order:
 
 ### storage
 ```
-Stores StreamPulse settings (theme, overlay placement, chart preferences, and watchlist) in chrome.storage.sync, optional bounded diagnostic logs in chrome.storage.local, and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls. The extension does not store or transmit a beta/access key.
+Stores StreamPulse settings (theme, overlay placement, chart preferences, watchlist) in chrome.storage.sync, an optional beta/access key in chrome.storage.local, and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls.
 ```
 
 ### scripting
@@ -126,8 +139,8 @@ Developer opt-in only: local StreamPulse BFF for debugging. Not required for nor
 | Sold to third parties? | No |
 | Used for ads / unrelated profiling? | No |
 | Remote hosted code? | **No** — bundled JS only |
-| Authentication information? | **No** — no Twitch OAuth and no StreamPulse beta/access key |
 | Privacy policy URL | https://streampulse.stream/privacy |
+| Support URL | https://streampulse.stream/support |
 | Limited Use | Affirmed on privacy page + this listing |
 
 ---
@@ -140,14 +153,16 @@ Provide a Twitch live/VOD Pulse analytics overlay powered by the StreamPulse API
 
 ---
 
-## Published listing status
+## Submission checklist (operator)
 
-- [x] Version `0.1.0` is published at the canonical listing URL above.
-- [x] Website install CTAs use the canonical listing URL.
-- [x] Privacy and Support pages are live on `streampulse.stream`.
-- [x] The public-first build has no beta/access-key setting or request header.
-- [ ] **Manual account correction:** change the CWS Support URL from the Twitch channel currently shown by the listing to `https://streampulse.stream/support`.
-- [ ] Optional: replace the validated mocked screenshot set only after a reviewed live-Twitch capture.
+1. [x] Build the replacement candidate with the HTTPS-only Twitch content-script match
+2. [x] Run typecheck, 512 unit tests, 29 headed mocked E2E tests, packaging, and current package validation
+3. [x] Recapture and review all five screenshots from the unchanged packaging `dist/`
+4. [x] Lock `PACKAGE_BUILD_COMMIT`, exact ZIP bytes, size, and SHA-256 in both handoff documents
+5. [ ] Merge the traceability PR only after required CI and review checks actually run and pass
+6. [ ] Upload the locked ZIP and matching screenshots, then paste listing and permission fields
+7. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), and Limited Use/data disclosures
+8. [ ] Submit for review
+9. [ ] After approval: update the public install CTA to the store URL and clear `pending_verification`
 
-Do not upload a replacement package without separate authorization. A code update requires a
-version greater than `0.1.0`, a newly validated ZIP, and Chrome Web Store review.
+**Not automated:** Google account / Developer Dashboard submit — human only.

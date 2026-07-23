@@ -98,7 +98,6 @@ const PLACEMENT_OPTIONS: ReadonlyArray<{ value: OverlayPlacement; label: string 
   { value: 'sidebar', label: 'Sidebar tab' },
   { value: 'right', label: 'Right rail' },
   { value: 'bottom', label: 'Bottom dock' },
-  { value: 'hidden', label: 'Hidden' },
 ]
 
 const AUTO_TRACK_OPTIONS: ReadonlyArray<{ value: AutoTrackPolicy; label: string; title?: string }> = [

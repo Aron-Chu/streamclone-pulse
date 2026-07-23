@@ -61,6 +61,10 @@ export const shadowStyles = `
     from { opacity: 0; }
     to { opacity: 1; }
   }
+  @keyframes pulse-select-menu-enter {
+    from { opacity: 0; transform: translateY(-3px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
   @keyframes pulse-view-enter-settings {
     from { opacity: 0; transform: translateX(12px); }
     to { opacity: 1; transform: translateX(0); }
@@ -826,6 +830,32 @@ export const shadowStyles = `
     width: 100%;
   }
   .pulse-tab-fade { animation: tab-fade 0.2s ease both; }
+  .pulse-themed-select-menu {
+    animation: pulse-select-menu-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transform-origin: top right;
+  }
+  .pulse-themed-select-trigger {
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  }
+  .pulse-themed-select-trigger:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    color: ${theme.textPrimary} !important;
+  }
+  .pulse-themed-select-trigger:focus-visible {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.55) !important;
+    color: ${theme.accentInk} !important;
+  }
+  .pulse-themed-select-option {
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .pulse-themed-select-option:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+  }
+  .pulse-themed-select-option[data-active="true"] {
+    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.55);
+  }
   .pulse-panel-view-enter {
     animation-duration: 0.2s;
     animation-fill-mode: both;

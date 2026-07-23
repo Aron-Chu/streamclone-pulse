@@ -27,6 +27,10 @@ export type SidebarTab = 'chat' | 'pulse'
 export type AutoTrackPolicy = 'off' | 'followed' | 'ask'
 export type ThemePreference = 'aurora' | 'volt' | 'azure'
 export type DefaultChartWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
+export interface OverlayDisplayPreferences {
+  placement: OverlayPlacement
+  mode: OverlayMode
+}
 
 export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
@@ -278,8 +282,7 @@ export async function setPollIntervalMs(ms: number): Promise<void> {
 }
 
 export async function getOverlayMode(): Promise<OverlayMode> {
-  const stored = await syncStorageGet(OVERLAY_MODE_KEY)
-  return normalizeOverlayMode(stored[OVERLAY_MODE_KEY])
+  return (await getOverlayDisplayPreferences()).mode
 }
 
 export async function setOverlayMode(mode: OverlayMode): Promise<void> {
@@ -287,8 +290,31 @@ export async function setOverlayMode(mode: OverlayMode): Promise<void> {
 }
 
 export async function getOverlayPlacement(): Promise<OverlayPlacement> {
-  const stored = await syncStorageGet(OVERLAY_PLACEMENT_KEY)
-  return normalizeOverlayPlacement(stored[OVERLAY_PLACEMENT_KEY])
+  return (await getOverlayDisplayPreferences()).placement
+}
+
+export async function getOverlayDisplayPreferences(): Promise<OverlayDisplayPreferences> {
+  const stored = await syncStorageGet([OVERLAY_PLACEMENT_KEY, OVERLAY_MODE_KEY])
+  const placement = normalizeOverlayPlacement(stored[OVERLAY_PLACEMENT_KEY])
+  const mode = normalizeOverlayMode(stored[OVERLAY_MODE_KEY])
+  if (placement !== 'hidden') return { placement, mode }
+
+  const latest = await syncStorageGet([OVERLAY_PLACEMENT_KEY, OVERLAY_MODE_KEY])
+  const latestPlacement = normalizeOverlayPlacement(latest[OVERLAY_PLACEMENT_KEY])
+  const latestMode = normalizeOverlayMode(latest[OVERLAY_MODE_KEY])
+  if (latestPlacement !== 'hidden') {
+    return { placement: latestPlacement, mode: latestMode }
+  }
+
+  const migrated = {
+    placement: DEFAULT_OVERLAY_PLACEMENT,
+    mode: 'collapsed' as const,
+  }
+  await syncStorageSet({
+    [OVERLAY_PLACEMENT_KEY]: migrated.placement,
+    [OVERLAY_MODE_KEY]: migrated.mode,
+  })
+  return migrated
 }
 
 export async function setOverlayPlacement(placement: OverlayPlacement): Promise<void> {

@@ -203,25 +203,17 @@ export async function selectFirstMostReactedMoment(page: Page): Promise<void> {
   }).toPass({ timeout: 20_000 })
 }
 
-/**
- * Open Chart time range (shadow) and pick a label from the body-portaled listbox.
- */
+/** Open Chart time range and pick a label through the extension Shadow DOM. */
 export async function selectChartRangeOption(page: Page, optionLabel: string): Promise<void> {
-  const opened = await page.evaluate(rootId => {
-    const host = document.getElementById(rootId)
-    const btn = host?.shadowRoot?.querySelector(
-      'button[aria-label="Chart time range"]',
-    ) as HTMLButtonElement | null
-    if (!btn) return false
-    btn.click()
-    return true
-  }, PULSE_ROOT_ID)
-  expect(opened, 'Chart time range trigger').toBe(true)
+  const trigger = page.getByRole('combobox', { name: 'Chart time range' })
+  await expect(trigger).toBeVisible({ timeout: 10_000 })
+  await trigger.click()
 
-  // PulseThemedSelect portals options to document.body (light DOM).
-  const option = page.locator('button[role="option"]', { hasText: optionLabel }).first()
+  const option = page.getByRole('option', { name: optionLabel, exact: true })
   await expect(option).toBeVisible({ timeout: 10_000 })
   await option.click()
+  await expect(trigger).toContainText(optionLabel)
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
 }
 
 /** Click the partial-range "Full stream" chip in the chart range hint. */

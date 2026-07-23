@@ -1,0 +1,32 @@
+{
+  "shot": "01",
+  "identity": "ada58be (codex/cws-live-screenshots-2026-07-19)",
+  "cropStory": "overview before Stream activity",
+  "clip": {
+    "x": 1384,
+    "y": 56,
+    "width": 520,
+    "height": 468
+  },
+  "rawMeta": {
+    "width": 1040,
+    "height": 936,
+    "bitDepth": 8,
+    "colorType": 2
+  },
+  "shipping": {
+    "hasHubSubtitle": true,
+    "legendText": "ViewersChatEmotesChat trendEmote trend",
+    "hasFiveLegend": true
+  },
+  "css": {
+    "x": 1384.800048828125,
+    "y": 56,
+    "width": 520,
+    "height": 467.60003662109375,
+    "vw": 1920,
+    "vh": 1200,
+    "dpr": 2.0000000298023224,
+    "overflowsViewport": false
+  }
+}

@@ -1,7 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { eventPathIncludesNode, usePulsePortalRoot } from './pulsePortalContext.ts'
+import {
+  computeSelectMenuPosition,
+  findScrollportElement,
+  isTriggerVisibleInScrollport,
+} from './pulseSelectPosition.ts'
 import { theme } from './theme.ts'
 
 export interface PulseSelectOption<T extends string = string> {
@@ -19,6 +24,27 @@ export interface PulseThemedSelectProps<T extends string = string> {
   fullWidth?: boolean
 }
 
+function indexForValue<T extends string>(
+  options: readonly PulseSelectOption<T>[],
+  value: T,
+): number {
+  return Math.max(0, options.findIndex(option => option.value === value))
+}
+
+function isShadowRoot(node: unknown): node is ShadowRoot {
+  return typeof ShadowRoot !== 'undefined' && node instanceof ShadowRoot
+}
+
+function resolveMenuHost(
+  portalRoot: ShadowRoot | Document,
+  trigger: HTMLElement | null,
+): Element | DocumentFragment | null {
+  if (isShadowRoot(portalRoot)) return portalRoot
+  const rootNode = trigger?.getRootNode()
+  if (isShadowRoot(rootNode)) return rootNode
+  return trigger?.parentElement ?? null
+}
+
 export function PulseThemedSelect<T extends string>({
   value,
   options,
@@ -29,14 +55,24 @@ export function PulseThemedSelect<T extends string>({
   fullWidth = false,
 }: PulseThemedSelectProps<T>) {
   const listId = useId()
+  const optionIdPrefix = useId()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLUListElement | null>(null)
   const portalRoot = usePulsePortalRoot()
   const [open, setOpen] = useState(false)
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({})
+  const [activeIndex, setActiveIndex] = useState(() => indexForValue(options, value))
 
   const selected = options.find(option => option.value === value) ?? options[0]
+  const activeOption = options[activeIndex] ?? selected
+  const activeDescendantId = activeOption
+    ? `${optionIdPrefix}-${activeOption.value}`
+    : undefined
+
+  useEffect(() => {
+    setActiveIndex(indexForValue(options, value))
+  }, [options, value])
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return
@@ -44,22 +80,57 @@ export function PulseThemedSelect<T extends string>({
       const trigger = triggerRef.current
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
+      const viewport = { width: window.innerWidth, height: window.innerHeight }
+      const scrollport = findScrollportElement(trigger)?.getBoundingClientRect() ?? null
+      if (!isTriggerVisibleInScrollport(rect, scrollport, viewport)) {
+        setOpen(false)
+        return
+      }
+      const menuHeight = menuRef.current?.getBoundingClientRect().height
+        || Math.min(220, options.length * 32 + 8)
+      const position = computeSelectMenuPosition(rect, menuHeight, viewport)
       setMenuStyle({
         position: 'fixed',
-        top: rect.bottom + 4,
-        right: Math.max(8, window.innerWidth - rect.right),
-        minWidth: Math.max(rect.width, 120),
+        top: position.top,
+        right: position.right,
+        minWidth: position.minWidth,
         zIndex: 2_147_483_640,
       })
     }
     updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
+    const scrollTargets = new Set<EventTarget>([document])
+    let node: HTMLElement | null = triggerRef.current
+    while (node) {
+      const style = getComputedStyle(node)
+      if (
+        node.classList.contains('pulse-panel-body')
+        || style.overflowY === 'auto'
+        || style.overflowY === 'scroll'
+        || style.overflowY === 'overlay'
+      ) {
+        scrollTargets.add(node)
+      }
+      const parent = node.parentElement
+      if (!parent && node.getRootNode) {
+        const root = node.getRootNode()
+        if (isShadowRoot(root)) {
+          node = root.host as HTMLElement
+          continue
+        }
+      }
+      node = parent as HTMLElement | null
     }
-  }, [open, value])
+    for (const target of scrollTargets) target.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
+    window.visualViewport?.addEventListener('resize', updatePosition)
+    window.visualViewport?.addEventListener('scroll', updatePosition)
+    return () => {
+      for (const target of scrollTargets) target.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+      window.visualViewport?.removeEventListener('resize', updatePosition)
+      window.visualViewport?.removeEventListener('scroll', updatePosition)
+    }
+  }, [open, options.length, value])
 
   useEffect(() => {
     if (!open) return
@@ -71,25 +142,84 @@ export function PulseThemedSelect<T extends string>({
         setOpen(false)
       }
     }
-    const onKeyDown = (event: Event) => {
-      if ((event as KeyboardEvent).key === 'Escape') setOpen(false)
-    }
-    portalRoot.addEventListener('pointerdown', onPointerDown, true)
-    portalRoot.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown, true)
     return () => {
-      portalRoot.removeEventListener('pointerdown', onPointerDown, true)
-      portalRoot.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown, true)
     }
-  }, [open, portalRoot])
+  }, [open])
+
+  function closeMenu(restoreFocus: boolean): void {
+    setOpen(false)
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus())
+  }
 
   function choose(next: T): void {
     onChange(next)
-    setOpen(false)
+    closeMenu(true)
+  }
+
+  function openMenu(): void {
+    setActiveIndex(indexForValue(options, value))
+    setOpen(true)
+  }
+
+  function moveActive(delta: number): void {
+    if (options.length === 0) return
+    setActiveIndex(current => (current + delta + options.length) % options.length)
+  }
+
+  function handleTriggerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    if (disabled) return
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        if (open) moveActive(1)
+        else openMenu()
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        if (open) moveActive(-1)
+        else openMenu()
+        break
+      case 'Home':
+        if (open) {
+          event.preventDefault()
+          setActiveIndex(0)
+        }
+        break
+      case 'End':
+        if (open) {
+          event.preventDefault()
+          setActiveIndex(Math.max(0, options.length - 1))
+        }
+        break
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        if (open) {
+          const option = options[activeIndex]
+          if (option) choose(option.value)
+        } else {
+          openMenu()
+        }
+        break
+      case 'Escape':
+        if (open) {
+          event.preventDefault()
+          closeMenu(true)
+        }
+        break
+      default:
+        break
+    }
   }
 
   function handleOptionPointerDown(event: ReactPointerEvent<HTMLButtonElement>): void {
+    event.preventDefault()
     event.stopPropagation()
   }
+
+  const menuHost = resolveMenuHost(portalRoot, triggerRef.current)
 
   return (
     <div ref={rootRef} style={{ ...styles.wrap, ...(fullWidth ? styles.wrapFull : null) }}>
@@ -104,13 +234,21 @@ export function PulseThemedSelect<T extends string>({
           ...(open ? styles.triggerOpen : null),
         }}
         disabled={disabled}
+        className="pulse-themed-select-trigger"
+        role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-activedescendant={open ? activeDescendantId : undefined}
         onClick={() => {
           if (disabled) return
-          setOpen(current => !current)
+          if (open) closeMenu(false)
+          else openMenu()
+        }}
+        onKeyDown={handleTriggerKeyDown}
+        onBlur={() => {
+          if (open) closeMenu(false)
         }}
       >
         <span style={styles.triggerValue}>{selected?.label ?? value}</span>
@@ -118,23 +256,28 @@ export function PulseThemedSelect<T extends string>({
           ▾
         </span>
       </button>
-      {open
+      {open && menuHost
         ? createPortal(
             <ul
               ref={menuRef}
               id={listId}
               role="listbox"
               aria-label={ariaLabel}
-              style={{ ...styles.menu, ...menuStyle, position: 'fixed', top: menuStyle.top, right: menuStyle.right }}
+              className="pulse-themed-select-menu"
+              style={{ ...styles.menu, ...menuStyle }}
             >
-              {options.map(option => {
+              {options.map((option, index) => {
                 const active = option.value === value
+                const focused = index === activeIndex
                 return (
                   <li key={option.value} role="presentation">
                     <button
+                      id={`${optionIdPrefix}-${option.value}`}
                       type="button"
                       role="option"
                       aria-selected={active}
+                      data-active={focused ? 'true' : undefined}
+                      tabIndex={-1}
                       className="pulse-themed-select-option"
                       style={{
                         ...styles.option,
@@ -149,7 +292,7 @@ export function PulseThemedSelect<T extends string>({
                 )
               })}
             </ul>,
-            document.body,
+            menuHost,
           )
         : null}
     </div>
@@ -234,6 +377,7 @@ const styles: Record<string, CSSProperties> = {
     minWidth: '100%',
     overflowY: 'auto',
     padding: 4,
+    pointerEvents: 'auto',
     position: 'absolute',
     right: 0,
     top: 'calc(100% + 4px)',
@@ -256,3 +400,5 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--pulse-accent-ink, #ddd6fe)',
   },
 }
+
+export const __test = { indexForValue, resolveMenuHost }
