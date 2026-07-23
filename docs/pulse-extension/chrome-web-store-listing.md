@@ -1,6 +1,6 @@
 # Chrome Web Store listing copy — StreamPulse
 
-**Status:** Ready for operator paste into Chrome Web Store Developer Dashboard
+**Status:** Blocked - preserve for traceability; do not upload this package
 **Branch:** `codex/cws-live-screenshots-2026-07-19`
 **`PACKAGE_BUILD_COMMIT`:** `e238cab9919af958e03c93d229338eda060517a2`
 **Package:** `streampulse-extension.zip` (built once from `PACKAGE_BUILD_COMMIT`; do not regenerate after hash lock)
@@ -11,6 +11,12 @@
 **Manifest name:** StreamPulse  
 **Version (current package):** 0.1.0  
 **Portal install mode until Google approval:** `pending_verification` (no Landing store-URL flip)
+
+The locked ZIP predates the current HTTPS-only content-script policy. Current
+`master` validation rejects its `*://*.twitch.tv/*` match and current extension
+source has advanced since `PACKAGE_BUILD_COMMIT`. Create and validate a new
+candidate from current `master`, then recapture screenshots and replace the
+package commit and hash before operator upload.
 
 Do **not** use “Streamclone Pulse” in store-facing fields.
 
@@ -70,7 +76,9 @@ English (United States)
 | Small promo tile (optional) | `docs/pulse-extension/cws-screenshots/promo-small-tile-440x280.png` | 440×280 |
 | Store icons | packaged from `public/icons/icon{16,48,128}.png` | Peak mark |
 
-Recapture from packaging `dist/` (retired: `scripts/gen-cws-screenshots.ps1`):
+Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`
+(retired: `scripts/gen-cws-screenshots.ps1`). The capture script fails instead
+of rebuilding when its inputs or `dist/` do not match the locked package source:
 ```bash
 node scripts/capture-cws-pulse-screenshot.mjs --shot=all
 ```
@@ -147,13 +155,14 @@ Provide a Twitch live/VOD Pulse analytics overlay powered by the StreamPulse API
 
 ## Submission checklist (operator)
 
-1. [x] Gates already recorded on `PACKAGE_BUILD_COMMIT` — upload the locked zip (SHA above); do **not** re-run `package:cws` unless intentionally creating a new candidate
-2. [ ] Upload `streampulse-extension.zip` (verify SHA-256 `725ad432…514c7f13` before submit)
-3. [ ] Paste name / summary / description from this doc
-4. [ ] Upload the five 1280×800 screenshots in the order listed above
-5. [ ] Paste permission justifications
-6. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), + Limited Use / data disclosures
-7. [ ] Submit for review
-8. [ ] After approval: update Landing CTA from `/docs#extension` to the store URL; clear `pending_verification`
+1. [x] Preserve the historical package and SHA above for traceability; do not upload it
+2. [ ] Create a replacement candidate from current `master` with the HTTPS-only Twitch content-script match
+3. [ ] Run typecheck, unit, mocked E2E, package, and current package validation gates
+4. [ ] Recapture and review all five screenshots from the replacement packaging `dist/`
+5. [ ] Replace `PACKAGE_BUILD_COMMIT` and ZIP SHA-256 in both handoff documents
+6. [ ] Upload the replacement ZIP and screenshots, then paste listing and permission fields
+7. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), and Limited Use/data disclosures
+8. [ ] Submit for review
+9. [ ] After approval: update the public install CTA to the store URL and clear `pending_verification`
 
 **Not automated:** Google account / Developer Dashboard submit — human only.

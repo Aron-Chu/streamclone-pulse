@@ -11,7 +11,7 @@ Local BFF (dev opt-in only): `http://localhost:8081` — never Streamclone watch
 Listing paste pack: [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)
 Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
 
-### Traceability (this pack)
+## Traceability (this pack)
 
 | Field | Value |
 |-------|--------|
@@ -23,13 +23,21 @@ Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
 
 The SHA identifies **exact ZIP bytes**. Do not regenerate the zip after the hash is locked (`scripts/zip-dist.mjs` does not guarantee byte-identical archives across runs/tools). Docs-only commits after packaging do not alter the packaged extension.
 
+**Blocked:** this historical ZIP uses `*://*.twitch.tv/*` for its content script.
+Current `master` requires `https://*.twitch.tv/*`, and current package validation
+rejects the locked ZIP. Preserve it for traceability only. Build a replacement
+candidate from current `master`, rerun every gate, recapture screenshots, and
+record a new package commit and SHA before upload.
+
 Portal install CTA stays **`pending_verification`** until Google approves the listing — no Landing store-URL flip and no Pages deploy from this pack.
 
 Legacy identifiers: [`legacy-identifiers.md`](./legacy-identifiers.md).
 
 ## Pre-submit
 
-- [x] `npm test` + `npm run typecheck` + `npm run test:e2e:mocked` + `npm run package:cws` pass on `PACKAGE_BUILD_COMMIT` (2026-07-22) — zip SHA-256 `725ad432b697c4b6531c5a598fc5822373c3675ad45e9414064e8e4c514c7f13`
+- [x] Historical gates passed on `PACKAGE_BUILD_COMMIT` (2026-07-22); preserve SHA `725ad432b697c4b6531c5a598fc5822373c3675ad45e9414064e8e4c514c7f13` for audit only
+- [ ] Create and fully validate a replacement package from current `master`; do not upload the historical ZIP
+- [ ] Recapture and approve all screenshots against the replacement packaging `dist/`
 - [x] `host_permissions` includes `https://api.streampulse.stream/*`
 - [x] Emote CDNs declared (`cdn.7tv.app`, `static-cdn.jtvnw.net`, `cdn.frankerfacez.com`)
 - [x] Localhost BFF hosts are **optional_host_permissions** only
@@ -94,7 +102,8 @@ Store screenshots (operator upload order):
 4. `04-moments-and-chart-1280x800.png`
 5. `05-stream-recap-1280x800.png`
 
-Recapture from packaging `dist/` (do not use the retired PowerShell compositor):
+Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`.
+The script fails instead of rebuilding if capture inputs or `dist/` differ:
 
 ```bash
 node scripts/capture-cws-pulse-screenshot.mjs --shot=all
@@ -102,11 +111,12 @@ node scripts/capture-cws-pulse-screenshot.mjs --shot=all
 
 ## Post-approval
 
-- [ ] Update `Landing.tsx` CTA from `/docs#extension` to store URL (and leave `pending_verification` until then)
+- [ ] After approval, update the public install CTA to the store URL and clear `pending_verification`
+- [ ] Verify public install links resolve to the approved listing and no surface remains in beta/pending mode
 - [ ] Keep beta key + optional localhost path for self-host / local `:8081` debugging
 
 ## Human / ops (remain open)
 
-- [ ] Operator: paste listing + upload **this** zip (SHA above) + five screenshots + submit in Chrome Web Store Dashboard
+- [ ] Operator: after replacement gates pass, upload the new locked ZIP + matching screenshots and submit in Chrome Web Store Dashboard
 - [ ] Ops: capacity remains HOLD_AT_300; no marketing blast without sign-off
 - [ ] Ops: Cloudflare Access for `/v1/admin/pulse*` still recommended before marketing

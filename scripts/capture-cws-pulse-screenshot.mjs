@@ -5,13 +5,14 @@
  *   01 — live overview (tabs + CTA + Live now + Games); ends before Stream activity
  *   02 — Stream activity chart through complete Plot on chart control
  *   03 — duo: left overview (01 crop) + right chart (02 crop)
+ *   04 — duo: chart + Most Reacted section
  *   05 — offline Stream Recap (real product surface)
  *
  * Usage:
  *   node scripts/capture-cws-pulse-screenshot.mjs
  *   node scripts/capture-cws-pulse-screenshot.mjs --shot=01
- *   node scripts/capture-cws-pulse-screenshot.mjs --shot=02,03,05
- *   node scripts/capture-cws-pulse-screenshot.mjs --shot=closeout   # 02,03,05
+ *   node scripts/capture-cws-pulse-screenshot.mjs --shot=02,03,04,05
+ *   node scripts/capture-cws-pulse-screenshot.mjs --shot=closeout   # 02,03,04,05
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -39,8 +40,19 @@ const DEVICE_SCALE = 2
 const TARGET_PANEL_W = 660
 const VIEWPORT = { width: 1920, height: 1200 }
 const BG = '12, 14, 18'
+const PACKAGE_BUILD_COMMIT = 'e238cab9919af958e03c93d229338eda060517a2'
 
 const ALL_SHOTS = ['01', '02', '03', '04', '05']
+const CAPTURE_INPUTS = [
+  'src',
+  'public',
+  'manifest.json',
+  'vite.config.ts',
+  'package.json',
+  'package-lock.json',
+  'tests/e2e/fixtures/api/pulse-offline.json',
+  'tests/e2e/helpers',
+]
 
 function parseShots() {
   const arg = process.argv.find(a => a.startsWith('--shot='))
@@ -58,10 +70,6 @@ async function loadHelper(rel) {
   return import(pathToFileURL(path.join(root, rel)).href)
 }
 
-function npmCmd() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
-}
-
 function walkFiles(dir, out = []) {
   if (!fs.existsSync(dir)) return out
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -74,7 +82,24 @@ function walkFiles(dir, out = []) {
   return out
 }
 
-function ensureFreshDist({ rebuild = true } = {}) {
+function assertPackageBuildInputs() {
+  const result = spawnSync(
+    'git',
+    ['diff', '--quiet', PACKAGE_BUILD_COMMIT, '--', ...CAPTURE_INPUTS],
+    { cwd: root, encoding: 'utf8' },
+  )
+  if (result.status === 1) {
+    throw new Error(
+      `capture inputs differ from PACKAGE_BUILD_COMMIT ${PACKAGE_BUILD_COMMIT}; `
+      + 'use a clean checkout at that commit and its packaging dist',
+    )
+  }
+  if (result.status !== 0) {
+    throw new Error(`could not verify PACKAGE_BUILD_COMMIT: ${result.stderr || result.stdout}`)
+  }
+}
+
+function ensureFreshDist() {
   const distManifest = path.join(root, 'dist/manifest.json')
   const sourceRoots = [
     path.join(root, 'src'),
@@ -93,33 +118,20 @@ function ensureFreshDist({ rebuild = true } = {}) {
 
   const contentJs = path.join(root, 'dist/content/twitch.js')
   if (!fs.existsSync(distManifest) || !fs.existsSync(contentJs)) {
-    if (!rebuild) throw new Error('dist/ missing — run npm run build')
-    console.log('dist/ missing — rebuilding…')
-    runBuild()
-    return
+    throw new Error(`dist/ missing; build it from PACKAGE_BUILD_COMMIT ${PACKAGE_BUILD_COMMIT}`)
   }
 
   const distMtime = fs.statSync(distManifest).mtimeMs
   const newer = sources.filter(f => fs.statSync(f).mtimeMs > distMtime + 1)
   if (newer.length > 0) {
     const sample = newer.slice(0, 6).map(f => path.relative(root, f)).join(', ')
-    if (!rebuild) throw new Error(`stale dist/: ${newer.length} newer sources (${sample})`)
-    console.log(`stale dist/ (${newer.length} newer) — rebuilding…`)
-    runBuild()
+    throw new Error(
+      `stale dist/: ${newer.length} newer sources (${sample}); `
+      + `rebuild only from PACKAGE_BUILD_COMMIT ${PACKAGE_BUILD_COMMIT}`,
+    )
   } else {
     console.log('dist/ is fresh')
   }
-}
-
-function runBuild() {
-  const r = spawnSync(npmCmd(), ['run', 'build'], {
-    cwd: root,
-    encoding: 'utf8',
-    shell: false,
-    env: process.env,
-  })
-  if (r.status !== 0) throw new Error(`npm run build failed:\n${r.stderr || r.stdout}`)
-  process.stdout.write(r.stdout || '')
 }
 
 function readPngMeta(filePath) {
@@ -798,7 +810,11 @@ async function main() {
   for (const s of shots) {
     if (!ALL_SHOTS.includes(s)) throw new Error(`unknown shot ${s}`)
   }
-  ensureFreshDist({ rebuild: true })
+  if (process.platform !== 'win32') {
+    throw new Error('CWS screenshot composition requires Windows PowerShell and System.Drawing')
+  }
+  assertPackageBuildInputs()
+  ensureFreshDist()
   fs.mkdirSync(sourcesDir, { recursive: true })
   const identity = gitIdentity()
   console.log('Capture identity', identity, 'shots', shots.join(','))
