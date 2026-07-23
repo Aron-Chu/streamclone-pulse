@@ -7,6 +7,38 @@ const root = process.cwd()
 const dist = join(root, 'dist')
 const outDir = join(root, '.artifacts')
 const outPath = join(outDir, 'extension-build-provenance.json')
+const buildInputs = [
+  'src',
+  'public',
+  'manifest.json',
+  'vite.config.ts',
+  'package.json',
+  'package-lock.json',
+]
+
+function assertCleanBuildInputs() {
+  const diff = spawnSync('git', ['diff', '--quiet', 'HEAD', '--', ...buildInputs], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  if (diff.status === 1) {
+    throw new Error(`build inputs differ from HEAD; commit or discard changes before building`)
+  }
+  if (diff.status !== 0) {
+    throw new Error(`could not inspect build inputs: ${diff.stderr || diff.stdout}`)
+  }
+
+  const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '--', ...buildInputs], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  if (untracked.status !== 0) {
+    throw new Error(`could not inspect untracked build inputs: ${untracked.stderr || untracked.stdout}`)
+  }
+  if (untracked.stdout.trim()) {
+    throw new Error(`untracked build inputs exist: ${untracked.stdout.trim()}`)
+  }
+}
 
 function gitHead() {
   const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' })
@@ -31,6 +63,7 @@ function sha256(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex')
 }
 
+assertCleanBuildInputs()
 const packageBuildCommit = gitHead()
 const files = Object.fromEntries(
   distFiles().map(filePath => [relative(dist, filePath).replaceAll('\\', '/'), sha256(filePath)]),
