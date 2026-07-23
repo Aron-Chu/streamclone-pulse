@@ -2,13 +2,13 @@
 
 Extension ships as **beta** via [`/docs#extension`](../../streampulse-web/src/routes/public/Docs.tsx) until the store listing is approved.
 
-Product name (user-facing): **StreamPulse**  
-Privacy policy URL: `https://streampulse.stream/privacy` (live — Limited Use + `privacy@streampulse.stream` verified 2026-07-19)  
-Support URL: `https://streampulse.stream/support`  
-Backend: **streampulse-backend** / hosted `https://api.streampulse.stream`  
+Product name (user-facing): **StreamPulse**
+Privacy policy URL: `https://streampulse.stream/privacy` (live — Limited Use + `privacy@streampulse.stream` verified 2026-07-19)
+Support URL: `https://streampulse.stream/support`
+Backend: **streampulse-backend** / hosted `https://api.streampulse.stream`
 Local BFF (dev opt-in only): `http://localhost:8081` — never Streamclone watch `:8090`
 
-Listing paste pack: [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)  
+Listing paste pack: [`chrome-web-store-listing.md`](./chrome-web-store-listing.md)
 Store screenshots: [`cws-screenshots/`](./cws-screenshots/) (1280×800)
 
 ### Traceability (this pack)
