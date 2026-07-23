@@ -1,0 +1,28 @@
+{
+  "shot": "05",
+  "identity": "a59c376 (codex/cws-live-screenshots-2026-07-19)",
+  "cropStory": "Stream Recap in-viewport clean section",
+  "clip": {
+    "x": 1400,
+    "y": 56,
+    "width": 520,
+    "height": 566
+  },
+  "rawMeta": {
+    "width": 1040,
+    "height": 1132,
+    "bitDepth": 8,
+    "colorType": 2
+  },
+  "targetW": 660,
+  "css": {
+    "x": 1400,
+    "y": 56,
+    "width": 520,
+    "height": 565.6000061035156,
+    "vw": 1920,
+    "vh": 1200,
+    "dpr": 2.0000000298023224,
+    "overflowsViewport": false
+  }
+}

@@ -45,13 +45,20 @@ function assertDistPresent(): void {
 }
 
 export async function launchExtensionContext(
-  options?: { headless?: boolean; userDataDir?: string },
+  options?: {
+    headless?: boolean
+    userDataDir?: string
+    viewport?: { width: number; height: number }
+    deviceScaleFactor?: number
+  },
 ): Promise<LaunchedExtension> {
   assertDistPresent()
 
   const userDataDir = options?.userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-e2e-'))
   const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-video-'))
   const headless = options?.headless ?? false
+  const viewport = options?.viewport ?? { width: 1440, height: 900 }
+  const deviceScaleFactor = options?.deviceScaleFactor ?? 1
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless,
@@ -60,9 +67,10 @@ export async function launchExtensionContext(
       `--load-extension=${EXTENSION_DIST_DIR}`,
       '--disable-blink-features=AutomationControlled',
     ],
-    viewport: { width: 1440, height: 900 },
+    viewport,
+    deviceScaleFactor,
     // Config use.video does not apply to manually launched persistent contexts.
-    recordVideo: { dir: videoDir, size: { width: 1440, height: 900 } },
+    recordVideo: { dir: videoDir, size: viewport },
   })
 
   const serviceWorker = await waitForExtensionServiceWorker(context)
