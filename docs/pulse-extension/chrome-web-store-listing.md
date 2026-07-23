@@ -2,9 +2,9 @@
 
 **Status:** Candidate locked - pending PR checks and operator upload
 **Branch:** `codex/cws-live-screenshots-2026-07-19`
-**`PACKAGE_BUILD_COMMIT`:** `f290b0d82d7c1331560cce08f9b0bf5b42b650b1`
+**`PACKAGE_BUILD_COMMIT`:** `ada58beb620a0955030528f46a5bc66e3c3010cb`
 **Package:** `streampulse-extension.zip` (built once from `PACKAGE_BUILD_COMMIT`; do not regenerate after hash lock)
-**ZIP SHA-256:** `ad0154571b6aa07267fb8b18561d0f835c5e0686bf4e9d44fcd7d12366a23eb1` (205,205 bytes)
+**ZIP SHA-256:** `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075` (205,205 bytes)
 **Privacy policy:** https://streampulse.stream/privacy
 **Support URL:** https://streampulse.stream/support
 **Privacy contact:** privacy@streampulse.stream  
@@ -80,7 +80,7 @@ Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`
 of rebuilding when its inputs, complete `dist/` file set, provenance hashes, or
 build commit do not match the locked package source:
 ```bash
-node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=f290b0d82d7c1331560cce08f9b0bf5b42b650b1 --shot=all
+  node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=ada58beb620a0955030528f46a5bc66e3c3010cb --shot=all
 ```
 
 Suggested upload order:
