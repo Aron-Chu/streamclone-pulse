@@ -15,8 +15,11 @@
     "icons:cws": "node scripts/gen-cws-icons.mjs",
     "capture:cws:mocked": "npm run icons:cws && npm run build && playwright test tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts --project=extension-mocked",
     "zip": "node scripts/zip-dist.mjs",
-    "validate:package": "node scripts/validate-extension-package.mjs",
-    "package:cws": "npm run build && npm run zip && npm run validate:package"
+    "validate:package": "node scripts/validate-extension-package.mjs --target=development",
+    "validate:package:cws": "node scripts/validate-extension-package.mjs --target=cws",
+    "validate:package:edge": "node scripts/validate-extension-package.mjs --target=edge",
+    "package:cws": "node scripts/package-extension-target.mjs cws",
+    "package:edge": "node scripts/package-extension-target.mjs edge"
   },
   "dependencies": {
     "@streampulse/pulse-charts": "file:../streampulse-backend/packages/pulse-charts",

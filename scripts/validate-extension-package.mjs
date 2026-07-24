@@ -1,8 +1,11 @@
 /**
  * Validate a built extension dist/ and CWS zip for packaging gates.
  * Valid plain JavaScript — must pass: node --check scripts/validate-extension-package.mjs
+ *
+ * Usage:
+ *   node scripts/validate-extension-package.mjs [--target=development|cws|edge]
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import {
   ZIP_NAME,
@@ -12,6 +15,12 @@ import {
   validateChecksumAgainstZip,
   validateIconPngFiles,
 } from './extension-package-lib.mjs'
+import {
+  isLocalOrLoopbackHost,
+  isStoreTarget,
+  loadManifestForTarget,
+  resolveExtensionTarget,
+} from './extension-target.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -29,7 +38,14 @@ const REQUIRED_HOSTS = [
   'https://*.twitch.tv/*',
 ]
 const FORBIDDEN_HOST_SUBSTRINGS = [':8090', ':9876', 'localhost:3000', '127.0.0.1:3000']
-const LOCALHOST_HOSTS = ['http://localhost:8081/*', 'http://127.0.0.1:8081/*']
+const DEV_OPTIONAL_LOCALHOST_HOSTS = ['http://localhost:8081/*', 'http://127.0.0.1:8081/*']
+
+function parseTargetArg(argv = process.argv.slice(2)) {
+  const idx = argv.findIndex((a) => a === '--target' || a.startsWith('--target='))
+  if (idx < 0) return resolveExtensionTarget(process.env.EXTENSION_TARGET)
+  const raw = argv[idx].startsWith('--target=') ? argv[idx].slice('--target='.length) : argv[idx + 1]
+  return resolveExtensionTarget(raw)
+}
 
 function fail(message) {
   console.error(`FAIL: ${message}`)
@@ -69,7 +85,7 @@ function assertNoRemoteExecutableRefs(filePath, contents) {
   }
 }
 
-function validateManifest(manifest) {
+function validateManifest(manifest, target) {
   if (manifest.manifest_version !== 3) {
     fail(`manifest_version must be 3, got ${manifest.manifest_version}`)
   } else {
@@ -80,6 +96,13 @@ function validateManifest(manifest) {
     fail(`manifest name must be StreamPulse, got ${JSON.stringify(manifest.name)}`)
   } else {
     ok('REQUIRED: manifest name is StreamPulse')
+  }
+
+  const expected = loadManifestForTarget(target)
+  if (manifest.version !== expected.version) {
+    fail(`manifest.version ${JSON.stringify(manifest.version)} != target ${target} version ${expected.version}`)
+  } else {
+    ok(`REQUIRED: version matches target ${target} (${manifest.version})`)
   }
 
   const permissions = manifest.permissions ?? []
@@ -99,19 +122,34 @@ function validateManifest(manifest) {
     for (const forbidden of FORBIDDEN_HOST_SUBSTRINGS) {
       if (host.includes(forbidden)) fail(`forbidden host permission: ${host}`)
     }
-    if (LOCALHOST_HOSTS.includes(host)) {
-      fail(`localhost must be optional_host_permissions, not host_permissions: ${host}`)
+    if (isLocalOrLoopbackHost(host)) {
+      fail(`localhost/loopback must not appear in host_permissions: ${host}`)
     }
   }
   ok(`REQUIRED: host_permissions count=${hosts.length}`)
 
   const optionalHosts = manifest.optional_host_permissions ?? []
-  for (const localHost of LOCALHOST_HOSTS) {
-    if (!optionalHosts.includes(localHost)) {
-      fail(`missing optional host permission: ${localHost}`)
+  if (isStoreTarget(target)) {
+    if (optionalHosts.length > 0) {
+      fail(`store target ${target} must not declare optional_host_permissions (got ${JSON.stringify(optionalHosts)})`)
     }
+    for (const host of optionalHosts) {
+      if (isLocalOrLoopbackHost(host)) fail(`store target forbids local optional host: ${host}`)
+    }
+    ok(`REQUIRED: store target ${target} has no localhost/loopback permissions`)
+  } else {
+    for (const localHost of DEV_OPTIONAL_LOCALHOST_HOSTS) {
+      if (!optionalHosts.includes(localHost)) {
+        fail(`development target missing optional host permission: ${localHost}`)
+      }
+    }
+    for (const host of optionalHosts) {
+      if (!isLocalOrLoopbackHost(host) && !DEV_OPTIONAL_LOCALHOST_HOSTS.includes(host)) {
+        fail(`unexpected optional host permission: ${host}`)
+      }
+    }
+    ok('REQUIRED: development localhost hosts are optional (not required)')
   }
-  ok('REQUIRED: localhost hosts are optional (not required)')
 
   const sw = manifest.background?.service_worker
   if (!sw || typeof sw !== 'string') {
@@ -245,21 +283,44 @@ function validateZipAgainstPackable(packable) {
 }
 
 function main() {
+  const target = parseTargetArg()
   if (!existsSync(join(dist, 'manifest.json'))) {
     fail('dist/manifest.json missing — run npm run build first')
     process.exit(process.exitCode ?? 1)
   }
 
   const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'))
-  validateManifest(manifest)
+  const targetMetaPath = join(dist, 'extension-target.json')
+  if (existsSync(targetMetaPath)) {
+    const meta = JSON.parse(readFileSync(targetMetaPath, 'utf8'))
+    if (meta.target !== target) {
+      fail(`dist/extension-target.json target=${JSON.stringify(meta.target)} != --target=${target}`)
+    } else {
+      ok(`REQUIRED: dist target metadata matches ${target}`)
+    }
+  } else if (isStoreTarget(target)) {
+    fail('store packages require dist/extension-target.json from a target-aware build')
+  }
+
+  validateManifest(manifest, target)
   const packable = validateDistContents()
+  for (const rel of packable) {
+    const lower = rel.toLowerCase()
+    if (lower.includes('.env') || /(^|\/)\.env/.test(lower)) fail(`forbidden .env path in packable set: ${rel}`)
+    if (lower.endsWith('.map')) fail(`forbidden source map in packable set: ${rel}`)
+    if (lower.includes('node_modules/') || lower.includes('file:')) {
+      fail(`forbidden dependency path in packable set: ${rel}`)
+    }
+    // Absolute Windows/Unix paths must not appear as packaged entry names.
+    if (/^[a-z]:\//i.test(rel) || rel.startsWith('/')) fail(`absolute path packaged: ${rel}`)
+  }
   validateZipAgainstPackable(packable)
 
   if (process.exitCode) {
     console.error('Package validation failed')
     process.exit(process.exitCode)
   }
-  console.log('Package validation passed')
+  console.log(`Package validation passed (target=${target})`)
 }
 
 main()

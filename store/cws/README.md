@@ -34,8 +34,8 @@ Prior locked ZIP SHA-256 `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd4
 
 ## Next RPR store candidate (unchecked)
 
-- [ ] Store-target package with **no** localhost / `127.0.0.1` hosts
-- [ ] Development-only local BFF access moved to a separate development manifest (RPR-2 / R18)
+- [x] Store-target package with **no** localhost / `127.0.0.1` hosts
+- [x] Development-only local BFF access moved to a separate development manifest (RPR-2 / R18)
 - [ ] `package:cws` + `validate:package` green on the release SHA
 - [ ] Local + remote CI green on the same SHA
 - [ ] Privacy/Support disclosures match current behavior

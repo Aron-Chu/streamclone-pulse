@@ -11,6 +11,7 @@ const buildInputs = [
   'src',
   'public',
   'manifest.json',
+  'manifests',
   'vite.config.ts',
   'package.json',
   'package-lock.json',

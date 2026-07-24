@@ -103,7 +103,7 @@ No public visibility or store submission until:
 |----|------|--------|
 | RPR-0 | Baseline + documentation consistency | **COMPLETE** |
 | RPR-1 | Request matrix + chart migration v2 + coalesce | pending |
-| RPR-2 | Manifest generation + package validation | pending |
+| RPR-2 | Manifest generation + package validation | complete |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | pending |
 | RPR-4 | Hosted support form + outbox + minimal tracker fields | pending |
 | RPR-5 | Aggregate product analytics (default off) | pending |

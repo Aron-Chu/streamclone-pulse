@@ -180,6 +180,8 @@ jobs:
           node --check scripts/zip-dist.mjs
           node --check scripts/validate-extension-package.mjs
           node --check scripts/extension-package-lib.mjs
+          node --check scripts/extension-target.mjs
+          node --check scripts/package-extension-target.mjs
           npm run zip
           npm run validate:package
           test -f streampulse-extension.zip
@@ -197,6 +199,16 @@ jobs:
       - name: Mocked extension E2E
         if: needs.guard.outputs.run_e2e == 'true'
         run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
+
+      - name: Store-target package validation
+        run: |
+          set -euo pipefail
+          # Rebuilds dist for each store target; keep after E2E so mocked tests use development dist.
+          npm run package:cws
+          npm run package:edge
+          # Restore development dist for any later local inspection.
+          npm run build
+          # Do not upload store ZIPs.
 
       # actions/upload-artifact@v4 — failure evidence only
       - name: Upload Playwright failure evidence

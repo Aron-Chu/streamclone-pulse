@@ -1,9 +1,11 @@
 import { build as viteBuild, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
+import { loadManifestForTarget, resolveExtensionTarget } from './scripts/extension-target.mjs'
 
 const root = __dirname
+const extensionTarget = resolveExtensionTarget()
 
 /** One React instance for overlay + @streampulse/pulse-charts (nested package react breaks hooks). */
 function extensionResolve() {
@@ -22,9 +24,9 @@ const sharedOutput = {
   assetFileNames: 'assets/[name][extname]',
 }
 
-function copyToDist(root: string, relativePath: string): void {
-  const src = resolve(root, relativePath)
-  const dest = resolve(root, 'dist', relativePath)
+function copyToDist(rootDir: string, relativePath: string): void {
+  const src = resolve(rootDir, relativePath)
+  const dest = resolve(rootDir, 'dist', relativePath)
   mkdirSync(dirname(dest), { recursive: true })
   copyFileSync(src, dest)
 }
@@ -60,8 +62,12 @@ function chromeExtensionPlugin() {
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })
-      const manifest = JSON.parse(readFileSync(resolve(__dirname, 'manifest.json'), 'utf8'))
+      const manifest = loadManifestForTarget(extensionTarget)
       writeFileSync(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2))
+      writeFileSync(
+        resolve(dist, 'extension-target.json'),
+        JSON.stringify({ target: extensionTarget, version: manifest.version }, null, 2),
+      )
       for (const page of ['popup/index.html', 'options/index.html'] as const) {
         copyToDist(__dirname, page)
       }

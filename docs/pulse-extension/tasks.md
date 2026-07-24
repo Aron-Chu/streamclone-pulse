@@ -23,7 +23,7 @@ See phase detail and irreversible checkpoints in the reliability plan.
 
 - [x] **RPR-0** Authoritative baseline + documentation consistency. Repair design/requirements/CONTEXT; add `release.md` + `ui-design-guide.md`; obsolete locked CWS candidate for upload; keep Privacy/Support truthful to current code; interim `privacy@` contact only. _Check:_ verified master `69b3575`; docs cross-link; local + remote force-full CI green.
 - [ ] **RPR-1** Request contract + performance (R14): request matrix tests; chart migration v2; extend `pulseRevalidateGate`; tab-scoped polling ownership; bundle budgets from clean baseline.
-- [ ] **RPR-2** Manifest targets (dev/CWS/Edge/Firefox-later) without localhost on store builds (R18); harden `package:cws` / `validate:package` + portal localhost scanners.
+- [x] **RPR-2** Manifest targets (dev/CWS/Edge/Firefox-later) without localhost on store builds (R18); harden `package:cws` / `validate:package` + portal localhost scanners.
 - [ ] **RPR-3** Server-generated correlation IDs + sanitized extension diagnostics path (R15); default-off diagnostics consent; cost-bearing routes fail closed.
 - [ ] **RPR-4** Hosted support form + Turnstile + durable outbox (R16); tracker gets minimal fields only; no remote challenge script in MV3.
 - [ ] **RPR-5** Aggregate product analytics only after diagnostics/support paths are stable (R15); separate default-off consent; fixed enum events.
