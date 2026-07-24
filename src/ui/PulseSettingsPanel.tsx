@@ -14,6 +14,7 @@ import {
   getChatClosedPulseDockEnabled,
   getThemePreference,
   isLocalStackBackendUrl,
+  migrateDefaultChartWindowToRecentV2Once,
   setAutoTrackPolicy,
   setAutoUpdateEnabled,
   setChatClosedPulseDockEnabled,
@@ -140,6 +141,7 @@ export function PulseSettingsPanel(props: {
   const showEndpoint = connectionKind === 'local'
 
   const reload = useCallback(async () => {
+    await migrateDefaultChartWindowToRecentV2Once()
     const [au, dock, cache, url, accent, chartWindow, placement, dockEnabled, trackPolicy, wl] = await Promise.all([
       getAutoUpdateEnabled(),
       getPulseDockPreference(),

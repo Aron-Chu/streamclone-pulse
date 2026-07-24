@@ -11,7 +11,7 @@ import {
   type TrendDirection,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
-import { getDefaultChartWindow, migrateDefaultChartWindowToFullOnce } from '../shared/storage.ts'
+import { getDefaultChartWindow, migrateDefaultChartWindowToRecentV2Once } from '../shared/storage.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
@@ -205,7 +205,7 @@ export function LiveStatsBand({
   )
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
   const hasFullRollups = hasFullTimelineRollups(payload)
-  const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('full')
+  const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('60m')
   const [timelineLoading, setTimelineLoading] = useState(false)
   const fullTimelineRequestedRef = useRef(false)
   /** After the user picks a range, ignore late async default hydration for this stream. */
@@ -226,8 +226,8 @@ export function LiveStatsBand({
     let mounted = true
     void (async () => {
       try {
-        // One-time: legacy sticky windows → Full stream (poll stays recent).
-        await migrateDefaultChartWindowToFullOnce()
+        // One-time v2: every pre-v2 preference (including Full) → 60m.
+        await migrateDefaultChartWindowToRecentV2Once()
         const window = await getDefaultChartWindow()
         if (!mounted) return
         // First click Full→30m was getting overwritten when this async finished.
@@ -236,7 +236,7 @@ export function LiveStatsBand({
           setChartWindow('full')
           return
         }
-        // Default product range is Full stream (live poll stays recent; Full is chart UI only).
+        // Default product range is 60m (live poll stays recent; Full is explicit).
         setChartWindow(window)
       } catch {
         // Storage denied / extension context invalidated — keep in-memory default.

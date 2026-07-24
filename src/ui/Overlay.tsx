@@ -264,10 +264,18 @@ function OverlayMain({
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
   )
+  /** Bumped on login/stream change so obsolete backfill status polls exit. */
+  const backfillGenerationRef = useRef(0)
 
   useEffect(() => {
     setCoverageTierState(coverageTierProp)
   }, [coverageTierProp, login])
+
+  useEffect(() => {
+    backfillGenerationRef.current += 1
+    setMissedBusy(false)
+    setMissedJob(null)
+  }, [login, payload?.streamId])
 
   // Recurring live poll always stays on window=recent. Explicit full-timeline
   // actions (requestFullTimeline) are one-shot fetches; do not flip the poll window.
@@ -638,10 +646,14 @@ function OverlayMain({
   }
 
   async function pollMissedBackfill(jobId: string, beforePayload: PulsePayload): Promise<void> {
+    const generation = backfillGenerationRef.current
     const maxAttempts = 120
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (generation !== backfillGenerationRef.current) return
       await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 2000 : 7000))
+      if (generation !== backfillGenerationRef.current) return
       const response = await sendBackgroundMessage({ type: 'GET_PULSE_BACKFILL_STATUS', jobId })
+      if (generation !== backfillGenerationRef.current) return
       if (!('type' in response) || response.type !== 'PULSE_BACKFILL_STATUS' || !response.job) {
         continue
       }
@@ -652,6 +664,7 @@ function OverlayMain({
       }
       if (job.status === 'done' || job.status === 'already_available') {
         const fresh = await refreshPulse(true)
+        if (generation !== backfillGenerationRef.current) return
         applyBackfillRefreshOutcome(beforePayload, fresh ?? payload)
         setCoverageCheckError(null)
         return
@@ -668,6 +681,7 @@ function OverlayMain({
       setNotice({ kind: 'warn', text: job.message || job.error || 'Backfill failed.' })
       return
     }
+    if (generation !== backfillGenerationRef.current) return
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 

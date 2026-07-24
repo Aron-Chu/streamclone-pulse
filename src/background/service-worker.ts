@@ -41,7 +41,7 @@ import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabNavigation,
 } from './pulsePrefetch.ts'
-import { shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
+import { coalesceInFlight, PULSE_REVALIDATE_MIN_GAP_MS, shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
 import {
   planWatchlistStartupSync,
   planWatchlistStorageDelta,
@@ -49,8 +49,17 @@ import {
 
 void initPulseDebug()
 
-const revalidateInFlight = new Set<string>()
+const revalidateInFlight = new Map<string, Promise<void>>()
+const peekInFlight = new Map<
+  string,
+  Promise<{
+    payload: PulseUpdateMessage['payload']
+    coverageTier: ExtensionCoverageTierResponse | null
+    error?: string
+  }>
+>()
 const lastRevalidateAt = new Map<string, number>()
+const lastRevalidateFailureAt = new Map<string, number>()
 /** Suppress storage-listener sync while message handlers own the mutation. */
 let suppressWatchlistStorageSync = false
 
@@ -168,24 +177,30 @@ async function peekPulse(
 
 async function revalidatePulse(login: string, window: PulseCacheWindow, forceCoverage = false): Promise<void> {
   const key = `${login.toLowerCase()}:${window}:${forceCoverage ? '1' : '0'}`
-  if (revalidateInFlight.has(key)) return
-  if (!shouldAllowPulseRevalidate(lastRevalidateAt.get(key), Date.now(), { force: forceCoverage })) {
+  if (
+    !shouldAllowPulseRevalidate(lastRevalidateAt.get(key), Date.now(), {
+      force: forceCoverage,
+      lastFailureAtMs: lastRevalidateFailureAt.get(key),
+    })
+  ) {
     return
   }
-  revalidateInFlight.add(key)
-  try {
-    const { payload, coverageTier, error } = await peekPulse(login, window, forceCoverage)
-    if (error) {
-      broadcastPulse(login, null, error)
-    } else {
-      broadcastPulse(login, payload, undefined, coverageTier)
-      lastRevalidateAt.set(key, Date.now())
+  await coalesceInFlight(revalidateInFlight, key, async () => {
+    try {
+      const { payload, coverageTier, error } = await peekPulse(login, window, forceCoverage)
+      if (error) {
+        lastRevalidateFailureAt.set(key, Date.now())
+        broadcastPulse(login, null, error)
+      } else {
+        lastRevalidateFailureAt.delete(key)
+        broadcastPulse(login, payload, undefined, coverageTier)
+        lastRevalidateAt.set(key, Date.now())
+      }
+    } catch (err) {
+      lastRevalidateFailureAt.set(key, Date.now())
+      broadcastPulse(login, null, sanitizePulseErrorMessage(err))
     }
-  } catch (err) {
-    broadcastPulse(login, null, sanitizePulseErrorMessage(err))
-  } finally {
-    revalidateInFlight.delete(key)
-  }
+  })
 }
 
 function broadcastPulse(
@@ -348,7 +363,11 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
               payload: cached.payload,
               coverageTier: cachedCoverage?.coverageTier ?? null,
             } satisfies PulseUpdateMessage)
-            void revalidatePulse(message.login, window)
+            // Fresh cache: zero network. Stale-within-TTL: coalesce SWR.
+            const ageMs = Date.now() - cached.fetchedAt
+            if (ageMs >= PULSE_REVALIDATE_MIN_GAP_MS) {
+              void revalidatePulse(message.login, window)
+            }
             return
           }
 
@@ -357,12 +376,17 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           } else if (isTracked(message.login)) {
             await refreshPulse(message.login, window)
           } else {
-            const { payload, coverageTier, error } = await peekPulse(message.login, window)
-            if (payload) {
-              broadcastPulse(message.login, payload, undefined, coverageTier)
-            } else if (error) {
-              broadcastPulse(message.login, null, error)
-            }
+            const key = `${message.login.toLowerCase()}:${window}`
+            const { payload, coverageTier, error } = await coalesceInFlight(peekInFlight, key, async () => {
+              const peeked = await peekPulse(message.login, window)
+              if (peeked.payload) {
+                broadcastPulse(message.login, peeked.payload, undefined, peeked.coverageTier)
+              } else if (peeked.error) {
+                lastRevalidateFailureAt.set(`${key}:0`, Date.now())
+                broadcastPulse(message.login, null, peeked.error)
+              }
+              return peeked
+            })
             sendResponse({
               type: 'PULSE_UPDATE',
               login: message.login,

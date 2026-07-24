@@ -49,7 +49,7 @@ test.describe('extension mocked states', () => {
       twitchKind: 'live',
       storage: {
         defaultChartWindow: 'full',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)
@@ -72,7 +72,7 @@ test.describe('extension mocked states', () => {
       twitchKind: 'live',
       storage: {
         defaultChartWindow: 'full',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)
@@ -121,7 +121,7 @@ test.describe('extension mocked states', () => {
         overlayMode: 'expanded',
         sidebarTab: 'pulse',
         defaultChartWindow: 'full',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)
@@ -148,7 +148,7 @@ test.describe('extension mocked states', () => {
         overlayPlacement: 'sidebar',
         overlayMode: 'expanded',
         sidebarTab: 'pulse',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)
@@ -174,7 +174,7 @@ test.describe('extension mocked states', () => {
       storage: {
         overlayPlacement: 'right',
         overlayMode: 'mini',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)
@@ -217,7 +217,7 @@ test.describe('extension mocked states', () => {
       storage: {
         overlayPlacement: 'right',
         overlayMode: 'mini',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)
@@ -245,7 +245,7 @@ test.describe('extension mocked states', () => {
         overlayPlacement: 'hidden',
         overlayMode: 'expanded',
         sidebarTab: 'pulse',
-        defaultChartWindowMigratedToFullV1: true,
+        defaultChartWindowMigratedToRecentV2: true,
       },
     })
     await openTwitchChannel(extension.page)

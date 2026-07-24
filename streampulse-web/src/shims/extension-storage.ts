@@ -13,7 +13,7 @@ export const DEFAULT_AUTO_UPDATE_ENABLED = true
 export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
-export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
+export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
 
 export function isLocalStackBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '')
@@ -40,6 +40,11 @@ export async function getDefaultChartWindow(): Promise<DefaultChartWindow> {
 
 /** Portal shim — no chrome.storage; LiveStatsBand calls this on mount. */
 export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
+  /* no-op */
+}
+
+/** Portal shim — no chrome.storage; LiveStatsBand calls this on mount (RPR-1). */
+export async function migrateDefaultChartWindowToRecentV2Once(): Promise<void> {
   /* no-op */
 }
 

@@ -19,11 +19,15 @@ export interface ExtensionStorageSeed {
   chatClosedPulseDockEnabled?: boolean
   defaultChartWindow?: '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
   /**
-   * When true, skips the one-time sticky→full migration so a seeded
-   * non-full defaultChartWindow survives mount (for range-UI tests).
-   * When omitted/false, migrateDefaultChartWindowToFullOnce runs normally.
+   * Legacy v1 migration flag (sticky → Full). Prefer v2 for new seeds.
    */
   defaultChartWindowMigratedToFullV1?: boolean
+  /**
+   * When true, skips the one-time pre-v2→60m migration so a seeded
+   * defaultChartWindow (including Full) survives mount.
+   * When omitted/false, migrateDefaultChartWindowToRecentV2Once runs.
+   */
+  defaultChartWindowMigratedToRecentV2?: boolean
 }
 
 export interface LaunchedExtension {
@@ -111,11 +115,15 @@ export async function seedExtensionStorage(
     pollIntervalMs: seed.pollIntervalMs ?? 60_000,
     themePreference: seed.themePreference ?? 'aurora',
     chatClosedPulseDockEnabled: seed.chatClosedPulseDockEnabled ?? false,
-    defaultChartWindow: seed.defaultChartWindow ?? 'full',
+    defaultChartWindow: seed.defaultChartWindow ?? '60m',
     keepLocalCache: true,
   }
 
   if (seed.defaultChartWindowMigratedToFullV1 === true) {
+    payload.defaultChartWindowMigratedToFullV1 = true
+  }
+  if (seed.defaultChartWindowMigratedToRecentV2 === true) {
+    payload.defaultChartWindowMigratedToRecentV2 = true
     payload.defaultChartWindowMigratedToFullV1 = true
   }
 

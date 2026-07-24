@@ -12,8 +12,10 @@ const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
 export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY }
 const DEFAULT_CHART_WINDOW_KEY = 'defaultChartWindow'
-/** One-time sync flag: legacy sticky non-full defaults → Full stream. */
+/** Historical v1 flag (legacy sticky → Full). Superseded by v2 → 60m. */
 const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY = 'defaultChartWindowMigratedToFullV1'
+/** One-time sync flag: every pre-v2 chart preference (including Full) → 60m. */
+const DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY = 'defaultChartWindowMigratedToRecentV2'
 const KEEP_LOCAL_CACHE_KEY = 'keepLocalCache'
 
 export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
@@ -38,7 +40,7 @@ export const DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED = false
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
 export const DEFAULT_AUTO_TRACK_POLICY: AutoTrackPolicy = 'off'
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
-export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
+export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
 /** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
@@ -421,9 +423,8 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
 }
 
 /**
- * One-time migration: sticky legacy chart defaults (e.g. 60m from an older product
- * default) become Full stream. Explicit setDefaultChartWindow writes also mark the
- * flag so a deliberate preference is not overwritten later.
+ * @deprecated Prefer migrateDefaultChartWindowToRecentV2Once (RPR-1).
+ * Historical v1 migration kept for tests that inspect the old flag.
  */
 export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
   try {
@@ -433,7 +434,31 @@ export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
     ])
     if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]) return
     await syncStorageSet({
-      [DEFAULT_CHART_WINDOW_KEY]: DEFAULT_DEFAULT_CHART_WINDOW,
+      [DEFAULT_CHART_WINDOW_KEY]: 'full',
+      [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
+    })
+  } catch {
+    /* ignore storage errors in restricted contexts */
+  }
+}
+
+/**
+ * One-time migration v2: every pre-v2 stored chart preference (including Full)
+ * becomes 60m. Idempotent via DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY.
+ * After v2, an explicit user Full selection is preserved (setDefaultChartWindow
+ * also stamps the v2 marker).
+ */
+export async function migrateDefaultChartWindowToRecentV2Once(): Promise<void> {
+  try {
+    const stored = await syncStorageGet([
+      DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY,
+      DEFAULT_CHART_WINDOW_KEY,
+    ])
+    if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]) return
+    await syncStorageSet({
+      [DEFAULT_CHART_WINDOW_KEY]: '60m',
+      [DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]: true,
+      // Keep v1 flag set so older codepaths do not re-apply Full.
       [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
     })
   } catch {
@@ -450,8 +475,16 @@ export async function setDefaultChartWindow(window: DefaultChartWindow): Promise
   await syncStorageSet({
     [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(window),
     [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
+    [DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]: true,
   })
 }
+
+/** Exported for tests. */
+export const CHART_WINDOW_MIGRATION_KEYS = {
+  v1: DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY,
+  v2: DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY,
+  value: DEFAULT_CHART_WINDOW_KEY,
+} as const
 
 export async function getKeepLocalCache(): Promise<boolean> {
   const stored = await syncStorageGet(KEEP_LOCAL_CACHE_KEY)

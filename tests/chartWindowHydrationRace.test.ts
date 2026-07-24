@@ -15,7 +15,7 @@ function applyHydratedDefault(args: {
 
 describe('chart window hydration race', () => {
   it('keeps the first user range when storage default arrives late', async () => {
-    let chartWindow: '15m' | '30m' | '60m' | '2h' | '4h' | 'full' = 'full'
+    let chartWindow: '15m' | '30m' | '60m' | '2h' | '4h' | 'full' = '60m'
     let userPicked = false
 
     const hydrate = vi.fn(async () => {
@@ -37,7 +37,7 @@ describe('chart window hydration race', () => {
   })
 
   it('applies storage default when the user has not picked yet', async () => {
-    let chartWindow: '15m' | '30m' | '60m' | '2h' | '4h' | 'full' = 'full'
+    let chartWindow: '15m' | '30m' | '60m' | '2h' | '4h' | 'full' = '60m'
     const userPicked = false
 
     await Promise.resolve()

@@ -17,6 +17,7 @@ import {
   getPollIntervalMs,
   getThemePreference,
   isLocalStackBackendUrl,
+  migrateDefaultChartWindowToRecentV2Once,
   setAutoTrackPolicy,
   setBackendUrl,
   setChatClosedPulseDockEnabled,
@@ -75,6 +76,7 @@ function OptionsApp() {
       const storedTheme = await getThemePreference()
       setThemePrefState(storedTheme)
       applyAccentTheme(storedTheme)
+      await migrateDefaultChartWindowToRecentV2Once()
       setChartWindowState(await getDefaultChartWindow())
       setDebugLogging(await getPulseDebugEnabled())
       await refreshWatchlist()
