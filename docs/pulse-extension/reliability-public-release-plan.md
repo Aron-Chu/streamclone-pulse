@@ -1,6 +1,6 @@
 # StreamPulse — Reliability, Public Release, and Repository Governance
 
-**Status:** Phase 0 **in progress** (documentation correction + verification).  
+**Status:** Phase 0 **complete** (documentation + CI economy landed; exact-SHA force-full verified).  
 **Canonical execution plan** for the reliability / public-release / governance program.  
 Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./requirements.md) (R14–R18 for new gates; **R13 remains Emote metadata readiness**), [`design.md`](./design.md), [`release.md`](./release.md).
 
@@ -11,9 +11,9 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 | Fact | Value |
 |------|--------|
 | Remote | `https://github.com/Aron-Chu/streamclone-pulse.git` |
-| Authoritative `origin/master` | `7024649fe6f608f2917713f03eacdbad2498f778` |
+| Phase 0 verified master | `69b357521d6794410da3267e8699c13012f88351` |
 | Working rule | Implement only from a clean checkout/worktree of that SHA (or a descendant). Do not mutate unrelated dirty checkouts. |
-| Remote CI gate | Remote workflow runs must **execute jobs successfully** on the release SHA. Runs that start no jobs do not count as green. Owner must restore CI execution separately. |
+| Remote CI gate | Remote workflow runs must **execute jobs successfully** on the release SHA. Runs that start no jobs do not count as green. |
 
 **Hard rule:** Never make `streamclone-pulse` public merely to obtain free Actions. Remote green CI from the **exact** implementation SHA is a mandatory publication gate.
 
@@ -101,7 +101,7 @@ No public visibility or store submission until:
 
 | ID | Item | Status |
 |----|------|--------|
-| RPR-0 | Baseline + documentation consistency | **IN PROGRESS** |
+| RPR-0 | Baseline + documentation consistency | **COMPLETE** |
 | RPR-1 | Request matrix + chart migration v2 + coalesce | pending |
 | RPR-2 | Manifest generation + package validation | pending |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | pending |
@@ -114,14 +114,20 @@ No public visibility or store submission until:
 
 ### RPR-0 sub-gates
 
-- [x] Clean worktree based on authoritative `7024649f`
+- [x] Clean worktree based on authoritative baseline
 - [x] Requirement ID collision fixed (R13 emote preserved; R14–R18 for RPR)
 - [x] Public docs free of machine paths / private ops details (changed Phase 0 set scanned)
 - [x] Privacy/Support match current code (planned systems labeled planned)
 - [x] Interim contact policy: `privacy@streampulse.stream` only (support@ / security@ withheld until verified)
-- [~] CWS historical vs next-candidate docs reconciled; **dashboard Support URL confirmation deferred to RPR-9**
+- [x] CWS historical vs next-candidate docs reconciled; **dashboard Support URL confirmation deferred to RPR-9**
 - [x] Full local typecheck/test/build on clean worktree
-- [ ] Remote CI green on a pushed Phase 0 SHA (blocked until CI executes on this PR)
+- [x] Remote CI green on Phase 0 SHA (force-full jobs executed)
+
+### Deferred release gates (not Phase 0 blockers)
+
+- Dedicated support/security mailboxes (or GitHub Private Vulnerability Reporting)
+- CWS publisher-console Support URL confirmation
+- Store upload / visibility conversion (RPR-9)
 
 ---
 
@@ -136,7 +142,6 @@ No public visibility or store submission until:
 
 ## Next hard gate
 
-1. Finish Phase 0 corrections + local verification evidence.  
-2. Owner reviews uncommitted diff and decides commit/push.  
-3. Owner restores remote CI execution; pushed Phase 0 SHA must go green before Phase 1.  
-4. Do **not** start Phase 1 architecture until Phase 0 is owner-accepted.
+1. Start **RPR-1** (request contract + chart migration v2 + coalesce) from verified master.  
+2. Keep support/security mailbox verification and CWS dashboard confirmation as **RPR-9** release gates.  
+3. Do **not** start RPR-3+ until RPR-1 and RPR-2 land.
