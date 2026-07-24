@@ -1,3 +1,5 @@
+# StreamPulse CI — path-routed graph with stable final gate.
+# Action pins: full commit SHA with release tag in comments.
 name: CI
 
 on:
@@ -5,157 +7,298 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      force_full:
+        description: 'Force full extension+portal+e2e graph'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Keep in sync with scripts/ci-pulse-packages.pin
+  PULSE_PACKAGES_PIN: 'f663d002ff22351629dcaa9ed770a9c4a869ef92'
+
 jobs:
-  secrets:
-    name: Secret scan
-    runs-on: ubuntu-latest
+  guard:
+    name: guard
+    runs-on: ubuntu-slim
+    timeout-minutes: 12
+    outputs:
+      run_extension: ${{ steps.classify.outputs.run_extension }}
+      run_portal: ${{ steps.classify.outputs.run_portal }}
+      run_e2e: ${{ steps.classify.outputs.run_e2e }}
+      force_full: ${{ steps.classify.outputs.force_full }}
+      classification: ${{ steps.classify.outputs.classification }}
+      packages_trusted: ${{ steps.trust.outputs.trusted }}
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+          persist-credentials: false
+
+      - name: Determine trust boundary
+        id: trust
+        run: |
+          trusted=false
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            trusted=true
+          elif [[ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]]; then
+            trusted=true
+          fi
+          echo "trusted=${trusted}" >> "$GITHUB_OUTPUT"
+          echo "packages_trusted=${trusted}"
+
+      - name: Resolve compare SHAs
+        id: shas
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch — classify against parent when possible; force-full overrides
+            parent="$(git rev-parse HEAD^ 2>/dev/null || true)"
+            if [[ -n "${parent}" ]]; then
+              echo "base=${parent}" >> "$GITHUB_OUTPUT"
+            else
+              echo "base=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            fi
+            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Classify changes
+        id: classify
+        env:
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_full == 'true' }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [[ "${FORCE_FULL}" == "true" ]]; then
+            extra+=(--force-full)
+          fi
+          node scripts/ci-classify-changes.mjs \
+            --base "${{ steps.shas.outputs.base }}" \
+            --head "${{ steps.shas.outputs.head }}" \
+            "${extra[@]}"
+
+      # gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  context-contract:
-    name: Owner-local context + public topology
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Owner-local context contract
         run: bash scripts/ci-context-contract.sh
+
       - name: Public topology scan
         run: bash scripts/ci-public-topology-scan.sh
 
-  extension-unit:
-    name: extension-unit
+      # actions/upload-artifact@v4 — classification only (tiny)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-classification
+          path: ci-classification/classification.json
+          retention-days: 3
+
+  extension:
+    name: extension
+    needs: guard
+    if: needs.guard.outputs.run_extension == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - name: Checkout pulse packages
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Require trusted authoritative packages
         env:
-          STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-        run: bash scripts/ci-checkout-pulse-packages.sh
-      - name: Link pulse packages from streampulse-backend
+          HAS_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ needs.guard.outputs.packages_trusted }}" != "true" ]]; then
+            echo "::error::Fork/untrusted PR cannot access authoritative private packages; not reporting green."
+            exit 1
+          fi
+          if [[ "${HAS_TOKEN}" != "true" ]]; then
+            echo "::error::STREAMPULSE_BACKEND_CHECKOUT_TOKEN missing — refusing stale public package fallback."
+            exit 1
+          fi
+
+      # actions/checkout@v4 — private packages at pinned SHA (no token in clone URL)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Aron-Chu/streampulse-backend
+          ref: ${{ env.PULSE_PACKAGES_PIN }}
+          token: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+          path: _streampulse-backend
+          sparse-checkout: |
+            packages/pulse-core
+            packages/analytics-console
+            packages/pulse-charts
+          persist-credentials: false
+
+      - name: Verify pulse package pin
+        run: bash scripts/ci-verify-pulse-packages.sh
+
+      - name: Link pulse packages
         run: bash scripts/ci-link-streamclone-packages.sh
-      - uses: actions/setup-node@v4
+
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run test
-      - run: npm run build
-      - name: Check packaging scripts
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Package validation
         run: |
+          set -euo pipefail
           node --check scripts/zip-dist.mjs
           node --check scripts/validate-extension-package.mjs
           node --check scripts/extension-package-lib.mjs
-      - name: Build CWS zip and validate package
-        run: |
           npm run zip
           npm run validate:package
           test -f streampulse-extension.zip
           test -f streampulse-extension.zip.sha256
           echo "ZIP_SHA256=$(cut -d' ' -f1 streampulse-extension.zip.sha256)"
-          # Avoid SIGPIPE under pipefail: list a bounded prefix without piping to head.
           mapfile -t ZIP_ENTRIES < <(unzip -Z1 streampulse-extension.zip)
           echo "ZIP_ENTRY_COUNT=${#ZIP_ENTRIES[@]}"
           printf '%s\n' "${ZIP_ENTRIES[@]:0:40}"
-      - name: Upload extension dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: extension-dist
-          path: dist/
-          retention-days: 3
-      - name: Upload CWS zip artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: streampulse-extension-zip
-          path: |
-            streampulse-extension.zip
-            streampulse-extension.zip.sha256
-          retention-days: 14
+          # Do not upload routine CWS ZIPs or dist artifacts.
 
-  extension-e2e:
-    name: extension-e2e
-    runs-on: ubuntu-latest
-    needs: extension-unit
-    steps:
-      - uses: actions/checkout@v4
-      - name: Checkout pulse packages
-        env:
-          STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-        run: bash scripts/ci-checkout-pulse-packages.sh
-      - name: Link pulse packages from streampulse-backend
-        run: bash scripts/ci-link-streamclone-packages.sh
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-      - run: npm ci
-      - name: Record toolchain versions
-        run: |
-          {
-            echo "node: $(node --version)"
-            echo "npm: $(npm --version)"
-            echo "playwright: $(npx playwright --version)"
-            chromium --version 2>/dev/null || google-chrome --version 2>/dev/null || true
-          } | tee extension-e2e-versions.txt
       - name: Install Playwright Chromium
+        if: needs.guard.outputs.run_e2e == 'true'
         run: npx playwright install chromium --with-deps
-      - name: Download extension dist
-        uses: actions/download-artifact@v4
-        with:
-          name: extension-dist
-          path: dist
-      - name: Run mocked extension e2e
-        # Headed Chromium under xvfb — MV3 unpacked extensions are unreliable in headless.
+
+      - name: Mocked extension E2E
+        if: needs.guard.outputs.run_e2e == 'true'
         run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
+
+      # actions/upload-artifact@v4 — failure evidence only
       - name: Upload Playwright failure evidence
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: failure() && needs.guard.outputs.run_e2e == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: extension-e2e-evidence
           path: |
             test-results/extension/
             playwright-report/extension/
-            extension-e2e-versions.txt
-          retention-days: 14
+          retention-days: 3
 
   portal:
     name: portal
+    needs: guard
+    if: needs.guard.outputs.run_portal == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: streampulse-web
     env:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
-      - uses: actions/checkout@v4
-      - name: Checkout pulse packages
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Require trusted authoritative packages
         working-directory: ${{ github.workspace }}
         env:
-          STREAMPULSE_BACKEND_CHECKOUT_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
-        run: bash scripts/ci-checkout-pulse-packages.sh
+          HAS_TOKEN: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ needs.guard.outputs.packages_trusted }}" != "true" ]]; then
+            echo "::error::Fork/untrusted PR cannot access authoritative private packages; not reporting green."
+            exit 1
+          fi
+          if [[ "${HAS_TOKEN}" != "true" ]]; then
+            echo "::error::STREAMPULSE_BACKEND_CHECKOUT_TOKEN missing — refusing stale public package fallback."
+            exit 1
+          fi
+
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Aron-Chu/streampulse-backend
+          ref: ${{ env.PULSE_PACKAGES_PIN }}
+          token: ${{ secrets.STREAMPULSE_BACKEND_CHECKOUT_TOKEN }}
+          path: _streampulse-backend
+          sparse-checkout: |
+            packages/pulse-core
+            packages/analytics-console
+            packages/pulse-charts
+          persist-credentials: false
+
+      - name: Verify pulse package pin
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/ci-verify-pulse-packages.sh
+
       - name: Link StreamPulse packages
         working-directory: ${{ github.workspace }}
         run: bash scripts/ci-link-streamclone-packages.sh
-      - uses: actions/setup-node@v4
+
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: streampulse-web/package-lock.json
+
       - run: npm ci
       - run: npm run typecheck
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
       - run: npm run check:analytics-overlap
-      # build:ci = Ubuntu-safe vite + prerender (same production artifact path as origin/master).
       - run: npm run build:ci
+
+  # Stable future branch-protection context. Do not activate protection in this batch.
+  final:
+    name: CI
+    needs: [guard, extension, portal]
+    if: always()
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-classification
+          path: ci-classification
+
+      - name: Evaluate final gate
+        run: |
+          set -euo pipefail
+          node scripts/ci-final-gate.mjs \
+            --guard "${{ needs.guard.result }}" \
+            --classification ci-classification/classification.json \
+            --extension "${{ needs.extension.result }}" \
+            --portal "${{ needs.portal.result }}"

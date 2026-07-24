@@ -1,0 +1,4 @@
+# Exact reviewed streampulse-backend commit for authoritative @streampulse/* packages in CI.
+# Update only via an intentional PR that reviews package provenance.
+# Do not use a moving branch name (master) for authoritative CI.
+f663d002ff22351629dcaa9ed770a9c4a869ef92
