@@ -1,27 +1,42 @@
 # Chrome Web Store listing copy — StreamPulse
 
-**Status:** Candidate locked - pending PR checks and operator upload
-**Branch:** `codex/cws-live-screenshots-2026-07-19`
-**`PACKAGE_BUILD_COMMIT`:** `ada58beb620a0955030528f46a5bc66e3c3010cb`
-**Package:** `streampulse-extension.zip` (built once from `PACKAGE_BUILD_COMMIT`; do not regenerate after hash lock)
-**ZIP SHA-256:** `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075` (205,205 bytes)
-**Privacy policy:** https://streampulse.stream/privacy
-**Support URL:** https://streampulse.stream/support
-**Privacy contact:** privacy@streampulse.stream  
-**Manifest name:** StreamPulse  
-**Version (current package):** 0.1.0  
-**Portal install mode until Google approval:** `pending_verification` (no Landing store-URL flip)
+**Document roles**
 
-This replacement candidate uses the required HTTPS-only Twitch content-script
-match. Typecheck, 512 unit tests, 29 headed mocked extension tests, packaging,
-and current package validation passed before the ZIP hash was locked. The five
-screenshots were then recaptured from the unchanged packaging `dist/`.
+1. **Historical / published** — facts about the live listing ID and prior obsolete package (audit only).
+2. **Next RPR candidate** — unchecked gates; paste fields for a future store ZIP that omits localhost.
+
+Do not treat historical ZIP bytes as the current upload candidate.
+
+---
+
+## Historical / published (verify in dashboard)
+
+| Field | Value |
+|-------|--------|
+| Listing URL | https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg |
+| Extension ID | `nifgoonpcgmdhiffcpmhndjgkgahnelg` |
+| Privacy policy | https://streampulse.stream/privacy |
+| Support URL (site) | https://streampulse.stream/support |
+| Privacy contact | privacy@streampulse.stream |
+| Manifest name | StreamPulse |
+| Dashboard Support URL | **Owner confirmation required** — public scrape is not authoritative |
+
+### Obsolete package (do not upload)
+
+| Field | Value |
+|-------|--------|
+| Prior `PACKAGE_BUILD_COMMIT` | `ada58beb620a0955030528f46a5bc66e3c3010cb` |
+| ZIP SHA-256 | `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075` (205,205 bytes) |
+| Status | Historical audit only — **obsolete for upload** after privacy/support/manifest program changes |
 
 Do **not** use “Streamclone Pulse” in store-facing fields.
 
 ---
 
-## Store listing fields
+## Next RPR candidate — store listing fields
+
+All submission gates for the next candidate start unchecked. See
+[`chrome-web-store-review-checklist.md`](./chrome-web-store-review-checklist.md) §B.
 
 ### Item name
 ```
@@ -50,12 +65,12 @@ The extension reads the Twitch page context to identify the channel / stream / V
 Privacy
 See https://streampulse.stream/privacy — including Chrome Web Store Limited Use language and contact privacy@streampulse.stream.
 
-Beta / hosted access
-Some hosted features may require an access key entered in Options (stored locally, not synced). The public site does not require a beta key for public analytics.
+Public-first access
+The public-first extension does not require a StreamPulse beta key or Twitch OAuth.
 
 Support
 Support page: https://streampulse.stream/support
-Privacy & support email: privacy@streampulse.stream
+Contact: privacy@streampulse.stream (current verified contact)
 Product docs: https://streampulse.stream/docs#extension
 ```
 
@@ -67,36 +82,24 @@ English (United States)
 
 ---
 
-## Graphic assets (this repo)
+## Graphic assets
 
 | Asset | Path | Size |
 |-------|------|------|
-| Screenshots (required) | `docs/pulse-extension/cws-screenshots/01-…05-…png` | 1280×800 |
-| Small promo tile (optional) | `docs/pulse-extension/cws-screenshots/promo-small-tile-440x280.png` | 440×280 |
+| Screenshots (required) | See `cws-screenshots/` and/or `store/cws/screenshots/` | 1280×800 |
 | Store icons | packaged from `public/icons/icon{16,48,128}.png` | Peak mark |
 
-Recapture only from a clean checkout and `dist/` built at `PACKAGE_BUILD_COMMIT`
-(retired: `scripts/gen-cws-screenshots.ps1`). The capture script fails instead
-of rebuilding when its inputs, complete `dist/` file set, provenance hashes, or
-build commit do not match the locked package source:
-```bash
-  node scripts/capture-cws-pulse-screenshot.mjs --package-build-commit=ada58beb620a0955030528f46a5bc66e3c3010cb --shot=all
-```
-
-Suggested upload order:
-1. `01-live-pulse-panel-1280x800.png` — live Pulse panel
-2. `02-stream-activity-chart-1280x800.png` — stream activity chart
-3. `03-pulse-duo-1280x800.png` — Pulse duo
-4. `04-moments-and-chart-1280x800.png` — moments + chart
-5. `05-stream-recap-1280x800.png` — Stream Recap
+Recapture screenshots from the **next candidate** `dist/` only. Do not reuse obsolete-package capture commits as proof for a new ZIP.
 
 ---
 
-## Permission justifications (paste into Dashboard)
+## Permission justifications — next **store** artifact only
+
+Paste only for permissions present in the store ZIP. **Do not** paste localhost optional-host justifications for the store submission.
 
 ### storage
 ```
-Stores StreamPulse settings (theme, overlay placement, chart preferences, watchlist) in chrome.storage.sync, an optional beta/access key in chrome.storage.local, and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls.
+Stores StreamPulse settings (theme, overlay placement, chart preferences, watchlist) in chrome.storage.sync and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls. Optional debug logs may use chrome.storage.local when debug logging is enabled.
 ```
 
 ### scripting
@@ -124,10 +127,9 @@ Resolves stream/VOD identity via Twitch GraphQL from the page context so coverag
 Runs the content script on Twitch channel and VOD pages and allows tab messaging under the Twitch host grant (no broad tabs permission).
 ```
 
-### Optional — http://localhost:8081/*, http://127.0.0.1:8081/*
-```
-Developer opt-in only: local StreamPulse BFF for debugging. Not required for normal store users; requested only when the user enables a local backend override.
-```
+### Localhost (development manifests only — not for store paste)
+
+Local StreamPulse BFF hosts (`http://localhost:8081/*`, `http://127.0.0.1:8081/*`) belong only in a **development** manifest after RPR-2 splitting. They must be absent from the store artifact. Do not paste a store justification for them.
 
 ---
 
@@ -142,6 +144,7 @@ Developer opt-in only: local StreamPulse BFF for debugging. Not required for nor
 | Privacy policy URL | https://streampulse.stream/privacy |
 | Support URL | https://streampulse.stream/support |
 | Limited Use | Affirmed on privacy page + this listing |
+| Extension crash/product analytics SDKs | Not present in the current extension package |
 
 ---
 
@@ -153,16 +156,19 @@ Provide a Twitch live/VOD Pulse analytics overlay powered by the StreamPulse API
 
 ---
 
-## Submission checklist (operator)
+## Next candidate submission checklist (all unchecked)
 
-1. [x] Build the replacement candidate with the HTTPS-only Twitch content-script match
-2. [x] Run typecheck, 512 unit tests, 29 headed mocked E2E tests, packaging, and current package validation
-3. [x] Recapture and review all five screenshots from the unchanged packaging `dist/`
-4. [x] Lock `PACKAGE_BUILD_COMMIT`, exact ZIP bytes, size, and SHA-256 in both handoff documents
-5. [ ] Merge the traceability PR only after required CI and review checks actually run and pass
-6. [ ] Upload the locked ZIP and matching screenshots, then paste listing and permission fields
+1. [ ] Build store-target package from the release SHA (no localhost hosts)
+2. [ ] Run typecheck, unit tests, packaging, and store-target package validation
+3. [ ] Recapture and review screenshots from that package `dist/`
+4. [ ] Record package commit, size, and SHA-256 for the **new** candidate
+5. [ ] Remote CI green on that SHA (jobs actually executed)
+6. [ ] Owner uploads new ZIP + screenshots; pastes listing and permission fields
 7. [ ] Set privacy URL (`/privacy`), Support URL (`/support`), and Limited Use/data disclosures
-8. [ ] Submit for review
-9. [ ] After approval: update the public install CTA to the store URL and clear `pending_verification`
+8. [ ] Confirm dashboard Support URL matches `https://streampulse.stream/support`
+9. [ ] Submit for review only with owner authorization
+10. [ ] After approval: update public install CTA only if owner authorizes
+
+**Forbidden:** uploading ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.
 
 **Not automated:** Google account / Developer Dashboard submit — human only.

@@ -3,6 +3,7 @@ import { PublicLayout } from '../../ui/components/PublicLayout'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { buttonClass } from '../../ui/primitives'
 
+/** Product troubleshooting. Uses only verified contact channels. */
 export default function Support() {
   return (
     <PublicLayout>
@@ -19,34 +20,44 @@ export default function Support() {
 
         <h2>Extension not appearing on Twitch</h2>
         <ol>
-          <li>Open <code>chrome://extensions</code> and confirm StreamPulse is enabled.</li>
-          <li>Select <strong>Reload</strong> for StreamPulse.</li>
+          <li>
+            Open <code>chrome://extensions</code> and confirm StreamPulse is enabled.
+          </li>
+          <li>
+            Select <strong>Reload</strong> for StreamPulse.
+          </li>
           <li>Hard-refresh the Twitch channel or VOD tab.</li>
-          <li>Open Twitch chat and look for the <strong>Chat / Pulse</strong> switch above chat.</li>
+          <li>
+            Open Twitch chat and look for the <strong>Chat / Pulse</strong> switch above chat.
+          </li>
         </ol>
 
         <h2>Pulse is loading or has limited coverage</h2>
         <p>
-          StreamPulse only displays data the backend actually collected. A newly tracked stream can show collecting,
-          stats-only, or partial coverage while minute rollups arrive. Check the <Link to="/status">service status</Link>{' '}
-          and retry after the next update.
+          StreamPulse only displays data the backend actually collected. A newly tracked stream can show
+          collecting, stats-only, or partial coverage while minute rollups arrive. Check the{' '}
+          <Link to="/status">service status</Link> and retry after the next update.
         </p>
 
         <h2>What to include in a support request</h2>
         <ul>
           <li>Chrome and StreamPulse extension versions.</li>
-          <li>The Twitch channel or VOD URL.</li>
+          <li>The Twitch channel or VOD name (typed manually is fine).</li>
           <li>The exact error message and whether the Chat / Pulse switch appears.</li>
-          <li>A screenshot with personal account information removed.</li>
         </ul>
         <p>
-          Do not send Twitch cookies, authorization headers, or raw chat exports.
+          Do not send Twitch cookies, authorization headers, raw chat exports, passwords, or access keys.
+          Do not attach screenshots that contain account secrets.
         </p>
 
         <h2>Contact</h2>
         <p>
-          Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. The same monitored address
-          handles privacy and product-support questions.
+          Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. That address is
+          the current verified contact for product-support and privacy questions.
+        </p>
+        <p className="muted">
+          A dedicated product-support mailbox and a hosted support form are planned, but they are not active
+          yet. Do not expect an in-extension challenge form or attachment upload.
         </p>
         <p>
           You can also review the <Link to="/docs#extension">extension setup guide</Link> or the{' '}

@@ -1,12 +1,48 @@
 # Streamclone Pulse Extension — Tasks
 
-Execution plan for [`requirements.md`](./requirements.md) (R1–R12) per [`design.md`](./design.md). Phases are ordered so each delivers something runnable. **MVP = P0–P5 (local-only).** P6 is hosted/public and is independently scoped.
+Execution plan for [`requirements.md`](./requirements.md) per [`design.md`](./design.md).
 
-Legend: `[ ]` todo · `[~]` in progress · `[x]` done. Each task notes the requirement(s) it satisfies and a check to prove it.
+**Active program:** Reliability / Public Release (`RPR-*`) — canonical plan
+[`reliability-public-release-plan.md`](./reliability-public-release-plan.md).
+
+**Historical:** `P0`–`P6` below are retained as the original MVP ledger. Do not treat
+stale P6 hosted claims (`api.streamclone.app`, device-auth blockers) as current
+product truth — hosted API is already `https://api.streampulse.stream`. Public
+visibility + store submission are gated by `RPR-9`, not by marking P6 `[x]`.
+
+**Requirement IDs:** `R13` remains **Emote metadata readiness**. New RPR acceptance
+targets are `R14`–`R18`.
+
+Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
 
 ---
 
-## P0 — Repo & shared-logic bootstrap
+## RPR — Reliability & public release (active)
+
+See phase detail and irreversible checkpoints in the reliability plan.
+
+- [~] **RPR-0** Authoritative baseline + documentation consistency. Repair design/requirements/CONTEXT; add `release.md` + `ui-design-guide.md`; obsolete locked CWS candidate for upload; keep Privacy/Support truthful to current code; withhold unverified security/support mailboxes. _Check:_ clean worktree based on `7024649f`; docs cross-link; no machine paths in public docs; local gates green; remote CI still blocked until owner restores execution.
+- [ ] **RPR-1** Request contract + performance (R14): request matrix tests; chart migration v2; extend `pulseRevalidateGate`; tab-scoped polling ownership; bundle budgets from clean baseline.
+- [ ] **RPR-2** Manifest targets (dev/CWS/Edge/Firefox-later) without localhost on store builds (R18); harden `package:cws` / `validate:package` + portal localhost scanners.
+- [ ] **RPR-3** Server-generated correlation IDs + sanitized extension diagnostics path (R15); default-off diagnostics consent; cost-bearing routes fail closed.
+- [ ] **RPR-4** Hosted support form + Turnstile + durable outbox (R16); tracker gets minimal fields only; no remote challenge script in MV3.
+- [ ] **RPR-5** Aggregate product analytics only after diagnostics/support paths are stable (R15); separate default-off consent; fixed enum events.
+- [ ] **RPR-6** Move `pulse-core` / `pulse-charts` / `analytics-console` into `streamclone-pulse/packages` (R17) after license/provenance audit.
+- [ ] **RPR-7** Governance files (LICENSE Apache-2.0, SECURITY, CONTRIBUTING, CoC, SUPPORT, CODEOWNERS, templates); audit branches/Actions/history before any visibility change.
+- [ ] **RPR-8** Branch protection ruleset after stable green CI.
+- [ ] **RPR-9** Owner-authorized publication / store submission only after all release gates.
+
+**CI gate:** Remote workflow runs must execute jobs successfully on the release SHA. Owner must restore CI execution before remote green can gate RPR-9. Never make the repo public merely for free Actions.
+
+**Contact blockers (RPR-0):** Only `privacy@streampulse.stream` is verified for public use today. Dedicated product-support and security mailboxes / GitHub Private Vulnerability Reporting remain unconfirmed and must not be published as active until verified.
+
+---
+
+## Historical — P0–P6 (original MVP ledger)
+
+> Preserved for traceability. Prefer `RPR-*` for new work.
+
+### P0 — Repo & shared-logic bootstrap
 
 Goal: a new extension repo that builds, and a shared package the web app + extension both consume.
 
@@ -19,7 +55,7 @@ Goal: a new extension repo that builds, and a shared package the web app + exten
 
 ---
 
-## P1 — Backend: extension BFF + health
+### P1 — Backend: extension BFF + health
 
 Goal: one compact endpoint the overlay can render directly, plus a reachability probe. All in the existing `analytics` service (chi).
 
@@ -33,7 +69,7 @@ Goal: one compact endpoint the overlay can render directly, plus a reachability 
 
 ---
 
-## P2 — Extension core: detect, track, render (the MVP spine)
+### P2 — Extension core: detect, track, render (the MVP spine)
 
 Goal: overlay appears on a live Twitch channel and shows real Pulse.
 
@@ -47,7 +83,7 @@ Goal: overlay appears on a live Twitch channel and shows real Pulse.
 
 ---
 
-## P3 — Overlay UX: modes, settings, lanes, seeking
+### P3 — Overlay UX: modes, settings, lanes, seeking
 
 - [x] **P3-1** Display modes: collapsed pill / mini (strip) / expanded; persist mode + dock across nav & sessions. _Satisfies:_ R4.1–R4.4.
 - [x] **P3-2** Settings (options + popup): backend URL, polling interval (15/30/60s), overlay placement, auto-track policy. _Satisfies:_ R6.1–R6.4. _Check:_ changing backend URL re-probes health.
@@ -60,7 +96,7 @@ Goal: overlay appears on a live Twitch channel and shows real Pulse.
 
 ---
 
-## P4 — Moment memory / bookmarks (core Pulse)
+### P4 — Moment memory / bookmarks (core Pulse)
 
 Goal: private save queue, shared backend with the web app.
 
@@ -73,7 +109,7 @@ Goal: private save queue, shared backend with the web app.
 
 ---
 
-## P5 — Session recap (core Pulse)
+### P5 — Session recap (core Pulse)
 
 - [x] **P5-1** `internal/analytics/recap/` pure aggregation (mirror of `pulse-core/recap.ts`): top 10 moments, top emotes, biggest chat spike, funniest burst, clip candidates, totals, peak chat/min — from existing rollups/peaks. _Satisfies:_ R12.2, R12.5.
 - [x] **P5-2** `GET /v1/pulse/streams/{streamID}/recap`: compute-on-demand first; optional cache table `000039_pulse_stream_recap` when read volume warrants. _Satisfies:_ R12.2. _Check:_ recap matches web app for the same stream.
@@ -83,21 +119,24 @@ Goal: private save queue, shared backend with the web app.
 
 ---
 
-## P6 — Hosted / public (independently scoped; do NOT block MVP)
+## P6 — Hosted / public (HISTORICAL — superseded by RPR)
 
-Goal: anyone can install. Requires the infra from design §7.
+> **Do not execute as written.** Hosted TLS at `api.streampulse.stream` already exists.
+> Remaining public/store work is `RPR-7`–`RPR-9`. Stale references to `api.streamclone.app`
+> and "device auth blocks MVP" are obsolete for the public-first extension.
 
-- [ ] **P6-1** **TLS + domain (blocker):** terminate HTTPS at Caddy for `api.streamclone.app` (Let's Encrypt) so the extension's secure-context fetches aren't mixed-content blocked. _Satisfies:_ design §7.1.
-- [ ] **P6-2** Device auth: `POST /v1/extension/auth/device` (opaque token in `chrome.storage.local`, `Authorization: Bearer`); scope bookmarks by `user_id`; `GET /v1/extension/me`. _Satisfies:_ R9.2.
-- [ ] **P6-3** Shared tracking pool: refcounted tracked-channel registry, global cap, idle LRU eviction — many users of one channel = one IRC join/pipeline. _Satisfies:_ R9.2, design §7.3.
-- [ ] **P6-4** Rate limiting: per-IP + per-device-token (Caddy `rate_limit` or Redis token bucket), hardest cap on `watch`. _Satisfies:_ design §7.4.
-- [ ] **P6-5** pgbouncer + `analytics` API replicas behind Caddy (read path is stateless + cache-backed). _Satisfies:_ design §7.5–§7.6.
-- [ ] **P6-6** Observability: BFF cache-hit ratio, poll RPS, tracked-channel count, `watch` rate, p95 BFF latency, IRC join count on the existing `pulse` Grafana profile; alerts on tracking cap + scraper saturation. _Satisfies:_ design §7.7.
-- [ ] **P6-7** Chrome Web Store submission: privacy policy, permission justification (host_permissions, storage), screenshots from the Figma board.
+Goal (original): anyone can install. Infra notes lived in design §7.
 
-**Exit:** an external user installs from the store, points at the hosted API over HTTPS, and the backend stays healthy under fan-out.
+- [x] **P6-1** **TLS + domain:** `https://api.streampulse.stream` is live (historical blocker cleared).
+- [ ] **P6-2** Device auth — **deferred / not required** for public-first extension (no beta key).
+- [~] **P6-3** Shared tracking pool / caps — capacity work continues under backend/ops; not an extension store blocker by itself.
+- [~] **P6-4** Rate limiting — hosted/ops concern; track under backend/ops, not as extension P6 exit.
+- [ ] **P6-5** pgbouncer + replicas — ops scaling; not RPR store gate.
+- [~] **P6-6** Observability — extension diagnostics / aggregate analytics redesign under **RPR-3** / **RPR-5**.
+- [ ] **P6-7** Chrome Web Store submission — **RPR-2** + **RPR-9** (prior locked ZIP obsolete for upload after privacy/manifest program changes).
 
----
+**Exit (historical wording obsolete):** use reliability plan release gates instead.
+
 
 ## Cross-cutting / Definition of Done
 

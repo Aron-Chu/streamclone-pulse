@@ -1,6 +1,6 @@
 # Streamclone Pulse Extension — Design
 
-Companion to [`requirements.md`](./requirements.md) (R1–R12) and [`tasks.md`](./tasks.md). This is the architecture/decision document: repo strategy, data flow, schema, API contract, how the extension talks to the **streampulse-backend** BFF, what it takes to scale on the **hosted production stack**, edge cases, and performance.
+Companion to [`requirements.md`](./requirements.md) (R1–R18) and [`tasks.md`](./tasks.md). This is the architecture/decision document: repo strategy, data flow, schema, API contract, how the extension talks to the **streampulse-backend** BFF, what it takes to scale on the **hosted production stack**, edge cases, and performance.
 
 **UI visuals:** [`figma-handoff.md`](./figma-handoff.md) and PNG exports in [`figma/`](./figma/) — use these for implementation parity (Codex-friendly; no Figma MCP required).
 
@@ -20,21 +20,28 @@ Companion to [`requirements.md`](./requirements.md) (R1–R12) and [`tasks.md`](
 
 ### How the shared code is shared
 
-The core helpers are pure and DOM-free, extracted into a package published to **GitHub Packages** (private npm registry):
+**Target (RPR Phase 6):** `pulse-core`, `pulse-charts`, and `analytics-console` live as **public in-repo workspaces** under `streamclone-pulse/packages/` (Apache-2.0), after provenance/license review. Private **streampulse-backend** remains the BFF owner and consumes released package versions where appropriate — it does not stay the long-term home of public client packages.
+
+**Current (until Phase 6 cutover):** packages still ship from private `streampulse-backend/packages/` and are linked into this repo for CI/dev.
 
 ```
-streampulse-backend (private repo — BFF owner)
-  packages/pulse-core/         # extracted pure logic + types, published as @streampulse/pulse-core
-  internal/analytics/          # BFF + bookmarks + recap (Go) lives here
+streamclone-pulse (this repo — public client packages target)
+  packages/pulse-core/         # @streampulse/pulse-core (target)
+  packages/pulse-charts/       # @streampulse/pulse-charts (target)
+  packages/analytics-console/  # @streampulse/analytics-console (target)
+  package.json / streampulse-web/package.json  # workspace consumers
+  src/...                      # extension
+  streampulse-web/             # portal
 
-streamclone-pulse (this repo)
-  package.json                 # depends on @streampulse/pulse-core@^x
-  src/...                      # extension + streampulse-web portal
+streampulse-backend (private — BFF owner)
+  internal/analytics/          # BFF + bookmarks + recap (Go)
+  # consumes released @streampulse/* where appropriate after cutover
 ```
 
-- **`pulse-ui`** (React components) is extension/web-shared too, but ships **after** `pulse-core` — it has heavier deps (React/Tailwind) and the extension uses Shadow DOM, so keep it a separate publishable package and only extract once the extension's render layer stabilizes.
+- **`pulse-ui`** (React components) may remain extension-local or extract later; do not block public package cutover on it.
+- Clean-clone builds must not require sibling private checkouts or private package tokens (RPR gate).
 
-**Net:** this repo owns the extension app and portal UI; **streampulse-backend** owns the BFF and shared packages; public Streamclone (`twitch-7tv-clone`) is watch-only after boundary split.
+**Net:** this repo owns the extension, portal UI, and (target) public client packages; **streampulse-backend** owns the BFF; public Streamclone (`twitch-7tv-clone`) is watch-only after boundary split.
 
 ---
 
@@ -44,29 +51,34 @@ streamclone-pulse (this repo)
 ┌─ twitch.tv (https) ─────────────────────────────┐
 │  Content script (isolated world + Shadow DOM)    │
 │   - detect login / VOD / live-offline            │
-│   - mount overlay (pulse-ui)                     │
+│   - mount overlay; tab-scoped live poll (current)│
 │   - control <video> for in-buffer seek           │
 │            │ chrome.runtime.sendMessage          │
 │            ▼                                      │
 │  MV3 Service worker (extension origin)           │
-│   - backend base URL + (later) device token      │
-│   - poll BFF, retry/backoff, cache in storage    │
+│   - broker fetch + session cache (current)       │
+│   - multi-tab coalesce (planned R14)             │
+│   - no chrome.alarms unless no-tab durable poll  │
+│   - server-generated correlation ID (planned R15)│
 └────────────│─────────────────────────────────────┘
              │ fetch
              │  hosted (default): https://api.streampulse.stream
-             │  local dev opt-in: http://localhost:8081 (streampulse-backend compose)
+             │  local (dev manifest only): http://localhost:8081
              ▼
 ┌─ streampulse-backend (BFF owner) ───────────────┐
 │  analytics service (chi)                         │
 │   /v1/extension/pulse/channels/{login}  (BFF)    │
 │   /v1/extension/health                           │
+│   support / diagnostics ingress (planned RPR)    │
 │   /v1/pulse/bookmarks  (CRUD)                    │
 │   /v1/pulse/streams/{id}/recap                   │
 │   /v1/analytics/channels/{login}/watch           │
 │            │                  │                   │
 │   Redis (BFF cache,           Postgres            │
 │    tracking pool)              (rollups, peaks,   │
-│                                bookmarks, recap)  │
+│                                bookmarks, recap;  │
+│                                support outbox     │
+│                                planned R16)       │
 │  analytics-workers: IRC collector, 7TV tokenize, │
 │   minute rollups, heatmap scoring, recap builder │
 └──────────────────────────────────────────────────┘
@@ -79,7 +91,9 @@ streamclone-pulse (this repo)
 
 - MV3 replaces background pages with a service worker; network/secrets belong there.
 - Cross-origin fetch from a content script is subject to the **page's** CSP and is fragile on Twitch. The service worker runs in the extension origin with declared `host_permissions`, so it's the clean, stable path.
-- One poller per channel in the worker collapses N tabs → 1 request and survives tab churn.
+- **Current:** content scripts already run a tab-scoped live poll controller; the worker brokers fetches and caches.
+- **Planned (R14):** harden request coalescing so N tabs do not multiply identical recent-window fetches. Do not add `chrome.alarms` unless no-tab durable polling is an explicit product requirement.
+- **Planned (R14):** explicit **Full** history only after user chart action; chart preference migration v2. Recurring polls must use recent windows.
 
 ---
 
@@ -215,7 +229,7 @@ Single compact payload (see `requirements.md` for the full shape): `isLive`, `tr
 
 ### 6.3 Bookmarks — R10
 | Method | Path | Body / Query | Notes |
-|| Concern | Local dev opt-in | Hosted (default) |\r\n|---------|-------------|--------|\r\n| Backend URL | http://localhost:8081 � streampulse-backend compose (mixed-content **exempt** for localhost) ||------|| Concern | Local dev opt-in | Hosted (default) |\r\n|---------|-------------|--------|\r\n| Backend URL | http://localhost:8081 � streampulse-backend compose (mixed-content **exempt** for localhost) |-|-------|
+|--------|------|--------------|-------|
 | GET | `/v1/pulse/bookmarks` | `?login=&streamId=&vodId=&limit=50&cursor=` | Cursor pagination on `created_at`. User-scoped when hosted. |
 | POST | `/v1/pulse/bookmarks` | `{streamId,vodId,offsetSeconds,label,notes,score,source}` | Returns created record w/ `id`. Server stamps `created_at`. |
 | PATCH | `/v1/pulse/bookmarks/{id}` | `{label?,notes?}` | 404 if not owner. |
@@ -250,7 +264,7 @@ Today **hosted-production-vps** runs the hosted compose stack (streampulse-backe
 ## 8. Edge cases & error handling
 
 | Case | Behavior |
-|------|| Concern | Local dev opt-in | Hosted (default) |\r\n|---------|-------------|--------|\r\n| Backend URL | http://localhost:8081 � streampulse-backend compose (mixed-content **exempt** for localhost) |--|
+|------|----------|
 | Twitch SPA navigation (no reload) | Re-detect debounced; update overlay in place; never double-mount (R1.1/R1.4). |
 | Twitch DOM/class changes | Resilient selectors + fallback dock; overlay degrades to a floating panel rather than crashing. |
 | Backend down / wrong URL | Health probe fails → actionable "Can't reach StreamPulse at <url>" with Retry + Open settings (R8.1). Never zeroed charts. |
@@ -268,19 +282,22 @@ Today **hosted-production-vps** runs the hosted compose stack (streampulse-backe
 
 ## 9. Performance notes
 
-- **Polling, not streaming, in MVP.** 30s default (= `LIVE_HEAT_REFRESH_MS`) with jitter to avoid thundering herd; configurable 15/30/60s (R6.2). WebSockets are a later optimization, not needed for minute-granularity data.
-- **Read amplification control.** BFF Redis cache (10–15s TTL keyed by login) is the single most important perf lever — it decouples viewer count from backend compute.
+- **Tab-scoped recent polling (current + planned R14).** Content scripts already run a live poll controller; the service worker brokers fetches and caches. Hardened multi-tab coalescing and request-matrix tests are planned under RPR-1 / R14. Default interval remains ~30s with jitter; configurable 15/30/60s (R6.2). WebSockets are a later optimization.
+- **Explicit Full only (planned R14).** Full-history fetches must run only after an explicit user chart action. Chart preference migration v2 maps legacy values (including Full) once to `60m`; post-v2 user Full selection persists.
+- **Read amplification control.** BFF Redis cache (10–15s TTL keyed by login) plus planned SW coalescing decouple viewer/tab count from backend compute.
 - **Payload size.** Cap `rollups`/`lanes` to a rolling window (e.g. last 60 completed minutes) so the payload stays a few KB; peaks ≤ 10 (existing gating).
-- **Lanes are precomputed server-side** (normalized 0–100) so the extension does zero scoring math (R11.3) — keeps the content script light and parity guaranteed.
-- **Render cost.** Shadow DOM + a compact sparkline lane set; mini mode renders only the composite lane (R11.5). Avoid re-render on every poll — diff by `currentOffsetSeconds`.
-- **Cold cache:** BFF compute-on-miss must stay < ~150ms p95 (rollups+peaks are already cached by `heatmap.Cache`); recap compute-on-miss is bounded by one stream's rollups and is cached after first build.
+- **Lanes are precomputed server-side** (normalized 0–100) so the extension does zero scoring math (R11.3).
+- **Render cost.** Shadow DOM + compact lanes; avoid re-render on every poll — diff by `currentOffsetSeconds`.
+- **Cold cache (planned RPR-1):** BFF compute-on-miss must stay < ~150ms p95; extend `pulseRevalidateGate` for single-flight, failure cooldown, and per-key isolation.
+- **Telemetry isolation (planned R15).** Extension diagnostics and product analytics are planned as separate, versioned, default-off consents. No durable install/session ID. Server-generated correlation IDs are planned and must not be sent to product-analytics vendors. Portal error monitoring via `VITE_SENTRY_DSN` is a separate, existing website path — not extension consent.
 
 ---
 
-## 10. Open decisions (resolve during P0)
+## 10. Open decisions (resolve during RPR)
 
-- Package registry: GitHub Packages (private) vs public npm. Default: GitHub Packages.
-- `pulse-ui` extraction timing: after `pulse-core` proves out (P3), or inline in the extension first.
-- Device-token storage rotation policy (hosted only).
-- Whether recap cache (000039) ships in MVP or recap computes on-demand first. Default: on-demand first, add cache when read volume warrants.
+- npm trusted publishing + provenance only after Pulse is public and owner-authorized (Phase 6/7).
+- Device-token / multi-tenant auth remains deferred; public-first extension does not require beta keys.
+- Whether recap cache (000039) ships or stays compute-on-demand — default: on-demand first.
+- GitHub Actions billing must be healthy before remote CI can gate publication (do not flip visibility for free minutes).
+- See [`reliability-public-release-plan.md`](./reliability-public-release-plan.md) for irreversible checkpoints.
 

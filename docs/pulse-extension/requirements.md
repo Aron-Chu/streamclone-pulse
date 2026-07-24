@@ -376,6 +376,52 @@ Build **Level 2.5 first**: Twitch overlay + local backend + shared `pulse-core`.
 
 ---
 
+## R14–R18 — Reliability, privacy, support, packages, release (planned / RPR)
+
+Canonical program: [`reliability-public-release-plan.md`](./reliability-public-release-plan.md).
+These requirements **extend** R1–R13; they do not replace honesty/coverage rules.
+Unless noted, items below are **acceptance targets for later RPR phases** — not current
+shipped extension/backend behavior at base `7024649f`.
+
+### R14 — Request count and chart migration (planned)
+
+1. Chart preference migration **v2** maps every legacy range (including `Full`) **once** to `60m` under a v2 marker. Missing values and every legacy value are tested. Repeated migration is a no-op. After v2, an explicit user selection of `Full` **persists**.
+2. Recurring polling always uses a **recent** window. Full history is fetched **only** after explicit user action.
+3. Content scripts own tab-scoped polling; the service worker brokers, caches, and coalesces. No `chrome.alarms` unless no-tab durable polling is an explicit requirement.
+4. Cold/fresh/stale cache, failed refresh, multi-tab same login, channel navigation, coverage/backfill, and explicit-Full behaviors are covered by a tested request matrix. Extend `pulseRevalidateGate` (single-flight, coalesce, failure cooldown, per-key isolation) rather than replacing it.
+5. Sustained-mutation navigation, reinjection, listener cleanup, backfill cancellation, one-tabs-host/one-panel-host, and endpoint-count tests pass.
+
+### R15 — Privacy and consent (planned)
+
+1. Extension diagnostics and product analytics SHALL have **separate**, versioned, **default-off** consent with prominent in-product disclosure before collection. *(Not implemented in the MV3 package at `7024649f`.)*
+2. No durable install/session identifier for advertising or cross-site tracking.
+3. Public backend ingress SHALL generate a fresh cryptographically random 128-bit request/correlation ID; caller-supplied IDs are rejected/ignored except across authenticated internal boundaries. Correlation IDs are never sent to product-analytics processors and are never used as identity. *(Corrected public-ingress generation is planned under RPR-3.)*
+4. Privacy / product-support / security reporting channels SHALL be separate once each channel is verified and operational. Unverified addresses MUST NOT be published as active contacts.
+5. **Current portal-only note:** the website may initialize error monitoring when `VITE_SENTRY_DSN` is configured at build time (`streampulse-web` `initPortalSentry`). That is distinct from planned extension diagnostics consent (RPR-3).
+
+### R16 — Support routing (planned)
+
+1. Extension Help SHALL eventually open a **hosted** StreamPulse support form protected by Turnstile (no remote challenge script inside the MV3 package). *(Form, Turnstile, outbox, and Linear routing are not implemented at `7024649f`.)*
+2. v1 form is text-only: category, bounded subject/description, optional reply email with explicit contact consent, optional manually entered normalized Twitch context. No automatic screenshots, files, logs, cookies, or IDs.
+3. Accepted reports are durable (Postgres transaction + outbox) before success; issue trackers receive only minimal non-sensitive fields + a restricted-console link. Vendor outages must not lose accepted reports.
+4. Until R16.1 ships, operational Support pages MUST use only verified contact channels (see release blockers).
+
+### R17 — Public package boundary (planned)
+
+1. After provenance/license review, `@streampulse/pulse-core`, `pulse-charts`, and `analytics-console` are owned as public in-repo workspaces under this repository (`packages/`), Apache-2.0.
+2. Packed tarballs contain only allowed publish contents; clean-clone builds require no sibling private repos or private package tokens.
+3. npm publication uses trusted publishing only after Pulse is public and owner-authorized.
+
+### R18 — Release and reproducibility (planned)
+
+1. Store manifests contain **no** localhost permission; development manifests may include `localhost:8081`. Manifest splitting is an RPR-2 acceptance gate (not required as a Phase 0 code change).
+2. Package validation rejects source maps, env/secrets, absolute/sibling paths, out-of-repo `file:` deps, remote executable code, and local origins in store artifacts.
+3. Portal production scanning rejects `localhost` / `127.0.0.1` on every port (including 8081) in shipped JS/HTML.
+4. Local and remote CI must pass on the **same** SHA before store upload or visibility conversion. Workflow runs that execute no jobs do not count as green.
+5. Any prior locked CWS ZIP becomes **obsolete** after material manifest or privacy changes and must not be uploaded.
+6. Dedicated `support@` / `security@` mailboxes (or GitHub Private Vulnerability Reporting) MUST be owner-verified before publication as active channels.
+---
+
 ## Risks / open questions
 
 - **Twitch DOM volatility:** Twitch ships frequent DOM/class changes; overlay mount points and the `<video>` handle need resilient selectors and a fallback dock.
