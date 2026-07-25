@@ -35,9 +35,14 @@ const WORKFLOW_FORCE = [
 ]
 
 const PORTAL_PREFIX = /^streampulse-web\//
-const SHARED_UI = /^src\/ui\//
+/**
+ * Portal imports `@pulse-ext/ui` → `src/ui/**`, which transitively pulls `src/shared/**`
+ * (analyticsLinks, pastVods, emoteUrl, storage shims, etc.). Conservative rule: any
+ * change under src/ui or src/shared runs both extension and portal.
+ */
+const SHARED_EXT_PORTAL = /^src\/(ui|shared)\//
 const EXT_E2E = /^(tests\/e2e\/|playwright\.config|scripts\/capture-extension|scripts\/capture-cws)/
-const EXT_RUNTIME = /^(src\/|manifest\.json|popup\/|options\/|public\/|tests\/(?!e2e\/)|scripts\/(zip-dist|validate-extension|extension-package|write-extension|gen-icons|gen-cws|package))/
+const EXT_RUNTIME = /^(src\/|manifest\.json|popup\/|options\/|public\/|tests\/(?!e2e\/)|scripts\/(zip-dist|validate-extension|extension-package|write-extension|gen-icons|gen-cws|package|extension-target))/
 
 /**
  * Normalize path separators and strip leading ./ 
@@ -134,10 +139,11 @@ export function classifyChangedPaths(paths, opts = {}) {
 
     docsOnly = false
 
-    if (SHARED_UI.test(p)) {
+    if (SHARED_EXT_PORTAL.test(p)) {
       sharedUi = true
       extension = true
       portal = true
+      e2e = true
       continue
     }
     if (PORTAL_PREFIX.test(p)) {
@@ -201,9 +207,9 @@ export function classifyChangedPaths(paths, opts = {}) {
       classification: 'shared-ui',
       run_extension: true,
       run_portal: true,
-      run_e2e: e2e || true, // shared UI affects overlay — run e2e
+      run_e2e: true,
       force_full: false,
-      reason: 'src/ui shared between extension and portal',
+      reason: 'src/ui or src/shared imported by portal via @pulse-ext/ui',
       paths: normalized,
     }
   }
@@ -283,11 +289,24 @@ export function pathsFromDiffNameStatus(text) {
 }
 
 /**
+ * Parse extension-job E2E execution proof.
+ * Expected: "true" | "false" | "skipped" (string outputs from Actions).
+ * @param {unknown} raw
+ * @returns {'true'|'false'|'skipped'|null}
+ */
+export function normalizeE2eProof(raw) {
+  const v = String(raw ?? '').trim().toLowerCase()
+  if (v === 'true' || v === 'false' || v === 'skipped') return v
+  return null
+}
+
+/**
  * Validate final-gate inputs.
  * @param {object} input
  * @param {'success'|'failure'|'cancelled'|'skipped'} input.guardResult
  * @param {ClassifyResult|null} input.classification
  * @param {{extension?: string, portal?: string}} input.jobResults result of needs.*.result
+ * @param {string|undefined|null} [input.e2eExecuted] extension job output proof
  * @returns {{ ok: boolean, errors: string[] }}
  */
 export function evaluateFinalGate(input) {
@@ -312,6 +331,7 @@ export function evaluateFinalGate(input) {
 
   const expectExt = Boolean(c.run_extension) || Boolean(c.force_full)
   const expectPortal = Boolean(c.run_portal) || Boolean(c.force_full)
+  const expectE2e = Boolean(c.run_e2e) || Boolean(c.force_full)
 
   if (c.force_full) {
     for (const [name, res] of [
@@ -334,6 +354,34 @@ export function evaluateFinalGate(input) {
       else if (portal === 'failure' || portal === 'cancelled') errors.push(`portal ${portal}`)
     } else if (portal === 'failure' || portal === 'cancelled') {
       errors.push(`portal ${portal}`)
+    }
+  }
+
+  // E2E execution proof — only meaningful when the extension job was expected.
+  if (expectExt || expectE2e) {
+    if (ext === 'failure' || ext === 'cancelled') {
+      // already recorded above when expectExt; still note e2e when required
+      if (expectE2e && ext !== 'failure' && ext !== 'cancelled') {
+        /* noop */
+      }
+    } else if (ext === 'skipped' && expectE2e) {
+      errors.push('e2e was required but extension job skipped')
+    } else if (ext === 'success' || (expectE2e && ext !== 'skipped')) {
+      const proof = normalizeE2eProof(input.e2eExecuted)
+      if (expectE2e) {
+        if (proof == null) errors.push('e2e execution proof missing or malformed')
+        else if (proof === 'skipped') errors.push('e2e was required but proof is skipped')
+        else if (proof !== 'true') errors.push(`e2e was required but proof is ${proof}`)
+      } else {
+        // E2E not required: proof must be skipped (or absent treated as skipped for older classifiers)
+        if (proof != null && proof !== 'skipped' && proof !== 'false') {
+          // Allow true if it ran anyway, but false is invalid when job succeeded without e2e step writing skipped
+          if (proof === 'false') errors.push('e2e proof is false while extension succeeded')
+        }
+        if (proof == null && expectExt && ext === 'success') {
+          errors.push('e2e execution proof missing (expected skipped when run_e2e=false)')
+        }
+      }
     }
   }
 

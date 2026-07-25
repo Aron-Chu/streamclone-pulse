@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Final CI gate — validates classifier + job outcomes.
+ * Final CI gate — validates classifier + job outcomes + E2E execution proof.
  * Usage:
  *   node scripts/ci-final-gate.mjs \
  *     --guard success \
  *     --classification ci-classification/classification.json \
  *     --extension skipped \
- *     --portal success
+ *     --portal success \
+ *     --e2e-executed skipped
  */
 import { readFileSync } from 'node:fs'
 import { evaluateFinalGate } from './ci-change-classifier.mjs'
@@ -17,6 +18,7 @@ function main(argv) {
   let classificationPath = ''
   let extension = 'skipped'
   let portal = 'skipped'
+  let e2eExecuted = ''
 
   while (args.length) {
     const a = args.shift()
@@ -24,6 +26,7 @@ function main(argv) {
     else if (a === '--classification') classificationPath = args.shift() || ''
     else if (a === '--extension') extension = args.shift() || 'skipped'
     else if (a === '--portal') portal = args.shift() || 'skipped'
+    else if (a === '--e2e-executed') e2eExecuted = args.shift() || ''
     else {
       console.error(`unknown arg ${a}`)
       process.exit(2)
@@ -41,6 +44,7 @@ function main(argv) {
     guardResult: guard,
     classification,
     jobResults: { extension, portal },
+    e2eExecuted: e2eExecuted === '' ? undefined : e2eExecuted,
   })
 
   if (!result.ok) {

@@ -102,8 +102,8 @@ No public visibility or store submission until:
 | ID | Item | Status |
 |----|------|--------|
 | RPR-0 | Baseline + documentation consistency | **COMPLETE** |
-| RPR-1 | Request matrix + chart migration v2 + coalesce | pending |
-| RPR-2 | Manifest generation + package validation | complete |
+| RPR-1 | Request matrix + chart migration v2 + coalesce | pending (acceptance repairs in flight) |
+| RPR-2 | Manifest generation + package validation | pending (acceptance repairs in flight) |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | pending |
 | RPR-4 | Hosted support form + outbox + minimal tracker fields | pending |
 | RPR-5 | Aggregate product analytics (default off) | pending |
@@ -111,6 +111,19 @@ No public visibility or store submission until:
 | RPR-7 | Governance files + history/Actions audit | pending |
 | RPR-8 | Ruleset + break-glass (post green CI) | pending |
 | RPR-9 | Publication / store gates (owner-authorized) | pending |
+
+### CI fork / private-package limitation (until RPR-6)
+
+Code-changing PRs from **forks** cannot pass private-package CI: untrusted heads do not receive `STREAMPULSE_BACKEND_CHECKOUT_TOKEN`, and the workflow correctly refuses stale public package fallbacks.
+
+**Maintainer retest procedure (never `pull_request_target`):**
+
+1. Review the fork PR’s workflow and package-script diffs carefully.
+2. Create a trusted **same-repository** branch that contains only the reviewed commits (or an equivalent cherry-pick).
+3. Open or push that branch so CI runs with repository secrets.
+4. Merge only after required checks are green on the trusted branch.
+
+Do **not** use `pull_request_target` to inject secrets into untrusted workflow code.
 
 ### RPR-0 sub-gates
 

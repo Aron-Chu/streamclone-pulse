@@ -1,5 +1,10 @@
 # StreamPulse CI — path-routed graph with stable final gate.
 # Action pins: full commit SHA with release tag in comments.
+#
+# Fork limitation (until RPR-6): code-changing PRs from forks cannot pass private-
+# package CI because STREAMPULSE_BACKEND_CHECKOUT_TOKEN is unavailable to untrusted
+# heads. Maintainers must retest by reviewing workflow + package-script diffs, then
+# pushing a trusted same-repository branch. Never use pull_request_target.
 name: CI
 
 on:
@@ -25,6 +30,8 @@ concurrency:
 env:
   # Keep in sync with scripts/ci-pulse-packages.pin
   PULSE_PACKAGES_PIN: 'f663d002ff22351629dcaa9ed770a9c4a869ef92'
+  # Do not retain routine Gitleaks SARIF artifacts.
+  GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
 
 jobs:
   guard:
@@ -117,6 +124,8 @@ jobs:
     if: needs.guard.outputs.run_extension == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    outputs:
+      e2e_executed: ${{ steps.e2e_proof.outputs.e2e_executed }}
     steps:
       # actions/checkout@v4
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -197,8 +206,31 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Mocked extension E2E
+        id: e2e_run
         if: needs.guard.outputs.run_e2e == 'true'
         run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
+
+      # Positive proof only after the E2E step completes successfully (or skipped when not required).
+      - name: Record E2E execution proof
+        id: e2e_proof
+        if: always() && !cancelled()
+        run: |
+          set -euo pipefail
+          required='${{ needs.guard.outputs.run_e2e }}'
+          if [[ "${required}" == "true" ]]; then
+            # Step result is success only when the mocked E2E command exited 0.
+            if [[ "${{ steps.e2e_run.outcome }}" == "success" ]]; then
+              echo "e2e_executed=true" >> "$GITHUB_OUTPUT"
+              echo "e2e_executed=true"
+            else
+              echo "e2e_executed=false" >> "$GITHUB_OUTPUT"
+              echo "e2e_executed=false (e2e outcome=${{ steps.e2e_run.outcome }})"
+              exit 1
+            fi
+          else
+            echo "e2e_executed=skipped" >> "$GITHUB_OUTPUT"
+            echo "e2e_executed=skipped"
+          fi
 
       - name: Store-target package validation
         run: |
@@ -309,8 +341,14 @@ jobs:
       - name: Evaluate final gate
         run: |
           set -euo pipefail
+          e2e_proof='${{ needs.extension.outputs.e2e_executed }}'
+          # When extension job is skipped, Actions yields empty output — treat as skipped proof.
+          if [[ -z "${e2e_proof}" ]]; then
+            e2e_proof='skipped'
+          fi
           node scripts/ci-final-gate.mjs \
             --guard "${{ needs.guard.result }}" \
             --classification ci-classification/classification.json \
             --extension "${{ needs.extension.result }}" \
-            --portal "${{ needs.portal.result }}"
+            --portal "${{ needs.portal.result }}" \
+            --e2e-executed "${e2e_proof}"

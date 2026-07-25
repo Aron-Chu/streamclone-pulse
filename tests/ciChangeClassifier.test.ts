@@ -2,8 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyChangedPaths,
   evaluateFinalGate,
+  normalizeE2eProof,
   pathsFromDiffNameStatus,
 } from '../scripts/ci-change-classifier.mjs'
+
+const SHARED_DEPS = [
+  'src/shared/analyticsLinks.ts',
+  'src/shared/pastVods.ts',
+  'src/shared/emoteUrl.ts',
+]
 
 describe('ci-change-classifier', () => {
   it('classifies docs-only markdown', () => {
@@ -26,16 +33,37 @@ describe('ci-change-classifier', () => {
     const r = classifyChangedPaths(['scripts/zip-dist.mjs'])
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(false)
+    expect(r.run_e2e).toBe(false)
+    expect(r.classification).toBe('extension')
   })
 
   it('classifies extension runtime with e2e', () => {
     const r = classifyChangedPaths(['src/background/api.ts', 'manifest.json'])
     expect(r.run_extension).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal).toBe(false)
     expect(r.classification).toBe('extension-e2e')
   })
 
-  it('classifies src/ui as shared (extension + portal)', () => {
+  for (const path of SHARED_DEPS) {
+    it(`classifies known portal shared dependency ${path}`, () => {
+      const r = classifyChangedPaths([path])
+      expect(r.classification).toBe('shared-ui')
+      expect(r.run_extension).toBe(true)
+      expect(r.run_portal).toBe(true)
+      expect(r.run_e2e).toBe(true)
+    })
+  }
+
+  it('classifies a new file under src/shared as shared', () => {
+    const r = classifyChangedPaths(['src/shared/brandNewHelper.ts'])
+    expect(r.classification).toBe('shared-ui')
+    expect(r.run_extension).toBe(true)
+    expect(r.run_portal).toBe(true)
+    expect(r.run_e2e).toBe(true)
+  })
+
+  it('classifies direct src/ui changes as shared', () => {
     const r = classifyChangedPaths(['src/ui/Overlay.tsx'])
     expect(r.classification).toBe('shared-ui')
     expect(r.run_extension).toBe(true)
@@ -51,11 +79,20 @@ describe('ci-change-classifier', () => {
     expect(r.run_e2e).toBe(true)
   })
 
+  it('classifies classifier script changes as workflow full graph', () => {
+    const r = classifyChangedPaths(['scripts/ci-change-classifier.mjs'])
+    expect(r.classification).toBe('workflow')
+    expect(r.run_extension).toBe(true)
+    expect(r.run_portal).toBe(true)
+    expect(r.run_e2e).toBe(true)
+  })
+
   it('classifies unknown paths as fail-safe full', () => {
     const r = classifyChangedPaths(['weird/unknown.bin'])
     expect(r.classification).toBe('unknown')
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
+    expect(r.run_e2e).toBe(true)
   })
 
   it('handles renames (old and new paths)', () => {
@@ -63,6 +100,13 @@ describe('ci-change-classifier', () => {
     expect(paths).toEqual(['docs/a.md', 'docs/b.md'])
     const r = classifyChangedPaths(paths)
     expect(r.classification).toBe('docs-only')
+  })
+
+  it('rename into src/shared forces shared portal+extension', () => {
+    const paths = pathsFromDiffNameStatus('R100\tsrc/background/old.ts\tsrc/shared/newShared.ts\n')
+    const r = classifyChangedPaths(paths)
+    expect(r.run_portal).toBe(true)
+    expect(r.run_extension).toBe(true)
   })
 
   it('empty paths fail-safe full', () => {
@@ -82,6 +126,29 @@ describe('ci-change-classifier', () => {
   it('package-lock forces full graph', () => {
     const r = classifyChangedPaths(['package-lock.json'])
     expect(r.classification).toBe('workflow')
+  })
+
+  it('PR-mode mixed portal+extension without shared alone is fail-safe full', () => {
+    const r = classifyChangedPaths([
+      'streampulse-web/src/main.tsx',
+      'src/background/api.ts',
+    ])
+    expect(r.run_extension).toBe(true)
+    expect(r.run_portal).toBe(true)
+    expect(r.run_e2e).toBe(true)
+  })
+})
+
+describe('normalizeE2eProof', () => {
+  it('accepts true/false/skipped', () => {
+    expect(normalizeE2eProof('true')).toBe('true')
+    expect(normalizeE2eProof('FALSE')).toBe('false')
+    expect(normalizeE2eProof('skipped')).toBe('skipped')
+  })
+  it('rejects malformed', () => {
+    expect(normalizeE2eProof('')).toBe(null)
+    expect(normalizeE2eProof('yes')).toBe(null)
+    expect(normalizeE2eProof(undefined)).toBe(null)
   })
 })
 
@@ -149,14 +216,16 @@ describe('evaluateFinalGate', () => {
         classification: 'forced-full',
         run_extension: true,
         run_portal: true,
+        run_e2e: true,
         force_full: true,
       },
       jobResults: { extension: 'success', portal: 'skipped' },
+      e2eExecuted: 'true',
     })
     expect(r.ok).toBe(false)
   })
 
-  it('passes force-full when both succeed', () => {
+  it('passes force-full when both succeed and e2e proof true', () => {
     const r = evaluateFinalGate({
       guardResult: 'success',
       classification: {
@@ -164,10 +233,134 @@ describe('evaluateFinalGate', () => {
         classification: 'forced-full',
         run_extension: true,
         run_portal: true,
+        run_e2e: true,
         force_full: true,
       },
       jobResults: { extension: 'success', portal: 'success' },
+      e2eExecuted: 'true',
     })
     expect(r.ok).toBe(true)
+  })
+
+  it('fails when e2e required but proof skipped', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'extension-e2e',
+        run_extension: true,
+        run_e2e: true,
+      },
+      jobResults: { extension: 'success', portal: 'skipped' },
+      e2eExecuted: 'skipped',
+    })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e) => /e2e/i.test(e))).toBe(true)
+  })
+
+  it('fails when e2e required but proof absent', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'extension-e2e',
+        run_extension: true,
+        run_e2e: true,
+      },
+      jobResults: { extension: 'success', portal: 'skipped' },
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  it('fails when e2e required but proof false', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'extension-e2e',
+        run_extension: true,
+        run_e2e: true,
+      },
+      jobResults: { extension: 'success', portal: 'skipped' },
+      e2eExecuted: 'false',
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  it('fails when e2e required but extension cancelled', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'extension-e2e',
+        run_extension: true,
+        run_e2e: true,
+      },
+      jobResults: { extension: 'cancelled', portal: 'skipped' },
+      e2eExecuted: 'true',
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  it('passes when e2e not required and proof skipped', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'extension',
+        run_extension: true,
+        run_e2e: false,
+      },
+      jobResults: { extension: 'success', portal: 'skipped' },
+      e2eExecuted: 'skipped',
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('fails when e2e not required but proof missing on successful extension', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'extension',
+        run_extension: true,
+        run_e2e: false,
+      },
+      jobResults: { extension: 'success', portal: 'skipped' },
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  it('passes shared-ui when both jobs succeed and e2e true', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'shared-ui',
+        run_extension: true,
+        run_portal: true,
+        run_e2e: true,
+      },
+      jobResults: { extension: 'success', portal: 'success' },
+      e2eExecuted: 'true',
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('fails classifier regression that claims no e2e while extension skipped e2e silently', () => {
+    // Classifier says e2e required; job reports success but proof says skipped → red.
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'shared-ui',
+        run_extension: true,
+        run_portal: true,
+        run_e2e: true,
+      },
+      jobResults: { extension: 'success', portal: 'success' },
+      e2eExecuted: 'skipped',
+    })
+    expect(r.ok).toBe(false)
   })
 })
