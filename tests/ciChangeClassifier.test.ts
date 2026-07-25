@@ -71,6 +71,53 @@ describe('ci-change-classifier', () => {
     expect(r.run_e2e).toBe(true)
   })
 
+  const PORTAL_CONTENT_DEPS = [
+    'src/content/bridge.ts',
+    'src/content/twitch.ts',
+    'src/content/twitchVodDiscovery.ts',
+    'src/content/twitchChat.ts',
+    'src/content/twitchChatControls.ts',
+    'src/content/twitchLayout.ts',
+    'src/content/twitchSidebarChrome.ts',
+    'src/content/routeSyncScheduler.ts',
+    'src/content/resolveOverlayHostVisibility.ts',
+    'src/content/mount.tsx',
+    'src/content/livePoll.ts',
+    'src/content/entry.ts',
+    'src/content/contentActivation.ts',
+  ]
+
+  for (const path of PORTAL_CONTENT_DEPS) {
+    it(`classifies portal-bundled content module ${path}`, () => {
+      const r = classifyChangedPaths([path])
+      expect(r.classification).toBe('shared-ui')
+      expect(r.run_extension).toBe(true)
+      expect(r.run_portal).toBe(true)
+      expect(r.run_e2e).toBe(true)
+    })
+  }
+
+  it('classifies a newly introduced content dependency as shared', () => {
+    const r = classifyChangedPaths(['src/content/brandNewPortalDep.ts'])
+    expect(r.classification).toBe('shared-ui')
+    expect(r.run_extension).toBe(true)
+    expect(r.run_portal).toBe(true)
+    expect(r.run_e2e).toBe(true)
+  })
+
+  it('fails final gate when content change requires portal but portal skipped', () => {
+    const c = classifyChangedPaths(['src/content/bridge.ts'])
+    expect(c.run_portal).toBe(true)
+    const gate = evaluateFinalGate({
+      guardResult: 'success',
+      classification: c,
+      jobResults: { extension: 'success', portal: 'skipped' },
+      e2eExecuted: 'true',
+    })
+    expect(gate.ok).toBe(false)
+    expect(gate.errors.some((e) => /portal/i.test(e))).toBe(true)
+  })
+
   it('classifies workflow/config as full graph', () => {
     const r = classifyChangedPaths(['.github/workflows/ci.yml'])
     expect(r.classification).toBe('workflow')

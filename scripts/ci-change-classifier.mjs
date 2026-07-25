@@ -36,11 +36,12 @@ const WORKFLOW_FORCE = [
 
 const PORTAL_PREFIX = /^streampulse-web\//
 /**
- * Portal imports `@pulse-ext/ui` → `src/ui/**`, which transitively pulls `src/shared/**`
- * (analyticsLinks, pastVods, emoteUrl, storage shims, etc.). Conservative rule: any
- * change under src/ui or src/shared runs both extension and portal.
+ * Portal imports `@pulse-ext/ui` → `src/ui/**`, which transitively pulls
+ * `src/shared/**` and `src/content/**` (e.g. bridge.ts via PastVodsSection,
+ * and Overlay-path Twitch helpers). Conservative contract: any change under
+ * src/ui, src/shared, or src/content runs extension + portal + E2E.
  */
-const SHARED_EXT_PORTAL = /^src\/(ui|shared)\//
+const SHARED_EXT_PORTAL = /^src\/(ui|shared|content)\//
 const EXT_E2E = /^(tests\/e2e\/|playwright\.config|scripts\/capture-extension|scripts\/capture-cws)/
 const EXT_RUNTIME = /^(src\/|manifest\.json|popup\/|options\/|public\/|tests\/(?!e2e\/)|scripts\/(zip-dist|validate-extension|extension-package|write-extension|gen-icons|gen-cws|package|extension-target))/
 
@@ -209,7 +210,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_portal: true,
       run_e2e: true,
       force_full: false,
-      reason: 'src/ui or src/shared imported by portal via @pulse-ext/ui',
+      reason: 'src/ui, src/shared, or src/content bundled by portal via @pulse-ext/ui',
       paths: normalized,
     }
   }

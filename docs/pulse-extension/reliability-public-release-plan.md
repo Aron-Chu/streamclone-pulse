@@ -1,6 +1,6 @@
 # StreamPulse — Reliability, Public Release, and Repository Governance
 
-**Status:** Phases 0–2 **complete** (RPR-0 docs/CI; RPR-1 request/lifecycle; RPR-2 store artifacts). Exact-SHA force-full verified on master `cf2ef08`. RPR-6 (public packages) remains open.  
+**Status:** Phase 0 **complete**. Phases 1–2 (**RPR-1** / **RPR-2**) are **in progress** again for acceptance repair after premature closure. Force-full run `30138875909` on `cf2ef08` remains positive evidence, not full acceptance. RPR-6 (public packages) remains open.  
 **Canonical execution plan** for the reliability / public-release / governance program.  
 Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./requirements.md) (R14–R18 for new gates; **R13 remains Emote metadata readiness**), [`design.md`](./design.md), [`release.md`](./release.md).
 
@@ -104,8 +104,8 @@ No public visibility or store submission until:
 | ID | Item | Status |
 |----|------|--------|
 | RPR-0 | Baseline + documentation consistency | **COMPLETE** |
-| RPR-1 | Request matrix + chart migration v2 + coalesce | **COMPLETE** (`cf2ef08`, force-full `30138875909`) |
-| RPR-2 | Manifest generation + package validation | **COMPLETE** (`cf2ef08`, force-full `30138875909`; not uploaded) |
+| RPR-1 | Request matrix + chart migration v2 + coalesce | **IN PROGRESS** (reopened; prior force-full `30138875909` is evidence only) |
+| RPR-2 | Manifest generation + package validation | **IN PROGRESS** (reopened; prior force-full `30138875909` is evidence only; not uploaded) |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | pending |
 | RPR-4 | Hosted support form + outbox + minimal tracker fields | pending |
 | RPR-5 | Aggregate product analytics (default off) | pending |
@@ -120,12 +120,16 @@ Code-changing PRs from **forks** cannot pass private-package CI: untrusted heads
 
 **Maintainer retest procedure (never `pull_request_target`):**
 
-1. Review the fork PR’s workflow and package-script diffs carefully.
+1. Review **all executable changes** from the fork carefully — not only workflow
+   and package-script files. Treat application source, tests, build config, and
+   CI scripts as part of the trust boundary until RPR-6 removes private package
+   checkout.
 2. Create a trusted **same-repository** branch that contains only the reviewed commits (or an equivalent cherry-pick).
 3. Open or push that branch so CI runs with repository secrets.
 4. Merge only after required checks are green on the trusted branch.
 
 Do **not** use `pull_request_target` to inject secrets into untrusted workflow code.
+RPR-6 remains the real removal of this private-package trust boundary.
 
 ### RPR-0 sub-gates
 

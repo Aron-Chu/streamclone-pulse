@@ -3,8 +3,9 @@
 #
 # Fork limitation (until RPR-6): code-changing PRs from forks cannot pass private-
 # package CI because STREAMPULSE_BACKEND_CHECKOUT_TOKEN is unavailable to untrusted
-# heads. Maintainers must retest by reviewing workflow + package-script diffs, then
-# pushing a trusted same-repository branch. Never use pull_request_target.
+# heads. Maintainers must review all executable changes from the fork (not only
+# workflow/package-script files), then push a trusted same-repository branch.
+# Never use pull_request_target. RPR-6 removes this private-package trust boundary.
 name: CI
 
 on:
