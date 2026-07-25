@@ -12,6 +12,7 @@ import {
 } from './mount.tsx'
 
 import { overlaySessionKey, placeholderLoginForContext, shouldActivateOverlay } from './contentActivation.ts'
+import { createRouteSyncScheduler } from './routeSyncScheduler.ts'
 
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
@@ -46,6 +47,9 @@ let lastRosterEligible = true
 let sessionOpenedAtMs: number | null = null
 
 let overlayPrefsListenerInstalled = false
+
+/** Bumped before every async channel/VOD activation; stale completions must no-op. */
+let activationGeneration = 0
 
 const livePoll = createLivePollController(() => parseTwitchPage(window.location.pathname))
 
@@ -152,9 +156,9 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   installOverlayPrefsListener()
 
   const pageIsLive = detectTwitchChannelLive(context)
-  const backendUrl = await getBackendUrl()
-  const hosted = isHostedBackendUrl(backendUrl)
-  const localStack = isLocalStackBackendUrl(backendUrl)
+  const generation = ++activationGeneration
+  const intendedLogin = login
+  const intendedPath = window.location.pathname
 
   if (activeSession?.kind === 'channel' && activeSession.login === login) {
     updateOverlayContext(context)
@@ -163,41 +167,61 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
       void refreshChannelPulse(login)
     }
     lastPageIsLive = pageIsLive
-    livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted)
+    livePoll.sync(login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(await getBackendUrl()))
     return
   }
 
-  activeSession = { kind: 'channel', login }
+  // Capture session intent before any await that could race with navigation.
+  activeSession = { kind: 'channel', login: intendedLogin }
   sessionOpenedAtMs = Date.now()
   lastCollecting = false
   lastRosterEligible = true
   lastPageIsLive = pageIsLive
 
-  mountOverlay(login, null, context, {
+  const backendUrl = await getBackendUrl()
+  if (generation !== activationGeneration) return
+  if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
+  if (window.location.pathname !== intendedPath && parseTwitchPage(window.location.pathname).login !== intendedLogin) {
+    return
+  }
+
+  const hosted = isHostedBackendUrl(backendUrl)
+  const localStack = isLocalStackBackendUrl(backendUrl)
+
+  mountOverlay(intendedLogin, null, context, {
     sessionOpenedAtMs,
-    onPulseRefresh: () => refreshChannelPulse(login),
+    onPulseRefresh: () => refreshChannelPulse(intendedLogin),
     ...overlayMountOptions,
   })
   updateOverlayVodState({ vodPulse: null, loading: false })
-  livePoll.sync(login, context, false, hosted)
+  livePoll.sync(intendedLogin, context, false, hosted)
 
   const [policy, watchlist] = await Promise.all([getAutoTrackPolicy(), getWatchlist()])
-  const onWatchlist = watchlist.includes(login.toLowerCase())
+  if (generation !== activationGeneration) return
+  if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
+
+  const onWatchlist = watchlist.includes(intendedLogin.toLowerCase())
   const autoTrack = localStack && (policy === 'followed' || (policy === 'ask' && onWatchlist))
-  const message = await loadInitialChannelPayload(login, autoTrack, hosted)
+  const message = await loadInitialChannelPayload(intendedLogin, autoTrack, hosted)
+  if (generation !== activationGeneration) return
+  if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
+
   const payload = message.payload
   lastCollecting = payload?.tracking ?? false
   lastRosterEligible = isPulseRosterEligible(payload)
 
-  mountOverlay(login, payload, context, {
+  const contextNow = parseTwitchPage(window.location.pathname)
+  if (contextNow.kind !== 'channel' || contextNow.login !== intendedLogin) return
+
+  mountOverlay(intendedLogin, payload, contextNow, {
     sessionOpenedAtMs,
     coverageTier: message.coverageTier ?? null,
     pendingTrackPrompt: localStack && policy === 'ask' && !autoTrack && !payload?.tracking && lastRosterEligible,
-    onPulseRefresh: () => refreshChannelPulse(login),
+    onPulseRefresh: () => refreshChannelPulse(intendedLogin),
     ...overlayMountOptions,
   })
 
-  livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted)
+  livePoll.sync(intendedLogin, contextNow, lastCollecting && lastRosterEligible, hosted)
 }
 
 async function activateVod(context: TwitchPageContext): Promise<void> {
@@ -211,6 +235,7 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   livePoll.stop()
 
   const login = placeholderLoginForContext(context)
+  const generation = ++activationGeneration
 
   if (activeSession?.kind === 'vod' && activeSession.vodId === vodId) {
     updateOverlayContext(context)
@@ -230,9 +255,12 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   updateOverlayVodState({ vodPulse: null, loading: true })
 
   await fetchVodPulse(vodId)
+  if (generation !== activationGeneration) return
+  if (activeSession?.kind !== 'vod' || activeSession.vodId !== vodId) return
 }
 
 function deactivate(): void {
+  activationGeneration += 1
   activeSession = null
   sessionOpenedAtMs = null
   lastPageIsLive = false
@@ -266,6 +294,11 @@ onPulseUpdate((message: PulseUpdateMessage) => {
     return
   }
 
+  if (message.softStaleRefresh) {
+    updateOverlayPayload(null, undefined, message.coverageTier ?? null, { softStaleRefresh: true })
+    return
+  }
+
   updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null)
 
   lastCollecting = message.payload?.tracking ?? false
@@ -284,30 +317,30 @@ onVodPulseUpdate((message: VodPulseUpdateMessage) => {
   applyVodPulseMessage(message)
 })
 
-let navTimer: ReturnType<typeof setTimeout> | null = null
+const NAV_MAX_WAIT_MS = 1_200
 
-function scheduleSync(): void {
-  if (navTimer) clearTimeout(navTimer)
-  navTimer = setTimeout(syncFromLocation, NAV_DEBOUNCE_MS)
-}
+const routeSync = createRouteSyncScheduler(syncFromLocation, {
+  debounceMs: NAV_DEBOUNCE_MS,
+  maxWaitMs: NAV_MAX_WAIT_MS,
+})
 
 const observer = new MutationObserver(() => {
-  scheduleSync()
+  routeSync.schedule()
 })
 
 observer.observe(document.documentElement, { childList: true, subtree: true })
-window.addEventListener('popstate', scheduleSync)
+window.addEventListener('popstate', () => routeSync.schedule())
 
 const originalPushState = history.pushState.bind(history)
 history.pushState = (...args) => {
   originalPushState(...args)
-  scheduleSync()
+  routeSync.schedule()
 }
 
 const originalReplaceState = history.replaceState.bind(history)
 history.replaceState = (...args) => {
   originalReplaceState(...args)
-  scheduleSync()
+  routeSync.schedule()
 }
 
 setInterval(() => {
@@ -331,6 +364,6 @@ setInterval(() => {
   }
 }, 5000)
 
-syncFromLocation()
+routeSync.schedule()
 
 export {}

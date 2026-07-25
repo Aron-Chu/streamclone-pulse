@@ -210,12 +210,15 @@ export function LiveStatsBand({
   const fullTimelineRequestedRef = useRef(false)
   /** After the user picks a range, ignore late async default hydration for this stream. */
   const chartWindowUserPickedRef = useRef(false)
+  /** Stored Full preference must not auto-fetch until explicit Load / range in this activation. */
+  const [fullHistoryUnlocked, setFullHistoryUnlocked] = useState(false)
   const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
   const onRequestFullTimelineRef = useRef(onRequestFullTimeline)
   onRequestFullTimelineRef.current = onRequestFullTimeline
 
   useEffect(() => {
     chartWindowUserPickedRef.current = false
+    setFullHistoryUnlocked(false)
   }, [payload.streamId])
 
   useEffect(() => {
@@ -285,16 +288,12 @@ export function LiveStatsBand({
   const [activityExpanded, setActivityExpanded] = useState(false)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!fullTimeline) return
-    // Only force Full when the user has not already chosen another range.
-    if (chartWindowUserPickedRef.current) return
-    setChartWindow('full')
-  }, [fullTimeline])
-
   const handleChartWindowChange = (window: ChartTimelineWindow): void => {
     chartWindowUserPickedRef.current = true
     setChartWindow(window)
+    if (window === 'full' || window === '2h' || window === '4h') {
+      setFullHistoryUnlocked(true)
+    }
     onChartWindowChange?.(window)
   }
 
@@ -304,6 +303,17 @@ export function LiveStatsBand({
   }, [payload.streamId, chartWindow])
 
   useEffect(() => {
+    if (!fullTimeline) return
+    setFullHistoryUnlocked(true)
+    // Only force Full when the user has not already chosen another range.
+    if (chartWindowUserPickedRef.current) return
+    setChartWindow('full')
+  }, [fullTimeline])
+
+  useEffect(() => {
+    if (!fullHistoryUnlocked && !fullTimeline) {
+      return
+    }
     if (!chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)) {
       return
     }
@@ -321,7 +331,7 @@ export function LiveStatsBand({
       setTimelineLoading(false)
       fullTimelineRequestedRef.current = false
     })
-  }, [chartWindow, currentOffsetSeconds, hasFullRollups, payload])
+  }, [chartWindow, currentOffsetSeconds, hasFullRollups, payload, fullHistoryUnlocked, fullTimeline])
 
   useEffect(() => {
     onPinOffset?.(null)
@@ -711,6 +721,20 @@ export function LiveStatsBand({
                   onClick={onLoadFromStart}
                 >
                   {loadFromStartBusy ? 'Loading…' : 'Load full stream chart'}
+                </button>
+              ) : null}
+              {chartWindow === 'full' && !fullHistoryUnlocked && !hasFullRollups && onRequestFullTimeline ? (
+                <button
+                  type="button"
+                  style={styles.streamStartLink}
+                  disabled={timelineLoading || demoMode}
+                  title="Full is remembered as a preference but must be loaded for each new stream activation."
+                  onClick={() => {
+                    setFullHistoryUnlocked(true)
+                    chartWindowUserPickedRef.current = true
+                  }}
+                >
+                  {timelineLoading ? 'Loading…' : 'Load full history'}
                 </button>
               ) : null}
             </p>

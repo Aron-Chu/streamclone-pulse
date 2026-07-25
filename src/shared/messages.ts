@@ -477,6 +477,8 @@ export interface PulseUpdateMessage {
   payload: PulsePayload | null
   error?: string
   coverageTier?: ExtensionCoverageTierResponse | null
+  /** Non-fatal: stale revalidation failed; keep showing cached chart. */
+  softStaleRefresh?: boolean
 }
 
 export interface VodPulseUpdateMessage {

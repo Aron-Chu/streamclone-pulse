@@ -1,162 +1,286 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
-  coalesceInFlight,
+  createPulseCoordinatorState,
+  handleGetPulse,
+  pulseCacheKey,
+} from '../src/background/pulseGetCoordinator.ts'
+import {
+  PULSE_CACHE_TTL_MS,
+  type PulseCacheEntry,
+  type PulseCacheWindow,
+} from '../src/shared/storage.ts'
+import {
   PULSE_REVALIDATE_FAILURE_COOLDOWN_MS,
   PULSE_REVALIDATE_MIN_GAP_MS,
-  shouldAllowPulseRevalidate,
 } from '../src/background/pulseRevalidateGate.ts'
-import {
-  classifyPulseCacheFreshness,
-  createRequestGeneration,
-  planGetPulseNetwork,
-  recurringPollWindow,
-} from '../src/background/pulseRequestPolicy.ts'
 
-describe('pulse request-count matrix', () => {
-  it('classifies cold / fresh / stale cache ages', () => {
-    expect(classifyPulseCacheFreshness(null)).toBe('cold')
-    expect(classifyPulseCacheFreshness(0)).toBe('fresh')
-    expect(classifyPulseCacheFreshness(PULSE_REVALIDATE_MIN_GAP_MS - 1)).toBe('fresh')
-    expect(classifyPulseCacheFreshness(PULSE_REVALIDATE_MIN_GAP_MS)).toBe('stale')
-    expect(classifyPulseCacheFreshness(50_000)).toBe('cold')
+function fakePayload(login = 'xqc'): PulseCacheEntry['payload'] {
+  return {
+    login,
+    streamId: 's1',
+    tracking: true,
+    currentOffsetSeconds: 600,
+    rollups: [],
+  } as PulseCacheEntry['payload']
+}
+
+describe('production pulse GET_PULSE coordinator matrix', () => {
+  it('cold cache one tab → exactly one sync fetch', async () => {
+    const cache = new Map<string, PulseCacheEntry>()
+    let fetches = 0
+    const state = createPulseCoordinatorState()
+    const result = await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      {
+        getCached: async (login, window) => cache.get(pulseCacheKey(login, window)) ?? null,
+        getCoverage: async () => null,
+        fetchPulse: async (login, window) => {
+          fetches += 1
+          const payload = fakePayload(login)
+          cache.set(pulseCacheKey(login, window), {
+            payload,
+            fetchedAt: Date.now(),
+            window,
+            streamId: 's1',
+          })
+          return { payload, coverageTier: null }
+        },
+      },
+      state,
+    )
+    expect(fetches).toBe(1)
+    expect(result.network.syncFetches).toBe(1)
+    expect(result.payload?.login).toBe('xqc')
   })
 
-  it('fresh cache plans zero network', () => {
-    expect(planGetPulseNetwork({ freshness: 'fresh', window: 'recent' })).toEqual({
-      syncFetch: false,
-      asyncRevalidate: false,
-    })
-  })
-
-  it('stale cache plans one coalesced async revalidate', () => {
-    expect(planGetPulseNetwork({ freshness: 'stale', window: 'recent' })).toEqual({
-      syncFetch: false,
-      asyncRevalidate: true,
-    })
-  })
-
-  it('cold cache plans one sync fetch', () => {
-    expect(planGetPulseNetwork({ freshness: 'cold', window: 'recent' })).toEqual({
-      syncFetch: true,
-      asyncRevalidate: false,
-    })
-  })
-
-  it('recurring poll window is always recent', () => {
-    expect(recurringPollWindow()).toBe('recent')
-  })
-
-  it('explicit Full uses the full window plan', () => {
-    expect(planGetPulseNetwork({ freshness: 'cold', window: 'full', explicitFull: true })).toEqual({
-      syncFetch: true,
-      asyncRevalidate: false,
-    })
-  })
-
-  it('coalesces simultaneous cold callers into one factory run', async () => {
-    const map = new Map<string, Promise<number>>()
-    let runs = 0
-    const factory = async () => {
-      runs += 1
-      await new Promise(r => setTimeout(r, 20))
-      return 42
+  it('cold cache two tabs same login/window → one upstream fetch', async () => {
+    const cache = new Map<string, PulseCacheEntry>()
+    let fetches = 0
+    const state = createPulseCoordinatorState()
+    const deps = {
+      getCached: async (login: string, window: PulseCacheWindow) =>
+        cache.get(pulseCacheKey(login, window)) ?? null,
+      getCoverage: async () => null,
+      fetchPulse: async (login: string, window: PulseCacheWindow) => {
+        fetches += 1
+        await new Promise(r => setTimeout(r, 15))
+        const payload = fakePayload(login)
+        cache.set(pulseCacheKey(login, window), {
+          payload,
+          fetchedAt: Date.now(),
+          window,
+          streamId: 's1',
+        })
+        return { payload, coverageTier: null }
+      },
     }
-    const [a, b, c] = await Promise.all([
-      coalesceInFlight(map, 'xqc:recent', factory),
-      coalesceInFlight(map, 'xqc:recent', factory),
-      coalesceInFlight(map, 'xqc:recent', factory),
+    const [a, b] = await Promise.all([
+      handleGetPulse({ login: 'xqc', window: 'recent' }, deps, state),
+      handleGetPulse({ login: 'xqc', window: 'recent' }, deps, state),
     ])
-    expect(runs).toBe(1)
-    expect([a, b, c]).toEqual([42, 42, 42])
+    expect(fetches).toBe(1)
+    expect(a.payload).toEqual(b.payload)
   })
 
-  it('two tabs same login share one in-flight key', async () => {
-    const map = new Map<string, Promise<string>>()
-    let runs = 0
-    const key = 'jynxzi:recent'
-    await Promise.all([
-      coalesceInFlight(map, key, async () => {
-        runs += 1
-        return 'ok'
-      }),
-      coalesceInFlight(map, key, async () => {
-        runs += 1
-        return 'ok'
-      }),
-    ])
-    expect(runs).toBe(1)
+  it('fresh cache → zero upstream', async () => {
+    let fetches = 0
+    const now = 100_000
+    const state = createPulseCoordinatorState()
+    const entry: PulseCacheEntry = {
+      payload: fakePayload(),
+      fetchedAt: now - 100,
+      window: 'recent',
+      streamId: 's1',
+    }
+    await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      {
+        now: () => now,
+        getCached: async () => entry,
+        getCoverage: async () => null,
+        fetchPulse: async () => {
+          fetches += 1
+          return { payload: fakePayload(), coverageTier: null }
+        },
+      },
+      state,
+    )
+    expect(fetches).toBe(0)
   })
 
-  it('failure cooldown blocks retries until elapsed', () => {
-    const lastSuccess = 0
-    const failedAt = 10_000
-    expect(
-      shouldAllowPulseRevalidate(lastSuccess, failedAt + 1, {
-        lastFailureAtMs: failedAt,
-        failureCooldownMs: PULSE_REVALIDATE_FAILURE_COOLDOWN_MS,
-      }),
-    ).toBe(false)
-    expect(
-      shouldAllowPulseRevalidate(lastSuccess, failedAt + PULSE_REVALIDATE_FAILURE_COOLDOWN_MS, {
-        lastFailureAtMs: failedAt,
-      }),
-    ).toBe(true)
+  it('stale cache → return cache + exactly one revalidate', async () => {
+    let fetches = 0
+    const softFailures: boolean[] = []
+    const now = 100_000
+    const state = createPulseCoordinatorState()
+    const entry: PulseCacheEntry = {
+      payload: fakePayload(),
+      fetchedAt: now - (PULSE_REVALIDATE_MIN_GAP_MS + 10),
+      window: 'recent',
+      streamId: 's1',
+    }
+    const result = await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      {
+        now: () => now,
+        getCached: async () => entry,
+        getCoverage: async () => null,
+        fetchPulse: async () => {
+          fetches += 1
+          return { payload: fakePayload(), coverageTier: null }
+        },
+        onBroadcast: (_l, _p, _e, _c, meta) => {
+          if (meta?.softStaleFailure) softFailures.push(true)
+        },
+      },
+      state,
+    )
+    expect(result.payload).toBe(entry.payload)
+    expect(result.network.asyncRevalidatesScheduled).toBe(1)
+    await vi.waitFor(() => expect(fetches).toBe(1))
+    expect(softFailures).toEqual([])
   })
 
-  it('force bypasses failure cooldown', () => {
-    expect(
-      shouldAllowPulseRevalidate(0, 1, {
-        force: true,
-        lastFailureAtMs: 1,
-      }),
-    ).toBe(true)
+  it('failed stale revalidation during cooldown does not retry-storm', async () => {
+    let fetches = 0
+    let soft = 0
+    const t0 = 50_000
+    const state = createPulseCoordinatorState()
+    const entry: PulseCacheEntry = {
+      payload: fakePayload(),
+      fetchedAt: t0 - (PULSE_REVALIDATE_MIN_GAP_MS + 10),
+      window: 'recent',
+      streamId: 's1',
+    }
+    const deps = {
+      getCached: async () => entry,
+      getCoverage: async () => null,
+      fetchPulse: async () => {
+        fetches += 1
+        return { payload: null, coverageTier: null, error: 'upstream_down' }
+      },
+      onBroadcast: (_l: string, _p: unknown, _e: unknown, _c: unknown, meta?: { softStaleFailure?: boolean }) => {
+        if (meta?.softStaleFailure) soft += 1
+      },
+    }
+    await handleGetPulse({ login: 'xqc', window: 'recent' }, { ...deps, now: () => t0 }, state)
+    await vi.waitFor(() => expect(fetches).toBe(1))
+    await vi.waitFor(() => expect(soft).toBe(1))
+
+    // Immediate second stale hit during cooldown — no new fetch.
+    await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      { ...deps, now: () => t0 + 100 },
+      state,
+    )
+    expect(fetches).toBe(1)
+
+    // After cooldown — exactly one new request.
+    await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      { ...deps, now: () => t0 + PULSE_REVALIDATE_FAILURE_COOLDOWN_MS + 1 },
+      state,
+    )
+    await vi.waitFor(() => expect(fetches).toBe(2))
   })
 
-  it('same-channel navigation keeps generation current for ongoing work', () => {
-    const gen = createRequestGeneration()
-    const g = gen.bump()
-    expect(gen.isCurrent(g)).toBe(true)
+  it('explicit Full cold fetch uses full window key (separate from recent)', async () => {
+    const keys: string[] = []
+    const state = createPulseCoordinatorState()
+    await handleGetPulse(
+      { login: 'xqc', window: 'full', explicitFull: true },
+      {
+        getCached: async () => null,
+        getCoverage: async () => null,
+        fetchPulse: async (login, window) => {
+          keys.push(pulseCacheKey(login, window))
+          return { payload: fakePayload(), coverageTier: null }
+        },
+      },
+      state,
+    )
+    expect(keys).toEqual(['xqc:full:-'])
   })
 
-  it('different-channel navigation cancels obsolete backfill generation', () => {
-    const gen = createRequestGeneration()
-    const channelA = gen.bump()
-    const channelB = gen.bump()
-    expect(gen.isCurrent(channelA)).toBe(false)
-    expect(gen.isCurrent(channelB)).toBe(true)
+  it('stored Full preference alone does not imply syncFetch when recent cache is fresh', async () => {
+    // Activation with stored Full preference still polls recent until user unlocks.
+    let fetches = 0
+    const now = 80_000
+    const state = createPulseCoordinatorState()
+    await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      {
+        now: () => now,
+        getCached: async () => ({
+          payload: fakePayload(),
+          fetchedAt: now - 50,
+          window: 'recent',
+          streamId: 's1',
+        }),
+        getCoverage: async () => null,
+        fetchPulse: async () => {
+          fetches += 1
+          return { payload: fakePayload(), coverageTier: null }
+        },
+      },
+      state,
+    )
+    expect(fetches).toBe(0)
   })
 
-  it('covers coverage / local-watch / backfill-status as non-full recent pulse paths', () => {
-    expect(recurringPollWindow()).toBe('recent')
-    expect(planGetPulseNetwork({ freshness: 'fresh', window: 'recent' }).syncFetch).toBe(false)
-    expect(planGetPulseNetwork({ freshness: 'cold', window: 'recent' }).syncFetch).toBe(true)
+  it('local watch registration runs at most once per cold allowWatch path', async () => {
+    let watches = 0
+    let fetches = 0
+    const cache = new Map<string, PulseCacheEntry>()
+    const state = createPulseCoordinatorState()
+    await handleGetPulse(
+      { login: 'xqc', window: 'recent', allowWatch: true },
+      {
+        getCached: async (login, window) => cache.get(pulseCacheKey(login, window)) ?? null,
+        getCoverage: async () => null,
+        ensureTracked: async () => {
+          watches += 1
+        },
+        fetchPulse: async (login, window) => {
+          fetches += 1
+          const payload = fakePayload(login)
+          cache.set(pulseCacheKey(login, window), {
+            payload,
+            fetchedAt: Date.now(),
+            window,
+            streamId: 's1',
+          })
+          return { payload, coverageTier: null }
+        },
+      },
+      state,
+    )
+    expect(watches).toBe(1)
+    expect(fetches).toBe(1)
   })
-})
 
-describe('coalesceInFlight cleanup', () => {
-  it('clears the map entry after settle so a later call can run again', async () => {
-    const map = new Map<string, Promise<number>>()
-    let runs = 0
-    await coalesceInFlight(map, 'k', async () => {
-      runs += 1
-      return 1
-    })
-    await coalesceInFlight(map, 'k', async () => {
-      runs += 1
-      return 2
-    })
-    expect(runs).toBe(2)
-  })
-
-  it('still clears after rejection', async () => {
-    const map = new Map<string, Promise<number>>()
-    await expect(
-      coalesceInFlight(map, 'k', async () => {
-        throw new Error('boom')
-      }),
-    ).rejects.toThrow('boom')
-    expect(map.size).toBe(0)
-    const value = await coalesceInFlight(map, 'k', async () => 7)
-    expect(value).toBe(7)
+  it('past-TTL entry is cold again', async () => {
+    let fetches = 0
+    const now = 200_000
+    const state = createPulseCoordinatorState()
+    await handleGetPulse(
+      { login: 'xqc', window: 'recent' },
+      {
+        now: () => now,
+        getCached: async () => ({
+          payload: fakePayload(),
+          fetchedAt: now - (PULSE_CACHE_TTL_MS + 1),
+          window: 'recent',
+          streamId: 's1',
+        }),
+        getCoverage: async () => null,
+        fetchPulse: async () => {
+          fetches += 1
+          return { payload: fakePayload(), coverageTier: null }
+        },
+      },
+      state,
+    )
+    expect(fetches).toBe(1)
   })
 })

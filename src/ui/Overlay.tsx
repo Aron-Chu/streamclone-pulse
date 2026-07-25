@@ -104,6 +104,8 @@ interface OverlayProps {
   onLivePollWindowChange?: (window: PulseCacheWindow) => void
   vodPulse?: ExtensionVodPulseResponse | null
   vodPulseLoading?: boolean
+  /** Cached chart still shown; refresh failed softly. */
+  softStaleRefreshWarning?: boolean
 }
 
 type NoticeKind = 'ok' | 'warn' | 'info'
@@ -238,6 +240,7 @@ function OverlayMain({
   onLivePollWindowChange,
   vodPulse = null,
   vodPulseLoading = false,
+  softStaleRefreshWarning = false,
 }: OverlayProps) {
   const [mode, setModeState] = useState<OverlayMode>('expanded')
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
@@ -624,6 +627,7 @@ function OverlayMain({
   }
 
   async function loadMissedMoments(): Promise<void> {
+    const generation = backfillGenerationRef.current
     if (!payload?.streamId) {
       setNotice({ kind: 'warn', text: 'Stream ID missing — track this channel and retry.' })
       return
@@ -633,7 +637,8 @@ function OverlayMain({
       setNotice({ kind: 'warn', text: 'No coverage info yet — wait for the first minute of rollups.' })
       return
     }
-    const pageHint = payload.vodId ? null : await submitPageVodHint()
+    const pageHint = payload.vodId ? null : await submitPageVodHint(generation)
+    if (generation !== backfillGenerationRef.current) return
     const activePayload = pageHint && !payload.vodId ? { ...payload, vodId: pageHint } : payload
     if (!canShowVodBackfillCTA(activePayload, pageHint)) {
       setNotice({
@@ -642,7 +647,7 @@ function OverlayMain({
       })
       return
     }
-    await loadMissedMomentsWithPayload(activePayload, pageHint)
+    await loadMissedMomentsWithPayload(activePayload, pageHint, generation)
   }
 
   async function pollMissedBackfill(jobId: string, beforePayload: PulsePayload): Promise<void> {
@@ -693,7 +698,8 @@ function OverlayMain({
     setVodDebugDetail(summary)
   }
 
-  async function submitPageVodHint(): Promise<string | null> {
+  async function submitPageVodHint(generation?: number): Promise<string | null> {
+    const gen = generation ?? backfillGenerationRef.current
     if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
     const domHint = discoverLiveVodIdFromDom()
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
@@ -701,9 +707,11 @@ function OverlayMain({
       streamId: payload.streamId,
       id: domHint,
     }, domHint ? 'info' : 'warn')
+    if (gen !== backfillGenerationRef.current) return null
     let hint = domHint
     if (!hint) {
       const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login })
+      if (gen !== backfillGenerationRef.current) return null
       const gql =
         'type' in gqlRes && gqlRes.type === 'DISCOVER_LIVE_VOD'
           ? gqlRes.result
@@ -723,6 +731,7 @@ function OverlayMain({
         hint ? 'info' : 'warn',
       )
     }
+    if (gen !== backfillGenerationRef.current) return null
     if (!hint) {
       await refreshVodDebugDetail()
       return null
@@ -734,17 +743,14 @@ function OverlayMain({
         streamId: payload.streamId,
         vodId: hint,
       })
+      if (gen !== backfillGenerationRef.current) return null
       if ('ok' in res && res.ok) {
         await refreshPulse(false)
+        if (gen !== backfillGenerationRef.current) return null
       }
     } catch {
-      await pulseDebug('vod.hint.api', 'vod-hint endpoint failed — backfill will still send vodId in POST body', {
-        login,
-        streamId: payload.streamId,
-        vodId: hint,
-      }, 'warn')
+      /* ignore hint failures */
     }
-    await refreshVodDebugDetail()
     return hint
   }
 
@@ -824,6 +830,7 @@ function OverlayMain({
   async function loadMissedMomentsWithPayload(
     activePayload: PulsePayload,
     explicitHint?: string | null,
+    generation = backfillGenerationRef.current,
   ): Promise<void> {
     const coverage = resolvePulseCoverage(activePayload)
     if (!coverage || !activePayload.streamId) return
@@ -834,11 +841,13 @@ function OverlayMain({
     setFullTimeline(true)
     setNotice({ kind: 'info', text: 'Loading VOD chat from Twitch… this can take a few minutes.' })
     try {
+      if (generation !== backfillGenerationRef.current) return
       const range = coverage.missingRanges?.[0]
       const hintedVodId =
         activePayload.vodId
-        ?? (await submitPageVodHint())
+        ?? (await submitPageVodHint(generation))
         ?? undefined
+      if (generation !== backfillGenerationRef.current) return
       const response = await sendBackgroundMessage({
         type: 'LOAD_MISSED_MOMENTS',
         login,
@@ -847,6 +856,7 @@ function OverlayMain({
         fromOffsetSeconds: range?.fromOffsetSeconds ?? 0,
         toOffsetSeconds: range?.toOffsetSeconds ?? Math.max(0, coverage.coverageStartOffsetSeconds - 60),
       })
+      if (generation !== backfillGenerationRef.current) return
       if ('error' in response && response.error) {
         setCoverageCheckError(coverageErrorMessage(String(response.error), 'Backfill failed.'))
         return
@@ -859,6 +869,7 @@ function OverlayMain({
       setMissedJob(job)
       if (job.status === 'already_available') {
         const fresh = await refreshPulse(true)
+        if (generation !== backfillGenerationRef.current) return
         applyBackfillRefreshOutcome(beforePayload, fresh ?? activePayload)
         return
       }
@@ -872,12 +883,15 @@ function OverlayMain({
       }
       await pollMissedBackfill(job.jobId, beforePayload)
     } catch (err) {
+      if (generation !== backfillGenerationRef.current) return
       setCoverageCheckError(coverageErrorMessage(
         err instanceof Error ? err.message : null,
         'Backfill failed.',
       ))
     } finally {
-      setMissedBusy(false)
+      if (generation === backfillGenerationRef.current) {
+        setMissedBusy(false)
+      }
     }
   }
 
@@ -1274,8 +1288,14 @@ function OverlayMain({
         </section>
       ) : null}
 
-      {error ? (
+      {error && !payload ? (
         <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openSettings} />
+      ) : null}
+
+      {softStaleRefreshWarning && payload ? (
+        <div role="status" style={styles.softStaleBanner}>
+          Live refresh paused briefly — showing last good chart.
+        </div>
       ) : null}
 
       {!error && payload && !pulseSupported ? (
@@ -1920,6 +1940,16 @@ const styles: Record<string, CSSProperties> = {
   stateBlock: { background: '#1f1f27', borderRadius: 12, marginTop: 16, padding: 16 },
   stateTitle: { fontSize: 18, margin: '0 0 10px' },
   stateText: { color: '#b7b7c6', fontSize: 13, lineHeight: 1.35, margin: '0 0 14px' },
+  softStaleBanner: {
+    background: 'rgba(212, 160, 23, 0.12)',
+    border: '1px solid rgba(212, 160, 23, 0.35)',
+    borderRadius: 8,
+    color: '#e8d48a',
+    fontSize: 12,
+    lineHeight: 1.35,
+    margin: '0 0 10px',
+    padding: '8px 10px',
+  },
   vodStateWrap: { display: 'grid', gap: 8 },
   progressTrack: { background: '#33333d', borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
   progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },

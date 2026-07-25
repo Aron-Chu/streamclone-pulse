@@ -454,7 +454,8 @@ export async function migrateDefaultChartWindowToRecentV2Once(): Promise<void> {
       DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY,
       DEFAULT_CHART_WINDOW_KEY,
     ])
-    if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]) return
+    // Only an explicit boolean true completes the migration; missing/false/malformed re-run.
+    if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY] === true) return
     await syncStorageSet({
       [DEFAULT_CHART_WINDOW_KEY]: '60m',
       [DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]: true,

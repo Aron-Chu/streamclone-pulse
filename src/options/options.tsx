@@ -329,6 +329,9 @@ function OptionsApp() {
             </button>
           ))}
         </div>
+        <p style={styles.help}>
+          Full is remembered as a preference but must be loaded with “Load full history” for each new stream activation. Live polling always uses a recent window.
+        </p>
       </section>
 
       <section style={styles.section}>

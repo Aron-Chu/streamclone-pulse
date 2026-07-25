@@ -56,6 +56,37 @@ describe('chart window migration v2', () => {
     expect(await getDefaultChartWindow()).toBe('15m')
   })
 
+  it.each(['15m', '30m', '60m', '2h', '4h', 'full'] as const)(
+    'migrates legacy chart value %s to 60m when v2 marker missing',
+    async value => {
+      syncStore = { [CHART_WINDOW_MIGRATION_KEYS.value]: value }
+      await migrateDefaultChartWindowToRecentV2Once()
+      expect(await getDefaultChartWindow()).toBe('60m')
+      expect(syncStore[CHART_WINDOW_MIGRATION_KEYS.v2]).toBe(true)
+    },
+  )
+
+  it('treats missing v2 marker as needing migration', async () => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = 'full'
+    delete syncStore[CHART_WINDOW_MIGRATION_KEYS.v2]
+    await migrateDefaultChartWindowToRecentV2Once()
+    expect(await getDefaultChartWindow()).toBe('60m')
+  })
+
+  it('treats malformed v2 marker as needing migration', async () => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '2h'
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.v2] = 'yes'
+    await migrateDefaultChartWindowToRecentV2Once()
+    expect(await getDefaultChartWindow()).toBe('60m')
+  })
+
+  it('treats false v2 marker as needing migration', async () => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '4h'
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.v2] = false
+    await migrateDefaultChartWindowToRecentV2Once()
+    expect(await getDefaultChartWindow()).toBe('60m')
+  })
+
   it('is idempotent when v2 marker is already set', async () => {
     syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = 'full'
     syncStore[CHART_WINDOW_MIGRATION_KEYS.v2] = true

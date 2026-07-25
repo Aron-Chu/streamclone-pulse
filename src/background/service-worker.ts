@@ -16,10 +16,10 @@ import {
   setAlwaysTracked,
 } from './api.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
-import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin, untrackLogin } from './tracking.ts'
+import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracking.ts'
 import type { BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
-import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
+import { getBackendUrl, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
 import {
   addToWatchlist,
@@ -41,7 +41,10 @@ import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabNavigation,
 } from './pulsePrefetch.ts'
-import { coalesceInFlight, PULSE_REVALIDATE_MIN_GAP_MS, shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
+import {
+  createPulseCoordinatorState,
+  handleGetPulse,
+} from './pulseGetCoordinator.ts'
 import {
   planWatchlistStartupSync,
   planWatchlistStorageDelta,
@@ -49,17 +52,9 @@ import {
 
 void initPulseDebug()
 
-const revalidateInFlight = new Map<string, Promise<void>>()
-const peekInFlight = new Map<
-  string,
-  Promise<{
-    payload: PulseUpdateMessage['payload']
-    coverageTier: ExtensionCoverageTierResponse | null
-    error?: string
-  }>
->()
-const lastRevalidateAt = new Map<string, number>()
-const lastRevalidateFailureAt = new Map<string, number>()
+const pulseCoord = createPulseCoordinatorState()
+/** Soft stale-refresh notice for content overlays (non-fatal). */
+const softStaleFailureByLogin = new Map<string, number>()
 /** Suppress storage-listener sync while message handlers own the mutation. */
 let suppressWatchlistStorageSync = false
 
@@ -138,15 +133,61 @@ async function refreshPulse(
   window: PulseCacheWindow = 'recent',
   forceCoverage = false,
 ): Promise<void> {
-  try {
-    const [payload, coverageTier] = await Promise.all([
-      fetchPulseChannel(login, { window }),
-      loadCoverageTier(login, forceCoverage),
-    ])
-    await cachePulseIfEnabled(login, payload, window)
-    broadcastPulse(login, payload, undefined, coverageTier)
-  } catch (err) {
-    broadcastPulse(login, null, sanitizePulseErrorMessage(err))
+  // Coalesced via handleGetPulse cold path (same in-flight map as GET_PULSE).
+  const result = await handleGetPulse(
+    { login, window, forceCoverage, allowWatch: false },
+    pulseFetchDeps(),
+    pulseCoord,
+  )
+  if (result.error && !result.payload) {
+    broadcastPulse(login, null, result.error)
+  }
+}
+
+function pulseFetchDeps() {
+  return {
+    getCached: getSessionPulse,
+    getCoverage: async (login: string) => {
+      const cached = await getSessionCoverage(login)
+      return cached?.coverageTier ?? null
+    },
+    fetchPulse: peekPulse,
+    ensureTracked,
+    isTracked,
+    onBroadcast: (
+      login: string,
+      payload: PulseUpdateMessage['payload'],
+      error: string | undefined,
+      coverageTier: ExtensionCoverageTierResponse | null | undefined,
+      meta?: { softStaleFailure?: boolean },
+    ) => {
+      if (meta?.softStaleFailure) {
+        softStaleFailureByLogin.set(login.toLowerCase(), Date.now())
+        // Soft: notify listeners without clearing cached payload.
+        const message: PulseUpdateMessage = {
+          type: 'PULSE_UPDATE',
+          login,
+          payload: null,
+          error: undefined,
+          coverageTier: undefined,
+          softStaleRefresh: true,
+        }
+        chrome.runtime.sendMessage(message).catch(() => {})
+        void chrome.tabs
+          .query({ url: ['*://*.twitch.tv/*'] })
+          .then(tabs => {
+            for (const tab of tabs) {
+              if (!tab.id) continue
+              if (!tabUrlMatchesPulseLogin(tab.url, login)) continue
+              chrome.tabs.sendMessage(tab.id, message).catch(() => {})
+            }
+          })
+          .catch(() => {})
+        return
+      }
+      softStaleFailureByLogin.delete(login.toLowerCase())
+      broadcastPulse(login, payload, error, coverageTier)
+    },
   }
 }
 
@@ -175,34 +216,6 @@ async function peekPulse(
   }
 }
 
-async function revalidatePulse(login: string, window: PulseCacheWindow, forceCoverage = false): Promise<void> {
-  const key = `${login.toLowerCase()}:${window}:${forceCoverage ? '1' : '0'}`
-  if (
-    !shouldAllowPulseRevalidate(lastRevalidateAt.get(key), Date.now(), {
-      force: forceCoverage,
-      lastFailureAtMs: lastRevalidateFailureAt.get(key),
-    })
-  ) {
-    return
-  }
-  await coalesceInFlight(revalidateInFlight, key, async () => {
-    try {
-      const { payload, coverageTier, error } = await peekPulse(login, window, forceCoverage)
-      if (error) {
-        lastRevalidateFailureAt.set(key, Date.now())
-        broadcastPulse(login, null, error)
-      } else {
-        lastRevalidateFailureAt.delete(key)
-        broadcastPulse(login, payload, undefined, coverageTier)
-        lastRevalidateAt.set(key, Date.now())
-      }
-    } catch (err) {
-      lastRevalidateFailureAt.set(key, Date.now())
-      broadcastPulse(login, null, sanitizePulseErrorMessage(err))
-    }
-  })
-}
-
 function broadcastPulse(
   login: string,
   payload: PulseUpdateMessage['payload'],
@@ -226,27 +239,21 @@ function broadcastPulse(
     .catch(() => {})
 }
 
+/**
+ * Local BFF only: register watch + one coalesced initial refresh.
+ * Does not start a recurring SW scheduler — content livePoll owns that.
+ */
 async function ensureTracked(login: string): Promise<void> {
   if (await hostedBackend()) {
     return
   }
   trackLogin(login)
   await postWatchChannel(login)
-  const intervalMs = await getPollIntervalMs()
-  const autoUpdate = await getAutoUpdateEnabled()
-  if (autoUpdate) {
-    startPolling(login, refreshPulse, intervalMs)
-  }
-  await refreshPulse(login)
-}
-
-async function applyAutoUpdateSetting(enabled: boolean): Promise<void> {
-  if (!enabled) {
-    pauseAllPolling()
-    return
-  }
-  const intervalMs = await getPollIntervalMs()
-  resumeAllPolling(refreshPulse, intervalMs)
+  await handleGetPulse(
+    { login, window: 'recent', allowWatch: false },
+    { ...pulseFetchDeps(), ensureTracked: undefined },
+    pulseCoord,
+  )
 }
 
 async function syncWatchlistToBackend(): Promise<string[]> {
@@ -306,9 +313,7 @@ async function listPastVods(
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'sync' && changes.autoUpdateEnabled) {
-    void applyAutoUpdateSetting(Boolean(changes.autoUpdateEnabled.newValue ?? true))
-  }
+  // autoUpdateEnabled is read by content livePoll; SW does not own recurring timers.
   if (areaName !== 'sync' || !changes.watchlist) return
   if (suppressWatchlistStorageSync) return
   void syncWatchlistStorageDelta(changes.watchlist.oldValue, changes.watchlist.newValue)
@@ -353,58 +358,24 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           const hosted = await hostedBackend()
           const allowWatch = Boolean(message.watch) && !hosted
           await awaitPulsePrefetchInFlight(message.login)
-          const cached = await getSessionPulse(message.login, window, message.streamId)
-          const cachedCoverage = await getSessionCoverage(message.login)
-
-          if (cached) {
-            sendResponse({
-              type: 'PULSE_UPDATE',
+          const result = await handleGetPulse(
+            {
               login: message.login,
-              payload: cached.payload,
-              coverageTier: cachedCoverage?.coverageTier ?? null,
-            } satisfies PulseUpdateMessage)
-            // Fresh cache: zero network. Stale-within-TTL: coalesce SWR.
-            const ageMs = Date.now() - cached.fetchedAt
-            if (ageMs >= PULSE_REVALIDATE_MIN_GAP_MS) {
-              void revalidatePulse(message.login, window)
-            }
-            return
-          }
-
-          if (allowWatch) {
-            await ensureTracked(message.login)
-          } else if (isTracked(message.login)) {
-            await refreshPulse(message.login, window)
-          } else {
-            const key = `${message.login.toLowerCase()}:${window}`
-            const { payload, coverageTier, error } = await coalesceInFlight(peekInFlight, key, async () => {
-              const peeked = await peekPulse(message.login, window)
-              if (peeked.payload) {
-                broadcastPulse(message.login, peeked.payload, undefined, peeked.coverageTier)
-              } else if (peeked.error) {
-                lastRevalidateFailureAt.set(`${key}:0`, Date.now())
-                broadcastPulse(message.login, null, peeked.error)
-              }
-              return peeked
-            })
-            sendResponse({
-              type: 'PULSE_UPDATE',
-              login: message.login,
-              payload,
-              coverageTier,
-              error,
-            } satisfies PulseUpdateMessage)
-            return
-          }
-          const fresh = await getSessionPulse(message.login, window, message.streamId)
-          const coverageTier = fresh
-            ? (await getSessionCoverage(message.login))?.coverageTier ?? null
-            : cachedCoverage?.coverageTier ?? null
+              window,
+              streamId: message.streamId,
+              allowWatch,
+              explicitFull: window === 'full',
+            },
+            pulseFetchDeps(),
+            pulseCoord,
+          )
           sendResponse({
             type: 'PULSE_UPDATE',
             login: message.login,
-            payload: fresh?.payload ?? null,
-            coverageTier,
+            payload: result.payload,
+            coverageTier: result.coverageTier,
+            error: result.error,
+            softStaleRefresh: result.staleRefreshWarning,
           } satisfies PulseUpdateMessage)
           return
         }
@@ -612,8 +583,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SET_AUTO_UPDATE': {
+          // Persist only — content livePoll reads this preference; no SW interval.
           await setAutoUpdateEnabled(message.enabled)
-          await applyAutoUpdateSetting(message.enabled)
           sendResponse({ ok: true })
           return
         }

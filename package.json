@@ -19,7 +19,8 @@
     "validate:package:cws": "node scripts/validate-extension-package.mjs --target=cws",
     "validate:package:edge": "node scripts/validate-extension-package.mjs --target=edge",
     "package:cws": "node scripts/package-extension-target.mjs cws",
-    "package:edge": "node scripts/package-extension-target.mjs edge"
+    "package:edge": "node scripts/package-extension-target.mjs edge",
+    "check:bundle-budget": "node scripts/check-extension-bundle-budget.mjs"
   },
   "dependencies": {
     "@streampulse/pulse-charts": "file:../streampulse-backend/packages/pulse-charts",

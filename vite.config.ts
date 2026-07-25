@@ -32,33 +32,29 @@ function copyToDist(rootDir: string, relativePath: string): void {
 }
 
 function chromeExtensionPlugin() {
-  let contentBuildComplete = false
-
   return {
     name: 'streamclone-pulse-extension',
     async closeBundle() {
-      if (!contentBuildComplete) {
-        contentBuildComplete = true
-        await viteBuild({
-          configFile: false,
-          plugins: [react()],
-          resolve: extensionResolve(),
-          build: {
-            outDir: 'dist',
-            emptyOutDir: false,
-            rollupOptions: {
-              input: resolve(__dirname, 'src/content/entry.ts'),
-              output: {
-                ...sharedOutput,
-                entryFileNames: 'content/twitch.js',
-                format: 'iife',
-                inlineDynamicImports: true,
-                name: 'StreamclonePulseContent',
-              },
+      // Always rebuild content entry so `vite build --watch` picks up content changes.
+      await viteBuild({
+        configFile: false,
+        plugins: [react()],
+        resolve: extensionResolve(),
+        build: {
+          outDir: 'dist',
+          emptyOutDir: false,
+          rollupOptions: {
+            input: resolve(__dirname, 'src/content/entry.ts'),
+            output: {
+              ...sharedOutput,
+              entryFileNames: 'content/twitch.js',
+              format: 'iife',
+              inlineDynamicImports: true,
+              name: 'StreamclonePulseContent',
             },
           },
-        })
-      }
+        },
+      })
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })

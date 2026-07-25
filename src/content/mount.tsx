@@ -67,6 +67,7 @@ export interface OverlayMountOptions {
   coverageTier?: ExtensionCoverageTierResponse | null
   onPulseRefresh?: () => Promise<void>
   onLivePollWindowChange?: (window: PulseCacheWindow) => void
+  softStaleRefreshWarning?: boolean
 }
 
 export function applyOverlayPayloadUpdate(
@@ -430,6 +431,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
       updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null)
     },
     onLivePollWindowChange: currentOptions.onLivePollWindowChange,
+    softStaleRefreshWarning: currentOptions.softStaleRefreshWarning ?? false,
     vodPulse: currentVodPulse,
     vodPulseLoading: currentVodPulseLoading,
   }
@@ -561,11 +563,26 @@ export function updateOverlayPayload(
   payload: PulsePayload | null,
   error?: string,
   coverageTier?: ExtensionCoverageTierResponse | null,
+  meta?: { softStaleRefresh?: boolean },
 ): void {
   if (!panelRoot || !currentLogin) return
   const previousPayload = currentPayload
+  if (meta?.softStaleRefresh) {
+    // Keep cached chart; surface a bounded nonblocking warning via options/error lane.
+    currentError = undefined
+    currentOptions = {
+      ...currentOptions,
+      softStaleRefreshWarning: true,
+    }
+    lastPanelPayloadRef = currentPayload
+    lastPanelError = currentError
+    lastPanelCoverageTier = currentCoverageTier
+    renderOverlay(currentPayload, currentError)
+    return
+  }
   if (payload) {
     currentPayload = applyOverlayPayloadUpdate(currentPayload, payload)
+    currentOptions = { ...currentOptions, softStaleRefreshWarning: false }
   }
   currentError = resolveOverlayErrorState(currentError, payload, error)
   if (coverageTier !== undefined) {
