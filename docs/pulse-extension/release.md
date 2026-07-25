@@ -18,7 +18,7 @@ Canonical release process for store packages and the public portal. Companion:
 
 ---
 
-## Manifest targets (RPR-2 / R18 — planned acceptance, not Phase 0 code)
+## Manifest targets (RPR-2 / R18 — landed; upload still RPR-9)
 
 | Target | Localhost hosts | Purpose |
 |--------|-----------------|---------|
@@ -27,17 +27,18 @@ Canonical release process for store packages and the public portal. Companion:
 | Edge | **None** | Microsoft Edge Add-ons |
 | Firefox (later) | **None** | AMO |
 
-Generation must not broaden production permissions beyond the audited set. Existing
-`package:cws` / `validate:package` work continues; extend it — do not claim it is absent.
+Generation must not broaden production permissions beyond the audited set.
+`package:cws` / `package:edge` / `validate:package` produce distinct ZIP names and run
+yauzl byte validation. Do **not** upload until RPR-9.
 
 ---
 
 ## Package validation (required before next candidate)
 
-Extend `package:cws` / `validate:package` to reject:
+`package:cws` / `package:edge` / `validate:package` reject:
 
-- Source maps, `.env*`, secrets, absolute/sibling paths
-- `file:` dependencies outside this repository
+- Source maps, `.env*`, secrets, absolute/sibling paths (store targets)
+- `file:` dependencies outside this repository (store targets; RPR-6 still blocks clean-clone publish)
 - Remote executable code / unapproved archive entries
 - Local origins (`localhost`, `127.0.0.1`, any port) in **store** packages
 
@@ -73,4 +74,4 @@ hash only as a historical audit record. It is not the current candidate.
 
 - Store: halt rollout / unpublish only via publisher console (owner).
 - Portal: prior Pages deployment via private ops runbooks.
-- Extension prefs: chart migration v2 (when implemented) is one-way for legacy values; post-v2 user `Full` choice is preserved.
+- Extension prefs: chart migration v2 is one-way for legacy values; post-v2 user `Full` choice is preserved.

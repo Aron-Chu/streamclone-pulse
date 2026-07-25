@@ -376,19 +376,20 @@ Build **Level 2.5 first**: Twitch overlay + local backend + shared `pulse-core`.
 
 ---
 
-## R14–R18 — Reliability, privacy, support, packages, release (planned / RPR)
+## R14–R18 — Reliability, privacy, support, packages, release (RPR)
 
 Canonical program: [`reliability-public-release-plan.md`](./reliability-public-release-plan.md).
 These requirements **extend** R1–R13; they do not replace honesty/coverage rules.
-Unless noted, items below are **acceptance targets for later RPR phases** — not current
-shipped extension/backend behavior at base `7024649f`.
+**R14** and store-facing **R18** gates are landed on master `cf2ef08` (force-full
+`30138875909`). **R15–R17** and upload/visibility remain later RPR phases. RPR-6
+still blocks clean-clone builds without sibling `file:` deps.
 
-### R14 — Request count and chart migration (planned)
+### R14 — Request count and chart migration (landed)
 
 1. Chart preference migration **v2** maps every legacy range (including `Full`) **once** to `60m` under a v2 marker. Missing values and every legacy value are tested. Repeated migration is a no-op. After v2, an explicit user selection of `Full` **persists**.
-2. Recurring polling always uses a **recent** window. Full history is fetched **only** after explicit user action.
-3. Content scripts own tab-scoped polling; the service worker brokers, caches, and coalesces. No `chrome.alarms` unless no-tab durable polling is an explicit requirement.
-4. Cold/fresh/stale cache, failed refresh, multi-tab same login, channel navigation, coverage/backfill, and explicit-Full behaviors are covered by a tested request matrix. Extend `pulseRevalidateGate` (single-flight, coalesce, failure cooldown, per-key isolation) rather than replacing it.
+2. Recurring polling always uses a **recent** window. Full history is fetched **only** after explicit user action (“Load full history”).
+3. Content scripts own tab-scoped polling; the service worker brokers, caches, and coalesces (`pulseGetCoordinator`). No `chrome.alarms` unless no-tab durable polling is an explicit requirement.
+4. Cold/fresh/stale cache, failed refresh, multi-tab same login, channel navigation, coverage/backfill, and explicit-Full behaviors are covered by a tested request matrix. Extension single-flight / soft stale refresh landed under RPR-1; further BFF `pulseRevalidateGate` hardening remains a backend concern if needed.
 5. Sustained-mutation navigation, reinjection, listener cleanup, backfill cancellation, one-tabs-host/one-panel-host, and endpoint-count tests pass.
 
 ### R15 — Privacy and consent (planned)
@@ -412,9 +413,9 @@ shipped extension/backend behavior at base `7024649f`.
 2. Packed tarballs contain only allowed publish contents; clean-clone builds require no sibling private repos or private package tokens.
 3. npm publication uses trusted publishing only after Pulse is public and owner-authorized.
 
-### R18 — Release and reproducibility (planned)
+### R18 — Release and reproducibility (partial — store packaging landed; upload RPR-9)
 
-1. Store manifests contain **no** localhost permission; development manifests may include `localhost:8081`. Manifest splitting is an RPR-2 acceptance gate (not required as a Phase 0 code change).
+1. Store manifests contain **no** localhost permission; development manifests may include `localhost:8081`. Manifest splitting + store ZIP validation landed under RPR-2 (`cf2ef08`); upload remains RPR-9.
 2. Package validation rejects source maps, env/secrets, absolute/sibling paths, out-of-repo `file:` deps, remote executable code, and local origins in store artifacts.
 3. Portal production scanning rejects `localhost` / `127.0.0.1` on every port (including 8081) in shipped JS/HTML.
 4. Local and remote CI must pass on the **same** SHA before store upload or visibility conversion. Workflow runs that execute no jobs do not count as green.

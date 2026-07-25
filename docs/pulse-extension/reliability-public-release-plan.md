@@ -1,6 +1,6 @@
 # StreamPulse — Reliability, Public Release, and Repository Governance
 
-**Status:** Phase 0 **complete** (documentation + CI economy landed; exact-SHA force-full verified).  
+**Status:** Phases 0–2 **complete** (RPR-0 docs/CI; RPR-1 request/lifecycle; RPR-2 store artifacts). Exact-SHA force-full verified on master `cf2ef08`. RPR-6 (public packages) remains open.  
 **Canonical execution plan** for the reliability / public-release / governance program.  
 Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./requirements.md) (R14–R18 for new gates; **R13 remains Emote metadata readiness**), [`design.md`](./design.md), [`release.md`](./release.md).
 
@@ -12,6 +12,8 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 |------|--------|
 | Remote | `https://github.com/Aron-Chu/streamclone-pulse.git` |
 | Phase 0 verified master | `69b357521d6794410da3267e8699c13012f88351` |
+| RPR-1 / RPR-2 verified master | `cf2ef08a87398462ef29f95b06ef0fc4df23e39d` |
+| Force-full proof | [CI run `30138875909`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30138875909) (`workflow_dispatch` + `force_full=true`; `e2e_executed=true`) |
 | Working rule | Implement only from a clean checkout/worktree of that SHA (or a descendant). Do not mutate unrelated dirty checkouts. |
 | Remote CI gate | Remote workflow runs must **execute jobs successfully** on the release SHA. Runs that start no jobs do not count as green. |
 
@@ -21,14 +23,14 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 
 ## Locked product decisions
 
-1. **Chart range migration v2 (planned R14):** Existing chart preferences (including `Full`) migrate once to `60m` under a v2 marker. A user who selects `Full` after v2 keeps it.
-2. **Full history fetch (planned R14):** Only after explicit user action. Recurring polling always uses recent windows.
-3. **Polling ownership (planned R14):** Content scripts own tab-scoped polling. Service worker brokers, caches, and coalesces. Do **not** add `chrome.alarms` unless no-tab durable polling becomes an explicit requirement.
+1. **Chart range migration v2 (R14 landed):** Existing chart preferences (including `Full`) migrate once to `60m` under a v2 marker. A user who selects `Full` after v2 keeps it.
+2. **Full history fetch (R14 landed):** Only after explicit user action (“Load full history”). Recurring polling always uses recent windows.
+3. **Polling ownership (R14 landed):** Content scripts own tab-scoped polling. Service worker brokers, caches, and coalesces (`pulseGetCoordinator`). Do **not** add `chrome.alarms` unless no-tab durable polling becomes an explicit requirement.
 4. **Twitch hosts:** Preserve the two Twitch hosts. Remote master already routes `sidebarPart="tabs"` to lightweight `OverlayTabsShell`; do not recreate obsolete dual-effect-controller fixes.
 5. **Consent (planned R15):** Extension diagnostics and product analytics have separate versioned, **default-off** consent. No durable install/session identifier. Portal Sentry (when `VITE_SENTRY_DSN` is set) is a separate, existing website path — not extension consent.
 6. **Support (planned R16):** Extension Help will open a hosted StreamPulse form with Turnstile; no remote challenge script in the MV3 package. **Not implemented yet.**
-7. **Manifests (planned R18):** Store manifests contain **no** localhost permission. Development manifests may contain `localhost:8081`.
-8. **Packages (planned R17):** Move `pulse-core`, `pulse-charts`, and `analytics-console` into `streamclone-pulse/packages` as public in-repo workspaces after provenance/license review. Backend remains private and consumes released versions where appropriate.
+7. **Manifests (R18 landed for targets):** Store manifests contain **no** localhost permission. Development manifests may contain `localhost:8081`. Distinct CWS/Edge ZIP names + yauzl byte validation are acceptance-complete; do **not** upload until RPR-9.
+8. **Packages (planned R17 / RPR-6):** Move `pulse-core`, `pulse-charts`, and `analytics-console` into `streamclone-pulse/packages` as public in-repo workspaces after provenance/license review. Backend remains private and consumes released versions where appropriate. Sibling `file:` deps remain an honest RPR-6 blocker.
 9. **License:** Pulse uses **Apache-2.0**.
 10. **Visibility:** Only `streamclone-pulse` becomes newly public. Do **not** publicize `streampulse-backend`, `streampulse-ops`, `replayforge`, or `streampulse-sdlc`.
 
@@ -102,8 +104,8 @@ No public visibility or store submission until:
 | ID | Item | Status |
 |----|------|--------|
 | RPR-0 | Baseline + documentation consistency | **COMPLETE** |
-| RPR-1 | Request matrix + chart migration v2 + coalesce | pending (acceptance repairs in flight) |
-| RPR-2 | Manifest generation + package validation | pending (acceptance repairs in flight) |
+| RPR-1 | Request matrix + chart migration v2 + coalesce | **COMPLETE** (`cf2ef08`, force-full `30138875909`) |
+| RPR-2 | Manifest generation + package validation | **COMPLETE** (`cf2ef08`, force-full `30138875909`; not uploaded) |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | pending |
 | RPR-4 | Hosted support form + outbox + minimal tracker fields | pending |
 | RPR-5 | Aggregate product analytics (default off) | pending |
@@ -155,6 +157,7 @@ Do **not** use `pull_request_target` to inject secrets into untrusted workflow c
 
 ## Next hard gate
 
-1. Start **RPR-1** (request contract + chart migration v2 + coalesce) from verified master.  
-2. Keep support/security mailbox verification and CWS dashboard confirmation as **RPR-9** release gates.  
-3. Do **not** start RPR-3+ until RPR-1 and RPR-2 land.
+1. Start **RPR-3** (server correlation IDs + sanitized extension diagnostics) from verified master `cf2ef08` (or a descendant).  
+2. Keep **RPR-6** open until public in-repo packages replace sibling `file:` deps.  
+3. Keep support/security mailbox verification and CWS dashboard confirmation as **RPR-9** release gates.  
+4. Do **not** upload store ZIPs or flip repo visibility until RPR-9 owner authorization.

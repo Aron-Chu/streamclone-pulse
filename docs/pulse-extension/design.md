@@ -57,7 +57,7 @@ streampulse-backend (private — BFF owner)
 │            ▼                                      │
 │  MV3 Service worker (extension origin)           │
 │   - broker fetch + session cache (current)       │
-│   - multi-tab coalesce (planned R14)             │
+│   - multi-tab coalesce (R14 landed)              │
 │   - no chrome.alarms unless no-tab durable poll  │
 │   - server-generated correlation ID (planned R15)│
 └────────────│─────────────────────────────────────┘
@@ -282,13 +282,13 @@ Today **hosted-production-vps** runs the hosted compose stack (streampulse-backe
 
 ## 9. Performance notes
 
-- **Tab-scoped recent polling (current + planned R14).** Content scripts already run a live poll controller; the service worker brokers fetches and caches. Hardened multi-tab coalescing and request-matrix tests are planned under RPR-1 / R14. Default interval remains ~30s with jitter; configurable 15/30/60s (R6.2). WebSockets are a later optimization.
-- **Explicit Full only (planned R14).** Full-history fetches must run only after an explicit user chart action. Chart preference migration v2 maps legacy values (including Full) once to `60m`; post-v2 user Full selection persists.
-- **Read amplification control.** BFF Redis cache (10–15s TTL keyed by login) plus planned SW coalescing decouple viewer/tab count from backend compute.
+- **Tab-scoped recent polling (R14 landed).** Content scripts own the live poll controller; the service worker brokers fetches, caches, and coalesces via `pulseGetCoordinator`. Default interval remains ~30s with jitter; configurable 15/30/60s (R6.2). WebSockets are a later optimization.
+- **Explicit Full only (R14 landed).** Full-history fetches run only after an explicit user chart action (“Load full history”). Chart preference migration v2 maps legacy values (including Full) once to `60m`; post-v2 user Full selection persists.
+- **Read amplification control.** BFF Redis cache (10–15s TTL keyed by login) plus SW coalescing decouple viewer/tab count from backend compute.
 - **Payload size.** Cap `rollups`/`lanes` to a rolling window (e.g. last 60 completed minutes) so the payload stays a few KB; peaks ≤ 10 (existing gating).
 - **Lanes are precomputed server-side** (normalized 0–100) so the extension does zero scoring math (R11.3).
 - **Render cost.** Shadow DOM + compact lanes; avoid re-render on every poll — diff by `currentOffsetSeconds`.
-- **Cold cache (planned RPR-1):** BFF compute-on-miss must stay < ~150ms p95; extend `pulseRevalidateGate` for single-flight, failure cooldown, and per-key isolation.
+- **Cold cache / revalidate:** BFF compute-on-miss must stay < ~150ms p95; extension-side single-flight and soft stale refresh landed under RPR-1. Backend `pulseRevalidateGate` hardening remains a BFF concern if further needed.
 - **Telemetry isolation (planned R15).** Extension diagnostics and product analytics are planned as separate, versioned, default-off consents. No durable install/session ID. Server-generated correlation IDs are planned and must not be sent to product-analytics vendors. Portal error monitoring via `VITE_SENTRY_DSN` is a separate, existing website path — not extension consent.
 
 ---
