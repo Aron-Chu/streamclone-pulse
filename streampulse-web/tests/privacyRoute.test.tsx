@@ -26,6 +26,10 @@ describe('privacy route', () => {
     expect(screen.queryByRole('heading', { name: /operator console/i })).toBeNull()
     expect(screen.queryByRole('heading', { name: /^docs$/i })).toBeNull()
     expect(screen.getByText(/chrome\.storage\.local/i)).toBeTruthy()
+    expect(screen.getByText(/sp\.hub\.recentLogins/i)).toBeTruthy()
+    expect(screen.getByText(/sp:publicHub:v1/i)).toBeTruthy()
+    expect(screen.getByText(/sp\.betaKey/i)).toBeTruthy()
+    expect(screen.getByText(/sp\.backendUrlOverride/i)).toBeTruthy()
   })
 
   it('explains Twitch page-context use without claiming cookie extraction', async () => {

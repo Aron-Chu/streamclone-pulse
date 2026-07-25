@@ -17,5 +17,10 @@
       "@streampulse/pulse-charts/*": ["../../streampulse-backend/packages/pulse-charts/src/*"]
     }
   },
-  "include": ["tests", "src/vite-env.d.ts", "scripts/fixtures/analytics-overlap-contract.d.mts"]
+  "include": [
+    "tests",
+    "src/vite-env.d.ts",
+    "scripts/fixtures/analytics-overlap-contract.d.mts",
+    "scripts/check-backend-url.d.mts"
+  ]
 }

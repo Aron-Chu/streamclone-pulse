@@ -72,8 +72,16 @@ export default function Privacy() {
             enabled.
           </li>
           <li>
-            <strong>Portal localStorage</strong> — optional website keys for gated portal features and
-            explicit developer overrides. Clearing site data removes them.
+            <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
+            (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
+            backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
+            10 minutes), and an optional beta key (<code>sp.betaKey</code>) when a gated portal feature is
+            used. Clearing site data for streampulse.stream removes these keys.
+          </li>
+          <li>
+            <strong>Portal sessionStorage</strong> — may hold a developer backend URL override
+            (<code>sp.backendUrlOverride</code>) in local development builds only. Production portal builds
+            do not apply session backend overrides. Clearing site data removes session keys as well.
           </li>
         </ul>
 

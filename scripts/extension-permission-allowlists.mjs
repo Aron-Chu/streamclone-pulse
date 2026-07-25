@@ -1,10 +1,17 @@
 /**
  * Exact per-target permission allowlists for extension packaging validation.
  *
- * gql.twitch.tv: REMOVED from extension host_permissions. Twitch GQL discovery
- * runs via chrome.scripting.executeScript in the Twitch page MAIN world
- * (see src/background/twitchPageInject.ts). MAIN-world fetch uses the page
- * network context and does not require an extension host grant.
+ * Twitch host grant: `https://*.twitch.tv/*` is retained so MV3
+ * chrome.scripting.executeScript can target Twitch channel/VOD pages
+ * (www, m, clips, and related subdomains). That wildcard also covers
+ * gql.twitch.tv for extension-origin network access, but StreamPulse does
+ * not declare a separate `https://gql.twitch.tv/*` entry and does not fetch
+ * GQL from the extension origin — discovery runs in page MAIN world
+ * (see src/background/twitchPageInject.ts) using the page network context.
+ *
+ * Narrowing to `https://www.twitch.tv/*` alone would drop content-script /
+ * scripting coverage for non-www Twitch hosts used by channel and mobile
+ * surfaces; keep the wildcard until product confirms www-only injection.
  */
 export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
 

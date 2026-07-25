@@ -2,6 +2,10 @@
 /**
  * Fail production portal builds that embed local / loopback API URLs.
  * Uses URL parsing + host normalization (not bare substring allowlists).
+ *
+ * Production builds rewrite React Router's relative-URL base to
+ * `https://invalid.invalid` (see rewriteReactRouterLocalhost plugin).
+ * Bare `http://localhost` is never allowed in shipped portal assets.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
@@ -13,27 +17,30 @@ const allowedHosts = ['api.streampulse.stream']
 
 const LOCAL_ALIASES = new Set(['laptopworker', 'host.docker.internal'])
 
-/**
- * React Router may embed exactly one fingerprinted `http://localhost` sentinel
- * used as a relative-URL base. Any other occurrence (port, path, query, count>1,
- * or different chunk context) fails.
- */
-const REACT_ROUTER_SENTINEL = {
-  literal: 'http://localhost',
-  // Surrounding context unique to the React Router URL parser sentinel.
-  contextNeedle: 'http://localhost',
-  maxCount: 1,
-}
+/** Reserved non-local base used after React Router rewrite (not an API origin). */
+export const REACT_ROUTER_URL_BASE = 'https://invalid.invalid'
+
+const BARE_LOCALHOST = 'http://localhost'
 
 function expandIpv4Mapped(host) {
+  const bare = host.replace(/^\[|\]$/g, '')
   // ::ffff:127.0.0.1
-  const m = host.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i)
-  return m ? m[1] : host
+  const dotted = bare.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i)
+  if (dotted) return dotted[1]
+  // Node URL may normalize to ::ffff:7f00:1
+  const hex = bare.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
+  if (hex) {
+    const hi = Number.parseInt(hex[1], 16)
+    const lo = Number.parseInt(hex[2], 16)
+    if (Number.isFinite(hi) && Number.isFinite(lo)) {
+      return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`
+    }
+  }
+  return bare
 }
 
 function isIpv4Loopback(host) {
-  const h = expandIpv4Mapped(host.replace(/^\[|\]$/g, ''))
-  // 127.0.0.0/8 including shortened spellings like 127.1 → treated via URL parser
+  const h = expandIpv4Mapped(host)
   if (/^127\.\d+\.\d+\.\d+$/.test(h)) return true
   if (h === '127.1' || h === '127.0.1') return true
   return false
@@ -75,7 +82,7 @@ export function findForbiddenBackendHosts(text) {
 
 /**
  * Scan text for absolute http(s) URLs whose host is local/loopback.
- * Bare React Router sentinel is counted separately by the caller.
+ * Every bare `http://localhost` occurrence is forbidden (no React Router exemption).
  */
 export function findForbiddenBackendUrlHits(text) {
   const hits = []
@@ -84,7 +91,6 @@ export function findForbiddenBackendUrlHits(text) {
   let match
   while ((match = re.exec(src)) !== null) {
     const raw = match[0]
-    // Strip trailing punctuation commonly captured from minified JS
     const cleaned = raw.replace(/[.,;)\]]+$/, '')
     let parsed
     try {
@@ -92,39 +98,27 @@ export function findForbiddenBackendUrlHits(text) {
     } catch {
       continue
     }
+    if (cleaned === REACT_ROUTER_URL_BASE) continue
     if (isForbiddenBackendHostname(parsed.hostname)) {
-      // Allow only exact bare sentinel without port/path/query/userinfo
-      const isBareSentinel =
-        cleaned === REACT_ROUTER_SENTINEL.literal
-        && parsed.hostname === 'localhost'
-        && !parsed.port
-        && (parsed.pathname === '/' || parsed.pathname === '')
-        && !parsed.search
-        && !parsed.hash
-        && !parsed.username
-        && !parsed.password
-      if (!isBareSentinel) {
-        hits.push(cleaned)
-      }
+      hits.push(cleaned)
     }
   }
   return hits
 }
 
+/** Count exact bare `http://localhost` literals (not port/path/query variants). */
 export function countBareLocalhostSentinel(text) {
   const src = String(text ?? '')
   let count = 0
   let idx = 0
   while (true) {
-    const found = src.indexOf(REACT_ROUTER_SENTINEL.literal, idx)
+    const found = src.indexOf(BARE_LOCALHOST, idx)
     if (found < 0) break
-    const after = src.slice(found, found + REACT_ROUTER_SENTINEL.literal.length + 8)
-    // Count only exact bare form not followed by :port or /
-    const rest = src.slice(found + REACT_ROUTER_SENTINEL.literal.length)
+    const rest = src.slice(found + BARE_LOCALHOST.length)
     if (!rest.startsWith(':') && !rest.startsWith('/') && !rest.startsWith('?') && !rest.startsWith('#')) {
       count += 1
     }
-    idx = found + REACT_ROUTER_SENTINEL.literal.length
+    idx = found + BARE_LOCALHOST.length
   }
   return count
 }
@@ -165,17 +159,12 @@ function main() {
     for (const hit of forbidden) console.error(`  ${hit.file}: ${hit.needle}`)
     process.exit(1)
   }
-  if (sentinelTotal > REACT_ROUTER_SENTINEL.maxCount) {
+  if (sentinelTotal > 0) {
     console.error(
-      `check-backend-url: bare http://localhost sentinel count ${sentinelTotal} exceeds allowed ${REACT_ROUTER_SENTINEL.maxCount}`,
+      `check-backend-url: bare http://localhost sentinel count ${sentinelTotal} must be 0 (React Router base rewritten to ${REACT_ROUTER_URL_BASE})`,
     )
     for (const s of sentinelFiles) console.error(`  ${s.file}: ${s.count}`)
     process.exit(1)
-  }
-  if (sentinelTotal === 1) {
-    console.log(
-      `check-backend-url: allowing exactly one React Router bare localhost sentinel in ${sentinelFiles[0]?.file}`,
-    )
   }
   const indexHtml = readFileSync(join(dist, 'index.html'), 'utf8')
   const files = walk(dist)

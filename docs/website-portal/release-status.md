@@ -32,7 +32,7 @@ soak completion, capacity raise, or marketing blast readiness.
 |-------|----------|-------|
 | Public site + analytics | **LIVE** | Command Center, CWS CTA, Privacy, Support, robots, and sitemap verified |
 | Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
-| Extension / Chrome Web Store | **PUBLISHED v0.1.0** | Public listing and website install CTA are live |
+| Extension / Chrome Web Store | **PUBLISHED** (owner recheck live version) | Source manifests are `0.1.0` and are **not uploadable as an update** if the live listing is already ahead (reportedly may be `0.1.1` — owner verify). Support URL / dashboard state also require owner verification. Do not claim dashboard edits from this doc. |
 | Marketing / creator blast | **NO-GO** | HOLD_AT_300 + Access + soak first |
 | Collector capacity | **HOLD_AT_300 / NO_GO_350** | Unchanged |
 
@@ -69,7 +69,7 @@ npm run build
 node --check scripts/zip-dist.mjs
 node --check scripts/validate-extension-package.mjs
 npm run package:cws
-npm run validate:package
+npm run validate:package:cws
 npm audit --omit=dev
 npm audit
 ```

@@ -186,8 +186,13 @@ export async function extractZipToTemp(zipPath, limits = ZIP_LIMITS) {
           readStream.on('error', reject)
           readStream.on('end', () => {
             const buf = Buffer.concat(chunks)
-            if (buf.length !== entry.uncompressedSize && entry.uncompressedSize > 0) {
-              // Allow zero-size / streamed size mismatch only when declared 0.
+            if (entry.uncompressedSize > 0 && buf.length !== entry.uncompressedSize) {
+              reject(
+                new Error(
+                  `declared uncompressed-size mismatch: ${name} declared=${entry.uncompressedSize} actual=${buf.length}`,
+                ),
+              )
+              return
             }
             files[name] = buf
             const out = createWriteStream(dest)
@@ -201,9 +206,21 @@ export async function extractZipToTemp(zipPath, limits = ZIP_LIMITS) {
         zip.close()
         resolve()
       })
-      zip.on('error', reject)
+      zip.on('error', (err) => {
+        try {
+          zip.close()
+        } catch {
+          // ignore close errors during rejection
+        }
+        reject(err)
+      })
     })
   } catch (err) {
+    try {
+      zip.close()
+    } catch {
+      // ignore
+    }
     rmSync(extractDir, { recursive: true, force: true })
     throw err
   }

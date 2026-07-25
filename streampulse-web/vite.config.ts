@@ -4,6 +4,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { extensionUiShimsPlugin } from './src/plugins/extensionUiShims'
+import { rewriteReactRouterLocalhostPlugin } from './src/plugins/rewriteReactRouterLocalhost'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Extension checkout root (sibling of streampulse-web/) — landing showcase reuses overlay UI. */
@@ -36,7 +37,12 @@ const sentryProject = process.env.SENTRY_PROJECT?.trim() || 'streampulse-portal'
 const sentryRelease = process.env.SENTRY_RELEASE?.trim()
 const viteSentryDsn = process.env.VITE_SENTRY_DSN?.trim()
 
-const plugins = [react(), extensionUiShimsPlugin(pulseRoot, __dirname), devConnectSrcPlugin()]
+const plugins = [
+  react(),
+  extensionUiShimsPlugin(pulseRoot, __dirname),
+  rewriteReactRouterLocalhostPlugin(),
+  devConnectSrcPlugin(),
+]
 
 // Sentry Vite plugin must be last. Upload only when production DSN + auth + release are set.
 if (viteSentryDsn && sentryAuth && sentryRelease) {

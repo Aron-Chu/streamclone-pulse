@@ -20,7 +20,8 @@ import {
   permissionAllowlistForTarget,
 } from './extension-permission-allowlists.mjs'
 import { isStoreTarget, loadManifestForTarget, resolveExtensionTarget } from './extension-target.mjs'
-import { REMOTE_CODE_SCAN_NOTE, scanRemoteCodePatterns } from './remote-code-scan.mjs'
+import { REMOTE_CODE_SCAN_NOTE } from './remote-code-scan.mjs'
+import { scanArchiveEntryBytes } from './archive-byte-scan.mjs'
 import {
   cleanupExtractDir,
   compareExtractedToDist,
@@ -169,29 +170,38 @@ function validateManifest(manifest, target) {
   }
 }
 
-function scanTextArtifact(rel, contents, store) {
-  if (/\.map$/i.test(rel)) fail(`source map present: ${rel}`)
-  if (/(^|\/)\.env/i.test(rel) || /\.env\./i.test(rel)) fail(`env file packaged: ${rel}`)
-  if (/BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY/.test(contents)) {
-    fail(`private key material in ${rel}`)
-  }
-  if (/[A-Za-z]:\\\\Users\\\\|\/Users\/|\/home\//.test(contents) && /streampulse|AppData/i.test(contents)) {
-    fail(`absolute machine path leak in ${rel}`)
-  }
-  // Sibling/private source paths are forbidden in store artifacts only.
-  // Development builds may mention streampulse-backend in local BFF help copy.
-  if (store) {
-    if (/file:\.\.\//.test(contents) || /streampulse-backend/.test(contents)) {
-      fail(`sibling/private path reference in ${rel}`)
+function reportArchiveHits(rel, hits) {
+  for (const hit of hits) {
+    if (hit.ruleId === 'private-key-header') fail(`private key material in ${rel}`)
+    else if (hit.ruleId === 'absolute-machine-path') fail(`absolute machine path leak in ${rel}`)
+    else if (hit.ruleId === 'sibling-private-path') fail(`sibling/private path reference in ${rel}`)
+    else if (hit.ruleId === 'sourcemap-file') fail(`source map present: ${rel}`)
+    else if (hit.ruleId === 'env-file') fail(`env file packaged: ${rel}`)
+    else if (hit.ruleId.startsWith('remote-code:')) {
+      fail(`remote-code ${hit.ruleId.slice('remote-code:'.length)} in ${rel}`)
+    } else {
+      fail(`archive canary ${hit.ruleId} in ${rel}`)
     }
+  }
+}
+
+function scanTextArtifact(rel, contents, store) {
+  const result = scanArchiveEntryBytes(rel, Buffer.from(String(contents ?? ''), 'utf8'), { store })
+  reportArchiveHits(rel, result.hits)
+  if (store) {
     for (const re of DEV_FORBIDDEN_CONTENT) {
       if (re.test(contents)) fail(`store artifact contains development string in ${rel}: ${re}`)
     }
   }
-  if (/\.(js|mjs|html|css)$/i.test(rel)) {
-    const scan = scanRemoteCodePatterns(contents)
-    if (!scan.ok) {
-      for (const hit of scan.hits) fail(`remote-code ${hit.id} in ${rel}: ${hit.match}`)
+}
+
+function scanArchivedBuffer(rel, buf, store) {
+  const result = scanArchiveEntryBytes(rel, buf, { store })
+  reportArchiveHits(rel, result.hits)
+  if (store) {
+    const asText = buf.toString('utf8')
+    for (const re of DEV_FORBIDDEN_CONTENT) {
+      if (re.test(asText)) fail(`store artifact contains development string in ${rel}: ${re}`)
     }
   }
 }
@@ -289,7 +299,17 @@ async function validateZipBytes(target, packable, version) {
     }
     ok('REQUIRED: extracted ZIP bytes match selected-target dist packable set')
 
-    const archivedManifest = JSON.parse(files['manifest.json'].toString('utf8'))
+    if (!files['manifest.json']) {
+      fail('REQUIRED: archived manifest.json missing')
+      return
+    }
+    let archivedManifest
+    try {
+      archivedManifest = JSON.parse(files['manifest.json'].toString('utf8'))
+    } catch (err) {
+      fail(`REQUIRED: archived manifest.json unreadable: ${err instanceof Error ? err.message : err}`)
+      return
+    }
     const expectedManifest = loadManifestForTarget(target)
     if (JSON.stringify(archivedManifest) !== JSON.stringify(expectedManifest)) {
       fail('archived manifest.json does not exactly match target manifest source')
@@ -298,12 +318,17 @@ async function validateZipBytes(target, packable, version) {
     }
 
     for (const [rel, buf] of Object.entries(files)) {
-      if (!/\.(js|mjs|html|css|json)$/i.test(rel)) continue
-      scanTextArtifact(rel, buf.toString('utf8'), store)
+      if (rel.endsWith('/')) continue
+      scanArchivedBuffer(rel, buf, store)
     }
-    ok('REQUIRED: scanned extracted archive text bytes')
+    ok('REQUIRED: scanned all extracted archive entry bytes')
   } finally {
     cleanupExtractDir(extractDir)
+  }
+
+  if (process.exitCode) {
+    note(`skipping validation report ${names.reportName} after prior failures`)
+    return
   }
 
   try {
@@ -313,6 +338,12 @@ async function validateZipBytes(target, packable, version) {
     )
   } catch (err) {
     fail(`REQUIRED: checksum validation failed: ${err instanceof Error ? err.message : err}`)
+    return
+  }
+
+  if (process.exitCode) {
+    note(`skipping validation report ${names.reportName} after checksum failure`)
+    return
   }
 
   const report = {
@@ -352,8 +383,8 @@ async function main() {
 
   const rpr6 = findSiblingFileDependencies()
   if (rpr6.length) {
-    note('RPR-6 blocker (not concealed): sibling file: dependencies remain in package.json')
-    for (const hit of rpr6) note(`  ${hit.section} ${hit.name}=${hit.spec}`)
+    note('RPR-6 blocker (not concealed): sibling file: dependencies remain (advisory; packaging continues)')
+    for (const hit of rpr6) note(`  [${hit.source}] ${hit.section} ${hit.name}=${hit.spec}`)
   }
 
   if (process.exitCode) {

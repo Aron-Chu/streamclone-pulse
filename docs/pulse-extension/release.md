@@ -28,14 +28,21 @@ Canonical release process for store packages and the public portal. Companion:
 | Firefox (later) | **None** | AMO |
 
 Generation must not broaden production permissions beyond the audited set.
-`package:cws` / `package:edge` / `validate:package` produce distinct ZIP names and run
-yauzl byte validation. Do **not** upload until RPR-9.
+`package:cws` / `package:edge` (atomic) and `validate:package:cws` /
+`validate:package:edge` produce distinct ZIP names and run yauzl byte validation.
+`validate:package` is the **development** target only and is not uploadable.
+Do **not** upload until RPR-9.
+
+Source package version is currently `0.1.0`. Owner must recheck the live CWS
+dashboard version (reportedly may already be `0.1.1`) before any upload. Next
+upload must be greater than the confirmed dashboard version — do not bump in
+this reliability track without an owner-approved release candidate.
 
 ---
 
 ## Package validation (required before next candidate)
 
-`package:cws` / `package:edge` / `validate:package` reject:
+`package:cws` / `package:edge` / `validate:package:cws` / `validate:package:edge` reject:
 
 - Source maps, `.env*`, secrets, absolute/sibling paths (store targets)
 - `file:` dependencies outside this repository (store targets; RPR-6 still blocks clean-clone publish)
@@ -55,10 +62,11 @@ self-generated checksums as cryptographic provenance.
 - [ ] Clean clone from release SHA (no sibling private deps)
 - [ ] `npm test`, `npm run typecheck`, `npm run build`, mocked Playwright as applicable
 - [ ] Remote CI green on that SHA (jobs actually executed)
-- [ ] `npm run package:cws` + `validate:package` (store target; no localhost)
+- [ ] `npm run package:cws` (or `validate:package:cws`) for the store target; no localhost
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
-- [ ] Owner authorizes upload; version exceeds last published version
+- [ ] Owner authorizes upload; version exceeds last published / confirmed dashboard version
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
+- [ ] Do **not** upload source `0.1.0` if live listing is already ahead (owner verify; reportedly may be `0.1.1`)
 
 ---
 

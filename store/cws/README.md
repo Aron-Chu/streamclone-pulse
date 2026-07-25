@@ -36,12 +36,13 @@ Prior locked ZIP SHA-256 `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd4
 
 - [x] Store-target package with **no** localhost / `127.0.0.1` hosts
 - [x] Development-only local BFF access moved to a separate development manifest (RPR-2 / R18)
-- [ ] `package:cws` + `validate:package` green on the release SHA
+- [ ] `package:cws` + `validate:package:cws` green on the release SHA
 - [ ] Local + remote CI green on the same SHA
 - [ ] Privacy/Support disclosures match current behavior
 - [ ] Owner-authorized upload of a **new** version (not the obsolete ZIP)
 
-Existing `package:cws` / `validate:package` work continues and must be extended — do not claim it is absent.
+Existing `package:cws` / `validate:package:cws` work continues and must be extended — do not claim it is absent.
+Use `validate:package` only for the **development** (non-uploadable) target.
 
 ---
 
@@ -119,24 +120,31 @@ May still include optional localhost hosts for local BFF debugging. That is **no
 | `scripting` | MAIN-world page inspection for live/VOD metadata |
 | `https://api.streampulse.stream/*` | Hosted Pulse API |
 | `https://cdn.7tv.app/*`, `https://static-cdn.jtvnw.net/*`, `https://cdn.frankerfacez.com/*` | Service-worker emote image fetch (approved CDNs) |
-| `https://gql.twitch.tv/*` | Stream/VOD identity GraphQL from page inject |
-| `https://*.twitch.tv/*` | Overlay on HTTPS Twitch + messaging under host grant |
+| `https://*.twitch.tv/*` | Content-script / scripting injection on Twitch hosts (www, m, clips, …). Wildcard also covers `gql.twitch.tv` for extension-origin network access, but GQL discovery runs in page MAIN world without a separate `gql.twitch.tv` host entry. |
 
 **Must exclude from store ZIP:** `http://localhost:8081/*`, `http://127.0.0.1:8081/*`, any other local origins.
 
-Content scripts match `https://*.twitch.tv/*` only. Removed as unused: `tabs`.
+Content scripts match `https://*.twitch.tv/*` only. Removed as unused: `tabs`. There is **no** separate `https://gql.twitch.tv/*` host permission entry.
 
 ## Zip (next candidate)
 
 ```bash
+# Atomic store packaging (preferred):
 npm run package:cws
-# or stepwise:
-npm run build
-npm run zip
+# Equivalent stepwise store validation:
+npm run validate:package:cws
+
+# Edge:
+npm run package:edge
+# or:
+npm run validate:package:edge
+
+# Development only — NOT uploadable:
+npm run package:development
 npm run validate:package
 ```
 
-Package version must match `manifest.json` `version` and must exceed the last published store version before upload.
+Source manifests are currently `0.1.0`. Live CWS listing version must be owner-rechecked (reportedly may already be `0.1.1`). Do **not** upload `0.1.0` as an update if the dashboard is already ahead; next upload must exceed the confirmed dashboard version. Do not bump here.
 
 Do not upload ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.
 

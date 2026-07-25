@@ -29,8 +29,9 @@ describe('portal check-backend-url fixtures', () => {
     expect(findForbiddenBackendHosts('fetch("http://127.0.0.1:8081/")').some((h) => h.includes('127.0.0.1'))).toBe(true)
     expect(findForbiddenBackendHosts('href="http://localhost/api"').some((h) => h.includes('localhost'))).toBe(true)
     expect(findForbiddenBackendHosts('https://api.streampulse.stream/v1')).toEqual([])
-    // React Router relative-URL sentinel is not a Pulse BFF origin.
-    expect(findForbiddenBackendHosts('base=`http://localhost`;next()')).toEqual([])
+    // Bare React Router sentinel is no longer exempt — production rewrites to https://invalid.invalid.
+    expect(findForbiddenBackendHosts('base=`http://localhost`;next()')).toContain('http://localhost')
+    expect(findForbiddenBackendHosts('base=`https://invalid.invalid`;next()')).toEqual([])
   })
 
   it('rejects legacy :8090 and laptopworker', () => {

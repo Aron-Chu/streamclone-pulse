@@ -48,13 +48,14 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] `npm run typecheck`, `npm test`, `npm run build`
 - [ ] Mocked Playwright / packaging checks as applicable for that SHA
 - [ ] Remote CI executes jobs and is green on the **same** SHA
-- [ ] `npm run package:cws` + `validate:package` for the **store** target
+- [ ] `npm run package:cws` (atomic) or `validate:package:cws` for the **store** target
 - [ ] Store package contains **no** `localhost` / `127.0.0.1` host permissions
-- [ ] Development-only local BFF access lives in a **separate development manifest** (RPR-2 / R18 — document now; implement later)
+- [ ] Development-only local BFF access lives in a **separate development manifest** (RPR-2 / R18)
 - [ ] Privacy and Support URLs match live pages and **current** disclosures
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
-- [ ] Owner authorizes upload; version exceeds last published version
+- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (source manifests are `0.1.0`; live listing reportedly may already be `0.1.1` — owner verify; do not upload `0.1.0` as an update if dashboard is ahead)
+- [ ] Support URL / dashboard state rechecked by owner (do not claim dashboard changes from this checklist)
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
 
 ### Permissions expected for the next **store** artifact
@@ -65,16 +66,16 @@ Required `host_permissions` (store):
 
 - `https://api.streampulse.stream/*`
 - `https://cdn.7tv.app/*`, `https://static-cdn.jtvnw.net/*`, `https://cdn.frankerfacez.com/*`
-- `https://gql.twitch.tv/*`
-- `https://*.twitch.tv/*`
+- `https://*.twitch.tv/*` (covers Twitch page hosts used for injection/messaging; GQL discovery runs in page MAIN world — there is no separate `https://gql.twitch.tv/*` entry)
 
 **Must not appear** in the store artifact:
 
 - `http://localhost:8081/*`
 - `http://127.0.0.1:8081/*`
 - any other local origins
+- a separate `https://gql.twitch.tv/*` host permission entry (do not document one as required)
 
-> **Note:** The current development `manifest.json` at baseline still lists optional localhost hosts. Splitting store vs development manifests is an **RPR-2 acceptance gate**, not Phase 0 code. Do not paste localhost justifications into the next store submission.
+> **Note:** Development packages may list optional localhost hosts and are explicitly non-uploadable. Do not paste localhost justifications into the next store submission.
 
 ### Chrome Web Store dashboard (next candidate)
 
@@ -84,21 +85,28 @@ Required `host_permissions` (store):
 - [ ] Limited Use affirmed
 - [ ] Listing name / screenshots say **StreamPulse**
 - [ ] Listing / submission / Google approval — owner action only
+- [ ] Live listing version + Support URL rechecked by owner (source is `0.1.0`; do not claim dashboard edits from repo docs)
 
 ### Packaging commands (next candidate)
 
 ```bash
-# From the release SHA only — after store-target validation exists.
+# From the release SHA only — store targets (atomic preferred).
 npm run package:cws
+# or: npm run validate:package:cws
 # artifacts (gitignored; not uploaded):
 #   streampulse-extension-cws-<version>.zip
 #   streampulse-extension-cws-<version>.zip.sha256
 #   streampulse-extension-cws-<version>.validation.json
 
 npm run package:edge
+# or: npm run validate:package:edge
 # artifacts (gitignored; not uploaded):
 #   streampulse-extension-edge-<version>.zip
 #   streampulse-extension-edge-<version>.zip.sha256
+
+# Development only — NOT uploadable:
+npm run package:development
+npm run validate:package
 ```
 
 Do not regenerate or bless the obsolete historical ZIP.
@@ -113,4 +121,4 @@ Do not regenerate or bless the obsolete historical ZIP.
 
 ## Existing package-validation work
 
-This checklist **extends** existing `package:cws` / `validate:package` work. Do not claim those scripts are absent. Harden them under RPR-2 to reject localhost on store targets and to continue rejecting secrets, source maps, and remote code.
+This checklist **extends** existing `package:cws` / `validate:package:cws` work. Do not claim those scripts are absent. Harden them under RPR-2 to reject localhost on store targets and to continue rejecting secrets, source maps, and remote code. Never follow `package:cws` with development `validate:package`.

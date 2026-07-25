@@ -117,14 +117,9 @@ Calls the StreamPulse backend for Pulse rollups, coverage/backfill state, and re
 Loads emote images displayed in the overlay from approved HTTPS CDNs only (7TV, Twitch CDN, FrankerFaceZ).
 ```
 
-### Host permission — https://gql.twitch.tv/*
-```
-Resolves stream/VOD identity via Twitch GraphQL from the page context so coverage and backfill flows target the correct broadcast.
-```
-
 ### Host permission — https://*.twitch.tv/*
 ```
-Runs the content script on Twitch channel and VOD pages and allows tab messaging under the Twitch host grant (no broad tabs permission).
+Runs the content script on Twitch channel and VOD pages and allows chrome.scripting injection / tab messaging under the Twitch host grant (no broad tabs permission). The wildcard covers Twitch subdomains used by the product (including gql.twitch.tv for extension-origin network access if ever used). StreamPulse does not declare a separate https://gql.twitch.tv/* host permission: GraphQL stream/VOD discovery runs in the Twitch page MAIN world using the page network context.
 ```
 
 ### Localhost (development manifests only — not for store paste)
