@@ -1,6 +1,6 @@
 # StreamPulse — Reliability, Public Release, and Repository Governance
 
-**Status:** Phase 0 **complete**. Phases 1–2 (**RPR-1** / **RPR-2**) are **in progress** again for acceptance repair after premature closure. Force-full run `30138875909` on `cf2ef08` remains positive evidence, not full acceptance. RPR-6 (public packages) remains open.  
+**Status:** Phase 0 **complete**. Phases 1–2 (**RPR-1** / **RPR-2**) are **COMPLETE** after acceptance repairs and force-full verification on master `e13a74e` (run `30144042786`). RPR-3 through RPR-9 remain pending. RPR-6 (public packages) remains open and blocks clean public builds.  
 **Canonical execution plan** for the reliability / public-release / governance program.  
 Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./requirements.md) (R14–R18 for new gates; **R13 remains Emote metadata readiness**), [`design.md`](./design.md), [`release.md`](./release.md).
 
@@ -12,8 +12,9 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 |------|--------|
 | Remote | `https://github.com/Aron-Chu/streamclone-pulse.git` |
 | Phase 0 verified master | `69b357521d6794410da3267e8699c13012f88351` |
-| RPR-1 / RPR-2 verified master | `cf2ef08a87398462ef29f95b06ef0fc4df23e39d` |
-| Force-full proof | [CI run `30138875909`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30138875909) (`workflow_dispatch` + `force_full=true`; `e2e_executed=true`) |
+| RPR-1 / RPR-2 accepted master | `e13a74e194168434ec9f294c485b4d9408ed4e78` |
+| Force-full acceptance | [CI run `30144042786`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30144042786) (`workflow_dispatch` + `force_full=true`; `e2e_executed=true`; final-gate OK) |
+| Historical force-full (evidence only) | [CI run `30138875909`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30138875909) on `cf2ef08` |
 | Working rule | Implement only from a clean checkout/worktree of that SHA (or a descendant). Do not mutate unrelated dirty checkouts. |
 | Remote CI gate | Remote workflow runs must **execute jobs successfully** on the release SHA. Runs that start no jobs do not count as green. |
 
@@ -104,12 +105,12 @@ No public visibility or store submission until:
 | ID | Item | Status |
 |----|------|--------|
 | RPR-0 | Baseline + documentation consistency | **COMPLETE** |
-| RPR-1 | Request matrix + chart migration v2 + coalesce | **IN PROGRESS** (reopened; prior force-full `30138875909` is evidence only) |
-| RPR-2 | Manifest generation + package validation | **IN PROGRESS** (reopened; prior force-full `30138875909` is evidence only; not uploaded) |
+| RPR-1 | Request matrix + chart migration v2 + coalesce | **COMPLETE** (accepted on `e13a74e` via force-full `30144042786`) |
+| RPR-2 | Manifest generation + package validation | **COMPLETE** (accepted on `e13a74e` via force-full `30144042786`; artifacts not uploaded) |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | pending |
 | RPR-4 | Hosted support form + outbox + minimal tracker fields | pending |
 | RPR-5 | Aggregate product analytics (default off) | pending |
-| RPR-6 | Pulse-owned public packages | pending |
+| RPR-6 | Pulse-owned public packages | pending (blocks clean public builds) |
 | RPR-7 | Governance files + history/Actions audit | pending |
 | RPR-8 | Ruleset + break-glass (post green CI) | pending |
 | RPR-9 | Publication / store gates (owner-authorized) | pending |
