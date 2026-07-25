@@ -21,7 +21,6 @@ const EXPECTED_HOST_PERMISSIONS = [
   'https://cdn.7tv.app/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
-  'https://gql.twitch.tv/*',
   'https://*.twitch.tv/*',
 ]
 const EXPECTED_OPTIONAL_HOST_PERMISSIONS = [

@@ -1,24 +1,34 @@
 /**
- * Build a CWS zip from the filtered dist file set.
- * Valid plain JavaScript — must pass: node --check scripts/zip-dist.mjs
- *
- * Determinism: lexical file order is enforced. Byte-identical archives across
- * OS/tools are not guaranteed (timestamps/extra fields may differ).
+ * Build a filtered extension zip for the selected target.
+ * Usage:
+ *   EXTENSION_TARGET=cws node scripts/zip-dist.mjs
+ *   node scripts/zip-dist.mjs --target=edge
  */
-import { existsSync, unlinkSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs'
+import { existsSync, unlinkSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import {
-  ZIP_NAME,
   compareZipEntriesToExpected,
   listPackableDistFiles,
   listZipEntries,
   sha256File,
+  targetArtifactNames,
 } from './extension-package-lib.mjs'
+import { resolveExtensionTarget } from './extension-target.mjs'
+
+function parseTargetArg(argv = process.argv.slice(2)) {
+  const idx = argv.findIndex((a) => a === '--target' || a.startsWith('--target='))
+  if (idx < 0) return resolveExtensionTarget(process.env.EXTENSION_TARGET)
+  const raw = argv[idx].startsWith('--target=') ? argv[idx].slice('--target='.length) : argv[idx + 1]
+  return resolveExtensionTarget(raw)
+}
 
 const dist = join(process.cwd(), 'dist')
-const zipPath = join(process.cwd(), ZIP_NAME)
+const target = parseTargetArg()
+const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'))
+const names = targetArtifactNames(target, manifest.version)
+const zipPath = join(process.cwd(), names.zipName)
 
 function zipWithInfoZip(files) {
   const args = ['-X', '-q', zipPath, ...files]
@@ -29,19 +39,13 @@ function zipWithInfoZip(files) {
 }
 
 function zipWithTar(files) {
-  // Windows tar treats an absolute `C:\...` archive path as a remote host.
-  // Write from the repository root so the archive target is relative.
-  const args = ['-a', '-cf', ZIP_NAME, '-C', dist, ...files]
+  const args = ['-a', '-cf', names.zipName, '-C', dist, ...files]
   const result = spawnSync('tar', args, { cwd: process.cwd(), encoding: 'utf8' })
   if (result.status !== 0) {
     throw new Error(`tar zip exited with code ${result.status ?? 'unknown'}: ${result.stderr || ''}`)
   }
 }
 
-/**
- * Windows fallback: .NET ZipArchive from the explicit filtered relative paths.
- * Does not archive dist/* blindly.
- */
 function zipWithDotNetFiltered(files) {
   const listPath = join(tmpdir(), `sp-zip-files-${process.pid}.txt`)
   writeFileSync(listPath, files.join('\n'), 'utf8')
@@ -91,10 +95,6 @@ function zipWithDotNetFiltered(files) {
   }
 }
 
-/**
- * Last-resort portable path: stage only filtered files, then tar/zip the stage.
- * Still uses the filtered list — never copies skipped files.
- */
 function zipViaStagingDir(files) {
   const stage = join(tmpdir(), `sp-zip-stage-${process.pid}`)
   rmSync(stage, { recursive: true, force: true })
@@ -107,7 +107,7 @@ function zipViaStagingDir(files) {
   }
   const tarProbe = spawnSync('tar', ['--version'], { encoding: 'utf8' })
   if (tarProbe.status === 0) {
-    const result = spawnSync('tar', ['-a', '-cf', ZIP_NAME, '-C', stage, ...files], {
+    const result = spawnSync('tar', ['-a', '-cf', names.zipName, '-C', stage, ...files], {
       cwd: process.cwd(),
       encoding: 'utf8',
     })
@@ -140,8 +140,8 @@ function createZip(files) {
   return 'staged-fallback'
 }
 
-function assertZipMatchesExpected(files) {
-  const { entries, method } = listZipEntries(zipPath)
+async function assertZipMatchesExpected(files) {
+  const { entries, method } = await listZipEntries(zipPath)
   const comparison = compareZipEntriesToExpected(entries, files)
   if (!comparison.ok) {
     throw new Error(
@@ -151,12 +151,22 @@ function assertZipMatchesExpected(files) {
   return { entries: comparison.actual, method }
 }
 
-function main() {
+async function main() {
   if (!existsSync(join(dist, 'manifest.json'))) {
-    throw new Error('dist/manifest.json missing — run `npm run build` first')
+    throw new Error('dist/manifest.json missing — run a target-aware build first')
   }
 
-  const files = listPackableDistFiles(dist)
+  const targetMetaPath = join(dist, 'extension-target.json')
+  if (existsSync(targetMetaPath)) {
+    const meta = JSON.parse(readFileSync(targetMetaPath, 'utf8'))
+    if (meta.target !== target) {
+      throw new Error(
+        `dist target ${JSON.stringify(meta.target)} != zip target ${target}; refuse mismatched packaging`,
+      )
+    }
+  }
+
+  const files = listPackableDistFiles(dist).filter((f) => f !== 'extension-target.json')
   if (files.length === 0) {
     throw new Error('dist/ contains no packable files')
   }
@@ -166,13 +176,13 @@ function main() {
   }
 
   const tool = createZip(files)
-  const { entries, method } = assertZipMatchesExpected(files)
+  const { entries, method } = await assertZipMatchesExpected(files)
 
   const digest = sha256File(zipPath)
-  const checksumPath = `${zipPath}.sha256`
-  writeFileSync(checksumPath, `${digest}  ${ZIP_NAME}\n`, 'utf8')
+  const checksumPath = join(process.cwd(), names.checksumName)
+  writeFileSync(checksumPath, `${digest}  ${names.zipName}\n`, 'utf8')
 
-  console.log(`Wrote ${zipPath} (${files.length} files) via ${tool}`)
+  console.log(`Wrote ${zipPath} (target=${target}, ${files.length} files) via ${tool}`)
   console.log(`Inspected ${entries.length} entries via ${method}`)
   console.log(`SHA-256 ${digest}`)
   console.log(`Checksum ${checksumPath}`)
@@ -181,4 +191,7 @@ function main() {
   )
 }
 
-main()
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err)
+  process.exit(1)
+})

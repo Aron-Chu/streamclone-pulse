@@ -14,13 +14,15 @@
     "capture:extension-goldens": "npx tsx scripts/capture-extension-goldens.mts",
     "icons:cws": "node scripts/gen-cws-icons.mjs",
     "capture:cws:mocked": "npm run icons:cws && npm run build && playwright test tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts --project=extension-mocked",
-    "zip": "node scripts/zip-dist.mjs",
+    "zip": "node scripts/zip-dist.mjs --target=development",
     "validate:package": "node scripts/validate-extension-package.mjs --target=development",
     "validate:package:cws": "node scripts/validate-extension-package.mjs --target=cws",
     "validate:package:edge": "node scripts/validate-extension-package.mjs --target=edge",
+    "package:development": "node scripts/package-extension-target.mjs development",
     "package:cws": "node scripts/package-extension-target.mjs cws",
     "package:edge": "node scripts/package-extension-target.mjs edge",
-    "check:bundle-budget": "node scripts/check-extension-bundle-budget.mjs"
+    "check:bundle-budget": "node scripts/check-extension-bundle-budget.mjs",
+    "check:public-source-readiness": "node scripts/check-public-source-readiness.mjs"
   },
   "dependencies": {
     "@streampulse/pulse-charts": "file:../streampulse-backend/packages/pulse-charts",
@@ -39,10 +41,13 @@
     "@types/chrome": "^0.0.287",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
+    "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "6.0.2",
     "rollup": "^4.43.0",
     "typescript": "6.0.3",
     "vite": "8.0.16",
-    "vitest": "3.2.7"
+    "vitest": "3.2.7",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1"
   }
 }

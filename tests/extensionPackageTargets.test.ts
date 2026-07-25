@@ -25,9 +25,9 @@ describe('extension-target helpers', () => {
 
 describe('portal check-backend-url fixtures', () => {
   it('rejects localhost and loopback URLs on every port including 8081', () => {
-    expect(findForbiddenBackendHosts('const u="http://localhost:8081/v1"')).toContain('http://localhost:8081')
-    expect(findForbiddenBackendHosts('fetch("http://127.0.0.1:8081/")')).toContain('http://127.0.0.1:8081')
-    expect(findForbiddenBackendHosts('href="http://localhost/api"')).toContain('http://localhost/')
+    expect(findForbiddenBackendHosts('const u="http://localhost:8081/v1"').some((h) => h.includes('8081'))).toBe(true)
+    expect(findForbiddenBackendHosts('fetch("http://127.0.0.1:8081/")').some((h) => h.includes('127.0.0.1'))).toBe(true)
+    expect(findForbiddenBackendHosts('href="http://localhost/api"').some((h) => h.includes('localhost'))).toBe(true)
     expect(findForbiddenBackendHosts('https://api.streampulse.stream/v1')).toEqual([])
     // React Router relative-URL sentinel is not a Pulse BFF origin.
     expect(findForbiddenBackendHosts('base=`http://localhost`;next()')).toEqual([])

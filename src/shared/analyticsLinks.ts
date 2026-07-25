@@ -11,17 +11,19 @@ export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
   const normalized = apiBaseUrl.trim().replace(/\/+$/, '')
   if (!normalized) return DEFAULT_WEB_ANALYTICS_BASE_URL
 
-  try {
-    const parsed = new URL(normalized)
-    const host = parsed.hostname.toLowerCase()
-    const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
-    const localBackendPort = '8081'
-    const localPortalPort = '5173'
-    if ((host === 'localhost' || host === '127.0.0.1') && port === localBackendPort) {
-      return `http://${host}:${localPortalPort}`
+  if (!(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__)) {
+    try {
+      const parsed = new URL(normalized)
+      const host = parsed.hostname.toLowerCase()
+      const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
+      const localBackendPort = '8081'
+      const localPortalPort = '5173'
+      if ((host === 'localhost' || host === '127.0.0.1') && port === localBackendPort) {
+        return `http://${host}:${localPortalPort}`
+      }
+    } catch {
+      // fall through
     }
-  } catch {
-    // fall through
   }
 
   if (normalized.includes('api.streampulse.stream')) {

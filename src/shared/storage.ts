@@ -45,6 +45,9 @@ export const DEFAULT_KEEP_LOCAL_CACHE = true
 
 /** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
 export function isLocalStackBackendUrl(url: string): boolean {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    return false
+  }
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
   if (!normalized) return false
   return (
@@ -57,12 +60,18 @@ export function isLocalStackBackendUrl(url: string): boolean {
 
 /** Legacy Streamclone Caddy :8090 — watch-only after boundary split; auto-reset to hosted. */
 export function isLegacyStreamcloneBackendUrl(url: string): boolean {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    return false
+  }
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
   return normalized.includes('localhost:8090') || normalized.includes('127.0.0.1:8090')
 }
 
 /** True when the extension should use hosted Pulse Live gating (no extension-initiated IRC watch). */
 export function isHostedBackendUrl(url: string): boolean {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    return true
+  }
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
   if (!normalized) return true
   return !isLocalStackBackendUrl(normalized)
@@ -188,16 +197,22 @@ async function syncStorageRemove(keys: string | string[]): Promise<void> {
 }
 
 /** Local BFF hosts requested only when the user opts into localhost development. */
-export const LOCAL_BACKEND_OPTIONAL_HOSTS = [
-  'http://localhost:8081/*',
-  'http://127.0.0.1:8081/*',
-] as const
+export const LOCAL_BACKEND_OPTIONAL_HOSTS =
+  typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__
+    ? ([] as const)
+    : ([
+        'http://localhost:8081/*',
+        'http://127.0.0.1:8081/*',
+      ] as const)
 
 /**
  * Ensure optional host access for the local StreamPulse BFF when the user opts in.
  * Production CWS builds keep localhost out of required host_permissions.
  */
 export async function ensureLocalBackendHostPermission(url: string): Promise<boolean> {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    return true
+  }
   if (!isLocalStackBackendUrl(url)) return true
   if (!isExtensionContextAlive()) return false
   if (typeof chrome.permissions?.request !== 'function') return true
@@ -212,6 +227,9 @@ export async function ensureLocalBackendHostPermission(url: string): Promise<boo
 }
 
 export async function getBackendUrl(): Promise<string> {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    return DEFAULT_BACKEND_URL
+  }
   const stored = await syncStorageGet([BACKEND_URL_KEY, LOCAL_BACKEND_OPT_IN_KEY])
   const raw = String(stored[BACKEND_URL_KEY] ?? DEFAULT_BACKEND_URL).trim()
   const url = raw.replace(/\/+$/, '')
@@ -236,6 +254,13 @@ export async function getBackendUrl(): Promise<string> {
 }
 
 export async function setBackendUrl(url: string): Promise<void> {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    await syncStorageSet({
+      [BACKEND_URL_KEY]: DEFAULT_BACKEND_URL,
+      [LOCAL_BACKEND_OPT_IN_KEY]: false,
+    })
+    return
+  }
   const trimmed = url.trim().replace(/\/+$/, '')
   const localOptIn = isLocalStackBackendUrl(trimmed)
   if (localOptIn) {

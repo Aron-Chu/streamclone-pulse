@@ -1,44 +1,44 @@
 /**
- * Validate a built extension dist/ and CWS zip for packaging gates.
- * Valid plain JavaScript — must pass: node --check scripts/validate-extension-package.mjs
+ * Validate a built extension dist/ and target ZIP for packaging gates.
+ * Store targets REQUIRE the ZIP and validate extracted archive bytes via yauzl.
  *
  * Usage:
- *   node scripts/validate-extension-package.mjs [--target=development|cws|edge]
+ *   node scripts/validate-extension-package.mjs --target=development|cws|edge
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import {
-  ZIP_NAME,
   compareZipEntriesToExpected,
   listPackableDistFiles,
   listZipEntries,
+  targetArtifactNames,
   validateChecksumAgainstZip,
   validateIconPngFiles,
 } from './extension-package-lib.mjs'
 import {
-  isLocalOrLoopbackHost,
-  isStoreTarget,
-  loadManifestForTarget,
-  resolveExtensionTarget,
-} from './extension-target.mjs'
+  assertExactStringList,
+  permissionAllowlistForTarget,
+} from './extension-permission-allowlists.mjs'
+import { isStoreTarget, loadManifestForTarget, resolveExtensionTarget } from './extension-target.mjs'
+import { REMOTE_CODE_SCAN_NOTE, scanRemoteCodePatterns } from './remote-code-scan.mjs'
+import {
+  cleanupExtractDir,
+  compareExtractedToDist,
+  extractZipToTemp,
+} from './zip-byte-validate.mjs'
+import { findSiblingFileDependencies } from './check-public-source-readiness.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
-const zipPath = join(root, ZIP_NAME)
-const checksumPath = `${zipPath}.sha256`
 
-const REQUIRED_PERMISSIONS = ['storage', 'scripting']
-const FORBIDDEN_PERMISSIONS = ['tabs', 'webRequest', 'debugger', 'nativeMessaging']
-const REQUIRED_HOSTS = [
-  'https://api.streampulse.stream/*',
-  'https://cdn.7tv.app/*',
-  'https://static-cdn.jtvnw.net/*',
-  'https://cdn.frankerfacez.com/*',
-  'https://gql.twitch.tv/*',
-  'https://*.twitch.tv/*',
+const DEV_FORBIDDEN_CONTENT = [
+  /localhost:\d+/i,
+  /127\.0\.0\.1/i,
+  /\[::1\]/i,
+  /laptopworker/i,
+  /file:\.\.\//i,
+  /streampulse-backend/i,
 ]
-const FORBIDDEN_HOST_SUBSTRINGS = [':8090', ':9876', 'localhost:3000', '127.0.0.1:3000']
-const DEV_OPTIONAL_LOCALHOST_HOSTS = ['http://localhost:8081/*', 'http://127.0.0.1:8081/*']
 
 function parseTargetArg(argv = process.argv.slice(2)) {
   const idx = argv.findIndex((a) => a === '--target' || a.startsWith('--target='))
@@ -70,21 +70,6 @@ function listAllDistFiles(dir, base = dir) {
   return out.sort((a, b) => a.localeCompare(b))
 }
 
-function assertNoRemoteExecutableRefs(filePath, contents) {
-  // Best-effort static scan — does not prove absence of every dynamic remote-code pattern.
-  const patterns = [
-    /import\s*\(\s*['"]https?:\/\//i,
-    /new\s+Worker\s*\(\s*['"]https?:\/\//i,
-    /WebAssembly\.instantiateStreaming\s*\(\s*fetch\s*\(\s*['"]https?:\/\//i,
-    /<script[^>]+src=['"]https?:\/\//i,
-  ]
-  for (const re of patterns) {
-    if (re.test(contents)) {
-      fail(`remote executable reference in ${filePath}: ${re}`)
-    }
-  }
-}
-
 function validateManifest(manifest, target) {
   if (manifest.manifest_version !== 3) {
     fail(`manifest_version must be 3, got ${manifest.manifest_version}`)
@@ -105,51 +90,25 @@ function validateManifest(manifest, target) {
     ok(`REQUIRED: version matches target ${target} (${manifest.version})`)
   }
 
-  const permissions = manifest.permissions ?? []
-  for (const required of REQUIRED_PERMISSIONS) {
-    if (!permissions.includes(required)) fail(`missing permission: ${required}`)
+  const allow = permissionAllowlistForTarget(target)
+  for (const err of assertExactStringList(manifest.permissions ?? [], allow.permissions, 'permissions')) {
+    fail(err)
   }
-  for (const forbidden of FORBIDDEN_PERMISSIONS) {
-    if (permissions.includes(forbidden)) fail(`forbidden permission present: ${forbidden}`)
+  for (const err of assertExactStringList(
+    manifest.host_permissions ?? [],
+    allow.host_permissions,
+    'host_permissions',
+  )) {
+    fail(err)
   }
-  ok(`REQUIRED: permissions=${JSON.stringify(permissions)}`)
-
-  const hosts = manifest.host_permissions ?? []
-  for (const required of REQUIRED_HOSTS) {
-    if (!hosts.includes(required)) fail(`missing host_permission: ${required}`)
+  for (const err of assertExactStringList(
+    manifest.optional_host_permissions ?? [],
+    allow.optional_host_permissions,
+    'optional_host_permissions',
+  )) {
+    fail(err)
   }
-  for (const host of hosts) {
-    for (const forbidden of FORBIDDEN_HOST_SUBSTRINGS) {
-      if (host.includes(forbidden)) fail(`forbidden host permission: ${host}`)
-    }
-    if (isLocalOrLoopbackHost(host)) {
-      fail(`localhost/loopback must not appear in host_permissions: ${host}`)
-    }
-  }
-  ok(`REQUIRED: host_permissions count=${hosts.length}`)
-
-  const optionalHosts = manifest.optional_host_permissions ?? []
-  if (isStoreTarget(target)) {
-    if (optionalHosts.length > 0) {
-      fail(`store target ${target} must not declare optional_host_permissions (got ${JSON.stringify(optionalHosts)})`)
-    }
-    for (const host of optionalHosts) {
-      if (isLocalOrLoopbackHost(host)) fail(`store target forbids local optional host: ${host}`)
-    }
-    ok(`REQUIRED: store target ${target} has no localhost/loopback permissions`)
-  } else {
-    for (const localHost of DEV_OPTIONAL_LOCALHOST_HOSTS) {
-      if (!optionalHosts.includes(localHost)) {
-        fail(`development target missing optional host permission: ${localHost}`)
-      }
-    }
-    for (const host of optionalHosts) {
-      if (!isLocalOrLoopbackHost(host) && !DEV_OPTIONAL_LOCALHOST_HOSTS.includes(host)) {
-        fail(`unexpected optional host permission: ${host}`)
-      }
-    }
-    ok('REQUIRED: development localhost hosts are optional (not required)')
-  }
+  ok(`REQUIRED: exact permission allowlist for ${target}`)
 
   const sw = manifest.background?.service_worker
   if (!sw || typeof sw !== 'string') {
@@ -210,31 +169,52 @@ function validateManifest(manifest, target) {
   }
 }
 
-function validateDistContents() {
-  const packable = listPackableDistFiles(dist)
+function scanTextArtifact(rel, contents, store) {
+  if (/\.map$/i.test(rel)) fail(`source map present: ${rel}`)
+  if (/(^|\/)\.env/i.test(rel) || /\.env\./i.test(rel)) fail(`env file packaged: ${rel}`)
+  if (/BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY/.test(contents)) {
+    fail(`private key material in ${rel}`)
+  }
+  if (/[A-Za-z]:\\\\Users\\\\|\/Users\/|\/home\//.test(contents) && /streampulse|AppData/i.test(contents)) {
+    fail(`absolute machine path leak in ${rel}`)
+  }
+  // Sibling/private source paths are forbidden in store artifacts only.
+  // Development builds may mention streampulse-backend in local BFF help copy.
+  if (store) {
+    if (/file:\.\.\//.test(contents) || /streampulse-backend/.test(contents)) {
+      fail(`sibling/private path reference in ${rel}`)
+    }
+    for (const re of DEV_FORBIDDEN_CONTENT) {
+      if (re.test(contents)) fail(`store artifact contains development string in ${rel}: ${re}`)
+    }
+  }
+  if (/\.(js|mjs|html|css)$/i.test(rel)) {
+    const scan = scanRemoteCodePatterns(contents)
+    if (!scan.ok) {
+      for (const hit of scan.hits) fail(`remote-code ${hit.id} in ${rel}: ${hit.match}`)
+    }
+  }
+}
+
+function validateDistContents(store) {
+  const packable = listPackableDistFiles(dist).filter((f) => f !== 'extension-target.json')
   const all = listAllDistFiles(dist)
   const mapsInDist = all.filter((f) => f.toLowerCase().endsWith('.map'))
   if (mapsInDist.length) {
-    note(
-      `dist contains ${mapsInDist.length} .map file(s); they must be excluded from the zip (packable filter)`,
-    )
-  } else {
-    ok('REQUIRED: no .map files in dist (or none present)')
+    note(`dist contains ${mapsInDist.length} .map file(s); must be excluded from zip`)
   }
 
   let sawJs = false
   for (const rel of packable) {
     if (!/\.(js|mjs|html|css|json)$/i.test(rel)) continue
     const contents = readFileSync(join(dist, rel), 'utf8')
-    assertNoRemoteExecutableRefs(rel, contents)
+    scanTextArtifact(rel, contents, store)
     if (/\.js$/i.test(rel)) sawJs = true
   }
   if (!sawJs) fail('no JavaScript bundles found in packable dist set')
   else {
-    ok(`BEST-EFFORT: scanned ${packable.length} packable files for common remote executable refs`)
-    note(
-      'Static remote-code scan is best-effort and does not prove absence of every dynamic remote-code pattern.',
-    )
+    ok(`scanned ${packable.length} packable text files`)
+    note(REMOTE_CODE_SCAN_NOTE)
   }
 
   let foundHosted = false
@@ -250,18 +230,27 @@ function validateDistContents() {
   return packable
 }
 
-function validateZipAgainstPackable(packable) {
+async function validateZipBytes(target, packable, version) {
+  const names = targetArtifactNames(target, version)
+  const zipPath = join(root, names.zipName)
+  const checksumPath = join(root, names.checksumName)
+  const store = isStoreTarget(target)
+
   if (!existsSync(zipPath)) {
-    note('streampulse-extension.zip not present (run npm run zip) — zip gates skipped')
+    if (store) {
+      fail(`REQUIRED: store zip missing: ${names.zipName}`)
+      return
+    }
+    note(`${names.zipName} not present — zip gates skipped for development`)
     return
   }
 
   let entries
   let method
   try {
-    ;({ entries, method } = listZipEntries(zipPath))
+    ;({ entries, method } = await listZipEntries(zipPath))
   } catch (err) {
-    fail(`REQUIRED: zip present but cannot be inspected: ${err instanceof Error ? err.message : err}`)
+    fail(`REQUIRED: zip rejected: ${err instanceof Error ? err.message : err}`)
     return
   }
 
@@ -269,23 +258,78 @@ function validateZipAgainstPackable(packable) {
   if (!comparison.ok) {
     for (const error of comparison.errors) fail(`REQUIRED: ${error}`)
   } else {
-    ok(`REQUIRED: zip entries match filtered dist set (${comparison.actual.length} files via ${method})`)
+    ok(`REQUIRED: zip entries match filtered dist set (${comparison.actual.length} via ${method})`)
+  }
+
+  const { extractDir, files, errors } = await extractZipToTemp(zipPath)
+  try {
+    if (errors.length) {
+      for (const error of errors) fail(`REQUIRED: zip inspect: ${error}`)
+      return
+    }
+    const byteCompare = compareExtractedToDist(files, dist)
+    // extension-target.json is dist-only metadata — exclude from zip/dist byte compare
+    const filteredErrors = byteCompare.errors.filter(
+      (e) => !e.includes('extension-target.json'),
+    )
+    // Packable set may exclude extension-target; rebuild expected from packable
+    const packableSet = new Set(packable)
+    const fileKeys = Object.keys(files).filter((n) => !n.endsWith('/'))
+    for (const rel of packable) {
+      if (!files[rel]) fail(`extracted zip missing ${rel}`)
+      else {
+        const distBuf = readFileSync(join(dist, rel))
+        if (!distBuf.equals(files[rel])) {
+          fail(`extracted byte mismatch: ${rel}`)
+        }
+      }
+    }
+    for (const rel of fileKeys) {
+      if (!packableSet.has(rel)) fail(`extracted unexpected entry: ${rel}`)
+    }
+    ok('REQUIRED: extracted ZIP bytes match selected-target dist packable set')
+
+    const archivedManifest = JSON.parse(files['manifest.json'].toString('utf8'))
+    const expectedManifest = loadManifestForTarget(target)
+    if (JSON.stringify(archivedManifest) !== JSON.stringify(expectedManifest)) {
+      fail('archived manifest.json does not exactly match target manifest source')
+    } else {
+      ok(`REQUIRED: archived manifest matches ${target}`)
+    }
+
+    for (const [rel, buf] of Object.entries(files)) {
+      if (!/\.(js|mjs|html|css|json)$/i.test(rel)) continue
+      scanTextArtifact(rel, buf.toString('utf8'), store)
+    }
+    ok('REQUIRED: scanned extracted archive text bytes')
+  } finally {
+    cleanupExtractDir(extractDir)
   }
 
   try {
-    const checksum = validateChecksumAgainstZip(zipPath, checksumPath, ZIP_NAME)
+    const checksum = validateChecksumAgainstZip(zipPath, checksumPath, names.zipName)
     ok(
       `REQUIRED: checksum matches zip (${checksum.digest}, ${checksum.bytes} bytes, name=${checksum.filename})`,
     )
   } catch (err) {
     fail(`REQUIRED: checksum validation failed: ${err instanceof Error ? err.message : err}`)
   }
+
+  const report = {
+    target,
+    zipName: names.zipName,
+    version,
+    validatedAt: new Date().toISOString(),
+    note: 'not uploaded',
+  }
+  writeFileSync(join(root, names.reportName), JSON.stringify(report, null, 2))
+  ok(`wrote validation report ${names.reportName}`)
 }
 
-function main() {
+async function main() {
   const target = parseTargetArg()
   if (!existsSync(join(dist, 'manifest.json'))) {
-    fail('dist/manifest.json missing — run npm run build first')
+    fail('dist/manifest.json missing — run npm run build / package:* first')
     process.exit(process.exitCode ?? 1)
   }
 
@@ -303,18 +347,14 @@ function main() {
   }
 
   validateManifest(manifest, target)
-  const packable = validateDistContents()
-  for (const rel of packable) {
-    const lower = rel.toLowerCase()
-    if (lower.includes('.env') || /(^|\/)\.env/.test(lower)) fail(`forbidden .env path in packable set: ${rel}`)
-    if (lower.endsWith('.map')) fail(`forbidden source map in packable set: ${rel}`)
-    if (lower.includes('node_modules/') || lower.includes('file:')) {
-      fail(`forbidden dependency path in packable set: ${rel}`)
-    }
-    // Absolute Windows/Unix paths must not appear as packaged entry names.
-    if (/^[a-z]:\//i.test(rel) || rel.startsWith('/')) fail(`absolute path packaged: ${rel}`)
+  const packable = validateDistContents(isStoreTarget(target))
+  await validateZipBytes(target, packable, manifest.version)
+
+  const rpr6 = findSiblingFileDependencies()
+  if (rpr6.length) {
+    note('RPR-6 blocker (not concealed): sibling file: dependencies remain in package.json')
+    for (const hit of rpr6) note(`  ${hit.section} ${hit.name}=${hit.spec}`)
   }
-  validateZipAgainstPackable(packable)
 
   if (process.exitCode) {
     console.error('Package validation failed')
@@ -323,4 +363,7 @@ function main() {
   console.log(`Package validation passed (target=${target})`)
 }
 
-main()
+main().catch((err) => {
+  console.error(err instanceof Error ? err.stack : err)
+  process.exit(1)
+})

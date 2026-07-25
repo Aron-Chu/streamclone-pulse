@@ -6,6 +6,7 @@ import { loadManifestForTarget, resolveExtensionTarget } from './scripts/extensi
 
 const root = __dirname
 const extensionTarget = resolveExtensionTarget()
+const isStoreBuild = extensionTarget === 'cws' || extensionTarget === 'edge'
 
 /** One React instance for overlay + @streampulse/pulse-charts (nested package react breaks hooks). */
 function extensionResolve() {
@@ -40,6 +41,9 @@ function chromeExtensionPlugin() {
         configFile: false,
         plugins: [react()],
         resolve: extensionResolve(),
+        define: {
+          __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
+        },
         build: {
           outDir: 'dist',
           emptyOutDir: false,
@@ -78,6 +82,9 @@ function chromeExtensionPlugin() {
 export default defineConfig({
   plugins: [react(), chromeExtensionPlugin()],
   resolve: extensionResolve(),
+  define: {
+    __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

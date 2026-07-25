@@ -90,9 +90,15 @@ Required `host_permissions` (store):
 ```bash
 # From the release SHA only — after store-target validation exists.
 npm run package:cws
-# artifacts (gitignored):
-#   streampulse-extension.zip
-#   streampulse-extension.zip.sha256
+# artifacts (gitignored; not uploaded):
+#   streampulse-extension-cws-<version>.zip
+#   streampulse-extension-cws-<version>.zip.sha256
+#   streampulse-extension-cws-<version>.validation.json
+
+npm run package:edge
+# artifacts (gitignored; not uploaded):
+#   streampulse-extension-edge-<version>.zip
+#   streampulse-extension-edge-<version>.zip.sha256
 ```
 
 Do not regenerate or bless the obsolete historical ZIP.

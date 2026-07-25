@@ -18,7 +18,6 @@ export const EXPECTED_HOST_PERMISSIONS = [
   'https://cdn.7tv.app/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
-  'https://gql.twitch.tv/*',
   'https://*.twitch.tv/*',
 ] as const
 

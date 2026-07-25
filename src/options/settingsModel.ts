@@ -79,6 +79,6 @@ export function backendHost(url: string): string {
   try {
     return new URL(url).host || url
   } catch {
-    return url.replace(/^https?:\/\//, '') || 'localhost:8081'
+    return url.replace(/^https?:\/\//, '') || 'api.streampulse.stream'
   }
 }

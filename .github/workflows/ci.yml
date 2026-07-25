@@ -191,12 +191,17 @@ jobs:
           node --check scripts/extension-package-lib.mjs
           node --check scripts/extension-target.mjs
           node --check scripts/package-extension-target.mjs
+          node --check scripts/zip-byte-validate.mjs
+          node --check scripts/remote-code-scan.mjs
+          node --check scripts/extension-permission-allowlists.mjs
           npm run zip
           npm run validate:package
-          test -f streampulse-extension.zip
-          test -f streampulse-extension.zip.sha256
-          echo "ZIP_SHA256=$(cut -d' ' -f1 streampulse-extension.zip.sha256)"
-          mapfile -t ZIP_ENTRIES < <(unzip -Z1 streampulse-extension.zip)
+          VERSION="$(node -p "require('./package.json').version")"
+          ZIP="streampulse-extension-development-${VERSION}.zip"
+          test -f "$ZIP"
+          test -f "${ZIP}.sha256"
+          echo "ZIP_SHA256=$(cut -d' ' -f1 "${ZIP}.sha256")"
+          mapfile -t ZIP_ENTRIES < <(unzip -Z1 "$ZIP")
           echo "ZIP_ENTRY_COUNT=${#ZIP_ENTRIES[@]}"
           printf '%s\n' "${ZIP_ENTRIES[@]:0:40}"
           # Do not upload routine CWS ZIPs or dist artifacts.
@@ -236,8 +241,13 @@ jobs:
         run: |
           set -euo pipefail
           # Rebuilds dist for each store target; keep after E2E so mocked tests use development dist.
+          VERSION="$(node -p "require('./package.json').version")"
           npm run package:cws
           npm run package:edge
+          test -f "streampulse-extension-cws-${VERSION}.zip"
+          test -f "streampulse-extension-edge-${VERSION}.zip"
+          test -f "streampulse-extension-cws-${VERSION}.zip.sha256"
+          test -f "streampulse-extension-edge-${VERSION}.zip.sha256"
           # Restore development dist for any later local inspection.
           npm run build
           # Do not upload store ZIPs.

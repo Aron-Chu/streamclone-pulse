@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  define: {
+    __EXTENSION_STORE_BUILD__: 'false',
+  },
   test: {
     environment: 'node',
     exclude: [

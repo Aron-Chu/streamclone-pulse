@@ -5,10 +5,32 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import { spawnSync } from 'node:child_process'
 
+/** @deprecated Prefer targetArtifactNames() — kept for transitional tests. */
 export const ZIP_NAME = 'streampulse-extension.zip'
 export const CHECKSUM_SUFFIX = '.sha256'
+
+/**
+ * Unambiguous per-target artifact filenames.
+ * Legacy bare `streampulse-extension.zip` must not be produced for store targets.
+ */
+export function targetArtifactNames(target, version) {
+  const ver = String(version ?? '0.0.0').replace(/[^0-9A-Za-z._-]/g, '')
+  if (target === 'cws' || target === 'edge') {
+    const zipName = `streampulse-extension-${target}-${ver}.zip`
+    return {
+      zipName,
+      checksumName: `${zipName}.sha256`,
+      reportName: `streampulse-extension-${target}-${ver}.validation.json`,
+    }
+  }
+  const zipName = `streampulse-extension-development-${ver}.zip`
+  return {
+    zipName,
+    checksumName: `${zipName}.sha256`,
+    reportName: `streampulse-extension-development-${ver}.validation.json`,
+  }
+}
 
 export const FORBIDDEN_ZIP_SUBSTRINGS = [
   '.map',
@@ -29,6 +51,7 @@ export function shouldSkipPackagedPath(relPath) {
   if (lower.endsWith('.local')) return true
   if (lower.includes('node_modules/')) return true
   if (lower.includes('__tests__/') || /(^|\/)tests\//.test(lower)) return true
+  if (lower === 'extension-target.json') return true
   return false
 }
 
@@ -122,59 +145,26 @@ export function validateIconPngFiles(rootDir, specs = REQUIRED_ICON_SPECS, minBy
 }
 
 /**
- * List ZIP entry paths. Fail closed if entries cannot be inspected.
- * @returns {{ entries: string[], method: string }}
+ * List ZIP entry paths via yauzl (structured parser). Fail closed.
+ * @returns {Promise<{ entries: string[], method: string, inspectErrors: string[] }>}
  */
-export function listZipEntries(zipPath) {
+export async function listZipEntries(zipPath) {
   if (!existsSync(zipPath)) {
     throw new Error(`zip not found: ${zipPath}`)
   }
-
-  const unzip = spawnSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' })
-  if (unzip.status === 0) {
-    const entries = unzip.stdout
-      .split(/\r?\n/)
-      .map((s) => normalizeZipEntry(s))
-      .filter(Boolean)
-    if (entries.length === 0) {
-      throw new Error('unzip returned zero entries')
-    }
-    return { entries, method: 'unzip' }
+  const { inspectZipCentralDirectory } = await import('./zip-byte-validate.mjs')
+  const { entries: inspected, errors } = await inspectZipCentralDirectory(zipPath)
+  if (errors.length) {
+    throw new Error(`zip central-directory rejected:\n${errors.join('\n')}`)
   }
-
-  if (process.platform === 'win32') {
-    const escaped = zipPath.replace(/'/g, "''")
-    const ps = `
-      $ErrorActionPreference = 'Stop'
-      Add-Type -AssemblyName System.IO.Compression.FileSystem
-      $z = [IO.Compression.ZipFile]::OpenRead('${escaped}')
-      try {
-        $z.Entries | ForEach-Object { $_.FullName }
-      } finally {
-        $z.Dispose()
-      }
-    `
-    const listed = spawnSync('powershell', ['-NoProfile', '-Command', ps], {
-      encoding: 'utf8',
-    })
-    if (listed.status !== 0) {
-      throw new Error(
-        `unable to inspect zip entries (unzip unavailable; ZipFile listing failed): ${listed.stderr || listed.stdout || listed.status}`,
-      )
-    }
-    const entries = listed.stdout
-      .split(/\r?\n/)
-      .map((s) => normalizeZipEntry(s))
-      .filter(Boolean)
-    if (entries.length === 0) {
-      throw new Error('ZipFile listing returned zero entries')
-    }
-    return { entries, method: 'dotnet-ZipFile' }
+  const entries = inspected
+    .filter((e) => !e.isDirectory)
+    .map((e) => normalizeZipEntry(e.name))
+    .filter(Boolean)
+  if (entries.length === 0) {
+    throw new Error('zip parser returned zero file entries')
   }
-
-  throw new Error(
-    `unable to inspect zip entries: unzip failed with status ${unzip.status ?? 'unknown'} and no Windows ZipFile fallback`,
-  )
+  return { entries, method: 'yauzl', inspectErrors: errors }
 }
 
 /**

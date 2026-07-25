@@ -203,6 +203,7 @@ function OptionsApp() {
         <button type="button" style={styles.secondaryButton} onClick={() => void probeHealth()}>Probe backend</button>
       </header>
 
+      {!(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) ? (
       <section style={styles.section}>
         <span style={styles.groupLabel}>Backend source</span>
         <div
@@ -248,6 +249,15 @@ function OptionsApp() {
         </label>
         <div style={styles.status}>{health}</div>
       </section>
+      ) : (
+      <section style={styles.section}>
+        <span style={styles.groupLabel}>Backend</span>
+        <p style={styles.help}>
+          StreamPulse uses the hosted API at <code>{DEFAULT_BACKEND_URL}</code>.
+        </p>
+        <div style={styles.status}>{health}</div>
+      </section>
+      )}
 
       <section style={styles.section}>
         <span style={styles.groupLabel}>Watchlist / Protect</span>
@@ -255,8 +265,10 @@ function OptionsApp() {
           Saved channels are stored in <strong>Chrome sync</strong> on this device. On the public hosted API there is
           no guest Protect credential, so the extension does <strong>not</strong> claim server-side protection and
           does not enable live Pulse or backfill. Use the <strong>Analytics hub</strong> to browse actively tracked
-          channels. On a <strong>local</strong> backend (<code>localhost:8081</code>), watchlist entries also start
-          IRC while your stack runs.
+          channels.
+          {!(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__)
+            ? <> On a <strong>local</strong> backend (<code>localhost:8081</code>), watchlist entries also start IRC while your stack runs.</>
+            : null}
         </p>
         <div style={styles.watchRow}>
           <input
