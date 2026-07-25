@@ -40,6 +40,14 @@ import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import {
+  activationFromOverlay,
+  createBackfillOperationController,
+  delay,
+  isAbortError,
+  type BackfillOperationToken,
+} from './backfillOperation.ts'
+import { sameFullHistoryActivation } from '../shared/fullHistoryAuth.ts'
+import {
   isTwitchChattersOpen,
   readTwitchCollapseLabel,
   clickTwitchCollapseChat,
@@ -267,18 +275,28 @@ function OverlayMain({
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
   )
-  /** Bumped on login/stream change so obsolete backfill status polls exit. */
-  const backfillGenerationRef = useRef(0)
+  /** Activation + generation + abort — obsolete backfill/Full ops must not mutate UI. */
+  const backfillOpsRef = useRef(createBackfillOperationController())
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     setCoverageTierState(coverageTierProp)
   }, [coverageTierProp, login])
 
   useEffect(() => {
-    backfillGenerationRef.current += 1
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      backfillOpsRef.current.invalidate()
+    }
+  }, [])
+
+  useEffect(() => {
+    backfillOpsRef.current.invalidate()
     setMissedBusy(false)
     setMissedJob(null)
-  }, [login, payload?.streamId])
+    setFullTimeline(false)
+  }, [login, payload?.streamId, payload?.vodId, context.vodId])
 
   // Recurring live poll always stays on window=recent. Explicit full-timeline
   // actions (requestFullTimeline) are one-shot fetches; do not flip the poll window.
@@ -286,18 +304,27 @@ function OverlayMain({
     onLivePollWindowChange?.('recent')
   }, [onLivePollWindowChange])
 
-  const prevStreamIdRef = useRef<string | undefined>(undefined)
-  useEffect(() => {
-    const streamId = payload?.streamId
-    if (prevStreamIdRef.current !== undefined && prevStreamIdRef.current !== streamId) {
-      setFullTimeline(false)
-    }
-    prevStreamIdRef.current = streamId
-  }, [payload?.streamId])
+  function currentActivation() {
+    return activationFromOverlay({
+      login,
+      streamId: payload?.streamId,
+      vodId: payload?.vodId ?? context.vodId,
+    })
+  }
+
+  function tokenIsLive(token: BackfillOperationToken | null | undefined): boolean {
+    return Boolean(
+      mountedRef.current
+      && token?.isCurrent()
+      && sameFullHistoryActivation(token.activation, currentActivation()),
+    )
+  }
 
   function applyPulseResponse(
     response: PulseUpdateMessage | { type?: string; payload?: PulsePayload | null },
+    token?: BackfillOperationToken | null,
   ): PulsePayload | null {
+    if (token && !tokenIsLive(token)) return null
     if (response.type !== 'PULSE_UPDATE') return null
     const message = response as PulseUpdateMessage
     if (message.payload) {
@@ -305,6 +332,29 @@ function OverlayMain({
       return message.payload
     }
     return null
+  }
+
+  /** Transport only — does not mutate busy/Full/payload. */
+  async function fetchPulseTransport(full = false): Promise<{
+    response: unknown
+    payload: PulsePayload | null
+  }> {
+    if (context.kind === 'vod' && context.vodId) {
+      await onPulseRefresh?.()
+      return { response: null, payload }
+    }
+    const response = await sendBackgroundMessage({
+      type: 'GET_PULSE',
+      login,
+      watch: false,
+      window: full ? 'full' : 'recent',
+      streamId: payload?.streamId,
+    })
+    const next =
+      response && typeof response === 'object' && 'type' in response && response.type === 'PULSE_UPDATE'
+        ? (response as PulseUpdateMessage).payload
+        : null
+    return { response, payload: next }
   }
 
   function handleChartWindowChange(window: ChartTimelineWindow): void {
@@ -563,36 +613,31 @@ function OverlayMain({
     }
   }
 
-  async function refreshPulse(full = false): Promise<PulsePayload | null> {
+  async function refreshPulse(full = false, token?: BackfillOperationToken | null): Promise<PulsePayload | null> {
+    const op = token ?? null
     if (context.kind === 'vod' && context.vodId) {
-      setTrackBusy(true)
+      if (op && !tokenIsLive(op)) return null
+      if (!op) setTrackBusy(true)
       try {
-        await onPulseRefresh?.()
-        return payload
+        const { payload: next } = await fetchPulseTransport(false)
+        if (op && !tokenIsLive(op)) return null
+        return next
       } finally {
-        setTrackBusy(false)
+        if (!op && mountedRef.current) setTrackBusy(false)
       }
     }
 
-    setTrackBusy(true)
+    if (!op) setTrackBusy(true)
     try {
-      const response = await sendBackgroundMessage({
-        type: 'GET_PULSE',
-        login,
-        watch: false,
-        window: full ? 'full' : 'recent',
-        streamId: payload?.streamId,
-      })
-      if (full) {
-        applyPulseResponse(response as PulseUpdateMessage)
-        setFullTimeline(true)
+      const { response, payload: next } = await fetchPulseTransport(full)
+      if (op && !tokenIsLive(op)) return null
+      if (full && response) {
+        applyPulseResponse(response as PulseUpdateMessage, op)
+        if (!op || tokenIsLive(op)) setFullTimeline(true)
       }
-      if ('type' in response && response.type === 'PULSE_UPDATE') {
-        return response.payload
-      }
-      return null
+      return next
     } finally {
-      setTrackBusy(false)
+      if (!op && mountedRef.current) setTrackBusy(false)
     }
   }
 
@@ -627,18 +672,20 @@ function OverlayMain({
   }
 
   async function loadMissedMoments(): Promise<void> {
-    const generation = backfillGenerationRef.current
+    const token = backfillOpsRef.current.begin(currentActivation())
     if (!payload?.streamId) {
+      if (!tokenIsLive(token)) return
       setNotice({ kind: 'warn', text: 'Stream ID missing — track this channel and retry.' })
       return
     }
     const coverage = resolvePulseCoverage(payload)
     if (!coverage) {
+      if (!tokenIsLive(token)) return
       setNotice({ kind: 'warn', text: 'No coverage info yet — wait for the first minute of rollups.' })
       return
     }
-    const pageHint = payload.vodId ? null : await submitPageVodHint(generation)
-    if (generation !== backfillGenerationRef.current) return
+    const pageHint = payload.vodId ? null : await submitPageVodHint(token)
+    if (!tokenIsLive(token)) return
     const activePayload = pageHint && !payload.vodId ? { ...payload, vodId: pageHint } : payload
     if (!canShowVodBackfillCTA(activePayload, pageHint)) {
       setNotice({
@@ -647,18 +694,26 @@ function OverlayMain({
       })
       return
     }
-    await loadMissedMomentsWithPayload(activePayload, pageHint, generation)
+    await loadMissedMomentsWithPayload(activePayload, pageHint, token)
   }
 
-  async function pollMissedBackfill(jobId: string, beforePayload: PulsePayload): Promise<void> {
-    const generation = backfillGenerationRef.current
+  async function pollMissedBackfill(
+    jobId: string,
+    beforePayload: PulsePayload,
+    token: BackfillOperationToken,
+  ): Promise<void> {
     const maxAttempts = 120
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      if (generation !== backfillGenerationRef.current) return
-      await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 2000 : 7000))
-      if (generation !== backfillGenerationRef.current) return
+      if (!tokenIsLive(token)) return
+      try {
+        await delay(attempt === 0 ? 2000 : 7000, token.signal)
+      } catch (err) {
+        if (isAbortError(err) || !tokenIsLive(token)) return
+        throw err
+      }
+      if (!tokenIsLive(token)) return
       const response = await sendBackgroundMessage({ type: 'GET_PULSE_BACKFILL_STATUS', jobId })
-      if (generation !== backfillGenerationRef.current) return
+      if (!tokenIsLive(token)) return
       if (!('type' in response) || response.type !== 'PULSE_BACKFILL_STATUS' || !response.job) {
         continue
       }
@@ -668,8 +723,10 @@ function OverlayMain({
         continue
       }
       if (job.status === 'done' || job.status === 'already_available') {
-        const fresh = await refreshPulse(true)
-        if (generation !== backfillGenerationRef.current) return
+        const { response: refreshResponse, payload: fresh } = await fetchPulseTransport(true)
+        if (!tokenIsLive(token)) return
+        if (refreshResponse) applyPulseResponse(refreshResponse as PulseUpdateMessage, token)
+        if (!tokenIsLive(token)) return
         applyBackfillRefreshOutcome(beforePayload, fresh ?? payload)
         setCoverageCheckError(null)
         return
@@ -686,20 +743,24 @@ function OverlayMain({
       setNotice({ kind: 'warn', text: job.message || job.error || 'Backfill failed.' })
       return
     }
-    if (generation !== backfillGenerationRef.current) return
+    if (!tokenIsLive(token)) return
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 
-  async function refreshVodDebugDetail(activePayload?: PulsePayload | null): Promise<void> {
+  async function refreshVodDebugDetail(
+    activePayload?: PulsePayload | null,
+    token?: BackfillOperationToken | null,
+  ): Promise<void> {
     const source = activePayload ?? payload
     const summary = await summarizeVodDebugBlockers({
       backendVodResolved: source ? backendResolvedVod(source) : false,
     })
+    if (token && !tokenIsLive(token)) return
     setVodDebugDetail(summary)
   }
 
-  async function submitPageVodHint(generation?: number): Promise<string | null> {
-    const gen = generation ?? backfillGenerationRef.current
+  async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
+    const op = token ?? backfillOpsRef.current.current()
     if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
     const domHint = discoverLiveVodIdFromDom()
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
@@ -707,11 +768,11 @@ function OverlayMain({
       streamId: payload.streamId,
       id: domHint,
     }, domHint ? 'info' : 'warn')
-    if (gen !== backfillGenerationRef.current) return null
+    if (op && !tokenIsLive(op)) return null
     let hint = domHint
     if (!hint) {
       const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login })
-      if (gen !== backfillGenerationRef.current) return null
+      if (op && !tokenIsLive(op)) return null
       const gql =
         'type' in gqlRes && gqlRes.type === 'DISCOVER_LIVE_VOD'
           ? gqlRes.result
@@ -731,9 +792,9 @@ function OverlayMain({
         hint ? 'info' : 'warn',
       )
     }
-    if (gen !== backfillGenerationRef.current) return null
+    if (op && !tokenIsLive(op)) return null
     if (!hint) {
-      await refreshVodDebugDetail()
+      await refreshVodDebugDetail(undefined, op)
       return null
     }
     try {
@@ -743,10 +804,11 @@ function OverlayMain({
         streamId: payload.streamId,
         vodId: hint,
       })
-      if (gen !== backfillGenerationRef.current) return null
+      if (op && !tokenIsLive(op)) return null
       if ('ok' in res && res.ok) {
-        await refreshPulse(false)
-        if (gen !== backfillGenerationRef.current) return null
+        const { response } = await fetchPulseTransport(false)
+        if (op && !tokenIsLive(op)) return null
+        if (response) applyPulseResponse(response as PulseUpdateMessage, op)
       }
     } catch {
       /* ignore hint failures */
@@ -756,11 +818,14 @@ function OverlayMain({
 
   async function refreshVodStatus(): Promise<void> {
     if (!payload?.streamId || missedBusy) return
+    const token = backfillOpsRef.current.begin(currentActivation())
     setMissedBusy(true)
     setCoverageCheckError(null)
     try {
-      await submitPageVodHint()
+      await submitPageVodHint(token)
+      if (!tokenIsLive(token)) return
       const healthRes = await sendBackgroundMessage({ type: 'HEALTH' }).catch(() => null)
+      if (!tokenIsLive(token)) return
       if (healthRes && 'type' in healthRes && healthRes.type === 'HEALTH') {
         const helix = healthRes.helixEnabled
         const helixMessage =
@@ -774,7 +839,10 @@ function OverlayMain({
           version: healthRes.version ?? null,
         }, helix === true ? 'info' : 'warn')
       }
-      const fresh = await refreshPulse(false)
+      const { response, payload: fresh } = await fetchPulseTransport(false)
+      if (!tokenIsLive(token)) return
+      if (response) applyPulseResponse(response as PulseUpdateMessage, token)
+      if (!tokenIsLive(token)) return
       setCoverageLastCheck(Date.now())
       const next = fresh ?? payload
       const coverage = resolvePulseCoverage(next)
@@ -785,6 +853,7 @@ function OverlayMain({
         resolvedState: coverage?.state ?? null,
         canBackfill: coverage?.canBackfill ?? null,
       })
+      if (!tokenIsLive(token)) return
       if (coverage?.state === 'backfill_running') {
         setNotice({ kind: 'info', text: 'VOD backfill already running…' })
         return
@@ -795,14 +864,14 @@ function OverlayMain({
           kind: 'info',
           text: 'Twitch VOD linked — tap Fill from Twitch VOD when you want to load missing chat.',
         })
-        await refreshVodDebugDetail(next)
+        await refreshVodDebugDetail(next, token)
         return
       }
       if (next.helixEnabled === false) {
         setCoverageCheckError(
           'Backend Helix is off — analytics needs TWITCH_OAUTH_CLIENT_ID/SECRET (or redeploy latest analytics).',
         )
-        await refreshVodDebugDetail(next)
+        await refreshVodDebugDetail(next, token)
         return
       }
       if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
@@ -816,38 +885,40 @@ function OverlayMain({
       } else {
         setCoverageCheckError(null)
       }
-      await refreshVodDebugDetail(next)
+      await refreshVodDebugDetail(next, token)
     } catch (err) {
+      if (!tokenIsLive(token) || isAbortError(err)) return
       setCoverageCheckError(coverageErrorMessage(
         err instanceof Error ? err.message : null,
         'Could not check VOD status',
       ))
     } finally {
-      setMissedBusy(false)
+      if (tokenIsLive(token)) setMissedBusy(false)
     }
   }
 
   async function loadMissedMomentsWithPayload(
     activePayload: PulsePayload,
     explicitHint?: string | null,
-    generation = backfillGenerationRef.current,
+    token: BackfillOperationToken = backfillOpsRef.current.begin(currentActivation()),
   ): Promise<void> {
     const coverage = resolvePulseCoverage(activePayload)
     if (!coverage || !activePayload.streamId) return
     if (!canShowVodBackfillCTA(activePayload, explicitHint)) return
+    if (!tokenIsLive(token)) return
     const beforePayload = activePayload
     setMissedBusy(true)
     setMissedRefreshed(false)
     setFullTimeline(true)
     setNotice({ kind: 'info', text: 'Loading VOD chat from Twitch… this can take a few minutes.' })
     try {
-      if (generation !== backfillGenerationRef.current) return
+      if (!tokenIsLive(token)) return
       const range = coverage.missingRanges?.[0]
       const hintedVodId =
         activePayload.vodId
-        ?? (await submitPageVodHint(generation))
+        ?? (await submitPageVodHint(token))
         ?? undefined
-      if (generation !== backfillGenerationRef.current) return
+      if (!tokenIsLive(token)) return
       const response = await sendBackgroundMessage({
         type: 'LOAD_MISSED_MOMENTS',
         login,
@@ -856,7 +927,7 @@ function OverlayMain({
         fromOffsetSeconds: range?.fromOffsetSeconds ?? 0,
         toOffsetSeconds: range?.toOffsetSeconds ?? Math.max(0, coverage.coverageStartOffsetSeconds - 60),
       })
-      if (generation !== backfillGenerationRef.current) return
+      if (!tokenIsLive(token)) return
       if ('error' in response && response.error) {
         setCoverageCheckError(coverageErrorMessage(String(response.error), 'Backfill failed.'))
         return
@@ -868,8 +939,10 @@ function OverlayMain({
       const job = response.job
       setMissedJob(job)
       if (job.status === 'already_available') {
-        const fresh = await refreshPulse(true)
-        if (generation !== backfillGenerationRef.current) return
+        const { response: refreshResponse, payload: fresh } = await fetchPulseTransport(true)
+        if (!tokenIsLive(token)) return
+        if (refreshResponse) applyPulseResponse(refreshResponse as PulseUpdateMessage, token)
+        if (!tokenIsLive(token)) return
         applyBackfillRefreshOutcome(beforePayload, fresh ?? activePayload)
         return
       }
@@ -881,15 +954,15 @@ function OverlayMain({
         setCoverageCheckError(coverageErrorMessage(job.error ?? job.message, 'Backfill failed.'))
         return
       }
-      await pollMissedBackfill(job.jobId, beforePayload)
+      await pollMissedBackfill(job.jobId, beforePayload, token)
     } catch (err) {
-      if (generation !== backfillGenerationRef.current) return
+      if (!tokenIsLive(token) || isAbortError(err)) return
       setCoverageCheckError(coverageErrorMessage(
         err instanceof Error ? err.message : null,
         'Backfill failed.',
       ))
     } finally {
-      if (generation === backfillGenerationRef.current) {
+      if (tokenIsLive(token)) {
         setMissedBusy(false)
       }
     }
@@ -1081,17 +1154,15 @@ function OverlayMain({
   }
 
   async function requestFullTimeline(): Promise<void> {
+    const token = backfillOpsRef.current.begin(currentActivation())
     try {
-      const response = await sendBackgroundMessage({
-        type: 'GET_PULSE',
-        login,
-        watch: false,
-        window: 'full',
-        streamId: payload?.streamId,
-      })
-      applyPulseResponse(response as PulseUpdateMessage)
+      const { response } = await fetchPulseTransport(true)
+      if (!tokenIsLive(token)) return
+      if (response) applyPulseResponse(response as PulseUpdateMessage, token)
+      if (!tokenIsLive(token)) return
       setFullTimeline(true)
     } catch (err) {
+      if (!tokenIsLive(token) || isAbortError(err)) return
       setNotice({
         kind: 'warn',
         text: err instanceof Error ? err.message : 'Could not load full stream chart.',

@@ -3,27 +3,10 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { loadManifestForTarget, resolveExtensionTarget } from './scripts/extension-target.mjs'
+import { extensionResolve, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
 const extensionTarget = resolveExtensionTarget()
-const isStoreBuild = extensionTarget === 'cws' || extensionTarget === 'edge'
-
-/** One React instance for overlay + @streampulse/pulse-charts (nested package react breaks hooks). */
-function extensionResolve() {
-  return {
-    dedupe: ['react', 'react-dom'],
-    alias: {
-      react: resolve(root, 'node_modules/react'),
-      'react-dom': resolve(root, 'node_modules/react-dom'),
-    },
-  }
-}
-
-const sharedOutput = {
-  entryFileNames: '[name].js',
-  chunkFileNames: 'chunks/[name].js',
-  assetFileNames: 'assets/[name][extname]',
-}
 
 function copyToDist(rootDir: string, relativePath: string): void {
   const src = resolve(rootDir, relativePath)
@@ -36,29 +19,8 @@ function chromeExtensionPlugin() {
   return {
     name: 'streamclone-pulse-extension',
     async closeBundle() {
-      // Always rebuild content entry so `vite build --watch` picks up content changes.
-      await viteBuild({
-        configFile: false,
-        plugins: [react()],
-        resolve: extensionResolve(),
-        define: {
-          __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
-        },
-        build: {
-          outDir: 'dist',
-          emptyOutDir: false,
-          rollupOptions: {
-            input: resolve(__dirname, 'src/content/entry.ts'),
-            output: {
-              ...sharedOutput,
-              entryFileNames: 'content/twitch.js',
-              format: 'iife',
-              inlineDynamicImports: true,
-              name: 'StreamclonePulseContent',
-            },
-          },
-        },
-      })
+      // One-shot builds: content IIFE via dedicated config (dev watch uses the same file).
+      await viteBuild({ configFile: resolve(__dirname, 'vite.content.config.ts') })
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })

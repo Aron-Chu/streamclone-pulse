@@ -3,6 +3,7 @@ import { onPulseUpdate, onVodPulseUpdate, sendBackgroundMessage } from './bridge
 import { createLivePollController } from './livePoll.ts'
 
 import {
+  ensureUniqueOverlayHosts,
   mountOverlay,
   unmountOverlay,
   updateOverlayContext,
@@ -12,6 +13,11 @@ import {
 } from './mount.tsx'
 
 import { overlaySessionKey, placeholderLoginForContext, shouldActivateOverlay } from './contentActivation.ts'
+import {
+  createActivationGate,
+  isSameChannelActivationCurrent,
+  isVodActivationCurrent,
+} from './activationGate.ts'
 import { createRouteSyncScheduler } from './routeSyncScheduler.ts'
 
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
@@ -48,8 +54,8 @@ let sessionOpenedAtMs: number | null = null
 
 let overlayPrefsListenerInstalled = false
 
-/** Bumped before every async channel/VOD activation; stale completions must no-op. */
-let activationGeneration = 0
+/** Production activation gate — tests import createActivationGate from activationGate.ts. */
+const activationGate = createActivationGate()
 
 const livePoll = createLivePollController(() => parseTwitchPage(window.location.pathname))
 
@@ -131,19 +137,18 @@ function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
   updateOverlayPayload(payload, message.error ?? (payload ? undefined : message.vodPulse?.coverageMessage))
 }
 
-async function fetchVodPulse(vodId: string): Promise<void> {
-  updateOverlayVodState({ loading: true })
+/** Fetch only — caller applies after generation check. */
+async function fetchVodPulseResult(vodId: string): Promise<VodPulseUpdateMessage> {
   const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId })
   if ('type' in response && response.type === 'VOD_PULSE_UPDATE') {
-    applyVodPulseMessage(response)
-    return
+    return response
   }
-  applyVodPulseMessage({
+  return {
     type: 'VOD_PULSE_UPDATE',
     vodId,
     vodPulse: null,
     error: 'vod_pulse_failed',
-  })
+  }
 }
 
 async function activateChannel(context: TwitchPageContext): Promise<void> {
@@ -156,7 +161,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   installOverlayPrefsListener()
 
   const pageIsLive = detectTwitchChannelLive(context)
-  const generation = ++activationGeneration
+  const generation = activationGate.begin()
   const intendedLogin = login
   const intendedPath = window.location.pathname
 
@@ -167,7 +172,18 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
       void refreshChannelPulse(login)
     }
     lastPageIsLive = pageIsLive
-    livePoll.sync(login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(await getBackendUrl()))
+    const hostedNow = isHostedBackendUrl(await getBackendUrl())
+    if (
+      !isSameChannelActivationCurrent({
+        generation,
+        gateCurrent: activationGate.current(),
+        activeSession,
+        intendedLogin,
+      })
+    ) {
+      return
+    }
+    livePoll.sync(login, context, lastCollecting && lastRosterEligible, hostedNow)
     return
   }
 
@@ -179,7 +195,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   lastPageIsLive = pageIsLive
 
   const backendUrl = await getBackendUrl()
-  if (generation !== activationGeneration) return
+  if (generation !== activationGate.current()) return
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
   if (window.location.pathname !== intendedPath && parseTwitchPage(window.location.pathname).login !== intendedLogin) {
     return
@@ -197,13 +213,13 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   livePoll.sync(intendedLogin, context, false, hosted)
 
   const [policy, watchlist] = await Promise.all([getAutoTrackPolicy(), getWatchlist()])
-  if (generation !== activationGeneration) return
+  if (generation !== activationGate.current()) return
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
 
   const onWatchlist = watchlist.includes(intendedLogin.toLowerCase())
   const autoTrack = localStack && (policy === 'followed' || (policy === 'ask' && onWatchlist))
   const message = await loadInitialChannelPayload(intendedLogin, autoTrack, hosted)
-  if (generation !== activationGeneration) return
+  if (generation !== activationGate.current()) return
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
 
   const payload = message.payload
@@ -235,7 +251,7 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   livePoll.stop()
 
   const login = placeholderLoginForContext(context)
-  const generation = ++activationGeneration
+  const generation = activationGate.begin()
 
   if (activeSession?.kind === 'vod' && activeSession.vodId === vodId) {
     updateOverlayContext(context)
@@ -250,17 +266,30 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
 
   mountOverlay(login, null, context, {
     sessionOpenedAtMs,
-    onPulseRefresh: () => fetchVodPulse(vodId),
+    onPulseRefresh: async () => {
+      const result = await fetchVodPulseResult(vodId)
+      if (activeSession?.kind !== 'vod' || activeSession.vodId !== vodId) return
+      applyVodPulseMessage(result)
+    },
   })
   updateOverlayVodState({ vodPulse: null, loading: true })
 
-  await fetchVodPulse(vodId)
-  if (generation !== activationGeneration) return
-  if (activeSession?.kind !== 'vod' || activeSession.vodId !== vodId) return
+  const result = await fetchVodPulseResult(vodId)
+  if (
+    !isVodActivationCurrent({
+      generation,
+      gateCurrent: activationGate.current(),
+      activeSession,
+      intendedVodId: vodId,
+    })
+  ) {
+    return
+  }
+  applyVodPulseMessage(result)
 }
 
 function deactivate(): void {
-  activationGeneration += 1
+  activationGate.cancel()
   activeSession = null
   sessionOpenedAtMs = null
   lastPageIsLive = false
@@ -275,6 +304,8 @@ const NAV_DEBOUNCE_MS = 350
 
 function syncFromLocation(): void {
   const context = parseTwitchPage(window.location.pathname)
+  // Reinjection / duplicate DOM hosts can appear without a full remount.
+  ensureUniqueOverlayHosts()
 
   if (!shouldActivateOverlay(context)) {
     deactivate()
@@ -305,10 +336,14 @@ onPulseUpdate((message: PulseUpdateMessage) => {
   lastRosterEligible = isPulseRosterEligible(message.payload)
 
   const context = parseTwitchPage(window.location.pathname)
+  const sessionLogin = activeSession.login
 
-  if (context.kind === 'channel' && context.login === activeSession.login) {
+  if (context.kind === 'channel' && context.login === sessionLogin) {
+    const generationSnapshot = activationGate.current()
     void getBackendUrl().then(url => {
-      livePoll.sync(activeSession!.login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
+      if (generationSnapshot !== activationGate.current()) return
+      if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== sessionLogin) return
+      livePoll.sync(sessionLogin, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
     })
   }
 })
@@ -358,7 +393,10 @@ setInterval(() => {
     void refreshChannelPulse(login)
     lastPageIsLive = pageIsLive
     updateOverlayContext(context)
+    const generationSnapshot = activationGate.current()
     void getBackendUrl().then(url => {
+      if (generationSnapshot !== activationGate.current()) return
+      if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== login) return
       livePoll.sync(login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
     })
   }

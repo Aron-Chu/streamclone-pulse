@@ -38,6 +38,11 @@ export async function getDefaultChartWindow(): Promise<DefaultChartWindow> {
   return DEFAULT_DEFAULT_CHART_WINDOW
 }
 
+/** Portal shim — no chrome.storage; LiveStatsBand may persist chart range. */
+export async function setDefaultChartWindow(_window: DefaultChartWindow): Promise<void> {
+  /* no-op */
+}
+
 /** Portal shim — no chrome.storage; LiveStatsBand calls this on mount. */
 export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
   /* no-op */

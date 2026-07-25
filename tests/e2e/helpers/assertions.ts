@@ -45,6 +45,16 @@ export async function assertExactlyOnePulseRoot(page: Page): Promise<void> {
   expect(count, 'exactly one #streamclone-pulse-root').toBe(1)
 }
 
+export async function assertExactlyOnePulseTabs(page: Page): Promise<void> {
+  const count = await page.locator(`#${PULSE_TABS_ID}`).count()
+  expect(count, 'exactly one #streamclone-pulse-tabs').toBe(1)
+}
+
+export async function assertPulseHostsUnique(page: Page): Promise<void> {
+  await assertExactlyOnePulseRoot(page)
+  await assertExactlyOnePulseTabs(page)
+}
+
 export async function pulseShadowText(page: Page): Promise<string> {
   return page.evaluate(rootId => {
     const host = document.getElementById(rootId)

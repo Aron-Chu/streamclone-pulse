@@ -139,9 +139,14 @@ export async function handleGetPulse(
   }
 
   // Cold path — optional watch registration then coalesced sync fetch.
+  // Watch failure must not block Pulse fetch.
   if (args.allowWatch && deps.ensureTracked) {
-    await deps.ensureTracked(args.login)
-    network.watchRegistrations = 1
+    try {
+      await deps.ensureTracked(args.login)
+      network.watchRegistrations = 1
+    } catch {
+      network.watchRegistrations = 0
+    }
   }
 
   return coalesceInFlight(state.syncInFlight, key, async () => {

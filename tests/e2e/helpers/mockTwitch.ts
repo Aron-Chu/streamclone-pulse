@@ -150,3 +150,19 @@ export async function spaNavigate(
     },
   )
 }
+
+/** Replace body children to simulate Twitch shell swaps without a document reload. */
+export async function replaceTwitchBody(page: Page, htmlKind: TwitchFixtureKind): Promise<void> {
+  const html = readFixture(htmlKind)
+  await page.evaluate(bodyHtml => {
+    const parsed = new DOMParser().parseFromString(bodyHtml, 'text/html')
+    document.body.replaceChildren(...Array.from(parsed.body.childNodes))
+  }, html)
+}
+
+/** Hard wipe body markup; overlay hosts on documentElement must survive and stay unique. */
+export async function wipeTwitchBody(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.body.innerHTML = '<main id="twitch-root-wiped"></main>'
+  })
+}

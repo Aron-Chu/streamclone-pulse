@@ -11,7 +11,17 @@ import {
   type TrendDirection,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
-import { getDefaultChartWindow, migrateDefaultChartWindowToRecentV2Once } from '../shared/storage.ts'
+import {
+  isFullHistoryUnlockedFor,
+  makeFullHistoryActivation,
+  type FullHistoryActivation,
+} from '../shared/fullHistoryAuth.ts'
+import {
+  getDefaultChartWindow,
+  migrateDefaultChartWindowToRecentV2Once,
+  setDefaultChartWindow,
+  type DefaultChartWindow,
+} from '../shared/storage.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
@@ -205,21 +215,42 @@ export function LiveStatsBand({
   )
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
   const hasFullRollups = hasFullTimelineRollups(payload)
+  const activation = useMemo(
+    () =>
+      makeFullHistoryActivation({
+        login: payload.login,
+        streamId: payload.streamId,
+        vodId: payload.vodId,
+      }),
+    [payload.login, payload.streamId, payload.vodId],
+  )
+  const activationKey = `${activation.login}|${activation.streamId}|${activation.vodId}`
   const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('60m')
   const [timelineLoading, setTimelineLoading] = useState(false)
-  const fullTimelineRequestedRef = useRef(false)
+  /** Exactly one Full request latch per activation key. */
+  const fullTimelineRequestedKeyRef = useRef<string | null>(null)
   /** After the user picks a range, ignore late async default hydration for this stream. */
   const chartWindowUserPickedRef = useRef(false)
-  /** Stored Full preference must not auto-fetch until explicit Load / range in this activation. */
-  const [fullHistoryUnlocked, setFullHistoryUnlocked] = useState(false)
+  /**
+   * Full unlock is activation-scoped (login + stream/VOD), not a reusable boolean.
+   * Synchronous invalidate during render so request effects never see stale unlock.
+   */
+  const [unlockedActivation, setUnlockedActivation] = useState<FullHistoryActivation | null>(null)
+  const [activationSeen, setActivationSeen] = useState(activation)
+  if (
+    activation.login !== activationSeen.login
+    || activation.streamId !== activationSeen.streamId
+    || activation.vodId !== activationSeen.vodId
+  ) {
+    setActivationSeen(activation)
+    setUnlockedActivation(null)
+    chartWindowUserPickedRef.current = false
+    fullTimelineRequestedKeyRef.current = null
+  }
+  const fullHistoryUnlocked = isFullHistoryUnlockedFor(unlockedActivation, activation)
   const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
   const onRequestFullTimelineRef = useRef(onRequestFullTimeline)
   onRequestFullTimelineRef.current = onRequestFullTimeline
-
-  useEffect(() => {
-    chartWindowUserPickedRef.current = false
-    setFullHistoryUnlocked(false)
-  }, [payload.streamId])
 
   useEffect(() => {
     if (demoMode) {
@@ -227,19 +258,22 @@ export function LiveStatsBand({
       return
     }
     let mounted = true
+    const hydrateFor = activationKey
     void (async () => {
       try {
         // One-time v2: every pre-v2 preference (including Full) → 60m.
         await migrateDefaultChartWindowToRecentV2Once()
         const window = await getDefaultChartWindow()
         if (!mounted) return
+        // Drop late hydration after stream/channel change.
+        if (hydrateFor !== activationKey) return
         // First click Full→30m was getting overwritten when this async finished.
         if (chartWindowUserPickedRef.current) return
         if (fullTimeline) {
           setChartWindow('full')
           return
         }
-        // Default product range is 60m (live poll stays recent; Full is explicit).
+        // Stored Full is shown but does not unlock / request until explicit Load.
         setChartWindow(window)
       } catch {
         // Storage denied / extension context invalidated — keep in-memory default.
@@ -248,7 +282,7 @@ export function LiveStatsBand({
     return () => {
       mounted = false
     }
-  }, [payload.streamId, payload.login, fullTimeline, demoMode])
+  }, [activationKey, fullTimeline, demoMode])
 
   const rollups = useMemo(
     () =>
@@ -288,27 +322,36 @@ export function LiveStatsBand({
   const [activityExpanded, setActivityExpanded] = useState(false)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
+  const unlockFullForCurrentActivation = (): void => {
+    setUnlockedActivation(activation)
+  }
+
   const handleChartWindowChange = (window: ChartTimelineWindow): void => {
     chartWindowUserPickedRef.current = true
     setChartWindow(window)
-    if (window === 'full' || window === '2h' || window === '4h') {
-      setFullHistoryUnlocked(true)
+    // Persist preference (including Full). Full alone does not unlock this activation.
+    if (!demoMode) {
+      void setDefaultChartWindow(window as DefaultChartWindow)
+    }
+    if (window === 'full') {
+      // Picking Full from the range control is an explicit Full load for this activation.
+      unlockFullForCurrentActivation()
     }
     onChartWindowChange?.(window)
   }
 
   useEffect(() => {
-    fullTimelineRequestedRef.current = false
     setHoveredGameKey(null)
   }, [payload.streamId, chartWindow])
 
   useEffect(() => {
     if (!fullTimeline) return
-    setFullHistoryUnlocked(true)
+    unlockFullForCurrentActivation()
     // Only force Full when the user has not already chosen another range.
     if (chartWindowUserPickedRef.current) return
     setChartWindow('full')
-  }, [fullTimeline])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activation-scoped unlock uses current activation
+  }, [fullTimeline, activationKey])
 
   useEffect(() => {
     if (!fullHistoryUnlocked && !fullTimeline) {
@@ -317,21 +360,38 @@ export function LiveStatsBand({
     if (!chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)) {
       return
     }
-    if (
-      (hasFullRollups && !fullRollupsMissingStreamPrefix(payload))
-      || fullTimelineRequestedRef.current
-    ) {
+    if (hasFullRollups && !fullRollupsMissingStreamPrefix(payload)) {
+      return
+    }
+    // Exactly one Full request per activation unlock (no duplicates while in-flight / after).
+    if (fullTimelineRequestedKeyRef.current === activationKey) {
       return
     }
     const request = onRequestFullTimelineRef.current
     if (!request) return
-    fullTimelineRequestedRef.current = true
+    const requestFor = activationKey
+    fullTimelineRequestedKeyRef.current = requestFor
     setTimelineLoading(true)
-    void request().finally(() => {
-      setTimelineLoading(false)
-      fullTimelineRequestedRef.current = false
-    })
-  }, [chartWindow, currentOffsetSeconds, hasFullRollups, payload, fullHistoryUnlocked, fullTimeline])
+    void request()
+      .catch(() => {
+        /* Overlay surfaces errors; allow a later explicit retry after stream change. */
+      })
+      .finally(() => {
+        setTimelineLoading(false)
+        // Keep latch for this activation so effect re-runs do not re-request.
+        if (fullTimelineRequestedKeyRef.current === requestFor) {
+          /* retain */
+        }
+      })
+  }, [
+    chartWindow,
+    currentOffsetSeconds,
+    hasFullRollups,
+    payload,
+    fullHistoryUnlocked,
+    fullTimeline,
+    activationKey,
+  ])
 
   useEffect(() => {
     onPinOffset?.(null)
@@ -723,15 +783,17 @@ export function LiveStatsBand({
                   {loadFromStartBusy ? 'Loading…' : 'Load full stream chart'}
                 </button>
               ) : null}
-              {chartWindow === 'full' && !fullHistoryUnlocked && !hasFullRollups && onRequestFullTimeline ? (
+              {chartWindow === 'full' && !fullHistoryUnlocked && onRequestFullTimeline ? (
                 <button
                   type="button"
+                  data-testid="load-full-history"
                   style={styles.streamStartLink}
                   disabled={timelineLoading || demoMode}
                   title="Full is remembered as a preference but must be loaded for each new stream activation."
                   onClick={() => {
-                    setFullHistoryUnlocked(true)
                     chartWindowUserPickedRef.current = true
+                    unlockFullForCurrentActivation()
+                    void setDefaultChartWindow('full')
                   }}
                 >
                   {timelineLoading ? 'Loading…' : 'Load full history'}

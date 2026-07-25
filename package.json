@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
+    "dev": "node scripts/dev-extension-watch.mjs",
     "build": "vite build && node scripts/write-extension-build-provenance.mjs",
     "typecheck": "npx tsc --noEmit",
     "test": "vitest run",
@@ -39,10 +39,12 @@
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@types/chrome": "^0.0.287",
+    "@types/jsdom": "^28.0.3",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "^29.1.1",
     "rollup": "^4.43.0",
     "typescript": "6.0.3",
     "vite": "8.0.16",

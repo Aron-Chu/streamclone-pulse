@@ -45,6 +45,9 @@ import { detectTwitchChannelLive } from './twitch.ts'
 const TAB_HOST_ID = 'streamclone-pulse-tabs'
 const PANEL_HOST_ID = 'streamclone-pulse-root'
 
+export const PULSE_TABS_HOST_ID = TAB_HOST_ID
+export const PULSE_ROOT_HOST_ID = PANEL_HOST_ID
+
 let themeListenerInstalled = false
 
 function installThemeSyncListener(): void {
@@ -209,6 +212,39 @@ let currentPayload: PulsePayload | null = null
 let currentError: string | undefined
 let currentCoverageTier: ExtensionCoverageTierResponse | null = null
 let displayPreferenceRequestId = 0
+
+function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
+  // Do not use `#id` selectors — browsers may collapse duplicate IDs to one match.
+  const doomed: HTMLElement[] = []
+  for (const node of document.querySelectorAll('*')) {
+    if (!(node instanceof HTMLElement) || node.id !== id) continue
+    if (keep && node === keep && keep.isConnected) continue
+    doomed.push(node)
+  }
+  for (const node of doomed) node.remove()
+}
+
+function reconcileOverlayHosts(): void {
+  if (!tabsHostEl?.isConnected) {
+    stopObserve?.()
+    stopObserve = null
+    tabsRoot?.unmount()
+    tabsRoot = null
+    tabsHostEl = null
+  }
+  if (!panelHostEl?.isConnected) {
+    panelRoot?.unmount()
+    panelRoot = null
+    panelHostEl = null
+  }
+  purgeExtraHosts(TAB_HOST_ID, tabsHostEl)
+  purgeExtraHosts(PANEL_HOST_ID, panelHostEl)
+}
+
+/** Public: drop orphan duplicate hosts without resetting overlay payload. */
+export function ensureUniqueOverlayHosts(): void {
+  reconcileOverlayHosts()
+}
 
 function createShadowHost(id: string): { host: HTMLElement; root: Root } {
   const host = document.createElement('div')
@@ -501,6 +537,7 @@ export function mountOverlay(
   context: TwitchPageContext,
   options: OverlayMountOptions = {},
 ): void {
+  reconcileOverlayHosts()
   const needsDisplayHydration = !tabsHostEl || !panelHostEl
   currentLogin = login
   currentContext = context
@@ -644,6 +681,8 @@ export function unmountOverlay(): void {
   panelHostEl?.remove()
   tabsHostEl = null
   panelHostEl = null
+  purgeExtraHosts(TAB_HOST_ID, null)
+  purgeExtraHosts(PANEL_HOST_ID, null)
   lastTabsRenderKey = ''
   lastPanelPayloadRef = undefined
   lastPanelError = undefined

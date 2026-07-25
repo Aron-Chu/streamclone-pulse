@@ -1,8 +1,10 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 import {
-  assertExactlyOnePulseRoot,
   assertNoUncaughtErrors,
+  assertPulseHostsUnique,
   assertPulseShadowContains,
+  PULSE_ROOT_ID,
+  PULSE_TABS_ID,
   waitForPulseRoot,
 } from '../helpers/assertions.ts'
 import {
@@ -13,7 +15,13 @@ import {
   seedExtensionStorage,
 } from '../helpers/extensionContext.ts'
 import { installMockApi } from '../helpers/mockApi.ts'
-import { installTwitchFixtures, openTwitchChannel, spaNavigate } from '../helpers/mockTwitch.ts'
+import {
+  installTwitchFixtures,
+  openTwitchChannel,
+  replaceTwitchBody,
+  spaNavigate,
+  wipeTwitchBody,
+} from '../helpers/mockTwitch.ts'
 import { installEvidenceCollectors } from '../helpers/evidence.ts'
 
 test.describe('extension lifecycle', () => {
@@ -25,7 +33,7 @@ test.describe('extension lifecycle', () => {
     await prepare({ scenario: 'live-ready', twitchKind: 'live' })
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
-    await assertExactlyOnePulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
     assertNoUncaughtErrors(evidence)
   })
 
@@ -78,7 +86,7 @@ test.describe('extension lifecycle', () => {
 
       await openTwitchChannel(launched.page)
       await waitForPulseRoot(launched.page)
-      await assertExactlyOnePulseRoot(launched.page)
+      await assertPulseHostsUnique(launched.page)
       assertNoUncaughtErrors(evidence)
     } finally {
       evidence.dispose()
@@ -96,22 +104,22 @@ test.describe('extension lifecycle', () => {
     await prepare({ scenario: 'live-ready', twitchKind: 'live' })
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
-    await assertExactlyOnePulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
 
     api.setScenario('vod-ready')
     await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
     await waitForPulseRoot(extension.page)
-    await assertExactlyOnePulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
     await assertPulseShadowContains(extension.page, /Replay|VOD|Pulse|sync|ready/i)
 
     api.setScenario('live-ready')
     await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'live')
     await waitForPulseRoot(extension.page)
-    await assertExactlyOnePulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
     assertNoUncaughtErrors(evidence)
   })
 
-  test('exactly one #streamclone-pulse-root after repeated SPA hops', async ({
+  test('exactly one Pulse host pair after repeated SPA hops', async ({
     extension,
     prepare,
   }) => {
@@ -122,10 +130,63 @@ test.describe('extension lifecycle', () => {
     for (let i = 0; i < 3; i += 1) {
       await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
       await waitForPulseRoot(extension.page)
-      await assertExactlyOnePulseRoot(extension.page)
+      await assertPulseHostsUnique(extension.page)
       await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'live')
       await waitForPulseRoot(extension.page)
-      await assertExactlyOnePulseRoot(extension.page)
+      await assertPulseHostsUnique(extension.page)
     }
+  })
+
+  test('body replace keeps exactly one Pulse host pair', async ({ extension, prepare }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
+
+    await wipeTwitchBody(extension.page)
+    await replaceTwitchBody(extension.page, 'live')
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
+  })
+
+  test('orphan Pulse hosts are removed on remount after reinjection', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
+
+    await extension.page.evaluate(
+      ({ rootId, tabsId }) => {
+        const staleRoot = document.createElement('div')
+        staleRoot.id = rootId
+        staleRoot.setAttribute('data-stale', '1')
+        document.documentElement.appendChild(staleRoot)
+        const staleTabs = document.createElement('div')
+        staleTabs.id = tabsId
+        staleTabs.setAttribute('data-stale', '1')
+        document.documentElement.appendChild(staleTabs)
+      },
+      { rootId: PULSE_ROOT_ID, tabsId: PULSE_TABS_ID },
+    )
+
+    expect(await extension.page.locator(`#${PULSE_ROOT_ID}`).count()).toBeGreaterThan(1)
+    expect(await extension.page.locator(`#${PULSE_TABS_ID}`).count()).toBeGreaterThan(1)
+
+    // MutationObserver + route sync should purge duplicates even before SPA nav.
+    await expect
+      .poll(async () => extension.page.locator(`#${PULSE_ROOT_ID}`).count(), { timeout: 3_000 })
+      .toBe(1)
+    await assertPulseHostsUnique(extension.page)
+
+    await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
+
+    await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'live')
+    await waitForPulseRoot(extension.page)
+    await assertPulseHostsUnique(extension.page)
   })
 })

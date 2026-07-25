@@ -46,6 +46,10 @@ import {
   handleGetPulse,
 } from './pulseGetCoordinator.ts'
 import {
+  createWatchCoordinatorState,
+  ensureWatchCoalesced,
+} from './watchCoordinator.ts'
+import {
   planWatchlistStartupSync,
   planWatchlistStorageDelta,
 } from './alwaysTrackedSync.ts'
@@ -53,6 +57,7 @@ import {
 void initPulseDebug()
 
 const pulseCoord = createPulseCoordinatorState()
+const watchCoord = createWatchCoordinatorState()
 /** Soft stale-refresh notice for content overlays (non-fatal). */
 const softStaleFailureByLogin = new Map<string, number>()
 /** Suppress storage-listener sync while message handlers own the mutation. */
@@ -240,15 +245,24 @@ function broadcastPulse(
 }
 
 /**
- * Local BFF only: register watch + one coalesced initial refresh.
+ * Local BFF only: coalesced watch registration + one coalesced initial refresh.
  * Does not start a recurring SW scheduler — content livePoll owns that.
+ * Watch failure does not throw (Pulse fetch still runs); trackLogin only on watch OK.
  */
 async function ensureTracked(login: string): Promise<void> {
   if (await hostedBackend()) {
     return
   }
-  trackLogin(login)
-  await postWatchChannel(login)
+  await ensureWatchCoalesced(
+    login,
+    {
+      postWatch: postWatchChannel,
+      onWatchSuccess: trackedLogin => {
+        trackLogin(trackedLogin)
+      },
+    },
+    watchCoord,
+  )
   await handleGetPulse(
     { login, window: 'recent', allowWatch: false },
     { ...pulseFetchDeps(), ensureTracked: undefined },

@@ -184,6 +184,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Content bundle budget
+        run: npm run check:bundle-budget
+
       - name: Package validation
         run: |
           set -euo pipefail
