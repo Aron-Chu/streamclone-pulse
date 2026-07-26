@@ -1,0 +1,27 @@
+{
+  "schema": "streampulse.release-artifact-verification/v1",
+  "tag": "v0.1.2-store",
+  "sourceSha": "96f0f3d19e88df15c9abc72edb69d69409e6f919",
+  "workflowRunId": "30188051732",
+  "packageJsonVersion": "0.1.2",
+  "manifestVersion": "0.1.2",
+  "targets": {
+    "cws": {
+      "zip": "streampulse-extension-cws-0.1.2.zip",
+      "sha256": "97cd83de5460064b77818408c720d99643e5d701ac3fde2df96bbd3579685df6",
+      "validationReport": "streampulse-extension-cws-0.1.2.validation.json",
+      "attestationRef": "https://github.com/Aron-Chu/streamclone-pulse/attestations/37131572"
+    },
+    "edge": {
+      "zip": "streampulse-extension-edge-0.1.2.zip",
+      "sha256": "97cd83de5460064b77818408c720d99643e5d701ac3fde2df96bbd3579685df6",
+      "validationReport": "streampulse-extension-edge-0.1.2.validation.json",
+      "attestationRef": "https://github.com/Aron-Chu/streamclone-pulse/attestations/37131577"
+    }
+  },
+  "notes": [
+    "Checksum files are operator convenience digests, not cryptographic provenance.",
+    "Cryptographic provenance is the GitHub artifact attestation created in this workflow.",
+    "Do not replace draft release ZIP assets until the owner explicitly approves."
+  ]
+}

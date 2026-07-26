@@ -33,7 +33,17 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Source package version is **0.1.2** (RC). Owner must confirm live CWS dashboard is behind this version and that Support URL is `https://streampulse.stream/support` before upload. See `docs/evidence/RPR-9-0.1.2-rc-20260726.md`.
+Source package version is **0.1.2**. Store packaging tip for upload is protected tag
+`v0.1.2-store` → `96f0f3d19e88df15c9abc72edb69d69409e6f919` (CodeQL-clean assurance).
+Immutable RC freeze tag `v0.1.2` remains at `2031f9c9f726c13b6351273d0975bb130b16910a`.
+Owner must confirm live CWS dashboard is behind this version and that Support URL is
+`https://streampulse.stream/support` before upload. See
+`docs/evidence/RPR-9-0.1.2-assurance-20260726.md` and
+`docs/evidence/CWS-screenshot-provenance-v0.1.2.md`.
+
+Owner-dispatched attested packaging: `.github/workflows/release-artifacts.yml`
+(inputs: existing `v*` tag + expected full SHA). Checksums are operator convenience
+only; GitHub artifact attestations are the cryptographic provenance.
 
 ---
 
@@ -63,7 +73,8 @@ self-generated checksums as cryptographic provenance.
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
 - [ ] Owner authorizes upload; version exceeds last published / confirmed dashboard version
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
-- [ ] Do **not** upload until owner confirms dashboard Support URL + version gates in `docs/evidence/RPR-9-0.1.2-rc-20260726.md`
+- [ ] Do **not** upload until owner confirms dashboard Support URL + version gates in `docs/evidence/RPR-9-0.1.2-assurance-20260726.md`
+- [ ] Upload digest must match the **attested** CWS ZIP from `Release artifacts` for `v0.1.2-store` (not the older unattested draft assets)
 
 ---
 
