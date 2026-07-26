@@ -1,0 +1,8 @@
+{
+  "vulnerabilities": {
+    "react-router": {
+      "severity": "high",
+      "via": [{ "title": "other", "url": "https://example.com" }]
+    }
+  }
+}

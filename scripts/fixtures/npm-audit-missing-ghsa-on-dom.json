@@ -1,0 +1,13 @@
+{
+  "vulnerabilities": {
+    "react-router": {
+      "severity": "high",
+      "via": [
+        {
+          "source": 1109067,
+          "url": "https://github.com/advisories/GHSA-qwww-vcr4-c8h2"
+        }
+      ]
+    }
+  }
+}

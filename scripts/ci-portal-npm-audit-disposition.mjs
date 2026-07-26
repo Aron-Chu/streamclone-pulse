@@ -5,15 +5,17 @@
  * written disposition in docs/evidence/npm-audit-rpr6-2026-07.md.
  * Any new high/critical finding fails CI.
  *
- * Hard rule: a dispositioned package MUST cite the exact GHSA id in the audit
- * `via` payload (string match). Package-name-only matches are rejected.
+ * Hard rule: a dispositioned package MUST be backed by the exact GHSA id
+ * either in its own audit `via` payload or (for direct dependents like
+ * react-router-dom) in the dispositioned parent package's `via` within the
+ * same audit document.
  *
  * Usage: node scripts/ci-portal-npm-audit-disposition.mjs <audit.json>
  */
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-/** @type {ReadonlyArray<{ name: string, ghsa: string, reason: string }>} */
+/** @type {ReadonlyArray<{ name: string, ghsa: string, reason: string, parent?: string }>} */
 export const DISPOSITIONED_HIGHS = Object.freeze([
   {
     name: 'react-router',
@@ -24,18 +26,42 @@ export const DISPOSITIONED_HIGHS = Object.freeze([
   {
     name: 'react-router-dom',
     ghsa: 'GHSA-qwww-vcr4-c8h2',
+    parent: 'react-router',
     reason:
-      'Same advisory as react-router (transitive via react-router-dom). No RSC surface in portal.',
+      'Same advisory as react-router (npm often lists react-router-dom via as the parent package name only). No RSC surface in portal.',
   },
 ])
 
 /**
  * @param {unknown} via
- * @param {string} ghsa
+ * @returns {string[]}
  */
-function viaMentionsGhsa(via, ghsa) {
+function extractGhsas(via) {
   const text = JSON.stringify(via ?? '')
-  return text.includes(ghsa)
+  const matches = text.match(/GHSA-[a-z0-9-]+/gi) ?? []
+  return matches.map((g) => g.toUpperCase())
+}
+
+/**
+ * @param {Record<string, { via?: unknown }>} vulns
+ * @param {string} name
+ * @param {string} ghsa
+ * @param {string | undefined} parent
+ */
+function auditHasExactGhsa(vulns, name, ghsa, parent) {
+  const target = ghsa.toUpperCase()
+  const self = extractGhsas(vulns[name]?.via)
+  if (self.includes(target)) return true
+  if (parent) {
+    const parentGhsas = extractGhsas(vulns[parent]?.via)
+    if (parentGhsas.includes(target)) return true
+    // npm may only list the parent package name as a string via entry.
+    const viaText = JSON.stringify(vulns[name]?.via ?? '')
+    if (viaText.includes(`"${parent}"`) || viaText.includes(`"${parent}@`)) {
+      return parentGhsas.includes(target)
+    }
+  }
+  return false
 }
 
 function main() {
@@ -64,7 +90,7 @@ function main() {
       unexpected.push(`${hit.severity} ${hit.name} (no disposition)`)
       continue
     }
-    if (!viaMentionsGhsa(hit.via, disp.ghsa)) {
+    if (!auditHasExactGhsa(vulns, hit.name, disp.ghsa, disp.parent)) {
       unexpected.push(
         `${hit.severity} ${hit.name} (disposition requires exact ${disp.ghsa} in audit via; not found)`,
       )

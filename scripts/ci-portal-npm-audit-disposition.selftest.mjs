@@ -1,53 +1,38 @@
 /**
  * Lightweight self-test for exact-GHSA disposition gate (no vitest install required).
+ * Uses in-repo fixtures (no os.tmpdir writes — avoids CodeQL js/insecure-temporary-file).
  * Run: node scripts/ci-portal-npm-audit-disposition.selftest.mjs
  */
-import { writeFileSync, unlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join as pathJoin } from 'node:path'
 
 const root = pathJoin(dirname(fileURLToPath(import.meta.url)), '..')
 const script = pathJoin(root, 'scripts', 'ci-portal-npm-audit-disposition.mjs')
+const fixtures = pathJoin(root, 'scripts', 'fixtures')
 
-function run(audit) {
-  const path = pathJoin(tmpdir(), `sp-audit-selftest-${process.pid}-${Math.random()}.json`)
-  writeFileSync(path, JSON.stringify(audit))
-  try {
-    return spawnSync(process.execPath, [script, path], { encoding: 'utf8', cwd: root })
-  } finally {
-    unlinkSync(path)
-  }
+function run(fixtureName) {
+  return spawnSync(process.execPath, [script, pathJoin(fixtures, fixtureName)], {
+    encoding: 'utf8',
+    cwd: root,
+  })
 }
 
-const bad = run({
-  vulnerabilities: {
-    'react-router': {
-      severity: 'high',
-      via: [{ title: 'other', url: 'https://example.com' }],
-    },
-  },
-})
-if (bad.status === 0 || !String(bad.stderr).includes('GHSA-qwww-vcr4-c8h2')) {
-  console.error('expected reject without exact GHSA', bad)
+const wrong = run('npm-audit-wrong-ghsa.json')
+if (wrong.status === 0 || !String(wrong.stderr).includes('GHSA-qwww-vcr4-c8h2')) {
+  console.error('expected reject without exact GHSA', wrong)
   process.exit(1)
 }
 
-const good = run({
-  vulnerabilities: {
-    'react-router': {
-      severity: 'high',
-      via: [{ url: 'https://github.com/advisories/GHSA-qwww-vcr4-c8h2' }],
-    },
-    'react-router-dom': {
-      severity: 'high',
-      via: [{ url: 'https://github.com/advisories/GHSA-qwww-vcr4-c8h2' }],
-    },
-  },
-})
-if (good.status !== 0) {
-  console.error('expected accept with exact GHSA', good)
+const parentOnly = run('npm-audit-dom-via-parent.json')
+if (parentOnly.status !== 0) {
+  console.error('expected accept when react-router-dom via is parent name and parent has GHSA', parentOnly)
+  process.exit(1)
+}
+
+const missingDomGhsaButHasRouter = run('npm-audit-missing-ghsa-on-dom.json')
+if (missingDomGhsaButHasRouter.status !== 0) {
+  console.error('expected accept for react-router-only high with exact GHSA', missingDomGhsaButHasRouter)
   process.exit(1)
 }
 
