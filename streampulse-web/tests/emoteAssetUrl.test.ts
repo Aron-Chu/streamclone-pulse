@@ -4,14 +4,40 @@ import {
   emoteDisplaySrc,
   emoteSrcSet,
   emoteUrlForScale,
+  isAllowedEmoteImageUrl,
   isBackendEmoteProxyUrl,
   preferResolvableEmoteUrl,
+  sanitizeEmoteImageUrl,
 } from '../src/lib/emoteAssetUrl'
 import { buildEmoteLookup, resolveMomentEmote } from '../src/lib/pulseMomentsUtils'
 
 vi.mock('../src/lib/apiClient', () => ({
   getBackendUrl: () => 'https://api.streampulse.stream',
 }))
+
+describe('isAllowedEmoteImageUrl / sanitizeEmoteImageUrl', () => {
+  it('allows known HTTPS emote CDNs and hosted proxy', () => {
+    expect(isAllowedEmoteImageUrl('https://cdn.7tv.app/emote/abc/4x.webp')).toBe(true)
+    expect(sanitizeEmoteImageUrl('https://cdn.7tv.app/emote/abc/4x.webp')).toBe(
+      'https://cdn.7tv.app/emote/abc/4x.webp',
+    )
+    expect(isAllowedEmoteImageUrl('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://cdn.frankerfacez.com/emoticon/1/4')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://cdn.betterttv.net/emote/abc/3x')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://api.streampulse.stream/emotes/uuid/1x.webp')).toBe(true)
+    expect(sanitizeEmoteImageUrl('/emotes/uuid/1x.webp')).toBe(
+      'https://api.streampulse.stream/emotes/uuid/1x.webp',
+    )
+  })
+
+  it('rejects javascript, data, http, and unknown hosts', () => {
+    expect(sanitizeEmoteImageUrl('javascript:alert(1)')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('data:image/png;base64,xx')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('http://cdn.7tv.app/emote/abc/4x.webp')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('https://evil.example/x.webp')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('https://evil.cdn.7tv.app/emote/x.webp')).toBeUndefined()
+  })
+})
 
 describe('absolutizeEmoteAssetUrl', () => {
   it('prefixes backend-relative emote paths', () => {
@@ -46,7 +72,11 @@ describe('preferResolvableEmoteUrl', () => {
 
   it('keeps direct CDN when bucket already has it', () => {
     const cdn = 'https://cdn.7tv.app/emote/abc/4x.webp'
-    expect(preferResolvableEmoteUrl(cdn, 'https://cdn.example/fallback.webp')).toBe(cdn)
+    expect(preferResolvableEmoteUrl(cdn, 'https://cdn.frankerfacez.com/emoticon/1/4')).toBe(cdn)
+  })
+
+  it('drops disallowed hosts instead of binding them to img src', () => {
+    expect(preferResolvableEmoteUrl('https://evil.example/x.webp', 'javascript:alert(1)')).toBeUndefined()
   })
 })
 

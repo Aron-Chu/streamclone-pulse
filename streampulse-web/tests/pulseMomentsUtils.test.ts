@@ -73,7 +73,7 @@ function samplePublicHub(): PublicHub {
       seventvSharePct: 0,
       providerShares: [],
     },
-    topEmotes: [{ name: 'KEKW', provider: '7tv', imageUrl: 'https://cdn.example/kekw.webp', count: 10, sharePct: 0 }],
+    topEmotes: [{ name: 'KEKW', provider: '7tv', imageUrl: 'https://cdn.7tv.app/emote/kekw/1x.webp', count: 10, sharePct: 0 }],
     topMovers: [],
     liveChannels: [],
     moments: [],
@@ -123,7 +123,7 @@ describe('resolveMomentEmote', () => {
       },
       lookup,
     )
-    expect(resolved?.imageUrl).toBe('https://cdn.example/kekw.webp')
+    expect(resolved?.imageUrl).toBe('https://cdn.7tv.app/emote/kekw/1x.webp')
     expect(resolved?.imageUnavailable).toBe(false)
   })
 

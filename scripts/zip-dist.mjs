@@ -7,7 +7,6 @@
 import { existsSync, unlinkSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import {
   compareZipEntriesToExpected,
   listPackableDistFiles,
@@ -17,6 +16,7 @@ import {
 } from './extension-package-lib.mjs'
 import { resolveExtensionTarget } from './extension-target.mjs'
 import { stageExtensionAttribution } from './stage-extension-attribution.mjs'
+import { makePrivateTempDir, writePrivateTempFile } from './lib/private-temp.mjs'
 
 function parseTargetArg(argv = process.argv.slice(2)) {
   const idx = argv.findIndex((a) => a === '--target' || a.startsWith('--target='))
@@ -48,8 +48,8 @@ function zipWithTar(files) {
 }
 
 function zipWithDotNetFiltered(files) {
-  const listPath = join(tmpdir(), `sp-zip-files-${process.pid}.txt`)
-  writeFileSync(listPath, files.join('\n'), 'utf8')
+  const tmpDir = makePrivateTempDir('sp-zip-files-')
+  const listPath = writePrivateTempFile(tmpDir, 'files.txt', files.join('\n'))
   const distEsc = dist.replace(/'/g, "''")
   const zipEsc = zipPath.replace(/'/g, "''")
   const listEsc = listPath.replace(/'/g, "''")
@@ -85,7 +85,7 @@ function zipWithDotNetFiltered(files) {
   `
   const result = spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' })
   try {
-    unlinkSync(listPath)
+    rmSync(tmpDir, { recursive: true, force: true })
   } catch {
     // ignore
   }
@@ -97,9 +97,7 @@ function zipWithDotNetFiltered(files) {
 }
 
 function zipViaStagingDir(files) {
-  const stage = join(tmpdir(), `sp-zip-stage-${process.pid}`)
-  rmSync(stage, { recursive: true, force: true })
-  mkdirSync(stage, { recursive: true })
+  const stage = makePrivateTempDir('sp-zip-stage-')
   for (const rel of files) {
     const src = join(dist, rel)
     const dest = join(stage, rel)

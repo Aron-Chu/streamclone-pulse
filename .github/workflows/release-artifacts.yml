@@ -1,0 +1,237 @@
+# Owner-dispatched attested store packages for an existing protected v* tag.
+# Does NOT upload to CWS/Edge, publish npm, or mutate release assets without
+# a separate owner-approved step. Builds from the tagged commit only.
+#
+# Action pins: full commit SHA with release tag in comments.
+name: Release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing protected v* tag (e.g. v0.1.2)'
+        required: true
+        type: string
+      expected_sha:
+        description: 'Exact protected master commit the tag must resolve to (full SHA)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-artifacts-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: package-and-attest
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      cws_digest: ${{ steps.digests.outputs.cws_digest }}
+      edge_digest: ${{ steps.digests.outputs.edge_digest }}
+      version: ${{ steps.digests.outputs.version }}
+      source_sha: ${{ steps.verify.outputs.source_sha }}
+      tag: ${{ steps.verify.outputs.tag }}
+    steps:
+      # actions/checkout@v4 — full history so tag→commit verification is local
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify protected tag resolves to expected SHA
+        id: verify
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG}"
+          if [[ ! "${tag}" =~ ^v[0-9] ]]; then
+            echo "::error::tag must match v* (got ${tag})"
+            exit 1
+          fi
+          if ! git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "::error::tag ${tag} does not exist on this repository"
+            exit 1
+          fi
+          resolved="$(git rev-list -n 1 "refs/tags/${tag}")"
+          expected="$(echo "${EXPECTED_SHA}" | tr '[:upper:]' '[:lower:]')"
+          resolved_lc="$(echo "${resolved}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${#expected}" -ne 40 ]]; then
+            echo "::error::expected_sha must be a full 40-char commit SHA"
+            exit 1
+          fi
+          if [[ "${resolved_lc}" != "${expected}" ]]; then
+            echo "::error::tag ${tag} resolves to ${resolved}, expected ${EXPECTED_SHA}"
+            exit 1
+          fi
+          # Confirm the commit is on master (protected default)
+          if ! git merge-base --is-ancestor "${resolved}" origin/master && \
+             ! git merge-base --is-ancestor "${resolved}" origin/main; then
+            echo "::error::${resolved} is not an ancestor of origin/master|main"
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "source_sha=${resolved}" >> "$GITHUB_OUTPUT"
+          echo "Verified ${tag} → ${resolved}"
+
+      - name: Checkout exact tag
+        run: |
+          set -euo pipefail
+          git checkout --detach "refs/tags/${{ steps.verify.outputs.tag }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.verify.outputs.source_sha }}"
+
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install and build store packages
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run ensure:packages
+          npm run package:cws
+          npm run package:edge
+
+      - name: Collect digests and verification report
+        id: digests
+        env:
+          SOURCE_SHA: ${{ steps.verify.outputs.source_sha }}
+          TAG: ${{ steps.verify.outputs.tag }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          CWS_ZIP="streampulse-extension-cws-${VERSION}.zip"
+          EDGE_ZIP="streampulse-extension-edge-${VERSION}.zip"
+          test -f "$CWS_ZIP"
+          test -f "$EDGE_ZIP"
+          test -f "${CWS_ZIP}.sha256"
+          test -f "${EDGE_ZIP}.sha256"
+          test -f "streampulse-extension-cws-${VERSION}.validation.json"
+          test -f "streampulse-extension-edge-${VERSION}.validation.json"
+          CWS_DIGEST="$(cut -d' ' -f1 "${CWS_ZIP}.sha256")"
+          EDGE_DIGEST="$(cut -d' ' -f1 "${EDGE_ZIP}.sha256")"
+          MANIFEST_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version")"
+          mkdir -p release-verification
+          VERSION="$VERSION" \
+          CWS_DIGEST="$CWS_DIGEST" \
+          EDGE_DIGEST="$EDGE_DIGEST" \
+          MANIFEST_VERSION="$MANIFEST_VERSION" \
+          SOURCE_SHA="$SOURCE_SHA" \
+          TAG="$TAG" \
+          RUN_ID="$RUN_ID" \
+          node -e '
+            const fs = require("fs");
+            const report = {
+              schema: "streampulse.release-artifact-verification/v1",
+              tag: process.env.TAG,
+              sourceSha: process.env.SOURCE_SHA,
+              workflowRunId: process.env.RUN_ID,
+              packageJsonVersion: process.env.VERSION,
+              manifestVersion: process.env.MANIFEST_VERSION,
+              targets: {
+                cws: {
+                  zip: `streampulse-extension-cws-${process.env.VERSION}.zip`,
+                  sha256: process.env.CWS_DIGEST,
+                  validationReport: `streampulse-extension-cws-${process.env.VERSION}.validation.json`,
+                  attestationRef: null
+                },
+                edge: {
+                  zip: `streampulse-extension-edge-${process.env.VERSION}.zip`,
+                  sha256: process.env.EDGE_DIGEST,
+                  validationReport: `streampulse-extension-edge-${process.env.VERSION}.validation.json`,
+                  attestationRef: null
+                }
+              },
+              notes: [
+                "Checksum files are operator convenience digests, not cryptographic provenance.",
+                "Cryptographic provenance is the GitHub artifact attestation created in this workflow.",
+                "Do not replace draft release ZIP assets until the owner explicitly approves."
+              ]
+            };
+            fs.writeFileSync(
+              "release-verification/release-artifact-verification.json",
+              JSON.stringify(report, null, 2) + "\n"
+            );
+            fs.writeFileSync(
+              "release-verification/RELEASE_BUILD_METADATA.txt",
+              [
+                `tag=${process.env.TAG}`,
+                `source_sha=${process.env.SOURCE_SHA}`,
+                `workflow_run_id=${process.env.RUN_ID}`,
+                `package_json_version=${process.env.VERSION}`,
+                `manifest_version=${process.env.MANIFEST_VERSION}`,
+                `cws_zip_sha256=${process.env.CWS_DIGEST}`,
+                `edge_zip_sha256=${process.env.EDGE_DIGEST}`,
+                "",
+                "This file is unsigned build metadata for operators.",
+                "It is NOT cryptographic provenance. Use GitHub artifact attestations.",
+                ""
+              ].join("\n")
+            );
+          '
+          echo "cws_digest=${CWS_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "edge_digest=${EDGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "CWS ${CWS_DIGEST}"
+          echo "EDGE ${EDGE_DIGEST}"
+
+      # actions/attest-build-provenance@v4.1.1
+      - name: Attest CWS ZIP
+        id: attest_cws
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: streampulse-extension-cws-${{ steps.digests.outputs.version }}.zip
+
+      # actions/attest-build-provenance@v4.1.1
+      - name: Attest Edge ZIP
+        id: attest_edge
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: streampulse-extension-edge-${{ steps.digests.outputs.version }}.zip
+
+      - name: Embed attestation references in report
+        env:
+          CWS_ATTEST: ${{ steps.attest_cws.outputs.attestation-url }}
+          EDGE_ATTEST: ${{ steps.attest_edge.outputs.attestation-url }}
+          VERSION: ${{ steps.digests.outputs.version }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const path = "release-verification/release-artifact-verification.json";
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            report.targets.cws.attestationRef = process.env.CWS_ATTEST || null;
+            report.targets.edge.attestationRef = process.env.EDGE_ATTEST || null;
+            fs.writeFileSync(path, JSON.stringify(report, null, 2) + "\n");
+            fs.appendFileSync(
+              "release-verification/RELEASE_BUILD_METADATA.txt",
+              `cws_attestation_ref=${process.env.CWS_ATTEST || ""}\nedge_attestation_ref=${process.env.EDGE_ATTEST || ""}\n`
+            );
+          '
+
+      # actions/upload-artifact@v4 — retain long enough for store review
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: streampulse-release-${{ steps.verify.outputs.tag }}
+          path: |
+            streampulse-extension-cws-${{ steps.digests.outputs.version }}.zip
+            streampulse-extension-cws-${{ steps.digests.outputs.version }}.zip.sha256
+            streampulse-extension-cws-${{ steps.digests.outputs.version }}.validation.json
+            streampulse-extension-edge-${{ steps.digests.outputs.version }}.zip
+            streampulse-extension-edge-${{ steps.digests.outputs.version }}.zip.sha256
+            streampulse-extension-edge-${{ steps.digests.outputs.version }}.validation.json
+            release-verification/
+            LICENSE
+            NOTICE
+          retention-days: 90
+          if-no-files-found: error

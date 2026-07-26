@@ -9,10 +9,18 @@ vi.mock('../src/lib/apiClient', () => ({
 
 describe('EmoteImg', () => {
   it('falls back to text when the image fails to load', () => {
-    const { container } = render(<EmoteImg src="https://cdn.example.test/missing.webp" name="KEKW" />)
+    const { container } = render(
+      <EmoteImg src="https://cdn.7tv.app/emote/missing/1x.webp" name="KEKW" />,
+    )
     const img = container.querySelector('img')
     expect(img).not.toBeNull()
     fireEvent.error(img as HTMLImageElement)
+    expect(screen.getByText('K')).toBeTruthy()
+  })
+
+  it('does not render img for disallowed hosts', () => {
+    const { container } = render(<EmoteImg src="https://evil.example/x.webp" name="KEKW" />)
+    expect(container.querySelector('img')).toBeNull()
     expect(screen.getByText('K')).toBeTruthy()
   })
 

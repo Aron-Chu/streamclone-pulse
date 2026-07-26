@@ -36,12 +36,19 @@ export function assertHostedApiOnly(violations: string[]): void {
   ).toEqual([])
 }
 
+function isHostedApiResponseUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' && parsed.hostname === 'api.streampulse.stream'
+  } catch {
+    return false
+  }
+}
+
 /** Wait until at least one hosted API response completes (proves the page is not on localhost). */
 export async function waitForHostedApiTraffic(page: Page, timeoutMs = 45_000): Promise<void> {
   await page.waitForResponse(
-    (response) =>
-      response.url().startsWith(HOSTED_API_URL)
-      && response.status() < 500,
+    (response) => isHostedApiResponseUrl(response.url()) && response.status() < 500,
     { timeout: timeoutMs },
   )
 }

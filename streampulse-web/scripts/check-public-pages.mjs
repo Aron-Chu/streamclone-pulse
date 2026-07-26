@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { textContainsHostedApiOrigin } from '../../scripts/lib/hosted-api-origin.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const dist = join(root, '..', 'dist')
@@ -27,7 +28,7 @@ for (const [relativePath, title, robots, canonical] of expected) {
   if (!html.includes(`<title>${title}</title>`)) failures.push(`${relativePath}: incorrect title`)
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
   if (!html.includes(`<link rel="canonical" href="${canonical}" />`)) failures.push(`${relativePath}: incorrect canonical URL`)
-  if (!html.includes('https://api.streampulse.stream')) failures.push(`${relativePath}: hosted API CSP missing`)
+  if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
   if (/https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(html)) failures.push(`${relativePath}: local URL leaked into artifact`)
 }
 

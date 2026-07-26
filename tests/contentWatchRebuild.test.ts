@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { open, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,12 +31,21 @@ async function waitForChange(
   path: string,
   previous: { mtimeMs: number; hash: string },
   timeoutMs = 45_000,
-): Promise<void> {
+): Promise<{ mtimeMs: number; hash: string; content: Buffer }> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const info = await stat(path)
-    const hash = await hashFile(path)
-    if (info.mtimeMs > previous.mtimeMs && hash !== previous.hash) return
+    // Same file handle for fstat + read avoids TOCTOU between check and use.
+    const fh = await open(path, 'r')
+    try {
+      const info = await fh.stat()
+      const content = Buffer.from(await fh.readFile())
+      const hash = createHash('sha256').update(content).digest('hex')
+      if (info.mtimeMs > previous.mtimeMs && hash !== previous.hash) {
+        return { mtimeMs: info.mtimeMs, hash, content }
+      }
+    } finally {
+      await fh.close()
+    }
     await new Promise((resolveWait) => setTimeout(resolveWait, 150))
   }
   throw new Error(`timed out waiting for rebuild of ${path}`)
@@ -158,12 +167,12 @@ export default defineConfig({
 
         // Content-only edit must rebuild content IIFE without requiring outer rebuild.
         await writeFile(depPath, `export const marker = 'v2'\n`, 'utf8')
-        await waitForChange(contentOut, {
+        const changed = await waitForChange(contentOut, {
           mtimeMs: initialContent.mtimeMs,
           hash: initialContentHash,
         })
 
-        const rebuilt = await readFile(contentOut, 'utf8')
+        const rebuilt = changed.content.toString('utf8')
         expect(rebuilt).toContain('v2')
         expect(rebuilt).not.toContain('v1')
         // IIFE constraints preserved

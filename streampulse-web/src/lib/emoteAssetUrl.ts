@@ -2,6 +2,42 @@ import { getBackendUrl } from './apiClient'
 
 export type EmoteDisplayScale = '1x' | '2x' | '4x'
 
+/** HTTPS CDN / hosted hosts permitted for <img src> emote rendering. */
+export const ALLOWED_EMOTE_IMAGE_HOSTS = Object.freeze([
+  'cdn.7tv.app',
+  'static-cdn.jtvnw.net',
+  'cdn.frankerfacez.com',
+  'cdn.betterttv.net',
+  'api.streampulse.stream',
+])
+
+/**
+ * Allow only https emote CDN / hosted proxy URLs (or relative /emotes/ paths).
+ * Strengthens img-src binding against javascript:/data: and arbitrary hosts.
+ */
+export function isAllowedEmoteImageUrl(url: string | undefined): boolean {
+  return sanitizeEmoteImageUrl(url) !== undefined
+}
+
+/**
+ * Return a URL.href only after https + host allowlist validation.
+ * Callers must bind this return value (not the raw input) to img src.
+ */
+export function sanitizeEmoteImageUrl(url: string | undefined): string | undefined {
+  if (!url?.trim()) return undefined
+  const trimmed = url.trim()
+  try {
+    const parsed = trimmed.startsWith('/emotes/')
+      ? new URL(trimmed, getBackendUrl())
+      : new URL(trimmed, getBackendUrl())
+    if (parsed.protocol !== 'https:') return undefined
+    if (!ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())) return undefined
+    return parsed.href
+  } catch {
+    return undefined
+  }
+}
+
 /** Resolve backend-relative emote paths (`/emotes/{id}/1x.webp`) for img src. */
 export function absolutizeEmoteAssetUrl(url: string | undefined): string | undefined {
   if (!url?.trim()) return url
@@ -30,10 +66,16 @@ export function preferResolvableEmoteUrl(
   fallback: string | undefined,
 ): string | undefined {
   const absDirect = absolutizeEmoteAssetUrl(direct)
-  if (absDirect && !isBackendEmoteProxyUrl(absDirect)) return absDirect
+  if (absDirect && !isBackendEmoteProxyUrl(absDirect)) {
+    const safe = sanitizeEmoteImageUrl(absDirect)
+    if (safe) return safe
+  }
   const absFallback = absolutizeEmoteAssetUrl(fallback)
-  if (absFallback && !isBackendEmoteProxyUrl(absFallback)) return absFallback
-  return absDirect ?? absFallback
+  if (absFallback && !isBackendEmoteProxyUrl(absFallback)) {
+    const safe = sanitizeEmoteImageUrl(absFallback)
+    if (safe) return safe
+  }
+  return sanitizeEmoteImageUrl(absDirect) ?? sanitizeEmoteImageUrl(absFallback)
 }
 
 /**
@@ -82,7 +124,11 @@ export function emoteSrcSet(url: string | undefined): string | undefined {
 
 /** Default display URL for small cards/rows — 1x, not 4x. */
 export function emoteDisplaySrc(url: string | undefined, cssPx = 28): string | undefined {
-  if (cssPx >= 64) return emoteUrlForScale(url, '4x') ?? absolutizeEmoteAssetUrl(url)
-  if (cssPx >= 40) return emoteUrlForScale(url, '2x') ?? absolutizeEmoteAssetUrl(url)
-  return emoteUrlForScale(url, '1x') ?? absolutizeEmoteAssetUrl(url)
+  const scaled =
+    cssPx >= 64
+      ? emoteUrlForScale(url, '4x') ?? absolutizeEmoteAssetUrl(url)
+      : cssPx >= 40
+        ? emoteUrlForScale(url, '2x') ?? absolutizeEmoteAssetUrl(url)
+        : emoteUrlForScale(url, '1x') ?? absolutizeEmoteAssetUrl(url)
+  return sanitizeEmoteImageUrl(scaled)
 }

@@ -50,7 +50,8 @@ function extractFillClasses(source) {
 }
 
 function cssEscapesClass(className) {
-  return className.replace(/\//g, '\\/')
+  // Escape backslashes first so later slash escaping cannot be undone.
+  return className.replace(/\\/g, '\\\\').replace(/\//g, '\\/')
 }
 
 function readText(path) {
