@@ -13,8 +13,8 @@ Canonical release process for store packages and the public portal. Companion:
 3. **One SHA, one package.** Local gates and remote CI must pass on the same commit before upload. Workflow runs that execute no jobs do not count.
 4. **Never upload an obsolete ZIP.** Manifest, privacy, support, or permission changes invalidate prior locked candidates.
 5. **No agent push / store submit** without explicit owner authorization.
-6. **Do not flip repo visibility** to obtain free Actions.
-7. **Public contacts** must be verified before publication. Unverified mailboxes are release blockers (R18).
+6. **Public-source cutover is complete** (`Aron-Chu/streamclone-pulse` is public). Do not publicize backend/ops/archive. Store upload remains a separate owner gate.
+7. **Public contacts** must stay truthful. Verified today: `privacy@streampulse.stream` + GitHub PVR. Unverified `support@` / `security@` must not be published as active.
 
 ---
 

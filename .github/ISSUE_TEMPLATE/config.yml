@@ -5,4 +5,4 @@ contact_links:
     about: Verified contact for privacy and legal inquiries only.
   - name: Security reporting
     url: https://github.com/Aron-Chu/streamclone-pulse/blob/master/SECURITY.md
-    about: Read SECURITY.md — do not post exploit details in public issues. No PVR claim.
+    about: Use GitHub Private Vulnerability Reporting (enabled). Do not post exploit details in public issues.
