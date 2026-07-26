@@ -279,7 +279,7 @@ export function ExtensionDemoCard({
               </span>
             </div>
             <div className="sl-plotrow" aria-hidden="true">
-              <span className="sl-plotrow__label">Plot on chart (0-4)</span>
+              <span className="sl-plotrow__label">Plot emotes · 1/6</span>
               {TOP_EMOTES.slice(0, 4).map((emote, index) => (
                 <span className={`sl-plotchip${index === 0 ? ' is-active' : ''}`} key={emote.name}>
                   <img src={landingEmoteImageUrl(emote.emote, '1x')} alt="" loading="lazy" decoding="async" />

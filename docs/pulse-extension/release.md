@@ -33,13 +33,22 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Source package version is **0.1.2**. Store packaging tip for upload is protected tag
-`v0.1.2-store` → `96f0f3d19e88df15c9abc72edb69d69409e6f919` (CodeQL-clean assurance).
-Immutable RC freeze tag `v0.1.2` remains at `2031f9c9f726c13b6351273d0975bb130b16910a`.
-Owner must confirm live CWS dashboard is behind this version and that Support URL is
-`https://streampulse.stream/support` before upload. See
-`docs/evidence/RPR-9-0.1.2-assurance-20260726.md` and
-`docs/evidence/CWS-screenshot-provenance-v0.1.2.md`.
+Source package version is **0.1.3** (reliability / live-player / emote-picker repair track).
+**Candidate acceptance: pending** — local closure WIP only; no store upload, tag, or hosted migrate in this pass.
+
+**Do not upload attested `v0.1.2` / `v0.1.2-store` ZIPs** — they remain immutable
+evidence only and include known player-jump defects. Never upload the older
+unattested draft `49bf0a9e…` ZIP either.
+
+Historical 0.1.2 assurance pointers (attested but unshipped):
+- Store packaging tip `v0.1.2-store` → `96f0f3d19e88df15c9abc72edb69d69409e6f919`
+- Immutable RC freeze `v0.1.2` → `2031f9c9f726c13b6351273d0975bb130b16910a`
+- Evidence: `docs/evidence/RPR-9-0.1.2-assurance-20260726.md`,
+  `docs/evidence/CWS-screenshot-provenance-v0.1.2.md`
+
+Owner must confirm live CWS dashboard is behind **0.1.3** and that Support URL is
+`https://streampulse.stream/support` before any 0.1.3 upload. Stop before tags/
+releases unless separately authorized; stop again before CWS/Edge upload.
 
 Owner-dispatched attested packaging: `.github/workflows/release-artifacts.yml`
 (inputs: existing `v*` tag + expected full SHA). Checksums are operator convenience
