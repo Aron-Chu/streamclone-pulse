@@ -125,16 +125,20 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     metrics = await pickerMetrics(extension.page)
     expect(metrics.selected).toHaveLength(6)
 
-    // Deselect one plottable row, then select the first other enabled non-selected row.
+    // Deselect one plottable row, wait for React to free a slot, then select another.
+    await extension.page.evaluate(rootId => {
+      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-scroll]')
+      const selected = [
+        ...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row[aria-selected="true"]') ?? []),
+      ]
+      selected[0]?.click()
+    }, PULSE_ROOT_ID)
+    await expect.poll(async () => (await pickerMetrics(extension.page)).selected.length).toBe(5)
     await extension.page.evaluate(rootId => {
       const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-scroll]')
       const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row') ?? [])]
-      const selected = rows.filter(row => row.getAttribute('aria-selected') === 'true')
-      const firstSelected = selected[0]
-      firstSelected?.click()
       const replacement = rows.find(
         row =>
-          row !== firstSelected &&
           row.getAttribute('aria-selected') !== 'true' &&
           !row.disabled &&
           row.getAttribute('aria-disabled') !== 'true' &&
@@ -142,8 +146,8 @@ test.describe('emote picker redesign (mocked MV3)', () => {
       )
       replacement?.click()
     }, PULSE_ROOT_ID)
+    await expect.poll(async () => (await pickerMetrics(extension.page)).selected.length).toBe(6)
     metrics = await pickerMetrics(extension.page)
-    expect(metrics.selected).toHaveLength(6)
     expect(metrics.emoteTraceCount).toBe(6)
 
     // Collapse / reopen preserves valid selections.
