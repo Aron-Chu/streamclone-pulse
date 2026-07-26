@@ -1,13 +1,17 @@
 /**
- * Portal CI npm audit disposition gate (RPR-6).
+ * Portal CI npm audit disposition gate (RPR-6 / public security closeout).
  *
  * Allowed high/critical advisories must be explicitly listed here with a
  * written disposition in docs/evidence/npm-audit-rpr6-2026-07.md.
  * Any new high/critical finding fails CI.
  *
+ * Hard rule: a dispositioned package MUST cite the exact GHSA id in the audit
+ * `via` payload (string match). Package-name-only matches are rejected.
+ *
  * Usage: node scripts/ci-portal-npm-audit-disposition.mjs <audit.json>
  */
 import { readFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
 /** @type {ReadonlyArray<{ name: string, ghsa: string, reason: string }>} */
 export const DISPOSITIONED_HIGHS = Object.freeze([
@@ -24,6 +28,15 @@ export const DISPOSITIONED_HIGHS = Object.freeze([
       'Same advisory as react-router (transitive via react-router-dom). No RSC surface in portal.',
   },
 ])
+
+/**
+ * @param {unknown} via
+ * @param {string} ghsa
+ */
+function viaMentionsGhsa(via, ghsa) {
+  const text = JSON.stringify(via ?? '')
+  return text.includes(ghsa)
+}
 
 function main() {
   const path = process.argv[2]
@@ -51,12 +64,11 @@ function main() {
       unexpected.push(`${hit.severity} ${hit.name} (no disposition)`)
       continue
     }
-    const viaText = JSON.stringify(hit.via ?? '')
-    if (!viaText.includes(disp.ghsa) && !viaText.includes('react-router')) {
-      // Accept if the advisory id is nested or the package is the known router pair.
-      if (hit.name !== 'react-router' && hit.name !== 'react-router-dom') {
-        unexpected.push(`${hit.severity} ${hit.name} (disposition GHSA mismatch)`)
-      }
+    if (!viaMentionsGhsa(hit.via, disp.ghsa)) {
+      unexpected.push(
+        `${hit.severity} ${hit.name} (disposition requires exact ${disp.ghsa} in audit via; not found)`,
+      )
+      continue
     }
     console.log(`dispositioned ${hit.severity} ${hit.name}: ${disp.ghsa}`)
     console.log(`  ${disp.reason}`)
@@ -78,4 +90,6 @@ function main() {
   }
 }
 
-main()
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+}
