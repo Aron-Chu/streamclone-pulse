@@ -3,23 +3,33 @@
 ## Supported versions
 
 Security fixes target the latest extension/portal release candidate on `master`.
-Store uploads are gated by RPR-9 and may lag `master`.
+Store uploads are gated by RPR-9 (store release pending) and may lag `master`.
 
 ## Reporting a vulnerability
 
 **Do not** open a public GitHub issue with exploit details, payloads, or credentials.
 
-There is **no** verified dedicated `security@` mailbox and **no** claim that GitHub
-Private Vulnerability Reporting (PVR) is enabled for this repository.
+### GitHub Private Vulnerability Reporting (enabled)
 
-Security reports currently require an **owner-verified private channel**. Until
-that channel is published:
+This repository has **GitHub Private Vulnerability Reporting (PVR) enabled**.
 
-1. For privacy or legal concerns only, you may contact `privacy@streampulse.stream`
-   (interim; not a substitute for a security mailbox).
-2. Do **not** send exploit details, proof-of-concept code, or secrets to public
+Prefer reporting through GitHub’s private advisory / vulnerability reporting UI for
+[`Aron-Chu/streamclone-pulse`](https://github.com/Aron-Chu/streamclone-pulse):
+
+**Security → Report a vulnerability** (or the repository’s Security advisories flow).
+
+That is the preferred channel for security findings about this public client
+repository.
+
+### Interim contact
+
+There is **no** verified dedicated `security@` mailbox. For privacy or legal
+concerns only, you may contact `privacy@streampulse.stream` (interim; not a
+substitute for PVR or a security mailbox).
+
+1. Do **not** send exploit details, proof-of-concept code, or secrets to public
    issues, discussions, or pull requests.
-3. If you must open a public issue to request a private follow-up, include only a
+2. If you must open a public issue to request a private follow-up, include only a
    high-level impact summary with no reproduction steps that enable abuse.
 
 ## Hosted vs self-built

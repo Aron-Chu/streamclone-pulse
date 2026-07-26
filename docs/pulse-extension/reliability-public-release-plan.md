@@ -1,6 +1,6 @@
 # StreamPulse — Reliability, Public Release, and Repository Governance
 
-**Status:** Phase 0 **complete**. Phases 1–2 (**RPR-1** / **RPR-2**) are **COMPLETE** after gap repairs (#53: dual-watch proof + honest ZIP fixtures) and force-full verification on master `da19e6e` (run `30147485091`). RPR-3/4/5 contracts frozen on master; **acceptance repair in progress** (not “implementation complete”); **activation pending**. **RPR-6** source ownership is complete; **package-distribution acceptance is in progress**. RPR-7 is **partial**; RPR-8 and RPR-9 remain **pending**. Do **not** claim activation. Verified public mailbox: **`privacy@streampulse.stream` only**.  
+**Status:** Phase 0–2 **complete**. **RPR-3/4/5** are **implementation complete; activation pending** (flags stay off). **RPR-6** is **complete**. **RPR-7** clean public export is **complete**. **RPR-8** ruleset is **active** (recovery: [`ruleset-recovery.md`](./ruleset-recovery.md)). **RPR-9** public-source cutover is **complete**; **store release pending**. Do **not** claim activation or store upload. Verified public mailbox: **`privacy@streampulse.stream` only**. Security reports: GitHub **Private Vulnerability Reporting** (enabled).  
 **Canonical execution plan** for the reliability / public-release / governance program.  
 Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./requirements.md) (R14–R18 for new gates; **R13 remains Emote metadata readiness**), [`design.md`](./design.md), [`release.md`](./release.md).
 
@@ -10,15 +10,17 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 
 | Fact | Value |
 |------|--------|
-| Remote | `https://github.com/Aron-Chu/streamclone-pulse.git` |
-| Phase 0 verified master | `69b357521d6794410da3267e8699c13012f88351` |
-| RPR-1 / RPR-2 accepted master | `da19e6e97b64efe5f75055f32a9a3c02363e5702` |
-| Force-full acceptance CI | [CI run `30147485091`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30147485091) (`force_full=true`; `e2e_executed=true`; final-gate OK) |
-| Historical force-full (evidence only) | [CI run `30144042786`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30144042786) on `e13a74e`; [CI run `30138875909`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30138875909) on `cf2ef08` |
-| Working rule | Implement only from a clean checkout/worktree of that SHA (or a descendant). Do not mutate unrelated dirty checkouts. |
+| Remote | `https://github.com/Aron-Chu/streamclone-pulse.git` (**public**) |
+| Clean public tip (Actions-registered) | `b0b0274b490bfb704d559b2c5642bc9cfde149b4` |
+| Clean content commit / tree | `beb5e5d11ae908857df63c0fb169b914173364d0` / `405074037813a8eca77185234740914a3af63cb2` |
+| Cutover force-full (authoritative on clean repo) | [CI run `30181022926`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30181022926) (`force_full=true`; `e2e_executed=true`; final-gate OK) |
+| Cutover evidence | [`../evidence/RPR-7-9-public-cutover-20260726.md`](../evidence/RPR-7-9-public-cutover-20260726.md) |
+| Historical private archive | `Aron-Chu/streamclone-pulse-private-archive` (**private**; Actions disabled) |
+| Pre-cutover force-fulls (archive only) | [`30147485091`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30147485091) (`da19e6e`); [`30178915753`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30178915753) (`a21e18f1`) |
+| Working rule | Implement only from a clean checkout/worktree of the clean public tip (or a descendant). Do not mutate the protected dirty local checkout. |
 | Remote CI gate | Remote workflow runs must **execute jobs successfully** on the release SHA. Runs that start no jobs do not count as green. |
 
-**Hard rule:** Never make `streamclone-pulse` public merely to obtain free Actions. Remote green CI from the **exact** implementation SHA is a mandatory publication gate.
+**Hard rule:** Public Actions minutes are a cost outcome of an authorized public-source cutover — not a reason to flip visibility. Remote green CI from the **exact** release SHA remains a mandatory store gate.
 
 ---
 
@@ -31,9 +33,9 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 5. **Consent (R15 / RPR-3–5):** Extension diagnostics and product analytics have separate versioned, **default-off** consent. No durable install/session identifier. Portal Sentry (when `VITE_SENTRY_DSN` is set) is a separate, existing website path — not extension consent. Code may exist while hosted routes remain **activation pending** and must not be claimed as active.
 6. **Support (R16 / RPR-4):** Extension Help will open a hosted StreamPulse form with Turnstile; no remote challenge script in the MV3 package. Implementation complete; **activation pending** / **not active**.
 7. **Manifests (R18 landed for targets):** Store manifests contain **no** localhost permission. Development manifests may contain `localhost:8081`. Distinct CWS/Edge ZIP names + yauzl byte validation are acceptance-complete; do **not** upload until RPR-9.
-8. **Packages (R17 / RPR-6):** `pulse-core`, `pulse-charts`, and `analytics-console` are **owned by Pulse** as public in-repo workspaces under `streamclone-pulse/packages` (Apache-2.0 + NOTICE; provenance `streampulse-backend@f663d002`). Backend package ownership is dropped. **Complete** (source ownership + distribution acceptance on force-full `30178915753`).
+8. **Packages (R17 / RPR-6):** `pulse-core`, `pulse-charts`, and `analytics-console` are **owned by Pulse** as public in-repo workspaces under `streamclone-pulse/packages` (Apache-2.0 + NOTICE; provenance `streampulse-backend@f663d002`). Backend package ownership is dropped. **Complete** (source ownership + distribution acceptance; cutover re-proved on force-full [`30181022926`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30181022926); pre-cutover archive proof [`30178915753`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30178915753)).
 9. **License:** Pulse uses **Apache-2.0**.
-10. **Visibility:** Only `streamclone-pulse` becomes newly public. Do **not** publicize `streampulse-backend`, `streampulse-ops`, `replayforge`, or `streampulse-sdlc`.
+10. **Visibility:** Only `streamclone-pulse` is newly public. Keep `streampulse-backend`, `streampulse-ops`, `streamclone-pulse-private-archive`, `replayforge`, and `streampulse-sdlc` private.
 
 ---
 
@@ -105,15 +107,15 @@ No public visibility or store submission until:
 | ID | Item | Status |
 |----|------|--------|
 | RPR-0 | Baseline + documentation consistency | **COMPLETE** |
-| RPR-1 | Request matrix + chart migration v2 + coalesce | **COMPLETE** (accepted on `da19e6e` via force-full `30147485091`; includes B7 dual-watch proof) |
-| RPR-2 | Manifest generation + package validation | **COMPLETE** (accepted on `da19e6e` via force-full `30147485091`; includes honest C2 ZIP fixtures; artifacts not uploaded) |
+| RPR-1 | Request matrix + chart migration v2 + coalesce | **COMPLETE** (pre-cutover archive force-full [`30147485091`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30147485091) on `da19e6e`) |
+| RPR-2 | Manifest generation + package validation | **COMPLETE** (same archive proof; artifacts not uploaded) |
 | RPR-3 | Correlation IDs + sanitized extension diagnostics | **implementation complete; activation pending** |
 | RPR-4 | Hosted support form + outbox + minimal tracker fields | **implementation complete; activation pending** |
 | RPR-5 | Aggregate product analytics (default off) | **implementation complete; activation pending** |
 | RPR-6 | Pulse-owned public packages | **complete** |
-| RPR-7 | Governance files + history/Actions audit | **partial** |
-| RPR-8 | Ruleset + break-glass (post green CI) | **pending** |
-| RPR-9 | Publication / store gates (owner-authorized) | **pending** |
+| RPR-7 | Governance + clean public export | **complete** (see cutover evidence) |
+| RPR-8 | Ruleset + break-glass | **active** ([`ruleset-recovery.md`](./ruleset-recovery.md)) |
+| RPR-9 | Publication / store gates | **public-source cutover complete; store release pending** |
 
 ### CI fork / private-package limitation (removed by RPR-6 source ownership)
 
@@ -121,16 +123,14 @@ RPR-6 moves `@streampulse/*` packages into in-repo `packages/*`, so extension an
 portal CI no longer require `STREAMPULSE_BACKEND_CHECKOUT_TOKEN` or a private
 `streampulse-backend` checkout for package resolution.
 
-**Owner note:** `STREAMPULSE_BACKEND_CHECKOUT_TOKEN` is **retired**. The owner
-should remove the GitHub Actions secret when convenient. Workflows must not
-read it; agents must not mutate GitHub secrets.
+**Owner note:** `STREAMPULSE_BACKEND_CHECKOUT_TOKEN` is **retired and removed**
+from the cutover surface. Workflows must not read it.
 
 Fork PRs can resolve the same in-repo packages as same-repo PRs. Continue to
 review executable changes carefully; still **never** use `pull_request_target`.
 
-Keep RPR-6 open in the ledger until **package-distribution acceptance** (tarball
-consumers, NOTICE/LICENSE distribution, `test:packages` CI, clean-checkout proof)
-closes — source ownership alone is not enough.
+RPR-6 package-distribution acceptance is **closed** (tarball consumers,
+NOTICE/LICENSE distribution, `test:packages` CI, clean-checkout proof).
 
 ### RPR-0 sub-gates
 
@@ -143,11 +143,12 @@ closes — source ownership alone is not enough.
 - [x] Full local typecheck/test/build on clean worktree
 - [x] Remote CI green on Phase 0 SHA (force-full jobs executed)
 
-### Deferred release gates (not Phase 0 blockers)
+### Deferred release gates (remaining)
 
-- Dedicated support/security mailboxes (or GitHub Private Vulnerability Reporting)
-- CWS publisher-console Support URL confirmation
-- Store upload / visibility conversion (RPR-9)
+- Dedicated product-support mailbox (or explicit owner decision to keep interim policy)
+- Dedicated `security@` mailbox (PVR is enabled; mailbox still unverified)
+- CWS publisher-console Support URL confirmation (`https://streampulse.stream/support`)
+- Store upload (RPR-9 remaining) — visibility conversion is **done**
 
 ---
 
@@ -162,9 +163,9 @@ closes — source ownership alone is not enough.
 
 ## Next hard gate
 
-1. **Contract freeze** for RPR-3/4/5 schemas, consent, retention, and processors lives in [`contracts/`](./contracts/README.md). **PostHog** is the locked RPR-5 product-analytics processor (server aggregates only).  
-2. Continue **RPR-3/4/5 acceptance repair** — do **not** label “implementation complete”; **activation remains pending**.  
-3. Close **RPR-6 package-distribution acceptance** (consumer tarball tests, mandatory NOTICE, ZIP attribution, clean-checkout CI). Source ownership is already landed.  
-4. Keep support/security mailbox verification and CWS dashboard confirmation as **RPR-9** release gates. Verified mailbox today: **`privacy@` only**.  
-5. Do **not** upload store ZIPs or flip repo visibility until RPR-9 owner authorization.  
-6. Do **not** mark RPR-3/4/5/6 complete until acceptance evidence lands; activation remains a separate owner/ops gate.
+1. Keep **RPR-3/4/5 activation pending** — contracts frozen in [`contracts/`](./contracts/README.md); flags stay off. **PostHog** remains the locked RPR-5 processor (server aggregates only).  
+2. Owner confirms CWS Support URL `https://streampulse.stream/support` and mocked screenshot retention before any store RC.  
+3. Produce a version-bumped store release candidate (ZIPs + checksums + draft GitHub release) — **stop before CWS/Edge upload**.  
+4. Verified mailbox today: **`privacy@` only**. Security: **PVR enabled**.  
+5. Do **not** upload store ZIPs until explicit owner store authorization.  
+6. Do **not** enable diagnostics / Turnstile / Linear / email / PostHog product analytics without a separate activation program.

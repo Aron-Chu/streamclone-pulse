@@ -9,7 +9,7 @@
 | Master SHA | `da19e6e97b64efe5f75055f32a9a3c02363e5702` |
 | Merge PR | [#53](https://github.com/Aron-Chu/streamclone-pulse/pull/53) (squash) |
 | Merge-push CI | [`30147265212`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30147265212) |
-| Force-full CI | [`30147485091`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30147485091) (`force_full=true`, `head_sha=da19e6e`) |
+| Force-full CI | [`30147485091`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30147485091) (`force_full=true`, `head_sha=da19e6e`) |
 
 ## Force-full verification (`30147485091`)
 

@@ -20,7 +20,7 @@ Companion to [`requirements.md`](./requirements.md) (R1–R18) and [`tasks.md`](
 
 ### How the shared code is shared
 
-**Current (RPR-6 source ownership):** `pulse-core`, `pulse-charts`, and `analytics-console` live as **Pulse-owned public in-repo workspaces** under `streamclone-pulse/packages/` (Apache-2.0 + NOTICE). Private **streampulse-backend** remains the BFF owner and no longer owns these packages. **Package-distribution acceptance** (tarball consumers, ZIP attribution, clean-checkout CI) remains in progress — do not claim npm publish or activation.
+**Current (RPR-6 source ownership):** `pulse-core`, `pulse-charts`, and `analytics-console` live as **Pulse-owned public in-repo workspaces** under `streamclone-pulse/packages/` (Apache-2.0 + NOTICE). Private **streampulse-backend** remains the BFF owner and no longer owns these packages. **Package-distribution acceptance is complete.** Do not claim npm publish or RPR-3/4/5 activation.
 
 ```
 streamclone-pulse (this repo — owns public client packages)

@@ -22,37 +22,37 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
 See phase detail and irreversible checkpoints in the reliability plan.
 
 - [x] **RPR-0** Authoritative baseline + documentation consistency. Repair design/requirements/CONTEXT; add `release.md` + `ui-design-guide.md`; obsolete locked CWS candidate for upload; keep Privacy/Support truthful to current code; interim `privacy@` contact only. _Check:_ verified master `69b3575`; docs cross-link; local + remote force-full CI green.
-- [x] **RPR-1** Request contract + performance (R14): request matrix tests; chart migration v2; content-owned poller + `pulseGetCoordinator` coalesce; activation-scoped Full; backfill operation cancellation; real HTTP routing matrix; bundle-budget CI; dual content watch rebuild; both-host uniqueness E2E. _Accepted:_ master `da19e6e` (PR #53 gap repair + prior #49/#50); force-full CI [`30147485091`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30147485091) (`force_full=true`, `e2e_executed=true`, final-gate OK). Prior force-fulls `30144042786` / `30138875909` retained as historical evidence only.
-- [x] **RPR-2** Manifest targets (dev/CWS/Edge/Firefox-later) without localhost on store builds (R18); yauzl ZIP byte validation of all archived bytes; honest malicious ZIP fixtures; store DCE; exact permission allowlists; distinct CWS/Edge ZIP names; portal localhost rewrite to `https://invalid.invalid` + fail-closed scanner; RPR-6 readiness note for sibling `file:` deps. _Accepted:_ master `da19e6e` (PR #53 + prior #49/#51); force-full `30147485091` (CWS+Edge validation ran; artifacts **not uploaded**).
-- [~] **RPR-3** Server-generated correlation IDs + sanitized extension diagnostics path (R15); default-off diagnostics consent; cost-bearing routes fail closed. _Contract:_ [`contracts/`](./contracts/README.md). **Implementation complete; activation pending** (Pulse #62 emitters; backend #48/#49; force-full [`30178915753`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30178915753) on `a21e18f1`). Kill switches / flags remain off. Verified mailbox remains `privacy@streampulse.stream` only.
-- [~] **RPR-4** Hosted support form + Turnstile + durable outbox (R16); tracker gets minimal fields only; no remote challenge script in MV3. _Contract:_ [`contracts/support-schema.md`](./contracts/support-schema.md). **Implementation complete; activation pending** (Pulse #63 Turnstile widget + CSP; backend #51 outbox/adapters; ops #31). Form must not claim active; `privacy@` is privacy/legal only.
-- [~] **RPR-5** Aggregate product analytics via **PostHog** (server-side only; no browser SDK); separate default-off consent; fixed enum events. _Contract:_ [`contracts/product-analytics-schema.md`](./contracts/product-analytics-schema.md). **Implementation complete; activation pending** (Pulse #64 consent/emits; backend #50 Redis closed buckets). `support_report_submitted` remains schema-reserved / not forwarded.
-- [x] **RPR-6** Move `pulse-core` / `pulse-charts` / `analytics-console` into `streamclone-pulse/packages` (R17) after license/provenance audit. **Complete** — source ownership (`ebc3cfc` / #56) + package-distribution acceptance (#61) proved on force-full [`30178915753`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30178915753) (`test:packages`, tarball consumers, NOTICE in ZIPs, clean-checkout). No npm publish.
-- [~] **RPR-7** Governance files + sanitized public-readiness audit (**partial**). _See sub-gates below._ Visibility must stay **private**.
-- [ ] **RPR-8** Branch protection ruleset after stable green CI (**pending**).
-- [ ] **RPR-9** Owner-authorized publication / store submission only after all release gates (**pending**).
+- [x] **RPR-1** Request contract + performance (R14): request matrix tests; chart migration v2; content-owned poller + `pulseGetCoordinator` coalesce; activation-scoped Full; backfill operation cancellation; real HTTP routing matrix; bundle-budget CI; dual content watch rebuild; both-host uniqueness E2E. _Accepted (pre-cutover archive):_ [`30147485091`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30147485091) on `da19e6e`. Clean-repo re-proof: force-full [`30181022926`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30181022926).
+- [x] **RPR-2** Manifest targets (dev/CWS/Edge/Firefox-later) without localhost on store builds (R18); yauzl ZIP byte validation of all archived bytes; honest malicious ZIP fixtures; store DCE; exact permission allowlists; distinct CWS/Edge ZIP names; portal localhost rewrite to `https://invalid.invalid` + fail-closed scanner; RPR-6 readiness note for sibling `file:` deps. _Accepted:_ same archive + clean cutover proofs; artifacts **not uploaded**.
+- [~] **RPR-3** Server-generated correlation IDs + sanitized extension diagnostics path (R15); default-off diagnostics consent; cost-bearing routes fail closed. _Contract:_ [`contracts/`](./contracts/README.md). **Implementation complete; activation pending**. Kill switches / flags remain off. Verified mailbox remains `privacy@streampulse.stream` only.
+- [~] **RPR-4** Hosted support form + Turnstile + durable outbox (R16); tracker gets minimal fields only; no remote challenge script in MV3. _Contract:_ [`contracts/support-schema.md`](./contracts/support-schema.md). **Implementation complete; activation pending**. Form must not claim active; `privacy@` is privacy/legal only.
+- [~] **RPR-5** Aggregate product analytics via **PostHog** (server-side only; no browser SDK); separate default-off consent; fixed enum events. _Contract:_ [`contracts/product-analytics-schema.md`](./contracts/product-analytics-schema.md). **Implementation complete; activation pending**. `support_report_submitted` remains schema-reserved / not forwarded.
+- [x] **RPR-6** Move `pulse-core` / `pulse-charts` / `analytics-console` into `streamclone-pulse/packages` (R17) after license/provenance audit. **Complete** — source ownership + package-distribution acceptance; clean-repo force-full [`30181022926`](https://github.com/Aron-Chu/streamclone-pulse/actions/runs/30181022926). Pre-cutover archive proof [`30178915753`](https://github.com/Aron-Chu/streamclone-pulse-private-archive/actions/runs/30178915753). No npm publish.
+- [x] **RPR-7** Governance files + clean public export. **Complete** — see [`../evidence/RPR-7-9-public-cutover-20260726.md`](../evidence/RPR-7-9-public-cutover-20260726.md). PVR enabled; historical archive private.
+- [x] **RPR-8** Branch protection ruleset **active** (`default-branch` id `19748279`). Owner recovery: [`ruleset-recovery.md`](./ruleset-recovery.md).
+- [~] **RPR-9** Public-source cutover **complete**; **store release pending** (owner Support URL + mocked screenshot approval + versioned ZIP RC — stop before CWS/Edge upload).
 
 ### RPR-7 sub-gates
 
 - [x] `LICENSE` Apache-2.0 (full text) at repo root
 - [x] `NOTICE` (points at `packages/NOTICE`; RPR-6 landed)
 - [x] `CONTRIBUTING.md`
-- [x] `SUPPORT.md` (privacy@ only; hosted form planned/inactive)
+- [x] `SUPPORT.md` (privacy@ only; hosted form planned/inactive; repo public)
 - [x] `CODEOWNERS`
 - [x] `.github/PULL_REQUEST_TEMPLATE.md`
 - [x] `.github/ISSUE_TEMPLATE/` bug + feature forms (+ config contact links)
-- [x] `SECURITY.md` (no invented `security@`; no PVR claim; interim privacy@ for privacy/legal only)
+- [x] `SECURITY.md` (GitHub Private Vulnerability Reporting **enabled**; no invented `security@`)
 - [x] `CODE_OF_CONDUCT.md` (Contributor Covenant; interim enforcement = privacy@, labeled interim)
-- [x] Sanitized audit summary [`docs/evidence/public-readiness-audit-20260725.md`](../evidence/public-readiness-audit-20260725.md) (clean / delete-later / rewrite-later; no secret values)
-- [ ] Dedicated security mailbox and/or GitHub Private Vulnerability Reporting verified and published
+- [x] Sanitized audit summary [`docs/evidence/public-readiness-audit-20260725.md`](../evidence/public-readiness-audit-20260725.md) + cutover evidence [`docs/evidence/RPR-7-9-public-cutover-20260726.md`](../evidence/RPR-7-9-public-cutover-20260726.md)
+- [x] GitHub Private Vulnerability Reporting verified and published in `SECURITY.md`
 - [ ] Dedicated product-support mailbox verified (or explicit owner decision to keep interim policy)
-- [ ] Owner-authorized branch deletion / history rewrite / Actions log+artifact scrub before any visibility change
-- [ ] CWS media rights / provenance owner-verified
-- [ ] Owner sign-off that RPR-7 is complete (do not mark parent RPR-7 `[x]` until then)
+- [x] Clean public export + archive rename (no history rewrite of archive evidence)
+- [ ] CWS media rights / provenance owner-verified (mocked RC set retained pending owner approval)
+- [x] Owner-authorized public-source cutover complete (store upload still gated)
 
-**CI gate:** Remote workflow runs must execute jobs successfully on the release SHA. Owner must restore CI execution before remote green can gate RPR-9. Never make the repo public merely for free Actions.
+**CI gate:** Remote workflow runs must execute jobs successfully on the release SHA.
 
-**Contact blockers (RPR-0):** Only `privacy@streampulse.stream` is verified for public use today. Dedicated product-support and security mailboxes / GitHub Private Vulnerability Reporting remain unconfirmed and must not be published as active until verified.
+**Contact policy:** Only `privacy@streampulse.stream` is verified for public privacy/legal use. Security reports use **GitHub PVR**. Dedicated product-support and `security@` mailboxes remain unverified and must not be published as active.
 
 ---
 
