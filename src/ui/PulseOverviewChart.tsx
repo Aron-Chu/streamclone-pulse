@@ -940,6 +940,7 @@ export function PulseOverviewChart({
               return (
                 <path
                   key={series.key}
+                  className="sc-emote-plot-line"
                   d={series.path}
                   fill="none"
                   stroke={series.color}

@@ -53,6 +53,7 @@ async function pickerMetrics(page: import('@playwright/test').Page) {
         ),
       ),
       legendCount: root?.querySelectorAll('.pulse-chart-overlay-legend-chip').length ?? 0,
+      emoteTraceCount: root?.querySelectorAll('path.sc-emote-plot-line').length ?? 0,
     }
   }, PULSE_ROOT_ID)
 }
@@ -117,16 +118,33 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     expect(metrics.selected).toHaveLength(6)
     expect(metrics.label).toMatch(/Plot emotes · 6\/6/i)
     expect(metrics.legendCount).toBe(6)
+    expect(metrics.emoteTraceCount).toBe(6)
 
     // Seventh selection must not apply.
     await clickPickerRowsByIndex(extension.page, [1])
     metrics = await pickerMetrics(extension.page)
     expect(metrics.selected).toHaveLength(6)
 
-    // Deselect one, select another.
-    await clickPickerRowsByIndex(extension.page, [0, 1])
+    // Deselect one plottable row, then select the first other enabled non-selected row.
+    await extension.page.evaluate(rootId => {
+      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-scroll]')
+      const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row') ?? [])]
+      const selected = rows.filter(row => row.getAttribute('aria-selected') === 'true')
+      const firstSelected = selected[0]
+      firstSelected?.click()
+      const replacement = rows.find(
+        row =>
+          row !== firstSelected &&
+          row.getAttribute('aria-selected') !== 'true' &&
+          !row.disabled &&
+          row.getAttribute('aria-disabled') !== 'true' &&
+          !/No activity/i.test(row.textContent ?? ''),
+      )
+      replacement?.click()
+    }, PULSE_ROOT_ID)
     metrics = await pickerMetrics(extension.page)
     expect(metrics.selected).toHaveLength(6)
+    expect(metrics.emoteTraceCount).toBe(6)
 
     // Collapse / reopen preserves valid selections.
     await extension.page.evaluate(rootId => {
@@ -137,6 +155,7 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     metrics = await pickerMetrics(extension.page)
     expect(metrics.selected).toHaveLength(6)
     expect(metrics.legendCount).toBe(6)
+    expect(metrics.emoteTraceCount).toBe(6)
 
     // Disabled zero-activity rows must not create legend entries when clicked.
     const beforeLegend = metrics.legendCount
@@ -165,11 +184,21 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     await waitForPulseRoot(extension.page)
 
     const panel = extension.page.locator(`#${PULSE_ROOT_ID}`)
+
+    // Collapse-closed chrome (toggle row) — scroll into view so the shot is not chart-only.
+    await extension.page.evaluate(rootId => {
+      const root = document.getElementById(rootId)?.shadowRoot
+      root?.querySelector('.pulse-seven-tv-toggle')?.scrollIntoView({ block: 'center' })
+    }, PULSE_ROOT_ID)
     await expect(panel).toHaveScreenshot('emote-picker-initial-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
     await expandEmotePicker(extension.page)
+    await extension.page.evaluate(rootId => {
+      const root = document.getElementById(rootId)?.shadowRoot
+      root?.querySelector('[data-emote-picker-scroll]')?.scrollIntoView({ block: 'center' })
+    }, PULSE_ROOT_ID)
     await expect(panel).toHaveScreenshot('emote-picker-expanded-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
@@ -180,6 +209,10 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     })
 
     await clickPickerRowsByIndex(extension.page, [0, 2, 4, 6, 8, 10])
+    await extension.page.evaluate(rootId => {
+      const root = document.getElementById(rootId)?.shadowRoot
+      root?.querySelector('.pulse-chart-overlay-legend-chip')?.scrollIntoView({ block: 'center' })
+    }, PULSE_ROOT_ID)
     await expect(panel).toHaveScreenshot('emote-picker-six-selected-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
