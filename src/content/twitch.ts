@@ -102,6 +102,17 @@ export function seekPlaybackOffset(
   return seekVodOffset(video, offsetSeconds)
 }
 
+export function seekableLiveEdge(ranges: TimeRanges): number | null {
+  if (!ranges || ranges.length === 0) return null
+  const end = ranges.end(ranges.length - 1)
+  return Number.isFinite(end) ? end : null
+}
+
+/**
+ * Seek within Twitch live DVR using the final seekable range as the live edge.
+ * Never subtract from video.currentTime — delayed viewers / multi-range buffers break that.
+ * `currentOffsetSeconds` must be stream wall offset (startedAt-derived), not player time.
+ */
 export function seekLiveOffset(
   video: HTMLVideoElement | null,
   offsetSeconds: number,
@@ -111,10 +122,14 @@ export function seekLiveOffset(
   if (!Number.isFinite(offsetSeconds) || !Number.isFinite(currentOffsetSeconds)) {
     return { ok: false, reason: 'outside_buffer' }
   }
-  const behindLiveSeconds = Math.max(0, currentOffsetSeconds - offsetSeconds)
-  const target = Math.max(0, video.currentTime - behindLiveSeconds)
-  if (!isSeekable(video.seekable, target)) {
+  const liveEdge = seekableLiveEdge(video.seekable)
+  if (liveEdge == null) {
     return { ok: false, reason: video.seekable.length > 0 ? 'outside_buffer' : 'not_seekable' }
+  }
+  const behindLiveSeconds = Math.max(0, currentOffsetSeconds - offsetSeconds)
+  const target = Math.max(0, liveEdge - behindLiveSeconds)
+  if (!isSeekable(video.seekable, target)) {
+    return { ok: false, reason: 'outside_buffer' }
   }
   video.currentTime = target
   return { ok: true, targetSeconds: target }
@@ -128,6 +143,34 @@ export function isSeekable(ranges: TimeRanges, targetSeconds: number): boolean {
     }
   }
   return false
+}
+
+/**
+ * Prefer wall-clock offset from validated `startedAt`. Fall back to the payload
+ * offset when startedAt is missing/invalid, or when the payload is within ±120s
+ * (bounded reconciliation for clock skew).
+ */
+export function streamOffsetSecondsForLiveSeek(input: {
+  startedAt?: string | null
+  payloadOffsetSeconds?: number | null
+  nowMs?: number
+}): number | null {
+  const payload =
+    Number.isFinite(input.payloadOffsetSeconds) && (input.payloadOffsetSeconds as number) >= 0
+      ? (input.payloadOffsetSeconds as number)
+      : null
+  const startedAt = input.startedAt?.trim()
+  if (startedAt) {
+    const startMs = Date.parse(startedAt)
+    if (Number.isFinite(startMs)) {
+      const derived = Math.max(0, ((input.nowMs ?? Date.now()) - startMs) / 1000)
+      if (payload != null && Math.abs(derived - payload) <= 120) {
+        return payload
+      }
+      return derived
+    }
+  }
+  return payload
 }
 
 function normalizeLogin(value: string): string | null {

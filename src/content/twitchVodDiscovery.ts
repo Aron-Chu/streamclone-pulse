@@ -6,8 +6,12 @@ export {
   parseLiveArchiveVodFromGql,
 } from '../shared/twitchVodGql.ts'
 
-/** Best-effort VOD id from embedded Twitch page HTML (content script only). */
-export function discoverLiveVodIdFromDom(): string | null {
+/**
+ * Best-effort VOD id from embedded Twitch page HTML (content script only).
+ * Requires an exact stream-ID match when `expectedStreamId` is provided — never
+ * returns an uncorrelated `/videos/<id>` link from the page.
+ */
+export function discoverLiveVodIdFromDom(expectedStreamId?: string | null): string | null {
   if (typeof document === 'undefined') return null
 
   const scriptTexts: string[] = []
@@ -17,16 +21,14 @@ export function discoverLiveVodIdFromDom(): string | null {
   }
 
   const scraped = scrapeVodFromPageTexts(document.documentElement.innerHTML, scriptTexts)
-  if (scraped.vodId) return scraped.vodId
+  if (!scraped.vodId) return null
 
-  for (const anchor of document.querySelectorAll<HTMLAnchorElement>('a[href*="/videos/"]')) {
-    const href = anchor.getAttribute('href') ?? ''
-    const match = href.match(/\/videos\/(\d{6,20})/)
-    if (match?.[1]) {
-      return match[1]
-    }
+  const expected = expectedStreamId?.trim()
+  if (!expected) return null
+  if (scraped.streamId && scraped.streamId === expected) {
+    return scraped.vodId
   }
-
+  // archiveVideoId without a paired broadcast id is not safe to hint.
   return null
 }
 

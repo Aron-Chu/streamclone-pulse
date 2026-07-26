@@ -81,7 +81,12 @@ export function mainWorldExecuteScriptOptions<T, A extends unknown[]>(
   }
 }
 
-export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string): Promise<GqlVodDiscoveryResult> {
+export async function discoverLiveVodIdFromGqlInTab(
+  tabId: number,
+  login: string,
+  expectedStreamId?: string | null,
+): Promise<GqlVodDiscoveryResult> {
+  const expected = expectedStreamId?.trim() || null
   let pageScrape: PageVodScrapeResult | null = null
   try {
     pageScrape = await runInPage(tabId, scrapePageVodState, [])
@@ -104,11 +109,19 @@ export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string
         streamId: pageScrape.streamId,
         source: pageScrape.source,
         scannedScripts: pageScrape.scannedScripts,
+        expectedStreamId: expected,
       },
       pageScrape.vodId ? 'info' : 'warn',
     )
     const scraped = resultFromPageScrape(pageScrape)
-    if (scraped.vodId) return scraped
+    if (
+      scraped.vodId
+      && expected
+      && scraped.streamId
+      && scraped.streamId === expected
+    ) {
+      return scraped
+    }
   }
 
   let gqlPage: Awaited<ReturnType<typeof gqlDiscoverVodInPage>> | null = null
@@ -119,7 +132,7 @@ export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string
   } catch (err) {
     return {
       vodId: null,
-      streamId: pageScrape?.streamId ?? null,
+      streamId: pageScrape?.streamId ?? expected,
       source: null,
       gqlErrors: [err instanceof Error ? err.message : 'gql_inject_failed'],
     }
@@ -128,18 +141,28 @@ export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string
   if (!gqlPage) {
     return {
       vodId: null,
-      streamId: pageScrape?.streamId ?? null,
+      streamId: pageScrape?.streamId ?? expected,
       source: null,
       gqlErrors: ['page_gql_no_result'],
     }
   }
 
-  const live = resultFromPageResponse(gqlPage.live, parseLiveArchiveVodFromGql)
+  const live = resultFromPageResponse(gqlPage.live, (body: unknown) =>
+    parseLiveArchiveVodFromGql(
+      body as Parameters<typeof parseLiveArchiveVodFromGql>[0],
+      expected,
+    ),
+  )
   if (live.vodId) return live
-  const listed = resultFromPageResponse(gqlPage.list, parseArchiveListVodFromGql)
-  const merged = mergeGqlDiscoveryResults(live, listed)
+  const listed = resultFromPageResponse(gqlPage.list, (body: unknown) =>
+    parseArchiveListVodFromGql(
+      body as Parameters<typeof parseArchiveListVodFromGql>[0],
+      expected,
+    ),
+  )
+  const merged = mergeGqlDiscoveryResults(live, listed, expected)
   return {
     ...merged,
-    streamId: merged.streamId ?? pageScrape?.streamId ?? null,
+    streamId: merged.streamId ?? pageScrape?.streamId ?? expected,
   }
 }

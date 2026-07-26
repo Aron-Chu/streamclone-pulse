@@ -53,7 +53,7 @@ import {
   clickTwitchCollapseChat,
   toggleTwitchChatters,
 } from '../content/twitchChatControls.ts'
-import { getPrimaryVideo, seekPlaybackOffset, detectTwitchChannelLive, type TwitchPageContext } from '../content/twitch.ts'
+import { getPrimaryVideo, seekPlaybackOffset, detectTwitchChannelLive, streamOffsetSecondsForLiveSeek, type TwitchPageContext } from '../content/twitch.ts'
 import { discoverLiveVodIdFromDom } from '../content/twitchVodDiscovery.ts'
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
@@ -762,7 +762,7 @@ function OverlayMain({
   async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
     const op = token ?? backfillOpsRef.current.current()
     if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
-    const domHint = discoverLiveVodIdFromDom()
+    const domHint = discoverLiveVodIdFromDom(payload.streamId)
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
       login,
       streamId: payload.streamId,
@@ -771,13 +771,22 @@ function OverlayMain({
     if (op && !tokenIsLive(op)) return null
     let hint = domHint
     if (!hint) {
-      const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login })
+      const gqlRes = await sendBackgroundMessage({
+        type: 'DISCOVER_LIVE_VOD',
+        login,
+        streamId: payload.streamId,
+      })
       if (op && !tokenIsLive(op)) return null
       const gql =
         'type' in gqlRes && gqlRes.type === 'DISCOVER_LIVE_VOD'
           ? gqlRes.result
           : { vodId: null, streamId: null, source: null, gqlErrors: ['background_unreachable'] as string[] }
-      hint = gql.vodId
+      // Reject uncorrelated archives (previous broadcast, sidebar links).
+      hint =
+        gql.vodId
+        && (!gql.streamId || gql.streamId === payload.streamId)
+          ? gql.vodId
+          : null
       await pulseDebug(
         'vod.discover.gql',
         hint ? `found archive id via Twitch GQL (${gql.source})` : 'GQL returned no archive id',
@@ -986,6 +995,11 @@ function OverlayMain({
   }, [login, payload?.streamId, payload?.vodId, payload?.tracking, payload?.coverageStartOffsetSeconds, payload?.coverage?.state, payload?.helixEnabled])
 
   const coverageForPoll = payload ? resolvePulseCoverage(payload) : undefined
+  const sawLiveRef = useRef(false)
+  useEffect(() => {
+    if (uiIsLive) sawLiveRef.current = true
+  }, [uiIsLive])
+
   useEffect(() => {
     if (hostedBackend) return
     if (!payload?.tracking || !uiIsLive) return
@@ -1009,6 +1023,27 @@ function OverlayMain({
     missedJob?.status,
     coverageCheckError,
     hostedBackend,
+  ])
+
+  // After live→ended, poll VOD linkage at least 30s apart until linked / terminal / leave.
+  useEffect(() => {
+    if (!sawLiveRef.current) return
+    if (uiIsLive) return
+    if (!payload?.streamId || payload.vodId) return
+    const terminal = new Set(['unavailable', 'deleted', 'private', 'not_found', 'error'])
+    const vodStatus = String(payload.coverage?.vodStatus ?? '').trim().toLowerCase()
+    if (terminal.has(vodStatus)) return
+
+    void refreshVodStatus()
+    const timer = window.setInterval(() => {
+      void refreshVodStatus()
+    }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [
+    uiIsLive,
+    payload?.streamId,
+    payload?.vodId,
+    payload?.coverage?.vodStatus,
   ])
 
   function openSettings(): void {
@@ -1077,12 +1112,24 @@ function OverlayMain({
     }
 
     if (uiIsLive && context.kind === 'channel') {
+      const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+        startedAt: payload?.startedAt,
+        payloadOffsetSeconds: payload?.currentOffsetSeconds ?? 0,
+      })
       const result = seekPlaybackOffset(getPrimaryVideo(), offset, {
         isLive: true,
-        liveCurrentOffset: payload?.currentOffsetSeconds ?? 0,
+        liveCurrentOffset: liveCurrentOffset ?? payload?.currentOffsetSeconds ?? 0,
       })
       if (result.ok) {
         setNotice({ kind: 'ok', text: 'Jumped to stream start in the live DVR buffer.' })
+        return
+      }
+      if (result.reason === 'outside_buffer') {
+        openAnalytics(offset)
+        setNotice({
+          kind: 'warn',
+          text: 'That moment is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.',
+        })
         return
       }
     }
@@ -1210,27 +1257,37 @@ function OverlayMain({
     }
 
     if (action.kind === 'seek-live-dvr') {
+      const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+        startedAt: payload?.startedAt,
+        payloadOffsetSeconds: action.liveCurrentOffset,
+      })
       const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, {
         isLive: true,
-        liveCurrentOffset: action.liveCurrentOffset,
+        liveCurrentOffset: liveCurrentOffset ?? action.liveCurrentOffset,
       })
       if (result.ok) {
         setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
         return
       }
+      if (result.reason === 'outside_buffer') {
+        openAnalytics(action.offsetSeconds)
+        setNotice({
+          kind: 'warn',
+          text: `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.`,
+        })
+        return
+      }
       setNotice({
         kind: 'warn',
-        text:
-          result.reason === 'outside_buffer'
-            ? `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer.`
-            : 'Open in Streamclone once VOD context is available.',
+        text: 'Could not seek the live player — open StreamPulse analytics for this moment.',
       })
       return
     }
 
+    openAnalytics(action.offsetSeconds)
     setNotice({
       kind: 'warn',
-      text: `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer.`,
+      text: `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.`,
     })
   }
 

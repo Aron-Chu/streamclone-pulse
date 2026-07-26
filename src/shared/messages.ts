@@ -367,6 +367,8 @@ export interface GetPulseVodMessage {
 export interface DiscoverLiveVodMessage {
   type: 'DISCOVER_LIVE_VOD'
   login: string
+  /** Exact Twitch stream/broadcast id — required to accept archive list / DOM hints. */
+  streamId?: string
 }
 
 export interface LoadMissedMomentsMessage {

@@ -10,7 +10,7 @@ const rollup: AnalyticsMinuteRollup = {
 }
 
 describe('buildSelectedMomentDisplay', () => {
-  it('formats activity line and offset for a selected rollup', () => {
+  it('formats activity line and offset without ?t= when alignment is unverified', () => {
     const display = buildSelectedMomentDisplay({
       rollup,
       rollups: [rollup],
@@ -21,6 +21,17 @@ describe('buildSelectedMomentDisplay', () => {
     expect(display.offsetSeconds).toBe(14_700)
     expect(display.offsetStr).toBe('4h5m0s')
     expect(display.vodUrl).toContain('123')
+    expect(display.vodUrl).not.toContain('t=')
+  })
+
+  it('adds ?t= only when vodAlignSeconds is verified', () => {
+    const display = buildSelectedMomentDisplay({
+      rollup,
+      rollups: [rollup],
+      startedAt: '2026-07-04T00:00:00.000Z',
+      vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '123', detail: '' },
+      vodAlignSeconds: 0,
+    })
     expect(display.vodUrl).toContain('t=4h5m0s')
   })
 })

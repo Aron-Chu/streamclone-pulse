@@ -37,6 +37,7 @@ export function buildSelectedMomentDisplay({
   heatmapPoints,
   recapMoment,
   gameName = null,
+  vodAlignSeconds,
 }: {
   rollup: AnalyticsMinuteRollup
   rollups: AnalyticsMinuteRollup[]
@@ -48,6 +49,8 @@ export function buildSelectedMomentDisplay({
   heatmapPoints?: ReplayHeatmapPoint[]
   recapMoment?: PulseRecapMoment | null
   gameName?: string | null
+  /** Verified Twitch VOD alignment; without this, never emit ?t= jump links. */
+  vodAlignSeconds?: number | null
 }): SelectedMomentDisplay {
   const baselines = computeStreamBaselines(rollups)
   let offsetSeconds = 0
@@ -93,9 +96,12 @@ export function buildSelectedMomentDisplay({
       ? recapEmotesToRollupHits(fromPulse, topEmotesCatalog)
       : topEmotesFromRollup(rollup, 3, topEmotesCatalog)
 
+  const verifiedAlign =
+    typeof vodAlignSeconds === 'number' && Number.isFinite(vodAlignSeconds)
+  const jumpOffset = verifiedAlign ? Math.max(0, Math.floor(vodAlignSeconds + offsetSeconds)) : 0
   const vodUrl =
     vodLinkState.status === 'linked' && vodLinkState.vodId
-      ? buildTwitchVodUrl(vodLinkState.vodId, offsetSeconds)
+      ? buildTwitchVodUrl(vodLinkState.vodId, verifiedAlign ? jumpOffset : 0)
       : undefined
   const chatCount = rollup.chatCount ?? 0
   const emoteCount = minuteEmoteTotal(rollup)

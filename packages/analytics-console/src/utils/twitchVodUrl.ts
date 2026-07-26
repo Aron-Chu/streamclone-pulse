@@ -28,7 +28,12 @@ export function resolveAnalyticsVodId(
   return id || undefined
 }
 
-export type VodLinkStatus = 'linked' | 'live' | 'syncing' | 'unavailable'
+export type VodLinkStatus =
+  | 'linked'
+  | 'live'
+  | 'syncing'
+  | 'unavailable'
+  | 'request_failed'
 
 export interface VodLinkState {
   status: VodLinkStatus
@@ -45,23 +50,79 @@ export function resolveVodLinkState(input: {
     state?: string
     syncPhase?: string
     stream?: { vodId?: string; endedAt?: string | null }
+    availability?: {
+      vodState?: string
+      vodId?: string
+      vodMessage?: string
+    }
   }
   recapVodId?: string
   fallbackVodId?: string
   isLiveCollector?: boolean
   channelIsLive?: boolean
 }): VodLinkState {
+  const authored = input.detail?.availability
+  const authoredState = (authored?.vodState ?? '').toLowerCase()
   const vodId =
-    resolveAnalyticsVodId(input.detail, input.recapVodId)
+    authored?.vodId?.trim()
+    || resolveAnalyticsVodId(input.detail, input.recapVodId)
     || input.fallbackVodId?.trim()
     || undefined
+
+  if (authoredState === 'linked' || (authoredState === '' && vodId)) {
+    if (vodId) {
+      const liveArchive = input.isLiveCollector === true || authoredState === '' && input.isLiveCollector
+      return {
+        status: 'linked',
+        vodId,
+        label: input.isLiveCollector ? 'Jump to VOD (live archive)' : 'Jump to VOD',
+        detail: authored?.vodMessage
+          || (input.isLiveCollector
+            ? 'Twitch is archiving this broadcast. Timestamps track stream offset from go-live.'
+            : ''),
+      }
+    }
+  }
+
+  if (authoredState === 'pending_live') {
+    return {
+      status: 'live',
+      label: 'Live — no VOD yet',
+      detail: authored?.vodMessage
+        || 'This session is still live. A timestamped VOD link appears automatically after the broadcast ends.',
+    }
+  }
+  if (authoredState === 'resolving') {
+    return {
+      status: 'syncing',
+      label: 'Waiting for Twitch VOD',
+      detail: authored?.vodMessage
+        || 'Stream ended — waiting for Twitch VOD publication.',
+    }
+  }
+  if (authoredState === 'request_failed') {
+    return {
+      status: 'request_failed',
+      label: 'VOD lookup failed',
+      detail: authored?.vodMessage
+        || 'Could not reach Twitch to resolve the archive. Retry later.',
+    }
+  }
+  if (authoredState === 'unavailable') {
+    return {
+      status: 'unavailable',
+      label: 'VOD unavailable',
+      detail: authored?.vodMessage
+        || 'No Twitch VOD exists for this session — it may have been deleted, expired, or was never archived.',
+    }
+  }
+
   if (vodId) {
-    const liveArchive = input.isLiveCollector === true
     return {
       status: 'linked',
       vodId,
-      label: liveArchive ? 'Jump to VOD (live archive)' : 'Jump to VOD',
-      detail: liveArchive
+      label: input.isLiveCollector ? 'Jump to VOD (live archive)' : 'Jump to VOD',
+      detail: input.isLiveCollector
         ? 'Twitch is archiving this broadcast. Timestamps track stream offset from go-live.'
         : '',
     }
@@ -83,6 +144,15 @@ export function resolveVodLinkState(input: {
   const isLive = input.isLiveCollector ?? (
     channelLive !== false && (input.detail?.state === 'live' || !endedAt)
   )
+  // External offline + no VOD yet: never claim unavailable while still resolving.
+  if (channelLive === false && !vodId) {
+    return {
+      status: 'syncing',
+      label: 'Waiting for Twitch VOD',
+      detail: authored?.vodMessage
+        || 'Stream ended — waiting for Twitch VOD publication.',
+    }
+  }
   if (isLive) {
     return {
       status: 'live',
