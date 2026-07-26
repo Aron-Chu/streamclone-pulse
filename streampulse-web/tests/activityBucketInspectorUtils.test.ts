@@ -100,11 +100,11 @@ describe('resolveInspectorTableEmotes', () => {
         provider: 'twitch',
         count: 1000,
         sharePct: 5,
-        imageUrl: 'https://cdn.example/lul.webp',
+        imageUrl: 'https://cdn.7tv.app/emote/lul/1x.webp',
       },
     ]
     const emotes = resolveInspectorTableEmotes('selected', bucketPoint, rangeWithImages)
-    expect(emotes.find((e) => e.name === 'LUL')?.imageUrl).toBe('https://cdn.example/lul.webp')
+    expect(emotes.find((e) => e.name === 'LUL')?.imageUrl).toBe('https://cdn.7tv.app/emote/lul/1x.webp')
   })
 
   it('replaces broken proxy bucket imageUrl with window CDN catalog', () => {
