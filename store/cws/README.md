@@ -144,7 +144,7 @@ npm run package:development
 npm run validate:package
 ```
 
-Source manifests are currently `0.1.0`. Live CWS listing version must be owner-rechecked (reportedly may already be `0.1.1`). Do **not** upload `0.1.0` as an update if the dashboard is already ahead; next upload must exceed the confirmed dashboard version. Do not bump here.
+Source manifests are **0.1.2** (RC). Owner must confirm live CWS listing is behind 0.1.2 and Support URL is `https://streampulse.stream/support` before upload. Stop before upload.
 
 Do not upload ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.
 

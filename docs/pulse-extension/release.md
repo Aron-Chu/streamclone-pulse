@@ -33,10 +33,7 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Source package version is currently `0.1.0`. Owner must recheck the live CWS
-dashboard version (reportedly may already be `0.1.1`) before any upload. Next
-upload must be greater than the confirmed dashboard version — do not bump in
-this reliability track without an owner-approved release candidate.
+Source package version is **0.1.2** (RC). Owner must confirm live CWS dashboard is behind this version and that Support URL is `https://streampulse.stream/support` before upload. See `docs/evidence/RPR-9-0.1.2-rc-20260726.md`.
 
 ---
 
@@ -66,7 +63,7 @@ self-generated checksums as cryptographic provenance.
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
 - [ ] Owner authorizes upload; version exceeds last published / confirmed dashboard version
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
-- [ ] Do **not** upload source `0.1.0` if live listing is already ahead (owner verify; reportedly may be `0.1.1`)
+- [ ] Do **not** upload until owner confirms dashboard Support URL + version gates in `docs/evidence/RPR-9-0.1.2-rc-20260726.md`
 
 ---
 
