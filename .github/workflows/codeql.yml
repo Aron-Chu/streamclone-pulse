@@ -1,0 +1,44 @@
+# CodeQL analysis (public security closeout).
+# Default-setup API returned 404 for this token/repo; workflow provides equivalent
+# javascript-typescript scanning via GitHub-owned codeql-action (selected Actions allowlist).
+
+name: CodeQL
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # github/codeql-action/init@v3 (tag v3 → 4187e74d…)
+      - uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      # github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@4187e74d05793876e9989daffde9c3e66b4acd07
+        with:
+          category: '/language:javascript-typescript'

@@ -1,4 +1,4 @@
-# npm audit disposition — RPR-6 (2026-07)
+# npm audit disposition — RPR-6 / public security closeout (2026-07)
 
 Portal (`streampulse-web`) and root workspace audits report **two high**
 findings that resolve to the same advisory:
@@ -11,22 +11,26 @@ findings that resolve to the same advisory:
 **Installed range at disposition:** `react-router-dom@7.18.1` / `react-router@7.18.1`
 (advisory range `>=7.12.0 <8.3.0`; fix published as `react-router@8.3.0`).
 
-## Disposition (not a silent ignore)
+## Disposition: `vulnerable_code_not_used`
 
 1. **Exploit surface:** The advisory is scoped to **React Router RSC Mode**.
-   StreamPulse portal is a **classic Vite + React SPA** (`streampulse-web`) with
+   StreamPulse portal is a **classic Vite + React 18 SPA** (`streampulse-web`) with
    client-side `react-router-dom` only. It does **not** enable React Server
-   Components or RSC-mode router actions.
-2. **Why not bumped in this PR:** Moving to `react-router@8.3.0` is a **major**
-   line change during RPR-6 package-distribution acceptance. Deferred to a
-   focused follow-up so distribution gates are not conflated with a router
-   migration.
-3. **CI enforcement:** `scripts/ci-portal-npm-audit-disposition.mjs` allows
-   **only** these two dispositioned package names. Any **new** high/critical
-   finding fails portal CI until fixed or explicitly dispositioned here.
+   Components, RSC-mode router actions, or React 19 server runtimes.
+2. **Evidence scan:** No portal source matches RSC entry points
+   (`react-server`, `createFromReadableStream`, `ServerRouter`, etc.).
+3. **Why not bumped now:** Moving to `react-router@8.3.0` is a **major** line
+   change and would force a React Router 8 / ecosystem jump. Per program rules:
+   do **not** force React Router 8, React 19, or Node 22-only upgrades solely to
+   clear this alert.
+4. **CI enforcement:** `scripts/ci-portal-npm-audit-disposition.mjs` allows
+   **only** these two dispositioned package names and requires the **exact**
+   GHSA id `GHSA-qwww-vcr4-c8h2` in the audit `via` payload. Any **new**
+   high/critical finding fails portal CI.
+5. **GitHub Dependabot:** alerts dismissed as `vulnerable_code_not_used` with
+   this evidence (public security closeout).
 
-## Owner follow-up
+## Owner follow-up (optional, separate program)
 
-- Schedule `react-router` / `react-router-dom` upgrade to `>=8.3.0` (or first
-  patched 7.x if published) and re-run `npm audit` until highs are zero or
-  newly dispositioned with evidence.
+- Schedule a dedicated React Router major upgrade when product-ready, then
+  re-run `npm audit` until highs are zero or newly dispositioned with evidence.
