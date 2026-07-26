@@ -4,6 +4,7 @@ import {
   emoteDisplaySrc,
   emoteSrcSet,
   emoteUrlForScale,
+  isAllowedEmoteImageUrl,
   isBackendEmoteProxyUrl,
   preferResolvableEmoteUrl,
 } from '../src/lib/emoteAssetUrl'
@@ -12,6 +13,25 @@ import { buildEmoteLookup, resolveMomentEmote } from '../src/lib/pulseMomentsUti
 vi.mock('../src/lib/apiClient', () => ({
   getBackendUrl: () => 'https://api.streampulse.stream',
 }))
+
+describe('isAllowedEmoteImageUrl', () => {
+  it('allows known HTTPS emote CDNs and hosted proxy', () => {
+    expect(isAllowedEmoteImageUrl('https://cdn.7tv.app/emote/abc/4x.webp')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://cdn.frankerfacez.com/emoticon/1/4')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://cdn.betterttv.net/emote/abc/3x')).toBe(true)
+    expect(isAllowedEmoteImageUrl('https://api.streampulse.stream/emotes/uuid/1x.webp')).toBe(true)
+    expect(isAllowedEmoteImageUrl('/emotes/uuid/1x.webp')).toBe(true)
+  })
+
+  it('rejects javascript, data, http, and unknown hosts', () => {
+    expect(isAllowedEmoteImageUrl('javascript:alert(1)')).toBe(false)
+    expect(isAllowedEmoteImageUrl('data:image/png;base64,xx')).toBe(false)
+    expect(isAllowedEmoteImageUrl('http://cdn.7tv.app/emote/abc/4x.webp')).toBe(false)
+    expect(isAllowedEmoteImageUrl('https://evil.example/x.webp')).toBe(false)
+    expect(isAllowedEmoteImageUrl('https://evil.cdn.7tv.app/emote/x.webp')).toBe(false)
+  })
+})
 
 describe('absolutizeEmoteAssetUrl', () => {
   it('prefixes backend-relative emote paths', () => {
@@ -46,7 +66,11 @@ describe('preferResolvableEmoteUrl', () => {
 
   it('keeps direct CDN when bucket already has it', () => {
     const cdn = 'https://cdn.7tv.app/emote/abc/4x.webp'
-    expect(preferResolvableEmoteUrl(cdn, 'https://cdn.example/fallback.webp')).toBe(cdn)
+    expect(preferResolvableEmoteUrl(cdn, 'https://cdn.frankerfacez.com/emoticon/1/4')).toBe(cdn)
+  })
+
+  it('drops disallowed hosts instead of binding them to img src', () => {
+    expect(preferResolvableEmoteUrl('https://evil.example/x.webp', 'javascript:alert(1)')).toBeUndefined()
   })
 })
 

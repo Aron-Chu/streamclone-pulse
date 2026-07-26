@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { unlinkSync } from 'node:fs'
+import { describe, expect, it, afterEach } from 'vitest'
+import { rmSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import {
   inspectZipCentralDirectory,
   validateZipEntryName,
@@ -12,6 +11,7 @@ import {
   writeRawZip,
   ZIP_UNIX_SYMLINK_ATTRS,
 } from '../scripts/malicious-zip-fixtures.mjs'
+import { makePrivateTempDir } from '../scripts/lib/private-temp.mjs'
 import { scanRemoteCodePatterns } from '../scripts/remote-code-scan.mjs'
 import { scanArchiveEntryBytes } from '../scripts/archive-byte-scan.mjs'
 import { targetArtifactNames } from '../scripts/extension-package-lib.mjs'
@@ -22,15 +22,36 @@ import {
   countBareLocalhostSentinel,
 } from '../streampulse-web/scripts/check-backend-url.mjs'
 
-async function writeZipAsync(path, entries) {
+const tempDirs: string[] = []
+
+function privateZipPath(name: string): string {
+  const dir = makePrivateTempDir('sp-rpr2-')
+  tempDirs.push(dir)
+  return join(dir, name)
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop()
+    if (dir) {
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // ignore
+      }
+    }
+  }
+})
+
+async function writeZipAsync(path: string, entries: Record<string, string>) {
   const { createWriteStream } = await import('node:fs')
   const yazl = await import('yazl')
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const zipfile = new yazl.ZipFile()
     for (const [name, content] of Object.entries(entries)) {
       zipfile.addBuffer(Buffer.from(content), name)
     }
-    zipfile.outputStream.pipe(createWriteStream(path)).on('close', resolve).on('error', reject)
+    zipfile.outputStream.pipe(createWriteStream(path, { mode: 0o600 })).on('close', resolve).on('error', reject)
     zipfile.end()
   })
 }
@@ -49,7 +70,7 @@ describe('zip entry name rejection', () => {
 
 describe('malicious ZIP fixtures', () => {
   it('rejects case-conflicting entries', async () => {
-    const path = join(tmpdir(), `sp-mal-dup-${process.pid}.zip`)
+    const path = privateZipPath('dup.zip')
     await writeZipAsync(path, { 'manifest.json': '{}', 'Manifest.json': '{}' })
     const { errors } = await inspectZipCentralDirectory(path)
     expect(errors.some((e) => /case-insensitive|duplicate/i.test(e))).toBe(true)
@@ -57,7 +78,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('rejects exact duplicate names', async () => {
-    const path = join(tmpdir(), `sp-mal-exdup-${process.pid}.zip`)
+    const path = privateZipPath('exdup.zip')
     const payload = Buffer.from('one')
     writeRawZip(path, [
       { name: 'a.js', data: payload },
@@ -69,7 +90,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('rejects symlink entries', async () => {
-    const path = join(tmpdir(), `sp-mal-symlink-${process.pid}.zip`)
+    const path = privateZipPath('symlink.zip')
     writeRawZip(path, [
       {
         name: 'link.txt',
@@ -83,7 +104,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('rejects encrypted entries', async () => {
-    const path = join(tmpdir(), `sp-mal-enc-${process.pid}.zip`)
+    const path = privateZipPath('enc.zip')
     // Encrypted flag with empty stored payload — yauzl may reject before attribute checks;
     // inspector must surface that as a validation error (not an uncaught throw).
     writeRawZip(path, [
@@ -105,7 +126,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('rejects entry-count limit', async () => {
-    const path = join(tmpdir(), `sp-mal-count-${process.pid}.zip`)
+    const path = privateZipPath('count.zip')
     const entries = {}
     for (let i = 0; i < 12; i++) entries[`f${i}.txt`] = 'x'
     await writeZipAsync(path, entries)
@@ -120,7 +141,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('rejects per-entry size limit', async () => {
-    const path = join(tmpdir(), `sp-mal-size-${process.pid}.zip`)
+    const path = privateZipPath('size.zip')
     await writeZipAsync(path, { 'big.bin': 'abcdefghij' })
     const { errors } = await inspectZipCentralDirectory(path, {
       maxEntries: 500,
@@ -133,7 +154,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('rejects total size limit', async () => {
-    const path = join(tmpdir(), `sp-mal-total-${process.pid}.zip`)
+    const path = privateZipPath('total.zip')
     await writeZipAsync(path, { a: 'aaaa', b: 'bbbb' })
     const { errors } = await inspectZipCentralDirectory(path, {
       maxEntries: 500,
@@ -146,7 +167,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('throws on declared uncompressed-size mismatch during extract', async () => {
-    const path = join(tmpdir(), `sp-mal-declared-${process.pid}.zip`)
+    const path = privateZipPath('declared.zip')
     // Valid stored zip from yazl, then patch central+local uncompressed size fields.
     await writeZipAsync(path, { 'hello.txt': 'hello-world' })
     const buf = Buffer.from(await import('node:fs').then((fs) => fs.readFileSync(path)))
@@ -172,7 +193,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('returns empty extractDir when central-directory validation rejects', async () => {
-    const path = join(tmpdir(), `sp-mal-cleanup-${process.pid}.zip`)
+    const path = privateZipPath('cleanup.zip')
     // Absolute path entry — rejected by name validator / yauzl; must not leave extractDir.
     writeRawZip(path, [
       { name: '/abs/evil.txt', data: Buffer.from('x') },
@@ -184,7 +205,7 @@ describe('malicious ZIP fixtures', () => {
   })
 
   it('extracts clean zip', async () => {
-    const path = join(tmpdir(), `sp-clean-${process.pid}.zip`)
+    const path = privateZipPath('clean.zip')
     await writeZipAsync(path, { 'hello.txt': 'hi' })
     const { extractDir, files, errors } = await extractZipToTemp(path)
     expect(errors).toEqual([])

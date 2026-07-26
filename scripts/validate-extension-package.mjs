@@ -32,6 +32,7 @@ import {
   stageExtensionAttribution,
   validateExtensionAttributionBytes,
 } from './stage-extension-attribution.mjs'
+import { textContainsHostedApiOrigin } from './lib/hosted-api-origin.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -233,7 +234,7 @@ function validateDistContents(store) {
 
   let foundHosted = false
   for (const rel of packable.filter((f) => f.endsWith('.js'))) {
-    if (readFileSync(join(dist, rel), 'utf8').includes('https://api.streampulse.stream')) {
+    if (textContainsHostedApiOrigin(readFileSync(join(dist, rel), 'utf8'))) {
       foundHosted = true
       break
     }

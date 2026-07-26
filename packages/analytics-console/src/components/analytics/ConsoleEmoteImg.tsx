@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { isAllowedEmoteImageUrl } from '../../utils/emoteImageUrl'
+
 function emoteInitial(name: string): string {
   const trimmed = name.trim()
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?'
@@ -21,7 +23,8 @@ export function ConsoleEmoteImg({
   height?: number
 }) {
   const [failed, setFailed] = useState(false)
-  if (!src?.trim() || failed) {
+  const safeSrc = isAllowedEmoteImageUrl(src) ? src?.trim() : undefined
+  if (!safeSrc || failed) {
     return (
       <span
         className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-[10px] font-black text-zinc-500'}
@@ -33,7 +36,7 @@ export function ConsoleEmoteImg({
   }
   return (
     <img
-      src={src}
+      src={safeSrc}
       alt=""
       aria-hidden
       className={className}

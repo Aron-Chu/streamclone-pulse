@@ -6,6 +6,28 @@ const BTTV_CDN_TEMPLATE = 'https://cdn.betterttv.net/emote/%s/3x'
 const LOCAL_EMOTE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const SEVEN_TV_EMOTE_ID = /^[0-9A-HJKMNP-TV-Z]{20,32}$/i
 
+export const ALLOWED_EMOTE_IMAGE_HOSTS = Object.freeze([
+  'cdn.7tv.app',
+  'static-cdn.jtvnw.net',
+  'cdn.frankerfacez.com',
+  'cdn.betterttv.net',
+  'api.streampulse.stream',
+])
+
+/** Allow only https emote CDN / hosted proxy URLs (or relative /emotes/ paths). */
+export function isAllowedEmoteImageUrl(url: string | undefined, assetBase = ''): boolean {
+  if (!url?.trim()) return false
+  const trimmed = url.trim()
+  if (trimmed.startsWith('/emotes/')) return true
+  try {
+    const parsed = new URL(trimmed, assetBase || 'https://api.streampulse.stream')
+    if (parsed.protocol !== 'https:') return false
+    return ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 export function localEmotePath(id: string, scale = '1x'): string {
   const resolvedScale = scale.trim() || '1x'
   return `/emotes/${id}/${resolvedScale}.webp`
@@ -41,10 +63,24 @@ export function preferResolvableEmoteUrl(
   assetBase = '',
 ): string | undefined {
   const absDirect = direct?.trim() || undefined
-  if (absDirect && !isBackendEmoteProxyUrl(absDirect, assetBase)) return absDirect
+  if (
+    absDirect &&
+    !isBackendEmoteProxyUrl(absDirect, assetBase) &&
+    isAllowedEmoteImageUrl(absDirect, assetBase)
+  ) {
+    return absDirect
+  }
   const absFallback = fallback?.trim() || undefined
-  if (absFallback && !isBackendEmoteProxyUrl(absFallback, assetBase)) return absFallback
-  return absDirect ?? absFallback
+  if (
+    absFallback &&
+    !isBackendEmoteProxyUrl(absFallback, assetBase) &&
+    isAllowedEmoteImageUrl(absFallback, assetBase)
+  ) {
+    return absFallback
+  }
+  if (absDirect && isAllowedEmoteImageUrl(absDirect, assetBase)) return absDirect
+  if (absFallback && isAllowedEmoteImageUrl(absFallback, assetBase)) return absFallback
+  return undefined
 }
 
 export interface ResolveEmoteImageUrlOptions {

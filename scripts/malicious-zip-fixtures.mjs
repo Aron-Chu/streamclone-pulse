@@ -110,7 +110,7 @@ export function buildRawZip(entries) {
 }
 
 export function writeRawZip(path, entries) {
-  writeFileSync(path, buildRawZip(entries))
+  writeFileSync(path, buildRawZip(entries), { mode: 0o600 })
 }
 
 /** Unix symlink mode in upper 16 bits of external attrs. */

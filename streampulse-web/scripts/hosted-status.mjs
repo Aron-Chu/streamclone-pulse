@@ -9,23 +9,28 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isHostedApiUrl, HOSTED_API_ORIGIN } from '../../scripts/lib/hosted-api-origin.mjs'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const DEFAULT_API = 'https://api.streampulse.stream'
+const DEFAULT_API = HOSTED_API_ORIGIN
 const LOCAL_PATTERN = /localhost|127\.0\.0\.1|laptopworker|:8090/i
 
 function isLocalBackend(url) {
   return LOCAL_PATTERN.test(url)
 }
 
+/**
+ * status:hosted may only probe the hosted API hostname — never an env/file override
+ * that points elsewhere (CodeQL js/file-access-to-http).
+ */
 function readBackendUrl() {
   const cli = process.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, '')
   if (cli) {
-    if (isLocalBackend(cli)) {
-      console.warn('[status:hosted] ignoring localhost VITE_BACKEND_URL — using hosted default')
+    if (isLocalBackend(cli) || !isHostedApiUrl(cli)) {
+      console.warn('[status:hosted] ignoring non-hosted VITE_BACKEND_URL — using hosted default')
       return DEFAULT_API
     }
-    return cli
+    return DEFAULT_API
   }
   for (const name of ['.env.development.local', '.env.local', '.env']) {
     const path = resolve(webRoot, name)
@@ -34,11 +39,11 @@ function readBackendUrl() {
     const match = text.match(/^VITE_BACKEND_URL=(.+)$/m)
     if (match) {
       const fromFile = match[1].trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '')
-      if (isLocalBackend(fromFile)) {
-        console.warn(`[status:hosted] ignoring localhost in ${name} — using hosted default`)
-        return DEFAULT_API
+      if (isLocalBackend(fromFile) || !isHostedApiUrl(fromFile)) {
+        console.warn(`[status:hosted] ignoring non-hosted URL in ${name} — using hosted default`)
       }
-      return fromFile
+      // Always use the hardcoded hosted origin for outbound probes.
+      return DEFAULT_API
     }
   }
   return DEFAULT_API

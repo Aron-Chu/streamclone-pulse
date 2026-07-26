@@ -5,7 +5,7 @@ import { internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEm
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
 import { useSmoothedScalar } from '../../motion/useSmoothedScalar'
 import { compact, getProviderColor } from '../analytics/hubFormat'
-import { preferResolvableEmoteUrl } from '../../../lib/emoteAssetUrl'
+import { preferResolvableEmoteUrl, isAllowedEmoteImageUrl } from '../../../lib/emoteAssetUrl'
 import { EmoteProviderIcon } from '../analytics/EmoteProviderIcon'
 import { EmptyState, Skeleton } from './primitives'
 
@@ -1095,10 +1095,12 @@ export function HubActivityChart({
                       <span className="tip-emotes__label">Top emotes this bucket</span>
                       <ol className="tip-emotes__list">
                         {hp.topEmotes.slice(0, 3).map((emote, i) => {
-                          const img = preferResolvableEmoteUrl(
+                          const candidate = preferResolvableEmoteUrl(
                             emote.imageUrl,
                             emoteImages?.get(emote.name.toLowerCase()),
                           )
+                          const img =
+                            candidate && isAllowedEmoteImageUrl(candidate) ? candidate : undefined
                           return (
                             <li key={`${emote.name}-${i}`}>
                               <span className="tip-emotes__name">

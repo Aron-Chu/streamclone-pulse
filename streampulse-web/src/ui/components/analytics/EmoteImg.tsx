@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 
-import { emoteDisplaySrc, emoteSrcSet } from '../../../lib/emoteAssetUrl'
+import { emoteDisplaySrc, emoteSrcSet, isAllowedEmoteImageUrl } from '../../../lib/emoteAssetUrl'
 import { initial } from './hubFormat'
 
 interface EmoteImgProps {
@@ -30,8 +30,20 @@ export function EmoteImg({
   const [failed, setFailed] = useState(false)
   const cssPx = displayPx ?? width ?? 28
   const resolved = emoteDisplaySrc(src, cssPx)
+  const safeSrc = resolved && isAllowedEmoteImageUrl(resolved) ? resolved : undefined
   const srcSet = emoteSrcSet(src)
-  if (!resolved?.trim() || failed) {
+  const safeSrcSet =
+    srcSet &&
+    srcSet
+      .split(',')
+      .map((part) => part.trim())
+      .every((part) => {
+        const url = part.split(/\s+/)[0]
+        return isAllowedEmoteImageUrl(url)
+      })
+      ? srcSet
+      : undefined
+  if (!safeSrc?.trim() || failed) {
     return (
       <span className={fallbackClassName} aria-hidden="true">
         {initial(name)}
@@ -41,8 +53,8 @@ export function EmoteImg({
   return (
     <img
       className={className}
-      src={resolved}
-      srcSet={srcSet}
+      src={safeSrc}
+      srcSet={safeSrcSet}
       sizes={`${cssPx}px`}
       alt=""
       loading="lazy"
