@@ -2,12 +2,13 @@
 
 Thanks for interest in **Streamclone Pulse** (Chrome MV3 extension + StreamPulse portal).
 
-Publication / GitHub visibility change is **RPR-9 owner-authorized only**. Do not
-assume public fork/PR workflows until that gate flips. Historical private archive
-rename target (owner-authorized): `streamclone-pulse-private-archive`.
+[`Aron-Chu/streamclone-pulse`](https://github.com/Aron-Chu/streamclone-pulse) is
+**public**. Forks and pull requests are welcome. Historical private history lives
+in private `streamclone-pulse-private-archive` (not a contribution surface).
 
 RPR-3/4/5 ingest and support surfaces remain **implementation complete;
 activation pending** — feature flags stay off; do not claim active collection.
+Store upload remains **RPR-9 pending** (public-source cutover is complete).
 
 ## Scope
 
@@ -57,6 +58,11 @@ npm run build
 When you touch packaging or store targets, also run the relevant
 `npm run validate:package*` / `package:*` scripts.
 
+Default-branch protection requires a PR, conversation resolution, required
+status context `CI`, and squash-only merge. See
+[`docs/pulse-extension/ruleset-recovery.md`](docs/pulse-extension/ruleset-recovery.md)
+(owner recovery only).
+
 ## Commits
 
 Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`.
@@ -68,10 +74,12 @@ Author commits as **Aron-Chu** `<aroncloudchu@gmail.com>`. Do not add agent
 
 - Never commit `.env`, tokens, DSNs, OAuth material, or production topology.
 - Do not paste exploit details, raw chat, or credential-shaped strings into issues or PRs.
-- Public contact today: `privacy@streampulse.stream` only (see [`SUPPORT.md`](SUPPORT.md), [`SECURITY.md`](SECURITY.md)).
+- Security reports: GitHub Private Vulnerability Reporting ([`SECURITY.md`](SECURITY.md)).
+- Privacy / legal: `privacy@streampulse.stream` ([`SUPPORT.md`](SUPPORT.md)).
 
 ## More
 
 - Tasks / release gates: [`docs/pulse-extension/tasks.md`](docs/pulse-extension/tasks.md)
 - Reliability program: [`docs/pulse-extension/reliability-public-release-plan.md`](docs/pulse-extension/reliability-public-release-plan.md)
+- Public cutover evidence: [`docs/evidence/RPR-7-9-public-cutover-20260726.md`](docs/evidence/RPR-7-9-public-cutover-20260726.md)
 - Code of conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)

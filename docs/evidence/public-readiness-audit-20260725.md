@@ -84,3 +84,10 @@ This audit does **not** certify rights clearance.
 - Not authorization to change visibility
 - Not a secret-scanning report with findings pasted
 - Not completion of RPR-7, RPR-8, or RPR-9
+
+## Addendum — public cutover (2026-07-26)
+
+Superseded by [`RPR-7-9-public-cutover-20260726.md`](./RPR-7-9-public-cutover-20260726.md):
+repo is **public**; archive holds pre-cutover Actions evidence; RPR-7 clean export
+complete; RPR-8 ruleset active; RPR-9 store release still pending. Activation flags
+remain off.

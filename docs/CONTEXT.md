@@ -22,7 +22,7 @@ Single checkout after [PR #25](https://github.com/Aron-Chu/streamclone-pulse/pul
 
 **Hosted API identity:** Probe `GET https://api.streampulse.stream/v1/extension/health` for live version.
 
-**Polling / consent (R14–R15):** Content scripts own tab-scoped recent polling; the service worker brokers, caches, and coalesces. Full history is explicit-user-action only. Extension diagnostics and product analytics use separate versioned default-off consents. **Acceptance repair in progress; activation pending** — do not claim active. Support form + Turnstile acceptance repair continues (R16). Store manifests must omit localhost; only development manifests may include `localhost:8081` (R18).
+**Polling / consent (R14–R15):** Content scripts own tab-scoped recent polling; the service worker brokers, caches, and coalesces. Full history is explicit-user-action only. Extension diagnostics and product analytics use separate versioned default-off consents. **Implementation complete; activation pending** — do not claim active. Support form + Turnstile acceptance repair continues (R16). Store manifests must omit localhost; only development manifests may include `localhost:8081` (R18).
 
 **Portal error monitoring (current):** when `VITE_SENTRY_DSN` is set at website build time, the portal may initialize sanitized browser error reporting. That path is website-only and is not an extension SDK.
 

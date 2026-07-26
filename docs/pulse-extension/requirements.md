@@ -411,7 +411,7 @@ Canonical contracts: [`contracts/`](./contracts/README.md) (PostHog named as RPR
 3. Accepted reports are durable (Postgres transaction + outbox) before success; issue trackers receive only minimal non-sensitive fields + a restricted-console link. Vendor outages must not lose accepted reports.
 4. Until R16.1 ships, operational Support pages MUST use only verified contact channels (see release blockers).
 
-### R17 — Public package boundary (RPR-6 — ownership landed; distribution acceptance in progress)
+### R17 — Public package boundary (RPR-6 — complete)
 
 1. After provenance/license review, `@streampulse/pulse-core`, `pulse-charts`, and `analytics-console` are owned as public in-repo workspaces under this repository (`packages/`), Apache-2.0 + mandatory NOTICE.
 2. Packed tarballs contain only allowed publish contents; clean-clone builds require no sibling private repos or private package tokens. Consumer install tests must use packaged `dist`, not source aliases.
@@ -419,7 +419,7 @@ Canonical contracts: [`contracts/`](./contracts/README.md) (PostHog named as RPR
 
 ### R18 — Release and reproducibility (partial — store packaging landed; upload RPR-9)
 
-1. Store manifests contain **no** localhost permission; development manifests may include `localhost:8081`. Manifest splitting + store ZIP validation landed under RPR-2 (`e13a74e`); upload remains RPR-9.
+1. Store manifests contain **no** localhost permission; development manifests may include `localhost:8081`. Manifest splitting + store ZIP validation landed under RPR-2 (`e13a74e`); upload remains RPR-9 (public-source cutover complete; store release pending).
 2. Package validation rejects source maps, env/secrets, absolute/sibling paths, out-of-repo `file:` deps, remote executable code, and local origins in store artifacts.
 3. Portal production scanning rejects `localhost` / `127.0.0.1` on every port (including 8081) in shipped JS/HTML.
 4. Local and remote CI must pass on the **same** SHA before store upload or visibility conversion. Workflow runs that execute no jobs do not count as green.
