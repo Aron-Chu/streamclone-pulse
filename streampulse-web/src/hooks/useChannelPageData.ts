@@ -69,6 +69,16 @@ export function portalChannelStreamsPath(login: string, limit = 24): string {
   return `/v1/portal/analytics/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`
 }
 
+/** Prefer URL streamId even when absent from the recent strip (deep-link / older sessions). */
+export function resolvePreferredChannelStreamId(
+  strip: Array<{ streamId: string; live?: boolean }>,
+  streamIdParam?: string,
+): string | undefined {
+  const requested = streamIdParam?.trim()
+  if (requested) return requested
+  return strip.find((s) => s.live)?.streamId || strip[0]?.streamId
+}
+
 export function useChannelPageData(loginParam: string, streamIdParam?: string): ChannelPageData {
   const login = normalizeTwitchLogin(loginParam)
   const [loading, setLoading] = useState(true)
@@ -101,15 +111,27 @@ export function useChannelPageData(loginParam: string, streamIdParam?: string): 
       )
       const defaultSource = sourceLabelFromDetail(data.sources, data.dataSourceBadges)
       const strip = (data.items ?? []).map((item) => mapStripItem(item, login, defaultSource))
-      setStreams(strip)
       setDisplayName(data.items[0]?.displayName ?? login)
 
-      const preferred =
-        (streamIdParam && strip.find((s) => s.streamId === streamIdParam)?.streamId) ||
-        strip.find((s) => s.live)?.streamId ||
-        strip[0]?.streamId
-
+      const preferred = resolvePreferredChannelStreamId(strip, streamIdParam)
       setSelectedStreamId(preferred)
+
+      // Keep deep-linked sessions visible in the strip even when not in the recent list.
+      const stripWithPreferred =
+        preferred && !strip.some((s) => s.streamId === preferred)
+          ? [
+              {
+                streamId: preferred,
+                label: 'Session',
+                live: false,
+                sourceLabel: defaultSource,
+                href: buildAnalyticsHref({ login, streamId: preferred }),
+              } satisfies FigmaSessionStripItem,
+              ...strip,
+            ]
+          : strip
+      setStreams(stripWithPreferred)
+
       if (!preferred) {
         setSession({
           state: 'empty',

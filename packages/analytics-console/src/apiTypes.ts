@@ -61,6 +61,35 @@ export interface AnalyticsTopEmote {
   count: number
 }
 
+/** Backend-authored session facts — do not invent client heuristics from these. */
+export interface CoverageGapRange {
+  fromOffsetSeconds: number
+  toOffsetSeconds: number
+}
+
+export interface SessionAvailability {
+  version?: string
+  chartUsable?: boolean
+  chartState?: 'usable' | 'warming' | 'limited' | 'unavailable' | string
+  coveragePct?: number
+  missingRanges?: CoverageGapRange[]
+  coverageMessage?: string
+  liveDvrState?: 'live' | 'ended' | 'unknown' | string
+  vodState?:
+    | 'pending_live'
+    | 'resolving'
+    | 'linked'
+    | 'unavailable'
+    | 'request_failed'
+    | 'none'
+    | string
+  vodId?: string
+  vodMessage?: string
+  backfillState?: string
+  corpusState?: 'ready' | 'missing' | 'optional_absent' | string
+  corpusMessage?: string
+}
+
 export interface AnalyticsStreamDetail {
   channel: string
   state: 'live' | 'historical' | 'not_collected' | 'syncing' | string
@@ -82,6 +111,8 @@ export interface AnalyticsStreamDetail {
   coverageStartOffsetSeconds?: number
   /** Hosted portal: detail loaded but /minutes fetch failed or returned empty. */
   minutesUnavailable?: boolean
+  /** Independent quality / coverage / VOD / corpus facts from the BFF. */
+  availability?: SessionAvailability
 }
 
 export interface AnalyticsStreamsResponse {

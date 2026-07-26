@@ -39,9 +39,10 @@ export function useAnalyticsLive(login: string, options: UseAnalyticsLiveOptions
     queryKey: analyticsLiveQueryKey(login),
     queryFn: () => (withTimeout ? fetchLiveWithTimeout(login) : getAnalyticsLive(login)),
     enabled: Boolean(login) && enabled,
-    staleTime: 15_000,
+    staleTime: 30_000,
     retry: false,
+    // Lightweight live/link status only — never poll full minute timelines every 15s.
     refetchInterval: refetchInterval ?? (query =>
-      query.state.data?.state === 'live' ? 15_000 : 60_000),
+      query.state.data?.state === 'live' ? 30_000 : 60_000),
   })
 }

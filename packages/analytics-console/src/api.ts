@@ -38,6 +38,33 @@ export async function getAnalyticsStream(
   return api().getAnalyticsStream(streamId, opts) as Promise<AnalyticsStreamDetail | null>
 }
 
+export async function getStreamStatus(streamId: string): Promise<{
+  channel?: string
+  state?: string
+  syncPhase?: string
+  streamId?: string
+  vodId?: string
+  analyticsQuality?: string
+  dataCoveragePct?: number
+  chatCoveragePct?: number
+  updatedAt?: number
+  availability?: import('./apiTypes.ts').SessionAvailability
+} | null> {
+  const fn = api().getStreamStatus
+  if (!fn) return null
+  return fn(streamId) as ReturnType<typeof getStreamStatus>
+}
+
+/** Live-tail minutes after a known offset; returns a sparse detail with only new/replacement rollups. */
+export async function getStreamMinutesTail(
+  streamId: string,
+  afterOffset: number,
+): Promise<AnalyticsStreamDetail | null> {
+  const fn = api().getStreamMinutesTail
+  if (!fn) return null
+  return fn(streamId, afterOffset) as Promise<AnalyticsStreamDetail | null>
+}
+
 export async function getStreamSummary(streamId: string, channel?: string) {
   const fn = api().getStreamSummary
   if (!fn) return null

@@ -10,6 +10,8 @@ import {
   getPulseStreamRecap,
   getReplayHeatmap,
   getStreamGameSegments,
+  getStreamMinutesTail,
+  getStreamStatus,
   getStreamSummary,
   getSyncStatus,
   startHistoricalSync,
@@ -40,6 +42,8 @@ import {
   resolveTargetQueryStreamId,
 } from '../utils/streamRouteResolution.ts'
 import { buildTwitchVodUrl, resolveAnalyticsVodId, resolveSessionFallbackVodId, resolveVodLinkState } from '../utils/twitchVodUrl.ts'
+import { mergeSessionStatusIntoDetail } from '../utils/sessionStatusMerge.ts'
+import { maxRollupOffsetSeconds, mergeMinutesTailIntoDetail } from '../utils/minutesTailMerge.ts'
 import {
   computeRollupChatStats,
   computeRollupViewerStats,
@@ -53,7 +57,7 @@ import {
 } from '../utils/emotePlotSelection.ts'
 import { count, displayStreamTitle, duration, relativeTime, streamStateLabel } from '../utils/consoleFormat.ts'
 import { deriveChartGameSegments, gameNameAtOffset } from '../utils/gameSegmentChart.ts'
-import { ChatCoverageBadge, StatCard, ViewerSourceBadge, AnalyticsQualityChip, CoverageFacets, CoverageStartBanner } from './analytics/ConsoleBits.tsx'
+import { ChatCoverageBadge, StatCard, ViewerSourceBadge, AnalyticsQualityChip, CoverageFacets, CoverageStartBanner, VodAvailabilityChip } from './analytics/ConsoleBits.tsx'
 import { StreamSidebar } from './analytics/StreamSidebar.tsx'
 import { TopEmoteTable } from './analytics/TopEmoteTable.tsx'
 import { MomentReviewPanel } from './analytics/MomentReviewPanel.tsx'
@@ -264,20 +268,75 @@ export function AnalyticsConsole({
     queryKey: ['analytics-console-detail', targetQueryStreamId, channelLogin],
     queryFn: async () => {
       if (!targetQueryStreamId) return null
+      // First load is always full timeline; status polls merge via statusQuery below.
       return getAnalyticsStream(targetQueryStreamId, { sparse: false, channel: channelLogin })
     },
     enabled: Boolean(channelLogin && targetQueryStreamId && isHistoricalRoute && !sessionNotFound),
-    staleTime: 15_000,
-    refetchInterval: (query) => {
-      const data = query.state.data as AnalyticsStreamDetail | null | undefined
-      if (resolveChannelActuallyLive(data ?? undefined)) return 15_000
-      if (data?.state === 'live') return 15_000
-      return false
-    },
+    staleTime: 30_000,
+    refetchInterval: false,
   })
 
   const detailQuery = isLiveRoute ? liveQuery : historicalDetailQuery
-  const detail = (detailQuery.data ?? undefined) as AnalyticsStreamDetail | undefined
+  const baseDetail = (detailQuery.data ?? undefined) as AnalyticsStreamDetail | undefined
+
+  const statusQuery = useQuery({
+    queryKey: ['analytics-console-status', targetQueryStreamId, channelLogin],
+    queryFn: async () => {
+      if (!targetQueryStreamId) return null
+      const status = await getStreamStatus(targetQueryStreamId)
+      if (status) return status
+      // Fallback sparse detail when status endpoint is unavailable (local routes).
+      return getAnalyticsStream(targetQueryStreamId, { sparse: true, channel: channelLogin })
+    },
+    enabled: Boolean(isHistoricalRoute && targetQueryStreamId && baseDetail),
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const failureCount = query.state.errorUpdateCount ?? 0
+      const backoff = Math.min(120_000, 30_000 * Math.max(1, 2 ** Math.min(failureCount, 2)))
+      const data = query.state.data as {
+        availability?: { vodState?: string; liveDvrState?: string }
+        state?: string
+      } | null
+      const mergedState = (data?.state ?? baseDetail?.state ?? '').toLowerCase()
+      const vod = (data?.availability?.vodState ?? baseDetail?.availability?.vodState ?? '').toLowerCase()
+      const liveDvr = (data?.availability?.liveDvrState ?? baseDetail?.availability?.liveDvrState ?? '').toLowerCase()
+      if (vod === 'linked' || vod === 'terminal' || vod === 'unavailable') return false
+      if (mergedState === 'live' || liveDvr === 'live') return backoff
+      if (vod === 'pending_live' || vod === 'resolving' || vod === 'request_failed') return backoff
+      return false
+    },
+    retry: 1,
+  })
+
+  const statusMerged = useMemo(() => {
+    if (!baseDetail) return undefined
+    if (!statusQuery.data) return baseDetail
+    return mergeSessionStatusIntoDetail(baseDetail, statusQuery.data as Parameters<typeof mergeSessionStatusIntoDetail>[1])
+  }, [baseDetail, statusQuery.data])
+
+  const sessionIsLive = Boolean(
+    statusMerged?.availability?.liveDvrState === 'live'
+    || statusMerged?.state === 'live'
+    || resolveChannelActuallyLive(statusMerged),
+  )
+
+  const liveTailAfterOffset = maxRollupOffsetSeconds(statusMerged)
+  const minutesTailQuery = useQuery({
+    queryKey: ['analytics-console-minutes-tail', targetQueryStreamId, liveTailAfterOffset],
+    queryFn: async () => {
+      if (!targetQueryStreamId || liveTailAfterOffset < 0) return null
+      return getStreamMinutesTail(targetQueryStreamId, liveTailAfterOffset)
+    },
+    enabled: Boolean(sessionIsLive && targetQueryStreamId && liveTailAfterOffset >= 0 && statusMerged),
+    staleTime: 15_000,
+    refetchInterval: sessionIsLive ? 30_000 : false,
+  })
+
+  const detail = useMemo(() => {
+    if (!statusMerged) return undefined
+    return mergeMinutesTailIntoDetail(statusMerged, minutesTailQuery.data ?? undefined)
+  }, [statusMerged, minutesTailQuery.data])
+
   const chartDetailReady = Boolean(
     detail?.rollups?.some(rollupHasMinuteData) || detail?.stream?.streamId,
   )
@@ -288,6 +347,7 @@ export function AnalyticsConsole({
     // Games are safe on live + historical once a stream id resolves (not Layer-2-only).
     enabled: Boolean(showGameSegments && targetQueryStreamId),
     staleTime: 60_000,
+    refetchInterval: sessionIsLive ? 75_000 : false,
   })
 
   const syncQuery = useQuery({
@@ -336,7 +396,12 @@ export function AnalyticsConsole({
       : null
 
   const isActiveLiveCollector = isActiveLiveCollectorStream(detail?.stream, detail?.state)
-  const isLive = isLiveRoute && (detail?.state === 'live' || Boolean(liveQuery.data?.stream?.streamId))
+  // Deep-linked live sessions must keep advancing — path shape is not authoritative.
+  const isLive = Boolean(
+    sessionIsLive
+    || isActiveLiveCollector
+    || (isLiveRoute && (detail?.state === 'live' || Boolean(liveQuery.data?.stream?.streamId))),
+  )
 
   useEffect(() => {
     appliedDeepLinkKey.current = null
@@ -560,7 +625,7 @@ export function AnalyticsConsole({
   const rollupCount = detail?.rollups?.length ?? 0
   const isLongStreamChart = rollupCount >= 360
 
-  const headerState = channelIsLive || isActiveLiveCollector
+  const headerState = channelIsLive || isActiveLiveCollector || sessionIsLive
     ? 'live'
     : isHistoricalRoute
       ? detail?.state && detail.state !== 'live'
@@ -779,12 +844,13 @@ export function AnalyticsConsole({
                   isHistoricalRoute,
                 )}
               </span>
-              <ChatCoverageBadge detail={detail} />
+              {!detail?.availability ? <ChatCoverageBadge detail={detail} /> : null}
               {mode === 'public' ? (
                 <>
                   <ViewerSourceBadge source={detail?.viewerSource} />
                   <AnalyticsQualityChip detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
                   <CoverageFacets detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
+                  <VodAvailabilityChip detail={detail} />
                 </>
               ) : null}
             </div>
@@ -887,7 +953,11 @@ export function AnalyticsConsole({
             ) : null}
             {!sessionResolving && !sessionNotFound ? (
             <div className="min-w-0 space-y-4">
-              <CoverageStartBanner offsetSeconds={detail?.coverageStartOffsetSeconds} />
+              <CoverageStartBanner
+                offsetSeconds={detail?.coverageStartOffsetSeconds}
+                missingRanges={detail?.availability?.missingRanges}
+                message={detail?.availability?.coverageMessage}
+              />
               <StreamQualityBanner
                 diagnosis={qualityDiagnosis}
                 syncing={syncing}
@@ -937,7 +1007,7 @@ export function AnalyticsConsole({
                 syncing={syncing}
                 onSync={() => void handleSync()}
                 onChatOnlySync={enableSyncActions ? () => void handleSync({ forceChat: true }) : undefined}
-                isLive={isActiveLiveCollector}
+                isLive={isLive}
                 syncCtaLabel={syncLabel}
                 syncViewerStatus={activeSyncStatus?.viewerStatus}
                 viewMode={viewMode}

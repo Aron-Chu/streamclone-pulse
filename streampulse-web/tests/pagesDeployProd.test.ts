@@ -36,11 +36,12 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     }
   })
 
-  it('ships static redirects for legacy analytics entrypoints', () => {
+  it('ships static redirects for legacy analytics entrypoints and SPA deep links', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
     expect(redirects).toMatch(/\/analytics\/streams\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/analytics\/hub\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/atlas\s+\/analytics\s+301/)
+    expect(redirects).toMatch(/\/analytics\/:login\/:streamId\s+\/index\.html\s+200/)
   })
 
   it('ships Pages security and cache headers', () => {
