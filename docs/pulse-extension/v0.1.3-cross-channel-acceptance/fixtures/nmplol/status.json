@@ -1,0 +1,21 @@
+{
+  "channel": "nmplol",
+  "state": "live",
+  "stream": {
+    "streamId": "319549121886",
+    "login": "nmplol",
+    "displayName": "Nmplol",
+    "category": "Just Chatting",
+    "startedAt": "2026-07-26T15:01:43Z",
+    "endedAt": null,
+    "vodId": ""
+  },
+  "availability": {
+    "liveDvrState": "live",
+    "vodState": "pending_live",
+    "chartState": "usable"
+  },
+  "coverageStartOffsetSeconds": 377,
+  "updatedAt": 1785085300023,
+  "note": "healthy live control; fixture omits volatile title and minute series"
+}

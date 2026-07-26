@@ -11,6 +11,7 @@ function readJson(name: string): unknown {
 
 export type ApiScenario =
   | 'live-ready'
+  | 'live-emote-picker'
   | 'live-partial'
   | 'helix-off'
   | 'offline'
@@ -39,6 +40,12 @@ const SCENARIOS: Record<Exclude<ApiScenario, 'api-500' | 'timeout' | 'malformed'
   'live-ready': {
     health: 'health-ok.json',
     pulse: 'pulse-live-ready.json',
+    coverage: 'coverage-active.json',
+    vod: 'vod-ready.json',
+  },
+  'live-emote-picker': {
+    health: 'health-ok.json',
+    pulse: 'pulse-live-emote-picker.json',
     coverage: 'coverage-active.json',
     vod: 'vod-ready.json',
   },

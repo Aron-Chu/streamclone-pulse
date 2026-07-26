@@ -22,6 +22,52 @@ export function toggleEmotePlotKeys(
   return [...keys, emoteKey]
 }
 
+/** Activity of an emote series inside the active chart window. */
+export type EmoteWindowActivity = 'loading' | 'none' | 'active'
+
+/**
+ * Plottable only when at least one non-missing minute in `rollups` has a non-zero
+ * count for this emote. Distinguishes loading (no usable minutes yet) from confirmed none.
+ */
+export function emoteActivityInRollups(
+  rollups: ExtensionRollup[],
+  emote: ExtensionEmote,
+  options?: { loading?: boolean },
+): EmoteWindowActivity {
+  if (options?.loading) return 'loading'
+  if (rollups.length === 0) return 'loading'
+  const hasUsableMinute = rollups.some(rollup => !rollup.missing)
+  if (!hasUsableMinute) return 'loading'
+
+  const index = getEmoteCountIndex(rollups)
+  const series = index.get(emoteSelectionKey(emote))
+  if (series?.some(value => value > 0)) return 'active'
+  for (const rollup of rollups) {
+    if (rollup.missing) continue
+    if (emoteCountAtRollup(rollup, emote) > 0) return 'active'
+  }
+  return 'none'
+}
+
+/** Drop selections whose series is unavailable in the current chart window. */
+export function pruneUnavailableEmoteSelections(
+  keys: string[],
+  catalog: ExtensionEmote[],
+  rollups: ExtensionRollup[],
+  options?: { loading?: boolean },
+): string[] {
+  if (keys.length === 0) return keys
+  if (options?.loading || rollups.length === 0) return keys
+  const hasUsableMinute = rollups.some(rollup => !rollup.missing)
+  if (!hasUsableMinute) return keys
+
+  return keys.filter(key => {
+    const emote = catalog.find(item => emoteSelectionKey(item) === key)
+    if (!emote) return false
+    return emoteActivityInRollups(rollups, emote) === 'active'
+  })
+}
+
 export function overlaySeriesAxisMax(
   values: Array<number | null>,
   normalizePerSeries: boolean,

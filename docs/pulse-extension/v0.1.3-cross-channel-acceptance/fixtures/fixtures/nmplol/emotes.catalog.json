@@ -1,0 +1,23 @@
+{
+  "login": "nmplol",
+  "range": "30d",
+  "partial": true,
+  "lowConfidence": true,
+  "topEmotes": [],
+  "uniqueEmotes": 0,
+  "totalEmoteUses": 0,
+  "coverage": {
+    "chatCoveragePct": 0,
+    "minutesWithData": 5165,
+    "identityResolvedRows": 0,
+    "identityTotalRows": 0
+  },
+  "sources": [
+    {
+      "source": "emote_history",
+      "state": "partial",
+      "message": "Coverage or identity resolution is incomplete"
+    }
+  ],
+  "updatedAt": 1785085300142
+}
