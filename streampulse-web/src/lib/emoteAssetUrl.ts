@@ -16,16 +16,25 @@ export const ALLOWED_EMOTE_IMAGE_HOSTS = Object.freeze([
  * Strengthens img-src binding against javascript:/data: and arbitrary hosts.
  */
 export function isAllowedEmoteImageUrl(url: string | undefined): boolean {
-  if (!url?.trim()) return false
+  return sanitizeEmoteImageUrl(url) !== undefined
+}
+
+/**
+ * Return a URL.href only after https + host allowlist validation.
+ * Callers must bind this return value (not the raw input) to img src.
+ */
+export function sanitizeEmoteImageUrl(url: string | undefined): string | undefined {
+  if (!url?.trim()) return undefined
   const trimmed = url.trim()
-  if (trimmed.startsWith('/emotes/')) return true
   try {
-    const parsed = new URL(trimmed, getBackendUrl())
-    if (parsed.protocol !== 'https:') return false
-    const host = parsed.hostname.toLowerCase()
-    return ALLOWED_EMOTE_IMAGE_HOSTS.includes(host)
+    const parsed = trimmed.startsWith('/emotes/')
+      ? new URL(trimmed, getBackendUrl())
+      : new URL(trimmed, getBackendUrl())
+    if (parsed.protocol !== 'https:') return undefined
+    if (!ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())) return undefined
+    return parsed.href
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -57,16 +66,16 @@ export function preferResolvableEmoteUrl(
   fallback: string | undefined,
 ): string | undefined {
   const absDirect = absolutizeEmoteAssetUrl(direct)
-  if (absDirect && !isBackendEmoteProxyUrl(absDirect) && isAllowedEmoteImageUrl(absDirect)) {
-    return absDirect
+  if (absDirect && !isBackendEmoteProxyUrl(absDirect)) {
+    const safe = sanitizeEmoteImageUrl(absDirect)
+    if (safe) return safe
   }
   const absFallback = absolutizeEmoteAssetUrl(fallback)
-  if (absFallback && !isBackendEmoteProxyUrl(absFallback) && isAllowedEmoteImageUrl(absFallback)) {
-    return absFallback
+  if (absFallback && !isBackendEmoteProxyUrl(absFallback)) {
+    const safe = sanitizeEmoteImageUrl(absFallback)
+    if (safe) return safe
   }
-  if (absDirect && isAllowedEmoteImageUrl(absDirect)) return absDirect
-  if (absFallback && isAllowedEmoteImageUrl(absFallback)) return absFallback
-  return undefined
+  return sanitizeEmoteImageUrl(absDirect) ?? sanitizeEmoteImageUrl(absFallback)
 }
 
 /**
@@ -121,5 +130,5 @@ export function emoteDisplaySrc(url: string | undefined, cssPx = 28): string | u
       : cssPx >= 40
         ? emoteUrlForScale(url, '2x') ?? absolutizeEmoteAssetUrl(url)
         : emoteUrlForScale(url, '1x') ?? absolutizeEmoteAssetUrl(url)
-  return isAllowedEmoteImageUrl(scaled) ? scaled : undefined
+  return sanitizeEmoteImageUrl(scaled)
 }

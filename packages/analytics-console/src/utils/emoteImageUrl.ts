@@ -16,15 +16,22 @@ export const ALLOWED_EMOTE_IMAGE_HOSTS = Object.freeze([
 
 /** Allow only https emote CDN / hosted proxy URLs (or relative /emotes/ paths). */
 export function isAllowedEmoteImageUrl(url: string | undefined, assetBase = ''): boolean {
-  if (!url?.trim()) return false
+  return sanitizeEmoteImageUrl(url, assetBase) !== undefined
+}
+
+/**
+ * Return URL.href only after https + host allowlist validation for img src binding.
+ */
+export function sanitizeEmoteImageUrl(url: string | undefined, assetBase = ''): string | undefined {
+  if (!url?.trim()) return undefined
   const trimmed = url.trim()
-  if (trimmed.startsWith('/emotes/')) return true
   try {
     const parsed = new URL(trimmed, assetBase || 'https://api.streampulse.stream')
-    if (parsed.protocol !== 'https:') return false
-    return ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())
+    if (parsed.protocol !== 'https:') return undefined
+    if (!ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())) return undefined
+    return parsed.href
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -63,24 +70,18 @@ export function preferResolvableEmoteUrl(
   assetBase = '',
 ): string | undefined {
   const absDirect = direct?.trim() || undefined
-  if (
-    absDirect &&
-    !isBackendEmoteProxyUrl(absDirect, assetBase) &&
-    isAllowedEmoteImageUrl(absDirect, assetBase)
-  ) {
-    return absDirect
+  if (absDirect && !isBackendEmoteProxyUrl(absDirect, assetBase)) {
+    const safe = sanitizeEmoteImageUrl(absDirect, assetBase)
+    if (safe) return safe
   }
   const absFallback = fallback?.trim() || undefined
-  if (
-    absFallback &&
-    !isBackendEmoteProxyUrl(absFallback, assetBase) &&
-    isAllowedEmoteImageUrl(absFallback, assetBase)
-  ) {
-    return absFallback
+  if (absFallback && !isBackendEmoteProxyUrl(absFallback, assetBase)) {
+    const safe = sanitizeEmoteImageUrl(absFallback, assetBase)
+    if (safe) return safe
   }
-  if (absDirect && isAllowedEmoteImageUrl(absDirect, assetBase)) return absDirect
-  if (absFallback && isAllowedEmoteImageUrl(absFallback, assetBase)) return absFallback
-  return undefined
+  return (
+    sanitizeEmoteImageUrl(absDirect, assetBase) ?? sanitizeEmoteImageUrl(absFallback, assetBase)
+  )
 }
 
 export interface ResolveEmoteImageUrlOptions {

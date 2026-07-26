@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 
-import { emoteDisplaySrc, emoteSrcSet, isAllowedEmoteImageUrl } from '../../../lib/emoteAssetUrl'
+import { emoteDisplaySrc, emoteSrcSet, sanitizeEmoteImageUrl } from '../../../lib/emoteAssetUrl'
 import { initial } from './hubFormat'
 
 interface EmoteImgProps {
@@ -16,6 +16,20 @@ interface EmoteImgProps {
   fetchPriority?: 'high' | 'low' | 'auto'
 }
 
+function sanitizeEmoteSrcSet(srcSet: string | undefined): string | undefined {
+  if (!srcSet) return undefined
+  const parts: string[] = []
+  for (const part of srcSet.split(',')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const [rawUrl, descriptor] = trimmed.split(/\s+/, 2)
+    const safe = sanitizeEmoteImageUrl(rawUrl)
+    if (!safe) return undefined
+    parts.push(descriptor ? `${safe} ${descriptor}` : safe)
+  }
+  return parts.length > 0 ? parts.join(', ') : undefined
+}
+
 export function EmoteImg({
   src,
   name,
@@ -29,21 +43,9 @@ export function EmoteImg({
 }: EmoteImgProps) {
   const [failed, setFailed] = useState(false)
   const cssPx = displayPx ?? width ?? 28
-  const resolved = emoteDisplaySrc(src, cssPx)
-  const safeSrc = resolved && isAllowedEmoteImageUrl(resolved) ? resolved : undefined
-  const srcSet = emoteSrcSet(src)
-  const safeSrcSet =
-    srcSet &&
-    srcSet
-      .split(',')
-      .map((part) => part.trim())
-      .every((part) => {
-        const url = part.split(/\s+/)[0]
-        return isAllowedEmoteImageUrl(url)
-      })
-      ? srcSet
-      : undefined
-  if (!safeSrc?.trim() || failed) {
+  const safeSrc = sanitizeEmoteImageUrl(emoteDisplaySrc(src, cssPx))
+  const safeSrcSet = sanitizeEmoteSrcSet(emoteSrcSet(src))
+  if (!safeSrc || failed) {
     return (
       <span className={fallbackClassName} aria-hidden="true">
         {initial(name)}

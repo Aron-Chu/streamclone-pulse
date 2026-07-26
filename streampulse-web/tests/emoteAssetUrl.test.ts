@@ -7,6 +7,7 @@ import {
   isAllowedEmoteImageUrl,
   isBackendEmoteProxyUrl,
   preferResolvableEmoteUrl,
+  sanitizeEmoteImageUrl,
 } from '../src/lib/emoteAssetUrl'
 import { buildEmoteLookup, resolveMomentEmote } from '../src/lib/pulseMomentsUtils'
 
@@ -14,22 +15,27 @@ vi.mock('../src/lib/apiClient', () => ({
   getBackendUrl: () => 'https://api.streampulse.stream',
 }))
 
-describe('isAllowedEmoteImageUrl', () => {
+describe('isAllowedEmoteImageUrl / sanitizeEmoteImageUrl', () => {
   it('allows known HTTPS emote CDNs and hosted proxy', () => {
     expect(isAllowedEmoteImageUrl('https://cdn.7tv.app/emote/abc/4x.webp')).toBe(true)
+    expect(sanitizeEmoteImageUrl('https://cdn.7tv.app/emote/abc/4x.webp')).toBe(
+      'https://cdn.7tv.app/emote/abc/4x.webp',
+    )
     expect(isAllowedEmoteImageUrl('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0')).toBe(true)
     expect(isAllowedEmoteImageUrl('https://cdn.frankerfacez.com/emoticon/1/4')).toBe(true)
     expect(isAllowedEmoteImageUrl('https://cdn.betterttv.net/emote/abc/3x')).toBe(true)
     expect(isAllowedEmoteImageUrl('https://api.streampulse.stream/emotes/uuid/1x.webp')).toBe(true)
-    expect(isAllowedEmoteImageUrl('/emotes/uuid/1x.webp')).toBe(true)
+    expect(sanitizeEmoteImageUrl('/emotes/uuid/1x.webp')).toBe(
+      'https://api.streampulse.stream/emotes/uuid/1x.webp',
+    )
   })
 
   it('rejects javascript, data, http, and unknown hosts', () => {
-    expect(isAllowedEmoteImageUrl('javascript:alert(1)')).toBe(false)
-    expect(isAllowedEmoteImageUrl('data:image/png;base64,xx')).toBe(false)
-    expect(isAllowedEmoteImageUrl('http://cdn.7tv.app/emote/abc/4x.webp')).toBe(false)
-    expect(isAllowedEmoteImageUrl('https://evil.example/x.webp')).toBe(false)
-    expect(isAllowedEmoteImageUrl('https://evil.cdn.7tv.app/emote/x.webp')).toBe(false)
+    expect(sanitizeEmoteImageUrl('javascript:alert(1)')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('data:image/png;base64,xx')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('http://cdn.7tv.app/emote/abc/4x.webp')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('https://evil.example/x.webp')).toBeUndefined()
+    expect(sanitizeEmoteImageUrl('https://evil.cdn.7tv.app/emote/x.webp')).toBeUndefined()
   })
 })
 

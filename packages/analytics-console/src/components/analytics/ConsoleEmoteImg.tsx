@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { isAllowedEmoteImageUrl } from '../../utils/emoteImageUrl'
+import { sanitizeEmoteImageUrl } from '../../utils/emoteImageUrl'
 
 function emoteInitial(name: string): string {
   const trimmed = name.trim()
@@ -23,7 +23,7 @@ export function ConsoleEmoteImg({
   height?: number
 }) {
   const [failed, setFailed] = useState(false)
-  const safeSrc = isAllowedEmoteImageUrl(src) ? src?.trim() : undefined
+  const safeSrc = sanitizeEmoteImageUrl(src)
   if (!safeSrc || failed) {
     return (
       <span
