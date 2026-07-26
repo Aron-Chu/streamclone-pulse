@@ -1,0 +1,338 @@
+# StreamPulse CI — path-routed graph with stable final gate.
+# Action pins: full commit SHA with release tag in comments.
+#
+# RPR-6: @streampulse/* packages live in-repo under packages/* (Apache-2.0).
+# Private streampulse-backend checkout is not used for package resolution.
+# STREAMPULSE_BACKEND_CHECKOUT_TOKEN is retired — owner should delete the
+# repository secret when convenient; this workflow never reads it.
+# Fork PRs can run the same package graph as same-repo PRs.
+# Never use pull_request_target.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: 'Force full extension+portal+e2e graph'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Provenance pin for packages extracted into packages/* (RPR-6). Informational only.
+  PULSE_PACKAGES_PIN: 'f663d002ff22351629dcaa9ed770a9c4a869ef92'
+  # Do not retain routine Gitleaks SARIF artifacts.
+  GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-slim
+    timeout-minutes: 12
+    outputs:
+      run_extension: ${{ steps.classify.outputs.run_extension }}
+      run_portal: ${{ steps.classify.outputs.run_portal }}
+      run_e2e: ${{ steps.classify.outputs.run_e2e }}
+      force_full: ${{ steps.classify.outputs.force_full }}
+      classification: ${{ steps.classify.outputs.classification }}
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve compare SHAs
+        id: shas
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch — classify against parent when possible; force-full overrides
+            parent="$(git rev-parse HEAD^ 2>/dev/null || true)"
+            if [[ -n "${parent}" ]]; then
+              echo "base=${parent}" >> "$GITHUB_OUTPUT"
+            else
+              echo "base=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            fi
+            echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Classify changes
+        id: classify
+        env:
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_full == 'true' }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [[ "${FORCE_FULL}" == "true" ]]; then
+            extra+=(--force-full)
+          fi
+          node scripts/ci-classify-changes.mjs \
+            --base "${{ steps.shas.outputs.base }}" \
+            --head "${{ steps.shas.outputs.head }}" \
+            "${extra[@]}"
+
+      # gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Owner-local context contract
+        run: bash scripts/ci-context-contract.sh
+
+      - name: Public topology scan
+        run: bash scripts/ci-public-topology-scan.sh
+
+      # actions/upload-artifact@v4 — classification only (tiny)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-classification
+          path: ci-classification/classification.json
+          retention-days: 3
+
+  extension:
+    name: extension
+    needs: guard
+    if: needs.guard.outputs.run_extension == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      e2e_executed: ${{ steps.e2e_proof.outputs.e2e_executed }}
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Verify in-repo pulse packages
+        run: bash scripts/ci-verify-pulse-packages.sh
+
+      - name: Confirm package layout (RPR-6 no-op link)
+        run: bash scripts/ci-link-streamclone-packages.sh
+
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          # Node 22: pulse-core package tests use --experimental-strip-types;
+          # portal already on 22. Keep workspaces on one supported LTS.
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Credential-free clean-checkout proof
+        run: bash scripts/ci-clean-checkout-proof.sh
+
+      - name: Build in-repo packages
+        run: npm run build:packages
+
+      - name: Package unit tests
+        run: npm run test:packages
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package tarball allowlist
+        run: npm run pack:packages:check
+
+      - name: Package tarball consumer acceptance
+        run: npm run pack:packages:consumer
+
+      - name: Public-source readiness
+        run: npm run check:public-source-readiness
+
+      - name: Build
+        run: npm run build
+
+      - name: Content bundle budget
+        run: npm run check:bundle-budget
+
+      - name: Package validation
+        run: |
+          set -euo pipefail
+          node --check scripts/zip-dist.mjs
+          node --check scripts/validate-extension-package.mjs
+          node --check scripts/extension-package-lib.mjs
+          node --check scripts/extension-target.mjs
+          node --check scripts/package-extension-target.mjs
+          node --check scripts/zip-byte-validate.mjs
+          node --check scripts/remote-code-scan.mjs
+          node --check scripts/extension-permission-allowlists.mjs
+          npm run zip
+          npm run validate:package
+          VERSION="$(node -p "require('./package.json').version")"
+          ZIP="streampulse-extension-development-${VERSION}.zip"
+          test -f "$ZIP"
+          test -f "${ZIP}.sha256"
+          echo "ZIP_SHA256=$(cut -d' ' -f1 "${ZIP}.sha256")"
+          mapfile -t ZIP_ENTRIES < <(unzip -Z1 "$ZIP")
+          echo "ZIP_ENTRY_COUNT=${#ZIP_ENTRIES[@]}"
+          printf '%s\n' "${ZIP_ENTRIES[@]:0:40}"
+          # Do not upload routine CWS ZIPs or dist artifacts.
+
+      - name: Install Playwright Chromium
+        if: needs.guard.outputs.run_e2e == 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Mocked extension E2E
+        id: e2e_run
+        if: needs.guard.outputs.run_e2e == 'true'
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
+
+      # Positive proof only after the E2E step completes successfully (or skipped when not required).
+      - name: Record E2E execution proof
+        id: e2e_proof
+        if: always() && !cancelled()
+        run: |
+          set -euo pipefail
+          required='${{ needs.guard.outputs.run_e2e }}'
+          if [[ "${required}" == "true" ]]; then
+            # Step result is success only when the mocked E2E command exited 0.
+            if [[ "${{ steps.e2e_run.outcome }}" == "success" ]]; then
+              echo "e2e_executed=true" >> "$GITHUB_OUTPUT"
+              echo "e2e_executed=true"
+            else
+              echo "e2e_executed=false" >> "$GITHUB_OUTPUT"
+              echo "e2e_executed=false (e2e outcome=${{ steps.e2e_run.outcome }})"
+              exit 1
+            fi
+          else
+            echo "e2e_executed=skipped" >> "$GITHUB_OUTPUT"
+            echo "e2e_executed=skipped"
+          fi
+
+      - name: Store-target package validation
+        run: |
+          set -euo pipefail
+          # Rebuilds dist for each store target; keep after E2E so mocked tests use development dist.
+          VERSION="$(node -p "require('./package.json').version")"
+          npm run package:cws
+          npm run package:edge
+          test -f "streampulse-extension-cws-${VERSION}.zip"
+          test -f "streampulse-extension-edge-${VERSION}.zip"
+          test -f "streampulse-extension-cws-${VERSION}.zip.sha256"
+          test -f "streampulse-extension-edge-${VERSION}.zip.sha256"
+          # Restore development dist for any later local inspection.
+          npm run build
+          # Do not upload store ZIPs.
+
+      # actions/upload-artifact@v4 — failure evidence only
+      - name: Upload Playwright failure evidence
+        if: failure() && needs.guard.outputs.run_e2e == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: extension-e2e-evidence
+          path: |
+            test-results/extension/
+            playwright-report/extension/
+          retention-days: 3
+
+  portal:
+    name: portal
+    needs: guard
+    if: needs.guard.outputs.run_portal == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: streampulse-web
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Verify in-repo pulse packages
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/ci-verify-pulse-packages.sh
+
+      - name: Confirm package layout (RPR-6 no-op link)
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/ci-link-streamclone-packages.sh
+
+      # actions/setup-node@v4 — root workspaces first so packages can build dist/
+      # Prefer Node 22 LTS (dependency-supported) for portal CI.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            streampulse-web/package-lock.json
+
+      - name: Install and build in-repo packages
+        working-directory: ${{ github.workspace }}
+        run: |
+          npm ci
+          bash scripts/ci-clean-checkout-proof.sh
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
+      - run: npm run check:analytics-overlap
+      - name: npm audit (portal) with high-severity disposition
+        run: |
+          set -euo pipefail
+          # Two high findings (react-router RSC CSRF GHSA-qwww-vcr4-c8h2) are
+          # dispositioned in docs/evidence/npm-audit-rpr6-2026-07.md — portal is
+          # a classic Vite SPA (no RSC). Do not silently ignore new highs.
+          npm audit --json > /tmp/portal-npm-audit.json || true
+          node ../scripts/ci-portal-npm-audit-disposition.mjs /tmp/portal-npm-audit.json
+      - run: npm run build:ci
+
+  # Stable future branch-protection context. Do not activate protection in this batch.
+  final:
+    name: CI
+    needs: [guard, extension, portal]
+    if: always()
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-classification
+          path: ci-classification
+
+      - name: Evaluate final gate
+        run: |
+          set -euo pipefail
+          e2e_proof='${{ needs.extension.outputs.e2e_executed }}'
+          # When extension job is skipped, Actions yields empty output — treat as skipped proof.
+          if [[ -z "${e2e_proof}" ]]; then
+            e2e_proof='skipped'
+          fi
+          node scripts/ci-final-gate.mjs \
+            --guard "${{ needs.guard.result }}" \
+            --classification ci-classification/classification.json \
+            --extension "${{ needs.extension.result }}" \
+            --portal "${{ needs.portal.result }}" \
+            --e2e-executed "${e2e_proof}"

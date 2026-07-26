@@ -1,0 +1,288 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
+@import '@fontsource/inter/900.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/*
+ * Scoped Tailwind preflight for `.sc-analytics-console` only.
+ * MUST come before @tailwind utilities — without border-style: solid,
+ * every `border` / `border-b` utility renders invisible (width only).
+ */
+.sc-analytics-console,
+.sc-analytics-console *,
+.sc-analytics-console *::before,
+.sc-analytics-console *::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: currentColor;
+}
+
+.sc-analytics-console :where(button, input, optgroup, select, textarea) {
+  font: inherit;
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  /* Without this, Windows/Chrome UA `buttonface` bleeds through every unstyled
+   * rail row, legend chip, and tab — white text on a light gray button. */
+  background-color: transparent;
+  background-image: none;
+}
+
+.sc-analytics-console :where(button, select) {
+  text-transform: none;
+  cursor: pointer;
+}
+
+.sc-analytics-console :where(button, [type='button'], [type='reset'], [type='submit']) {
+  appearance: button;
+  -webkit-appearance: button;
+}
+
+.sc-analytics-console :where(input, select, textarea) {
+  cursor: auto;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.sc-analytics-console {
+  --sc-console-bg: #050507;
+  --sc-console-surface: rgba(255, 255, 255, 0.025);
+  --sc-console-border: rgba(255, 255, 255, 0.07);
+  background-color: var(--sc-console-bg);
+  color: #e4e4e7;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.sc-analytics-console img,
+.sc-analytics-console svg {
+  display: block;
+  max-width: 100%;
+}
+
+.sc-analytics-console table {
+  border-collapse: collapse;
+}
+
+.sc-analytics-console ul,
+.sc-analytics-console ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sc-analytics-console .sc-console-scroll,
+.sc-analytics-console .sc-moment-list {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar-button,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar-thumb,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar-thumb {
+  display: none;
+  background: transparent;
+}
+
+.sc-analytics-console .sc-console-scroll::-webkit-scrollbar-track,
+.sc-analytics-console .sc-moment-list::-webkit-scrollbar-track {
+  display: none;
+  background: transparent;
+}
+
+.sc-analytics-console :is(.overflow-y-auto, .overflow-x-auto, .overflow-auto) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sc-analytics-console :is(.overflow-y-auto, .overflow-x-auto, .overflow-auto)::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/*
+ * Chart axis labels live in @streamclone/pulse-charts and use Tailwind fill-* utilities on
+ * SVG <text>. SVG paint uses fill, not color — when those utilities are missing, labels
+ * render black on the dark plot. Keep explicit fallbacks even with pulse-charts in the
+ * Tailwind content scan (same pattern as provider badges below).
+ */
+.sc-analytics-console .sc-chart-root text.fill-cyan-400 { fill: rgb(34 211 238); }
+.sc-analytics-console .sc-chart-root text.fill-cyan-400\/80 { fill: rgb(34 211 238 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-cyan-400\/70 { fill: rgb(34 211 238 / 0.7); }
+.sc-analytics-console .sc-chart-root text.fill-cyan-300\/90 { fill: rgb(103 232 249 / 0.9); }
+.sc-analytics-console .sc-chart-root text.fill-zinc-300\/80 { fill: rgb(212 212 216 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-zinc-500 { fill: rgb(113 113 122); }
+.sc-analytics-console .sc-chart-root text.fill-violet-300\/80 { fill: rgb(196 181 253 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-violet-400\/50 { fill: rgb(167 139 250 / 0.5); }
+.sc-analytics-console .sc-chart-root text.fill-emerald-300\/70 { fill: rgb(110 231 183 / 0.7); }
+.sc-analytics-console .sc-chart-root text.fill-emerald-300\/80 { fill: rgb(110 231 183 / 0.8); }
+.sc-analytics-console .sc-chart-root text.fill-emerald-400\/50 { fill: rgb(52 211 153 / 0.5); }
+
+/* Provider pills — explicit styles so portal Tailwind scan cannot miss dynamic tones. */
+.sc-analytics-console .sc-emote-provider-badge {
+  display: inline-flex;
+  align-items: center;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sc-analytics-console .sc-emote-provider-badge[data-provider='seventv'] {
+  color: rgb(110 231 183);
+  background-color: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.sc-analytics-console .sc-emote-provider-badge[data-provider='twitch'] {
+  color: rgb(196 181 253);
+  background-color: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+.sc-analytics-console .sc-emote-provider-badge[data-provider='ffz'] {
+  color: rgb(125 211 252);
+  background-color: rgba(14, 165, 233, 0.15);
+  border-color: rgba(14, 165, 233, 0.25);
+}
+
+.sc-analytics-console .sc-emote-provider-badge[data-provider='bttv'] {
+  color: rgb(252 211 77);
+  background-color: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.sc-analytics-console .sc-emote-provider-badge[data-provider='unknown'] {
+  color: rgb(161 161 170);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* Figma Make loading pane — ghost chart bars, teal progress, staggered bullets */
+.sc-analytics-console .sc-loading-ghost-bar {
+  opacity: 0.18;
+  transform-origin: bottom center;
+}
+
+.sc-analytics-console .sc-loading-ghost-bar--animate {
+  animation: sc-console-bar-breathe 1.8s ease-in-out infinite;
+}
+
+.sc-analytics-console .sc-loading-live-dot {
+  animation: sc-console-live-ping 1.8s ease-in-out infinite;
+}
+
+.sc-analytics-console .sc-loading-progress {
+  box-shadow: 0 0 12px rgba(78, 205, 196, 0.35);
+}
+
+.sc-analytics-console .sc-loading-bullet {
+  opacity: 0;
+  animation: sc-console-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes sc-console-bar-breathe {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+    opacity: 0.1;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 0.32;
+  }
+}
+
+@keyframes sc-console-live-ping {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.55;
+  }
+}
+
+@keyframes sc-console-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-analytics-console .sc-loading-ghost-bar--animate,
+  .sc-analytics-console .sc-loading-live-dot,
+  .sc-analytics-console .sc-loading-bullet {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+.sc-analytics-console .sc-loading-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(24, 24, 27, 0.95) 0%,
+    rgba(78, 205, 196, 0.12) 50%,
+    rgba(24, 24, 27, 0.95) 100%
+  );
+  background-size: 200% 100%;
+  animation: sc-console-shimmer 2s ease-in-out infinite;
+}
+
+@keyframes sc-console-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-analytics-console .sc-loading-skeleton {
+    animation: none;
+    background: rgba(24, 24, 27, 0.95);
+  }
+}

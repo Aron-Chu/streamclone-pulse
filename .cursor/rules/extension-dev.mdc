@@ -1,0 +1,25 @@
+---
+description: Extension dev auto-reload — keep npm run dev running while editing src/
+globs: src/**,vite.config.ts,manifest.json
+alwaysApply: false
+---
+
+# Extension dev auto-reload
+
+When changing the Chrome MV3 extension (`src/`, `vite.config.ts`, `manifest.json`):
+
+1. Run **`npm run dev`** (reload server on `:9876` + Vite watch build) for interactive work, **or** run **`npm run build`** after each agent edit batch.
+2. Load unpacked once from **`dist/`** in `chrome://extensions`.
+3. On each save, dist rebuilds and the extension service worker + open Twitch tab refresh automatically (`npm run dev` only).
+
+**Agents:** after applying extension changes, always run **`npm run build`** (and `npm test` when relevant) before handing off. Chrome does not read `src/` directly — only `dist/`.
+
+One-time setup per browser profile: enable the dev build from `dist/`. After that, leave `npm run dev` running during extension work.
+
+Production builds (`npm run build`) omit dev reload — `__EXTENSION_DEV_RELOAD__` is false and localhost `:9876` polling is stripped.
+
+If auto-reload stops working:
+
+- Confirm reload server: `curl http://127.0.0.1:9876/health`
+- Reload the unpacked extension once after manifest permission changes
+- Use `npm run dev:watch` only when you want rebuild-without-auto-reload

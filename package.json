@@ -1,0 +1,64 @@
+{
+  "name": "streamclone-pulse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev-extension-watch.mjs",
+    "build": "vite build && node scripts/write-extension-build-provenance.mjs",
+    "build:packages": "npm run build -w @streampulse/pulse-core && npm run build -w @streampulse/pulse-charts && npm run build -w @streampulse/analytics-console",
+    "ensure:packages": "node scripts/ensure-packages-built.mjs",
+    "test:packages": "npm run ensure:packages && npm run test --workspaces --if-present",
+    "pack:packages:check": "node scripts/check-package-tarball.mjs",
+    "pack:packages:consumer": "node scripts/check-package-tarball-consumer.mjs",
+    "prove:clean-checkout": "node scripts/prove-clean-checkout.mjs",
+    "typecheck": "npm run ensure:packages && npx tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test --project=extension-mocked",
+    "test:e2e:mocked": "playwright test --project=extension-mocked",
+    "test:e2e:live": "playwright test --project=live-twitch",
+    "capture:extension-goldens": "npx tsx scripts/capture-extension-goldens.mts",
+    "icons:cws": "node scripts/gen-cws-icons.mjs",
+    "capture:cws:mocked": "npm run icons:cws && npm run build && playwright test tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts --project=extension-mocked",
+    "zip": "node scripts/zip-dist.mjs --target=development",
+    "validate:package": "node scripts/validate-extension-package.mjs --target=development",
+    "validate:package:cws": "node scripts/validate-extension-package.mjs --target=cws",
+    "validate:package:edge": "node scripts/validate-extension-package.mjs --target=edge",
+    "package:development": "node scripts/package-extension-target.mjs development",
+    "package:cws": "node scripts/package-extension-target.mjs cws",
+    "package:edge": "node scripts/package-extension-target.mjs edge",
+    "check:bundle-budget": "node scripts/check-extension-bundle-budget.mjs",
+    "check:public-source-readiness": "node scripts/check-public-source-readiness.mjs"
+  },
+  "dependencies": {
+    "@streampulse/pulse-charts": "file:packages/pulse-charts",
+    "@streampulse/pulse-core": "file:packages/pulse-core",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "overrides": {
+    "@streampulse/pulse-charts": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/chrome": "^0.0.287",
+    "@types/jsdom": "^28.0.3",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@types/yauzl": "^3.4.0",
+    "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "^29.1.1",
+    "rollup": "^4.43.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "3.2.7",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1"
+  }
+}

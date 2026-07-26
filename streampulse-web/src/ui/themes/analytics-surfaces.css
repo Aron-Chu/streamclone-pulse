@@ -1,0 +1,135 @@
+/*
+ * Analytics semantic surface tokens (--sp-*).
+ *
+ * RULE: No new rgba(255,255,255,…) backgrounds on cards, rows, chips, or panels
+ * in streampulse-web/src/ui/components/analytics. Use --sp-surface-* tokens.
+ *
+ * Surface-tier usage (hub audit HUB-AUDIT-030 / HUB-AUDIT-033):
+ * - Page canvas → --sp-bg
+ * - Top-level cards/sections (Pulse Moments shell, figma-block) → --sp-surface-1 / --fma-panel
+ * - Nested containers (leaderboard body, inspector, economy embed) → --sp-surface-2
+ * - Rows/chips at rest (peak rows, burst list items) → --sp-surface-3
+ * - Hover → --sp-surface-3-hover; selected/active → --sp-surface-active
+ * - Borders: default --sp-border; emphasis/hover/active only → --sp-border-strong
+ */
+@import './analytics-themes/command-center.css';
+
+.figma-analytics {
+  --sp-green: #4ade80;
+  --sp-amber: #fbbf24;
+  --sp-cyan: #22d3ee;
+  --sp-red: #f87171;
+
+  --sp-provider-7tv: #86EFAC;
+  --sp-provider-twitch: #8B5CF6;
+  --sp-provider-bttv: #FB7185;
+  --sp-provider-ffz: #FBBF24;
+
+  --sp-type-label: 0.6875rem;
+  --sp-type-meta: 0.72rem;
+  --sp-type-body: 0.8125rem;
+  --sp-type-title-sm: 0.875rem;
+  --sp-type-title: 1.0625rem;
+  --sp-type-display: clamp(1.35rem, 2.2vw, 1.7rem);
+  --sp-leading-body: 1.4;
+  --sp-tracking-label: 0.06em;
+
+  --sp-radius-sm: 4px;
+  --sp-radius-md: 8px;
+  --sp-radius-lg: 10px;
+  --sp-radius-xl: 12px;
+  --sp-chart-fill-opacity: 0.12;
+  --sp-chart-stroke-width: 1.5;
+
+  --fma-font: Inter, system-ui, sans-serif;
+  --fma-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  --fma-bg: var(--sp-bg);
+  --fma-nav-bg: rgba(9, 9, 11, 0.94);
+  --fma-panel: var(--sp-surface-1);
+  --fma-panel-alt: var(--sp-surface-2);
+  --fma-border: var(--sp-border);
+  --fma-border-accent: var(--sp-border-strong);
+  --fma-accent: var(--sp-accent);
+  --fma-accent-bg: var(--sp-accent-bg);
+  --fma-accent-text: var(--sp-accent-strong);
+  --fma-accent-dim: var(--sp-accent-dim);
+  --fma-green: var(--sp-green);
+  --fma-cyan: var(--sp-cyan);
+  --fma-amber: var(--sp-amber);
+  --fma-red: var(--sp-red);
+  --fma-text: var(--sp-text);
+  --fma-sub: var(--sp-text-muted);
+  --fma-muted: var(--sp-text-faint);
+  --fma-dim: var(--sp-surface-2);
+}
+
+/* Embedded hub chart inherits analytics shell tokens + font */
+.figma-analytics .hubx {
+  font-family: var(--fma-font);
+  --font-mono: var(--fma-mono);
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --muted: 240 10% 3.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --border: 240 3.7% 15.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --chart-1: 172 48% 52%;
+  --chart-2: 280 65% 68%;
+  --chart-3: 160 84% 45%;
+  --chart-4: 43 96% 56%;
+  --chart-5: 347 89% 65%;
+  --chart-bar: 258 42% 58%;
+  --sp-chart-viewers: 210 12% 78%;
+  --sp-chart-chat: 258 42% 58%;
+  /* Warm amber — kept away from purple chat bars and white viewer line. */
+  --sp-chart-emotes: 38 92% 62%;
+  --hx-bg: var(--sp-bg);
+  --hx-accent: var(--sp-accent);
+  --hx-accent-text: var(--sp-accent-strong);
+  --hx-accent-bg: var(--sp-accent-bg);
+  --hx-accent-dim: var(--sp-accent-dim);
+  --hx-panel: var(--sp-surface-1);
+  --hx-border-accent: var(--sp-border-strong);
+}
+
+.figma-analytics .hubx .hx-chart-actions,
+.figma-analytics .hubx .hx-legend,
+.figma-analytics .hubx .hx-range-tabs button {
+  font-family: var(--fma-font);
+  font-size: var(--sp-type-meta);
+}
+
+.figma-analytics .hubx .hx-chart2 {
+  background: var(--sp-surface-inset);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sp-border) 55%, transparent);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='7tv'],
+.figma-analytics .figma-burst-list__provider[data-provider='seventv'] {
+  color: var(--sp-provider-7tv);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='twitch'] {
+  color: var(--sp-provider-twitch);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='bttv'] {
+  color: var(--sp-provider-bttv);
+}
+
+.figma-analytics .figma-burst-list__provider[data-provider='ffz'] {
+  color: var(--sp-provider-ffz);
+}
+
+/*
+ * Design-system drift classification (P3-027):
+ * - Token definitions: --sp-* / --fma-* aliases in this file and command-center.css
+ * - Legacy rgba grids in figma-analytics.css / hub.css — decorative backgrounds only; migrate opportunistically
+ * - Dead/mockup: __mockups__/, unused Figma parity stubs — do not treat as production violations
+ * - Active surfaces: hub rail, figma session dashboard, analytics console embed — use --sp-surface-* for new panels
+ */

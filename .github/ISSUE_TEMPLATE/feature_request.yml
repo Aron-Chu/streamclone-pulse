@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an improvement scoped to Pulse extension or portal
+title: "[feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep requests scoped to one user-facing outcome. Backend BFF changes belong in private streampulse-backend.
+        Do not request activation of diagnostics/support/analytics as “on by default.”
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      placeholder: What pain point does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Extension overlay / sidebar
+        - Extension Options
+        - Portal analytics hub
+        - Portal support / privacy pages
+        - Packaging / store listing
+        - Docs / governance
+    validations:
+      required: true

@@ -1,0 +1,38 @@
+---
+description: Public repo boundary — never commit hosted production topology or operator runbooks
+alwaysApply: true
+---
+
+# Public repo boundary (Streamclone Pulse)
+
+This repository is **extension source, portal UI, product docs, and contracts only**.
+
+## Never commit to this public repo
+
+- Production host IPs (`141.11.243.*`, `23.173.152.*`, or similar)
+- SSH fingerprints, `root@…` accounts, or private key path names used for production
+- Private ops checkout paths, production env file paths, or live env values
+- Operator runbooks with host topology or SSH instructions
+- VPS deploy/smoke scripts that embed production access details
+
+## Where hosted ops live
+
+**Private streampulse-ops** — deploy, secrets, SSH probes, promotion manifests, soak evidence.
+
+Cross-read streamclone [`docs/hosted-production-ops.md`](https://github.com/Aron-Chu/streamclone/blob/master/docs/hosted-production-ops.md) for the public contract.
+
+## Safe public checks
+
+```bash
+curl -fsS https://api.streampulse.stream/v1/extension/health
+curl -fsS https://api.streampulse.stream/v1/public/status
+```
+
+Local StreamPulse BFF: `curl http://localhost:8081/v1/extension/health`.
+`localhost:8090` is watch-only and not an extension or portal BFF.
+
+## When adding docs
+
+Use generic labels: `legacy-rollback-host`, `hosted-production-vps`, `private-streampulse-ops-checkout`.
+
+Do not reintroduce resolvable infrastructure names as SSH/deploy targets.

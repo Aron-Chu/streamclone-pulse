@@ -1,0 +1,23 @@
+---
+description: Portal Command Center uses main streamclone-pulse checkout (hub worktree retired)
+globs:
+  - streampulse-web/**
+  - docs/website-portal/**
+alwaysApply: false
+---
+
+# Portal checkout (post hub merge)
+
+`wip/hub-landing` merged in PR #25. **Do not** use `streamclone-pulse-hub` for portal Vite.
+
+| Task | Checkout | Branch |
+|------|----------|--------|
+| `/analytics`, Command Center, portal QA | `C:\Users\Aron\streamclone-pulse` | `master` (or feature branch) |
+| Extension `src/` overlay | same checkout | same |
+
+```bash
+cd C:/Users/Aron/streamclone-pulse/streampulse-web
+npm run dev   # or npm run dev:hosted
+```
+
+See `docs/contributing-wip-split.md` and `docs/website-portal/local-dev-runbook.md`.

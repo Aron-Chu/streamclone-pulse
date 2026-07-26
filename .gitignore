@@ -1,0 +1,30 @@
+node_modules/
+dist/
+*.zip
+*.zip.sha256
+.DS_Store
+
+# Local env / secrets (never commit)
+.env
+.env.*
+!.env.example
+*.local
+.env.local
+
+# Playwright (uploaded by CI on failure; never commit)
+test-results/
+playwright-report/
+playwright/.cache/
+*.webm
+**/trace.zip
+
+_overlay*.tsx*
+_split_overlay.*
+.overlay-full.patch
+
+# Local release / CWS prep artifacts (never commit)
+.artifacts/
+listing-assets/
+
+# Uncertified / operator-regenerated CWS capture outputs (not the approved mocked RC set)
+docs/pulse-extension/cws-screenshots/

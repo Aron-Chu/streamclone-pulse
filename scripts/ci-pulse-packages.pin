@@ -1,0 +1,3 @@
+# Exact reviewed streampulse-backend commit that seeded in-repo packages/*
+# (RPR-6 provenance). CI no longer checks out this private repo for builds.
+f663d002ff22351629dcaa9ed770a9c4a869ef92

@@ -1,0 +1,11 @@
+StreamPulse in-repo packages
+============================
+
+The packages under packages/ (pulse-core, pulse-charts, analytics-console)
+were extracted from a private Pulse Go monorepo commit
+f663d002ff22351629dcaa9ed770a9c4a869ef92 for RPR-6 public ownership in
+streamclone-pulse.
+
+Copyright holders and third-party notices from that provenance commit remain
+applicable. Licensed under the Apache License, Version 2.0 — see each
+package LICENSE file.

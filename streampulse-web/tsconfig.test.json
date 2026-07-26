@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "types": ["vite/client", "vitest/globals", "node"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "tests",
+    "src/vite-env.d.ts",
+    "scripts/fixtures/analytics-overlap-contract.d.mts",
+    "scripts/check-backend-url.d.mts"
+  ]
+}

@@ -1,0 +1,54 @@
+---
+description: Streamclone Pulse / StreamPulse guardrails — read product docs before code
+globs: src/**,docs/pulse-extension/**,docs/website-portal/**,streampulse-web/**
+alwaysApply: true
+---
+
+# Streamclone Pulse & StreamPulse
+
+Cursor-specific guardrails. Generic routing stays in [`AGENTS.md`](../../AGENTS.md).
+
+## Read docs before code
+
+Before changing extension, portal, coverage, backfill, or hosted API behavior, read:
+
+- [`docs/pulse-extension/live-coverage-requirements.md`](../../docs/pulse-extension/live-coverage-requirements.md)
+- [`docs/website-portal/design.md`](../../docs/website-portal/design.md)
+- [`docs/website-portal/analytics-command-center-layout.md`](../../docs/website-portal/analytics-command-center-layout.md)
+- [`docs/website-portal/tasks.md`](../../docs/website-portal/tasks.md)
+- [`docs/website-portal/local-dev-runbook.md`](../../docs/website-portal/local-dev-runbook.md) — before starting portal Vite (hosted-first, restart after branch switch)
+
+Backend changes → sibling **streamclone** checkout (`../twitch-7tv-clone`); implement Go APIs there, not in this repo.
+
+## Guardrails (non-negotiable)
+
+- No unauthenticated `/watch`
+- No raw chat exposed to extension or portal
+- No client-side Pulse scoring
+- No fake progress (coverage/backfill UI must match backend state)
+- No full timeline fetch on live polling
+- Backend coverage, peaks, sync, and backfill states are source of truth
+- D1 is user state only — never rollups, raw chat, VOD chat, TwitchTracker, or corpus data
+- No production topology (host IPs, SSH paths, operator runbooks) in docs/agents — private **streampulse-ops** only
+
+## Cursor surfaces (this repo)
+
+| Surface | Path | Use |
+|---------|------|-----|
+| Rules | `.cursor/rules/` | Always-on Cursor behavior |
+| Skills | `.cursor/skills/` | Reusable workflows (`coverage-triage`, `streamclone-task-runner`, …) |
+| Subagents | `.cursor/agents/` | Three reviewers only — do not spawn a swarm |
+| Hooks | `.cursor/hooks.json` | Lightweight lint/format/secret guards |
+
+## Backend targeting
+
+- **StreamPulse website / portal (`streampulse-web`, `/analytics`, website portal docs) uses hosted API by default:** `https://api.streampulse.stream`.
+- Never switch portal dev, QA screenshots, hub checks, emote verification, or extension API checks to `http://localhost:8090`. Use the hosted API by default or the explicit local StreamPulse BFF at `http://localhost:8081`.
+- Before portal work, check `streampulse-web/.env.development.local`, `/setup`, and `sessionStorage.sp.backendUrlOverride`; if any points at `localhost:8090`, switch back to hosted or warn before relying on hub/moment/emote data.
+- Local `http://localhost:8090` is Streamclone watch-only; it is never the extension or portal BFF.
+- **Hosted production promotion** is not the Streamclone registry path: see streamclone [`production-promotion-contract.md`](../../../twitch-7tv-clone/docs/production-promotion-contract.md) and [image exit audit](../../docs/pulse-extension/evidence/streamclone-image-exit-audit-2026-07.md). Pre-cutover private ops may still pin `streamclone/*` source images.
+- Content scripts: `chrome.runtime.sendMessage` only — no `fetch`.
+- **Analytics surfaces:** no new `rgba(255,255,255,…)` backgrounds on cards, rows, chips, or panels under `streampulse-web/src/ui/components/analytics`. Use `--sp-surface-*` tokens from `streampulse-web/src/ui/themes/analytics-surfaces.css`.
+- **Hub landing (`/analytics`):** readability reformat only — real sidebar anchors, honest KPIs from `/v1/public/hub`, no mock-only/disabled nav, no duplicate live rail + tracked table + trust pipeline blocks.
+- **Hub Pulse Moments (embedded):** table + side **Moment inspector** stay side-by-side; KPI row is one line (Emotes/Chat/Viewers); **Selected minute emotes** fills the remaining side-column height. Do not put moment inspector in the chart rail on hub landing. Layout contract: [`docs/website-portal/analytics-command-center-layout.md`](../../docs/website-portal/analytics-command-center-layout.md).
+- **Chart rail inspector:** default footer is **Top live by activity**; bucket modes use **Top streamers this bucket** with optimistic live-pool streamers on click (no blank wait). Do not remove range footer or revert to provider mix.

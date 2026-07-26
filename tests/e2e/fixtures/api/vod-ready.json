@@ -1,0 +1,41 @@
+{
+  "mode": "vod",
+  "vodId": "2806037629",
+  "streamId": "stream-fixture-prev",
+  "channelLogin": "fixturechan",
+  "channelDisplayName": "fixturechan",
+  "title": "Fixture VOD ready",
+  "startedAt": "2026-07-10T12:00:00.000Z",
+  "durationSeconds": 3600,
+  "coverageStatus": "ready",
+  "coverageMessage": "Replay Pulse ready",
+  "fullAnalyticsUrl": "https://streampulse.stream/analytics",
+  "timeline": {
+    "bucketSeconds": 60,
+    "points": [
+      { "offsetSeconds": 60, "chatPerMin": 40, "emotesPerMin": 12, "viewers": 800, "score": 40 },
+      { "offsetSeconds": 120, "chatPerMin": 90, "emotesPerMin": 30, "viewers": 900, "score": 80 }
+    ]
+  },
+  "topMoments": [
+    {
+      "offsetSeconds": 120,
+      "label": "Chat spike",
+      "reason": "emote burst",
+      "score": 80,
+      "chatPerMin": 90,
+      "emotesPerMin": 30
+    }
+  ],
+  "topEmotes": [
+    {
+      "name": "Kappa",
+      "count": 100,
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "provider": "twitch"
+    }
+  ],
+  "games": [
+    { "gameName": "Just Chatting", "offsetSeconds": 0, "durationSeconds": 3600 }
+  ]
+}

@@ -1,0 +1,112 @@
+import {
+  buildMomentScoreModel,
+  computeMomentScore100,
+  computeStreamBaselines,
+  detectPickReason,
+  heatmapEmotesFromRollup,
+  momentScoreReasonLabel,
+  topEmotesFromRollup,
+  type RollupEmoteHit,
+} from '@streampulse/pulse-core'
+import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../apiTypes.ts'
+import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../types/heatmap.ts'
+import { minuteEmoteTotal } from '../components/analytics/chartRollupUtils.ts'
+import { buildTwitchVodUrl, type VodLinkState } from './twitchVodUrl.ts'
+import { formatVodOffset, rollupOffsetSeconds } from './consoleFormat.ts'
+import { resolveMomentEmotesForOffset } from './recapEmoteEnrich.ts'
+import { recapEmotesToRollupHits } from './momentRowDisplay.ts'
+
+export interface SelectedMomentDisplay {
+  offsetSeconds: number
+  offsetStr: string
+  vodUrl?: string
+  scoreModel: ReturnType<typeof buildMomentScoreModel>
+  momentEmotes: RollupEmoteHit[]
+  activityLine: string
+  gameName: string | null
+}
+
+export function buildSelectedMomentDisplay({
+  rollup,
+  rollups,
+  startedAt,
+  vodLinkState,
+  topEmotesCatalog,
+  heatmapPoint,
+  heatmapDetail,
+  heatmapPoints,
+  recapMoment,
+  gameName = null,
+}: {
+  rollup: AnalyticsMinuteRollup
+  rollups: AnalyticsMinuteRollup[]
+  startedAt?: string
+  vodLinkState: VodLinkState
+  topEmotesCatalog?: AnalyticsTopEmote[]
+  heatmapPoint?: ReplayHeatmapPoint | null
+  heatmapDetail?: ReplayHeatmapDetailPoint | null
+  heatmapPoints?: ReplayHeatmapPoint[]
+  recapMoment?: PulseRecapMoment | null
+  gameName?: string | null
+}): SelectedMomentDisplay {
+  const baselines = computeStreamBaselines(rollups)
+  let offsetSeconds = 0
+  let offsetStr = ''
+  if (startedAt) {
+    offsetSeconds = rollupOffsetSeconds(rollup, startedAt)
+    offsetStr = formatVodOffset(offsetSeconds)
+  }
+
+  const fallbackReason = detectPickReason(rollup, baselines, topEmotesCatalog)
+  const scoreModel = buildMomentScoreModel({
+    heatmapPoint,
+    heatmapDetail,
+    fallbackScore100: computeMomentScore100(rollup, baselines, rollups),
+    fallbackReason,
+    fallbackTopEmotes: heatmapEmotesFromRollup(rollup, 5, topEmotesCatalog),
+  })
+
+  // When this minute is a Pulse Moments row, prefer that row's score/reason/emotes
+  // so Selected Moment and the rail cannot disagree for the same highlight.
+  if (recapMoment && Number.isFinite(recapMoment.score)) {
+    const reason = recapMoment.reasons?.[0]?.trim() || scoreModel.reason || 'manual'
+    scoreModel.score = Math.max(0, Math.min(100, Math.round(recapMoment.score)))
+    scoreModel.label = `${scoreModel.score}/100`
+    scoreModel.reason = reason
+    scoreModel.reasonLabel = momentScoreReasonLabel(reason)
+    scoreModel.estimated = false
+  }
+
+  const fromPulse =
+    recapMoment && startedAt
+      ? resolveMomentEmotesForOffset({
+          moment: recapMoment,
+          rollups,
+          streamStartedAt: startedAt,
+          heatmapPoints,
+          topEmotesCatalog,
+          limit: 3,
+        })
+      : []
+  const momentEmotes: RollupEmoteHit[] =
+    fromPulse.length > 0
+      ? recapEmotesToRollupHits(fromPulse, topEmotesCatalog)
+      : topEmotesFromRollup(rollup, 3, topEmotesCatalog)
+
+  const vodUrl =
+    vodLinkState.status === 'linked' && vodLinkState.vodId
+      ? buildTwitchVodUrl(vodLinkState.vodId, offsetSeconds)
+      : undefined
+  const chatCount = rollup.chatCount ?? 0
+  const emoteCount = minuteEmoteTotal(rollup)
+
+  return {
+    offsetSeconds,
+    offsetStr,
+    vodUrl,
+    scoreModel,
+    momentEmotes,
+    activityLine: `${chatCount} chat · ${emoteCount} emotes`,
+    gameName: gameName?.trim() || null,
+  }
+}

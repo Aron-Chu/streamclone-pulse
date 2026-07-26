@@ -1,0 +1,214 @@
+.pulse-landing-panel.sl-ext {
+  --xp-accent: #a78bfa;
+  --xp-strong: #8b5cf6;
+  --xp-soft: #c4b5fd;
+  --xp-rgb: 139, 92, 246;
+  --xp-on: #ffffff;
+
+  position: relative;
+  z-index: 1;
+  width: min(100%, 340px);
+  max-width: 340px;
+  height: min(72vh, 640px);
+  margin-inline: auto;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  background: #111117;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 24px 60px -28px rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.pulse-landing-panel,
+.pulse-landing-shell,
+.pulse-landing-scrollport,
+.pulse-landing-scroll {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* Animated tour: never native-scroll inside the panel (page scroll drives the tour). */
+.pulse-landing-panel[data-tour-active] .pulse-landing-scrollport,
+.pulse-landing-panel[data-tour-active] .pulse-landing-scroll,
+.pulse-landing-panel[data-tour-active] .sl-ext__scrollport,
+.pulse-landing-panel[data-tour-active] .sl-ext__scroll {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sl-xtour:not([data-static]) .pulse-landing-panel .pulse-landing-scrollport,
+.sl-xtour:not([data-static]) .pulse-landing-panel .pulse-landing-scroll,
+.sl-xtour:not([data-static]) .pulse-landing-panel .sl-ext__scrollport,
+.sl-xtour:not([data-static]) .pulse-landing-panel .sl-ext__scroll {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pulse-landing-panel .pulse-landing-scrollport,
+.pulse-landing-panel .pulse-landing-scrollport.is-playing,
+.pulse-landing-panel .sl-ext__scrollport {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pulse-landing-panel[data-tour-active] .pulse-panel-body,
+.pulse-landing-panel[data-tour-active] .pulse-no-scrollbar {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+.pulse-landing-panel .pulse-landing-scrollport::-webkit-scrollbar,
+.pulse-landing-panel .pulse-landing-scroll::-webkit-scrollbar,
+.pulse-landing-panel .sl-ext__scrollport::-webkit-scrollbar,
+.pulse-landing-panel .sl-ext__scroll::-webkit-scrollbar {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+}
+
+.sl-xtour[data-static] .pulse-landing-panel .pulse-landing-scrollport,
+.sl-xtour[data-static] .pulse-landing-panel .sl-ext__scrollport {
+  overflow: hidden !important;
+}
+
+.sl-xtour[data-static] .pulse-landing-panel .pulse-landing-scroll,
+.sl-xtour[data-static] .pulse-landing-panel .sl-ext__scroll {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pulse-landing-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: #fafafc;
+  font-family: var(--sc-font);
+}
+
+.pulse-landing-shell .pulse-sidebar-tabs-wrap {
+  flex-shrink: 0;
+  padding: 8px 8px 0;
+}
+
+.pulse-landing-header {
+  flex-shrink: 0;
+  padding: 4px 10px 0;
+}
+
+.pulse-landing-scrollport {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.pulse-landing-scroll {
+  padding: 8px 10px 12px;
+  min-width: 0;
+}
+
+.pulse-landing-panel .sl-ext__scroll.is-playing,
+.pulse-landing-panel[data-tour-active] .sl-ext__scroll {
+  --panel-y: 0;
+  transform: translate3d(0, calc(var(--panel-y, 0) * -1px), 0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.pulse-landing-tour-step.sl-ext__card {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  padding: 2px;
+  min-width: 0;
+}
+
+/* Old demo card focus — dim + scale inactive, smooth 450ms crossfade */
+.pulse-landing-panel .sl-ext__scroll.is-playing > [data-tour-step] {
+  opacity: 0.45;
+  transform: scale(0.985);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease,
+    border-color 0.45s ease,
+    box-shadow 0.45s ease;
+}
+
+.pulse-landing-panel .sl-ext__scroll.is-playing > [data-tour-step].is-live {
+  opacity: 1;
+  transform: none;
+  border-color: rgba(var(--xp-rgb, 139, 92, 246), 0.56);
+  box-shadow:
+    0 0 0 1px rgba(var(--xp-rgb, 139, 92, 246), 0.34),
+    0 16px 40px -22px rgba(var(--xp-rgb, 139, 92, 246), 0.7);
+}
+
+.pulse-landing-panel .pulse-sparkline-wrap svg {
+  shape-rendering: geometricPrecision;
+}
+
+.pulse-landing-panel .pulse-no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pulse-landing-panel .pulse-no-scrollbar::-webkit-scrollbar {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+.pulse-landing-panel .pulse-past-vod-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pulse-landing-panel .pulse-past-vod-actions {
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-start;
+}
+
+.pulse-landing-panel .pulse-past-vod-main,
+.pulse-landing-panel .pulse-past-vod-title,
+.pulse-landing-panel .pulse-section-card,
+.pulse-landing-panel .pulse-panel-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pulse-landing-scrollhint {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.35rem 1rem 0.75rem;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.sl-xtour__stage .pulse-landing-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.sl-xtour__panel {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+}

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pulse Moments Live — layout mockups (visual only)</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --panel: rgba(255,255,255,0.03);
+      --border: rgba(255,255,255,0.08);
+      --text: #f4f4f5;
+      --sub: #a1a1aa;
+      --accent: #818cf8;
+      --green: #4ade80;
+      --cyan: #22d3ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    p.note { color: var(--sub); font-size: 0.85rem; max-width: 48rem; margin-bottom: 2rem; }
+    section { margin-bottom: 3rem; }
+    h2 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.75rem; }
+    .mock {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 1rem;
+      max-width: 1100px;
+    }
+    .chart { height: 120px; border: 1px dashed var(--border); border-radius: 10px; display: grid; place-items: center; color: var(--sub); margin-bottom: 0.75rem; }
+    .grid-a { display: grid; grid-template-columns: 1.5fr 1fr; gap: 0.75rem; }
+    .grid-b { display: flex; flex-direction: column; gap: 0.75rem; }
+    .mini { padding: 0.65rem; border: 1px solid var(--border); border-radius: 10px; font-size: 0.75rem; color: var(--sub); }
+    .row { display: grid; grid-template-columns: 1.5rem 4rem 5rem 2.5rem 1fr 3rem 3rem; gap: 0.5rem; padding: 0.45rem; border-radius: 8px; font-size: 0.72rem; }
+    .row.active { background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.35); }
+    .emote-bar { display: flex; gap: 0.35rem; margin: 0.5rem 0; }
+    .chip { width: 2rem; height: 2rem; border-radius: 8px; border: 1px solid var(--border); background: #111; }
+  </style>
+</head>
+<body>
+  <h1>Pulse Moments Live — layout options</h1>
+  <p class="note">Visual mockups only. Placeholder data — not wired to `/analytics`. Implemented direction: Variant A.</p>
+
+  <section>
+    <h2>Variant A — Chart first, moments below, inspector right (implemented)</h2>
+    <div class="mock grid-b">
+      <div class="chart">Global activity chart</div>
+      <div class="emote-bar"><span class="chip"></span><span class="chip"></span><span class="chip"></span><span class="chip"></span></div>
+      <div class="grid-a">
+        <div>
+          <div class="row active"><span>1</span><span>00:18</span><span>Jynxzi</span><span>99</span><span>7TV emote burst</span><span>LOL</span><span>Synced</span></div>
+          <div class="row"><span>2</span><span>01:13</span><span>Jynxzi</span><span>96</span><span>Chat surge</span><span>RT</span><span>Partial</span></div>
+        </div>
+        <div>
+          <div class="mini">Moment inspector · Jump to VOD · Open session</div>
+          <div class="mini">Top emote bursts</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Variant B — Chart + mini selected moment summary</h2>
+    <div class="mock grid-b">
+      <div class="chart">Global activity chart</div>
+      <div class="mini">Selected: 01:13:08 · Jynxzi · Score 96 · PogChamp · Jump to VOD</div>
+      <div class="row active"><span>1</span><span>00:18</span><span>Jynxzi</span><span>99</span><span>7TV cascade</span><span>KEKW</span><span>Synced</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Variant C — Dense terminal table + emote bar</h2>
+    <div class="mock">
+      <div class="emote-bar"><span class="chip"></span><span class="chip"></span><span class="chip"></span></div>
+      <div class="row active"><span>1</span><span>00:18:34</span><span>Jynxzi</span><span>99</span><span>Chat + emote spike</span><span>KEKW</span><span>97%</span></div>
+      <div class="row"><span>2</span><span>01:13:08</span><span>Jynxzi</span><span>96</span><span>Viewer jump</span><span>PogChamp</span><span>Synced</span></div>
+    </div>
+  </section>
+</body>
+</html>

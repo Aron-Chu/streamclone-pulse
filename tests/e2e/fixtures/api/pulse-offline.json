@@ -1,0 +1,163 @@
+{
+  "login": "fixturechan",
+  "isLive": false,
+  "tracking": false,
+  "streamId": "stream-fixture-prev",
+  "vodId": "2806037629",
+  "startedAt": "2026-07-10T12:00:00.000Z",
+  "endedAt": "2026-07-10T16:00:00.000Z",
+  "title": "Previous stream",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 0,
+  "coverageStartOffsetSeconds": 0,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 0,
+    "coverageEndOffsetSeconds": 14400,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Channel offline"
+  },
+  "topEmotes": [
+    {
+      "name": "Kappa",
+      "count": 120,
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "provider": "twitch"
+    },
+    {
+      "name": "LUL",
+      "count": 84,
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0",
+      "provider": "twitch"
+    }
+  ],
+  "rollups": [
+    { "offsetSeconds": 0, "chatCount": 40, "totalEmoteCount": 12, "sevenTvEmoteCount": 6, "viewerCount": 900, "topEmotes": [] },
+    { "offsetSeconds": 3600, "chatCount": 80, "totalEmoteCount": 28, "sevenTvEmoteCount": 14, "viewerCount": 1100, "topEmotes": [] },
+    { "offsetSeconds": 7200, "chatCount": 140, "totalEmoteCount": 50, "sevenTvEmoteCount": 24, "viewerCount": 1400, "topEmotes": [] },
+    { "offsetSeconds": 10800, "chatCount": 180, "totalEmoteCount": 70, "sevenTvEmoteCount": 32, "viewerCount": 1600, "topEmotes": [] },
+    { "offsetSeconds": 14400, "chatCount": 220, "totalEmoteCount": 90, "sevenTvEmoteCount": 40, "viewerCount": 1700, "topEmotes": [] }
+  ],
+  "fullRollups": [
+    { "offsetSeconds": 0, "chatCount": 40, "totalEmoteCount": 12, "sevenTvEmoteCount": 6, "viewerCount": 900, "topEmotes": [] },
+    { "offsetSeconds": 1800, "chatCount": 55, "totalEmoteCount": 18, "sevenTvEmoteCount": 9, "viewerCount": 980, "topEmotes": [] },
+    { "offsetSeconds": 3600, "chatCount": 80, "totalEmoteCount": 28, "sevenTvEmoteCount": 14, "viewerCount": 1100, "topEmotes": [] },
+    { "offsetSeconds": 5400, "chatCount": 95, "totalEmoteCount": 34, "sevenTvEmoteCount": 16, "viewerCount": 1200, "topEmotes": [] },
+    { "offsetSeconds": 7200, "chatCount": 140, "totalEmoteCount": 50, "sevenTvEmoteCount": 24, "viewerCount": 1400, "topEmotes": [] },
+    { "offsetSeconds": 9000, "chatCount": 160, "totalEmoteCount": 58, "sevenTvEmoteCount": 28, "viewerCount": 1500, "topEmotes": [] },
+    { "offsetSeconds": 10800, "chatCount": 180, "totalEmoteCount": 70, "sevenTvEmoteCount": 32, "viewerCount": 1600, "topEmotes": [] },
+    { "offsetSeconds": 12600, "chatCount": 200, "totalEmoteCount": 80, "sevenTvEmoteCount": 36, "viewerCount": 1650, "topEmotes": [] },
+    { "offsetSeconds": 14400, "chatCount": 220, "totalEmoteCount": 90, "sevenTvEmoteCount": 40, "viewerCount": 1700, "topEmotes": [] }
+  ],
+  "lanes": {
+    "composite": [0.4, 0.6, 0.8],
+    "chat": [0.3, 0.5, 0.7],
+    "seventv": [0.2, 0.4, 0.6],
+    "viewers": [900, 1400, 1700]
+  },
+  "peaks": [
+    {
+      "offsetSeconds": 7200,
+      "score": 92,
+      "reasons": ["chat_spike"],
+      "reasonLabel": "Chat spike",
+      "dominantSignal": "chat",
+      "chatCount": 140,
+      "emoteCount": 50
+    },
+    {
+      "offsetSeconds": 10800,
+      "score": 86,
+      "reasons": ["emote_spike"],
+      "reasonLabel": "Emote spike",
+      "dominantSignal": "emote",
+      "chatCount": 180,
+      "emoteCount": 70
+    }
+  ],
+  "recap": {
+    "streamId": "stream-fixture-prev",
+    "login": "fixturechan",
+    "vodId": "2806037629",
+    "durationSeconds": 14400,
+    "totalMessages": 9000,
+    "peakChatPerMin": 220,
+    "topMoments": [
+      {
+        "offsetSeconds": 7200,
+        "score": 92,
+        "reasons": ["chat_spike"],
+        "chatCount": 140,
+        "emoteCount": 50,
+        "viewerCount": 1400
+      },
+      {
+        "offsetSeconds": 10800,
+        "score": 86,
+        "reasons": ["emote_spike"],
+        "chatCount": 180,
+        "emoteCount": 70,
+        "viewerCount": 1600
+      },
+      {
+        "offsetSeconds": 3600,
+        "score": 78,
+        "reasons": ["chat_spike"],
+        "chatCount": 80,
+        "emoteCount": 28,
+        "viewerCount": 1100
+      }
+    ],
+    "topEmotes": [
+      {
+        "code": "Kappa",
+        "count": 120,
+        "provider": "twitch",
+        "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0"
+      },
+      {
+        "code": "LUL",
+        "count": 84,
+        "provider": "twitch",
+        "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/1.0"
+      }
+    ],
+    "biggestChatSpike": {
+      "offsetSeconds": 14400,
+      "chatPerMin": 220
+    },
+    "funniestEmoteBurst": {
+      "offsetSeconds": 10800,
+      "code": "Kappa",
+      "count": 40
+    },
+    "clipCandidates": [
+      {
+        "offsetSeconds": 7200,
+        "score": 92,
+        "reasons": ["chat_spike"],
+        "chatCount": 140,
+        "emoteCount": 50
+      }
+    ],
+    "emoteEnrichmentStatus": "complete"
+  },
+  "games": [
+    {
+      "gameName": "League of Legends",
+      "offsetSeconds": 0,
+      "durationSeconds": 9000
+    },
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 9000,
+      "durationSeconds": 5400
+    }
+  ]
+}

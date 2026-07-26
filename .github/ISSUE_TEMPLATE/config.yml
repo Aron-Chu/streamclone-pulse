@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Privacy / legal
+    url: mailto:privacy@streampulse.stream
+    about: Verified contact for privacy and legal inquiries only.
+  - name: Security reporting
+    url: https://github.com/Aron-Chu/streamclone-pulse/blob/master/SECURITY.md
+    about: Read SECURITY.md — do not post exploit details in public issues. No PVR claim.

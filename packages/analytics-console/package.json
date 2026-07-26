@@ -1,0 +1,55 @@
+{
+  "name": "@streampulse/analytics-console",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    },
+    "./analytics-chart-motion.css": "./analytics-chart-motion.css"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "analytics-chart-motion.css"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@streampulse/pulse-charts": "*",
+    "@streampulse/pulse-core": "*",
+    "@tanstack/react-query": "^5.90.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^7.9.0",
+    "zustand": "^5.0.0"
+  },
+  "dependencies": {
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@streampulse/pulse-charts": "file:../pulse-charts",
+    "@streampulse/pulse-core": "file:../pulse-core",
+    "@tanstack/react-query": "^5.90.2",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "^7.9.1",
+    "typescript": "6.0.3",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "streamclone-codegraph": {
+      "command": "wsl.exe",
+      "args": ["--cd", "../twitch-7tv-clone", "bash", "scripts/codegraph-mcp.sh"]
+    },
+    "streamclone-pulse-codegraph": {
+      "command": "wsl.exe",
+      "args": ["--cd", "../twitch-7tv-clone", "bash", "scripts/codegraph-pulse-mcp.sh"]
+    },
+    "streamclone-stack": {
+      "command": "wsl.exe",
+      "args": ["--cd", "../twitch-7tv-clone", "bash", "scripts/stack-mcp.sh"]
+    },
+    "streamclone-data": {
+      "command": "wsl.exe",
+      "args": ["--cd", "../twitch-7tv-clone", "bash", "scripts/data-mcp.sh"]
+    },
+    "streamclone-hosted-data": {
+      "command": "wsl.exe",
+      "args": ["--cd", "../twitch-7tv-clone", "bash", "scripts/hosted-data-mcp.sh"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}

@@ -1,0 +1,177 @@
+/**
+ * Public published-clip read contract (P3).
+ * Must NOT use beta-key `/v1/pulse/clips` candidate queue.
+ * Only server-approved, playback-verified items may render.
+ */
+
+export interface HubPublicClipReaction {
+  name: string
+  provider?: string
+  imageUrl?: string
+}
+
+export interface HubPublicClip {
+  id: string
+  login: string
+  displayName?: string
+  title: string
+  thumbnailUrl: string
+  playbackUrl: string
+  durationSeconds: number
+  publishedAt: string
+  topReaction?: HubPublicClipReaction
+  analyticsHref?: string
+  vodHref?: string
+}
+
+/** Private / candidate-queue fields that must never appear on public clips. */
+const REJECT_PRIVATE_KEYS = [
+  'status',
+  'candidateId',
+  'workerState',
+  'betaKey',
+  'jobId',
+  'renderToken',
+  'internalPath',
+] as const
+
+const TWITCH_VOD_HOSTS = new Set(['www.twitch.tv', 'twitch.tv', 'm.twitch.tv'])
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function hasCredentials(url: URL): boolean {
+  return Boolean(url.username || url.password)
+}
+
+/**
+ * Same-origin StreamPulse analytics path only.
+ * Accepts absolute https://streampulse.stream/analytics/... or relative /analytics/...
+ * Rejects protocol-relative, javascript:, foreign hosts, and non-analytics paths.
+ * Returns null when invalid — callers must omit the link (never rewrite destinations).
+ */
+export function sanitizeAnalyticsHref(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const raw = value.trim()
+  if (!raw) return undefined
+
+  // Protocol-relative and non-path schemes are never safe to render as analytics links.
+  if (
+    raw.startsWith('//') ||
+    (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith('https://') && !raw.startsWith('/'))
+  ) {
+    return undefined
+  }
+
+  try {
+    if (raw.startsWith('/')) {
+      if (!raw.startsWith('/analytics/') && raw !== '/analytics') return undefined
+      if (raw.includes('\\') || raw.includes('\0')) return undefined
+      return raw
+    }
+
+    const url = new URL(raw)
+    // Absolute analytics links must be HTTPS on the canonical host with no explicit port.
+    if (url.protocol !== 'https:' || url.port) return undefined
+    if (hasCredentials(url)) return undefined
+    const host = url.hostname.toLowerCase()
+    if (host !== 'streampulse.stream' && host !== 'www.streampulse.stream') return undefined
+    if (!url.pathname.startsWith('/analytics/') && url.pathname !== '/analytics') return undefined
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * HTTPS Twitch VOD destination only.
+ * Returns null when invalid — callers must omit the link (never rewrite destinations).
+ */
+export function sanitizeTwitchVodHref(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const raw = value.trim()
+  if (!raw || raw.startsWith('//')) return undefined
+
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:') return undefined
+    if (hasCredentials(url)) return undefined
+    if (!TWITCH_VOD_HOSTS.has(url.hostname.toLowerCase())) return undefined
+    // /videos/<id> or /<login>/video/<id> or /<login>/v/<id>
+    const path = url.pathname
+    const vodPath =
+      /^\/videos\/\d+\/?$/i.test(path) ||
+      /^\/[a-z0-9_]{2,25}\/(video|v)\/\d+\/?$/i.test(path)
+    if (!vodPath) return undefined
+    return url.toString()
+  } catch {
+    return undefined
+  }
+}
+
+export function normalizeHubPublicClip(raw: unknown): HubPublicClip | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  const id = typeof row.id === 'string' ? row.id.trim() : ''
+  const login = typeof row.login === 'string' ? row.login.trim().toLowerCase() : ''
+  const title = typeof row.title === 'string' ? row.title.trim() : ''
+  const thumbnailUrl = typeof row.thumbnailUrl === 'string' ? row.thumbnailUrl.trim() : ''
+  const playbackUrl = typeof row.playbackUrl === 'string' ? row.playbackUrl.trim() : ''
+  const publishedAt = typeof row.publishedAt === 'string' ? row.publishedAt.trim() : ''
+  const durationSeconds = Number(row.durationSeconds)
+  if (!id || !login || !title || !thumbnailUrl || !playbackUrl || !publishedAt) return null
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return null
+  if (!isHttpUrl(thumbnailUrl) || !isHttpUrl(playbackUrl)) return null
+  // Reject private candidate / job fields if accidentally present.
+  for (const key of REJECT_PRIVATE_KEYS) {
+    if (key in row) return null
+  }
+  const reactionRaw = row.topReaction
+  let topReaction: HubPublicClipReaction | undefined
+  if (reactionRaw && typeof reactionRaw === 'object' && !Array.isArray(reactionRaw)) {
+    const r = reactionRaw as Record<string, unknown>
+    const name = typeof r.name === 'string' ? r.name.trim() : ''
+    if (name) {
+      topReaction = {
+        name,
+        provider: typeof r.provider === 'string' ? r.provider : undefined,
+        imageUrl: typeof r.imageUrl === 'string' ? r.imageUrl : undefined,
+      }
+    }
+  } else if (reactionRaw != null) {
+    return null
+  }
+
+  const analyticsHref = sanitizeAnalyticsHref(row.analyticsHref)
+  const vodHref = sanitizeTwitchVodHref(row.vodHref)
+
+  return {
+    id,
+    login,
+    displayName: typeof row.displayName === 'string' ? row.displayName : undefined,
+    title,
+    thumbnailUrl,
+    playbackUrl,
+    durationSeconds,
+    publishedAt,
+    topReaction,
+    ...(analyticsHref ? { analyticsHref } : {}),
+    ...(vodHref ? { vodHref } : {}),
+  }
+}
+
+export function normalizeHubPublicClips(raw: unknown): HubPublicClip[] {
+  if (!Array.isArray(raw)) return []
+  const out: HubPublicClip[] = []
+  for (const item of raw) {
+    const clip = normalizeHubPublicClip(item)
+    if (clip) out.push(clip)
+  }
+  return out
+}

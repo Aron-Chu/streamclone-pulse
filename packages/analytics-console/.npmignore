@@ -1,0 +1,8 @@
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/tests/**
+**/*.map
+.env*
+package-lock.json

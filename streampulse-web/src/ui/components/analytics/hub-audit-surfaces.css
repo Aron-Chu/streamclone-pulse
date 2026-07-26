@@ -1,0 +1,49 @@
+/* Hub audit — emote scope markers, freshness captions, share disclosure */
+
+.figma-panel--scope-global {
+  border-left: 3px solid var(--sp-cyan);
+}
+
+.figma-panel--scope-provider {
+  border-left: 3px solid var(--sp-provider-7tv);
+}
+
+.figma-panel--scope-minute {
+  border-left: 3px solid var(--sp-amber);
+}
+
+.figma-panel__head-meta--scope {
+  font-size: var(--sp-type-label);
+  color: var(--fma-muted);
+}
+
+.figma-economy-grid--padded {
+  padding-top: 0.65rem;
+}
+
+.hub-freshness-caption,
+.figma-global-activity__freshness {
+  font-size: var(--sp-type-label);
+  color: var(--fma-muted);
+  white-space: nowrap;
+}
+
+.figma-global-activity__chart-refresh {
+  color: var(--fma-muted);
+  font-size: var(--sp-type-label);
+}
+
+.figma-burst-list__share-est {
+  margin-left: 0.2rem;
+  font-size: var(--sp-type-label);
+  color: var(--fma-muted);
+  text-decoration: none;
+  cursor: help;
+  border-bottom: 1px dotted var(--sp-border-strong);
+}
+
+.figma-global-activity__freshness::before {
+  content: '·';
+  margin-right: 0.35rem;
+  color: var(--fma-muted);
+}

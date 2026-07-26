@@ -1,0 +1,19 @@
+StreamPulse / streamclone-pulse
+Copyright 2026 Aron-Chu and StreamPulse contributors
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file in the repository root.
+
+Third-party and in-repo package attribution
+-------------------------------------------
+Public in-repo workspaces under packages/ (@streampulse/pulse-core,
+@streampulse/pulse-charts, @streampulse/analytics-console) are owned by
+streamclone-pulse (RPR-6 source ownership). Each package ships LICENSE +
+NOTICE. Aggregate package provenance and third-party notices: packages/NOTICE
+(also copied into extension ZIPs as third-party-notices.txt).
+
+Provenance pin: private Pulse Go monorepo commit
+f663d002ff22351629dcaa9ed770a9c4a869ef92 (extraction source only; that
+monorepo no longer owns these packages).
+
+Verified public mailbox: privacy@streampulse.stream only.

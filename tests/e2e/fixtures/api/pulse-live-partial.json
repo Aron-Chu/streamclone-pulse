@@ -1,0 +1,67 @@
+{
+  "login": "fixturechan",
+  "isLive": true,
+  "tracking": true,
+  "streamId": "stream-fixture-1",
+  "vodId": null,
+  "startedAt": "2026-07-11T19:50:00.000Z",
+  "title": "Fixture partial tracking",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 600,
+  "coverageStartOffsetSeconds": 240,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "partial_tracking",
+    "coverageStartOffsetSeconds": 240,
+    "coverageEndOffsetSeconds": 600,
+    "hasFullStreamCoverage": false,
+    "trackedFromStart": false,
+    "hasGaps": false,
+    "canBackfill": true,
+    "message": "Partial tracking — joined after stream start"
+  },
+  "topEmotes": [],
+  "rollups": [
+    {
+      "offsetSeconds": 480,
+      "chatCount": 12,
+      "totalEmoteCount": 3,
+      "sevenTvEmoteCount": 1,
+      "viewerCount": 80,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 540,
+      "chatCount": 20,
+      "totalEmoteCount": 5,
+      "sevenTvEmoteCount": 2,
+      "viewerCount": 90,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 600,
+      "chatCount": 28,
+      "totalEmoteCount": 8,
+      "sevenTvEmoteCount": 3,
+      "viewerCount": 95,
+      "topEmotes": []
+    }
+  ],
+  "lanes": {
+    "composite": [0.2, 0.25, 0.3],
+    "chat": [0.15, 0.2, 0.25],
+    "seventv": [0.1, 0.15, 0.2],
+    "viewers": [80, 90, 95]
+  },
+  "peaks": [],
+  "recap": null,
+  "games": [
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 0,
+      "durationSeconds": 600
+    }
+  ]
+}
