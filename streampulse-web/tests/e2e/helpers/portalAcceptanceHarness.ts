@@ -590,16 +590,15 @@ export async function installPortalAcceptanceHarness(
 
   await seedBetaKey(page)
 
+  // Count mock API / asset hits only in the route handler below — do not
+  // double-count via page.on('request') (that broke catalog/summary spam asserts).
   page.on('request', (request: Request) => {
     const url = request.url()
     try {
       const u = new URL(url)
       if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'about:') return
       if (ALLOWED_NAV_HOSTS.has(u.hostname)) return
-      if (MOCK_API_HOSTS.has(u.hostname) || isAllowedAssetHost(u.hostname)) {
-        counter.record(url)
-        return
-      }
+      if (MOCK_API_HOSTS.has(u.hostname) || isAllowedAssetHost(u.hostname)) return
       // Navigations to Twitch from anchors are asserted via href, not fetched.
       if (u.hostname.endsWith('twitch.tv') && request.isNavigationRequest()) return
       unexpected.push(url)
@@ -786,7 +785,33 @@ export async function installPortalAcceptanceHarness(
       emotes30d.setFallback({ kind: 'json', body })
     },
     async advancePoll(ms = 30_000) {
-      await page.clock.fastForward(ms)
+      const statusSuffix = `/streams/${PORTAL_STREAM_ID}/status`
+      const waitStatus = page
+        .waitForResponse(
+          (res) => {
+            try {
+              const u = new URL(res.url())
+              return MOCK_API_HOSTS.has(u.hostname) && u.pathname.endsWith(statusSuffix)
+            } catch {
+              return false
+            }
+          },
+          // Short: terminal linked stops status polling — do not block 15s.
+          { timeout: 2_500 },
+        )
+        .catch(() => null)
+      // Prefer runFor when available so React Query intervals fire under fake timers.
+      const clock = page.clock as {
+        runFor?: (ms: number) => Promise<void>
+        fastForward: (ms: number) => Promise<void>
+      }
+      if (typeof clock.runFor === 'function') {
+        await clock.runFor(ms)
+      } else {
+        await clock.fastForward(ms)
+      }
+      await waitStatus
+      await page.waitForTimeout(100)
     },
   }
 

@@ -417,17 +417,29 @@ function portalChannelEmotesToCatalog(emotes: PortalChannelEmoteRow[]): Analytic
   return out
 }
 
+/** Session-scoped: full timeline enrich once; live tails must not re-hit 30d catalog. */
+const portalChannelEmotesCatalogInflight = new Map<string, Promise<AnalyticsTopEmote[]>>()
+
 async function fetchPortalChannelEmotesCatalog(login: string): Promise<AnalyticsTopEmote[]> {
   const channel = login.trim()
   if (!channel) return []
-  try {
-    const { data } = await apiClient<{ topEmotes?: PortalChannelEmoteRow[] }>(
-      portalPath(`/channels/${encodeURIComponent(channel)}/emotes?range=30d`),
-    )
-    return portalChannelEmotesToCatalog(data.topEmotes ?? [])
-  } catch {
-    return []
-  }
+  const key = channel.toLowerCase()
+  const existing = portalChannelEmotesCatalogInflight.get(key)
+  if (existing) return existing
+  const pending = (async () => {
+    try {
+      const { data } = await apiClient<{ topEmotes?: PortalChannelEmoteRow[] }>(
+        portalPath(`/channels/${encodeURIComponent(channel)}/emotes?range=30d`),
+      )
+      return portalChannelEmotesToCatalog(data.topEmotes ?? [])
+    } catch {
+      // Allow a later retry after a hard failure.
+      portalChannelEmotesCatalogInflight.delete(key)
+      return []
+    }
+  })()
+  portalChannelEmotesCatalogInflight.set(key, pending)
+  return pending
 }
 
 function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {

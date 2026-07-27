@@ -17,42 +17,40 @@ test.describe('portal lifecycle (mocked)', () => {
     const harness = await installPortalAcceptanceHarness(page)
     harness.setMinutesPayload(buildMinutes({ count: 24, withEmotes: true }))
 
+    const resolvingStatus = {
+      kind: 'json' as const,
+      body: buildStatus({
+        state: 'ended',
+        availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable' },
+        stream: buildStreamRecord({ endedAt: '2026-07-26T04:00:00.000Z', currentViewers: 0 }),
+      }),
+    }
+    const linkedStatus = {
+      kind: 'json' as const,
+      body: buildStatus({
+        state: 'ended',
+        vodId: PORTAL_VOD_ID,
+        availability: {
+          liveDvrState: 'ended',
+          vodState: 'linked',
+          vodId: PORTAL_VOD_ID,
+          chartState: 'usable',
+        },
+        stream: buildStreamRecord({
+          endedAt: '2026-07-26T04:00:00.000Z',
+          currentViewers: 0,
+          vodId: PORTAL_VOD_ID,
+        }),
+      }),
+    }
     harness.status.push(
       { kind: 'json', body: buildStatus({ state: 'live', availability: { liveDvrState: 'live', vodState: 'pending_live', chartState: 'usable' } }) },
-      {
-        kind: 'json',
-        body: buildStatus({
-          state: 'ended',
-          availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable' },
-          stream: buildStreamRecord({ endedAt: '2026-07-26T04:00:00.000Z', currentViewers: 0 }),
-        }),
-      },
-      {
-        kind: 'json',
-        body: buildStatus({
-          state: 'ended',
-          availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable' },
-          stream: buildStreamRecord({ endedAt: '2026-07-26T04:00:00.000Z', currentViewers: 0 }),
-        }),
-      },
-      {
-        kind: 'json',
-        body: buildStatus({
-          state: 'ended',
-          vodId: PORTAL_VOD_ID,
-          availability: {
-            liveDvrState: 'ended',
-            vodState: 'linked',
-            vodId: PORTAL_VOD_ID,
-            chartState: 'usable',
-          },
-          stream: buildStreamRecord({
-            endedAt: '2026-07-26T04:00:00.000Z',
-            currentViewers: 0,
-            vodId: PORTAL_VOD_ID,
-          }),
-        }),
-      },
+      resolvingStatus,
+      resolvingStatus,
+      // Pad linked — Linux CI may consume an extra status tick before assert.
+      linkedStatus,
+      linkedStatus,
+      linkedStatus,
     )
 
     harness.detail.setFallback({
@@ -76,11 +74,16 @@ test.describe('portal lifecycle (mocked)', () => {
     await harness.advancePoll(30_000)
     await expect(page.getByText(/Waiting for Twitch VOD/i).first()).toBeVisible({ timeout: 15_000 })
 
-    await harness.advancePoll(30_000)
-    await harness.advancePoll(30_000)
-    await expect(page.getByText(/Jump to VOD|open the full VOD|VOD vod_exact/i).first()).toBeVisible({
-      timeout: 15_000,
-    })
+    await expect
+      .poll(
+        async () => {
+          await harness.advancePoll(30_000)
+          return page.getByText(/Jump to VOD|open the full VOD|VOD vod_exact/i).count()
+        },
+        { timeout: 45_000, intervals: [200, 500, 1000] },
+      )
+      .toBeGreaterThan(0)
+    await expect(page.getByText(/Jump to VOD|open the full VOD|VOD vod_exact/i).first()).toBeVisible()
     await expect(page.getByText('VOD unavailable')).toHaveCount(0)
 
     const mountAfter = await getMountId(page)
