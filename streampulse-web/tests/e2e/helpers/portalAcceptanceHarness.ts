@@ -263,7 +263,6 @@ export function buildDetail(overrides: Record<string, unknown> = {}) {
   return {
     channel: PORTAL_LOGIN,
     state: 'live',
-    stream,
     sources: [{ source: 'fixture', state: 'ok', label: 'Fixture data' }],
     updatedAt: Date.parse(SYSTEM_TIME_ISO),
     chatCoveragePct: 99.5,
@@ -577,7 +576,7 @@ export async function installPortalAcceptanceHarness(
   streams.setFallback({ kind: 'json', body: streamsPayload })
 
   if (opts?.clock !== false) {
-    await page.clock.install({ systemTime: Date.parse(SYSTEM_TIME_ISO) })
+    await page.clock.install({ time: Date.parse(SYSTEM_TIME_ISO) })
   }
 
   await page.addInitScript(() => {
