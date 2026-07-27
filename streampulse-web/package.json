@@ -31,6 +31,7 @@
     "check:public-pages": "node scripts/check-public-pages.mjs",
     "check:backend-url": "node scripts/check-backend-url.mjs",
     "status:hosted": "node scripts/hosted-status.mjs",
+    "pages:build:prod": "node scripts/pages-build-prod.mjs",
     "pages:deploy:prod": "node scripts/pages-deploy-prod.mjs"
   },
   "dependencies": {
