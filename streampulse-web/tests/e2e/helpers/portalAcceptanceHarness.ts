@@ -856,7 +856,13 @@ export async function getMountId(page: Page): Promise<string> {
 }
 
 export async function openEmotesRail(page: Page): Promise<void> {
-  await page.locator('aside').getByRole('button', { name: /^Emotes$/i }).click()
+  const tab = page.locator('aside').getByRole('button', { name: /^Emotes$/i })
+  await tab.scrollIntoViewIfNeeded()
+  await tab.click()
+  // Right-rail Emotes tab hosts TopEmoteTable (empty or populated).
+  await expect(
+    page.locator('aside').getByText(/No emotes counted|Plot emotes|Clear plots|top emotes/i).first(),
+  ).toBeVisible({ timeout: 15_000 })
 }
 
 export async function setChartViewEmotes(page: Page): Promise<void> {
