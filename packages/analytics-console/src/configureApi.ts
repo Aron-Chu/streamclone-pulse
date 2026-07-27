@@ -56,6 +56,8 @@ export interface StreamSummaryResponse {
 export interface AnalyticsApi {
   ensureChannelEmotes(login: string, twitchId: string, providers?: string[]): Promise<unknown>
   getAnalyticsStream(streamId: string, opts?: AnalyticsStreamOptions): Promise<unknown | null>
+  getStreamStatus?(streamId: string): Promise<unknown | null>
+  getStreamMinutesTail?(streamId: string, afterOffset: number): Promise<unknown | null>
   getStreamSummary?(streamId: string, channel?: string): Promise<StreamSummaryResponse | null>
   getAnalyticsStreams(login: string, limit?: number): Promise<unknown>
   getPulseBookmarks(params?: PulseBookmarkQuery): Promise<unknown>

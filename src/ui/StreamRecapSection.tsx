@@ -520,7 +520,7 @@ function RecapReadyContent({
       <RecapGamesStrip
         games={payload.games}
         durationSeconds={recapDurationSeconds}
-        highlightedKey={hoveredGameKey}
+        highlightedKey={recapChartHighlightedGameKey}
         onHighlightKey={setHoveredGameKey}
         visibleRange={recapVisibleRange}
       />
@@ -696,7 +696,7 @@ function OfflineFallbackContent({
       <RecapGamesStrip
         games={payload.games}
         durationSeconds={recapDurationSeconds}
-        highlightedKey={hoveredGameKey}
+        highlightedKey={recapChartHighlightedGameKey}
         onHighlightKey={setHoveredGameKey}
         visibleRange={recapVisibleRange}
       />

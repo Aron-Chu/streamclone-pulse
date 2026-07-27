@@ -3,6 +3,7 @@ import {
   gameSegmentOverlapsOffsetRange,
   hasMeaningfulGameSegments,
   normalizeGameSegments,
+  resolveGamesPlayedTimelineRange,
   type ChartGameSegment,
   type ChartMinuteRollup,
 } from '@streampulse/pulse-charts'
@@ -80,13 +81,19 @@ export function extensionGamesToChartGames(
   return normalized
 }
 
+/**
+ * Chart-visible offset window. Minute rollups are bucket starts — the last minute
+ * covers `[last, last+60)`, so endOffset is exclusive of the open end of that bucket.
+ */
 export function chartVisibleRangeFromRollups(
   rollups: Array<{ offsetSeconds: number }>,
 ): GamesPlayedVisibleRange | null {
   if (rollups.length === 0) return null
+  const startOffset = rollups[0]!.offsetSeconds
+  const lastOffset = rollups[rollups.length - 1]!.offsetSeconds
   return {
-    startOffset: rollups[0]!.offsetSeconds,
-    endOffset: rollups[rollups.length - 1]!.offsetSeconds,
+    startOffset,
+    endOffset: lastOffset + 60,
   }
 }
 
@@ -96,15 +103,14 @@ export function chartHighlightedGameKey(
   durationSeconds: number,
   visibleRange: GamesPlayedVisibleRange | null,
 ): string | null {
-  if (!hoveredGameKey || !visibleRange) return null
+  if (!hoveredGameKey) return null
   const segments = normalizeGameSegments(games ?? [], durationSeconds)
   const segment = segments.find(game => gameSegmentKey(game) === hoveredGameKey)
   if (!segment) return null
-  return gameSegmentOverlapsOffsetRange(
-    segment,
-    visibleRange.startOffset,
-    visibleRange.endOffset,
-  )
+  // Align with GamesPlayedStrip: prefer chart window, else full stream duration.
+  const range = resolveGamesPlayedTimelineRange(visibleRange, durationSeconds, segments)
+  if (!range) return null
+  return gameSegmentOverlapsOffsetRange(segment, range.startOffset, range.endOffset)
     ? hoveredGameKey
     : null
 }

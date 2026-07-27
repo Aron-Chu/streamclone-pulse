@@ -25,32 +25,38 @@ export interface StreamSummaryMetrics {
 
 export type AnalyticsQualityLabel = 'Good' | 'Partial' | 'Limited' | 'No data'
 
-/** Derive coarse analytics quality label for portal honesty (design §13A.4). */
+/**
+ * Prefer backend-authored analyticsQuality / availability.chartState.
+ * Only fall back to rollup presence when the BFF omitted quality.
+ */
 export function deriveAnalyticsQualityLabel(input: {
   analyticsQuality?: string
   summaryMetrics?: StreamSummaryMetrics
   rollupCount?: number
   chatMessages?: number
   vodId?: string
+  chartState?: string
+  chartUsable?: boolean
 }): AnalyticsQualityLabel {
   const quality = (input.analyticsQuality ?? '').toLowerCase()
-  const coverage = input.summaryMetrics?.data_coverage_pct
-  const syncHealth = (input.summaryMetrics?.sync_health_state ?? '').toLowerCase()
+  const chartState = (input.chartState ?? '').toLowerCase()
   const rollups = input.rollupCount ?? 0
   const hasChat = (input.chatMessages ?? 0) > 0
 
-  if (rollups === 0 && !hasChat && (coverage == null || coverage <= 0)) {
-    return 'No data'
+  if (quality === 'full_pulse') return 'Good'
+  if (quality === 'partial_pulse') return 'Partial'
+  if (quality === 'limited' || quality === 'warming' || quality === 'syncing') return 'Limited'
+
+  if (chartState === 'usable' && input.chartUsable !== false) {
+    return rollups > 0 || hasChat ? 'Partial' : 'Good'
   }
-  if (quality === 'limited' || quality === 'warming' || syncHealth === 'stats_only') {
-    return 'Limited'
-  }
-  if (quality === 'full_pulse' || (coverage != null && coverage >= 80)) {
-    return 'Good'
-  }
-  if (quality === 'partial_pulse' || (coverage != null && coverage >= 40) || rollups > 0) {
-    return 'Partial'
-  }
+  if (chartState === 'limited') return 'Limited'
+  if (chartState === 'warming') return 'Limited'
+  if (chartState === 'unavailable') return 'No data'
+
+  // Legacy fallback when BFF omitted quality — do not invent coverage % thresholds.
+  if (rollups === 0 && !hasChat) return 'No data'
+  if (rollups > 0 || hasChat) return 'Partial'
   return 'No data'
 }
 

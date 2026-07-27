@@ -92,11 +92,19 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
   switch (type) {
     case 'TRACK':
     case 'UNTRACK':
-    case 'GET_COVERAGE':
-    case 'DISCOVER_LIVE_VOD': {
+    case 'GET_COVERAGE': {
       const login = requireLogin(raw.login)
       if (!login) return null
       return { type, login }
+    }
+    case 'DISCOVER_LIVE_VOD': {
+      const login = requireLogin(raw.login)
+      if (!login) return null
+      const streamId =
+        typeof raw.streamId === 'string' && /^\d{6,20}$/.test(raw.streamId.trim())
+          ? raw.streamId.trim()
+          : undefined
+      return streamId ? { type, login, streamId } : { type, login }
     }
     case 'GET_PULSE': {
       const login = requireLogin(raw.login)

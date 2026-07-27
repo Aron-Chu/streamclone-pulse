@@ -28,6 +28,7 @@ import { PulseOverviewChart } from './PulseOverviewChart.tsx'
 import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
+  pruneUnavailableEmoteSelections,
   CHART_WINDOW_OPTIONS,
   chartEmptyMessage,
   chartTimelineWindowLabel,
@@ -443,6 +444,18 @@ export function LiveStatsBand({
     return (payload.topEmotes?.length ? payload.topEmotes : stats.topEmotes).slice(0, PLOT_PICKER_EMOTE_LIMIT)
   }, [payload.topEmotes, rollups, stats.topEmotes])
 
+  useEffect(() => {
+    setSelectedEmoteKeys(current => {
+      const next = pruneUnavailableEmoteSelections(current, topEmotesForChips, rollups, {
+        loading: chartLoading,
+      })
+      if (next.length === current.length && next.every((key, index) => key === current[index])) {
+        return current
+      }
+      return next
+    })
+  }, [topEmotesForChips, rollups, chartLoading])
+
   const selectedEmotesForOverlay = useMemo(
     () =>
       topEmotesForChips.filter(emote => selectedEmoteKeys.includes(emoteSelectionKey(emote))),
@@ -657,7 +670,7 @@ export function LiveStatsBand({
         <GamesPlayedStrip
           games={chartGames}
           durationSeconds={currentOffsetSeconds}
-          highlightedKey={hoveredGameKey}
+          highlightedKey={chartHighlightedGameKeyValue}
           onHighlightKey={setHoveredGameKey}
           visibleRange={visibleRange}
           plotPadLeft={4}
@@ -867,6 +880,7 @@ export function LiveStatsBand({
             sidebarCompact
             selectedPlotColors={selectedPlotColors}
             maxSelected={MAX_PLOTTED_EMOTES}
+            rollupsLoading={chartLoading}
           />
         ) : null}
       </div>

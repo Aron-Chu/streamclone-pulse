@@ -25,6 +25,8 @@ export interface SevenTvEmotePanelProps {
   sidebarCompact?: boolean
   selectedPlotColors?: Record<string, string>
   maxSelected?: number
+  /** True while chart-window rollups are still loading. */
+  rollupsLoading?: boolean
 }
 
 export function SevenTvEmotePanel({

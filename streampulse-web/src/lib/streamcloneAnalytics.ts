@@ -91,6 +91,27 @@ interface PortalPeakObservation {
 type PortalSignalObservations = Record<string, PortalSignalObservation>
 type PortalSignalWatermarks = Record<string, PortalSignalWatermark>
 
+interface PortalCoverageGapRange {
+  fromOffsetSeconds: number
+  toOffsetSeconds: number
+}
+
+interface PortalSessionAvailability {
+  version?: string
+  chartUsable?: boolean
+  chartState?: string
+  coveragePct?: number
+  missingRanges?: PortalCoverageGapRange[]
+  coverageMessage?: string
+  liveDvrState?: string
+  vodState?: string
+  vodId?: string
+  vodMessage?: string
+  backfillState?: string
+  corpusState?: string
+  corpusMessage?: string
+}
+
 interface PortalStreamDetail {
   channel: string
   state: string
@@ -105,6 +126,7 @@ interface PortalStreamDetail {
   dataSourceBadges?: Array<{ source: string; state: string; label?: string }>
   viewerSource?: string
   signalWatermarks?: PortalSignalWatermarks
+  availability?: PortalSessionAvailability
 }
 
 interface PortalMinutePoint {
@@ -199,6 +221,9 @@ interface PortalChannelLiveResponse {
   coverageStartOffsetSeconds?: number
   viewerSource?: string
   signalWatermarks?: PortalSignalWatermarks
+  analyticsQuality?: string
+  chatCoveragePct?: number
+  availability?: PortalSessionAvailability
 }
 
 interface PortalChannelEmoteRow {
@@ -565,7 +590,14 @@ export function portalMinutesToRollups(
   return { rollups, catalog: Array.from(catalogByKey.values()) }
 }
 
-async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean, channelLogin?: string) {
+async function fetchPortalStreamBundle(
+  streamId: string,
+  includeMinutes: boolean,
+  channelLogin?: string,
+  opts?: { enrichChannelEmotes?: boolean; includeSummary?: boolean },
+) {
+  const enrichEmotes = opts?.enrichChannelEmotes === true
+  const includeSummary = opts?.includeSummary !== false && includeMinutes
   const detailPromise = apiClient<PortalStreamDetail>(portalPath(`/streams/${encodeURIComponent(streamId)}`))
   let minutesFetchFailed = false
   const minutesPromise = includeMinutes
@@ -581,13 +613,11 @@ async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean
           return null
         })
     : Promise.resolve(null)
-  const summaryPromise = apiClient<PortalStreamSummary>(
-    portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
-  ).catch(() => null)
-  const channelEmotesPromise =
-    channelLogin?.trim() && !usesLocalAnalyticsRoutes()
-      ? fetchPortalChannelEmotesCatalog(channelLogin.trim())
-      : null
+  const summaryPromise = includeSummary
+    ? apiClient<PortalStreamSummary>(
+        portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
+      ).catch(() => null)
+    : Promise.resolve(null)
 
   const [detailRes, minutesRes, summaryRes] = await Promise.all([
     detailPromise,
@@ -596,9 +626,8 @@ async function fetchPortalStreamBundle(streamId: string, includeMinutes: boolean
   ])
 
   let channelEmotes: AnalyticsTopEmote[] = []
-  if (channelEmotesPromise) {
-    channelEmotes = await channelEmotesPromise
-  } else if (!usesLocalAnalyticsRoutes()) {
+  // Lightweight sparse/status polls must not pull the 30-day channel catalog.
+  if (enrichEmotes && !usesLocalAnalyticsRoutes()) {
     const login =
       channelLogin?.trim()
       || detailRes.data.stream?.login?.trim()
@@ -685,7 +714,28 @@ function portalLiveResponseToAnalytics(
     vodId: data.vodId ?? stream?.vodId,
     syncPhase: data.syncPhase,
     viewerSource: data.viewerSource,
-    coverageStartOffsetSeconds: data.coverageStartOffsetSeconds,
+    coverageStartOffsetSeconds:
+      data.coverageStartOffsetSeconds
+      ?? data.availability?.missingRanges?.[0]?.toOffsetSeconds,
+    analyticsQuality: data.analyticsQuality,
+    chatCoveragePct: data.chatCoveragePct ?? data.availability?.coveragePct,
+    availability: data.availability
+      ? {
+          version: data.availability.version,
+          chartUsable: data.availability.chartUsable,
+          chartState: data.availability.chartState,
+          coveragePct: data.availability.coveragePct ?? data.chatCoveragePct,
+          missingRanges: data.availability.missingRanges,
+          coverageMessage: data.availability.coverageMessage,
+          liveDvrState: data.availability.liveDvrState,
+          vodState: data.availability.vodState,
+          vodId: data.availability.vodId ?? data.vodId ?? stream?.vodId,
+          vodMessage: data.availability.vodMessage,
+          backfillState: data.availability.backfillState,
+          corpusState: data.availability.corpusState,
+          corpusMessage: data.availability.corpusMessage,
+        }
+      : undefined,
     ...(validSignalWatermarks(data.signalWatermarks)
       ? { signalWatermarks: data.signalWatermarks }
       : {}),
@@ -744,14 +794,35 @@ function portalDetailToAnalytics(
     })),
     updatedAt: detail.updatedAt,
     vodId: detail.vodId ?? stream?.vodId,
-    vodAlignSeconds: detail.vodAlignSeconds ?? 0,
+    vodAlignSeconds: typeof detail.vodAlignSeconds === 'number' && Number.isFinite(detail.vodAlignSeconds)
+      ? detail.vodAlignSeconds
+      : undefined,
     syncPhase: detail.syncPhase,
     chatCoveragePct: detail.chatCoveragePct,
     timelineMinutes: rawMinuteCount > 0 ? rawMinuteCount : rollups.length,
     analyticsQuality: summary?.analyticsQuality ?? detail.analyticsQuality,
     viewerSource: detail.viewerSource,
-    coverageStartOffsetSeconds: minutes?.coverageStartOffsetSeconds,
+    coverageStartOffsetSeconds:
+      minutes?.coverageStartOffsetSeconds
+      ?? detail.availability?.missingRanges?.[0]?.toOffsetSeconds,
     minutesUnavailable,
+    availability: detail.availability
+      ? {
+          version: detail.availability.version,
+          chartUsable: detail.availability.chartUsable,
+          chartState: detail.availability.chartState,
+          coveragePct: detail.availability.coveragePct ?? detail.chatCoveragePct,
+          missingRanges: detail.availability.missingRanges,
+          coverageMessage: detail.availability.coverageMessage,
+          liveDvrState: detail.availability.liveDvrState,
+          vodState: detail.availability.vodState,
+          vodId: detail.availability.vodId ?? detail.vodId ?? stream?.vodId,
+          vodMessage: detail.availability.vodMessage,
+          backfillState: detail.availability.backfillState,
+          corpusState: detail.availability.corpusState,
+          corpusMessage: detail.availability.corpusMessage,
+        }
+      : undefined,
     ...(validSignalWatermarks(detail.signalWatermarks ?? minutes?.signalWatermarks)
       ? { signalWatermarks: detail.signalWatermarks ?? minutes?.signalWatermarks }
       : {}),
@@ -768,28 +839,65 @@ export const portalAnalyticsApi: AnalyticsApi = {
   async getAnalyticsStream(streamId: string, opts?: AnalyticsStreamOptions) {
     if (!streamId) return null
     if (usesLocalAnalyticsRoutes()) {
-      try {
-        const params = new URLSearchParams({ sparse: opts?.sparse === false ? 'false' : 'true' })
-        if (opts?.channel) params.set('channel', opts.channel)
-        const { data } = await apiClient<AnalyticsStreamDetail>(
-          analyticsPath(`/streams/${encodeURIComponent(streamId)}?${params.toString()}`),
-        )
-        return data
-      } catch {
-        return null
-      }
+      const params = new URLSearchParams({ sparse: opts?.sparse === false ? 'false' : 'true' })
+      if (opts?.channel) params.set('channel', opts.channel)
+      const { data } = await apiClient<AnalyticsStreamDetail>(
+        analyticsPath(`/streams/${encodeURIComponent(streamId)}?${params.toString()}`),
+      )
+      return data
     }
     const includeMinutes = opts?.sparse !== true
-    try {
-      const bundle = await fetchPortalStreamBundle(streamId, includeMinutes, opts?.channel)
-      return portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary, {
-        includeMinutes,
-        minutesFetchFailed: bundle.minutesFetchFailed,
-        channelEmotes: bundle.channelEmotes,
-      })
-    } catch {
-      return null
+    const bundle = await fetchPortalStreamBundle(streamId, includeMinutes, opts?.channel, {
+      // Full timeline load may enrich identity from the 30-day catalog once.
+      // Sparse status polls must stay lightweight — no catalog, no summary fan-out.
+      enrichChannelEmotes: includeMinutes,
+      includeSummary: includeMinutes,
+    })
+    return portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary, {
+      includeMinutes,
+      minutesFetchFailed: bundle.minutesFetchFailed,
+      channelEmotes: bundle.channelEmotes,
+    })
+  },
+
+  async getStreamStatus(streamId: string) {
+    if (!streamId) return null
+    if (usesLocalAnalyticsRoutes()) return null
+    const { data } = await apiClient<{
+      channel?: string
+      state?: string
+      syncPhase?: string
+      streamId?: string
+      vodId?: string
+      analyticsQuality?: string
+      dataCoveragePct?: number
+      chatCoveragePct?: number
+      updatedAt?: number
+      availability?: PortalSessionAvailability
+    }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`))
+    return data
+  },
+
+  async getStreamMinutesTail(streamId: string, afterOffset: number) {
+    if (!streamId || !Number.isFinite(afterOffset) || afterOffset < 0) return null
+    if (usesLocalAnalyticsRoutes()) return null
+    const params = new URLSearchParams({ afterOffset: String(Math.floor(afterOffset)) })
+    const { data } = await apiClient<PortalStreamMinutesResponse>(
+      portalPath(`/streams/${encodeURIComponent(streamId)}/minutes?${params.toString()}`),
+      { timeoutMs: PORTAL_MINUTES_TIMEOUT_MS },
+    )
+    if (!data?.minutes?.length || !data.startedAt) {
+      return { channel: data?.channel ?? '', state: 'live', rollups: [], topEmotes: [], sources: [], updatedAt: data?.updatedAt ?? Date.now() }
     }
+    const converted = portalMinutesToRollups(data.startedAt, data.minutes)
+    return {
+      channel: data.channel,
+      state: 'live',
+      rollups: converted.rollups,
+      topEmotes: converted.catalog,
+      sources: [],
+      updatedAt: data.updatedAt,
+    } as AnalyticsStreamDetail
   },
 
   async getAnalyticsStreams(login: string, limit = 20): Promise<AnalyticsStreamsResponse> {
@@ -803,7 +911,8 @@ export const portalAnalyticsApi: AnalyticsApi = {
   async getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
     if (usesLocalAnalyticsRoutes()) {
       try {
-        const params = new URLSearchParams({ sparse: 'false' })
+        // Sparse live status — full minute timelines are loaded via session detail, not polled.
+        const params = new URLSearchParams({ sparse: 'true' })
         const { data } = await apiClient<AnalyticsStreamDetail>(
           analyticsPath(`/channels/${encodeURIComponent(login)}/live?${params.toString()}`),
         )

@@ -13,6 +13,7 @@ import {
   hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
   PLOT_PICKER_EMOTE_LIMIT,
+  pruneUnavailableEmoteSelections,
   toggleEmotePlotKeys,
 } from './chatActivityEmotes.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
@@ -121,6 +122,20 @@ export function RecapTimelineChart({
     if (fromRollups.length > 0) return fromRollups
     return catalog.filter(emote => (emote.count ?? 0) > 0).slice(0, PLOT_PICKER_EMOTE_LIMIT)
   }, [minuteRollups, catalog])
+
+  const timelineLoadingFlag = timelineLoading || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))
+
+  useEffect(() => {
+    setSelectedEmoteKeys(current => {
+      const next = pruneUnavailableEmoteSelections(current, topEmotesForPicker, minuteRollups, {
+        loading: timelineLoadingFlag,
+      })
+      if (next.length === current.length && next.every((key, index) => key === current[index])) {
+        return current
+      }
+      return next
+    })
+  }, [topEmotesForPicker, minuteRollups, timelineLoadingFlag])
 
   const selectedEmotesForOverlay = useMemo(
     () => topEmotesForPicker.filter(emote => selectedEmoteKeys.includes(emoteSelectionKey(emote))),
@@ -377,6 +392,7 @@ export function RecapTimelineChart({
           sidebarCompact
           selectedPlotColors={selectedPlotColors}
           maxSelected={MAX_PLOTTED_EMOTES}
+          rollupsLoading={timelineLoadingFlag}
         />
       ) : null}
 

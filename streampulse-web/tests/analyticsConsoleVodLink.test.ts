@@ -63,6 +63,7 @@ describe('resolveVodLinkState', () => {
         stream: {
           endedAt: '2026-06-01T06:00:00Z',
         },
+        availability: { vodState: 'unavailable' },
       },
     })
     expect(state.status).toBe('unavailable')
@@ -97,8 +98,10 @@ describe('resolveVodLinkState', () => {
       fallbackVodId: fallback,
       channelIsLive: false,
     })
-    expect(state.status).toBe('unavailable')
+    // Offline + unresolved: wait for Twitch publication (not neighbor VOD, not terminal unavailable).
+    expect(state.status).toBe('syncing')
     expect(state.vodId).toBeUndefined()
+    expect(state.detail.toLowerCase()).toMatch(/waiting|publication/)
   })
 
   it('uses vod id from the current sidebar session row', () => {

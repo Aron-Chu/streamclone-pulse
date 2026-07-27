@@ -475,7 +475,11 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
               } satisfies BackgroundResponse)
               return
             }
-            const result = await discoverLiveVodIdFromGqlInTab(tabId, message.login)
+            const result = await discoverLiveVodIdFromGqlInTab(
+              tabId,
+              message.login,
+              message.streamId,
+            )
             sendResponse({ type: 'DISCOVER_LIVE_VOD', result } satisfies BackgroundResponse)
           } catch (err) {
             sendResponse({

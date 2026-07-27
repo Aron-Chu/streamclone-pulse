@@ -35,7 +35,7 @@ describe('scrapeVodFromPageTexts', () => {
 })
 
 describe('parseLiveArchiveVodFromGql', () => {
-  it('reads stream.archiveVideo id for live broadcast', () => {
+  it('rejects when expected stream id is absent', () => {
     expect(
       parseLiveArchiveVodFromGql({
         data: {
@@ -48,30 +48,126 @@ describe('parseLiveArchiveVodFromGql', () => {
         },
       }),
     ).toEqual({
+      vodId: null,
+      streamId: '41992682489',
+      source: null,
+      gqlErrors: ['expected_stream_id_required'],
+    })
+  })
+
+  it('reads stream.archiveVideo id for live broadcast with exact stream id', () => {
+    expect(
+      parseLiveArchiveVodFromGql(
+        {
+          data: {
+            user: {
+              stream: {
+                id: '41992682489',
+                archiveVideo: { id: '1966541363' },
+              },
+            },
+          },
+        },
+        '41992682489',
+      ),
+    ).toEqual({
       vodId: '1966541363',
       streamId: '41992682489',
       source: 'stream.archiveVideo',
       gqlErrors: [],
     })
   })
-})
 
-describe('parseArchiveListVodFromGql', () => {
-  it('reads latest archive from videos list', () => {
+  it('rejects mismatched stream id', () => {
     expect(
-      parseArchiveListVodFromGql({
-        data: {
-          user: {
-            videos: {
-              edges: [{ node: { id: '2678901234' } }],
+      parseLiveArchiveVodFromGql(
+        {
+          data: {
+            user: {
+              stream: {
+                id: '41992682489',
+                archiveVideo: { id: '1966541363' },
+              },
             },
           },
         },
-      }),
+        '99999999999',
+      ),
+    ).toEqual({
+      vodId: null,
+      streamId: '41992682489',
+      source: null,
+      gqlErrors: ['stream_id_mismatch'],
+    })
+  })
+})
+
+describe('parseArchiveListVodFromGql', () => {
+  it('rejects uncorrelated latest archive without a stream-id match', () => {
+    expect(
+      parseArchiveListVodFromGql(
+        {
+          data: {
+            user: {
+              videos: {
+                edges: [{ node: { id: '2678901234' } }],
+              },
+            },
+          },
+        },
+        '41992682489',
+      ),
+    ).toEqual({
+      vodId: null,
+      streamId: null,
+      source: null,
+      gqlErrors: [],
+    })
+  })
+
+  it('accepts archive list entries that match the expected stream id', () => {
+    expect(
+      parseArchiveListVodFromGql(
+        {
+          data: {
+            user: {
+              videos: {
+                edges: [
+                  { node: { id: '1111111111', broadcastId: '9999999999' } },
+                  { node: { id: '2678901234', broadcastId: '41992682489' } },
+                ],
+              },
+            },
+          },
+        },
+        '41992682489',
+      ),
     ).toEqual({
       vodId: '2678901234',
-      streamId: null,
+      streamId: '41992682489',
       source: 'videos.archive',
+      gqlErrors: [],
+    })
+  })
+
+  it('rejects the previous broadcast VOD when stream ids differ', () => {
+    expect(
+      parseArchiveListVodFromGql(
+        {
+          data: {
+            user: {
+              videos: {
+                edges: [{ node: { id: '2678901234', broadcastId: '1111111111' } }],
+              },
+            },
+          },
+        },
+        '41992682489',
+      ),
+    ).toEqual({
+      vodId: null,
+      streamId: null,
+      source: null,
       gqlErrors: [],
     })
   })

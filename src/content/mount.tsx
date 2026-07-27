@@ -99,6 +99,21 @@ const BASE_STYLE = `
   button:focus, button:focus-visible { outline: none !important; }
   .pulse-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .pulse-no-scrollbar::-webkit-scrollbar { display: none; }
+  .pulse-emote-picker-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.35);
+    border-radius: 999px;
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.55);
+    border-radius: 999px;
+  }
   .pulse-root {
     display: flex;
     flex-direction: column;
