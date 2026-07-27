@@ -201,8 +201,9 @@ test.describe('portal responsive visuals (mocked)', () => {
         await openAnalyticsSession(page)
         await openEmotesRail(page)
         await expect(
-          page.getByText(/No emotes counted|Collected chat has not matched|Emote/i).first(),
+          page.getByText('No emotes counted').first(),
         ).toBeVisible({ timeout: 20_000 })
+        await expect(page.getByText(/Collected chat has not matched known emotes/i).first()).toBeVisible()
         await assertNonBlankScreenshot(page, `portal-emotes-unavailable-${viewport.name}.png`)
         await assertNoUnexpected(harness)
       })

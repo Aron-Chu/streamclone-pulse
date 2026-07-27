@@ -43,6 +43,8 @@ test.describe('portal status recovery (mocked)', () => {
           }),
         },
         failure.spec,
+        // React Query statusQuery retry:1 + apiClient may consume a second failure tick.
+        failure.spec,
         {
           kind: 'json',
           body: buildStatus({
@@ -72,17 +74,23 @@ test.describe('portal status recovery (mocked)', () => {
       const mountBefore = await getMountId(page)
       await expect(page.getByText(/Waiting for Twitch VOD|VOD pending/i).first()).toBeVisible()
 
-      // Trigger failure poll, then the authored request_failed recovery poll.
+      // Trigger failure poll(s), then the authored request_failed recovery poll.
       if (failure.name === 'timeout') {
         await page.clock.fastForward(10_000)
-      } else {
-        await harness.advancePoll(30_000)
       }
-      await harness.advancePoll(30_000)
+      await expect
+        .poll(
+          async () => {
+            await harness.advancePoll(30_000)
+            return page.getByText(/VOD lookup failed|request failed|reconnecting|Could not reach|Helix/i).count()
+          },
+          { timeout: failure.name === 'timeout' ? 90_000 : 45_000, intervals: [200, 500, 1000] },
+        )
+        .toBeGreaterThan(0)
 
       await expect(
         page.getByText(/VOD lookup failed|request failed|reconnecting|Could not reach|Helix/i).first(),
-      ).toBeVisible({ timeout: 20_000 })
+      ).toBeVisible({ timeout: 5_000 })
       await expect(page.getByText('VOD unavailable')).toHaveCount(0)
 
       await harness.advancePoll(30_000)
