@@ -44,6 +44,7 @@ jobs:
       run_extension: ${{ steps.classify.outputs.run_extension }}
       run_portal: ${{ steps.classify.outputs.run_portal }}
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
+      run_portal_e2e: ${{ steps.classify.outputs.run_portal_e2e }}
       force_full: ${{ steps.classify.outputs.force_full }}
       classification: ${{ steps.classify.outputs.classification }}
     steps:
@@ -253,7 +254,9 @@ jobs:
     needs: guard
     if: needs.guard.outputs.run_portal == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    outputs:
+      portal_e2e_executed: ${{ steps.portal_e2e_proof.outputs.portal_e2e_executed }}
     defaults:
       run:
         working-directory: streampulse-web
@@ -303,6 +306,47 @@ jobs:
           node ../scripts/ci-portal-npm-audit-disposition.mjs /tmp/portal-npm-audit.json
       - run: npm run build:ci
 
+      # Mocked portal Playwright — Chromium needs ubuntu-latest (not ubuntu-slim).
+      - name: Install Playwright Chromium (portal)
+        if: needs.guard.outputs.run_portal_e2e == 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Mocked portal E2E
+        id: portal_e2e_run
+        if: needs.guard.outputs.run_portal_e2e == 'true'
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:e2e:mocked
+
+      - name: Record portal E2E execution proof
+        id: portal_e2e_proof
+        if: always() && !cancelled()
+        run: |
+          set -euo pipefail
+          required='${{ needs.guard.outputs.run_portal_e2e }}'
+          if [[ "${required}" == "true" ]]; then
+            if [[ "${{ steps.portal_e2e_run.outcome }}" == "success" ]]; then
+              echo "portal_e2e_executed=true" >> "$GITHUB_OUTPUT"
+              echo "portal_e2e_executed=true"
+            else
+              echo "portal_e2e_executed=false" >> "$GITHUB_OUTPUT"
+              echo "portal_e2e_executed=false (outcome=${{ steps.portal_e2e_run.outcome }})"
+              exit 1
+            fi
+          else
+            echo "portal_e2e_executed=skipped" >> "$GITHUB_OUTPUT"
+            echo "portal_e2e_executed=skipped"
+          fi
+
+      # Failure evidence only — no success artifacts.
+      - name: Upload portal Playwright failure evidence
+        if: failure() && needs.guard.outputs.run_portal_e2e == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portal-e2e-evidence
+          path: |
+            streampulse-web/test-results/
+            streampulse-web/playwright-report/
+          retention-days: 3
+
   # Stable future branch-protection context. Do not activate protection in this batch.
   final:
     name: CI
@@ -330,9 +374,14 @@ jobs:
           if [[ -z "${e2e_proof}" ]]; then
             e2e_proof='skipped'
           fi
+          portal_e2e_proof='${{ needs.portal.outputs.portal_e2e_executed }}'
+          if [[ -z "${portal_e2e_proof}" ]]; then
+            portal_e2e_proof='skipped'
+          fi
           node scripts/ci-final-gate.mjs \
             --guard "${{ needs.guard.result }}" \
             --classification ci-classification/classification.json \
             --extension "${{ needs.extension.result }}" \
             --portal "${{ needs.portal.result }}" \
-            --e2e-executed "${e2e_proof}"
+            --e2e-executed "${e2e_proof}" \
+            --portal-e2e-executed "${portal_e2e_proof}"

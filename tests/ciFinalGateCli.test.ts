@@ -24,6 +24,7 @@ describe('ci-classify-changes invalid SHA', () => {
       expect(json.run_extension).toBe(true)
       expect(json.run_portal).toBe(true)
       expect(json.run_e2e).toBe(true)
+      expect(json.run_portal_e2e).toBe(true)
       expect(String(json.reason)).toMatch(/invalid or missing SHA/i)
     } finally {
       rmSync(out, { recursive: true, force: true })
@@ -56,6 +57,7 @@ describe('ci-final-gate CLI e2e proof', () => {
         run_extension: true,
         run_portal: false,
         run_e2e: true,
+        run_portal_e2e: false,
         force_full: false,
         reason: 'test',
         paths: [],
@@ -76,10 +78,94 @@ describe('ci-final-gate CLI e2e proof', () => {
           'skipped',
           '--e2e-executed',
           'skipped',
+          '--portal-e2e-executed',
+          'skipped',
         ],
         { cwd: repoRoot, encoding: 'utf8' },
       )
       expect(r.status).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails CLI when required portal e2e proof is skipped', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ci-portal-gate-'))
+    try {
+      const classification = {
+        classification: 'portal',
+        run_extension: false,
+        run_portal: true,
+        run_e2e: false,
+        run_portal_e2e: true,
+        force_full: false,
+        reason: 'test',
+        paths: [],
+      }
+      const path = join(dir, 'classification.json')
+      writeFileSync(path, JSON.stringify(classification))
+      const r = spawnSync(
+        process.execPath,
+        [
+          gate,
+          '--guard',
+          'success',
+          '--classification',
+          path,
+          '--extension',
+          'skipped',
+          '--portal',
+          'success',
+          '--e2e-executed',
+          'skipped',
+          '--portal-e2e-executed',
+          'skipped',
+        ],
+        { cwd: repoRoot, encoding: 'utf8' },
+      )
+      expect(r.status).toBe(1)
+      expect(String(r.stderr || '')).toMatch(/portal e2e/i)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('passes CLI when portal e2e proof is true', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ci-portal-ok-'))
+    try {
+      const classification = {
+        classification: 'portal',
+        run_extension: false,
+        run_portal: true,
+        run_e2e: false,
+        run_portal_e2e: true,
+        force_full: false,
+        reason: 'test',
+        paths: [],
+      }
+      const path = join(dir, 'classification.json')
+      writeFileSync(path, JSON.stringify(classification))
+      const r = spawnSync(
+        process.execPath,
+        [
+          gate,
+          '--guard',
+          'success',
+          '--classification',
+          path,
+          '--extension',
+          'skipped',
+          '--portal',
+          'success',
+          '--e2e-executed',
+          'skipped',
+          '--portal-e2e-executed',
+          'true',
+        ],
+        { cwd: repoRoot, encoding: 'utf8' },
+      )
+      expect(r.status).toBe(0)
+      expect(String(r.stdout || '')).toMatch(/final-gate OK/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

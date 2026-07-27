@@ -19,6 +19,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(false)
     expect(r.run_portal).toBe(false)
     expect(r.run_e2e).toBe(false)
+    expect(r.run_portal_e2e).toBe(false)
   })
 
   it('classifies portal-only', () => {
@@ -27,6 +28,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_portal).toBe(true)
     expect(r.run_extension).toBe(false)
     expect(r.run_e2e).toBe(false)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   it('classifies extension-only packaging without forcing e2e for scripts alone', () => {
@@ -34,6 +36,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(false)
     expect(r.run_e2e).toBe(false)
+    expect(r.run_portal_e2e).toBe(false)
     expect(r.classification).toBe('extension')
   })
 
@@ -42,6 +45,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_e2e).toBe(true)
     expect(r.run_portal).toBe(false)
+    expect(r.run_portal_e2e).toBe(false)
     expect(r.classification).toBe('extension-e2e')
   })
 
@@ -52,6 +56,7 @@ describe('ci-change-classifier', () => {
       expect(r.run_extension).toBe(true)
       expect(r.run_portal).toBe(true)
       expect(r.run_e2e).toBe(true)
+      expect(r.run_portal_e2e).toBe(true)
     })
   }
 
@@ -61,6 +66,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   it('classifies direct src/ui changes as shared', () => {
@@ -69,6 +75,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   const PORTAL_CONTENT_DEPS = [
@@ -94,6 +101,7 @@ describe('ci-change-classifier', () => {
       expect(r.run_extension).toBe(true)
       expect(r.run_portal).toBe(true)
       expect(r.run_e2e).toBe(true)
+      expect(r.run_portal_e2e).toBe(true)
     })
   }
 
@@ -103,6 +111,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   it('fails final gate when content change requires portal but portal skipped', () => {
@@ -113,6 +122,7 @@ describe('ci-change-classifier', () => {
       classification: c,
       jobResults: { extension: 'success', portal: 'skipped' },
       e2eExecuted: 'true',
+      portalE2eExecuted: 'true',
     })
     expect(gate.ok).toBe(false)
     expect(gate.errors.some((e) => /portal/i.test(e))).toBe(true)
@@ -124,6 +134,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   it('classifies classifier script changes as workflow full graph', () => {
@@ -132,6 +143,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   it('classifies unknown paths as fail-safe full', () => {
@@ -140,6 +152,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 
   it('handles renames (old and new paths)', () => {
@@ -167,6 +180,7 @@ describe('ci-change-classifier', () => {
     expect(r.classification).toBe('forced-full')
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
     expect(r.force_full).toBe(true)
   })
 
@@ -183,6 +197,7 @@ describe('ci-change-classifier', () => {
     expect(r.run_extension).toBe(true)
     expect(r.run_portal).toBe(true)
     expect(r.run_e2e).toBe(true)
+    expect(r.run_portal_e2e).toBe(true)
   })
 })
 
@@ -205,6 +220,7 @@ describe('evaluateFinalGate', () => {
     run_extension: false,
     run_portal: false,
     run_e2e: false,
+    run_portal_e2e: false,
     force_full: false,
     reason: 'docs',
     paths: [],
@@ -240,8 +256,14 @@ describe('evaluateFinalGate', () => {
   it('fails when required portal skipped', () => {
     const r = evaluateFinalGate({
       guardResult: 'success',
-      classification: { ...base, classification: 'portal', run_portal: true },
+      classification: {
+        ...base,
+        classification: 'portal',
+        run_portal: true,
+        run_portal_e2e: true,
+      },
       jobResults: { extension: 'skipped', portal: 'skipped' },
+      portalE2eExecuted: 'true',
     })
     expect(r.ok).toBe(false)
   })
@@ -249,8 +271,14 @@ describe('evaluateFinalGate', () => {
   it('fails when portal cancelled', () => {
     const r = evaluateFinalGate({
       guardResult: 'success',
-      classification: { ...base, classification: 'portal', run_portal: true },
+      classification: {
+        ...base,
+        classification: 'portal',
+        run_portal: true,
+        run_portal_e2e: true,
+      },
       jobResults: { extension: 'skipped', portal: 'cancelled' },
+      portalE2eExecuted: 'true',
     })
     expect(r.ok).toBe(false)
   })
@@ -264,15 +292,17 @@ describe('evaluateFinalGate', () => {
         run_extension: true,
         run_portal: true,
         run_e2e: true,
+        run_portal_e2e: true,
         force_full: true,
       },
       jobResults: { extension: 'success', portal: 'skipped' },
       e2eExecuted: 'true',
+      portalE2eExecuted: 'true',
     })
     expect(r.ok).toBe(false)
   })
 
-  it('passes force-full when both succeed and e2e proof true', () => {
+  it('passes force-full when both succeed and e2e proofs true', () => {
     const r = evaluateFinalGate({
       guardResult: 'success',
       classification: {
@@ -281,10 +311,12 @@ describe('evaluateFinalGate', () => {
         run_extension: true,
         run_portal: true,
         run_e2e: true,
+        run_portal_e2e: true,
         force_full: true,
       },
       jobResults: { extension: 'success', portal: 'success' },
       e2eExecuted: 'true',
+      portalE2eExecuted: 'true',
     })
     expect(r.ok).toBe(true)
   })
@@ -378,7 +410,7 @@ describe('evaluateFinalGate', () => {
     expect(r.ok).toBe(false)
   })
 
-  it('passes shared-ui when both jobs succeed and e2e true', () => {
+  it('passes shared-ui when both jobs succeed and e2e proofs true', () => {
     const r = evaluateFinalGate({
       guardResult: 'success',
       classification: {
@@ -387,9 +419,11 @@ describe('evaluateFinalGate', () => {
         run_extension: true,
         run_portal: true,
         run_e2e: true,
+        run_portal_e2e: true,
       },
       jobResults: { extension: 'success', portal: 'success' },
       e2eExecuted: 'true',
+      portalE2eExecuted: 'true',
     })
     expect(r.ok).toBe(true)
   })
@@ -404,10 +438,57 @@ describe('evaluateFinalGate', () => {
         run_extension: true,
         run_portal: true,
         run_e2e: true,
+        run_portal_e2e: true,
       },
       jobResults: { extension: 'success', portal: 'success' },
       e2eExecuted: 'skipped',
+      portalE2eExecuted: 'true',
     })
     expect(r.ok).toBe(false)
+  })
+
+  it('fails when portal e2e required but proof skipped', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'portal',
+        run_portal: true,
+        run_portal_e2e: true,
+      },
+      jobResults: { extension: 'skipped', portal: 'success' },
+      portalE2eExecuted: 'skipped',
+    })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e) => /portal e2e/i.test(e))).toBe(true)
+  })
+
+  it('fails when portal e2e required but proof absent', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'portal',
+        run_portal: true,
+        run_portal_e2e: true,
+      },
+      jobResults: { extension: 'skipped', portal: 'success' },
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  it('passes portal-only when portal succeeds and portal e2e proof true', () => {
+    const r = evaluateFinalGate({
+      guardResult: 'success',
+      classification: {
+        ...base,
+        classification: 'portal',
+        run_portal: true,
+        run_portal_e2e: true,
+      },
+      jobResults: { extension: 'skipped', portal: 'success' },
+      portalE2eExecuted: 'true',
+    })
+    expect(r.ok).toBe(true)
   })
 })
