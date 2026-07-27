@@ -1226,6 +1226,7 @@ function OverlayMain({
     const action = resolveJumpMomentAction({
       context,
       payloadVodId: payload?.vodId ?? context.vodId,
+      effectiveIsLive: uiIsLive,
       payloadIsLive: payload?.isLive,
       liveCurrentOffset: payload?.currentOffsetSeconds,
       offsetSeconds: point.offsetSeconds,
@@ -1271,9 +1272,12 @@ function OverlayMain({
       }
       if (result.reason === 'outside_buffer') {
         openAnalytics(action.offsetSeconds)
+        const linkedVod = (payload?.vodId ?? context.vodId)?.trim()
         setNotice({
           kind: 'warn',
-          text: `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.`,
+          text: linkedVod
+            ? `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened StreamPulse analytics. A linked VOD is available as a secondary option.`
+            : `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.`,
         })
         return
       }
@@ -1285,9 +1289,12 @@ function OverlayMain({
     }
 
     openAnalytics(action.offsetSeconds)
+    const secondary = action.kind === 'live-outside-buffer' ? action.secondaryVodId?.trim() : undefined
     setNotice({
       kind: 'warn',
-      text: `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.`,
+      text: secondary
+        ? `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer — opened StreamPulse analytics. Linked VOD remains a secondary option (not auto-opened).`
+        : `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer — opened StreamPulse analytics.`,
     })
   }
 

@@ -134,6 +134,7 @@ export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse): PulseP
     peaks,
     recap,
     topEmotes: vod.topEmotes,
+    games: vod.games,
     rosterEligible: true,
     top500Eligible: true,
   }

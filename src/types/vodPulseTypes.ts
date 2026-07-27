@@ -1,4 +1,4 @@
-import type { ExtensionEmote, PulseStreamRecap } from '../shared/messages.ts'
+import type { ExtensionEmote, ExtensionGameSegment, PulseStreamRecap } from '../shared/messages.ts'
 
 export type VodCoverageStatus = 'ready' | 'partial' | 'syncing' | 'missing' | 'error'
 
@@ -55,5 +55,6 @@ export interface ExtensionVodPulseResponse {
   timeline?: VodTimeline
   topMoments?: VodMoment[]
   topEmotes?: ExtensionEmote[]
+  games?: ExtensionGameSegment[]
   bestClipCandidate?: VodClipCandidate
 }

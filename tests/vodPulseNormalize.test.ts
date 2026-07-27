@@ -33,9 +33,34 @@ describe('normalizeVodPulseHttpResponse', () => {
       coverageStatus: 'ready',
       streamId: '319',
       channelLogin: 'xqc',
+      games: [
+        { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 3600 },
+      ],
     }))
     expect(res.coverageStatus).toBe('ready')
     expect(res.streamId).toBe('319')
+    expect(res.games?.[0]?.gameName).toBe('Just Chatting')
+  })
+
+  it('preserves empty games arrays without inventing segments', async () => {
+    const res = await normalizeVodPulseHttpResponse('2806037629', mockResponse(200, {
+      mode: 'vod',
+      vodId: '2806037629',
+      coverageStatus: 'ready',
+      channelLogin: 'xqc',
+      games: [],
+    }))
+    expect(res.games).toEqual([])
+  })
+
+  it('drops malformed games field', async () => {
+    const res = await normalizeVodPulseHttpResponse('2806037629', mockResponse(200, {
+      mode: 'vod',
+      vodId: '2806037629',
+      coverageStatus: 'syncing',
+      games: 'nope',
+    }))
+    expect(res.games).toBeUndefined()
   })
 
   it('maps 200 missing to missing payload', async () => {
