@@ -41,6 +41,7 @@ export function parseExtensionVodPulseResponse(raw: Record<string, unknown>): Ex
     timeline: raw.timeline as ExtensionVodPulseResponse['timeline'],
     topMoments: raw.topMoments as ExtensionVodPulseResponse['topMoments'],
     topEmotes: raw.topEmotes as ExtensionVodPulseResponse['topEmotes'],
+    games: Array.isArray(raw.games) ? (raw.games as ExtensionVodPulseResponse['games']) : undefined,
     bestClipCandidate: raw.bestClipCandidate as ExtensionVodPulseResponse['bestClipCandidate'],
   }
 }
