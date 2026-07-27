@@ -19,6 +19,7 @@
     "typecheck": "npm run build:packages && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e": "playwright test",
+    "test:e2e:mocked": "node scripts/run-portal-e2e-mocked.mjs",
     "test:e2e:analytics-local": "node scripts/run-analytics-local-e2e.mjs",
     "test:e2e:hosted": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
     "capture:analytics": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",

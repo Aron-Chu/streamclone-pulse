@@ -11,6 +11,7 @@
  * @property {boolean} run_extension
  * @property {boolean} run_portal
  * @property {boolean} run_e2e
+ * @property {boolean} run_portal_e2e
  * @property {boolean} force_full
  * @property {string} reason
  * @property {string[]} paths
@@ -32,6 +33,7 @@ const WORKFLOW_FORCE = [
   /^tsconfig/,
   /^vite\.config/,
   /^playwright\.config/,
+  /^streampulse-web\/playwright\.config/,
 ]
 
 const PORTAL_PREFIX = /^streampulse-web\//
@@ -97,6 +99,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: true,
       run_e2e: true,
+      run_portal_e2e: true,
       force_full: true,
       reason: 'force-full dispatch or explicit force',
       paths: normalized,
@@ -109,6 +112,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: true,
       run_e2e: true,
+      run_portal_e2e: true,
       force_full: false,
       reason: 'empty path set — fail-safe full graph',
       paths: normalized,
@@ -121,6 +125,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: true,
       run_e2e: true,
+      run_portal_e2e: true,
       force_full: false,
       reason: 'workflow/config/lockfile/classifier change',
       paths: normalized,
@@ -185,6 +190,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: true,
       run_e2e: true,
+      run_portal_e2e: true,
       force_full: false,
       reason: 'unclassified path — fail-safe full graph',
       paths: normalized,
@@ -197,6 +203,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: false,
       run_portal: false,
       run_e2e: false,
+      run_portal_e2e: false,
       force_full: false,
       reason: 'documentation/assets only',
       paths: normalized,
@@ -209,6 +216,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: true,
       run_e2e: true,
+      run_portal_e2e: true,
       force_full: false,
       reason: 'src/ui, src/shared, or src/content bundled by portal via @pulse-ext/ui',
       paths: normalized,
@@ -221,6 +229,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: true,
       run_e2e: true,
+      run_portal_e2e: true,
       force_full: false,
       reason: 'mixed extension+portal paths without shared-ui alone',
       paths: normalized,
@@ -233,6 +242,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: false,
       run_portal: true,
       run_e2e: false,
+      run_portal_e2e: true,
       force_full: false,
       reason: 'streampulse-web only',
       paths: normalized,
@@ -245,6 +255,7 @@ export function classifyChangedPaths(paths, opts = {}) {
       run_extension: true,
       run_portal: false,
       run_e2e: e2e,
+      run_portal_e2e: false,
       force_full: false,
       reason: e2e ? 'extension runtime/e2e harness change' : 'extension packaging/non-runtime change',
       paths: normalized,
@@ -256,6 +267,7 @@ export function classifyChangedPaths(paths, opts = {}) {
     run_extension: true,
     run_portal: true,
     run_e2e: true,
+    run_portal_e2e: true,
     force_full: false,
     reason: 'fallback fail-safe',
     paths: normalized,
@@ -308,6 +320,7 @@ export function normalizeE2eProof(raw) {
  * @param {ClassifyResult|null} input.classification
  * @param {{extension?: string, portal?: string}} input.jobResults result of needs.*.result
  * @param {string|undefined|null} [input.e2eExecuted] extension job output proof
+ * @param {string|undefined|null} [input.portalE2eExecuted] portal job output proof
  * @returns {{ ok: boolean, errors: string[] }}
  */
 export function evaluateFinalGate(input) {
@@ -322,7 +335,14 @@ export function evaluateFinalGate(input) {
     errors.push('classifier output missing or invalid')
     return { ok: false, errors }
   }
-  for (const key of ['run_extension', 'run_portal', 'run_e2e', 'force_full', 'classification']) {
+  for (const key of [
+    'run_extension',
+    'run_portal',
+    'run_e2e',
+    'run_portal_e2e',
+    'force_full',
+    'classification',
+  ]) {
     if (!(key in c)) errors.push(`classifier missing ${key}`)
   }
   if (errors.length) return { ok: false, errors }
@@ -333,6 +353,7 @@ export function evaluateFinalGate(input) {
   const expectExt = Boolean(c.run_extension) || Boolean(c.force_full)
   const expectPortal = Boolean(c.run_portal) || Boolean(c.force_full)
   const expectE2e = Boolean(c.run_e2e) || Boolean(c.force_full)
+  const expectPortalE2e = Boolean(c.run_portal_e2e) || Boolean(c.force_full)
 
   if (c.force_full) {
     for (const [name, res] of [
@@ -386,6 +407,24 @@ export function evaluateFinalGate(input) {
     }
   }
 
+  // Portal E2E execution proof — required when classifier says run_portal_e2e.
+  if (expectPortal || expectPortalE2e) {
+    if (portal === 'skipped' && expectPortalE2e) {
+      errors.push('portal e2e was required but portal job skipped')
+    } else if (portal === 'success' || (expectPortalE2e && portal !== 'skipped')) {
+      const proof = normalizeE2eProof(input.portalE2eExecuted)
+      if (expectPortalE2e) {
+        if (proof == null) errors.push('portal e2e execution proof missing or malformed')
+        else if (proof === 'skipped') errors.push('portal e2e was required but proof is skipped')
+        else if (proof !== 'true') errors.push(`portal e2e was required but proof is ${proof}`)
+      } else if (proof == null && expectPortal && portal === 'success') {
+        errors.push('portal e2e execution proof missing (expected skipped when run_portal_e2e=false)')
+      } else if (proof === 'false') {
+        errors.push('portal e2e proof is false while portal succeeded')
+      }
+    }
+  }
+
   return { ok: errors.length === 0, errors }
 }
 
@@ -398,6 +437,7 @@ export function formatGithubOutput(result) {
     `run_extension=${result.run_extension}`,
     `run_portal=${result.run_portal}`,
     `run_e2e=${result.run_e2e}`,
+    `run_portal_e2e=${result.run_portal_e2e}`,
     `force_full=${result.force_full}`,
     `reason=${result.reason}`,
   ]

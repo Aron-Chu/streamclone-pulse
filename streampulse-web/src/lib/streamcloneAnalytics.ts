@@ -417,17 +417,29 @@ function portalChannelEmotesToCatalog(emotes: PortalChannelEmoteRow[]): Analytic
   return out
 }
 
+/** Session-scoped: full timeline enrich once; live tails must not re-hit 30d catalog. */
+const portalChannelEmotesCatalogInflight = new Map<string, Promise<AnalyticsTopEmote[]>>()
+
 async function fetchPortalChannelEmotesCatalog(login: string): Promise<AnalyticsTopEmote[]> {
   const channel = login.trim()
   if (!channel) return []
-  try {
-    const { data } = await apiClient<{ topEmotes?: PortalChannelEmoteRow[] }>(
-      portalPath(`/channels/${encodeURIComponent(channel)}/emotes?range=30d`),
-    )
-    return portalChannelEmotesToCatalog(data.topEmotes ?? [])
-  } catch {
-    return []
-  }
+  const key = channel.toLowerCase()
+  const existing = portalChannelEmotesCatalogInflight.get(key)
+  if (existing) return existing
+  const pending = (async () => {
+    try {
+      const { data } = await apiClient<{ topEmotes?: PortalChannelEmoteRow[] }>(
+        portalPath(`/channels/${encodeURIComponent(channel)}/emotes?range=30d`),
+      )
+      return portalChannelEmotesToCatalog(data.topEmotes ?? [])
+    } catch {
+      // Allow a later retry after a hard failure.
+      portalChannelEmotesCatalogInflight.delete(key)
+      return []
+    }
+  })()
+  portalChannelEmotesCatalogInflight.set(key, pending)
+  return pending
 }
 
 function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {
@@ -614,9 +626,7 @@ async function fetchPortalStreamBundle(
         })
     : Promise.resolve(null)
   const summaryPromise = includeSummary
-    ? apiClient<PortalStreamSummary>(
-        portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
-      ).catch(() => null)
+    ? fetchPortalStreamSummary(streamId)
     : Promise.resolve(null)
 
   const [detailRes, minutesRes, summaryRes] = await Promise.all([
@@ -624,6 +634,9 @@ async function fetchPortalStreamBundle(
     minutesPromise,
     summaryPromise,
   ])
+
+  // summaryRes is PortalStreamSummary | null (already unwrapped)
+  const summaryData = summaryRes
 
   let channelEmotes: AnalyticsTopEmote[] = []
   // Lightweight sparse/status polls must not pull the 30-day channel catalog.
@@ -641,7 +654,7 @@ async function fetchPortalStreamBundle(
   return {
     detail: detailRes.data,
     minutes: minutesRes?.data ?? null,
-    summary: summaryRes?.data ?? null,
+    summary: summaryData,
     channelEmotes,
     minutesFetchFailed,
     includeMinutes,
@@ -1173,21 +1186,32 @@ export const portalAnalyticsApi: AnalyticsApi = {
 
 let configured = false
 
+/** Session-scoped: avoid re-hitting /summary when detail+summaryQuery overlap on live ticks. */
+const portalStreamSummaryInflight = new Map<string, Promise<PortalStreamSummary | null>>()
+
 export async function fetchPortalStreamSummary(streamId: string): Promise<PortalStreamSummary | null> {
   if (!streamId.trim()) return null
-  try {
-    const { data } = await apiClient<PortalStreamSummary>(portalPath(`/streams/${encodeURIComponent(streamId)}/summary`))
-    if (!data.topEmotes?.length) return data
-    return {
-      ...data,
-      topEmotes: data.topEmotes.map((emote) => ({
-        ...emote,
-        imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
-      })),
+  const key = streamId.trim()
+  const existing = portalStreamSummaryInflight.get(key)
+  if (existing) return existing
+  const pending = (async () => {
+    try {
+      const { data } = await apiClient<PortalStreamSummary>(portalPath(`/streams/${encodeURIComponent(streamId)}/summary`))
+      if (!data.topEmotes?.length) return data
+      return {
+        ...data,
+        topEmotes: data.topEmotes.map((emote) => ({
+          ...emote,
+          imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+        })),
+      }
+    } catch {
+      portalStreamSummaryInflight.delete(key)
+      return null
     }
-  } catch {
-    return null
-  }
+  })()
+  portalStreamSummaryInflight.set(key, pending)
+  return pending
 }
 
 export async function fetchPortalStreamRecap(streamId: string): Promise<PortalStreamRecapResponse | null> {

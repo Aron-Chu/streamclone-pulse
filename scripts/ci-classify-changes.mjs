@@ -47,6 +47,7 @@ function failSafe(reason) {
     run_extension: true,
     run_portal: true,
     run_e2e: true,
+    run_portal_e2e: true,
     force_full: false,
     reason,
     paths: [],

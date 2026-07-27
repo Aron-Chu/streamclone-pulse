@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "streamId": "320567744986",
+    "gameName": "Just Chatting",
+    "boxArtUrl": "",
+    "offsetSeconds": 0,
+    "durationSeconds": 15437,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  },
+  {
+    "id": 2,
+    "streamId": "320567744986",
+    "gameName": "GeoGuessr",
+    "boxArtUrl": "",
+    "offsetSeconds": 15437,
+    "durationSeconds": 2280,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  },
+  {
+    "id": 3,
+    "streamId": "320567744986",
+    "gameName": "Battlefield 6",
+    "boxArtUrl": "",
+    "offsetSeconds": 17717,
+    "durationSeconds": 3899,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  },
+  {
+    "id": 4,
+    "streamId": "320567744986",
+    "gameName": "Welcome to the Game III",
+    "boxArtUrl": "",
+    "offsetSeconds": 21617,
+    "durationSeconds": 10379,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  },
+  {
+    "id": 5,
+    "streamId": "320567744986",
+    "gameName": "Just Chatting",
+    "boxArtUrl": "",
+    "offsetSeconds": 31997,
+    "durationSeconds": 240,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  },
+  {
+    "id": 6,
+    "streamId": "320567744986",
+    "gameName": "Deadlock",
+    "boxArtUrl": "",
+    "offsetSeconds": 32237,
+    "durationSeconds": 3660,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  },
+  {
+    "id": 7,
+    "streamId": "320567744986",
+    "gameName": "Just Chatting",
+    "boxArtUrl": "",
+    "offsetSeconds": 35897,
+    "durationSeconds": 34491,
+    "source": "snapshot",
+    "createdAt": "2026-07-25T21:28:27.000Z"
+  }
+]
