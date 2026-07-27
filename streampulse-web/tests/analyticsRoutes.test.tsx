@@ -63,4 +63,22 @@ describe('public channel analytics routes', () => {
     expect(screen.getByTestId('pathname').textContent).toBe('/analytics/xqc/12345')
     expect(screen.getByTestId('stream-id').textContent).toBe('12345')
   })
+
+  it('redirects short /s/:login to canonical analytics and preserves query/hash', async () => {
+    renderPath('/s/xqc?ref=share#t=120')
+    expect(await screen.findByRole('main', { name: /analytics for xqc/i })).toBeTruthy()
+    expect(screen.getByTestId('pathname').textContent).toBe('/analytics/xqc')
+  })
+
+  it('redirects short /s/:login/:streamId to canonical session route', async () => {
+    renderPath('/s/xqc/12345?utm=1#t=90')
+    expect(await screen.findByRole('main', { name: /analytics for xqc/i })).toBeTruthy()
+    expect(screen.getByTestId('pathname').textContent).toBe('/analytics/xqc/12345')
+    expect(screen.getByTestId('stream-id').textContent).toBe('12345')
+  })
+
+  it('keeps unknown paths on NotFound', async () => {
+    renderPath('/definitely-missing-path')
+    expect(await screen.findByText(/not found/i)).toBeTruthy()
+  })
 })

@@ -1,6 +1,6 @@
 # StreamPulse release status
 
-Last updated: 2026-07-22 (analytics Command Center + CWS website integration)
+Last updated: 2026-07-27 (v0.1.3 hardening source readiness — Gate A)
 
 ## Published Chrome Web Store (live)
 
@@ -11,20 +11,20 @@ Last updated: 2026-07-22 (analytics Command Center + CWS website integration)
 | Hosted API | https://api.streampulse.stream |
 
 Website install CTAs use `streampulse-web/src/lib/publicSiteConfig.ts` only.
-**Manual account gate (open):** change the live CWS Support URL from the Twitch channel
-to `https://streampulse.stream/support` in the publisher console.
+**Manual account gate (open):** confirm the live CWS listing still serves **0.1.1** and
+change Support URL to `https://streampulse.stream/support` before any 0.1.3 upload
+(owner-gated; not performed by this source program).
 
-## Release identity
+## v0.1.3 source target (not published)
 
 | Field | Value |
 |-------|-------|
-| Repository base | `origin/master` at `d4e19be148058adb59c2e0ddc38b2c2e4ab0b0a8` |
-| Review branch | `release/analytics-cws-baseline-20260722` |
-| Live portal | `command-center-cws-2026-07-22` deployed; repository landing in review |
-| Live API | `v0.1.35-security-closure` (`HOLD_AT_300`) |
+| Extension/portal package version | `0.1.3` across manifests/packages/locks |
+| Store upload / tag / release artifacts | **Not claimed** — requires separate owner authorization |
+| Hosted migration `100000` + dark deploy | **Not claimed** — Stop Gate A only |
 
-This document does **not** claim repository merge, portal GA, Cloudflare Access apply,
-soak completion, capacity raise, or marketing blast readiness.
+This document does **not** claim repository merge completion of all hardening PRs,
+portal GA, Cloudflare Access apply, soak completion, capacity raise, or marketing blast readiness.
 
 ## Current posture (do not over-claim)
 
