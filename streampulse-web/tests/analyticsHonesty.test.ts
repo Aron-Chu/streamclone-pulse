@@ -28,7 +28,7 @@ describe('deriveAnalyticsQualityLabel', () => {
     expect(deriveAnalyticsQualityLabel({ rollupCount: 0, chatMessages: 0 })).toBe('No data')
   })
 
-  it('returns Good for full_pulse / high coverage', () => {
+  it('returns Good for full_pulse without inventing coverage thresholds', () => {
     expect(
       deriveAnalyticsQualityLabel({
         analyticsQuality: 'full_pulse',
@@ -38,7 +38,7 @@ describe('deriveAnalyticsQualityLabel', () => {
     ).toBe('Good')
   })
 
-  it('returns Partial for partial_pulse or mid coverage', () => {
+  it('returns Partial for partial_pulse without inventing coverage thresholds', () => {
     expect(
       deriveAnalyticsQualityLabel({
         analyticsQuality: 'partial_pulse',
@@ -46,6 +46,11 @@ describe('deriveAnalyticsQualityLabel', () => {
         rollupCount: 40,
       }),
     ).toBe('Partial')
+  })
+
+  it('prefers backend chartState when analyticsQuality is absent', () => {
+    expect(deriveAnalyticsQualityLabel({ chartState: 'limited', rollupCount: 40 })).toBe('Limited')
+    expect(deriveAnalyticsQualityLabel({ chartState: 'unavailable' })).toBe('No data')
   })
 
   it('returns Limited for warming/limited backend quality', () => {

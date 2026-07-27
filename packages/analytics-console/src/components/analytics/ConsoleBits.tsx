@@ -160,17 +160,52 @@ export function CoverageFacets({
   )
 }
 
-export function CoverageStartBanner({ offsetSeconds }: { offsetSeconds?: number }) {
-  if (offsetSeconds == null || offsetSeconds <= 120) return null
-  const mins = Math.floor(offsetSeconds / 60)
-  const secs = offsetSeconds % 60
+export function CoverageStartBanner({
+  offsetSeconds,
+  missingRanges,
+  message,
+}: {
+  offsetSeconds?: number
+  missingRanges?: Array<{ fromOffsetSeconds: number; toOffsetSeconds: number }>
+  message?: string
+}) {
+  const authoredEnd = missingRanges?.[0]?.toOffsetSeconds
+  const start = authoredEnd ?? offsetSeconds
+  // Keep 0–120 visible — do not suppress ranges ending at exactly 120.
+  if (start == null || start <= 0) return null
+  const mins = Math.floor(start / 60)
+  const secs = start % 60
   const label = secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
   return (
     <div
       className="rounded border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] font-semibold text-amber-100/90"
       role="status"
     >
-      Rollups since {label} — tracking started after stream start
+      {message?.trim()
+        || `Partial data coverage — missing 0:00–${label} (backend-authored)`}
     </div>
+  )
+}
+
+export function VodAvailabilityChip({ detail }: { detail?: AnalyticsStreamDetail }) {
+  const state = (detail?.availability?.vodState ?? '').toLowerCase()
+  if (!state || state === 'none' || state === 'linked') return null
+  const label =
+    state === 'pending_live'
+      ? 'VOD pending (live)'
+      : state === 'resolving'
+        ? 'Waiting for Twitch VOD'
+        : state === 'request_failed'
+          ? 'VOD lookup failed'
+          : state === 'unavailable'
+            ? 'VOD unavailable'
+            : `VOD ${state.replace(/_/g, ' ')}`
+  return (
+    <span
+      className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-black uppercase text-zinc-300"
+      title={detail?.availability?.vodMessage}
+    >
+      {label}
+    </span>
   )
 }

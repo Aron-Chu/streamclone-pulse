@@ -12,3 +12,14 @@
 /setup/ /analytics/ 301
 /login /analytics 301
 /login/ /analytics/ 301
+
+# Channel/session deep links must SPA-fallback — prerender only covers /analytics/.
+# Without these, Cloudflare Pages serves 404.html for /analytics/:login/:streamId.
+/analytics/:login /index.html 200
+/analytics/:login/ /index.html 200
+/analytics/:login/:streamId /index.html 200
+/analytics/:login/:streamId/ /index.html 200
+/analytics/:login/s/:streamId /index.html 200
+/analytics/:login/s/:streamId/ /index.html 200
+/s/:login /index.html 200
+/s/:login/:streamId /index.html 200
