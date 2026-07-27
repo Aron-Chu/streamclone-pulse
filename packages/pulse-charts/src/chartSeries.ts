@@ -1,6 +1,7 @@
 import { parseEmoteKey } from '@streampulse/pulse-core'
 import type { ChartMinuteRollup } from './types.ts'
 import { emoteChartColor } from './chartTheme.ts'
+import { MAX_PLOTTED_EMOTES } from './emotePlotSelection.ts'
 import {
   chartViewerValue,
   minuteEmoteTotal,
@@ -77,7 +78,7 @@ export function buildChartSeries(
       max: emotesMax,
     },
   ]
-  const selectedKeys = Array.from(selected).slice(0, 5)
+  const selectedKeys = Array.from(selected).slice(0, MAX_PLOTTED_EMOTES)
   selectedKeys.forEach((key, index) => {
     const rawValues = rollups.map((point) => {
       if (point.missing) return null

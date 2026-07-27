@@ -32,7 +32,7 @@ export const CHART_THEME = {
   },
   emoteOverlay: 0.13,
   legendSwatch: 0.7,
-  perEmotePalette: ['#fb7185', '#fbbf24', '#38bdf8', '#c084fc', '#4ade80'],
+  perEmotePalette: ['#fb7185', '#fbbf24', '#38bdf8', '#c084fc', '#4ade80', '#f97316'],
   moment: {
     selected: '#f59e0b',
     preview: 'rgba(245,158,11,0.45)',

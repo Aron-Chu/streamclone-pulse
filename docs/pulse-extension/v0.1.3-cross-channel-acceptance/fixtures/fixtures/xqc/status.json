@@ -1,0 +1,22 @@
+{
+  "channel": "xqc",
+  "state": "live",
+  "stream": {
+    "streamId": "320567744986",
+    "login": "xqc",
+    "displayName": "xQc",
+    "category": "Just Chatting",
+    "startedAt": "2026-07-25T21:28:27Z",
+    "endedAt": null,
+    "vodId": ""
+  },
+  "availability": {
+    "liveDvrState": "live",
+    "vodState": "pending_live",
+    "chartState": "usable"
+  },
+  "chatCoveragePct": 99.67,
+  "analyticsQuality": "limited",
+  "updatedAt": 1785085294553,
+  "note": "capture showed Twitch offline while Pulse still live; fixture omits volatile title"
+}

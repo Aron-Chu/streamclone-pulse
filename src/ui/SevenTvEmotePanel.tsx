@@ -1,22 +1,23 @@
-import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
+import { useMemo, type CSSProperties, type KeyboardEvent } from 'react'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
-import { emoteSelectionKey } from './chatActivityEmotes.ts'
+import {
+  emoteActivityInRollups,
+  emoteSelectionKey,
+  type EmoteWindowActivity,
+} from './chatActivityEmotes.ts'
 import { hexToRgba } from './chartTheme.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
-import {
-  EMOTE_PICKER_PAGE_SIZE,
-  nextEmoteRevealCount,
-} from './sevenTvEmoteReveal.ts'
 import { theme } from './theme.ts'
 
-const VISIBLE_CHIP_LIMIT = EMOTE_PICKER_PAGE_SIZE
+/** Stable list viewport: ~6 compact rows before scroll; full catalog (≤24) stays mounted. */
+export const EMOTE_PICKER_SCROLL_MAX_HEIGHT_PX = 168
 
 export interface SevenTvEmotePanelProps {
   expanded: boolean
   onToggleExpanded: () => void
   backendUrl: string
+  /** Active chart-window rollups — plottability is derived from non-zero minute values. */
   rollups: ExtensionRollup[]
   topEmotes: ExtensionEmote[]
   selectedKeys: string[]
@@ -29,28 +30,34 @@ export interface SevenTvEmotePanelProps {
   rollupsLoading?: boolean
 }
 
+function activityHint(activity: EmoteWindowActivity, maxSelected: number, atCap: boolean): string {
+  if (activity === 'loading') return 'Loading activity for this window'
+  if (activity === 'none') return 'No activity in this window'
+  if (atCap) return `Max ${maxSelected} emotes on chart`
+  return 'Toggle chart line'
+}
+
 export function SevenTvEmotePanel({
   expanded,
   onToggleExpanded,
   backendUrl,
+  rollups,
   topEmotes,
   selectedKeys,
   onToggleEmote,
   sidebarCompact = false,
   selectedPlotColors,
   maxSelected = 6,
+  rollupsLoading = false,
 }: SevenTvEmotePanelProps) {
-  // Reveal in pages of VISIBLE_CHIP_LIMIT so the CTA matches what appears next
-  // ("Show 3 more"), not the full remaining catalog (e.g. "Show 21 more").
-  const [visibleLimit, setVisibleLimit] = useState(VISIBLE_CHIP_LIMIT)
-
-  useEffect(() => {
-    if (!expanded) setVisibleLimit(VISIBLE_CHIP_LIMIT)
-  }, [expanded])
-
-  useEffect(() => {
-    setVisibleLimit(limit => Math.min(Math.max(VISIBLE_CHIP_LIMIT, limit), Math.max(VISIBLE_CHIP_LIMIT, topEmotes.length)))
-  }, [topEmotes.length])
+  const activityByKey = useMemo(() => {
+    const map = new Map<string, EmoteWindowActivity>()
+    for (const emote of topEmotes) {
+      const key = emoteSelectionKey(emote)
+      map.set(key, emoteActivityInRollups(rollups, emote, { loading: rollupsLoading }))
+    }
+    return map
+  }, [topEmotes, rollups, rollupsLoading])
 
   if (topEmotes.length === 0) return null
 
@@ -60,10 +67,27 @@ export function SevenTvEmotePanel({
       ? selectedEmotes.slice(0, maxSelected)
       : topEmotes.slice(0, Math.min(6, maxSelected))
   const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
-  const visibleEmotes = topEmotes.slice(0, visibleLimit)
-  const remainingCount = Math.max(0, topEmotes.length - visibleLimit)
-  const nextRevealCount = nextEmoteRevealCount(topEmotes.length, visibleLimit)
-  const canCollapse = visibleLimit > VISIBLE_CHIP_LIMIT
+  const selectedCount = selectedKeys.length
+  const atCap = selectedCount >= maxSelected
+  const showOverflowCue = topEmotes.length > 6
+
+  function handleRowActivate(emote: ExtensionEmote, activity: EmoteWindowActivity): void {
+    if (activity !== 'active') return
+    const key = emoteSelectionKey(emote)
+    const selected = selectedKeys.includes(key)
+    if (!selected && atCap) return
+    onToggleEmote(emote)
+  }
+
+  function handleRowKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    emote: ExtensionEmote,
+    activity: EmoteWindowActivity,
+  ): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    handleRowActivate(emote, activity)
+  }
 
   return (
     <div className="pulse-seven-tv-panel" style={styles.panel}>
@@ -73,8 +97,11 @@ export function SevenTvEmotePanel({
         style={styles.toggle}
         onClick={onToggleExpanded}
         aria-expanded={expanded}
+        aria-controls="pulse-emote-picker-list"
       >
-        <span style={styles.toggleLabel}>Plot on chart (0–{maxSelected})</span>
+        <span style={styles.toggleLabel}>
+          Plot emotes · {selectedCount}/{maxSelected}
+        </span>
         {!expanded && previewEmotes.length > 0 ? (
           <span style={styles.togglePreview} title={previewNames}>
             {previewEmotes.map(emote => (
@@ -89,9 +116,6 @@ export function SevenTvEmotePanel({
             ))}
           </span>
         ) : null}
-        {selectedEmotes.length > 0 ? (
-          <span style={styles.toggleFocus}>{selectedEmotes.length}/{maxSelected} on chart</span>
-        ) : null}
         <span style={styles.chevron} aria-hidden="true">
           {expanded ? '▾' : '▸'}
         </span>
@@ -99,23 +123,45 @@ export function SevenTvEmotePanel({
 
       {expanded ? (
         <div style={styles.body}>
-          <div className="pulse-no-scrollbar" style={styles.rowList}>
-            {visibleEmotes.map((emote, index) => {
+          <div
+            id="pulse-emote-picker-list"
+            className="pulse-emote-picker-scroll"
+            style={styles.rowList}
+            data-emote-picker-scroll
+            role="listbox"
+            aria-label={`Plot emotes · ${selectedCount} of ${maxSelected} selected`}
+            aria-multiselectable="true"
+          >
+            {topEmotes.map((emote, index) => {
               const key = emoteSelectionKey(emote)
               const selected = selectedKeys.includes(key)
+              const activity = activityByKey.get(key) ?? 'none'
+              const plottable = activity === 'active'
+              const disabled = !plottable || (!selected && atCap)
               const plotColor = selected ? selectedPlotColors?.[key] : undefined
               const usePlotColor = Boolean(selected && plotColor)
+              const hint = activityHint(activity, maxSelected, !selected && atCap)
               return (
                 <button
                   type="button"
                   key={key}
+                  role="option"
+                  aria-selected={selected}
+                  aria-disabled={disabled}
+                  disabled={disabled}
+                  tabIndex={0}
                   className={
-                    usePlotColor ? 'pulse-seven-tv-row' : `pulse-seven-tv-row${selected ? ' pulse-seven-tv-row-active' : ''}`
+                    usePlotColor
+                      ? 'pulse-seven-tv-row'
+                      : `pulse-seven-tv-row${selected ? ' pulse-seven-tv-row-active' : ''}${
+                          disabled ? ' pulse-seven-tv-row-disabled' : ''
+                        }`
                   }
                   style={{
                     ...styles.row,
                     ...(index % 2 === 1 && !usePlotColor ? styles.rowAlt : null),
                     ...(sidebarCompact ? styles.rowCompact : null),
+                    ...(disabled ? styles.rowDisabled : null),
                     ...(usePlotColor
                       ? {
                           background: hexToRgba(plotColor!, 0.12),
@@ -123,54 +169,42 @@ export function SevenTvEmotePanel({
                         }
                       : null),
                   }}
-                  aria-pressed={selected}
-                  title={
-                    !selected && selectedKeys.length >= maxSelected
-                      ? `Max ${maxSelected} emotes on chart`
-                      : `${emote.name} · ${formatCount(emote.count)} uses · toggle chart line`
-                  }
-                  onClick={() => onToggleEmote(emote)}
+                  title={`${emote.name} · ${formatCount(emote.count)} uses · ${hint}`}
+                  onClick={() => handleRowActivate(emote, activity)}
+                  onKeyDown={event => handleRowKeyDown(event, emote, activity)}
                 >
                   <PulseEmoteImg
                     emote={emote}
                     backendUrl={backendUrl}
                     width={sidebarCompact ? 20 : 22}
                     height={sidebarCompact ? 20 : 22}
-                    style={styles.rowImg}
+                    style={{
+                      ...styles.rowImg,
+                      ...(disabled ? styles.rowImgDisabled : null),
+                    }}
                   />
                   <span style={styles.rowName}>{emote.name}</span>
                   <span
                     style={{
                       ...styles.rowCount,
                       ...(usePlotColor ? { color: plotColor } : null),
+                      ...(activity === 'none' ? styles.rowCountMuted : null),
                     }}
                   >
-                    {formatCount(emote.count)}
+                    {activity === 'loading'
+                      ? '…'
+                      : activity === 'none'
+                        ? 'No activity'
+                        : formatCount(emote.count)}
                   </span>
                 </button>
               )
             })}
           </div>
-          {remainingCount > 0 || canCollapse ? (
-            <button
-              type="button"
-              className="pulse-secondary-btn"
-              style={styles.moreButton}
-              onClick={() => {
-                if (remainingCount > 0) {
-                  setVisibleLimit(limit =>
-                    Math.min(topEmotes.length, limit + VISIBLE_CHIP_LIMIT),
-                  )
-                  return
-                }
-                setVisibleLimit(VISIBLE_CHIP_LIMIT)
-              }}
-              aria-expanded={canCollapse}
-            >
-              {remainingCount > 0
-                ? `Show ${nextRevealCount} more emote${nextRevealCount === 1 ? '' : 's'}`
-                : 'Show less'}
-            </button>
+          {showOverflowCue ? (
+            <div style={styles.overflowCue} aria-hidden="true">
+              Scroll for more
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -214,26 +248,28 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
   },
   previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
-  toggleFocus: {
-    color: theme.textMuted,
-    flexShrink: 0,
-    fontSize: 9,
-    fontWeight: 700,
-    letterSpacing: '0.03em',
-    textTransform: 'uppercase',
-  },
   chevron: { color: theme.accentSoft, flexShrink: 0, fontSize: 11, fontWeight: 900, marginLeft: 'auto' },
   body: {
     borderTop: '1px solid rgba(255, 255, 255, 0.06)',
     display: 'grid',
-    gap: 6,
+    gap: 4,
     padding: '6px 8px 8px',
   },
   rowList: {
     display: 'grid',
     gap: 4,
-    maxHeight: 220,
+    maxHeight: EMOTE_PICKER_SCROLL_MAX_HEIGHT_PX,
     overflowY: 'auto',
+    overscrollBehavior: 'contain',
+  },
+  overflowCue: {
+    color: theme.textMuted,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+    opacity: 0.75,
+    textAlign: 'center',
+    textTransform: 'uppercase',
   },
   row: {
     alignItems: 'center',
@@ -258,7 +294,12 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(255, 255, 255, 0.02)',
     border: '1px solid rgba(255, 255, 255, 0.06)',
   },
+  rowDisabled: {
+    cursor: 'not-allowed',
+    opacity: 0.55,
+  },
   rowImg: { display: 'block', objectFit: 'contain' },
+  rowImgDisabled: { opacity: 0.65 },
   rowName: {
     color: theme.textPrimary,
     fontSize: 11,
@@ -276,17 +317,11 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 28,
     textAlign: 'right',
   },
-  moreButton: {
-    background: 'transparent',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 8,
-    color: theme.accentSoft,
-    cursor: 'pointer',
-    fontSize: 10,
-    fontWeight: 800,
-    justifySelf: 'stretch',
-    padding: '6px 10px',
-    textAlign: 'center',
-    width: '100%',
+  rowCountMuted: {
+    color: theme.textMuted,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
+    textTransform: 'none',
   },
 }

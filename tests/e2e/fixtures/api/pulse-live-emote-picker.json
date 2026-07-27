@@ -1,0 +1,3750 @@
+{
+  "login": "fixturechan",
+  "isLive": true,
+  "tracking": true,
+  "streamId": "stream-fixture-1",
+  "vodId": null,
+  "startedAt": "2026-07-11T18:00:00.000Z",
+  "title": "Fixture live stream",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 3600,
+  "coverageStartOffsetSeconds": 30,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 30,
+    "coverageEndOffsetSeconds": 3600,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Full stream tracked"
+  },
+  "topEmotes": [
+    {
+      "id": "e1",
+      "name": "Emote01",
+      "count": 2490,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e2",
+      "name": "Emote02",
+      "count": 2480,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e3",
+      "name": "Emote03",
+      "count": 2470,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e4",
+      "name": "Emote04",
+      "count": 2460,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e5",
+      "name": "Emote05",
+      "count": 2450,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e6",
+      "name": "Emote06",
+      "count": 2440,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e7",
+      "name": "Emote07",
+      "count": 2430,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e8",
+      "name": "Emote08",
+      "count": 2420,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e9",
+      "name": "Emote09",
+      "count": 2410,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e10",
+      "name": "Emote10",
+      "count": 2400,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e11",
+      "name": "Emote11",
+      "count": 2390,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e12",
+      "name": "Emote12",
+      "count": 2380,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e13",
+      "name": "Emote13",
+      "count": 2370,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e14",
+      "name": "Emote14",
+      "count": 2360,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e15",
+      "name": "Emote15",
+      "count": 2350,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e16",
+      "name": "Emote16",
+      "count": 2340,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e17",
+      "name": "Emote17",
+      "count": 2330,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e18",
+      "name": "Emote18",
+      "count": 2320,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e19",
+      "name": "Emote19",
+      "count": 2310,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e20",
+      "name": "Emote20",
+      "count": 2300,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e21",
+      "name": "Emote21",
+      "count": 0,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e22",
+      "name": "Emote22",
+      "count": 0,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e23",
+      "name": "Emote23",
+      "count": 0,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "e24",
+      "name": "Emote24",
+      "count": 0,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    },
+    {
+      "id": "z0",
+      "name": "ZeroOnly",
+      "count": 0,
+      "provider": "seventv",
+      "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+    }
+  ],
+  "rollups": [
+    {
+      "offsetSeconds": 3480,
+      "chatCount": 90,
+      "totalEmoteCount": 30,
+      "sevenTvEmoteCount": 12,
+      "viewerCount": 1100,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 41,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 32,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 23,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 14,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 5,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 46,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 37,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 28,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 19,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 10,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 51,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 42,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 33,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 24,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 15,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 56,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 47,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 38,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 29,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 20,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3540,
+      "chatCount": 120,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 20,
+      "viewerCount": 1180,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 41,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 32,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 23,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 14,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 5,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 46,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 37,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 28,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 19,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 10,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 51,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 42,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 33,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 24,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 15,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 56,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 47,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 38,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 29,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 20,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3600,
+      "chatCount": 140,
+      "totalEmoteCount": 55,
+      "sevenTvEmoteCount": 28,
+      "viewerCount": 1200,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 41,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 32,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 23,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 14,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 5,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 46,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 37,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 28,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 19,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 10,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 51,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 42,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 33,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 24,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 15,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 56,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 47,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 38,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 29,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 20,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    }
+  ],
+  "fullRollups": [
+    {
+      "offsetSeconds": 0,
+      "chatCount": 20,
+      "totalEmoteCount": 8,
+      "sevenTvEmoteCount": 4,
+      "viewerCount": 800,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 300,
+      "chatCount": 25,
+      "totalEmoteCount": 10,
+      "sevenTvEmoteCount": 5,
+      "viewerCount": 830,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 600,
+      "chatCount": 30,
+      "totalEmoteCount": 12,
+      "sevenTvEmoteCount": 6,
+      "viewerCount": 860,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 900,
+      "chatCount": 35,
+      "totalEmoteCount": 14,
+      "sevenTvEmoteCount": 7,
+      "viewerCount": 890,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 1200,
+      "chatCount": 40,
+      "totalEmoteCount": 16,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 920,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 1500,
+      "chatCount": 45,
+      "totalEmoteCount": 18,
+      "sevenTvEmoteCount": 9,
+      "viewerCount": 950,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 1800,
+      "chatCount": 50,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 10,
+      "viewerCount": 980,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 2100,
+      "chatCount": 55,
+      "totalEmoteCount": 22,
+      "sevenTvEmoteCount": 11,
+      "viewerCount": 1010,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 2400,
+      "chatCount": 60,
+      "totalEmoteCount": 24,
+      "sevenTvEmoteCount": 12,
+      "viewerCount": 1040,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 2700,
+      "chatCount": 65,
+      "totalEmoteCount": 26,
+      "sevenTvEmoteCount": 13,
+      "viewerCount": 1070,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3000,
+      "chatCount": 70,
+      "totalEmoteCount": 28,
+      "sevenTvEmoteCount": 14,
+      "viewerCount": 1100,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3300,
+      "chatCount": 75,
+      "totalEmoteCount": 30,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 1130,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3480,
+      "chatCount": 90,
+      "totalEmoteCount": 30,
+      "sevenTvEmoteCount": 12,
+      "viewerCount": 1100,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3510,
+      "chatCount": 100,
+      "totalEmoteCount": 35,
+      "sevenTvEmoteCount": 18,
+      "viewerCount": 1150,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3540,
+      "chatCount": 120,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 20,
+      "viewerCount": 1180,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    },
+    {
+      "offsetSeconds": 3600,
+      "chatCount": 140,
+      "totalEmoteCount": 55,
+      "sevenTvEmoteCount": 28,
+      "viewerCount": 1200,
+      "topEmotes": [
+        {
+          "id": "e1",
+          "name": "Emote01",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e2",
+          "name": "Emote02",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e3",
+          "name": "Emote03",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e4",
+          "name": "Emote04",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e5",
+          "name": "Emote05",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e6",
+          "name": "Emote06",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e7",
+          "name": "Emote07",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e8",
+          "name": "Emote08",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e9",
+          "name": "Emote09",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e10",
+          "name": "Emote10",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e11",
+          "name": "Emote11",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e12",
+          "name": "Emote12",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e13",
+          "name": "Emote13",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e14",
+          "name": "Emote14",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e15",
+          "name": "Emote15",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e16",
+          "name": "Emote16",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e17",
+          "name": "Emote17",
+          "count": 11,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e18",
+          "name": "Emote18",
+          "count": 1,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e19",
+          "name": "Emote19",
+          "count": 31,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e20",
+          "name": "Emote20",
+          "count": 21,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e21",
+          "name": "Emote21",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e22",
+          "name": "Emote22",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e23",
+          "name": "Emote23",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "e24",
+          "name": "Emote24",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        },
+        {
+          "id": "z0",
+          "name": "ZeroOnly",
+          "count": 0,
+          "provider": "seventv",
+          "imageUrl": "https://cdn.7tv.app/emote/placeholder/1x.webp"
+        }
+      ]
+    }
+  ],
+  "lanes": {
+    "composite": [
+      0.5,
+      0.7,
+      0.8
+    ],
+    "chat": [
+      0.4,
+      0.6,
+      0.7
+    ],
+    "seventv": [
+      0.3,
+      0.5,
+      0.6
+    ],
+    "viewers": [
+      1100,
+      1180,
+      1200
+    ]
+  },
+  "peaks": [
+    {
+      "offsetSeconds": 3600,
+      "score": 90,
+      "reasons": [
+        "chat_spike"
+      ],
+      "reasonLabel": "Peak chat",
+      "dominantSignal": "chat",
+      "chatCount": 140,
+      "emoteCount": 55
+    }
+  ],
+  "recap": null,
+  "games": [
+    {
+      "gameName": "League of Legends",
+      "offsetSeconds": 0,
+      "durationSeconds": 3510
+    },
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 3510,
+      "durationSeconds": 90
+    }
+  ]
+}

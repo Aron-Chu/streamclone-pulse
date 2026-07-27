@@ -12,6 +12,9 @@ export function defaultEmotePlotKeys(
   if (viewMode === 'overview') {
     return keys[0] ? new Set([keys[0]]) : new Set()
   }
+  if (viewMode === 'emotes') {
+    return new Set(keys.slice(0, MAX_PLOTTED_EMOTES))
+  }
   return new Set(keys.slice(0, 3))
 }
 

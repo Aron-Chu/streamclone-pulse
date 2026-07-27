@@ -155,6 +155,30 @@ export const shadowStyles = `
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28) !important;
   }
+  .pulse-seven-tv-row:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.85);
+    outline-offset: 2px;
+  }
+  .pulse-seven-tv-row-disabled:hover {
+    background: inherit !important;
+    border-color: inherit !important;
+    transform: none !important;
+  }
+  .pulse-emote-picker-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.35);
+    border-radius: 999px;
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.55);
+    border-radius: 999px;
+  }
   .pulse-chart-legend-chip {
     transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
       color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;

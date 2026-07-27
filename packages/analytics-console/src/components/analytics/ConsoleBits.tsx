@@ -128,11 +128,17 @@ export function AnalyticsQualityChip({
     rollupCount: detail?.rollups?.length ?? detail?.timelineMinutes,
     chatMessages: detail?.stream?.chatMessages,
     vodId: detail?.vodId ?? detail?.stream?.vodId,
+    chartState: detail?.availability?.chartState,
+    chartUsable: detail?.availability?.chartUsable,
   })
   return (
     <span
       className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${analyticsQualityChipClass(label)}`}
-      title="Derived from coverage, sync health, and rollup availability"
+      title={
+        detail?.availability
+          ? 'Backend-authored analytics quality'
+          : 'Derived from backend analyticsQuality when present'
+      }
     >
       Analytics {label}
     </span>
@@ -146,15 +152,33 @@ export function CoverageFacets({
   detail?: AnalyticsStreamDetail
   summaryMetrics?: StreamSummaryMetrics
 }) {
-  const chatPct = detail?.chatCoveragePct ?? summaryMetrics?.data_coverage_pct
+  const dataPct =
+    detail?.availability?.coveragePct
+    ?? (detail as { dataCoveragePct?: number } | undefined)?.dataCoveragePct
+    ?? summaryMetrics?.data_coverage_pct
+  const chatPct = detail?.chatCoveragePct
   const viewerSamples = summaryMetrics?.viewerSampleCount ?? detail?.stream?.viewerSamples
-  if (chatPct == null && !viewerSamples) return null
+  const corpus = detail?.availability?.corpusState
+  const backfill = detail?.availability?.backfillState
+  if (dataPct == null && chatPct == null && !viewerSamples && !corpus && !backfill) return null
   const parts: string[] = []
-  if (chatPct != null && chatPct > 0) parts.push(`Chat ${Math.round(chatPct)}%`)
+  if (dataPct != null && dataPct > 0) parts.push(`Data ${Math.round(dataPct)}%`)
+  // Only label chat when chatCoveragePct is distinct chat evidence (not a data alias).
+  if (chatPct != null && chatPct > 0 && (dataPct == null || Math.abs(chatPct - dataPct) > 0.5)) {
+    parts.push(`Chat ${Math.round(chatPct)}%`)
+  }
   if (viewerSamples != null && viewerSamples > 0) parts.push(`Viewer samples ${viewerSamples}`)
+  if (corpus === 'ready') parts.push('Corpus ready')
+  if (corpus === 'pending') parts.push('Corpus pending')
+  if (corpus === 'failed' || corpus === 'absent') parts.push(`Corpus ${corpus}`)
+  if (corpus === 'query_failed') parts.push('Corpus query failed')
+  if (backfill && backfill !== 'idle') parts.push(`Backfill ${backfill}`)
   if (parts.length === 0) return null
   return (
-    <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-semibold normal-case text-zinc-400">
+    <span
+      className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-semibold normal-case text-zinc-400"
+      title={detail?.availability?.corpusMessage || detail?.availability?.coverageMessage}
+    >
       {parts.join(' · ')}
     </span>
   )
