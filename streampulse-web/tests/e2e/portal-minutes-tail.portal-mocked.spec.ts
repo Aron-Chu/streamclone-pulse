@@ -66,22 +66,30 @@ test.describe('portal minutes tail (mocked)', () => {
     await openAnalyticsSession(page)
     await expect(page.locator('svg').first()).toBeVisible({ timeout: 20_000 })
 
+    const countFullMinutes = () =>
+      harness.counter.urls.filter((u) => {
+        try {
+          const parsed = new URL(u)
+          return (
+            parsed.pathname.endsWith(`/streams/${PORTAL_STREAM_ID}/minutes`)
+            && !parsed.searchParams.has('afterOffset')
+          )
+        } catch {
+          return false
+        }
+      }).length
+
+    // Settle initial load (catalog/summary may arrive after first paint).
+    await expect.poll(() => countFullMinutes()).toBeGreaterThanOrEqual(1)
+    await expect.poll(() => harness.counter.count(/emotes\?range=30d/)).toBeGreaterThanOrEqual(1)
+    await expect
+      .poll(() => harness.counter.count(`/streams/${PORTAL_STREAM_ID}/summary`))
+      .toBeGreaterThanOrEqual(1)
+
     const fullBefore = harness.counter.matching(
       new RegExp(`/streams/${PORTAL_STREAM_ID}/minutes(?!\\?.*afterOffset)`),
     )
-    // Count full minutes URLs without afterOffset
-    const fullCount = harness.counter.urls.filter((u) => {
-      try {
-        const parsed = new URL(u)
-        return (
-          parsed.pathname.endsWith(`/streams/${PORTAL_STREAM_ID}/minutes`)
-          && !parsed.searchParams.has('afterOffset')
-        )
-      } catch {
-        return false
-      }
-    }).length
-    expect(fullCount).toBeGreaterThanOrEqual(1)
+    const fullCount = countFullMinutes()
     expect(fullCount).toBeLessThanOrEqual(2)
 
     const catalogBefore = harness.counter.count(/emotes\?range=30d/)
@@ -101,23 +109,13 @@ test.describe('portal minutes tail (mocked)', () => {
     await harness.advancePoll(30_000)
     await page.waitForTimeout(300)
 
-    const fullAfter = harness.counter.urls.filter((u) => {
-      try {
-        const parsed = new URL(u)
-        return (
-          parsed.pathname.endsWith(`/streams/${PORTAL_STREAM_ID}/minutes`)
-          && !parsed.searchParams.has('afterOffset')
-        )
-      } catch {
-        return false
-      }
-    }).length
+    const fullAfter = countFullMinutes()
     expect(fullAfter).toBe(fullCount)
     expect(fullBefore.length).toBeGreaterThanOrEqual(0)
 
-    // No duplicate 30d catalog / summary spam on live tails.
-    expect(harness.counter.count(/emotes\?range=30d/)).toBeLessThanOrEqual(catalogBefore + 1)
-    expect(harness.counter.count(`/streams/${PORTAL_STREAM_ID}/summary`)).toBeLessThanOrEqual(summaryBefore + 1)
+    // No duplicate 30d catalog / summary spam on live tails after settle.
+    expect(harness.counter.count(/emotes\?range=30d/)).toBe(catalogBefore)
+    expect(harness.counter.count(`/streams/${PORTAL_STREAM_ID}/summary`)).toBe(summaryBefore)
 
     // Chart still present (visually advanced via new points).
     await expect(page.locator('svg path, svg circle').first()).toBeVisible()
