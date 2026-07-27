@@ -26,6 +26,16 @@ function SessionAliasRedirect() {
   return <Navigate to={`/analytics/${login}/${streamId}${search}${hash}`} replace />
 }
 
+/** Short `/s/:login` and `/s/:login/:streamId` → canonical analytics (preserve query/hash). */
+function ShortSessionRedirect() {
+  const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
+  const { search, hash } = useLocation()
+  const target = streamId
+    ? `/analytics/${login}/${streamId}${search}${hash}`
+    : `/analytics/${login}${search}${hash}`
+  return <Navigate to={target} replace />
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<AnalyticsRouteFallback />}>
@@ -55,6 +65,9 @@ export function AppRoutes() {
         <Route path="/analytics/:login/:streamId" element={<ChannelAnalyticsPage />} />
         {/* Backcompat: redirect the old /s/ session form to the canonical route. */}
         <Route path="/analytics/:login/s/:streamId" element={<SessionAliasRedirect />} />
+        {/* Short public aliases used by extension/share links. */}
+        <Route path="/s/:login" element={<ShortSessionRedirect />} />
+        <Route path="/s/:login/:streamId" element={<ShortSessionRedirect />} />
 
         {/* Dashboard remains a separate, gated product surface. */}
         <Route element={<RequireAuth />}>
