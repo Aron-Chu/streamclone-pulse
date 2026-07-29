@@ -25,3 +25,6 @@ _split_overlay.*
 # Local release / CWS prep artifacts (never commit)
 .artifacts/
 listing-assets/
+
+# .vscode/ — commit shared config (settings.json, mcp.json),
+# .vscode/.gitignore handles local-only auth / browser / log state.

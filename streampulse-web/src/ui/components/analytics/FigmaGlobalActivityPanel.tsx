@@ -343,21 +343,23 @@ export function FigmaGlobalActivityPanel({
     onBucketHover?.(hoverBucketT);
   }, [hoverBucketT, onBucketHover, selectedPoint]);
 
-  const prevSelectedTRef = useRef<number | null>(null);
+  const prevInspectorModeRef = useRef<"range" | "preview" | "selected">("range");
 
   useEffect(() => {
-    const nextT = selectedPoint?.t ?? null;
-    if (nextT == null) {
-      prevSelectedTRef.current = null;
-      return;
-    }
-    if (prevSelectedTRef.current === nextT) return;
-    prevSelectedTRef.current = nextT;
+    const isSelected = selectedPoint != null;
+    const isPreview = !isSelected && hoverBucketT != null;
+    const nextMode: "range" | "preview" | "selected" = isSelected
+      ? "selected"
+      : isPreview
+        ? "preview"
+        : "range";
+    if (prevInspectorModeRef.current === nextMode) return;
+    prevInspectorModeRef.current = nextMode;
     const chrome = inspectorRef.current?.querySelector(
       ".activity-bucket-inspector__chrome",
     );
     transitionInspector(chrome instanceof HTMLElement ? chrome : null);
-  }, [selectedPoint?.t, transitionInspector]);
+  }, [selectedPoint, hoverBucketT, transitionInspector]);
 
   useEffect(() => {
     if (!activityWindowKey || !motionEnabled) return;

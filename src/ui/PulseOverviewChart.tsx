@@ -64,10 +64,10 @@ export interface PulseOverviewChartProps {
   highlightedGameSegmentKey?: string | null
 }
 
-const DEFAULT_WIDTH = 320
+export const DEFAULT_WIDTH = 320
 const DEFAULT_HEIGHT = 160
-const PAD_LEFT = 4
-const PAD_RIGHT = 12
+export const PAD_LEFT = 4
+export const PAD_RIGHT = 12
 const PAD_TOP = 14
 const PAD_BOTTOM = 12
 const VIEWER_STRIP_SHARE_COLLAPSED = 0.28

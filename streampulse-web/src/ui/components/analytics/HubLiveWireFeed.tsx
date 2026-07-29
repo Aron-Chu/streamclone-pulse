@@ -184,7 +184,7 @@ function WireHeader({ titleId, metaLabel }: WireHeaderProps) {
     <header className="hub-live-wire__head">
       <h2 id={titleId} className="hub-live-wire__title">
         <Radio aria-hidden="true" />
-        Live wire
+        Live wire · Last 30m
       </h2>
       <span className="hub-live-wire__meta">{metaLabel}</span>
     </header>
@@ -367,7 +367,7 @@ export function HubLiveWireFeed({
   ])
 
   const metaLabel = isLiveNetwork
-    ? 'last 30m · newest first'
+    ? 'newest first'
     : hubDegraded
       ? 'live network feed paused'
       : 'snapshot — not live network cadence'

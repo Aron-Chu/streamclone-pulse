@@ -27,6 +27,7 @@
   "dependencies": {
     "@streampulse/pulse-charts": "file:../streampulse-backend/packages/pulse-charts",
     "@streampulse/pulse-core": "file:../streampulse-backend/packages/pulse-core",
+    "esbuild": "^0.27.7",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

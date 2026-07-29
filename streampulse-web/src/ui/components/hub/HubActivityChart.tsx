@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
 import { internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
@@ -229,6 +229,16 @@ function buildLine(pts: Pt[]): string {
   return d
 }
 
+/** Straight-segment line — detail layer uses straight segments to read as precise. */
+function buildLinearLine(pts: Pt[]): string {
+  if (pts.length < 2) return ''
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`
+  for (let i = 1; i < pts.length; i += 1) {
+    d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`
+  }
+  return d
+}
+
 /**
  * Build smoothed line segments, breaking the line on large time gaps and —
  * when `sampleValues` is supplied — on buckets where the value is 0. Zero-value
@@ -244,6 +254,7 @@ function splitLinePaths(
   windowMinutes: number,
   sampleValues?: number[],
   hasSample?: boolean[],
+  geometry: 'smooth' | 'linear' = 'smooth',
 ): string[] {
   if (pts.length < 2) return []
   const maxGap = maxConnectedGapMs(windowMinutes)
@@ -269,7 +280,8 @@ function splitLinePaths(
     current.push(pts[i])
   }
   flush()
-  return segments.map(buildLine).filter(Boolean)
+  const build = geometry === 'linear' ? buildLinearLine : buildLine
+  return segments.map(build).filter(Boolean)
 }
 
 /** Close a lane line path to the baseline for a semi-transparent area fill. */
@@ -311,6 +323,19 @@ export function HubActivityChart({
   const lastBucketTRef = useRef<number | null | undefined>(undefined)
   const [enabledProviders, setEnabledProviders] = useState<Set<ProviderKey> | null>(null)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<CoreSeriesKey | null>(null)
+  // Press-drag state: pointer is captured, scrubbing is in flight.
+  const pressDraggingRef = useRef<boolean>(false)
+  const pressStartRef = useRef<{ x: number; y: number; index: number } | null>(null)
+  const pressEnteredRef = useRef<boolean>(false)
+  const pressPointerIdRef = useRef<number | null>(null)
+  const [pressDragging, setPressDragging] = useState(false)
+  const HORIZONTAL_INTENT_PX = 6
+  // Detail layer opacity. Driven by hover and press-drag only — selection
+  // is its own visual treatment (BucketSelectionCue), so the detail layer
+  // returns to calm when the user releases the pointer.
+  const detailActive =
+    hover != null || pressDragging
+  const [announcement, setAnnouncement] = useState('')
 
   const toggleSeriesFocus = useCallback((seriesKey: CoreSeriesKey) => {
     setFocusedSeriesKey((current) => (current === seriesKey ? null : seriesKey))
@@ -499,6 +524,14 @@ export function HubActivityChart({
         windowMinutes,
         chartPoints.map((p) => emoteCount(p)),
       ),
+      totalEmoteLinearLines: splitLinePaths(
+        totalEmotes,
+        chartPoints,
+        windowMinutes,
+        chartPoints.map((p) => emoteCount(p)),
+        undefined,
+        'linear',
+      ),
       providerLines,
       providerLaneLines,
       internalGapBands,
@@ -661,6 +694,7 @@ export function HubActivityChart({
     chat,
     viewerLines,
     totalEmoteLines,
+    totalEmoteLinearLines,
     providerLines,
     providerLaneLines,
     internalGapBands,
@@ -716,17 +750,170 @@ export function HubActivityChart({
       hoverRafRef.current = null
     }
     hoverIndexRef.current = null
+    // Only clear hover when no press-drag is in progress; press-drag owns hover until release.
+    if (!pressDraggingRef.current) {
+      flushHover(null)
+    }
+  }
+
+  /**
+   * Press-drag scrub. Press → preview the tapped bucket without committing.
+   * After a small horizontal-intent threshold we switch into scrub mode and
+   * the cursor owns hover until release. Release commits the final bucket.
+   * Cancellation restores the previous committed state.
+   */
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!onBucketSelect) return
+    if (event.button !== undefined && event.button !== 0) return
+    // Deliberately do NOT setPointerCapture on press-down — that would steal
+    // vertical scrolling from the page. Capture is acquired only once
+    // horizontal intent is detected (in handlePointerMove).
+    pressPointerIdRef.current = event.pointerId
+    const best = nearestPointIndex(event.clientX)
+    pressStartRef.current = { x: event.clientX, y: event.clientY, index: best }
+    pressEnteredRef.current = false
+    pressDraggingRef.current = false
+    commitHoverIndex(best)
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!onBucketSelect) return
+    if (pressStartRef.current == null) {
+      // Not pressing — fall through to the regular hover path.
+      const best = nearestPointIndex(event.clientX)
+      commitHoverIndex(best)
+      return
+    }
+    const dx = event.clientX - pressStartRef.current.x
+    const dy = event.clientY - pressStartRef.current.y
+    const horizontalIntent = Math.abs(dx) >= HORIZONTAL_INTENT_PX && Math.abs(dx) > Math.abs(dy)
+    if (!pressEnteredRef.current && horizontalIntent) {
+      pressEnteredRef.current = true
+      pressDraggingRef.current = true
+      // Acquire pointer capture only after horizontal intent — vertical swipes
+      // must be allowed to scroll the page.
+      try {
+        wrapRef.current?.setPointerCapture(event.pointerId)
+      } catch {
+        /* ignore */
+      }
+      setPressDragging(true)
+    }
+    if (pressEnteredRef.current) {
+      const best = nearestPointIndex(event.clientX)
+      commitHoverIndex(best)
+    }
+  }
+
+  function finalizePress(targetIndex: number | null) {
+    if (pressStartRef.current == null) return
+    const finalIndex = targetIndex ?? pressStartRef.current.index
+    pressStartRef.current = null
+    pressEnteredRef.current = false
+    pressDraggingRef.current = false
+    setPressDragging(false)
+    if (!onBucketSelect) return
+    const point = chartPoints[finalIndex]
+    if (!point) return
+    const next = resolveChartBucketSelection(point, selectedBucketT)
+    if (next === undefined) return
+    setFocusedSeriesKey(null)
+    onBucketSelect(next)
+    // Announce the committed bucket so screen readers hear the result.
+    if (next != null) {
+      const minutesAgo = Math.max(0, Math.round((lastT - next) / 60_000))
+      const p = chartPoints[finalIndex]
+      setAnnouncement(
+        `Selected ${formatActivityAxisTick(next, windowMinutes)}, ${axisLabel(minutesAgo)}, ${compact(p.viewers)} viewers, ${compact(p.chat)} chat, ${compact(hubActivityEmoteCount(p))} emotes`,
+      )
+    } else {
+      setAnnouncement('Bucket selection cleared')
+    }
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (pressStartRef.current == null) return
+    if (pressEnteredRef.current) {
+      const el = wrapRef.current
+      if (el && pressPointerIdRef.current != null) {
+        try {
+          el.releasePointerCapture(pressPointerIdRef.current)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    pressPointerIdRef.current = null
+    const startIndex = pressStartRef.current.index
+    if (!pressEnteredRef.current) {
+      // Tap: commit the pressed bucket on release.
+      finalizePress(startIndex)
+      return
+    }
+    // Scrub gesture: commit the bucket under the release point.
+    const finalIndex = nearestPointIndex(event.clientX)
+    finalizePress(finalIndex)
+  }
+
+  function handlePointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
+    if (pressStartRef.current == null) return
+    if (pressEnteredRef.current) {
+      const el = wrapRef.current
+      if (el && pressPointerIdRef.current != null) {
+        try {
+          el.releasePointerCapture(pressPointerIdRef.current)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    pressPointerIdRef.current = null
+    pressStartRef.current = null
+    pressEnteredRef.current = false
+    pressDraggingRef.current = false
+    setPressDragging(false)
+    // Restore the prior hover state — no commit on cancellation.
     flushHover(null)
   }
 
-  function handleClick(event: ReactMouseEvent<HTMLDivElement>) {
-    if (!onBucketSelect) return
-    setFocusedSeriesKey(null)
-    const best = nearestPointIndex(event.clientX)
-    const point = chartPoints[best]
-    const next = resolveChartBucketSelection(point, selectedBucketT)
-    if (next === undefined) return
-    onBucketSelect(next)
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (chartPoints.length === 0) return
+    if (event.key === 'Home') {
+      event.preventDefault()
+      selectIndex(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      selectIndex(chartPoints.length - 1)
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      const step = event.shiftKey ? 5 : 1
+      const direction = event.key === 'ArrowRight' ? 1 : -1
+      const current = hover != null ? hover : selectedIndex >= 0 ? selectedIndex : 0
+      const next = Math.max(0, Math.min(chartPoints.length - 1, current + direction * step))
+      selectIndex(next)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const commitIndex = hover != null ? hover : selectedIndex >= 0 ? selectedIndex : 0
+      const p = chartPoints[commitIndex]
+      if (p) {
+        onBucketSelect?.(p.t)
+      }
+    } else if (event.key === 'Escape') {
+      if (selectedBucketT != null) {
+        event.preventDefault()
+        onBucketSelect?.(null)
+      }
+    }
+  }
+
+  function selectIndex(index: number) {
+    commitHoverIndex(index)
+    const p = chartPoints[index]
+    if (!p) return
+    const minutesAgo = Math.max(0, Math.round((lastT - p.t) / 60_000))
+    setAnnouncement(
+      `${formatActivityAxisTick(p.t, windowMinutes)}, ${axisLabel(minutesAgo)}, ${compact(p.viewers)} viewers, ${compact(p.chat)} chat, ${compact(hubActivityEmoteCount(p))} emotes`,
+    )
   }
 
   const selectedIndex =
@@ -844,14 +1031,20 @@ export function HubActivityChart({
           <div className="hx-plot-stack__plot hx-plot-stack__plot--chart">
             <div
               ref={wrapRef}
-              className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}`}
+              className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}${pressDragging ? ' hx-chart2--dragging' : ''}`}
               data-hover={hover != null ? 'true' : undefined}
               data-selected={selectedIndex >= 0 ? 'true' : undefined}
+              data-detail-active={detailActive ? 'true' : undefined}
               role="img"
               aria-label={chartAriaLabel}
+              tabIndex={bucketSelectEnabled ? 0 : undefined}
               onMouseMove={handleMove}
               onMouseLeave={handleLeave}
-              onClick={bucketSelectEnabled ? handleClick : undefined}
+              onPointerDown={bucketSelectEnabled ? handlePointerDown : undefined}
+              onPointerMove={bucketSelectEnabled ? handlePointerMove : undefined}
+              onPointerUp={bucketSelectEnabled ? handlePointerUp : undefined}
+              onPointerCancel={bucketSelectEnabled ? handlePointerCancel : undefined}
+              onKeyDown={bucketSelectEnabled ? handleKeyDown : undefined}
             >
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <g className="grid">
@@ -946,7 +1139,32 @@ export function HubActivityChart({
               </g>
             ))
             : null}
+          {/* Detail layer: emote linear-segment overlay only. The viewers
+              linear variant was measured at max 0.92px deviation from the
+              rest line — invisible against the 1.6px stroke — and was
+              removed. The emote variant clears its stroke on ~18% of width
+              and stays. */}
+          <g
+            className="hx-chart-detail-layer"
+            data-active={detailActive ? 'true' : undefined}
+            aria-hidden="true"
+          >
+            {totalEmoteLinearLines.map((line, i) => (
+              <path
+                key={`emote-detail-${i}`}
+                className="hx-chart-line hx-chart-line--emotes-detail"
+                d={line}
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </g>
         </svg>
+        <span className="hx-chart-sr" role="status">
+          {announcement}
+        </span>
 
         <div className="hx-chart2__layer">
           {selectedIndex >= 0 ? (
@@ -1055,7 +1273,7 @@ export function HubActivityChart({
           ) : null}
         </div>
             </div>
-            <div className="hx-chart-tip-slot" aria-live="polite">
+            <div className="hx-chart-tip-slot">
             {hover != null && hp ? (
               <div className="tip" style={tipStyle}>
                 <div className="t">{axisLabel(minutesAgo)}</div>
@@ -1216,3 +1434,6 @@ export function HubActivityChart({
     </>
   )
 }
+
+/* Internal helpers re-exported for focused unit tests (see tests/hub-activity-chart.test.ts). */
+export { buildLinearLine, splitLinePaths }

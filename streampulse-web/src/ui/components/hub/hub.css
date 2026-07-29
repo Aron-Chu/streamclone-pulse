@@ -1568,6 +1568,65 @@
 }
 .hubx .hx-chart2--selectable {
   cursor: crosshair;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hubx .hx-chart2--selectable:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.hubx .hx-chart2--dragging,
+.hubx .hx-chart2--dragging * {
+  cursor: grabbing !important;
+}
+.hubx .hx-chart-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Detail layer: linear overlays lifted on hover/selection. Crossfade between
+   smooth and linear gives the eye a precise path on top of the rounded flow. */
+.hubx .hx-chart2 .hx-chart-detail-layer {
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+.hubx .hx-chart2[data-detail-active="true"] .hx-chart-detail-layer {
+  opacity: 1;
+}
+.hubx .hx-chart2 .hx-chart-line--viewers-detail {
+  stroke: hsl(var(--sp-chart-viewers, var(--chart-2)));
+  stroke-width: 1.6;
+  opacity: 0.85;
+  mix-blend-mode: screen;
+}
+.hubx .hx-chart2 .hx-chart-line--emotes-detail {
+  stroke: hsl(var(--sp-chart-emotes, var(--chart-4)));
+  stroke-width: 1.4;
+  opacity: 0.75;
+  mix-blend-mode: screen;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hubx .hx-chart2 .hx-chart-detail-layer {
+    transition: none;
+  }
+  .hubx .hx-chart2[data-refreshing="true"] {
+    animation: none;
+  }
+  .figma-global-activity__chart-col[data-refreshing="true"] .hx-chart2 {
+    animation: none;
+  }
+  .hubx .hx-chart2 .hx-bucket-cue--motion.hx-bucket-cue--selected .hx-bucket-cue__node,
+  .hubx .hx-chart2 .hx-bucket-cue--motion.hx-bucket-cue--selected .hx-bucket-cue__ring {
+    animation: none;
+  }
 }
 .hubx .hx-chart2 .hx-chart-line--chat-bg {
   stroke: hsl(var(--chart-bar) / 0.7);
