@@ -10,7 +10,12 @@ import {
   resolveHubActivityChartWindowMinutes,
 } from '../src/lib/hubActivityHonesty'
 import { selectHubChartActivityInputs } from '../src/lib/hubChartActivityModel'
-import { normalizePublicHub, type HubActivityPoint, type PublicHub } from '../src/lib/publicHub'
+import {
+  normalizePublicHub,
+  type HubActivity,
+  type HubActivityPoint,
+  type PublicHub,
+} from '../src/lib/publicHub'
 
 function makePoints(count: number, endMs = Date.now()): HubActivityPoint[] {
   const end = Math.floor(endMs / 60_000) * 60_000
@@ -39,13 +44,13 @@ function hubWithActivity(activity: PublicHub['activity']): PublicHub {
 }
 
 describe('hub activity honesty (live_pool_fallback)', () => {
-  const degraded = {
+  const degraded: HubActivity = {
     points: makePoints(30),
     windowMinutes: 1440,
     channelCount: 12,
-    state: 'degraded' as const,
-    source: 'live_pool_fallback' as const,
-    reason: 'historical_projection_unavailable' as const,
+    state: 'degraded',
+    source: 'live_pool_fallback',
+    reason: 'historical_projection_unavailable',
     availableWindowMinutes: 30,
   }
 
@@ -83,7 +88,7 @@ describe('hub activity honesty (live_pool_fallback)', () => {
   })
 
   it('leaves healthy payloads on the requested window', () => {
-    const healthy = {
+    const healthy: HubActivity = {
       points: makePoints(60),
       windowMinutes: 1440,
       channelCount: 12,

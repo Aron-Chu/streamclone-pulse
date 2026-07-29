@@ -12,9 +12,7 @@ export const HUB_ACTIVITY_REASON_HISTORICAL_UNAVAILABLE =
  * True when hub activity is pool-only / degraded rather than a complete
  * historical projection for the requested window.
  */
-export function isHubActivityLivePoolFallback(
-  activity: Pick<HubActivity, 'state' | 'source' | 'reason'>,
-): boolean {
+export function isHubActivityLivePoolFallback(activity: HubActivity): boolean {
   if (activity.source === HUB_ACTIVITY_SOURCE_LIVE_POOL_FALLBACK) return true
   return (
     activity.state === 'degraded' &&
@@ -27,12 +25,7 @@ export function isHubActivityLivePoolFallback(
  * not fabricate missing historical buckets across the requested 24h/7d/30d span.
  * Requested windowMinutes stays on the payload for range-tab identity.
  */
-export function resolveHubActivityChartWindowMinutes(
-  activity: Pick<
-    HubActivity,
-    'windowMinutes' | 'availableWindowMinutes' | 'state' | 'source' | 'reason'
-  >,
-): number {
+export function resolveHubActivityChartWindowMinutes(activity: HubActivity): number {
   const requested = Math.max(1, activity.windowMinutes || 30)
   if (!isHubActivityLivePoolFallback(activity)) return requested
   const available = activity.availableWindowMinutes
@@ -43,9 +36,7 @@ export function resolveHubActivityChartWindowMinutes(
 }
 
 /** Short status chip / banner label for degraded pool-only activity. */
-export function hubActivityHonestyChipLabel(
-  activity: Pick<HubActivity, 'state' | 'source' | 'reason'>,
-): string | null {
+export function hubActivityHonestyChipLabel(activity: HubActivity): string | null {
   if (!isHubActivityLivePoolFallback(activity)) return null
   return 'Recent live activity only'
 }
@@ -54,12 +45,7 @@ export function hubActivityHonestyChipLabel(
  * Honest served-span label for ledes and peaks. Prefer this over formatting
  * requested windowMinutes when the payload is degraded.
  */
-export function formatHubActivityServedLabel(
-  activity: Pick<
-    HubActivity,
-    'windowMinutes' | 'availableWindowMinutes' | 'state' | 'source' | 'reason'
-  >,
-): string {
+export function formatHubActivityServedLabel(activity: HubActivity): string {
   if (isHubActivityLivePoolFallback(activity)) {
     return 'Recent live activity only'
   }
@@ -67,12 +53,7 @@ export function formatHubActivityServedLabel(
 }
 
 /** Longer explanation for title/tooltip when degraded. */
-export function hubActivityHonestyDetail(
-  activity: Pick<
-    HubActivity,
-    'windowMinutes' | 'availableWindowMinutes' | 'state' | 'source' | 'reason'
-  >,
-): string | null {
+export function hubActivityHonestyDetail(activity: HubActivity): string | null {
   if (!isHubActivityLivePoolFallback(activity)) return null
   const requested = formatActivityWindowLabel(Math.max(1, activity.windowMinutes || 30))
   const availableMinutes = resolveHubActivityChartWindowMinutes(activity)
@@ -81,10 +62,7 @@ export function hubActivityHonestyDetail(
 }
 
 export function hubActivityHonestyEmptyCopy(
-  activity: Pick<
-    HubActivity,
-    'windowMinutes' | 'availableWindowMinutes' | 'state' | 'source' | 'reason'
-  >,
+  activity: HubActivity,
 ): { title: string; description: string } | null {
   if (!isHubActivityLivePoolFallback(activity)) return null
   const requested = formatActivityWindowLabel(Math.max(1, activity.windowMinutes || 30))
