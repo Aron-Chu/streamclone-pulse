@@ -39,6 +39,9 @@ export interface HubActivityChartProps {
   coveragePct?: number
   loading?: boolean
   footnote?: string
+  /** Optional honest empty copy when live-pool fallback has no chartable points. */
+  emptyTitle?: string
+  emptyDescription?: string
   /** Optional time-window selector rendered above the chart (24h/7d/1mo/…). */
   rangeControl?: HubActivityRangeControl
   /** Unix ms for the selected activity bucket (network moments filtering). */
@@ -293,6 +296,8 @@ export function HubActivityChart({
   coveragePct = 100,
   loading,
   footnote,
+  emptyTitle,
+  emptyDescription,
   rangeControl,
   selectedBucketT = null,
   accentBucketT = null,
@@ -647,7 +652,14 @@ export function HubActivityChart({
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
         <EmptyState icon={<Activity aria-hidden="true" />}>
-          Waiting for live activity — the chart draws once channels start sending chat and emotes.
+          {emptyTitle ? (
+            <>
+              <strong>{emptyTitle}</strong>
+              {emptyDescription ? <> — {emptyDescription}</> : null}
+            </>
+          ) : (
+            'Waiting for live activity — the chart draws once channels start sending chat and emotes.'
+          )}
         </EmptyState>
       </>
     )

@@ -11,6 +11,7 @@ import { HubBackendSourceBanner } from "../../ui/components/analytics/HubBackend
 import { HubDataHealthBanner } from "../../ui/components/hub/HubDataHealthBanner";
 import { resolveLivePulseMoments, mapHubPulseMoment, momentRowKey } from "../../lib/figmaSessionAnalytics";
 import { summarizeActivity, activityBucketKey } from "../../lib/hubActivitySummary";
+import { resolveHubActivityChartWindowMinutes } from "../../lib/hubActivityHonesty";
 import {
   aggregateEmotesFromMoments,
   rankLiveChannelsByActivity,
@@ -283,13 +284,17 @@ function AnalyticsLandingContent() {
     () =>
       summarizeActivity(
         data.activity.points,
-        data.activity.windowMinutes,
+        resolveHubActivityChartWindowMinutes(data.activity),
         data.poolSize,
       ),
     [
       data.poolSize,
       data.activity.points,
       data.activity.windowMinutes,
+      data.activity.availableWindowMinutes,
+      data.activity.state,
+      data.activity.source,
+      data.activity.reason,
     ],
   );
 
