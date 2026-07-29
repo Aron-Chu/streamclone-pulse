@@ -1,7 +1,7 @@
 # Phase 2 / 2b Audit — Hub Activity Chart
 
 **Date:** 2026-07-29
-**Scope:** Fable core review (B-01..B-10) + post-fix live findings (B-11, B-12, B-13)
+**Scope:** Fable core review (B-01..B-10) + post-fix live findings (B-11, B-12) + B-13 closed
 **Working tree:** temp clone at `C:\Users\Aron\AppData\Local\Temp\streamclone-pulse-audit` (HEAD `72d2b81`)
 **Method:** static review of `HubActivityChart.tsx` + adjacent files, then live verification on `127.0.0.1:5173`
 
@@ -76,7 +76,7 @@
 
 ## Open
 
-- **B-13** — channels/notes buckets missing avatar. Filed.
+- **B-13** — channels/notes buckets missing avatar. Closed as **not applicable**: the hub chart tooltip (`HubActivityChart.tsx:1204-1245`) only renders the "Top emotes this bucket" list. There is no "Top channels this bucket" or "Top notes this bucket" list in either `HubActivityChart` or `FigmaSignalChart` (the latter renders numeric lanes only, line 269-274). The original repro was filed against a feature that hasn't been built yet — reopen if/when it lands.
 
 ## B-02 — Layout shift / CLS during chart scrub (resolution)
 
