@@ -92,7 +92,7 @@
 
 **Conclusion:** the 319/0.216 figure was almost certainly measured during an earlier, slower build, or attributed to scrub when it was actually page-load shifts from topnav/sidebar/status mount. The chart itself does not contribute shifts during scrub — its only layout-affecting DOM during hover is the absolutely-positioned `.tip` inside `.hx-chart-tip-slot` (which has `height: 0`, `pointer-events: none`, and a clamped `width`), and the crosshair `<span class="cross">` siblings which are also `position: absolute` with explicit `left/top`.
 
-The remaining **0.20 CLS at page-load** is a separate, smaller issue (likely `analytics-hub-sidebar__status` height-flipping from "loading…" → "ready"). It's already in "needs improvement" territory (<0.25), not "poor." Flagged for follow-up but not a regression — pre-dates B-12.
+The remaining **0.20 CLS at page-load** is a separate, smaller issue. Initial hypothesis was the sidebar status (loading → ready text swap), but a grep of `streampulse-web/src/ui` shows no `loading…` text wired into `AnalyticsHubSidebar` — the only such string is in `PulseMomentsLivePanel.tsx:600` (small inline button). The actual source of the 3 shifts is likely one of: topnav/sidebar mount order, suspense fallback height collapse, or a session-banner mount. Already in "needs improvement" territory (<0.25), not "poor." Flagged for follow-up but not a regression — pre-dates B-12.
 
 **Probe spec:** `streampulse-web/tests/e2e/_b02-cls-probe.spec.ts` (not part of the regular suite; manual CLS measurement only).
 
