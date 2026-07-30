@@ -230,13 +230,27 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           npm run package:cws
           npm run package:edge
+          npm run package:firefox
           test -f "streampulse-extension-cws-${VERSION}.zip"
           test -f "streampulse-extension-edge-${VERSION}.zip"
+          test -f "streampulse-extension-firefox-${VERSION}.zip"
           test -f "streampulse-extension-cws-${VERSION}.zip.sha256"
           test -f "streampulse-extension-edge-${VERSION}.zip.sha256"
+          test -f "streampulse-extension-firefox-${VERSION}.zip.sha256"
           # Restore development dist for any later local inspection.
           npm run build
           # Do not upload store ZIPs.
+
+      # browser-actions/setup-firefox@v1.7.2
+      - uses: browser-actions/setup-firefox@0bc507ddf224827e3b1af68e014d5e42ab93e795
+        with:
+          firefox-version: latest
+
+      # browser-actions/setup-geckodriver@master (2026-07-29 pin)
+      - uses: browser-actions/setup-geckodriver@bf8266f624ca122cedb6d0381a031f18f6c431cd
+
+      - name: Firefox packaged-extension runtime smoke
+        run: npm run test:e2e:firefox
 
       # actions/upload-artifact@v4 — failure evidence only
       - name: Upload Playwright failure evidence

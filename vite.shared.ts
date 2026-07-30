@@ -5,7 +5,8 @@ import { resolveExtensionTarget } from './scripts/extension-target.mjs'
 const root = fileURLToPath(new URL('.', import.meta.url))
 
 export const extensionTarget = resolveExtensionTarget()
-export const isStoreBuild = extensionTarget === 'cws' || extensionTarget === 'edge'
+export const isStoreBuild =
+  extensionTarget === 'cws' || extensionTarget === 'edge' || extensionTarget === 'firefox'
 
 /** One React instance for overlay + @streampulse/pulse-charts (nested package react breaks hooks). */
 export function extensionResolve() {

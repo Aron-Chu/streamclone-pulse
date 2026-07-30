@@ -61,8 +61,10 @@ export async function launchExtensionContext(
   const headless = options?.headless ?? false
   const viewport = options?.viewport ?? { width: 1440, height: 900 }
   const deviceScaleFactor = options?.deviceScaleFactor ?? 1
+  const browserChannel = process.env.PULSE_EXTENSION_BROWSER_CHANNEL?.trim() || undefined
 
   const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: browserChannel,
     headless,
     args: [
       `--disable-extensions-except=${EXTENSION_DIST_DIR}`,

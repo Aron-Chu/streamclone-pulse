@@ -136,7 +136,7 @@ export interface ReportExtensionDiagnosticMessage {
   schema_version?: number
   release?: string
   manifest_version?: number
-  target?: 'development' | 'cws' | 'edge'
+  target?: 'development' | 'cws' | 'edge' | 'firefox'
   surface?: 'content' | 'background' | 'popup' | 'options'
   feature:
     | 'overlay'

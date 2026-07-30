@@ -1,18 +1,26 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { findForbiddenBackendHosts } from '../streampulse-web/scripts/check-backend-url.mjs'
 import { isLocalOrLoopbackHost, isStoreTarget, resolveExtensionTarget } from '../scripts/extension-target.mjs'
+
+const packageScriptPath = fileURLToPath(
+  new URL('../scripts/package-extension-target.mjs', import.meta.url),
+)
 
 describe('extension-target helpers', () => {
   it('resolves known targets and rejects unknown', () => {
     expect(resolveExtensionTarget('cws')).toBe('cws')
     expect(resolveExtensionTarget('edge')).toBe('edge')
+    expect(resolveExtensionTarget('firefox')).toBe('firefox')
     expect(resolveExtensionTarget('development')).toBe('development')
-    expect(() => resolveExtensionTarget('firefox')).toThrow(/unknown EXTENSION_TARGET/)
+    expect(() => resolveExtensionTarget('safari')).toThrow(/unknown EXTENSION_TARGET/)
   })
 
-  it('marks cws/edge as store targets', () => {
+  it('marks cws/edge/firefox as store targets', () => {
     expect(isStoreTarget('cws')).toBe(true)
     expect(isStoreTarget('edge')).toBe(true)
+    expect(isStoreTarget('firefox')).toBe(true)
     expect(isStoreTarget('development')).toBe(false)
   })
 
@@ -20,6 +28,12 @@ describe('extension-target helpers', () => {
     expect(isLocalOrLoopbackHost('http://localhost:8081/*')).toBe(true)
     expect(isLocalOrLoopbackHost('http://127.0.0.1:8081/*')).toBe(true)
     expect(isLocalOrLoopbackHost('https://api.streampulse.stream/*')).toBe(false)
+  })
+
+  it('compiles each store package with its own runtime target', () => {
+    const source = readFileSync(packageScriptPath, 'utf8')
+    expect(source).toContain('EXTENSION_TARGET: target')
+    expect(source).not.toContain("EXTENSION_TARGET: 'cws'")
   })
 })
 

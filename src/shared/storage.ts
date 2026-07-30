@@ -279,7 +279,7 @@ export async function setBackendUrl(url: string): Promise<void> {
 
 /**
  * Beta / access keys stay device-local (chrome.storage.local), not sync.
- * Local storage is device-local but not encrypted at rest by Chrome.
+ * Local storage is device-local but is not encrypted at rest by the browser.
  * One-time migration copies a legacy sync value into local and clears sync.
  * Where supported, restrict local storage to trusted extension contexts so
  * content scripts cannot read credential keys directly.
