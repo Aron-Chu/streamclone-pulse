@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
+import { ResilientImage } from '../ResilientImage'
 
 export type HubChannelCardTone = 'live' | 'neutral' | 'synced' | 'partial'
 
@@ -63,13 +64,18 @@ function LoadingCard({ keyId }: { keyId: string }) {
 }
 
 function ChannelAvatar({ login, displayName, avatarUrl }: { login: string; displayName: string; avatarUrl?: string }) {
-  if (avatarUrl) {
-    return <img className="analytics-hub-channel-card__avatar" src={avatarUrl} alt="" loading="lazy" />
-  }
   return (
-    <span className="analytics-hub-channel-card__avatar" aria-hidden="true">
-      {channelInitial(displayName || login)}
-    </span>
+    <ResilientImage
+      className="analytics-hub-channel-card__avatar"
+      src={avatarUrl}
+      alt=""
+      loading="lazy"
+      fallback={
+        <span className="analytics-hub-channel-card__avatar" aria-hidden="true">
+          {channelInitial(displayName || login)}
+        </span>
+      }
+    />
   )
 }
 

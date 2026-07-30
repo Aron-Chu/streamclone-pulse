@@ -52,7 +52,7 @@ describe('apiClient', () => {
     expect(normalizeApiError(0, { error: 'timeout' }).kind).toBe('bad_request')
   })
 
-  it('surfaces unreachable on fetch abort timeout', async () => {
+  it('classifies fetch AbortError as an aborted request', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -65,7 +65,7 @@ describe('apiClient', () => {
     )
 
     await expect(apiClient('/v1/extension/health', { timeoutMs: 10 })).rejects.toMatchObject({
-      kind: 'unreachable',
+      kind: 'aborted',
     })
   })
 

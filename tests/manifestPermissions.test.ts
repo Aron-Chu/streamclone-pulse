@@ -40,8 +40,8 @@ describe('manifest targets', () => {
     }
   })
 
-  it('CWS and Edge store manifests have no localhost or loopback permissions', () => {
-    for (const name of ['cws.json', 'edge.json'] as const) {
+  it('CWS, Edge, and Firefox store manifests have no localhost or loopback permissions', () => {
+    for (const name of ['cws.json', 'edge.json', 'firefox.json'] as const) {
       const manifest = loadManifest(name)
       expect(manifest.permissions).toEqual(EXPECTED_PERMISSIONS)
       expect(manifest.host_permissions).toEqual(EXPECTED_HOST_PERMISSIONS)
@@ -60,7 +60,7 @@ describe('manifest targets', () => {
   })
 
   it('matches content scripts on HTTPS Twitch only', () => {
-    for (const name of ['development.json', 'cws.json', 'edge.json'] as const) {
+    for (const name of ['development.json', 'cws.json', 'edge.json', 'firefox.json'] as const) {
       const manifest = loadManifest(name)
       const matches = manifest.content_scripts?.flatMap((entry) => entry.matches ?? []) ?? []
       expect(matches).toEqual(EXPECTED_CONTENT_SCRIPT_MATCHES)

@@ -88,6 +88,11 @@ interface HistoryStreamItem {
   videoId?: string
 }
 
+function maxDefinedCount(...values: Array<number | undefined>): number | undefined {
+  const defined = values.filter((value): value is number => value !== undefined)
+  return defined.length > 0 ? Math.max(...defined) : undefined
+}
+
 export interface AnalyticsConsoleProps {
   mode?: 'public' | 'local' | string
   showGameSegments?: boolean
@@ -197,8 +202,8 @@ export function AnalyticsConsole({
         currentViewers: 0,
         avgViewers: s.avgViewers,
         peakViewers: s.peakViewers,
-        viewerSamples: s.viewerSamples ?? 0,
-        chatMessages: s.chatMessages ?? 0,
+        viewerSamples: s.viewerSamples,
+        chatMessages: s.chatMessages,
         vodId: s.vodId ?? s.videoId,
       }))
       .filter((s) => s.streamId)
@@ -215,8 +220,8 @@ export function AnalyticsConsole({
         category: history.category || item.category,
         avgViewers: (item.avgViewers ?? 0) > 0 ? item.avgViewers : history.avgViewers,
         peakViewers: (item.peakViewers ?? 0) > 0 ? item.peakViewers : history.peakViewers,
-        viewerSamples: Math.max(item.viewerSamples ?? 0, history.viewerSamples ?? 0),
-        chatMessages: Math.max(item.chatMessages ?? 0, history.chatMessages ?? 0),
+        viewerSamples: maxDefinedCount(item.viewerSamples, history.viewerSamples),
+        chatMessages: maxDefinedCount(item.chatMessages, history.chatMessages),
         vodId: item.vodId?.trim() || history.vodId,
       }
     })
@@ -742,6 +747,21 @@ export function AnalyticsConsole({
     && ((matchedStream.viewerSamples ?? 0) > 0 || (matchedStream.chatMessages ?? 0) > 0),
   )
 
+  const activeSyncEvidence = useMemo(() => {
+    if (!isHistoricalRoute || !detail) return undefined
+    const rollups = detail.rollups ?? []
+    return {
+      hasViewerMinutes: rollups.some(
+        row => !row.missing && ((row.viewerSamples ?? 0) > 0 || (row.viewerAvg ?? 0) > 0),
+      ),
+      hasChatMinutes: rollups.some(
+        row => !row.missing && ((row.chatCount ?? 0) > 0 || (row.totalEmoteCount ?? 0) > 0),
+      ),
+      coveragePct: summaryQuery.data?.metrics?.data_coverage_pct ?? detail.chatCoveragePct,
+      syncHealthState: summaryQuery.data?.metrics?.sync_health_state,
+    }
+  }, [detail, isHistoricalRoute, summaryQuery.data?.metrics])
+
   const handlePreviewRecapOffset = useCallback(
     (offsetSeconds: number | null) => {
       if (offsetSeconds == null) {
@@ -937,6 +957,7 @@ export function AnalyticsConsole({
               buildSessionPath={buildSessionPath}
               buildChannelPath={buildChannelPath}
               activeMinutesUnavailable={activeMinutesUnavailable}
+              activeSyncEvidence={activeSyncEvidence}
             />
           </aside>
 

@@ -641,7 +641,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'ADD_WATCHLIST': {
           const channels = await withWatchlistMutationOwnership(async () => {
-            // Local Chrome-sync list is source of truth for the public extension.
+            // Browser-sync list is source of truth for the public extension.
             const next = await addToWatchlist(message.login)
             await applyAlwaysTrackedPlan({ trackTrue: [message.login], trackFalse: [] })
             return next

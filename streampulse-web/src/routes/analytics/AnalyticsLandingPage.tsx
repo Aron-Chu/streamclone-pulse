@@ -11,6 +11,7 @@ import { HubBackendSourceBanner } from "../../ui/components/analytics/HubBackend
 import { HubDataHealthBanner } from "../../ui/components/hub/HubDataHealthBanner";
 import { resolveLivePulseMoments, mapHubPulseMoment, momentRowKey } from "../../lib/figmaSessionAnalytics";
 import { summarizeActivity, activityBucketKey } from "../../lib/hubActivitySummary";
+import { resolveHubActivityChartWindowMinutes } from "../../lib/hubActivityHonesty";
 import {
   aggregateEmotesFromMoments,
   rankLiveChannelsByActivity,
@@ -38,7 +39,6 @@ import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader
 import { ChromeInstallCta } from "../../ui/components/ChromeInstallCta";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
 import { LiveChannelsMatrix } from "../../ui/components/analytics/LiveChannelsMatrix";
-import { isLiveWireEventFresh } from "../../ui/components/analytics/HubLiveWireFeed";
 import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
 import { PulseMomentsLivePanel } from "../../ui/components/analytics/PulseMomentsLivePanel";
 import { TopClipsShelf } from "../../ui/components/analytics/TopClipsShelf";
@@ -283,13 +283,17 @@ function AnalyticsLandingContent() {
     () =>
       summarizeActivity(
         data.activity.points,
-        data.activity.windowMinutes,
+        resolveHubActivityChartWindowMinutes(data.activity),
         data.poolSize,
       ),
     [
       data.poolSize,
       data.activity.points,
       data.activity.windowMinutes,
+      data.activity.availableWindowMinutes,
+      data.activity.state,
+      data.activity.source,
+      data.activity.reason,
     ],
   );
 
@@ -403,23 +407,6 @@ function AnalyticsLandingContent() {
       setHoverBucketT(null);
     }
   }, []);
-
-  const momentMarkers = useMemo(() => {
-    const now = Date.now();
-    const markers: { key: string; bucketT: number; kind?: string }[] = [];
-    for (const moment of liveWireFeed.moments) {
-      if (!isLiveWireEventFresh(moment.at, now)) continue;
-      if (moment.at == null || !Number.isFinite(moment.at)) continue;
-      const key = momentRowKey(moment);
-      markers.push({
-        key,
-        bucketT: activityBucketKey(moment.at, data.activity.windowMinutes),
-        kind: moment.kind,
-      });
-      if (markers.length >= 12) break;
-    }
-    return markers;
-  }, [data.activity.windowMinutes, liveWireFeed.moments]);
 
   return (
     <AnalyticsFigmaShell
@@ -578,13 +565,8 @@ function AnalyticsLandingContent() {
               }
               onClearLinkedMoment={() => setSelectedMomentKey(null)}
               accentBucketT={accentBucketT}
-              momentMarkers={momentMarkers}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
-              onSelectMomentKey={(key) => {
-                const moment = momentLookupPool.get(key);
-                if (moment) handleSelectMoment(moment);
-              }}
               annotationFeed={liveWireFeed}
               annotationLoading={liveWireFeedProps.loading}
               annotationHubEndpointOk={hub.hubEndpointOk}

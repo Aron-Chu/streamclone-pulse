@@ -298,7 +298,7 @@ export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
 
 /**
  * Best-effort Protect write. Unauthorized responses are soft-failures so the
- * public extension can keep a local Chrome-sync watchlist without inventing credentials.
+ * public extension can keep a browser-sync watchlist without inventing credentials.
  */
 export async function setAlwaysTracked(
   login: string,

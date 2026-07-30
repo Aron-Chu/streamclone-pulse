@@ -1,6 +1,7 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { deltaLabel, compact } from '../analytics/hubFormat'
 import { TrendWithCaption } from '../analytics/TrendWithCaption'
+import { ResilientImage } from '../ResilientImage'
 
 /** Chart accent token keys available in the .hubx scope. */
 export type HubAccent = 'chart-1' | 'chart-2' | 'chart-3' | 'chart-4' | 'chart-5'
@@ -226,12 +227,10 @@ export interface AvatarProps {
 }
 
 export function Avatar({ login, src, alt, className }: AvatarProps) {
-  const [failed, setFailed] = useState(false)
   const initial = (login.trim()[0] || '?').toUpperCase()
-  const showImg = src && !failed
   return (
     <span className={`hx-av${className ? ` ${className}` : ''}`} aria-hidden={alt ? undefined : true}>
-      {showImg ? <img src={src} alt={alt ?? ''} loading="lazy" onError={() => setFailed(true)} /> : initial}
+      <ResilientImage src={src} alt={alt ?? ''} loading="lazy" fallback={initial} />
     </span>
   )
 }

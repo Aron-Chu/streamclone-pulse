@@ -1404,7 +1404,6 @@
 
 .activity-bucket-inspector--active,
 .activity-bucket-inspector--preview {
-  background: var(--sp-surface-2);
   /* Neutral 1px outline — no teal/cyan selection chrome */
   box-shadow: inset 0 0 0 1px var(--sp-border-strong, rgba(255, 255, 255, 0.12));
 }

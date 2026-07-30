@@ -135,7 +135,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const load = useCallback(async (force = false) => {
     if (inFlightRef.current && !force) return
 
-    controllerRef.current?.abort()
+    controllerRef.current?.abort(new DOMException('superseded by new request', 'AbortError'))
     const controller = new AbortController()
     controllerRef.current = controller
     inFlightRef.current = true
@@ -165,7 +165,12 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (!mountedRef.current || controller.signal.aborted) return
       applySuccessfulLoad(fallback.data, fallback.loadSource, fallback.hubEndpointOk)
     } catch (err) {
+      // Aborts are intentional cleanup (refresh supersession, unmount, hook disable,
+      // or our own apiClient timeout). They are NOT user-facing errors — surfacing
+      // them painted the "Could not refresh hub data" banner with Chrome's raw
+      // DOMException name ("signal is aborted without reason").
       if (controller.signal.aborted || !mountedRef.current) return
+      if (isApiError(err) && err.kind === 'aborted') return
       consecutiveFailuresRef.current += 1
       if (isApiError(err) && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
         // Honor server Retry-After when present; never shorten below healthy cadence.
@@ -226,7 +231,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       return () => {
         mountedRef.current = false
         const controller = controllerRef.current
-        controller?.abort()
+        controller?.abort(new DOMException('hook disabled', 'AbortError'))
         if (controllerRef.current === controller) {
           controllerRef.current = null
           inFlightRef.current = false
@@ -267,7 +272,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     return () => {
       mountedRef.current = false
       const controller = controllerRef.current
-      controller?.abort()
+      controller?.abort(new DOMException('component unmounted', 'AbortError'))
       if (controllerRef.current === controller) {
         controllerRef.current = null
         inFlightRef.current = false

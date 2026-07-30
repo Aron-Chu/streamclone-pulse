@@ -113,6 +113,54 @@ export function resolveTopLiveStreamers(channels: HubLiveChannel[], limit = 5): 
   }))
 }
 
+/** Rank the channels represented by a selected/preview bucket and recover live-pool avatars. */
+export function resolveBucketMomentStreamers(
+  moments: FigmaMomentRow[],
+  liveChannels: HubLiveChannel[],
+  limit = 5,
+): BucketStreamerPeak[] {
+  const liveByLogin = new Map(
+    liveChannels
+      .filter(channel => channel.login?.trim())
+      .map(channel => [channel.login.trim().toLowerCase(), channel]),
+  )
+  const byLogin = new Map<string, BucketStreamerPeak>()
+
+  for (const moment of moments) {
+    const login = moment.login?.trim().toLowerCase()
+    if (!login) continue
+    const live = liveByLogin.get(login)
+    const candidate: BucketStreamerPeak = {
+      login,
+      displayName: moment.displayName?.trim() || live?.displayName,
+      profileImageUrl: moment.profileImageUrl?.trim() || live?.profileImageUrl,
+      chatPerMin: Math.max(0, moment.chatPerMin ?? live?.chatPerMin ?? 0),
+      emotesPerMin: Math.max(0, moment.emotesPerMin ?? live?.emotesPerMin ?? 0),
+    }
+    const current = byLogin.get(login)
+    if (!current) {
+      byLogin.set(login, candidate)
+      continue
+    }
+    byLogin.set(login, {
+      ...current,
+      displayName: current.displayName || candidate.displayName,
+      profileImageUrl: current.profileImageUrl || candidate.profileImageUrl,
+      chatPerMin: Math.max(current.chatPerMin, candidate.chatPerMin),
+      emotesPerMin: Math.max(current.emotesPerMin, candidate.emotesPerMin),
+    })
+  }
+
+  return [...byLogin.values()]
+    .sort((a, b) => {
+      const peakDelta =
+        Math.max(b.chatPerMin, b.emotesPerMin) - Math.max(a.chatPerMin, a.emotesPerMin)
+      if (peakDelta !== 0) return peakDelta
+      return b.chatPerMin + b.emotesPerMin - (a.chatPerMin + a.emotesPerMin)
+    })
+    .slice(0, limit)
+}
+
 export function aggregateEmotesFromMoments(moments: FigmaMomentRow[], max = 10): HubEmote[] {
   const totals = new Map<string, HubEmote>()
   for (const moment of moments) {

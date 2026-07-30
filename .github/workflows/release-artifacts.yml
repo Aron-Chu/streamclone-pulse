@@ -1,5 +1,5 @@
 # Owner-dispatched attested store packages for an existing protected v* tag.
-# Does NOT upload to CWS/Edge, publish npm, or mutate release assets without
+# Does NOT upload to browser stores, publish npm, or mutate release assets without
 # a separate owner-approved step. Builds from the tagged commit only.
 #
 # Action pins: full commit SHA with release tag in comments.
@@ -34,6 +34,7 @@ jobs:
     outputs:
       cws_digest: ${{ steps.digests.outputs.cws_digest }}
       edge_digest: ${{ steps.digests.outputs.edge_digest }}
+      firefox_digest: ${{ steps.digests.outputs.firefox_digest }}
       version: ${{ steps.digests.outputs.version }}
       source_sha: ${{ steps.verify.outputs.source_sha }}
       tag: ${{ steps.verify.outputs.tag }}
@@ -100,6 +101,7 @@ jobs:
           npm run ensure:packages
           npm run package:cws
           npm run package:edge
+          npm run package:firefox
 
       - name: Collect digests and verification report
         id: digests
@@ -112,19 +114,25 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           CWS_ZIP="streampulse-extension-cws-${VERSION}.zip"
           EDGE_ZIP="streampulse-extension-edge-${VERSION}.zip"
+          FIREFOX_ZIP="streampulse-extension-firefox-${VERSION}.zip"
           test -f "$CWS_ZIP"
           test -f "$EDGE_ZIP"
+          test -f "$FIREFOX_ZIP"
           test -f "${CWS_ZIP}.sha256"
           test -f "${EDGE_ZIP}.sha256"
+          test -f "${FIREFOX_ZIP}.sha256"
           test -f "streampulse-extension-cws-${VERSION}.validation.json"
           test -f "streampulse-extension-edge-${VERSION}.validation.json"
+          test -f "streampulse-extension-firefox-${VERSION}.validation.json"
           CWS_DIGEST="$(cut -d' ' -f1 "${CWS_ZIP}.sha256")"
           EDGE_DIGEST="$(cut -d' ' -f1 "${EDGE_ZIP}.sha256")"
+          FIREFOX_DIGEST="$(cut -d' ' -f1 "${FIREFOX_ZIP}.sha256")"
           MANIFEST_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version")"
           mkdir -p release-verification
           VERSION="$VERSION" \
           CWS_DIGEST="$CWS_DIGEST" \
           EDGE_DIGEST="$EDGE_DIGEST" \
+          FIREFOX_DIGEST="$FIREFOX_DIGEST" \
           MANIFEST_VERSION="$MANIFEST_VERSION" \
           SOURCE_SHA="$SOURCE_SHA" \
           TAG="$TAG" \
@@ -150,6 +158,12 @@ jobs:
                   sha256: process.env.EDGE_DIGEST,
                   validationReport: `streampulse-extension-edge-${process.env.VERSION}.validation.json`,
                   attestationRef: null
+                },
+                firefox: {
+                  zip: `streampulse-extension-firefox-${process.env.VERSION}.zip`,
+                  sha256: process.env.FIREFOX_DIGEST,
+                  validationReport: `streampulse-extension-firefox-${process.env.VERSION}.validation.json`,
+                  attestationRef: null
                 }
               },
               notes: [
@@ -172,6 +186,7 @@ jobs:
                 `manifest_version=${process.env.MANIFEST_VERSION}`,
                 `cws_zip_sha256=${process.env.CWS_DIGEST}`,
                 `edge_zip_sha256=${process.env.EDGE_DIGEST}`,
+                `firefox_zip_sha256=${process.env.FIREFOX_DIGEST}`,
                 "",
                 "This file is unsigned build metadata for operators.",
                 "It is NOT cryptographic provenance. Use GitHub artifact attestations.",
@@ -181,9 +196,11 @@ jobs:
           '
           echo "cws_digest=${CWS_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "edge_digest=${EDGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "firefox_digest=${FIREFOX_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "CWS ${CWS_DIGEST}"
           echo "EDGE ${EDGE_DIGEST}"
+          echo "FIREFOX ${FIREFOX_DIGEST}"
 
       # actions/attest-build-provenance@v4.1.1
       - name: Attest CWS ZIP
@@ -199,10 +216,18 @@ jobs:
         with:
           subject-path: streampulse-extension-edge-${{ steps.digests.outputs.version }}.zip
 
+      # actions/attest-build-provenance@v4.1.1
+      - name: Attest Firefox ZIP
+        id: attest_firefox
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: streampulse-extension-firefox-${{ steps.digests.outputs.version }}.zip
+
       - name: Embed attestation references in report
         env:
           CWS_ATTEST: ${{ steps.attest_cws.outputs.attestation-url }}
           EDGE_ATTEST: ${{ steps.attest_edge.outputs.attestation-url }}
+          FIREFOX_ATTEST: ${{ steps.attest_firefox.outputs.attestation-url }}
           VERSION: ${{ steps.digests.outputs.version }}
         run: |
           set -euo pipefail
@@ -212,10 +237,11 @@ jobs:
             const report = JSON.parse(fs.readFileSync(path, "utf8"));
             report.targets.cws.attestationRef = process.env.CWS_ATTEST || null;
             report.targets.edge.attestationRef = process.env.EDGE_ATTEST || null;
+            report.targets.firefox.attestationRef = process.env.FIREFOX_ATTEST || null;
             fs.writeFileSync(path, JSON.stringify(report, null, 2) + "\n");
             fs.appendFileSync(
               "release-verification/RELEASE_BUILD_METADATA.txt",
-              `cws_attestation_ref=${process.env.CWS_ATTEST || ""}\nedge_attestation_ref=${process.env.EDGE_ATTEST || ""}\n`
+              `cws_attestation_ref=${process.env.CWS_ATTEST || ""}\nedge_attestation_ref=${process.env.EDGE_ATTEST || ""}\nfirefox_attestation_ref=${process.env.FIREFOX_ATTEST || ""}\n`
             );
           '
 
@@ -230,6 +256,9 @@ jobs:
             streampulse-extension-edge-${{ steps.digests.outputs.version }}.zip
             streampulse-extension-edge-${{ steps.digests.outputs.version }}.zip.sha256
             streampulse-extension-edge-${{ steps.digests.outputs.version }}.validation.json
+            streampulse-extension-firefox-${{ steps.digests.outputs.version }}.zip
+            streampulse-extension-firefox-${{ steps.digests.outputs.version }}.zip.sha256
+            streampulse-extension-firefox-${{ steps.digests.outputs.version }}.validation.json
             release-verification/
             LICENSE
             NOTICE

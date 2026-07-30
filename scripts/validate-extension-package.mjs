@@ -3,7 +3,7 @@
  * Store targets REQUIRE the ZIP and validate extracted archive bytes via yauzl.
  *
  * Usage:
- *   node scripts/validate-extension-package.mjs --target=development|cws|edge
+ *   node scripts/validate-extension-package.mjs --target=development|cws|edge|firefox
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
@@ -116,13 +116,41 @@ function validateManifest(manifest, target) {
   }
   ok(`REQUIRED: exact permission allowlist for ${target}`)
 
-  const sw = manifest.background?.service_worker
-  if (!sw || typeof sw !== 'string') {
-    fail('background.service_worker missing')
-  } else if (!existsSync(join(dist, sw))) {
-    fail(`service worker missing from dist: ${sw}`)
+  const backgroundEntry =
+    target === 'firefox'
+      ? manifest.background?.scripts?.[0]
+      : manifest.background?.service_worker
+  const backgroundLabel =
+    target === 'firefox' ? 'background.scripts[0]' : 'background.service_worker'
+  if (!backgroundEntry || typeof backgroundEntry !== 'string') {
+    fail(`${backgroundLabel} missing`)
+  } else if (!existsSync(join(dist, backgroundEntry))) {
+    fail(`background bundle missing from dist: ${backgroundEntry}`)
   } else {
-    ok(`REQUIRED: service worker present: ${sw}`)
+    ok(`REQUIRED: ${backgroundLabel} present: ${backgroundEntry}`)
+  }
+  if (target === 'firefox') {
+    if (manifest.background?.service_worker) {
+      fail('Firefox manifest must not rely on unsupported background.service_worker')
+    }
+    if (manifest.background?.type !== 'module') {
+      fail('Firefox background module must declare background.type=module')
+    }
+    if (manifest.browser_specific_settings?.gecko?.id !== 'streampulse@streampulse.stream') {
+      fail('Firefox manifest requires stable browser_specific_settings.gecko.id')
+    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '142.0') {
+      fail('Firefox manifest requires strict_min_version=142.0 for built-in consent across supported Firefox variants')
+    } else if (
+      JSON.stringify(manifest.browser_specific_settings?.gecko?.data_collection_permissions) !==
+      JSON.stringify({
+        required: ['browsingActivity'],
+        optional: ['technicalAndInteraction'],
+      })
+    ) {
+      fail('Firefox manifest data collection declaration drifted')
+    } else {
+      ok('REQUIRED: Firefox background module, Gecko ID, and data declarations configured')
+    }
   }
 
   const contentMatches = manifest.content_scripts?.[0]?.matches ?? []
@@ -211,7 +239,7 @@ function scanArchivedBuffer(rel, buf, store) {
   }
 }
 
-function validateDistContents(store) {
+function validateDistContents(store, target) {
   const packable = listPackableDistFiles(dist).filter((f) => f !== 'extension-target.json')
   const all = listAllDistFiles(dist)
   const mapsInDist = all.filter((f) => f.toLowerCase().endsWith('.map'))
@@ -220,16 +248,34 @@ function validateDistContents(store) {
   }
 
   let sawJs = false
+  const expectedRuntimeTargetMarker = `streampulse-extension-runtime-target:${target}`
+  const runtimeTargetMarkers = new Set()
   for (const rel of packable) {
     if (!/\.(js|mjs|html|css|json)$/i.test(rel)) continue
     const contents = readFileSync(join(dist, rel), 'utf8')
     scanTextArtifact(rel, contents, store)
-    if (/\.js$/i.test(rel)) sawJs = true
+    if (/\.js$/i.test(rel)) {
+      sawJs = true
+      for (const match of contents.matchAll(/streampulse-extension-runtime-target:[a-z]+/g)) {
+        runtimeTargetMarkers.add(match[0])
+      }
+    }
   }
   if (!sawJs) fail('no JavaScript bundles found in packable dist set')
   else {
     ok(`scanned ${packable.length} packable text files`)
     note(REMOTE_CODE_SCAN_NOTE)
+  }
+  if (!runtimeTargetMarkers.has(expectedRuntimeTargetMarker)) {
+    fail(`compiled runtime target marker missing: ${expectedRuntimeTargetMarker}`)
+  }
+  const conflictingRuntimeMarkers = [...runtimeTargetMarkers]
+    .filter((marker) => marker !== expectedRuntimeTargetMarker)
+  if (conflictingRuntimeMarkers.length) {
+    fail(`compiled runtime target marker conflict: ${conflictingRuntimeMarkers.join(', ')}`)
+  }
+  if (runtimeTargetMarkers.size === 1 && runtimeTargetMarkers.has(expectedRuntimeTargetMarker)) {
+    ok(`REQUIRED: compiled runtime target matches manifest (${target})`)
   }
 
   let foundHosted = false
@@ -394,7 +440,7 @@ async function main() {
     ok('REQUIRED: LICENSE + NOTICE + third-party-notices.txt byte-match repo sources')
   }
 
-  const packable = validateDistContents(isStoreTarget(target))
+  const packable = validateDistContents(isStoreTarget(target), target)
   for (const required of ['LICENSE', 'NOTICE', 'third-party-notices.txt']) {
     if (!packable.includes(required)) {
       fail(`REQUIRED: packable set missing attribution file ${required}`)

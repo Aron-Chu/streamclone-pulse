@@ -47,6 +47,9 @@ export default defineConfig({
   define: {
     __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
     __EXTENSION_TARGET__: JSON.stringify(extensionTarget),
+    __EXTENSION_TARGET_MARKER__: JSON.stringify(
+      `streampulse-extension-runtime-target:${extensionTarget}`,
+    ),
   },
   build: {
     outDir: 'dist',

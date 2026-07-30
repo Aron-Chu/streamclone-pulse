@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
 import { internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
@@ -20,12 +20,6 @@ export interface HubActivityRangeControl {
   onSelect: (key: string) => void
 }
 
-export interface HubActivityMomentMarker {
-  key: string
-  bucketT: number
-  kind?: string
-}
-
 export interface HubActivityChartProps {
   points: HubActivityPoint[]
   windowMinutes: number
@@ -39,6 +33,9 @@ export interface HubActivityChartProps {
   coveragePct?: number
   loading?: boolean
   footnote?: string
+  /** Optional honest empty copy when live-pool fallback has no chartable points. */
+  emptyTitle?: string
+  emptyDescription?: string
   /** Optional time-window selector rendered above the chart (24h/7d/1mo/…). */
   rangeControl?: HubActivityRangeControl
   /** Unix ms for the selected activity bucket (network moments filtering). */
@@ -49,10 +46,6 @@ export interface HubActivityChartProps {
   onBucketSelect?: (bucketT: number | null) => void
   /** Hover preview for bucket inspector rail. */
   onBucketHover?: (bucketT: number | null) => void
-  /** Fresh peak markers pinned to chart buckets. */
-  momentMarkers?: HubActivityMomentMarker[]
-  selectedMomentKey?: string | null
-  onSelectMomentKey?: (key: string) => void
   /** When true, draw provider overlay lines on the main chart (power-user mode). */
   showProviderOverlay?: boolean
   /** Lowercase emote name → image URL, used to render bucket emote thumbnails in the tooltip. */
@@ -212,19 +205,12 @@ function activePoint(point: HubActivityPoint): boolean {
 
 function buildLine(pts: Pt[]): string {
   if (pts.length < 2) return ''
+  // Linear segments (M…L…L). Resolves B-03: zero deviation from the
+  // ground-truth path; the previous Catmull-Rom-style smoother overshot by
+  // up to ~0.92px (mean 0.136px) at sharp data inflections.
   let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const p0 = pts[i - 1] ?? pts[i]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[i + 2] ?? p2
-    const minX = Math.min(p1.x, p2.x)
-    const maxX = Math.max(p1.x, p2.x)
-    const c1x = Math.max(minX, Math.min(maxX, p1.x + (p2.x - p0.x) / 6))
-    const c1y = p1.y + (p2.y - p0.y) / 6
-    const c2x = Math.max(minX, Math.min(maxX, p2.x - (p3.x - p1.x) / 6))
-    const c2y = p2.y - (p3.y - p1.y) / 6
-    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+  for (let i = 1; i < pts.length; i += 1) {
+    d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`
   }
   return d
 }
@@ -293,14 +279,13 @@ export function HubActivityChart({
   coveragePct = 100,
   loading,
   footnote,
+  emptyTitle,
+  emptyDescription,
   rangeControl,
   selectedBucketT = null,
   accentBucketT = null,
   onBucketSelect,
   onBucketHover,
-  momentMarkers = [],
-  selectedMomentKey = null,
-  onSelectMomentKey,
   showProviderOverlay = false,
   emoteImages,
 }: HubActivityChartProps) {
@@ -309,6 +294,15 @@ export function HubActivityChart({
   const hoverIndexRef = useRef<number | null>(null)
   const hoverRafRef = useRef<number | null>(null)
   const lastBucketTRef = useRef<number | null | undefined>(undefined)
+  // Press-drag scrub: deferred capture so plain clicks don't lock the chart, and a
+  // vertical-dominant drag releases capture back to the page for scrolling.
+  const pointerActiveRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    captured: boolean
+  } | null>(null)
+  const [isScrubbing, setIsScrubbing] = useState(false)
   const [enabledProviders, setEnabledProviders] = useState<Set<ProviderKey> | null>(null)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<CoreSeriesKey | null>(null)
 
@@ -319,6 +313,18 @@ export function HubActivityChart({
   useEffect(() => () => {
     if (hoverRafRef.current != null) {
       cancelAnimationFrame(hoverRafRef.current)
+    }
+    const active = pointerActiveRef.current
+    if (active) {
+      const el = wrapRef.current
+      if (active.captured && el?.hasPointerCapture?.(active.pointerId)) {
+        try {
+          el.releasePointerCapture(active.pointerId)
+        } catch {
+          // Already released by the browser — see endScrub for the same guard.
+        }
+      }
+      pointerActiveRef.current = null
     }
   }, [])
 
@@ -647,7 +653,14 @@ export function HubActivityChart({
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
         <EmptyState icon={<Activity aria-hidden="true" />}>
-          Waiting for live activity — the chart draws once channels start sending chat and emotes.
+          {emptyTitle ? (
+            <>
+              <strong>{emptyTitle}</strong>
+              {emptyDescription ? <> — {emptyDescription}</> : null}
+            </>
+          ) : (
+            'Waiting for live activity — the chart draws once channels start sending chat and emotes.'
+          )}
         </EmptyState>
       </>
     )
@@ -711,6 +724,89 @@ export function HubActivityChart({
   }
 
   function handleLeave() {
+    if (hoverRafRef.current != null) {
+      cancelAnimationFrame(hoverRafRef.current)
+      hoverRafRef.current = null
+    }
+    hoverIndexRef.current = null
+    flushHover(null)
+  }
+
+  function endScrub(pointerId: number) {
+    const active = pointerActiveRef.current
+    if (active && active.pointerId === pointerId) {
+      const el = wrapRef.current
+      if (active.captured && el?.hasPointerCapture?.(pointerId)) {
+        try {
+          el.releasePointerCapture(pointerId)
+        } catch {
+          // Pointer was already released by the browser (e.g. touchcancel upstream);
+          // ignore the NotFoundError spec'd by Pointer Events.
+        }
+      }
+      pointerActiveRef.current = null
+      setIsScrubbing(false)
+    }
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    // Left mouse, primary touch, or pen only — ignore right/middle clicks.
+    if (event.button !== 0 && event.pointerType === 'mouse') return
+    const el = wrapRef.current
+    if (!el) return
+    pointerActiveRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      captured: false,
+    }
+    // Don't preventDefault here — until we know intent, let hover/clicks work normally.
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const active = pointerActiveRef.current
+    if (!active || active.pointerId !== event.pointerId) return
+    const dx = event.clientX - active.startX
+    const dy = event.clientY - active.startY
+    const DRAG_INTENT_PX = 6
+
+    // Vertical-dominant travel means the user wants to scroll the page, not scrub
+    // the chart. Release capture (if any) and hand the gesture back to the browser.
+    if (!active.captured && Math.abs(dy) > DRAG_INTENT_PX && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      pointerActiveRef.current = null
+      return
+    }
+
+    // Deferred horizontal-intent capture: only claim the pointer once the user has
+    // committed to scrubbing. This keeps plain clicks (→ bucket select) and hover
+    // mousemove working as before.
+    if (!active.captured) {
+      if (Math.abs(dx) <= DRAG_INTENT_PX || Math.abs(dx) <= Math.abs(dy)) return
+      const el = wrapRef.current
+      if (!el) return
+      try {
+        el.setPointerCapture(event.pointerId)
+        active.captured = true
+        setIsScrubbing(true)
+      } catch {
+        // Some browsers reject setPointerCapture for non-primary pointers; fall back
+        // to the existing hover machinery rather than blocking the gesture.
+        pointerActiveRef.current = null
+        return
+      }
+    }
+
+    commitHoverIndex(nearestPointIndex(event.clientX))
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    endScrub(event.pointerId)
+  }
+
+  function handlePointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
+    endScrub(event.pointerId)
+    // Pointer was canceled (browser stole it for a system gesture). Treat like a
+    // mouseleave so the tooltip doesn't stay parked on the last captured bucket.
     if (hoverRafRef.current != null) {
       cancelAnimationFrame(hoverRafRef.current)
       hoverRafRef.current = null
@@ -847,10 +943,15 @@ export function HubActivityChart({
               className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}`}
               data-hover={hover != null ? 'true' : undefined}
               data-selected={selectedIndex >= 0 ? 'true' : undefined}
+              data-scrubbing={isScrubbing ? 'true' : undefined}
               role="img"
               aria-label={chartAriaLabel}
               onMouseMove={handleMove}
               onMouseLeave={handleLeave}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerCancel}
               onClick={bucketSelectEnabled ? handleClick : undefined}
             >
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -964,31 +1065,6 @@ export function HubActivityChart({
               tone="accent"
               motionEnabled={motionEnabled}
             />
-          ) : null}
-          {momentMarkers.length > 0 ? (
-            <div className="hx-moment-markers" aria-label="Fresh network peaks">
-              {momentMarkers.map((marker) => {
-                const idx = chartPoints.findIndex((point) => point.t === marker.bucketT)
-                if (idx < 0) return null
-                const x = xs[idx]
-                if (x == null) return null
-                const selected = selectedMomentKey === marker.key
-                return (
-                  <button
-                    key={marker.key}
-                    type="button"
-                    className={`hx-moment-marker${selected ? ' is-selected' : ''}`}
-                    style={{ left: `${x}%` }}
-                    title={marker.kind ?? 'Peak'}
-                    aria-pressed={selected}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onSelectMomentKey?.(marker.key)
-                    }}
-                  />
-                )
-              })}
-            </div>
           ) : null}
           <span className="ylab ylab--viewers">{compact(peakViewers)} peak viewers</span>
           <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>

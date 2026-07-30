@@ -359,7 +359,7 @@ test.describe('analytics hub UX (interaction)', () => {
 
     await sodaChip.click()
     await expect(sodaChip).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.locator('.hx-moment-marker.is-selected')).toHaveCount(1)
+    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
     await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(1)
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toContainText(
       'sodapoppin',
@@ -374,7 +374,7 @@ test.describe('analytics hub UX (interaction)', () => {
       .click()
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
-    await expect(page.locator('.hx-moment-marker.is-selected')).toHaveCount(0)
+    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
     await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(0)
 
     await assertNoWhiteAnalyticsSurfaces(page)

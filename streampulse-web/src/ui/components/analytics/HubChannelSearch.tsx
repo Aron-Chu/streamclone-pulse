@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { apiClient, type ApiError } from '../../../lib/apiClient'
 import { isPlausibleTwitchLogin, normalizeTwitchLogin } from '../../../lib/normalizeTwitchLogin'
 import { compact, displayName, initial } from './hubFormat'
+import { ResilientImage } from '../ResilientImage'
 
 export interface HubSearchSuggestion {
   login: string
@@ -192,11 +193,12 @@ export function HubChannelSearch({
                   onMouseEnter={() => setActiveIndex(index)}
                 >
                   <span className="hub-acl__av" aria-hidden="true">
-                    {suggestion.profileImageUrl ? (
-                      <img src={suggestion.profileImageUrl} alt="" loading="lazy" />
-                    ) : (
-                      initial(suggestion.login)
-                    )}
+                    <ResilientImage
+                      src={suggestion.profileImageUrl}
+                      alt=""
+                      loading="lazy"
+                      fallback={initial(suggestion.login)}
+                    />
                   </span>
                   <span className="hub-acl__id">
                     <strong>{displayName(suggestion.login, suggestion.displayName)}</strong>

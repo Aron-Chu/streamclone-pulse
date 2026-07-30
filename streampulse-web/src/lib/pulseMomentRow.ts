@@ -8,8 +8,17 @@ import {
 } from './pulseMomentsUtils'
 
 export interface PulseMomentEnrichContext {
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'viewers'>>
+  liveChannels: Array<
+    Pick<
+      HubLiveChannel,
+      'login' | 'startedAt' | 'viewers' | 'displayName' | 'profileImageUrl' | 'category'
+    >
+  >
   categoryByLogin?: Map<string, string>
+  channelByLogin?: ReadonlyMap<
+    string,
+    Pick<HubLiveChannel, 'login' | 'displayName' | 'profileImageUrl' | 'category'>
+  >
 }
 
 /** Normalize a hub moment row before render (category, emote identity, viewers). */
@@ -18,10 +27,21 @@ export function enrichPulseMomentRow(
   ctx: PulseMomentEnrichContext,
 ): FigmaMomentRow {
   let row: FigmaMomentRow = { ...moment }
+  const loginKey = row.login?.trim().toLowerCase()
+  const liveChannel = loginKey
+    ? ctx.channelByLogin?.get(loginKey)
+      ?? ctx.liveChannels.find(channel => channel.login.toLowerCase() === loginKey)
+    : undefined
 
   if (!row.category?.trim() && row.login) {
-    const category = ctx.categoryByLogin?.get(row.login.toLowerCase())
+    const category = ctx.categoryByLogin?.get(row.login.toLowerCase()) ?? liveChannel?.category
     if (category) row = { ...row, category }
+  }
+  if (!row.profileImageUrl?.trim() && liveChannel?.profileImageUrl) {
+    row = { ...row, profileImageUrl: liveChannel.profileImageUrl }
+  }
+  if (!row.displayName?.trim() && liveChannel?.displayName) {
+    row = { ...row, displayName: liveChannel.displayName }
   }
 
   const emotesPerMin = resolveMomentEmotesPerMin(row)

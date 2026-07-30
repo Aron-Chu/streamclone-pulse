@@ -1,6 +1,10 @@
 import type { PublicHub } from "../../../lib/publicHub";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import { formatActivityWindowLabel } from "../../../lib/hubActivitySummary";
+import {
+  formatHubActivityServedLabel,
+  isHubActivityLivePoolFallback,
+} from "../../../lib/hubActivityHonesty";
 import { compact } from "./hubFormat";
 import { FigmaLiveChannelRail } from "./FigmaLiveChannelRail";
 
@@ -17,7 +21,10 @@ export function FigmaMakeHero({
   activitySummary,
   loading,
 }: FigmaMakeHeroProps) {
-  const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
+  const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
+  const windowLabel = livePoolFallback
+    ? formatHubActivityServedLabel(hub.activity)
+    : formatActivityWindowLabel(hub.activity.windowMinutes);
 
   const leftStats = [
     {
@@ -88,7 +95,9 @@ export function FigmaMakeHero({
         <aside className="figma-hero__aside" aria-label="Command center">
           <div className="figma-hero__eyebrow">Command center</div>
           <p className="figma-hero__desc">
-            Live rollup window: last {windowLabel} across tracked rooms.
+            {livePoolFallback
+              ? `Live rollup: ${windowLabel} across tracked rooms (requested longer history unavailable).`
+              : `Live rollup window: last ${windowLabel} across tracked rooms.`}
           </p>
           {leftStats.map(({ label, value, color }) => (
             <div key={label} className="figma-hero__stat">

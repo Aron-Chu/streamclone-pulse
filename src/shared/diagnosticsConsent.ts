@@ -1,10 +1,14 @@
 /**
- * RPR-3 extension diagnostics consent — versioned chrome.storage.local record.
+ * RPR-3 extension diagnostics consent — versioned extension-local storage record.
  * Missing / malformed / wrong schema version ⇒ off.
  *
  * Hosted ingest remains inactive until ops activation; this module only owns
  * local consent state.
  */
+import {
+  hasFirefoxTechnicalDataConsent,
+  requestFirefoxTechnicalDataConsent,
+} from './firefoxDataConsent.ts'
 
 export const DIAGNOSTICS_CONSENT_STORAGE = 'pulse-diagnostics-consent-v1'
 export const DIAGNOSTICS_CONSENT_SCHEMA_VERSION = 1
@@ -38,7 +42,8 @@ export async function isDiagnosticsConsentEnabled(
   try {
     const bag = await storage.get(DIAGNOSTICS_CONSENT_STORAGE)
     const parsed = parseDiagnosticsConsent(bag[DIAGNOSTICS_CONSENT_STORAGE])
-    return parsed?.enabled === true
+    if (parsed?.enabled !== true) return false
+    return hasFirefoxTechnicalDataConsent()
   } catch {
     return false
   }
@@ -58,6 +63,9 @@ export async function setDiagnosticsConsentEnabled(
       enabled: false,
       updatedAt: Date.now(),
     }
+  }
+  if (!(await requestFirefoxTechnicalDataConsent())) {
+    throw new Error('diagnostics_platform_permission_denied')
   }
   const record: DiagnosticsConsentRecord = {
     schemaVersion: DIAGNOSTICS_CONSENT_SCHEMA_VERSION,
@@ -98,7 +106,7 @@ export type DiagnosticsErrorClass =
   | 'timeout'
   | 'abort'
   | 'unknown'
-export type DiagnosticsTarget = 'development' | 'cws' | 'edge'
+export type DiagnosticsTarget = 'development' | 'cws' | 'edge' | 'firefox'
 
 export interface DiagnosticsFrameInput {
   bundle?: unknown
@@ -150,7 +158,7 @@ const ERRORS = new Set<DiagnosticsErrorClass>([
   'abort',
   'unknown',
 ])
-const TARGETS = new Set<DiagnosticsTarget>(['development', 'cws', 'edge'])
+const TARGETS = new Set<DiagnosticsTarget>(['development', 'cws', 'edge', 'firefox'])
 
 function bundleAllowed(bundle: string): boolean {
   if (DIAGNOSTICS_BUNDLE_ALLOWLIST.has(bundle)) return true

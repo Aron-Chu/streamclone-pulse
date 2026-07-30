@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.zip
 *.zip.sha256
+streampulse-extension-*.validation.json
 .DS_Store
 
 # Local env / secrets (never commit)

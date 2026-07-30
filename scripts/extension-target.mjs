@@ -1,5 +1,5 @@
 /**
- * Resolve extension packaging / build target (development | cws | edge).
+ * Resolve extension packaging / build target (development | cws | edge | firefox).
  * Valid plain JavaScript — must pass: node --check scripts/extension-target.mjs
  */
 import { existsSync, readFileSync } from 'node:fs'
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-export const EXTENSION_TARGETS = ['development', 'cws', 'edge']
+export const EXTENSION_TARGETS = ['development', 'cws', 'edge', 'firefox']
 
 export function resolveExtensionTarget(raw = process.env.EXTENSION_TARGET) {
   const value = String(raw ?? 'development').trim().toLowerCase()
@@ -33,7 +33,7 @@ export function loadManifestForTarget(target = resolveExtensionTarget()) {
 }
 
 export function isStoreTarget(target = resolveExtensionTarget()) {
-  return target === 'cws' || target === 'edge'
+  return target === 'cws' || target === 'edge' || target === 'firefox'
 }
 
 /** True when a permission / host string is any localhost or loopback origin. */

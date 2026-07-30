@@ -6,6 +6,7 @@ import {
 
 export type ApiErrorKind =
   | 'unreachable'
+  | 'aborted'
   | 'unauthorized'
   | 'rate_limited'
   | 'server'
@@ -145,7 +146,10 @@ export async function apiClient<T = unknown>(
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController()
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+    const timer = window.setTimeout(
+      () => controller.abort(new DOMException('request timeout', 'TimeoutError')),
+      timeoutMs,
+    )
 
     try {
       const response = await fetch(url, {
@@ -184,6 +188,22 @@ export async function apiClient<T = unknown>(
     } catch (error) {
       window.clearTimeout(timer)
       if (isApiError(error)) throw error
+
+      // Distinguish caller-initiated aborts (refresh supersession, unmount) and our
+      // own per-attempt timeout from genuine network errors. Both surface as
+      // DOMException with .name === 'AbortError', but they are NOT user-facing
+      // failures — propagating them as `kind: 'unreachable'` painted the hub
+      // banner with Chrome's raw "signal is aborted without reason" text.
+      const isAbort =
+        error instanceof DOMException && error.name === 'AbortError'
+      if (isAbort) {
+        const aborted: ApiError = {
+          kind: 'aborted',
+          message: error.message,
+          status: 0,
+        }
+        throw aborted
+      }
 
       const unreachable: ApiError = {
         kind: 'unreachable',
