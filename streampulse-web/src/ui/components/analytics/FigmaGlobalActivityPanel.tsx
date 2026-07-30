@@ -19,7 +19,6 @@ import type { FigmaMomentRow } from "../../../lib/figmaSessionAnalytics";
 import type { HubEmote, HubLiveChannel, PublicHub } from "../../../lib/publicHub";
 import {
   HubActivityChart,
-  type HubActivityMomentMarker,
   type HubActivityRangeControl,
 } from "../hub/HubActivityChart";
 import { HubLiveWireFeed } from "./HubLiveWireFeed";
@@ -185,10 +184,8 @@ export interface FigmaGlobalActivityPanelProps {
   liveChannels?: HubLiveChannel[];
   /** Visual-only bucket highlight when a moment is selected without a locked bucket. */
   accentBucketT?: number | null;
-  momentMarkers?: HubActivityMomentMarker[];
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
-  onSelectMomentKey?: (key: string) => void;
   /** Live Wire annotation lane feed (mounted above the plot). */
   annotationFeed?: LivePulseMomentsResult | null;
   annotationLoading?: boolean;
@@ -230,10 +227,8 @@ export function FigmaGlobalActivityPanel({
   onClearLinkedMoment,
   liveChannels = [],
   accentBucketT = null,
-  momentMarkers = [],
   selectedMomentKey = null,
   onSelectMoment,
-  onSelectMomentKey,
   annotationFeed = null,
   annotationLoading = false,
   annotationHubEndpointOk,
@@ -529,9 +524,6 @@ export function FigmaGlobalActivityPanel({
                   ? handleBucketHover
                   : undefined
               }
-              momentMarkers={momentMarkers}
-              selectedMomentKey={selectedMomentKey}
-              onSelectMomentKey={onSelectMomentKey}
               emoteImages={emoteImages}
             />
           </div>

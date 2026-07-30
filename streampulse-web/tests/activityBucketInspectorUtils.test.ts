@@ -3,6 +3,7 @@ import type { HubActivityPoint } from '../src/lib/publicHub'
 import {
   aggregateEmotesFromMoments,
   resolveInspectorRangeStats,
+  resolveBucketMomentStreamers,
   resolveInspectorTableEmotes,
   resolveTopLiveStreamers,
   inspectorEmoteListSignature,
@@ -215,6 +216,39 @@ describe('resolveTopLiveStreamers', () => {
         },
       ]),
     ).toEqual([])
+  })
+})
+
+describe('resolveBucketMomentStreamers', () => {
+  it('recovers a selected bucket avatar from the live pool without replacing bucket rates', () => {
+    const streamers = resolveBucketMomentStreamers(
+      [{
+        offsetSeconds: 60,
+        label: 'Emote spike',
+        login: 'rera_seal',
+        chatPerMin: 120,
+        emotesPerMin: 90,
+      }],
+      [{
+        login: 'rera_seal',
+        displayName: 'Rera Seal',
+        profileImageUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/rera.png',
+        viewers: 1000,
+        chatPerMin: 20,
+        emotesPerMin: 10,
+        seventvPerMin: 5,
+        coverageState: 'live',
+        trendPct: 0,
+      }],
+    )
+
+    expect(streamers).toEqual([{
+      login: 'rera_seal',
+      displayName: 'Rera Seal',
+      profileImageUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/rera.png',
+      chatPerMin: 120,
+      emotesPerMin: 90,
+    }])
   })
 })
 
