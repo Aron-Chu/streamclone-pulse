@@ -840,7 +840,7 @@ export function LiveStatsBand({
             ) : null}
           </div>
         </div>
-        <div ref={chartInteractionRef} style={{ ...styles.chartStack, ...(demoMode ? { pointerEvents: 'none' as const } : undefined) }}>
+        <div ref={chartInteractionRef} style={styles.chartStack}>
           <PulseOverviewChart
             rollups={displayRollups}
             games={chartGames}

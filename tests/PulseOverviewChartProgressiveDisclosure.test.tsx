@@ -1,0 +1,25 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
+
+describe('PulseOverviewChart progressive disclosure', () => {
+  it('renders one dominant overview line with dormant detail layers at rest', () => {
+    const html = renderToStaticMarkup(
+      <PulseOverviewChart
+        reducedMotion
+        rollups={[
+          { offsetSeconds: 0, viewerCount: 100, chatCount: 10, sevenTvEmoteCount: 3 },
+          { offsetSeconds: 60, viewerCount: 140, chatCount: 25, sevenTvEmoteCount: 9 },
+          { offsetSeconds: 120, viewerCount: 120, chatCount: 18, sevenTvEmoteCount: 5 },
+        ]}
+      />,
+    )
+
+    expect(html).toContain('data-chart-layer="overview"')
+    expect(html).toContain('data-chart-layer="detail-past"')
+    expect(html).toContain('data-chart-layer="detail-future"')
+    expect(html).toContain('data-chart-scrubber="true"')
+    expect(html).toContain('data-chart-layer="overview" fill="none" stroke="#22d3ee"')
+    expect(html).toContain('stroke-width="2.6" opacity="0.96"')
+  })
+})

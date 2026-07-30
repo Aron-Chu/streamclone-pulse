@@ -81,9 +81,7 @@ const SIDEBAR_EMOTE_BARS_FRACTION = 0.32
 const ACTIVITY_CHAT_FRACTION_EXPANDED = 0.62
 const ACTIVITY_EMOTE_BARS_FRACTION_EXPANDED = 0.26
 const CHAT_TREND_STROKE = 2
-const CHAT_TREND_OPACITY = CHART_THEME.chat.lineOpacity
 const EMOTE_TREND_STROKE = 1.75
-const EMOTE_TREND_OPACITY = CHART_THEME.emote.line
 const TRACE_LANE_MIN_HEIGHT = 16
 const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
@@ -593,6 +591,37 @@ export function PulseOverviewChart({
     )
   }, [emoteDetailValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
 
+  const primaryTrendValues = viewerMax > 0 ? viewerTrendValues : chatTrendValues
+  const primaryTrendMax = viewerMax > 0 ? viewerAxisMax : chatTrendAxisMax
+  const overviewAreaPath = useMemo(
+    () =>
+      areaPathInBand(
+        primaryTrendValues,
+        primaryTrendMax,
+        width,
+        height,
+        PAD_LEFT,
+        PAD_RIGHT,
+        plotTop + 6,
+        plotBottom - 4,
+      ),
+    [primaryTrendValues, primaryTrendMax, width, height, plotTop, plotBottom],
+  )
+  const overviewLinePath = useMemo(
+    () =>
+      smoothLinePathInBand(
+        primaryTrendValues,
+        primaryTrendMax,
+        width,
+        height,
+        PAD_LEFT,
+        PAD_RIGHT,
+        plotTop + 6,
+        plotBottom - 4,
+      ),
+    [primaryTrendValues, primaryTrendMax, width, height, plotTop, plotBottom],
+  )
+
   const n = rollups.length
   const crosshair = resolveChartCrosshairMode({
     pinIndex: selectedIndex ?? null,
@@ -707,7 +736,7 @@ export function PulseOverviewChart({
         fadeFutureAfterActive: true,
       })
     })()
-    return seriesFocusOpacity(focusedSeriesKey, 'emotes', base)
+    return seriesFocusOpacity(focusedSeriesKey, 'emotes', scrubActive ? base : base * 0.18)
   }
 
   const chatBarOpacity = (index: number, hasValue: boolean): number => {
@@ -723,7 +752,7 @@ export function PulseOverviewChart({
         fadeFutureAfterActive: true,
       })
     })()
-    return seriesFocusOpacity(focusedSeriesKey, 'chat', base)
+    return seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? base : base * 0.18)
   }
 
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
@@ -964,7 +993,7 @@ export function PulseOverviewChart({
               <path
                 d={viewerAreaPath}
                 fill={`url(#${svgIds.viewerGradient})`}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.06 : 0.35)}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.06 : 0.03)}
                 style={{ transition: scrubTransition }}
               />
               <path
@@ -992,11 +1021,12 @@ export function PulseOverviewChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="1.25"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.08 : 0.62)}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.08 : 0.04)}
                 style={{ transition: scrubTransition }}
               />
               <path
                 d={viewerDetailLinePath}
+                data-chart-layer="detail-future"
                 fill="none"
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
@@ -1008,6 +1038,7 @@ export function PulseOverviewChart({
               />
               <path
                 d={viewerDetailLinePath}
+                data-chart-layer="detail-past"
                 fill="none"
                 stroke={CHART_THEME.viewer.color}
                 strokeLinecap="round"
@@ -1091,7 +1122,7 @@ export function PulseOverviewChart({
                 opacity={seriesFocusOpacity(
                   focusedSeriesKey,
                   'emotes',
-                  scrubActive ? 0.08 : EMOTE_TREND_OPACITY,
+                  scrubActive ? 0.08 : 0.04,
                 )}
                 pointerEvents="none"
                 style={{ transition: scrubTransition }}
@@ -1164,7 +1195,7 @@ export function PulseOverviewChart({
                     opacity={seriesFocusOpacity(
                       focusedSeriesKey,
                       series.key,
-                      scrubActive ? 0.08 : baseOpacity,
+                      scrubActive ? 0.08 : 0.04,
                     )}
                     style={{ transition: scrubTransition }}
                   />
@@ -1204,6 +1235,29 @@ export function PulseOverviewChart({
               )
             })}
           </g>
+          {overviewAreaPath ? (
+            <path
+              d={overviewAreaPath}
+              fill={`url(#${svgIds.viewerGradient})`}
+              opacity={scrubActive ? 0 : 0.48}
+              pointerEvents="none"
+              style={{ transition: scrubTransition }}
+            />
+          ) : null}
+          {overviewLinePath ? (
+            <path
+              d={overviewLinePath}
+              data-chart-layer="overview"
+              fill="none"
+              stroke={CHART_THEME.viewer.color}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.6}
+              opacity={scrubActive ? 0.04 : 0.96}
+              pointerEvents="none"
+              style={{ transition: scrubTransition }}
+            />
+          ) : null}
         </g>
 
         {/* Paint game dividers above chat/emote bars so they stay visible through the full plot. */}
@@ -1334,7 +1388,7 @@ export function PulseOverviewChart({
               opacity={seriesFocusOpacity(
                 focusedSeriesKey,
                 'chat',
-                scrubActive ? 0.08 : CHAT_TREND_OPACITY,
+                scrubActive ? 0.08 : 0.04,
               )}
               style={{ transition: scrubTransition }}
             />
@@ -1386,6 +1440,7 @@ export function PulseOverviewChart({
         })}
 
         <rect
+          data-chart-scrubber="true"
           x={PAD_LEFT}
           y={PAD_TOP}
           width={plotWidth}
