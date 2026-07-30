@@ -91,6 +91,7 @@ const FOCUS_LANE_BOOST = 0.78
 const SCRUB_TRANSITION_MS = 420
 const SCRUB_TRANSITION_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.52)'
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 type ActivityZone = 'activity-chat' | 'activity-emote-trace' | 'activity-emote'
 
@@ -218,7 +219,7 @@ export function PulseOverviewChart({
   const pendingHoverIndexRef = useRef<number | null>(null)
   const hoverFrameRef = useRef<number | null>(null)
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const node = containerRef.current
     if (!node || typeof ResizeObserver === 'undefined') return
     const minPlotWidth = PAD_LEFT + PAD_RIGHT + 40
