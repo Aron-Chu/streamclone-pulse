@@ -5,11 +5,16 @@ import { test } from '@playwright/test'
 test('B-02 page-load CLS', async ({ page }) => {
   await page.addInitScript(() => {
     type Win = Window & { __shifts?: unknown[] }
+    type LayoutShiftEntry = PerformanceEntry & {
+      readonly value: number
+      readonly sources?: readonly { readonly node?: Node | null }[]
+    }
     const w = window as Win
     w.__shifts = []
     const obs = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        const sources = (entry.sources || []).map((s) => {
+        const shift = entry as LayoutShiftEntry
+        const sources = (shift.sources ?? []).map((s) => {
           const node = s.node
           return {
             cls:
@@ -20,7 +25,7 @@ test('B-02 page-load CLS', async ({ page }) => {
         })
         w.__shifts!.push({
           t: entry.startTime,
-          v: entry.value,
+          v: shift.value,
           sources,
         })
       }
@@ -68,11 +73,16 @@ test('B-02 page-load CLS', async ({ page }) => {
 test('B-02 window-switch CLS', async ({ page }) => {
   await page.addInitScript(() => {
     type Win = Window & { __shifts?: unknown[] }
+    type LayoutShiftEntry = PerformanceEntry & {
+      readonly value: number
+      readonly sources?: readonly { readonly node?: Node | null }[]
+    }
     const w = window as Win
     w.__shifts = []
     const obs = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        const sources = (entry.sources || []).map((s) => {
+        const shift = entry as LayoutShiftEntry
+        const sources = (shift.sources ?? []).map((s) => {
           const node = s.node
           return {
             cls:
@@ -83,7 +93,7 @@ test('B-02 window-switch CLS', async ({ page }) => {
         })
         w.__shifts!.push({
           t: entry.startTime,
-          v: entry.value,
+          v: shift.value,
           sources,
         })
       }
@@ -156,11 +166,16 @@ test('B-02 chart scrub CLS stress', async ({ page }) => {
 
   await page.evaluate(() => {
     type Win = Window & { __shifts?: unknown[] }
+    type LayoutShiftEntry = PerformanceEntry & {
+      readonly value: number
+      readonly sources?: readonly { readonly node?: Node | null }[]
+    }
     const w = window as Win
     w.__shifts = []
     const obs = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        const sources = (entry.sources || []).map((s) => {
+        const shift = entry as LayoutShiftEntry
+        const sources = (shift.sources ?? []).map((s) => {
           const node = s.node
           return {
             cls:
@@ -171,8 +186,8 @@ test('B-02 chart scrub CLS stress', async ({ page }) => {
         })
         w.__shifts!.push({
           t: entry.startTime,
-          v: entry.value,
-          had: (entry as unknown as { hadRecentInput?: boolean }).hadRecentInput,
+          v: shift.value,
+          had: (shift as LayoutShiftEntry & { hadRecentInput?: boolean }).hadRecentInput,
           sources,
         })
       }
