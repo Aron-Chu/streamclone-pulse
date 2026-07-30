@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, RefObject } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
@@ -89,6 +89,8 @@ const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
 const FOCUS_DIM_FACTOR = 0.14
 const FOCUS_LANE_BOOST = 0.78
+const SCRUB_TRANSITION_MS = 180
+const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.52)'
 
 type ActivityZone = 'activity-chat' | 'activity-emote-trace' | 'activity-emote'
 
@@ -209,6 +211,7 @@ export function PulseOverviewChart({
   onFocusedSeriesKeyChange,
   highlightedGameSegmentKey = null,
 }: PulseOverviewChartProps) {
+  const chartId = useId().replace(/:/g, '')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
@@ -320,6 +323,27 @@ export function PulseOverviewChart({
         ),
       ),
     [emotes, trendWindow],
+  )
+  const viewerDetailValues = useMemo(
+    () =>
+      rampNullableSeriesFromStreamStart(
+        extendViewerSeriesToTrailingEdge(viewers),
+      ),
+    [viewers],
+  )
+  const chatDetailValues = useMemo(
+    () =>
+      rampNullableSeriesFromStreamStart(
+        extendSeriesToTrailingEdge(chat),
+      ),
+    [chat],
+  )
+  const emoteDetailValues = useMemo(
+    () =>
+      rampNullableSeriesFromStreamStart(
+        extendSeriesToTrailingEdge(emotes),
+      ),
+    [emotes],
   )
 
   const viewerMax = useMemo(() => seriesMax(viewerTrendValues), [viewerTrendValues])
@@ -485,6 +509,34 @@ export function PulseOverviewChart({
     )
   }, [viewerTrendValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
 
+  const viewerDetailAreaPath = useMemo(() => {
+    if (viewerMax <= 0) return ''
+    return areaPathInBand(
+      viewerDetailValues,
+      viewerAxisMax,
+      width,
+      height,
+      PAD_LEFT,
+      PAD_RIGHT,
+      viewerBandTop,
+      viewerBandBottom,
+    )
+  }, [viewerDetailValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
+
+  const viewerDetailLinePath = useMemo(() => {
+    if (viewerMax <= 0) return ''
+    return smoothLinePathInBand(
+      viewerDetailValues,
+      viewerAxisMax,
+      width,
+      height,
+      PAD_LEFT,
+      PAD_RIGHT,
+      viewerBandTop,
+      viewerBandBottom,
+    )
+  }, [viewerDetailValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
+
   const chatLinePath = useMemo(() => {
     if (chatMax <= 0) return ''
     return smoothLinePathInBand(
@@ -499,6 +551,20 @@ export function PulseOverviewChart({
     )
   }, [chatTrendValues, chatMax, chatTrendAxisMax, width, height, chatLaneTop, chatLaneBottom])
 
+  const chatDetailLinePath = useMemo(() => {
+    if (chatMax <= 0) return ''
+    return smoothLinePathInBand(
+      chatDetailValues,
+      chatTrendAxisMax,
+      width,
+      height,
+      PAD_LEFT,
+      PAD_RIGHT,
+      chatLaneTop,
+      chatLaneBottom,
+    )
+  }, [chatDetailValues, chatMax, chatTrendAxisMax, width, height, chatLaneTop, chatLaneBottom])
+
   const emoteLinePath = useMemo(() => {
     if (emoteMax <= 0) return ''
     return smoothLinePathInBand(
@@ -512,6 +578,20 @@ export function PulseOverviewChart({
       emoteLaneBottom,
     )
   }, [emoteTrendValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
+
+  const emoteDetailLinePath = useMemo(() => {
+    if (emoteMax <= 0) return ''
+    return smoothLinePathInBand(
+      emoteDetailValues,
+      emoteTrendAxisMax,
+      width,
+      height,
+      PAD_LEFT,
+      PAD_RIGHT,
+      emoteLaneTop,
+      emoteLaneBottom,
+    )
+  }, [emoteDetailValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
 
   const n = rollups.length
   const crosshair = resolveChartCrosshairMode({
@@ -528,6 +608,35 @@ export function PulseOverviewChart({
       : null
   const hovering = hoverIndex != null || listPreviewIndex != null
   const motionEnabled = !reducedMotion && !prefersReducedMotion()
+  const scrubActive = activeIndex != null
+  const scrubX =
+    activeIndex != null && n > 0
+      ? plotXForIndex(activeIndex, n, PAD_LEFT, plotWidth)
+      : width - PAD_RIGHT
+  const scrubPastWidth = Math.max(0, Math.min(plotWidth, scrubX - PAD_LEFT + 1))
+  const scrubFutureX = Math.max(PAD_LEFT, Math.min(width - PAD_RIGHT, scrubX))
+  const scrubFutureWidth = Math.max(0, width - PAD_RIGHT - scrubFutureX)
+  const scrubTransition = motionEnabled
+    ? `opacity ${SCRUB_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+    : undefined
+  const activeTimeLabel =
+    activeIndex != null ? formatHeatOffset(rollups[activeIndex]?.offsetSeconds ?? 0) : ''
+  const activeTimeLabelWidth = Math.max(34, activeTimeLabel.length * 5.5 + 12)
+  const activeTimeLabelX = Math.max(
+    PAD_LEFT,
+    Math.min(width - PAD_RIGHT - activeTimeLabelWidth, scrubX - activeTimeLabelWidth / 2),
+  )
+  const svgIds = {
+    viewerGradient: `${chartId}-viewer-gradient`,
+    plotClip: `${chartId}-plot-clip`,
+    activityClip: `${chartId}-activity-clip`,
+    viewerClip: `${chartId}-viewer-clip`,
+    chatClip: `${chartId}-chat-clip`,
+    traceClip: `${chartId}-trace-clip`,
+    emoteClip: `${chartId}-emote-clip`,
+    scrubPastClip: `${chartId}-scrub-past-clip`,
+    scrubFutureClip: `${chartId}-scrub-future-clip`,
+  }
   const dashedOverlays = useMemo(
     () => overlayLines.filter(series => series.dashed),
     [overlayLines],
@@ -541,14 +650,17 @@ export function PulseOverviewChart({
   const tracePaths = useMemo(() => {
     return dashedOverlays.map(series => {
       const smoothed = smoothSeriesValues(series.values, 3)
-      const values = rampNullableSeriesFromStreamStart(
+      const smoothValues = rampNullableSeriesFromStreamStart(
         smoothed.map(value => (value > 0 ? value : null)),
       )
-      const axisMax = overlaySeriesAxisMax(values, normalizeOverlaySeries, traceAxis.max)
+      const detailValues = rampNullableSeriesFromStreamStart(
+        series.values.map(value => (value > 0 ? value : null)),
+      )
+      const axisMax = overlaySeriesAxisMax(detailValues, normalizeOverlaySeries, traceAxis.max)
       const axisMin = normalizeOverlaySeries ? 0 : traceAxis.min
       const path =
         smoothLinePathInBand(
-          values,
+          smoothValues,
           axisMax,
           width,
           height,
@@ -558,7 +670,19 @@ export function PulseOverviewChart({
           traceLaneBottom,
           axisMin,
         ) || ''
-      return { ...series, path }
+      const detailPath =
+        smoothLinePathInBand(
+          detailValues,
+          axisMax,
+          width,
+          height,
+          PAD_LEFT,
+          PAD_RIGHT,
+          traceLaneTop,
+          traceLaneBottom,
+          axisMin,
+        ) || ''
+      return { ...series, path, detailPath }
     })
   }, [
     dashedOverlays,
@@ -577,9 +701,10 @@ export function PulseOverviewChart({
       if (hoverPreviewIndex === index) return Math.min(CHART_THEME.emote.barSpike * 0.92, 0.82)
       return chartBarBucketOpacity({
         index,
-        activeIndex: pinIndex ?? hoverPreviewIndex ?? null,
+        activeIndex,
         baseOpacity: CHART_THEME.emote.bar,
         highlightOpacity: CHART_THEME.emote.barSpike,
+        fadeFutureAfterActive: true,
       })
     })()
     return seriesFocusOpacity(focusedSeriesKey, 'emotes', base)
@@ -592,9 +717,10 @@ export function PulseOverviewChart({
       if (hoverPreviewIndex === index) return Math.min(CHART_THEME.chat.guide * 0.95, 0.78)
       return chartBarBucketOpacity({
         index,
-        activeIndex: pinIndex ?? hoverPreviewIndex ?? null,
+        activeIndex,
         baseOpacity: CHART_THEME.chat.whisperBar,
         highlightOpacity: CHART_THEME.chat.guide,
+        fadeFutureAfterActive: true,
       })
     })()
     return seriesFocusOpacity(focusedSeriesKey, 'chat', base)
@@ -746,21 +872,21 @@ export function PulseOverviewChart({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Stream overview chart"
+        aria-label="Interactive stream overview chart. Move or drag across the plot to inspect a moment."
         style={{ ...styles.svg, height }}
       >
         <defs>
-          <linearGradient id="pulseViewerAreaGradient" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={svgIds.viewerGradient} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={CHART_THEME.viewer.color} stopOpacity={CHART_THEME.viewer.fillTop} />
             <stop offset="100%" stopColor={CHART_THEME.viewer.color} stopOpacity={CHART_THEME.viewer.fillBottom} />
           </linearGradient>
-          <clipPath id="pulsePlotClip">
+          <clipPath id={svgIds.plotClip}>
             <rect x={PAD_LEFT} y={PAD_TOP} width={plotWidth} height={height - PAD_TOP - PAD_BOTTOM} />
           </clipPath>
-          <clipPath id="pulseActivityClip">
+          <clipPath id={svgIds.activityClip}>
             <rect x={PAD_LEFT} y={activityTop} width={plotWidth} height={activityBottom - activityTop} />
           </clipPath>
-          <clipPath id="pulseViewerClip">
+          <clipPath id={svgIds.viewerClip}>
             <rect
               x={PAD_LEFT}
               y={viewerBandTop}
@@ -768,14 +894,30 @@ export function PulseOverviewChart({
               height={Math.max(1, viewerBandBottom - viewerBandTop)}
             />
           </clipPath>
-          <clipPath id="pulseChatLaneClip">
+          <clipPath id={svgIds.chatClip}>
             <rect x={PAD_LEFT} y={chatLaneTop} width={plotWidth} height={chatLaneHeight} />
           </clipPath>
-          <clipPath id="pulseEmoteTraceClip">
+          <clipPath id={svgIds.traceClip}>
             <rect x={PAD_LEFT} y={traceLaneTop} width={plotWidth} height={traceLaneHeight} />
           </clipPath>
-          <clipPath id="pulseEmoteLaneClip">
+          <clipPath id={svgIds.emoteClip}>
             <rect x={PAD_LEFT} y={emoteLaneTop} width={plotWidth} height={emoteLaneHeight} />
+          </clipPath>
+          <clipPath id={svgIds.scrubPastClip}>
+            <rect
+              x={PAD_LEFT}
+              y={PAD_TOP}
+              width={scrubPastWidth}
+              height={height - PAD_TOP - PAD_BOTTOM}
+            />
+          </clipPath>
+          <clipPath id={svgIds.scrubFutureClip}>
+            <rect
+              x={scrubFutureX}
+              y={PAD_TOP}
+              width={scrubFutureWidth}
+              height={height - PAD_TOP - PAD_BOTTOM}
+            />
           </clipPath>
         </defs>
 
@@ -807,7 +949,7 @@ export function PulseOverviewChart({
           opacity={showViewerStrip ? 1 : 0}
         />
 
-        <g clipPath="url(#pulsePlotClip)">
+        <g clipPath={`url(#${svgIds.plotClip})`}>
           {showViewerStrip ? (
             <rect
               x={PAD_LEFT}
@@ -818,16 +960,31 @@ export function PulseOverviewChart({
             />
           ) : null}
           {showViewerStrip && viewerAreaPath ? (
-            <g clipPath="url(#pulseViewerClip)">
+            <g clipPath={`url(#${svgIds.viewerClip})`}>
               <path
                 d={viewerAreaPath}
-                fill="url(#pulseViewerAreaGradient)"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', 0.35)}
+                fill={`url(#${svgIds.viewerGradient})`}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.06 : 0.35)}
+                style={{ transition: scrubTransition }}
+              />
+              <path
+                d={viewerDetailAreaPath}
+                fill="rgba(161, 161, 170, 0.12)"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 1 : 0)}
+                clipPath={`url(#${svgIds.scrubFutureClip})`}
+                style={{ transition: scrubTransition }}
+              />
+              <path
+                d={viewerDetailAreaPath}
+                fill={`url(#${svgIds.viewerGradient})`}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.44 : 0)}
+                clipPath={`url(#${svgIds.scrubPastClip})`}
+                style={{ transition: scrubTransition }}
               />
             </g>
           ) : null}
           {showViewerStrip && viewerLinePath ? (
-            <g clipPath="url(#pulseViewerClip)">
+            <g clipPath={`url(#${svgIds.viewerClip})`}>
               <path
                 d={viewerLinePath}
                 fill="none"
@@ -835,7 +992,30 @@ export function PulseOverviewChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="1.25"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', 0.62)}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.08 : 0.62)}
+                style={{ transition: scrubTransition }}
+              />
+              <path
+                d={viewerDetailLinePath}
+                fill="none"
+                stroke={SCRUB_FUTURE_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.35"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.48 : 0)}
+                clipPath={`url(#${svgIds.scrubFutureClip})`}
+                style={{ transition: scrubTransition }}
+              />
+              <path
+                d={viewerDetailLinePath}
+                fill="none"
+                stroke={CHART_THEME.viewer.color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.65"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.9 : 0)}
+                clipPath={`url(#${svgIds.scrubPastClip})`}
+                style={{ transition: scrubTransition }}
               />
             </g>
           ) : null}
@@ -888,7 +1068,7 @@ export function PulseOverviewChart({
             opacity={0.45}
           />
 
-          <g clipPath="url(#pulseEmoteLaneClip)">
+          <g clipPath={`url(#${svgIds.emoteClip})`}>
             {emoteBars.map((bar, index) => (
               <rect
                 key={bar.key}
@@ -908,13 +1088,46 @@ export function PulseOverviewChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={EMOTE_TREND_STROKE}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', EMOTE_TREND_OPACITY)}
+                opacity={seriesFocusOpacity(
+                  focusedSeriesKey,
+                  'emotes',
+                  scrubActive ? 0.08 : EMOTE_TREND_OPACITY,
+                )}
                 pointerEvents="none"
+                style={{ transition: scrubTransition }}
+              />
+            ) : null}
+            {emoteDetailLinePath ? (
+              <path
+                d={emoteDetailLinePath}
+                fill="none"
+                stroke={SCRUB_FUTURE_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={EMOTE_TREND_STROKE}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', scrubActive ? 0.44 : 0)}
+                clipPath={`url(#${svgIds.scrubFutureClip})`}
+                pointerEvents="none"
+                style={{ transition: scrubTransition }}
+              />
+            ) : null}
+            {emoteDetailLinePath ? (
+              <path
+                d={emoteDetailLinePath}
+                fill="none"
+                stroke={CHART_THEME.emote.color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={EMOTE_TREND_STROKE + 0.35}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', scrubActive ? 0.94 : 0)}
+                clipPath={`url(#${svgIds.scrubPastClip})`}
+                pointerEvents="none"
+                style={{ transition: scrubTransition }}
               />
             ) : null}
           </g>
 
-          <g clipPath="url(#pulseChatLaneClip)">
+          <g clipPath={`url(#${svgIds.chatClip})`}>
             {chatBars.map((bar, index) => (
               <rect
                 key={bar.key}
@@ -928,7 +1141,7 @@ export function PulseOverviewChart({
             ))}
           </g>
 
-          <g clipPath="url(#pulseEmoteTraceClip)">
+          <g clipPath={`url(#${svgIds.traceClip})`}>
             {tracePaths.map(series => {
               if (!series.path) return null
               const baseOpacity =
@@ -938,18 +1151,58 @@ export function PulseOverviewChart({
                     : 0.72
                   : 0.55
               return (
-                <path
-                  key={series.key}
-                  className="sc-emote-plot-line"
-                  d={series.path}
-                  fill="none"
-                  stroke={series.color}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
-                  strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
-                  opacity={seriesFocusOpacity(focusedSeriesKey, series.key, baseOpacity)}
-                />
+                <g key={series.key}>
+                  <path
+                    className="sc-emote-plot-line"
+                    d={series.path}
+                    fill="none"
+                    stroke={series.color}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
+                    strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
+                    opacity={seriesFocusOpacity(
+                      focusedSeriesKey,
+                      series.key,
+                      scrubActive ? 0.08 : baseOpacity,
+                    )}
+                    style={{ transition: scrubTransition }}
+                  />
+                  <path
+                    className="sc-emote-plot-line"
+                    d={series.detailPath}
+                    fill="none"
+                    stroke={SCRUB_FUTURE_STROKE}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
+                    strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
+                    opacity={seriesFocusOpacity(
+                      focusedSeriesKey,
+                      series.key,
+                      scrubActive ? 0.42 : 0,
+                    )}
+                    clipPath={`url(#${svgIds.scrubFutureClip})`}
+                    style={{ transition: scrubTransition }}
+                  />
+                  <path
+                    className="sc-emote-plot-line"
+                    d={series.detailPath}
+                    fill="none"
+                    stroke={series.color}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={normalizeOverlaySeries ? 2.5 : TRACE_LINE_STROKE + 0.25}
+                    strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
+                    opacity={seriesFocusOpacity(
+                      focusedSeriesKey,
+                      series.key,
+                      scrubActive ? TRACE_LINE_OPACITY : 0,
+                    )}
+                    clipPath={`url(#${svgIds.scrubPastClip})`}
+                    style={{ transition: scrubTransition }}
+                  />
+                </g>
               )
             })}
           </g>
@@ -1013,6 +1266,7 @@ export function PulseOverviewChart({
             y2={crosshairBottom}
             stroke={CHART_INTERACTION.hoverLine}
             strokeWidth="1"
+            strokeDasharray="2 2"
             opacity={0.75}
             pointerEvents="none"
           />
@@ -1026,6 +1280,7 @@ export function PulseOverviewChart({
             y2={crosshairBottom}
             stroke={CHART_INTERACTION.previewLine}
             strokeWidth="1"
+            strokeDasharray="2 2"
             opacity={0.7}
             pointerEvents="none"
           />
@@ -1039,12 +1294,38 @@ export function PulseOverviewChart({
             y2={crosshairBottom}
             stroke={CHART_INTERACTION.pinLine}
             strokeWidth="1.5"
+            strokeDasharray="2 2"
             pointerEvents="none"
           />
         ) : null}
 
+        {scrubActive ? (
+          <g pointerEvents="none" aria-hidden="true">
+            <rect
+              x={activeTimeLabelX}
+              y={1}
+              width={activeTimeLabelWidth}
+              height={14}
+              rx={7}
+              fill="rgba(7, 12, 20, 0.92)"
+              stroke={CHART_INTERACTION.hoverLine}
+              strokeWidth={0.75}
+            />
+            <text
+              x={activeTimeLabelX + activeTimeLabelWidth / 2}
+              y={11}
+              fill={CHART_INTERACTION.hoverLine}
+              fontSize="8.5"
+              fontWeight="800"
+              textAnchor="middle"
+            >
+              {activeTimeLabel}
+            </text>
+          </g>
+        ) : null}
+
         {chatLinePath ? (
-          <g clipPath="url(#pulseChatLaneClip)" pointerEvents="none">
+          <g clipPath={`url(#${svgIds.chatClip})`} pointerEvents="none">
             <path
               d={chatLinePath}
               fill="none"
@@ -1052,7 +1333,34 @@ export function PulseOverviewChart({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={CHAT_TREND_STROKE}
-              opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', CHAT_TREND_OPACITY)}
+              opacity={seriesFocusOpacity(
+                focusedSeriesKey,
+                'chat',
+                scrubActive ? 0.08 : CHAT_TREND_OPACITY,
+              )}
+              style={{ transition: scrubTransition }}
+            />
+            <path
+              d={chatDetailLinePath}
+              fill="none"
+              stroke={SCRUB_FUTURE_STROKE}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={CHAT_TREND_STROKE}
+              opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? 0.46 : 0)}
+              clipPath={`url(#${svgIds.scrubFutureClip})`}
+              style={{ transition: scrubTransition }}
+            />
+            <path
+              d={chatDetailLinePath}
+              fill="none"
+              stroke={CHART_THEME.chat.line}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={CHAT_TREND_STROKE + 0.35}
+              opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? 0.96 : 0)}
+              clipPath={`url(#${svgIds.scrubPastClip})`}
+              style={{ transition: scrubTransition }}
             />
           </g>
         ) : null}
@@ -1086,9 +1394,28 @@ export function PulseOverviewChart({
           height={height - PAD_TOP - PAD_BOTTOM}
           fill="transparent"
           style={{ cursor: 'crosshair', touchAction: 'none' }}
-          onPointerDown={event => event.stopPropagation()}
+          onPointerDown={event => {
+            event.stopPropagation()
+            event.currentTarget.setPointerCapture(event.pointerId)
+            handlePointer(event.clientX, event.currentTarget)
+          }}
           onPointerMove={event => handlePointer(event.clientX, event.currentTarget)}
-          onPointerLeave={handlePointerLeave}
+          onPointerLeave={event => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+              handlePointerLeave()
+            }
+          }}
+          onPointerUp={event => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
+          }}
+          onPointerCancel={event => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
+            handlePointerLeave()
+          }}
           onClick={handleClick}
         />
       </svg>

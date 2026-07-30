@@ -99,6 +99,25 @@ describe('chartBarBucketOpacity', () => {
     })
     expect(opacity).toBeLessThan(CHART_THEME.emote.bar * 0.5)
   })
+
+  it('keeps scrubbed history readable while fading future buckets', () => {
+    const past = chartBarBucketOpacity({
+      index: 1,
+      activeIndex: 2,
+      baseOpacity: CHART_THEME.emote.bar,
+      fadeFutureAfterActive: true,
+    })
+    const future = chartBarBucketOpacity({
+      index: 3,
+      activeIndex: 2,
+      baseOpacity: CHART_THEME.emote.bar,
+      fadeFutureAfterActive: true,
+    })
+
+    expect(past).toBeGreaterThan(CHART_THEME.emote.bar * 0.5)
+    expect(future).toBeLessThan(CHART_THEME.emote.bar * 0.2)
+    expect(past).toBeGreaterThan(future)
+  })
 })
 
 describe('trendSmoothingWindow', () => {

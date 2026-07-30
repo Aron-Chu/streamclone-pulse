@@ -593,10 +593,19 @@ export function chartBarBucketOpacity(args: {
   activeIndex: number | null
   baseOpacity: number
   highlightOpacity?: number
+  fadeFutureAfterActive?: boolean
 }): number {
-  const { index, activeIndex, baseOpacity, highlightOpacity = baseOpacity } = args
+  const {
+    index,
+    activeIndex,
+    baseOpacity,
+    highlightOpacity = baseOpacity,
+    fadeFutureAfterActive = false,
+  } = args
   const REST_SCALE = 0.42
   const DIM_SCALE = 0.32
+  const PAST_SCALE = 0.78
+  const FUTURE_SCALE = 0.14
   const HIGHLIGHT_CAP = 0.95
   const HIGHLIGHT_BOOST = 1.12
 
@@ -605,6 +614,9 @@ export function chartBarBucketOpacity(args: {
   }
   if (index === activeIndex) {
     return Math.min(highlightOpacity * HIGHLIGHT_BOOST, HIGHLIGHT_CAP)
+  }
+  if (fadeFutureAfterActive) {
+    return baseOpacity * (index < activeIndex ? PAST_SCALE : FUTURE_SCALE)
   }
   return baseOpacity * DIM_SCALE
 }
