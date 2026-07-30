@@ -43,20 +43,20 @@ describe('buildCompositeOverviewSeries', () => {
 
   it('lets viewer, chat, and emote movement each affect the overview', () => {
     const composite = buildCompositeOverviewSeries([
-      { values: signals.viewers, weight: 0.45 },
-      { values: signals.chat, weight: 0.3 },
-      { values: signals.emotes, weight: 0.25 },
+      { values: signals.viewers, weight: 0.1 },
+      { values: signals.chat, weight: 0.48 },
+      { values: signals.emotes, weight: 0.42 },
     ], 1)
 
     const withoutChatSpike = buildCompositeOverviewSeries([
-      { values: signals.viewers, weight: 0.45 },
-      { values: [10, 12, 13, 14, 18], weight: 0.3 },
-      { values: signals.emotes, weight: 0.25 },
+      { values: signals.viewers, weight: 0.1 },
+      { values: [10, 12, 13, 14, 18], weight: 0.48 },
+      { values: signals.emotes, weight: 0.42 },
     ], 1)
     const withoutEmoteSpike = buildCompositeOverviewSeries([
-      { values: signals.viewers, weight: 0.45 },
-      { values: signals.chat, weight: 0.3 },
-      { values: [2, 8, 3, 4, 4], weight: 0.25 },
+      { values: signals.viewers, weight: 0.1 },
+      { values: signals.chat, weight: 0.48 },
+      { values: [2, 8, 3, 4, 4], weight: 0.42 },
     ], 1)
 
     expect(composite[2]).toBeGreaterThan(withoutChatSpike[2] ?? 0)

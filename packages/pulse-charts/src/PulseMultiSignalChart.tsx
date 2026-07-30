@@ -1009,9 +1009,9 @@ function PulseMultiSignalChartInnerImpl({
     : 'translateY(0px) scaleY(1)'
   const overviewValues = useMemo(() => {
     const composite = buildCompositeOverviewSeries([
-      { values: viewersItem?.values ?? [], weight: 0.45 },
-      { values: chatItem?.values ?? [], weight: 0.3 },
-      { values: emotesItem?.values ?? [], weight: 0.25 },
+      { values: viewersItem?.values ?? [], weight: 0.1 },
+      { values: chatItem?.values ?? [], weight: 0.48 },
+      { values: emotesItem?.values ?? [], weight: 0.42 },
     ], 7)
     if (composite.length <= plotWidthPx) return composite
     return rollingMedianWindow(decimateSeriesForRender(composite, plotWidthPx), 5)
@@ -1264,13 +1264,13 @@ function PulseMultiSignalChartInnerImpl({
             <path
               d={viewerAreaPathD}
               fill={`url(#${svgIds.viewerGradient})`}
-              opacity={seriesFocusOpacity('viewers', expandProgress >= 0.5 ? 0.5 : 0.88)}
+              opacity={seriesFocusOpacity('viewers', expandProgress >= 0.5 ? 0.12 : 0.18)}
               clipPath={`url(#${svgIds.scrubPastClip})`}
             />
             <path
               d={viewerAreaPathD}
               fill="rgba(161, 161, 170, 0.14)"
-              opacity={seriesFocusOpacity('viewers', scrubActive ? 0.7 : 0)}
+              opacity={seriesFocusOpacity('viewers', scrubActive ? 0.2 : 0)}
               clipPath={`url(#${svgIds.scrubFutureClip})`}
             />
           </>
@@ -1289,9 +1289,9 @@ function PulseMultiSignalChartInnerImpl({
                 stroke={CHART_THEME.viewer.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={segment.estimated ? 2 : 2.5}
+                strokeWidth={segment.estimated ? 1.25 : 1.5}
                 strokeDasharray={segment.estimated ? '7 6' : undefined}
-                opacity={seriesFocusOpacity('viewers', segment.estimated ? 0.4 : CHART_THEME.viewer.line)}
+                opacity={seriesFocusOpacity('viewers', segment.estimated ? 0.18 : 0.34)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
               />
               <path
@@ -1301,9 +1301,9 @@ function PulseMultiSignalChartInnerImpl({
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={segment.estimated ? 1.75 : 2.1}
+                strokeWidth={segment.estimated ? 1.1 : 1.35}
                 strokeDasharray={segment.estimated ? '7 6' : undefined}
-                opacity={seriesFocusOpacity('viewers', scrubActive ? 0.55 : 0)}
+                opacity={seriesFocusOpacity('viewers', scrubActive ? 0.24 : 0)}
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
               />
             </g>
@@ -1360,7 +1360,7 @@ function PulseMultiSignalChartInnerImpl({
             stroke={CHART_THEME.emote.color}
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth={expandProgress >= 0.5 ? 2 : 1}
+            strokeWidth={expandProgress >= 0.5 ? 2.8 : 2.3}
             opacity={seriesFocusOpacity('emotes', CHART_THEME.emote.line * activityVisualBoost)}
           />
         ) : null}
@@ -1411,7 +1411,7 @@ function PulseMultiSignalChartInnerImpl({
             stroke={CHART_THEME.chat.line}
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth={expandProgress >= 0.5 ? 2.5 : 1.5}
+            strokeWidth={expandProgress >= 0.5 ? 3 : 2.5}
             opacity={seriesFocusOpacity('chat', CHART_THEME.chat.lineOpacity * activityVisualBoost)}
           />
         ) : null}

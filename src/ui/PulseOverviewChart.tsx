@@ -71,8 +71,8 @@ const PAD_LEFT = 4
 const PAD_RIGHT = 12
 const PAD_TOP = 14
 const PAD_BOTTOM = 12
-const VIEWER_STRIP_SHARE_COLLAPSED = 0.28
-const VIEWER_STRIP_SHARE_EXPANDED = 0.16
+const VIEWER_STRIP_SHARE_COLLAPSED = 0.18
+const VIEWER_STRIP_SHARE_EXPANDED = 0.12
 const ACTIVITY_CHAT_FRACTION = 0.54
 const ACTIVITY_EMOTE_TRACE_FRACTION = 0.12
 const ACTIVITY_EMOTE_BARS_FRACTION = 0.34
@@ -81,8 +81,8 @@ const SIDEBAR_EMOTE_TRACE_FRACTION = 0.18
 const SIDEBAR_EMOTE_BARS_FRACTION = 0.32
 const ACTIVITY_CHAT_FRACTION_EXPANDED = 0.62
 const ACTIVITY_EMOTE_BARS_FRACTION_EXPANDED = 0.26
-const CHAT_TREND_STROKE = 2
-const EMOTE_TREND_STROKE = 1.75
+const CHAT_TREND_STROKE = 2.8
+const EMOTE_TREND_STROKE = 2.5
 const TRACE_LANE_MIN_HEIGHT = 16
 const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
@@ -595,9 +595,9 @@ export function PulseOverviewChart({
 
   const primaryTrendValues = useMemo(
     () => buildCompositeOverviewSeries([
-      { values: viewerTrendValues, weight: 0.45 },
-      { values: chatTrendValues, weight: 0.3 },
-      { values: emoteTrendValues, weight: 0.25 },
+      { values: viewerTrendValues, weight: 0.1 },
+      { values: chatTrendValues, weight: 0.48 },
+      { values: emoteTrendValues, weight: 0.42 },
     ], 5),
     [chatTrendValues, emoteTrendValues, viewerTrendValues],
   )
@@ -1048,7 +1048,7 @@ export function PulseOverviewChart({
               <path
                 d={viewerDetailAreaPath}
                 fill={`url(#${svgIds.viewerGradient})`}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.44 : 0)}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.14 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
                 style={{ transition: scrubTransition }}
               />
@@ -1073,8 +1073,8 @@ export function PulseOverviewChart({
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="1.35"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.48 : 0)}
+                strokeWidth="1.1"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.22 : 0)}
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
                 style={{ transition: scrubTransition }}
               />
@@ -1085,8 +1085,8 @@ export function PulseOverviewChart({
                 stroke={CHART_THEME.viewer.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="1.65"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.9 : 0)}
+                strokeWidth="1.35"
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.34 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
                 style={{ transition: scrubTransition }}
               />
