@@ -932,7 +932,7 @@ export function PulseOverviewChart({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Interactive stream overview chart. Move or drag across the plot to inspect a moment."
+        aria-label="Chat and emote activity timeline with viewer context. Move or drag across the plot to inspect a moment."
         data-chart-mode={scrubActive ? 'detail' : 'overview'}
         style={{ ...styles.svg, height }}
       >
@@ -1291,6 +1291,8 @@ export function PulseOverviewChart({
             <path
               d={overviewLinePath}
               data-chart-layer="overview"
+              data-chart-primary-signals="chat emotes"
+              data-chart-context-signals="viewers"
               fill="none"
               stroke={CHART_THEME.viewer.color}
               strokeLinecap="round"

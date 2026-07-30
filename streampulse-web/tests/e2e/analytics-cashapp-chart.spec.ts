@@ -88,16 +88,22 @@ test('session chart expands from overview to faded-future detail', async ({ page
 
   await page.goto(`/analytics/${LOGIN}/${STREAM_ID}`, { waitUntil: 'domcontentloaded' })
 
-  const chart = page.locator('svg[aria-label="Analytics timeline chart"]')
+  const chart = page.locator('svg[aria-label="Chat and emote activity timeline with viewer context"]')
   await expect(chart).toBeVisible()
   await expect(chart).toHaveAttribute('data-chart-mode', 'overview')
   await expect(chart.locator('[data-chart-layer="overview"]')).toHaveCount(1)
+  await expect(chart.locator('[data-chart-layer="overview"]')).toHaveAttribute(
+    'data-chart-primary-signals',
+    'chat emotes',
+  )
+  await expect(chart.locator('[data-chart-layer="detail-chrome"]')).toHaveAttribute('opacity', '0')
 
   const box = await chart.boundingBox()
   expect(box).toBeTruthy()
   await chart.hover({ position: { x: box!.width * 0.36, y: box!.height * 0.5 } })
 
   await expect(chart).toHaveAttribute('data-chart-mode', 'detail')
+  await expect(chart.locator('[data-chart-layer="detail-chrome"]')).toHaveAttribute('opacity', '1')
   await expect(chart.locator('[data-chart-layer="detail-past"]').first()).toBeVisible()
   await expect(chart.locator('[data-chart-layer="detail-future"]').first()).toHaveAttribute(
     'stroke',

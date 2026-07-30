@@ -1141,7 +1141,7 @@ function PulseMultiSignalChartInnerImpl({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Analytics timeline chart"
+        aria-label="Chat and emote activity timeline with viewer context"
         data-chart-mode={scrubActive ? 'detail' : 'overview'}
         className={variant === 'compact' ? 'w-full cursor-crosshair select-none' : 'h-[360px] min-h-[320px] w-full cursor-crosshair select-none sm:h-[min(420px,52vh)]'}
         style={variant === 'compact' && heightProp ? { height: heightProp, minHeight: heightProp } : undefined}
@@ -1172,15 +1172,19 @@ function PulseMultiSignalChartInnerImpl({
           </clipPath>
         </defs>
 
-        {/* Horizontal guide lines */}
-        <line x1={padLeft} x2={width - padRight} y1={padTop} y2={padTop} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" opacity={scrubActive ? 1 : 0.22} style={{ transition: scrubTransition }} />
-        {showAvgLabel && (
-          <line x1={padLeft} x2={width - padRight} y1={yAvg} y2={yAvg} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" opacity={scrubActive ? 1 : 0.18} style={{ transition: scrubTransition }} />
-        )}
-        <line x1={padLeft} x2={width - padRight} y1={height - padBottom} y2={height - padBottom} stroke="rgba(255,255,255,.08)" strokeWidth="1" />
+        {/* Detailed guide/axis chrome stays completely dormant in the calm overview. */}
+        <g
+          data-chart-layer="detail-chrome"
+          opacity={scrubActive ? 1 : 0}
+          pointerEvents={scrubActive ? undefined : 'none'}
+          style={{ transition: scrubTransition }}
+        >
+          <line x1={padLeft} x2={width - padRight} y1={padTop} y2={padTop} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" />
+          {showAvgLabel && (
+            <line x1={padLeft} x2={width - padRight} y1={yAvg} y2={yAvg} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" />
+          )}
+          <line x1={padLeft} x2={width - padRight} y1={height - padBottom} y2={height - padBottom} stroke="rgba(255,255,255,.08)" strokeWidth="1" />
 
-        {/* Left Y-Axis labels */}
-        <g opacity={scrubActive ? 1 : 0.36} style={{ transition: scrubTransition }}>
           {/* MAX Label */}
           <text x={padLeft - 12} y={padTop - 4} textAnchor="end" className="fill-cyan-400 text-[10px] font-black uppercase">MAX</text>
           <text x={padLeft - 12} y={padTop + 10} textAnchor="end" className="fill-cyan-400 text-sm font-black">{count(viewerScale)}</text>
@@ -1488,6 +1492,8 @@ function PulseMultiSignalChartInnerImpl({
           <path
             d={overviewLinePathD}
             data-chart-layer="overview"
+            data-chart-primary-signals="chat emotes"
+            data-chart-context-signals="viewers"
             fill="none"
             stroke={CHART_THEME.viewer.color}
             strokeLinecap="round"
