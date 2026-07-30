@@ -40,4 +40,7 @@ export {
   viewerSourceLabel,
   chartViewerValue,
   viewerValue,
+  chartBarBucketOpacity,
+  buildCompositeOverviewSeries,
+  type CompositeOverviewSignal,
 } from './chartRollupUtils.ts'

@@ -50,7 +50,9 @@ export function toggleEmotePlotSelection(
 }
 
 export function activityZoneFraction(expanded: boolean): number {
-  return expanded ? 0.56 : 0.36
+  // Chat and emotes are the creator-facing story. Keep viewers as a compact
+  // context rail instead of letting their larger absolute scale own the plot.
+  return expanded ? 0.86 : 0.74
 }
 
 export function activityBandFractions(

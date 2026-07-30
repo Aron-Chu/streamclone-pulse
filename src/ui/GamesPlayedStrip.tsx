@@ -152,7 +152,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     display: 'flex',
     gap: 6,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    position: 'relative',
   },
   gamesLabel: {
     color: theme.textMuted,
@@ -171,6 +172,8 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     lineHeight: 1,
     padding: '3px 7px',
+    position: 'absolute',
+    right: 0,
   },
   timelinePad: {
     minWidth: 0,

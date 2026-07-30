@@ -188,8 +188,8 @@ describe('emotePlotSelection', () => {
     const { activityZoneFraction, activityBandFractions } = await import(
       '@streampulse/analytics-console/utils/emotePlotSelection'
     )
-    expect(activityZoneFraction(false)).toBe(0.36)
-    expect(activityZoneFraction(true)).toBe(0.56)
+    expect(activityZoneFraction(false)).toBe(0.74)
+    expect(activityZoneFraction(true)).toBe(0.86)
     expect(activityBandFractions(true).trace).toBeGreaterThan(activityBandFractions(false).trace)
     expect(activityBandFractions(false, true).trace).toBeGreaterThan(activityBandFractions(false, false).trace)
     const collapsedEmoteArea = activityZoneFraction(false) * activityBandFractions(false).bars

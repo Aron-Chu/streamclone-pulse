@@ -239,11 +239,11 @@ export function GamesPlayedStrip({
         <div className="relative min-w-0 w-full">
           <div
             ref={trackRef}
-            className="flex min-h-11 min-w-0 w-full items-stretch gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            role="list"
+            className="min-h-11 min-w-0 w-full overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             tabIndex={0}
             aria-label="Scroll games played"
           >
+            <div className="flex min-h-11 min-w-full w-max items-stretch justify-center gap-1" role="list">
             {gameSlots.map((slot, index) => {
               const { segment } = slot
               const key = gameSegmentKey(segment)
@@ -296,6 +296,7 @@ export function GamesPlayedStrip({
                 </button>
               )
             })}
+            </div>
           </div>
           {canScrollLeft ? (
             <>

@@ -39,4 +39,11 @@ describe('landingPulseFixture', () => {
     expect(a.login).toBe('xqc')
     expect(a.peaks.length).toBe(LANDING_PULSE_PAYLOAD.peaks.length)
   })
+
+  it('presents the primary landing demo as healthy full-stream tracking', () => {
+    expect(LANDING_PULSE_PAYLOAD.coverage?.state).toBe('full_stream_tracked')
+    expect(LANDING_PULSE_PAYLOAD.coverage?.coverageStartOffsetSeconds).toBe(0)
+    expect(LANDING_PULSE_PAYLOAD.coverage?.hasFullStreamCoverage).toBe(true)
+    expect(LANDING_PULSE_PAYLOAD.coverage?.trackedFromStart).toBe(true)
+  })
 })

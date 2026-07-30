@@ -50,7 +50,9 @@ export function toggleEmotePlotSelection(
 }
 
 export function activityZoneFraction(expanded: boolean): number {
-  return expanded ? 0.56 : 0.36
+  // Mirror @streampulse/pulse-charts: chat and emotes own the primary plot;
+  // viewers remain a compact context rail.
+  return expanded ? 0.86 : 0.74
 }
 
 export function activityBandFractions(
