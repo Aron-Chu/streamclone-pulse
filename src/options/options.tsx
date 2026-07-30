@@ -275,7 +275,7 @@ function OptionsApp() {
       <section style={styles.section}>
         <span style={styles.groupLabel}>Watchlist / Protect</span>
         <p style={styles.help}>
-          Saved channels are stored in <strong>Chrome sync</strong> on this device. On the public hosted API there is
+          Saved channels are stored in <strong>browser sync storage</strong> on this device. On the public hosted API there is
           no guest Protect credential, so the extension does <strong>not</strong> claim server-side protection and
           does not enable live Pulse or backfill. Use the <strong>Analytics hub</strong> to browse actively tracked
           channels.
@@ -298,7 +298,7 @@ function OptionsApp() {
         {watchlistError ? <p style={styles.errorText}>{watchlistError}</p> : null}
         {watchlist.length === 0 ? (
           <p style={styles.help}>
-            No channels yet. On hosted, adding a login saves a local Chrome-sync preference only — it does not claim
+            No channels yet. On hosted, adding a login saves a browser-sync preference only — it does not claim
             server-side Protect.
           </p>
         ) : (

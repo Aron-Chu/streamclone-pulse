@@ -1,21 +1,13 @@
 /**
  * Atomic packaging: build + zip + validate the same target.
- * Usage: node scripts/package-extension-target.mjs <development|cws|edge>
+ * Usage: node scripts/package-extension-target.mjs <development|cws|edge|firefox>
  *
- * CWS and Edge share one store JS compile (identical target behavior), then
- * re-stamp the target-specific manifest and produce distinct ZIP filenames.
+ * Every target receives its own compile because runtime privacy/diagnostics
+ * behavior is selected with the compile-time __EXTENSION_TARGET__ constant.
  */
-import {
-  copyFileSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
-import { dirname, join } from 'node:path'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { loadManifestForTarget, resolveExtensionTarget } from './extension-target.mjs'
 
 const target = resolveExtensionTarget(process.argv[2] ?? process.env.EXTENSION_TARGET)
@@ -29,25 +21,6 @@ function run(command, args, env = process.env) {
     cwd: root,
   })
   if (result.status !== 0) process.exit(result.status ?? 1)
-}
-
-function copyDir(src, dest) {
-  rmSync(dest, { recursive: true, force: true })
-  mkdirSync(dest, { recursive: true })
-  function walk(from, to) {
-    for (const name of readdirSync(from)) {
-      const s = join(from, name)
-      const d = join(to, name)
-      if (statSync(s).isDirectory()) {
-        mkdirSync(d, { recursive: true })
-        walk(s, d)
-      } else {
-        mkdirSync(dirname(d), { recursive: true })
-        copyFileSync(s, d)
-      }
-    }
-  }
-  walk(src, dest)
 }
 
 function stampManifest(storeTarget) {
@@ -74,17 +47,7 @@ if (target === 'development') {
   process.exit(0)
 }
 
-const storeEnv = { ...process.env, EXTENSION_TARGET: 'cws' }
+const storeEnv = { ...process.env, EXTENSION_TARGET: target }
 run('npx', ['vite', 'build'], storeEnv)
 run('node', ['scripts/write-extension-build-provenance.mjs'], storeEnv)
-
-const storeBuildCache = join(tmpdir(), `sp-store-build-${process.pid}`)
-copyDir(join(root, 'dist'), storeBuildCache)
-
-const targets = target === 'edge' ? ['edge'] : target === 'cws' ? ['cws'] : ['cws', 'edge']
-for (const storeTarget of targets) {
-  copyDir(storeBuildCache, join(root, 'dist'))
-  packageOne(storeTarget, { ...process.env, EXTENSION_TARGET: storeTarget })
-}
-
-rmSync(storeBuildCache, { recursive: true, force: true })
+packageOne(target, storeEnv)

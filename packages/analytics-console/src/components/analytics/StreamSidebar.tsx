@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { AnalyticsStream } from '../../apiTypes.ts'
-import { streamIsSidebarVisible, analyticsStreamPathSlug, streamSyncBadgeState, streamSyncBadgeLabel, streamSyncBadgeTitle } from '../../utils/syncedLiveStream.ts'
+import {
+  streamIsSidebarVisible,
+  analyticsStreamPathSlug,
+  streamSyncBadgeState,
+  streamSyncBadgeLabel,
+  streamSyncBadgeTitle,
+  type StreamSyncEvidence,
+} from '../../utils/syncedLiveStream.ts'
 import { count, duration, formatDateTime } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 
@@ -16,6 +23,7 @@ export function StreamSidebar({
   onSyncedOnlyChange,
   coreMinuteChartsBlocked = false,
   activeRollupStats,
+  activeSyncEvidence,
   activeMinutesUnavailable = false,
   buildSessionPath,
   buildChannelPath,
@@ -32,6 +40,7 @@ export function StreamSidebar({
   onSyncedOnlyChange?: (value: boolean) => void
   coreMinuteChartsBlocked?: boolean
   activeRollupStats?: { avg: number; peak: number; current: number } | null
+  activeSyncEvidence?: StreamSyncEvidence
   activeMinutesUnavailable?: boolean
   buildSessionPath: (login: string, streamId: string) => string
   buildChannelPath: (login: string) => string
@@ -93,7 +102,11 @@ export function StreamSidebar({
               const targetSlug = analyticsStreamPathSlug(stream, streams)
               const dateSlug = targetSlug !== stream.streamId ? targetSlug : ''
               const isActive = !isLiveView && (activeID === stream.streamId || activeID === dateSlug || activeID === targetSlug)
-              const syncBadge = streamSyncBadgeState(stream, Boolean(syncing && isActive))
+              const syncBadge = streamSyncBadgeState(
+                stream,
+                Boolean(syncing && isActive),
+                isActive ? activeSyncEvidence : undefined,
+              )
               const isSyncingActive = syncBadge === 'syncing'
               const rollupStats = isSyncingActive ? activeRollupStats : null
               const mobileHiddenClass = !archiveExpanded && rowIndex >= MOBILE_COLLAPSED_ROWS ? 'hidden lg:block' : ''
@@ -104,6 +117,8 @@ export function StreamSidebar({
                     ? 'bg-emerald-500/10 text-emerald-300'
                     : syncBadge === 'partial'
                       ? 'bg-amber-500/10 text-amber-300'
+                      : syncBadge === 'unknown'
+                        ? 'bg-white/[0.06] text-zinc-400'
                       : 'bg-amber-500/10 text-amber-300'
 
               return (

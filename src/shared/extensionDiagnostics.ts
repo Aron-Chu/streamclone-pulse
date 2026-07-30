@@ -16,6 +16,7 @@ import {
   isDiagnosticsConsentEnabled,
   sanitizeDiagnosticsFrames,
 } from './diagnosticsConsent.ts'
+import { compiledExtensionTarget } from './extensionTarget.ts'
 
 export type DiagnosticsSenderLike = {
   id?: string
@@ -72,9 +73,9 @@ export function trustedDiagnosticsBuildMeta(opts?: {
   const mv = typeof manifest.manifest_version === 'number' ? manifest.manifest_version : 3
   const rawTarget =
     opts?.extensionTarget ??
-    (typeof __EXTENSION_TARGET__ !== 'undefined' ? __EXTENSION_TARGET__ : 'development')
+    compiledExtensionTarget()
   const target: DiagnosticsTarget =
-    rawTarget === 'cws' || rawTarget === 'edge' || rawTarget === 'development'
+    rawTarget === 'cws' || rawTarget === 'edge' || rawTarget === 'firefox' || rawTarget === 'development'
       ? rawTarget
       : 'development'
   return {
@@ -93,9 +94,16 @@ export function isTrustedDiagnosticsSender(
     (typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.id : '')
   if (!runtimeId || !sender.id || sender.id !== runtimeId) return false
 
-  const extPrefix = `chrome-extension://${runtimeId}/`
-  if (typeof sender.url === 'string' && sender.url.startsWith(extPrefix)) {
-    return true
+  if (typeof sender.url === 'string') {
+    try {
+      const u = new URL(sender.url)
+      if (u.protocol === 'chrome-extension:' && u.hostname === runtimeId) return true
+      // Firefox uses a per-profile moz-extension UUID for the URL hostname,
+      // while MessageSender.id remains the stable Gecko add-on ID checked above.
+      if (u.protocol === 'moz-extension:') return true
+    } catch {
+      // Content sender validation below handles ordinary tab URLs.
+    }
   }
 
   // Content scripts: extension id match + Twitch tab URL.
@@ -121,7 +129,12 @@ export function deriveDiagnosticsSurface(sender: DiagnosticsSenderLike): Diagnos
   }
   if (sender.tab) return 'content'
   // Extension page without tab and without recognizable path → background.
-  if (!sender.tab && sender.url?.startsWith('chrome-extension://')) return 'background'
+  if (
+    !sender.tab &&
+    (sender.url?.startsWith('chrome-extension://') || sender.url?.startsWith('moz-extension://'))
+  ) {
+    return 'background'
+  }
   if (!sender.tab && !sender.url) return 'background'
   return null
 }
@@ -150,7 +163,7 @@ export function classifyDiagnosticsError(err: unknown): DiagnosticsErrorClass {
 }
 
 const STACK_FRAME_RE =
-  /(?:chrome-extension:\/\/[^/]+\/)?((?:content|background|popup|options)\/[A-Za-z0-9._/-]+\.js|chunks\/[A-Za-z0-9._-]+\.js):(\d+):(\d+)/
+  /(?:(?:chrome|moz)-extension:\/\/[^/]+\/)?((?:content|background|popup|options)\/[A-Za-z0-9._/-]+\.js|chunks\/[A-Za-z0-9._-]+\.js):(\d+):(\d+)/
 
 /** Extract allowlisted {bundle,line,column} only — never transmit raw stack text. */
 export function framesFromErrorStack(stack: unknown): SanitizedDiagnosticsFrame[] {

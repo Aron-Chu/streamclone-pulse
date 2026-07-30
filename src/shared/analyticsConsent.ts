@@ -1,4 +1,8 @@
 /** Versioned product-analytics consent (RPR-5). Separate from diagnostics. */
+import {
+  hasFirefoxTechnicalDataConsent,
+  requestFirefoxTechnicalDataConsent,
+} from './firefoxDataConsent.ts'
 
 export const ANALYTICS_CONSENT_STORAGE = 'pulse-analytics-consent-v1'
 export const ANALYTICS_CONSENT_SCHEMA_VERSION = 1 as const
@@ -46,7 +50,8 @@ export async function isAnalyticsConsentGranted(
   try {
     const bag = await storage.get(ANALYTICS_CONSENT_STORAGE)
     const parsed = parseAnalyticsConsent(bag[ANALYTICS_CONSENT_STORAGE])
-    return parsed?.granted === true
+    if (parsed?.granted !== true) return false
+    return hasFirefoxTechnicalDataConsent()
   } catch {
     return false
   }
@@ -73,6 +78,10 @@ export async function setAnalyticsConsentGranted(
       granted: false,
       updatedAt: Date.now(),
     }
+  }
+  if (!(await requestFirefoxTechnicalDataConsent())) {
+    memoryDenial = true
+    throw new Error('analytics_platform_permission_denied')
   }
   const record: AnalyticsConsentRecord = {
     schemaVersion: ANALYTICS_CONSENT_SCHEMA_VERSION,

@@ -6,11 +6,13 @@ import type { HubEmoteWithShare } from '../../../lib/emoteShare'
 import { compact, displayName, initial } from './hubFormat'
 import { HubTopEmotesTable } from './HubTopEmotesTable'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
+import { ResilientImage } from '../ResilientImage'
 import {
   type InspectorMode,
   inspectorEmoteListSignature,
   resolveInspectorRangeStats,
   resolveInspectorTableEmotes,
+  resolveBucketMomentStreamers,
   resolveTopLiveStreamers,
   type BucketStreamerPeak,
 } from './activityBucketInspectorUtils'
@@ -102,12 +104,15 @@ const InspectorStreamersFooter = memo(function InspectorStreamersFooter({
   streamers,
   loading = false,
   showEmptyHint = false,
+  label = 'Top live by activity',
+  sublabel = 'Chat & emote rate — live pool',
 }: {
   streamers: BucketStreamerPeak[]
   loading?: boolean
   showEmptyHint?: boolean
+  label?: string
+  sublabel?: string
 }) {
-  const label = 'Top live by activity'
   const emptyCopy = 'No live channels in the tracked pool right now.'
 
   if (loading && streamers.length === 0) {
@@ -131,9 +136,7 @@ const InspectorStreamersFooter = memo(function InspectorStreamersFooter({
   return (
     <div className="activity-bucket-inspector__bucket-streamers">
       <span className="activity-bucket-inspector__bucket-streamers-label">{label}</span>
-      <span className="activity-bucket-inspector__bucket-streamers-sub muted">
-        Chat &amp; emote rate — live pool
-      </span>
+      <span className="activity-bucket-inspector__bucket-streamers-sub muted">{sublabel}</span>
       <ul className="activity-bucket-inspector__streamer-list" role="list">
         {streamers.map((streamer, index) => {
           const name = streamer.displayName?.trim() || streamer.login
@@ -146,18 +149,17 @@ const InspectorStreamersFooter = memo(function InspectorStreamersFooter({
                 {index + 1}
               </span>
               <span className="pulse-moments__channel pulse-moments__channel--compact activity-bucket-inspector__streamer-channel">
-                {streamer.profileImageUrl ? (
-                  <img
-                    src={streamer.profileImageUrl}
-                    alt=""
-                    loading="eager"
-                    decoding="async"
-                  />
-                ) : (
-                  <span className="pulse-moments__channel-fallback" aria-hidden="true">
-                    {initial(name)}
-                  </span>
-                )}
+                <ResilientImage
+                  src={streamer.profileImageUrl}
+                  alt=""
+                  loading="eager"
+                  decoding="async"
+                  fallback={
+                    <span className="pulse-moments__channel-fallback" aria-hidden="true">
+                      {initial(name)}
+                    </span>
+                  }
+                />
                 <span className="pulse-moments__channel-name" title={name}>
                   {name}
                 </span>
@@ -282,8 +284,8 @@ export function ActivityBucketInspector({
   emoteIntel,
   topEmoteName,
   bucketMomentEmotes = [],
-  bucketMoments: _bucketMoments = [],
-  bucketMomentsLoading: _bucketMomentsLoading = false,
+  bucketMoments = [],
+  bucketMomentsLoading = false,
   selectedPoint,
   hoverPoint,
   linkedMoment = null,
@@ -346,6 +348,14 @@ export function ActivityBucketInspector({
     () => (bucketMode === 'range' ? resolveTopLiveStreamers(liveChannels, 5) : []),
     [bucketMode, liveChannels],
   )
+  const bucketStreamers = useMemo(
+    () => (
+      bucketMode === 'range'
+        ? []
+        : resolveBucketMomentStreamers(bucketMoments, liveChannels, 5)
+    ),
+    [bucketMode, bucketMoments, liveChannels],
+  )
   const streamersFooterEmptyHint = bucketMode === 'range' && topLiveStreamers.length === 0
 
   const displayPoint = activePoint && bucketMode !== 'range' ? activePoint : null
@@ -407,7 +417,12 @@ export function ActivityBucketInspector({
       <div className="activity-bucket-inspector__list-wrap">
         <InspectorEmoteList emotes={tableEmotes} mode={bucketMode} fill={bucketFill} />
         {bucketFill ? (
-          <div className="activity-bucket-inspector__reserved-slot" data-reserved-for="clip-tools" aria-hidden="true" />
+          <InspectorStreamersFooter
+            streamers={bucketStreamers}
+            loading={bucketMomentsLoading}
+            label="Channels in this bucket"
+            sublabel="Peak chat & emote rate in the selected interval"
+          />
         ) : bucketMode === 'range' ? (
           <InspectorStreamersFooter
             streamers={topLiveStreamers}

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { Skeleton } from '../../primitives'
 import { compact, coverageMeta, coveragePctMeta, displayName, initial, twitchLivePreviewUrl } from './hubFormat'
+import { ResilientImage } from '../ResilientImage'
 
 interface HubLiveCarouselProps {
   channels: HubLiveChannel[]
@@ -153,11 +154,12 @@ export function HubLiveCarousel({ channels, loading = false }: HubLiveCarouselPr
                 </span>
                 <div className="hub-chan__top">
                   <span className="hub-chan__av">
-                    {channel.profileImageUrl ? (
-                      <img src={channel.profileImageUrl} alt="" loading="lazy" />
-                    ) : (
-                      initial(name)
-                    )}
+                    <ResilientImage
+                      src={channel.profileImageUrl}
+                      alt=""
+                      loading="lazy"
+                      fallback={initial(name)}
+                    />
                   </span>
                   <span className="hub-chan__id">
                     <strong>{name}</strong>
@@ -191,4 +193,3 @@ export function HubLiveCarousel({ channels, loading = false }: HubLiveCarouselPr
     </div>
   )
 }
-

@@ -16,7 +16,7 @@ export const CHECKSUM_SUFFIX = '.sha256'
  */
 export function targetArtifactNames(target, version) {
   const ver = String(version ?? '0.0.0').replace(/[^0-9A-Za-z._-]/g, '')
-  if (target === 'cws' || target === 'edge') {
+  if (target === 'cws' || target === 'edge' || target === 'firefox') {
     const zipName = `streampulse-extension-${target}-${ver}.zip`
     return {
       zipName,

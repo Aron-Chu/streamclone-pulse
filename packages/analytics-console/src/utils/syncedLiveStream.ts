@@ -1,18 +1,44 @@
 import type { AnalyticsStream } from '../api.ts'
 
-export type StreamSyncBadge = 'synced' | 'partial' | 'stats_only' | 'syncing'
+export type StreamSyncBadge = 'synced' | 'partial' | 'stats_only' | 'unknown' | 'syncing'
+
+export interface StreamSyncEvidence {
+  hasViewerMinutes?: boolean
+  hasChatMinutes?: boolean
+  coveragePct?: number
+  syncHealthState?: string
+}
 
 /** Stream list row has both viewer and chat minute rollups synced into analytics DB. */
 export function streamHasSyncedMinutes(stream: AnalyticsStream): boolean {
   return (stream.viewerSamples ?? 0) > 0 && (stream.chatMessages ?? 0) > 0
 }
 
-export function streamSyncBadgeState(stream: AnalyticsStream, syncing = false): StreamSyncBadge {
+export function streamSyncBadgeState(
+  stream: AnalyticsStream,
+  syncing = false,
+  evidence?: StreamSyncEvidence,
+): StreamSyncBadge {
   if (syncing) return 'syncing'
-  const hasViewers = (stream.viewerSamples ?? 0) > 0
-  const hasChat = (stream.chatMessages ?? 0) > 0
-  if (hasViewers && hasChat) return 'synced'
+  const health = evidence?.syncHealthState?.trim().toLowerCase() ?? ''
+  const hasViewers = (stream.viewerSamples ?? 0) > 0 || evidence?.hasViewerMinutes === true
+  const hasChat = (stream.chatMessages ?? 0) > 0 || evidence?.hasChatMinutes === true
+  const hasPartialCoverage =
+    (evidence?.coveragePct != null
+      && Number.isFinite(evidence.coveragePct)
+      && evidence.coveragePct < 99.5)
+    || ['partial', 'viewer_only', 'chat_only', 'degraded', 'limited'].includes(health)
+  if (hasViewers && hasChat) return hasPartialCoverage ? 'partial' : 'synced'
   if (hasViewers || hasChat) return 'partial'
+  if (health === 'stats_only' || health === 'none') return 'stats_only'
+  if (
+    stream.viewerSamples === undefined
+    && stream.chatMessages === undefined
+    && evidence?.hasViewerMinutes === undefined
+    && evidence?.hasChatMinutes === undefined
+  ) {
+    return 'unknown'
+  }
   return 'stats_only'
 }
 
@@ -24,6 +50,8 @@ export function streamSyncBadgeLabel(badge: StreamSyncBadge): string {
       return 'Synced'
     case 'partial':
       return 'Partial'
+    case 'unknown':
+      return 'Check status'
     default:
       return 'Stats only'
   }
@@ -42,6 +70,8 @@ export function streamSyncBadgeTitle(badge: StreamSyncBadge, stream: AnalyticsSt
       if (!hasViewers && hasChat) return 'Chat rollups synced; viewer minutes missing or partial.'
       return 'Partial minute coverage — chart may be incomplete.'
     }
+    case 'unknown':
+      return 'The stream list did not include minute-sync counts. Open this session to load its current coverage.'
     default:
       return 'Session stats only (duration, title). Open the stream detail page to see minute charts.'
   }

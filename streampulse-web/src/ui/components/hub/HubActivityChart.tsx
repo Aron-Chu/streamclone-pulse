@@ -20,12 +20,6 @@ export interface HubActivityRangeControl {
   onSelect: (key: string) => void
 }
 
-export interface HubActivityMomentMarker {
-  key: string
-  bucketT: number
-  kind?: string
-}
-
 export interface HubActivityChartProps {
   points: HubActivityPoint[]
   windowMinutes: number
@@ -52,10 +46,6 @@ export interface HubActivityChartProps {
   onBucketSelect?: (bucketT: number | null) => void
   /** Hover preview for bucket inspector rail. */
   onBucketHover?: (bucketT: number | null) => void
-  /** Fresh peak markers pinned to chart buckets. */
-  momentMarkers?: HubActivityMomentMarker[]
-  selectedMomentKey?: string | null
-  onSelectMomentKey?: (key: string) => void
   /** When true, draw provider overlay lines on the main chart (power-user mode). */
   showProviderOverlay?: boolean
   /** Lowercase emote name → image URL, used to render bucket emote thumbnails in the tooltip. */
@@ -296,9 +286,6 @@ export function HubActivityChart({
   accentBucketT = null,
   onBucketSelect,
   onBucketHover,
-  momentMarkers = [],
-  selectedMomentKey = null,
-  onSelectMomentKey,
   showProviderOverlay = false,
   emoteImages,
 }: HubActivityChartProps) {
@@ -1078,31 +1065,6 @@ export function HubActivityChart({
               tone="accent"
               motionEnabled={motionEnabled}
             />
-          ) : null}
-          {momentMarkers.length > 0 ? (
-            <div className="hx-moment-markers" aria-label="Fresh network peaks">
-              {momentMarkers.map((marker) => {
-                const idx = chartPoints.findIndex((point) => point.t === marker.bucketT)
-                if (idx < 0) return null
-                const x = xs[idx]
-                if (x == null) return null
-                const selected = selectedMomentKey === marker.key
-                return (
-                  <button
-                    key={marker.key}
-                    type="button"
-                    className={`hx-moment-marker${selected ? ' is-selected' : ''}`}
-                    style={{ left: `${x}%` }}
-                    title={marker.kind ?? 'Peak'}
-                    aria-pressed={selected}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onSelectMomentKey?.(marker.key)
-                    }}
-                  />
-                )
-              })}
-            </div>
           ) : null}
           <span className="ylab ylab--viewers">{compact(peakViewers)} peak viewers</span>
           <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>

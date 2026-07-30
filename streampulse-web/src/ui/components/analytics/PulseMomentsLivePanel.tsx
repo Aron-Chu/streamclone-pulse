@@ -117,9 +117,13 @@ export function PulseMomentsLivePanel({
     }
     return map;
   }, [hub.liveChannels]);
+  const channelByLogin = useMemo(
+    () => new Map(hub.liveChannels.map((channel) => [channel.login.toLowerCase(), channel])),
+    [hub.liveChannels],
+  );
   const enrichCtx = useMemo(
-    () => ({ liveChannels: hub.liveChannels, categoryByLogin }),
-    [categoryByLogin, hub.liveChannels],
+    () => ({ liveChannels: hub.liveChannels, categoryByLogin, channelByLogin }),
+    [categoryByLogin, channelByLogin, hub.liveChannels],
   );
   const [bucketMoments, setBucketMoments] = useState<
     ReturnType<typeof mapHubPulseMoment>[]

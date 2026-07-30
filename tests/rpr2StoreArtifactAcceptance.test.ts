@@ -289,12 +289,16 @@ describe('remote code scan', () => {
 })
 
 describe('artifact names', () => {
-  it('uses distinct cws/edge filenames', () => {
+  it('uses distinct cws/edge/firefox filenames', () => {
     const cws = targetArtifactNames('cws', '0.1.0')
     const edge = targetArtifactNames('edge', '0.1.0')
+    const firefox = targetArtifactNames('firefox', '0.1.0')
     expect(cws.zipName).toBe('streampulse-extension-cws-0.1.0.zip')
     expect(edge.zipName).toBe('streampulse-extension-edge-0.1.0.zip')
+    expect(firefox.zipName).toBe('streampulse-extension-firefox-0.1.0.zip')
     expect(cws.zipName).not.toBe(edge.zipName)
+    expect(firefox.zipName).not.toBe(cws.zipName)
+    expect(firefox.zipName).not.toBe(edge.zipName)
   })
 })
 

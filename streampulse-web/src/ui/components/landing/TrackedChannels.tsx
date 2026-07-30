@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import type { PublicHub } from '../../../lib/publicHub'
 import { compact, signedPct } from './landingData'
 import { cn } from '../../primitives/cn'
+import { ResilientImage } from '../ResilientImage'
 
 interface ChannelRow {
   name: string
@@ -183,7 +184,13 @@ export function TrackedChannels({ hub }: { hub: PublicHub | null }) {
           >
             <span className="sl-tc__rank">{index + 1}</span>
             <span className="sl-tc__av" aria-hidden="true">
-              {row.image ? <img src={row.image} alt="" loading="lazy" decoding="async" /> : row.initial}
+              <ResilientImage
+                src={row.image}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                fallback={row.initial}
+              />
             </span>
             <span className="sl-tc__id">
               <b>{row.name}</b>

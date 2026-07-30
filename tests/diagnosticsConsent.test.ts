@@ -171,6 +171,18 @@ describe('trusted sender / surface / build meta', () => {
     ).toBe(true)
     expect(
       isTrustedDiagnosticsSender(
+        { id: runtimeId, url: 'moz-extension://profile-generated-uuid/options/index.html' },
+        { runtimeId },
+      ),
+    ).toBe(true)
+    expect(
+      isTrustedDiagnosticsSender(
+        { id: 'other', url: 'moz-extension://profile-generated-uuid/options/index.html' },
+        { runtimeId },
+      ),
+    ).toBe(false)
+    expect(
+      isTrustedDiagnosticsSender(
         { id: runtimeId, tab: { id: 1 }, url: 'https://www.twitch.tv/xqc' },
         { runtimeId },
       ),
@@ -211,10 +223,24 @@ describe('trusted sender / surface / build meta', () => {
     expect(
       deriveDiagnosticsSurface({
         id: runtimeId,
+        url: 'moz-extension://profile-generated-uuid/options/index.html',
+      }),
+    ).toBe('options')
+    expect(
+      deriveDiagnosticsSurface({
+        id: runtimeId,
         tab: { id: 9 },
         url: 'https://www.twitch.tv/xqc',
       }),
     ).toBe('content')
+  })
+
+  it('extracts sanitized frames from Firefox moz-extension stacks', () => {
+    expect(
+      framesFromErrorStack(
+        'Error: boom\n    at render (moz-extension://profile-generated-uuid/popup/popup.js:12:7)',
+      ),
+    ).toEqual([{ bundle: 'popup/popup.js', line: 12, column: 7 }])
   })
 
   it('derives release/target/manifest from trusted build state', () => {

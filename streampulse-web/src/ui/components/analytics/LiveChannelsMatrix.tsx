@@ -23,6 +23,7 @@ import {
 import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
 import { MomentumBadge } from './MomentumBadge'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
+import { ResilientImage } from '../ResilientImage'
 
 export interface LiveChannelsMatrixProps {
   channels: HubLiveChannel[]
@@ -132,11 +133,13 @@ function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
       <td className="live-channels-matrix__channel-cell">
         <span className="live-channels-matrix__channel">
           <span className="live-channels-matrix__avatar" aria-hidden="true">
-            {channel.profileImageUrl ? (
-              <img src={channel.profileImageUrl} alt="" loading="lazy" decoding="async" />
-            ) : (
-              initial(channel.login)
-            )}
+            <ResilientImage
+              src={channel.profileImageUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              fallback={initial(channel.login)}
+            />
           </span>
           <span className="live-channels-matrix__channel-text">
             <strong>{displayName(channel.login, channel.displayName)}</strong>
@@ -216,11 +219,13 @@ function ChannelMatrixCard({ channel, href, view }: ChannelMatrixRowProps) {
   return (
     <Link to={href} className="live-channels-matrix__card" aria-label={label}>
       <span className="live-channels-matrix__avatar" aria-hidden="true">
-        {channel.profileImageUrl ? (
-          <img src={channel.profileImageUrl} alt="" loading="lazy" decoding="async" />
-        ) : (
-          initial(channel.login)
-        )}
+        <ResilientImage
+          src={channel.profileImageUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          fallback={initial(channel.login)}
+        />
       </span>
       <span className="live-channels-matrix__card-main">
         <strong>{displayName(channel.login, channel.displayName)}</strong>

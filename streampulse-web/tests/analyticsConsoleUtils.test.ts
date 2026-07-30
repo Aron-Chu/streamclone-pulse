@@ -68,6 +68,21 @@ describe('syncedLiveStream badges', () => {
       ),
     ).toBe('Stats only')
   })
+
+  it('does not treat omitted list counters as evidence that a session is stats-only', () => {
+    const omitted = { streamId: 'x', login: 'x', startedAt: '2026-07-27T00:00:00Z' }
+    expect(streamSyncBadgeLabel(streamSyncBadgeState(omitted))).toBe('Check status')
+    expect(
+      streamSyncBadgeLabel(
+        streamSyncBadgeState(omitted, false, {
+          hasViewerMinutes: true,
+          hasChatMinutes: true,
+          coveragePct: 6.63,
+          syncHealthState: 'partial',
+        }),
+      ),
+    ).toBe('Partial')
+  })
 })
 
 describe('displayStreamTitle', () => {
