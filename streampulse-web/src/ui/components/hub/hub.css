@@ -1602,9 +1602,14 @@
   margin-top: 0.7rem;
   overflow: hidden;
   cursor: crosshair;
+  /* Allow vertical page scroll to bubble up; horizontal pan feeds our press-drag scrub. */
+  touch-action: pan-y;
   border-radius: calc(var(--radius) + 0.2rem);
   background: hsl(240 10% 6% / 0.4);
   box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.45);
+}
+.hubx .hx-chart2[data-scrubbing='true'] {
+  cursor: grabbing;
 }
 .hubx .hx-chart2 svg {
   display: block;
