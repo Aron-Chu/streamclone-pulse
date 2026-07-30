@@ -18,10 +18,23 @@ export function FigmaSessionHeaderStrip({ model, isLive = false }: FigmaSessionH
   const started = model.startedAt
     ? new Date(model.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : 'Session preview'
+  const hasChatRange =
+    model.chatMinPerMinute != null &&
+    Number.isFinite(model.chatMinPerMinute) &&
+    model.chatMaxPerMinute != null &&
+    Number.isFinite(model.chatMaxPerMinute)
+  const chatRangeValue = hasChatRange
+    ? `${compact(Math.round(model.chatMinPerMinute!))}–${compact(Math.round(model.chatMaxPerMinute!))}`
+    : compact(Math.round(model.chatPerMin ?? 0))
+  const syncLabel =
+    model.demo
+      ? 'preview layout'
+      : (model.dataCoveragePct ?? 0) >= 99
+        ? 'VOD synced'
+        : 'partial coverage'
 
   const stats = [
-    { label: 'viewers', value: compact(model.viewers ?? 0), suffix: '', tone: 'text' as const },
-    { label: 'chat / min', value: compact(Math.round(model.chatPerMin ?? 0)), suffix: '/m', tone: 'accent' as const },
+    { label: hasChatRange ? 'chat min–max' : 'chat / min', value: chatRangeValue, suffix: '/m', tone: 'accent' as const },
     { label: '7TV / min', value: compact(Math.round(model.seventvPerMin ?? 0)), suffix: '/m', tone: 'cyan' as const },
     { label: 'peaks', value: compact(model.peakCount ?? model.moments.length), suffix: '', tone: 'amber' as const },
     { label: 'VOD conf.', value: compact(Math.round(model.dataCoveragePct ?? 0)), suffix: '%', tone: 'good' as const },
@@ -53,7 +66,7 @@ export function FigmaSessionHeaderStrip({ model, isLive = false }: FigmaSessionH
           </div>
           <div className="figma-session-bar__meta">
             {started}
-            {model.demo ? ' · preview layout' : ' · vod synced'}
+            {` · ${syncLabel}`}
           </div>
         </div>
       </div>

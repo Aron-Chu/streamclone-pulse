@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import type { FigmaChartPoint } from '../../../lib/figmaSessionAnalytics'
 import { formatOffsetLabel } from '../../../lib/figmaSessionAnalytics'
 
@@ -29,8 +29,8 @@ const PB = 22
 
 const LANES = [
   { key: 'chatNorm' as const, label: 'Chat', className: 'chat', stroke: 'var(--fma-accent)', fill: 'url(#figmaChartChatFill)' },
-  { key: 'viewersNorm' as const, label: 'Viewers', className: 'viewers', stroke: 'var(--fma-green)' },
   { key: 'emotesNorm' as const, label: 'Emotes', className: 'emotes', stroke: 'var(--fma-cyan)' },
+  { key: 'viewersNorm' as const, label: 'Viewers · context', className: 'viewers', stroke: 'var(--fma-green)' },
   { key: 'heat' as const, label: 'Heat', className: 'heat', stroke: 'var(--fma-amber)' },
 ]
 
@@ -57,11 +57,37 @@ function smoothPath(coords: Pt[]): string {
   )
 }
 
-function areaPath(segment: Pt[]): string {
+function smoothOverviewPath(coords: Pt[]): string {
+  if (coords.length === 0) return ''
+  if (coords.length < 3) return smoothPath(coords)
+  let path = `M${coords[0][0].toFixed(1)} ${coords[0][1].toFixed(1)}`
+  for (let i = 1; i < coords.length - 1; i += 1) {
+    const current = coords[i]
+    const next = coords[i + 1]
+    const midX = (current[0] + next[0]) / 2
+    const midY = (current[1] + next[1]) / 2
+    path += ` Q${current[0].toFixed(1)} ${current[1].toFixed(1)} ${midX.toFixed(1)} ${midY.toFixed(1)}`
+  }
+  const last = coords[coords.length - 1]
+  path += ` T${last[0].toFixed(1)} ${last[1].toFixed(1)}`
+  return path
+}
+
+function smoothValues(values: number[], radius = 2): number[] {
+  return values.map((_, index) => {
+    const from = Math.max(0, index - radius)
+    const to = Math.min(values.length - 1, index + radius)
+    let sum = 0
+    for (let i = from; i <= to; i += 1) sum += values[i]
+    return sum / Math.max(1, to - from + 1)
+  })
+}
+
+function areaPath(segment: Pt[], pathBuilder: (coords: Pt[]) => string = smoothPath): string {
   if (segment.length < 2) return ''
   const first = segment[0]
   const last = segment[segment.length - 1]
-  return `${smoothPath(segment)} L ${last[0].toFixed(1)} ${H - PB} L ${first[0].toFixed(1)} ${H - PB} Z`
+  return `${pathBuilder(segment)} L ${last[0].toFixed(1)} ${H - PB} L ${first[0].toFixed(1)} ${H - PB} Z`
 }
 
 export function FigmaSignalChart({
@@ -69,13 +95,14 @@ export function FigmaSignalChart({
   selectedOffset,
   onSelectOffset,
   title,
-  eyebrow = 'Multi-signal · 4 traces · normalized 0–100',
+  eyebrow = 'Chat + emotes primary · viewers contextual',
   note = 'Sentiment lane omitted — no hosted signal field.',
-  titleSuffix = '— reacted-minute trace',
+  titleSuffix,
   axisEndLabel,
   plottedEmote,
   onClearPlottedEmote,
 }: FigmaSignalChartProps) {
+  const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const wrapRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [announcement, setAnnouncement] = useState('')
@@ -97,7 +124,11 @@ export function FigmaSignalChart({
     const viewersLine: Pt[] = coords.map((c) => [c.x, c.viewers])
     const emotesLine: Pt[] = coords.map((c) => [c.x, c.emotes])
     const heatLine: Pt[] = coords.map((c) => [c.x, c.heat])
-    return { coords, chatLine, viewersLine, emotesLine, heatLine }
+    const overviewValues = smoothValues(
+      points.map((point) => point.chatNorm * 0.56 + point.emotesNorm * 0.44),
+    )
+    const overviewLine: Pt[] = coords.map((coord, index) => [coord.x, yForNorm(overviewValues[index] ?? 0)])
+    return { coords, chatLine, viewersLine, emotesLine, heatLine, overviewLine }
   }, [maxOffset, minOffset, points])
 
   const selectedIndex = useMemo(() => {
@@ -174,9 +205,20 @@ export function FigmaSignalChart({
 
   const activeIndex = hoverIndex ?? (selectedIndex >= 0 ? selectedIndex : null)
   const activeCoord = activeIndex != null ? model.coords[activeIndex] : null
+  const detailActive = activeCoord != null || plottedX != null
+  const detailSplitX = activeCoord?.x ?? plottedX ?? W
   const crossPct = activeCoord ? (activeCoord.x / W) * 100 : 0
   const selectedCoord = selectedIndex >= 0 ? model.coords[selectedIndex] : null
   const selectedPct = selectedCoord ? (selectedCoord.x / W) * 100 : null
+  const resolvedTitleSuffix =
+    titleSuffix ?? (detailActive ? '— minute detail' : '— smooth chat + emote overview')
+  const ids = {
+    overviewFill: `figmaChartOverviewFill-${chartId}`,
+    chatFill: `figmaChartChatFill-${chartId}`,
+    emotePlot: `figmaChartEmotePlot-${chartId}`,
+    past: `figmaChartPast-${chartId}`,
+    future: `figmaChartFuture-${chartId}`,
+  }
 
   return (
     <div className="figma-chart figma-chart--svg" aria-label="Multi-signal chart">
@@ -185,7 +227,7 @@ export function FigmaSignalChart({
           <div className="figma-chart__eyebrow">{eyebrow}</div>
           {title ? (
             <div className="figma-chart__title">
-              {title} {titleSuffix}
+              {title} {resolvedTitleSuffix}
             </div>
           ) : null}
         </div>
@@ -213,7 +255,10 @@ export function FigmaSignalChart({
         className={`figma-chart__svg-wrap${onSelectOffset ? ' figma-chart__svg-wrap--interactive' : ''}`}
         tabIndex={onSelectOffset ? 0 : undefined}
         role="img"
-        aria-label={`Multi-signal chart from ${formatOffsetLabel(minOffset)} to ${endLabel}. Chat, viewers, emotes, and heat traces normalized zero to one hundred.`}
+        aria-label={`Chat and emote activity chart from ${formatOffsetLabel(minOffset)} to ${endLabel}. The smooth overview expands into minute detail; viewers are contextual.`}
+        data-chart-mode={detailActive ? 'detail' : 'overview'}
+        data-chart-primary-signals="chat emotes"
+        data-chart-context-signals="viewers"
         onClick={onSelectOffset ? handleClick : undefined}
         onKeyDown={onSelectOffset ? handleKeyDown : undefined}
         onMouseMove={(event) => setHoverIndex(nearestIndex(event.clientX))}
@@ -221,23 +266,62 @@ export function FigmaSignalChart({
       >
         <svg className="figma-chart__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
           <defs>
-            <linearGradient id="figmaChartChatFill" x1="0" x2="0" y1="0" y2="1">
+            <linearGradient id={ids.overviewFill} x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="var(--fma-accent)" stopOpacity="0.28" />
               <stop offset="100%" stopColor="var(--fma-accent)" stopOpacity="0" />
             </linearGradient>
-            <linearGradient id="figmaChartEmotePlot" x1="0" x2="0" y1="0" y2="1">
+            <linearGradient id={ids.chatFill} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--fma-accent)" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="var(--fma-accent)" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id={ids.emotePlot} x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="hsl(330 80% 62%)" stopOpacity="0.35" />
               <stop offset="100%" stopColor="hsl(330 80% 62%)" stopOpacity="0" />
             </linearGradient>
+            <clipPath id={ids.past}>
+              <rect x={0} y={0} width={detailSplitX} height={H} />
+            </clipPath>
+            <clipPath id={ids.future}>
+              <rect x={detailSplitX} y={0} width={Math.max(0, W - detailSplitX)} height={H} />
+            </clipPath>
           </defs>
           {[0.25, 0.5, 0.75].map((f) => {
             const y = PT + f * (H - PT - PB)
             return <line key={f} x1={0} x2={W} y1={y} y2={y} className="figma-chart__grid" />
           })}
-          <path d={areaPath(model.chatLine)} fill="url(#figmaChartChatFill)" className="figma-chart__area" />
-          <path d={smoothPath(model.viewersLine)} className="figma-chart__line figma-chart__line--viewers" fill="none" stroke="var(--fma-green)" />
-          <path d={smoothPath(model.emotesLine)} className="figma-chart__line figma-chart__line--emotes" fill="none" stroke="var(--fma-cyan)" />
-          <path d={smoothPath(model.heatLine)} className="figma-chart__line figma-chart__line--heat" fill="none" stroke="var(--fma-amber)" strokeDasharray="4 3" />
+          <g
+            className={`figma-chart__motion-layer figma-chart__motion-layer--overview${detailActive ? ' is-muted' : ''}`}
+            data-chart-layer="overview"
+          >
+            <path
+              d={areaPath(model.overviewLine, smoothOverviewPath)}
+              fill={`url(#${ids.overviewFill})`}
+              className="figma-chart__area figma-chart__area--overview"
+            />
+            <path
+              d={smoothOverviewPath(model.overviewLine)}
+              className="figma-chart__line figma-chart__line--overview"
+              fill="none"
+              stroke="var(--fma-accent)"
+            />
+          </g>
+          <g
+            className={`figma-chart__motion-layer figma-chart__motion-layer--detail${detailActive ? ' is-active' : ''}`}
+            data-chart-layer="detail"
+          >
+            <g clipPath={`url(#${ids.future})`} className="figma-chart__future">
+              <path d={smoothPath(model.chatLine)} className="figma-chart__line figma-chart__line--future" fill="none" />
+              <path d={smoothPath(model.emotesLine)} className="figma-chart__line figma-chart__line--future" fill="none" />
+              <path d={smoothPath(model.viewersLine)} className="figma-chart__line figma-chart__line--future figma-chart__line--context" fill="none" />
+            </g>
+            <g clipPath={`url(#${ids.past})`}>
+              <path d={areaPath(model.chatLine)} fill={`url(#${ids.chatFill})`} className="figma-chart__area" />
+              <path d={smoothPath(model.chatLine)} className="figma-chart__line figma-chart__line--chat" fill="none" stroke="var(--fma-accent)" />
+              <path d={smoothPath(model.emotesLine)} className="figma-chart__line figma-chart__line--emotes" fill="none" stroke="var(--fma-cyan)" />
+              <path d={smoothPath(model.viewersLine)} className="figma-chart__line figma-chart__line--viewers figma-chart__line--context" fill="none" stroke="var(--fma-green)" />
+              <path d={smoothPath(model.heatLine)} className="figma-chart__line figma-chart__line--heat" fill="none" stroke="var(--fma-amber)" strokeDasharray="4 3" />
+            </g>
+          </g>
           {plottedX != null ? (
             <>
               <rect
@@ -245,7 +329,7 @@ export function FigmaSignalChart({
                 y={PT}
                 width={36}
                 height={H - PT - PB}
-                fill="url(#figmaChartEmotePlot)"
+                fill={`url(#${ids.emotePlot})`}
                 className="figma-chart__plot-band"
               />
               <line x1={plottedX} x2={plottedX} y1={PT} y2={H - PB} className="figma-chart__plot-marker" />
