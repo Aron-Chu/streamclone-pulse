@@ -630,7 +630,7 @@ export function PulseOverviewChart({
   })
   const pinIndex = crosshair.pinIndex
   const listPreviewIndex = crosshair.listPreviewIndex
-  const activeIndex = listPreviewIndex ?? pinIndex ?? hoverIndex ?? previewIndex
+  const activeIndex = listPreviewIndex ?? hoverIndex ?? pinIndex ?? previewIndex
   const hoverPreviewIndex =
     hoverIndex != null && hoverIndex !== pinIndex && hoverIndex !== listPreviewIndex
       ? hoverIndex

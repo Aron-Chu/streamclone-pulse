@@ -167,3 +167,26 @@ export function rollupHasMinuteData(point: ChartMinuteRollup) {
 export function rollupsHaveViewerData(rollups: ChartMinuteRollup[]) {
   return rollups.some(point => !point.missing && viewerValue(point) > 0)
 }
+
+/** Progressive-disclosure bar opacity shared by the detailed chart lanes. */
+export function chartBarBucketOpacity(args: {
+  index: number
+  activeIndex: number | null
+  baseOpacity: number
+  highlightOpacity?: number
+  fadeFutureAfterActive?: boolean
+}): number {
+  const {
+    index,
+    activeIndex,
+    baseOpacity,
+    highlightOpacity = baseOpacity,
+    fadeFutureAfterActive = false,
+  } = args
+  if (activeIndex == null) return baseOpacity * 0.42
+  if (index === activeIndex) return Math.min(highlightOpacity * 1.12, 0.95)
+  if (fadeFutureAfterActive) {
+    return baseOpacity * (index < activeIndex ? 0.78 : 0.14)
+  }
+  return baseOpacity * 0.32
+}

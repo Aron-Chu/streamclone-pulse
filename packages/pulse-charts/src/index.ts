@@ -40,4 +40,5 @@ export {
   viewerSourceLabel,
   chartViewerValue,
   viewerValue,
+  chartBarBucketOpacity,
 } from './chartRollupUtils.ts'

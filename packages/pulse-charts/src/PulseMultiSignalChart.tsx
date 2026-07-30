@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { parseEmoteKey } from '@streampulse/pulse-core'
 import type { ChartGameSegment, ChartMinuteRollup, ChartPlayhead } from './types.ts'
 import { computeChartCursorSync } from './chartCursorSync.ts'
@@ -26,6 +26,7 @@ import {
   viewerSourceLabel,
   seriesMax,
   viewerValue,
+  chartBarBucketOpacity,
 } from './chartRollupUtils.ts'
 
 import { buildChartSeries, type ChartSeries } from './chartSeries.ts'
@@ -124,6 +125,8 @@ const ACTIVITY_ZONE_GAP = 8
 /** Keep per-emote traces off the chat/trace divider when the rail is thin. */
 const ACTIVITY_TRACE_INSET = 0.12
 const CHART_VIEWBOX_HEIGHT = 400
+const SCRUB_TRANSITION_MS = 180
+const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.58)'
 
 type PlotZone = 'viewer' | 'activity-chat' | 'activity-emote-trace' | 'activity-emote'
 
@@ -265,6 +268,7 @@ function activityBarsMaxForLength(length: number, plotWidthPx = 876, pxPerBar = 
 
 type ActivityBarRect = {
   key: string
+  sourceIndex: number
   x: number
   y: number
   width: number
@@ -305,6 +309,7 @@ function activityBarRects(
     const y = value > 0 ? cy : bandBottom - 1
     return {
       key: `bar-${index}-${barIdx}`,
+      sourceIndex: index,
       x: cx - barWidth / 2,
       y,
       width: barWidth,
@@ -371,15 +376,21 @@ function linePath(
   linear = false,
   zone: PlotZone = 'viewer',
   rangeMin = 0,
+  bandOverride?: { top: number; bottom: number },
 ) {
   const n = values.length
   if (!n) return ''
-  const { bandTop, bandBottom } = plotBandForZone(height, padTop, padBottom, zone)
+  const defaultBand = plotBandForZone(height, padTop, padBottom, zone)
+  const bandTop = bandOverride?.top ?? defaultBand.bandTop
+  const bandBottom = bandOverride?.bottom ?? defaultBand.bandBottom
+  const span = Math.max(1, max - rangeMin)
 
   const points: Array<{ x: number; y: number } | null> = values.map((value, index) => {
     if (value === null) return null
     const x = n === 1 ? padLeft : padLeft + (index / (n - 1)) * (width - padLeft - padRight)
-    const y = plotY(value, max, height, padTop, padBottom, zone, rangeMin)
+    const y = bandOverride
+      ? bandBottom - ((Math.max(rangeMin, value) - rangeMin) / span) * (bandBottom - bandTop)
+      : plotY(value, max, height, padTop, padBottom, zone, rangeMin)
     return { x, y }
   })
 
@@ -590,6 +601,7 @@ function PulseMultiSignalChartInnerImpl({
   /** Prefer wall/offset span from the parent; avoids length*60 dropping late games. */
   durationSeconds?: number
 }) {
+  const chartId = useId().replace(/:/g, '')
   const [hover, setHover] = useState<number | null>(null)
   const hoverIndexRef = useRef<number | null>(null)
   const hoverRafRef = useRef<number | null>(null)
@@ -926,6 +938,100 @@ function PulseMultiSignalChartInnerImpl({
       },
     ]
   }, [viewersItem, viewerDisplayValues, viewerTailStart, decimateViewerForRender])
+  const selectedIndex = useMemo(
+    () => {
+      if (!selectedRollup) return -1
+      const exact = rollups.findIndex(point => point.minuteTs === selectedRollup.minuteTs)
+      if (exact >= 0) return exact
+      const x = externalMarkerX(rollups, selectedRollup.minuteTs, padLeft, plotWidthPx)
+      if (x == null || rollups.length === 0) return -1
+      return Math.round(((x - padLeft) / plotWidthPx) * (rollups.length - 1))
+    },
+    [padLeft, plotWidthPx, rollups, selectedRollup],
+  )
+  const previewIndex = useMemo(
+    () => {
+      if (!previewRollup) return -1
+      const exact = rollups.findIndex(point => point.minuteTs === previewRollup.minuteTs)
+      if (exact >= 0) return exact
+      const x = externalMarkerX(rollups, previewRollup.minuteTs, padLeft, plotWidthPx)
+      if (x == null || rollups.length === 0) return -1
+      return Math.round(((x - padLeft) / plotWidthPx) * (rollups.length - 1))
+    },
+    [padLeft, plotWidthPx, previewRollup, rollups],
+  )
+  const scrubIndex = previewIndex >= 0
+    ? previewIndex
+    : hover != null
+      ? hover
+      : selectedIndex
+  const scrubActive = scrubIndex != null && scrubIndex >= 0
+  const selectedScrubX = selectedRollup
+    ? externalMarkerX(rollups, selectedRollup.minuteTs, padLeft, plotWidthPx)
+    : null
+  const previewScrubX = previewRollup
+    ? externalMarkerX(rollups, previewRollup.minuteTs, padLeft, plotWidthPx)
+    : null
+  const scrubX = scrubActive
+    ? previewScrubX
+      ?? (
+        hover != null
+          ? (
+              rollups.length <= 1
+                ? padLeft
+                : padLeft + (hover / (rollups.length - 1)) * plotWidthPx
+            )
+          : selectedScrubX
+      )
+      ?? (
+        rollups.length <= 1
+          ? padLeft
+          : padLeft + (scrubIndex / (rollups.length - 1)) * plotWidthPx
+      )
+    : width - padRight
+  const scrubPastWidth = Math.max(0, Math.min(plotWidthPx, scrubX - padLeft + 1))
+  const scrubFutureX = Math.max(padLeft, Math.min(width - padRight, scrubX))
+  const scrubFutureWidth = Math.max(0, width - padRight - scrubFutureX)
+  const scrubTransition = motionEnabled
+    ? `opacity ${SCRUB_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+    : undefined
+  const detailLayerOpacity = scrubActive ? 1 : 0.14
+  const overviewValues = viewersItem ? viewerDisplayValues : chatDisplayValues
+  const overviewMax = viewersItem ? viewerAxis.max : Math.max(1, chatItem?.max ?? 1)
+  const overviewMin = viewersItem ? viewerAxis.min : 0
+  const overviewLinePathD = useMemo(
+    () => linePath(
+      overviewValues,
+      overviewMax,
+      width,
+      height,
+      padLeft,
+      padRight,
+      padTop,
+      padBottom,
+      false,
+      'viewer',
+      overviewMin,
+      { top: padTop + 10, bottom: height - padBottom - 10 },
+    ),
+    [
+      height,
+      overviewMax,
+      overviewMin,
+      overviewValues,
+      padBottom,
+      padLeft,
+      padRight,
+      padTop,
+      width,
+    ],
+  )
+  const svgIds = {
+    viewerGradient: `${chartId}-viewer-area-gradient`,
+    plotClip: `${chartId}-analytics-plot-clip`,
+    scrubPastClip: `${chartId}-scrub-past-clip`,
+    scrubFutureClip: `${chartId}-scrub-future-clip`,
+  }
   const hasChatData = useMemo(
     () => rollups.some(point => (point.chatCount ?? 0) > 0 || minuteEmoteTotal(point) > 0),
     [rollups],
@@ -1017,28 +1123,45 @@ function PulseMultiSignalChartInnerImpl({
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="Analytics timeline chart"
+        data-chart-mode={scrubActive ? 'detail' : 'overview'}
         className={variant === 'compact' ? 'w-full cursor-crosshair select-none' : 'h-[360px] min-h-[320px] w-full cursor-crosshair select-none sm:h-[min(420px,52vh)]'}
         style={variant === 'compact' && heightProp ? { height: heightProp, minHeight: heightProp } : undefined}
       >
         <defs>
-          <linearGradient id="viewerAreaGradient" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={svgIds.viewerGradient} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={CHART_THEME.viewer.color} stopOpacity={CHART_THEME.viewer.fillTop} />
             <stop offset="100%" stopColor={CHART_THEME.viewer.color} stopOpacity={CHART_THEME.viewer.fillBottom} />
           </linearGradient>
-          <clipPath id="analyticsPlotClip">
+          <clipPath id={svgIds.plotClip}>
             <rect x={padLeft} y={padTop} width={width - padLeft - padRight} height={height - padTop - padBottom} />
+          </clipPath>
+          <clipPath id={svgIds.scrubPastClip}>
+            <rect
+              x={padLeft}
+              y={padTop}
+              width={scrubPastWidth}
+              height={height - padTop - padBottom}
+            />
+          </clipPath>
+          <clipPath id={svgIds.scrubFutureClip}>
+            <rect
+              x={scrubFutureX}
+              y={padTop}
+              width={scrubFutureWidth}
+              height={height - padTop - padBottom}
+            />
           </clipPath>
         </defs>
 
         {/* Horizontal guide lines */}
-        <line x1={padLeft} x2={width - padRight} y1={padTop} y2={padTop} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" />
+        <line x1={padLeft} x2={width - padRight} y1={padTop} y2={padTop} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" opacity={scrubActive ? 1 : 0.22} style={{ transition: scrubTransition }} />
         {showAvgLabel && (
-          <line x1={padLeft} x2={width - padRight} y1={yAvg} y2={yAvg} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" />
+          <line x1={padLeft} x2={width - padRight} y1={yAvg} y2={yAvg} stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide)} strokeWidth="1" strokeDasharray="4 4" opacity={scrubActive ? 1 : 0.18} style={{ transition: scrubTransition }} />
         )}
         <line x1={padLeft} x2={width - padRight} y1={height - padBottom} y2={height - padBottom} stroke="rgba(255,255,255,.08)" strokeWidth="1" />
 
         {/* Left Y-Axis labels */}
-        <g>
+        <g opacity={scrubActive ? 1 : 0.36} style={{ transition: scrubTransition }}>
           {/* MAX Label */}
           <text x={padLeft - 12} y={padTop - 4} textAnchor="end" className="fill-cyan-400 text-[10px] font-black uppercase">MAX</text>
           <text x={padLeft - 12} y={padTop + 10} textAnchor="end" className="fill-cyan-400 text-sm font-black">{count(viewerScale)}</text>
@@ -1058,7 +1181,12 @@ function PulseMultiSignalChartInnerImpl({
           )}
         </g>
 
-        <g className="sc-chart-plot" clipPath="url(#analyticsPlotClip)">
+        <g className="sc-chart-plot" clipPath={`url(#${svgIds.plotClip})`}>
+        <g
+          data-chart-layer="detail"
+          opacity={detailLayerOpacity}
+          style={{ transition: scrubTransition }}
+        >
         {/* Activity strip background */}
         <rect
           x={padLeft}
@@ -1107,29 +1235,53 @@ function PulseMultiSignalChartInnerImpl({
 
         {/* Viewer area fill */}
         {viewerAreaPathD ? (
-          <path
-            d={viewerAreaPathD}
-            fill="url(#viewerAreaGradient)"
-            opacity={seriesFocusOpacity('viewers', expandProgress >= 0.5 ? 0.55 : 1)}
-          />
+          <>
+            <path
+              d={viewerAreaPathD}
+              fill={`url(#${svgIds.viewerGradient})`}
+              opacity={seriesFocusOpacity('viewers', expandProgress >= 0.5 ? 0.5 : 0.88)}
+              clipPath={`url(#${svgIds.scrubPastClip})`}
+            />
+            <path
+              d={viewerAreaPathD}
+              fill="rgba(161, 161, 170, 0.14)"
+              opacity={seriesFocusOpacity('viewers', scrubActive ? 0.7 : 0)}
+              clipPath={`url(#${svgIds.scrubFutureClip})`}
+            />
+          </>
         ) : null}
 
-        {/* Viewer line (split when tail is estimated/incomplete) */}
+        {/* Viewer line: vivid inspected history, neutral faded future. */}
         {viewersItem && viewerLineSegments.map((segment, segmentIndex) => {
           const pathD = linePath(segment.values, viewerAxis.max, width, height, padLeft, padRight, padTop, padBottom, false, 'viewer', viewerAxis.min)
           if (!pathD) return null
           return (
-            <path
-              key={`viewer-${segmentIndex}`}
-              d={pathD}
-              fill="none"
-              stroke={CHART_THEME.viewer.color}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={segment.estimated ? 2 : 2.5}
-              strokeDasharray={segment.estimated ? '7 6' : undefined}
-              opacity={seriesFocusOpacity('viewers', segment.estimated ? 0.4 : CHART_THEME.viewer.line)}
-            />
+            <g key={`viewer-${segmentIndex}`}>
+              <path
+                d={pathD}
+                data-chart-layer="detail-past"
+                fill="none"
+                stroke={CHART_THEME.viewer.color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={segment.estimated ? 2 : 2.5}
+                strokeDasharray={segment.estimated ? '7 6' : undefined}
+                opacity={seriesFocusOpacity('viewers', segment.estimated ? 0.4 : CHART_THEME.viewer.line)}
+                clipPath={`url(#${svgIds.scrubPastClip})`}
+              />
+              <path
+                d={pathD}
+                data-chart-layer="detail-future"
+                fill="none"
+                stroke={SCRUB_FUTURE_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={segment.estimated ? 1.75 : 2.1}
+                strokeDasharray={segment.estimated ? '7 6' : undefined}
+                opacity={seriesFocusOpacity('viewers', scrubActive ? 0.55 : 0)}
+                clipPath={`url(#${svgIds.scrubFutureClip})`}
+              />
+            </g>
           )
         })}
 
@@ -1157,11 +1309,19 @@ function PulseMultiSignalChartInnerImpl({
             opacity={
               seriesFocusOpacity(
                 'emotes',
-                (bar.isSpike
-                  ? CHART_THEME.emote.barSpike
-                  : bar.hasValue
-                    ? CHART_THEME.emote.bar
-                    : CHART_THEME.emote.barBaseline) * activityVisualBoost,
+                chartBarBucketOpacity({
+                  index: bar.sourceIndex,
+                  activeIndex: scrubIndex,
+                  baseOpacity: (
+                    bar.isSpike
+                      ? CHART_THEME.emote.barSpike
+                      : bar.hasValue
+                        ? CHART_THEME.emote.bar
+                        : CHART_THEME.emote.barBaseline
+                  ) * activityVisualBoost,
+                  highlightOpacity: CHART_THEME.emote.barSpike,
+                  fadeFutureAfterActive: true,
+                }),
               )
             }
           />
@@ -1190,7 +1350,18 @@ function PulseMultiSignalChartInnerImpl({
             height={bar.height}
             rx={0}
             fill={CHART_THEME.chat.color}
-            opacity={seriesFocusOpacity('chat', bar.hasValue ? CHART_THEME.chat.whisperBar : CHART_THEME.chat.whisperBar * 0.6)}
+            opacity={seriesFocusOpacity(
+              'chat',
+              chartBarBucketOpacity({
+                index: bar.sourceIndex,
+                activeIndex: scrubIndex,
+                baseOpacity: bar.hasValue
+                  ? CHART_THEME.chat.whisperBar
+                  : CHART_THEME.chat.whisperBar * 0.6,
+                highlightOpacity: CHART_THEME.chat.guide,
+                fadeFutureAfterActive: true,
+              }),
+            )}
           />
         ))}
 
@@ -1287,6 +1458,21 @@ function PulseMultiSignalChartInnerImpl({
             />
           )
         })}
+        </g>
+        {overviewLinePathD ? (
+          <path
+            d={overviewLinePathD}
+            data-chart-layer="overview"
+            fill="none"
+            stroke={CHART_THEME.viewer.color}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3"
+            opacity={scrubActive ? 0.04 : 0.96}
+            pointerEvents="none"
+            style={{ transition: scrubTransition }}
+          />
+        ) : null}
         </g>
 
         {syncing ? (
@@ -1483,7 +1669,7 @@ function PulseMultiSignalChartInnerImpl({
           minLabelWidth={8}
         />
 
-        {!cursorSync.synced ? (
+        {!cursorSync.synced && hover !== null ? (
           <line
             x1={displayHoverX}
             x2={displayHoverX}

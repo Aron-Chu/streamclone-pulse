@@ -36,4 +36,23 @@ describe('external selection markers', () => {
     expect(x).not.toBe(leftX)
     expect(x).not.toBe(rightX)
   })
+
+  it('progressively discloses detail and a neutral future segment after selection', () => {
+    const overview = renderToStaticMarkup(
+      <PulseMultiSignalChartInner rollups={rollups} />,
+    )
+    const detail = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={rollups}
+        selectedRollup={rollups[0]}
+      />,
+    )
+
+    expect(overview).toContain('data-chart-mode="overview"')
+    expect(overview).toContain('data-chart-layer="overview"')
+    expect(detail).toContain('data-chart-mode="detail"')
+    expect(detail).toContain('data-chart-layer="detail-past"')
+    expect(detail).toContain('data-chart-layer="detail-future"')
+    expect(detail).toContain('rgba(161, 161, 170, 0.58)')
+  })
 })
