@@ -1169,7 +1169,6 @@ export function PulseOverviewChart({
                     style={{ transition: scrubTransition }}
                   />
                   <path
-                    className="sc-emote-plot-line"
                     d={series.detailPath}
                     fill="none"
                     stroke={SCRUB_FUTURE_STROKE}
@@ -1186,7 +1185,6 @@ export function PulseOverviewChart({
                     style={{ transition: scrubTransition }}
                   />
                   <path
-                    className="sc-emote-plot-line"
                     d={series.detailPath}
                     fill="none"
                     stroke={series.color}
