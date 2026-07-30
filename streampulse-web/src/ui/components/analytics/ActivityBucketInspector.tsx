@@ -6,6 +6,7 @@ import type { HubEmoteWithShare } from '../../../lib/emoteShare'
 import { compact, displayName, initial } from './hubFormat'
 import { HubTopEmotesTable } from './HubTopEmotesTable'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
+import { ResilientImage } from '../ResilientImage'
 import {
   type InspectorMode,
   inspectorEmoteListSignature,
@@ -146,18 +147,17 @@ const InspectorStreamersFooter = memo(function InspectorStreamersFooter({
                 {index + 1}
               </span>
               <span className="pulse-moments__channel pulse-moments__channel--compact activity-bucket-inspector__streamer-channel">
-                {streamer.profileImageUrl ? (
-                  <img
-                    src={streamer.profileImageUrl}
-                    alt=""
-                    loading="eager"
-                    decoding="async"
-                  />
-                ) : (
-                  <span className="pulse-moments__channel-fallback" aria-hidden="true">
-                    {initial(name)}
-                  </span>
-                )}
+                <ResilientImage
+                  src={streamer.profileImageUrl}
+                  alt=""
+                  loading="eager"
+                  decoding="async"
+                  fallback={
+                    <span className="pulse-moments__channel-fallback" aria-hidden="true">
+                      {initial(name)}
+                    </span>
+                  }
+                />
                 <span className="pulse-moments__channel-name" title={name}>
                   {name}
                 </span>

@@ -4,11 +4,13 @@ import {
   chartActivityPoints,
   hubActivityEmoteCount,
 } from './hubActivitySummary'
+import { resolveHubActivityChartWindowMinutes } from './hubActivityHonesty'
 import { livePoolViewerSum } from './hubMetricHelpers'
 
 /** Chart-only slice — excludes trust-line / refresh / poll metadata. */
 export interface HubChartActivityInputs {
   points: HubActivityPoint[]
+  /** Served chart window (available when degraded; else requested). */
   windowMinutes: number
   livePoolViewerSum: number
 }
@@ -24,7 +26,9 @@ export interface HubChartActivityModel {
 export function selectHubChartActivityInputs(hub: PublicHub): HubChartActivityInputs {
   return {
     points: hub.activity.points,
-    windowMinutes: hub.activity.windowMinutes,
+    // Degraded live-pool fallback charts against availableWindowMinutes so
+    // fillActivityPoints does not invent empty historical buckets.
+    windowMinutes: resolveHubActivityChartWindowMinutes(hub.activity),
     livePoolViewerSum: livePoolViewerSum(hub),
   }
 }

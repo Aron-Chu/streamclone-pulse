@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import { compact } from './hubFormat'
+import { ResilientImage } from '../ResilientImage'
 
 export interface FigmaLiveSessionsTableProps {
   channels: HubLiveChannel[]
@@ -53,11 +54,13 @@ export function FigmaLiveSessionsTable({ channels, compact: compactMode }: Figma
                       to={buildAnalyticsHref({ login: ch.login, streamId: ch.streamId })}
                       className="figma-channel-cell"
                     >
-                      {ch.profileImageUrl ? (
-                        <img src={ch.profileImageUrl} alt="" loading="lazy" decoding="async" />
-                      ) : (
-                        <span aria-hidden="true">{name.slice(0, 2).toUpperCase()}</span>
-                      )}
+                      <ResilientImage
+                        src={ch.profileImageUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        fallback={<span aria-hidden="true">{name.slice(0, 2).toUpperCase()}</span>}
+                      />
                       <strong>{name}</strong>
                     </Link>
                   </td>

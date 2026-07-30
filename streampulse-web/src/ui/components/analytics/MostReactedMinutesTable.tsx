@@ -20,6 +20,7 @@ import {
 } from '../../../lib/pulseMomentsUtils'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { initial } from './hubFormat'
+import { ResilientImage } from '../ResilientImage'
 import {
   formatChatRate,
   formatChatRateCompact,
@@ -78,13 +79,17 @@ function ChannelCell({
   const twitchHref = login ? `https://www.twitch.tv/${encodeURIComponent(login.toLowerCase())}` : undefined
   return (
     <span className={`pulse-moments__channel${compactLayout ? ' pulse-moments__channel--compact' : ''}`}>
-      {profileImageUrl ? (
-        <img src={profileImageUrl} alt="" loading="lazy" decoding="async" />
-      ) : (
-        <span className="pulse-moments__channel-fallback" aria-hidden="true">
-          {initial(name)}
-        </span>
-      )}
+      <ResilientImage
+        src={profileImageUrl}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        fallback={
+          <span className="pulse-moments__channel-fallback" aria-hidden="true">
+            {initial(name)}
+          </span>
+        }
+      />
       {live ? <span className="pulse-moments__channel-live-dot" aria-label="Live" title="Live now" /> : null}
       {twitchHref ? (
         <a

@@ -5,6 +5,13 @@ import {
   formatActivityWindowLabel,
 } from "../../../lib/hubActivitySummary";
 import {
+  formatHubActivityServedLabel,
+  hubActivityHonestyChipLabel,
+  hubActivityHonestyDetail,
+  hubActivityHonestyEmptyCopy,
+  isHubActivityLivePoolFallback,
+} from "../../../lib/hubActivityHonesty";
+import {
   deriveHubChartActivityModel,
   selectHubChartActivityInputs,
 } from "../../../lib/hubChartActivityModel";
@@ -68,6 +75,20 @@ function CollectorHealthChip({ hub }: { hub: PublicHub }) {
   );
 }
 
+function ActivityHonestyChip({ hub }: { hub: PublicHub }) {
+  const label = hubActivityHonestyChipLabel(hub.activity);
+  if (!label) return null;
+  const detail = hubActivityHonestyDetail(hub.activity);
+  return (
+    <SystemStatusBadge
+      state="degraded"
+      label={label}
+      className="figma-global-activity__status-chip"
+      title={detail ?? undefined}
+    />
+  );
+}
+
 /**
  * Chart provenance strip ("Source: hosted API + IRC worker plane - window - buckets"). Now
  * rendered at the very bottom of the analytics page rather than above the chart,
@@ -82,8 +103,15 @@ export function ChartSourceBanner({
   activitySummary: ActivitySummary;
   className?: string;
 }) {
-  const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
-  const bucket = bucketMinutes(hub.activity.windowMinutes);
+  const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
+  const windowLabel = livePoolFallback
+    ? formatHubActivityServedLabel(hub.activity)
+    : formatActivityWindowLabel(hub.activity.windowMinutes);
+  const bucket = bucketMinutes(
+    livePoolFallback
+      ? Math.max(1, hub.activity.availableWindowMinutes ?? 30)
+      : hub.activity.windowMinutes,
+  );
   const poolSize = hub.poolSize;
   const ircActive = hub.corpusPipeline.collectorActive;
 
@@ -93,10 +121,12 @@ export function ChartSourceBanner({
       aria-label="Chart rollup source"
     >
       <span>
-        <strong>Source:</strong> Live IRC collector plane
+        <strong>Source:</strong>{" "}
+        {livePoolFallback ? "Live pool fallback (recent only)" : "Live IRC collector plane"}
       </span>
       <span>
-        <strong>Window:</strong> last {windowLabel}
+        <strong>Window:</strong>{" "}
+        {livePoolFallback ? windowLabel : `last ${windowLabel}`}
       </span>
       <span>
         <strong>Buckets:</strong> ~{bucket} min - {activitySummary.pointCount}/
@@ -216,7 +246,13 @@ export function FigmaGlobalActivityPanel({
   const bodyRef = useRef<HTMLDivElement>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const prevWindowKeyRef = useRef(activityWindowKey);
-  const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
+  const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
+  const servedLabel = formatHubActivityServedLabel(hub.activity);
+  const honestyDetail = hubActivityHonestyDetail(hub.activity);
+  const honestyEmpty = hubActivityHonestyEmptyCopy(hub.activity);
+  const windowLabel = livePoolFallback
+    ? servedLabel
+    : formatActivityWindowLabel(hub.activity.windowMinutes);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const hoverIntentRef = useRef<number | null>(null);
   const hoverIntentTimerRef = useRef<number | null>(null);
@@ -386,8 +422,9 @@ export function FigmaGlobalActivityPanel({
           ) : null}
         </div>
         <p className="figma-global-activity__lede muted">
-          Network viewer peaks from tracked channels — last {windowLabel}.
-          Chat and emote lines come from the live tracking pool.
+          {livePoolFallback
+            ? `Network viewer peaks from tracked channels — ${servedLabel}. Chat and emote lines come from the live tracking pool; full requested history is not available.`
+            : `Network viewer peaks from tracked channels — last ${windowLabel}. Chat and emote lines come from the live tracking pool.`}
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
         <ActivityViewerSanityBanner hub={hub} />
@@ -416,6 +453,7 @@ export function FigmaGlobalActivityPanel({
             ) : null}
           </div>
         ) : null}
+        <ActivityHonestyChip hub={hub} />
         <CollectorHealthChip hub={hub} />
       </div>
       {showSearch ? (
@@ -432,6 +470,7 @@ export function FigmaGlobalActivityPanel({
       </div>
       ) : null}
       <p className="figma-global-activity__chart-note" role="note">
+        {livePoolFallback && honestyDetail ? `${honestyDetail} ` : null}
         {chartNote}
         {activityRefreshing ? (
           <span className="figma-global-activity__chart-refresh" role="status">
@@ -472,8 +511,14 @@ export function FigmaGlobalActivityPanel({
               missingBuckets={activitySummary.missingBuckets}
               coveragePct={activitySummary.coveragePct}
               loading={loading}
-              footnote={activitySummary.footnote}
+              footnote={
+                livePoolFallback
+                  ? `${activitySummary.footnote} · ${servedLabel}`
+                  : activitySummary.footnote
+              }
               rangeControl={rangeControl}
+              emptyTitle={honestyEmpty?.title}
+              emptyDescription={honestyEmpty?.description}
               selectedBucketT={selectedBucketT}
               accentBucketT={selectedBucketT == null ? accentBucketT : null}
               onBucketSelect={
@@ -498,7 +543,7 @@ export function FigmaGlobalActivityPanel({
             bucketMoments={bucketMoments}
             bucketMomentsLoading={bucketMomentsLoading}
             windowLabel={windowLabel}
-            windowMinutes={hub.activity.windowMinutes}
+            windowMinutes={chartInputs.windowMinutes}
             updatedAgo={updatedAgo}
             emoteIntel={hub.emoteIntel}
             topEmoteName={topEmotes[0]?.name}

@@ -264,10 +264,21 @@ export interface HubActivityPoint {
 
 export interface HubActivity {
   points: HubActivityPoint[]
+  /** Requested activity window (minutes). Preserved even when served data is shorter. */
   windowMinutes: number
   channelCount: number
   peakViewersAt?: number
   livePoolViewerSum?: number
+  /**
+   * Honesty contract (backend PR #84+): when historical projection is unavailable,
+   * state/source/reason mark pool-only fallback and availableWindowMinutes is the
+   * actual bounded span (typically 30). Do not treat windowMinutes alone as proof
+   * of complete 24h/7d/30d history.
+   */
+  state?: 'ok' | 'degraded' | 'empty' | string
+  source?: 'live_pool_fallback' | string
+  reason?: 'historical_projection_unavailable' | string
+  availableWindowMinutes?: number
 }
 
 export interface HubEmoteIntel {
@@ -849,6 +860,15 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       channelCount: raw?.activity?.channelCount ?? 0,
       peakViewersAt: raw?.activity?.peakViewersAt,
       livePoolViewerSum: raw?.activity?.livePoolViewerSum,
+      state: raw?.activity?.state,
+      source: raw?.activity?.source,
+      reason: raw?.activity?.reason,
+      availableWindowMinutes:
+        typeof raw?.activity?.availableWindowMinutes === 'number' &&
+        Number.isFinite(raw.activity.availableWindowMinutes) &&
+        raw.activity.availableWindowMinutes > 0
+          ? Math.floor(raw.activity.availableWindowMinutes)
+          : undefined,
     },
     emoteIntel: {
       emotesPerMin: raw?.emoteIntel?.emotesPerMin ?? 0,

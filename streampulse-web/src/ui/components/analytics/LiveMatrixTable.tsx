@@ -5,6 +5,7 @@ import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import { Skeleton } from '../../primitives'
 import { compact, coverageMeta, displayName, initial } from './hubFormat'
+import { ResilientImage } from '../ResilientImage'
 
 interface LiveMatrixTableProps {
   channels: HubLiveChannel[]
@@ -155,11 +156,12 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
                     <td style={{ paddingLeft: '1.15rem' }}>
                       <Link to={href} className="ch">
                         <span className="av" aria-hidden="true">
-                          {channel.profileImageUrl ? (
-                            <img src={channel.profileImageUrl} alt="" loading="lazy" />
-                          ) : (
-                            initial(channel.login)
-                          )}
+                          <ResilientImage
+                            src={channel.profileImageUrl}
+                            alt=""
+                            loading="lazy"
+                            fallback={initial(channel.login)}
+                          />
                         </span>
                         <span>
                           <strong>{displayName(channel.login, channel.displayName)}</strong>

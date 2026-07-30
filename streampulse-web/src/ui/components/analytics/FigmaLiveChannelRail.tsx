@@ -6,6 +6,7 @@ import { hottestLiveReason } from './activityBucketInspectorUtils'
 import { compact } from './hubFormat'
 import { MomentumBadge } from './MomentumBadge'
 import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
+import { ResilientImage } from '../ResilientImage'
 
 export interface FigmaLiveChannelRailProps {
   channels: HubLiveChannel[]
@@ -108,13 +109,17 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
               </div>
               <div className="figma-live-rail__body">
                 <span className="figma-live-rail__identity">
-                  {channel.profileImageUrl ? (
-                    <img src={channel.profileImageUrl} alt="" loading="lazy" decoding="async" />
-                  ) : (
-                    <span className="figma-live-rail__avatar-fallback" aria-hidden="true">
-                      {name.slice(0, 2).toUpperCase()}
-                    </span>
-                  )}
+                  <ResilientImage
+                    src={channel.profileImageUrl}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    fallback={
+                      <span className="figma-live-rail__avatar-fallback" aria-hidden="true">
+                        {name.slice(0, 2).toUpperCase()}
+                      </span>
+                    }
+                  />
                   <strong>{name}</strong>
                 </span>
                 <span className="figma-live-rail__rates">

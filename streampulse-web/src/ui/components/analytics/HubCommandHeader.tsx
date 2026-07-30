@@ -1,6 +1,10 @@
 import { useMemo } from 'react'
 import { formatActivityWindowLabel } from '../../../lib/hubActivitySummary'
 import {
+  formatHubActivityServedLabel,
+  isHubActivityLivePoolFallback,
+} from '../../../lib/hubActivityHonesty'
+import {
   deriveHubChartActivityModel,
   selectHubChartActivityInputs,
 } from '../../../lib/hubChartActivityModel'
@@ -41,7 +45,13 @@ export function HubCommandHeader({
   pulseLiveChannels = false,
 }: HubCommandHeaderProps) {
   const labels = useCommandCenterLabels()
-  const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes)
+  const livePoolFallback = isHubActivityLivePoolFallback(hub.activity)
+  const windowLabel = livePoolFallback
+    ? formatHubActivityServedLabel(hub.activity)
+    : formatActivityWindowLabel(hub.activity.windowMinutes)
+  const peaksLabel = livePoolFallback
+    ? 'Recent live activity peaks'
+    : `Last ${windowLabel} peaks`
   const chartInputs = selectHubChartActivityInputs(hub)
   // Peaks stay pinned to activity inputs — trust-line / lastSuccessfulPollAt updates do not rebuild.
   const chartModel = useMemo(
@@ -122,9 +132,13 @@ export function HubCommandHeader({
 
           <section
             className="hub-command-header__peaks"
-            aria-label={`Activity peaks in the last ${windowLabel}`}
+            aria-label={
+              livePoolFallback
+                ? 'Activity peaks from recent live activity only'
+                : `Activity peaks in the last ${windowLabel}`
+            }
           >
-            <h2 className="hub-command-header__peaks-label">Last {windowLabel} peaks</h2>
+            <h2 className="hub-command-header__peaks-label">{peaksLabel}</h2>
             <div className="hub-command-header__peaks-row">
               <div
                 className="hub-command-header__peak"
