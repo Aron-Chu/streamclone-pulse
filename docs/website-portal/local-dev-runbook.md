@@ -107,6 +107,7 @@ flowchart TD
 | Port 5173 serves old bundle | Zombie dev server **or wrong worktree** (`streamclone-pulse` vs hub) | Confirm Vite cwd is `streamclone-pulse-hub/streampulse-web` on `wip/hub-landing`; `netstat -ano \| findstr :5173` → kill PID → restart from hub |
 | Looks like “old” Command Center | Started Vite from `streamclone-pulse` | Use this hub worktree — see **Which checkout** above |
 | Module / `@streampulse/*` errors | Missing `npm install` or package `dist/` | `npm install` in `streampulse-web`; `npm run build:packages` from repo root (`packages/*/dist`) |
+| `tsc` reports missing `getStreamStatus` (or any new API) in `streamcloneAnalytics.ts` even though source defines it | `streampulse-web/node_modules/@streampulse/*` symlinks point to a sibling checkout (e.g. `../streampulse-backend/packages/*`) that was patched for local testing and never restored | `readlink streampulse-web/node_modules/@streampulse/analytics-console` — if it points outside this repo, `rm` it and re-run `npm install`; CI does `npm ci` so it is unaffected |
 | Hub empty but page renders | Off-peak live pool or wrong backend | Confirm hosted hub: `curl -sI https://api.streampulse.stream/v1/public/hub` |
 | Unexpected local backend | Session override or env | DevTools → Application → `sessionStorage.sp.backendUrlOverride`; check `.env.development.local*` |
 | `dev:local` still hits hosted | Missing `VITE_ALLOW_LOCAL_BACKEND=1` | Update `.env.development.localhost` from example |
