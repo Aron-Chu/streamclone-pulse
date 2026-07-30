@@ -92,12 +92,17 @@ export interface FigmaChannelDashboardProps {
 
 export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
   const location = useLocation()
-  const [selectedOffset, setSelectedOffset] = useState<number | undefined>(data.session.moments[0]?.offsetSeconds)
+  const [selectedOffset, setSelectedOffset] = useState<number | undefined>(undefined)
   const [plottedEmote, setPlottedEmote] = useState<PlottedEmote | undefined>(undefined)
   const selectedMoment = useMemo(
     () => data.session.moments.find((m) => m.offsetSeconds === selectedOffset) ?? data.session.moments[0] ?? null,
     [data.session.moments, selectedOffset],
   )
+
+  useEffect(() => {
+    setSelectedOffset(undefined)
+    setPlottedEmote(undefined)
+  }, [data.selectedStreamId])
 
   useEffect(() => {
     if (data.loading || data.session.state !== 'ready') return
@@ -109,7 +114,7 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
 
   const handleChartSelectOffset = (offsetSeconds: number) => {
     const nearest = nearestMomentForOffset(data.session.moments, offsetSeconds)
-    if (nearest) setSelectedOffset(nearest.offsetSeconds)
+    setSelectedOffset(nearest?.offsetSeconds ?? offsetSeconds)
   }
 
   const handleSelectBurst = (burst: FigmaEmoteBurst) => {
@@ -247,7 +252,7 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
           selectedOffset={selectedOffset}
           onSelectOffset={handleChartSelectOffset}
           title={data.session.category ? `${title} / ${data.session.category}` : title}
-          note="Multi-signal chart from backend minute rollups — chat, viewers, emotes."
+          note="Chat and emotes lead this timeline; viewers remain muted context."
           plottedEmote={plottedEmote}
           onClearPlottedEmote={() => setPlottedEmote(undefined)}
         />

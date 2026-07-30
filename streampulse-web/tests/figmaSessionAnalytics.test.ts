@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_BACKEND_URL, DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/auth'
 import {
+  chatPerMinuteRange,
+  chartPointsFromMinutes,
   featuredSessionFromPublicHub,
   isValidPeakOffsetSeconds,
   livePulseMomentsFromPublicHub,
@@ -69,6 +71,24 @@ function samplePublicHub(): PublicHub {
     featuredSession: { state: 'empty', reason: 'no_qualifying_session' },
   }
 }
+
+describe('past-stream chart minute truth', () => {
+  const minutes = [
+    { offsetSeconds: 0, chatCount: 8, seventvEmoteCount: 3, viewerLatest: 900 },
+    { offsetSeconds: 60, chatCount: 42, seventvEmoteCount: 16, viewerLatest: 950 },
+    { offsetSeconds: 120, chatCount: 0, seventvEmoteCount: 0, viewerLatest: 980, missing: true },
+  ]
+
+  it('derives an honest chat min-max range while excluding missing buckets', () => {
+    expect(chatPerMinuteRange(minutes)).toEqual({ min: 8, max: 42 })
+  })
+
+  it('keeps raw chat and emote counts alongside normalized chart lanes', () => {
+    const points = chartPointsFromMinutes(minutes)
+    expect(points[0]).toMatchObject({ chatCount: 8, emoteCount: 3, viewerCount: 900 })
+    expect(points[1]).toMatchObject({ chatCount: 42, emoteCount: 16, viewerCount: 950 })
+  })
+})
 
 describe('nearestMomentForOffset', () => {
   const peaks = [

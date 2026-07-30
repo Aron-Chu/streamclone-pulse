@@ -41,6 +41,10 @@ export interface FigmaChartPoint {
   viewersNorm: number
   emotesNorm: number
   heat: number
+  /** Raw per-minute values when the chart came from the stream minutes endpoint. */
+  chatCount?: number
+  viewerCount?: number
+  emoteCount?: number
 }
 
 export interface FigmaEmoteBurst {
@@ -67,6 +71,8 @@ export interface FigmaSessionViewModel {
   vodId?: string
   viewers?: number
   chatPerMin?: number
+  chatMinPerMinute?: number
+  chatMaxPerMinute?: number
   seventvPerMin?: number
   peakCount?: number
   dataCoveragePct?: number
@@ -465,6 +471,20 @@ function normalizeChartValue(value: number, max: number): number {
 
 import { downsampleTimeline, rollupChartActivityScore } from './timelineDownsample'
 
+export function chatPerMinuteRange(
+  minutes: PortalStreamMinutesResponse['minutes'],
+): { min: number; max: number } | null {
+  const values = minutes
+    .filter((minute) => !minute.missing)
+    .map((minute) => minute.chatCount)
+    .filter((value): value is number => value != null && Number.isFinite(value) && value >= 0)
+  if (!values.length) return null
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+  }
+}
+
 export function chartPointsFromMinutes(
   minutes: PortalStreamMinutesResponse['minutes'],
 ): FigmaChartPoint[] {
@@ -486,6 +506,9 @@ export function chartPointsFromMinutes(
       viewersNorm,
       emotesNorm,
       heat: Math.min(100, Math.round(chatNorm * 0.35 + emotesNorm * 0.5 + viewersNorm * 0.15)),
+      chatCount: chat,
+      viewerCount: viewers,
+      emoteCount: emotes,
     }
   })
 }
@@ -600,6 +623,7 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
   const sessionHref = resolvedLogin ? buildAnalyticsHref({ login: resolvedLogin, streamId }) : undefined
   const peaks = peaksRes?.peaks ?? []
   const chartFromMinutes = minutesRes?.minutes?.length ? chartPointsFromMinutes(minutesRes.minutes) : []
+  const chatRange = minutesRes?.minutes?.length ? chatPerMinuteRange(minutesRes.minutes) : null
   const sourceLabel = sourceLabelFromDetail(detail?.sources, detail?.dataSourceBadges)
   return {
     state: peaks.length > 0 || chartFromMinutes.length > 0 || detail?.stream ? 'ready' : 'empty',
@@ -611,6 +635,8 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
     startedAt: detail?.stream?.startedAt ?? minutesRes?.startedAt,
     vodId,
     viewers: detail?.stream?.currentViewers ?? detail?.stream?.peakViewers,
+    chatMinPerMinute: chatRange?.min,
+    chatMaxPerMinute: chatRange?.max,
     dataCoveragePct: coverageRes?.dataCoveragePct,
     peakCount: peaks.length,
     moments: peaks.map((peak) => ({

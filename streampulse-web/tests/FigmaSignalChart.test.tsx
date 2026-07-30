@@ -25,6 +25,23 @@ describe('FigmaSignalChart', () => {
     expect(onSelectOffset).toHaveBeenCalled()
   })
 
+  it('starts as a chat-and-emote overview and expands into faded-future detail', () => {
+    const { container } = render(
+      <FigmaSignalChart points={points} onSelectOffset={vi.fn()} />,
+    )
+    const wrap = container.querySelector('.figma-chart__svg-wrap') as HTMLElement
+    expect(wrap.dataset.chartMode).toBe('overview')
+    expect(wrap.dataset.chartPrimarySignals).toBe('chat emotes')
+    expect(wrap.dataset.chartContextSignals).toBe('viewers')
+    expect(container.querySelector('[data-chart-layer="overview"]')).toBeTruthy()
+    expect(container.querySelector('[data-chart-layer="detail"]')?.classList.contains('is-active')).toBe(false)
+
+    fireEvent.mouseMove(wrap, { clientX: 10, clientY: 30 })
+    expect(wrap.dataset.chartMode).toBe('detail')
+    expect(container.querySelector('[data-chart-layer="detail"]')?.classList.contains('is-active')).toBe(true)
+    expect(container.querySelector('.figma-chart__future .figma-chart__line--future')).toBeTruthy()
+  })
+
   it('moves selection with arrow keys', () => {
     const onSelectOffset = vi.fn()
     const { container } = render(
