@@ -27,6 +27,7 @@ import {
   seriesMax,
   viewerValue,
   chartBarBucketOpacity,
+  buildCompositeOverviewSeries,
 } from './chartRollupUtils.ts'
 
 import { buildChartSeries, type ChartSeries } from './chartSeries.ts'
@@ -125,7 +126,8 @@ const ACTIVITY_ZONE_GAP = 8
 /** Keep per-emote traces off the chat/trace divider when the rail is thin. */
 const ACTIVITY_TRACE_INSET = 0.12
 const CHART_VIEWBOX_HEIGHT = 400
-const SCRUB_TRANSITION_MS = 180
+const SCRUB_TRANSITION_MS = 420
+const SCRUB_TRANSITION_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.58)'
 
 type PlotZone = 'viewer' | 'activity-chat' | 'activity-emote-trace' | 'activity-emote'
@@ -993,12 +995,29 @@ function PulseMultiSignalChartInnerImpl({
   const scrubFutureX = Math.max(padLeft, Math.min(width - padRight, scrubX))
   const scrubFutureWidth = Math.max(0, width - padRight - scrubFutureX)
   const scrubTransition = motionEnabled
-    ? `opacity ${SCRUB_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+    ? [
+        `opacity ${SCRUB_TRANSITION_MS}ms ${SCRUB_TRANSITION_EASING}`,
+        `transform ${SCRUB_TRANSITION_MS}ms ${SCRUB_TRANSITION_EASING}`,
+      ].join(', ')
     : undefined
-  const detailLayerOpacity = scrubActive ? 1 : 0.14
-  const overviewValues = viewersItem ? viewerDisplayValues : chatDisplayValues
-  const overviewMax = viewersItem ? viewerAxis.max : Math.max(1, chatItem?.max ?? 1)
-  const overviewMin = viewersItem ? viewerAxis.min : 0
+  const detailLayerOpacity = scrubActive ? 1 : 0
+  const detailLayerTransform = scrubActive
+    ? 'translateY(0px) scaleY(1)'
+    : 'translateY(10px) scaleY(0.86)'
+  const overviewTransform = scrubActive
+    ? 'translateY(-7px) scaleY(0.88)'
+    : 'translateY(0px) scaleY(1)'
+  const overviewValues = useMemo(() => {
+    const composite = buildCompositeOverviewSeries([
+      { values: viewersItem?.values ?? [], weight: 0.45 },
+      { values: chatItem?.values ?? [], weight: 0.3 },
+      { values: emotesItem?.values ?? [], weight: 0.25 },
+    ], 7)
+    if (composite.length <= plotWidthPx) return composite
+    return rollingMedianWindow(decimateSeriesForRender(composite, plotWidthPx), 5)
+  }, [chatItem, emotesItem, plotWidthPx, viewersItem])
+  const overviewMax = 1
+  const overviewMin = 0
   const overviewLinePathD = useMemo(
     () => linePath(
       overviewValues,
@@ -1185,7 +1204,13 @@ function PulseMultiSignalChartInnerImpl({
         <g
           data-chart-layer="detail"
           opacity={detailLayerOpacity}
-          style={{ transition: scrubTransition }}
+          pointerEvents={scrubActive ? undefined : 'none'}
+          style={{
+            transition: scrubTransition,
+            transform: detailLayerTransform,
+            transformBox: 'view-box',
+            transformOrigin: 'center',
+          }}
         >
         {/* Activity strip background */}
         <rect
@@ -1468,9 +1493,14 @@ function PulseMultiSignalChartInnerImpl({
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth="3"
-            opacity={scrubActive ? 0.04 : 0.96}
+            opacity={scrubActive ? 0 : 0.96}
             pointerEvents="none"
-            style={{ transition: scrubTransition }}
+            style={{
+              transition: scrubTransition,
+              transform: overviewTransform,
+              transformBox: 'view-box',
+              transformOrigin: 'center',
+            }}
           />
         ) : null}
         </g>

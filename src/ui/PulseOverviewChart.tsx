@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { CSSProperties, MouseEvent, RefObject } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
+  buildCompositeOverviewSeries,
   GameSegmentOverlay,
   gameSegmentKey,
   gameSegmentPlotBounds,
@@ -87,7 +88,8 @@ const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
 const FOCUS_DIM_FACTOR = 0.14
 const FOCUS_LANE_BOOST = 0.78
-const SCRUB_TRANSITION_MS = 180
+const SCRUB_TRANSITION_MS = 420
+const SCRUB_TRANSITION_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.52)'
 
 type ActivityZone = 'activity-chat' | 'activity-emote-trace' | 'activity-emote'
@@ -591,8 +593,15 @@ export function PulseOverviewChart({
     )
   }, [emoteDetailValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
 
-  const primaryTrendValues = viewerMax > 0 ? viewerTrendValues : chatTrendValues
-  const primaryTrendMax = viewerMax > 0 ? viewerAxisMax : chatTrendAxisMax
+  const primaryTrendValues = useMemo(
+    () => buildCompositeOverviewSeries([
+      { values: viewerTrendValues, weight: 0.45 },
+      { values: chatTrendValues, weight: 0.3 },
+      { values: emoteTrendValues, weight: 0.25 },
+    ], 5),
+    [chatTrendValues, emoteTrendValues, viewerTrendValues],
+  )
+  const primaryTrendMax = 1
   const overviewAreaPath = useMemo(
     () =>
       areaPathInBand(
@@ -646,8 +655,30 @@ export function PulseOverviewChart({
   const scrubFutureX = Math.max(PAD_LEFT, Math.min(width - PAD_RIGHT, scrubX))
   const scrubFutureWidth = Math.max(0, width - PAD_RIGHT - scrubFutureX)
   const scrubTransition = motionEnabled
-    ? `opacity ${SCRUB_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+    ? [
+        `opacity ${SCRUB_TRANSITION_MS}ms ${SCRUB_TRANSITION_EASING}`,
+        `transform ${SCRUB_TRANSITION_MS}ms ${SCRUB_TRANSITION_EASING}`,
+      ].join(', ')
     : undefined
+  const detailLayerOpacity = scrubActive ? 1 : 0
+  const detailLayerTransform = scrubActive
+    ? 'translateY(0px) scaleY(1)'
+    : 'translateY(8px) scaleY(0.84)'
+  const overviewTransform = scrubActive
+    ? 'translateY(-5px) scaleY(0.88)'
+    : 'translateY(0px) scaleY(1)'
+  const detailLayerStyle: CSSProperties = {
+    transition: scrubTransition,
+    transform: detailLayerTransform,
+    transformBox: 'view-box',
+    transformOrigin: 'center',
+  }
+  const overviewLayerStyle: CSSProperties = {
+    transition: scrubTransition,
+    transform: overviewTransform,
+    transformBox: 'view-box',
+    transformOrigin: 'center',
+  }
   const activeTimeLabel =
     activeIndex != null ? formatHeatOffset(rollups[activeIndex]?.offsetSeconds ?? 0) : ''
   const activeTimeLabelWidth = Math.max(34, activeTimeLabel.length * 5.5 + 12)
@@ -902,6 +933,7 @@ export function PulseOverviewChart({
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="Interactive stream overview chart. Move or drag across the plot to inspect a moment."
+        data-chart-mode={scrubActive ? 'detail' : 'overview'}
         style={{ ...styles.svg, height }}
       >
         <defs>
@@ -957,7 +989,8 @@ export function PulseOverviewChart({
           y2={viewerBandTop}
           stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide * 0.85)}
           strokeWidth="1"
-          opacity={showViewerStrip ? 1 : 0}
+          opacity={scrubActive && showViewerStrip ? 1 : 0}
+          style={{ transition: scrubTransition }}
         />
         <line
           x1={PAD_LEFT}
@@ -966,6 +999,8 @@ export function PulseOverviewChart({
           y2={activityBottom}
           stroke="rgba(255,255,255,0.08)"
           strokeWidth="1"
+          opacity={scrubActive ? 1 : 0}
+          style={{ transition: scrubTransition }}
         />
 
         <line
@@ -975,10 +1010,17 @@ export function PulseOverviewChart({
           y2={viewerBandBottom + 2}
           stroke="rgba(255,255,255,0.12)"
           strokeWidth="1"
-          opacity={showViewerStrip ? 1 : 0}
+          opacity={scrubActive && showViewerStrip ? 1 : 0}
+          style={{ transition: scrubTransition }}
         />
 
         <g clipPath={`url(#${svgIds.plotClip})`}>
+          <g
+            data-chart-layer="detail"
+            opacity={detailLayerOpacity}
+            pointerEvents={scrubActive ? undefined : 'none'}
+            style={detailLayerStyle}
+          >
           {showViewerStrip ? (
             <rect
               x={PAD_LEFT}
@@ -1235,13 +1277,14 @@ export function PulseOverviewChart({
               )
             })}
           </g>
+          </g>
           {overviewAreaPath ? (
             <path
               d={overviewAreaPath}
               fill={`url(#${svgIds.viewerGradient})`}
               opacity={scrubActive ? 0 : 0.48}
               pointerEvents="none"
-              style={{ transition: scrubTransition }}
+              style={overviewLayerStyle}
             />
           ) : null}
           {overviewLinePath ? (
@@ -1253,13 +1296,19 @@ export function PulseOverviewChart({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2.6}
-              opacity={scrubActive ? 0.04 : 0.96}
+              opacity={scrubActive ? 0 : 0.96}
               pointerEvents="none"
-              style={{ transition: scrubTransition }}
+              style={overviewLayerStyle}
             />
           ) : null}
         </g>
 
+        <g
+          data-chart-layer="detail-annotations"
+          opacity={detailLayerOpacity}
+          pointerEvents={scrubActive ? undefined : 'none'}
+          style={detailLayerStyle}
+        >
         {/* Paint game dividers above chat/emote bars so they stay visible through the full plot. */}
         {chartGames.length > 0 ? (
           <GameSegmentOverlay
@@ -1438,6 +1487,7 @@ export function PulseOverviewChart({
             </text>
           )
         })}
+        </g>
 
         <rect
           data-chart-scrubber="true"

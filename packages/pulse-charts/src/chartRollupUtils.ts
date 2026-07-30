@@ -168,6 +168,98 @@ export function rollupsHaveViewerData(rollups: ChartMinuteRollup[]) {
   return rollups.some(point => !point.missing && viewerValue(point) > 0)
 }
 
+export interface CompositeOverviewSignal {
+  values: Array<number | null>
+  weight: number
+}
+
+function quantile(sorted: number[], fraction: number): number {
+  if (sorted.length === 0) return 0
+  const index = Math.max(
+    0,
+    Math.min(sorted.length - 1, Math.round((sorted.length - 1) * fraction)),
+  )
+  return sorted[index] ?? 0
+}
+
+function smoothCompositeSeries(
+  values: Array<number | null>,
+  window: number,
+): Array<number | null> {
+  const size = Math.max(1, Math.floor(window))
+  if (size <= 1 || values.length <= 2) return values
+  const radius = Math.floor(size / 2)
+  return values.map((value, index) => {
+    if (value === null) return null
+    let weightedTotal = 0
+    let totalWeight = 0
+    for (
+      let sampleIndex = Math.max(0, index - radius);
+      sampleIndex <= Math.min(values.length - 1, index + radius);
+      sampleIndex += 1
+    ) {
+      const sample = values[sampleIndex]
+      if (sample === null) continue
+      const distance = Math.abs(sampleIndex - index)
+      const weight = radius + 1 - distance
+      weightedTotal += sample * weight
+      totalWeight += weight
+    }
+    return totalWeight > 0 ? weightedTotal / totalWeight : value
+  })
+}
+
+/**
+ * Builds the calm overview curve from every available primary signal.
+ *
+ * Each source is normalized independently before weighting so a 4,000-viewer
+ * stream cannot visually erase chat and emote movement. The 5th/95th percentile
+ * bounds keep one-off spikes from flattening the rest of the curve.
+ */
+export function buildCompositeOverviewSeries(
+  signals: CompositeOverviewSignal[],
+  smoothWindow = 5,
+): Array<number | null> {
+  const usable = signals
+    .filter(signal => Number.isFinite(signal.weight) && signal.weight > 0 && signal.values.length > 0)
+    .map(signal => {
+      const samples = signal.values
+        .filter((value): value is number => value !== null && Number.isFinite(value))
+        .sort((a, b) => a - b)
+      const low = quantile(samples, 0.05)
+      const high = quantile(samples, 0.95)
+      return {
+        ...signal,
+        low,
+        high,
+        span: high - low,
+        hasSamples: samples.length > 0,
+      }
+    })
+    .filter(signal => signal.hasSamples)
+
+  const length = usable.reduce((max, signal) => Math.max(max, signal.values.length), 0)
+  if (length === 0) return []
+
+  const composite = Array.from({ length }, (_, index): number | null => {
+    let total = 0
+    let totalWeight = 0
+    for (const signal of usable) {
+      const value = signal.values[index]
+      if (value === null || value === undefined || !Number.isFinite(value)) continue
+      const normalized = signal.span > Number.EPSILON
+        ? Math.max(0, Math.min(1, (value - signal.low) / signal.span))
+        : 0.5
+      total += normalized * signal.weight
+      totalWeight += signal.weight
+    }
+    if (totalWeight <= 0) return null
+    return total / totalWeight
+  })
+
+  return smoothCompositeSeries(composite, smoothWindow)
+}
+
 /** Progressive-disclosure bar opacity shared by the detailed chart lanes. */
 export function chartBarBucketOpacity(args: {
   index: number
