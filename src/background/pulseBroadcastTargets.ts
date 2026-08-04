@@ -20,17 +20,22 @@ export interface RuntimeSenderLike {
   tab?: { url?: string }
 }
 
-export function isExtensionPageSender(sender: RuntimeSenderLike, extensionId: string): boolean {
-  if (!sender.id || sender.id !== extensionId || sender.tab || !sender.url) return false
+function isExtensionPageUrl(url: string | undefined, extensionId: string): boolean {
+  if (!url) return false
   try {
-    const parsed = new URL(sender.url)
+    const parsed = new URL(url)
     if (parsed.protocol === 'chrome-extension:') return parsed.hostname === extensionId
-    // Firefox uses a per-profile moz-extension UUID; sender.id remains the
-    // stable add-on ID checked above, and extension pages have no tab sender.
     return parsed.protocol === 'moz-extension:' && Boolean(parsed.hostname)
   } catch {
     return false
   }
+}
+
+export function isExtensionPageSender(sender: RuntimeSenderLike, extensionId: string): boolean {
+  if (!sender.id || sender.id !== extensionId || !isExtensionPageUrl(sender.url, extensionId)) return false
+  // Firefox may include the options/popup tab on a runtime message. It is
+  // still trusted only when that tab is also an extension-owned page.
+  return !sender.tab || isExtensionPageUrl(sender.tab.url, extensionId)
 }
 
 export function isTrustedTwitchTopFrameSender(sender: RuntimeSenderLike, extensionId: string): boolean {
