@@ -30,8 +30,10 @@ describe('runtime sender matrix', () => {
 
   it('accepts only the extension origin for extension-page commands', () => {
     expect(isExtensionPageSender({ id: extensionId, url: `chrome-extension://${extensionId}/options.html` }, extensionId)).toBe(true)
+    expect(isExtensionPageSender({ id: extensionId, url: 'moz-extension://profile-uuid/options/index.html' }, extensionId)).toBe(true)
     expect(isExtensionPageSender({ id: 'different', url: `chrome-extension://${extensionId}/options.html` }, extensionId)).toBe(false)
     expect(isExtensionPageSender({ id: extensionId, url: `chrome-extension://${extensionId}.evil/options.html` }, extensionId)).toBe(false)
+    expect(isExtensionPageSender({ id: extensionId, url: 'moz-extension://profile-uuid/options/index.html', tab: { url: 'https://www.twitch.tv/xqc' } }, extensionId)).toBe(false)
     expect(isExtensionPageSender({ id: extensionId, url: `chrome-extension://${extensionId}/options.html`, tab: { url: 'https://www.twitch.tv/xqc' } }, extensionId)).toBe(false)
   })
 

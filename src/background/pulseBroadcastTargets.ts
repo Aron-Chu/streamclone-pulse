@@ -24,7 +24,10 @@ export function isExtensionPageSender(sender: RuntimeSenderLike, extensionId: st
   if (!sender.id || sender.id !== extensionId || sender.tab || !sender.url) return false
   try {
     const parsed = new URL(sender.url)
-    return parsed.protocol === 'chrome-extension:' && parsed.hostname === extensionId
+    if (parsed.protocol === 'chrome-extension:') return parsed.hostname === extensionId
+    // Firefox uses a per-profile moz-extension UUID; sender.id remains the
+    // stable add-on ID checked above, and extension pages have no tab sender.
+    return parsed.protocol === 'moz-extension:' && Boolean(parsed.hostname)
   } catch {
     return false
   }
