@@ -54,7 +54,7 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] Privacy and Support URLs match live pages and **current** disclosures
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
-- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (source manifests are `0.1.0`; live listing reportedly may already be `0.1.1` — owner verify; do not upload `0.1.0` as an update if dashboard is ahead)
+- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (source manifests are `0.1.3`; owner must verify the live listing is behind 0.1.3 before upload)
 - [ ] Support URL / dashboard state rechecked by owner (do not claim dashboard changes from this checklist)
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
 
@@ -82,11 +82,13 @@ Required `host_permissions` (store):
 - [ ] Permission justifications pasted only for permissions present in the store ZIP
 - [ ] Remote code: “No”
 - [ ] Data use disclosure matches Privacy page (current behavior)
+- [ ] Disclose optional one-time Protect enrollment: beta key is discarded, device token is local/trusted-only, and the token is revocable
+- [ ] Distinguish browser-sync saved watchlist entries from server-confirmed Protect rows, including pending DELETE tombstones and backend retention
 - [ ] Disclose separate default-off product analytics consent + PostHog server processing (no identity; ~180-day target) **without claiming activation**
 - [ ] Limited Use affirmed
 - [ ] Listing name / screenshots say **StreamPulse**
 - [ ] Listing / submission / Google approval — owner action only
-- [ ] Live listing version + Support URL rechecked by owner (source is `0.1.0`; do not claim dashboard edits from repo docs)
+- [ ] Live listing version + Support URL rechecked by owner (source is `0.1.3`; do not claim dashboard edits from repo docs)
 
 ### Packaging commands (next candidate)
 

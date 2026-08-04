@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
   deriveLiveStats,
@@ -61,6 +61,7 @@ import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
+import { useChartExpansion } from './motion/useChartExpansion.ts'
 
 export interface LiveStatsBandProps {
   payload: PulsePayload
@@ -320,7 +321,6 @@ export function LiveStatsBand({
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
-  const [activityExpanded, setActivityExpanded] = useState(false)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
   const unlockFullForCurrentActivation = (): void => {
@@ -477,12 +477,6 @@ export function LiveStatsBand({
     return map
   }, [selectedEmotesForOverlay, emoteOverlays])
 
-  useEffect(() => {
-    if (selectedEmotesForOverlay.length > 0) {
-      setActivityExpanded(true)
-    }
-  }, [selectedEmotesForOverlay.length])
-
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
     setFocusedSeriesKey(current => (current === seriesKey ? null : seriesKey))
   }, [])
@@ -528,7 +522,26 @@ export function LiveStatsBand({
     setChartHoverOffsetSeconds(null)
   }
 
-  const chartHeight = sidebarFill ? 216 : 184
+  const chartIdentity = `${payload.login}:${payload.streamId ?? ''}:${payload.vodId ?? ''}:${payload.startedAt ?? ''}`
+  const chartRegionId = `pulse-live-chart-${useId().replace(/:/g, '')}`
+  const chartExpansion = useChartExpansion({
+    identity: chartIdentity,
+    heights: {
+      collapsed: sidebarFill ? 216 : 184,
+      expanded: (sidebarFill ? 216 : 184) + 48,
+    },
+  })
+  const activityExpanded = chartExpansion.expanded
+  const chartHeight = chartExpansion.height
+
+  useEffect(() => {
+    setFocusedSeriesKey(null)
+  }, [chartIdentity])
+
+  function resetChartExpansion(): void {
+    setFocusedSeriesKey(null)
+    chartExpansion.reset()
+  }
 
   const metricsStyle = sidebarFill
     ? { ...styles.metrics, ...styles.metricsSidebar }
@@ -709,8 +722,10 @@ export function LiveStatsBand({
                   ...styles.expandButton,
                   ...(activityExpanded ? styles.expandButtonActive : null),
                 }}
-                onClick={() => setActivityExpanded(value => !value)}
-                aria-pressed={activityExpanded}
+                onClick={() => (activityExpanded ? resetChartExpansion() : chartExpansion.expand())}
+                aria-expanded={activityExpanded}
+                aria-controls={chartRegionId}
+                aria-label={activityExpanded ? 'Reset stream activity chart' : 'Expand stream activity chart'}
               >
                 {activityExpanded ? 'Reset' : 'Expand'}
               </button>
@@ -847,11 +862,13 @@ export function LiveStatsBand({
             durationSeconds={currentOffsetSeconds}
             streamStartedAt={payload.startedAt}
             height={chartHeight}
+            chartRegionId={chartRegionId}
+            activityExpansionProgress={chartExpansion.progress}
             selectedIndex={demoMode ? null : pinChartIndex}
             previewIndex={demoMode ? null : previewChartIndex}
             showViewerStrip={showViewerStrip}
             activityExpanded={activityExpanded}
-            normalizeOverlaySeries={activityExpanded && selectedEmotesForOverlay.length > 0}
+            normalizeOverlaySeries={selectedEmotesForOverlay.length > 0}
             focusedSeriesKey={demoMode ? null : focusedSeriesKey}
             onFocusedSeriesKeyChange={demoMode ? undefined : setFocusedSeriesKey}
             onSelectIndex={demoMode ? undefined : handleChartSelect}
@@ -1111,7 +1128,7 @@ const styles: Record<string, CSSProperties> = {
   },
   expandButtonActive: {
     background: 'rgba(139, 92, 246, 0.12)',
-    borderColor: 'rgba(167, 139, 250, 0.35)',
+    border: '1px solid rgba(167, 139, 250, 0.35)',
     color: '#ddd6fe',
   },
 }

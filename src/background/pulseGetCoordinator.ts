@@ -40,6 +40,7 @@ export type PulseFetchDeps = {
     login: string,
     window: PulseCacheWindow,
     forceCoverage: boolean,
+    streamId?: string,
   ) => Promise<{
     payload: PulsePayload | null
     coverageTier: ExtensionCoverageTierResponse | null
@@ -53,7 +54,7 @@ export type PulseFetchDeps = {
     payload: PulsePayload | null,
     error: string | undefined,
     coverageTier: ExtensionCoverageTierResponse | null | undefined,
-    meta?: { softStaleFailure?: boolean },
+    meta?: { softStaleFailure?: boolean; streamId?: string; window?: PulseCacheWindow },
   ) => void
   now?: () => number
 }
@@ -124,6 +125,7 @@ export async function handleGetPulse(
           window,
           forceCoverage,
           key,
+          streamId: args.streamId,
         },
         deps,
         state,
@@ -160,7 +162,7 @@ export async function handleGetPulse(
         const plan2 = planGetPulseNetwork({ freshness: fresh2, window })
         if (plan2.asyncRevalidate) {
           scheduleSoftRevalidate(
-            { login: args.login, window, forceCoverage, key },
+            { login: args.login, window, forceCoverage, key, streamId: args.streamId },
             deps,
             state,
             now,
@@ -175,14 +177,26 @@ export async function handleGetPulse(
     }
 
     network.syncFetches = 1
-    const fetched = await deps.fetchPulse(args.login, window, forceCoverage)
+    const fetched = await deps.fetchPulse(args.login, window, forceCoverage, args.streamId)
     if (fetched.payload) {
-      deps.onBroadcast?.(args.login, fetched.payload, undefined, fetched.coverageTier)
+      deps.onBroadcast?.(
+        args.login,
+        fetched.payload,
+        undefined,
+        fetched.coverageTier,
+        { streamId: args.streamId ?? fetched.payload.streamId, window },
+      )
       state.lastRevalidateFailureAt.delete(key)
       state.lastRevalidateAt.set(key, now())
     } else if (fetched.error) {
       state.lastRevalidateFailureAt.set(key, now())
-      deps.onBroadcast?.(args.login, null, fetched.error, null)
+      deps.onBroadcast?.(
+        args.login,
+        null,
+        fetched.error,
+        null,
+        { streamId: args.streamId, window },
+      )
     }
     return {
       payload: fetched.payload,
@@ -198,6 +212,7 @@ function scheduleSoftRevalidate(
     login: string
     window: PulseCacheWindow
     forceCoverage: boolean
+    streamId?: string
     key: string
   },
   deps: PulseFetchDeps,
@@ -214,7 +229,7 @@ function scheduleSoftRevalidate(
   }
   void coalesceInFlight(state.revalidateInFlight, args.key, async () => {
     try {
-      const fetched = await deps.fetchPulse(args.login, args.window, args.forceCoverage)
+       const fetched = await deps.fetchPulse(args.login, args.window, args.forceCoverage, args.streamId)
       if (fetched.error || !fetched.payload) {
         state.lastRevalidateFailureAt.set(args.key, now())
         // Soft failure — do not broadcast a fatal null+error that blanks the overlay.
@@ -223,16 +238,28 @@ function scheduleSoftRevalidate(
           null,
           undefined,
           undefined,
-          { softStaleFailure: true },
+          { softStaleFailure: true, streamId: args.streamId, window: args.window },
         )
         return
       }
       state.lastRevalidateFailureAt.delete(args.key)
       state.lastRevalidateAt.set(args.key, now())
-      deps.onBroadcast?.(args.login, fetched.payload, undefined, fetched.coverageTier)
+      deps.onBroadcast?.(
+        args.login,
+        fetched.payload,
+        undefined,
+        fetched.coverageTier,
+        { streamId: args.streamId ?? fetched.payload.streamId, window: args.window },
+      )
     } catch {
       state.lastRevalidateFailureAt.set(args.key, now())
-      deps.onBroadcast?.(args.login, null, undefined, undefined, { softStaleFailure: true })
+      deps.onBroadcast?.(
+        args.login,
+        null,
+        undefined,
+        undefined,
+        { softStaleFailure: true, streamId: args.streamId, window: args.window },
+      )
     }
   })
   return true

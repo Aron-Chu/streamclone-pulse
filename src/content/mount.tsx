@@ -77,10 +77,15 @@ export interface OverlayMountOptions {
 export function applyOverlayPayloadUpdate(
   previous: PulsePayload | null,
   incoming: PulsePayload | null,
+  options?: { allowStreamChange?: boolean },
 ): PulsePayload | null {
   if (!incoming) return previous
-  const sameStream = !previous?.streamId || previous.streamId === incoming.streamId
-  return sameStream && previous ? mergePulsePayload(previous, incoming) : incoming
+  const previousStreamId = previous?.streamId?.trim() ?? ''
+  const incomingStreamId = incoming.streamId?.trim() ?? ''
+  if (previousStreamId && (!incomingStreamId || previousStreamId !== incomingStreamId)) {
+    return options?.allowStreamChange ? incoming : previous
+  }
+  return previous ? mergePulsePayload(previous, incoming) : incoming
 }
 
 const BASE_STYLE = `
@@ -205,6 +210,8 @@ let tabsRoot: Root | null = null
 let panelRoot: Root | null = null
 let tabsHostEl: HTMLElement | null = null
 let panelHostEl: HTMLElement | null = null
+let tabsShadowRoot: ShadowRoot | null = null
+let panelShadowRoot: ShadowRoot | null = null
 let lastTabsRenderKey = ''
 let lastPanelPayloadRef: PulsePayload | null | undefined = undefined
 let lastPanelError: string | undefined
@@ -254,11 +261,13 @@ function reconcileOverlayHosts(): void {
     tabsRoot?.unmount()
     tabsRoot = null
     tabsHostEl = null
+    tabsShadowRoot = null
   }
   if (!panelHostEl?.isConnected) {
     panelRoot?.unmount()
     panelRoot = null
     panelHostEl = null
+    panelShadowRoot = null
   }
   purgeExtraHosts(TAB_HOST_ID, tabsHostEl)
   purgeExtraHosts(PANEL_HOST_ID, panelHostEl)
@@ -269,18 +278,20 @@ export function ensureUniqueOverlayHosts(): void {
   reconcileOverlayHosts()
 }
 
-function createShadowHost(id: string): { host: HTMLElement; root: Root } {
+function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; root: Root } {
   const host = document.createElement('div')
   host.id = id
   document.documentElement.appendChild(host)
-  const shadow = host.attachShadow({ mode: 'open' })
+  // Development builds keep the existing inspection hook for mocked E2E tests.
+  // Store targets use a closed root so Twitch page scripts cannot inspect controls.
+  const shadow = host.attachShadow({ mode: __EXTENSION_STORE_BUILD__ ? 'closed' : 'open' })
   const style = document.createElement('style')
   style.textContent = BASE_STYLE
   shadow.appendChild(style)
   const mountPoint = document.createElement('div')
   mountPoint.className = 'pulse-root'
   shadow.appendChild(mountPoint)
-  return { host, root: createRoot(mountPoint) }
+  return { host, shadow, root: createRoot(mountPoint) }
 }
 
 function applyFixedRect(host: HTMLElement | null, rect: ChatRectSnapshot | null, visible: boolean): void {
@@ -487,7 +498,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     },
     onPulseRefresh: currentOptions.onPulseRefresh,
     onPulsePayloadUpdate: (message: PulseUpdateMessage) => {
-      updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null)
+      updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null, { authoritative: true })
     },
     onLivePollWindowChange: currentOptions.onLivePollWindowChange,
     softStaleRefreshWarning: currentOptions.softStaleRefreshWarning ?? false,
@@ -505,7 +516,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     if (tabsKey !== lastTabsRenderKey) {
       lastTabsRenderKey = tabsKey
       tabsRoot?.render(
-        <PulsePortalContext.Provider value={tabsHostEl?.shadowRoot ?? null}>
+        <PulsePortalContext.Provider value={tabsShadowRoot}>
           <Overlay
             login={currentLogin}
             context={currentContext}
@@ -522,7 +533,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
       )
     }
     panelRoot?.render(
-      <PulsePortalContext.Provider value={panelHostEl?.shadowRoot ?? null}>
+      <PulsePortalContext.Provider value={panelShadowRoot}>
         <Overlay {...sharedProps} sidebarPart="body" />
       </PulsePortalContext.Provider>,
     )
@@ -530,7 +541,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     lastTabsRenderKey = ''
     tabsRoot?.render(null)
     panelRoot?.render(
-      <PulsePortalContext.Provider value={panelHostEl?.shadowRoot ?? null}>
+      <PulsePortalContext.Provider value={panelShadowRoot}>
         <Overlay {...sharedProps} sidebarPart="full" />
       </PulsePortalContext.Provider>,
     )
@@ -580,11 +591,13 @@ export function mountOverlay(
   if (!tabsHostEl) {
     const tabs = createShadowHost(TAB_HOST_ID)
     tabsHostEl = tabs.host
+    tabsShadowRoot = tabs.shadow
     tabsRoot = tabs.root
   }
   if (!panelHostEl) {
     const panel = createShadowHost(PANEL_HOST_ID)
     panelHostEl = panel.host
+    panelShadowRoot = panel.shadow
     panelRoot = panel.root
   }
 
@@ -624,7 +637,7 @@ export function updateOverlayPayload(
   payload: PulsePayload | null,
   error?: string,
   coverageTier?: ExtensionCoverageTierResponse | null,
-  meta?: { softStaleRefresh?: boolean },
+  meta?: { softStaleRefresh?: boolean; authoritative?: boolean },
 ): void {
   if (!panelRoot || !currentLogin) return
   const previousPayload = currentPayload
@@ -642,7 +655,16 @@ export function updateOverlayPayload(
     return
   }
   if (payload) {
-    currentPayload = applyOverlayPayloadUpdate(currentPayload, payload)
+    const nextPayload = applyOverlayPayloadUpdate(currentPayload, payload, {
+      allowStreamChange: meta?.authoritative,
+    })
+    const streamMismatch = Boolean(
+      currentPayload?.streamId
+      && nextPayload === currentPayload
+      && currentPayload.streamId !== payload.streamId,
+    )
+    if (streamMismatch) return
+    currentPayload = nextPayload
     currentOptions = { ...currentOptions, softStaleRefreshWarning: false }
   }
   currentError = resolveOverlayErrorState(currentError, payload, error)
@@ -705,6 +727,8 @@ export function unmountOverlay(): void {
   panelHostEl?.remove()
   tabsHostEl = null
   panelHostEl = null
+  tabsShadowRoot = null
+  panelShadowRoot = null
   purgeExtraHosts(TAB_HOST_ID, null)
   purgeExtraHosts(PANEL_HOST_ID, null)
   lastTabsRenderKey = ''

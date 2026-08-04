@@ -22,6 +22,7 @@
   "notes": [
     "Checksum files are operator convenience digests, not cryptographic provenance.",
     "Cryptographic provenance is the GitHub artifact attestation created in this workflow.",
-    "Do not replace draft release ZIP assets until the owner explicitly approves."
+    "Do not replace draft release ZIP assets until the owner explicitly approves.",
+    "Historical v0.1.2 evidence predates exact-tag source-ref/source-digest verification; rerun the current workflow for future releases."
   ]
 }

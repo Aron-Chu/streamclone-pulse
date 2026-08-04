@@ -31,32 +31,21 @@ export function scrapePageVodState(): PageVodScrapeResult {
     return null
   }
 
-  const html = document.documentElement?.innerHTML ?? ''
-  let vodId = scanVod(html)
-  let source: PageVodScrapeResult['source'] = vodId ? 'page_html' : null
+  let vodId: string | null = null
+  let source: PageVodScrapeResult['source'] = null
   let scannedScripts = 0
-  let streamId = scanStream(html)
+  let streamId: string | null = null
 
-  if (!vodId) {
-    for (const script of document.querySelectorAll('script')) {
-      const text = script.textContent
-      if (!text || text.length < 40) continue
-      scannedScripts += 1
-      vodId = scanVod(text)
-      if (vodId) {
-        source = 'page_script'
-        break
-      }
-    }
-  }
-
-  if (!streamId) {
-    for (const script of document.querySelectorAll('script')) {
-      const text = script.textContent
-      if (!text) continue
-      streamId = scanStream(text)
-      if (streamId) break
-    }
+  // Inspect bounded script text only. The complete document can contain chat
+  // and unrelated page content that the extension never needs.
+  for (const script of document.querySelectorAll('script')) {
+    const text = script.textContent
+    if (!text || text.length < 40 || text.length > 512_000) continue
+    scannedScripts += 1
+    vodId ??= scanVod(text)
+    streamId ??= scanStream(text)
+    if (vodId) source = 'page_script'
+    if (vodId && streamId) break
   }
 
   return { vodId, streamId, source, scannedScripts }
@@ -71,19 +60,62 @@ interface GqlPageResponse {
 export async function gqlDiscoverVodInPage(login: string): Promise<GqlPageResponse> {
   const clientId = 'kimne78kx3ncx6brgo4genct28h5qlw'
   const channel = login.trim().toLowerCase()
+  const timeoutMs = 10_000
+  const maxBytes = 512 * 1024
+
+  async function readBounded(res: Response, controller: AbortController): Promise<string> {
+    const declared = Number(res.headers.get('content-length') ?? '')
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      controller.abort()
+      throw new Error('gql_response_too_large')
+    }
+    if (!res.body) {
+      const text = await res.text()
+      if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error('gql_response_too_large')
+      return text
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let total = 0
+    let text = ''
+    let complete = false
+    try {
+      while (true) {
+        const next = await reader.read()
+        if (next.done) break
+        total += next.value.byteLength
+        if (total > maxBytes) {
+          controller.abort()
+          throw new Error('gql_response_too_large')
+        }
+        text += decoder.decode(next.value, { stream: true })
+      }
+      complete = true
+      return text + decoder.decode()
+    } finally {
+      if (!complete) {
+        await reader.cancel().catch(() => {})
+      }
+      reader.releaseLock()
+    }
+  }
 
   async function post(query: string): Promise<{ status: number; json: unknown; error?: string }> {
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      const controller = new AbortController()
+      timer = setTimeout(() => controller.abort(), timeoutMs)
       const res = await fetch('https://gql.twitch.tv/gql', {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'omit',
+        signal: controller.signal,
         headers: {
           'Client-ID': clientId,
           'Content-Type': 'text/plain;charset=UTF-8',
         },
         body: JSON.stringify({ query, variables: { login: channel } }),
       })
-      const text = await res.text()
+      const text = await readBounded(res, controller)
       let json: unknown = null
       try {
         json = JSON.parse(text)
@@ -100,6 +132,8 @@ export async function gqlDiscoverVodInPage(login: string): Promise<GqlPageRespon
         json: null,
         error: err instanceof Error ? err.message : 'fetch_failed',
       }
+    } finally {
+      if (timer) clearTimeout(timer)
     }
   }
 
@@ -114,7 +148,7 @@ export async function gqlDiscoverVodInPage(login: string): Promise<GqlPageRespon
   const listQuery = `query PulseArchiveVod($login: String!) {
     user(login: $login) {
       videos(first: 1, type: ARCHIVE, sort: TIME) {
-        edges { node { id } }
+        edges { node { id broadcastId stream { id } } }
       }
     }
   }`

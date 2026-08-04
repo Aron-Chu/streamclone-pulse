@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
@@ -92,7 +92,13 @@ export function auditTarballEntries(entries) {
 }
 
 function listTarball(tgzPath) {
-  const listed = spawnSync('tar', ['-tzf', tgzPath], { encoding: 'utf8' })
+  // GNU tar on Windows treats an absolute `C:/...` operand as a remote
+  // archive host. Run from the archive directory so the same command works
+  // on Windows and Linux.
+  const listed = spawnSync('tar', ['-tzf', basename(tgzPath)], {
+    cwd: dirname(tgzPath),
+    encoding: 'utf8',
+  })
   if (listed.status !== 0) {
     throw new Error(`tar -tzf failed for ${tgzPath}: ${listed.stderr || listed.stdout}`)
   }

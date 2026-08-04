@@ -1,13 +1,33 @@
 {
+  "auditReportVersion": 2,
   "vulnerabilities": {
     "react-router": {
+      "name": "react-router",
       "severity": "high",
       "via": [
         {
-          "source": 1109067,
-          "url": "https://github.com/advisories/GHSA-qwww-vcr4-c8h2"
+          "source": 1124282,
+          "name": "react-router",
+          "dependency": "react-router",
+          "title": "React Router: RSC Mode CSRF Bypass Allows Action Execution Before 400 Response",
+          "url": "https://github.com/advisories/GHSA-qwww-vcr4-c8h2",
+          "severity": "high",
+          "range": ">=7.12.0 <8.3.0"
         }
-      ]
+      ],
+      "effects": ["react-router-dom"],
+      "range": "7.12.0 - 8.2.0",
+      "nodes": ["node_modules/react-router"]
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 1,
+      "critical": 0,
+      "total": 1
     }
   }
 }

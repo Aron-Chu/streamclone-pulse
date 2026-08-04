@@ -1,6 +1,6 @@
 # StreamPulse release status
 
-Last updated: 2026-07-27 (v0.1.3 hardening source readiness — Gate A)
+Last updated: 2026-08-03 (v0.1.3 release-proof source readiness)
 
 ## Published Chrome Web Store (live)
 
@@ -11,9 +11,9 @@ Last updated: 2026-07-27 (v0.1.3 hardening source readiness — Gate A)
 | Hosted API | https://api.streampulse.stream |
 
 Website install CTAs use `streampulse-web/src/lib/publicSiteConfig.ts` only.
-**Manual account gate (open):** confirm the live CWS listing still serves **0.1.1** and
-change Support URL to `https://streampulse.stream/support` before any 0.1.3 upload
-(owner-gated; not performed by this source program).
+**Manual account gate (open):** confirm the live CWS listing version and change
+Support URL to `https://streampulse.stream/support` before any 0.1.3 upload
+(owner-gated; this repository does not assert the current dashboard version).
 
 ## v0.1.3 source target (not published)
 
@@ -32,7 +32,7 @@ portal GA, Cloudflare Access apply, soak completion, capacity raise, or marketin
 |-------|----------|-------|
 | Public site + analytics | **LIVE** | Command Center, CWS CTA, Privacy, Support, robots, and sitemap verified |
 | Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
-| Extension / Chrome Web Store | **PUBLISHED** (owner recheck live version) | Source manifests are `0.1.0` and are **not uploadable as an update** if the live listing is already ahead (reportedly may be `0.1.1` — owner verify). Support URL / dashboard state also require owner verification. Do not claim dashboard edits from this doc. |
+| Extension / Chrome Web Store | **PUBLISHED** (owner recheck live version) | The pending candidate source manifests are `0.1.3`; no 0.1.3 upload is claimed. Owner must verify the live listing is behind 0.1.3 before upload, along with the Support URL / dashboard state. Do not claim dashboard edits from this doc. |
 | Marketing / creator blast | **NO-GO** | HOLD_AT_300 + Access + soak first |
 | Collector capacity | **HOLD_AT_300 / NO_GO_350** | Unchanged |
 
@@ -47,6 +47,8 @@ Verified in this worktree against the commands recorded below:
 - Extension runtime message parsing + emote-image HTTPS/host/MIME/size/timeout hardening
 - Privacy contact source updated to `privacy@streampulse.stream`; public Privacy and Support routes verified
 - Canonical Peak branding on landing, analytics, shared public navigation, and favicon; desktop + 390px browser captures verified
+- Release-proof workflow now requires an exact tag dispatch context; no final 0.1.3 ZIP
+  attestation or store upload is claimed by this source status.
 
 ## Explicitly still open
 

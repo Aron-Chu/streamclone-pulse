@@ -85,7 +85,7 @@ npx playwright test --project=extension-mocked tests/e2e/specs/cws-extension-scr
 ## Paste-ready listing copy (next store candidate)
 
 - **Name:** StreamPulse
-- **Summary:** Live Pulse overlay for Twitch — viewers, chat, emotes, and games.
+- **Summary:** Live Pulse overlay for Twitch — viewers, chat, emotes, coverage, and moments.
 - **Single purpose:** Twitch live/VOD Pulse analytics overlay powered by StreamPulse hosted API.
 - **Category:** Productivity
 - **Language:** English
@@ -96,9 +96,9 @@ npx playwright test --project=extension-mocked tests/e2e/specs/cws-extension-scr
 - **Host permission justification (store):** StreamPulse needs HTTPS access to Twitch pages to display its live/VOD analytics overlay and identify the current channel or video. It connects to the StreamPulse API for sanitized Pulse analytics and coverage data. Emote image assets are fetched by the service worker from approved CDN hosts (7TV, Twitch CDN / jtvnw, FrankerFaceZ).
 - **Remote code:** No. All executable JavaScript is packaged with the extension; no remote JavaScript or WebAssembly is downloaded or evaluated.
 - **Scripting justification:** The extension uses bundled scripts to inspect the current Twitch page and resolve live/VOD metadata needed to display the Pulse overlay.
-- **Storage justification:** The extension stores user-selected overlay settings, theme preferences, watchlist settings, short-lived caches, and optional local debug logs.
-- **Authentication information:** No (public-first build; no Twitch OAuth and no StreamPulse beta/access key).
-- **Website content disclosed:** Active Twitch URL and stream/VOD metadata required for the overlay. Do **not** claim raw chat, personal communications, location, financial, health, or authentication information collection.
+- **Storage justification:** The extension stores user-selected overlay settings and browser-saved watchlist entries in `chrome.storage.sync`, short-lived caches in `chrome.storage.session`, and an optional opaque Protect device token plus server-confirmation metadata and removal tombstones in trusted `chrome.storage.local`. The one-time beta enrollment key is discarded and is never synced.
+- **Authentication information:** Limited optional Protect authentication: a beta access key is used once for device enrollment, then discarded; the resulting opaque device token is stored locally, sent only to `https://api.streampulse.stream`, and can be rotated or revoked. No Twitch OAuth.
+- **Website content disclosed:** Active Twitch URL and stream/VOD metadata required for the overlay. Do **not** claim raw chat, personal communications, location, financial, or health information collection. Optional Protect device authentication is disclosed separately above.
 
 Do **not** paste localhost optional-host justifications for the next store submission.
 
@@ -144,7 +144,7 @@ npm run package:development
 npm run validate:package
 ```
 
-Source manifests are **0.1.2** (RC). Owner must confirm live CWS listing is behind 0.1.2 and Support URL is `https://streampulse.stream/support` before upload. Stop before upload.
+Source manifests are **0.1.3** (candidate). Owner must confirm live CWS listing is behind 0.1.3 and Support URL is `https://streampulse.stream/support` before upload. Stop before upload.
 
 Do not upload ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.
 

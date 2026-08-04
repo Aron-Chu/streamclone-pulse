@@ -38,7 +38,9 @@ describe('privacy route', () => {
     expect(body).toMatch(/does not request or transmit Twitch cookies/i)
     expect(body).toMatch(/active Twitch browser session/i)
     expect(body).toMatch(/does not receive your Twitch cookies/i)
-    expect(body).toMatch(/does not request, store, or send a StreamPulse beta key or access key/i)
+    expect(body).toMatch(/beta access key is sent only to the hosted enrollment endpoint/i)
+    expect(body).toMatch(/discarded after that request/i)
+    expect(body).toMatch(/device token stored locally/i)
   })
 
   it('avoids internal release-blocker / counsel commentary', async () => {

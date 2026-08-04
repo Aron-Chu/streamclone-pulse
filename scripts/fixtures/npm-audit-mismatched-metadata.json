@@ -5,11 +5,11 @@
       "name": "react-router",
       "severity": "high",
       "via": [{
-        "source": 9999999,
+        "source": 1124282,
         "name": "react-router",
         "dependency": "react-router",
-        "title": "Other advisory",
-        "url": "https://example.com",
+        "title": "A different advisory with the same URL",
+        "url": "https://github.com/advisories/GHSA-qwww-vcr4-c8h2",
         "severity": "high",
         "range": ">=7.12.0 <8.3.0"
       }],

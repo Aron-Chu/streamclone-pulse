@@ -52,6 +52,24 @@ describe('parseBackgroundRequest', () => {
     })
   })
 
+  it('requires login binding for always-tracked and backfill status requests', () => {
+    expect(parseBackgroundRequest({ type: 'GET_ALWAYS_TRACKED' })).toBeNull()
+    expect(parseBackgroundRequest({ type: 'GET_PULSE_BACKFILL_STATUS', jobId: 'job-1' })).toBeNull()
+    expect(parseBackgroundRequest({ type: 'GET_ALWAYS_TRACKED', login: 'XQC' })).toEqual({
+      type: 'GET_ALWAYS_TRACKED',
+      login: 'xqc',
+    })
+    expect(parseBackgroundRequest({
+      type: 'GET_PULSE_BACKFILL_STATUS',
+      jobId: 'job-1',
+      login: 'XQC',
+    })).toEqual({
+      type: 'GET_PULSE_BACKFILL_STATUS',
+      jobId: 'job-1',
+      login: 'xqc',
+    })
+  })
+
   it('normalizes optional LIST_BOOKMARKS login and rejects invalid logins', () => {
     expect(parseBackgroundRequest({ type: 'LIST_BOOKMARKS' })).toEqual({
       type: 'LIST_BOOKMARKS',

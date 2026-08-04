@@ -10,7 +10,6 @@
  *   - Every main/types/exports target (including CSS wildcards)
  */
 import {
-  copyFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -21,16 +20,14 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { basename, dirname, join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { PACKAGE_DIRS, auditTarballEntries } from './check-package-tarball.mjs'
 import { collectRequiredExportTargets } from './ensure-packages-built.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const npmShell = process.platform === 'win32'
-
 function run(cmd, args, cwd, opts = {}) {
   const bin = process.platform === 'win32' && cmd === 'npm' ? npmCmd : cmd
   const result = spawnSync(bin, args, {
@@ -48,7 +45,13 @@ function run(cmd, args, cwd, opts = {}) {
 }
 
 function listTarball(tgzPath) {
-  const listed = spawnSync('tar', ['-tzf', tgzPath], { encoding: 'utf8' })
+  // GNU tar on Windows treats an absolute `C:/...` operand as a remote
+  // archive host. Run from the archive directory so the same command works
+  // on Windows and Linux.
+  const listed = spawnSync('tar', ['-tzf', basename(tgzPath)], {
+    cwd: dirname(tgzPath),
+    encoding: 'utf8',
+  })
   if (listed.status !== 0) {
     throw new Error(`tar -tzf failed: ${listed.stderr || listed.stdout}`)
   }
@@ -156,12 +159,48 @@ function writeConsumerPackageJson(consumerDir, tarballs, extraDeps = {}) {
   )
 }
 
+function listJavaScriptFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) return listJavaScriptFiles(fullPath)
+    return entry.isFile() && entry.name.endsWith('.js') ? [fullPath] : []
+  })
+}
+
+async function importAllPackageEntryPoints(consumerDir, packageName) {
+  const packageDir = join(consumerDir, 'node_modules', packageName)
+  const packageJson = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
+  const exportKeys = packageJson.exports && typeof packageJson.exports === 'object'
+    ? Object.keys(packageJson.exports)
+    : []
+  if (!exportKeys.includes('.')) throw new Error(`${packageName} missing root export`)
+
+  const rootModule = await import(packageName)
+  if (!rootModule || typeof rootModule !== 'object') {
+    throw new Error(`${packageName} root import failed`)
+  }
+
+  const distDir = join(packageDir, 'dist')
+  if (exportKeys.includes('./*')) {
+    const files = listJavaScriptFiles(distDir)
+    for (const filePath of files) {
+      const rel = relative(distDir, filePath).replace(/\\/g, '/')
+      const subpath = rel.replace(/\.js$/, '')
+      await import(`${packageName}/${subpath}`)
+    }
+    return files.length + 1
+  }
+  return 1
+}
+
 async function testNodeImports(consumerDir) {
-  const core = await import(pathToFileURL(join(consumerDir, 'node_modules/@streampulse/pulse-core/dist/index.js')).href)
-  if (typeof core.mergeRecapMoments !== 'function' && typeof core.formatMomentTimeLabel !== 'function') {
-    // At least one known export must resolve from packaged dist.
-    const keys = Object.keys(core)
-    if (keys.length === 0) throw new Error('pulse-core packaged export is empty')
+  const importedCounts = {}
+  for (const packageName of [
+    '@streampulse/pulse-core',
+    '@streampulse/pulse-charts',
+    '@streampulse/analytics-console',
+  ]) {
+    importedCounts[packageName] = await importAllPackageEntryPoints(consumerDir, packageName)
   }
 
   const chartsPkg = JSON.parse(
@@ -188,12 +227,11 @@ async function testNodeImports(consumerDir) {
   )
   if (!existsSync(acCssPath)) throw new Error(`analytics-console CSS missing: ${acCssPath}`)
 
-  // Wildcard export: import a concrete subpath from packaged dist (not source).
-  const coreSub = join(consumerDir, 'node_modules/@streampulse/pulse-core/dist/liveHeat.js')
-  if (!existsSync(coreSub)) throw new Error('pulse-core wildcard export target dist/liveHeat.js missing')
-  await import(pathToFileURL(coreSub).href)
-
-  console.log('consumer: Node ESM imports + CSS exports OK')
+  console.log(
+    `consumer: Node ESM imports + CSS exports OK (${Object.entries(importedCounts)
+      .map(([name, count]) => `${name}=${count}`)
+      .join(', ')})`,
+  )
 }
 
 function testTypeScriptDeclarations(consumerDir, tarballs) {
@@ -323,7 +361,10 @@ function testAllExportTargetsOnDisk(tarballs) {
     for (const [name, tgz] of tarballs) {
       const dest = join(extractRoot, name.replace('@', '').replace('/', '-'))
       mkdirSync(dest, { recursive: true })
-      const extracted = spawnSync('tar', ['-xzf', tgz, '-C', dest], { encoding: 'utf8' })
+      const extracted = spawnSync('tar', ['-xzf', basename(tgz), '-C', dest], {
+        cwd: dirname(tgz),
+        encoding: 'utf8',
+      })
       if (extracted.status !== 0) {
         throw new Error(`extract failed for ${name}: ${extracted.stderr}`)
       }
@@ -346,7 +387,7 @@ function testAllExportTargetsOnDisk(tarballs) {
   }
 }
 
-function main() {
+async function main() {
   const nest = mkdtempSync(join(tmpdir(), 'pulse-pack-consumer-'))
   try {
     const packDir = join(nest, 'tarballs')
@@ -357,27 +398,7 @@ function main() {
     mkdirSync(nodeConsumer, { recursive: true })
     writeConsumerPackageJson(nodeConsumer, tarballs)
     run('npm', ['install', '--ignore-scripts'], nodeConsumer)
-    // Async import bridge
-    const importProbe = join(nodeConsumer, 'probe.mjs')
-    writeFileSync(
-      importProbe,
-      `import { pathToFileURL } from 'node:url'\n` +
-        `import { join, dirname } from 'node:path'\n` +
-        `import { fileURLToPath } from 'node:url'\n` +
-        `import { existsSync, readFileSync } from 'node:fs'\n` +
-        `const root = dirname(fileURLToPath(import.meta.url))\n` +
-        `const core = await import('@streampulse/pulse-core')\n` +
-        `if (!core || typeof core !== 'object') throw new Error('pulse-core import failed')\n` +
-        `const chartsPkg = JSON.parse(readFileSync(join(root,'node_modules/@streampulse/pulse-charts/package.json'),'utf8'))\n` +
-        `const css = join(root,'node_modules/@streampulse/pulse-charts', String(chartsPkg.exports['./pulse-chart-motion.css']).replace(/^\\.\\//,''))\n` +
-        `if (!existsSync(css)) throw new Error('css missing')\n` +
-        `const acPkg = JSON.parse(readFileSync(join(root,'node_modules/@streampulse/analytics-console/package.json'),'utf8'))\n` +
-        `const acCss = join(root,'node_modules/@streampulse/analytics-console', String(acPkg.exports['./analytics-chart-motion.css']).replace(/^\\.\\//,''))\n` +
-        `if (!existsSync(acCss)) throw new Error('ac css missing')\n` +
-        `await import('@streampulse/pulse-core/liveHeat')\n` +
-        `console.log('node consumer probe ok')\n`,
-    )
-    run('node', [importProbe], nodeConsumer, { stdio: 'inherit' })
+    await testNodeImports(nodeConsumer)
 
     testTypeScriptDeclarations(nest, tarballs)
     testViteProductionBuild(nest, tarballs)
@@ -390,5 +411,8 @@ function main() {
 
 const entry = process.argv[1] ? process.argv[1].replace(/\\/g, '/') : ''
 if (entry.endsWith('check-package-tarball-consumer.mjs')) {
-  main()
+  main().catch((error) => {
+    console.error(`check-package-tarball-consumer: ${error?.stack || error}`)
+    process.exitCode = 1
+  })
 }

@@ -1,24 +1,39 @@
 import {
+  addPulseWatchlist,
   createPulseBookmark,
+  deletePulseWatchlist,
   deletePulseBookmark,
+  enrollDevice,
   fetchAlwaysTracked,
   fetchExtensionCoverage,
   fetchExtensionHealth,
+  fetchExtensionMe,
   fetchPastVodRows,
   fetchPulseBackfillStatus,
   fetchPulseBookmarks,
   fetchPulseChannel,
+  fetchPulseWatchlist,
   fetchPulseVod,
   fetchTopClip,
   postPulseBackfill,
   postVodHint,
   postWatchChannel,
   postExtensionDiagnostic,
+  revokeDevice,
+  rotateDevice,
   setAlwaysTracked,
 } from './api.ts'
+import {
+  classifyDeviceAuthError,
+  clearDeviceCredential,
+  getDeviceCredential,
+  isDeviceCredentialInvalidatedError,
+  isDeviceCredentialLive,
+  safeDeviceAuthErrorMessage,
+} from './deviceAuth.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracking.ts'
-import type { BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
+import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -34,7 +49,7 @@ import {
   trackDiagnosticsWork,
   trustedDiagnosticsBuildMeta,
 } from '../shared/extensionDiagnostics.ts'
-import { getBackendUrl, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
+import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
 import {
   addToWatchlist,
@@ -50,7 +65,7 @@ import {
   initPulseDebug,
   pulseDebug,
 } from '../shared/pulseDebug.ts'
-import { tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
+import { isExtensionPageSender, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
@@ -65,8 +80,10 @@ import {
   ensureWatchCoalesced,
 } from './watchCoordinator.ts'
 import {
-  planWatchlistStartupSync,
+  classifyProtectError,
+  classifyProtectHttpStatus,
   planWatchlistStorageDelta,
+  protectStatusMessage,
 } from './alwaysTrackedSync.ts'
 import {
   emitAnalyticsEvents,
@@ -82,29 +99,50 @@ const softStaleFailureByLogin = new Map<string, number>()
 /** Suppress storage-listener sync while message handlers own the mutation. */
 let suppressWatchlistStorageSync = false
 
+type ProtectWriteOutcome = {
+  login: string
+  operation: ProtectSyncOperation
+  state: ProtectSyncState | 'removed'
+  status?: number
+  message?: string
+}
+
+async function executeProtectWrite(login: string, track: boolean): Promise<ProtectWriteOutcome> {
+  const operation: ProtectSyncOperation = track ? 'add' : 'remove'
+  try {
+    const result = (await hostedBackend())
+      ? track ? await addPulseWatchlist(login) : await deletePulseWatchlist(login)
+      : await setAlwaysTracked(login, track)
+    if (result.ok) {
+      return { login, operation, state: track ? 'protected' : 'removed' }
+    }
+    const state = classifyProtectHttpStatus(result.status, operation)
+    return {
+      login,
+      operation,
+      state,
+      status: result.status,
+      message: protectStatusMessage(state, operation, result.status),
+    }
+  } catch (error) {
+    const state = classifyProtectError(error)
+    return {
+      login,
+      operation,
+      state,
+      message: protectStatusMessage(state, operation),
+    }
+  }
+}
+
 async function applyAlwaysTrackedPlan(plan: {
   trackTrue: string[]
   trackFalse: string[]
-}): Promise<{ attempted: number; unauthorized: number; failed: number }> {
-  // Public hosted API has no guest Protect credentials — skip network writes to
-  // avoid unauthorized sync storms. Local BFF still receives best-effort sync.
-  if (await hostedBackend()) {
-    return { attempted: 0, unauthorized: 0, failed: 0 }
-  }
-
-  const writes = [
-    ...plan.trackTrue.map(login => setAlwaysTracked(login, true)),
-    ...plan.trackFalse.map(login => setAlwaysTracked(login, false)),
-  ]
-  const results = await Promise.all(writes)
-  let unauthorized = 0
-  let failed = 0
-  for (const result of results) {
-    if (result.ok) continue
-    if (result.unauthorized) unauthorized += 1
-    else failed += 1
-  }
-  return { attempted: results.length, unauthorized, failed }
+}): Promise<ProtectWriteOutcome[]> {
+  return Promise.all([
+    ...plan.trackTrue.map(login => executeProtectWrite(login, true)),
+    ...plan.trackFalse.map(login => executeProtectWrite(login, false)),
+  ])
 }
 
 async function withWatchlistMutationOwnership<T>(fn: () => Promise<T>): Promise<T> {
@@ -118,6 +156,134 @@ async function withWatchlistMutationOwnership<T>(fn: () => Promise<T>): Promise<
 
 async function hostedBackend(): Promise<boolean> {
   return isHostedBackendUrl(await getBackendUrl())
+}
+
+const PROTECT_STATE_PRIORITY: Record<ProtectSyncState | 'idle', number> = {
+  idle: 0,
+  protected: 1,
+  pending: 2,
+  retry: 3,
+  failure: 4,
+  cap: 5,
+  unauthorized: 6,
+}
+
+function statusFromStorageState(state: ProtectSyncStorageState, localChannels: string[]): WatchlistSyncStatus {
+  const channels: Record<string, ProtectChannelSyncStatus> = {}
+  const visibleLogins = new Set([...localChannels, ...state.tombstones])
+  for (const login of visibleLogins) {
+    const record = state.channels[login]
+    if (record) {
+      channels[login] = { ...record }
+      continue
+    }
+    if (state.serverConfirmed.includes(login)) {
+      channels[login] = { state: 'protected' }
+    }
+  }
+  let overall: WatchlistSyncStatus['overall'] = 'idle'
+  for (const record of Object.values(channels)) {
+    if (PROTECT_STATE_PRIORITY[record.state] > PROTECT_STATE_PRIORITY[overall]) {
+      overall = record.state
+    }
+  }
+  return {
+    overall,
+    channels,
+    serverConfirmed: [...state.serverConfirmed],
+    tombstones: [...state.tombstones],
+  }
+}
+
+function setProtectChannelState(
+  state: ProtectSyncStorageState,
+  login: string,
+  next: ProtectChannelSyncStatus,
+): void {
+  state.channels[login] = { ...next, updatedAt: Date.now() }
+}
+
+function markProtectPlanPending(
+  state: ProtectSyncStorageState,
+  plan: { trackTrue: string[]; trackFalse: string[] },
+): void {
+  for (const login of plan.trackTrue) {
+    setProtectChannelState(state, login, { state: 'pending', operation: 'add' })
+    state.tombstones = state.tombstones.filter(item => item !== login)
+  }
+  for (const login of plan.trackFalse) {
+    setProtectChannelState(state, login, { state: 'pending', operation: 'remove' })
+    if (!state.tombstones.includes(login)) state.tombstones = [...state.tombstones, login].sort()
+  }
+}
+
+function applyProtectOutcomes(state: ProtectSyncStorageState, outcomes: ProtectWriteOutcome[]): void {
+  for (const outcome of outcomes) {
+    if (outcome.state === 'removed') {
+      state.serverConfirmed = state.serverConfirmed.filter(login => login !== outcome.login)
+      state.tombstones = state.tombstones.filter(login => login !== outcome.login)
+      delete state.channels[outcome.login]
+      continue
+    }
+    if (outcome.state === 'protected') {
+      if (!state.serverConfirmed.includes(outcome.login)) {
+        state.serverConfirmed = [...state.serverConfirmed, outcome.login].sort()
+      }
+      state.tombstones = state.tombstones.filter(login => login !== outcome.login)
+    }
+    setProtectChannelState(state, outcome.login, {
+      state: outcome.state,
+      operation: outcome.operation,
+      ...(outcome.status ? { status: outcome.status } : {}),
+      ...(outcome.message ? { message: outcome.message } : {}),
+    })
+  }
+}
+
+function shouldRetryProtectAdd(
+  record: ProtectChannelSyncStatus | undefined,
+  force: boolean,
+): boolean {
+  if (!record || record.state === 'protected') return !record
+  if (force) return true
+  return record.state !== 'unauthorized' && record.state !== 'cap'
+}
+
+function markProtectReadFailure(
+  state: ProtectSyncStorageState,
+  localChannels: string[],
+  tombstones: string[],
+  error: unknown,
+): void {
+  const status = classifyProtectError(error)
+  state.serverConfirmed = status === 'unauthorized' ? [] : state.serverConfirmed
+  for (const login of localChannels) {
+    setProtectChannelState(state, login, {
+      state: status,
+      operation: 'add',
+      message: protectStatusMessage(status, 'add'),
+    })
+  }
+  for (const login of tombstones) {
+    setProtectChannelState(state, login, {
+      state: status,
+      operation: 'remove',
+      message: protectStatusMessage(status, 'remove'),
+    })
+  }
+}
+
+async function resetProtectPrincipalIfChanged(
+  state: ProtectSyncStorageState,
+  principalId: string | undefined,
+  localChannels: string[],
+): Promise<void> {
+  if (state.principalId === principalId) return
+  state.principalId = principalId
+  state.serverConfirmed = []
+  for (const login of localChannels) {
+    setProtectChannelState(state, login, { state: 'pending', operation: 'add' })
+  }
 }
 
 async function loadCoverageTier(
@@ -143,12 +309,18 @@ async function cachePulseIfEnabled(
   login: string,
   payload: NonNullable<PulseUpdateMessage['payload']>,
   window: PulseCacheWindow,
+  requestedStreamId?: string,
 ): Promise<void> {
+  const expected = String(requestedStreamId ?? '').trim()
+  const actual = String(payload.streamId ?? '').trim()
+  if (expected && actual !== expected) {
+    throw new Error('pulse_stream_mismatch')
+  }
   await cacheSessionPulseIfEnabled(login, {
     payload,
     fetchedAt: Date.now(),
     window,
-    streamId: String(payload.streamId ?? '').trim(),
+    streamId: actual,
   })
 }
 
@@ -156,15 +328,16 @@ async function refreshPulse(
   login: string,
   window: PulseCacheWindow = 'recent',
   forceCoverage = false,
+  streamId?: string,
 ): Promise<void> {
   // Coalesced via handleGetPulse cold path (same in-flight map as GET_PULSE).
   const result = await handleGetPulse(
-    { login, window, forceCoverage, allowWatch: false },
+    { login, window, streamId, forceCoverage, allowWatch: false },
     pulseFetchDeps(),
     pulseCoord,
   )
   if (result.error && !result.payload) {
-    broadcastPulse(login, null, result.error)
+    broadcastPulse(login, null, result.error, null, streamId)
   }
 }
 
@@ -183,7 +356,7 @@ function pulseFetchDeps() {
       payload: PulseUpdateMessage['payload'],
       error: string | undefined,
       coverageTier: ExtensionCoverageTierResponse | null | undefined,
-      meta?: { softStaleFailure?: boolean },
+      meta?: { softStaleFailure?: boolean; streamId?: string; window?: PulseCacheWindow },
     ) => {
       if (meta?.softStaleFailure) {
         softStaleFailureByLogin.set(login.toLowerCase(), Date.now())
@@ -192,6 +365,7 @@ function pulseFetchDeps() {
           type: 'PULSE_UPDATE',
           login,
           payload: null,
+          streamId: meta?.streamId,
           error: undefined,
           coverageTier: undefined,
           softStaleRefresh: true,
@@ -210,7 +384,7 @@ function pulseFetchDeps() {
         return
       }
       softStaleFailureByLogin.delete(login.toLowerCase())
-      broadcastPulse(login, payload, error, coverageTier)
+        broadcastPulse(login, payload, error, coverageTier, meta?.streamId)
     },
   }
 }
@@ -219,6 +393,7 @@ async function peekPulse(
   login: string,
   window: PulseCacheWindow = 'recent',
   forceCoverage = false,
+  streamId?: string,
 ): Promise<{
   payload: PulseUpdateMessage['payload']
   coverageTier: ExtensionCoverageTierResponse | null
@@ -226,10 +401,10 @@ async function peekPulse(
 }> {
   try {
     const [payload, coverageTier] = await Promise.all([
-      fetchPulseChannel(login, { window }),
+      fetchPulseChannel(login, { window, streamId }),
       loadCoverageTier(login, forceCoverage),
     ])
-    await cachePulseIfEnabled(login, payload, window)
+      await cachePulseIfEnabled(login, payload, window, streamId)
     return { payload, coverageTier }
   } catch (err) {
     return {
@@ -240,13 +415,147 @@ async function peekPulse(
   }
 }
 
+async function getDeviceAuthStatus(): Promise<DeviceAuthStatus> {
+  const credential = await getDeviceCredential()
+  if (!isDeviceCredentialLive(credential)) {
+    return { connected: false, state: 'not_connected', error: 'device_not_connected' }
+  }
+  try {
+    const me = await fetchExtensionMe()
+    if (
+      me.principalKind !== 'device'
+      || me.principalId !== credential.principalId
+      || me.deviceId !== credential.deviceId
+    ) {
+      await clearDeviceCredential()
+      await markProtectCredentialUnavailable('device_identity_mismatch')
+      return { connected: false, state: 'unauthorized', error: 'device_identity_mismatch' }
+    }
+    return {
+      connected: true,
+      state: 'connected',
+      principalId: credential.principalId,
+      deviceId: credential.deviceId,
+      expiresAt: credential.expiresAt,
+      watchlistCount: me.watchlistCount,
+    }
+  } catch (err) {
+    if (isDeviceCredentialInvalidatedError(err)) {
+      await clearDeviceCredential()
+      await markProtectCredentialUnavailable('device_authorization_required')
+      return {
+        connected: false,
+        state: 'unauthorized',
+        error: safeDeviceAuthErrorMessage(err, 'device_authorization_required'),
+      }
+    }
+    return {
+      connected: true,
+      state: classifyDeviceAuthError(err),
+      principalId: credential.principalId,
+      deviceId: credential.deviceId,
+      expiresAt: credential.expiresAt,
+      error: safeDeviceAuthErrorMessage(err, 'device_status_failed'),
+    }
+  }
+}
+
+async function markProtectCredentialUnavailable(message: string): Promise<void> {
+  const channels = await getWatchlist().catch(() => [])
+  const state = await getProtectSyncState()
+  state.serverConfirmed = []
+  markProtectReadFailure(state, channels, state.tombstones, new Error(message))
+  await setProtectSyncState(state)
+}
+
+function senderIsExtensionPage(sender: chrome.runtime.MessageSender): boolean {
+  return isExtensionPageSender(sender, chrome.runtime.id)
+}
+
+function senderIsTwitchPage(sender: chrome.runtime.MessageSender): boolean {
+  return isTrustedTwitchTopFrameSender(sender, chrome.runtime.id)
+}
+
+const EXTENSION_PAGE_ONLY_MESSAGES = new Set<BackgroundRequest['type']>([
+  'ENROLL_DEVICE',
+  'GET_DEVICE_AUTH_STATUS',
+  'ROTATE_DEVICE',
+  'REVOKE_DEVICE',
+  'LIST_WATCHLIST',
+  'ADD_WATCHLIST',
+  'REMOVE_WATCHLIST',
+  'SYNC_WATCHLIST',
+  'DELETE_BOOKMARK',
+  'GET_PULSE_DEBUG_LOG',
+  'CLEAR_PULSE_DEBUG_LOG',
+])
+
+function messageLogin(message: BackgroundRequest): string | undefined {
+  switch (message.type) {
+    case 'TRACK':
+    case 'UNTRACK':
+    case 'GET_PULSE':
+    case 'GET_COVERAGE':
+    case 'GET_ALWAYS_TRACKED':
+    case 'GET_CLIP':
+    case 'HINT_VOD':
+    case 'DISCOVER_LIVE_VOD':
+    case 'LOAD_MISSED_MOMENTS':
+    case 'GET_PULSE_BACKFILL_STATUS':
+    case 'LIST_PAST_VODS':
+      return message.login
+    case 'LIST_BOOKMARKS':
+      return message.login
+    case 'SAVE_BOOKMARK':
+      return message.bookmark.login
+    default:
+      return undefined
+  }
+}
+
+const CHANNEL_BOUND_MESSAGES = new Set<BackgroundRequest['type']>([
+  'TRACK',
+  'UNTRACK',
+  'GET_PULSE',
+  'GET_COVERAGE',
+  'GET_ALWAYS_TRACKED',
+  'GET_CLIP',
+  'HINT_VOD',
+  'DISCOVER_LIVE_VOD',
+  'LOAD_MISSED_MOMENTS',
+  'GET_PULSE_BACKFILL_STATUS',
+  'LIST_PAST_VODS',
+  'LIST_BOOKMARKS',
+  'SAVE_BOOKMARK',
+])
+
+function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
+  if (sender.id !== chrome.runtime.id) return false
+  if (EXTENSION_PAGE_ONLY_MESSAGES.has(message.type)) {
+    return senderIsExtensionPage(sender)
+  }
+  if (senderIsExtensionPage(sender)) return true
+  if (!senderIsTwitchPage(sender)) return false
+  if (!CHANNEL_BOUND_MESSAGES.has(message.type)) return true
+  const login = messageLogin(message)
+  return Boolean(login && tabUrlMatchesPulseLogin(sender.tab?.url, login))
+}
+
 function broadcastPulse(
   login: string,
   payload: PulseUpdateMessage['payload'],
   error?: string,
   coverageTier?: ExtensionCoverageTierResponse | null,
+  streamId?: string,
 ): void {
-  const message: PulseUpdateMessage = { type: 'PULSE_UPDATE', login, payload, error, coverageTier }
+  const message: PulseUpdateMessage = {
+    type: 'PULSE_UPDATE',
+    login,
+    payload,
+    streamId: String(streamId ?? payload?.streamId ?? '').trim() || undefined,
+    error,
+    coverageTier,
+  }
   chrome.runtime.sendMessage(message).catch(() => {
     // No listeners when overlay is closed.
   })
@@ -289,7 +598,7 @@ async function ensureTracked(login: string): Promise<void> {
   )
 }
 
-async function syncWatchlistToBackend(): Promise<string[]> {
+async function syncWatchlistToBackend(force = false): Promise<string[]> {
   let channels: string[] | null = null
   try {
     channels = await getWatchlist()
@@ -297,10 +606,51 @@ async function syncWatchlistToBackend(): Promise<string[]> {
     channels = null
   }
 
-  const plan = planWatchlistStartupSync(channels, [])
-  await applyAlwaysTrackedPlan(plan)
+  if (channels == null) return []
 
-  if (channels && !(await hostedBackend())) {
+  const hosted = await hostedBackend()
+  const credential = hosted ? await getDeviceCredential() : null
+  const state = await getProtectSyncState()
+  await resetProtectPrincipalIfChanged(state, credential?.principalId, channels)
+
+  if (hosted && !isDeviceCredentialLive(credential)) {
+    state.serverConfirmed = []
+    markProtectReadFailure(state, channels, state.tombstones, new Error('device_authorization_required'))
+    await setProtectSyncState(state)
+    return channels
+  }
+
+  let serverChannels: string[]
+  try {
+    serverChannels = hosted ? await fetchPulseWatchlist() : await fetchAlwaysTracked()
+  } catch (error) {
+    markProtectReadFailure(state, channels, state.tombstones, error)
+    await setProtectSyncState(state)
+    return channels
+  }
+
+  state.serverConfirmed = [...new Set(serverChannels)].sort()
+  const plan = { trackTrue: [] as string[], trackFalse: [...state.tombstones] }
+  for (const login of channels) {
+    if (state.serverConfirmed.includes(login)) {
+      setProtectChannelState(state, login, { state: 'protected' })
+      state.tombstones = state.tombstones.filter(item => item !== login)
+      continue
+    }
+    const existing = state.channels[login]
+    if (existing?.state === 'protected') {
+      setProtectChannelState(state, login, { state: 'pending', operation: 'add' })
+    }
+    if (shouldRetryProtectAdd(state.channels[login], force)) {
+      plan.trackTrue.push(login)
+    }
+  }
+  markProtectPlanPending(state, plan)
+  const outcomes = await applyAlwaysTrackedPlan(plan)
+  applyProtectOutcomes(state, outcomes)
+  await setProtectSyncState(state)
+
+  if (!hosted) {
     for (const login of channels) {
       if (!isTracked(login)) {
         await ensureTracked(login)
@@ -319,7 +669,18 @@ async function syncWatchlistStorageDelta(
     normalizeWatchlist(oldValue),
     normalizeWatchlist(newValue),
   )
-  await applyAlwaysTrackedPlan(plan)
+  if (plan.trackTrue.length === 0 && plan.trackFalse.length === 0) return
+  const state = await getProtectSyncState()
+  const hosted = await hostedBackend()
+  const credential = hosted ? await getDeviceCredential() : null
+  await resetProtectPrincipalIfChanged(state, credential?.principalId, normalizeWatchlist(newValue))
+  for (const login of plan.trackTrue) {
+    state.tombstones = state.tombstones.filter(item => item !== login)
+  }
+  markProtectPlanPending(state, plan)
+  const outcomes = await applyAlwaysTrackedPlan(plan)
+  applyProtectOutcomes(state, outcomes)
+  await setProtectSyncState(state)
 }
 
 const PAST_VODS_CACHE_MS = 5 * 60 * 1000
@@ -354,9 +715,17 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   void (async () => {
+    if (!sender.id || sender.id !== chrome.runtime.id) {
+      sendResponse({ error: 'unauthorized_sender' })
+      return
+    }
     const message = parseBackgroundRequest(rawMessage)
     if (!message) {
       sendResponse({ error: 'invalid_message' })
+      return
+    }
+    if (!isAuthorizedRuntimeSender(message, sender)) {
+      sendResponse({ error: 'unauthorized_sender' })
       return
     }
     try {
@@ -453,8 +822,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'GET_ALWAYS_TRACKED': {
           try {
-            const channels = await fetchAlwaysTracked()
-            sendResponse({ type: 'ALWAYS_TRACKED', channels } satisfies BackgroundResponse)
+            const channels = (await hostedBackend())
+              ? await fetchPulseWatchlist()
+              : await fetchAlwaysTracked()
+            // Content pages only need the current channel's status. Do not expose
+            // the complete local or principal-scoped watchlist to page content.
+            sendResponse({
+              type: 'ALWAYS_TRACKED',
+              channels: channels.filter(channel => channel === message.login),
+            } satisfies BackgroundResponse)
           } catch (err) {
             sendResponse({
               type: 'ALWAYS_TRACKED',
@@ -496,7 +872,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
               streamId: message.streamId,
               vodId: message.vodId,
             })
-            await refreshPulse(message.login, 'full', true)
+            await refreshPulse(message.login, 'full', true, message.streamId)
             sendResponse({ ok: true, vodId: result.vodId ?? message.vodId })
           } catch (err) {
             await pulseDebug(
@@ -517,18 +893,19 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
             toOffsetSeconds: message.toOffsetSeconds,
           })
           if (job.status === 'already_available' || job.status === 'done') {
-            await refreshPulse(message.login, 'full', true)
+            await refreshPulse(message.login, 'full', true, message.streamId)
           }
           sendResponse({ type: 'PULSE_BACKFILL', job } satisfies BackgroundResponse)
           return
         }
         case 'GET_PULSE_BACKFILL_STATUS': {
           const job = await fetchPulseBackfillStatus(message.jobId)
+          if (job.login !== message.login) {
+            sendResponse({ type: 'PULSE_BACKFILL_STATUS', job: null, error: 'backfill_login_mismatch' } satisfies BackgroundResponse)
+            return
+          }
           if (job.status === 'done' || job.status === 'already_available') {
-            const login = job.login
-            if (login) {
-              await refreshPulse(login, 'full', true)
-            }
+            await refreshPulse(message.login, 'full', true, job.streamId)
           }
           sendResponse({ type: 'PULSE_BACKFILL_STATUS', job } satisfies BackgroundResponse)
           return
@@ -548,6 +925,34 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
             ok: health.ok,
             version: health.version,
             helixEnabled: health.helixEnabled,
+          } satisfies BackgroundResponse)
+          return
+        }
+        case 'GET_DEVICE_AUTH_STATUS': {
+          sendResponse({ type: 'DEVICE_AUTH', status: await getDeviceAuthStatus() } satisfies BackgroundResponse)
+          return
+        }
+        case 'ENROLL_DEVICE': {
+          await enrollDevice(message.betaKey)
+          await syncWatchlistToBackend(true)
+          sendResponse({ type: 'DEVICE_AUTH', status: await getDeviceAuthStatus() } satisfies BackgroundResponse)
+          return
+        }
+        case 'ROTATE_DEVICE': {
+          await rotateDevice()
+          sendResponse({ type: 'DEVICE_AUTH', status: await getDeviceAuthStatus() } satisfies BackgroundResponse)
+          return
+        }
+        case 'REVOKE_DEVICE': {
+          await revokeDevice()
+          const revokedChannels = await getWatchlist().catch(() => [])
+          const revokedState = await getProtectSyncState()
+          revokedState.serverConfirmed = []
+          markProtectReadFailure(revokedState, revokedChannels, revokedState.tombstones, new Error('device_authorization_required'))
+          await setProtectSyncState(revokedState)
+          sendResponse({
+            type: 'DEVICE_AUTH',
+            status: { connected: false, state: 'unauthorized', error: 'device_revoked' },
           } satisfies BackgroundResponse)
           return
         }
@@ -636,31 +1041,37 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'LIST_WATCHLIST': {
-          sendResponse({ type: 'WATCHLIST', channels: await getWatchlist() } satisfies BackgroundResponse)
+          const channels = await getWatchlist()
+          const state = await getProtectSyncState()
+          sendResponse({ type: 'WATCHLIST', channels, sync: statusFromStorageState(state, channels) } satisfies BackgroundResponse)
           return
         }
         case 'ADD_WATCHLIST': {
-          const channels = await withWatchlistMutationOwnership(async () => {
-            // Browser-sync list is source of truth for the public extension.
+          const result = await withWatchlistMutationOwnership(async () => {
+            const previous = await getWatchlist()
             const next = await addToWatchlist(message.login)
-            await applyAlwaysTrackedPlan({ trackTrue: [message.login], trackFalse: [] })
+            await syncWatchlistStorageDelta(previous, next)
             return next
           })
-          sendResponse({ type: 'WATCHLIST', channels } satisfies BackgroundResponse)
+          const state = await getProtectSyncState()
+          sendResponse({ type: 'WATCHLIST', channels: result, sync: statusFromStorageState(state, result) } satisfies BackgroundResponse)
           return
         }
         case 'REMOVE_WATCHLIST': {
-          const channels = await withWatchlistMutationOwnership(async () => {
+          const result = await withWatchlistMutationOwnership(async () => {
+            const previous = await getWatchlist()
             const next = await removeFromWatchlist(message.login)
-            await applyAlwaysTrackedPlan({ trackTrue: [], trackFalse: [message.login] })
+            await syncWatchlistStorageDelta(previous, next)
             return next
           })
-          sendResponse({ type: 'WATCHLIST', channels } satisfies BackgroundResponse)
+          const state = await getProtectSyncState()
+          sendResponse({ type: 'WATCHLIST', channels: result, sync: statusFromStorageState(state, result) } satisfies BackgroundResponse)
           return
         }
         case 'SYNC_WATCHLIST': {
           const channels = await syncWatchlistToBackend()
-          sendResponse({ type: 'SYNC_WATCHLIST', channels } satisfies BackgroundResponse)
+          const state = await getProtectSyncState()
+          sendResponse({ type: 'SYNC_WATCHLIST', channels, sync: statusFromStorageState(state, channels) } satisfies BackgroundResponse)
           return
         }
         case 'LIST_BOOKMARKS': {
@@ -742,6 +1153,30 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
             vodPulse: null,
             error: messageText,
           } satisfies VodPulseUpdateMessage)
+          return
+        case 'ENROLL_DEVICE':
+        case 'GET_DEVICE_AUTH_STATUS':
+        case 'ROTATE_DEVICE':
+        case 'REVOKE_DEVICE':
+          if (message.type !== 'ENROLL_DEVICE' && isDeviceCredentialInvalidatedError(err)) {
+            await clearDeviceCredential()
+            await markProtectCredentialUnavailable('device_authorization_required')
+          }
+          {
+            const credential = await getDeviceCredential()
+            const state = classifyDeviceAuthError(err)
+            const connected = isDeviceCredentialLive(credential)
+            const status: DeviceAuthStatus = {
+              connected,
+              state: connected ? state : state === 'cap' ? 'cap' : state === 'retry' ? 'retry' : 'unauthorized',
+              ...(connected ? { deviceId: credential.deviceId, expiresAt: credential.expiresAt } : {}),
+              error: safeDeviceAuthErrorMessage(err, 'device_operation_failed'),
+            }
+          sendResponse({
+            type: 'DEVICE_AUTH',
+            status,
+          } satisfies BackgroundResponse)
+          }
           return
         default:
           sendResponse({

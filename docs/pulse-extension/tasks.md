@@ -146,7 +146,7 @@ Goal: private save queue, shared backend with the web app.
 Goal (original): anyone can install. Infra notes lived in design §7.
 
 - [x] **P6-1** **TLS + domain:** `https://api.streampulse.stream` is live (historical blocker cleared).
-- [ ] **P6-2** Device auth — **deferred / not required** for public-first extension (no beta key).
+- [x] **P6-2** Optional Protect device auth — one-time beta enrollment creates a local device token; token rotation/revocation and principal-scoped watchlist writes are handled by the hosted contract.
 - [~] **P6-3** Shared tracking pool / caps — capacity work continues under backend/ops; not an extension store blocker by itself.
 - [~] **P6-4** Rate limiting — hosted/ops concern; track under backend/ops, not as extension P6 exit.
 - [ ] **P6-5** pgbouncer + replicas — ops scaling; not RPR store gate.

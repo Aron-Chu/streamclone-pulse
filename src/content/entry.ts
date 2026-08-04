@@ -41,12 +41,16 @@ import { getWatchlist } from '../shared/watchlist.ts'
 import { isPulseRosterEligible } from '../ui/pulseEligibility.ts'
 
 import { vodPulseToChannelPayload } from '../vod/vodPulseToChannelPayload.ts'
+import { isSupportedTwitchUrl } from '../background/pulseBroadcastTargets.ts'
 
+if (isSupportedTwitchUrl(window.location.href)) {
 type ActiveSession =
   | { kind: 'channel'; login: string }
   | { kind: 'vod'; vodId: string; login: string }
 
 let activeSession: ActiveSession | null = null
+/** Accepted live stream identity for rejecting late login-only broadcasts. */
+let activeStreamId: string | null = null
 
 let lastPageIsLive = false
 
@@ -90,7 +94,11 @@ function installOverlayPrefsListener(): void {
 }
 
 async function refreshChannelPulse(login: string): Promise<void> {
-  await sendBackgroundMessage({ type: 'GET_PULSE', login, watch: false })
+  const response = await sendBackgroundMessage({ type: 'GET_PULSE', login, watch: false })
+  if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== login) return
+  if (!('type' in response) || response.type !== 'PULSE_UPDATE') return
+  if (response.payload?.streamId) activeStreamId = response.payload.streamId.trim()
+  updateOverlayPayload(response.payload, response.error, response.coverageTier ?? null, { authoritative: true })
 }
 
 async function fetchChannelPulse(login: string): Promise<PulseUpdateMessage> {
@@ -199,6 +207,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
 
   // Capture session intent before any await that could race with navigation.
   activeSession = { kind: 'channel', login: intendedLogin }
+  activeStreamId = null
   sessionOpenedAtMs = Date.now()
   lastCollecting = false
   lastRosterEligible = true
@@ -233,6 +242,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
 
   const payload = message.payload
+  activeStreamId = payload?.streamId?.trim() || null
   lastCollecting = payload?.tracking ?? false
   lastRosterEligible = isPulseRosterEligible(payload)
 
@@ -274,6 +284,7 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
 
   resetAnalyticsActivationLatches()
   activeSession = { kind: 'vod', vodId, login }
+  activeStreamId = null
   sessionOpenedAtMs = Date.now()
   lastCollecting = false
   lastRosterEligible = true
@@ -306,6 +317,7 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
 function deactivate(): void {
   activationGate.cancel()
   activeSession = null
+  activeStreamId = null
   sessionOpenedAtMs = null
   lastPageIsLive = false
   lastCollecting = false
@@ -340,12 +352,23 @@ onPulseUpdate((message: PulseUpdateMessage) => {
     return
   }
 
+  const broadcastStreamId = message.streamId?.trim()
+  const payloadStreamId = message.payload?.streamId?.trim()
+  // Service-worker broadcasts are stream-scoped. A missing metadata identity is
+  // rejected so a late login-only error cannot blank a different broadcast.
+  if (!broadcastStreamId) return
+  if (payloadStreamId && payloadStreamId !== broadcastStreamId) return
+  if (activeStreamId && activeStreamId !== broadcastStreamId) return
+  if (message.payload && !payloadStreamId) return
+  activeStreamId = broadcastStreamId
+
   if (message.softStaleRefresh) {
     updateOverlayPayload(null, undefined, message.coverageTier ?? null, { softStaleRefresh: true })
     return
   }
 
   updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null)
+
 
   lastCollecting = message.payload?.tracking ?? false
   lastRosterEligible = isPulseRosterEligible(message.payload)
@@ -418,5 +441,6 @@ setInterval(() => {
 }, 5000)
 
 routeSync.schedule()
+}
 
 export {}

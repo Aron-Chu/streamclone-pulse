@@ -66,7 +66,7 @@ Path B — VOD backfill (“Load missed moments”)
 | **Waiting for VOD** | Live stream; missing prefix exists; **no vodId yet** but archive may appear later. State: `waiting_for_vod`. |
 | **VOD unavailable** | Missing prefix exists; Twitch will not provide chat replay (no storage, deleted, private, or exhausted checks). State: `vod_unavailable`. |
 | **Protected channel** | User intent: track this login from go-live on **future** streams. Maps to watchlist + **`alwaysTrack=true`** on backend. |
-| **Always-track** | Backend roster flag: channel stays in shared tracking pool with priority; survives idle eviction subject to caps. Today: `analytics_always_tracked` + `POST /v1/analytics/always-tracked`. |
+| **Always-track** | Backend roster flag: channel stays in shared tracking pool with priority; survives idle eviction subject to caps. Hosted clients use the principal-scoped `/v1/pulse/watchlist` contract; the legacy `/v1/analytics/always-tracked` route remains development-only. |
 | **Go-live detector** | Service that learns a channel went live and triggers `watch`/IRC join within SLA. MVP: Helix polling; preferred: EventSub `stream.online`. |
 | **Stream start tolerance** | **`≤ 120 seconds`**: if first rollup offset ≤ 120s, treat as **`trackedFromStart=true`** for UX. Matches backend `coverageStartToleranceSec` in `pulse_coverage.go`. |
 | **Current live archive / archiveVideo / VOD id** | Twitch video id for the ongoing or ended broadcast. Helix Videos API or GQL `stream.archiveVideo.id`. Stored as `vodId` on stream row. |
@@ -206,7 +206,7 @@ type PulseCoverage = {
 
 | Proposed field | Current API | Notes |
 |----------------|-------------|-------|
-| `protected` / `alwaysTrack` | Not on pulse payload | Infer from `/v1/analytics/always-tracked` or future `/v1/pulse/watchlist` |
+| `protected` / `alwaysTrack` | Not on pulse payload | Infer from the principal-scoped `/v1/pulse/watchlist` response |
 | `trackedFromStart` | Not explicit | Compute: `coverageStartOffsetSeconds <= 120` |
 | `vodStatus` | Not explicit | Derive from Helix + last resolution attempt |
 | `helixEnabled` | On pulse payload + health | Already in `ExtensionPulseResponse` when deployed |
@@ -325,7 +325,7 @@ Chart expanded from stream start — chat data begins at {coverageStart}. Backfi
 | PRO-7 | User can disable protection; backend stops prioritizing; eviction rules apply after idle TTL. |
 | PRO-8 | Extension shows **Protected** badge when backend confirms `alwaysTrack` for current login. |
 | PRO-9 | Protection applies to **future streams only**; it does not recover missing chat on the **current** stream unless VOD backfill succeeds. |
-| PRO-10 | Extension watchlist sync today uses `POST /v1/analytics/always-tracked` — portal MVP may add `/v1/pulse/watchlist`; both must converge on same backend pool. |
+| PRO-10 | Hosted extension watchlist sync uses principal-scoped `GET/POST /v1/pulse/watchlist` and `DELETE /v1/pulse/watchlist/{login}`; local development may use the legacy route. Both converge on the same backend pool. |
 
 ---
 
@@ -464,11 +464,11 @@ Extension polls **`GET /v1/extension/pulse/backfill/{jobId}`** — show **real**
 | POST | `/v1/extension/pulse/channels/{login}/backfill` | Start missed-moments backfill |
 | GET | `/v1/extension/pulse/backfill/{jobId}` | Backfill status |
 | POST | `/v1/analytics/channels/{login}/watch` | Start tracking / collector join |
-| GET/POST | `/v1/analytics/always-tracked` | List/set always-tracked logins |
+| GET/POST | `/v1/analytics/always-tracked` | Development-only legacy global roster |
 
-Extension local watchlist syncs to **`always-tracked`** via service worker (`syncWatchlistToBackend`).
+Extension local development syncs to **`always-tracked`** via the service worker (`syncWatchlistToBackend`). Hosted builds use the principal-scoped watchlist below.
 
-### 12.2 Proposed (StreamPulse MVP — see website-portal design)
+### 12.2 Principal-scoped hosted contract
 
 | Method | Path | Purpose |
 |--------|------|---------|

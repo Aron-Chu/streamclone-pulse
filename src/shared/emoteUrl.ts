@@ -1,5 +1,6 @@
 import { isBrokenLocalEmotePath, resolveEmoteImageUrl } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from './messages.ts'
+import { safeImageUrl } from './safeUrl.ts'
 
 const LEGACY_SEVEN_TV_ID = /^[0-9a-fA-F]{24}$/
 
@@ -10,9 +11,9 @@ function normalizeEmoteProvider(provider?: string): string | undefined {
   return lower
 }
 
-function backendProxyUrl(path: string, backendUrl: string): string {
+function backendProxyUrl(path: string, backendUrl: string): string | undefined {
   const base = backendUrl.replace(/\/+$/, '')
-  return `${base}${path}`
+  return safeImageUrl(`${base}${path}`, backendUrl)
 }
 
 function sevenTvCdnUrl(id: string): string {
@@ -29,7 +30,7 @@ export function extensionEmoteImageUrl(
   const raw = emote.imageUrl?.trim()
 
   if (raw && /^https?:\/\//i.test(raw)) {
-    return raw
+    return safeImageUrl(raw, backendUrl)
   }
 
   if (provider === 'seventv' && id && LEGACY_SEVEN_TV_ID.test(id)) {
@@ -51,5 +52,5 @@ export function extensionEmoteImageUrl(
   if (resolved.startsWith('/')) {
     return backendProxyUrl(resolved, backendUrl)
   }
-  return resolved
+  return safeImageUrl(resolved, backendUrl)
 }

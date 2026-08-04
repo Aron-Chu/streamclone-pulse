@@ -134,19 +134,40 @@ export function PulseThemedSelect<T extends string>({
 
   useEffect(() => {
     if (!open) return
+    const selectEvents = new WeakSet<Event>()
     const onPointerDown = (event: Event) => {
       if (
         !eventPathIncludesNode(event, rootRef.current)
         && !eventPathIncludesNode(event, menuRef.current)
       ) {
+        if (isShadowRoot(portalRoot) && event.composedPath().includes(portalRoot.host)) {
+          queueMicrotask(() => {
+            if (!selectEvents.has(event)) setOpen(false)
+          })
+          return
+        }
         setOpen(false)
       }
     }
+    const onPortalPointerDown = (event: Event) => {
+      if (
+        eventPathIncludesNode(event, rootRef.current)
+        || eventPathIncludesNode(event, menuRef.current)
+      ) {
+        selectEvents.add(event)
+      }
+    }
     document.addEventListener('pointerdown', onPointerDown, true)
+    if (isShadowRoot(portalRoot)) {
+      portalRoot.addEventListener('pointerdown', onPortalPointerDown, true)
+    }
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true)
+      if (isShadowRoot(portalRoot)) {
+        portalRoot.removeEventListener('pointerdown', onPortalPointerDown, true)
+      }
     }
-  }, [open])
+  }, [open, portalRoot])
 
   function closeMenu(restoreFocus: boolean): void {
     setOpen(false)

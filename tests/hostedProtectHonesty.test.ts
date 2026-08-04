@@ -1,17 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
-/**
- * Hosted Protect network writes must be skipped to avoid unauthorized sync storms.
- * Local BFF may still attempt best-effort sync.
- */
-describe('hosted Protect sync skip contract', () => {
-  it('documents that hosted applyAlwaysTrackedPlan attempts zero network writes', () => {
-    // Behavioral coverage lives in service-worker integration; this unit documents the RC policy.
-    const hostedPlanResult = { attempted: 0, unauthorized: 0, failed: 0 }
-    expect(hostedPlanResult.attempted).toBe(0)
-  })
-})
-
 describe('setAlwaysTracked unauthorized soft-fail', () => {
   const getBackendUrl = vi.hoisted(() => vi.fn(async () => 'https://api.streampulse.stream'))
   const originalFetch = globalThis.fetch
@@ -19,7 +7,10 @@ describe('setAlwaysTracked unauthorized soft-fail', () => {
   beforeEach(() => {
     vi.resetModules()
     getBackendUrl.mockResolvedValue('https://api.streampulse.stream')
-    vi.doMock('../src/shared/storage.ts', () => ({ getBackendUrl }))
+    vi.doMock('../src/shared/storage.ts', () => ({
+      DEFAULT_BACKEND_URL: 'https://api.streampulse.stream',
+      getBackendUrl,
+    }))
   })
 
   afterEach(() => {

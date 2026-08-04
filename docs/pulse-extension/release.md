@@ -51,8 +51,11 @@ Owner must confirm live CWS dashboard is behind **0.1.3** and that Support URL i
 releases unless separately authorized; stop again before CWS/Edge upload.
 
 Owner-dispatched attested packaging: `.github/workflows/release-artifacts.yml`
-(inputs: existing `v*` tag + expected full SHA). Checksums are operator convenience
-only; GitHub artifact attestations are the cryptographic provenance.
+(inputs: exact `v<package-version>` tag + expected full SHA + completed same-SHA
+`workflow_dispatch` CI run). The Actions run must also be dispatched with the
+workflow ref selector set to that exact tag; a later checkout cannot repair an
+incorrect OIDC source ref. Checksums are operator convenience only; GitHub
+artifact attestations are the cryptographic provenance for final ZIPs.
 
 ---
 
@@ -68,8 +71,15 @@ only; GitHub artifact attestations are the cryptographic provenance.
 Portal production scanning must reject `localhost` and `127.0.0.1` on **every** port
 (including 8081) in shipped JS/HTML.
 
-Produce checksums + build metadata for operator verification. Do **not** claim
-self-generated checksums as cryptographic provenance.
+`npm run build` writes `.artifacts/extension-build-provenance.json`, which is
+**local-dist-build** provenance for the commit and hashed `dist/` files. It is
+not provenance for a final store ZIP and does not replace the attestation
+verification evidence emitted by `Release artifacts`. Produce checksums + build
+metadata for operator verification, but do **not** claim self-generated
+checksums or local build metadata as cryptographic provenance.
+
+CWS screenshot evidence in this repository remains the historical v0.1.2 set;
+this release policy does not claim regenerated v0.1.3 screenshots.
 
 ---
 
@@ -83,7 +93,7 @@ self-generated checksums as cryptographic provenance.
 - [ ] Owner authorizes upload; version exceeds last published / confirmed dashboard version
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
 - [ ] Do **not** upload until owner confirms dashboard Support URL + version gates in `docs/evidence/RPR-9-0.1.2-assurance-20260726.md`
-- [ ] Upload digest must match the **attested** CWS ZIP from `Release artifacts` for `v0.1.2-store` (not the older unattested draft assets)
+- [ ] Upload digest must match the **attested** CWS ZIP from `Release artifacts` for the owner-approved `v0.1.3` tag (not a historical asset)
 
 ---
 

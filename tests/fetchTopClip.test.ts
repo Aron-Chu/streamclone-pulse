@@ -9,10 +9,10 @@ describe('fetchTopClip', () => {
   ]
 
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ items: clips }),
-    })))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ items: clips }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )))
   })
 
   afterEach(() => {
@@ -25,7 +25,7 @@ describe('fetchTopClip', () => {
   })
 
   it('returns null on non-200', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 500 })))
     const clip = await fetchTopClip('streamer', undefined, 'http://localhost:8081')
     expect(clip).toBeNull()
   })

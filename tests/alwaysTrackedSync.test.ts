@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 const getBackendUrl = vi.hoisted(() => vi.fn(async () => 'https://api.streampulse.stream'))
 
 vi.mock('../src/shared/storage.ts', () => ({
+  DEFAULT_BACKEND_URL: 'https://api.streampulse.stream',
   getBackendUrl,
 }))
 
@@ -11,6 +12,8 @@ import {
   setAlwaysTracked,
 } from '../src/background/api.ts'
 import {
+  classifyProtectError,
+  classifyProtectHttpStatus,
   planWatchlistStartupSync,
   planWatchlistStorageDelta,
 } from '../src/background/alwaysTrackedSync.ts'
@@ -29,7 +32,10 @@ describe('always-tracked API headers', () => {
 
   it('does not send removed beta-key authentication on always-tracked GET', async () => {
     globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ channels: ['a'] }), { status: 200 }),
+      new Response(JSON.stringify({ channels: ['a'] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
     ) as typeof fetch
 
     await fetchAlwaysTracked()
@@ -76,6 +82,14 @@ describe('always-tracked API headers', () => {
 })
 
 describe('always-tracked reconciliation policy', () => {
+  it('classifies Protect outcomes without treating browser writes as confirmation', () => {
+    expect(classifyProtectHttpStatus(401, 'add')).toBe('unauthorized')
+    expect(classifyProtectHttpStatus(409, 'add')).toBe('cap')
+    expect(classifyProtectHttpStatus(503, 'remove')).toBe('retry')
+    expect(classifyProtectHttpStatus(404, 'remove')).toBe('removed')
+    expect(classifyProtectError(new Error('network failure'))).toBe('retry')
+  })
+
   it('never plans removals from empty local plus non-empty backend (startup/hydrate)', () => {
     expect(planWatchlistStartupSync([], ['alpha', 'beta'])).toEqual({
       trackTrue: [],

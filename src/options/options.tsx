@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { sendBackgroundMessage } from '../content/bridge.ts'
+import type { DeviceAuthStatus, WatchlistSyncStatus } from '../shared/messages.ts'
 import {
   DEFAULT_AUTO_TRACK_POLICY,
   DEFAULT_BACKEND_URL,
@@ -67,11 +68,21 @@ function OptionsApp() {
   const [saved, setSaved] = useState(false)
   const [health, setHealth] = useState('Not checked')
   const [watchlistError, setWatchlistError] = useState('')
+  const [watchlistSync, setWatchlistSync] = useState<WatchlistSyncStatus>({
+    overall: 'idle',
+    channels: {},
+    serverConfirmed: [],
+    tombstones: [],
+  })
   const [debugLogging, setDebugLogging] = useState(false)
   const [debugLog, setDebugLog] = useState<PulseDebugEntry[]>([])
   const [debugCopied, setDebugCopied] = useState(false)
   const [shareCrashDiagnostics, setShareCrashDiagnostics] = useState(false)
   const [analyticsConsent, setAnalyticsConsentState] = useState(false)
+  const [deviceStatus, setDeviceStatus] = useState<DeviceAuthStatus>({ connected: false })
+  const [betaKey, setBetaKey] = useState('')
+  const [deviceBusy, setDeviceBusy] = useState(false)
+  const [deviceError, setDeviceError] = useState('')
   const localStackBackend = isLocalStackBackendUrl(backendUrl)
   const backendSource = resolveExtensionBackendSource(backendUrl)
   const hostedBackend = backendSource === 'hosted'
@@ -92,8 +103,9 @@ function OptionsApp() {
       setDebugLogging(await getPulseDebugEnabled())
       setShareCrashDiagnostics(await isDiagnosticsConsentEnabled())
       setAnalyticsConsentState(await isAnalyticsConsentGranted())
-      await refreshWatchlist()
-      await refreshDebugLog()
+       await refreshWatchlist()
+       await refreshDeviceStatus()
+       await refreshDebugLog()
     })()
   }, [])
 
@@ -102,9 +114,75 @@ function OptionsApp() {
       const res = await sendBackgroundMessage({ type: 'LIST_WATCHLIST' })
       if ('type' in res && res.type === 'WATCHLIST') {
         setWatchlistState(res.channels)
+        if (res.sync) setWatchlistSync(res.sync)
+        if (res.error) setWatchlistError(res.error)
       }
     } catch {
       setWatchlistState([])
+    }
+  }
+
+  async function refreshDeviceStatus(): Promise<void> {
+    try {
+      const res = await sendBackgroundMessage({ type: 'GET_DEVICE_AUTH_STATUS' })
+      if ('type' in res && res.type === 'DEVICE_AUTH') setDeviceStatus(res.status)
+    } catch {
+      setDeviceStatus({ connected: false, error: 'device_status_unavailable' })
+    }
+  }
+
+  async function enroll(): Promise<void> {
+    setDeviceError('')
+    if (!betaKey.trim()) {
+      setDeviceError('Enter the beta access key.')
+      return
+    }
+    setDeviceBusy(true)
+    try {
+      const res = await sendBackgroundMessage({ type: 'ENROLL_DEVICE', betaKey })
+      if ('type' in res && res.type === 'DEVICE_AUTH') {
+        setDeviceStatus(res.status)
+        if (!res.status.connected) setDeviceError(res.status.error ?? 'Device enrollment failed.')
+      }
+      else setDeviceError('Device enrollment failed.')
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : 'Device enrollment failed.')
+    } finally {
+      // The beta key is an enrollment input only; never retain it in page state.
+      setBetaKey('')
+      setDeviceBusy(false)
+    }
+  }
+
+  async function rotate(): Promise<void> {
+    setDeviceError('')
+    setDeviceBusy(true)
+    try {
+      const res = await sendBackgroundMessage({ type: 'ROTATE_DEVICE' })
+      if ('type' in res && res.type === 'DEVICE_AUTH') {
+        setDeviceStatus(res.status)
+        if (res.status.error) setDeviceError(res.status.error)
+      }
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : 'Device rotation failed.')
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
+
+  async function revoke(): Promise<void> {
+    setDeviceError('')
+    setDeviceBusy(true)
+    try {
+      const res = await sendBackgroundMessage({ type: 'REVOKE_DEVICE' })
+      if ('type' in res && res.type === 'DEVICE_AUTH') {
+        setDeviceStatus(res.status)
+        if (res.status.error) setDeviceError(res.status.error)
+      }
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : 'Device revoke failed.')
+    } finally {
+      setDeviceBusy(false)
     }
   }
 
@@ -122,7 +200,10 @@ function OptionsApp() {
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
     await probeHealth()
-    await sendBackgroundMessage({ type: 'SYNC_WATCHLIST' })
+    const syncResponse = await sendBackgroundMessage({ type: 'SYNC_WATCHLIST' })
+    if ('type' in syncResponse && syncResponse.type === 'SYNC_WATCHLIST' && syncResponse.sync) {
+      setWatchlistSync(syncResponse.sync)
+    }
     await refreshWatchlist()
   }
 
@@ -187,6 +268,7 @@ function OptionsApp() {
       const res = await sendBackgroundMessage({ type: 'ADD_WATCHLIST', login })
       if ('type' in res && res.type === 'WATCHLIST') {
         setWatchlistState(res.channels)
+        if (res.sync) setWatchlistSync(res.sync)
         setChannelInput('')
       }
     } catch (err) {
@@ -200,9 +282,35 @@ function OptionsApp() {
       const res = await sendBackgroundMessage({ type: 'REMOVE_WATCHLIST', login })
       if ('type' in res && res.type === 'WATCHLIST') {
         setWatchlistState(res.channels)
+        if (res.sync) setWatchlistSync(res.sync)
       }
     } catch (err) {
       setWatchlistError(err instanceof Error ? err.message : 'Could not remove channel.')
+    }
+  }
+
+  function watchlistStateLabel(login: string): string {
+    const status = watchlistSync.channels[login]
+    if (!status) return 'Saved locally'
+    switch (status.state) {
+      case 'protected': return 'Protected'
+      case 'pending': return status.operation === 'remove' ? 'Removal pending' : 'Protection pending'
+      case 'unauthorized': return 'Device authorization required'
+      case 'cap': return 'Protect cap reached'
+      case 'retry': return 'Retry pending'
+      case 'failure': return 'Protect failed'
+    }
+  }
+
+  function watchlistSyncMessage(): string | null {
+    if (watchlistSync.overall === 'idle') return null
+    switch (watchlistSync.overall) {
+      case 'protected': return 'Protected state confirmed by StreamPulse.'
+      case 'pending': return 'Protect changes are pending server confirmation.'
+      case 'unauthorized': return 'Protect needs a connected device; saved channels remain browser-local until enrollment.'
+      case 'cap': return 'Protect could not add one or more channels because the server cap was reached.'
+      case 'retry': return 'Protect changes are queued for retry after a temporary server or network failure.'
+      case 'failure': return 'Protect changes were rejected; the browser-saved list was not reported as server-protected.'
     }
   }
 
@@ -275,14 +383,47 @@ function OptionsApp() {
       <section style={styles.section}>
         <span style={styles.groupLabel}>Watchlist / Protect</span>
         <p style={styles.help}>
-          Saved channels are stored in <strong>browser sync storage</strong> on this device. On the public hosted API there is
-          no guest Protect credential, so the extension does <strong>not</strong> claim server-side protection and
-          does not enable live Pulse or backfill. Use the <strong>Analytics hub</strong> to browse actively tracked
-          channels.
+          Saved channels are stored in <strong>browser sync storage</strong>. Hosted Protect requires a device credential;
+          without one, adding a login remains a local browser preference and does not claim server-side tracking.
           {!(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__)
             ? <> On a <strong>local</strong> backend (<code>localhost:8081</code>), watchlist entries also start IRC while your stack runs.</>
             : null}
         </p>
+        {hostedBackend ? (
+          <div style={styles.deviceAuthBox}>
+            <strong>{deviceStatus.connected ? 'Protect connected' : 'Protect not connected'}</strong>
+            <span style={styles.help}>
+              {deviceStatus.connected
+                ? `Device ${deviceStatus.deviceId ?? 'connected'} · ${deviceStatus.watchlistCount ?? 0} protected channel(s)`
+                : 'Use the beta access key supplied by the StreamPulse operator. The key is used once and discarded.'}
+            </span>
+            {!deviceStatus.connected ? (
+              <div style={styles.watchRow}>
+                <input
+                  type="password"
+                  value={betaKey}
+                  onChange={event => setBetaKey(event.target.value)}
+                  placeholder="beta access key"
+                  autoComplete="off"
+                  style={styles.input}
+                />
+                <button type="button" style={styles.secondaryButton} disabled={deviceBusy} onClick={() => void enroll()}>
+                  {deviceBusy ? 'Connecting…' : 'Connect Protect'}
+                </button>
+              </div>
+            ) : (
+              <div style={styles.debugActions}>
+                <button type="button" style={styles.secondaryButton} disabled={deviceBusy} onClick={() => void rotate()}>
+                  Rotate device
+                </button>
+                <button type="button" style={styles.secondaryButton} disabled={deviceBusy} onClick={() => void revoke()}>
+                  Revoke device
+                </button>
+              </div>
+            )}
+            {deviceError || deviceStatus.error ? <p style={styles.errorText}>{deviceError || deviceStatus.error}</p> : null}
+          </div>
+        ) : null}
         <div style={styles.watchRow}>
           <input
             value={channelInput}
@@ -295,6 +436,7 @@ function OptionsApp() {
           />
           <button type="button" style={styles.secondaryButton} onClick={() => void addChannel()}>Add</button>
         </div>
+        {watchlistSyncMessage() ? <p style={styles.status} role="status">{watchlistSyncMessage()}</p> : null}
         {watchlistError ? <p style={styles.errorText}>{watchlistError}</p> : null}
         {watchlist.length === 0 ? (
           <p style={styles.help}>
@@ -306,7 +448,10 @@ function OptionsApp() {
             {watchlist.map(login => (
               <li key={login} style={styles.watchItem}>
                 <span>{login}</span>
-                <button type="button" style={styles.linkButton} onClick={() => void removeChannel(login)}>Remove</button>
+                <span style={styles.watchItemActions}>
+                  <span style={styles.watchState}>{watchlistStateLabel(login)}</span>
+                  <button type="button" style={styles.linkButton} onClick={() => void removeChannel(login)}>Remove</button>
+                </span>
               </li>
             ))}
           </ul>
@@ -560,9 +705,12 @@ const styles: Record<string, React.CSSProperties> = {
   backendBanner: { borderRadius: 8, display: 'grid', gap: 8, padding: '12px 14px' },
   backendBannerHosted: { background: '#14291f', border: '1px solid #166534', color: '#bbf7d0' },
   backendBannerWarn: { background: '#2a2214', border: '1px solid #92400e', color: '#fde68a' },
+  deviceAuthBox: { background: '#181820', border: '1px solid #30303a', borderRadius: 8, display: 'grid', gap: 8, padding: '12px 14px' },
   watchRow: { display: 'grid', gap: 8, gridTemplateColumns: '1fr auto' },
   watchlist: { display: 'grid', gap: 8, listStyle: 'none', margin: 0, padding: 0 },
   watchItem: { alignItems: 'center', background: '#181820', border: '1px solid #30303a', borderRadius: 8, display: 'flex', justifyContent: 'space-between', padding: '10px 12px' },
+  watchItemActions: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' },
+  watchState: { color: '#a1a1b2', fontSize: 11, fontWeight: 700 },
   linkButton: { background: 'transparent', border: 0, color: '#c4b5fd', cursor: 'pointer', fontWeight: 800, padding: 0 },
   errorText: { color: '#fca5a5', fontSize: 12, margin: 0 },
   segmented: { display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, 1fr)' },
