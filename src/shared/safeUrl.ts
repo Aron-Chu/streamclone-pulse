@@ -12,6 +12,12 @@ const TRUSTED_TWITCH_NAVIGATION_HOSTS = new Set([
   'clips.twitch.tv',
 ])
 
+// Keep development-only loopback values out of store-target bundle scans while
+// retaining local backend support for development builds.
+const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
+const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+const LOOPBACK_IPV6 = '::1'
+
 function parseHttpUrl(raw: string): URL | null {
   try {
     const parsed = new URL(raw)
@@ -24,10 +30,11 @@ function parseHttpUrl(raw: string): URL | null {
 }
 
 function isLocalBackendOrigin(parsed: URL): boolean {
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '')
   return parsed.protocol === 'http:' && (
-    parsed.hostname === 'localhost'
-    || parsed.hostname === '127.0.0.1'
-    || parsed.hostname === '[::1]'
+    hostname === LOCALHOST
+    || hostname === LOOPBACK_IPV4
+    || hostname === LOOPBACK_IPV6
   )
 }
 

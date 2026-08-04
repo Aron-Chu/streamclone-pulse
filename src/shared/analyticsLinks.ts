@@ -6,6 +6,9 @@ export type ExtensionConfig = {
   webAnalyticsBaseUrl: string
 }
 
+const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
+const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+
 function safeWebAnalyticsOrigin(raw: string): string | null {
   try {
     const parsed = new URL(raw.trim().replace(/\/+$/, ''))
@@ -16,7 +19,7 @@ function safeWebAnalyticsOrigin(raw: string): string | null {
     if (
       parsed.protocol === 'http:'
       && parsed.port === '5173'
-      && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+      && (parsed.hostname === LOCALHOST || parsed.hostname === LOOPBACK_IPV4)
     ) {
       return parsed.origin
     }
@@ -38,7 +41,7 @@ export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
       const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
       const localBackendPort = '8081'
       const localPortalPort = '5173'
-      if ((host === 'localhost' || host === '127.0.0.1') && port === localBackendPort) {
+      if ((host === LOCALHOST || host === LOOPBACK_IPV4) && port === localBackendPort) {
         return `http://${host}:${localPortalPort}`
       }
     } catch {

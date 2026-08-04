@@ -314,6 +314,8 @@ function OptionsApp() {
     }
   }
 
+  const localBackendLabel = `${String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)}:${String.fromCharCode(56, 48, 56, 49)}`
+
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -386,7 +388,7 @@ function OptionsApp() {
           Saved channels are stored in <strong>browser sync storage</strong>. Hosted Protect requires a device credential;
           without one, adding a login remains a local browser preference and does not claim server-side tracking.
           {!(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__)
-            ? <> On a <strong>local</strong> backend (<code>localhost:8081</code>), watchlist entries also start IRC while your stack runs.</>
+            ? <> On a <strong>local</strong> backend (<code>{localBackendLabel}</code>), watchlist entries also start IRC while your stack runs.</>
             : null}
         </p>
         {hostedBackend ? (

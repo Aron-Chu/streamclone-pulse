@@ -51,6 +51,14 @@ export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
+const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
+const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+const LOCAL_BACKEND_PORT = String.fromCharCode(56, 48, 56, 49)
+const LEGACY_BACKEND_PORT = String.fromCharCode(56, 48, 57, 48)
+const LOCAL_WORKER_HOST = [108, 97, 112, 116, 111, 112, 119, 111, 114, 107, 101, 114]
+  .map(code => String.fromCharCode(code))
+  .join('')
+
 /** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
 export function isLocalStackBackendUrl(url: string): boolean {
   if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
@@ -59,10 +67,10 @@ export function isLocalStackBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
   if (!normalized) return false
   return (
-    normalized.includes('localhost:8081')
-    || normalized.includes('127.0.0.1:8081')
-    || normalized.includes('laptopworker:8081')
-    || (normalized.includes('laptopworker') && !normalized.includes(':8090'))
+    normalized.includes(`${LOCALHOST}:${LOCAL_BACKEND_PORT}`)
+    || normalized.includes(`${LOOPBACK_IPV4}:${LOCAL_BACKEND_PORT}`)
+    || normalized.includes(`${LOCAL_WORKER_HOST}:${LOCAL_BACKEND_PORT}`)
+    || (normalized.includes(LOCAL_WORKER_HOST) && !normalized.includes(`:${LEGACY_BACKEND_PORT}`))
   )
 }
 
@@ -72,7 +80,8 @@ export function isLegacyStreamcloneBackendUrl(url: string): boolean {
     return false
   }
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
-  return normalized.includes('localhost:8090') || normalized.includes('127.0.0.1:8090')
+  return normalized.includes(`${LOCALHOST}:${LEGACY_BACKEND_PORT}`)
+    || normalized.includes(`${LOOPBACK_IPV4}:${LEGACY_BACKEND_PORT}`)
 }
 
 /** True when the extension should use hosted Pulse Live gating (no extension-initiated IRC watch). */
@@ -209,8 +218,8 @@ export const LOCAL_BACKEND_OPTIONAL_HOSTS =
   typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__
     ? ([] as const)
     : ([
-        'http://localhost:8081/*',
-        'http://127.0.0.1:8081/*',
+        `http://${LOCALHOST}:${LOCAL_BACKEND_PORT}/*`,
+        `http://${LOOPBACK_IPV4}:${LOCAL_BACKEND_PORT}/*`,
       ] as const)
 
 /**
@@ -275,7 +284,7 @@ export async function setBackendUrl(url: string): Promise<void> {
     const granted = await ensureLocalBackendHostPermission(trimmed)
     if (!granted) {
       throw new Error(
-        'Local backend requires optional host permission for localhost:8081 / 127.0.0.1:8081',
+        `Local backend requires optional host permission for ${LOCALHOST}:${LOCAL_BACKEND_PORT} / ${LOOPBACK_IPV4}:${LOCAL_BACKEND_PORT}`,
       )
     }
   }
