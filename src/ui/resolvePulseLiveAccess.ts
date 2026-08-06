@@ -69,6 +69,7 @@ export function secondsSinceStreamStartAt(
 
 function isLiveContext(payload: PulsePayload | null, pageIsLive: boolean): boolean {
   if (!payload) return pageIsLive
+  if (payload.mode === 'live_dvr') return true
   if (payload.recap && !payload.isLive) return false
   return Boolean(payload.isLive || pageIsLive)
 }
@@ -84,6 +85,10 @@ function canShowFullLive(args: {
 }): boolean {
   const { payload, alwaysTrackedLogins, sessionOpenedAtMs } = args
   if (!payload.tracking || !isPulseTop500Supported(payload)) return false
+
+  // The backend has already validated the exact live stream and returned its
+  // rollups. Missing pre-collection chat must not hide the live chart.
+  if (payload.mode === 'live_dvr') return true
 
   const coverageStart = Math.max(0, payload.coverageStartOffsetSeconds ?? 0)
   if (!trackedFromStreamStart(coverageStart)) return false
@@ -128,6 +133,10 @@ function resolveHostedPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcc
     return baseResult('offline', coverageStartOffsetSeconds, coverageTier)
   }
 
+  if (payload.mode === 'live_dvr' && payload.tracking) {
+    return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
+  }
+
   if (coverageTier?.coverageTier === COVERAGE_TIER_ACTIVE_LIVE && payload.tracking) {
     return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
   }
@@ -154,7 +163,7 @@ function resolveLocalPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcce
     return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
   }
 
-  if (payload.tracking && trackedFromStreamStart(coverageStartOffsetSeconds)) {
+  if (payload.tracking) {
     return baseResult('late_session', coverageStartOffsetSeconds, coverageTier)
   }
 
@@ -169,5 +178,5 @@ export function resolvePulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAc
 }
 
 export function pulseLiveAccessAllowsChart(state: PulseLiveAccessState): boolean {
-  return state === 'full_live'
+  return state === 'full_live' || state === 'late_session'
 }

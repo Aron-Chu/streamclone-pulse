@@ -534,7 +534,7 @@ function OverlayMain({
   const resolvedSidebarTab = sidebarTabProp ?? sidebarTab
   const showSidebarTabs = sidebarSnapped && resolvedPlacement === 'sidebar' && sidebarPart !== 'body'
   const sidebarBodyOnly = sidebarPart === 'body'
-  const isVodPage = context.kind === 'vod'
+  const isVodPage = context.kind === 'vod' && payload?.mode !== 'live_dvr'
   const hasLivePanel = Boolean(
     !error && payload && pulseSupported && pulseLiveAccess.state === 'full_live',
   )
@@ -691,7 +691,7 @@ function OverlayMain({
     if (!canShowVodBackfillCTA(activePayload, pageHint)) {
       setNotice({
         kind: 'info',
-        text: 'Twitch VOD not ready yet — live IRC tracking continues. Try again after the archive publishes.',
+        text: 'No validated archive is linked yet — live IRC tracking continues. Try again later.',
       })
       return
     }
@@ -768,7 +768,7 @@ function OverlayMain({
       login,
       streamId: payload.streamId,
       id: domHint,
-    }, domHint ? 'info' : 'warn')
+    }, 'info')
     if (op && !tokenIsLive(op)) return null
     let hint = domHint
     if (!hint) {
@@ -799,7 +799,7 @@ function OverlayMain({
           pulseStreamId: payload.streamId,
           gqlErrors: gql.gqlErrors,
         },
-        hint ? 'info' : 'warn',
+        'info',
       )
     }
     if (op && !tokenIsLive(op)) return null
@@ -886,11 +886,11 @@ function OverlayMain({
       }
       if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
         setCoverageCheckError(
-          'Backend analytics needs redeploy (Helix/vod-hint). Local page GQL may still be blocked by an ad blocker.',
+          'Backend archive capability is unavailable. Live analytics remain active; deploy the latest analytics backend.',
         )
       } else if (!next.vodId) {
         setCoverageCheckError(
-          'Twitch has not published a VOD id for this stream yet — try again after a few minutes or when the stream ends.',
+          'No validated archive is linked yet. Live analytics remain active; try again later.',
         )
       } else {
         setCoverageCheckError(null)
@@ -1080,16 +1080,18 @@ function OverlayMain({
     setFullTimeline(true)
     setNotice(null)
     void requestFullTimeline()
-    if (!payload?.vodId) {
-      await submitPageVodHint()
-    }
+    // Seeking the current playback surface must not wait for optional archive
+    // discovery or backfill work.
     seekToStreamStart()
+    if (!payload?.vodId) {
+      void submitPageVodHint()
+    }
   }
 
   function seekToStreamStart(): void {
     setFullTimeline(true)
     setNotice(null)
-    const vodId = payload?.vodId ?? context.vodId ?? undefined
+    const vodId = payload?.vodId ?? undefined
     const offset = 0
 
     if (vodId) {
@@ -1226,7 +1228,9 @@ function OverlayMain({
     setNotice(null)
     const action = resolveJumpMomentAction({
       context,
-      payloadVodId: payload?.vodId ?? context.vodId,
+      payloadVodId: payload?.vodId,
+      payloadMode: payload?.mode === 'live_dvr' ? 'live_dvr' : payload?.mode === 'vod' ? 'vod' : undefined,
+      vodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds,
       effectiveIsLive: uiIsLive,
       payloadIsLive: payload?.isLive,
       liveCurrentOffset: payload?.currentOffsetSeconds,
@@ -1273,7 +1277,7 @@ function OverlayMain({
       }
       if (result.reason === 'outside_buffer') {
         openAnalytics(action.offsetSeconds)
-        const linkedVod = (payload?.vodId ?? context.vodId)?.trim()
+        const linkedVod = payload?.vodId?.trim()
         setNotice({
           kind: 'warn',
           text: linkedVod
@@ -1743,6 +1747,8 @@ function StreamPulseHeader({
 
 function vodPulseStatusKind(state: ReturnType<typeof resolveVodPulseState>): PulseStatusKind {
   switch (state.status) {
+    case 'live_dvr':
+      return 'tracking'
     case 'ready':
       return 'replay-synced'
     case 'partial':
@@ -1773,6 +1779,8 @@ function VodPulseStatusCard({
   const subtitle =
     state.status === 'loading'
       ? 'Loading replay analytics…'
+      : state.status === 'live_dvr'
+        ? 'Live analytics are active. Replay chat may remain unavailable until Twitch publishes the archive.'
       : state.status === 'syncing'
         ? state.reason ?? 'Replay analytics are still syncing for this VOD.'
         : state.status === 'missing'

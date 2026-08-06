@@ -348,12 +348,12 @@ export function SegmentedPulseChart({
             {barLayout.map(bar => {
               const selected = selectedBucketIndex === bar.index
               const dimGroup = barDimOpacity(tooltipBucket, bar.index)
-              const chatAlpha = barAlpha('chat', {
+              const chatAlpha = barAlpha({
                 isSpike: bar.isSpike,
                 selected,
                 hasValue: bar.bucket.chatPeak > 0,
               })
-              const emoteAlpha = barAlpha('emote', {
+              const emoteAlpha = barAlpha({
                 isSpike: bar.isSpike,
                 selected,
                 hasValue: bar.bucket.emotePeak > 0,

@@ -4,19 +4,21 @@ import {
   barAlpha,
   barDimOpacity,
 } from '../src/ui/extensionPortalChartTheme.ts'
+import { CHART_BAR_ALPHA, CHART_SIGNAL } from '../src/ui/chartTheme.ts'
 
 describe('extensionPortalChartTheme', () => {
-  it('exports portal lane hex values', () => {
-    expect(EXTENSION_PORTAL_CHART_THEME.chat).toBe('#8b5cf6')
-    expect(EXTENSION_PORTAL_CHART_THEME.viewers).toBe('#4ade80')
-    expect(EXTENSION_PORTAL_CHART_THEME.emotes).toBe('#22d3ee')
-    expect(EXTENSION_PORTAL_CHART_THEME.moment).toBe('#fbbf24')
+  it('uses the same semantic colors as every extension chart', () => {
+    expect(EXTENSION_PORTAL_CHART_THEME.chat).toBe(CHART_SIGNAL.chat)
+    expect(EXTENSION_PORTAL_CHART_THEME.viewers).toBe(CHART_SIGNAL.viewers)
+    expect(EXTENSION_PORTAL_CHART_THEME.emotes).toBe(CHART_SIGNAL.emotes)
+    expect(EXTENSION_PORTAL_CHART_THEME.moment).toBe(CHART_SIGNAL.heat)
   })
 
-  it('returns softer resting alphas and stronger selected alphas', () => {
-    expect(barAlpha('chat', { isSpike: false, selected: false, hasValue: true })).toBe(0.35)
-    expect(barAlpha('chat', { isSpike: false, selected: true, hasValue: true })).toBe(0.78)
-    expect(barAlpha('emote', { isSpike: true, selected: true, hasValue: true })).toBe(0.88)
+  it('uses one predictable intensity ladder for every bar lane', () => {
+    expect(barAlpha({ isSpike: false, selected: false, hasValue: true })).toBe(CHART_BAR_ALPHA.resting)
+    expect(barAlpha({ isSpike: false, selected: true, hasValue: true })).toBe(CHART_BAR_ALPHA.selected)
+    expect(barAlpha({ isSpike: true, selected: true, hasValue: true })).toBe(CHART_BAR_ALPHA.selectedSpike)
+    expect(barAlpha({ isSpike: false, selected: false, hasValue: false })).toBe(CHART_BAR_ALPHA.empty)
   })
 
   it('dims non-active bars lightly when scrubbing', () => {

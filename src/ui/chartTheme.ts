@@ -8,17 +8,35 @@ import type { CSSProperties } from 'react'
  * - **Interaction chrome** (pin band, crosshair, marker rings): uses `--pulse-*` CSS
  *   variables from overlayTheme so selection follows the user's accent theme.
  */
+export const CHART_SIGNAL = {
+  chat: '#a78bfa',
+  emotes: '#34d399',
+  viewers: '#22d3ee',
+  heat: '#fbbf24',
+  game: '#f97316',
+  live: '#4ade80',
+} as const
+
 export const CHART_LANE = {
-  chatBar: '#a78bfa',
-  emoteBar: '#34d399',
+  chatBar: CHART_SIGNAL.chat,
+  emoteBar: CHART_SIGNAL.emotes,
   chatTrend: '#d4d4d8',
+} as const
+
+/** Shared visual ladder for every chat/emote bar surface. */
+export const CHART_BAR_ALPHA = {
+  empty: 0.06,
+  resting: 0.34,
+  spike: 0.7,
+  selected: 0.78,
+  selectedSpike: 0.9,
 } as const
 
 /** @deprecated Prefer CHART_LANE + CHART_INTERACTION; kept for existing imports. */
 export const CHART_THEME = {
   background: 'var(--pulse-chart-bg, #0d0d12)',
   viewer: {
-    color: '#22d3ee',
+    color: CHART_SIGNAL.viewers,
     fillTop: 0.16,
     fillBottom: 0,
     line: 0.85,
@@ -26,9 +44,9 @@ export const CHART_THEME = {
   },
   emote: {
     color: CHART_LANE.emoteBar,
-    bar: 0.34,
-    barBaseline: 0.15,
-    barSpike: 0.62,
+    bar: CHART_BAR_ALPHA.resting,
+    barBaseline: CHART_BAR_ALPHA.empty,
+    barSpike: CHART_BAR_ALPHA.spike,
     line: 0.55,
     guide: 0.28,
   },
@@ -36,8 +54,8 @@ export const CHART_THEME = {
     color: CHART_LANE.chatBar,
     line: CHART_LANE.chatTrend,
     lineOpacity: 0.72,
-    whisperBar: 0.16,
-    guide: 0.30,
+    whisperBar: CHART_BAR_ALPHA.resting,
+    guide: CHART_BAR_ALPHA.spike,
   },
   spike: {
     color: '#fb7185',
@@ -46,7 +64,7 @@ export const CHART_THEME = {
   },
   emoteOverlay: 0.13,
   legendSwatch: 0.7,
-  emoteFocus: '#f97316',
+  emoteFocus: CHART_SIGNAL.game,
   perEmotePalette: ['#fb7185', '#fbbf24', '#38bdf8', '#c084fc', '#4ade80'],
 } as const
 

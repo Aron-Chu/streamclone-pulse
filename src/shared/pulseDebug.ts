@@ -143,7 +143,7 @@ export async function pulseDebug(
   }
 }
 
-/** Format the latest VOD-related log lines for overlay error copy. */
+/** Format backend archive state plus optional local-discovery diagnostics. */
 export async function summarizeVodDebugBlockers(
   options?: { backendVodResolved?: boolean },
 ): Promise<string | null> {
@@ -170,15 +170,21 @@ export function interpretVodDebugBlockers(entries: PulseDebugEntry[]): string | 
 
   const helix = last('vod.helix.health')
   const helixEnabled = helix?.data?.helixEnabled
-  if (helixEnabled === false) {
-    parts.push('Backend Helix off (needs TWITCH_OAUTH_CLIENT_ID/SECRET)')
-  } else if (helixEnabled == null) {
-    parts.push('Backend analytics outdated (no helixEnabled — redeploy latest)')
+  if (helix) {
+    if (helixEnabled === false) {
+      parts.push('Backend archive verification is unavailable; live analytics are unaffected')
+    } else if (helixEnabled == null) {
+      parts.push('Backend archive capability is unknown; deploy the latest analytics backend')
+    }
   }
 
   const pulse = last('vod.pulse.api')
-  if (pulse?.data?.vodId == null) {
-    parts.push('API vodId still null')
+  if (pulse && pulse.data?.vodId == null) {
+    parts.push(
+      pulse.data?.mode === 'live_dvr'
+        ? 'Live analytics active; archive validation pending'
+        : 'No validated archive link yet',
+    )
   }
 
   appendLocalVodDiscoveryNotes(vodEntries, parts)
@@ -205,12 +211,12 @@ function appendLocalVodDiscoveryNotes(vodEntries: PulseDebugEntry[], parts: stri
 
   const dom = last('vod.discover.dom')
   if (dom?.message.includes('no archive')) {
-    parts.push('no VOD id in Twitch page HTML (content script)')
+    parts.push('Optional page scan found no correlated VOD id')
   }
 
   const page = last('vod.discover.page')
   if (page?.message.includes('no archive')) {
-    parts.push(`no VOD id in ${page.data?.scannedScripts ?? 0} page scripts`)
+    parts.push(`Optional page scan found no VOD id in ${page.data?.scannedScripts ?? 0} scripts`)
   }
 
   const gql = last('vod.discover.gql')
@@ -218,11 +224,11 @@ function appendLocalVodDiscoveryNotes(vodEntries: PulseDebugEntry[], parts: stri
     const source = gql.data?.source
     const streamId = gql.data?.streamId
     if (source === 'stream.archiveVideo') {
-      parts.push('Twitch has no live archiveVideo yet (VOD storage off or stream just started)')
+      parts.push('Optional Twitch GQL has not exposed archiveVideo yet')
     } else if (source === 'videos.archive') {
-      parts.push('Twitch GQL returned no archive list')
+      parts.push('Optional Twitch GQL returned no archive list')
     } else if (!source) {
-      parts.push('Twitch GQL returned no archive id')
+      parts.push('Optional Twitch GQL returned no archive id')
     }
     if (typeof streamId === 'string' && streamId) {
       parts.push(`Twitch stream ${streamId}`)
@@ -234,11 +240,11 @@ function appendLocalVodDiscoveryNotes(vodEntries: PulseDebugEntry[], parts: stri
         return text.includes('Failed to fetch') || text === 'network_error' || text === 'fetch_failed'
       })
       if (blocked) {
-        parts.push('GQL blocked (disable ad blocker for gql.twitch.tv or whitelist Twitch)')
+        parts.push('Optional Twitch GQL was blocked; backend and live analytics are unaffected')
       } else if (gqlErrors.some(error => String(error).includes('Client-ID') || String(error).includes('Client-Id'))) {
-        parts.push('GQL Client-ID rejected from extension — using page context now (reload extension)')
+        parts.push('Optional Twitch GQL Client-ID was rejected; backend validation is unaffected')
       } else {
-        parts.push(`GQL: ${gqlErrors.slice(0, 2).join(', ')}`)
+        parts.push(`Optional Twitch GQL: ${gqlErrors.slice(0, 2).join(', ')}`)
       }
     }
   }

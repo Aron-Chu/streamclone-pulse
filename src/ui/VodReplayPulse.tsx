@@ -194,7 +194,7 @@ export function VodReplayPulse({
       <VodStatePanel
         title="Replay Pulse"
         subtitle="Syncing replay"
-        body="StreamPulse is still processing this VOD."
+        body={state.reason ?? 'StreamPulse is still processing this VOD.'}
         status="syncing"
         primaryAction={onRetry ? { label: 'Retry', onClick: onRetry } : undefined}
         secondaryAction={
@@ -202,6 +202,17 @@ export function VodReplayPulse({
             ? { label: 'Open channel analytics', onClick: () => openAnalyticsHref(channelAnalyticsHref) }
             : undefined
         }
+      />
+    )
+  }
+
+  if (state.status === 'live_dvr') {
+    return (
+      <VodStatePanel
+        title="Replay Pulse"
+        subtitle="Live analytics active"
+        body="The stream is still live. Replay chat may remain unavailable until Twitch publishes the archive."
+        status="tracking"
       />
     )
   }
