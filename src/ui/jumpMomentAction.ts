@@ -16,6 +16,10 @@ export function resolveJumpMomentAction(input: {
   /** Prefer effective-live; raw payload isLive alone is insufficient. */
   effectiveIsLive?: boolean
   payloadIsLive?: boolean
+  /** Backend mode overrides the Twitch URL shape once resolution completes. */
+  payloadMode?: 'live_dvr' | 'vod'
+  /** Stream-origin to VOD-origin delta supplied by exact backend validation. */
+  vodOriginDeltaSeconds?: number
   liveCurrentOffset?: number
   offsetSeconds: number
 }): JumpMomentAction {
@@ -24,19 +28,36 @@ export function resolveJumpMomentAction(input: {
     payloadVodId,
     effectiveIsLive,
     payloadIsLive,
+    payloadMode,
+    vodOriginDeltaSeconds,
     liveCurrentOffset,
     offsetSeconds,
   } = input
 
-  if (context.kind === 'vod') {
-    return { kind: 'seek-vod', offsetSeconds }
+  const vodId = payloadVodId?.trim() || undefined
+  const vodOffset = Math.max(
+    0,
+    offsetSeconds - (Number.isFinite(vodOriginDeltaSeconds) ? (vodOriginDeltaSeconds as number) : 0),
+  )
+
+  // A validated VOD route owns the playback surface, including while its
+  // analytics response is still marked live_dvr because the archive is growing.
+  if (context.kind === 'vod' && vodId && context.vodId === vodId) {
+    return { kind: 'seek-vod', offsetSeconds: vodOffset }
   }
 
-  const vodId = (payloadVodId ?? context.vodId ?? undefined)?.trim() || undefined
-  const isLive = effectiveIsLive ?? Boolean(payloadIsLive)
+  const isLive = payloadMode === 'live_dvr' || (effectiveIsLive ?? Boolean(payloadIsLive))
 
-  // Live moment actions: try same-player DVR first even when a VOD ID is linked.
+  // On a channel, an exact VOD is the correct playback surface. The live_dvr
+  // mode describes the analytics source, not the Twitch player URL.
+  if (context.kind === 'channel' && vodId) {
+    return { kind: 'open-vod-tab', vodId, offsetSeconds: vodOffset }
+  }
+
   if (isLive) {
+    // A canonical VOD route without an exact validated VOD must not seek an
+    // arbitrary player as though it were the live channel DVR.
+    if (context.kind !== 'channel') return { kind: 'open-analytics', offsetSeconds }
     if (Number.isFinite(liveCurrentOffset)) {
       return {
         kind: 'seek-live-dvr',
@@ -52,7 +73,7 @@ export function resolveJumpMomentAction(input: {
   }
 
   if (vodId) {
-    return { kind: 'open-vod-tab', vodId, offsetSeconds }
+    return { kind: 'open-vod-tab', vodId, offsetSeconds: vodOffset }
   }
 
   return { kind: 'open-analytics', offsetSeconds }

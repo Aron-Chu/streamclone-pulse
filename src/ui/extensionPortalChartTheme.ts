@@ -1,31 +1,24 @@
+import { CHART_BAR_ALPHA, CHART_SIGNAL } from './chartTheme.ts'
+
 /** Portal analytics lane colors (figma-analytics / analytics-surfaces). */
 export const EXTENSION_PORTAL_CHART_THEME = {
-  chat: '#8b5cf6',
-  viewers: '#4ade80',
-  emotes: '#22d3ee',
-  moment: '#fbbf24',
-  game: '#f97316',
+  chat: CHART_SIGNAL.chat,
+  viewers: CHART_SIGNAL.viewers,
+  emotes: CHART_SIGNAL.emotes,
+  moment: CHART_SIGNAL.heat,
+  game: CHART_SIGNAL.game,
   grid: 'rgba(255,255,255,0.06)',
   panel: 'rgba(255,255,255,0.02)',
-  selection: '#fbbf24',
-  live: '#4ade80',
+  selection: CHART_SIGNAL.heat,
+  live: CHART_SIGNAL.live,
 } as const
 
-export type BarLane = 'chat' | 'emote'
-
 export function barAlpha(
-  lane: BarLane,
   opts: { isSpike: boolean; selected: boolean; hasValue: boolean },
 ): number {
-  if (!opts.hasValue) return 0.06
-  if (lane === 'chat') {
-    if (opts.selected) return opts.isSpike ? 0.9 : 0.78
-    if (opts.isSpike) return 0.72
-    return 0.35
-  }
-  if (opts.selected) return opts.isSpike ? 0.88 : 0.75
-  if (opts.isSpike) return 0.68
-  return 0.32
+  if (!opts.hasValue) return CHART_BAR_ALPHA.empty
+  if (opts.selected) return opts.isSpike ? CHART_BAR_ALPHA.selectedSpike : CHART_BAR_ALPHA.selected
+  return opts.isSpike ? CHART_BAR_ALPHA.spike : CHART_BAR_ALPHA.resting
 }
 
 export function barDimOpacity(activeBucket: number | null, barIndex: number): number {

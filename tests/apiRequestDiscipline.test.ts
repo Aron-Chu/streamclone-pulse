@@ -157,13 +157,66 @@ describe('extension API discipline', () => {
     )
 
     await expect(fetchPulseVod('123456')).resolves.toMatchObject({
-      vodId: '123456',
+      vodId: null,
       coverageStatus: 'missing',
     })
     await expect(fetchPulseVod('123456')).resolves.toMatchObject({
-      vodId: '123456',
+      vodId: null,
       coverageStatus: 'error',
     })
+  })
+
+  it('sends a VOD route candidate directly to the read-only live bridge', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      mode: 'live_dvr',
+      vodId: null,
+      streamId: 'provider-stream',
+      login: 'channel',
+      isLive: true,
+      tracking: true,
+      provisional: true,
+      resolutionState: 'live_stream_validated',
+      retryable: true,
+      currentOffsetSeconds: 120,
+      rollups: [],
+      lanes: { composite: [], chat: [], seventv: [] },
+    }), { headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchPulseVod('123456', { baseUrl: 'https://custom.example' })
+
+    const requested = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(requested.pathname).toBe('/v1/extension/pulse/vods/123456')
+    expect(requested.searchParams.get('allowLiveBridge')).toBe('true')
+    expect(requested.searchParams.get('streamId')).toBeNull()
+    expect(requested.searchParams.get('window')).toBe('recent')
+  })
+
+  it('uses the validated stream as an equality assertion on growing-VOD polls', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      mode: 'live_dvr',
+      vodId: '123456',
+      streamId: 'provider-stream',
+      login: 'channel',
+      isLive: true,
+      tracking: true,
+      provisional: true,
+      resolutionState: 'live_archive_validated',
+      retryable: true,
+      currentOffsetSeconds: 120,
+      rollups: [],
+      lanes: { composite: [], chat: [], seventv: [] },
+    }), { headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchPulseVod('123456', {
+      baseUrl: 'https://custom.example',
+      streamId: 'provider-stream',
+    })
+
+    const requested = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(requested.searchParams.get('streamId')).toBe('provider-stream')
+    expect(requested.searchParams.get('window')).toBe('recent')
   })
 
   it('surfaces offline/network failures', async () => {

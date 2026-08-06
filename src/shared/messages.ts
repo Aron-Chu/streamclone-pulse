@@ -439,6 +439,9 @@ export interface HintVodMessage {
 export interface GetPulseVodMessage {
   type: 'GET_PULSE_VOD'
   vodId: string
+  /** Optional exact provider stream assertion for recurring growing-VOD polls. */
+  streamId?: string
+  window?: 'recent' | 'full'
 }
 
 export interface DiscoverLiveVodMessage {
@@ -521,8 +524,14 @@ export interface PulsePayload {
   login: string
   isLive: boolean
   tracking: boolean
+  mode?: string
+  provisional?: boolean
+  resolutionState?: string
+  retryable?: boolean
   streamId?: string
   vodId?: string | null
+  /** Seconds between the tracked stream origin and the VOD origin. */
+  vodOriginDeltaSeconds?: number
   startedAt?: string
   endedAt?: string
   /** Legacy alias when backend sends latest stream end without endedAt. */
