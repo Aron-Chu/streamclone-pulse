@@ -26,7 +26,8 @@ describe('public release routes', () => {
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
     expect(screen.getByRole('link', { name: /support page/i }).getAttribute('href')).toBe('/support')
     const body = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(body).toMatch(/does not request, store, or send a StreamPulse beta key or access key/i)
+    expect(body).toMatch(/beta access key is sent only to the hosted enrollment endpoint/i)
+    expect(body).toMatch(/device token stored locally/i)
     expect(body).toMatch(/not sold, used for advertising, or used for unrelated profiling/i)
     expect(body).toMatch(/does not download or evaluate remotely hosted JavaScript or WebAssembly/i)
     expect(body).toMatch(/planned optional extension crash diagnostics are/i)

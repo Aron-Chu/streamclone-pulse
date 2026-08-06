@@ -221,6 +221,10 @@ export const shadowStyles = `
     border-color: rgba(255, 255, 255, 0.22) !important;
     transform: translateY(-1px);
   }
+  .pulse-chart-expand-btn:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.95) !important;
+    outline-offset: 2px !important;
+  }
   .pulse-chart-expand-btn-active:hover {
     background: rgba(139, 92, 246, 0.2) !important;
     border-color: rgba(167, 139, 250, 0.5) !important;

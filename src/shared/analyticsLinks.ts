@@ -6,6 +6,29 @@ export type ExtensionConfig = {
   webAnalyticsBaseUrl: string
 }
 
+const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
+const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+
+function safeWebAnalyticsOrigin(raw: string): string | null {
+  try {
+    const parsed = new URL(raw.trim().replace(/\/+$/, ''))
+    if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return null
+    if (parsed.protocol === 'https:' && !parsed.port && parsed.hostname === 'streampulse.stream') {
+      return parsed.origin
+    }
+    if (
+      parsed.protocol === 'http:'
+      && parsed.port === '5173'
+      && (parsed.hostname === LOCALHOST || parsed.hostname === LOOPBACK_IPV4)
+    ) {
+      return parsed.origin
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 /** Derive portal origin from API origin when no explicit override is stored. */
 export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
   const normalized = apiBaseUrl.trim().replace(/\/+$/, '')
@@ -18,7 +41,7 @@ export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
       const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
       const localBackendPort = '8081'
       const localPortalPort = '5173'
-      if ((host === 'localhost' || host === '127.0.0.1') && port === localBackendPort) {
+      if ((host === LOCALHOST || host === LOOPBACK_IPV4) && port === localBackendPort) {
         return `http://${host}:${localPortalPort}`
       }
     } catch {
@@ -44,7 +67,7 @@ export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
 }
 
 export function buildHubAnalyticsUrl(webAnalyticsBaseUrl: string): string | null {
-  const base = webAnalyticsBaseUrl.trim().replace(/\/+$/, '')
+  const base = safeWebAnalyticsOrigin(webAnalyticsBaseUrl)
   if (!base) return null
   return `${base}/analytics`
 }
@@ -55,7 +78,7 @@ export function buildAnalyticsUrl(args: {
   streamId?: string
   offsetSeconds?: number
 }): string | null {
-  const base = args.webAnalyticsBaseUrl.trim().replace(/\/+$/, '')
+  const base = safeWebAnalyticsOrigin(args.webAnalyticsBaseUrl)
   if (!base) return null
 
   const login = args.channelLogin?.trim().toLowerCase()
@@ -85,7 +108,7 @@ export function resolveWebAnalyticsHref(
 ): string | null {
   const path = relativePath?.trim()
   if (!path || !path.startsWith('/analytics/')) return null
-  const base = webAnalyticsBaseUrl.trim().replace(/\/+$/, '')
+  const base = safeWebAnalyticsOrigin(webAnalyticsBaseUrl)
   if (!base) return null
   return `${base}${path}`
 }

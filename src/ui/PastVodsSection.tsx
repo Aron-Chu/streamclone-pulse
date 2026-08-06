@@ -10,6 +10,7 @@ import {
   pastVodAnalyticsStatusLabel,
   vodThumbnailUrl,
 } from '../shared/pastVods.ts'
+import { safeImageUrl } from '../shared/safeUrl.ts'
 import { MAX_PAST_STREAM_ROWS } from './chatActivityEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { theme } from './theme.ts'
@@ -131,9 +132,10 @@ export function PastVodsSection({
         <div className="pulse-past-vod-shell">
           <div role="list" style={styles.list}>
             {visibleRows.map(row => (
-              <PastVodRowCard
-                key={row.streamId}
-                row={row}
+                <PastVodRowCard
+                  key={row.streamId}
+                  row={row}
+                  backendUrl={backendUrl}
                 onAnalytics={demoMode ? () => undefined : () => openAnalytics(row.streamId)}
                 onTwitchVod={demoMode ? () => undefined : () => openTwitchVod(row)}
                 onFromStart={row.analyticsStatus === 'current-live' ? onOpenFromStart : undefined}
@@ -157,16 +159,18 @@ export function PastVodsSection({
 
 function PastVodRowCard({
   row,
+  backendUrl,
   onAnalytics,
   onTwitchVod,
   onFromStart,
 }: {
   row: PastVodRow
+  backendUrl: string
   onAnalytics: () => void
   onTwitchVod: () => void
   onFromStart?: () => void
 }) {
-  const thumb = vodThumbnailUrl(row.thumbnailUrl, 80, 45)
+  const thumb = safeImageUrl(vodThumbnailUrl(row.thumbnailUrl, 80, 45), backendUrl)
   const dateLabel = formatPastVodDate(row.startedAt)
   const statusLabel = pastVodAnalyticsStatusLabel(row.analyticsStatus)
   const statusClass = pastVodAnalyticsStatusClass(row.analyticsStatus)

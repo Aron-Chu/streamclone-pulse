@@ -94,6 +94,15 @@ describe('resolveWebAnalyticsHref', () => {
   it('rejects non-analytics paths', () => {
     expect(resolveWebAnalyticsHref('https://streampulse.stream', '/v1/extension/health')).toBeNull()
   })
+
+  it('rejects unsafe analytics origins before opening a URL sink', () => {
+    expect(resolveWebAnalyticsHref('javascript:alert(1)', '/analytics/xqc/123')).toBeNull()
+    expect(resolveWebAnalyticsHref('https://streampulse.stream.evil', '/analytics/xqc/123')).toBeNull()
+    expect(buildAnalyticsUrl({
+      webAnalyticsBaseUrl: 'https://evil.example',
+      channelLogin: 'xqc',
+    })).toBeNull()
+  })
 })
 
 describe('resolveStreamAnalyticsHref', () => {

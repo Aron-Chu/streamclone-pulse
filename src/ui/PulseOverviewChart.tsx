@@ -44,9 +44,11 @@ export interface PulseOverviewChartProps {
   durationSeconds?: number
   streamStartedAt?: string
   height?: number
+  chartRegionId?: string
   selectedIndex?: number | null
   previewIndex?: number | null
   activityExpanded?: boolean
+  activityExpansionProgress?: number
   showViewerStrip?: boolean
   onSelectIndex?: (index: number) => void
   onClearSelection?: () => void
@@ -109,27 +111,40 @@ function seriesFocusOpacity(
 
 function rebalanceFractionsForFocus(
   focusedSeriesKey: string | null | undefined,
-  activityExpanded: boolean,
+  activityExpansionProgress: number,
   chatFraction: number,
   traceFraction: number,
   emoteFraction: number,
 ): { chat: number; trace: number; emote: number } {
-  if (!focusedSeriesKey || !activityExpanded) {
+  if (!focusedSeriesKey || activityExpansionProgress <= 0) {
     return { chat: chatFraction, trace: traceFraction, emote: emoteFraction }
   }
   const rest = 1 - FOCUS_LANE_BOOST
   const halfRest = rest / 2
+  let focused: { chat: number; trace: number; emote: number } | null = null
   switch (focusedSeriesKey) {
     case 'chat':
-      return { chat: FOCUS_LANE_BOOST, trace: halfRest, emote: halfRest }
+      focused = { chat: FOCUS_LANE_BOOST, trace: halfRest, emote: halfRest }
+      break
     case 'emotes':
-      return { chat: halfRest, trace: halfRest, emote: FOCUS_LANE_BOOST }
+      focused = { chat: halfRest, trace: halfRest, emote: FOCUS_LANE_BOOST }
+      break
     default:
       if (focusedSeriesKey.includes(':')) {
-        return { chat: halfRest, trace: FOCUS_LANE_BOOST, emote: halfRest }
+        focused = { chat: halfRest, trace: FOCUS_LANE_BOOST, emote: halfRest }
+        break
       }
       return { chat: chatFraction, trace: traceFraction, emote: emoteFraction }
   }
+  return {
+    chat: chatFraction + (focused.chat - chatFraction) * activityExpansionProgress,
+    trace: traceFraction + (focused.trace - traceFraction) * activityExpansionProgress,
+    emote: emoteFraction + (focused.emote - emoteFraction) * activityExpansionProgress,
+  }
+}
+
+function interpolateNumber(from: number, to: number, progress: number): number {
+  return from + (to - from) * progress
 }
 
 function plotBandForActivityZone(
@@ -194,9 +209,11 @@ export function PulseOverviewChart({
   durationSeconds = 0,
   streamStartedAt,
   height = DEFAULT_HEIGHT,
+  chartRegionId,
   selectedIndex = null,
   previewIndex = null,
   activityExpanded = false,
+  activityExpansionProgress,
   showViewerStrip = true,
   onSelectIndex,
   onClearSelection,
@@ -356,43 +373,40 @@ export function PulseOverviewChart({
   const emoteBarAxisMax = useMemo(() => barDisplayAxisMax(emotes), [emotes])
   const viewerAxisMax = Math.max(viewerMax, 1)
 
+  const expansionProgress = Math.min(1, Math.max(0, activityExpansionProgress ?? (activityExpanded ? 1 : 0)))
+  const normalizationProgress = activityExpansionProgress == null
+    ? normalizeOverlaySeries ? 1 : 0
+    : normalizeOverlaySeries ? expansionProgress : 0
+
   let viewerStripShare = showViewerStrip
-    ? activityExpanded && focusedSeriesKey === 'viewers'
-      ? 0.42
-      : activityExpanded
-        ? VIEWER_STRIP_SHARE_EXPANDED
-        : VIEWER_STRIP_SHARE_COLLAPSED
+    ? interpolateNumber(
+      VIEWER_STRIP_SHARE_COLLAPSED,
+      focusedSeriesKey === 'viewers' ? 0.42 : VIEWER_STRIP_SHARE_EXPANDED,
+      expansionProgress,
+    )
     : 0
 
   const hasOverlayTraces = overlayLines.some(series => series.dashed)
 
   let chatFraction = !showViewerStrip
     ? SIDEBAR_CHAT_FRACTION
-    : activityExpanded
-      ? ACTIVITY_CHAT_FRACTION_EXPANDED
-      : ACTIVITY_CHAT_FRACTION
-  let traceFraction = !showViewerStrip ? SIDEBAR_EMOTE_TRACE_FRACTION : ACTIVITY_EMOTE_TRACE_FRACTION
+    : interpolateNumber(ACTIVITY_CHAT_FRACTION, ACTIVITY_CHAT_FRACTION_EXPANDED, expansionProgress)
+  let traceFraction = !showViewerStrip
+    ? SIDEBAR_EMOTE_TRACE_FRACTION
+    : ACTIVITY_EMOTE_TRACE_FRACTION
   let emoteFraction = !showViewerStrip
     ? SIDEBAR_EMOTE_BARS_FRACTION
-    : activityExpanded
-      ? ACTIVITY_EMOTE_BARS_FRACTION_EXPANDED
-      : ACTIVITY_EMOTE_BARS_FRACTION
+    : interpolateNumber(ACTIVITY_EMOTE_BARS_FRACTION, ACTIVITY_EMOTE_BARS_FRACTION_EXPANDED, expansionProgress)
 
   if (showViewerStrip && hasOverlayTraces) {
-    if (activityExpanded) {
-      chatFraction = 0.44
-      traceFraction = 0.26
-      emoteFraction = 0.30
-    } else {
-      chatFraction = 0.50
-      traceFraction = 0.16
-      emoteFraction = 0.34
-    }
+    chatFraction = interpolateNumber(0.50, 0.44, expansionProgress)
+    traceFraction = interpolateNumber(0.16, 0.26, expansionProgress)
+    emoteFraction = interpolateNumber(0.34, 0.30, expansionProgress)
   }
 
   const rebalanced = rebalanceFractionsForFocus(
     focusedSeriesKey,
-    activityExpanded,
+    expansionProgress,
     chatFraction,
     traceFraction,
     emoteFraction,
@@ -717,8 +731,9 @@ export function PulseOverviewChart({
       const detailValues = rampNullableSeriesFromStreamStart(
         series.values.map(value => (value > 0 ? value : null)),
       )
-      const axisMax = overlaySeriesAxisMax(detailValues, normalizeOverlaySeries, traceAxis.max)
-      const axisMin = normalizeOverlaySeries ? 0 : traceAxis.min
+      const normalizedAxisMax = overlaySeriesAxisMax(detailValues, true, traceAxis.max)
+      const axisMax = interpolateNumber(traceAxis.max, normalizedAxisMax, normalizationProgress)
+      const axisMin = interpolateNumber(traceAxis.min, 0, normalizationProgress)
       const path =
         smoothLinePathInBand(
           smoothValues,
@@ -747,7 +762,7 @@ export function PulseOverviewChart({
     })
   }, [
     dashedOverlays,
-    normalizeOverlaySeries,
+    normalizationProgress,
     traceAxis,
     width,
     height,
@@ -911,10 +926,11 @@ export function PulseOverviewChart({
   )
   const pinX = pinIndex != null ? pinTargetX : null
   const listPreviewLineX = listPreviewIndex != null ? smoothListPreviewX : null
+  const shellStyle = { ...styles.shell, height, minHeight: height }
 
   if (loading) {
     return (
-      <div ref={containerRef} style={styles.shell}>
+      <div ref={containerRef} id={chartRegionId} style={shellStyle}>
         <div style={styles.empty}>Loading timeline…</div>
       </div>
     )
@@ -922,14 +938,14 @@ export function PulseOverviewChart({
 
   if (n === 0) {
     return (
-      <div ref={containerRef} style={styles.shell}>
+      <div ref={containerRef} id={chartRegionId} style={shellStyle}>
         <div style={styles.empty}>{emptyMessage ?? 'No chart data yet'}</div>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} className="pulse-sparkline-wrap" style={styles.shell}>
+    <div ref={containerRef} id={chartRegionId} className="pulse-sparkline-wrap" style={shellStyle}>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
@@ -1234,7 +1250,7 @@ export function PulseOverviewChart({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
-                    strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
+                    strokeDasharray={normalizationProgress >= 1 ? undefined : '4 3'}
                     opacity={seriesFocusOpacity(
                       focusedSeriesKey,
                       series.key,
@@ -1249,7 +1265,7 @@ export function PulseOverviewChart({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
-                    strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
+                    strokeDasharray={normalizationProgress >= 1 ? undefined : '4 3'}
                     opacity={seriesFocusOpacity(
                       focusedSeriesKey,
                       series.key,
@@ -1265,7 +1281,7 @@ export function PulseOverviewChart({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={normalizeOverlaySeries ? 2.5 : TRACE_LINE_STROKE + 0.25}
-                    strokeDasharray={normalizeOverlaySeries ? undefined : '4 3'}
+                    strokeDasharray={normalizationProgress >= 1 ? undefined : '4 3'}
                     opacity={seriesFocusOpacity(
                       focusedSeriesKey,
                       series.key,
@@ -1534,7 +1550,6 @@ const styles: Record<string, CSSProperties> = {
     background: CHART_THEME.background,
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 8,
-    minHeight: DEFAULT_HEIGHT,
     minWidth: 0,
     overflow: 'hidden',
     width: '100%',
@@ -1549,7 +1564,8 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     fontSize: 11,
     fontWeight: 700,
-    minHeight: DEFAULT_HEIGHT,
+    height: '100%',
+    minHeight: 0,
     padding: '0 12px',
     placeItems: 'center',
     textAlign: 'center',

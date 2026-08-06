@@ -83,6 +83,7 @@ import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
+import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
@@ -381,7 +382,7 @@ function OverlayMain({
 
   useEffect(() => {
     let mounted = true
-    void sendBackgroundMessage({ type: 'GET_ALWAYS_TRACKED' }).then(response => {
+    void sendBackgroundMessage({ type: 'GET_ALWAYS_TRACKED', login }).then(response => {
       if (!mounted) return
       if ('channels' in response && Array.isArray(response.channels)) {
         setAlwaysTrackedLogins(response.channels)
@@ -712,7 +713,7 @@ function OverlayMain({
         throw err
       }
       if (!tokenIsLive(token)) return
-      const response = await sendBackgroundMessage({ type: 'GET_PULSE_BACKFILL_STATUS', jobId })
+      const response = await sendBackgroundMessage({ type: 'GET_PULSE_BACKFILL_STATUS', login, jobId })
       if (!tokenIsLive(token)) return
       if (!('type' in response) || response.type !== 'PULSE_BACKFILL_STATUS' || !response.job) {
         continue
@@ -1575,7 +1576,7 @@ function OverlayMain({
 
           {notice ? <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p> : null}
 
-          {topClip && !isVodPage ? <ClipSpikeCard clip={topClip} /> : null}
+          {topClip && !isVodPage ? <ClipSpikeCard clip={topClip} backendUrl={backendUrl} /> : null}
 
           {!isVodPage ? (
           <PastVodsSection
@@ -1795,15 +1796,18 @@ function VodPulseStatusCard({
   )
 }
 
-function ClipSpikeCard({ clip }: { clip: ExtensionClip }) {
+function ClipSpikeCard({ clip, backendUrl }: { clip: ExtensionClip; backendUrl: string }) {
   const duration = formatClipDuration(clip.durationSeconds)
+  const clipUrl = safeTwitchNavigationUrl(clip.url)
+  const thumbnailUrl = safeImageUrl(clip.thumbnailUrl, backendUrl)
+  if (!clipUrl) return null
   return (
     <section style={styles.clipSpikeSection}>
       <h3 style={styles.clipSpikeHeading}>Clip spike</h3>
-      <a href={clip.url} target="_blank" rel="noreferrer" style={styles.clipSpikeCard}>
+      <a href={clipUrl} target="_blank" rel="noreferrer" referrerPolicy="no-referrer" style={styles.clipSpikeCard}>
         <div style={styles.clipThumbWrap}>
-          {clip.thumbnailUrl ? (
-            <img src={clip.thumbnailUrl} alt={clip.title} style={styles.clipThumb} loading="lazy" />
+          {thumbnailUrl ? (
+            <img src={thumbnailUrl} alt={clip.title} style={styles.clipThumb} loading="lazy" referrerPolicy="no-referrer" />
           ) : (
             <div style={styles.clipThumbFallback} />
           )}

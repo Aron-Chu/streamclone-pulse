@@ -128,6 +128,14 @@ jobs:
       - name: Confirm package layout (RPR-6 no-op link)
         run: bash scripts/ci-link-streamclone-packages.sh
 
+      - name: Force-full dispatch proof
+        if: needs.guard.outputs.force_full == 'true'
+        run: |
+          set -euo pipefail
+          test "${{ github.event_name }}" = "workflow_dispatch"
+          test "${{ github.event.inputs.force_full }}" = "true"
+          echo "force_full=true"
+
       # actions/setup-node@v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -138,6 +146,26 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: npm audit (root lock) with high-severity disposition
+        run: |
+          set -euo pipefail
+          audit_json="${RUNNER_TEMP}/root-npm-audit.json"
+          audit_stderr="${RUNNER_TEMP}/root-npm-audit.stderr"
+          set +e
+          npm audit --json > "${audit_json}" 2> "${audit_stderr}"
+          audit_status=$?
+          set -e
+          if [[ "${audit_status}" -gt 1 ]]; then
+            echo "::error::root npm audit command failed with exit code ${audit_status}"
+            if [[ -s "${audit_stderr}" ]]; then
+              cat "${audit_stderr}"
+            fi
+            exit 1
+          fi
+          node scripts/ci-portal-npm-audit-disposition.mjs \
+            --npm-exit-code "${audit_status}" \
+            "${audit_json}"
 
       - name: Credential-free clean-checkout proof
         run: bash scripts/ci-clean-checkout-proof.sh
@@ -315,9 +343,24 @@ jobs:
           set -euo pipefail
           # Two high findings (react-router RSC CSRF GHSA-qwww-vcr4-c8h2) are
           # dispositioned in docs/evidence/npm-audit-rpr6-2026-07.md — portal is
-          # a classic Vite SPA (no RSC). Do not silently ignore new highs.
-          npm audit --json > /tmp/portal-npm-audit.json || true
-          node ../scripts/ci-portal-npm-audit-disposition.mjs /tmp/portal-npm-audit.json
+          # a classic Vite SPA (no RSC). The gate rejects command errors,
+          # malformed reports, schema drift, and new highs/criticals.
+          audit_json="${RUNNER_TEMP}/portal-npm-audit.json"
+          audit_stderr="${RUNNER_TEMP}/portal-npm-audit.stderr"
+          set +e
+          npm audit --json > "${audit_json}" 2> "${audit_stderr}"
+          audit_status=$?
+          set -e
+          if [[ "${audit_status}" -gt 1 ]]; then
+            echo "::error::portal npm audit command failed with exit code ${audit_status}"
+            if [[ -s "${audit_stderr}" ]]; then
+              cat "${audit_stderr}"
+            fi
+            exit 1
+          fi
+          node ../scripts/ci-portal-npm-audit-disposition.mjs \
+            --npm-exit-code "${audit_status}" \
+            "${audit_json}"
       - run: npm run build:ci
 
       # Mocked portal Playwright — Chromium needs ubuntu-latest (not ubuntu-slim).

@@ -15,7 +15,7 @@
 | Gate | Status |
 |------|--------|
 | Live CWS Support URL → `https://streampulse.stream/support` | **Owner action required** (publisher console) |
-| Confirm dashboard currently serves **0.1.1** | **Owner confirm** |
+| Confirm current dashboard version | **Owner confirm** (the historical 0.1.1 note is not a current source-of-truth claim) |
 | Compare proposed upload digest to attested CWS ZIP | **Owner confirm** after Release artifacts run |
 | Explicit CWS upload authorization | **Not granted — stop** |
 | Activation flags (Sentry / Turnstile / Linear / email / PostHog) | Remain **false / inactive** |
@@ -30,6 +30,10 @@
 4. Draft GitHub release marked **prerelease**; unsigned `RELEASE_PROVENANCE.txt` renamed to `RELEASE_BUILD_METADATA.txt`.
 5. Owner-dispatched workflow: `.github/workflows/release-artifacts.yml` (tag + expected SHA verify → package CWS/Edge → validate → attest → 90-day artifacts).
 6. Screenshot provenance: [`CWS-screenshot-provenance-v0.1.2.md`](./CWS-screenshot-provenance-v0.1.2.md).
+
+The v0.1.2 evidence predates the exact-tag dispatch and `--source-ref` /
+`--source-digest` verification now required by `Release artifacts`. Do not use
+this historical record as proof for a future v0.1.3 ZIP.
 
 ## Attested package (do not upload until owner authorizes)
 

@@ -19,11 +19,10 @@ function listSourceFiles(dir: string): string[] {
   return files
 }
 
-describe('public-first extension has no beta/access key path', () => {
-  it('ships no beta-key storage helpers or auth headers in extension source', () => {
+describe('device enrollment key handling', () => {
+  it('does not persist beta keys in extension storage', () => {
     const offenders: string[] = []
-    const banned =
-      /\b(getBetaKey|setBetaKey|betaKey|X-Streamclone-Beta-Key|accessKey)\b|X-Streamclone-Beta/i
+    const banned = /chrome\.storage\.(sync|local)[^\n;]*betaKey/i
     for (const file of listSourceFiles(SRC_ROOT)) {
       const source = readFileSync(file, 'utf8')
       if (banned.test(source)) {

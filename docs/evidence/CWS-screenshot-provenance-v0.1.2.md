@@ -15,6 +15,9 @@
 
 Visual parity claim for store upload: screenshots were produced from the mocked harness against packaged `dist/`. Assurance SHA changes were security/CI (emote URL allowlist, temp paths, CodeQL, attested workflow). Emote CDNs used by fixtures remain on the allowlist. **If owner requires pixel proof against the attested ZIP, re-run `npm run capture:cws:mocked` on a clean checkout of `v0.1.2-store` before upload.**
 
+This evidence is for v0.1.2 only. It does not claim that the pending v0.1.3
+candidate has regenerated CWS screenshots.
+
 ## Image digests (committed tree @ `2031f9c…`)
 
 | File | SHA-256 | Dimensions |

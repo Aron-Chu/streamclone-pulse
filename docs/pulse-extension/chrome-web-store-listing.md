@@ -56,17 +56,25 @@ What you get
 • Live Pulse chart docked beside Twitch chat (CHAT/PULSE sidebar when chat is open)
 • Honest coverage and backfill status from the StreamPulse backend (no fake progress)
 • Selected-moment / top-emote context for the current window
-• Settings for theme, placement, and chart preferences
+• Settings for theme, placement, chart preferences, and an optional Protect watchlist
 • Works with Twitch channel and VOD pages
 
 How it works
 The extension reads the Twitch page context to identify the channel / stream / VOD, then the service worker calls the StreamPulse API (https://api.streampulse.stream) for minute-level aggregates. Raw chat is not shown in the overlay. Scoring and rollups come from the backend — the extension does not invent Pulse scores client-side.
 
+Protect is optional. A beta access key is used once to enroll this browser as a device; the key is discarded
+and an opaque device token is stored only in local trusted extension storage. The token is not synced between
+browsers. A channel saved without enrollment is a browser-local preference, not a server-protected channel.
+The extension shows pending, protected, unauthorized, cap, retry, and failure states rather than claiming
+protection after a rejected write. Removing a channel keeps a local tombstone until the server confirms deletion.
+
 Privacy
 See https://streampulse.stream/privacy — including Chrome Web Store Limited Use language and contact privacy@streampulse.stream.
 
-Public-first access
-The public-first extension does not require a StreamPulse beta key or Twitch OAuth.
+Access
+The overlay can be read without Twitch OAuth. Optional hosted Protect enrollment requires a one-time beta
+access key; after enrollment, protected watchlist requests use the local device token. The token can be
+rotated or revoked from Options.
 
 Support
 Support page: https://streampulse.stream/support
@@ -99,7 +107,7 @@ Paste only for permissions present in the store ZIP. **Do not** paste localhost 
 
 ### storage
 ```
-Stores StreamPulse settings (theme, overlay placement, chart preferences, watchlist) in chrome.storage.sync and short-lived Pulse/coverage cache in chrome.storage.session so the overlay can restore preferences and avoid unnecessary API calls. Optional debug logs may use chrome.storage.local when debug logging is enabled.
+Stores StreamPulse settings (theme, overlay placement, chart preferences, browser-saved watchlist) in chrome.storage.sync; short-lived Pulse/coverage cache in chrome.storage.session; and the optional Protect device token plus server-confirmation metadata/tombstones in chrome.storage.local so credentials are not synced between browsers. Optional debug logs may use chrome.storage.local when debug logging is enabled.
 ```
 
 ### scripting
@@ -132,7 +140,7 @@ Local StreamPulse BFF hosts (`http://localhost:8081/*`, `http://127.0.0.1:8081/*
 
 | Question | Answer |
 |----------|--------|
-| Collects user data? | Yes — limited: channel/stream/VOD identifiers sent to StreamPulse API; settings in Chrome storage |
+| Collects user data? | Yes — limited: channel/stream/VOD identifiers sent to StreamPulse API; optional Protect device credential and watchlist state; settings in Chrome storage |
 | Sold to third parties? | No |
 | Used for ads / unrelated profiling? | No |
 | Remote hosted code? | **No** — bundled JS only |
@@ -140,6 +148,7 @@ Local StreamPulse BFF hosts (`http://localhost:8081/*`, `http://127.0.0.1:8081/*
 | Support URL | https://streampulse.stream/support |
 | Limited Use | Affirmed on privacy page + this listing |
 | Extension crash/product analytics SDKs | Not present in the current extension package |
+| Protect enrollment | Optional one-time beta key enrollment; key discarded; opaque device token stored locally and revocable |
 | Separate default-off analytics consent | Options toggle exists; ingest kill switch remains off; no PostHog host permission |
 | PostHog processing | Server-side aggregates only after activation; no identity; ~180-day retention target (not claiming activation) |
 

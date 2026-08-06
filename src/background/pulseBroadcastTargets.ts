@@ -1,10 +1,54 @@
+import { normalizeLogin } from '../shared/login.ts'
+
 /** True when a Twitch tab URL is for this channel (multi-tab same login still matches). */
+export function isSupportedTwitchUrl(url: string | undefined): boolean {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') return false
+    const host = parsed.hostname.toLowerCase()
+    return host === 'twitch.tv' || host === 'www.twitch.tv'
+  } catch {
+    return false
+  }
+}
+
+export interface RuntimeSenderLike {
+  id?: string
+  url?: string
+  frameId?: number
+  tab?: { url?: string }
+}
+
+function isExtensionPageUrl(url: string | undefined, extensionId: string): boolean {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'chrome-extension:') return parsed.hostname === extensionId
+    return parsed.protocol === 'moz-extension:' && Boolean(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+export function isExtensionPageSender(sender: RuntimeSenderLike, extensionId: string): boolean {
+  if (!sender.id || sender.id !== extensionId || !isExtensionPageUrl(sender.url, extensionId)) return false
+  // Firefox may include the options/popup tab on a runtime message. It is
+  // still trusted only when that tab is also an extension-owned page.
+  return !sender.tab || isExtensionPageUrl(sender.tab.url, extensionId)
+}
+
+export function isTrustedTwitchTopFrameSender(sender: RuntimeSenderLike, extensionId: string): boolean {
+  return Boolean(sender.id === extensionId && sender.frameId === 0 && isSupportedTwitchUrl(sender.tab?.url))
+}
+
 export function tabUrlMatchesPulseLogin(url: string | undefined, login: string): boolean {
-  if (!url || !login) return false
+  const normalizedLogin = normalizeLogin(login)
+  if (!isSupportedTwitchUrl(url) || !url || !normalizedLogin) return false
   try {
     const { pathname } = new URL(url)
     const path = pathname.toLowerCase()
-    const needle = `/${login.trim().toLowerCase()}`
+    const needle = `/${normalizedLogin}`
     return path === needle || path.startsWith(`${needle}/`)
   } catch {
     return false

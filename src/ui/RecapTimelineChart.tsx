@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { deriveLiveStats, formatHeatOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionEmote, PulsePayload } from '../shared/messages.ts'
@@ -26,6 +26,7 @@ import { mergeRecapMoments, recapStreamDurationSeconds, resolveRecapPointFromRol
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
+import { useChartExpansion } from './motion/useChartExpansion.ts'
 
 export interface RecapTimelineChartProps {
   payload: PulsePayload
@@ -64,11 +65,10 @@ export function RecapTimelineChart({
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
-  const [tracesExpanded, setTracesExpanded] = useState(false)
-  const [userCollapsedTraces, setUserCollapsedTraces] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
   const onRequestFullRollupsRef = useRef(onRequestFullRollups)
+  const chartIdentity = `${payload.login}:${payload.streamId ?? ''}:${payload.vodId ?? ''}:${payload.startedAt ?? ''}`
   onRequestFullRollupsRef.current = onRequestFullRollups
 
   const currentOffsetSeconds = useMemo(
@@ -193,7 +193,7 @@ export function RecapTimelineChart({
 
   useEffect(() => {
     fullTimelineRequestedRef.current = false
-  }, [payload.streamId])
+  }, [chartIdentity])
 
   useEffect(() => {
     if (
@@ -215,20 +215,8 @@ export function RecapTimelineChart({
   useEffect(() => {
     setChartHoverOffsetSeconds(null)
     setSelectedEmoteKeys([])
-    setTracesExpanded(false)
-    setUserCollapsedTraces(false)
-  }, [payload.streamId])
-
-  useEffect(() => {
-    if (selectedEmotesForOverlay.length === 0) {
-      setTracesExpanded(false)
-      setUserCollapsedTraces(false)
-      return
-    }
-    if (!userCollapsedTraces) {
-      setTracesExpanded(true)
-    }
-  }, [selectedEmotesForOverlay.length, userCollapsedTraces])
+    setFocusedSeriesKey(null)
+  }, [chartIdentity])
 
   useEffect(() => {
     if (pinOffsetSeconds != null) {
@@ -263,7 +251,13 @@ export function RecapTimelineChart({
     setSelectedEmoteKeys(current => toggleEmotePlotKeys(current, key, MAX_PLOTTED_EMOTES))
   }
 
-  const chartHeight = 216
+  const chartRegionId = `pulse-recap-chart-${useId().replace(/:/g, '')}`
+  const chartExpansion = useChartExpansion({
+    identity: chartIdentity,
+    heights: { collapsed: 216, expanded: 264 },
+  })
+  const tracesExpanded = chartExpansion.expanded
+  const chartHeight = chartExpansion.height
   const hasPlottedEmotes = selectedEmotesForOverlay.length > 0
 
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
@@ -286,17 +280,21 @@ export function RecapTimelineChart({
           <button
             type="button"
             className={`pulse-chart-expand-btn${tracesExpanded ? ' pulse-chart-expand-btn-active' : ''}`}
-            style={styles.expandButton}
+            style={{
+              ...styles.expandButton,
+              ...(tracesExpanded ? styles.expandButtonActive : null),
+            }}
             onClick={() => {
               if (tracesExpanded) {
-                setUserCollapsedTraces(true)
-                setTracesExpanded(false)
+                setFocusedSeriesKey(null)
+                chartExpansion.reset()
               } else {
-                setUserCollapsedTraces(false)
-                setTracesExpanded(true)
+                chartExpansion.expand()
               }
             }}
-            aria-pressed={tracesExpanded}
+            aria-expanded={tracesExpanded}
+            aria-controls={chartRegionId}
+            aria-label={tracesExpanded ? 'Reset stream activity chart' : 'Expand stream activity chart'}
           >
             {tracesExpanded ? 'Reset' : 'Expand'}
           </button>
@@ -359,11 +357,13 @@ export function RecapTimelineChart({
           durationSeconds={currentOffsetSeconds}
           streamStartedAt={payload.startedAt}
           height={chartHeight}
+          chartRegionId={chartRegionId}
+          activityExpansionProgress={chartExpansion.progress}
           selectedIndex={pinChartIndex}
           previewIndex={previewChartIndex}
           showViewerStrip={showViewerStrip}
           activityExpanded={tracesExpanded}
-          normalizeOverlaySeries={tracesExpanded}
+          normalizeOverlaySeries={hasPlottedEmotes}
           focusedSeriesKey={focusedSeriesKey}
           onFocusedSeriesKeyChange={setFocusedSeriesKey}
           onSelectIndex={handleChartSelect}
@@ -375,7 +375,6 @@ export function RecapTimelineChart({
           emptyMessage={chartEmpty || 'Loading full stream rollups…'}
           loading={timelineLoading || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
           isLive={false}
-          reducedMotion
         />
       </div>
 
@@ -449,6 +448,11 @@ const styles: Record<string, CSSProperties> = {
     padding: '4px 8px',
     textTransform: 'uppercase',
     whiteSpace: 'nowrap',
+  },
+  expandButtonActive: {
+    background: 'rgba(139, 92, 246, 0.12)',
+    border: '1px solid rgba(167, 139, 250, 0.35)',
+    color: '#ddd6fe',
   },
   overlayLegendChip: {
     alignItems: 'center',

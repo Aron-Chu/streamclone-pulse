@@ -35,9 +35,13 @@ describe('settings runtime wiring', () => {
           }),
         },
         session: {
-          get: vi.fn(async (key: string | null) =>
-            key === null ? { ...sessionStore } : { [key]: sessionStore[key] },
-          ),
+          get: vi.fn(async (key: string | string[] | null) => {
+            if (key === null) return { ...sessionStore }
+            const keys = Array.isArray(key) ? key : [key]
+            const out: Record<string, unknown> = {}
+            for (const item of keys) out[item] = sessionStore[item]
+            return out
+          }),
           set: vi.fn(async (items: Record<string, unknown>) => {
             Object.assign(sessionStore, items)
           }),
@@ -97,5 +101,16 @@ describe('settings runtime wiring', () => {
     expect(await getSessionPulse('xqc', 'full')).toBeNull()
     expect(await getSessionPulse('xqc', 'recent', 'stream-b')).toBeNull()
     expect(await getSessionPulse('xqc', 'recent', 'stream-a')).not.toBeNull()
+  })
+
+  it('rejects a cache entry without a stream identity for exact-stream reads', async () => {
+    await setKeepLocalCache(true)
+    await cacheSessionPulseIfEnabled('xqc', {
+      payload: { ...minimalPayload, streamId: 'stream-a' },
+      fetchedAt: Date.now(),
+      window: 'recent',
+      streamId: '',
+    })
+    expect(await getSessionPulse('xqc', 'recent', 'stream-a')).toBeNull()
   })
 })

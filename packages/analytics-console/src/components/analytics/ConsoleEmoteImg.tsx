@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { sanitizeEmoteImageUrl } from '../../utils/emoteImageUrl'
+import { sanitizeEmoteImageUrl } from '../../utils/emoteImageUrl.ts'
 
 function emoteInitial(name: string): string {
   const trimmed = name.trim()

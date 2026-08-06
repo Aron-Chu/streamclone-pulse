@@ -30,6 +30,10 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'CLEAR_PULSE_DEBUG_LOG',
   'REPORT_EXTENSION_DIAGNOSTIC',
   'EMIT_EXTENSION_ANALYTICS',
+  'ENROLL_DEVICE',
+  'GET_DEVICE_AUTH_STATUS',
+  'ROTATE_DEVICE',
+  'REVOKE_DEVICE',
 ])
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -175,8 +179,9 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'GET_PULSE_BACKFILL_STATUS': {
       const jobId = requireString(raw.jobId)
-      if (!jobId) return null
-      return { type, jobId }
+      const login = requireLogin(raw.login)
+      if (!jobId || !login) return null
+      return { type, jobId, login }
     }
     case 'LIST_BOOKMARKS': {
       let login: string | undefined
@@ -207,13 +212,28 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       return { type, enabled: raw.enabled }
     }
     case 'HEALTH':
+    case 'GET_DEVICE_AUTH_STATUS':
+    case 'ROTATE_DEVICE':
+    case 'REVOKE_DEVICE':
     case 'OPEN_OPTIONS':
     case 'LIST_WATCHLIST':
     case 'SYNC_WATCHLIST':
-    case 'GET_ALWAYS_TRACKED':
-    case 'GET_PULSE_DEBUG_LOG':
-    case 'CLEAR_PULSE_DEBUG_LOG':
       return { type }
+    case 'GET_ALWAYS_TRACKED': {
+      const login = requireLogin(raw.login)
+      if (!login) return null
+      return { type, login }
+    }
+    case 'GET_PULSE_DEBUG_LOG':
+      return { type: 'GET_PULSE_DEBUG_LOG' }
+    case 'CLEAR_PULSE_DEBUG_LOG':
+      return { type: 'CLEAR_PULSE_DEBUG_LOG' }
+    case 'ENROLL_DEVICE': {
+      if (typeof raw.betaKey !== 'string') return null
+      const betaKey = raw.betaKey.trim()
+      if (betaKey.length < 8 || betaKey.length > 256) return null
+      return { type, betaKey }
+    }
     case 'REPORT_EXTENSION_DIAGNOSTIC': {
       const feature =
         raw.feature === 'overlay' ||

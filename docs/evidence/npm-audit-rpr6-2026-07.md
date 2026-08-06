@@ -8,7 +8,7 @@ findings that resolve to the same advisory:
 | `react-router` | high | [GHSA-qwww-vcr4-c8h2](https://github.com/advisories/GHSA-qwww-vcr4-c8h2) — RSC Mode CSRF bypass before 400 response |
 | `react-router-dom` | high | Same (depends on `react-router`) |
 
-**Installed range at disposition:** `react-router-dom@7.18.1` / `react-router@7.18.1`
+**Installed range at disposition:** `react-router-dom@7.18.2` / `react-router@7.18.2`
 (advisory range `>=7.12.0 <8.3.0`; fix published as `react-router@8.3.0`).
 
 ## Disposition: `vulnerable_code_not_used`
@@ -23,10 +23,11 @@ findings that resolve to the same advisory:
    change and would force a React Router 8 / ecosystem jump. Per program rules:
    do **not** force React Router 8, React 19, or Node 22-only upgrades solely to
    clear this alert.
-4. **CI enforcement:** `scripts/ci-portal-npm-audit-disposition.mjs` allows
-   **only** these two dispositioned package names and requires the **exact**
-   GHSA id `GHSA-qwww-vcr4-c8h2` in the audit `via` payload. Any **new**
-   high/critical finding fails portal CI.
+4. **CI enforcement:** `scripts/ci-portal-npm-audit-disposition.mjs` is applied
+    to both the root lock and `streampulse-web/package-lock.json`. It requires a
+    valid npm v2 vulnerability schema, matching severity metadata, and the exact
+    Router advisory metadata. It allows **only** these two dispositioned package
+    names; any **new** high/critical finding or audit command/report error fails CI.
 5. **GitHub Dependabot:** alerts dismissed as `vulnerable_code_not_used` with
    this evidence (public security closeout).
 
@@ -34,3 +35,5 @@ findings that resolve to the same advisory:
 
 - Schedule a dedicated React Router major upgrade when product-ready, then
   re-run `npm audit` until highs are zero or newly dispositioned with evidence.
+  Do not use `npm audit fix --force` as a release disposition; the current
+  exception is limited to the documented RSC-only, vulnerable-code-not-used case.

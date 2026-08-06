@@ -117,8 +117,8 @@ streampulse-backend (private — BFF owner; packages dropped)
 ### Auth model
 
 - **Local (non-hosted):** beta key optional; local stacks intentionally allow watch without a key for developer convenience.
-- **Hosted default:** optional `X-Streamclone-Beta-Key`. Guest/wrong-key callers fall through to a guest principal and still hit always-track / top-roster gates. Arbitrary unauthenticated collector admission for non-tracked channels is blocked (`403 extension_watch_disabled`), not necessarily a blanket `401`.
-- Bookmarks/watchlists remain principal-scoped when a beta key is present. No Twitch OAuth required for read/track; OAuth only if we later need "your followed channels".
+- **Hosted default:** read-only Pulse requests may use the guest path, while Protect/watchlist writes require an enrolled device principal. The extension sends `X-Streamclone-Beta-Key` only once to `POST /v1/extension/auth/device`; it discards the key and stores the returned opaque bearer token locally in trusted extension contexts. Subsequent device-token requests are sent only to the canonical hosted API origin.
+- Bookmarks/watchlists are principal-scoped to the enrolled device. No Twitch OAuth is required for read/track or Protect enrollment; OAuth would only be needed later for "your followed channels".
 - See [`../streampulse-sdlc/docs/guardrail-policy.md`](../../../streampulse-sdlc/docs/guardrail-policy.md) for honesty notes vs aspirational prose.
 
 ---
@@ -236,7 +236,7 @@ Single compact payload (see `requirements.md` for the full shape): `isLive`, `tr
 Returns cached payload (top 10 moments, top emotes, biggest chat spike, funniest burst, clip candidates, totals, peak chat/min). 425/“not ready” shape while a stream is still live; compute-on-miss after end.
 
 ### 6.5 Later (hosted)
-`POST /v1/extension/auth/device`, `GET /v1/extension/me`, `GET /v1/extension/channels/{login}/last-stream`.
+`POST /v1/extension/auth/device`, `POST /v1/extension/auth/device/rotate`, `DELETE /v1/extension/auth/device`, and `GET /v1/extension/me` are the hosted Protect device contract. The extension does not send device tokens to local/custom origins.
 
 ---
 
@@ -293,8 +293,7 @@ Today **hosted-production-vps** runs the hosted compose stack (streampulse-backe
 ## 10. Open decisions (resolve during RPR)
 
 - npm trusted publishing + provenance only after Pulse is public and owner-authorized (Phase 6/7).
-- Device-token / multi-tenant auth remains deferred; public-first extension does not require beta keys.
+- Full account identity and multi-tenant UX remain deferred. Optional hosted Protect device enrollment is implemented for the beta path; the one-time beta key is ephemeral and the resulting device token is local-only.
 - Whether recap cache (000039) ships or stays compute-on-demand — default: on-demand first.
 - GitHub Actions billing must be healthy before remote CI can gate publication (do not flip visibility for free minutes).
 - See [`reliability-public-release-plan.md`](./reliability-public-release-plan.md) for irreversible checkpoints.
-

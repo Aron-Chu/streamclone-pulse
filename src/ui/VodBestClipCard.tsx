@@ -3,6 +3,7 @@ import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { VodClipCandidate } from '../types/vodPulseTypes.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { theme } from './theme.ts'
+import { safeImageUrl } from '../shared/safeUrl.ts'
 
 export function VodBestClipCard({
   candidate,
@@ -17,8 +18,8 @@ export function VodBestClipCard({
     <div style={styles.wrap}>
       <span style={styles.title}>Best clip candidate</span>
       <div style={styles.body}>
-        {candidate.thumbnailUrl ? (
-          <img src={candidate.thumbnailUrl} alt="" style={styles.thumb} />
+        {safeImageUrl(candidate.thumbnailUrl, backendUrl) ? (
+          <img src={safeImageUrl(candidate.thumbnailUrl, backendUrl)} alt="" style={styles.thumb} />
         ) : null}
         <div style={styles.meta}>
           <strong style={styles.time}>

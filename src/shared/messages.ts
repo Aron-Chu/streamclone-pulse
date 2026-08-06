@@ -24,6 +24,10 @@ export type MessageType =
   | 'VOD_PULSE_UPDATE'
   | 'REPORT_EXTENSION_DIAGNOSTIC'
   | 'EMIT_EXTENSION_ANALYTICS'
+  | 'ENROLL_DEVICE'
+  | 'GET_DEVICE_AUTH_STATUS'
+  | 'ROTATE_DEVICE'
+  | 'REVOKE_DEVICE'
 
 export interface TrackMessage {
   type: 'TRACK'
@@ -42,6 +46,7 @@ export interface GetCoverageMessage {
 
 export interface GetAlwaysTrackedMessage {
   type: 'GET_ALWAYS_TRACKED'
+  login: string
 }
 
 export interface GetPulseMessage {
@@ -130,6 +135,23 @@ export interface HealthMessage {
   type: 'HEALTH'
 }
 
+export interface EnrollDeviceMessage {
+  type: 'ENROLL_DEVICE'
+  betaKey: string
+}
+
+export interface GetDeviceAuthStatusMessage {
+  type: 'GET_DEVICE_AUTH_STATUS'
+}
+
+export interface RotateDeviceMessage {
+  type: 'ROTATE_DEVICE'
+}
+
+export interface RevokeDeviceMessage {
+  type: 'REVOKE_DEVICE'
+}
+
 export interface ReportExtensionDiagnosticMessage {
   type: 'REPORT_EXTENSION_DIAGNOSTIC'
   /** Client may omit trusted fields; service worker overwrites from build/sender. */
@@ -186,6 +208,10 @@ export type BackgroundRequest =
   | GetAlwaysTrackedMessage
   | GetClipMessage
   | HealthMessage
+  | EnrollDeviceMessage
+  | GetDeviceAuthStatusMessage
+  | RotateDeviceMessage
+  | RevokeDeviceMessage
   | ReportExtensionDiagnosticMessage
   | EmitExtensionAnalyticsMessage
   | OpenOptionsMessage
@@ -264,6 +290,57 @@ export interface ExtensionHealthResponse {
   version: string
   time: number
   helixEnabled?: boolean
+  capabilities?: {
+    deviceAuth?: boolean
+    protectedTracking?: boolean
+  }
+}
+
+export interface ExtensionMeResponse {
+  principalId: string
+  principalKind: string
+  deviceId?: string
+  watchlistCount: number
+  caps: {
+    maxActiveChannels: number
+    maxChannelsPerPrincipal: number
+    maxDevicesPerPrincipal: number
+    deviceEnrollmentRatePerHour: number
+    watchRatePerMin: number
+    backfillRatePerHour: number
+  }
+}
+
+export type DeviceAuthState = 'connected' | 'not_connected' | 'unauthorized' | 'cap' | 'retry' | 'failure'
+
+export interface DeviceAuthStatus {
+  connected: boolean
+  state?: DeviceAuthState
+  principalId?: string
+  deviceId?: string
+  expiresAt?: string
+  watchlistCount?: number
+  error?: string
+}
+
+export type ProtectSyncState = 'pending' | 'protected' | 'unauthorized' | 'cap' | 'retry' | 'failure'
+export type ProtectSyncOperation = 'add' | 'remove'
+
+export interface ProtectChannelSyncStatus {
+  state: ProtectSyncState
+  operation?: ProtectSyncOperation
+  status?: number
+  message?: string
+  updatedAt?: number
+}
+
+export interface WatchlistSyncStatus {
+  overall: ProtectSyncState | 'idle'
+  channels: Record<string, ProtectChannelSyncStatus>
+  /** Last server-confirmed protected logins; absence is never treated as a delete. */
+  serverConfirmed: string[]
+  /** Explicit local removals waiting for a successful server DELETE. */
+  tombstones: string[]
 }
 
 export interface PulseBookmark {
@@ -383,6 +460,7 @@ export interface LoadMissedMomentsMessage {
 export interface GetPulseBackfillStatusMessage {
   type: 'GET_PULSE_BACKFILL_STATUS'
   jobId: string
+  login: string
 }
 
 export type PulseCoverageState =
@@ -508,6 +586,8 @@ export interface PulseUpdateMessage {
   type: 'PULSE_UPDATE'
   login: string
   payload: PulsePayload | null
+  /** Broadcast metadata used for stream-scoped content acceptance. */
+  streamId?: string
   error?: string
   coverageTier?: ExtensionCoverageTierResponse | null
   /** Non-fatal: stale revalidation failed; keep showing cached chart. */
@@ -526,12 +606,13 @@ export type BackgroundResponse =
   | VodPulseUpdateMessage
   | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }
   | { type: 'HEALTH'; ok: boolean; version?: string; helixEnabled?: boolean; error?: string }
+  | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   | { type: 'BOOKMARKS'; items: PulseBookmark[]; error?: string }
   | { type: 'BOOKMARK'; item: PulseBookmark; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
-  | { type: 'WATCHLIST'; channels: string[]; error?: string }
-  | { type: 'SYNC_WATCHLIST'; channels: string[]; error?: string }
+  | { type: 'WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
+  | { type: 'SYNC_WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
   | { type: 'PAST_VODS'; items: PastVodRow[]; error?: string }
   | { type: 'EMOTE_IMAGE'; mimeType?: string; buffer?: ArrayBuffer; error?: string }
   | { type: 'PULSE_BACKFILL'; job: PulseBackfillJob | null; error?: string }

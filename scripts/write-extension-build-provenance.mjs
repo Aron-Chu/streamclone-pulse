@@ -12,9 +12,25 @@ const buildInputs = [
   'public',
   'manifest.json',
   'manifests',
+  'packages',
+  'tsconfig.json',
   'vite.config.ts',
+  'vite.shared.ts',
+  'vite.content.config.ts',
   'package.json',
   'package-lock.json',
+  'scripts/ensure-packages-built.mjs',
+  'scripts/extension-target.mjs',
+  'scripts/package-extension-target.mjs',
+  'scripts/zip-dist.mjs',
+  'scripts/stage-extension-attribution.mjs',
+  'scripts/archive-byte-scan.mjs',
+  'scripts/validate-extension-package.mjs',
+  'scripts/extension-package-lib.mjs',
+  'scripts/extension-permission-allowlists.mjs',
+  'scripts/remote-code-scan.mjs',
+  'scripts/zip-byte-validate.mjs',
+  'scripts/write-extension-build-provenance.mjs',
 ]
 
 function assertCleanBuildInputs() {
@@ -73,7 +89,16 @@ const files = Object.fromEntries(
 mkdirSync(outDir, { recursive: true })
 writeFileSync(
   outPath,
-  `${JSON.stringify({ packageBuildCommit, files }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      schema: 'streampulse.extension-build-provenance/v1',
+      kind: 'local-dist-build',
+      packageBuildCommit,
+      files,
+    },
+    null,
+    2,
+  )}\n`,
   'utf8',
 )
-console.log(`Wrote build provenance for ${packageBuildCommit}`)
+console.log(`Wrote local dist build provenance for ${packageBuildCommit}`)

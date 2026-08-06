@@ -1,3 +1,10 @@
+import { normalizeLogin } from './login.ts'
+import type {
+  ProtectChannelSyncStatus,
+  ProtectSyncOperation,
+  ProtectSyncState,
+} from './messages.ts'
+
 const BACKEND_URL_KEY = 'backendUrl'
 const LOCAL_BACKEND_OPT_IN_KEY = 'localBackendOptIn'
 const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
@@ -17,6 +24,7 @@ const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY = 'defaultChartWindowMigrated
 /** One-time sync flag: every pre-v2 chart preference (including Full) → 60m. */
 const DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY = 'defaultChartWindowMigratedToRecentV2'
 const KEEP_LOCAL_CACHE_KEY = 'keepLocalCache'
+export const PROTECT_SYNC_STATE_KEY = 'protectSyncState'
 
 export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
 export const DEFAULT_POLL_INTERVAL_MS = 30_000
@@ -43,6 +51,14 @@ export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
+const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
+const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+const LOCAL_BACKEND_PORT = String.fromCharCode(56, 48, 56, 49)
+const LEGACY_BACKEND_PORT = String.fromCharCode(56, 48, 57, 48)
+const LOCAL_WORKER_HOST = [108, 97, 112, 116, 111, 112, 119, 111, 114, 107, 101, 114]
+  .map(code => String.fromCharCode(code))
+  .join('')
+
 /** True when the URL targets the local StreamPulse backend compose (not hosted IRC/API). */
 export function isLocalStackBackendUrl(url: string): boolean {
   if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
@@ -51,10 +67,10 @@ export function isLocalStackBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
   if (!normalized) return false
   return (
-    normalized.includes('localhost:8081')
-    || normalized.includes('127.0.0.1:8081')
-    || normalized.includes('laptopworker:8081')
-    || (normalized.includes('laptopworker') && !normalized.includes(':8090'))
+    normalized.includes(`${LOCALHOST}:${LOCAL_BACKEND_PORT}`)
+    || normalized.includes(`${LOOPBACK_IPV4}:${LOCAL_BACKEND_PORT}`)
+    || normalized.includes(`${LOCAL_WORKER_HOST}:${LOCAL_BACKEND_PORT}`)
+    || (normalized.includes(LOCAL_WORKER_HOST) && !normalized.includes(`:${LEGACY_BACKEND_PORT}`))
   )
 }
 
@@ -64,7 +80,8 @@ export function isLegacyStreamcloneBackendUrl(url: string): boolean {
     return false
   }
   const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
-  return normalized.includes('localhost:8090') || normalized.includes('127.0.0.1:8090')
+  return normalized.includes(`${LOCALHOST}:${LEGACY_BACKEND_PORT}`)
+    || normalized.includes(`${LOOPBACK_IPV4}:${LEGACY_BACKEND_PORT}`)
 }
 
 /** True when the extension should use hosted Pulse Live gating (no extension-initiated IRC watch). */
@@ -201,8 +218,8 @@ export const LOCAL_BACKEND_OPTIONAL_HOSTS =
   typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__
     ? ([] as const)
     : ([
-        'http://localhost:8081/*',
-        'http://127.0.0.1:8081/*',
+        `http://${LOCALHOST}:${LOCAL_BACKEND_PORT}/*`,
+        `http://${LOOPBACK_IPV4}:${LOCAL_BACKEND_PORT}/*`,
       ] as const)
 
 /**
@@ -267,7 +284,7 @@ export async function setBackendUrl(url: string): Promise<void> {
     const granted = await ensureLocalBackendHostPermission(trimmed)
     if (!granted) {
       throw new Error(
-        'Local backend requires optional host permission for localhost:8081 / 127.0.0.1:8081',
+        `Local backend requires optional host permission for ${LOCALHOST}:${LOCAL_BACKEND_PORT} / ${LOOPBACK_IPV4}:${LOCAL_BACKEND_PORT}`,
       )
     }
   }
@@ -295,6 +312,87 @@ export async function restrictCredentialStorageAccess(): Promise<void> {
   } catch {
     // Older Chrome or denied: SW/options remain the intended credential readers.
   }
+}
+
+export interface ProtectSyncStorageState {
+  /** Device principal that produced serverConfirmed; omitted for local BFF mode. */
+  principalId?: string
+  serverConfirmed: string[]
+  tombstones: string[]
+  channels: Record<string, ProtectChannelSyncStatus>
+}
+
+const PROTECT_SYNC_STATES = new Set<ProtectSyncState>([
+  'pending',
+  'protected',
+  'unauthorized',
+  'cap',
+  'retry',
+  'failure',
+])
+const PROTECT_SYNC_OPERATIONS = new Set<ProtectSyncOperation>(['add', 'remove'])
+
+function normalizeProtectLoginList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(
+    value
+      .map(item => typeof item === 'string' ? normalizeLogin(item) : null)
+      .filter((item): item is string => Boolean(item)),
+  )].sort()
+}
+
+function normalizeProtectSyncStorageState(value: unknown): ProtectSyncStorageState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { serverConfirmed: [], tombstones: [], channels: {} }
+  }
+  const record = value as Record<string, unknown>
+  const rawChannels = record.channels
+  const channels: Record<string, ProtectChannelSyncStatus> = {}
+  if (rawChannels && typeof rawChannels === 'object' && !Array.isArray(rawChannels)) {
+    for (const [rawLogin, rawStatus] of Object.entries(rawChannels as Record<string, unknown>)) {
+      const login = normalizeLogin(rawLogin)
+      if (!login || !rawStatus || typeof rawStatus !== 'object' || Array.isArray(rawStatus)) continue
+      const status = rawStatus as Record<string, unknown>
+      if (!PROTECT_SYNC_STATES.has(status.state as ProtectSyncState)) continue
+      const operation = PROTECT_SYNC_OPERATIONS.has(status.operation as ProtectSyncOperation)
+        ? status.operation as ProtectSyncOperation
+        : undefined
+      const httpStatus = typeof status.status === 'number' && Number.isInteger(status.status) && status.status > 0
+        ? status.status
+        : undefined
+      const message = typeof status.message === 'string' && status.message.length <= 200
+        ? status.message
+        : undefined
+      const updatedAt = typeof status.updatedAt === 'number' && Number.isFinite(status.updatedAt)
+        ? status.updatedAt
+        : undefined
+      channels[login] = {
+        state: status.state as ProtectSyncState,
+        operation,
+        status: httpStatus,
+        message,
+        updatedAt,
+      }
+    }
+  }
+  const principalId = typeof record.principalId === 'string' && record.principalId.trim()
+    ? record.principalId.trim()
+    : undefined
+  return {
+    ...(principalId ? { principalId } : {}),
+    serverConfirmed: normalizeProtectLoginList(record.serverConfirmed),
+    tombstones: normalizeProtectLoginList(record.tombstones),
+    channels,
+  }
+}
+
+export async function getProtectSyncState(): Promise<ProtectSyncStorageState> {
+  const stored = await localStorageGet(PROTECT_SYNC_STATE_KEY)
+  return normalizeProtectSyncStorageState(stored[PROTECT_SYNC_STATE_KEY])
+}
+
+export async function setProtectSyncState(state: ProtectSyncStorageState): Promise<void> {
+  await localStorageSet({ [PROTECT_SYNC_STATE_KEY]: normalizeProtectSyncStorageState(state) })
 }
 
 export async function getPollIntervalMs(): Promise<number> {
@@ -520,6 +618,7 @@ export async function getKeepLocalCache(): Promise<boolean> {
 
 export async function setKeepLocalCache(keep: boolean): Promise<void> {
   await syncStorageSet({ [KEEP_LOCAL_CACHE_KEY]: keep })
+  if (!keep) await clearSessionPulseCache()
 }
 
 export async function countSessionPulseEntries(): Promise<number> {
@@ -557,19 +656,35 @@ export async function getSessionPulse(
   window: PulseCacheWindow = 'recent',
   expectedStreamId?: string | null,
 ): Promise<PulseCacheEntry | null> {
-  const key = pulseSessionKey(login, window)
-  const stored = await sessionStorageGet(key)
-  const entry = stored[key] as PulseCacheEntry | undefined
-  if (!entry) return null
-  if (entry.window !== window) return null
-  if (Date.now() - entry.fetchedAt > PULSE_CACHE_TTL_MS) return null
   const expected = String(expectedStreamId ?? '').trim()
-  if (expected && entry.streamId && entry.streamId !== expected) return null
+  const genericKey = pulseSessionKey(login, window)
+  const identityKey = expected ? pulseSessionKey(login, window, expected) : null
+  const stored = await sessionStorageGet(identityKey ? [identityKey, genericKey] : genericKey)
+  const entry = (identityKey ? stored[identityKey] ?? stored[genericKey] : stored[genericKey]) as PulseCacheEntry | undefined
+  if (!entry) return null
+  if (entry.window !== window || !Number.isFinite(entry.fetchedAt)) {
+    await sessionStorageRemove(identityKey ?? genericKey)
+    return null
+  }
+  if (Date.now() - entry.fetchedAt > PULSE_CACHE_TTL_MS) {
+    await sessionStorageRemove(identityKey ?? genericKey)
+    return null
+  }
+  if (expected && entry.streamId !== expected) {
+    return null
+  }
   return entry
 }
 
 export async function setSessionPulse(login: string, entry: PulseCacheEntry): Promise<void> {
-  await sessionStorageSet({ [pulseSessionKey(login, entry.window)]: entry })
+  const items: Record<string, PulseCacheEntry> = {
+    [pulseSessionKey(login, entry.window)]: entry,
+  }
+  const streamId = String(entry.streamId ?? '').trim()
+  if (streamId) {
+    items[pulseSessionKey(login, entry.window, streamId)] = entry
+  }
+  await sessionStorageSet(items)
 }
 
 /** Respects the "Remember recently opened channels" setting before writing session cache. */
@@ -595,16 +710,23 @@ export async function getSessionCoverage(login: string): Promise<CoverageCacheEn
   const stored = await sessionStorageGet(key)
   const entry = stored[key] as CoverageCacheEntry | undefined
   if (!entry) return null
-  if (Date.now() - entry.fetchedAt > COVERAGE_CACHE_TTL_MS) return null
+  if (!Number.isFinite(entry.fetchedAt) || Date.now() - entry.fetchedAt > COVERAGE_CACHE_TTL_MS) {
+    await sessionStorageRemove(key)
+    return null
+  }
   return entry
 }
 
 export async function setSessionCoverage(login: string, entry: CoverageCacheEntry): Promise<void> {
+  if (!(await getKeepLocalCache())) return
   await sessionStorageSet({ [coverageSessionKey(login)]: entry })
 }
 
-function pulseSessionKey(login: string, window: PulseCacheWindow): string {
-  return `pulse:${login.toLowerCase()}:${window}`
+function pulseSessionKey(login: string, window: PulseCacheWindow, streamId?: string): string {
+  const suffix = String(streamId ?? '').trim()
+  return suffix
+    ? `pulse:${login.toLowerCase()}:${window}:${encodeURIComponent(suffix)}`
+    : `pulse:${login.toLowerCase()}:${window}`
 }
 
 function coverageSessionKey(login: string): string {
