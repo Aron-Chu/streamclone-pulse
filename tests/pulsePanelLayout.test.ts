@@ -128,14 +128,14 @@ describe('resolvePulsePanelSections', () => {
     expect(sections.showMostReacted).toBe(false)
   })
 
-  it('hides live band when access is not full_live', () => {
+  it('keeps late tracked rollups chart-visible when access is late_session', () => {
     const sections = resolvePulsePanelSections(basePayload(), {
       liveHeatVisible: true,
       warming: false,
       pulseLiveAccess: 'late_session',
     })
-    expect(sections.showLiveStatsBand).toBe(false)
-    expect(sections.showMostReacted).toBe(false)
+    expect(sections.showLiveStatsBand).toBe(true)
+    expect(sections.showMostReacted).toBe(true)
   })
 
   it('does not show offline block; past streams section handles offline context', () => {

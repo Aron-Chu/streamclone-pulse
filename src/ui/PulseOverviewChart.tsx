@@ -14,7 +14,7 @@ import {
 import type { ExtensionGameSegment, ExtensionRollup } from '../shared/messages.ts'
 import { activityAxisBoundsFromZero, overlaySeriesAxisMax } from './chatActivityEmotes.ts'
 import type { EmoteOverlaySeries } from './chatActivityEmotes.ts'
-import { CHART_INTERACTION, CHART_LANE, CHART_THEME, hexToRgba } from './chartTheme.ts'
+import { CHART_BAR_ALPHA, CHART_INTERACTION, CHART_LANE, CHART_THEME, hexToRgba } from './chartTheme.ts'
 import {
   areaPathInBand,
   barDisplayAxisMax,
@@ -770,36 +770,20 @@ export function PulseOverviewChart({
     traceLaneBottom,
   ])
 
-  const barOpacity = (index: number, hasValue: boolean): number => {
+  const signalBarOpacity = (seriesKey: 'chat' | 'emotes', index: number, hasValue: boolean): number => {
     const base = (() => {
-      if (!hasValue) return CHART_THEME.emote.barBaseline * 0.6
-      if (pinIndex === index) return Math.min(CHART_THEME.emote.barSpike * 1.15, 0.98)
-      if (hoverPreviewIndex === index) return Math.min(CHART_THEME.emote.barSpike * 0.92, 0.82)
+      if (!hasValue) return CHART_BAR_ALPHA.empty
+      if (pinIndex === index) return CHART_BAR_ALPHA.selectedSpike
+      if (hoverPreviewIndex === index) return CHART_BAR_ALPHA.selected
       return chartBarBucketOpacity({
         index,
         activeIndex,
-        baseOpacity: CHART_THEME.emote.bar,
-        highlightOpacity: CHART_THEME.emote.barSpike,
+        baseOpacity: CHART_BAR_ALPHA.resting,
+        highlightOpacity: CHART_BAR_ALPHA.spike,
         fadeFutureAfterActive: true,
       })
     })()
-    return seriesFocusOpacity(focusedSeriesKey, 'emotes', scrubActive ? base : base * 0.18)
-  }
-
-  const chatBarOpacity = (index: number, hasValue: boolean): number => {
-    const base = (() => {
-      if (!hasValue) return CHART_THEME.chat.whisperBar * 0.6
-      if (pinIndex === index) return Math.min(CHART_THEME.chat.guide * 1.2, 0.92)
-      if (hoverPreviewIndex === index) return Math.min(CHART_THEME.chat.guide * 0.95, 0.78)
-      return chartBarBucketOpacity({
-        index,
-        activeIndex,
-        baseOpacity: CHART_THEME.chat.whisperBar,
-        highlightOpacity: CHART_THEME.chat.guide,
-        fadeFutureAfterActive: true,
-      })
-    })()
-    return seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? base : base * 0.18)
+    return seriesFocusOpacity(focusedSeriesKey, seriesKey, scrubActive ? base : base * 0.18)
   }
 
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
@@ -1167,7 +1151,7 @@ export function PulseOverviewChart({
                 width={bar.width}
                 height={bar.height}
                 fill={CHART_THEME.emote.color}
-                opacity={barOpacity(index, bar.hasValue)}
+                opacity={signalBarOpacity('emotes', index, bar.hasValue)}
               />
             ))}
             {emoteLinePath ? (
@@ -1226,7 +1210,7 @@ export function PulseOverviewChart({
                 width={bar.width}
                 height={bar.height}
                 fill={CHART_THEME.chat.color}
-                opacity={chatBarOpacity(index, bar.hasValue)}
+                opacity={signalBarOpacity('chat', index, bar.hasValue)}
               />
             ))}
           </g>

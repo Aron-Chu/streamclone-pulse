@@ -15,6 +15,17 @@ describe('parseBackgroundRequest', () => {
       streamId: undefined,
     })
     expect(parseBackgroundRequest({ type: 'HEALTH' })).toEqual({ type: 'HEALTH' })
+    expect(parseBackgroundRequest({
+      type: 'GET_PULSE_VOD',
+      vodId: '2806037629',
+      streamId: '317150146039',
+      window: 'recent',
+    })).toEqual({
+      type: 'GET_PULSE_VOD',
+      vodId: '2806037629',
+      streamId: '317150146039',
+      window: 'recent',
+    })
   })
 
   it('rejects non-objects, unknown types, and invalid logins', () => {

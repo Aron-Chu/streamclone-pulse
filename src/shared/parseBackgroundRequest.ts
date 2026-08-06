@@ -162,7 +162,10 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'GET_PULSE_VOD': {
       const vodId = requireString(raw.vodId)
       if (!vodId) return null
-      return { type, vodId }
+      const streamId = optionalString(raw.streamId)
+      if (streamId && !/^[A-Za-z0-9_-]{1,64}$/.test(streamId)) return null
+      const window = raw.window === 'full' || raw.window === 'recent' ? raw.window : undefined
+      return { type, vodId, streamId, window }
     }
     case 'LOAD_MISSED_MOMENTS': {
       const login = requireLogin(raw.login)

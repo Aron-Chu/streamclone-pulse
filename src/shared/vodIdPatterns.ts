@@ -1,5 +1,18 @@
 export const VOD_ID = /^\d{6,20}$/
 
+/** Twitch broadcast/stream ids are opaque, nonempty identifiers. */
+export const STREAM_ID = /^[A-Za-z0-9_-]{1,64}$/
+
+export function normalizeVodId(value: unknown): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  return VOD_ID.test(trimmed) ? trimmed : null
+}
+
+export function normalizeStreamId(value: unknown): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  return STREAM_ID.test(trimmed) ? trimmed : null
+}
+
 /** VOD / archive video id patterns only — never match stream/broadcast ids here. */
 export const VOD_JSON_PATTERNS: RegExp[] = [
   /"archiveVideoID"\s*:\s*"(\d{6,20})"/i,

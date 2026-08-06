@@ -46,7 +46,7 @@ import { isSupportedTwitchUrl } from '../background/pulseBroadcastTargets.ts'
 if (isSupportedTwitchUrl(window.location.href)) {
 type ActiveSession =
   | { kind: 'channel'; login: string }
-  | { kind: 'vod'; vodId: string; login: string }
+  | { kind: 'vod'; vodId: string; login: string; streamId: string | null; liveDvr: boolean }
 
 let activeSession: ActiveSession | null = null
 /** Accepted live stream identity for rejecting late login-only broadcasts. */
@@ -66,6 +66,60 @@ let overlayPrefsListenerInstalled = false
 const activationGate = createActivationGate()
 
 const livePoll = createLivePollController(() => parseTwitchPage(window.location.pathname))
+const VOD_LIVE_POLL_INTERVAL_MS = 30_000
+let vodLivePollTimer: ReturnType<typeof setTimeout> | null = null
+let vodLivePollInFlight = false
+
+function stopVodLivePoll(): void {
+  if (vodLivePollTimer) {
+    clearTimeout(vodLivePollTimer)
+    vodLivePollTimer = null
+  }
+}
+
+function scheduleVodLivePoll(vodId: string, streamId: string): void {
+  stopVodLivePoll()
+  vodLivePollTimer = setTimeout(() => {
+    void pollGrowingVod(vodId, streamId)
+  }, VOD_LIVE_POLL_INTERVAL_MS)
+}
+
+async function pollGrowingVod(vodId: string, streamId: string): Promise<void> {
+  if (vodLivePollInFlight) return
+  if (
+    !activeSession
+    || activeSession.kind !== 'vod'
+    || activeSession.vodId !== vodId
+    || !activeSession.liveDvr
+    || activeSession.streamId !== streamId
+  ) {
+    return
+  }
+
+  vodLivePollInFlight = true
+  try {
+    const result = await fetchVodPulseResult(vodId, streamId)
+    if (
+      !activeSession
+      || activeSession.kind !== 'vod'
+      || activeSession.vodId !== vodId
+      || activeSession.streamId !== streamId
+    ) {
+      return
+    }
+    applyVodPulseMessage(result)
+  } finally {
+    vodLivePollInFlight = false
+    if (
+      activeSession?.kind === 'vod'
+      && activeSession.vodId === vodId
+      && activeSession.liveDvr
+      && activeSession.streamId === streamId
+    ) {
+      scheduleVodLivePoll(vodId, streamId)
+    }
+  }
+}
 
 function setLivePollWindow(window: 'recent' | 'full'): void {
   livePoll.setPollWindow(window)
@@ -138,12 +192,34 @@ function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
     loading: false,
   })
 
-  const payload = message.vodPulse ? vodPulseToChannelPayload(message.vodPulse) : null
-  const channelLogin = message.vodPulse?.channelLogin?.trim().toLowerCase()
+  const payload = message.vodPulse ? vodPulseToChannelPayload(message.vodPulse, activeSession.login) : null
+  const channelLogin = (message.vodPulse?.channelLogin ?? message.vodPulse?.login)?.trim().toLowerCase()
+  const streamId = payload?.streamId?.trim() || null
+  const isLiveDvr = payload?.mode === 'live_dvr' && Boolean(streamId)
 
-  if (channelLogin && channelLogin !== activeSession.login) {
-    activeSession = { kind: 'vod', vodId: message.vodId, login: channelLogin }
-    updateOverlayLogin(channelLogin)
+  // A candidate page response is not enough to bind a stream. Only the
+  // backend's validated live response may establish this exact identity.
+  if (isLiveDvr) {
+    if (activeSession.streamId && activeSession.streamId !== streamId) return
+    activeSession = {
+      kind: 'vod',
+      vodId: message.vodId,
+      login: channelLogin || activeSession.login,
+      streamId,
+      liveDvr: true,
+    }
+    activeStreamId = streamId
+    if (channelLogin) updateOverlayLogin(channelLogin)
+  } else if (payload?.mode === 'vod' && payload.vodId) {
+    activeSession = {
+      kind: 'vod',
+      vodId: message.vodId,
+      login: channelLogin || activeSession.login,
+      streamId: payload.streamId?.trim() || null,
+      liveDvr: false,
+    }
+    stopVodLivePoll()
+    if (channelLogin) updateOverlayLogin(channelLogin)
   }
 
   if (message.vodPulse && !message.error) {
@@ -151,11 +227,19 @@ function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
   }
 
   updateOverlayPayload(payload, message.error ?? (payload ? undefined : message.vodPulse?.coverageMessage))
+
+  if (isLiveDvr && streamId) {
+    scheduleVodLivePoll(message.vodId, streamId)
+  }
 }
 
 /** Fetch only — caller applies after generation check. */
-async function fetchVodPulseResult(vodId: string): Promise<VodPulseUpdateMessage> {
-  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId })
+async function fetchVodPulseResult(
+  vodId: string,
+  streamId?: string,
+  window: 'recent' | 'full' = 'recent',
+): Promise<VodPulseUpdateMessage> {
+  const response = await sendBackgroundMessage({ type: 'GET_PULSE_VOD', vodId, streamId, window })
   if ('type' in response && response.type === 'VOD_PULSE_UPDATE') {
     return response
   }
@@ -282,8 +366,10 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
     return
   }
 
+  stopVodLivePoll()
+
   resetAnalyticsActivationLatches()
-  activeSession = { kind: 'vod', vodId, login }
+  activeSession = { kind: 'vod', vodId, login, streamId: null, liveDvr: false }
   activeStreamId = null
   sessionOpenedAtMs = Date.now()
   lastCollecting = false
@@ -293,7 +379,10 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   mountOverlay(login, null, context, {
     sessionOpenedAtMs,
     onPulseRefresh: async () => {
-      const result = await fetchVodPulseResult(vodId)
+      const currentStreamId = activeSession?.kind === 'vod' && activeSession.vodId === vodId
+        ? activeSession.streamId ?? undefined
+        : undefined
+      const result = await fetchVodPulseResult(vodId, currentStreamId)
       if (activeSession?.kind !== 'vod' || activeSession.vodId !== vodId) return
       applyVodPulseMessage(result)
     },
@@ -318,6 +407,8 @@ function deactivate(): void {
   activationGate.cancel()
   activeSession = null
   activeStreamId = null
+  stopVodLivePoll()
+  vodLivePollInFlight = false
   sessionOpenedAtMs = null
   lastPageIsLive = false
   lastCollecting = false

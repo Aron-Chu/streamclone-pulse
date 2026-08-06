@@ -468,19 +468,36 @@ export async function fetchPulseChannel(
 
 export async function fetchPulseVod(
   vodId: string,
-  options?: { baseUrl?: string },
+  options?: { baseUrl?: string; streamId?: string; window?: 'recent' | 'full' },
 ): Promise<import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse> {
   const root = options?.baseUrl ?? await getBackendUrl()
-  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}`, {
-    headers: await pulseRequestHeaders(false, root),
+  const streamId = options?.streamId?.trim() ?? ''
+  if (streamId && !/^[A-Za-z0-9_-]{1,64}$/.test(streamId)) {
+    throw new Error('pulse_stream_invalid')
+  }
+  const query = new URLSearchParams({
+    allowLiveBridge: 'true',
+    window: options?.window === 'full' ? 'full' : 'recent',
   })
+  if (streamId) query.set('streamId', streamId)
+  const res = await fetchWithTimeout(
+    `${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}?${query.toString()}`,
+    {
+      headers: await pulseRequestHeaders(false, root),
+    },
+  )
   const body = await readResponseText(res, LARGE_RESPONSE_MAX_BYTES)
   const payload = await normalizeVodPulseHttpResponse(vodId, new Response(body, {
     status: res.status,
     headers: res.headers,
   }))
+  if (streamId && payload.streamId?.trim() !== streamId) {
+    throw new Error('pulse_stream_mismatch')
+  }
   await pulseDebug('vod.pulse.api', 'vod pulse payload received', {
     vodId,
+    mode: payload.mode,
+    resolutionState: payload.resolutionState ?? null,
     streamId: payload.streamId ?? null,
     channelLogin: payload.channelLogin ?? null,
     coverageStatus: payload.coverageStatus,

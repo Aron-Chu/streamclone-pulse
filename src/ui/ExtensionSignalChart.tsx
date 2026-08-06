@@ -2,7 +2,7 @@ import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type
 import type { CSSProperties } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
-import { CHART_THEME } from './chartTheme.ts'
+import { CHART_SIGNAL, CHART_THEME } from './chartTheme.ts'
 import {
   hasMeaningfulGameSegments,
   normalizeGameSegments,
@@ -134,7 +134,7 @@ export function ExtensionSignalChart({
     }
     base.push(
       { key: 'emotesNorm', label: 'Emotes', className: 'emotes', color: CHART_THEME.emote.color },
-      { key: 'heat', label: 'Heat', className: 'heat', color: '#fbbf24' },
+      { key: 'heat', label: 'Heat', className: 'heat', color: CHART_SIGNAL.heat },
     )
     return base
   }, [showViewers])
@@ -326,7 +326,7 @@ export function ExtensionSignalChart({
                       <text
                         x={centerX}
                         y={10}
-                        fill="#f97316"
+                        fill={CHART_SIGNAL.game}
                         fontSize="8"
                         fontWeight="900"
                         textAnchor="middle"
@@ -364,7 +364,7 @@ export function ExtensionSignalChart({
           <path
             d={smoothPath(model.heatLine)}
             fill="none"
-            stroke="#fbbf24"
+            stroke={CHART_SIGNAL.heat}
             strokeWidth="1.75"
             strokeDasharray="4 3"
             className="pulse-signal-line"
@@ -376,7 +376,7 @@ export function ExtensionSignalChart({
               cx={dot.x}
               cy={dot.y}
               r={3}
-              fill="#fbbf24"
+              fill={CHART_SIGNAL.heat}
               stroke="#fff"
               strokeWidth="1"
               opacity="0.9"
@@ -388,7 +388,7 @@ export function ExtensionSignalChart({
               cx={model.coords[model.coords.length - 1]!.x}
               cy={model.coords[model.coords.length - 1]!.chat}
               r={3.5}
-              fill="#34d399"
+              fill={CHART_SIGNAL.live}
               stroke="#fff"
               strokeWidth="1.25"
             />
@@ -446,7 +446,7 @@ export function ExtensionSignalChart({
             {lane.label}
           </span>
         ))}
-        {showGames ? <span style={{ ...styles.legendChip, color: '#f97316' }}>Games</span> : null}
+        {showGames ? <span style={{ ...styles.legendChip, color: CHART_SIGNAL.game }}>Games</span> : null}
       </div>
 
       <div style={styles.axisRow} aria-hidden="true">

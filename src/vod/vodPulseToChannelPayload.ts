@@ -23,7 +23,6 @@ function timelinePointToRollup(point: VodTimelinePoint): ExtensionRollup {
     topEmotes: point.topEmotes,
   }
 }
-
 function vodMomentToPeak(moment: VodMoment): ExtensionPeak {
   return {
     offsetSeconds: moment.offsetSeconds,
@@ -73,7 +72,7 @@ function synthesizeRecap(vod: ExtensionVodPulseResponse, login: string): PulseSt
     return {
       ...vod.recap,
       login: vod.recap.login || login,
-      vodId: vod.recap.vodId ?? vod.vodId,
+      vodId: vod.recap.vodId ?? (typeof vod.vodId === 'string' ? vod.vodId : undefined),
       streamId: vod.recap.streamId || vod.streamId || '',
     }
   }
@@ -91,7 +90,7 @@ function synthesizeRecap(vod: ExtensionVodPulseResponse, login: string): PulseSt
   return {
     streamId: vod.streamId ?? '',
     login,
-    vodId: vod.vodId,
+    vodId: typeof vod.vodId === 'string' ? vod.vodId : undefined,
     durationSeconds: vod.durationSeconds ?? 0,
     totalMessages,
     peakChatPerMin,
@@ -102,28 +101,66 @@ function synthesizeRecap(vod: ExtensionVodPulseResponse, login: string): PulseSt
 }
 
 /** Map extension VOD pulse API response into channel PulsePayload for recap UI reuse. */
-export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse): PulsePayload | null {
+export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse, fallbackLogin?: string): PulsePayload | null {
+  if (vod.mode === 'live_dvr') {
+    const login = (vod.login || vod.channelLogin)?.trim().toLowerCase()
+    if (!login || !vod.streamId.trim()) return null
+    return {
+      mode: 'live_dvr',
+      login,
+      isLive: true,
+      tracking: vod.tracking,
+      streamId: vod.streamId,
+      vodId: vod.vodId,
+      provisional: vod.provisional,
+      resolutionState: vod.resolutionState,
+      retryable: vod.retryable,
+      startedAt: vod.startedAt,
+      title: vod.title,
+      durationSeconds: vod.durationSeconds,
+      currentOffsetSeconds: vod.currentOffsetSeconds,
+      vodOriginDeltaSeconds: vod.vodOriginDeltaSeconds,
+      coverageStartOffsetSeconds: vod.coverageStartOffsetSeconds,
+      viewerStartOffsetSeconds: vod.viewerStartOffsetSeconds,
+      coverage: vod.coverage,
+      rollups: vod.rollups,
+      fullRollups: vod.fullRollups,
+      lanes: vod.lanes,
+      peaks: vod.peaks,
+      recap: null,
+      topEmotes: vod.topEmotes,
+      games: vod.games,
+      emoteSync: vod.emoteSync,
+      helixEnabled: vod.helixEnabled,
+      rosterEligible: vod.rosterEligible,
+      top500Eligible: vod.top500Eligible,
+    }
+  }
+
   if (vod.coverageStatus !== 'ready' && vod.coverageStatus !== 'partial') {
     return null
   }
+  if (!vod.vodId) return null
 
-  const login = vod.channelLogin?.trim().toLowerCase()
+  const login = (vod.channelLogin ?? vod.login ?? fallbackLogin)?.trim().toLowerCase()
   if (!login) return null
 
   const rollups = (vod.timeline?.points ?? []).map(timelinePointToRollup)
   const peaks = (vod.topMoments ?? []).map(vodMomentToPeak)
   const recap = synthesizeRecap(vod, login)
-  if (!recap && rollups.length === 0 && peaks.length === 0) return null
-
   const lastOffset = rollups[rollups.length - 1]?.offsetSeconds ?? 0
   const durationSeconds = Math.max(vod.durationSeconds ?? 0, lastOffset + 60)
 
   return {
+    mode: 'vod',
     login,
     isLive: false,
     tracking: false,
-    streamId: vod.streamId,
+    streamId: vod.streamId ?? undefined,
     vodId: vod.vodId,
+    provisional: false,
+    resolutionState: vod.resolutionState ?? 'vod_validated',
+    retryable: vod.retryable ?? false,
     startedAt: vod.startedAt,
     title: vod.title,
     durationSeconds,

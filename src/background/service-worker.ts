@@ -783,7 +783,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'GET_PULSE_VOD': {
           try {
-            const vodPulse = await fetchPulseVod(message.vodId)
+            const vodPulse = await fetchPulseVod(message.vodId, {
+              streamId: message.streamId,
+              window: message.window,
+            })
             sendResponse({
               type: 'VOD_PULSE_UPDATE',
               vodId: message.vodId,
