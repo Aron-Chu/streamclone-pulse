@@ -74,6 +74,16 @@ export function downsampleRollupsForChart(
       out.push(best)
     }
   }
+
+  // Pin chronological endpoints so "Now" is the real last minute, not an earlier spike peak.
+  const first = rollups[0]
+  const last = rollups[n - 1]
+  if (first != null && out[0]?.offsetSeconds !== first.offsetSeconds) {
+    out[0] = first
+  }
+  if (last != null && out[out.length - 1]?.offsetSeconds !== last.offsetSeconds) {
+    out[out.length - 1] = last
+  }
   return out
 }
 

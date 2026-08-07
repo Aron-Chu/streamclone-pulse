@@ -38,13 +38,15 @@ export function PulseSectionCard({
 
 const styles: Record<string, CSSProperties> = {
   card: {
-    background: 'rgba(9, 9, 11, 0.6)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: theme.panel,
+    border: `1px solid ${theme.border}`,
     borderRadius: 12,
+    boxShadow: `0 1px 2px ${theme.shadow}`,
     display: 'grid',
-    gap: 12,
-    marginBottom: 14,
-    padding: 16,
+    gap: 10,
+    marginBottom: 12,
+    minWidth: 0,
+    padding: 12,
   },
   heading: {
     alignItems: 'flex-start',

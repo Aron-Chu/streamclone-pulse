@@ -16,7 +16,7 @@ export function defaultWebAnalyticsBaseUrlForApi(apiBaseUrl: string): string {
     const host = parsed.hostname.toLowerCase()
     const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
     const localBackendPort = '8081'
-    const localPortalPort = '5173'
+    const localPortalPort = '5174'
     if ((host === 'localhost' || host === '127.0.0.1') && port === localBackendPort) {
       return `http://${host}:${localPortalPort}`
     }

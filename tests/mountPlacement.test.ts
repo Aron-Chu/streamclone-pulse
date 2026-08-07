@@ -53,6 +53,35 @@ describe('resolveOverlayHostVisibility', () => {
     })
   })
 
+  it('hides when chat is closed and dock is off even for right or bottom placement', () => {
+    expect(
+      resolveOverlayHostVisibility({
+        storedPlacement: 'right',
+        sidebarLayoutPresent: false,
+        sidebarFallbackToFloat: false,
+        placementResolved: true,
+        ...dockOff,
+      }),
+    ).toEqual({
+      effectivePlacement: 'right',
+      sidebarSnapped: false,
+      mode: 'hidden',
+    })
+    expect(
+      resolveOverlayHostVisibility({
+        storedPlacement: 'bottom',
+        sidebarLayoutPresent: false,
+        sidebarFallbackToFloat: true,
+        placementResolved: true,
+        ...dockOff,
+      }),
+    ).toEqual({
+      effectivePlacement: 'bottom',
+      sidebarSnapped: false,
+      mode: 'hidden',
+    })
+  })
+
   it('falls back to floating right dock when chat is closed and dock setting is on', () => {
     expect(
       resolveOverlayHostVisibility({
@@ -85,19 +114,61 @@ describe('resolveOverlayHostVisibility', () => {
     })
   })
 
-  it('uses floating placement for non-sidebar preferences', () => {
+  it('floats explicit right or bottom placement when chat is closed and dock is on', () => {
     expect(
       resolveOverlayHostVisibility({
         storedPlacement: 'right',
         sidebarLayoutPresent: false,
         sidebarFallbackToFloat: false,
         placementResolved: true,
-        ...dockOff,
+        ...dockOn,
       }),
     ).toEqual({
       effectivePlacement: 'right',
       sidebarSnapped: false,
       mode: 'floating',
+    })
+    expect(
+      resolveOverlayHostVisibility({
+        storedPlacement: 'bottom',
+        sidebarLayoutPresent: false,
+        sidebarFallbackToFloat: false,
+        placementResolved: true,
+        ...dockOn,
+      }),
+    ).toEqual({
+      effectivePlacement: 'bottom',
+      sidebarSnapped: false,
+      mode: 'floating',
+    })
+  })
+
+  it('keeps sidebar snap when chat is open even if placement is bottom or right', () => {
+    expect(
+      resolveOverlayHostVisibility({
+        storedPlacement: 'bottom',
+        sidebarLayoutPresent: true,
+        sidebarFallbackToFloat: false,
+        placementResolved: true,
+        ...dockOff,
+      }),
+    ).toEqual({
+      effectivePlacement: 'sidebar',
+      sidebarSnapped: true,
+      mode: 'sidebar',
+    })
+    expect(
+      resolveOverlayHostVisibility({
+        storedPlacement: 'right',
+        sidebarLayoutPresent: true,
+        sidebarFallbackToFloat: true,
+        placementResolved: true,
+        ...dockOn,
+      }),
+    ).toEqual({
+      effectivePlacement: 'sidebar',
+      sidebarSnapped: true,
+      mode: 'sidebar',
     })
   })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extensionEmoteImageUrl } from '../src/shared/emoteUrl.ts'
+import { extensionEmoteImageUrl, sevenTvEmoteUrl } from '../src/shared/emoteUrl.ts'
 
 describe('extensionEmoteImageUrl', () => {
   it('prefixes local emote proxy paths with the configured backend', () => {
@@ -49,5 +49,31 @@ describe('extensionEmoteImageUrl', () => {
       'http://localhost:8081',
     )
     expect(url).toBe('https://cdn.7tv.app/emote/62a3bf572b964d6cc2766004/4x.webp')
+  })
+
+  it('uses the validated upstream 7TV id before a stale image URL', () => {
+    const url = extensionEmoteImageUrl(
+      {
+        id: 'local-emote-id',
+        provider: '7TV',
+        providerEmoteId: '01F00Z3A9G0007E4VV006YKSK9',
+        imageUrl: 'https://cdn.7tv.app/emote/old-id/4x.webp',
+      },
+      'http://localhost:8081',
+    )
+    expect(url).toBe('https://cdn.7tv.app/emote/01F00Z3A9G0007E4VV006YKSK9/4x.webp')
+  })
+})
+
+describe('sevenTvEmoteUrl', () => {
+  it('builds the official link for supported provider aliases', () => {
+    const id = '01F00Z3A9G0007E4VV006YKSK9'
+    expect(sevenTvEmoteUrl(id)).toBe(`https://7tv.app/emotes/${id}`)
+  })
+
+  it('rejects names and malformed upstream ids', () => {
+    expect(sevenTvEmoteUrl('OMEGALUL')).toBeUndefined()
+    expect(sevenTvEmoteUrl('')).toBeUndefined()
+    expect(sevenTvEmoteUrl('01F00Z3A9G0007E4VV006YKSO0')).toBeUndefined()
   })
 })

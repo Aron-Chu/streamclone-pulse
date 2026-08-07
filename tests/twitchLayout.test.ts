@@ -65,18 +65,12 @@ describe('planSidebarHostRects', () => {
     expect(plan.panel?.height).toBe(snapshot.messagesArea.height)
   })
 
-  it('uses 72px panel height for mini mode anchored to messages bottom', () => {
-    const plan = planSidebarHostRects(snapshot, 'mini', 'pulse')
-    expect(plan.panelVisible).toBe(true)
-    expect(plan.panel?.height).toBe(72)
-    expect(plan.panel?.bottom).toBe(snapshot.messagesArea.bottom)
-  })
-
-  it('shows collapsed reopen pill anchored to messages bottom', () => {
-    const plan = planSidebarHostRects(snapshot, 'collapsed', 'pulse')
-    expect(plan.chromeVisible).toBe(true)
-    expect(plan.panelVisible).toBe(true)
-    expect(plan.panel?.height).toBe(52)
-    expect(plan.panel?.bottom).toBe(snapshot.messagesArea.bottom)
+  it('treats retired mini and collapsed modes as full expanded panel', () => {
+    for (const mode of ['mini', 'collapsed'] as const) {
+      const plan = planSidebarHostRects(snapshot, mode, 'pulse')
+      expect(plan.panelVisible).toBe(true)
+      expect(plan.panel?.top).toBe(snapshot.messagesArea.top)
+      expect(plan.panel?.height).toBe(snapshot.messagesArea.height)
+    }
   })
 })

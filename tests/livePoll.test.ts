@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import {
   computeLivePollDelayMs,
   createLivePollController,
+  hasLivePollSettingsChange,
   shouldRunLivePoll,
 } from '../src/content/livePoll.ts'
 import type { TwitchPageContext } from '../src/content/twitch.ts'
@@ -85,6 +86,16 @@ describe('computeLivePollDelayMs', () => {
     expect(secondFailure).toBeGreaterThan(firstFailure)
     expect(thirdFailure).toBeGreaterThanOrEqual(57_000)
     expect(thirdFailure).toBeLessThanOrEqual(123_000)
+  })
+})
+
+describe('hasLivePollSettingsChange', () => {
+  it('recognizes runtime polling and backend storage updates', () => {
+    expect(hasLivePollSettingsChange({ autoUpdateEnabled: {} })).toBe(true)
+    expect(hasLivePollSettingsChange({ pollIntervalMs: {} })).toBe(true)
+    expect(hasLivePollSettingsChange({ backendUrl: {} })).toBe(true)
+    expect(hasLivePollSettingsChange({ localBackendOptIn: {} })).toBe(true)
+    expect(hasLivePollSettingsChange({ themePreference: {} })).toBe(false)
   })
 })
 
@@ -234,5 +245,95 @@ describe('createLivePollController backoff', () => {
     await vi.advanceTimersByTimeAsync(nextDelay)
     for (let i = 0; i < 8; i += 1) await Promise.resolve()
     expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
+  })
+
+  it('reuses loaded settings until storage reports a polling change', async () => {
+    const { getAutoUpdateEnabled, getPollIntervalMs } = await import('../src/shared/storage.ts')
+    controller = createLivePollController(() => ({
+      kind: 'channel',
+      login: 'xqc',
+      vodId: null,
+    }))
+    const context = { kind: 'channel' as const, login: 'xqc', vodId: null }
+
+    controller.sync('xqc', context, true, true, { initialFetchDone: true })
+    controller.sync('xqc', context, true, true, { initialFetchDone: true })
+    controller.sync('xqc', context, true, true, { initialFetchDone: true })
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+
+    expect(getAutoUpdateEnabled).toHaveBeenCalledTimes(1)
+    expect(getPollIntervalMs).toHaveBeenCalledTimes(1)
+
+    controller.sync('xqc', context, true, true, {
+      initialFetchDone: true,
+      settingsChanged: true,
+    })
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+
+    expect(getAutoUpdateEnabled).toHaveBeenCalledTimes(2)
+    expect(getPollIntervalMs).toHaveBeenCalledTimes(2)
+  })
+
+  it('defers the first recurring poll when startup already fetched the payload', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({
+      type: 'PULSE_UPDATE',
+      login: 'xqc',
+      payload: null,
+    })
+
+    controller = createLivePollController(() => ({
+      kind: 'channel',
+      login: 'xqc',
+      vodId: null,
+    }))
+    controller.sync(
+      'xqc',
+      { kind: 'channel', login: 'xqc', vodId: null },
+      true,
+      true,
+      { initialFetchDone: true },
+    )
+
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    expect(sendBackgroundMessage).not.toHaveBeenCalled()
+
+    const nextDelay = computeLivePollDelayMs(30_000, 0, () => 0.5)
+    await vi.advanceTimersByTimeAsync(nextDelay)
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('reschedules an active timer when polling settings change', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    const { getPollIntervalMs } = await import('../src/shared/storage.ts')
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({
+      type: 'PULSE_UPDATE',
+      login: 'xqc',
+      payload: null,
+    })
+    vi.mocked(getPollIntervalMs).mockResolvedValueOnce(30_000).mockResolvedValueOnce(60_000)
+
+    controller = createLivePollController(() => ({
+      kind: 'channel',
+      login: 'xqc',
+      vodId: null,
+    }))
+    const context = { kind: 'channel' as const, login: 'xqc', vodId: null }
+    controller.sync('xqc', context, true, true, { initialFetchDone: true })
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+
+    controller.sync('xqc', context, true, true, {
+      initialFetchDone: true,
+      settingsChanged: true,
+    })
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(sendBackgroundMessage).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
   })
 })

@@ -121,6 +121,8 @@ export function mergeRecapMoments(
         name: emote.name,
         count: emote.count,
         provider: emote.provider,
+        id: emote.id,
+        providerEmoteId: emote.providerEmoteId,
       })),
     })),
     limit,
@@ -146,13 +148,37 @@ export function resolveRecapChartPeakOffsets(
     .map(peak => peak.offsetSeconds)
 }
 
-/** Best-known stream length for full-timeline chart scaling (recap duration wins). */
+const RECAP_EMPTY_TAIL_GRACE_SECONDS = 5 * 60
+
+function lastRecapActivityOffsetSeconds(rollups: ExtensionRollup[]): number {
+  let last = -1
+  for (const rollup of rollups) {
+    const chat = rollup.chatCount ?? 0
+    const emotes = rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0
+    if (chat <= 0 && emotes <= 0) continue
+    if (rollup.offsetSeconds > last) last = rollup.offsetSeconds
+  }
+  if (last >= 0) return last
+  if (rollups.length === 0) return -1
+  return rollups[rollups.length - 1]?.offsetSeconds ?? -1
+}
+
+/**
+ * Best-known stream length for full-timeline chart scaling.
+ * Prefer Pulse activity end when wall/recap duration invents a long empty tail
+ * (late EndedAt / zombie-live Helix open after chat stopped).
+ */
 export function recapStreamDurationSeconds(payload: PulsePayload): number {
-  const recapDuration = payload.recap?.durationSeconds
-  if (recapDuration != null && recapDuration > 0) return recapDuration
-  if (payload.currentOffsetSeconds > 0) return payload.currentOffsetSeconds
   const rollups = pickRecapRollups(payload)
-  if (rollups.length > 0) return rollups[rollups.length - 1]?.offsetSeconds ?? 0
+  const activityEnd = lastRecapActivityOffsetSeconds(rollups)
+  const wallCandidates = [payload.recap?.durationSeconds ?? 0, payload.currentOffsetSeconds]
+  const wall = Math.max(0, ...wallCandidates)
+  if (activityEnd >= 0) {
+    if (wall <= 0) return activityEnd + 60
+    if (wall > activityEnd + RECAP_EMPTY_TAIL_GRACE_SECONDS) return activityEnd + 60
+    return wall
+  }
+  if (wall > 0) return wall
   return 0
 }
 

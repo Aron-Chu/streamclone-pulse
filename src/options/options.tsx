@@ -1,41 +1,25 @@
 import { createRoot } from 'react-dom/client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import {
   DEFAULT_AUTO_TRACK_POLICY,
   DEFAULT_BACKEND_URL,
-  DEFAULT_DEFAULT_CHART_WINDOW,
-  DEFAULT_OVERLAY_PLACEMENT,
   DEFAULT_POLL_INTERVAL_MS,
-  DEFAULT_THEME_PREFERENCE,
   POLL_INTERVAL_OPTIONS_MS,
   getAutoTrackPolicy,
   getBackendUrl,
-  getBetaKey,
-  getChatClosedPulseDockEnabled,
-  getDefaultChartWindow,
-  getOverlayPlacement,
   getPollIntervalMs,
   getThemePreference,
   isLocalStackBackendUrl,
   setAutoTrackPolicy,
   setBackendUrl,
-  setBetaKey,
-  setChatClosedPulseDockEnabled,
-  setDefaultChartWindow,
-  setOverlayPlacement,
   setPollIntervalMs,
-  setThemePreference,
   type AutoTrackPolicy,
-  type DefaultChartWindow,
-  type OverlayPlacement,
-  type ThemePreference,
 } from '../shared/storage.ts'
 import {
   extensionBackendSourceCaption,
   resolveExtensionBackendSource,
 } from '../shared/backendSource.ts'
-import { ACCENT_THEME_OPTIONS, applyAccentTheme } from '../ui/overlayTheme.ts'
 import { normalizeLogin } from '../shared/login.ts'
 import {
   clearPulseDebugLog,
@@ -45,19 +29,18 @@ import {
   setPulseDebugEnabled,
   type PulseDebugEntry,
 } from '../shared/pulseDebug.ts'
+import { applyAccentTheme } from '../ui/overlayTheme.ts'
+import { injectStyles, theme } from '../ui/theme.ts'
+
+const buildMeta = typeof __STREAMPULSE_BUILD_META__ === 'undefined' ? null : __STREAMPULSE_BUILD_META__
 
 function OptionsApp() {
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
-  const [betaKey, setBetaKeyState] = useState('')
   const [pollMs, setPollMsState] = useState(DEFAULT_POLL_INTERVAL_MS)
-  const [placement, setPlacementState] = useState<OverlayPlacement>(DEFAULT_OVERLAY_PLACEMENT)
-  const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
   const [autoTrackPolicy, setAutoTrackPolicyState] = useState<AutoTrackPolicy>(DEFAULT_AUTO_TRACK_POLICY)
-  const [themePref, setThemePrefState] = useState<ThemePreference>(DEFAULT_THEME_PREFERENCE)
-  const [chartWindow, setChartWindowState] = useState<DefaultChartWindow>(DEFAULT_DEFAULT_CHART_WINDOW)
   const [watchlist, setWatchlistState] = useState<string[]>([])
   const [channelInput, setChannelInput] = useState('')
-  const [saved, setSaved] = useState(false)
+  const [savedFlash, setSavedFlash] = useState('')
   const [health, setHealth] = useState('Not checked')
   const [watchlistError, setWatchlistError] = useState('')
   const [debugLogging, setDebugLogging] = useState(false)
@@ -68,23 +51,23 @@ function OptionsApp() {
   const hostedBackend = backendSource === 'hosted'
 
   useEffect(() => {
+    injectStyles()
     void (async () => {
       await initPulseDebug()
+      applyAccentTheme(await getThemePreference())
       setBackendUrlState(await getBackendUrl())
-      setBetaKeyState(await getBetaKey())
       setPollMsState(await getPollIntervalMs())
-      setPlacementState(await getOverlayPlacement())
-      setChatClosedDockEnabledState(await getChatClosedPulseDockEnabled())
       setAutoTrackPolicyState(await getAutoTrackPolicy())
-      const storedTheme = await getThemePreference()
-      setThemePrefState(storedTheme)
-      applyAccentTheme(storedTheme)
-      setChartWindowState(await getDefaultChartWindow())
       setDebugLogging(await getPulseDebugEnabled())
       await refreshWatchlist()
       await refreshDebugLog()
     })()
   }, [])
+
+  function flashSaved(label: string): void {
+    setSavedFlash(label)
+    window.setTimeout(() => setSavedFlash(''), 1500)
+  }
 
   async function refreshWatchlist(): Promise<void> {
     try {
@@ -97,23 +80,23 @@ function OptionsApp() {
     }
   }
 
-  async function save(): Promise<void> {
-    await Promise.all([
-      setBackendUrl(backendUrl),
-      setBetaKey(betaKey),
-      setPollIntervalMs(pollMs),
-      setOverlayPlacement(placement),
-      setChatClosedPulseDockEnabled(chatClosedDockEnabled),
-      setAutoTrackPolicy(autoTrackPolicy),
-      setThemePreference(themePref),
-      setDefaultChartWindow(chartWindow),
-    ])
-    applyAccentTheme(themePref)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-    await probeHealth()
+  async function persistBackendUrl(url: string): Promise<void> {
+    await setBackendUrl(url)
+    flashSaved('Backend URL saved')
     await sendBackgroundMessage({ type: 'SYNC_WATCHLIST' })
     await refreshWatchlist()
+  }
+
+  async function persistPollMs(ms: number): Promise<void> {
+    setPollMsState(ms)
+    await setPollIntervalMs(ms)
+    flashSaved('Polling interval saved')
+  }
+
+  async function persistAutoTrack(policy: AutoTrackPolicy): Promise<void> {
+    setAutoTrackPolicyState(policy)
+    await setAutoTrackPolicy(policy)
+    flashSaved('Auto-track saved')
   }
 
   async function refreshDebugLog(): Promise<void> {
@@ -200,8 +183,10 @@ function OptionsApp() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <h1 style={styles.title}>Streamclone Pulse</h1>
-          <p style={styles.lead}>Configure the overlay and manage channels Streamclone should keep in its tracking pool.</p>
+          <h1 style={styles.title}>Advanced settings</h1>
+          <p style={styles.lead}>
+            Backend, watchlist/Protect, and debug tools. Day-to-day settings live in the Pulse sidebar → gear.
+          </p>
         </div>
         <button type="button" style={styles.secondaryButton} onClick={() => void probeHealth()}>Probe backend</button>
       </header>
@@ -239,6 +224,7 @@ function OptionsApp() {
               style={styles.secondaryButton}
               onClick={() => {
                 setBackendUrlState(DEFAULT_BACKEND_URL)
+                void persistBackendUrl(DEFAULT_BACKEND_URL)
               }}
             >
               Reset to hosted API
@@ -247,20 +233,30 @@ function OptionsApp() {
         </div>
         <label style={styles.label}>
           <span>Backend URL</span>
-          <input value={backendUrl} onChange={e => setBackendUrlState(e.target.value)} placeholder={DEFAULT_BACKEND_URL} style={styles.input} />
-        </label>
-        <label style={styles.label}>
-          <span>Beta key (optional — hosted operator tools only)</span>
           <input
-            value={betaKey}
-            onChange={e => setBetaKeyState(e.target.value)}
-            placeholder="X-Streamclone-Beta-Key — not required for public /analytics"
+            value={backendUrl}
+            onChange={e => setBackendUrlState(e.target.value)}
+            onBlur={() => void persistBackendUrl(backendUrl)}
+            placeholder={DEFAULT_BACKEND_URL}
             style={styles.input}
-            autoComplete="off"
           />
         </label>
         <div style={styles.status}>{health}</div>
+        {savedFlash ? <p style={styles.saved}>{savedFlash}</p> : null}
       </section>
+
+      {buildMeta ? (
+        <section style={styles.section} aria-label="Extension build identity">
+          <span style={styles.groupLabel}>Extension build identity</span>
+          <p style={styles.help}>
+            <code>{buildMeta.buildId}</code> · {buildMeta.mode} · {buildMeta.dirty ? 'dirty source' : 'clean source'}
+          </p>
+          <p style={styles.help}>
+            Input fingerprint <code>{buildMeta.sourceFingerprint.slice(0, 12)}</code> · package cohort{' '}
+            <code>{buildMeta.packageCohortFingerprint.slice(0, 12)}</code>
+          </p>
+        </section>
+      ) : null}
 
       <section style={styles.section}>
         <span style={styles.groupLabel}>Watchlist / Protect</span>
@@ -300,49 +296,6 @@ function OptionsApp() {
       </section>
 
       <section style={styles.section}>
-        <span style={styles.groupLabel}>Accent theme</span>
-        <p style={styles.help}>Recolors Pulse sidebar accents. Matches the in-overlay Settings picker.</p>
-        <div style={styles.swatchRow}>
-          {ACCENT_THEME_OPTIONS.map(option => {
-            const active = themePref === option.value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                style={{
-                  ...styles.swatch,
-                  ...(active ? styles.swatchActive : null),
-                }}
-                onClick={() => {
-                  setThemePrefState(option.value)
-                  applyAccentTheme(option.value)
-                }}
-              >
-                <span style={{ ...styles.swatchDot, background: option.swatch }} />
-                <span>{option.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
-
-      <section style={styles.section}>
-        <span style={styles.groupLabel}>Default chart window</span>
-        <div style={styles.segmented}>
-          {(['15m', '30m', '60m', '2h', '4h', 'full'] as const).map(value => (
-            <button
-              key={value}
-              type="button"
-              style={chartWindow === value ? styles.segmentActive : styles.segment}
-              onClick={() => setChartWindowState(value)}
-            >
-              {value.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section style={styles.section}>
         <span style={styles.groupLabel}>Polling interval</span>
         <div style={styles.segmented}>
           {POLL_INTERVAL_OPTIONS_MS.map(value => (
@@ -350,7 +303,7 @@ function OptionsApp() {
               key={value}
               type="button"
               style={pollMs === value ? styles.segmentActive : styles.segment}
-              onClick={() => setPollMsState(value)}
+              onClick={() => void persistPollMs(value)}
             >
               {value / 1000}s
             </button>
@@ -359,71 +312,32 @@ function OptionsApp() {
       </section>
 
       <section style={styles.section}>
-        <span style={styles.groupLabel}>Chat-closed dock</span>
-        <label style={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={chatClosedDockEnabled}
-            onChange={event => setChatClosedDockEnabledState(event.target.checked)}
-          />
-          Show Pulse dock when chat is closed
-        </label>
-        <p style={styles.help}>
-          CHAT/PULSE tabs always show when Twitch chat is open. This option adds a bottom-right Pulse panel only when the chat column is hidden.
-        </p>
-      </section>
-
-      <section style={styles.section}>
-        <span style={styles.groupLabel}>Overlay placement</span>
-        <select
-          value={placement}
-          onChange={e => setPlacementState(e.target.value as OverlayPlacement)}
-          style={styles.input}
-        >
-          <option value="sidebar">Sidebar tab (snap to chat) — recommended</option>
-          <option value="right">Right dock</option>
-          <option value="bottom">Bottom bar</option>
-          <option value="hidden">Hidden</option>
-        </select>
-        <p style={styles.help}>
-          Sidebar tab overlays Pulse on Twitch&apos;s chat column with a Chat | Pulse toggle in a top chrome bar. The panel covers only the message area so gift headers stay clickable.
-        </p>
-        <p style={styles.help}>
-          Using the <strong>7TV</strong> browser extension too? Choose <strong>Chat</strong> in the Pulse chrome bar for normal Twitch chat with 7TV emotes; choose <strong>Pulse</strong> for Streamclone analytics. See{' '}
-          <a href="../docs/pulse-extension/README.md" style={styles.docLink}>docs/pulse-extension/README.md</a> for coexistence notes.
-        </p>
-      </section>
-
-      <section style={styles.section}>
         <span style={styles.groupLabel}>Auto-track on Twitch</span>
-        <select
-          value={autoTrackPolicy}
-          onChange={e => setAutoTrackPolicyState(e.target.value as AutoTrackPolicy)}
-          style={styles.input}
-          disabled={!localStackBackend}
-        >
-          <option value="off">Manual only — use Track channel in the overlay (local stack)</option>
-          <option value="followed">Track the channel page you open (local stack only)</option>
-          <option value="ask">Ask before tracking (watchlist still auto-tracks on local stack)</option>
-        </select>
-        <p style={styles.help}>
-          Only applies when backend URL is your local Streamclone stack. On hosted (
-          <code>api.streampulse.stream</code>), IRC is managed by the top live pool — this control is ignored.
-        </p>
+        {localStackBackend ? (
+          <>
+            <select
+              value={autoTrackPolicy}
+              onChange={e => void persistAutoTrack(e.target.value as AutoTrackPolicy)}
+              style={styles.input}
+            >
+              <option value="off">Manual only — use Track channel in the overlay (local stack)</option>
+              <option value="followed">Track the channel page you open (local stack only)</option>
+              <option value="ask">Ask before tracking (watchlist still auto-tracks on local stack)</option>
+            </select>
+            <p style={styles.help}>
+              Local stack only — starts IRC when you open a channel (policy above). On hosted, IRC is managed by the live pool.
+            </p>
+          </>
+        ) : (
+          <p style={styles.help}>Local-stack only — hidden on hosted.</p>
+        )}
       </section>
 
       <section style={styles.section}>
-        <span style={styles.groupLabel}>Stream Pulse sidebar</span>
+        <span style={styles.groupLabel}>Debug logging (VOD / jump / backfill)</span>
         <p style={styles.help}>
-          The Pulse sidebar matches Streamclone web Channel → Stream Pulse: chat-only sparkline (last 60 minutes), metrics row, and client-side Most Reacted ranking. Multi-layer analytics charts live on the full Streamclone analytics page — use <strong>Open full analytics →</strong> in the overlay.
-        </p>
-      </section>
-
-      <section style={styles.section}>
-        <span style={styles.groupLabel}>Debug logging (VOD / backfill)</span>
-        <p style={styles.help}>
-          Turn on to record step-by-step VOD discovery, Helix health, pulse API, and backfill results. Use this when
-          &quot;Waiting for Twitch VOD…&quot; or &quot;Check for VOD &amp; load from start&quot; fails — the log shows exactly which step blocked.
+          Turn on to record step-by-step VOD discovery, jump/seek confirmation, Helix health, pulse API, and backfill results. Use this when
+          &quot;Jump in player&quot; freezes or &quot;Check for VOD &amp; load from start&quot; fails — the log shows the player range, target, and blocking step.
         </p>
         <label style={styles.checkboxRow}>
           <input
@@ -452,7 +366,7 @@ function OptionsApp() {
         {debugCopied ? <p style={styles.saved}>Debug log copied.</p> : null}
         {debugLogging ? (
           debugLog.length === 0 ? (
-            <p style={styles.help}>No entries yet. Open a live channel, expand Pulse, then use &quot;Check for VOD &amp; load from start&quot;.</p>
+            <p style={styles.help}>No entries yet. Enable logging, reload the extension, open a live channel, then click &quot;Jump in player&quot;.</p>
           ) : (
             <pre style={styles.debugPre}>
               {debugLog
@@ -466,64 +380,95 @@ function OptionsApp() {
           )
         ) : null}
       </section>
-
-      <button type="button" onClick={() => void save()} style={styles.primaryButton}>Save settings</button>
-      {saved ? <p style={styles.saved}>Saved and watchlist synced.</p> : null}
     </main>
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  page: { background: '#111118', color: '#fafafc', fontFamily: 'Inter, system-ui, sans-serif', margin: 0, minHeight: '100vh', padding: 24, width: 620 },
+const styles: Record<string, CSSProperties> = {
+  page: {
+    background: theme.bgCanvas,
+    color: theme.textPrimary,
+    fontFamily: theme.font,
+    margin: 0,
+    minHeight: '100vh',
+    padding: 24,
+    width: 620,
+  },
   header: { alignItems: 'flex-start', display: 'flex', gap: 16, justifyContent: 'space-between', marginBottom: 8 },
   title: { fontSize: 22, margin: '0 0 6px' },
-  lead: { color: '#a1a1b2', fontSize: 13, lineHeight: 1.45, margin: 0, maxWidth: 460 },
-  section: { borderTop: '1px solid #30303a', display: 'grid', gap: 10, padding: '16px 0' },
+  lead: { color: theme.textSecondary, fontSize: 13, lineHeight: 1.45, margin: 0, maxWidth: 460 },
+  section: { borderTop: `1px solid ${theme.border}`, display: 'grid', gap: 10, padding: '16px 0' },
   label: { display: 'grid', gap: 8, fontSize: 13, fontWeight: 800 },
-  groupLabel: { color: '#a1a1b2', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' },
-  fieldLabel: { color: '#c7c7d4', fontSize: 12, fontWeight: 800 },
+  groupLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' },
   checkboxRow: { alignItems: 'center', display: 'flex', fontSize: 13, fontWeight: 700, gap: 8 },
-  help: { color: '#8b8ba0', fontSize: 12, lineHeight: 1.45, margin: 0 },
-  input: { background: '#181820', border: '1px solid #3f3f50', borderRadius: 8, color: '#fafafc', font: 'inherit', padding: '10px 12px' },
-  status: { color: '#a1a1b2', fontSize: 12, fontWeight: 700 },
+  help: { color: theme.textMuted, fontSize: 12, lineHeight: 1.45, margin: 0 },
+  input: {
+    background: theme.bg,
+    border: `1px solid ${theme.border}`,
+    borderRadius: 8,
+    color: theme.textPrimary,
+    font: 'inherit',
+    padding: '10px 12px',
+  },
+  status: { color: theme.textSecondary, fontSize: 12, fontWeight: 700 },
   backendBanner: { borderRadius: 8, display: 'grid', gap: 8, padding: '12px 14px' },
   backendBannerHosted: { background: '#14291f', border: '1px solid #166534', color: '#bbf7d0' },
   backendBannerWarn: { background: '#2a2214', border: '1px solid #92400e', color: '#fde68a' },
   watchRow: { display: 'grid', gap: 8, gridTemplateColumns: '1fr auto' },
   watchlist: { display: 'grid', gap: 8, listStyle: 'none', margin: 0, padding: 0 },
-  watchItem: { alignItems: 'center', background: '#181820', border: '1px solid #30303a', borderRadius: 8, display: 'flex', justifyContent: 'space-between', padding: '10px 12px' },
-  linkButton: { background: 'transparent', border: 0, color: '#c4b5fd', cursor: 'pointer', fontWeight: 800, padding: 0 },
-  errorText: { color: '#fca5a5', fontSize: 12, margin: 0 },
-  segmented: { display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, 1fr)' },
-  swatchRow: { display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
-  swatch: {
+  watchItem: {
     alignItems: 'center',
-    background: '#20202a',
-    border: '1px solid #3f3f50',
-    borderRadius: 10,
-    color: '#c7c7d4',
-    cursor: 'pointer',
-    display: 'grid',
-    fontSize: 12,
-    fontWeight: 800,
-    gap: 6,
-    justifyItems: 'center',
-    padding: '10px 8px',
+    background: theme.bg,
+    border: `1px solid ${theme.border}`,
+    borderRadius: 8,
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
   },
-  swatchActive: { borderColor: '#a78bfa', boxShadow: 'inset 0 0 0 1px rgba(167, 139, 250, 0.45)' },
-  swatchDot: { borderRadius: 999, display: 'block', height: 18, width: 18 },
-  segment: { background: '#20202a', border: '1px solid #3f3f50', borderRadius: 8, color: '#c7c7d4', cursor: 'pointer', fontWeight: 900, padding: '10px 12px' },
-  segmentActive: { background: '#7c3aed', border: '1px solid #a78bfa', borderRadius: 8, color: '#fff', cursor: 'pointer', fontWeight: 900, padding: '10px 12px' },
-  primaryButton: { background: '#8b5cf6', border: 0, borderRadius: 8, color: '#fff', cursor: 'pointer', fontWeight: 900, padding: '12px 14px' },
-  secondaryButton: { background: '#20202a', border: '1px solid #3f3f50', borderRadius: 8, color: '#fafafc', cursor: 'pointer', fontWeight: 900, padding: '9px 12px' },
-  saved: { color: '#86efac', fontWeight: 800 },
-  docLink: { color: '#c4b5fd' },
+  linkButton: {
+    background: 'transparent',
+    border: 0,
+    color: theme.accentSoft,
+    cursor: 'pointer',
+    fontWeight: 800,
+    padding: 0,
+  },
+  errorText: { color: theme.error, fontSize: 12, margin: 0 },
+  segmented: { display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, 1fr)' },
+  segment: {
+    background: theme.panel,
+    border: `1px solid ${theme.border}`,
+    borderRadius: 8,
+    color: theme.textSecondary,
+    cursor: 'pointer',
+    fontWeight: 900,
+    padding: '10px 12px',
+  },
+  segmentActive: {
+    background: 'var(--pulse-accent-strong, #7c3aed)',
+    border: '1px solid var(--pulse-accent-soft, #a78bfa)',
+    borderRadius: 8,
+    color: theme.onAccent,
+    cursor: 'pointer',
+    fontWeight: 900,
+    padding: '10px 12px',
+  },
+  secondaryButton: {
+    background: theme.panel,
+    border: `1px solid ${theme.border}`,
+    borderRadius: 8,
+    color: theme.textPrimary,
+    cursor: 'pointer',
+    fontWeight: 900,
+    padding: '9px 12px',
+  },
+  saved: { color: theme.liveSoft, fontWeight: 800 },
   debugActions: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   debugPre: {
-    background: '#0d0d12',
-    border: '1px solid #30303a',
+    background: theme.bgCanvas,
+    border: `1px solid ${theme.border}`,
     borderRadius: 8,
-    color: '#d4d4e0',
+    color: theme.textSecondary,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: 10,
     lineHeight: 1.45,

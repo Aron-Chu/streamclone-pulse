@@ -11,7 +11,11 @@ function readJson(name: string): unknown {
 
 export type ApiScenario =
   | 'live-ready'
+  | 'games-rich'
+  | 'live-other'
+  | 'live-single-game'
   | 'live-partial'
+  | 'live-viewer-plateau'
   | 'helix-off'
   | 'offline'
   | 'vod-ready'
@@ -24,6 +28,8 @@ export interface MockApiController {
   setScenario: (scenario: ApiScenario) => void
   requests: () => Request[]
   pulseChannelRequestCount: () => number
+  /** GET pulse channel fetches that include ?window=full. */
+  pulseFullWindowRequestCount: () => number
   resetRequestLog: () => void
   dispose: () => Promise<void>
 }
@@ -42,11 +48,35 @@ const SCENARIOS: Record<Exclude<ApiScenario, 'api-500' | 'timeout' | 'malformed'
     coverage: 'coverage-active.json',
     vod: 'vod-ready.json',
   },
+  'games-rich': {
+    health: 'health-ok.json',
+    pulse: 'pulse-live-ready.json',
+    coverage: 'coverage-active.json',
+    vod: 'vod-ready.json',
+  },
+  'live-other': {
+    health: 'health-ok.json',
+    pulse: 'pulse-live-ready.json',
+    coverage: 'coverage-active.json',
+    vod: 'vod-ready.json',
+  },
+  'live-single-game': {
+    health: 'health-ok.json',
+    pulse: 'pulse-live-single-game.json',
+    coverage: 'coverage-active.json',
+    vod: 'vod-ready.json',
+  },
   'live-partial': {
     health: 'health-ok.json',
     pulse: 'pulse-live-partial.json',
     coverage: 'coverage-warming.json',
     vod: 'vod-syncing.json',
+  },
+  'live-viewer-plateau': {
+    health: 'health-ok.json',
+    pulse: 'pulse-live-viewer-plateau.json',
+    coverage: 'coverage-active.json',
+    vod: 'vod-ready.json',
   },
   'helix-off': {
     health: 'health-helix-off.json',
@@ -129,7 +159,48 @@ export async function installMockApi(
     }
 
     if (/^\/v1\/extension\/pulse\/channels\/[^/]+$/.test(pathname)) {
-      await json(route, 200, readJson(files.pulse))
+      const pulse = readJson(files.pulse)
+      if (scenario === 'games-rich' && pulse && typeof pulse === 'object') {
+        Object.assign(pulse, {
+          games: [
+            { gameName: 'Just Chatting', categoryId: '509658', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/509658-144x192.jpg', offsetSeconds: 0, durationSeconds: 450 },
+            { gameName: 'Minecraft', categoryId: '27471', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/27471-144x192.jpg', offsetSeconds: 450, durationSeconds: 450 },
+            { gameName: 'Just Chatting', offsetSeconds: 900, durationSeconds: 450 },
+            { gameName: 'VALORANT', boxArtUrl: 'http://unsafe.example/valorant.png', offsetSeconds: 1350, durationSeconds: 450 },
+            { gameName: 'Minecraft', categoryId: '27471', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/27471-144x192.jpg', offsetSeconds: 1800, durationSeconds: 450 },
+            { gameName: 'Hades II', offsetSeconds: 2250, durationSeconds: 450 },
+            { gameName: 'Just Chatting', categoryId: '509658', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/509658-144x192.jpg', offsetSeconds: 2700, durationSeconds: 450 },
+            { gameName: 'Minecraft', categoryId: '27471', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/27471-144x192.jpg', offsetSeconds: 3150, durationSeconds: 450 },
+          ],
+        })
+      }
+      if (scenario === 'live-other' && pulse && typeof pulse === 'object') {
+        Object.assign(pulse, {
+          login: 'otherchan',
+          streamId: 'stream-other-2',
+          title: 'Other channel live',
+          category: 'Minecraft',
+          games: [
+            {
+              gameName: 'Minecraft',
+              offsetSeconds: 0,
+              durationSeconds: 3600,
+            },
+          ],
+          peaks: [
+            {
+              offsetSeconds: 3600,
+              score: 88,
+              reasons: ['emote_burst'],
+              reasonLabel: 'Other channel peak',
+              dominantSignal: 'emote',
+              chatCount: 140,
+              emoteCount: 55,
+            },
+          ],
+        })
+      }
+      await json(route, 200, pulse)
       return
     }
 
@@ -172,6 +243,15 @@ export async function installMockApi(
     requests: () => [...requestLog],
     pulseChannelRequestCount: () =>
       requestLog.filter(r => /\/v1\/extension\/pulse\/channels\/[^/]+(?:\?|$)/.test(r.url())).length,
+    pulseFullWindowRequestCount: () =>
+      requestLog.filter(r => {
+        if (!/\/v1\/extension\/pulse\/channels\/[^/]+/.test(r.url())) return false
+        try {
+          return new URL(r.url()).searchParams.get('window') === 'full'
+        } catch {
+          return false
+        }
+      }).length,
     resetRequestLog: () => {
       requestLog.length = 0
     },

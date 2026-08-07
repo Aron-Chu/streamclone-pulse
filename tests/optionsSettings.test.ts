@@ -1,14 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  CACHE_BAR_LIMIT,
-  DEFAULT_FORM,
-  backendHost,
-  formatPollAria,
-  formatPollDisplay,
-  formsEqual,
-  type SettingsForm,
-} from '../src/options/settingsModel.ts'
-import {
   clampPollIntervalMs,
   clearSessionPulseCache,
   countSessionPulseEntries,
@@ -16,71 +7,25 @@ import {
   getBackendUrl,
   getDefaultChartWindow,
   getKeepLocalCache,
+  getOverlayDisplayPreferences,
+  getOverlayPlacement,
   getThemePreference,
+  getColorSchemePreference,
   isLocalStackBackendUrl,
   setBackendUrl,
+  setColorSchemePreference,
   setDefaultChartWindow,
   setKeepLocalCache,
   setPollIntervalMs,
   setThemePreference,
 } from '../src/shared/storage.ts'
 
-describe('settings dirty-tracking model', () => {
-  it('treats an identical clone as not dirty', () => {
-    expect(formsEqual(DEFAULT_FORM, { ...DEFAULT_FORM })).toBe(true)
-  })
-
-  it('detects a change in every persisted field', () => {
-    const changes: Array<Partial<SettingsForm>> = [
-      { backendUrl: 'http://localhost:9090' },
-      { theme: 'volt' },
-      { chartWindow: 'full' },
-      { autoUpdate: !DEFAULT_FORM.autoUpdate },
-      { pollMs: DEFAULT_FORM.pollMs + 5000 },
-      { autoTrack: 'followed' },
-      { placement: 'right' },
-      { show7tvLabels: !DEFAULT_FORM.show7tvLabels },
-      { keepCache: !DEFAULT_FORM.keepCache },
-    ]
-    for (const change of changes) {
-      expect(formsEqual(DEFAULT_FORM, { ...DEFAULT_FORM, ...change })).toBe(false)
-    }
-  })
-})
-
-describe('polling slider formatting', () => {
-  it('renders compact display labels', () => {
-    expect(formatPollDisplay(10_000)).toBe('10s')
-    expect(formatPollDisplay(30_000)).toBe('30s')
-    expect(formatPollDisplay(60_000)).toBe('1m')
-    expect(formatPollDisplay(90_000)).toBe('1m 30s')
-    expect(formatPollDisplay(300_000)).toBe('5m')
-  })
-
-  it('renders spoken aria value text', () => {
-    expect(formatPollAria(30_000)).toBe('30 seconds')
-    expect(formatPollAria(60_000)).toBe('1 minute')
-    expect(formatPollAria(120_000)).toBe('2 minutes')
-    expect(formatPollAria(90_000)).toBe('1 minute 30 seconds')
-  })
-})
-
-describe('segmented + helpers', () => {
-  it('derives a readable backend host', () => {
-    expect(backendHost('https://api.streampulse.stream')).toBe('api.streampulse.stream')
-    expect(backendHost('http://localhost:8081')).toBe('localhost:8081')
-    expect(backendHost('not a url')).toBe('not a url')
-  })
-
+describe('local stack backend detection', () => {
   it('detects local stack backend URLs', () => {
     expect(isLocalStackBackendUrl('http://localhost:8081')).toBe(true)
     expect(isLocalStackBackendUrl('http://127.0.0.1:8081')).toBe(true)
     expect(isLocalStackBackendUrl('http://localhost:8090')).toBe(false)
     expect(isLocalStackBackendUrl('https://api.streampulse.stream')).toBe(false)
-  })
-
-  it('keeps a sane cache bar limit', () => {
-    expect(CACHE_BAR_LIMIT).toBeGreaterThan(0)
   })
 })
 
@@ -101,10 +46,16 @@ describe('settings persistence (mocked chrome.storage)', () => {
     syncStore = {}
     sessionStore = {}
     vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension-id' },
       storage: {
         sync: {
-          get: vi.fn(async (keys: string | string[] | null) => {
-            if (keys === null) return { ...syncStore }
+          get: vi.fn(async (keys: string | string[] | Record<string, unknown> | null) => {
+            if (keys === null || keys === undefined) return { ...syncStore }
+            if (typeof keys === 'object' && !Array.isArray(keys)) {
+              const out: Record<string, unknown> = {}
+              for (const key of Object.keys(keys)) out[key] = syncStore[key] ?? keys[key]
+              return out
+            }
             const keyList = Array.isArray(keys) ? keys : [keys]
             const out: Record<string, unknown> = {}
             for (const key of keyList) out[key] = syncStore[key]
@@ -115,14 +66,24 @@ describe('settings persistence (mocked chrome.storage)', () => {
           }),
         },
         session: {
-          get: vi.fn(async (key: string | null) =>
-            key === null ? { ...sessionStore } : { [key]: sessionStore[key] },
-          ),
+          get: vi.fn(async (keys: string | string[] | Record<string, unknown> | null) => {
+            if (keys === null || keys === undefined) return { ...sessionStore }
+            if (typeof keys === 'object' && !Array.isArray(keys)) {
+              const out: Record<string, unknown> = {}
+              for (const key of Object.keys(keys)) out[key] = sessionStore[key] ?? keys[key]
+              return out
+            }
+            const keyList = Array.isArray(keys) ? keys : [keys]
+            const out: Record<string, unknown> = {}
+            for (const key of keyList) out[key] = sessionStore[key]
+            return out
+          }),
           set: vi.fn(async (items: Record<string, unknown>) => {
             Object.assign(sessionStore, items)
           }),
-          remove: vi.fn(async (keys: string[]) => {
-            for (const k of keys) delete sessionStore[k]
+          remove: vi.fn(async (keys: string | string[]) => {
+            const keyList = Array.isArray(keys) ? keys : [keys]
+            for (const k of keyList) delete sessionStore[k]
           }),
         },
       },
@@ -151,9 +112,57 @@ describe('settings persistence (mocked chrome.storage)', () => {
     expect(await getThemePreference()).toBe('volt')
   })
 
+  it('defaults color scheme to auto and round-trips light/dark', async () => {
+    expect(await getColorSchemePreference()).toBe('auto')
+    await setColorSchemePreference('light')
+    expect(await getColorSchemePreference()).toBe('light')
+    await setColorSchemePreference('dark')
+    expect(await getColorSchemePreference()).toBe('dark')
+    await setColorSchemePreference('auto')
+    expect(await getColorSchemePreference()).toBe('auto')
+  })
+
+  it('normalizes invalid color-scheme values to auto without touching accent', async () => {
+    syncStore.themePreference = 'volt'
+    syncStore.colorSchemePreference = 'sepia'
+    expect(await getColorSchemePreference()).toBe('auto')
+    expect(await getThemePreference()).toBe('volt')
+  })
+
   it('persists the polling slider as a clamped millisecond value', async () => {
     await setPollIntervalMs(33_000)
     expect(syncStore.pollIntervalMs).toBe(35_000)
+  })
+
+  it('migrates legacy hidden placement to expanded sidebar', async () => {
+    syncStore.overlayPlacement = 'hidden'
+    syncStore.overlayMode = 'expanded'
+
+    expect(await getOverlayDisplayPreferences()).toEqual({
+      placement: 'sidebar',
+      mode: 'expanded',
+    })
+    expect(syncStore.overlayPlacement).toBe('sidebar')
+    expect(syncStore.overlayMode).toBe('expanded')
+    expect(await getOverlayPlacement()).toBe('sidebar')
+  })
+
+  it('migrates mini and collapsed modes to expanded', async () => {
+    syncStore.overlayPlacement = 'right'
+    syncStore.overlayMode = 'mini'
+
+    expect(await getOverlayDisplayPreferences()).toEqual({
+      placement: 'right',
+      mode: 'expanded',
+    })
+    expect(syncStore).toMatchObject({ overlayPlacement: 'right', overlayMode: 'expanded' })
+
+    syncStore.overlayMode = 'collapsed'
+    expect(await getOverlayDisplayPreferences()).toEqual({
+      placement: 'right',
+      mode: 'expanded',
+    })
+    expect(syncStore.overlayMode).toBe('expanded')
   })
 
   it('counts and clears cached pulse channels', async () => {

@@ -9,6 +9,7 @@ export type PulseDebugStep =
   | 'vod.pulse.api'
   | 'vod.live.bridge'
   | 'vod.helix.health'
+  | 'ui.jump'
   | 'ui.coverage'
 
 export type PulseDebugLevel = 'info' | 'warn' | 'error'
@@ -27,6 +28,7 @@ const MAX_ENTRIES = 80
 
 let cachedEnabled = false
 let toggleListenerAttached = false
+let debugWriteQueue: Promise<void> = Promise.resolve()
 
 export async function initPulseDebug(): Promise<void> {
   const stored = await chrome.storage.sync.get(ENABLE_KEY)
@@ -53,6 +55,7 @@ export async function setPulseDebugEnabled(enabled: boolean): Promise<void> {
   cachedEnabled = enabled
   await chrome.storage.sync.set({ [ENABLE_KEY]: enabled })
   if (!enabled) {
+    await debugWriteQueue
     await chrome.storage.local.remove(LOG_KEY)
   }
 }
@@ -95,13 +98,20 @@ export async function pulseDebug(
       : ''
   logFn(`[Pulse ${step}] ${message}${detail}`)
 
-  const stored = await chrome.storage.local.get(LOG_KEY)
-  const entries = (stored[LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
-  entries.push(entry)
-  while (entries.length > MAX_ENTRIES) {
-    entries.shift()
+  const write = async () => {
+    const stored = await chrome.storage.local.get(LOG_KEY)
+    const entries = (stored[LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
+    entries.push(entry)
+    while (entries.length > MAX_ENTRIES) {
+      entries.shift()
+    }
+    await chrome.storage.local.set({ [LOG_KEY]: entries })
   }
-  await chrome.storage.local.set({ [LOG_KEY]: entries })
+  // Jump start/end and background discovery can log concurrently. Serialize
+  // writes so the later event cannot overwrite the earlier one with a stale
+  // read of the ring buffer.
+  debugWriteQueue = debugWriteQueue.then(write, write)
+  await debugWriteQueue
 }
 
 function safeJson(data: Record<string, unknown>): string {
@@ -114,7 +124,11 @@ function safeJson(data: Record<string, unknown>): string {
 
 /** Format the latest VOD-related log lines for overlay error copy. */
 export async function summarizeVodDebugBlockers(
-  options?: { backendVodResolved?: boolean; backendHelixEnabled?: boolean | null },
+  options?: {
+    backendVodResolved?: boolean
+    backendHelixEnabled?: boolean | null
+    navigationVodId?: string | null
+  },
 ): Promise<string | null> {
   const entries = await getPulseDebugLog()
   return summarizeVodDebugBlockersFromEntries(entries, options)
@@ -122,7 +136,11 @@ export async function summarizeVodDebugBlockers(
 
 export function summarizeVodDebugBlockersFromEntries(
   entries: PulseDebugEntry[],
-  options?: { backendVodResolved?: boolean; backendHelixEnabled?: boolean | null },
+  options?: {
+    backendVodResolved?: boolean
+    backendHelixEnabled?: boolean | null
+    navigationVodId?: string | null
+  },
 ): string | null {
   if (options?.backendVodResolved) {
     return vodLocalDiscoveryDiagnostic(entries)
@@ -132,7 +150,10 @@ export function summarizeVodDebugBlockersFromEntries(
 
 export function interpretVodDebugBlockers(
   entries: PulseDebugEntry[],
-  options?: { backendHelixEnabled?: boolean | null },
+  options?: {
+    backendHelixEnabled?: boolean | null
+    navigationVodId?: string | null
+  },
 ): string | null {
   const vodEntries = entries.filter(entry => entry.step.startsWith('vod.') || entry.step === 'ui.coverage')
   if (vodEntries.length === 0) return null
@@ -149,15 +170,24 @@ export function interpretVodDebugBlockers(
     parts.push('Backend analytics outdated (no helixEnabled — redeploy latest)')
   }
 
+  const navigationVodId = String(options?.navigationVodId ?? '').trim()
   const pulse = last('vod.pulse.api')
   if (pulse?.data?.vodId == null) {
-    parts.push('API vodId still null')
+    if (navigationVodId) {
+      parts.push(
+        `Past Streams has videoId ${navigationVodId}; API vodId still null (not linked for backfill)`,
+      )
+    } else {
+      parts.push('API vodId still null')
+    }
   }
 
   appendLocalVodDiscoveryNotes(vodEntries, parts)
 
   const hint = last('vod.hint.api')
-  if (hint?.level === 'warn') {
+  if (hint?.data?.status === 401 || hint?.data?.authRequired === true) {
+    parts.push('VOD discovered locally, but hosted vod-hint persistence requires extension authentication')
+  } else if (hint?.level === 'warn') {
     parts.push('vod-hint route missing on backend (404 until redeploy)')
   }
 

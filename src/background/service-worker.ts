@@ -17,7 +17,7 @@ import {
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin } from './tracking.ts'
 import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulsePayload, PulseStreamUpdateMessage, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
-import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
+import { ensureSessionBuildIdentity, getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
 import {
   addToWatchlist,
@@ -39,6 +39,35 @@ import {
 } from './alwaysTrackedSync.ts'
 
 void initPulseDebug()
+
+const buildMeta = typeof __STREAMPULSE_BUILD_META__ === 'undefined' ? null : __STREAMPULSE_BUILD_META__
+
+async function ensureCurrentBuildIdentity(): Promise<void> {
+  let buildId = buildMeta?.buildId ?? 'unknown'
+  // `vite build --watch` rewrites build-meta.json on each cycle while the
+  // compiled define above remains config-time state. Read the emitted file on
+  // worker startup so a Chrome reload observes the newest bundle/cohort.
+  try {
+    const response = await fetch(chrome.runtime.getURL('build-meta.json'), {
+      cache: 'no-store',
+    })
+    if (response.ok) {
+      const payload = (await response.json()) as { buildId?: unknown }
+      if (typeof payload.buildId === 'string' && payload.buildId.trim()) {
+        buildId = payload.buildId
+      }
+    }
+  } catch {
+    // A partially written dev artifact should not prevent the worker from
+    // starting; the compile-time fallback still provides a safe identity.
+  }
+  await ensureSessionBuildIdentity(buildId)
+}
+
+const buildIdentityReady = ensureCurrentBuildIdentity().catch(() => {
+  // Storage can be temporarily unavailable while Chrome is reloading the
+  // unpacked extension; message handling remains available in that case.
+})
 
 const revalidateInFlight = new Set<string>()
 const lastRevalidateAt = new Map<string, number>()
@@ -312,6 +341,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse) => {
   void (async () => {
+    await buildIdentityReady
     try {
       switch (message.type) {
         case 'TRACK': {
@@ -454,11 +484,20 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
               candidate,
             } satisfies BackgroundResponse)
           } catch (err) {
+            const error = err instanceof Error ? err.message : 'pulse_archive_candidate_failed'
+            await pulseDebug(
+              'vod.archive.candidate',
+              error === 'archive_candidate_unavailable'
+                ? 'archive-candidate route is unavailable on the configured backend'
+                : 'archive-candidate request failed',
+              { streamId: message.streamId, login: message.login, error },
+              error === 'archive_candidate_unavailable' ? 'info' : 'warn',
+            )
             sendResponse({
               type: 'PULSE_ARCHIVE_CANDIDATE',
               streamId: message.streamId,
               candidate: null,
-              error: err instanceof Error ? err.message : 'pulse_archive_candidate_failed',
+              error,
             } satisfies BackgroundResponse)
           }
           return
@@ -504,6 +543,10 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
               streamId: message.streamId,
               vodId: message.vodId,
             })
+            if (!result.ok) {
+              sendResponse({ ok: false, error: result.error ?? `vod_hint ${result.status ?? 'failed'}` })
+              return
+            }
             await refreshPulse(message.login, 'full', true)
             sendResponse({ ok: true, vodId: result.vodId ?? message.vodId })
           } catch (err) {
@@ -556,6 +599,15 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
             ok: health.ok,
             version: health.version,
             helixEnabled: health.helixEnabled,
+            buildSha: health.buildSha,
+            buildId: health.buildId,
+            imageDigest: health.imageDigest,
+            serviceGeneration: health.serviceGeneration,
+            identityComplete: health.identityComplete,
+            hostedMode: health.hostedMode,
+            degraded: health.degraded,
+            routes: health.routes,
+            capabilities: health.capabilities,
           } satisfies BackgroundResponse)
           return
         }
@@ -631,7 +683,11 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
       const messageText = err instanceof Error ? err.message : 'error'
       switch (message.type) {
         case 'LOAD_MISSED_MOMENTS':
-          sendResponse({ type: 'PULSE_BACKFILL', job: null, error: messageText } satisfies BackgroundResponse)
+          sendResponse({
+            type: 'PULSE_BACKFILL',
+            job: null,
+            error: /(?:401|unauthorized|auth)/i.test(messageText) ? 'backfill_auth_required' : messageText,
+          } satisfies BackgroundResponse)
           return
         case 'GET_PULSE_BACKFILL_STATUS':
           sendResponse({ type: 'PULSE_BACKFILL_STATUS', job: null, error: messageText } satisfies BackgroundResponse)
@@ -671,6 +727,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
 
 chrome.runtime.onStartup.addListener(() => {
   void (async () => {
+    await buildIdentityReady
     await syncWatchlistToBackend()
     if (await hostedBackend()) return
     for (const login of listTrackedLogins()) {
@@ -680,7 +737,10 @@ chrome.runtime.onStartup.addListener(() => {
 })
 
 chrome.runtime.onInstalled.addListener(() => {
-  void syncWatchlistToBackend()
+  void (async () => {
+    await buildIdentityReady
+    await syncWatchlistToBackend()
+  })()
 })
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {

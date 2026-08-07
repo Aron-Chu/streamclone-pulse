@@ -1,5 +1,6 @@
 import { createRoot, type Root } from 'react-dom/client'
 import { Overlay } from '../ui/Overlay.tsx'
+import { PulsePortalContext } from '../ui/pulsePortalContext.ts'
 import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
 import type { ExtensionCoverageTierResponse, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
@@ -9,26 +10,34 @@ import {
   DEFAULT_OVERLAY_MODE,
   DEFAULT_OVERLAY_PLACEMENT,
   DEFAULT_SIDEBAR_TAB,
-  getOverlayMode,
-  getOverlayPlacement,
+  getOverlayDisplayPreferences,
   getSidebarTab,
   getChatClosedPulseDockEnabled,
   getThemePreference,
+  getColorSchemePreference,
   CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY,
   THEME_PREFERENCE_KEY,
+  COLOR_SCHEME_PREFERENCE_KEY,
   type OverlayMode,
   type OverlayPlacement,
   type SidebarTab,
   type ThemePreference,
+  type ColorSchemePreference,
 } from '../shared/storage.ts'
-import { applyAccentTheme } from '../ui/overlayTheme.ts'
+import { applyAccentTheme, applyAccentRolesToHost } from '../ui/overlayTheme.ts'
+import { applySurfaceThemeToHost } from '../ui/surfaceTheme.ts'
 import { shadowStyles, theme } from '../ui/theme.ts'
+import { resolveOverlayErrorState } from '../shared/pulseError.ts'
+import {
+  detectTwitchColorScheme,
+  observeTwitchColorScheme,
+  resolvePulseColorScheme,
+  type TwitchColorScheme,
+} from './twitchTheme.ts'
 import {
   observeChatSnapLayout,
   buildSidebarBodyRect,
-  SIDEBAR_MINI_PANEL_HEIGHT,
-  SIDEBAR_COLLAPSED_PILL_HEIGHT,
-  resolveChatDockBottomY,
+  shouldRerenderOverlayForSnapChange,
   type ChatRectSnapshot,
   type SidebarSnapLayout,
 } from './twitchChat.ts'
@@ -37,7 +46,11 @@ import {
   SIDEBAR_FLOAT_FALLBACK_MS,
   type OverlayHostVisibility,
 } from './resolveOverlayHostVisibility.ts'
-import { applyTwitchSidebarChromeHides } from './twitchSidebarChrome.ts'
+import {
+  applyTwitchSidebarChromeHides,
+  recoverStaleTwitchSidebarChrome,
+} from './twitchSidebarChrome.ts'
+import { PULSE_HOST_Z_INDEX } from './overlayStacking.ts'
 import type { TwitchPageContext } from './twitch.ts'
 import { detectTwitchChannelLive } from './twitch.ts'
 
@@ -45,16 +58,67 @@ const TAB_HOST_ID = 'streamclone-pulse-tabs'
 const PANEL_HOST_ID = 'streamclone-pulse-root'
 
 let themeListenerInstalled = false
+let colorSchemePreference: ColorSchemePreference = 'auto'
+let accentPreference: ThemePreference = 'aurora'
+let twitchColorScheme: TwitchColorScheme = 'dark'
+let stopTwitchThemeObserve: (() => void) | null = null
+let surfaceThemeMountGeneration = 0
+
+function applyResolvedSurfaceTheme(): void {
+  const resolved = resolvePulseColorScheme(colorSchemePreference, twitchColorScheme)
+  if (tabsHostEl) {
+    applySurfaceThemeToHost(tabsHostEl, resolved)
+    applyAccentRolesToHost(tabsHostEl, accentPreference, resolved)
+  }
+  if (panelHostEl) {
+    applySurfaceThemeToHost(panelHostEl, resolved)
+    applyAccentRolesToHost(panelHostEl, accentPreference, resolved)
+  }
+}
+
+function syncSurfaceThemeFromPreference(pref: ColorSchemePreference, generation: number): void {
+  if (generation !== surfaceThemeMountGeneration) return
+  colorSchemePreference = pref
+  applyResolvedSurfaceTheme()
+}
+
+function syncAccentPreference(pref: ThemePreference): void {
+  accentPreference = pref
+  applyAccentTheme(pref)
+  applyResolvedSurfaceTheme()
+}
+
+function installTwitchThemeObserver(): void {
+  if (stopTwitchThemeObserve) return
+  twitchColorScheme = detectTwitchColorScheme()
+  applyResolvedSurfaceTheme()
+  stopTwitchThemeObserve = observeTwitchColorScheme(scheme => {
+    twitchColorScheme = scheme
+    if (colorSchemePreference !== 'auto') return
+    applyResolvedSurfaceTheme()
+  })
+}
 
 function installThemeSyncListener(): void {
   if (themeListenerInstalled) return
   if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return
   themeListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes[THEME_PREFERENCE_KEY]) return
-    const next = changes[THEME_PREFERENCE_KEY].newValue
-    if (next === 'aurora' || next === 'volt' || next === 'azure') {
-      applyAccentTheme(next as ThemePreference)
+    if (area !== 'sync') return
+    if (changes[THEME_PREFERENCE_KEY]) {
+      const next = changes[THEME_PREFERENCE_KEY].newValue
+      if (next === 'aurora' || next === 'volt' || next === 'azure') {
+        syncAccentPreference(next)
+      }
+    }
+    if (changes[COLOR_SCHEME_PREFERENCE_KEY]) {
+      const next = changes[COLOR_SCHEME_PREFERENCE_KEY].newValue
+      const normalized =
+        next === 'auto' || next === 'light' || next === 'dark'
+          ? next
+          : 'auto'
+      // Removal / invalid values must snap back to auto immediately.
+      syncSurfaceThemeFromPreference(normalized, surfaceThemeMountGeneration)
     }
   })
 }
@@ -84,15 +148,35 @@ const BASE_STYLE = `
     color: ${theme.textPrimary};
     pointer-events: none;
     position: fixed;
-    z-index: 2147483000;
+    z-index: ${PULSE_HOST_Z_INDEX};
     isolation: isolate;
     box-sizing: border-box;
+    overflow: hidden;
   }
   * { box-sizing: border-box; }
   button, input, select, textarea { font: inherit; }
-  button:focus, button:focus-visible { outline: none !important; }
+  button:focus:not(:focus-visible) { outline: none; }
+  button:focus-visible,
+  [role="option"]:focus-visible,
+  .pulse-segment-btn:focus-visible,
+  .pulse-link-btn:focus-visible,
+  .pulse-secondary-btn:focus-visible,
+  .pulse-primary-btn:focus-visible {
+    outline: 2px solid ${theme.accent};
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--pulse-surface-focus-ring-contrast, #ffffff);
+  }
   .pulse-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
-  .pulse-no-scrollbar::-webkit-scrollbar { display: none; }
+  .pulse-no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  .pulse-panel-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .pulse-panel-scroll::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
   .pulse-root {
     display: flex;
     flex-direction: column;
@@ -111,15 +195,19 @@ const BASE_STYLE = `
     pointer-events: auto;
     width: 100%;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     background: ${theme.panelGlass};
     border: 1px solid ${theme.borderAccent};
     border-radius: ${theme.radiusPanel}px;
-    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    box-shadow: 0 22px 60px var(--pulse-surface-shadow, rgba(0, 0, 0, 0.55)), 0 0 0 1px var(--pulse-surface-border-subtle, rgba(255, 255, 255, 0.04)) inset;
     backdrop-filter: blur(14px);
     color: ${theme.textPrimary};
     font-family: ${theme.font};
-    animation: pulse-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: pulse-shell-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes pulse-shell-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
   .placement-right {
     position: fixed;
@@ -206,6 +294,7 @@ let currentCoverageTier: ExtensionCoverageTierResponse | null = null
 function createShadowHost(id: string): { host: HTMLElement; root: Root } {
   const host = document.createElement('div')
   host.id = id
+  host.setAttribute('data-pulse-extension-owned', '1')
   document.documentElement.appendChild(host)
   const shadow = host.attachShadow({ mode: 'open' })
   const style = document.createElement('style')
@@ -215,6 +304,40 @@ function createShadowHost(id: string): { host: HTMLElement; root: Root } {
   mountPoint.className = 'pulse-root'
   shadow.appendChild(mountPoint)
   return { host, root: createRoot(mountPoint) }
+}
+
+/** Remove exact-id duplicates; keep only `keep` when provided. */
+function removeDuplicateHostsById(id: string, keep: HTMLElement | null): void {
+  // Attribute selector — `#id` may only match the first node when IDs are duplicated.
+  const all = Array.from(
+    document.querySelectorAll(`[id="${CSS.escape(id)}"]`),
+  ) as HTMLElement[]
+  for (const el of all) {
+    if (keep && el === keep) continue
+    el.remove()
+  }
+}
+
+/** Reuse in-module hosts; remove only exact stale extension hosts by id. */
+function reclaimOrCreateShadowHost(
+  id: string,
+  ownedHost: HTMLElement | null,
+  ownedRoot: Root | null,
+): { host: HTMLElement; root: Root } {
+  if (ownedHost && ownedRoot && document.contains(ownedHost) && ownedHost.id === id) {
+    removeDuplicateHostsById(id, ownedHost)
+    return { host: ownedHost, root: ownedRoot }
+  }
+  const existing = Array.from(
+    document.querySelectorAll(`[id="${CSS.escape(id)}"]`),
+  ) as HTMLElement[]
+  const ownedExisting =
+    existing.find((el) => el.getAttribute('data-pulse-extension-owned') === '1') ?? null
+  removeDuplicateHostsById(id, ownedExisting)
+  if (ownedExisting) {
+    ownedExisting.remove()
+  }
+  return createShadowHost(id)
 }
 
 function applyFixedRect(host: HTMLElement | null, rect: ChatRectSnapshot | null, visible: boolean): void {
@@ -239,6 +362,8 @@ function applyFloatingHost(host: HTMLElement | null): void {
   host.style.display = 'block'
   host.style.top = ''
   host.style.left = ''
+  host.style.right = ''
+  host.style.bottom = ''
   host.style.width = ''
   host.style.height = ''
   host.style.transform = ''
@@ -269,25 +394,11 @@ function scheduleSidebarFallback(): void {
   }, SIDEBAR_FLOAT_FALLBACK_MS)
 }
 
-function buildDockHostRect(
-  bodyRect: ChatRectSnapshot,
-  column: ChatRectSnapshot,
-  dockHeight: number,
-): ChatRectSnapshot {
-  const dockBottom = resolveChatDockBottomY(document, bodyRect.bottom, column)
-  const top = Math.max(bodyRect.top, dockBottom - dockHeight)
-  return {
-    ...bodyRect,
-    top,
-    height: Math.max(28, dockBottom - top),
-    bottom: dockBottom,
-  }
-}
-
 function applySidebarSnapLayout(): void {
   if (!sidebarLayout) return
 
-  applyTwitchSidebarChromeHides(true, currentSidebarTab === 'pulse')
+  // Opaque panel host covers native chat; never hide Twitch's message list.
+  applyTwitchSidebarChromeHides(true)
   applyFixedRect(tabsHostEl, sidebarLayout.header, true)
 
   const showPanel = currentSidebarTab === 'pulse'
@@ -298,25 +409,6 @@ function applySidebarSnapLayout(): void {
   }
 
   const bodyRect = buildSidebarBodyRect(sidebarLayout)
-
-  if (currentOverlayMode === 'collapsed') {
-    const collapsedRect = buildDockHostRect(
-      bodyRect,
-      sidebarLayout.column,
-      SIDEBAR_COLLAPSED_PILL_HEIGHT,
-    )
-    applyFixedRect(panelHostEl, collapsedRect, true)
-    if (panelHostEl) panelHostEl.style.overflow = 'visible'
-    return
-  }
-
-  if (currentOverlayMode === 'mini') {
-    const miniRect = buildDockHostRect(bodyRect, sidebarLayout.column, SIDEBAR_MINI_PANEL_HEIGHT)
-    applyFixedRect(panelHostEl, miniRect, true)
-    if (panelHostEl) panelHostEl.style.overflow = 'hidden'
-    return
-  }
-
   applyFixedRect(panelHostEl, bodyRect, true)
   if (panelHostEl) panelHostEl.style.overflow = 'hidden'
 }
@@ -352,15 +444,16 @@ function currentHostVisibility(): OverlayHostVisibility {
 }
 
 function syncSidebarObserver(): void {
-  if (!placementResolved || storedPlacement !== 'sidebar') {
+  if (!placementResolved || storedPlacement === 'hidden') {
     stopObserve?.()
     stopObserve = null
-    if (storedPlacement !== 'sidebar') {
-      sidebarLayout = null
-      resetSidebarFallback()
-    }
+    sidebarLayout = null
+    resetSidebarFallback()
     return
   }
+  // Always observe chat-column presence so chat-open forces sidebar snap even
+  // when the stored placement preference is right/bottom (dock position only).
+  if (stopObserve) return
   startSidebarObserver()
 }
 
@@ -370,9 +463,10 @@ function installMountStorageListener(): void {
   mountStorageListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return
-    if (changes.overlayPlacement || changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]) {
-      void Promise.all([getOverlayPlacement(), getChatClosedPulseDockEnabled()]).then(([placement, dockEnabled]) => {
-        storedPlacement = placement
+    if (changes.overlayPlacement || changes.overlayMode || changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]) {
+      void Promise.all([getOverlayDisplayPreferences(), getChatClosedPulseDockEnabled()]).then(([display, dockEnabled]) => {
+        storedPlacement = display.placement
+        currentOverlayMode = display.mode
         chatClosedPulseDockEnabled = dockEnabled
         if (!dockEnabled) {
           resetSidebarFallback()
@@ -423,18 +517,30 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
   }
 
   if (sidebarSnapped) {
-    tabsRoot?.render(<Overlay {...sharedProps} sidebarPart="tabs" />)
-    panelRoot?.render(<Overlay {...sharedProps} sidebarPart="body" />)
+    tabsRoot?.render(
+      <PulsePortalContext.Provider value={tabsHostEl?.shadowRoot ?? null}>
+        <Overlay {...sharedProps} sidebarPart="tabs" />
+      </PulsePortalContext.Provider>,
+    )
+    panelRoot?.render(
+      <PulsePortalContext.Provider value={panelHostEl?.shadowRoot ?? null}>
+        <Overlay {...sharedProps} sidebarPart="body" />
+      </PulsePortalContext.Provider>,
+    )
   } else {
     tabsRoot?.render(null)
-    panelRoot?.render(<Overlay {...sharedProps} sidebarPart="full" />)
+    panelRoot?.render(
+      <PulsePortalContext.Provider value={panelHostEl?.shadowRoot ?? null}>
+        <Overlay {...sharedProps} sidebarPart="full" />
+      </PulsePortalContext.Provider>,
+    )
   }
 
   applyHostVisibility(visibility)
 
   if (placementResolved && chatClosedPulseDockEnabled && storedPlacement === 'sidebar' && sidebarLayout == null) {
     scheduleSidebarFallback()
-  } else if (sidebarLayout != null || !chatClosedPulseDockEnabled) {
+  } else {
     resetSidebarFallback()
   }
 }
@@ -442,9 +548,20 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
 function startSidebarObserver(): void {
   stopObserve?.()
   stopObserve = observeChatSnapLayout(next => {
+    const prev = sidebarLayout
     sidebarLayout = next
-    if (next != null) resetSidebarFallback()
-    renderOverlay(currentPayload, currentError)
+    if (next != null) {
+      resetSidebarFallback()
+    } else if (placementResolved && chatClosedPulseDockEnabled && storedPlacement === 'sidebar') {
+      scheduleSidebarFallback()
+    }
+    // Geometry-only ticks: reposition hosts without a full React Overlay render.
+    // Presence / panel-width changes still need renderOverlay (sidebarSnapped, panelHostWidth).
+    if (shouldRerenderOverlayForSnapChange(prev, next)) {
+      renderOverlay(currentPayload, currentError)
+    } else {
+      applyHostVisibility(currentHostVisibility())
+    }
   })
 }
 
@@ -454,6 +571,10 @@ export function mountOverlay(
   context: TwitchPageContext,
   options: OverlayMountOptions = {},
 ): void {
+  // Fail-open: clear orphaned hide styles / markers from a prior content lifecycle
+  // before creating new hosts. Native Twitch chat must remain visible if mount fails.
+  recoverStaleTwitchSidebarChrome()
+
   currentLogin = login
   currentContext = context
   currentOptions = options
@@ -464,46 +585,60 @@ export function mountOverlay(
   currentOverlayMode = DEFAULT_OVERLAY_MODE
   currentSidebarTab = DEFAULT_SIDEBAR_TAB
   chatClosedPulseDockEnabled = DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED
-  placementResolved = true
+  placementResolved = false
   resetSidebarFallback()
 
-  if (!tabsHostEl) {
-    const tabs = createShadowHost(TAB_HOST_ID)
+  if (!tabsHostEl || !tabsRoot || !document.contains(tabsHostEl)) {
+    const tabs = reclaimOrCreateShadowHost(TAB_HOST_ID, tabsHostEl, tabsRoot)
     tabsHostEl = tabs.host
     tabsRoot = tabs.root
+  } else {
+    removeDuplicateHostsById(TAB_HOST_ID, tabsHostEl)
   }
-  if (!panelHostEl) {
-    const panel = createShadowHost(PANEL_HOST_ID)
+  if (!panelHostEl || !panelRoot || !document.contains(panelHostEl)) {
+    const panel = reclaimOrCreateShadowHost(PANEL_HOST_ID, panelHostEl, panelRoot)
     panelHostEl = panel.host
     panelRoot = panel.root
+  } else {
+    removeDuplicateHostsById(PANEL_HOST_ID, panelHostEl)
   }
 
+  // Dark first paint — avoid light flash before storage / Twitch hydration.
+  surfaceThemeMountGeneration += 1
+  const themeMountGeneration = surfaceThemeMountGeneration
+  applyResolvedSurfaceTheme()
+  installTwitchThemeObserver()
   installThemeSyncListener()
   installMountStorageListener()
-  void getThemePreference().then(pref => applyAccentTheme(pref))
+  void getThemePreference().then(pref => {
+    if (themeMountGeneration !== surfaceThemeMountGeneration) return
+    syncAccentPreference(pref)
+  })
+  void getColorSchemePreference().then(pref => {
+    syncSurfaceThemeFromPreference(pref, themeMountGeneration)
+  })
   syncSidebarObserver()
   renderOverlay(currentPayload, currentError)
 
   void Promise.all([
-    getOverlayPlacement(),
-    getOverlayMode(),
+    getOverlayDisplayPreferences(),
     getSidebarTab(),
     getThemePreference(),
+    getColorSchemePreference(),
     getChatClosedPulseDockEnabled(),
-  ]).then(([placement, mode, tab, themePref, dockEnabled]) => {
-      applyAccentTheme(themePref)
-      const placementChanged = placement !== storedPlacement
-      const dockChanged = dockEnabled !== chatClosedPulseDockEnabled
-      storedPlacement = placement
-      currentOverlayMode = mode
+  ]).then(([display, tab, themePref, schemePref, dockEnabled]) => {
+      if (themeMountGeneration !== surfaceThemeMountGeneration) return
+      syncAccentPreference(themePref)
+      syncSurfaceThemeFromPreference(schemePref, themeMountGeneration)
+      storedPlacement = display.placement
+      currentOverlayMode = display.mode
       currentSidebarTab = tab
       chatClosedPulseDockEnabled = dockEnabled
+      placementResolved = true
       if (!dockEnabled) {
         resetSidebarFallback()
       }
-      if (placementChanged || dockChanged) {
-        syncSidebarObserver()
-      }
+      syncSidebarObserver()
       renderOverlay(currentPayload, currentError)
     },
   )
@@ -518,9 +653,7 @@ export function updateOverlayPayload(
   if (payload) {
     currentPayload = applyOverlayPayloadUpdate(currentPayload, payload)
   }
-  if (error !== undefined) {
-    currentError = error
-  }
+  currentError = resolveOverlayErrorState(currentError, payload, error)
   if (coverageTier !== undefined) {
     currentCoverageTier = coverageTier
   }
@@ -528,6 +661,13 @@ export function updateOverlayPayload(
 }
 
 export function updateOverlayContext(context: TwitchPageContext): void {
+  if (
+    currentContext.kind === context.kind
+    && currentContext.login === context.login
+    && currentContext.vodId === context.vodId
+  ) {
+    return
+  }
   currentContext = context
   renderOverlay(currentPayload, currentError)
 }
@@ -554,11 +694,14 @@ export function updateOverlayVodState(input: {
 export function unmountOverlay(): void {
   stopObserve?.()
   stopObserve = null
+  stopTwitchThemeObserve?.()
+  stopTwitchThemeObserve = null
   sidebarLayout = null
   placementResolved = false
   chatClosedPulseDockEnabled = false
   resetSidebarFallback()
   applyTwitchSidebarChromeHides(false)
+  recoverStaleTwitchSidebarChrome()
   tabsRoot?.unmount()
   panelRoot?.unmount()
   tabsRoot = null
@@ -576,6 +719,10 @@ export function unmountOverlay(): void {
   currentCoverageTier = null
   currentSidebarTab = 'pulse'
   currentOverlayMode = 'expanded'
+  colorSchemePreference = 'auto'
+  accentPreference = 'aurora'
+  twitchColorScheme = 'dark'
+  surfaceThemeMountGeneration += 1
 }
 
 export function currentChannelLogin(): string {

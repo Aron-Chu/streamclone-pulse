@@ -7,22 +7,23 @@ import {
   getAutoTrackPolicy,
   getAutoUpdateEnabled,
   getBackendUrl,
+  getColorSchemePreference,
   getDefaultChartWindow,
   getKeepLocalCache,
   getOverlayPlacement,
-  getPulseDockPreference,
   getChatClosedPulseDockEnabled,
   getThemePreference,
   isLocalStackBackendUrl,
   setAutoTrackPolicy,
   setAutoUpdateEnabled,
   setChatClosedPulseDockEnabled,
+  setColorSchemePreference,
   setDefaultChartWindow,
   setKeepLocalCache,
   setOverlayPlacement,
-  setPulseDockPreference,
   setThemePreference,
   type AutoTrackPolicy,
+  type ColorSchemePreference,
   type DefaultChartWindow,
   type OverlayPlacement,
   type ThemePreference,
@@ -32,8 +33,19 @@ import { applyAccentTheme } from './overlayTheme.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { theme } from './theme.ts'
+import releaseManifest from '../../streampulse-web/src/lib/release-notes.json'
 
 const HOSTED_API_HOST = 'api.streampulse.stream'
+const CHANGELOG_URL = 'https://streampulse.stream/changelog'
+const CURRENT_RELEASE = releaseManifest.releases.find(release => release.version === releaseManifest.currentVersion) ?? releaseManifest.releases[0]
+
+function installedExtensionVersion(): string {
+  try {
+    return chrome.runtime.getManifest().version || releaseManifest.currentVersion
+  } catch {
+    return releaseManifest.currentVersion
+  }
+}
 
 type ConnectionKind = 'hosted' | 'local' | 'custom'
 
@@ -51,7 +63,7 @@ function connectionPillLabel(kind: ConnectionKind): string {
 }
 
 function connectionTitle(kind: ConnectionKind): string {
-  if (kind === 'local') return 'Local Streamclone stack'
+  if (kind === 'local') return 'Local StreamPulse backend'
   if (kind === 'custom') return 'Custom backend'
   return 'StreamPulse cloud'
 }
@@ -61,7 +73,7 @@ function connectionHint(kind: ConnectionKind): string {
     return 'Local stack only — Track and auto-track apply here. IRC pool differs from production hosted coverage.'
   }
   if (kind === 'custom') {
-    return 'Using a custom API — change in Full settings.'
+    return 'Using a custom API host — charts may differ from hosted StreamPulse.'
   }
   return 'Live IRC coverage is managed by StreamPulse. Auto-track does not apply on hosted.'
 }
@@ -85,6 +97,12 @@ const ACCENT_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> =
   { value: 'azure', label: 'Azure' },
 ]
 
+const COLOR_SCHEME_OPTIONS: ReadonlyArray<{ value: ColorSchemePreference; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
+
 const CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: DefaultChartWindow; label: string }> = [
   { value: '15m', label: '15m' },
   { value: '30m', label: '30m' },
@@ -98,7 +116,6 @@ const PLACEMENT_OPTIONS: ReadonlyArray<{ value: OverlayPlacement; label: string 
   { value: 'sidebar', label: 'Sidebar tab' },
   { value: 'right', label: 'Right rail' },
   { value: 'bottom', label: 'Bottom dock' },
-  { value: 'hidden', label: 'Hidden' },
 ]
 
 const AUTO_TRACK_OPTIONS: ReadonlyArray<{ value: AutoTrackPolicy; label: string; title?: string }> = [
@@ -117,18 +134,19 @@ function segmentClass(active: boolean): string {
 
 export function PulseSettingsPanel(props: {
   onBack?: () => void
+  /** @deprecated Operator options are no longer linked from product UI. */
   onOpenFullSettings?: () => void
   onAutoUpdateChange?: (enabled: boolean) => void
 }) {
-  const { onBack, onOpenFullSettings, onAutoUpdateChange } = props
+  const { onBack, onAutoUpdateChange } = props
   const [autoUpdate, setAutoUpdate] = useState(true)
-  const [show7TVLabels, setShow7TVLabels] = useState(true)
   const [keepCache, setKeepCache] = useState(true)
   const [backendUrl, setBackendUrlState] = useState('')
   const [healthStatus, setHealthStatus] = useState<'idle' | 'checking' | 'ok' | 'fail'>('idle')
   const [healthDetail, setHealthDetail] = useState('')
   const [accentTheme, setAccentTheme] = useState<ThemePreference>('aurora')
-  const [defaultChartWindow, setDefaultChartWindowState] = useState<DefaultChartWindow>('60m')
+  const [colorScheme, setColorScheme] = useState<ColorSchemePreference>('auto')
+  const [defaultChartWindow, setDefaultChartWindowState] = useState<DefaultChartWindow>('full')
   const [overlayPlacement, setOverlayPlacementState] = useState<OverlayPlacement>('sidebar')
   const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
   const [autoTrackPolicy, setAutoTrackPolicyState] = useState<AutoTrackPolicy>('off')
@@ -141,12 +159,12 @@ export function PulseSettingsPanel(props: {
   const showEndpoint = connectionKind === 'local'
 
   const reload = useCallback(async () => {
-    const [au, dock, cache, url, accent, chartWindow, placement, dockEnabled, trackPolicy, wl] = await Promise.all([
+    const [au, cache, url, accent, scheme, chartWindow, placement, dockEnabled, trackPolicy, wl] = await Promise.all([
       getAutoUpdateEnabled(),
-      getPulseDockPreference(),
       getKeepLocalCache(),
       getBackendUrl(),
       getThemePreference(),
+      getColorSchemePreference(),
       getDefaultChartWindow(),
       getOverlayPlacement(),
       getChatClosedPulseDockEnabled(),
@@ -154,11 +172,11 @@ export function PulseSettingsPanel(props: {
       getWatchlist(),
     ])
     setAutoUpdate(au)
-    setShow7TVLabels(dock.show7TVSignalLabels)
     setKeepCache(cache)
     setBackendUrlState(url)
     setAccentTheme(accent)
     applyAccentTheme(accent)
+    setColorScheme(scheme)
     setDefaultChartWindowState(chartWindow)
     setOverlayPlacementState(placement)
     setChatClosedDockEnabledState(dockEnabled)
@@ -211,24 +229,23 @@ export function PulseSettingsPanel(props: {
     void setThemePreference(value)
   }
 
+  const pickColorScheme = (value: ColorSchemePreference) => {
+    setColorScheme(value)
+    void setColorSchemePreference(value)
+  }
+
   return (
     <div className="pulse-settings-panel">
-      {(onBack || onOpenFullSettings) && (
+      {onBack ? (
         <div className="pulse-settings-nav">
-          {onBack ? (
-            <button type="button" className="pulse-link-btn" onClick={onBack}>
-              ← Back
-            </button>
-          ) : (
-            <span />
-          )}
-          {onOpenFullSettings ? (
-            <button type="button" className="pulse-link-btn" onClick={onOpenFullSettings}>
-              Full settings
-            </button>
-          ) : null}
+          <button type="button" className="pulse-settings-back" onClick={onBack} aria-label="Back to Pulse">
+            <span className="pulse-settings-back-arrow" aria-hidden="true">
+              ←
+            </span>
+            <span className="pulse-settings-back-label">Back</span>
+          </button>
         </div>
-      )}
+      ) : null}
 
       <PulseSectionCard title="Connection" titleTone="muted">
         <div className="pulse-settings-connection-head">
@@ -258,13 +275,33 @@ export function PulseSettingsPanel(props: {
 
       <PulseSectionCard title="Appearance" titleTone="muted">
         <div className="pulse-settings-field">
+          <label className="pulse-settings-label">Color scheme</label>
+          <div className="pulse-segment-row" role="group" aria-label="Color scheme">
+            {COLOR_SCHEME_OPTIONS.map(option => (
+              <button
+                key={option.value}
+                type="button"
+                className={segmentClass(colorScheme === option.value)}
+                aria-pressed={colorScheme === option.value}
+                onClick={() => pickColorScheme(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="pulse-settings-hint">
+            Auto follows Twitch light or dark. Light and Dark stay fixed.
+          </div>
+        </div>
+        <div className="pulse-settings-field">
           <label className="pulse-settings-label">Accent theme</label>
-          <div className="pulse-segment-row">
+          <div className="pulse-segment-row" role="group" aria-label="Accent theme">
             {ACCENT_OPTIONS.map(option => (
               <button
                 key={option.value}
                 type="button"
                 className={segmentClass(accentTheme === option.value)}
+                aria-pressed={accentTheme === option.value}
                 onClick={() => pickAccent(option.value)}
               >
                 {option.label}
@@ -286,15 +323,6 @@ export function PulseSettingsPanel(props: {
               onAutoUpdateChange?.(checked)
             }}
           />
-          <ToggleRow
-            label="7TV signal labels"
-            hint="Show 7TV emote names on the chart overlay."
-            checked={show7TVLabels}
-            onChange={checked => {
-              setShow7TVLabels(checked)
-              void setPulseDockPreference({ show7TVSignalLabels: checked })
-            }}
-          />
           <PulseThemedSelect
             label="Default chart range"
             value={defaultChartWindow}
@@ -307,7 +335,7 @@ export function PulseSettingsPanel(props: {
             }}
           />
           <div className="pulse-settings-hint">
-            Applied when you open a live chart. On live streams, &quot;All&quot; stays at 1h until you pick All in the chart range control.
+            Applied when you open a live chart. Default is All (full session so far).
           </div>
         </div>
       </PulseSectionCard>
@@ -340,6 +368,10 @@ export function PulseSettingsPanel(props: {
                 {option.label}
               </button>
             ))}
+          </div>
+          <div className="pulse-settings-hint">
+            Where the Pulse dock appears when chat is closed. Requires “Show Pulse dock when chat is closed”.
+            While chat is open, Pulse always stays in the sidebar tab.
           </div>
         </div>
         <div className="pulse-settings-field">
@@ -376,8 +408,8 @@ export function PulseSettingsPanel(props: {
           {watchlist.length === 0 ? (
             <div className="pulse-settings-hint">
               {isHosted
-                ? 'No saved channels. Adding one does not enable live Pulse in the extension until IRC capacity expands — use Full settings or the Analytics hub.'
-                : 'No channels saved. Add them in Full settings or use Track in the overlay.'}
+                ? 'No saved channels. Adding one does not enable live Pulse in the extension until IRC capacity expands — use the Analytics hub to browse tracked channels.'
+                : 'No channels saved yet. Use Track in the overlay on a local stack, or browse the Analytics hub.'}
             </div>
           ) : (
             <div style={watchlistStyle}>
@@ -414,6 +446,32 @@ export function PulseSettingsPanel(props: {
           {clearStatus === 'clearing' ? 'Clearing…' : clearStatus === 'done' ? 'Cleared' : 'Clear session cache'}
         </button>
       </PulseSectionCard>
+
+      <PulseSectionCard title="About & updates" titleTone="muted">
+        <div className="pulse-settings-connection-copy">
+          <div style={aboutReleaseHeaderStyle}>
+            <div className="pulse-settings-connection-title">StreamPulse extension v{installedExtensionVersion()}</div>
+            {CURRENT_RELEASE ? (
+              <span style={CURRENT_RELEASE.status === 'released' ? releasePillStyle : previewPillStyle}>
+                {CURRENT_RELEASE.status === 'released' ? 'Released' : 'Preview'}
+              </span>
+            ) : null}
+          </div>
+          <div className="pulse-settings-hint">
+            {CURRENT_RELEASE?.summary ?? 'Latest release notes'}
+          </div>
+        </div>
+        <a
+          className="pulse-link-btn"
+          href={CHANGELOG_URL}
+          target="_blank"
+          rel="noreferrer"
+          title="Open the public StreamPulse changelog"
+          style={{ display: 'inline-block', marginTop: 8 }}
+        >
+          Read release notes →
+        </a>
+      </PulseSectionCard>
     </div>
   )
 }
@@ -442,11 +500,38 @@ function ToggleRow(props: {
 
 const fullWidthBtn: CSSProperties = { width: '100%' }
 
-const apiPillHostedStyle: CSSProperties = {
-  background: 'rgba(34, 197, 94, 0.14)',
-  border: '1px solid rgba(34, 197, 94, 0.35)',
+const aboutReleaseHeaderStyle: CSSProperties = {
+  alignItems: 'center',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+  justifyContent: 'space-between',
+}
+
+const releasePillStyle: CSSProperties = {
+  background: 'var(--pulse-surface-status-ok-bg, rgba(34, 197, 94, 0.14))',
+  border: '1px solid var(--pulse-surface-status-ok-border, rgba(34, 197, 94, 0.4))',
   borderRadius: 999,
-  color: 'rgba(187, 247, 208, 0.95)',
+  color: 'var(--pulse-surface-status-ok-text, #86efac)',
+  fontSize: 9,
+  fontWeight: 800,
+  letterSpacing: '0.06em',
+  padding: '3px 8px',
+  textTransform: 'uppercase',
+}
+
+const previewPillStyle: CSSProperties = {
+  ...releasePillStyle,
+  background: 'var(--pulse-surface-status-warn-bg, rgba(245, 158, 11, 0.14))',
+  borderColor: 'var(--pulse-surface-status-warn-border, rgba(245, 158, 11, 0.4))',
+  color: 'var(--pulse-surface-status-warn-text, #fcd34d)',
+}
+
+const apiPillHostedStyle: CSSProperties = {
+  background: 'var(--pulse-surface-status-ok-bg, rgba(34, 197, 94, 0.14))',
+  border: '1px solid var(--pulse-surface-status-ok-border, rgba(34, 197, 94, 0.4))',
+  borderRadius: 999,
+  color: 'var(--pulse-surface-status-ok-text, #86efac)',
   display: 'inline-block',
   fontSize: 10,
   fontWeight: 800,
@@ -456,10 +541,10 @@ const apiPillHostedStyle: CSSProperties = {
 }
 
 const apiPillCustomStyle: CSSProperties = {
-  background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.14)',
-  border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)',
+  background: 'var(--pulse-accent-surface, rgba(139, 92, 246, 0.14))',
+  border: '1px solid var(--pulse-accent-border, rgba(139, 92, 246, 0.35))',
   borderRadius: 999,
-  color: 'var(--pulse-accent-ink, #ddd6fe)',
+  color: 'var(--pulse-accent-text, var(--pulse-accent-ink, #ddd6fe))',
   display: 'inline-block',
   fontSize: 10,
   fontWeight: 800,
@@ -469,10 +554,10 @@ const apiPillCustomStyle: CSSProperties = {
 }
 
 const apiPillLocalStyle: CSSProperties = {
-  background: 'rgba(245, 158, 11, 0.14)',
-  border: '1px solid rgba(245, 158, 11, 0.4)',
+  background: 'var(--pulse-surface-status-warn-bg, rgba(245, 158, 11, 0.14))',
+  border: '1px solid var(--pulse-surface-status-warn-border, rgba(245, 158, 11, 0.4))',
   borderRadius: 999,
-  color: 'rgba(253, 230, 138, 0.95)',
+  color: 'var(--pulse-surface-status-warn-text, #fcd34d)',
   display: 'inline-block',
   fontSize: 10,
   fontWeight: 800,

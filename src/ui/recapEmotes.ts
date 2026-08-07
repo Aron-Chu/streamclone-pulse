@@ -8,6 +8,7 @@ export function recapEmoteToExtensionEmote(emote: PulseRecapEmote): ExtensionEmo
     imageUrl: emote.imageUrl,
     count: emote.count,
     provider: emote.provider,
+    providerEmoteId: emote.providerEmoteId,
   }
 }
 
@@ -38,6 +39,7 @@ export function resolveRecapEmotes(
       id: base.id ?? fallback.id,
       imageUrl: base.imageUrl ?? fallback.imageUrl,
       provider: base.provider ?? fallback.provider,
+      providerEmoteId: base.providerEmoteId ?? fallback.providerEmoteId,
       zeroWidth: fallback.zeroWidth,
       animated: fallback.animated,
     }

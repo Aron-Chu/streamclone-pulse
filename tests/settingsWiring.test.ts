@@ -4,6 +4,7 @@ import {
   cacheSessionPulseIfEnabled,
   getDefaultChartWindow,
   getSessionPulse,
+  migrateDefaultChartWindowToFullOnce,
   setDefaultChartWindow,
   setKeepLocalCache,
   type DefaultChartWindow,
@@ -20,6 +21,7 @@ describe('settings runtime wiring', () => {
     syncStore = {}
     sessionStore = {}
     vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension' },
       storage: {
         sync: {
           get: vi.fn(async (keys: string | string[] | null) => {
@@ -59,6 +61,24 @@ describe('settings runtime wiring', () => {
       const stored = await getDefaultChartWindow()
       expect(CHART_TIMELINE_WINDOWS).toContain(stored)
     }
+  })
+
+  it('migrates sticky legacy chart window to full once', async () => {
+    syncStore.defaultChartWindow = '60m'
+    await migrateDefaultChartWindowToFullOnce()
+    expect(await getDefaultChartWindow()).toBe('full')
+    expect(syncStore.defaultChartWindowMigratedToFullV1).toBe(true)
+
+    syncStore.defaultChartWindow = '30m'
+    await migrateDefaultChartWindowToFullOnce()
+    expect(await getDefaultChartWindow()).toBe('30m')
+  })
+
+  it('skips one-time full migration after an explicit chart window preference', async () => {
+    await setDefaultChartWindow('4h')
+    expect(syncStore.defaultChartWindowMigratedToFullV1).toBe(true)
+    await migrateDefaultChartWindowToFullOnce()
+    expect(await getDefaultChartWindow()).toBe('4h')
   })
 
   it('skips session cache writes when remember-channels is off', async () => {

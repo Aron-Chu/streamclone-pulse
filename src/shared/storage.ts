@@ -1,6 +1,5 @@
 const BACKEND_URL_KEY = 'backendUrl'
 const LOCAL_BACKEND_OPT_IN_KEY = 'localBackendOptIn'
-const BETA_KEY_KEY = 'betaKey'
 const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
 const OVERLAY_MODE_KEY = 'overlayMode'
 const OVERLAY_PLACEMENT_KEY = 'overlayPlacement'
@@ -11,11 +10,13 @@ const LEGACY_SIDEBAR_PULSE_TAB_ENABLED_KEY = 'sidebarPulseTabEnabled'
 const AUTO_TRACK_POLICY_KEY = 'autoTrackPolicy'
 const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
-export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY }
+const COLOR_SCHEME_PREFERENCE_KEY = 'colorSchemePreference'
+export { THEME_PREFERENCE_KEY, COLOR_SCHEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY }
 const DEFAULT_CHART_WINDOW_KEY = 'defaultChartWindow'
 /** One-time sync flag: legacy sticky non-full defaults → Full stream. */
 const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY = 'defaultChartWindowMigratedToFullV1'
 const KEEP_LOCAL_CACHE_KEY = 'keepLocalCache'
+const SESSION_BUILD_ID_KEY = 'pulse:runtime:build-id'
 
 export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
 export const DEFAULT_POLL_INTERVAL_MS = 30_000
@@ -27,7 +28,13 @@ export type OverlayPlacement = 'bottom' | 'right' | 'sidebar' | 'hidden'
 export type SidebarTab = 'chat' | 'pulse'
 export type AutoTrackPolicy = 'off' | 'followed' | 'ask'
 export type ThemePreference = 'aurora' | 'volt' | 'azure'
+export type ColorSchemePreference = 'auto' | 'light' | 'dark'
 export type DefaultChartWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
+
+export interface OverlayDisplayPreferences {
+  placement: OverlayPlacement
+  mode: OverlayMode
+}
 
 export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
@@ -35,6 +42,7 @@ export const DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED = false
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
 export const DEFAULT_AUTO_TRACK_POLICY: AutoTrackPolicy = 'off'
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
+export const DEFAULT_COLOR_SCHEME_PREFERENCE: ColorSchemePreference = 'auto'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
@@ -173,15 +181,6 @@ export async function setBackendUrl(url: string): Promise<void> {
   })
 }
 
-export async function getBetaKey(): Promise<string> {
-  const stored = await syncStorageGet(BETA_KEY_KEY)
-  return String(stored[BETA_KEY_KEY] ?? '').trim()
-}
-
-export async function setBetaKey(key: string): Promise<void> {
-  await syncStorageSet({ [BETA_KEY_KEY]: key.trim() })
-}
-
 export async function getPollIntervalMs(): Promise<number> {
   const stored = await syncStorageGet(POLL_INTERVAL_MS_KEY)
   const value = Number(stored[POLL_INTERVAL_MS_KEY])
@@ -194,8 +193,7 @@ export async function setPollIntervalMs(ms: number): Promise<void> {
 }
 
 export async function getOverlayMode(): Promise<OverlayMode> {
-  const stored = await syncStorageGet(OVERLAY_MODE_KEY)
-  return normalizeOverlayMode(stored[OVERLAY_MODE_KEY])
+  return (await getOverlayDisplayPreferences()).mode
 }
 
 export async function setOverlayMode(mode: OverlayMode): Promise<void> {
@@ -203,8 +201,30 @@ export async function setOverlayMode(mode: OverlayMode): Promise<void> {
 }
 
 export async function getOverlayPlacement(): Promise<OverlayPlacement> {
-  const stored = await syncStorageGet(OVERLAY_PLACEMENT_KEY)
-  return normalizeOverlayPlacement(stored[OVERLAY_PLACEMENT_KEY])
+  return (await getOverlayDisplayPreferences()).placement
+}
+
+export async function getOverlayDisplayPreferences(): Promise<OverlayDisplayPreferences> {
+  const stored = await syncStorageGet([OVERLAY_PLACEMENT_KEY, OVERLAY_MODE_KEY])
+  const rawMode = stored[OVERLAY_MODE_KEY]
+  const placement = normalizeOverlayPlacement(stored[OVERLAY_PLACEMENT_KEY])
+  const mode = normalizeOverlayMode(rawMode)
+  if (placement === 'hidden') {
+    // Older Hide actions persisted a terminal placement with no in-page reopen control.
+    const migrated = { placement: DEFAULT_OVERLAY_PLACEMENT, mode: DEFAULT_OVERLAY_MODE }
+    await syncStorageSet({
+      [OVERLAY_PLACEMENT_KEY]: migrated.placement,
+      [OVERLAY_MODE_KEY]: migrated.mode,
+    })
+    return migrated
+  }
+
+  // Persist retirement of mini / collapsed modes.
+  if (rawMode === 'mini' || rawMode === 'collapsed') {
+    await syncStorageSet({ [OVERLAY_MODE_KEY]: mode })
+  }
+
+  return { placement, mode }
 }
 
 export async function setOverlayPlacement(placement: OverlayPlacement): Promise<void> {
@@ -275,6 +295,17 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await syncStorageSet({ [THEME_PREFERENCE_KEY]: normalizeThemePreference(pref) })
 }
 
+export async function getColorSchemePreference(): Promise<ColorSchemePreference> {
+  const stored = await syncStorageGet(COLOR_SCHEME_PREFERENCE_KEY)
+  return normalizeColorSchemePreference(stored[COLOR_SCHEME_PREFERENCE_KEY])
+}
+
+export async function setColorSchemePreference(pref: ColorSchemePreference): Promise<void> {
+  await syncStorageSet({
+    [COLOR_SCHEME_PREFERENCE_KEY]: normalizeColorSchemePreference(pref),
+  })
+}
+
 /**
  * One-time migration: sticky legacy chart defaults (e.g. 60m from an older product
  * default) become Full stream. Explicit setDefaultChartWindow writes also mark the
@@ -330,6 +361,20 @@ export async function clearSessionPulseCache(): Promise<void> {
   )
   if (keys.length === 0) return
   await sessionStorageRemove(keys)
+}
+
+/**
+ * Drop session snapshots when the loaded extension build changes. Chrome can
+ * keep `storage.session` across an unpacked extension reload, so a new
+ * service worker must not render a payload produced by an older bundle.
+ */
+export async function ensureSessionBuildIdentity(buildId: string): Promise<boolean> {
+  const identity = buildId.trim() || 'unknown'
+  const stored = await sessionStorageGet(SESSION_BUILD_ID_KEY)
+  if (stored[SESSION_BUILD_ID_KEY] === identity) return false
+  await clearSessionPulseCache()
+  await sessionStorageSet({ [SESSION_BUILD_ID_KEY]: identity })
+  return true
 }
 
 const DEBUG_LOGGING_KEY = 'debugLoggingEnabled'
@@ -408,9 +453,9 @@ function coverageSessionKey(login: string): string {
 }
 
 function normalizeOverlayMode(value: unknown): OverlayMode {
-  return value === 'collapsed' || value === 'mini' || value === 'expanded'
-    ? value
-    : DEFAULT_OVERLAY_MODE
+  // Mini and Hide (collapsed) modes are retired — always expand.
+  if (value === 'mini' || value === 'collapsed') return DEFAULT_OVERLAY_MODE
+  return value === 'expanded' ? value : DEFAULT_OVERLAY_MODE
 }
 
 export function normalizeOverlayPlacement(value: unknown): OverlayPlacement {
@@ -434,6 +479,12 @@ function normalizeThemePreference(value: unknown): ThemePreference {
   if (value === 'volcano') return 'volt'
   if (value === 'ocean') return 'azure'
   return DEFAULT_THEME_PREFERENCE
+}
+
+export function normalizeColorSchemePreference(value: unknown): ColorSchemePreference {
+  return value === 'auto' || value === 'light' || value === 'dark'
+    ? value
+    : DEFAULT_COLOR_SCHEME_PREFERENCE
 }
 
 function normalizeDefaultChartWindow(value: unknown): DefaultChartWindow {

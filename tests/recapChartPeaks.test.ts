@@ -192,14 +192,14 @@ describe('recap highlight heat points', () => {
 })
 
 describe('recapStreamDurationSeconds', () => {
-  it('prefers recap duration over recent rollup window', async () => {
+  it('keeps recap duration when it matches Pulse activity', async () => {
     const { recapStreamDurationSeconds } = await import('../src/ui/recapChartPeaks.ts')
     const seconds = recapStreamDurationSeconds({
       login: 'xqc',
       isLive: false,
       tracking: false,
       currentOffsetSeconds: 600,
-      rollups: [{ offsetSeconds: 600, chatCount: 10, sevenTvEmoteCount: 1 }],
+      rollups: [{ offsetSeconds: 45_600, chatCount: 10, sevenTvEmoteCount: 1 }],
       lanes: { composite: [], chat: [], seventv: [] },
       peaks: [],
       recap: {
@@ -214,5 +214,32 @@ describe('recapStreamDurationSeconds', () => {
       },
     })
     expect(seconds).toBe(45_720)
+  })
+
+  it('cuts inflated wall duration to last Pulse activity', async () => {
+    const { recapStreamDurationSeconds } = await import('../src/ui/recapChartPeaks.ts')
+    const seconds = recapStreamDurationSeconds({
+      login: 'xqc',
+      isLive: false,
+      tracking: false,
+      currentOffsetSeconds: 65_534,
+      rollups: [
+        { offsetSeconds: 120, chatCount: 10, sevenTvEmoteCount: 1 },
+        { offsetSeconds: 32_527, chatCount: 128, sevenTvEmoteCount: 98 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: {
+        streamId: '1',
+        login: 'xqc',
+        durationSeconds: 65_534,
+        totalMessages: 100,
+        peakChatPerMin: 40,
+        topMoments: [],
+        topEmotes: [],
+        clipCandidates: [],
+      },
+    })
+    expect(seconds).toBe(32_527 + 60)
   })
 })

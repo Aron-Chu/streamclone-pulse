@@ -37,15 +37,22 @@ export function resolveOverlayHostVisibility(input: OverlayHostVisibilityInput):
     return { effectivePlacement: 'hidden', sidebarSnapped: false, mode: 'hidden' }
   }
 
-  if (storedPlacement !== 'sidebar') {
-    return { effectivePlacement: storedPlacement, sidebarSnapped: false, mode: 'floating' }
-  }
-
+  // Chat column present: always CHAT/PULSE sidebar chrome (ignore right/bottom prefs).
   if (sidebarLayoutPresent) {
     return { effectivePlacement: 'sidebar', sidebarSnapped: true, mode: 'sidebar' }
   }
 
-  if (chatClosedPulseDockEnabled && sidebarFallbackToFloat && sidebarTab === 'pulse') {
+  // Chat column absent: floating dock only when the chat-closed dock toggle is on.
+  if (!chatClosedPulseDockEnabled) {
+    return { effectivePlacement: storedPlacement, sidebarSnapped: false, mode: 'hidden' }
+  }
+
+  if (storedPlacement === 'right' || storedPlacement === 'bottom') {
+    return { effectivePlacement: storedPlacement, sidebarSnapped: false, mode: 'floating' }
+  }
+
+  // Sidebar preference + dock on: optional floating right fallback after timer.
+  if (sidebarFallbackToFloat && sidebarTab === 'pulse') {
     return { effectivePlacement: 'right', sidebarSnapped: false, mode: 'floating' }
   }
 

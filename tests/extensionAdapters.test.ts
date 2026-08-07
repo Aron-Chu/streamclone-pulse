@@ -28,9 +28,10 @@ describe('extension adapter integration', () => {
       recap: null,
     }
     const stats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
-    expect(stats.chatPerMin1m).toBe(10)
+    // Live strips the open trailing minute (chatCount 10) → prior completed (9).
+    expect(stats.chatPerMin1m).toBe(9)
     expect(stats.confidence).toBe('Synced')
-    expect(stats.sparkline).toHaveLength(10)
+    expect(stats.sparkline).toHaveLength(9)
   })
 
   it('derives live heat from pulse payload', () => {
@@ -73,6 +74,33 @@ describe('aggregateTopEmotesFromExtensionRollups', () => {
       },
     ])
     expect(merged[0]?.count).toBe(5)
+  })
+
+  it('keeps metadata that arrives in a later rollup for the same local emote', () => {
+    const merged = aggregateTopEmotesFromExtensionRollups([
+      {
+        offsetSeconds: 0,
+        topEmotes: [{ name: 'A', count: 1, id: 'local-id', provider: '7tv' }],
+      },
+      {
+        offsetSeconds: 60,
+        topEmotes: [{
+          name: 'A',
+          count: 2,
+          id: 'local-id',
+          provider: '7tv',
+          providerEmoteId: '01F00Z3A9G0007E4VV006YKSK9',
+          imageUrl: 'https://cdn.7tv.app/emote/01F00Z3A9G0007E4VV006YKSK9/4x.webp',
+        }],
+      },
+    ])
+
+    expect(merged[0]).toMatchObject({
+      count: 3,
+      id: 'local-id',
+      providerEmoteId: '01F00Z3A9G0007E4VV006YKSK9',
+      imageUrl: 'https://cdn.7tv.app/emote/01F00Z3A9G0007E4VV006YKSK9/4x.webp',
+    })
   })
 })
 

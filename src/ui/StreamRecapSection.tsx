@@ -114,17 +114,17 @@ function RecapStatBand({
       <div style={styles.statCell}>
         <span style={styles.statLabel}>Peak chat</span>
         <strong style={styles.statValuePeak}>{formatNumber(peakChat)}</strong>
-        <span style={{ ...styles.statDetail, color: theme.accentSoft }}>/ min</span>
+        <span style={{ ...styles.statDetail, color: theme.accentText }}>/ min</span>
       </div>
       <div style={styles.statCell}>
         <span style={styles.statLabel}>Peak emotes</span>
         <strong style={styles.statValuePeak}>{formatNumber(emotes)}</strong>
-        <span style={{ ...styles.statDetail, color: theme.accentSoft }}>/ min</span>
+        <span style={{ ...styles.statDetail, color: theme.accentText }}>/ min</span>
       </div>
       <div style={styles.statCell}>
         <span style={styles.statLabel}>Messages</span>
         <strong style={styles.statValuePeak}>{formatNumber(totalMessages)}</strong>
-        <span style={{ ...styles.statDetail, color: theme.accentSoft }}>total</span>
+        <span style={{ ...styles.statDetail, color: theme.accentText }}>total</span>
       </div>
     </div>
   )
@@ -867,8 +867,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
   },
   statCell: {
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 10,
     display: 'grid',
     gap: 2,
@@ -915,13 +915,13 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: '4px 9px',
   },
-  gameName: { color: '#fdba74', fontSize: 10, fontWeight: 800 },
+  gameName: { color: theme.gameChipText, fontSize: 10, fontWeight: 800 },
   gameDuration: { color: theme.textMuted, fontSize: 9, fontWeight: 600 },
   highlightStrip: { display: 'grid', gap: 6 },
   highlightButton: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 10,
     color: theme.textPrimary,
     cursor: 'pointer',
@@ -966,7 +966,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     background: 'transparent',
     border: 0,
-    color: theme.accentSoft,
+    color: theme.accentText,
     cursor: 'pointer',
     display: 'flex',
     fontSize: 10,
@@ -977,7 +977,7 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
   },
   momentsExpandChevron: {
-    color: theme.accentSoft,
+    color: theme.accentText,
     fontSize: 11,
     fontWeight: 900,
     lineHeight: 1,
@@ -986,8 +986,8 @@ const styles: Record<string, CSSProperties> = {
   stateBlock: { display: 'grid', gap: 10 },
   stateText: { color: theme.textSecondary, fontSize: 12, lineHeight: 1.45, margin: 0 },
   secondaryButton: {
-    background: 'rgba(255, 255, 255, 0.06)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.border}`,
     borderRadius: 10,
     color: theme.textPrimary,
     cursor: 'pointer',

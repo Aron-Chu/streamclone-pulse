@@ -10,10 +10,10 @@ export function momentReasonLabelStyle(
   const fontSize = size === 'md' ? 12 : 10
   const base: CSSProperties = { fontSize, fontWeight: 600 }
   if (isEmoteSpikeReason(reason) || isEmoteSpikeReason(reasonLabel ?? '')) {
-    return { ...base, color: '#6ee7b7' }
+    return { ...base, color: theme.statusOkText }
   }
   if (isViewerSpikeReason(reason) || isViewerSpikeReason(reasonLabel ?? '')) {
-    return { ...base, color: theme.accentSoft }
+    return { ...base, color: theme.accentText }
   }
   return { ...base, color: theme.textMuted }
 }
@@ -21,7 +21,7 @@ export function momentReasonLabelStyle(
 export const overlayTextLinkButton: CSSProperties = {
   background: 'transparent',
   border: 0,
-  color: theme.accentSoft,
+  color: theme.accentText,
   cursor: 'pointer',
   font: 'inherit',
   fontWeight: 700,
@@ -32,8 +32,8 @@ export const overlayTextLinkButton: CSSProperties = {
 }
 
 export const overlayGhostChipButton: CSSProperties = {
-  background: 'rgba(255, 255, 255, 0.04)',
-  border: '1px solid rgba(255, 255, 255, 0.1)',
+  background: theme.hoverFill,
+  border: `1px solid ${theme.borderSubtle}`,
   borderRadius: theme.radiusButton,
   color: theme.textSecondary,
   cursor: 'pointer',

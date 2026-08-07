@@ -168,6 +168,7 @@ export function recapMomentToLiveHeatPoint(
       key: emote.id ?? `${emote.name}-${emote.provider ?? 'unknown'}-${index}`,
       name: emote.name,
       id: emote.id,
+      providerEmoteId: emote.providerEmoteId,
       provider: emote.provider,
       imageUrl: emote.imageUrl,
       count: emote.count,

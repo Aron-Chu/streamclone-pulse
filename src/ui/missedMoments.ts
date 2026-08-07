@@ -9,11 +9,20 @@ export type PulseCoverageSource = {
   coverage?: PulseCoverage
   coverageStartOffsetSeconds?: number
   vodId?: string | null
+  /**
+   * Past Streams / navigation-known current-broadcast archive id.
+   * Never treated as analytics identity or backfill authorization.
+   */
+  navigationVodId?: string | null
   isLive?: boolean
 }
 
 function normalizedVodId(source: PulseCoverageSource): string {
   return String(source.vodId ?? '').trim()
+}
+
+function normalizedNavigationVodId(source: PulseCoverageSource): string {
+  return String(source.navigationVodId ?? '').trim()
 }
 
 const BACKEND_VOD_READY_STATUSES = new Set(['available', 'linked', 'published', 'ready'])
@@ -107,6 +116,7 @@ export type MissedMomentsButtonState =
   | 'load'
   | 'loading'
   | 'check_vod'
+  | 'recheck_pulse_link'
   | 'waiting_vod'
   | 'backfilling'
   | 'refreshed'
@@ -123,12 +133,16 @@ export function missedMomentsButtonState(
   if (!coverage) return 'hidden'
   if (refreshed) return 'refreshed'
   if (busy || coverage.state === 'backfill_running') return 'backfilling'
-  if (coverage.state === 'waiting_for_vod') return 'check_vod'
+  if (coverage.state === 'waiting_for_vod') {
+    return normalizedNavigationVodId(source) ? 'recheck_pulse_link' : 'check_vod'
+  }
   if (coverage.state === 'vod_unavailable') return 'unavailable'
   if (coverage.state === 'backfill_failed') return 'failed'
   if (coverage.hasFullStreamCoverage) return 'hidden'
   if (canShowVodBackfillCTA(source, explicitHint)) return 'load'
-  if (coverage.canBackfill && !normalizedVodId(source)) return 'check_vod'
+  if (coverage.canBackfill && !normalizedVodId(source)) {
+    return normalizedNavigationVodId(source) ? 'recheck_pulse_link' : 'check_vod'
+  }
   return 'hidden'
 }
 
@@ -140,6 +154,8 @@ export function missedMomentsButtonLabel(state: MissedMomentsButtonState, job?: 
       return 'Loading VOD chat…'
     case 'check_vod':
       return 'Check for VOD'
+    case 'recheck_pulse_link':
+      return 'Recheck Pulse link'
     case 'waiting_vod':
       return 'Waiting for VOD'
     case 'backfilling': {
@@ -238,7 +254,20 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
   const coverage = resolvePulseCoverage(source)
   if (!coverage) return null
 
+  const navigationVodId = normalizedNavigationVodId(source)
+  const waitingWithKnownArchive =
+    coverage.state === 'waiting_for_vod' && Boolean(navigationVodId)
+
+  // Hosted always sends copyKey+message; override the dishonest "archive
+  // publishes after the stream ends" branch when Past Streams already has the id.
   if (coverage.copyKey?.trim() && coverage.message?.trim()) {
+    if (waitingWithKnownArchive) {
+      return {
+        title: 'Current-broadcast VOD available',
+        body: 'Twitch archive is available for Jump / Past Streams — chat backfill waits until Pulse links this VOD.',
+        detail: `Navigation VOD ${navigationVodId}. Pulse API vodId is still null, so Fill from Twitch VOD stays locked.`,
+      }
+    }
     return {
       title: coverageTitleFromCopyKey(coverage.copyKey),
       body: coverage.message,
@@ -254,6 +283,14 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
     return {
       title: 'Full stream tracked',
       body: 'Moments from 00:00 → live',
+    }
+  }
+
+  if (waitingWithKnownArchive) {
+    return {
+      title: 'Current-broadcast VOD available',
+      body: 'Twitch archive is available for Jump / Past Streams — chat backfill waits until Pulse links this VOD.',
+      detail: `Navigation VOD ${navigationVodId}. Pulse API vodId is still null, so Fill from Twitch VOD stays locked.`,
     }
   }
 

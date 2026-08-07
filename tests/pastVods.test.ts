@@ -100,6 +100,7 @@ describe('mergePastVodRows', () => {
       [],
       [{
         streamId: 's2',
+        vodId: 'analytics-vod',
         title: 'Analytics only',
         startedAt: '2026-06-11T10:00:00.000Z',
         chatMessages: 0,
@@ -109,7 +110,45 @@ describe('mergePastVodRows', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0]?.streamId).toBe('s2')
+    expect(rows[0]?.videoId).toBe('analytics-vod')
     expect(rows[0]?.analyticsStatus).toBe('stats-only')
+  })
+
+  it('keeps a metadata-only video id', () => {
+    const rows = mergePastVodRows(
+      [{ id: 's1', videoId: 'metadata-vod', title: 'Metadata only' }],
+      [],
+    )
+
+    expect(rows[0]?.videoId).toBe('metadata-vod')
+  })
+
+  it('prefers metadata video id when both sources resolve different ids', () => {
+    const rows = mergePastVodRows(
+      [{ id: 's1', videoId: 'metadata-vod', title: 'Overlap' }],
+      [{ streamId: 's1', vodId: 'analytics-vod' }],
+    )
+
+    expect(rows[0]?.videoId).toBe('metadata-vod')
+  })
+
+  it('omits the VOD id when neither source resolves one', () => {
+    const rows = mergePastVodRows(
+      [{ id: 's1', title: 'No VOD' }],
+      [{ streamId: 's1' }],
+    )
+
+    expect(rows[0]?.videoId).toBeUndefined()
+  })
+
+  it('falls back to analytics when metadata ids and thumbnails are blank', () => {
+    const rows = mergePastVodRows(
+      [{ id: 's1', videoId: '  ', title: 'Fallback', thumbnailUrl: '' }],
+      [{ streamId: 's1', vodId: ' analytics-vod ', thumbnailUrl: ' https://thumb/vod.jpg ' }],
+    )
+
+    expect(rows[0]?.videoId).toBe('analytics-vod')
+    expect(rows[0]?.thumbnailUrl).toBe('https://thumb/vod.jpg')
   })
 
   it('pins the current live stream at the top when isLive is true', () => {

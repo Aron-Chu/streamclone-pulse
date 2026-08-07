@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtensionRollup } from '../src/shared/messages.ts'
-import { assignMomentsToBuckets } from '../src/ui/bucketMoments.ts'
 import {
   bucketRollupsForChart,
   rollupActivityScore,
@@ -48,19 +47,5 @@ describe('bucketRollupsForChart', () => {
   it('streamPeakFromBuckets returns maxima', () => {
     const buckets = bucketRollupsForChart([rollup(0, 3, 1), rollup(60, 9, 4)])
     expect(streamPeakFromBuckets(buckets)).toEqual({ peakChat: 9, peakEmotes: 4 })
-  })
-})
-
-describe('assignMomentsToBuckets', () => {
-  it('places top moment in matching bucket', () => {
-    const buckets = bucketRollupsForChart([
-      rollup(0, 1, 0),
-      rollup(60, 5, 1),
-      rollup(120, 2, 0),
-    ])
-    const pins = assignMomentsToBuckets(buckets, [
-      { offsetSeconds: 75, score: 90, reasons: ['emote_spike'] },
-    ])
-    expect(pins.get(1)?.[0]?.label).toBe('emote spike')
   })
 })

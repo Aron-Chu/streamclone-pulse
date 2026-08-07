@@ -121,6 +121,11 @@ function durationMinutesFromAnalytics(item: AnalyticsStreamListItem): number | u
   return Math.round((end - start) / 60_000)
 }
 
+function nonEmptyString(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized || undefined
+}
+
 function sortByStartedAtDesc(rows: PastVodRow[]): PastVodRow[] {
   return [...rows].sort((a, b) => {
     const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0
@@ -145,10 +150,10 @@ export function mergePastVodRows(
     const analyticsItem = analyticsById.get(item.id)
     rows.push({
       streamId: item.id,
-      videoId: item.videoId ?? analyticsItem?.vodId,
+      videoId: nonEmptyString(item.videoId) ?? nonEmptyString(analyticsItem?.vodId),
       title: item.title || analyticsItem?.title || 'Untitled stream',
       category: item.category ?? analyticsItem?.category,
-      thumbnailUrl: item.thumbnailUrl ?? analyticsItem?.thumbnailUrl,
+      thumbnailUrl: nonEmptyString(item.thumbnailUrl) ?? nonEmptyString(analyticsItem?.thumbnailUrl),
       startedAt: item.startedAt ?? analyticsItem?.startedAt,
       durationMinutes: item.durationMinutes ?? durationMinutesFromAnalytics(analyticsItem ?? { streamId: item.id }),
       avgViewers: item.avgViewers ?? analyticsItem?.avgViewers,
@@ -161,10 +166,10 @@ export function mergePastVodRows(
     if (!item.streamId || seen.has(item.streamId)) continue
     rows.push({
       streamId: item.streamId,
-      videoId: item.vodId,
+      videoId: nonEmptyString(item.vodId),
       title: item.title || 'Untitled stream',
       category: item.category,
-      thumbnailUrl: item.thumbnailUrl,
+      thumbnailUrl: nonEmptyString(item.thumbnailUrl),
       startedAt: item.startedAt,
       durationMinutes: durationMinutesFromAnalytics(item),
       avgViewers: item.avgViewers,

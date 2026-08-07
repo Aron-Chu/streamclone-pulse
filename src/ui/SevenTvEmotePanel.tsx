@@ -38,8 +38,8 @@ export function SevenTvEmotePanel({
   selectedPlotColors,
   maxSelected = 6,
 }: SevenTvEmotePanelProps) {
-  // Reveal in pages of VISIBLE_CHIP_LIMIT so the CTA matches what appears next
-  // ("Show 3 more"), not the full remaining catalog (e.g. "Show 21 more").
+  // Reveal in pages of VISIBLE_CHIP_LIMIT so the CTA matches what appears next,
+  // not the full remaining catalog.
   const [visibleLimit, setVisibleLimit] = useState(VISIBLE_CHIP_LIMIT)
 
   useEffect(() => {
@@ -108,7 +108,9 @@ export function SevenTvEmotePanel({
                   type="button"
                   key={key}
                   className={
-                    usePlotColor ? 'pulse-seven-tv-row' : `pulse-seven-tv-row${selected ? ' pulse-seven-tv-row-active' : ''}`
+                    usePlotColor
+                      ? 'pulse-seven-tv-row pulse-seven-tv-row-plotted'
+                      : `pulse-seven-tv-row${selected ? ' pulse-seven-tv-row-active' : ''}`
                   }
                   style={{
                     ...styles.row,
@@ -118,9 +120,11 @@ export function SevenTvEmotePanel({
                       ? {
                           background: hexToRgba(plotColor!, 0.12),
                           borderColor: plotColor,
+                          '--pulse-plot-bg': hexToRgba(plotColor!, 0.16),
+                          '--pulse-plot-color': plotColor,
                         }
                       : null),
-                  }}
+                  } as CSSProperties}
                   aria-pressed={selected}
                   title={
                     !selected && selectedKeys.length >= maxSelected
@@ -178,26 +182,28 @@ export function SevenTvEmotePanel({
 
 const styles: Record<string, CSSProperties> = {
   panel: {
-    background: 'rgba(17, 17, 23, 0.72)',
-    border: '1px solid rgba(103, 232, 249, 0.1)',
+    background: theme.panel,
+    border: `1px solid ${theme.border}`,
     borderRadius: 10,
     marginTop: 8,
+    minWidth: 0,
     overflow: 'hidden',
   },
   toggle: {
     alignItems: 'center',
-    background: 'transparent',
+    background: theme.inputBg,
     border: 0,
     color: theme.textPrimary,
     cursor: 'pointer',
     display: 'flex',
     gap: 8,
+    minWidth: 0,
     padding: '8px 10px',
     textAlign: 'left',
     width: '100%',
   },
   toggleLabel: {
-    color: theme.textMuted,
+    color: theme.textSecondary,
     flexShrink: 0,
     fontSize: 9,
     fontWeight: 800,
@@ -220,9 +226,9 @@ const styles: Record<string, CSSProperties> = {
     letterSpacing: '0.03em',
     textTransform: 'uppercase',
   },
-  chevron: { color: theme.accentSoft, flexShrink: 0, fontSize: 11, fontWeight: 900, marginLeft: 'auto' },
+  chevron: { color: theme.accentText, flexShrink: 0, fontSize: 11, fontWeight: 900, marginLeft: 'auto' },
   body: {
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    borderTop: `1px solid ${theme.borderSubtle}`,
     display: 'grid',
     gap: 6,
     padding: '6px 8px 8px',
@@ -235,8 +241,8 @@ const styles: Record<string, CSSProperties> = {
   },
   row: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 8,
     color: theme.textPrimary,
     cursor: 'pointer',
@@ -253,8 +259,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '5px 8px',
   },
   rowAlt: {
-    background: 'rgba(255, 255, 255, 0.02)',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
   },
   rowImg: { display: 'block', objectFit: 'contain' },
   rowName: {
@@ -267,7 +273,7 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   rowCount: {
-    color: theme.accentSoft,
+    color: theme.accentText,
     fontSize: 10,
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 800,
@@ -276,9 +282,9 @@ const styles: Record<string, CSSProperties> = {
   },
   moreButton: {
     background: 'transparent',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    border: `1px solid ${theme.border}`,
     borderRadius: 8,
-    color: theme.accentSoft,
+    color: theme.accentText,
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,

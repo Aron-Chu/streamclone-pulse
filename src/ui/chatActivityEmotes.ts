@@ -22,6 +22,17 @@ export function toggleEmotePlotKeys(
   return [...keys, emoteKey]
 }
 
+export function selectedEmotesInPlotOrder(
+  emotes: ExtensionEmote[],
+  selectedKeys: string[],
+): ExtensionEmote[] {
+  const emotesByKey = new Map(emotes.map((emote) => [emoteSelectionKey(emote), emote]))
+  return selectedKeys.flatMap((key) => {
+    const emote = emotesByKey.get(key)
+    return emote ? [emote] : []
+  })
+}
+
 export function overlaySeriesAxisMax(
   values: Array<number | null>,
   normalizePerSeries: boolean,
@@ -147,7 +158,7 @@ export function chartTimelineWindowLabel(window: ChartTimelineWindow): string {
   if (window === '60m') return '60 min'
   if (window === '2h') return '2 hours'
   if (window === '4h') return '4 hours'
-  return 'Full'
+  return 'Full stream'
 }
 
 export function chartTimelineWindowHeader(window: ChartTimelineWindow, hasFullRollups: boolean): string {
@@ -165,9 +176,22 @@ function chartWindowSeconds(window: ChartTimelineWindow): number {
   return Number.POSITIVE_INFINITY
 }
 
+function overlayRollupsByOffset(
+  base: ExtensionRollup[],
+  overlay: ExtensionRollup[],
+): ExtensionRollup[] {
+  if (base.length === 0) return overlay
+  if (overlay.length === 0) return base
+  const byOffset = new Map<number, ExtensionRollup>()
+  for (const rollup of base) byOffset.set(rollup.offsetSeconds, rollup)
+  // Overlay wins — fresher recent-poll minutes replace stale fullRollups slots.
+  for (const rollup of overlay) byOffset.set(rollup.offsetSeconds, rollup)
+  return [...byOffset.values()].sort((a, b) => a.offsetSeconds - b.offsetSeconds)
+}
+
 function rollupSource(payload: PulsePayload, window: RollupWindow): ExtensionRollup[] {
   if (window === 'full' && (payload.fullRollups?.length ?? 0) > 0) {
-    return payload.fullRollups ?? []
+    return overlayRollupsByOffset(payload.fullRollups ?? [], payload.rollups ?? [])
   }
   if (payload.rollups.length > 0) return payload.rollups
   return payload.fullRollups ?? []
@@ -339,14 +363,20 @@ export function densifyRollupsForTimeline(
   rollups: ExtensionRollup[],
   options: { fromOffset: number; toOffset: number; maxPoints: number },
 ): ExtensionRollup[] {
-  const { fromOffset, toOffset, maxPoints } = options
+  const fromOffset = alignMinuteOffset(options.fromOffset)
+  const toOffset = alignMinuteOffset(options.toOffset)
+  const { maxPoints } = options
   if (rollups.length === 0 || toOffset <= fromOffset || maxPoints < 2) {
     return rollups
   }
 
   const byOffset = new Map<number, ExtensionRollup>()
   for (const rollup of rollups) {
-    byOffset.set(rollup.offsetSeconds, rollup)
+    const key = alignMinuteOffset(rollup.offsetSeconds)
+    const existing = byOffset.get(key)
+    if (!existing || (rollup.chatCount ?? 0) >= (existing.chatCount ?? 0)) {
+      byOffset.set(key, { ...rollup, offsetSeconds: key })
+    }
   }
 
   const step = 60
@@ -402,6 +432,23 @@ export function densifyRollupsForTimeline(
   return out
 }
 
+/** Floor stream offsets to completed rollup minutes so densify keys match backend slots. */
+export function alignMinuteOffset(seconds: number): number {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0
+  return Math.floor(seconds / 60) * 60
+}
+
+/** Drop aliased prior-session offsets that exceed the live wall clock (+1m grace). */
+export function clipRollupsToCurrentHorizon(
+  rollups: ExtensionRollup[],
+  currentOffsetSeconds: number,
+  graceSeconds = 60,
+): ExtensionRollup[] {
+  if (rollups.length === 0) return rollups
+  const limit = alignMinuteOffset(Math.max(0, currentOffsetSeconds)) + Math.max(0, graceSeconds)
+  return rollups.filter(rollup => (rollup.offsetSeconds ?? 0) <= limit)
+}
+
 export function prepareChartRollups(
   payload: PulsePayload,
   options: {
@@ -413,32 +460,44 @@ export function prepareChartRollups(
 ): ExtensionRollup[] {
   const hasFull = hasFullTimelineRollups(payload)
   const useFullSource = hasFull || options.chartWindow === 'full'
-  const raw = rollupSeries(payload, useFullSource ? 'full' : 'recent')
-  if (options.chartWindow === 'full' && !hasFull) {
-    return []
-  }
-  if (options.chartWindow !== 'full') {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
-    const fromOffset = Math.max(0, toOffset - chartWindowSeconds(options.chartWindow))
-    const windowed = raw.filter(
-      rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset,
+  const rawUnclipped = rollupSeries(payload, useFullSource ? 'full' : 'recent')
+  if (rawUnclipped.length === 0) return []
+  const raw = clipRollupsToCurrentHorizon(rawUnclipped, options.currentOffsetSeconds)
+  if (raw.length === 0) return []
+
+  const lastOffset = alignMinuteOffset(raw[raw.length - 1]!.offsetSeconds)
+  const streamMinute = alignMinuteOffset(options.currentOffsetSeconds)
+  // End on the last completed rollup minute — never invent a trailing empty "Now" slot
+  // (floored currentOffset often points at the in-progress minute with no data yet).
+  // Also never chart past the live wall clock when aliased rollups sort higher.
+  const toOffset = Math.min(lastOffset, streamMinute > 0 ? streamMinute : lastOffset)
+
+  let fromOffset: number
+  if (options.chartWindow === 'full') {
+    // Provisional Full uses recent rollups (rollupSeries fallback) until fullRollups arrive.
+    fromOffset = alignMinuteOffset(
+      resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds),
     )
-    // Keep latest rollups visible when the window filter is empty but tracking has data.
-    const source = windowed.length > 0 ? windowed : raw
+  } else {
+    const windowEnd = Math.max(streamMinute, lastOffset)
+    fromOffset = alignMinuteOffset(
+      Math.max(0, windowEnd - chartWindowSeconds(options.chartWindow)),
+    )
+  }
+
+  const windowed =
+    options.chartWindow === 'full'
+      ? raw
+      : raw.filter(
+          rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset,
+        )
+  // Keep latest rollups visible when the window filter is empty but tracking has data.
+  const source = windowed.length > 0 ? windowed : raw
+  if (toOffset <= fromOffset) {
     return source.slice(-chartMaxPoints(payload, options.chartWindow))
   }
 
-  if (!hasFull) return raw
-
-  const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-  const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
-  if (toOffset <= 60) return raw
-
-  const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
-  const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
-
-  return densifyRollupsForTimeline(raw, {
+  return densifyRollupsForTimeline(source, {
     fromOffset,
     toOffset,
     maxPoints: chartMaxPoints(payload, options.chartWindow),
@@ -540,11 +599,12 @@ export function findChartIndexByOffset(
 }
 
 export function chartMaxPoints(payload: PulsePayload, window: ChartTimelineWindow = '30m'): number {
-  if (window === '15m') return 15
-  if (window === '30m') return 30
-  if (window === '60m') return SPARKLINE_MAX_POINTS
-  if (window === '2h') return 120
-  if (window === '4h') return 240
+  // Inclusive minute slots from from→to (e.g. 2h = 0..7200s needs 121 points).
+  if (window === '15m') return 16
+  if (window === '30m') return 31
+  if (window === '60m') return Math.max(SPARKLINE_MAX_POINTS, 61)
+  if (window === '2h') return 121
+  if (window === '4h') return 241
   return hasFullTimelineRollups(payload) ? FULL_TIMELINE_MAX_POINTS : SPARKLINE_MAX_POINTS
 }
 
@@ -722,7 +782,7 @@ export function buildBaselineEmoteOverlays(rollups: ExtensionRollup[]): EmoteOve
     out.push({
       key: 'emotes-7tv',
       label: '7TV',
-      color: '#6ee7b7',
+      color: '#059669',
       values: sevenTv,
       dashed: true,
     })

@@ -42,6 +42,18 @@ export async function installTwitchFixtures(
 
   const fulfill = async (route: Route) => {
     const url = new URL(route.request().url())
+    if (url.pathname.startsWith('/directory/category/')) {
+      const slug = url.pathname.split('/').filter(Boolean).at(-1) ?? ''
+      const categoryId = slug === 'just-chatting' ? '509658' : slug === 'league-of-legends' ? '21779' : null
+      await route.fulfill({
+        status: categoryId ? 200 : 404,
+        contentType: 'text/html; charset=utf-8',
+        body: categoryId
+          ? `<meta property="og:image" content="https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-272x380.jpg">`
+          : '',
+      })
+      return
+    }
     if (route.request().resourceType() !== 'document') {
       await route.fulfill({
         status: 204,
@@ -87,6 +99,17 @@ export async function stubTwitchMedia(page: Page, kind: TwitchFixtureKind): Prom
       /* ignore */
     }
   }, kind)
+}
+
+export async function setTwitchRootTheme(
+  page: Page,
+  scheme: 'light' | 'dark',
+): Promise<void> {
+  await page.evaluate(next => {
+    const root = document.documentElement
+    root.classList.remove('tw-root--theme-light', 'tw-root--theme-dark')
+    root.classList.add(next === 'light' ? 'tw-root--theme-light' : 'tw-root--theme-dark')
+  }, scheme)
 }
 
 export async function openTwitchChannel(
@@ -149,4 +172,16 @@ export async function spaNavigate(
       kind: htmlKind,
     },
   )
+}
+
+/** URL-only SPA hop — keeps the current body so chat churn can continue. */
+export async function spaNavigateUrlOnly(
+  page: Page,
+  target: { kind: 'channel'; login: string } | { kind: 'directory' },
+): Promise<void> {
+  const path =
+    target.kind === 'channel' ? `/${target.login}` : '/directory'
+  await page.evaluate(pathName => {
+    history.pushState({}, '', pathName)
+  }, path)
 }

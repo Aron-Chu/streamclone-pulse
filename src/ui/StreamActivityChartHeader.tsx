@@ -97,16 +97,6 @@ export function StreamActivityChartHeader({
           : null}
         {renderLegendItem(
           'chat',
-          'Chat',
-          <span style={{ ...styles.chartLegendDot, background: CHART_LANE.chatBar }} />,
-        )}
-        {renderLegendItem(
-          'emotes',
-          'Emotes',
-          <span style={{ ...styles.chartLegendDot, background: CHART_LANE.emoteBar }} />,
-        )}
-        {renderLegendItem(
-          'chat',
           'Chat trend',
           <span style={styles.chartLegendStroke} />,
         )}
@@ -186,18 +176,12 @@ const styles: Record<string, CSSProperties> = {
   },
   chartLegendItemDefault: {},
   chartLegendItemFocused: {
-    background: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.28)',
+    background: theme.hoverFill,
+    borderColor: theme.border,
     color: theme.textPrimary,
   },
   chartLegendItemDimmed: {
     opacity: 0.4,
-  },
-  chartLegendDot: {
-    borderRadius: 999,
-    flexShrink: 0,
-    height: 6,
-    width: 6,
   },
   chartLegendStroke: {
     background: 'transparent',

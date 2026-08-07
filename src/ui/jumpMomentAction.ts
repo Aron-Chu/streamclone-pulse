@@ -10,17 +10,32 @@ export type JumpMomentAction =
 export function resolveJumpMomentAction(input: {
   context: TwitchPageContext
   payloadVodId?: string | null
+  /**
+   * Current-broadcast archive discovered for navigation (Twitch player VOD
+   * control, page metadata, or exact local GQL). Preferred over live DVR.
+   */
+  navigationVodId?: string | null
   payloadIsLive?: boolean
   liveCurrentOffset?: number
+  /** Result of a non-mutating seekable-range probe against Twitch's current player. */
+  liveSeekable?: boolean
   offsetSeconds: number
 }): JumpMomentAction {
-  const { context, payloadVodId, payloadIsLive, liveCurrentOffset, offsetSeconds } = input
+  const {
+    context,
+    payloadVodId,
+    navigationVodId,
+    payloadIsLive,
+    liveCurrentOffset,
+    liveSeekable,
+    offsetSeconds,
+  } = input
 
   if (context.kind === 'vod') {
     return { kind: 'seek-vod', offsetSeconds }
   }
 
-  const vodId = payloadVodId ?? context.vodId ?? undefined
+  const vodId = navigationVodId?.trim() || payloadVodId?.trim() || context.vodId?.trim() || undefined
   if (vodId) {
     return { kind: 'open-vod-tab', vodId, offsetSeconds }
   }
@@ -30,6 +45,9 @@ export function resolveJumpMomentAction(input: {
   }
 
   if (Number.isFinite(liveCurrentOffset)) {
+    if (liveSeekable === false) {
+      return { kind: 'live-outside-buffer', offsetSeconds }
+    }
     return {
       kind: 'seek-live-dvr',
       offsetSeconds,

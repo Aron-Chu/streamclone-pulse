@@ -145,25 +145,10 @@ export function buildSidebarLayoutSnapshot(doc: Document = document): SidebarLay
 
 export function planSidebarHostRects(
   snapshot: SidebarLayoutSnapshot,
-  mode: OverlayMode,
+  _mode: OverlayMode,
   sidebarTab: SidebarTab,
 ): SidebarHostRectPlan {
   const { chromeBar, messagesArea } = snapshot
-
-  if (mode === 'collapsed') {
-    const panel = makeRect(
-      messagesArea.left,
-      messagesArea.bottom - SIDEBAR_COLLAPSED_PILL_HEIGHT,
-      messagesArea.width,
-      SIDEBAR_COLLAPSED_PILL_HEIGHT,
-    )
-    return {
-      chrome: chromeBar,
-      panel,
-      chromeVisible: true,
-      panelVisible: true,
-    }
-  }
 
   if (sidebarTab === 'chat') {
     return {
@@ -171,21 +156,6 @@ export function planSidebarHostRects(
       panel: null,
       chromeVisible: true,
       panelVisible: false,
-    }
-  }
-
-  if (mode === 'mini') {
-    const panel = makeRect(
-      messagesArea.left,
-      messagesArea.bottom - SIDEBAR_MINI_PANEL_HEIGHT,
-      messagesArea.width,
-      SIDEBAR_MINI_PANEL_HEIGHT,
-    )
-    return {
-      chrome: chromeBar,
-      panel,
-      chromeVisible: true,
-      panelVisible: true,
     }
   }
 

@@ -2,7 +2,14 @@ import { test, expect } from '../helpers/testFixtures.ts'
 import {
   assertExactlyOnePulseRoot,
   assertNoUncaughtErrors,
+  assertNoSelectedMomentActions,
+  assertPulseChartPresent,
   assertPulseShadowContains,
+  assertSelectedMomentActions,
+  PULSE_ROOT_ID,
+  PULSE_TABS_ID,
+  pulseShadowText,
+  selectFirstMostReactedMoment,
   waitForPulseRoot,
 } from '../helpers/assertions.ts'
 import {
@@ -13,7 +20,7 @@ import {
   seedExtensionStorage,
 } from '../helpers/extensionContext.ts'
 import { installMockApi } from '../helpers/mockApi.ts'
-import { installTwitchFixtures, openTwitchChannel, spaNavigate } from '../helpers/mockTwitch.ts'
+import { installTwitchFixtures, openTwitchChannel, spaNavigate, spaNavigateUrlOnly } from '../helpers/mockTwitch.ts'
 import { installEvidenceCollectors } from '../helpers/evidence.ts'
 
 test.describe('extension lifecycle', () => {
@@ -27,6 +34,84 @@ test.describe('extension lifecycle', () => {
     await waitForPulseRoot(extension.page)
     await assertExactlyOnePulseRoot(extension.page)
     assertNoUncaughtErrors(evidence)
+  })
+
+  test('URL-only channel hop under chat churn activates within 2s with one host pair', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page, 'fixturechan')
+    await waitForPulseRoot(extension.page)
+
+    await extension.page.evaluate(() => {
+      const chat = document.querySelector('[data-a-target="chat-scroller"]') ?? document.body
+      const id = window.setInterval(() => {
+        const node = document.createElement('div')
+        node.setAttribute('data-a-target', 'chat-line-message')
+        node.textContent = `churn-${Date.now()}`
+        chat.appendChild(node)
+      }, 60)
+      ;(window as unknown as { __pulseChatChurnId?: number }).__pulseChatChurnId = id
+    })
+
+    try {
+      await spaNavigateUrlOnly(extension.page, { kind: 'channel', login: 'otherchan' })
+      await expect
+        .poll(async () => extension.page.url(), { timeout: 2_000 })
+        .toContain('/otherchan')
+      await waitForPulseRoot(extension.page, 2_000)
+      await assertExactlyOnePulseRoot(extension.page)
+      await assertPulseShadowContains(extension.page, /Minecraft|Other channel|Live|Pulse/i)
+    } finally {
+      await extension.page.evaluate(() => {
+        const id = (window as unknown as { __pulseChatChurnId?: number }).__pulseChatChurnId
+        if (id != null) window.clearInterval(id)
+      })
+    }
+  })
+
+  test('stale channel-A pulse does not remount after navigation to directory', async ({
+    extension,
+    prepare,
+    api,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page, 'fixturechan')
+    await waitForPulseRoot(extension.page)
+
+    let releaseA: (() => void) | null = null
+    const holdA = new Promise<void>(resolve => {
+      releaseA = resolve
+    })
+    await extension.context.route(
+      '**/v1/extension/pulse/channels/fixturechan**',
+      async route => {
+        await holdA
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            login: 'fixturechan',
+            streamId: 'stale-a',
+            title: 'STALE_CHANNEL_A_PAYLOAD',
+            isLive: true,
+            tracking: true,
+            rollups: [],
+            peaks: [],
+            games: [],
+          }),
+        })
+      },
+    )
+
+    await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'live')
+    await spaNavigateUrlOnly(extension.page, { kind: 'directory' })
+    releaseA?.()
+    await extension.page.waitForTimeout(800)
+    await expect(extension.page.locator('#streamclone-pulse-root')).toHaveCount(0)
+    await expect(extension.page.locator('#streamclone-pulse-tabs')).toHaveCount(0)
+    void api
   })
 
   test('persistent-profile browser relaunch preserves extension settings', async () => {
@@ -127,5 +212,126 @@ test.describe('extension lifecycle', () => {
       await waitForPulseRoot(extension.page)
       await assertExactlyOnePulseRoot(extension.page)
     }
+  })
+
+  test('rapid live, VOD, offline, and channel switches never leak stale analytics', async ({
+    extension,
+    prepare,
+    evidence,
+    api,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertPulseShadowContains(extension.page, /Fixture live stream|Most Reacted/i)
+    await assertPulseChartPresent(extension.page)
+    await selectFirstMostReactedMoment(extension.page)
+    await assertSelectedMomentActions(extension.page)
+
+    api.setScenario('offline')
+    await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'offline')
+    await expect
+      .poll(async () => pulseShadowText(extension.page), { timeout: 2_500 })
+      .toMatch(/9K messages|9,000 messages|Peak chat\s*220/i)
+    await assertNoSelectedMomentActions(extension.page)
+
+    api.setScenario('live-ready')
+    await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'live')
+    await expect
+      .poll(async () => pulseShadowText(extension.page), { timeout: 2_500 })
+      .toMatch(/Most Reacted So Far|Live now/i)
+    await assertPulseChartPresent(extension.page)
+
+    api.setScenario('vod-ready')
+    await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
+    await assertPulseShadowContains(extension.page, /Stream Recap|Top moments|Chat spike/i)
+    await assertPulseChartPresent(extension.page)
+    await selectFirstMostReactedMoment(extension.page)
+    await assertSelectedMomentActions(extension.page)
+    await assertExactlyOnePulseRoot(extension.page)
+
+    api.setScenario('offline')
+    await spaNavigate(extension.page, { kind: 'channel', login: 'fixturechan' }, 'offline')
+    await assertPulseShadowContains(extension.page, /Channel offline|Previous stream|Recap|Past/i)
+    await expect
+      .poll(async () => pulseShadowText(extension.page), { timeout: 20_000 })
+      .not.toMatch(/Fixture VOD ready|Replay Pulse ready|Jump in VOD/i)
+    await assertNoSelectedMomentActions(extension.page)
+    await assertExactlyOnePulseRoot(extension.page)
+
+    api.setScenario('live-other')
+    await spaNavigate(extension.page, { kind: 'channel', login: 'otherchan' }, 'live')
+    await assertPulseShadowContains(extension.page, /Minecraft|Other channel peak/i)
+    await expect
+      .poll(async () => pulseShadowText(extension.page), { timeout: 20_000 })
+      .not.toMatch(/Fixture VOD ready|Previous stream|Channel offline/i)
+    await assertPulseChartPresent(extension.page)
+    await selectFirstMostReactedMoment(extension.page)
+    await assertSelectedMomentActions(extension.page)
+    await assertExactlyOnePulseRoot(extension.page)
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('reinjecting the content bundle disposes the prior lifecycle and keeps one host pair', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const probeLifecycle = async () => {
+      return extension.serviceWorker.evaluate(async () => {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+        const tabId = tabs[0]?.id
+        if (tabId == null) throw new Error('no active tab')
+        const [injection] = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'ISOLATED',
+          func: () => {
+            const lifecycle = (
+              window as Window & {
+                __STREAMPULSE_CONTENT_LIFECYCLE__?: { dispose: () => void }
+              }
+            ).__STREAMPULSE_CONTENT_LIFECYCLE__
+            return {
+              hasLifecycle: typeof lifecycle?.dispose === 'function',
+              roots: document.querySelectorAll('#streamclone-pulse-root').length,
+              tabs: document.querySelectorAll('#streamclone-pulse-tabs').length,
+            }
+          },
+        })
+        return injection?.result ?? { hasLifecycle: false, roots: 0, tabs: 0 }
+      })
+    }
+
+    const before = await probeLifecycle()
+    expect(before.hasLifecycle).toBe(true)
+    expect(before.roots).toBe(1)
+    expect(before.tabs).toBe(1)
+
+    await extension.serviceWorker.evaluate(async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+      const tabId = tabs[0]?.id
+      if (tabId == null) throw new Error('no active tab')
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content/twitch.js'],
+      })
+    })
+
+    await expect.poll(async () => probeLifecycle()).toEqual({
+      roots: 1,
+      tabs: 1,
+      hasLifecycle: true,
+    })
+
+    await spaNavigate(extension.page, { kind: 'channel', login: 'otherchan' }, 'live')
+    await waitForPulseRoot(extension.page)
+    await assertExactlyOnePulseRoot(extension.page)
+    const afterNav = await probeLifecycle()
+    expect(afterNav).toEqual({ roots: 1, tabs: 1, hasLifecycle: true })
+    assertNoUncaughtErrors(evidence)
   })
 })

@@ -43,6 +43,7 @@ function vodMomentToRecapMoment(moment: VodMoment): PulseRecapMoment {
     count: emote.count,
     provider: emote.provider,
     id: emote.id,
+    providerEmoteId: emote.providerEmoteId,
     imageUrl: emote.imageUrl,
   }))
   return {
@@ -64,6 +65,7 @@ function extensionEmotesToRecap(
     count: emote.count,
     provider: emote.provider,
     id: emote.id,
+    providerEmoteId: emote.providerEmoteId,
     imageUrl: emote.imageUrl,
   }))
 }

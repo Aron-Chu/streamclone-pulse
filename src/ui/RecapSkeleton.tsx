@@ -31,7 +31,7 @@ export function RecapSkeleton() {
 const styles: Record<string, CSSProperties> = {
   wrap: { display: 'grid', gap: 10 },
   block: {
-    background: 'rgba(255, 255, 255, 0.06)',
+    background: 'var(--pulse-surface-hover-fill, rgba(255, 255, 255, 0.06))',
     borderRadius: 10,
     minHeight: 12,
   },

@@ -16,6 +16,7 @@ export interface ExtensionStorageSeed {
   autoUpdateEnabled?: boolean
   pollIntervalMs?: number
   themePreference?: 'aurora' | 'volt' | 'azure'
+  colorSchemePreference?: 'auto' | 'light' | 'dark'
   chatClosedPulseDockEnabled?: boolean
   defaultChartWindow?: '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
   /**
@@ -45,13 +46,40 @@ function assertDistPresent(): void {
 }
 
 export async function launchExtensionContext(
-  options?: { headless?: boolean; userDataDir?: string },
+  options?: {
+    headless?: boolean
+    userDataDir?: string
+    /** Keep headed MV3 Chromium off the user's desktop while preserving extension support. */
+    background?: boolean
+    colorScheme?: 'dark' | 'light'
+    deviceScaleFactor?: number
+  },
 ): Promise<LaunchedExtension> {
   assertDistPresent()
 
   const userDataDir = options?.userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-e2e-'))
   const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-video-'))
+  // MV3 extensions do not load in Playwright headless (no service worker).
+  // Default: headed but parked off-screen / minimized so runs do not steal focus.
+  // PW_HEADED=1 shows a normal desktop window for debugging.
+  const headedDebug = process.env.PW_HEADED === '1'
   const headless = options?.headless ?? false
+  const background = options?.background ?? !headedDebug
+  if (headless) {
+    throw new Error(
+      'MV3 extension e2e cannot run headless (service worker never starts). '
+      + 'Use default off-screen headed mode, or set PW_HEADED=1 for a visible window.',
+    )
+  }
+  const backgroundArgs = background
+    ? [
+        '--window-position=-32000,-32000',
+        '--start-minimized',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+      ]
+    : []
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless,
@@ -59,8 +87,11 @@ export async function launchExtensionContext(
       `--disable-extensions-except=${EXTENSION_DIST_DIR}`,
       `--load-extension=${EXTENSION_DIST_DIR}`,
       '--disable-blink-features=AutomationControlled',
+      ...backgroundArgs,
     ],
     viewport: { width: 1440, height: 900 },
+    colorScheme: options?.colorScheme,
+    deviceScaleFactor: options?.deviceScaleFactor,
     // Config use.video does not apply to manually launched persistent contexts.
     recordVideo: { dir: videoDir, size: { width: 1440, height: 900 } },
   })
@@ -104,6 +135,7 @@ export async function seedExtensionStorage(
     autoUpdateEnabled: seed.autoUpdateEnabled ?? true,
     pollIntervalMs: seed.pollIntervalMs ?? 60_000,
     themePreference: seed.themePreference ?? 'aurora',
+    colorSchemePreference: seed.colorSchemePreference ?? 'auto',
     chatClosedPulseDockEnabled: seed.chatClosedPulseDockEnabled ?? false,
     defaultChartWindow: seed.defaultChartWindow ?? 'full',
     keepLocalCache: true,

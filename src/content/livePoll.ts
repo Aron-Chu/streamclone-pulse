@@ -24,6 +24,17 @@ const JITTER_RATIO = 0.15
 const BACKOFF_BASE_MS = 30_000
 const BACKOFF_MAX_MS = 120_000
 
+export function hasLivePollSettingsChange(
+  changes: Record<string, unknown>,
+): boolean {
+  return Boolean(
+    changes.autoUpdateEnabled
+    || changes.pollIntervalMs
+    || changes.backendUrl
+    || changes.localBackendOptIn,
+  )
+}
+
 /** Compute next poll delay with jitter and capped exponential backoff after failures. */
 export function computeLivePollDelayMs(
   baseIntervalMs: number,
@@ -47,6 +58,7 @@ export type LivePollController = {
     context: TwitchPageContext,
     tracking?: boolean,
     hosted?: boolean,
+    options?: { initialFetchDone?: boolean; settingsChanged?: boolean },
   ) => void
   /** Kept for overlay wiring; recurring polls always use `recent`. */
   setPollWindow: (window: PulseCacheWindow) => void
@@ -64,6 +76,8 @@ export function createLivePollController(
   let tickInFlight = false
   let intervalMs = 30_000
   let autoUpdate = true
+  let settingsLoaded = false
+  let settingsLoad: Promise<void> | null = null
   let activeLogin: string | null = null
   let collecting = false
   let hostedBackend = true
@@ -87,9 +101,27 @@ export function createLivePollController(
     }, delayMs)
   }
 
-  async function refreshSettings(): Promise<void> {
-    autoUpdate = await getAutoUpdateEnabled()
-    intervalMs = await getPollIntervalMs()
+  function ensureSettings(force = false): Promise<void> {
+    if (!force && settingsLoaded) return Promise.resolve()
+    if (settingsLoad) return settingsLoad
+
+    const load = Promise.all([getAutoUpdateEnabled(), getPollIntervalMs()]).then(
+      ([nextAutoUpdate, nextIntervalMs]) => {
+        autoUpdate = nextAutoUpdate
+        intervalMs = nextIntervalMs
+        settingsLoaded = true
+      },
+    )
+    settingsLoad = load
+    void load.then(
+      () => {
+        if (settingsLoad === load) settingsLoad = null
+      },
+      () => {
+        if (settingsLoad === load) settingsLoad = null
+      },
+    )
+    return load
   }
 
   async function tick(): Promise<void> {
@@ -131,11 +163,20 @@ export function createLivePollController(
   }
 
   return {
-    sync(login: string | null, context: TwitchPageContext, tracking = false, hosted = true) {
+    sync(
+      login: string | null,
+      context: TwitchPageContext,
+      tracking = false,
+      hosted = true,
+      options: { initialFetchDone?: boolean; settingsChanged?: boolean } = {},
+    ) {
       activeLogin = login
       collecting = tracking
       hostedBackend = hosted
-      void refreshSettings().then(() => {
+      void ensureSettings(options.settingsChanged === true).then(() => {
+        if (options.settingsChanged) {
+          stopTimer()
+        }
         if (!shouldRunLivePoll({
           activeLogin,
           context,
@@ -151,7 +192,11 @@ export function createLivePollController(
         // an uncontrolled GET_PULSE loop (observed ~500+/s in extension e2e).
         if (tickInFlight || timer) return
         consecutiveFailures = 0
-        void tick()
+        if (options.initialFetchDone) {
+          scheduleNext()
+        } else {
+          void tick()
+        }
       })
     },
     setPollWindow(_window: PulseCacheWindow) {

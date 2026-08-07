@@ -8,28 +8,39 @@ export interface AnalyticsHubCtaProps {
 
 export function AnalyticsHubCta({ backendUrl, compact = false }: AnalyticsHubCtaProps) {
   return (
-    <button
-      type="button"
-      className="pulse-analytics-hub-cta"
-      style={compact ? styles.compact : styles.default}
-      title="Browse full stream history, tracked channels, and deeper analytics"
-      onClick={() => openHubAnalytics(backendUrl)}
+    <div
+      className="pulse-analytics-hub-cta-wrap"
+      style={compact ? styles.wrapCompact : styles.wrap}
+      data-testid="analytics-hub-cta-wrap"
     >
-      <span style={styles.label}>Open Analytics Hub →</span>
-      <small style={styles.subtitle}>Full history, tracked channels, and deeper analytics</small>
-    </button>
+      <button
+        type="button"
+        className="pulse-analytics-hub-cta"
+        style={styles.button}
+        title="Browse full stream history, tracked channels, and deeper analytics"
+        onClick={() => openHubAnalytics(backendUrl)}
+      >
+        <span style={styles.label}>Open Analytics Hub →</span>
+      </button>
+    </div>
   )
 }
 
 const styles: Record<string, CSSProperties> = {
-  default: {
+  wrap: {
+    display: 'flex',
     marginBottom: 6,
     marginTop: 8,
     width: '100%',
   },
-  compact: {
+  wrapCompact: {
+    display: 'flex',
     marginBottom: 4,
     marginTop: 6,
+    width: '100%',
+  },
+  button: {
+    maxWidth: '100%',
     width: '100%',
   },
   label: {
@@ -38,13 +49,6 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     letterSpacing: '0.03em',
     lineHeight: 1.25,
-  },
-  subtitle: {
-    color: 'var(--pulse-accent-soft, rgba(161, 161, 178, 0.9))',
-    display: 'block',
-    fontSize: 10,
-    fontWeight: 600,
-    lineHeight: 1.35,
-    marginTop: 3,
+    textAlign: 'center',
   },
 }

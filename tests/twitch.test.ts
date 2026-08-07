@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  classifyLiveMediaWindow,
   getPrimaryVideo,
   isTwitchVodPath,
   parseChannelLogin,
   parseTwitchPage,
   seekLiveOffset,
+  seekPlaybackOffset,
   TWITCH_SYSTEM_ROUTES,
 } from '../src/content/twitch.ts'
 
@@ -101,7 +103,30 @@ describe('getPrimaryVideo ranking', () => {
   })
 })
 
-describe('seekLiveOffset horizon safety', () => {
+describe('seekLiveOffset seekable-range safety', () => {
+  it('rejects Twitch live sentinel ranges before assigning an absurd media timestamp', () => {
+    const video = {
+      currentTime: 4.3,
+      duration: Infinity,
+      seekable: {
+        length: 1,
+        start: () => 0,
+        end: () => 1_073_741_824,
+      },
+      buffered: {
+        length: 1,
+        start: () => 0.037333,
+        end: () => 6.565333,
+      },
+      fastSeek: vi.fn(),
+    } as unknown as HTMLVideoElement & { fastSeek: ReturnType<typeof vi.fn> }
+
+    expect(classifyLiveMediaWindow(video)).toMatchObject({ ok: false, reason: 'sentinel_range' })
+    expect(seekLiveOffset(video, 2_400, 3_470)).toEqual({ ok: false, reason: 'not_seekable' })
+    expect(video.fastSeek).not.toHaveBeenCalled()
+    expect(video.currentTime).toBe(4.3)
+  })
+
   it('rejects a future moment instead of clamping to the live edge', () => {
     const video = {
       currentTime: 600,
@@ -128,6 +153,74 @@ describe('seekLiveOffset horizon safety', () => {
 
     expect(seekLiveOffset(video, 540, 600)).toMatchObject({ ok: true, targetSeconds: 540 })
     expect(video.currentTime).toBe(540)
+  })
+
+  it('anchors delayed viewers to the DVR live edge, not currentTime', () => {
+    const video = {
+      currentTime: 900,
+      seekable: {
+        length: 1,
+        start: () => 600,
+        end: () => 1200,
+      },
+    } as unknown as HTMLVideoElement
+
+    expect(seekLiveOffset(video, 1000, 1200)).toEqual({ ok: true, targetSeconds: 1000 })
+    expect(video.currentTime).toBe(1000)
+  })
+
+  it('allows long DVR targets when Twitch exposes the exact timestamp as seekable', () => {
+    const video = {
+      currentTime: 30_000,
+      seekable: {
+        length: 1,
+        start: () => 0,
+        end: () => 30_000,
+      },
+    } as unknown as HTMLVideoElement
+
+    expect(seekLiveOffset(video, 10_000, 30_000)).toEqual({ ok: true, targetSeconds: 10_000 })
+    expect(video.currentTime).toBe(10_000)
+  })
+
+  it('rejects targets in a real seekable gap instead of snapping to Live', () => {
+    const video = {
+      currentTime: 30_000,
+      seekable: {
+        length: 2,
+        start: (index: number) => index === 0 ? 0 : 20_000,
+        end: (index: number) => index === 0 ? 9_000 : 30_000,
+      },
+    } as unknown as HTMLVideoElement
+
+    expect(seekLiveOffset(video, 10_000, 30_000)).toEqual({ ok: false, reason: 'outside_buffer' })
+    expect(video.currentTime).toBe(30_000)
+  })
+
+  it('keeps finite-player preflight non-mutating', () => {
+    const video = { currentTime: 100, duration: 3_600 } as HTMLVideoElement
+    expect(seekPlaybackOffset(video, 900, { isLive: false, commit: false })).toEqual({ ok: true, targetSeconds: 900 })
+    expect(video.currentTime).toBe(100)
+  })
+})
+
+describe('streamOffsetSecondsForLiveSeek', () => {
+  it('uses the payload when it agrees with the stream clock', async () => {
+    const { streamOffsetSecondsForLiveSeek } = await import('../src/content/twitch.ts')
+    expect(streamOffsetSecondsForLiveSeek({
+      startedAt: '2026-08-06T00:00:00.000Z',
+      payloadOffsetSeconds: 600,
+      nowMs: Date.parse('2026-08-06T00:10:30.000Z'),
+    })).toBe(600)
+  })
+
+  it('rejects a stale payload offset when the stream clock disagrees', async () => {
+    const { streamOffsetSecondsForLiveSeek } = await import('../src/content/twitch.ts')
+    expect(streamOffsetSecondsForLiveSeek({
+      startedAt: '2026-08-06T00:00:00.000Z',
+      payloadOffsetSeconds: 600,
+      nowMs: Date.parse('2026-08-06T01:00:00.000Z'),
+    })).toBe(3600)
   })
 })
 

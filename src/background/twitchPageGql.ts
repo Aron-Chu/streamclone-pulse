@@ -95,6 +95,7 @@ export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string
   }
 
   if (pageScrape) {
+    // Live pages often have no archive id in scripts yet — info only (warn → Chrome Errors).
     await pulseDebug(
       'vod.discover.page',
       pageScrape.vodId ? `found archive id in page (${pageScrape.source})` : 'no archive id in page scripts',
@@ -105,7 +106,7 @@ export async function discoverLiveVodIdFromGqlInTab(tabId: number, login: string
         source: pageScrape.source,
         scannedScripts: pageScrape.scannedScripts,
       },
-      pageScrape.vodId ? 'info' : 'warn',
+      'info',
     )
     const scraped = resultFromPageScrape(pageScrape)
     if (scraped.vodId) return scraped

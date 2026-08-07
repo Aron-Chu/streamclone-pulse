@@ -1,17 +1,15 @@
 /**
  * Accent theming for the overlay.
  *
- * The overlay renders inside a shadow DOM, but CSS custom properties inherit
- * across the shadow boundary from light-DOM ancestors (and `all: initial` on
- * `:host` does not reset custom properties). So writing `--pulse-*` variables on
- * `document.documentElement` recolors every accent surface inside both shadow
- * hosts at once, with no React re-render required.
+ * Brand accent hues (Aurora / Volt / Azure) are written on `document.documentElement`
+ * so they cascade into Pulse shadow hosts. Scheme-aware *text/surface/border roles*
+ * are applied on each Pulse host so light mode gets dark accent text and dark mode
+ * gets pale accent text — without leaking Twitch styling or using opacity tricks.
  *
- * Every accent consumer references these vars via `var(--pulse-*, <fallback>)`,
- * where the fallback is the original "Aurora" purple — so an unthemed first paint
- * still looks correct.
+ * Every accent consumer references these vars via `var(--pulse-*, <fallback>)`.
  */
 import type { ThemePreference } from '../shared/storage.ts'
+import type { SurfaceScheme } from './surfaceTheme.ts'
 
 interface AccentPalette {
   accent: string
@@ -25,7 +23,20 @@ interface AccentPalette {
   onAccent: string
 }
 
-/** Canonical accent palettes. Aurora mirrors the original purple values exactly. */
+/** Scheme-aware roles for accent text / chrome on Pulse surfaces. */
+export type AccentRolePalette = {
+  /** Primary accent text (links, active labels) — dark on light, pale on dark. */
+  accentText: string
+  /** Secondary accent text (hints, inactive accent labels). */
+  accentTextSubtle: string
+  /** Soft accent fill behind chips / selected rows. */
+  accentSurface: string
+  /** Accent outline for selected controls. */
+  accentBorder: string
+  onAccent: string
+}
+
+/** Canonical brand hues. Soft/ink here remain dark-mode defaults for document fallbacks. */
 export const ACCENT_PALETTES: Record<ThemePreference, AccentPalette> = {
   aurora: {
     accent: '#8b5cf6',
@@ -39,26 +50,77 @@ export const ACCENT_PALETTES: Record<ThemePreference, AccentPalette> = {
     onAccent: '#ffffff',
   },
   volt: {
-    accent: '#53fc18',
-    accentStrong: '#43e80f',
-    accentSoft: '#b6ff8f',
-    accentRgb: '83, 252, 24',
-    accentLightRgb: '130, 255, 110',
-    accentStrongRgb: '67, 232, 15',
-    accentSoftRgb: '182, 255, 143',
-    accentInk: '#d8ffc4',
-    onAccent: '#07140a',
+    accent: '#3ddc84',
+    accentStrong: '#22c55e',
+    accentSoft: '#86efac',
+    accentRgb: '61, 220, 132',
+    accentLightRgb: '134, 239, 172',
+    accentStrongRgb: '34, 197, 94',
+    accentSoftRgb: '134, 239, 172',
+    accentInk: '#bbf7d0',
+    onAccent: '#052e16',
   },
   azure: {
-    accent: '#22d3ee',
-    accentStrong: '#0fb6d6',
-    accentSoft: '#a5f0fb',
-    accentRgb: '34, 211, 238',
+    accent: '#14b8c8',
+    accentStrong: '#0e8fa0',
+    accentSoft: '#67e8f9',
+    accentRgb: '20, 184, 200',
     accentLightRgb: '103, 232, 249',
-    accentStrongRgb: '15, 182, 214',
-    accentSoftRgb: '165, 240, 251',
-    accentInk: '#cffafe',
-    onAccent: '#04181d',
+    accentStrongRgb: '14, 143, 160',
+    accentSoftRgb: '165, 243, 252',
+    accentInk: '#9fe7f0',
+    onAccent: '#083344',
+  },
+}
+
+const ACCENT_ROLES: Record<ThemePreference, Record<SurfaceScheme, AccentRolePalette>> = {
+  aurora: {
+    light: {
+      accentText: '#5b21b6',
+      accentTextSubtle: '#6d28d9',
+      accentSurface: 'rgba(91, 33, 182, 0.1)',
+      accentBorder: 'rgba(91, 33, 182, 0.38)',
+      onAccent: '#ffffff',
+    },
+    dark: {
+      accentText: '#ddd6fe',
+      accentTextSubtle: '#c4b5fd',
+      accentSurface: 'rgba(139, 92, 246, 0.16)',
+      accentBorder: 'rgba(167, 139, 250, 0.4)',
+      onAccent: '#ffffff',
+    },
+  },
+  volt: {
+    light: {
+      accentText: '#166534',
+      accentTextSubtle: '#15803d',
+      accentSurface: 'rgba(22, 163, 74, 0.12)',
+      accentBorder: 'rgba(22, 163, 74, 0.4)',
+      onAccent: '#052e16',
+    },
+    dark: {
+      accentText: '#bbf7d0',
+      accentTextSubtle: '#86efac',
+      accentSurface: 'rgba(61, 220, 132, 0.14)',
+      accentBorder: 'rgba(134, 239, 172, 0.35)',
+      onAccent: '#052e16',
+    },
+  },
+  azure: {
+    light: {
+      accentText: '#0e7490',
+      accentTextSubtle: '#0f766e',
+      accentSurface: 'rgba(8, 145, 178, 0.12)',
+      accentBorder: 'rgba(8, 145, 178, 0.4)',
+      onAccent: '#083344',
+    },
+    dark: {
+      accentText: '#9fe7f0',
+      accentTextSubtle: '#67e8f9',
+      accentSurface: 'rgba(20, 184, 200, 0.16)',
+      accentBorder: 'rgba(103, 232, 249, 0.35)',
+      onAccent: '#083344',
+    },
   },
 }
 
@@ -74,6 +136,14 @@ const VAR_NAMES: Record<keyof AccentPalette, string> = {
   onAccent: '--pulse-on-accent',
 }
 
+const ROLE_VAR_NAMES: Record<keyof AccentRolePalette, string> = {
+  accentText: '--pulse-accent-text',
+  accentTextSubtle: '--pulse-accent-text-subtle',
+  accentSurface: '--pulse-accent-surface',
+  accentBorder: '--pulse-accent-border',
+  onAccent: '--pulse-on-accent',
+}
+
 /** Visible options for the theme picker (avoid product-specific naming). */
 export const ACCENT_THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference
@@ -82,13 +152,21 @@ export const ACCENT_THEME_OPTIONS: ReadonlyArray<{
   swatch: string
 }> = [
   { value: 'aurora', label: 'Aurora', hint: 'Signature violet', swatch: '#8b5cf6' },
-  { value: 'volt', label: 'Volt', hint: 'High-energy green', swatch: '#53fc18' },
-  { value: 'azure', label: 'Azure', hint: 'Cool cyan', swatch: '#22d3ee' },
+  { value: 'volt', label: 'Volt', hint: 'High-energy green', swatch: '#3ddc84' },
+  { value: 'azure', label: 'Azure', hint: 'Cool cyan', swatch: '#14b8c8' },
 ]
 
+export function accentRolesFor(
+  pref: ThemePreference,
+  scheme: SurfaceScheme,
+): AccentRolePalette {
+  const roles = ACCENT_ROLES[pref] ?? ACCENT_ROLES.aurora
+  return roles[scheme]
+}
+
 /**
- * Write the accent palette as `--pulse-*` custom properties on the document root
- * so they cascade into the overlay's shadow trees. Safe to call repeatedly.
+ * Write brand accent hues on the document root (cascades into Pulse shadows).
+ * Does **not** force a dark chart background — charts use host surface tokens.
  */
 export function applyAccentTheme(pref: ThemePreference): void {
   const palette = ACCENT_PALETTES[pref] ?? ACCENT_PALETTES.aurora
@@ -98,6 +176,31 @@ export function applyAccentTheme(pref: ThemePreference): void {
     root.style.setProperty(VAR_NAMES[key], palette[key])
   })
   root.style.setProperty('--pulse-accent-border', `rgba(${palette.accentRgb}, 0.35)`)
-  root.style.setProperty('--pulse-chart-bg', '#0d0d12')
   root.setAttribute('data-pulse-accent', pref)
+}
+
+/**
+ * Host-local scheme-aware accent text/surface roles. Overrides inherited pale
+ * ink/soft vars so light-mode links and chips stay readable.
+ */
+export function applyAccentRolesToHost(
+  host: HTMLElement,
+  pref: ThemePreference,
+  scheme: SurfaceScheme,
+): void {
+  const roles = accentRolesFor(pref, scheme)
+  for (const key of Object.keys(ROLE_VAR_NAMES) as Array<keyof AccentRolePalette>) {
+    host.style.setProperty(ROLE_VAR_NAMES[key], roles[key])
+  }
+  // Remap legacy ink/soft consumers inside this host to readable scheme roles.
+  host.style.setProperty('--pulse-accent-ink', roles.accentText)
+  host.style.setProperty('--pulse-accent-soft', roles.accentTextSubtle)
+}
+
+export function clearAccentRolesFromHost(host: HTMLElement): void {
+  for (const key of Object.keys(ROLE_VAR_NAMES) as Array<keyof AccentRolePalette>) {
+    host.style.removeProperty(ROLE_VAR_NAMES[key])
+  }
+  host.style.removeProperty('--pulse-accent-ink')
+  host.style.removeProperty('--pulse-accent-soft')
 }

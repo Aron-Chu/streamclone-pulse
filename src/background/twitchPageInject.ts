@@ -69,7 +69,11 @@ interface GqlPageResponse {
 
 /** Self-contained for MAIN world injection — network GQL (may be blocked by ad blockers). */
 export async function gqlDiscoverVodInPage(login: string): Promise<GqlPageResponse> {
-  const clientId = 'kimne78kx3ncx6brgo4genct28h5qlw'
+  // Twitch rotates the public web client id periodically. This is the current
+  // id emitted by Twitch's own page shell; the previous id now returns HTTP
+  // 400 ("Client-ID header is invalid") and makes discovery look like a VOD
+  // publication failure.
+  const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
   const channel = login.trim().toLowerCase()
 
   async function post(query: string): Promise<{ status: number; json: unknown; error?: string }> {

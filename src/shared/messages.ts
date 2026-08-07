@@ -194,7 +194,30 @@ export interface ExtensionHealthResponse {
   ok: boolean
   version: string
   time: number
+  hostedMode?: boolean
   helixEnabled?: boolean
+  buildSha?: string
+  buildId?: string
+  imageDigest?: string
+  serviceGeneration?: string
+  identityComplete?: boolean
+  degraded?: {
+    runtimeIdentity?: boolean
+    vodLookup?: boolean
+    backfill?: boolean
+    liveTracking?: boolean
+    bffCache?: boolean
+  }
+  routes?: {
+    archiveCandidate?: boolean
+    vodHint?: boolean
+    backfill?: boolean
+  }
+  capabilities?: {
+    archiveCandidate?: boolean
+    vodLookup?: boolean
+    backfill?: boolean
+  }
 }
 
 export interface PulseRecapEmote {
@@ -207,6 +230,10 @@ export interface PulseRecapEmote {
 }
 
 export interface ExtensionGameSegment {
+  /** Stable analytics category-segment id when the backend has one. */
+  id?: number | string
+  /** Stable Twitch category/game identity for artwork and revisits. */
+  categoryId?: string
   gameName: string
   boxArtUrl?: string
   offsetSeconds: number
@@ -457,7 +484,22 @@ export type BackgroundResponse =
   | PulseStreamUpdateMessage
   | VodPulseUpdateMessage
   | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }
-  | { type: 'HEALTH'; ok: boolean; version?: string; helixEnabled?: boolean; error?: string }
+  | {
+      type: 'HEALTH'
+      ok: boolean
+      version?: string
+      helixEnabled?: boolean
+      buildSha?: string
+      buildId?: string
+      imageDigest?: string
+      serviceGeneration?: string
+      identityComplete?: boolean
+      hostedMode?: boolean
+      degraded?: ExtensionHealthResponse['degraded']
+      routes?: ExtensionHealthResponse['routes']
+      capabilities?: ExtensionHealthResponse['capabilities']
+      error?: string
+    }
   | { type: 'WATCHLIST'; channels: string[]; error?: string }
   | { type: 'SYNC_WATCHLIST'; channels: string[]; error?: string }
   | { type: 'PAST_VODS'; items: PastVodRow[]; error?: string }

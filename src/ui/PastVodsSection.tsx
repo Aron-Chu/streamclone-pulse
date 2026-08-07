@@ -21,6 +21,8 @@ export interface PastVodsSectionProps {
   isLive?: boolean
   channelOffline?: boolean
   onOpenFromStart?: () => void
+  /** Current-live archive video id from Past Streams — used for Jump in VOD. */
+  onCurrentLiveVodId?: (videoId: string | null) => void
   /** When set, skip background fetch and render these rows (landing demo). */
   demoRows?: PastVodRow[]
   demoMode?: boolean
@@ -33,6 +35,7 @@ export function PastVodsSection({
   isLive,
   channelOffline = false,
   onOpenFromStart,
+  onCurrentLiveVodId,
   demoRows,
   demoMode = false,
 }: PastVodsSectionProps) {
@@ -64,19 +67,26 @@ export function PastVodsSection({
         if ('type' in res && res.type === 'PAST_VODS') {
           setRows(res.items)
           setError(res.error ?? null)
+          const liveRow = res.items.find(r => r.analyticsStatus === 'current-live' || r.streamId === liveStreamId)
+          const videoId = liveRow?.videoId?.trim() || null
+          onCurrentLiveVodId?.(videoId)
+        } else {
+          onCurrentLiveVodId?.(null)
         }
       } catch (err) {
         if (!mounted) return
         setRows([])
         setError(err instanceof Error ? err.message : 'past_vods_failed')
+        onCurrentLiveVodId?.(null)
       } finally {
         if (mounted) setLoading(false)
       }
     })()
     return () => {
       mounted = false
+      onCurrentLiveVodId?.(null)
     }
-  }, [login, liveStreamId, isLive, demoRows])
+  }, [login, liveStreamId, isLive, demoRows, onCurrentLiveVodId])
 
   const subtitle = channelOffline
     ? 'Recent broadcasts'
@@ -167,6 +177,7 @@ function PastVodRowCard({
   onFromStart?: () => void
 }) {
   const thumb = vodThumbnailUrl(row.thumbnailUrl, 80, 45)
+  const [thumbnailFailed, setThumbnailFailed] = useState(false)
   const dateLabel = formatPastVodDate(row.startedAt)
   const statusLabel = pastVodAnalyticsStatusLabel(row.analyticsStatus)
   const statusClass = pastVodAnalyticsStatusClass(row.analyticsStatus)
@@ -179,8 +190,15 @@ function PastVodRowCard({
     >
       <button type="button" className="pulse-past-vod-main" style={styles.rowMain} onClick={onAnalytics}>
         <div style={styles.thumbWrap}>
-          {thumb ? (
-            <img src={thumb} alt="" style={styles.thumb} loading="lazy" decoding="async" />
+          {thumb && !thumbnailFailed ? (
+            <img
+              src={thumb}
+              alt=""
+              style={styles.thumb}
+              loading="lazy"
+              decoding="async"
+              onError={() => setThumbnailFailed(true)}
+            />
           ) : (
             <span style={styles.thumbFallback}>VOD</span>
           )}
@@ -220,8 +238,8 @@ const styles: Record<string, CSSProperties> = {
   section: { marginTop: 16 },
   loadingBlock: { background: theme.panel, borderRadius: 10, height: 88, marginTop: 4 },
   emptyBlock: {
-    background: 'rgba(255, 255, 255, 0.035)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 10,
     display: 'grid',
     gap: 8,
@@ -255,8 +273,8 @@ const styles: Record<string, CSSProperties> = {
   thumbWrap: {
     alignItems: 'center',
     aspectRatio: '16 / 9',
-    background: '#101014',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: theme.chartBg,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 6,
     display: 'flex',
     flexShrink: 0,

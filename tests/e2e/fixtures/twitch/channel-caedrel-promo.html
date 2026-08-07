@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" class="tw-root--theme-dark">
+<head>
+  <meta charset="utf-8" />
+  <title>fixturechan - Twitch</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0e0e10; color: #efeff1; font-family: Arial, sans-serif; }
+    #top-nav { height: 50px; display: flex; align-items: center; padding: 0 16px; background: #18181b; box-sizing: border-box; }
+    #layout { display: flex; height: calc(100vh - 50px); }
+    #player { flex: 1; min-width: 0; position: relative; background: #050506; }
+    #player video { width: 100%; height: 100%; background: #111; }
+    .channel-root__right-column { width: 360px; min-width: 360px; height: 100%; position: relative; display: flex; flex-direction: column; background: #1f1f23; box-sizing: border-box; }
+    [data-test-selector="chat-room-component-layout"] { height: 100%; min-height: 400px; display: flex; flex-direction: column; box-sizing: border-box; }
+    [data-a-target="chat-room-header"] { height: 52px; flex: 0 0 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #38383f; box-sizing: border-box; }
+    [data-a-target="chat-room-header"] h2 { margin: 0; font-size: 14px; }
+    [data-a-target="right-column__toggle-collapse-btn"], [data-a-target="chat-viewers"] { background: transparent; border: 0; color: #efeff1; }
+    [data-a-target="community-sub-gift-progress"] { height: 48px; flex: 0 0 48px; display: flex; align-items: center; padding: 0 12px; background: #29292f; color: #f5a623; font-size: 12px; font-weight: 700; }
+    [data-test-selector="chat-scrollable-area"] { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 12px; box-sizing: border-box; }
+    [role="log"] { display: grid; gap: 8px; }
+    .chat-line { font-size: 13px; }
+    [data-a-target="chat-input"] { min-height: 48px; flex: 0 0 48px; margin: 8px; padding: 8px; border: 1px solid #38383f; background: #18181b; box-sizing: border-box; }
+    [data-a-target="chat-input"] textarea { width: 100%; background: transparent; color: #efeff1; border: 0; resize: none; }
+    [data-a-target="ewc-campaign-portal"] { position: fixed; right: 110px; top: 210px; width: 320px; height: 180px; z-index: 999; padding: 16px; background: #e6b44a; color: #171717; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <header id="top-nav">TWITCH</header>
+  <div id="layout">
+    <main id="player"><video id="live-video" playsinline muted></video></main>
+    <aside class="channel-root__right-column" data-a-target="right-column-chat-bar" aria-label="Chat">
+      <section data-test-selector="chat-room-component-layout">
+        <header data-a-target="chat-room-header">
+          <button type="button" data-a-target="right-column__toggle-collapse-btn" aria-label="Collapse chat">&lt;</button>
+          <h2>Stream Chat</h2>
+          <button type="button" data-a-target="chat-viewers" aria-label="Users in chat">42</button>
+        </header>
+        <div data-a-target="community-sub-gift-progress">BONUS SUBS</div>
+        <div data-test-selector="chat-scrollable-area" data-a-target="chat-scrollable-area">
+          <div role="log">
+            <div class="chat-line">Caedrel: what a game</div>
+            <div class="chat-line">viewer_one: KEKW</div>
+          </div>
+        </div>
+        <div data-a-target="chat-input"><textarea placeholder="Send a message"></textarea></div>
+      </section>
+    </aside>
+  </div>
+  <div data-a-target="ewc-campaign-portal" aria-label="EWC campaign card">EWC campaign</div>
+</body>
+</html>

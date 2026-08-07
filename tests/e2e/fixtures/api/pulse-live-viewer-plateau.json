@@ -1,0 +1,513 @@
+{
+  "login": "fixturechan",
+  "isLive": true,
+  "tracking": true,
+  "streamId": "stream-fixture-plateau",
+  "vodId": null,
+  "startedAt": "2026-07-11T18:00:00.000Z",
+  "title": "Plateau viewers fixture",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 6960,
+  "coverageStartOffsetSeconds": 30,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 30,
+    "coverageEndOffsetSeconds": 6960,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Full stream tracked"
+  },
+  "topEmotes": [
+    {
+      "name": "Kappa",
+      "count": 42,
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0",
+      "provider": "twitch"
+    }
+  ],
+  "rollups": [
+    {
+      "offsetSeconds": 3480,
+      "chatCount": 80,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3540,
+      "chatCount": 81,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 7500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3600,
+      "chatCount": 82,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 14500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3660,
+      "chatCount": 83,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 21500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3720,
+      "chatCount": 84,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 28500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3780,
+      "chatCount": 85,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 35500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3840,
+      "chatCount": 86,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 42500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3900,
+      "chatCount": 87,
+      "totalEmoteCount": 20,
+      "sevenTvEmoteCount": 8,
+      "viewerCount": 49500,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3960,
+      "chatCount": 100,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4020,
+      "chatCount": 110,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4080,
+      "chatCount": 120,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4140,
+      "chatCount": 130,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4200,
+      "chatCount": 140,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4260,
+      "chatCount": 100,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4320,
+      "chatCount": 110,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4380,
+      "chatCount": 120,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4440,
+      "chatCount": 130,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4500,
+      "chatCount": 140,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4560,
+      "chatCount": 100,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4620,
+      "chatCount": 110,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4680,
+      "chatCount": 120,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4740,
+      "chatCount": 130,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4800,
+      "chatCount": 140,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4860,
+      "chatCount": 100,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4920,
+      "chatCount": 110,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 4980,
+      "chatCount": 120,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5040,
+      "chatCount": 130,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5100,
+      "chatCount": 140,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5160,
+      "chatCount": 100,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5220,
+      "chatCount": 110,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5280,
+      "chatCount": 120,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5340,
+      "chatCount": 130,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5400,
+      "chatCount": 140,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5460,
+      "chatCount": 100,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5520,
+      "chatCount": 110,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5580,
+      "chatCount": 120,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5640,
+      "chatCount": 130,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5700,
+      "chatCount": 140,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5760,
+      "chatCount": 100,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5820,
+      "chatCount": 110,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5880,
+      "chatCount": 120,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 5940,
+      "chatCount": 130,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6000,
+      "chatCount": 140,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6060,
+      "chatCount": 100,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6120,
+      "chatCount": 110,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6180,
+      "chatCount": 120,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6240,
+      "chatCount": 130,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6300,
+      "chatCount": 140,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6360,
+      "chatCount": 100,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6420,
+      "chatCount": 110,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6480,
+      "chatCount": 120,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6540,
+      "chatCount": 130,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6600,
+      "chatCount": 140,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6660,
+      "chatCount": 100,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58000,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6720,
+      "chatCount": 110,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58400,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6780,
+      "chatCount": 120,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 58800,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6840,
+      "chatCount": 130,
+      "totalEmoteCount": 40,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59200,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6900,
+      "chatCount": 140,
+      "totalEmoteCount": 45,
+      "sevenTvEmoteCount": 15,
+      "viewerCount": 59600,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 6960,
+      "chatCount": 120,
+      "totalEmoteCount": 50,
+      "sevenTvEmoteCount": 20,
+      "viewerCount": 120000,
+      "topEmotes": []
+    }
+  ],
+  "peaks": {
+    "peakViewers": 120000,
+    "peakChat": 200,
+    "peakEmotes": 80
+  },
+  "avgViewers": 55000
+}

@@ -8,7 +8,7 @@ import {
 } from '@streampulse/pulse-core'
 import { PeakBrandMark } from './PeakBrandMark.tsx'
 import { LiveStatsBand } from './LiveStatsBand.tsx'
-import { MostReactedSection } from './MostReactedSection.tsx'
+import { MostReactedSection, type MomentJumpControl } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
@@ -44,8 +44,19 @@ import {
   clickTwitchCollapseChat,
   toggleTwitchChatters,
 } from '../content/twitchChatControls.ts'
-import { getPrimaryVideo, seekPlaybackOffset, detectTwitchChannelLive, type TwitchPageContext } from '../content/twitch.ts'
-import { discoverLiveVodIdFromDom } from '../content/twitchVodDiscovery.ts'
+import {
+  getPrimaryVideo,
+  seekPlaybackOffset,
+  detectTwitchChannelLive,
+  streamOffsetSecondsForLiveSeek,
+  type LiveSeekResult,
+  type TwitchPageContext,
+} from '../content/twitch.ts'
+import {
+  discoverLiveJumpDestination,
+  discoverLiveVodIdFromDom,
+  discoverLiveVodNavigationCandidate,
+} from '../content/twitchVodDiscovery.ts'
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
 import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
@@ -74,6 +85,11 @@ import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState, vodPulseStateAllowsRetry } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
+import { exactLiveArchiveVodId } from '../shared/twitchVodGql.ts'
+import {
+  confirmJumpSeek,
+  type JumpSeekConfirmation,
+} from './confirmJumpSeek.ts'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
@@ -82,6 +98,138 @@ function coverageErrorMessage(raw: string | null | undefined, fallback: string):
 const VOD_STATUS_POLL_INTERVAL_MS = 45_000
 const HOSTED_POST_STREAM_VOD_POLL_MS = 30 * 60_000
 const VOD_PAGE_RETRY_WINDOW_MS = 30 * 60_000
+const VOD_DISCOVERY_FAILURE_BACKOFF_MS = 30_000
+
+function jumpVideoSnapshot(video: HTMLVideoElement | null): Record<string, unknown> {
+  if (!video) return { video: false }
+  // Twitch's MSE pipeline can replace a TimeRanges object (or one of its
+  // ranges) between any two reads. Diagnostics must never turn that race into
+  // a failed jump, so read each collection independently and keep whatever
+  // entries were available before a volatile read failed.
+  const snapshotRanges = (
+    readRanges: () => TimeRanges | null | undefined,
+  ): Array<{ start: number; end: number }> => {
+    const snapshot: Array<{ start: number; end: number }> = []
+    let ranges: TimeRanges | null | undefined
+    try {
+      ranges = readRanges()
+    } catch {
+      return snapshot
+    }
+    if (!ranges) return snapshot
+
+    let length = 0
+    try {
+      length = ranges.length
+    } catch {
+      return snapshot
+    }
+
+    for (let index = 0; index < length; index += 1) {
+      try {
+        const start = ranges.start(index)
+        const end = ranges.end(index)
+        if (Number.isFinite(start) && Number.isFinite(end)) snapshot.push({ start, end })
+      } catch {
+        break
+      }
+    }
+    return snapshot
+  }
+
+  const seekable = snapshotRanges(() => video.seekable)
+  const buffered = snapshotRanges(() => video.buffered)
+  return {
+    video: true,
+    currentTime: Number.isFinite(video.currentTime) ? Math.round(video.currentTime * 10) / 10 : null,
+    duration: Number.isFinite(video.duration) ? Math.round(video.duration * 10) / 10 : String(video.duration),
+    paused: video.paused,
+    readyState: video.readyState,
+    networkState: video.networkState,
+    seeking: video.seeking,
+    connected: video.isConnected,
+    seekable,
+    buffered,
+  }
+}
+
+function failedJumpConfirmation(): JumpSeekConfirmation {
+  return {
+    ok: false,
+    reason: 'timeout',
+    elapsedMs: 0,
+    events: [],
+    progressSeconds: 0,
+  }
+}
+
+interface SeekAndConfirmResult {
+  video: HTMLVideoElement | null
+  result: LiveSeekResult
+  confirmation: JumpSeekConfirmation
+}
+
+/**
+ * Twitch frequently replaces the media element during quality/ad transitions.
+ * Retry a failed confirmation once against the replacement, never in a loop.
+ */
+async function seekAndConfirm(
+  initialVideo: HTMLVideoElement | null,
+  seek: (video: HTMLVideoElement | null, commit?: boolean) => LiveSeekResult,
+  findVideo: () => HTMLVideoElement | null = getPrimaryVideo,
+): Promise<SeekAndConfirmResult> {
+  const attempt = async (video: HTMLVideoElement | null): Promise<SeekAndConfirmResult> => {
+    const baselineSeconds = video && Number.isFinite(video.currentTime) ? video.currentTime : null
+    const wasPaused = video?.paused ?? false
+    // Probe without mutating Twitch's player. Confirmation attaches listeners
+    // first, then performs the assignment through beforeSeek so early
+    // seeking/seeked events cannot be missed.
+    const preview = seek(video, false)
+    let result = preview
+    const seekDistanceSeconds = preview.ok && baselineSeconds != null
+      ? Math.abs(preview.targetSeconds - baselineSeconds)
+      : 0
+    // Older live-DVR points can require Twitch to fetch and remux several HLS
+    // segments. Six seconds was causing a valid deep seek to be restored to
+    // Live before the player had a fair chance to produce a frame.
+    const confirmationTimeoutMs = seekDistanceSeconds > 3_600
+      ? 15_000
+      : seekDistanceSeconds > 600
+        ? 10_000
+        : 6_000
+    const confirmation = preview.ok
+      ? await confirmJumpSeek(video, preview.targetSeconds, {
+        baselineSeconds,
+        wasPaused,
+        timeoutMs: confirmationTimeoutMs,
+        stallGraceMs: Math.min(6_000, confirmationTimeoutMs - 1_000),
+        isCurrentVideo: () => findVideo() === video,
+        beforeSeek: () => {
+          result = seek(video, true)
+          return result.ok
+        },
+      })
+      : failedJumpConfirmation()
+    if (!confirmation.ok && result.ok && video && baselineSeconds != null && video.isConnected !== false) {
+      // A failed Twitch MSE seek can leave the page visibly buffering at an
+      // unreachable timestamp. Restore the known-good position before the
+      // caller renders a retry/archive notice; never restore a replacement
+      // element or a preflight that did not mutate the player.
+      try {
+        video.currentTime = baselineSeconds
+      } catch {
+        // The element may have been detached between confirmation and cleanup.
+      }
+    }
+    return { video, result, confirmation }
+  }
+
+  const first = await attempt(initialVideo)
+  if (first.confirmation.reason !== 'video_replaced') return first
+  const replacement = findVideo()
+  if (!replacement || replacement === initialVideo) return first
+  return await attempt(replacement)
+}
 
 interface OverlayProps {
   login: string
@@ -138,7 +286,11 @@ export function Overlay({
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
-  const [notice, setNotice] = useState<{ kind: NoticeKind; text: string } | null>(null)
+  const [notice, setNotice] = useState<{
+    kind: NoticeKind
+    text: string
+    action?: { label: string; href: string }
+  } | null>(null)
   const [trackBusy, setTrackBusy] = useState(false)
   const [awaitingTrack, setAwaitingTrack] = useState(pendingTrackPrompt)
   const [autoUpdate, setAutoUpdate] = useState(true)
@@ -150,6 +302,10 @@ export function Overlay({
   const [coverageLastCheck, setCoverageLastCheck] = useState<number | null>(null)
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
   const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
+  const [locallyValidatedVod, setLocallyValidatedVod] = useState<{ streamId: string; vodId: string } | null>(null)
+  /** Current-live VOD id from Past Streams (Helix/history) — navigation when page GQL is blocked. */
+  const [pastStreamsLiveVodId, setPastStreamsLiveVodId] = useState<string | null>(null)
+  const pastStreamsLiveVodIdRef = useRef<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
@@ -160,6 +316,12 @@ export function Overlay({
   )
   const hostedVodPollDeadlineRef = useRef<{ streamId: string; untilMs: number } | null>(null)
   const vodPagePollDeadlineRef = useRef<{ vodId: string; untilMs: number } | null>(null)
+  const vodHintAuthBlockedRef = useRef<string | null>(null)
+  const vodDiscoveryBackoffRef = useRef<{ streamId: string; untilMs: number } | null>(null)
+  const locallyValidatedVodRef = useRef<{ streamId: string; vodId: string } | null>(null)
+  const jumpBusyRef = useRef(false)
+  /** Once-per-streamId Past Streams fetch for waiting_for_vod honesty (not jump-only). */
+  const pastStreamsNavFetchStreamIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     setCoverageTierState(coverageTierProp)
@@ -176,6 +338,13 @@ export function Overlay({
     const streamId = payload?.streamId
     if (prevStreamIdRef.current !== undefined && prevStreamIdRef.current !== streamId) {
       setFullTimeline(false)
+      locallyValidatedVodRef.current = null
+      setLocallyValidatedVod(null)
+      pastStreamsLiveVodIdRef.current = null
+      setPastStreamsLiveVodId(null)
+      pastStreamsNavFetchStreamIdRef.current = null
+      vodHintAuthBlockedRef.current = null
+      vodDiscoveryBackoffRef.current = null
     }
     prevStreamIdRef.current = streamId
   }, [payload?.streamId])
@@ -282,6 +451,36 @@ export function Overlay({
     void loadTopClip()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when stream/vod context changes
   }, [payload?.login, payload?.streamId, payload?.vodId, payload?.startedAt, payload?.isLive])
+
+  const rememberPastStreamsLiveVodId = useCallback((videoId: string | null) => {
+    const next = videoId?.trim() || null
+    pastStreamsLiveVodIdRef.current = next
+    setPastStreamsLiveVodId(next)
+  }, [])
+
+  async function fetchPastStreamsLiveVodId(): Promise<string | null> {
+    const streamId = payload?.streamId?.trim()
+    if (!login || !streamId) return pastStreamsLiveVodIdRef.current
+    try {
+      const pastRes = await sendBackgroundMessage({
+        type: 'LIST_PAST_VODS',
+        login,
+        liveStreamId: streamId,
+        isLive: true,
+      })
+      if (!('type' in pastRes) || pastRes.type !== 'PAST_VODS') return pastStreamsLiveVodIdRef.current
+      const liveRow = pastRes.items.find(
+        row =>
+          Boolean(row.videoId?.trim())
+          && (row.analyticsStatus === 'current-live' || row.streamId === streamId),
+      )
+      const videoId = liveRow?.videoId?.trim() || null
+      if (videoId) rememberPastStreamsLiveVodId(videoId)
+      return videoId ?? pastStreamsLiveVodIdRef.current
+    } catch {
+      return pastStreamsLiveVodIdRef.current
+    }
+  }
 
   useEffect(() => {
     setFullTimeline(false)
@@ -543,12 +742,17 @@ export function Overlay({
     const summary = await summarizeVodDebugBlockers({
       backendVodResolved: source ? backendResolvedVod(source) : false,
       backendHelixEnabled,
+      navigationVodId: pastStreamsLiveVodIdRef.current ?? pastStreamsLiveVodId,
     })
     setVodDebugDetail(summary)
   }
 
   async function submitPageVodHint(): Promise<string | null> {
     if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
+    const discoveryBackoff = vodDiscoveryBackoffRef.current
+    if (discoveryBackoff?.streamId === payload.streamId && discoveryBackoff.untilMs > Date.now()) {
+      return null
+    }
     const domHint = discoverLiveVodIdFromDom()
     // DOM miss is common on live pages — info only (warn shows up in Chrome Web Store Errors).
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
@@ -556,32 +760,65 @@ export function Overlay({
       streamId: payload.streamId,
       id: domHint,
     }, 'info')
-    let hint = domHint
-    if (!hint) {
-      const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login })
-      const gql =
-        'type' in gqlRes && gqlRes.type === 'DISCOVER_LIVE_VOD'
-          ? gqlRes.result
-          : { vodId: null, streamId: null, source: null, gqlErrors: ['background_unreachable'] as string[] }
-      hint = gql.vodId
-      const gqlBlocked = (gql.gqlErrors?.length ?? 0) > 0
-      await pulseDebug(
-        'vod.discover.gql',
-        hint ? `found archive id via Twitch GQL (${gql.source})` : 'GQL returned no archive id',
-        {
-          login,
-          id: hint,
-          source: gql.source,
-          streamId: gql.streamId,
-          pulseStreamId: payload.streamId,
-          gqlErrors: gql.gqlErrors,
-        },
-        hint ? 'info' : gqlBlocked ? 'warn' : 'info',
-      )
+    // A DOM/page-script/archive-list ID is only a candidate. It has no proof
+    // that it belongs to this exact live stream, so it must never be persisted
+    // or used to start backfill. Only the stream.archiveVideo GQL result with
+    // an exact stream-id match is trusted for mutation/navigation decisions.
+    // Always run the exact stream.archiveVideo query. A stale DOM or
+    // videos.archive candidate is diagnostic only and must never suppress the
+    // one lookup that can prove this archive belongs to the active stream.
+    const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login }, { timeoutMs: 12_000 })
+    const gql =
+      'type' in gqlRes && gqlRes.type === 'DISCOVER_LIVE_VOD'
+        ? gqlRes.result
+        : { vodId: null, streamId: null, source: null, gqlErrors: ['background_unreachable'] as string[] }
+    const exactVodId = exactLiveArchiveVodId(gql, payload.streamId)
+    let hint: string | null = exactVodId
+    if (exactVodId) {
+      // This is the only unauthenticated archive discovery that proves the
+      // VOD belongs to this exact live broadcast. The videos.archive list
+      // can be an older archive and must not drive navigation by itself.
+      locallyValidatedVodRef.current = { streamId: payload.streamId, vodId: exactVodId }
+      setLocallyValidatedVod({ streamId: payload.streamId, vodId: exactVodId })
     }
+    const gqlBlocked = (gql.gqlErrors?.length ?? 0) > 0
+    if (!hint && gqlBlocked) {
+      vodDiscoveryBackoffRef.current = {
+        streamId: payload.streamId,
+        untilMs: Date.now() + VOD_DISCOVERY_FAILURE_BACKOFF_MS,
+      }
+    } else if (hint) {
+      vodDiscoveryBackoffRef.current = null
+    }
+    await pulseDebug(
+      'vod.discover.gql',
+      hint
+        ? 'found exact archive id via Twitch GQL (stream.archiveVideo)'
+        : gql.vodId
+          ? `found unverified archive candidate via Twitch GQL (${gql.source ?? 'unknown'}); not used`
+          : 'GQL returned no archive id',
+      {
+        login,
+        id: gql.vodId,
+        source: gql.source,
+        streamId: gql.streamId,
+        pulseStreamId: payload.streamId,
+        domCandidate: domHint,
+        gqlErrors: gql.gqlErrors,
+      },
+      hint ? 'info' : gqlBlocked ? 'warn' : 'info',
+    )
     if (!hint) {
       await refreshVodDebugDetail()
       return null
+    }
+    const authBlockKey = `${payload.streamId}:${hint}`
+    if (vodHintAuthBlockedRef.current === authBlockKey) {
+      // The hosted API intentionally protects this write. Avoid posting the
+      // same unauthenticated hint on every coverage refresh/render; the local
+      // Twitch VOD id remains available to navigation/backfill decisions.
+      await refreshVodDebugDetail()
+      return hint
     }
     try {
       const res = await sendBackgroundMessage({
@@ -589,9 +826,11 @@ export function Overlay({
         login,
         streamId: payload.streamId,
         vodId: hint,
-      })
+      }, { timeoutMs: 8_000 })
       if ('ok' in res && res.ok) {
         await refreshPulse(false)
+      } else if ('ok' in res && !res.ok && 'error' in res && res.error === 'vod_hint_auth_required') {
+        vodHintAuthBlockedRef.current = authBlockKey
       }
     } catch {
       await pulseDebug('vod.hint.api', 'vod-hint endpoint failed — backfill will still send vodId in POST body', {
@@ -609,6 +848,7 @@ export function Overlay({
     setMissedBusy(true)
     setCoverageCheckError(null)
     try {
+      const pastVodId = await fetchPastStreamsLiveVodId()
       await submitPageVodHint()
       const healthRes = await sendBackgroundMessage({ type: 'HEALTH' }).catch(() => null)
       let currentHelixEnabled: boolean | null | undefined
@@ -630,10 +870,12 @@ export function Overlay({
       setCoverageLastCheck(Date.now())
       const next = fresh ?? payload
       const coverage = resolvePulseCoverage(next)
+      const navigationVodId = pastVodId ?? pastStreamsLiveVodIdRef.current
       await pulseDebug('ui.coverage', 'vod check finished', {
         login,
         streamId: next.streamId ?? null,
         vodId: next.vodId ?? null,
+        navigationVodId: navigationVodId ?? null,
         resolvedState: coverage?.state ?? null,
         canBackfill: coverage?.canBackfill ?? null,
       })
@@ -657,7 +899,13 @@ export function Overlay({
         await refreshVodDebugDetail(next, currentHelixEnabled)
         return
       }
-      if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
+      if (navigationVodId && !next.vodId) {
+        setCoverageCheckError(null)
+        setNotice({
+          kind: 'info',
+          text: 'Current-broadcast VOD is available for Jump — Pulse has not linked it for chat backfill yet.',
+        })
+      } else if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
         setCoverageCheckError(
           'Backend analytics needs redeploy (Helix/vod-hint). Local page GQL may still be blocked by an ad blocker.',
         )
@@ -757,6 +1005,29 @@ export function Overlay({
   }, [login, payload?.streamId, payload?.vodId, payload?.tracking, payload?.coverageStartOffsetSeconds, payload?.coverage?.state, payload?.helixEnabled])
 
   const coverageForPoll = payload ? resolvePulseCoverage(payload) : undefined
+
+  // Once per streamId: resolve Past Streams current-live videoId while waiting
+  // for Pulse to link, so CoverageCard honesty does not wait on jump/list alone.
+  useEffect(() => {
+    const streamId = payload?.streamId?.trim()
+    if (
+      !streamId
+      || payload?.vodId
+      || coverageForPoll?.state !== 'waiting_for_vod'
+      || context.kind === 'vod'
+    ) {
+      return
+    }
+    if (pastStreamsNavFetchStreamIdRef.current === streamId) return
+    pastStreamsNavFetchStreamIdRef.current = streamId
+    void fetchPastStreamsLiveVodId()
+  }, [
+    payload?.streamId,
+    payload?.vodId,
+    coverageForPoll?.state,
+    context.kind,
+  ])
+
   useEffect(() => {
     if (isVodPage || !payload?.tracking || payload.vodId) {
       if (hostedBackend && payload?.vodId) hostedVodPollDeadlineRef.current = null
@@ -887,41 +1158,71 @@ export function Overlay({
     if (!payload?.vodId) {
       await submitPageVodHint()
     }
-    seekToStreamStart()
+    await seekToStreamStart()
   }
 
-  function seekToStreamStart(): void {
+  function openVodUrlOrOffer(url: string, successText: string): void {
+    // Archive discovery often completes after the original click activation
+    // has expired. Same-tab navigation is not popup-gated and is therefore
+    // the reliable default for a verified archive. Keep the explicit link as
+    // a fallback for unusual navigation-policy failures.
+    try {
+      window.location.assign(url)
+      setNotice({ kind: 'info', text: successText })
+    } catch {
+      setNotice({
+        kind: 'warn',
+        text: 'Verified VOD found. Use the link to open it.',
+        action: { label: 'Open verified VOD', href: url },
+      })
+    }
+  }
+
+  async function seekToStreamStart(): Promise<void> {
     setFullTimeline(true)
     setNotice(null)
-    const vodId = payload?.vodId ?? context.vodId ?? undefined
+    const localVod = locallyValidatedVodRef.current
+    const vodId = payload?.vodId
+      ?? context.vodId
+      ?? (localVod && localVod.streamId === payload?.streamId
+        ? localVod.vodId
+        : undefined)
     const offset = 0
 
     if (vodId) {
       const vodUrl = buildTwitchVodUrl(vodId, offset)
       if (context.kind === 'vod' && context.vodId === vodId) {
-        const result = seekPlaybackOffset(getPrimaryVideo(), offset, { isLive: false })
+        const video = getPrimaryVideo()
+        const { result, confirmation } = await seekAndConfirm(
+          video,
+          (currentVideo, commit) => seekPlaybackOffset(currentVideo, offset, { isLive: false, commit }),
+        )
         setNotice({
-          kind: 'ok',
-          text: result.ok
+          kind: result.ok && confirmation.ok ? 'ok' : 'warn',
+          text: result.ok && confirmation.ok
             ? 'Jumped to stream start in the VOD player.'
-            : 'Scrub the VOD player to stream start.',
+            : 'Twitch did not confirm stream start; scrub the VOD player manually.',
         })
         return
       }
-      window.open(vodUrl, '_blank', 'noopener,noreferrer')
-      setNotice({
-        kind: 'ok',
-        text: 'Opened Twitch VOD at stream start.',
-      })
+      openVodUrlOrOffer(vodUrl, 'Opened Twitch VOD at stream start.')
       return
     }
 
     if (uiIsLive && context.kind === 'channel') {
-      const result = seekPlaybackOffset(getPrimaryVideo(), offset, {
-        isLive: true,
-        liveCurrentOffset: payload?.currentOffsetSeconds ?? 0,
+      const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+        startedAt: payload?.startedAt,
+        payloadOffsetSeconds: payload?.currentOffsetSeconds ?? 0,
       })
-      if (result.ok) {
+      const { result, confirmation } = await seekAndConfirm(
+        getPrimaryVideo(),
+        (currentVideo, commit) => seekPlaybackOffset(currentVideo, offset, {
+          isLive: true,
+          liveCurrentOffset: liveCurrentOffset ?? payload?.currentOffsetSeconds ?? 0,
+          commit,
+        }),
+      )
+      if (result.ok && confirmation.ok) {
         setNotice({ kind: 'ok', text: 'Jumped to stream start in the live DVR buffer.' })
         return
       }
@@ -944,7 +1245,7 @@ export function Overlay({
   }, [payload?.tracking, payload?.streamId, payload?.vodId, uiIsLive, payload?.coverageStartOffsetSeconds])
 
   function openStreamStartToLive(): void {
-    seekToStreamStart()
+    void seekToStreamStart()
   }
 
   function jumpToOffset(offsetSeconds: number): void {
@@ -985,21 +1286,239 @@ export function Overlay({
     openAnalytics(point.offsetSeconds)
   }
 
-  async function jumpMoment(point: LiveHeatPoint): Promise<void> {
-    setNotice(null)
-    const action = resolveJumpMomentAction({
-      context,
-      payloadVodId: payload?.vodId ?? context.vodId,
-      payloadIsLive: payload?.isLive,
-      liveCurrentOffset: payload?.currentOffsetSeconds,
-      offsetSeconds: point.offsetSeconds,
+  function currentLiveJumpDestination() {
+    return discoverLiveJumpDestination({
+      streamId: payload?.streamId,
+      locallyValidatedVodId: locallyValidatedVod?.vodId,
+      locallyValidatedStreamId: locallyValidatedVod?.streamId,
+      pastStreamsVodId: pastStreamsLiveVodIdRef.current ?? pastStreamsLiveVodId,
     })
+  }
+
+  function resolveMomentJumpControl(point: LiveHeatPoint): MomentJumpControl {
+    if (context.kind === 'vod' || payload?.vodId || context.vodId) {
+      return { label: context.kind === 'vod' ? 'Jump in VOD' : 'Open VOD' }
+    }
+    const destination = currentLiveJumpDestination()
+    if (destination) {
+      return {
+        label: 'Jump in VOD',
+        hint: 'Opens Twitch’s current-broadcast VOD at this moment.',
+      }
+    }
+    if (!payload?.isLive) {
+      return { label: 'Open analytics', hint: 'Player replay is available after Twitch publishes the VOD.' }
+    }
+    const video = getPrimaryVideo()
+    if (!video) {
+      return { label: 'Player unavailable', disabled: true, hint: 'Twitch’s video player is not ready.' }
+    }
+    const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+      startedAt: payload.startedAt,
+      payloadOffsetSeconds: payload.currentOffsetSeconds,
+    })
+    if (liveCurrentOffset == null) {
+      return { label: 'Wait for VOD', disabled: true, hint: 'Stream timing is not ready for a safe live seek.' }
+    }
+    const preview = seekPlaybackOffset(video, point.offsetSeconds, {
+      isLive: true,
+      liveCurrentOffset,
+      commit: false,
+    })
+    if (preview.ok) return { label: 'Jump in player' }
+    return {
+      label: 'Jump in VOD',
+      hint: 'This moment is outside Twitch’s usable live-player window; Pulse will open the current-broadcast VOD when Twitch exposes it.',
+    }
+  }
+
+  async function tryOpenVerifiedArchive(
+    offsetSeconds: number,
+    jumpStartedAt: number,
+  ): Promise<'opened' | 'not_published' | 'route_unavailable' | 'auth_required' | 'identity_mismatch' | 'missing'> {
+    if (payload?.streamId) {
+      const existingLocalVod = locallyValidatedVodRef.current
+      if (existingLocalVod?.streamId === payload.streamId) {
+        openVodUrlOrOffer(
+          buildTwitchVodUrl(existingLocalVod.vodId, offsetSeconds),
+          `Opened the Twitch archive at ${formatHeatOffset(offsetSeconds)} (exact stream match).`,
+        )
+        return 'opened'
+      }
+      // Twitch's own watch-from-beginning/archive control is the most direct
+      // answer when its raw MediaSource exposes a sentinel seek range. Use the
+      // same archive ID for user navigation, with the selected moment appended.
+      // This is intentionally navigation-only: it is never persisted as
+      // stream identity and never authorizes analytics backfill.
+      const pageArchive = discoverLiveVodNavigationCandidate(payload.streamId)
+      if (pageArchive) {
+        void pulseDebug('ui.jump', 'using Twitch current-broadcast archive navigation', {
+          streamId: payload.streamId,
+          source: pageArchive.source,
+          vodId: pageArchive.vodId,
+          elapsedMs: Math.round(performance.now() - jumpStartedAt),
+        })
+        openVodUrlOrOffer(
+          buildTwitchVodUrl(pageArchive.vodId, offsetSeconds),
+          `Opened Twitch’s current broadcast replay at ${formatHeatOffset(offsetSeconds)}.`,
+        )
+        return 'opened'
+      }
+      // "Check for VOD" must actually perform the exact Twitch stream.archiveVideo
+      // lookup. Hosted persistence may return 401, but that does not invalidate
+      // the locally proven stream/VOD identity used for navigation.
+      const discoveredVodId = await submitPageVodHint().catch(() => null)
+      const discoveredLocalVod = locallyValidatedVodRef.current
+      if (discoveredVodId && discoveredLocalVod?.streamId === payload.streamId) {
+        openVodUrlOrOffer(
+          buildTwitchVodUrl(discoveredVodId, offsetSeconds),
+          `Opened the Twitch archive at ${formatHeatOffset(offsetSeconds)} (exact stream match).`,
+        )
+        return 'opened'
+      }
+      try {
+        const archiveResponse = await sendBackgroundMessage({
+          type: 'GET_PULSE_ARCHIVE_CANDIDATE',
+          streamId: payload.streamId,
+          login,
+        }, { timeoutMs: 5_000 })
+        void pulseDebug('ui.jump', 'archive candidate request completed', {
+          streamId: payload.streamId,
+          responseType: 'type' in archiveResponse ? archiveResponse.type : null,
+          error: 'error' in archiveResponse ? archiveResponse.error ?? null : null,
+          timedOut: !('type' in archiveResponse),
+          elapsedMs: Math.round(performance.now() - jumpStartedAt),
+        })
+        if ('type' in archiveResponse && archiveResponse.type === 'PULSE_ARCHIVE_CANDIDATE') {
+          const candidate = archiveResponse.candidate
+          if (candidate?.navigationValidated && candidate.navigationVodId) {
+            openVodUrlOrOffer(
+              buildTwitchVodUrl(candidate.navigationVodId, offsetSeconds),
+              `Opened the verified archive VOD at ${formatHeatOffset(offsetSeconds)}.`,
+            )
+            return 'opened'
+          }
+          if (candidate?.analyticsResolutionState === 'archive_not_published') return 'not_published'
+          if (archiveResponse.error === 'archive_candidate_unavailable') return 'route_unavailable'
+          if (archiveResponse.error === 'archive_candidate_auth_required') return 'auth_required'
+          if (archiveResponse.error === 'pulse_archive_identity_mismatch') return 'identity_mismatch'
+        }
+      } catch {
+        // A locally validated exact GQL stream match can still be used below.
+      }
+    }
+    return 'missing'
+  }
+
+  async function jumpMoment(point: LiveHeatPoint): Promise<void> {
+    if (jumpBusyRef.current) {
+      setNotice({ kind: 'info', text: 'Jump already in progress…' })
+      return
+    }
+    jumpBusyRef.current = true
+    const jumpStartedAt = performance.now()
+    try {
+      const initialVideo = getPrimaryVideo()
+      void pulseDebug('ui.jump', 'jump requested', {
+        login,
+        streamId: payload?.streamId ?? null,
+        offsetSeconds: point.offsetSeconds,
+        payloadCurrentOffsetSeconds: payload?.currentOffsetSeconds ?? null,
+        startedAtPresent: Boolean(payload?.startedAt),
+        ...jumpVideoSnapshot(initialVideo),
+      })
+
+      // Prefer Twitch's current-broadcast VOD (Past Streams / player control / exact GQL)
+      // over live DVR so the CTA matches what the click does.
+      let navigationDestination = currentLiveJumpDestination()
+      if (
+        !navigationDestination
+        && payload?.isLive
+        && payload.streamId
+        && !payload.vodId
+        && context.kind !== 'vod'
+      ) {
+        // Past Streams already resolves the live archive via Helix/history — reuse it
+        // when page GQL is blocked (common with ad blockers).
+        const pastVodId = await fetchPastStreamsLiveVodId()
+        if (pastVodId) {
+          navigationDestination = {
+            vodId: pastVodId,
+            source: 'past_streams_current_live',
+          }
+        } else {
+          await submitPageVodHint().catch(() => null)
+          navigationDestination = currentLiveJumpDestination()
+        }
+      }
+
+      const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+        startedAt: payload?.startedAt,
+        payloadOffsetSeconds: payload?.currentOffsetSeconds,
+      })
+      const navigationVodId = navigationDestination?.vodId
+        ?? (payload?.streamId && locallyValidatedVodRef.current?.streamId === payload.streamId
+          ? locallyValidatedVodRef.current.vodId
+          : null)
+      const livePreview = payload?.isLive
+        && !payload.vodId
+        && !navigationVodId
+        && context.kind !== 'vod'
+        && liveCurrentOffset != null
+        ? seekPlaybackOffset(initialVideo, point.offsetSeconds, {
+          isLive: true,
+          liveCurrentOffset,
+          commit: false,
+        })
+        : null
+      const action = resolveJumpMomentAction({
+        context,
+        payloadVodId: payload?.vodId ?? context.vodId,
+        navigationVodId,
+        payloadIsLive: payload?.isLive,
+        liveCurrentOffset: liveCurrentOffset ?? payload?.currentOffsetSeconds,
+        liveSeekable: livePreview?.ok,
+        offsetSeconds: point.offsetSeconds,
+      })
+      void pulseDebug('ui.jump', 'jump destination resolved', {
+        action: action.kind,
+        navigationVodId: navigationVodId ?? null,
+        navigationSource: navigationDestination?.source ?? null,
+        elapsedMs: Math.round(performance.now() - jumpStartedAt),
+      })
+      setNotice({
+        kind: 'info',
+        text: action.kind === 'open-vod-tab'
+          ? `Opening Twitch VOD at ${formatHeatOffset(point.offsetSeconds)}…`
+          : action.kind === 'live-outside-buffer'
+            ? `Checking for a VOD at ${formatHeatOffset(point.offsetSeconds)}…`
+            : action.kind === 'seek-live-dvr'
+              && liveCurrentOffset != null
+              && liveCurrentOffset - point.offsetSeconds > 600
+              ? `Loading ${formatHeatOffset(point.offsetSeconds)} from Twitch DVR… older points can buffer for up to 15 seconds.`
+              : `Jumping to ${formatHeatOffset(point.offsetSeconds)}…`,
+      })
 
     if (action.kind === 'seek-vod') {
-      const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
+      const { result, confirmation, video: confirmedVideo } = await seekAndConfirm(
+        initialVideo,
+        (video, commit) => seekPlaybackOffset(video, action.offsetSeconds, { isLive: false, commit }),
+      )
+      const confirmed = result.ok && confirmation.ok
+      void pulseDebug('ui.jump', confirmed ? 'vod seek confirmed' : 'vod seek not confirmed', {
+        action: action.kind,
+        offsetSeconds: action.offsetSeconds,
+        result,
+        confirmed,
+        confirmationReason: confirmation.reason,
+        confirmationEvents: confirmation.events,
+        progressSeconds: confirmation.progressSeconds,
+        elapsedMs: Math.round(performance.now() - jumpStartedAt),
+        ...jumpVideoSnapshot(confirmedVideo),
+      }, confirmed ? 'info' : 'warn')
       setNotice({
-        kind: result.ok ? 'ok' : 'warn',
-        text: result.ok
+        kind: confirmed ? 'ok' : 'warn',
+        text: confirmed
           ? `Jumped to ${formatHeatOffset(action.offsetSeconds)} in the VOD player.`
           : `Scrub the VOD player to ${formatHeatOffset(action.offsetSeconds)}.`,
       })
@@ -1007,11 +1526,10 @@ export function Overlay({
     }
 
     if (action.kind === 'open-vod-tab') {
-      window.open(buildTwitchVodUrl(action.vodId, action.offsetSeconds), '_blank', 'noopener,noreferrer')
-      setNotice({
-        kind: 'ok',
-        text: `Opened Twitch VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
-      })
+      openVodUrlOrOffer(
+        buildTwitchVodUrl(action.vodId, action.offsetSeconds),
+        `Opened Twitch’s current-broadcast VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
+      )
       return
     }
 
@@ -1021,64 +1539,109 @@ export function Overlay({
     }
 
     if (action.kind === 'seek-live-dvr') {
-      const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, {
-        isLive: true,
-        liveCurrentOffset: action.liveCurrentOffset,
+      const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+        startedAt: payload?.startedAt,
+        payloadOffsetSeconds: action.liveCurrentOffset,
       })
-      if (result.ok) {
+      const { result, confirmation, video: confirmedVideo } = await seekAndConfirm(
+        initialVideo,
+        (video, commit) => seekPlaybackOffset(video, action.offsetSeconds, {
+          isLive: true,
+          liveCurrentOffset: liveCurrentOffset ?? action.liveCurrentOffset,
+          commit,
+        }),
+      )
+      const confirmed = result.ok && confirmation.ok
+      void pulseDebug('ui.jump', confirmed ? 'live DVR seek confirmed' : 'live DVR seek not confirmed', {
+        action: action.kind,
+        offsetSeconds: action.offsetSeconds,
+        liveCurrentOffset: liveCurrentOffset ?? action.liveCurrentOffset,
+        result,
+        confirmed,
+        confirmationReason: confirmation.reason,
+        confirmationEvents: confirmation.events,
+        progressSeconds: confirmation.progressSeconds,
+        elapsedMs: Math.round(performance.now() - jumpStartedAt),
+        ...jumpVideoSnapshot(confirmedVideo),
+      }, confirmed ? 'info' : 'warn')
+      if (confirmed) {
         setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
         return
       }
-      // A live seek can be outside the DVR window while Twitch has already
-      // published the archive. Discover that VOD read-only, then navigate only
-      // when the backend proves it belongs to this exact stream.
-      if (payload?.streamId) {
-        try {
-          const archiveResponse = await sendBackgroundMessage({
-            type: 'GET_PULSE_ARCHIVE_CANDIDATE',
-            streamId: payload.streamId,
-            login,
-          })
-          if ('type' in archiveResponse && archiveResponse.type === 'PULSE_ARCHIVE_CANDIDATE') {
-            const candidate = archiveResponse.candidate
-            if (candidate?.navigationValidated && candidate.navigationVodId) {
-              window.open(
-                buildTwitchVodUrl(candidate.navigationVodId, action.offsetSeconds),
-                '_blank',
-                'noopener,noreferrer',
-              )
-              setNotice({
-                kind: 'ok',
-                text: `Opened the verified archive VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
-              })
-              return
-            }
-            if (candidate?.analyticsResolutionState === 'archive_not_published') {
-              setNotice({
-                kind: 'info',
-                text: 'Twitch has not published the archive VOD yet; retry shortly.',
-              })
-              return
-            }
-          }
-        } catch {
-          // Preserve the normal DVR/outside-buffer explanation below.
-        }
+      // A failed live seek may still have a verified exact-stream archive.
+      const archiveOutcome = await tryOpenVerifiedArchive(action.offsetSeconds, jumpStartedAt)
+      if (archiveOutcome === 'opened') return
+      if (archiveOutcome === 'not_published') {
+        setNotice({ kind: 'info', text: 'Twitch has not published the archive VOD yet; retry shortly.' })
+        return
+      }
+      if (archiveOutcome === 'route_unavailable') {
+        setNotice({
+          kind: 'warn',
+          text: 'This moment is outside Twitch’s live DVR window, and archive lookup is not available on the current StreamPulse backend.',
+        })
+        return
+      }
+      if (archiveOutcome === 'auth_required') {
+        setNotice({
+          kind: 'warn',
+          text: 'This moment is outside the live DVR window. Archive lookup needs an authenticated extension session.',
+        })
+        return
+      }
+      if (archiveOutcome === 'identity_mismatch') {
+        setNotice({
+          kind: 'warn',
+          text: 'Twitch returned an archive for a different broadcast, so it was not opened.',
+        })
+        return
       }
       setNotice({
         kind: 'warn',
         text:
-          result.reason === 'outside_buffer'
+          !result.ok && result.reason === 'outside_buffer'
             ? `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer.`
+            : result.ok && !confirmed
+              ? confirmation.reason === 'video_replaced'
+                ? 'Twitch replaced the player while seeking; try the jump again.'
+                : confirmation.reason === 'media_error'
+                  ? 'Twitch could not load that point; try again or wait for the VOD.'
+                  : confirmation.reason === 'stalled'
+                    ? 'Twitch is still buffering that point; try again or wait for the VOD.'
+                  : 'Twitch did not confirm playback; the player may be buffering or reloading.'
             : 'Open in Streamclone once VOD context is available.',
       })
       return
     }
 
-    setNotice({
-      kind: 'warn',
-      text: `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer.`,
-    })
+      // live-outside-buffer (and any other unresolved live jump): open Past Streams
+      // current-live VOD before falling back to page GQL archive discovery.
+      const pastVodForOutside = pastStreamsLiveVodIdRef.current ?? await fetchPastStreamsLiveVodId()
+      if (pastVodForOutside) {
+        openVodUrlOrOffer(
+          buildTwitchVodUrl(pastVodForOutside, point.offsetSeconds),
+          `Opened Twitch’s current-broadcast VOD at ${formatHeatOffset(point.offsetSeconds)}.`,
+        )
+        return
+      }
+
+      const archiveOutcome = await tryOpenVerifiedArchive(action.offsetSeconds, jumpStartedAt)
+      if (archiveOutcome === 'opened') return
+      setNotice({
+        kind: archiveOutcome === 'not_published' ? 'info' : 'warn',
+        text: archiveOutcome === 'route_unavailable'
+          ? 'This moment is outside Twitch’s live DVR window, and archive lookup is not available on the current StreamPulse backend.'
+          : archiveOutcome === 'auth_required'
+            ? 'This moment is outside Twitch’s live DVR window. Archive lookup needs an authenticated extension session.'
+            : archiveOutcome === 'identity_mismatch'
+              ? 'Twitch returned an archive for a different broadcast, so it was not opened.'
+          : archiveOutcome === 'not_published'
+            ? 'This moment is outside Twitch’s live DVR window. Twitch has not published the archive VOD yet.'
+            : `Replay after VOD: ${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window.`,
+      })
+    } finally {
+      jumpBusyRef.current = false
+    }
   }
 
   if (resolvedPlacement === 'hidden') {
@@ -1177,6 +1740,21 @@ export function Overlay({
         onTrack={localStackBackend ? () => void startTracking() : undefined}
       />
 
+      {notice ? (
+        <div
+          style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}
+          role={notice.kind === 'warn' ? 'status' : 'status'}
+          aria-live="polite"
+        >
+          <span>{notice.text}</span>
+          {notice.action ? (
+            <a href={notice.action.href} target="_blank" rel="noreferrer" style={styles.noticeLink}>
+              {notice.action.label}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+
       {showHostedOfflineFallback ? (
         <PulseSectionCard title="Channel offline" titleTone="muted">
           <p style={styles.stateText}>
@@ -1202,7 +1780,7 @@ export function Overlay({
         </section>
       ) : null}
 
-      {error ? (
+      {error && !isVodPage ? (
         <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openInlineSettings} />
       ) : null}
 
@@ -1280,6 +1858,7 @@ export function Overlay({
                   onAnalytics={openAnalyticsForMoment}
                   onHighlightOffset={setChartPreviewOffset}
                   onPinOffset={handleMostReactedPin}
+                  resolveJumpControl={resolveMomentJumpControl}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                 />
               ) : null}
@@ -1288,7 +1867,11 @@ export function Overlay({
 
           {payload && pulseLiveAccess.state === 'full_live' && shouldShowMissedMomentsBanner(payload) ? (
             <CoverageCard
-              source={{ ...payload, tracking: payload.tracking }}
+              source={{
+                ...payload,
+                tracking: payload.tracking,
+                navigationVodId: pastStreamsLiveVodId,
+              }}
               busy={missedBusy}
               refreshed={missedRefreshed}
               job={missedJob}
@@ -1342,10 +1925,6 @@ export function Overlay({
             />
           ) : null}
 
-          {notice ? (
-            <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p>
-          ) : null}
-
           {topClip && !isVodPage ? <ClipSpikeCard clip={topClip} /> : null}
 
           {!isVodPage ? (
@@ -1356,12 +1935,13 @@ export function Overlay({
             isLive={uiIsLive}
             channelOffline={!uiIsLive}
             onOpenFromStart={openStreamStartToLive}
+            onCurrentLiveVodId={rememberPastStreamsLiveVodId}
           />
           ) : null}
         </>
       ) : null}
 
-      {!error && !payload ? (
+      {!error && !payload && !isVodPage ? (
         sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
           <PulseSidebarSkeleton hostedBackend={hostedBackend} />
         ) : (
@@ -1374,6 +1954,20 @@ export function Overlay({
             </p>
           </section>
         )
+      ) : null}
+
+      {error && !payload && !isVodPage ? (
+        <section style={styles.stateBlock} role="alert">
+          <h2 style={styles.stateTitle}>Pulse unavailable</h2>
+          <p style={styles.stateText}>
+            {coverageErrorMessage(error, hostedBackend
+              ? 'StreamPulse did not respond in time. The Twitch page is still usable.'
+              : `No response from ${backendUrl}. Make sure the local stack is running.`)}
+          </p>
+          <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>
+            Try again
+          </button>
+        </section>
       ) : null}
         </div>
       )}
@@ -1526,6 +2120,7 @@ function vodPulseStatusKind(state: ReturnType<typeof resolveVodPulseState>): Pul
     case 'loading':
       return 'syncing'
     case 'missing':
+    case 'untracked_actionable':
       return 'missing'
     default:
       return 'backend-error'
@@ -1550,18 +2145,33 @@ function VodPulseStatusCard({
       ? 'Loading replay analytics…'
       : state.status === 'syncing'
         ? state.reason ?? 'Replay analytics are still syncing for this VOD.'
-        : state.status === 'missing'
-          ? state.reason ?? 'No replay analytics have been indexed for this VOD yet.'
-          : state.status === 'error'
-            ? state.message
-            : 'Replay analytics are partially available.'
+        : state.status === 'untracked_actionable'
+          ? state.reason ?? 'Pulse hasn’t indexed this VOD yet.'
+          : state.status === 'missing'
+            ? state.reason ?? 'No replay analytics have been indexed for this VOD yet.'
+            : state.status === 'error'
+              ? state.message
+              : state.status === 'ready'
+                ? 'Replay analytics are ready for this VOD.'
+                : 'Replay analytics are partially available.'
+
+  const showRetry =
+    Boolean(onRetry)
+    && state.status !== 'untracked_actionable'
+    && state.status !== 'ready'
+    && (state.status === 'error' || state.status === 'missing' || state.status === 'syncing' || state.status === 'partial')
 
   return (
     <PulseSectionCard title="Replay Pulse">
       <div style={styles.vodStateWrap}>
         <PulseStatusPill status={status} />
         <p style={styles.stateText}>{subtitle}</p>
-        {onRetry ? (
+        {state.status === 'untracked_actionable' ? (
+          <p style={styles.stateText}>
+            This VOD was never collected live. Explicit indexing will be available once the authenticated Load Pulse workflow is enabled on the hosted API.
+          </p>
+        ) : null}
+        {showRetry ? (
           <button type="button" style={styles.secondaryButton} onClick={onRetry}>
             Retry
           </button>
@@ -1892,7 +2502,8 @@ const styles: Record<string, CSSProperties> = {
   progressFill: { background: theme.accent, borderRadius: 999, display: 'block', height: '100%' },
   errorBlock: { background: theme.panel, borderRadius: 12, padding: 16 },
   errorTitle: { color: theme.error, fontSize: 18, margin: '0 0 10px' },
-  notice: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: 10, color: theme.accentText, fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
+  notice: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: 10, color: theme.accentText, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
+  noticeLink: { color: theme.accentText, textDecoration: 'underline', textUnderlineOffset: 2 },
   noticeWarn: { background: theme.statusWarnBg, borderColor: theme.statusWarnBorder, color: theme.statusWarnText },
   noticeOk: { background: theme.statusOkBg, borderColor: theme.statusOkBorder, color: theme.statusOkText },
   streamPulseHeader: { alignItems: 'flex-start', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', marginBottom: 14, padding: '12px 14px', width: '100%' },

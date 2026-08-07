@@ -1,7 +1,57 @@
-import type { ExtensionGameSegment, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
+import type { ExtensionGameSegment, ExtensionPeak, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 
 function gameSegmentKey(segment: ExtensionGameSegment): string {
   return `${segment.gameName.trim().toLowerCase()}:${segment.offsetSeconds}`
+}
+
+/** Drop the pre-descent alias plateau (...22h, then 00:00 live segment). */
+export function stripAliasedPriorTimeline(rollups: ExtensionRollup[]): ExtensionRollup[] {
+  if (rollups.length < 2) return rollups
+  let cut = 0
+  for (let i = 1; i < rollups.length; i += 1) {
+    const prev = rollups[i - 1]?.offsetSeconds ?? 0
+    const next = rollups[i]?.offsetSeconds ?? 0
+    if (next + 120 < prev) cut = i
+  }
+  return cut > 0 ? rollups.slice(cut) : rollups
+}
+
+function clipFullRollupsToHorizon(
+  rollups: ExtensionRollup[],
+  currentOffsetSeconds: number,
+): ExtensionRollup[] {
+  if (rollups.length === 0 || !(currentOffsetSeconds > 0)) return rollups
+  const stripped = stripAliasedPriorTimeline(rollups)
+  const limit = Math.floor(currentOffsetSeconds / 60) * 60 + 60
+  return stripped.filter(rollup => (rollup.offsetSeconds ?? 0) <= limit)
+}
+
+function clipPeaksToHorizon(
+  peaks: ExtensionPeak[] | undefined,
+  currentOffsetSeconds: number,
+): ExtensionPeak[] | undefined {
+  if (!peaks?.length) return peaks
+  if (!(currentOffsetSeconds > 0)) return peaks
+  const limit = currentOffsetSeconds + 60
+  const next = peaks.filter(peak => (peak.offsetSeconds ?? 0) <= limit)
+  return next.length > 0 ? next : []
+}
+
+function clampGamesToDuration(
+  games: ExtensionGameSegment[] | undefined,
+  durationSeconds: number,
+): ExtensionGameSegment[] | undefined {
+  if (!games?.length || !(durationSeconds > 0)) return games
+  const next = games
+    .map(segment => {
+      if (segment.offsetSeconds >= durationSeconds) return null
+      const maxDur = durationSeconds - segment.offsetSeconds
+      const duration = Math.min(Math.max(0, segment.durationSeconds), maxDur)
+      if (duration <= 0) return null
+      return { ...segment, durationSeconds: duration }
+    })
+    .filter((segment): segment is ExtensionGameSegment => segment != null)
+  return next.length > 0 ? next : undefined
 }
 
 function mergeGamesBySegment(
@@ -38,7 +88,17 @@ function mergeRollupsByOffset(previous: ExtensionRollup[], incoming: ExtensionRo
 
 /** Keep full-stream rollups when a lightweight recent poll returns a slimmer payload. */
 export function mergePulsePayload(previous: PulsePayload | null | undefined, incoming: PulsePayload): PulsePayload {
-  if (!previous) return incoming
+  if (!previous) {
+    const horizon = incoming.currentOffsetSeconds ?? incoming.durationSeconds ?? 0
+    return {
+      ...incoming,
+      fullRollups: incoming.fullRollups?.length
+        ? clipFullRollupsToHorizon(incoming.fullRollups, horizon)
+        : incoming.fullRollups,
+      peaks: clipPeaksToHorizon(incoming.peaks, horizon),
+      games: clampGamesToDuration(incoming.games, horizon),
+    }
+  }
 
   const prevFull = previous.fullRollups ?? []
   const nextFull = incoming.fullRollups ?? []
@@ -61,13 +121,22 @@ export function mergePulsePayload(previous: PulsePayload | null | undefined, inc
       ? { ...previous.coverage, ...incoming.coverage, hasFullStreamCoverage: previous.coverage.hasFullStreamCoverage }
       : coverage
 
+  const horizon = incoming.currentOffsetSeconds ?? incoming.durationSeconds ?? 0
+  const mergedPeaks =
+    (incoming.peaks?.length ?? 0) >= (previous.peaks?.length ?? 0) ? incoming.peaks : previous.peaks
+
   return {
     ...incoming,
     rollups,
-    fullRollups: fullRollups.length > 0 ? fullRollups : incoming.fullRollups,
+    fullRollups: fullRollups.length > 0
+      ? clipFullRollupsToHorizon(fullRollups, horizon)
+      : incoming.fullRollups,
     coverage: mergedCoverage,
-    peaks: (incoming.peaks?.length ?? 0) >= (previous.peaks?.length ?? 0) ? incoming.peaks : previous.peaks,
-    games: mergeGamesBySegment(previous.games, incoming.games),
+    peaks: clipPeaksToHorizon(mergedPeaks, horizon),
+    games: clampGamesToDuration(
+      mergeGamesBySegment(previous.games, incoming.games),
+      horizon,
+    ),
     peakEmotePerMin: incoming.peakEmotePerMin ?? previous.peakEmotePerMin,
     peakViewers: incoming.peakViewers ?? previous.peakViewers,
   }

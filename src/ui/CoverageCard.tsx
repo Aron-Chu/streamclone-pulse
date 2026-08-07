@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PulseBackfillJob } from '../shared/messages.ts'
 import {
@@ -10,6 +9,7 @@ import {
 } from './missedMoments.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
 import { theme } from './theme.ts'
+import { useReducedMotion } from './motion/useReducedMotion.ts'
 
 export interface CoverageCardProps {
   source: PulseCoverageSource & { tracking?: boolean; streamId?: string; helixEnabled?: boolean }
@@ -23,29 +23,6 @@ export interface CoverageCardProps {
   onCheckVod?: () => void
   onOpenSettings?: () => void
   onOpenAnalytics?: () => void
-}
-
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false,
-  )
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(mq.matches)
-    onChange()
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    }
-    mq.addListener(onChange)
-    return () => mq.removeListener(onChange)
-  }, [])
-
-  return reduced
 }
 
 export function CoverageCard({
@@ -65,7 +42,10 @@ export function CoverageCard({
 
   const buttonState = missedMomentsButtonState(source, busy, refreshed)
   const backfilling = buttonState === 'backfilling' || buttonState === 'loading'
-  const waitingVod = buttonState === 'check_vod' || buttonState === 'waiting_vod'
+  const waitingVod =
+    buttonState === 'check_vod'
+    || buttonState === 'waiting_vod'
+    || buttonState === 'recheck_pulse_link'
   const failed = buttonState === 'failed' || Boolean(checkError)
   const loadReady = buttonState === 'load' && !busy
   const backendVod = backendResolvedVod(source)
@@ -129,7 +109,7 @@ export function CoverageCard({
 
       {waitingVod && onCheckVod ? (
         <button type="button" style={styles.loadLink} onClick={onCheckVod} disabled={busy}>
-          {busy ? 'Checking…' : 'Try VOD backfill for missing chat'}
+          {busy ? 'Checking…' : missedMomentsButtonLabel(buttonState)}
         </button>
       ) : null}
 
@@ -175,13 +155,13 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 0 6px',
   },
   progressTrack: {
-    background: 'rgba(255, 255, 255, 0.08)',
+    background: theme.hoverFill,
     borderRadius: 999,
     height: 4,
     overflow: 'hidden',
   },
   progressFill: {
-    background: 'var(--pulse-accent-soft, #a78bfa)',
+    background: theme.accent,
     borderRadius: 999,
     display: 'block',
     height: '100%',
@@ -194,7 +174,7 @@ const styles: Record<string, CSSProperties> = {
     appearance: 'none',
     background: 'transparent',
     border: 0,
-    color: 'var(--pulse-accent-soft, #c4b5fd)',
+    color: theme.accentText,
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,
@@ -204,7 +184,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
   },
   error: {
-    color: '#fca5a5',
+    color: theme.statusErrorText,
     fontSize: 11,
     lineHeight: 1.4,
     margin: '6px 0 0',
@@ -216,7 +196,7 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 0 6px',
   },
   debugDetail: {
-    color: 'var(--pulse-accent-soft, #c4b5fd)',
+    color: theme.accentText,
     fontSize: 10,
     lineHeight: 1.45,
     margin: '6px 0 0',

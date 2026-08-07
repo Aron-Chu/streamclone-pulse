@@ -87,6 +87,65 @@ export type LiveSeekResult =
   | { ok: true; targetSeconds: number }
   | { ok: false; reason: 'no_video' | 'not_seekable' | 'outside_buffer' }
 
+export type LiveMediaWindow =
+  | {
+      ok: true
+      liveEdge: number
+      ranges: Array<{ start: number; end: number }>
+      bufferedEnd: number | null
+    }
+  | {
+      ok: false
+      reason: 'no_seekable_ranges' | 'sentinel_range' | 'volatile_ranges'
+      ranges: Array<{ start: number; end: number }>
+      bufferedEnd: number | null
+    }
+
+const MAX_LIVE_EDGE_DRIFT_SECONDS = 5 * 60
+
+function readTimeRanges(value: TimeRanges | null | undefined): Array<{ start: number; end: number }> {
+  if (!value) return []
+  try {
+    const ranges: Array<{ start: number; end: number }> = []
+    for (let index = 0; index < value.length; index += 1) {
+      const start = value.start(index)
+      const end = value.end(index)
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return []
+      ranges.push({ start, end })
+    }
+    return ranges
+  } catch {
+    // Twitch can replace the MediaSource while a range is being read.
+    return []
+  }
+}
+
+/**
+ * Twitch's live MediaSource can expose a huge sentinel seekable range even
+ * though only the current live segment is available. Treat range plausibility
+ * as a media-clock question, not as a broadcast-duration/horizon question.
+ */
+export function classifyLiveMediaWindow(video: HTMLVideoElement | null): LiveMediaWindow {
+  if (!video) {
+    return { ok: false, reason: 'no_seekable_ranges', ranges: [], bufferedEnd: null }
+  }
+  const ranges = readTimeRanges(video.seekable)
+  const bufferedRanges = readTimeRanges(video.buffered)
+  const bufferedEnd = bufferedRanges.length ? bufferedRanges[bufferedRanges.length - 1]!.end : null
+  if (!ranges.length) {
+    return { ok: false, reason: 'no_seekable_ranges', ranges, bufferedEnd }
+  }
+  const liveEdge = ranges[ranges.length - 1]!.end
+  const currentTime = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : null
+  const mediaClock = Math.max(currentTime ?? 0, bufferedEnd ?? 0)
+  // A real live edge is close to the media clock. The 2^30-style endpoint in
+  // the captured Twitch failure is a sentinel and must never receive a seek.
+  if (video.duration === Infinity && liveEdge - mediaClock > MAX_LIVE_EDGE_DRIFT_SECONDS) {
+    return { ok: false, reason: 'sentinel_range', ranges, bufferedEnd }
+  }
+  return { ok: true, liveEdge, ranges, bufferedEnd }
+}
+
 export function getPrimaryVideo(): HTMLVideoElement | null {
   const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[]
   if (videos.length === 0) return null
@@ -108,64 +167,144 @@ export function getPrimaryVideo(): HTMLVideoElement | null {
   return best
 }
 
-export function seekVodOffset(video: HTMLVideoElement | null, offsetSeconds: number): LiveSeekResult {
+function commitVideoSeek(video: HTMLVideoElement, targetSeconds: number): boolean {
+  try {
+    // Prefer the media element's native keyframe-aware seek when the browser
+    // exposes it. Twitch's MSE controller can reject a raw currentTime write
+    // during manifest/quality transitions even though the range is seekable.
+    if (typeof video.fastSeek === 'function') {
+      video.fastSeek(targetSeconds)
+    } else {
+      video.currentTime = targetSeconds
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function seekVodOffset(
+  video: HTMLVideoElement | null,
+  offsetSeconds: number,
+  options: { commit?: boolean } = {},
+): LiveSeekResult {
   if (!video) return { ok: false, reason: 'no_video' }
   if (!Number.isFinite(offsetSeconds)) return { ok: false, reason: 'outside_buffer' }
   const target = Math.max(0, offsetSeconds)
   if (!Number.isFinite(video.duration) || video.duration <= 0) {
-    video.currentTime = target
+    if (options.commit !== false && !commitVideoSeek(video, target)) {
+      return { ok: false, reason: 'not_seekable' }
+    }
     return { ok: true, targetSeconds: target }
   }
   if (target > video.duration + 1) {
     return { ok: false, reason: 'outside_buffer' }
   }
-  video.currentTime = target
+  if (options.commit !== false && !commitVideoSeek(video, target)) {
+    return { ok: false, reason: 'not_seekable' }
+  }
   return { ok: true, targetSeconds: target }
 }
 
 export function seekPlaybackOffset(
   video: HTMLVideoElement | null,
   offsetSeconds: number,
-  options?: { isLive?: boolean; liveCurrentOffset?: number },
+  options?: { isLive?: boolean; liveCurrentOffset?: number; commit?: boolean },
 ): LiveSeekResult {
   if (options?.isLive && Number.isFinite(options.liveCurrentOffset)) {
-    return seekLiveOffset(video, offsetSeconds, options.liveCurrentOffset as number)
+    return seekLiveOffset(video, offsetSeconds, options.liveCurrentOffset as number, options)
   }
-  return seekVodOffset(video, offsetSeconds)
+  return seekVodOffset(video, offsetSeconds, options)
+}
+
+export function seekableLiveEdge(ranges: TimeRanges): number | null {
+  if (!ranges || ranges.length === 0) return null
+  try {
+    const end = ranges.end(ranges.length - 1)
+    return Number.isFinite(end) ? end : null
+  } catch {
+    // Twitch can replace a MediaSource between length and end(). Treat the
+    // transient race as unavailable instead of throwing from a click handler.
+    return null
+  }
 }
 
 export function seekLiveOffset(
   video: HTMLVideoElement | null,
   offsetSeconds: number,
   currentOffsetSeconds: number,
+  options: { commit?: boolean } = {},
 ): LiveSeekResult {
   if (!video) return { ok: false, reason: 'no_video' }
   if (!Number.isFinite(offsetSeconds) || !Number.isFinite(currentOffsetSeconds)) {
     return { ok: false, reason: 'outside_buffer' }
   }
-  // Never turn a future/corrupt moment into a successful seek at the live edge.
-  // The old max(0, ...) below made a 42-hour peak on an 8-hour stream report
-  // success while leaving the player at the live edge.
   if (offsetSeconds > currentOffsetSeconds) {
     return { ok: false, reason: 'outside_buffer' }
   }
+  const mediaWindow = classifyLiveMediaWindow(video)
+  if (!mediaWindow.ok) return { ok: false, reason: 'not_seekable' }
+  // Do not impose a wall-clock horizon here. Twitch can expose more than two
+  // hours of DVR for long broadcasts, and the seekable ranges are the only
+  // authoritative boundary. A target is accepted below only when its actual
+  // media timestamp is inside one of those ranges.
   const behindLiveSeconds = Math.max(0, currentOffsetSeconds - offsetSeconds)
-  const target = Math.max(0, video.currentTime - behindLiveSeconds)
-  if (!isSeekable(video.seekable, target)) {
-    return { ok: false, reason: video.seekable.length > 0 ? 'outside_buffer' : 'not_seekable' }
+  // `currentTime` may represent a delayed viewer, while the payload offset is
+  // measured from stream start. Anchor the calculation to Twitch's actual DVR
+  // live edge so a successful click cannot leave the player at the live point.
+  const target = Math.max(0, mediaWindow.liveEdge - behindLiveSeconds)
+  if (!isSeekableSnapshot(mediaWindow.ranges, target)) {
+    return { ok: false, reason: 'outside_buffer' }
   }
-  video.currentTime = target
+  if (options.commit !== false && !commitVideoSeek(video, target)) {
+    return { ok: false, reason: 'not_seekable' }
+  }
   return { ok: true, targetSeconds: target }
 }
 
 export function isSeekable(ranges: TimeRanges, targetSeconds: number): boolean {
   if (!Number.isFinite(targetSeconds)) return false
-  for (let i = 0; i < ranges.length; i += 1) {
-    if (targetSeconds >= ranges.start(i) && targetSeconds <= ranges.end(i)) {
-      return true
+  try {
+    for (let i = 0; i < ranges.length; i += 1) {
+      if (targetSeconds >= ranges.start(i) && targetSeconds <= ranges.end(i)) {
+        return true
+      }
     }
+  } catch {
+    return false
   }
   return false
+}
+
+function isSeekableSnapshot(ranges: Array<{ start: number; end: number }>, targetSeconds: number): boolean {
+  if (!Number.isFinite(targetSeconds)) return false
+  return ranges.some(range => targetSeconds >= range.start && targetSeconds <= range.end)
+}
+
+/**
+ * Prefer the wall-clock offset derived from the validated stream start. The
+ * payload offset is retained when it agrees within two minutes, which absorbs
+ * normal API/player clock skew without allowing a stale offset to mis-seek.
+ */
+export function streamOffsetSecondsForLiveSeek(input: {
+  startedAt?: string | null
+  payloadOffsetSeconds?: number | null
+  nowMs?: number
+}): number | null {
+  const payload =
+    Number.isFinite(input.payloadOffsetSeconds) && (input.payloadOffsetSeconds as number) >= 0
+      ? (input.payloadOffsetSeconds as number)
+      : null
+  const startedAt = input.startedAt?.trim()
+  if (startedAt) {
+    const startMs = Date.parse(startedAt)
+    if (Number.isFinite(startMs)) {
+      const derived = Math.max(0, ((input.nowMs ?? Date.now()) - startMs) / 1000)
+      if (payload != null && Math.abs(derived - payload) <= 120) return payload
+      return derived
+    }
+  }
+  return payload
 }
 
 function normalizeLogin(value: string): string | null {

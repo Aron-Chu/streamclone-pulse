@@ -1,46 +1,109 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="tw-root--theme-dark">
 <head>
   <meta charset="utf-8" />
   <title>fixturechan - Twitch</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #0e0e10; color: #efeff1; font-family: Inter, Arial, sans-serif; }
-    #layout { display: flex; height: 100vh; }
-    #player { flex: 1; position: relative; background: #000; }
-    #player video { width: 100%; height: 100%; object-fit: contain; }
+    html, body { margin: 0; height: 100%; background: #0e0e10; color: #efeff1; font-family: Inter, "Roobert", Arial, sans-serif; }
+    #top-nav {
+      height: 50px; display: flex; align-items: center; gap: 16px;
+      padding: 0 16px; background: #18181b; border-bottom: 1px solid #2f2f35;
+      box-sizing: border-box;
+    }
+    #top-nav .logo { color: #bf94ff; font-weight: 700; letter-spacing: 0.02em; }
+    #top-nav .search {
+      flex: 1; max-width: 360px; height: 30px; border-radius: 6px;
+      background: #1f1f23; border: 1px solid #2f2f35; color: #adadb8; padding: 0 10px;
+      display: flex; align-items: center; font-size: 13px;
+    }
+    #layout { display: flex; height: calc(100vh - 50px); }
+    #player { flex: 1; position: relative; background: #000; min-width: 0; }
+    #player video { width: 100%; height: 100%; object-fit: cover; background: #111; }
+    .channel-info {
+      position: absolute; left: 12px; bottom: 12px; right: 12px;
+      display: flex; gap: 12px; align-items: center;
+      background: linear-gradient(transparent, rgba(0,0,0,0.72));
+      padding: 24px 8px 8px; pointer-events: none;
+    }
+    .avatar {
+      width: 48px; height: 48px; border-radius: 999px; background: #772ce8;
+      display: grid; place-items: center; font-weight: 700;
+    }
+    .channel-info h1 { margin: 0; font-size: 16px; }
+    .channel-info p { margin: 2px 0 0; font-size: 13px; color: #dedee3; }
+    .live-pill {
+      display: inline-block; background: #eb0400; color: #fff;
+      font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+      margin-right: 6px;
+    }
     .channel-root__right-column {
       width: 340px;
-      min-width: 340px;
-      height: 100vh;
+      min-width: 0;
+      height: 100%;
       background: #1f1f23;
       display: flex;
       flex-direction: column;
       position: relative;
+      border-left: 1px solid #2f2f35;
+      box-sizing: border-box;
     }
     [data-test-selector="chat-room-component-layout"] {
       display: flex;
       flex-direction: column;
       height: 100%;
       min-height: 400px;
-      min-width: 300px;
+      min-width: 0;
+      width: 100%;
     }
-    [data-a-target="chat-room-header"] { padding: 12px; border-bottom: 1px solid #2f2f35; }
-    [data-test-selector="chat-scrollable-area"] { flex: 1; overflow: auto; padding: 8px; min-height: 200px; }
-    [data-a-target="chat-input"] { margin: 8px; min-height: 40px; }
+    [data-a-target="chat-room-header"] {
+      padding: 12px; border-bottom: 1px solid #2f2f35; font-size: 14px; font-weight: 600;
+    }
+    [data-test-selector="chat-scrollable-area"] {
+      flex: 1; overflow: auto; padding: 8px 10px; min-height: 200px; font-size: 13px; line-height: 1.45;
+    }
+    .chat-line { margin: 0 0 8px; color: #efeff1; }
+    .chat-line .user { color: #9147ff; font-weight: 600; }
+    [data-a-target="chat-input"] {
+      margin: 8px; min-height: 40px; border: 1px solid #2f2f35; border-radius: 6px;
+      background: #18181b; padding: 8px;
+    }
+    [data-a-target="chat-input"] textarea {
+      width: 100%; border: 0; background: transparent; color: #adadb8; resize: none; outline: none;
+      font: inherit;
+    }
     [data-a-target="stream-info-card-component"] { position: absolute; left: 12px; top: 12px; }
   </style>
 </head>
 <body>
+  <header id="top-nav" aria-label="Twitch navigation">
+    <div class="logo">TWITCH</div>
+    <div class="search">Search</div>
+  </header>
   <div id="layout">
     <div id="player">
       <video id="live-video" playsinline muted></video>
-      <div data-a-target="stream-info-card-component">LIVE · fixturechan</div>
+      <div data-a-target="stream-info-card-component"><span class="live-pill">LIVE</span> fixturechan</div>
+      <!-- Adversarial decoys: must not be matched by scoped sidebar chrome hides. -->
+      <button type="button" data-a-target="chat-viewers" aria-label="Users in chat">Decoy viewers</button>
+      <div data-a-target="chat-room-header"><h2>Decoy Stream Chat</h2></div>
+      <div class="channel-info">
+        <div class="avatar" aria-hidden="true">F</div>
+        <div>
+          <h1>fixturechan</h1>
+          <p>Just Chatting · Fixture stream for StreamPulse store screenshots</p>
+        </div>
+      </div>
     </div>
     <aside class="channel-root__right-column" aria-label="Chat">
       <section data-test-selector="chat-room-component-layout">
         <header data-a-target="chat-room-header"><h2>Stream Chat</h2></header>
         <div data-test-selector="chat-scrollable-area" data-a-target="chat-scrollable-area">
-          <div>Fixture chat (no private content)</div>
+          <div class="chat-line"><span class="user">viewer_one:</span> let’s go</div>
+          <div class="chat-line"><span class="user">emote_fan:</span> KEKW</div>
+          <div class="chat-line"><span class="user">clipper:</span> that spike tho</div>
+          <div class="chat-line"><span class="user">mod_bot:</span> follow the rules</div>
+          <div class="chat-line"><span class="user">chat_two:</span> OMEGALUL</div>
+          <div class="chat-line"><span class="user">lurker42:</span> hi from chat</div>
         </div>
         <div data-a-target="chat-input"><textarea placeholder="Send a message"></textarea></div>
       </section>

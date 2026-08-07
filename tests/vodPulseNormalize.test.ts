@@ -4,6 +4,7 @@ import {
   normalizeVodPulseHttpResponse,
   resolveVodPulseState,
   sanitizeVodTransportError,
+  vodPulseStateAllowsRetry,
 } from '../src/vod/normalizeVodPulseFetch.ts'
 import type { ExtensionVodPulseResponse } from '../src/types/vodPulseTypes.ts'
 
@@ -102,11 +103,48 @@ describe('resolveVodPulseState', () => {
     expect(state.status).toBe('missing')
   })
 
-  it('never surfaces raw vod_pulse transport codes as error message', () => {
-    const state = resolveVodPulseState(null, 'vod_pulse 404', false, '2806037629')
+  it('maps stream_not_collected missing to untracked_actionable', () => {
+    const state = resolveVodPulseState({
+      mode: 'vod',
+      vodId: '2837922047',
+      coverageStatus: 'missing',
+      resolutionState: 'stream_not_collected',
+      coverageMessage: 'Pulse hasn’t indexed this VOD yet.',
+    })
+    expect(state.status).toBe('untracked_actionable')
+  })
+
+  it('does not treat coverageMessage as a transport error when payload exists', () => {
+    const state = resolveVodPulseState(
+      {
+        mode: 'vod',
+        vodId: '1',
+        coverageStatus: 'missing',
+        coverageMessage: 'No replay analytics have been indexed for this VOD yet.',
+      },
+      undefined,
+    )
+    expect(state.status).toBe('missing')
     expect(state.status).not.toBe('error')
-    if (state.status === 'missing') {
-      expect(state.reason).not.toMatch(/vod_pulse/i)
-    }
+  })
+})
+
+describe('vodPulseStateAllowsRetry', () => {
+  const base: ExtensionVodPulseResponse = {
+    mode: 'vod',
+    vodId: '1',
+    coverageStatus: 'missing',
+  }
+
+  it('retries missing, syncing, and partial coverage', () => {
+    expect(vodPulseStateAllowsRetry(base)).toBe(true)
+    expect(vodPulseStateAllowsRetry({ ...base, coverageStatus: 'syncing' })).toBe(true)
+    expect(vodPulseStateAllowsRetry({ ...base, coverageStatus: 'partial' })).toBe(true)
+  })
+
+  it('stops retrying ready and terminal error responses', () => {
+    expect(vodPulseStateAllowsRetry({ ...base, coverageStatus: 'ready' })).toBe(false)
+    expect(vodPulseStateAllowsRetry({ ...base, coverageStatus: 'error' })).toBe(false)
+    expect(vodPulseStateAllowsRetry(null, 'vod_pulse 500')).toBe(false)
   })
 })

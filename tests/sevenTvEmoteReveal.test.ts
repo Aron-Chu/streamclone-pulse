@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { nextEmoteRevealCount } from '../src/ui/sevenTvEmoteReveal.ts'
+import {
+  EMOTE_PICKER_PAGE_SIZE,
+  nextEmoteRevealCount,
+} from '../src/ui/sevenTvEmoteReveal.ts'
 
 describe('nextEmoteRevealCount', () => {
-  it('says Show 3 more when 21 remain of a 24-emote catalog', () => {
-    expect(nextEmoteRevealCount(24, 3)).toBe(3)
+  it('starts with six visible emotes', () => {
+    expect(EMOTE_PICKER_PAGE_SIZE).toBe(6)
   })
 
-  it('says Show 3 more again after the first page expands', () => {
-    expect(nextEmoteRevealCount(24, 6)).toBe(3)
+  it('reveals six more when a full page remains', () => {
+    expect(nextEmoteRevealCount(24, 6)).toBe(6)
   })
 
   it('says the true remainder when fewer than a page are left', () => {
-    expect(nextEmoteRevealCount(7, 6)).toBe(1)
+    expect(nextEmoteRevealCount(10, 6)).toBe(4)
   })
 
   it('returns 0 when everything is already visible', () => {

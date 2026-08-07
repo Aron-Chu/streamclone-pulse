@@ -116,7 +116,8 @@ export function prepareRecapChartRollups(
 ): ExtensionRollup[] {
   if (rollups.length === 0) return []
   const lastOffset = rollups[rollups.length - 1]?.offsetSeconds ?? 0
-  const toOffset = Math.max(toOffsetSeconds, lastOffset)
+  // Cap fill end to the last observed rollup — never invent empty hours past Pulse.
+  const toOffset = Math.min(Math.max(toOffsetSeconds, 0), Math.max(lastOffset, 0))
   if (toOffset <= 60) return rollups
   const filled = zeroFillRollupsForRecap(rollups, 0, toOffset)
   return downsampleTimeline(filled, maxPoints, rollupChartActivityScore)

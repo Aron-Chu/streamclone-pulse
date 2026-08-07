@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canShowVodBackfillCTA,
+  coverageCardCopy,
   evaluateBackfillRefresh,
   isPulseBackfillTerminal,
   missedMomentsButtonLabel,
@@ -134,6 +135,58 @@ describe('missedMoments helpers', () => {
         vodId: '123',
       }),
     ).toBe(false)
+  })
+
+  it('does not unlock backfill from navigationVodId alone', () => {
+    expect(
+      canShowVodBackfillCTA({
+        coverage: partialCoverage({ state: 'waiting_for_vod', canBackfill: false }),
+        navigationVodId: '2839713915',
+        isLive: true,
+      }),
+    ).toBe(false)
+    expect(
+      canShowVodBackfillCTA({
+        coverage: partialCoverage({ canBackfill: true }),
+        navigationVodId: '2839713915',
+      }),
+    ).toBe(false)
+    expect(
+      resolvePulseCoverage({
+        coverage: partialCoverage({ state: 'waiting_for_vod', canBackfill: false }),
+        navigationVodId: '2839713915',
+      })?.canBackfill,
+    ).toBe(false)
+    expect(
+      shouldShowMissedMomentsBanner({
+        coverage: partialCoverage({ state: 'waiting_for_vod', canBackfill: false }),
+        navigationVodId: '2839713915',
+        isLive: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('overrides hosted waiting_for_vod copy when navigationVodId is known', () => {
+    const copy = coverageCardCopy({
+      coverage: partialCoverage({
+        state: 'waiting_for_vod',
+        canBackfill: false,
+        copyKey: 'waiting_for_vod',
+        message: 'VOD chat not available yet — archive publishes after the stream ends',
+      }),
+      navigationVodId: '2839713915',
+      isLive: true,
+    })
+    expect(copy?.title).toBe('Current-broadcast VOD available')
+    expect(copy?.body).toMatch(/Jump|Past Streams/i)
+    expect(copy?.body).not.toMatch(/archive publishes after the stream ends/i)
+    expect(
+      missedMomentsButtonState({
+        coverage: partialCoverage({ state: 'waiting_for_vod' }),
+        navigationVodId: '2839713915',
+      }, false, false),
+    ).toBe('recheck_pulse_link')
+    expect(missedMomentsButtonLabel('recheck_pulse_link')).toBe('Recheck Pulse link')
   })
 
   it('treats terminal backfill statuses', () => {

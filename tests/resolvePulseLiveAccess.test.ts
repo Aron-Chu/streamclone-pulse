@@ -109,6 +109,31 @@ describe('resolvePulseLiveAccess', () => {
       })
       expect(result.state).toBe('not_tracked')
     })
+
+    it('keeps live chart available while backend waits for the VOD archive', () => {
+      const result = resolvePulseLiveAccess({
+        payload: basePayload({
+          rollups: [{ offsetSeconds: 420, chatCount: 12, sevenTvEmoteCount: 3 }],
+          lanes: { composite: [12], chat: [12], seventv: [3] },
+          coverage: {
+            state: 'waiting_for_vod',
+            coverageStartOffsetSeconds: 420,
+            coverageEndOffsetSeconds: 8400,
+            hasFullStreamCoverage: false,
+            trackedFromStart: false,
+            hasGaps: true,
+            missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: 360 }],
+            canBackfill: false,
+            vodStatus: 'waiting',
+            chatSource: 'live',
+            message: 'Live IRC tracking continues while Twitch publishes the archive.',
+          },
+        }),
+        pageIsLive: true,
+        hosted: true,
+      })
+      expect(result.state).toBe('full_live')
+    })
   })
 
   describe('local stack', () => {

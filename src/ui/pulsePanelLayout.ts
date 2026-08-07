@@ -9,6 +9,10 @@ export interface PulsePanelSections {
   showOffline: boolean
 }
 
+export function shouldShowSettingsPanel(panelView: 'pulse' | 'settings'): boolean {
+  return panelView === 'settings'
+}
+
 /** Match Streamclone web StreamPulsePanel: live band + Most Reacted; recap only after stream ends. */
 export function resolvePulsePanelSections(
   payload: PulsePayload | null,

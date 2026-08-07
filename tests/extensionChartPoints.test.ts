@@ -47,6 +47,17 @@ describe('extensionChartPoints', () => {
     expect(sampled.some(point => (point.viewerCount ?? 0) === 42_000)).toBe(true)
   })
 
+  it('downsample pins chronological last minute even when an earlier bucket peak is stronger', () => {
+    const rollups: ExtensionRollup[] = Array.from({ length: 240 }, (_, i) =>
+      rollup(i * 60, i === 100 ? 999 : 10, 0),
+    )
+    rollups[239] = rollup(239 * 60, 40, 5)
+    const sampled = downsampleRollupsForChart(rollups, 60)
+    expect(sampled[sampled.length - 1]?.offsetSeconds).toBe(239 * 60)
+    expect(sampled[sampled.length - 1]?.chatCount).toBe(40)
+    expect(sampled.some(point => (point.chatCount ?? 0) === 999)).toBe(true)
+  })
+
   it('finds nearest chart point by offset', () => {
     const points = chartPointsFromExtensionRollups([
       rollup(0, 1),

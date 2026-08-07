@@ -86,7 +86,7 @@ const styles: Record<string, CSSProperties> = {
   hubLink: {
     background: 'transparent',
     border: 0,
-    color: '#c4b5fd',
+    color: theme.accentText,
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,

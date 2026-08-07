@@ -14,8 +14,59 @@ import {
   type MetadataStreamHistoryItem,
 } from '../shared/pastVods.ts'
 import { getBackendUrl } from '../shared/storage.ts'
+import { PulseRequestError } from '../shared/pulseError.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
+
+/** Bound every background API request so a network stall cannot leave the UI loading forever. */
+export const PULSE_REQUEST_TIMEOUT_MS = 15_000
+const ARCHIVE_VOD_ID_RE = /^\d{6,20}$/
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = PULSE_REQUEST_TIMEOUT_MS,
+  operation = 'Pulse API',
+): Promise<Response> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = globalThis.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (timedOut || (err instanceof DOMException && err.name === 'AbortError')) {
+      throw new PulseRequestError('timeout', `${operation} request timed out`)
+    }
+    const detail = err instanceof Error ? err.message : String(err ?? 'network failure')
+    throw new PulseRequestError('network', `${operation} request failed: ${detail}`)
+  } finally {
+    globalThis.clearTimeout(timer)
+  }
+}
+
+function pulseHttpError(operation: string, status: number): PulseRequestError {
+  return new PulseRequestError('http', `${operation} ${status}`, status)
+}
+
+function requirePulsePayload(value: unknown): PulsePayload {
+  if (
+    !value
+    || typeof value !== 'object'
+    || typeof (value as PulsePayload).login !== 'string'
+    || typeof (value as PulsePayload).isLive !== 'boolean'
+    || typeof (value as PulsePayload).tracking !== 'boolean'
+    || !Array.isArray((value as PulsePayload).rollups)
+    || !Array.isArray((value as PulsePayload).lanes?.composite)
+    || !Array.isArray((value as PulsePayload).lanes?.chat)
+    || !Array.isArray((value as PulsePayload).lanes?.seventv)
+  ) {
+    throw new PulseRequestError('invalid_response', 'pulse response envelope is invalid')
+  }
+  return value as PulsePayload
+}
 
 async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
   const headers: Record<string, string> = {}
@@ -25,17 +76,52 @@ async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
   return headers
 }
 
+function requirePulseArchiveCandidate(value: unknown, expectedStreamId: string): PulseArchiveCandidate {
+  if (!value || typeof value !== 'object') {
+    throw new PulseRequestError('invalid_response', 'archive candidate response is invalid')
+  }
+  const candidate = value as Partial<PulseArchiveCandidate>
+  if (typeof candidate.streamId !== 'string' || candidate.streamId.trim() !== expectedStreamId) {
+    throw new Error('pulse_archive_identity_mismatch')
+  }
+  if (
+    typeof candidate.navigationValidated !== 'boolean'
+    || typeof candidate.analyticsResolutionState !== 'string'
+    || typeof candidate.analyticsAvailable !== 'boolean'
+    || candidate.persisted !== false
+  ) {
+    throw new PulseRequestError('invalid_response', 'archive candidate response is invalid')
+  }
+  if (candidate.navigationValidated) {
+    if (typeof candidate.navigationVodId !== 'string' || !ARCHIVE_VOD_ID_RE.test(candidate.navigationVodId.trim())) {
+      throw new PulseRequestError('invalid_response', 'validated archive candidate is missing a numeric VOD id')
+    }
+  } else if (candidate.navigationVodId != null) {
+    // An unvalidated candidate must never carry a VOD ID that a caller could
+    // accidentally treat as trusted navigation state.
+    throw new PulseRequestError('invalid_response', 'unvalidated archive candidate carried a VOD id')
+  }
+  return candidate as PulseArchiveCandidate
+}
+
 export async function fetchExtensionHealth(baseUrl?: string): Promise<ExtensionHealthResponse> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/health`)
+  const res = await fetchWithTimeout(`${root}/v1/extension/health`, undefined, PULSE_REQUEST_TIMEOUT_MS, 'health')
   if (!res.ok) {
-    throw new Error(`health ${res.status}`)
+    throw pulseHttpError('health', res.status)
   }
   const health = await res.json() as ExtensionHealthResponse
   await pulseDebug('vod.helix.health', 'extension health', {
     ok: health.ok,
     helixEnabled: health.helixEnabled ?? null,
     version: health.version,
+    identityComplete: health.identityComplete ?? null,
+    buildSha: health.buildSha ?? null,
+    imageDigest: health.imageDigest ?? null,
+    serviceGeneration: health.serviceGeneration ?? null,
+    archiveCandidate: health.capabilities?.archiveCandidate ?? health.routes?.archiveCandidate ?? null,
+    vodLookup: health.capabilities?.vodLookup ?? null,
+    backfill: health.capabilities?.backfill ?? null,
   })
   return health
 }
@@ -46,13 +132,13 @@ export async function fetchPulseChannel(
 ): Promise<PulsePayload> {
   const root = options?.baseUrl ?? await getBackendUrl()
   const qs = options?.window === 'full' ? '?window=full' : ''
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${qs}`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${qs}`, {
     headers: await pulseRequestHeaders(),
-  })
+  }, PULSE_REQUEST_TIMEOUT_MS, 'pulse')
   if (!res.ok) {
-    throw new Error(`pulse ${res.status}`)
+    throw pulseHttpError('pulse', res.status)
   }
-  const payload = await res.json() as PulsePayload
+  const payload = requirePulsePayload(await res.json())
   const lastRollup = payload.rollups[payload.rollups.length - 1]
   await pulseDebug('vod.pulse.api', 'pulse payload received', {
     login,
@@ -75,7 +161,7 @@ export async function fetchPulseVod(
   options?: { baseUrl?: string },
 ): Promise<import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse> {
   const root = options?.baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/vods/${encodeURIComponent(vodId)}`, {
     headers: await pulseRequestHeaders(),
   })
   const payload = await normalizeVodPulseHttpResponse(vodId, res)
@@ -113,12 +199,14 @@ export async function fetchPulseStream(
   if (options.window === 'full') {
     params.set('window', 'full')
   }
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/extension/pulse/streams/${encodeURIComponent(normalizedStreamId)}?${params.toString()}`,
     { headers: await pulseRequestHeaders() },
+    PULSE_REQUEST_TIMEOUT_MS,
+    'pulse_stream',
   )
   if (!res.ok) {
-    throw new Error(`pulse_stream ${res.status}`)
+    throw pulseHttpError('pulse_stream', res.status)
   }
 
   const payload = await res.json() as PulsePayload
@@ -147,15 +235,16 @@ export async function fetchPulseArchiveCandidate(
   const normalizedLogin = login.trim().toLowerCase()
   if (!normalizedStreamId || !normalizedLogin) throw new Error('pulse_archive_identity_required')
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/extension/pulse/streams/${encodeURIComponent(normalizedStreamId)}/archive-candidate`,
     { headers: await pulseRequestHeaders() },
   )
-  if (!res.ok) throw new Error(`pulse_archive_candidate ${res.status}`)
-  const candidate = await res.json() as PulseArchiveCandidate
-  if (candidate.streamId && candidate.streamId !== normalizedStreamId) {
-    throw new Error('pulse_archive_identity_mismatch')
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('archive_candidate_unavailable')
+    if (res.status === 401) throw new Error('archive_candidate_auth_required')
+    throw pulseHttpError('pulse_archive_candidate', res.status)
   }
+  const candidate = requirePulseArchiveCandidate(await res.json(), normalizedStreamId)
   await pulseDebug('vod.archive.candidate', 'archive candidate received', {
     login: normalizedLogin,
     streamId: normalizedStreamId,
@@ -172,7 +261,7 @@ export async function fetchExtensionCoverage(
   baseUrl?: string,
 ): Promise<ExtensionCoverageTierResponse> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/coverage`,
     { headers: await pulseRequestHeaders() },
   )
@@ -196,12 +285,22 @@ export async function postPulseBackfill(
   baseUrl?: string,
 ): Promise<PulseBackfillJob> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/backfill`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/backfill`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ mode: 'missed', ...body }),
   })
   if (!res.ok) {
+    if (res.status === 401) {
+      await pulseDebug('vod.backfill.start', 'backfill requires an authenticated extension session', {
+        login,
+        streamId: body.streamId,
+        vodId: body.vodId ?? null,
+        status: res.status,
+        authRequired: true,
+      }, 'info')
+      throw new Error('backfill_auth_required')
+    }
     let detail = `Backfill failed (${res.status})`
     try {
       const body = await res.json() as { error?: string }
@@ -228,7 +327,7 @@ export async function postPulseBackfill(
 
 export async function fetchPulseBackfillStatus(jobId: string, baseUrl?: string): Promise<PulseBackfillJob> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/backfill/${encodeURIComponent(jobId)}`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/backfill/${encodeURIComponent(jobId)}`, {
     headers: await pulseRequestHeaders(),
   })
   if (!res.ok) {
@@ -241,14 +340,27 @@ export async function postVodHint(
   login: string,
   body: { streamId: string; vodId: string },
   baseUrl?: string,
-): Promise<{ ok: boolean; vodId?: string }> {
+): Promise<{ ok: boolean; vodId?: string; status?: number; error?: string }> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/vod-hint`, {
+  const res = await fetchWithTimeout(`${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}/vod-hint`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify(body),
   })
   if (!res.ok) {
+    // Hosted deployments may require a device/user session for writes while
+    // keeping discovery and pulse reads public. A VOD found in Twitch is still
+    // useful to the player; do not turn this optional persistence step into an
+    // exception/retry loop or make the overlay look like discovery failed.
+    if (res.status === 401) {
+      await pulseDebug(
+        'vod.hint.api',
+        'vod-hint requires an authenticated extension session; local VOD discovery remains usable',
+        { login, streamId: body.streamId, vodId: body.vodId, status: res.status, authRequired: true },
+        'info',
+      )
+      return { ok: false, status: res.status, error: 'vod_hint_auth_required' }
+    }
     await pulseDebug(
       'vod.hint.api',
       `vod-hint HTTP ${res.status}`,
@@ -264,7 +376,7 @@ export async function postVodHint(
 
 export async function postWatchChannel(login: string, baseUrl?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/channels/${encodeURIComponent(login)}/watch`, {
+  const res = await fetchWithTimeout(`${root}/v1/analytics/channels/${encodeURIComponent(login)}/watch`, {
     method: 'POST',
     headers: await pulseRequestHeaders(),
   })
@@ -275,7 +387,7 @@ export async function postWatchChannel(login: string, baseUrl?: string): Promise
 
 export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/always-tracked`, {
+  const res = await fetchWithTimeout(`${root}/v1/analytics/always-tracked`, {
     headers: await pulseRequestHeaders(),
   })
   if (!res.ok) {
@@ -287,13 +399,13 @@ export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
 
 export async function setAlwaysTracked(login: string, track: boolean, baseUrl?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/always-tracked`, {
+  const res = await fetchWithTimeout(`${root}/v1/analytics/always-tracked`, {
     method: 'POST',
     headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ channel: login, track }),
   })
   if (!res.ok) {
-    throw new Error(`always_tracked_set ${res.status}`)
+    throw pulseHttpError('always_tracked_set', res.status)
   }
 }
 
@@ -315,7 +427,7 @@ export async function fetchChannelStreamHistory(
   baseUrl?: string,
 ): Promise<MetadataStreamHistoryItem[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/channels/${encodeURIComponent(login)}/streams/history?period=${encodeURIComponent(period)}`,
   )
   if (!res.ok) {
@@ -331,7 +443,7 @@ export async function fetchAnalyticsStreams(
   baseUrl?: string,
 ): Promise<AnalyticsStreamListItem[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${root}/v1/analytics/channels/${encodeURIComponent(login)}/streams?limit=${encodeURIComponent(limit)}`,
   )
   if (!res.ok) {
@@ -366,7 +478,7 @@ export async function fetchTopClip(
     const root = baseUrl ?? await getBackendUrl()
     const { startedAt, endedAt } = clipWindowBounds(options?.startedAt, options?.isLive)
     const qs = new URLSearchParams({ startedAt, endedAt, cursor: '' })
-    const res = await fetch(`${root}/v1/channels/${encodeURIComponent(login)}/clips?${qs}`)
+    const res = await fetchWithTimeout(`${root}/v1/channels/${encodeURIComponent(login)}/clips?${qs}`)
     if (!res.ok) return null
     const body = await res.json() as ClipsResponseBody
     return pickTopClip(body.items ?? [])

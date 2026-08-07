@@ -147,6 +147,7 @@ describe('resolveMostReactedHeat', () => {
   it('enriches peak counts from rollups when backend sends zeros', () => {
     const heat = resolveMostReactedHeat(
       makePayload({
+        currentOffsetSeconds: 3000,
         rollups: [
           {
             offsetSeconds: 2760,

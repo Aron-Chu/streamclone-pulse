@@ -9,7 +9,7 @@ import {
 
 describe('defaultWebAnalyticsBaseUrlForApi', () => {
   it('maps local API to streampulse-web dev port', () => {
-    expect(defaultWebAnalyticsBaseUrlForApi('http://localhost:8081')).toBe('http://localhost:5173')
+    expect(defaultWebAnalyticsBaseUrlForApi('http://localhost:8081')).toBe('http://localhost:5174')
   })
 
   it('maps hosted API to streampulse.stream', () => {
@@ -20,7 +20,7 @@ describe('defaultWebAnalyticsBaseUrlForApi', () => {
 describe('buildHubAnalyticsUrl', () => {
   it('returns public hub landing path', () => {
     expect(buildHubAnalyticsUrl('https://streampulse.stream')).toBe('https://streampulse.stream/analytics')
-    expect(buildHubAnalyticsUrl('http://localhost:5173/')).toBe('http://localhost:5173/analytics')
+    expect(buildHubAnalyticsUrl('http://localhost:5174/')).toBe('http://localhost:5174/analytics')
   })
 
   it('returns null for empty base', () => {

@@ -13,6 +13,7 @@ import {
   hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
   PLOT_PICKER_EMOTE_LIMIT,
+  selectedEmotesInPlotOrder,
   toggleEmotePlotKeys,
 } from './chatActivityEmotes.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
@@ -64,7 +65,6 @@ export function RecapTimelineChart({
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [tracesExpanded, setTracesExpanded] = useState(false)
-  const [userCollapsedTraces, setUserCollapsedTraces] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
   const onRequestFullRollupsRef = useRef(onRequestFullRollups)
@@ -123,7 +123,7 @@ export function RecapTimelineChart({
   }, [minuteRollups, catalog])
 
   const selectedEmotesForOverlay = useMemo(
-    () => topEmotesForPicker.filter(emote => selectedEmoteKeys.includes(emoteSelectionKey(emote))),
+    () => selectedEmotesInPlotOrder(topEmotesForPicker, selectedEmoteKeys),
     [topEmotesForPicker, selectedEmoteKeys],
   )
 
@@ -201,19 +201,8 @@ export function RecapTimelineChart({
     setChartHoverOffsetSeconds(null)
     setSelectedEmoteKeys([])
     setTracesExpanded(false)
-    setUserCollapsedTraces(false)
+    setFocusedSeriesKey(null)
   }, [payload.streamId])
-
-  useEffect(() => {
-    if (selectedEmotesForOverlay.length === 0) {
-      setTracesExpanded(false)
-      setUserCollapsedTraces(false)
-      return
-    }
-    if (!userCollapsedTraces) {
-      setTracesExpanded(true)
-    }
-  }, [selectedEmotesForOverlay.length, userCollapsedTraces])
 
   useEffect(() => {
     if (pinOffsetSeconds != null) {
@@ -248,7 +237,7 @@ export function RecapTimelineChart({
     setSelectedEmoteKeys(current => toggleEmotePlotKeys(current, key, MAX_PLOTTED_EMOTES))
   }
 
-  const chartHeight = 216
+  const chartHeight = tracesExpanded ? 292 : 200
   const hasPlottedEmotes = selectedEmotesForOverlay.length > 0
 
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
@@ -274,10 +263,9 @@ export function RecapTimelineChart({
             style={styles.expandButton}
             onClick={() => {
               if (tracesExpanded) {
-                setUserCollapsedTraces(true)
                 setTracesExpanded(false)
+                setFocusedSeriesKey(null)
               } else {
-                setUserCollapsedTraces(false)
                 setTracesExpanded(true)
               }
             }}
@@ -303,7 +291,6 @@ export function RecapTimelineChart({
                     style={{
                       ...styles.overlayLegendChip,
                       borderColor: plotColor,
-                      boxShadow: `inset 2px 0 0 ${plotColor}`,
                       opacity: isDimmed ? 0.4 : 1,
                     }}
                     aria-label={emote.name}
@@ -348,7 +335,7 @@ export function RecapTimelineChart({
           previewIndex={previewChartIndex}
           showViewerStrip={showViewerStrip}
           activityExpanded={tracesExpanded}
-          normalizeOverlaySeries={tracesExpanded}
+          normalizeOverlaySeries={tracesExpanded && hasPlottedEmotes}
           focusedSeriesKey={focusedSeriesKey}
           onFocusedSeriesKeyChange={setFocusedSeriesKey}
           onSelectIndex={handleChartSelect}
@@ -360,7 +347,6 @@ export function RecapTimelineChart({
           emptyMessage={chartEmpty || 'Loading full stream rollups…'}
           loading={timelineLoading || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
           isLive={false}
-          reducedMotion
         />
       </div>
 
@@ -422,8 +408,8 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
   },
   expandButton: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.border}`,
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
@@ -436,8 +422,8 @@ const styles: Record<string, CSSProperties> = {
   },
   overlayLegendChip: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 6,
     display: 'inline-flex',
     flexShrink: 0,

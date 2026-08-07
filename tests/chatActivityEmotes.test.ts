@@ -9,6 +9,8 @@ import {
   chartMaxPoints,
   chartEmptyMessage,
   chartRollupSeries,
+  chartTimelineWindowLabel,
+  CHART_WINDOW_OPTIONS,
   chatSeriesFromRollups,
   emoteSelectionKey,
   isSevenTvProvider,
@@ -23,6 +25,7 @@ import {
   resolvePayloadCoverageStartOffset,
   FULL_CHART_STREAM_START_TOLERANCE_SEC,
   rollupSeries,
+  selectedEmotesInPlotOrder,
   sevenTvEmotesFromRollup,
   sparklineIndexFromClick,
   toggleEmotePlotKeys,
@@ -33,6 +36,12 @@ import type { PulsePayload } from '../src/shared/messages.ts'
 import { downsampleRollupsForChart } from '../src/ui/extensionChartPoints.ts'
 
 describe('chatActivityEmotes', () => {
+  it('labels full chart window as Full stream', () => {
+    expect(chartTimelineWindowLabel('full')).toBe('Full stream')
+    expect(chartTimelineWindowLabel('30m')).toBe('30 min')
+    expect(CHART_WINDOW_OPTIONS.find(option => option.value === 'full')?.label).toBe('Full stream')
+  })
+
   it('detects 7TV providers', () => {
     expect(isSevenTvProvider('7TV')).toBe(true)
     expect(isSevenTvProvider('seventv')).toBe(true)
@@ -151,7 +160,11 @@ describe('chatActivityEmotes', () => {
       recap: null,
     }
     expect(rollupSeries(payload, 'recent')).toHaveLength(1)
-    expect(rollupSeries(payload, 'full')).toHaveLength(3)
+    const full = rollupSeries(payload, 'full')
+    expect(full).toHaveLength(4)
+    expect(full.some(r => r.offsetSeconds === 0)).toBe(true)
+    expect(full[full.length - 1]?.offsetSeconds).toBe(6900)
+    expect(full[full.length - 1]?.chatCount).toBe(5)
   })
 
   it('chartRollupSeries uses full stream rollups and keeps quiet minutes', () => {
@@ -174,7 +187,7 @@ describe('chatActivityEmotes', () => {
     expect(rollups).toHaveLength(3)
     expect(chatSeriesFromRollups(rollups)).toEqual([0, 4, 9])
     expect(chartMaxPoints(payload, 'full')).toBe(480)
-    expect(chartMaxPoints(payload, '2h')).toBe(120)
+    expect(chartMaxPoints(payload, '2h')).toBe(121)
   })
 
   it('chartEmptyMessage explains warming and missing full rollups', () => {
@@ -217,7 +230,9 @@ describe('chatActivityEmotes', () => {
     }
     const rollups = prepareChartRollups(payload, { chartWindow: '2h', currentOffsetSeconds: 7200 })
     expect(rollups.every(r => r.offsetSeconds >= 7200 - 2 * 60 * 60)).toBe(true)
-    expect(rollups[rollups.length - 1]?.chatCount).toBe(9)
+    expect(rollups.length).toBeGreaterThan(3)
+    expect(rollups.some(r => r.chatCount === 9)).toBe(true)
+    expect(rollups.find(r => r.offsetSeconds === 7140)?.chatCount).toBe(9)
   })
 
   it('densifies sparse full-stream rollups across the stream timeline when tracked from start', () => {
@@ -242,6 +257,133 @@ describe('chatActivityEmotes', () => {
     expect(rollups[0]?.offsetSeconds).toBe(0)
     expect(rollups[0]?.chatCount).toBe(0)
     expect(rollups[4]?.chatCount).toBe(9)
+  })
+
+  it('provisional full densifies recent rollups when fullRollups are not loaded yet', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 600,
+      coverageStartOffsetSeconds: 0,
+      rollups: [
+        { offsetSeconds: 300, chatCount: 40 },
+        { offsetSeconds: 600, chatCount: 80 },
+      ],
+      fullRollups: [],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    const rollups = prepareChartRollups(payload, { chartWindow: 'full', currentOffsetSeconds: 600 })
+    expect(rollups.length).toBeGreaterThan(2)
+    expect(rollups[0]?.offsetSeconds).toBe(0)
+    expect(rollups[0]?.chatCount).toBe(0)
+    expect(rollups[rollups.length - 1]?.chatCount).toBe(80)
+  })
+
+  it('densifies fixed windows so sparse early-stream minutes fill start→now', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 600,
+      rollups: [
+        { offsetSeconds: 540, chatCount: 12 },
+        { offsetSeconds: 600, chatCount: 20 },
+      ],
+      fullRollups: [],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    const rollups = prepareChartRollups(payload, { chartWindow: '60m', currentOffsetSeconds: 600 })
+    expect(rollups.length).toBeGreaterThan(2)
+    expect(rollups[0]?.offsetSeconds).toBe(0)
+    expect(rollups.some(r => r.offsetSeconds === 300 && (r.chatCount ?? 0) === 0)).toBe(true)
+    expect(rollups[rollups.length - 1]?.chatCount).toBe(20)
+  })
+
+  it('aligns 15m densify to minute slots so live offsets like :08 still hit rollups', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 39 * 60 + 8,
+      rollups: [],
+      fullRollups: Array.from({ length: 40 }, (_, minute) => ({
+        offsetSeconds: minute * 60,
+        chatCount: minute >= 24 ? 50 + minute : 5,
+        sevenTvEmoteCount: minute >= 24 ? 20 : 1,
+      })),
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    const rollups = prepareChartRollups(payload, {
+      chartWindow: '15m',
+      currentOffsetSeconds: 39 * 60 + 8,
+    })
+    expect(rollups[0]?.offsetSeconds).toBe(24 * 60)
+    expect(rollups.every(r => r.offsetSeconds % 60 === 0)).toBe(true)
+    expect(rollups.some(r => (r.chatCount ?? 0) >= 50)).toBe(true)
+    expect(Math.max(...rollups.map(r => r.chatCount ?? 0))).toBeGreaterThan(10)
+  })
+
+  it('does not append a trailing empty Now minute beyond the last rollup', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 40 * 60 + 45,
+      coverageStartOffsetSeconds: 0,
+      rollups: [],
+      fullRollups: [
+        { offsetSeconds: 37 * 60, chatCount: 40, sevenTvEmoteCount: 10 },
+        { offsetSeconds: 38 * 60, chatCount: 55, sevenTvEmoteCount: 12 },
+        { offsetSeconds: 39 * 60, chatCount: 80, sevenTvEmoteCount: 18 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    const rollups = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: 40 * 60 + 45,
+    })
+    expect(rollups[rollups.length - 1]?.offsetSeconds).toBe(39 * 60)
+    expect(rollups[rollups.length - 1]?.chatCount).toBe(80)
+    expect(rollups.some(r => r.offsetSeconds === 40 * 60)).toBe(false)
+  })
+
+  it('stitches fresher recent rollups onto stale fullRollups for Full charts', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 42 * 60,
+      coverageStartOffsetSeconds: 0,
+      rollups: [
+        { offsetSeconds: 40 * 60, chatCount: 120, viewerCount: 50_000 },
+        { offsetSeconds: 41 * 60, chatCount: 140, viewerCount: 51_000 },
+        { offsetSeconds: 42 * 60, chatCount: 160, viewerCount: 52_000 },
+      ],
+      fullRollups: Array.from({ length: 40 }, (_, minute) => ({
+        offsetSeconds: minute * 60,
+        chatCount: 20,
+        viewerCount: 40_000,
+      })),
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    const rollups = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: 42 * 60,
+    })
+    expect(rollups[rollups.length - 1]?.offsetSeconds).toBe(42 * 60)
+    expect(rollups[rollups.length - 1]?.chatCount).toBe(160)
+    expect(rollups[rollups.length - 1]?.viewerCount).toBe(52_000)
   })
 
   it('densifyRollupsForTimeline bucketing keeps averaged viewer samples per bucket', () => {
@@ -418,6 +560,43 @@ describe('chatActivityEmotes', () => {
       const rollups = prepareChartRollups(payload, { chartWindow: 'full', currentOffsetSeconds: 7200 })
       expect(rollups[0]?.offsetSeconds).toBe(2400)
     })
+
+    it('does not densify past live wall when fullRollups include aliased marathon offsets', () => {
+      const payload: PulsePayload = {
+        login: 'jynxzi',
+        isLive: true,
+        tracking: true,
+        currentOffsetSeconds: 7 * 3600,
+        coverageStartOffsetSeconds: 0,
+        coverage: {
+          state: 'full_stream_tracked',
+          coverageStartOffsetSeconds: 0,
+          coverageEndOffsetSeconds: 7 * 3600,
+          hasFullStreamCoverage: true,
+          trackedFromStart: true,
+          hasGaps: false,
+          canBackfill: false,
+          message: 'ok',
+        },
+        rollups: [],
+        fullRollups: [
+          { offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 },
+          { offsetSeconds: 14 * 3600 + 27 * 60, chatCount: 5, sevenTvEmoteCount: 1 },
+          { offsetSeconds: 22 * 3600 + 26 * 60, chatCount: 9, sevenTvEmoteCount: 2 },
+          { offsetSeconds: 7 * 3600 - 60, chatCount: 20, sevenTvEmoteCount: 3 },
+        ],
+        lanes: { composite: [], chat: [], seventv: [] },
+        peaks: [],
+        recap: null,
+      }
+      const rollups = prepareChartRollups(payload, {
+        chartWindow: 'full',
+        currentOffsetSeconds: 7 * 3600,
+      })
+      const maxOff = Math.max(...rollups.map(r => r.offsetSeconds))
+      expect(maxOff).toBeLessThanOrEqual(7 * 3600)
+      expect(maxOff).toBeGreaterThan(6 * 3600)
+    })
   })
 
   describe('fullRollupsMissingStreamPrefix', () => {
@@ -473,6 +652,16 @@ describe('chatActivityEmotes', () => {
     expect(keys).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
     expect(toggleEmotePlotKeys(keys, 'g')).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
     expect(toggleEmotePlotKeys(keys, 'b')).toEqual(['a', 'c', 'd', 'e', 'f'])
+  })
+
+  it('keeps plotted emotes in selection order when rankings change', () => {
+    const first = { id: 'a', name: 'First', count: 8, provider: '7TV' }
+    const second = { id: 'b', name: 'Second', count: 12, provider: '7TV' }
+
+    expect(selectedEmotesInPlotOrder(
+      [second, first],
+      [emoteSelectionKey(first), emoteSelectionKey(second), 'seventv:missing:Missing'],
+    )).toEqual([first, second])
   })
 
   it('normalizes overlay axis per series when expanded', () => {

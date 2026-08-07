@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolvePulsePanelSections } from '../src/ui/pulsePanelLayout.ts'
+import {
+  resolvePulsePanelSections,
+  shouldShowSettingsPanel,
+} from '../src/ui/pulsePanelLayout.ts'
 import type { PulsePayload } from '../src/shared/messages.ts'
 
 function basePayload(overrides: Partial<PulsePayload> = {}): PulsePayload {
@@ -144,5 +147,12 @@ describe('resolvePulsePanelSections', () => {
       { liveHeatVisible: false, warming: false, pageIsLive: false },
     )
     expect(sections.showOffline).toBe(false)
+  })
+})
+
+describe('shouldShowSettingsPanel', () => {
+  it('shows settings whenever the panel view is settings', () => {
+    expect(shouldShowSettingsPanel('settings')).toBe(true)
+    expect(shouldShowSettingsPanel('pulse')).toBe(false)
   })
 })

@@ -69,6 +69,8 @@ export function extensionGamesToChartGames(
 ): ChartGameSegment[] {
   const normalized = normalizeGameSegments(
     (games ?? []).map(game => ({
+      id: game.id,
+      categoryId: game.categoryId,
       gameName: game.gameName,
       boxArtUrl: game.boxArtUrl,
       offsetSeconds: game.offsetSeconds,
@@ -96,10 +98,12 @@ export function chartHighlightedGameKey(
   durationSeconds: number,
   visibleRange: GamesPlayedVisibleRange | null,
 ): string | null {
-  if (!hoveredGameKey || !visibleRange) return null
+  if (!hoveredGameKey) return null
   const segments = normalizeGameSegments(games ?? [], durationSeconds)
   const segment = segments.find(game => gameSegmentKey(game) === hoveredGameKey)
   if (!segment) return null
+  // No range yet (chart still loading) — still highlight so Games played hover works.
+  if (!visibleRange) return hoveredGameKey
   return gameSegmentOverlapsOffsetRange(
     segment,
     visibleRange.startOffset,

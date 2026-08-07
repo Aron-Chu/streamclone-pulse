@@ -6,7 +6,6 @@ import {
   toLiveStatsInputFromExtension,
   trendArrowGlyph,
   type LiveConfidenceState,
-  type LiveHeatPoint,
   type LiveStats,
   type TrendDirection,
 } from '@streampulse/pulse-core'
@@ -31,6 +30,7 @@ import {
   MAX_PLOTTED_EMOTES,
   PLOT_PICKER_EMOTE_LIMIT,
   prepareChartRollups,
+  selectedEmotesInPlotOrder,
   toggleEmotePlotKeys,
   type ChartTimelineWindow,
 } from './chatActivityEmotes.ts'
@@ -50,6 +50,7 @@ import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
+import { prefersReducedMotion, useSmoothedScalar } from './motion/useSmoothedScalar.ts'
 
 export interface LiveStatsBandProps {
   payload: PulsePayload
@@ -69,8 +70,6 @@ export interface LiveStatsBandProps {
   onRequestFullTimeline?: () => Promise<void>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
-  onSaveMoment?: (point: LiveHeatPoint) => void
-  saveMomentBusy?: boolean
   pinOffsetSeconds?: number | null
   previewOffsetSeconds?: number | null
   hasVodContext?: boolean
@@ -84,24 +83,24 @@ const CONFIDENCE_STYLES: Record<
   { background: string; border: string; color: string }
 > = {
   Synced: {
-    background: 'rgba(16, 185, 129, 0.15)',
-    border: 'rgba(52, 211, 153, 0.3)',
-    color: '#6ee7b7',
+    background: theme.statusOkBg,
+    border: theme.statusOkBorder,
+    color: theme.statusOkText,
   },
   Collecting: {
-    background: 'rgba(139, 92, 246, 0.15)',
-    border: 'rgba(167, 139, 250, 0.3)',
-    color: '#c4b5fd',
+    background: theme.accentSurface,
+    border: theme.borderAccent,
+    color: theme.accentTextSubtle,
   },
   'Waiting for first minute': {
-    background: 'rgba(245, 158, 11, 0.15)',
-    border: 'rgba(251, 191, 36, 0.3)',
-    color: '#fcd34d',
+    background: theme.statusWarnBg,
+    border: theme.statusWarnBorder,
+    color: theme.statusWarnText,
   },
   'Stats only': {
-    background: 'rgba(113, 113, 122, 0.15)',
-    border: 'rgba(161, 161, 170, 0.3)',
-    color: '#d4d4d8',
+    background: theme.hoverFill,
+    border: theme.borderSubtle,
+    color: theme.textSecondary,
   },
 }
 
@@ -158,7 +157,7 @@ function AnimatedMetric({
 }
 
 function TrendArrow({ trend }: { trend: TrendDirection }) {
-  const color = trend === 'up' ? '#34d399' : trend === 'down' ? '#f87171' : theme.textMuted
+  const color = trend === 'up' ? theme.statusOkText : trend === 'down' ? theme.statusErrorText : theme.textMuted
   return (
     <span style={{ ...styles.trendArrow, color }} aria-hidden>
       {trendArrowGlyph(trend)}
@@ -184,8 +183,6 @@ export function LiveStatsBand({
   onRequestFullTimeline,
   onChartWindowChange,
   onPinOffset,
-  onSaveMoment,
-  saveMomentBusy = false,
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
   hasVodContext = false,
@@ -310,12 +307,14 @@ export function LiveStatsBand({
     setTimelineLoading(true)
     void request().finally(() => {
       setTimelineLoading(false)
-      fullTimelineRequestedRef.current = false
     })
   }, [chartWindow, currentOffsetSeconds, hasFullRollups, payload])
 
   useEffect(() => {
     onPinOffset?.(null)
+    setSelectedEmoteKeys([])
+    setFocusedSeriesKey(null)
+    setActivityExpanded(false)
   }, [payload.streamId, onPinOffset])
 
   const pinChartIndex = useMemo(() => {
@@ -353,9 +352,10 @@ export function LiveStatsBand({
   )
 
   useEffect(() => {
-    if (pinChartIndex != null) {
-      setEmotePanelExpanded(false)
-    }
+    // Collapse only when the pin *changes* to a new index so a pinned chart
+    // does not immediately undo an intentional expand of the emote picker.
+    if (pinChartIndex == null) return
+    setEmotePanelExpanded(false)
   }, [pinChartIndex])
 
   const topEmotesForChips = useMemo(() => {
@@ -365,8 +365,7 @@ export function LiveStatsBand({
   }, [payload.topEmotes, rollups, stats.topEmotes])
 
   const selectedEmotesForOverlay = useMemo(
-    () =>
-      topEmotesForChips.filter(emote => selectedEmoteKeys.includes(emoteSelectionKey(emote))),
+    () => selectedEmotesInPlotOrder(topEmotesForChips, selectedEmoteKeys),
     [topEmotesForChips, selectedEmoteKeys],
   )
   const emoteOverlays = useMemo(
@@ -377,6 +376,11 @@ export function LiveStatsBand({
     [displayRollups, rollups, selectedEmotesForOverlay],
   )
 
+  const emoteOverlayEmpty =
+    selectedEmotesForOverlay.length > 0
+    && emoteOverlays.length > 0
+    && emoteOverlays.every(series => series.values.every(value => value <= 0))
+
   const selectedPlotColors = useMemo(() => {
     const map: Record<string, string> = {}
     selectedEmotesForOverlay.forEach((emote, index) => {
@@ -384,12 +388,6 @@ export function LiveStatsBand({
     })
     return map
   }, [selectedEmotesForOverlay, emoteOverlays])
-
-  useEffect(() => {
-    if (selectedEmotesForOverlay.length > 0) {
-      setActivityExpanded(true)
-    }
-  }, [selectedEmotesForOverlay.length])
 
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
     setFocusedSeriesKey(current => (current === seriesKey ? null : seriesKey))
@@ -399,9 +397,9 @@ export function LiveStatsBand({
   const emoteAvg5m = emoteAveragesFromRollups(rollups, 5)
   const emoteSyncStyle =
     emoteSyncTone === 'ok'
-      ? { color: '#6ee7b7' }
+      ? { color: theme.statusOkText }
       : emoteSyncTone === 'warn'
-        ? { color: '#fcd34d' }
+        ? { color: theme.statusWarnText }
         : { color: theme.textMuted }
 
   const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
@@ -425,7 +423,6 @@ export function LiveStatsBand({
   function handleChartSelect(index: number): void {
     const rollup = displayRollups[index]
     if (!rollup || rollup.missing) return
-    setSelectedEmoteKeys([])
     setFocusedSeriesKey(null)
     onPinOffset?.(rollup.offsetSeconds)
     setChartHoverOffsetSeconds(null)
@@ -436,13 +433,20 @@ export function LiveStatsBand({
     setChartHoverOffsetSeconds(null)
   }
 
-  const chartHeight = sidebarFill ? 216 : 184
+  const chartTargetHeight = sidebarFill
+    ? activityExpanded
+      ? 312
+      : 216
+    : activityExpanded
+      ? 268
+      : 184
+  const chartHeight = useSmoothedScalar(chartTargetHeight, !prefersReducedMotion())
 
-  const metricsStyle = sidebarFill
-    ? { ...styles.metrics, ...styles.metricsSidebar }
-    : compact
-      ? { ...styles.metrics, ...styles.metricsCompact }
-      : styles.metrics
+  const metricsStyle = {
+    ...styles.metrics,
+    ...(sidebarFill ? styles.metricsSidebar : null),
+    ...(compact ? styles.metricsCompact : null),
+  }
 
   function toggleEmotePanelKey(emote: (typeof topEmotesForChips)[number]): void {
     const key = emoteSelectionKey(emote)
@@ -504,7 +508,12 @@ export function LiveStatsBand({
       meta={
         <span style={styles.headerMeta}>
           {onOpenFullAnalytics && !demoMode ? (
-            <button type="button" style={styles.analyticsHeaderLink} onClick={onOpenFullAnalytics}>
+            <button
+              type="button"
+              className="pulse-analytics-header-link"
+              style={styles.analyticsHeaderLink}
+              onClick={onOpenFullAnalytics}
+            >
               Open full analytics →
             </button>
           ) : null}
@@ -538,13 +547,15 @@ export function LiveStatsBand({
                 stats.viewerDelta5m === null
                   ? theme.textMuted
                   : stats.viewerDelta5m > 0
-                    ? '#34d399'
+                  ? theme.statusOkText
                     : stats.viewerDelta5m < 0
-                      ? '#f87171'
+                      ? theme.statusErrorText
                       : theme.textMuted,
             }}
           >
-            {formatSignedDelta(stats.viewerDelta5m)} · 5m
+            {stats.viewersStale
+              ? 'Cached sample · delta unavailable'
+              : `${formatSignedDelta(stats.viewerDelta5m)} · 5m`}
           </span>
         </div>
         <div style={styles.metric}>
@@ -577,9 +588,11 @@ export function LiveStatsBand({
       <div ref={sparklineBlockRef} style={styles.sparklineBlock}>
         <GamesPlayedStrip
           games={chartGames}
+          streamId={payload.streamId}
           durationSeconds={currentOffsetSeconds}
           highlightedKey={hoveredGameKey}
           onHighlightKey={setHoveredGameKey}
+          onSelectKey={setHoveredGameKey}
           visibleRange={visibleRange}
           plotPadLeft={4}
           plotPadRight={12}
@@ -617,7 +630,14 @@ export function LiveStatsBand({
                   ...styles.expandButton,
                   ...(activityExpanded ? styles.expandButtonActive : null),
                 }}
-                onClick={() => setActivityExpanded(value => !value)}
+                onClick={() => {
+                  if (activityExpanded) {
+                    setActivityExpanded(false)
+                    setFocusedSeriesKey(null)
+                  } else {
+                    setActivityExpanded(true)
+                  }
+                }}
                 aria-pressed={activityExpanded}
               >
                 {activityExpanded ? 'Reset' : 'Expand'}
@@ -640,7 +660,6 @@ export function LiveStatsBand({
                         style={{
                           ...styles.overlayLegendChipImg,
                           borderColor: plotColor,
-                          boxShadow: `inset 2px 0 0 ${plotColor}`,
                           opacity: isDimmed ? 0.4 : 1,
                           cursor: 'pointer',
                         }}
@@ -732,7 +751,13 @@ export function LiveStatsBand({
             ) : null}
           </div>
         </div>
-        <div ref={chartInteractionRef} style={{ ...styles.chartStack, ...(demoMode ? { pointerEvents: 'none' as const } : undefined) }}>
+        <div
+          ref={chartInteractionRef}
+          style={{
+            ...styles.chartStack,
+            ...(demoMode ? { pointerEvents: 'none' as const } : undefined),
+          }}
+        >
           <PulseOverviewChart
             rollups={displayRollups}
             games={chartGames}
@@ -774,6 +799,11 @@ export function LiveStatsBand({
             maxSelected={MAX_PLOTTED_EMOTES}
           />
         ) : null}
+        {emoteOverlayEmpty ? (
+          <p style={styles.emoteOverlayEmptyHint}>
+            No per-minute emote breakdown for this window
+          </p>
+        ) : null}
       </div>
     </PulseSectionCard>
   )
@@ -789,11 +819,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'end',
   },
   metricsSidebar: { gap: 6, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
-  metricsCompact: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+  metricsCompact: { gap: 4, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
   metric: { display: 'grid', gap: 2, minWidth: 0 },
   metricValueSidebar: { fontSize: 18, lineHeight: 1.05 },
   metricLabel: {
-    color: theme.textMuted,
+    color: theme.textSecondary,
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: '0.04em',
@@ -803,11 +833,18 @@ const styles: Record<string, CSSProperties> = {
   metricValueRow: { alignItems: 'flex-end', display: 'flex', gap: 5, minWidth: 0 },
   metricRow: { alignItems: 'center', display: 'flex', gap: 4 },
   metricMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 600, minHeight: 14 },
-  metricHintBelow: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35, margin: '0 0 8px' },
-  metricHint: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35 },
+  metricHintBelow: { color: theme.textSecondary, fontSize: 9, fontWeight: 600, lineHeight: 1.35, margin: '0 0 8px' },
+  metricHint: { color: theme.textSecondary, fontSize: 9, fontWeight: 600, lineHeight: 1.35 },
   providerRate: { marginRight: 8 },
   trendArrow: { fontSize: 11, fontWeight: 900 },
   emoteSyncNote: { fontSize: 10, fontWeight: 700, margin: '8px 0 0' },
+  emoteOverlayEmptyHint: {
+    color: theme.textMuted,
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    margin: '6px 0 0',
+  },
   timelineHint: {
     color: theme.textMuted,
     fontSize: 10,
@@ -816,7 +853,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
   },
   timelineHintWarn: {
-    color: '#fcd34d',
+    color: theme.statusWarnText,
   },
   timelineHintSep: { color: theme.textMuted },
   streamStartLink: {
@@ -892,8 +929,8 @@ const styles: Record<string, CSSProperties> = {
   overlayLegendRow: { display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 },
   overlayLegendChip: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 999,
     color: theme.textSecondary,
     cursor: 'pointer',
@@ -904,8 +941,8 @@ const styles: Record<string, CSSProperties> = {
   },
   overlayLegendChipImg: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     borderRadius: 6,
     display: 'inline-flex',
     flexShrink: 0,
@@ -913,8 +950,8 @@ const styles: Record<string, CSSProperties> = {
   },
   overlayLegendEmoteImg: { display: 'block', objectFit: 'contain' },
   overlayLegendChipHidden: {
-    background: 'rgba(255, 255, 255, 0.02)',
-    border: '1px solid rgba(255, 255, 255, 0.04)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.borderSubtle}`,
     opacity: 0.55,
   },
   overlayLegendChipAlt: {
@@ -953,14 +990,18 @@ const styles: Record<string, CSSProperties> = {
   },
   chartLegendStroke: {
     background: 'transparent',
-    border: '1.5px solid #d4d4d8',
+    border: `1.5px solid ${theme.textMuted}`,
     borderRadius: 1,
     flexShrink: 0,
     height: 0,
     width: 10,
   },
   chartStack: {
+    background: theme.chartBg,
+    border: `1px solid ${theme.borderSubtle}`,
+    borderRadius: 10,
     minWidth: 0,
+    padding: '6px 4px 4px',
     position: 'relative',
     width: '100%',
   },
@@ -974,7 +1015,7 @@ const styles: Record<string, CSSProperties> = {
   analyticsHeaderLink: {
     background: 'transparent',
     border: 0,
-    color: '#c4b5fd',
+    color: theme.accentTextSubtle,
     cursor: 'pointer',
     fontSize: 10,
     fontWeight: 800,
@@ -988,8 +1029,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
   },
   expandButton: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: theme.hoverFill,
+    border: `1px solid ${theme.border}`,
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
@@ -1001,8 +1042,8 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   expandButtonActive: {
-    background: 'rgba(139, 92, 246, 0.12)',
-    borderColor: 'rgba(167, 139, 250, 0.35)',
-    color: '#ddd6fe',
+    background: theme.accentSurface,
+    borderColor: theme.borderAccent,
+    color: theme.accentText,
   },
 }

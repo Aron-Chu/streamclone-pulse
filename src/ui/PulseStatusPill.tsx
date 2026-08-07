@@ -34,8 +34,8 @@ export function PulseStatusPill({ status }: { status: PulseStatusKind }) {
 
 const styles: Record<string, CSSProperties> = {
   pill: {
-    background: 'rgba(255, 255, 255, 0.06)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: 'var(--pulse-surface-hover-fill, rgba(255, 255, 255, 0.06))',
+    border: '1px solid var(--pulse-surface-border-subtle, rgba(255, 255, 255, 0.12))',
     borderRadius: 999,
     color: theme.textSecondary,
     display: 'inline-flex',

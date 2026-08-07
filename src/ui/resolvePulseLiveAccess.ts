@@ -35,7 +35,7 @@ export interface PulseLiveAccessInput {
   alwaysTrackedLogins?: readonly string[]
   sessionOpenedAtMs?: number | null
   pageIsLive?: boolean
-  /** When true, only active_live_coverage + tracking yields full_live. */
+  /** When true, use the hosted coverage-tier/payload evidence path. */
   hosted?: boolean
 }
 
@@ -75,6 +75,31 @@ function isLiveContext(payload: PulsePayload | null, pageIsLive: boolean): boole
 
 function trackedFromStreamStart(coverageStartOffsetSeconds: number): boolean {
   return coverageStartOffsetSeconds <= PULSE_STREAM_START_TOLERANCE_SEC
+}
+
+const ACTIVE_LIVE_COVERAGE_STATES = new Set([
+  'full_stream_tracked',
+  'partial_tracking',
+  'missing_ranges_detected',
+  'waiting_for_vod',
+  'backfill_running',
+  'backfill_failed',
+])
+
+/**
+ * A hosted coverage-tier response can briefly lag the pulse payload. Keep a
+ * live chart available when the payload itself proves that IRC collection is
+ * active, while preserving the not-tracked state for metadata-only payloads.
+ */
+function hasActiveLiveCollection(payload: PulsePayload): boolean {
+  if (payload.coverage?.chatSource?.trim().toLowerCase() === 'live') return true
+
+  const state = payload.coverage?.state
+  if (!state || !ACTIVE_LIVE_COVERAGE_STATES.has(state)) return false
+
+  const hasRollups = (payload.rollups?.length ?? 0) > 0 || (payload.fullRollups?.length ?? 0) > 0
+  const hasLanePoints = Object.values(payload.lanes ?? {}).some(lane => Array.isArray(lane) && lane.length > 0)
+  return hasRollups || hasLanePoints
 }
 
 function canShowFullLive(args: {
@@ -128,7 +153,10 @@ function resolveHostedPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcc
     return baseResult('offline', coverageStartOffsetSeconds, coverageTier)
   }
 
-  if (coverageTier?.coverageTier === COVERAGE_TIER_ACTIVE_LIVE && payload.tracking) {
+  if (payload.tracking && (
+    coverageTier?.coverageTier === COVERAGE_TIER_ACTIVE_LIVE
+    || hasActiveLiveCollection(payload)
+  )) {
     return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
   }
 

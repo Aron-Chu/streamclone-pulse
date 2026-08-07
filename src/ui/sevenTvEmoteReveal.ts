@@ -1,5 +1,5 @@
-/** Collapsed picker page size — CTA always reveals at most this many next. */
-export const EMOTE_PICKER_PAGE_SIZE = 3
+/** Collapsed picker page size; the CTA reveals at most this many next. */
+export const EMOTE_PICKER_PAGE_SIZE = 6
 
 /** How many emotes the "Show N more" button should claim for the next click. */
 export function nextEmoteRevealCount(

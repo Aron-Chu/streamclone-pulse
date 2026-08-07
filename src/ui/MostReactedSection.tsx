@@ -6,7 +6,7 @@ import {
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
-import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
+import { resolvePinnedChartSelection, chartPinPeakToleranceSeconds } from './chartSelectedMoment.ts'
 import {
   MOST_REACTED_VISIBLE_COUNT,
   heatPointMatchesOffset,
@@ -26,13 +26,18 @@ export interface MostReactedSectionProps {
   sidebarFill?: boolean
   pinnedOffsetSeconds?: number | null
   onJump: (point: LiveHeatPoint) => void
-  onSave: (point: LiveHeatPoint) => void | Promise<void>
   onAnalytics: (point: LiveHeatPoint) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
   onPinOffset?: (offsetSeconds: number | null) => void
-  saveBusy?: boolean
+  resolveJumpControl?: (point: LiveHeatPoint) => MomentJumpControl
   hasVodContext?: boolean
   demoMode?: boolean
+}
+
+export interface MomentJumpControl {
+  label: string
+  disabled?: boolean
+  hint?: string
 }
 
 const SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
@@ -52,11 +57,10 @@ export function MostReactedSection({
   sidebarFill: _sidebarFill = false,
   pinnedOffsetSeconds = null,
   onJump,
-  onSave,
   onAnalytics,
   onHighlightOffset,
   onPinOffset,
-  saveBusy = false,
+  resolveJumpControl,
   hasVodContext = false,
   demoMode = false,
 }: MostReactedSectionProps) {
@@ -72,20 +76,28 @@ export function MostReactedSection({
     [heat.points, sortMode],
   )
 
-  const pinnedMomentPoint = useMemo(
-    () =>
-      resolvePinnedMomentPoint({
-        pinOffsetSeconds: pinnedOffsetSeconds,
-        heatPoints: heat.points,
-      }),
-    [pinnedOffsetSeconds, heat.points],
-  )
+  const pinnedSelection = useMemo(() => {
+    const rollups = (payload.fullRollups?.length ? payload.fullRollups : payload.rollups) ?? []
+    const toleranceSeconds = chartPinPeakToleranceSeconds(rollups.length)
+    return resolvePinnedChartSelection({
+      pinOffsetSeconds: pinnedOffsetSeconds,
+      heatPoints: heat.points,
+      rollups,
+      startedAt: payload.startedAt,
+      toleranceSeconds,
+    })
+  }, [pinnedOffsetSeconds, heat.points, payload.fullRollups, payload.rollups, payload.startedAt])
+
+  const pinnedDisplayPoint = pinnedSelection?.point ?? null
 
   const visiblePoints = listExpanded
     ? sortedPoints
     : sortedPoints.slice(0, MOST_REACTED_VISIBLE_COUNT)
   const hiddenPointCount = Math.max(0, sortedPoints.length - MOST_REACTED_VISIBLE_COUNT)
   const jumpLabel = resolveJumpLabel(payload, hasVodContext)
+  const jumpControl = pinnedDisplayPoint && resolveJumpControl
+    ? resolveJumpControl(pinnedDisplayPoint)
+    : { label: jumpLabel }
 
   useEffect(() => {
     setListExpanded(false)
@@ -97,13 +109,24 @@ export function MostReactedSection({
 
   useEffect(() => {
     if (pinnedOffsetSeconds == null) return
+    const row = selectedRowRef.current
+    if (!row) return
     const frame = requestAnimationFrame(() => {
-      selectedRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+      const panel = row.closest('.pulse-panel-body') as HTMLElement | null
+      if (!panel) return
+      const rowRect = row.getBoundingClientRect()
+      const panelRect = panel.getBoundingClientRect()
+      if (rowRect.top < panelRect.top) {
+        panel.scrollTop -= panelRect.top - rowRect.top
+      } else if (rowRect.bottom > panelRect.bottom) {
+        panel.scrollTop += rowRect.bottom - panelRect.bottom
+      }
     })
     return () => cancelAnimationFrame(frame)
-  }, [pinnedOffsetSeconds, sortMode, listExpanded])
+    // Only when the pin changes — not on sort/expand/poll re-renders (avoids random jumps).
+  }, [pinnedOffsetSeconds])
 
-  if (!heat.visible && !pinnedMomentPoint) return null
+  if (!heat.visible && !pinnedDisplayPoint) return null
 
   return (
     <PulseSectionCard
@@ -122,7 +145,7 @@ export function MostReactedSection({
         ) : undefined
       }
     >
-      {pinnedOffsetSeconds != null && pinnedMomentPoint ? (
+      {pinnedOffsetSeconds != null && pinnedDisplayPoint ? (
         <div
           ref={selectedCardRef}
           style={{
@@ -131,12 +154,12 @@ export function MostReactedSection({
           }}
         >
           <SelectedMomentCard
-            point={pinnedMomentPoint}
+            point={pinnedDisplayPoint}
             backendUrl={backendUrl}
-            jumpLabel={jumpLabel}
+            jumpLabel={jumpControl.label}
+            jumpDisabled={demoMode || jumpControl.disabled}
+            jumpHint={jumpControl.hint}
             onJump={demoMode ? () => undefined : onJump}
-            onSave={demoMode ? () => undefined : onSave}
-            saveBusy={saveBusy}
             onAnalytics={demoMode ? () => undefined : onAnalytics}
           />
         </div>
@@ -198,7 +221,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     background: 'transparent',
     border: 0,
-    color: theme.accentSoft,
+    color: theme.accentText,
     cursor: 'pointer',
     display: 'flex',
     fontSize: 10,

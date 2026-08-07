@@ -1,13 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "Streamclone Pulse",
-  "description": "Live Pulse overlay for Twitch channels powered by Streamclone analytics.",
+  "name": "StreamPulse",
+  "description": "Live Pulse overlay for Twitch — viewers, chat, emotes, and games.",
   "version": "0.1.0",
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Streamclone Pulse"
+    "default_title": "StreamPulse",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
-  "options_page": "options/index.html",
+  "options_ui": {
+    "page": "options/index.html",
+    "open_in_tab": true
+  },
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"
@@ -16,18 +24,14 @@
     {
       "matches": ["*://*.twitch.tv/*"],
       "js": ["content/twitch.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ],
-  "permissions": ["storage", "scripting", "tabs"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": [
     "http://localhost:8081/*",
     "http://127.0.0.1:8081/*",
     "https://api.streampulse.stream/*",
-    "https://cdn.7tv.app/*",
-    "https://static-cdn.jtvnw.net/*",
-    "https://cdn.frankerfacez.com/*",
-    "https://gql.twitch.tv/*",
     "https://*.twitch.tv/*"
   ],
   "icons": {

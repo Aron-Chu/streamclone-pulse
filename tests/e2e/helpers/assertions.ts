@@ -7,21 +7,22 @@ export const PULSE_ROOT_ID = 'streamclone-pulse-root'
 export const PULSE_TABS_ID = 'streamclone-pulse-tabs'
 
 /** Permissions intentionally allowed in the production manifest. */
-export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting', 'tabs'] as const
+export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting'] as const
 
 /**
  * Host permissions intentionally allowed.
- * localhost:8081 / 127.0.0.1:8081 are the documented local StreamPulse BFF opt-in
- * (see src/shared/storage.ts isLocalStackBackendUrl) — not removed by this suite.
+ * - localhost:8081 / 127.0.0.1:8081 — documented local StreamPulse BFF opt-in
+ *   (see src/shared/storage.ts isLocalStackBackendUrl) and HTTP emote proxy.
+ * - api.streampulse.stream — hosted Pulse API.
+ * - *.twitch.tv — overlay injection + tab query/messaging for Twitch pages.
+ * gql.twitch.tv is NOT required: Twitch GQL runs in page MAIN world via scripting.
+ * Emote CDN hosts are NOT required: HTTPS emote `<img>` loads need no SW fetch;
+ * only http://localhost emotes are proxied by the service worker.
  */
 export const EXPECTED_HOST_PERMISSIONS = [
   'http://localhost:8081/*',
   'http://127.0.0.1:8081/*',
   'https://api.streampulse.stream/*',
-  'https://cdn.7tv.app/*',
-  'https://static-cdn.jtvnw.net/*',
-  'https://cdn.frankerfacez.com/*',
-  'https://gql.twitch.tv/*',
   'https://*.twitch.tv/*',
 ] as const
 
@@ -40,7 +41,8 @@ export async function waitForPulseRoot(page: Page, timeoutMs = 20_000): Promise<
 }
 
 export async function assertExactlyOnePulseRoot(page: Page): Promise<void> {
-  const count = await page.locator(`#${PULSE_ROOT_ID}`).count()
+  // Attribute selector — `#id` under-counts when duplicate ids exist in some engines.
+  const count = await page.locator(`[id="${PULSE_ROOT_ID}"]`).count()
   expect(count, 'exactly one #streamclone-pulse-root').toBe(1)
 }
 
@@ -55,6 +57,40 @@ export async function assertPulseShadowContains(page: Page, pattern: RegExp): Pr
   await expect
     .poll(async () => pulseShadowText(page), { timeout: 20_000 })
     .toMatch(pattern)
+}
+
+export async function assertPulseChartPresent(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(rootId => {
+          const root = document.getElementById(rootId)?.shadowRoot
+          return Boolean(
+            root?.querySelector(
+              '[role="img"][aria-label="Stream overview chart"], [role="img"][aria-label^="Activity chart"], .pulse-signal-wrap svg, .sc-chart-root svg',
+            ),
+          )
+        }, PULSE_ROOT_ID),
+      { timeout: 20_000 },
+    )
+    .toBe(true)
+}
+
+export async function assertNoSelectedMomentActions(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(rootId => {
+          const root = document.getElementById(rootId)?.shadowRoot
+          if (!root) return false
+          return [...root.querySelectorAll('button')].every(button => {
+            const label = (button.textContent ?? '').replace(/\s+/g, ' ').trim()
+            return !/Jump in (player|VOD)/i.test(label)
+          })
+        }, PULSE_ROOT_ID),
+      { timeout: 20_000 },
+    )
+    .toBe(true)
 }
 
 /** Game change dividers must paint above bars and span viewers → emotes (full plot height). */
@@ -122,8 +158,8 @@ export async function assertLiveGameCapPresent(page: Page): Promise<void> {
   }).toPass({ timeout: 20_000 })
 }
 
-/** Selected moment card uses "Bookmark" (not legacy "Save"). */
-export async function assertBookmarkLabel(page: Page): Promise<void> {
+/** Selected moment card — Jump + Open Analytics (Bookmark removed). */
+export async function assertSelectedMomentActions(page: Page): Promise<void> {
   await expect(async () => {
     const labels = await page.evaluate(rootId => {
       const host = document.getElementById(rootId)
@@ -133,36 +169,21 @@ export async function assertBookmarkLabel(page: Page): Promise<void> {
         .map(btn => (btn.textContent ?? '').replace(/\s+/g, ' ').trim())
         .filter(Boolean)
     }, PULSE_ROOT_ID)
-    expect(labels.some(l => l === 'Bookmark' || l.startsWith('Bookmark')), 'Bookmark CTA').toBe(
-      true,
-    )
     expect(
-      labels.some(l => l === 'Save' || l === 'Saving…' || l === 'Saving...'),
-      'legacy Save CTA must be gone',
+      labels.some(l => /Jump in (player|VOD)|Open (VOD|Twitch replay)|Wait for VOD|Player unavailable/i.test(l)),
+      'Jump CTA',
+    ).toBe(true)
+    expect(labels.some(l => l === 'Open Analytics'), 'Open Analytics CTA').toBe(true)
+    expect(
+      labels.some(l => l === 'Bookmark' || l.startsWith('Bookmark') || l === 'Save' || l.startsWith('Saving')),
+      'Bookmark/Save CTA must be gone',
     ).toBe(false)
   }).toPass({ timeout: 20_000 })
 }
 
-/** Click the selected-moment Bookmark button inside the Pulse shadow root. */
-export async function clickBookmarkButton(page: Page): Promise<void> {
-  const clicked = await page.evaluate(rootId => {
-    const host = document.getElementById(rootId)
-    const root = host?.shadowRoot
-    if (!root) return false
-    const btn = [...root.querySelectorAll('button')].find(el => {
-      const t = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
-      return t === 'Bookmark' || t.startsWith('Bookmark')
-    })
-    if (!btn) return false
-    btn.click()
-    return true
-  }, PULSE_ROOT_ID)
-  expect(clicked, 'Bookmark button').toBe(true)
-}
-
 /**
  * Click the first Most Reacted moment row inside the Pulse shadow root,
- * then wait for the selected-moment Bookmark CTA.
+ * then wait for the selected-moment Jump CTA.
  */
 export async function selectFirstMostReactedMoment(page: Page): Promise<void> {
   await expect
@@ -188,16 +209,16 @@ export async function selectFirstMostReactedMoment(page: Page): Promise<void> {
   expect(clicked, 'expected a Most Reacted row to click').toBe(true)
 
   await expect(async () => {
-    const hasBookmark = await page.evaluate(rootId => {
+    const hasJump = await page.evaluate(rootId => {
       const host = document.getElementById(rootId)
       const root = host?.shadowRoot
       if (!root) return false
       return [...root.querySelectorAll('button')].some(btn => {
         const t = (btn.textContent ?? '').replace(/\s+/g, ' ').trim()
-        return t === 'Bookmark'
+        return /Jump in (player|VOD)|Open (VOD|Twitch replay)|Wait for VOD|Player unavailable/i.test(t)
       })
     }, PULSE_ROOT_ID)
-    expect(hasBookmark).toBe(true)
+    expect(hasJump).toBe(true)
   }).toPass({ timeout: 20_000 })
 }
 
@@ -216,10 +237,21 @@ export async function selectChartRangeOption(page: Page, optionLabel: string): P
   }, PULSE_ROOT_ID)
   expect(opened, 'Chart time range trigger').toBe(true)
 
-  // PulseThemedSelect portals options to document.body (light DOM).
-  const option = page.locator('button[role="option"]', { hasText: optionLabel }).first()
-  await expect(option).toBeVisible({ timeout: 10_000 })
-  await option.click()
+  // PulseThemedSelect portals options into the owning Pulse shadow root.
+  await expect
+    .poll(async () => {
+      return page.evaluate((rootId, label) => {
+        const host = document.getElementById(rootId)
+        const root = host?.shadowRoot
+        if (!root) return false
+        const buttons = [...root.querySelectorAll('button[role="option"]')]
+        const btn = buttons.find(el => (el.textContent ?? '').trim() === label) as HTMLButtonElement | undefined
+        if (!btn) return false
+        btn.click()
+        return true
+      }, PULSE_ROOT_ID, optionLabel)
+    }, { timeout: 10_000 })
+    .toBe(true)
 }
 
 /** Click the partial-range "Full stream" chip in the chart range hint. */
@@ -235,14 +267,6 @@ export async function clickFullStreamChip(page: Page): Promise<void> {
     return true
   }, PULSE_ROOT_ID)
   expect(clicked, 'Full stream chip').toBe(true)
-}
-
-export function countBookmarkPosts(
-  requests: { method: () => string; url: () => string }[],
-): number {
-  return requests.filter(
-    r => r.method() === 'POST' && /\/v1\/pulse\/bookmarks(?:\?|$)/.test(r.url()),
-  ).length
 }
 
 export function assertNoPulseVodDiscoverWarnings(evidence: EvidenceCollectors): void {

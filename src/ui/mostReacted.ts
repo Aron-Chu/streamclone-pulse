@@ -114,6 +114,8 @@ function rollupTopEmotesToHeatEmotes(topEmotes: ExtensionEmote[] | undefined): L
     .map((emote, index) => ({
       key: peakEmoteKey(emote, index),
       name: emote.name,
+      id: emote.id,
+      providerEmoteId: emote.providerEmoteId,
       provider: emote.provider,
       imageUrl: emote.imageUrl,
       count: Math.max(0, emote.count ?? 0),
@@ -173,8 +175,12 @@ export function resolveMostReactedHeat(payload: PulsePayload): LiveHeatResult {
         subtitle: LIVE_HEAT_SUBTITLE,
       }
     }
+    const horizon = Math.max(0, payload.currentOffsetSeconds ?? payload.durationSeconds ?? 0)
+    const peaksInHorizon = (payload.peaks ?? []).filter(
+      peak => horizon <= 0 || (peak.offsetSeconds ?? 0) <= horizon + 60,
+    )
     const points = finalizeMostReactedPoints(
-      peaksToLiveHeatPoints(payload.peaks ?? [], payload.startedAt, payload.topEmotes),
+      peaksToLiveHeatPoints(peaksInHorizon, payload.startedAt, payload.topEmotes),
       rollups,
     )
     return {

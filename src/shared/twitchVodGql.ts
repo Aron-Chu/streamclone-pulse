@@ -7,6 +7,23 @@ export interface GqlVodDiscoveryResult {
   gqlErrors: string[]
 }
 
+/** Return an archive id only when Twitch's stream object proves exact identity. */
+export function exactLiveArchiveVodId(
+  result: GqlVodDiscoveryResult,
+  streamId: string,
+): string | null {
+  const expectedStreamId = streamId.trim()
+  if (
+    !expectedStreamId
+    || result.source !== 'stream.archiveVideo'
+    || result.streamId !== expectedStreamId
+    || !result.vodId
+  ) {
+    return null
+  }
+  return result.vodId
+}
+
 /** Parse live-stream archiveVideo GQL payload. */
 export function parseLiveArchiveVodFromGql(body: {
   data?: {
