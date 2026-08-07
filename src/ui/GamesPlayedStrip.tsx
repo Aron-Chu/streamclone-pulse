@@ -8,8 +8,32 @@ import {
   resolveGamesPlayedTimelineRange,
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
+import { useReducedMotion } from './motion/useReducedMotion.ts'
 import { theme } from './theme.ts'
 import { fetchTwitchDirectoryBoxArt } from './twitchGameArt.ts'
+
+/**
+ * Header layout contract: the label absorbs width changes; the trail stays put.
+ * Unit tests assert these values so hover readouts cannot shove the nav cluster.
+ */
+export const GAMES_PLAYED_HEADER_LAYOUT = {
+  headerRow: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 6,
+    minWidth: 0,
+    width: '100%',
+  },
+  gamesLabelShell: {
+    flex: '1 1 auto',
+    minWidth: 0,
+    overflow: 'hidden',
+  },
+  headerTrail: {
+    flexShrink: 0,
+    marginLeft: 'auto',
+  },
+} as const satisfies Record<string, CSSProperties>
 
 /** Twitch box-art height. Keep this exported for layout and visual regression tests. */
 export const GAMES_PLAYED_ICON_SIZE_PX = 64
@@ -204,6 +228,7 @@ export function GamesPlayedStrip({
   const onSelectKeyRef = useRef(onSelectKey)
   onSelectKeyRef.current = onSelectKey
   const [directoryArtByGame, setDirectoryArtByGame] = useState<Record<string, string>>({})
+  const motionReduced = useReducedMotion()
   const segments = useMemo(
     () => normalizeGameSegments(games ?? [], durationSeconds),
     [games, durationSeconds],
@@ -358,7 +383,7 @@ export function GamesPlayedStrip({
   const displayedSlot = displayedKey
     ? gameSlots.find(slot => gameSegmentKey(slot.segment) === displayedKey) ?? null
     : null
-  const motionReduced = reducedMotion()
+  const scrollBehavior = motionReduced ? 'auto' : 'smooth'
 
   function clearHoverIntentTimer(): void {
     if (hoverIntentTimerRef.current != null) {
@@ -374,12 +399,6 @@ export function GamesPlayedStrip({
       setActiveKey(key)
       onHighlightKey?.(key)
     }, 100)
-  }
-
-  function reducedMotion(): boolean {
-    return typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   }
 
   function handleStripLeave(): void {
@@ -398,7 +417,7 @@ export function GamesPlayedStrip({
     )
     const target = Math.max(0, Math.min(state.maxScroll, node.scrollLeft + direction * CHIP_STEP_PX))
     if (Math.abs(target - node.scrollLeft) <= SCROLL_EDGE_EPSILON_PX) return
-    node.scrollTo({ left: target, behavior: reducedMotion() ? 'auto' : 'smooth' })
+    node.scrollTo({ left: target, behavior: scrollBehavior })
   }
 
   function focusRelative(index: number, direction: -1 | 1 | 0): void {
@@ -423,7 +442,7 @@ export function GamesPlayedStrip({
     if (Math.abs(revealDelta) > SCROLL_EDGE_EPSILON_PX) {
       track.scrollTo({
         left: Math.max(0, Math.min(track.scrollWidth - track.clientWidth, track.scrollLeft + revealDelta)),
-        behavior: reducedMotion() ? 'auto' : 'smooth',
+        behavior: scrollBehavior,
       })
     }
   }
@@ -535,6 +554,7 @@ export function GamesPlayedStrip({
               const key = gameSegmentKey(segment)
               const selected = selectedKey === key
               const isHighlighted = highlightedKey === key || selected
+              const showChipName = activeKey === key || selected
               const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd)}${
                 slot.clipped ? ' · clipped to chart' : ''
               }`
@@ -589,6 +609,18 @@ export function GamesPlayedStrip({
                       boxArtUrl={segment.boxArtUrl ?? directoryArtByGame[segment.gameName.trim()]}
                       categoryId={segment.categoryId}
                     />
+                    {showChipName ? (
+                      <span
+                        aria-hidden="true"
+                        data-games-played-chip-name
+                        style={{
+                          ...styles.gameCardName,
+                          ...(motionReduced ? styles.gameCardNameReduced : null),
+                        }}
+                      >
+                        {segment.gameName}
+                      </span>
+                    ) : null}
                   </button>
                 </div>
               )
@@ -601,17 +633,14 @@ export function GamesPlayedStrip({
 }
 
 const styles: Record<string, CSSProperties> = {
-  gamesStrip: { display: 'grid', gap: 4, marginBottom: 2, minWidth: 0 },
+  gamesStrip: { display: 'grid', gap: 4, marginBottom: 2, minWidth: 0, width: '100%' },
   headerRow: {
-    alignItems: 'center',
-    display: 'flex',
-    gap: 6,
-    justifyContent: 'space-between',
+    ...GAMES_PLAYED_HEADER_LAYOUT.headerRow,
   },
   headerTrail: {
     alignItems: 'center',
     display: 'flex',
-    flexShrink: 0,
+    ...GAMES_PLAYED_HEADER_LAYOUT.headerTrail,
     gap: 6,
     minWidth: 0,
   },
@@ -619,13 +648,14 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'baseline',
     display: 'flex',
     gap: 6,
-    minWidth: 0,
-    overflow: 'hidden',
+    ...GAMES_PLAYED_HEADER_LAYOUT.gamesLabelShell,
   },
   gamesLabelName: {
     color: theme.textPrimary,
+    flex: '0 1 auto',
     fontSize: 10,
     fontWeight: 700,
+    minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -746,6 +776,28 @@ const styles: Record<string, CSSProperties> = {
   },
   gameCardActiveReduced: {
     transform: 'none',
+  },
+  /** Name lives on the chip (fixed hit target) so the header trail never reflows. */
+  gameCardName: {
+    background: 'linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.72) 55%)',
+    bottom: 0,
+    color: '#fafafc',
+    fontSize: 8,
+    fontWeight: 800,
+    left: 0,
+    letterSpacing: '0.01em',
+    lineHeight: 1.15,
+    overflow: 'hidden',
+    padding: '10px 3px 3px',
+    pointerEvents: 'none',
+    position: 'absolute',
+    right: 0,
+    textAlign: 'center',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  gameCardNameReduced: {
+    transition: 'none',
   },
   gameArt: {
     borderRadius: 7,

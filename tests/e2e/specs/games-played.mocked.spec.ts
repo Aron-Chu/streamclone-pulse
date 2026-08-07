@@ -52,14 +52,28 @@ async function readGamesPlayedState(page: import('@playwright/test').Page) {
       headerLeft: header?.getBoundingClientRect().left ?? 0,
       headerRight: header?.getBoundingClientRect().right ?? 0,
       labelLeft: label?.getBoundingClientRect().left ?? 0,
+      trailLeft: trail?.getBoundingClientRect().left ?? 0,
       trailRight: trail?.getBoundingClientRect().right ?? 0,
       trailText: status?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       hasRightArrow: Boolean(rightArrow && !rightArrow.disabled),
-      firstItemWidth: firstItem?.getBoundingClientRect().width ?? 0,
-      firstItemHeight: firstItem?.getBoundingClientRect().height ?? 0,
+      firstItemWidth: firstItem?.offsetWidth ?? 0,
+      firstItemHeight: firstItem?.offsetHeight ?? 0,
       firstItemArt: firstItem?.querySelector('img')?.getAttribute('src') ?? null,
     }
   }, ROOT_ID)
+}
+
+async function hoverGamesPlayedChip(
+  page: import('@playwright/test').Page,
+  index: number,
+): Promise<void> {
+  await page.evaluate(({ rootId, chipIndex }) => {
+    const root = document.getElementById(rootId)?.shadowRoot
+    const items = root?.querySelectorAll('[data-games-played-item]')
+    const el = items?.[chipIndex] as HTMLElement | undefined
+    el?.focus()
+  }, { rootId: ROOT_ID, chipIndex: index })
+  await page.waitForTimeout(160)
 }
 
 test.describe('Games Played manual scrolling', () => {
@@ -249,6 +263,41 @@ test.describe('Games Played manual scrolling', () => {
     }, ROOT_ID)
     await extension.page.mouse.click(lastCenter.x, lastCenter.y)
     await expect(last).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('keeps the header trail x stable across idle and chip hover readouts', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({ scenario: 'games-rich', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await waitForGamesPlayed(extension.page)
+    // Let shell enter animation settle so trail x is not compared mid-layout.
+    await extension.page.waitForTimeout(450)
+
+    const names = await extension.page.evaluate(rootId => {
+      const root = document.getElementById(rootId)?.shadowRoot
+      return Array.from(root?.querySelectorAll('[data-games-played-item]') ?? []).map(el =>
+        (el.getAttribute('aria-label') ?? '').split(' · ')[0] ?? '',
+      )
+    }, ROOT_ID)
+    const shortIdx = names.findIndex(name => name === 'Minecraft')
+    const longIdx = names.findIndex(name => name === 'Just Chatting')
+    expect(shortIdx).toBeGreaterThanOrEqual(0)
+    expect(longIdx).toBeGreaterThanOrEqual(0)
+
+    const idle = await readGamesPlayedState(extension.page)
+    await hoverGamesPlayedChip(extension.page, shortIdx)
+    const hoverShort = await readGamesPlayedState(extension.page)
+    await hoverGamesPlayedChip(extension.page, longIdx)
+    const hoverLong = await readGamesPlayedState(extension.page)
+
+    expect(hoverShort.trailText.length).toBeGreaterThan(0)
+    expect(Math.abs(hoverShort.trailLeft - idle.trailLeft)).toBeLessThanOrEqual(1)
+    expect(Math.abs(hoverLong.trailLeft - idle.trailLeft)).toBeLessThanOrEqual(1)
+    expect(hoverShort.firstItemWidth).toBe(idle.firstItemWidth)
+    expect(hoverLong.firstItemWidth).toBe(idle.firstItemWidth)
   })
 
   test('uses immediate reduced-motion arrows and cleans up on panel unmount', async ({

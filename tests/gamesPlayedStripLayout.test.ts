@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GAMES_PLAYED_CHIP_WIDTH_PX,
   GAMES_PLAYED_ART_WIDTH_PX,
+  GAMES_PLAYED_HEADER_LAYOUT,
   GAMES_PLAYED_HIT_TARGET_PX,
   GAMES_PLAYED_HIT_TARGET_HEIGHT_PX,
   GAMES_PLAYED_ICON_SIZE_PX,
@@ -20,6 +21,17 @@ describe('GamesPlayedStrip compact icons', () => {
     expect(GAMES_PLAYED_HIT_TARGET_HEIGHT_PX).toBeGreaterThan(GAMES_PLAYED_HIT_TARGET_PX)
     expect(GAMES_PLAYED_ART_WIDTH_PX).toBeLessThan(GAMES_PLAYED_ICON_SIZE_PX)
     expect(GAMES_PLAYED_ART_WIDTH_PX / GAMES_PLAYED_ICON_SIZE_PX).toBeCloseTo(52 / 72, 1)
+  })
+
+  it('keeps the header label flexing so the trail does not shift on readout changes', () => {
+    expect(GAMES_PLAYED_HEADER_LAYOUT.gamesLabelShell.flex).toBe('1 1 auto')
+    expect(GAMES_PLAYED_HEADER_LAYOUT.gamesLabelShell.minWidth).toBe(0)
+    expect(GAMES_PLAYED_HEADER_LAYOUT.gamesLabelShell.overflow).toBe('hidden')
+    expect(GAMES_PLAYED_HEADER_LAYOUT.headerTrail.flexShrink).toBe(0)
+    expect(GAMES_PLAYED_HEADER_LAYOUT.headerTrail.marginLeft).toBe('auto')
+    expect(GAMES_PLAYED_HEADER_LAYOUT.headerRow.width).toBe('100%')
+    expect(GAMES_PLAYED_HEADER_LAYOUT.headerRow).not.toHaveProperty('justifyContent')
+    expect(GAMES_PLAYED_HEADER_LAYOUT.headerRow.display).toBe('flex')
   })
 
   it('keeps fallback artwork deterministic and accepts only Twitch HTTPS assets', () => {

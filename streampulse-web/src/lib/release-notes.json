@@ -15,15 +15,14 @@
       ],
       "improved": [
         "Chart bar emphasis uses an absolute state table so rest, future, dimmed, and active buckets stay consistent.",
-        "Games played shows an inline header label instead of a pop-out panel, with a pinned suffix when a game is selected."
+        "Games played keeps the full game name in the header with a stable nav trail, plus a chip-local name overlay as a locator, and a pinned suffix when a game is selected."
       ],
       "fixed": [
         "Offline/VOD recap charts no longer force reduced motion; crosshair glide and opacity fades match live when motion is allowed."
       ],
       "knownIssues": [
         "Chrome still requires a manual reload of the unpacked extension after a build; a changed dist directory alone does not reinject Twitch content.",
-        "A live stream may not expose a VOD id until Twitch publishes the archive after the stream ends.",
-        "Local builds may report a dirty package cohort while sibling pulse packages are on an unmerged branch."
+        "A live stream may not expose a VOD id until Twitch publishes the archive after the stream ends."
       ],
       "links": {
         "details": "/changelog",
