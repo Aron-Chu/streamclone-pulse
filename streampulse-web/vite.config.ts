@@ -2,8 +2,10 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { dirname, resolve } from 'node:path'
+import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { extensionUiShimsPlugin } from './src/plugins/extensionUiShims'
+import { getBuildProvenance, writeBuildProvenance } from '../scripts/build-provenance.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Extension checkout root (sibling of streampulse-web/) — landing showcase reuses overlay UI. */
@@ -11,11 +13,10 @@ const pulseRoot = resolve(__dirname, '..')
 
 function devConnectSrcPlugin(): Plugin {
   const devHosts = [
-    'http://localhost:8090',
-    'http://127.0.0.1:8090',
-    'http://laptopworker:8090',
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
   ]
-  const devConnect = [...devHosts, 'ws://localhost:8090', 'ws://127.0.0.1:8090'].join(' ')
+  const devConnect = devHosts.join(' ')
   const devImg = devHosts.join(' ')
   return {
     name: 'streampulse-dev-connect-src',
@@ -37,7 +38,100 @@ const sentryProject = process.env.SENTRY_PROJECT?.trim() || 'streampulse-portal'
 const sentryRelease = process.env.SENTRY_RELEASE?.trim()
 const viteSentryDsn = process.env.VITE_SENTRY_DSN?.trim()
 
-const plugins = [react(), extensionUiShimsPlugin(pulseRoot, __dirname), devConnectSrcPlugin()]
+const portalInputScope = [
+  'streampulse-web/src',
+  'streampulse-web/public',
+  'streampulse-web/index.html',
+  'streampulse-web/vite.config.ts',
+  'scripts/build-provenance.mjs',
+  'streampulse-web/package.json',
+  'streampulse-web/package-lock.json',
+  // The landing showcase intentionally aliases these extension modules.
+  'src/ui',
+  'src/shared',
+]
+
+const portalBuildMeta = getBuildProvenance({
+  repoRoot: pulseRoot,
+  repository: 'streampulse-portal',
+  mode: process.env.PULSE_BUILD_MODE?.trim() || 'source',
+  scope: portalInputScope,
+})
+
+function portalRuntimeIdentity(metadata: typeof portalBuildMeta) {
+  const packageCohort = metadata.packageCohortFingerprint || 'unknown'
+  return {
+    status: 'ok',
+    service: 'streampulse-portal',
+    version: process.env.VITE_PORTAL_VERSION?.trim() || 'dev',
+    buildSha: metadata.commit,
+    buildId: metadata.buildId,
+    mode: metadata.mode,
+    dirty: metadata.dirty,
+    dirtyTreeHash: metadata.dirtyTreeHash,
+    sourceFingerprint: metadata.sourceFingerprint,
+    packageCohortFingerprint: packageCohort,
+    serviceGeneration: `streampulse-portal:${metadata.commit === 'unknown' ? 'unknown' : metadata.commit.slice(0, 12)}:${metadata.dirtyTreeHash === 'clean' ? 'clean' : metadata.dirtyTreeHash.slice(0, 12)}:${packageCohort.slice(0, 12)}`,
+  }
+}
+
+function currentPortalBuildMeta() {
+  try {
+    // Recompute for dev health requests. Linked @streampulse/* packages live
+    // outside this Vite graph, so a static config-time identity can otherwise
+    // claim an old cohort while HMR is serving newer module code.
+    return getBuildProvenance({
+      repoRoot: pulseRoot,
+      repository: 'streampulse-portal',
+      mode: process.env.PULSE_BUILD_MODE?.trim() || 'source',
+      scope: portalInputScope,
+    })
+  } catch {
+    // Health must remain useful during a partially-installed checkout. The
+    // config-time snapshot still identifies the server and its last-known
+    // cohort without hiding the failure behind a hard startup error.
+    return portalBuildMeta
+  }
+}
+
+function buildProvenancePlugin(): Plugin {
+  return {
+    name: 'streampulse-build-provenance',
+    writeBundle() {
+      const metadata = getBuildProvenance({
+        repoRoot: pulseRoot,
+        repository: 'streampulse-portal',
+        mode: process.env.PULSE_BUILD_MODE?.trim() || 'source',
+        scope: portalInputScope,
+      })
+      writeBuildProvenance(
+        resolve(__dirname, 'dist'),
+        metadata,
+      )
+      writeFileSync(
+        resolve(__dirname, 'dist', 'runtime-identity.json'),
+        `${JSON.stringify(portalRuntimeIdentity(metadata), null, 2)}\n`,
+        'utf8',
+      )
+    },
+    configureServer(server) {
+      server.middlewares.use('/healthz', (_request, response) => {
+        const identity = portalRuntimeIdentity(currentPortalBuildMeta())
+        response.statusCode = 200
+        response.setHeader('Cache-Control', 'no-store')
+        response.setHeader('Content-Type', 'application/json; charset=utf-8')
+        response.end(`${JSON.stringify(identity)}\n`)
+      })
+    },
+  }
+}
+
+const plugins = [
+  react(),
+  extensionUiShimsPlugin(pulseRoot, __dirname),
+  devConnectSrcPlugin(),
+  buildProvenancePlugin(),
+]
 
 // Sentry Vite plugin must be last. Upload only when production DSN + auth + release are set.
 if (viteSentryDsn && sentryAuth && sentryRelease) {
@@ -58,6 +152,15 @@ if (viteSentryDsn && sentryAuth && sentryRelease) {
 
 export default defineConfig({
   plugins,
+  define: {
+    __STREAMPULSE_BUILD_META__: JSON.stringify(portalBuildMeta),
+  },
+  server: {
+    host: '127.0.0.1',
+    // Reserve 5173 for the watch UI. Fail instead of silently moving to 5175.
+    port: 5174,
+    strictPort: true,
+  },
   optimizeDeps: {
     // Linked local packages are aliased to source — prebundling freezes a stale
     // snapshot and silently drops props like highlightedGameSegmentKey after edits.
