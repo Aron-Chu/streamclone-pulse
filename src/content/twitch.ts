@@ -1,5 +1,16 @@
-const RESERVED = new Set([
+/** Twitch system routes that must never be treated as channel logins. */
+export const TWITCH_SYSTEM_ROUTES = new Set([
   'directory',
+  'following',
+  'search',
+  'browse',
+  'downloads',
+  'turbo',
+  'wallet',
+  'jobs',
+  'store',
+  'login',
+  'signup',
   'settings',
   'subscriptions',
   'inventory',
@@ -14,6 +25,10 @@ const RESERVED = new Set([
   'drops',
   'moderator',
   'dashboard',
+  'products',
+  'privacy',
+  'legal',
+  'help',
 ])
 
 export type TwitchPageKind = 'channel' | 'vod' | 'non-channel'
@@ -49,7 +64,7 @@ export function parseTwitchPage(pathname: string): TwitchPageContext {
       : { kind: 'non-channel', login: null, vodId: null }
   }
 
-  if (RESERVED.has(head)) {
+  if (TWITCH_SYSTEM_ROUTES.has(head)) {
     return { kind: 'non-channel', login: null, vodId: null }
   }
 
@@ -73,7 +88,24 @@ export type LiveSeekResult =
   | { ok: false; reason: 'no_video' | 'not_seekable' | 'outside_buffer' }
 
 export function getPrimaryVideo(): HTMLVideoElement | null {
-  return document.querySelector('video')
+  const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[]
+  if (videos.length === 0) return null
+  if (videos.length === 1) return videos[0]!
+
+  let best: HTMLVideoElement | null = null
+  let bestScore = -1
+  for (const video of videos) {
+    const rect = video.getBoundingClientRect()
+    const area = Math.max(0, rect.width) * Math.max(0, rect.height)
+    const playingBoost = video.paused ? 0 : 50_000
+    const liveBoost = video.duration === Infinity ? 25_000 : 0
+    const score = area + playingBoost + liveBoost
+    if (score > bestScore) {
+      bestScore = score
+      best = video
+    }
+  }
+  return best
 }
 
 export function seekVodOffset(video: HTMLVideoElement | null, offsetSeconds: number): LiveSeekResult {
@@ -109,6 +141,12 @@ export function seekLiveOffset(
 ): LiveSeekResult {
   if (!video) return { ok: false, reason: 'no_video' }
   if (!Number.isFinite(offsetSeconds) || !Number.isFinite(currentOffsetSeconds)) {
+    return { ok: false, reason: 'outside_buffer' }
+  }
+  // Never turn a future/corrupt moment into a successful seek at the live edge.
+  // The old max(0, ...) below made a 42-hour peak on an 8-hour stream report
+  // success while leaving the player at the live edge.
+  if (offsetSeconds > currentOffsetSeconds) {
     return { ok: false, reason: 'outside_buffer' }
   }
   const behindLiveSeconds = Math.max(0, currentOffsetSeconds - offsetSeconds)
@@ -148,9 +186,10 @@ export function detectTwitchChannelLive(context: TwitchPageContext): boolean {
   if (document.querySelector('[data-a-target="channel-offline-still-image"]')) return false
   if (document.querySelector('[data-a-target="channel-offline-header"]')) return false
 
-  const video = document.querySelector('video')
+  const video = getPrimaryVideo()
   // Live HLS often reports duration as Infinity. Number.isFinite(Infinity) is false,
-  // so do not gate this branch on isFinite.
+  // so do not gate this branch on isFinite. Prefer the ranked primary video so an
+  // inserted finite ad-preview <video> cannot flip live → offline.
   if (video && video.duration === Infinity) {
     return true
   }

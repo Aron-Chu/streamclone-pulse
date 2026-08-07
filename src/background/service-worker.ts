@@ -1,13 +1,12 @@
 import {
-  createPulseBookmark,
-  deletePulseBookmark,
   fetchAlwaysTracked,
   fetchExtensionCoverage,
   fetchExtensionHealth,
   fetchPastVodRows,
   fetchPulseBackfillStatus,
-  fetchPulseBookmarks,
+  fetchPulseArchiveCandidate,
   fetchPulseChannel,
+  fetchPulseStream,
   fetchPulseVod,
   fetchTopClip,
   postPulseBackfill,
@@ -16,26 +15,54 @@ import {
   setAlwaysTracked,
 } from './api.ts'
 import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
-import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin, untrackLogin } from './tracking.ts'
-import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
+import { isTracked, listTrackedLogins, pauseAllPolling, resumeAllPolling, startPolling, trackLogin } from './tracking.ts'
+import type { BackgroundRequest, BackgroundResponse, ExtensionCoverageTierResponse, PastVodRow, PulsePayload, PulseStreamUpdateMessage, PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
 import { getAutoUpdateEnabled, getBackendUrl, getPollIntervalMs, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setSessionCoverage, type PulseCacheWindow } from '../shared/storage.ts'
+import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
 import {
   addToWatchlist,
   getWatchlist,
+  normalizeWatchlist,
   removeFromWatchlist,
 } from '../shared/watchlist.ts'
-import { initPulseDebug, getPulseDebugLog, pulseDebug } from '../shared/pulseDebug.ts'
+import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabNavigation,
 } from './pulsePrefetch.ts'
 import { shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
+import { vodPulseStateAllowsRetry } from '../vod/normalizeVodPulseFetch.ts'
+import {
+  planWatchlistStartupSync,
+  planWatchlistStorageDelta,
+} from './alwaysTrackedSync.ts'
 
 void initPulseDebug()
 
 const revalidateInFlight = new Set<string>()
 const lastRevalidateAt = new Map<string, number>()
+/** Suppress storage-listener sync while message handlers own the mutation. */
+let suppressWatchlistStorageSync = false
+
+async function applyAlwaysTrackedPlan(plan: {
+  trackTrue: string[]
+  trackFalse: string[]
+}): Promise<void> {
+  await Promise.all([
+    ...plan.trackTrue.map(login => setAlwaysTracked(login, true)),
+    ...plan.trackFalse.map(login => setAlwaysTracked(login, false)),
+  ])
+}
+
+async function withWatchlistMutationOwnership<T>(fn: () => Promise<T>): Promise<T> {
+  suppressWatchlistStorageSync = true
+  try {
+    return await fn()
+  } finally {
+    suppressWatchlistStorageSync = false
+  }
+}
 
 async function hostedBackend(): Promise<boolean> {
   return isHostedBackendUrl(await getBackendUrl())
@@ -86,7 +113,7 @@ async function refreshPulse(
     await cachePulseIfEnabled(login, payload, window)
     broadcastPulse(login, payload, undefined, coverageTier)
   } catch (err) {
-    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+    broadcastPulse(login, null, sanitizePulseErrorMessage(err))
   }
 }
 
@@ -97,6 +124,7 @@ async function peekPulse(
 ): Promise<{
   payload: PulseUpdateMessage['payload']
   coverageTier: ExtensionCoverageTierResponse | null
+  error?: string
 }> {
   try {
     const [payload, coverageTier] = await Promise.all([
@@ -105,8 +133,12 @@ async function peekPulse(
     ])
     await cachePulseIfEnabled(login, payload, window)
     return { payload, coverageTier }
-  } catch {
-    return { payload: null, coverageTier: null }
+  } catch (err) {
+    return {
+      payload: null,
+      coverageTier: null,
+      error: sanitizePulseErrorMessage(err),
+    }
   }
 }
 
@@ -118,11 +150,15 @@ async function revalidatePulse(login: string, window: PulseCacheWindow, forceCov
   }
   revalidateInFlight.add(key)
   try {
-    const { payload, coverageTier } = await peekPulse(login, window, forceCoverage)
-    broadcastPulse(login, payload, undefined, coverageTier)
-    lastRevalidateAt.set(key, Date.now())
+    const { payload, coverageTier, error } = await peekPulse(login, window, forceCoverage)
+    if (error) {
+      broadcastPulse(login, null, error)
+    } else {
+      broadcastPulse(login, payload, undefined, coverageTier)
+      lastRevalidateAt.set(key, Date.now())
+    }
   } catch (err) {
-    broadcastPulse(login, null, err instanceof Error ? err.message : 'fetch_failed')
+    broadcastPulse(login, null, sanitizePulseErrorMessage(err))
   } finally {
     revalidateInFlight.delete(key)
   }
@@ -173,25 +209,17 @@ async function applyAutoUpdateSetting(enabled: boolean): Promise<void> {
 }
 
 async function syncWatchlistToBackend(): Promise<string[]> {
-  const channels = await getWatchlist()
-  let backendChannels: string[] = []
+  let channels: string[] | null = null
   try {
-    backendChannels = await fetchAlwaysTracked()
+    channels = await getWatchlist()
   } catch {
-    backendChannels = []
+    channels = null
   }
 
-  const backendSet = new Set(backendChannels.map(item => item.toLowerCase()))
-  const localSet = new Set(channels)
+  const plan = planWatchlistStartupSync(channels, [])
+  await applyAlwaysTrackedPlan(plan)
 
-  await Promise.all([
-    ...channels.map(login => setAlwaysTracked(login, true)),
-    ...backendChannels
-      .filter(login => !localSet.has(login.toLowerCase()))
-      .map(login => setAlwaysTracked(login, false)),
-  ])
-
-  if (!(await hostedBackend())) {
+  if (channels && !(await hostedBackend())) {
     for (const login of channels) {
       if (!isTracked(login)) {
         await ensureTracked(login)
@@ -199,7 +227,18 @@ async function syncWatchlistToBackend(): Promise<string[]> {
     }
   }
 
-  return channels
+  return channels ?? []
+}
+
+async function syncWatchlistStorageDelta(
+  oldValue: unknown,
+  newValue: unknown,
+): Promise<void> {
+  const plan = planWatchlistStorageDelta(
+    normalizeWatchlist(oldValue),
+    normalizeWatchlist(newValue),
+  )
+  await applyAlwaysTrackedPlan(plan)
 }
 
 const PAST_VODS_CACHE_MS = 5 * 60 * 1000
@@ -225,12 +264,50 @@ async function listPastVods(
   return rows
 }
 
+function stableVodLogin(login?: string): string | undefined {
+  const normalized = login?.trim().toLowerCase()
+  if (!normalized || normalized.startsWith('__vod__:')) return undefined
+  return normalized
+}
+
+async function resolveProvisionalLivePulse(
+  vodPulse: import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse,
+  channelLogin?: string,
+): Promise<PulsePayload | null> {
+  const login = stableVodLogin(channelLogin)
+  if (!login || vodPulse.retryable === false || !vodPulseStateAllowsRetry(vodPulse)) {
+    return null
+  }
+
+  try {
+    const channelPulse = await fetchPulseChannel(login, { window: 'full' })
+    const streamId = channelPulse.streamId?.trim()
+    if (!channelPulse.isLive || !channelPulse.tracking || !streamId) {
+      return null
+    }
+    return await fetchPulseStream(streamId, {
+      broadcasterLogin: login,
+      allowLiveBridge: true,
+      window: 'full',
+    })
+  } catch (error) {
+    await pulseDebug(
+      'vod.live.bridge',
+      'provisional live stream bridge unavailable',
+      { login, error: error instanceof Error ? error.message : 'bridge_failed' },
+      'warn',
+    )
+    return null
+  }
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'sync' && changes.autoUpdateEnabled) {
     void applyAutoUpdateSetting(Boolean(changes.autoUpdateEnabled.newValue ?? true))
   }
   if (areaName !== 'sync' || !changes.watchlist) return
-  void syncWatchlistToBackend()
+  if (suppressWatchlistStorageSync) return
+  void syncWatchlistStorageDelta(changes.watchlist.oldValue, changes.watchlist.newValue)
 })
 
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse) => {
@@ -257,16 +334,27 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           } satisfies PulseUpdateMessage)
           return
         }
-        case 'UNTRACK': {
-          untrackLogin(message.login)
-          sendResponse({ ok: true })
-          return
-        }
         case 'GET_PULSE': {
           const window: PulseCacheWindow = message.window === 'full' ? 'full' : 'recent'
           const hosted = await hostedBackend()
           const allowWatch = Boolean(message.watch) && !hosted
           await awaitPulsePrefetchInFlight(message.login)
+          if (message.forceRefresh) {
+            const { payload, coverageTier, error } = await peekPulse(message.login, window)
+            if (payload) {
+              broadcastPulse(message.login, payload, undefined, coverageTier)
+            } else if (error) {
+              broadcastPulse(message.login, null, error)
+            }
+            sendResponse({
+              type: 'PULSE_UPDATE',
+              login: message.login,
+              payload,
+              coverageTier,
+              error,
+            } satisfies PulseUpdateMessage)
+            return
+          }
           const cached = await getSessionPulse(message.login, window, message.streamId)
           const cachedCoverage = await getSessionCoverage(message.login)
 
@@ -286,15 +374,18 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           } else if (isTracked(message.login)) {
             await refreshPulse(message.login, window)
           } else {
-            const { payload, coverageTier } = await peekPulse(message.login, window)
+            const { payload, coverageTier, error } = await peekPulse(message.login, window)
             if (payload) {
               broadcastPulse(message.login, payload, undefined, coverageTier)
+            } else if (error) {
+              broadcastPulse(message.login, null, error)
             }
             sendResponse({
               type: 'PULSE_UPDATE',
               login: message.login,
               payload,
               coverageTier,
+              error,
             } satisfies PulseUpdateMessage)
             return
           }
@@ -313,10 +404,12 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
         case 'GET_PULSE_VOD': {
           try {
             const vodPulse = await fetchPulseVod(message.vodId)
+            const provisionalPulse = await resolveProvisionalLivePulse(vodPulse, message.channelLogin)
             sendResponse({
               type: 'VOD_PULSE_UPDATE',
               vodId: message.vodId,
               vodPulse,
+              provisionalPulse,
             } satisfies VodPulseUpdateMessage)
           } catch (err) {
             sendResponse({
@@ -328,24 +421,45 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           }
           return
         }
-        case 'GET_COVERAGE': {
+        case 'GET_PULSE_STREAM': {
           try {
-            const cachedCoverage = await getSessionCoverage(message.login)
-            const coverageTier = cachedCoverage?.coverageTier ?? await loadCoverageTier(message.login)
-            const pulseCache = await getSessionPulse(message.login, 'recent')
+            const payload = await fetchPulseStream(message.streamId, {
+              broadcasterLogin: message.broadcasterLogin,
+              allowLiveBridge: message.allowLiveBridge,
+              window: message.window,
+            })
             sendResponse({
-              type: 'PULSE_UPDATE',
-              login: message.login,
-              payload: pulseCache?.payload ?? null,
-              coverageTier,
-            } satisfies PulseUpdateMessage)
+              type: 'PULSE_STREAM_UPDATE',
+              streamId: message.streamId,
+              login: message.broadcasterLogin,
+              payload,
+            } satisfies PulseStreamUpdateMessage)
           } catch (err) {
             sendResponse({
-              type: 'PULSE_UPDATE',
-              login: message.login,
+              type: 'PULSE_STREAM_UPDATE',
+              streamId: message.streamId,
+              login: message.broadcasterLogin,
               payload: null,
-              error: err instanceof Error ? err.message : 'coverage_failed',
-            } satisfies PulseUpdateMessage)
+              error: err instanceof Error ? err.message : 'pulse_stream_failed',
+            } satisfies PulseStreamUpdateMessage)
+          }
+          return
+        }
+        case 'GET_PULSE_ARCHIVE_CANDIDATE': {
+          try {
+            const candidate = await fetchPulseArchiveCandidate(message.streamId, message.login)
+            sendResponse({
+              type: 'PULSE_ARCHIVE_CANDIDATE',
+              streamId: message.streamId,
+              candidate,
+            } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({
+              type: 'PULSE_ARCHIVE_CANDIDATE',
+              streamId: message.streamId,
+              candidate: null,
+              error: err instanceof Error ? err.message : 'pulse_archive_candidate_failed',
+            } satisfies BackgroundResponse)
           }
           return
         }
@@ -445,53 +559,31 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
           } satisfies BackgroundResponse)
           return
         }
-        case 'GET_PULSE_DEBUG_LOG': {
-          sendResponse({ type: 'PULSE_DEBUG_LOG', entries: await getPulseDebugLog() } satisfies BackgroundResponse)
-          return
-        }
-        case 'OPEN_OPTIONS': {
-          chrome.runtime.openOptionsPage()
-          sendResponse({ ok: true })
-          return
-        }
         case 'LIST_WATCHLIST': {
           sendResponse({ type: 'WATCHLIST', channels: await getWatchlist() } satisfies BackgroundResponse)
           return
         }
         case 'ADD_WATCHLIST': {
-          const channels = await addToWatchlist(message.login)
-          await syncWatchlistToBackend()
+          const channels = await withWatchlistMutationOwnership(async () => {
+            const next = await addToWatchlist(message.login)
+            await setAlwaysTracked(message.login, true)
+            return next
+          })
           sendResponse({ type: 'WATCHLIST', channels } satisfies BackgroundResponse)
           return
         }
         case 'REMOVE_WATCHLIST': {
-          const channels = await removeFromWatchlist(message.login)
-          await syncWatchlistToBackend()
+          const channels = await withWatchlistMutationOwnership(async () => {
+            const next = await removeFromWatchlist(message.login)
+            await setAlwaysTracked(message.login, false)
+            return next
+          })
           sendResponse({ type: 'WATCHLIST', channels } satisfies BackgroundResponse)
           return
         }
         case 'SYNC_WATCHLIST': {
           const channels = await syncWatchlistToBackend()
           sendResponse({ type: 'SYNC_WATCHLIST', channels } satisfies BackgroundResponse)
-          return
-        }
-        case 'LIST_BOOKMARKS': {
-          const items = await fetchPulseBookmarks({
-            login: message.login,
-            streamId: message.streamId,
-            vodId: message.vodId,
-          })
-          sendResponse({ type: 'BOOKMARKS', items } satisfies BackgroundResponse)
-          return
-        }
-        case 'SAVE_BOOKMARK': {
-          const item = await createPulseBookmark(message.bookmark)
-          sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
-          return
-        }
-        case 'DELETE_BOOKMARK': {
-          await deletePulseBookmark(message.id)
-          sendResponse({ type: 'DELETE_BOOKMARK', ok: true } satisfies BackgroundResponse)
           return
         }
         case 'SET_AUTO_UPDATE': {
@@ -554,6 +646,15 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
             vodPulse: null,
             error: messageText,
           } satisfies VodPulseUpdateMessage)
+          return
+        case 'GET_PULSE_STREAM':
+          sendResponse({
+            type: 'PULSE_STREAM_UPDATE',
+            streamId: 'streamId' in message ? message.streamId : '',
+            login: 'broadcasterLogin' in message ? message.broadcasterLogin : '',
+            payload: null,
+            error: messageText,
+          } satisfies PulseStreamUpdateMessage)
           return
         default:
           sendResponse({

@@ -1,15 +1,9 @@
 export type MessageType =
   | 'TRACK'
-  | 'UNTRACK'
   | 'GET_PULSE'
-  | 'GET_COVERAGE'
   | 'GET_ALWAYS_TRACKED'
   | 'GET_CLIP'
   | 'HEALTH'
-  | 'OPEN_OPTIONS'
-  | 'LIST_BOOKMARKS'
-  | 'SAVE_BOOKMARK'
-  | 'DELETE_BOOKMARK'
   | 'LIST_WATCHLIST'
   | 'ADD_WATCHLIST'
   | 'REMOVE_WATCHLIST'
@@ -19,22 +13,15 @@ export type MessageType =
   | 'FETCH_EMOTE_IMAGE'
   | 'HINT_VOD'
   | 'DISCOVER_LIVE_VOD'
+  | 'GET_PULSE_ARCHIVE_CANDIDATE'
   | 'GET_PULSE_VOD'
+  | 'GET_PULSE_STREAM'
   | 'PULSE_UPDATE'
   | 'VOD_PULSE_UPDATE'
+  | 'PULSE_STREAM_UPDATE'
 
 export interface TrackMessage {
   type: 'TRACK'
-  login: string
-}
-
-export interface UntrackMessage {
-  type: 'UNTRACK'
-  login: string
-}
-
-export interface GetCoverageMessage {
-  type: 'GET_COVERAGE'
   login: string
 }
 
@@ -47,6 +34,8 @@ export interface GetPulseMessage {
   login: string
   /** When true, POST /watch and start polling. Default false — use TRACK for that. */
   watch?: boolean
+  /** Bypass session cache when navigation or page state proves it may be stale. */
+  forceRefresh?: boolean
   window?: 'recent' | 'full'
   /** Reject cached pulse when the viewer moved to a different live stream. */
   streamId?: string
@@ -128,39 +117,12 @@ export interface HealthMessage {
   type: 'HEALTH'
 }
 
-export interface OpenOptionsMessage {
-  type: 'OPEN_OPTIONS'
-}
-
-export interface ListBookmarksMessage {
-  type: 'LIST_BOOKMARKS'
-  login?: string
-  streamId?: string
-  vodId?: string
-}
-
-export interface SaveBookmarkMessage {
-  type: 'SAVE_BOOKMARK'
-  bookmark: CreatePulseBookmarkInput
-}
-
-export interface DeleteBookmarkMessage {
-  type: 'DELETE_BOOKMARK'
-  id: string
-}
-
 export type BackgroundRequest =
   | TrackMessage
-  | UntrackMessage
   | GetPulseMessage
-  | GetCoverageMessage
   | GetAlwaysTrackedMessage
   | GetClipMessage
   | HealthMessage
-  | OpenOptionsMessage
-  | ListBookmarksMessage
-  | SaveBookmarkMessage
-  | DeleteBookmarkMessage
   | ListWatchlistMessage
   | AddWatchlistMessage
   | RemoveWatchlistMessage
@@ -170,13 +132,15 @@ export type BackgroundRequest =
   | FetchEmoteImageMessage
   | HintVodMessage
   | DiscoverLiveVodMessage
+  | GetPulseArchiveCandidateMessage
   | GetPulseVodMessage
-  | GetPulseDebugLogMessage
+  | GetPulseStreamMessage
   | LoadMissedMomentsMessage
   | GetPulseBackfillStatusMessage
 
 export interface ExtensionEmote {
   id?: string
+  providerEmoteId?: string
   name: string
   imageUrl?: string
   count: number
@@ -233,36 +197,12 @@ export interface ExtensionHealthResponse {
   helixEnabled?: boolean
 }
 
-export interface PulseBookmark {
-  id: string
-  login: string
-  streamId?: string
-  vodId?: string
-  offsetSeconds: number
-  label: string
-  notes: string
-  score?: number
-  source: 'web' | 'extension'
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CreatePulseBookmarkInput {
-  login?: string
-  streamId?: string
-  vodId?: string
-  offsetSeconds: number
-  label?: string
-  notes?: string
-  score?: number
-  source: 'extension'
-}
-
 export interface PulseRecapEmote {
   code: string
   count: number
   provider?: string
   id?: string
+  providerEmoteId?: string
   imageUrl?: string
 }
 
@@ -306,10 +246,6 @@ export interface PulseStreamRecap {
   emoteEnrichmentStatus?: 'complete' | 'partial' | 'missing' | string
 }
 
-export interface GetPulseDebugLogMessage {
-  type: 'GET_PULSE_DEBUG_LOG'
-}
-
 export interface HintVodMessage {
   type: 'HINT_VOD'
   login: string
@@ -320,10 +256,26 @@ export interface HintVodMessage {
 export interface GetPulseVodMessage {
   type: 'GET_PULSE_VOD'
   vodId: string
+  /** Stable channel context from /{login}/videos/{id}; pure VOD routes omit it. */
+  channelLogin?: string
+}
+
+export interface GetPulseStreamMessage {
+  type: 'GET_PULSE_STREAM'
+  streamId: string
+  broadcasterLogin: string
+  allowLiveBridge?: boolean
+  window?: 'recent' | 'full'
 }
 
 export interface DiscoverLiveVodMessage {
   type: 'DISCOVER_LIVE_VOD'
+  login: string
+}
+
+export interface GetPulseArchiveCandidateMessage {
+  type: 'GET_PULSE_ARCHIVE_CANDIDATE'
+  streamId: string
   login: string
 }
 
@@ -397,6 +349,11 @@ export interface PulseBackfillJob {
 
 export interface PulsePayload {
   login: string
+  /** `live_dvr` is provisional live analytics, never a permanent VOD identity. */
+  mode?: string
+  provisional?: boolean
+  resolutionState?: string
+  retryable?: boolean
   isLive: boolean
   tracking: boolean
   streamId?: string
@@ -468,22 +425,39 @@ export interface PulseUpdateMessage {
   coverageTier?: ExtensionCoverageTierResponse | null
 }
 
+export interface PulseStreamUpdateMessage {
+  type: 'PULSE_STREAM_UPDATE'
+  streamId: string
+  login: string
+  payload: PulsePayload | null
+  error?: string
+}
+
+export interface PulseArchiveCandidate {
+  streamId: string
+  navigationVodId?: string
+  navigationValidated: boolean
+  analyticsResolutionState: string
+  analyticsAvailable: boolean
+  originDeltaSeconds?: number
+  persisted: boolean
+  retryable?: boolean
+}
+
 export interface VodPulseUpdateMessage {
   type: 'VOD_PULSE_UPDATE'
   vodId: string
   vodPulse: import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse | null
+  provisionalPulse?: PulsePayload | null
   error?: string
 }
 
 export type BackgroundResponse =
   | PulseUpdateMessage
+  | PulseStreamUpdateMessage
   | VodPulseUpdateMessage
   | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }
   | { type: 'HEALTH'; ok: boolean; version?: string; helixEnabled?: boolean; error?: string }
-  | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
-  | { type: 'BOOKMARKS'; items: PulseBookmark[]; error?: string }
-  | { type: 'BOOKMARK'; item: PulseBookmark; error?: string }
-  | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
   | { type: 'WATCHLIST'; channels: string[]; error?: string }
   | { type: 'SYNC_WATCHLIST'; channels: string[]; error?: string }
   | { type: 'PAST_VODS'; items: PastVodRow[]; error?: string }
@@ -492,4 +466,5 @@ export type BackgroundResponse =
   | { type: 'PULSE_BACKFILL_STATUS'; job: PulseBackfillJob | null; error?: string }
   | { type: 'ALWAYS_TRACKED'; channels: string[]; error?: string }
   | { type: 'DISCOVER_LIVE_VOD'; result: import('./twitchVodGql.ts').GqlVodDiscoveryResult; error?: string }
+  | { type: 'PULSE_ARCHIVE_CANDIDATE'; streamId: string; candidate: PulseArchiveCandidate | null; error?: string }
   | { ok: boolean; error?: string }

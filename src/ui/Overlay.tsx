@@ -6,8 +6,7 @@ import {
   LIVE_HEAT_SUBTITLE,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
-import { CollapsedPill } from './CollapsedPill.tsx'
-import { MiniDock } from './MiniDock.tsx'
+import { PeakBrandMark } from './PeakBrandMark.tsx'
 import { LiveStatsBand } from './LiveStatsBand.tsx'
 import { MostReactedSection } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
@@ -21,14 +20,11 @@ import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
   getBackendUrl,
-  getOverlayMode,
-  getOverlayPlacement,
+  getOverlayDisplayPreferences,
   getSidebarTab,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
   setAutoUpdateEnabled,
-  setOverlayMode,
-  setOverlayPlacement,
   setSidebarTab,
   type OverlayMode,
   type OverlayPlacement,
@@ -36,9 +32,10 @@ import {
   type PulseCacheWindow,
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
-import { resolvePulsePanelSections } from './pulsePanelLayout.ts'
+import { resolvePulsePanelSections, shouldShowSettingsPanel } from './pulsePanelLayout.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import { overlayTextLinkButton } from './momentReasonStyles.ts'
+import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import {
@@ -74,13 +71,17 @@ import { formatPulseApiError } from './pulseApiErrors.ts'
 import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
-import { resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
+import { resolveVodPulseState, vodPulseStateAllowsRetry } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
 }
+
+const VOD_STATUS_POLL_INTERVAL_MS = 45_000
+const HOSTED_POST_STREAM_VOD_POLL_MS = 30 * 60_000
+const VOD_PAGE_RETRY_WINDOW_MS = 30 * 60_000
 
 interface OverlayProps {
   login: string
@@ -125,7 +126,7 @@ export function Overlay({
   panelHostWidth,
   pageIsLive = false,
   sidebarTab: sidebarTabProp,
-  overlayMode: overlayModeProp,
+  overlayMode: _overlayModeProp,
   onSidebarTabChange,
   onOverlayModeChange,
   onPulseRefresh,
@@ -134,7 +135,6 @@ export function Overlay({
   vodPulse = null,
   vodPulseLoading = false,
 }: OverlayProps) {
-  const [mode, setModeState] = useState<OverlayMode>('expanded')
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
@@ -147,7 +147,6 @@ export function Overlay({
   const [missedBusy, setMissedBusy] = useState(false)
   const [missedRefreshed, setMissedRefreshed] = useState(false)
   const [missedJob, setMissedJob] = useState<PulseBackfillJob | null>(null)
-  const [saveBusy, setSaveBusy] = useState(false)
   const [coverageLastCheck, setCoverageLastCheck] = useState<number | null>(null)
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
   const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
@@ -159,6 +158,8 @@ export function Overlay({
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
   )
+  const hostedVodPollDeadlineRef = useRef<{ streamId: string; untilMs: number } | null>(null)
+  const vodPagePollDeadlineRef = useRef<{ vodId: string; untilMs: number } | null>(null)
 
   useEffect(() => {
     setCoverageTierState(coverageTierProp)
@@ -237,31 +238,29 @@ export function Overlay({
   useEffect(() => {
     let mounted = true
     void (async () => {
-      const [storedMode, storedPlacement, storedBackend, storedSidebarTab, storedAutoUpdate] = await Promise.all([
-        getOverlayMode(),
-        getOverlayPlacement(),
+      const [storedDisplay, storedBackend, storedSidebarTab, storedAutoUpdate] = await Promise.all([
+        getOverlayDisplayPreferences(),
         getBackendUrl(),
         getSidebarTab(),
         getAutoUpdateEnabled(),
       ])
       if (!mounted) return
-      setModeState(storedMode)
-      setPlacementState(storedPlacement)
+      setPlacementState(storedDisplay.placement)
       setBackendUrlState(storedBackend)
       setSidebarTabState(storedSidebarTab)
       setAutoUpdate(storedAutoUpdate)
       onSidebarTabChange?.(storedSidebarTab)
+      onOverlayModeChange?.('expanded')
     })()
     const storageHandler = (
       changes: Record<string, chrome.storage.StorageChange>,
       areaName: string,
     ) => {
       if (areaName !== 'sync') return
-      void getOverlayMode().then(mode => {
-        setModeState(mode)
-        onOverlayModeChange?.(mode)
+      void getOverlayDisplayPreferences().then(display => {
+        setPlacementState(display.placement)
+        onOverlayModeChange?.('expanded')
       })
-      void getOverlayPlacement().then(setPlacementState)
       void getSidebarTab().then(tab => {
         setSidebarTabState(tab)
         onSidebarTabChange?.(tab)
@@ -333,7 +332,7 @@ export function Overlay({
     : null
   const coverageStart = pulseLiveAccess.coverageStartOffsetSeconds
   const resolvedPlacement = effectivePlacement ?? placement
-  const resolvedMode = overlayModeProp ?? mode
+  const resolvedMode: OverlayMode = 'expanded'
   const resolvedSidebarTab = sidebarTabProp ?? sidebarTab
   const showSidebarTabs = sidebarSnapped && resolvedPlacement === 'sidebar' && sidebarPart !== 'body'
   const sidebarBodyOnly = sidebarPart === 'body'
@@ -357,7 +356,14 @@ export function Overlay({
     && !hasRecapPanel,
   )
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
-  const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < 360
+  /** Narrow chat column — compact metrics/padding by host width, not viewport. */
+  const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < 480
+  const contentSessionKey = isVodPage
+    ? `vod:${context.vodId ?? payload?.vodId ?? 'pending'}`
+    : uiIsLive
+      ? `live:${payload?.streamId ?? 'pending'}`
+      : 'offline'
+  const routeContentKey = `${login}:${contentSessionKey}`
   const shellClass = [
     'pulse-shell',
     `placement-${resolvedPlacement}`,
@@ -374,27 +380,9 @@ export function Overlay({
   }
 
   async function persistSidebarTab(next: SidebarTab): Promise<void> {
-    if (next === 'pulse' && resolvedMode === 'collapsed') {
-      await persistMode('expanded')
-    }
     setSidebarTabState(next)
     await setSidebarTab(next)
     onSidebarTabChange?.(next)
-  }
-
-  async function persistMode(next: OverlayMode): Promise<void> {
-    setModeState(next)
-    await setOverlayMode(next)
-    onOverlayModeChange?.(next)
-  }
-
-  async function hideOverlay(): Promise<void> {
-    if (sidebarSnapped) {
-      await persistMode('collapsed')
-      return
-    }
-    await persistMode('expanded')
-    await setOverlayPlacement('hidden')
   }
 
   async function startTracking(): Promise<void> {
@@ -542,10 +530,19 @@ export function Overlay({
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 
-  async function refreshVodDebugDetail(activePayload?: PulsePayload | null): Promise<void> {
+  async function refreshVodDebugDetail(
+    activePayload?: PulsePayload | null,
+    currentHelixEnabled?: boolean | null,
+  ): Promise<void> {
     const source = activePayload ?? payload
+    const backendHelixEnabled = typeof currentHelixEnabled === 'boolean'
+      ? currentHelixEnabled
+      : typeof source?.helixEnabled === 'boolean'
+        ? source.helixEnabled
+        : undefined
     const summary = await summarizeVodDebugBlockers({
       backendVodResolved: source ? backendResolvedVod(source) : false,
+      backendHelixEnabled,
     })
     setVodDebugDetail(summary)
   }
@@ -553,11 +550,12 @@ export function Overlay({
   async function submitPageVodHint(): Promise<string | null> {
     if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
     const domHint = discoverLiveVodIdFromDom()
+    // DOM miss is common on live pages — info only (warn shows up in Chrome Web Store Errors).
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
       login,
       streamId: payload.streamId,
       id: domHint,
-    }, domHint ? 'info' : 'warn')
+    }, 'info')
     let hint = domHint
     if (!hint) {
       const gqlRes = await sendBackgroundMessage({ type: 'DISCOVER_LIVE_VOD', login })
@@ -566,6 +564,7 @@ export function Overlay({
           ? gqlRes.result
           : { vodId: null, streamId: null, source: null, gqlErrors: ['background_unreachable'] as string[] }
       hint = gql.vodId
+      const gqlBlocked = (gql.gqlErrors?.length ?? 0) > 0
       await pulseDebug(
         'vod.discover.gql',
         hint ? `found archive id via Twitch GQL (${gql.source})` : 'GQL returned no archive id',
@@ -577,7 +576,7 @@ export function Overlay({
           pulseStreamId: payload.streamId,
           gqlErrors: gql.gqlErrors,
         },
-        hint ? 'info' : 'warn',
+        hint ? 'info' : gqlBlocked ? 'warn' : 'info',
       )
     }
     if (!hint) {
@@ -612,8 +611,10 @@ export function Overlay({
     try {
       await submitPageVodHint()
       const healthRes = await sendBackgroundMessage({ type: 'HEALTH' }).catch(() => null)
+      let currentHelixEnabled: boolean | null | undefined
       if (healthRes && 'type' in healthRes && healthRes.type === 'HEALTH') {
         const helix = healthRes.helixEnabled
+        currentHelixEnabled = helix
         const helixMessage =
           helix === true
             ? 'Helix enabled on backend'
@@ -646,14 +647,14 @@ export function Overlay({
           kind: 'info',
           text: 'Twitch VOD linked — tap Fill from Twitch VOD when you want to load missing chat.',
         })
-        await refreshVodDebugDetail(next)
+        await refreshVodDebugDetail(next, currentHelixEnabled)
         return
       }
       if (next.helixEnabled === false) {
         setCoverageCheckError(
           'Backend Helix is off — analytics needs TWITCH_OAUTH_CLIENT_ID/SECRET (or redeploy latest analytics).',
         )
-        await refreshVodDebugDetail(next)
+        await refreshVodDebugDetail(next, currentHelixEnabled)
         return
       }
       if (!next.vodId && healthRes && 'type' in healthRes && healthRes.type === 'HEALTH' && healthRes.helixEnabled == null) {
@@ -667,7 +668,7 @@ export function Overlay({
       } else {
         setCoverageCheckError(null)
       }
-      await refreshVodDebugDetail(next)
+      await refreshVodDebugDetail(next, currentHelixEnabled)
     } catch (err) {
       setCoverageCheckError(coverageErrorMessage(
         err instanceof Error ? err.message : null,
@@ -709,7 +710,7 @@ export function Overlay({
         return
       }
       if (!('type' in response) || response.type !== 'PULSE_BACKFILL' || !response.job) {
-        setCoverageCheckError('Could not start backfill — check beta key and backend URL in settings.')
+         setCoverageCheckError('Could not start backfill — check the backend connection in settings.')
         return
       }
       const job = response.job
@@ -757,15 +758,39 @@ export function Overlay({
 
   const coverageForPoll = payload ? resolvePulseCoverage(payload) : undefined
   useEffect(() => {
-    if (hostedBackend) return
-    if (!payload?.tracking || !uiIsLive) return
+    if (isVodPage || !payload?.tracking || payload.vodId) {
+      if (hostedBackend && payload?.vodId) hostedVodPollDeadlineRef.current = null
+      return
+    }
+    if (!hostedBackend && !uiIsLive) return
     if (coverageCheckError?.includes('at capacity')) return
     if (coverageForPoll?.state !== 'waiting_for_vod' && !coverageForPoll?.canBackfill) return
     if (missedBusy || missedJob?.status === 'fetching_chat') return
+    const streamId = payload.streamId
 
+    if (hostedBackend && !uiIsLive) {
+      if (!streamId) return
+      const current = hostedVodPollDeadlineRef.current
+      if (!current || current.streamId !== streamId) {
+        hostedVodPollDeadlineRef.current = {
+          streamId,
+          untilMs: Date.now() + HOSTED_POST_STREAM_VOD_POLL_MS,
+        }
+      }
+    } else if (hostedBackend) {
+      hostedVodPollDeadlineRef.current = null
+    }
+
+    const postStreamDeadline = hostedBackend && !uiIsLive
+      ? hostedVodPollDeadlineRef.current?.untilMs ?? null
+      : null
     const timer = window.setInterval(() => {
+      if (postStreamDeadline != null && Date.now() >= postStreamDeadline) {
+        window.clearInterval(timer)
+        return
+      }
       void refreshVodStatus()
-    }, 45_000)
+    }, VOD_STATUS_POLL_INTERVAL_MS)
 
     return () => window.clearInterval(timer)
   }, [
@@ -779,14 +804,59 @@ export function Overlay({
     missedJob?.status,
     coverageCheckError,
     hostedBackend,
+    isVodPage,
   ])
 
-  function openSettings(): void {
-    void sendBackgroundMessage({ type: 'OPEN_OPTIONS' })
-  }
+  useEffect(() => {
+    const vodId = isVodPage ? context.vodId : undefined
+    const shouldRetry = isVodPage && vodPulseStateAllowsRetry(vodPulse, error)
+    if (!vodId || !onPulseRefresh || !shouldRetry) {
+      vodPagePollDeadlineRef.current = null
+      return
+    }
+    if (vodPulseLoading || trackBusy) return
+
+    const current = vodPagePollDeadlineRef.current
+    if (!current || current.vodId !== vodId) {
+      vodPagePollDeadlineRef.current = {
+        vodId,
+        untilMs: Date.now() + VOD_PAGE_RETRY_WINDOW_MS,
+      }
+    }
+    const retryDeadline = vodPagePollDeadlineRef.current?.untilMs ?? null
+    const timer = window.setInterval(() => {
+      if (retryDeadline != null && Date.now() >= retryDeadline) {
+        if (vodPagePollDeadlineRef.current?.vodId === vodId) {
+          vodPagePollDeadlineRef.current = null
+        }
+        window.clearInterval(timer)
+        return
+      }
+      if (vodPulseLoading || trackBusy) return
+      void refreshPulse()
+    }, VOD_STATUS_POLL_INTERVAL_MS)
+
+    return () => window.clearInterval(timer)
+  }, [
+    context.vodId,
+    error,
+    isVodPage,
+    onPulseRefresh,
+    trackBusy,
+    vodPulse?.coverageStatus,
+    vodPulseLoading,
+  ])
 
   function openInlineSettings(): void {
     setPanelView('settings')
+  }
+
+  function closeInlineSettings(): void {
+    setPanelView('pulse')
+  }
+
+  function toggleInlineSettings(): void {
+    setPanelView(current => (current === 'settings' ? 'pulse' : 'settings'))
   }
 
   function openAnalytics(offsetSeconds?: number): void {
@@ -877,37 +947,6 @@ export function Overlay({
     seekToStreamStart()
   }
 
-  async function saveMoment(point: LiveHeatPoint): Promise<void> {
-    if (!payload) return
-    setSaveBusy(true)
-    setNotice(null)
-    try {
-      const response = await sendBackgroundMessage({
-        type: 'SAVE_BOOKMARK',
-        bookmark: {
-          login: payload.login,
-          streamId: payload.streamId,
-          vodId: payload.vodId ?? undefined,
-          offsetSeconds: point.offsetSeconds,
-          label: `${formatHeatOffset(point.offsetSeconds)} · ${point.reasonLabel}`,
-          score: point.score,
-          source: 'extension',
-        },
-      })
-      if ('type' in response && response.type === 'BOOKMARK') {
-        setNotice({ kind: 'ok', text: `Saved moment at ${formatHeatOffset(point.offsetSeconds)}.` })
-        return
-      }
-      if ('error' in response && response.error) {
-        setNotice({ kind: 'warn', text: String(response.error) })
-      }
-    } catch (err) {
-      setNotice({ kind: 'warn', text: err instanceof Error ? err.message : 'Could not save moment.' })
-    } finally {
-      setSaveBusy(false)
-    }
-  }
-
   function jumpToOffset(offsetSeconds: number): void {
     jumpMoment({
       minuteTs: '',
@@ -946,7 +985,7 @@ export function Overlay({
     openAnalytics(point.offsetSeconds)
   }
 
-  function jumpMoment(point: LiveHeatPoint): void {
+  async function jumpMoment(point: LiveHeatPoint): Promise<void> {
     setNotice(null)
     const action = resolveJumpMomentAction({
       context,
@@ -990,6 +1029,42 @@ export function Overlay({
         setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
         return
       }
+      // A live seek can be outside the DVR window while Twitch has already
+      // published the archive. Discover that VOD read-only, then navigate only
+      // when the backend proves it belongs to this exact stream.
+      if (payload?.streamId) {
+        try {
+          const archiveResponse = await sendBackgroundMessage({
+            type: 'GET_PULSE_ARCHIVE_CANDIDATE',
+            streamId: payload.streamId,
+            login,
+          })
+          if ('type' in archiveResponse && archiveResponse.type === 'PULSE_ARCHIVE_CANDIDATE') {
+            const candidate = archiveResponse.candidate
+            if (candidate?.navigationValidated && candidate.navigationVodId) {
+              window.open(
+                buildTwitchVodUrl(candidate.navigationVodId, action.offsetSeconds),
+                '_blank',
+                'noopener,noreferrer',
+              )
+              setNotice({
+                kind: 'ok',
+                text: `Opened the verified archive VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
+              })
+              return
+            }
+            if (candidate?.analyticsResolutionState === 'archive_not_published') {
+              setNotice({
+                kind: 'info',
+                text: 'Twitch has not published the archive VOD yet; retry shortly.',
+              })
+              return
+            }
+          }
+        } catch {
+          // Preserve the normal DVR/outside-buffer explanation below.
+        }
+      }
       setNotice({
         kind: 'warn',
         text:
@@ -1028,40 +1103,33 @@ export function Overlay({
   }
 
   // Body host visibility is owned by mount.tsx (hidden entirely on Chat tab).
-  if (resolvedMode === 'collapsed') {
-    return (
-      <section className={shellClass} style={styles.collapsedHost} aria-label="Streamclone Pulse collapsed">
-        <CollapsedPill
-          tracking={payload?.tracking ?? false}
-          isLive={uiIsLive}
-          sidebarFill={sidebarBodyOnly}
-          onOpen={() => void persistMode('expanded')}
-        />
-      </section>
-    )
-  }
 
-  if (resolvedMode === 'mini') {
-    return (
-      <section className={shellClass} style={styles.miniHost} aria-label="Streamclone Pulse mini overlay">
-        <MiniDock
-          login={login}
-          payload={payload}
-          tracking={pulseLiveAccess.state === 'full_live'}
-          isLive={uiIsLive}
-          trackBusy={trackBusy}
-          sidebarFill={sidebarBodyOnly}
-          onExpand={() => void persistMode('expanded')}
-          onHide={() => void hideOverlay()}
-          onTrack={localStackBackend ? () => void startTracking() : undefined}
-        />
-      </section>
-    )
+  const settingsOpen = shouldShowSettingsPanel(panelView)
+  const panelBodyStyle: CSSProperties = {
+    ...(sidebarChatOnly ? styles.panelHidden : undefined),
+    padding: showSidebarTabs
+      ? metricsCompact
+        ? '0 8px 8px'
+        : '0 10px 10px'
+      : sidebarBodyOnly
+        ? metricsCompact
+          ? '8px'
+          : '10px'
+        : 0,
+    flex: 1,
+    minWidth: 0,
+    minHeight: sidebarBodyOnly ? 120 : 0,
+    overflow: 'hidden',
+    overflowX: 'hidden',
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
   }
 
   return (
     <section
-      className={shellClass}
+      key="expanded"
+      className={`${shellClass} pulse-mode-enter`}
       style={{ ...styles.panel, height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 20 }}
       aria-label="Streamclone Pulse overlay"
     >
@@ -1072,33 +1140,28 @@ export function Overlay({
       ) : null}
 
       <div
-        className={`pulse-panel-body ${showSidebarTabs ? 'pulse-tab-fade' : ''}`}
-        style={{
-          ...(sidebarChatOnly ? styles.panelHidden : undefined),
-          padding: showSidebarTabs ? '0 10px 10px' : sidebarBodyOnly ? '10px' : 0,
-          flex: sidebarBodyOnly ? 1 : undefined,
-          minWidth: 0,
-          minHeight: sidebarBodyOnly ? 120 : undefined,
-          overflow: sidebarBodyOnly ? 'auto' : undefined,
-          position: sidebarBodyOnly ? 'relative' : undefined,
-        }}
+        className={`pulse-panel-body ${showSidebarTabs ? 'pulse-tab-fade' : ''}${metricsCompact ? ' pulse-panel-body-compact' : ''}`}
+        style={panelBodyStyle}
       >
+      <div className="pulse-panel-scroll pulse-no-scrollbar" style={styles.panelScroll} data-testid="pulse-panel-scroll">
       <PanelErrorBoundary>
-      {panelView === 'settings' && sidebarBodyOnly ? (
-        <div key="settings" className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack">
+      {settingsOpen ? (
+        <div
+          key="settings"
+          className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack"
+        >
           <PulseSettingsPanel
             onAutoUpdateChange={next => void persistAutoUpdate(next)}
-            onBack={() => setPanelView('pulse')}
-            onOpenFullSettings={openSettings}
+            onBack={closeInlineSettings}
           />
         </div>
       ) : (
         <div
-          key={sidebarBodyOnly ? 'pulse' : 'pulse-full'}
+          key={`${sidebarBodyOnly ? 'pulse' : 'pulse-full'}:${routeContentKey}`}
           className={
             sidebarBodyOnly
-              ? 'pulse-panel-view-enter pulse-panel-view-pulse pulse-panel-view-stack'
-              : 'pulse-panel-view-stack'
+              ? 'pulse-panel-view-enter pulse-panel-view-pulse pulse-route-content-enter pulse-panel-view-stack'
+              : 'pulse-route-content-enter pulse-panel-view-stack'
           }
         >
       <StreamPulseHeader
@@ -1108,14 +1171,10 @@ export function Overlay({
         trackBusy={trackBusy}
         autoUpdate={autoUpdate}
         sidebarFill={sidebarSnapped}
-        hideUtilityActions={sidebarSnapped}
         hostedBackend={hostedBackend}
         backendUrl={backendUrl}
         onAutoUpdateChange={next => void persistAutoUpdate(next)}
         onTrack={localStackBackend ? () => void startTracking() : undefined}
-        onSettings={() => (sidebarSnapped ? openInlineSettings() : openSettings())}
-        onMini={() => void persistMode('mini')}
-        onHide={() => void hideOverlay()}
       />
 
       {showHostedOfflineFallback ? (
@@ -1138,13 +1197,13 @@ export function Overlay({
             <button type="button" style={styles.primaryButton} disabled={trackBusy} onClick={() => void startTracking()}>
               {trackBusy ? 'Starting…' : 'Track this channel'}
             </button>
-            <button type="button" style={styles.secondaryButton} onClick={openSettings}>Manage watchlist</button>
+            <button type="button" style={styles.secondaryButton} onClick={openInlineSettings}>Manage watchlist</button>
           </div>
         </section>
       ) : null}
 
       {error ? (
-        <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openSettings} />
+        <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openInlineSettings} />
       ) : null}
 
       {!error && payload && !pulseSupported ? (
@@ -1190,7 +1249,7 @@ export function Overlay({
                   payload={displayPayload}
                   backendUrl={backendUrl}
                   sidebarFill={sidebarSnapped}
-                  compact={metricsCompact && !sidebarSnapped}
+                  compact={metricsCompact}
                   coverageStartOffsetSeconds={coverageStart}
                   currentOffsetSeconds={payload.currentOffsetSeconds}
                   isLive={uiIsLive}
@@ -1205,8 +1264,6 @@ export function Overlay({
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}
                   pinOffsetSeconds={chartPinOffset}
-                  onSaveMoment={point => void saveMoment(point)}
-                  saveMomentBusy={saveBusy}
                   previewOffsetSeconds={chartPreviewOffset}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
@@ -1220,18 +1277,16 @@ export function Overlay({
                   sidebarFill={sidebarSnapped}
                   pinnedOffsetSeconds={mostReactedPinOffset}
                   onJump={jumpMoment}
-                  onSave={point => void saveMoment(point)}
                   onAnalytics={openAnalyticsForMoment}
                   onHighlightOffset={setChartPreviewOffset}
                   onPinOffset={handleMostReactedPin}
-                  saveBusy={saveBusy}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                 />
               ) : null}
             </div>
           ) : null}
 
-          {payload && pulseLiveAccess.state === 'full_live' && !hostedBackend && shouldShowMissedMomentsBanner(payload) ? (
+          {payload && pulseLiveAccess.state === 'full_live' && shouldShowMissedMomentsBanner(payload) ? (
             <CoverageCard
               source={{ ...payload, tracking: payload.tracking }}
               busy={missedBusy}
@@ -1287,7 +1342,9 @@ export function Overlay({
             />
           ) : null}
 
-          {notice ? <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p> : null}
+          {notice ? (
+            <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p>
+          ) : null}
 
           {topClip && !isVodPage ? <ClipSpikeCard clip={topClip} /> : null}
 
@@ -1300,21 +1357,6 @@ export function Overlay({
             channelOffline={!uiIsLive}
             onOpenFromStart={openStreamStartToLive}
           />
-          ) : null}
-
-          {sidebarBodyOnly && panelView === 'pulse' && !sidebarChatOnly ? (
-            <div style={styles.settingsFabDock}>
-              <button
-                type="button"
-                className="pulse-settings-gear-fab"
-                style={styles.settingsGearFab}
-                aria-label="Open settings"
-                title="Settings"
-                onClick={() => setPanelView('settings')}
-              >
-                <SettingsGearIcon />
-              </button>
-            </div>
           ) : null}
         </>
       ) : null}
@@ -1337,6 +1379,12 @@ export function Overlay({
       )}
       </PanelErrorBoundary>
       </div>
+      <PulsePanelFooter
+        compact={sidebarSnapped}
+        settingsOpen={settingsOpen}
+        onToggleSettings={toggleInlineSettings}
+      />
+      </div>
     </section>
   )
 }
@@ -1348,14 +1396,10 @@ function StreamPulseHeader({
   trackBusy,
   autoUpdate,
   sidebarFill = false,
-  hideUtilityActions = false,
   hostedBackend = true,
   backendUrl,
   onAutoUpdateChange,
   onTrack,
-  onSettings,
-  onMini,
-  onHide,
 }: {
   isLive: boolean
   pulseLiveAccess: import('./resolvePulseLiveAccess.ts').PulseLiveAccessState
@@ -1363,21 +1407,16 @@ function StreamPulseHeader({
   trackBusy: boolean
   autoUpdate: boolean
   sidebarFill?: boolean
-  hideUtilityActions?: boolean
   hostedBackend?: boolean
   backendUrl: string
   onAutoUpdateChange: (next: boolean) => void
   onTrack?: () => void
-  onSettings: () => void
-  onMini: () => void
-  onHide: () => void
 }) {
   const headerStyle = sidebarFill ? styles.streamPulseHeaderSidebar : styles.streamPulseHeader
   const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
   const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
   const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton
   const autoUpdateStyle = sidebarFill ? styles.autoUpdateLabelFull : styles.autoUpdateLabel
-  const iconRowStyle = sidebarFill ? styles.headerIconRowFull : styles.headerIconRow
 
   const statusLabel = hostedBackend
     ? pulseLiveAccess === 'full_live'
@@ -1394,7 +1433,7 @@ function StreamPulseHeader({
             : 'Pulse'
 
   return (
-    <header style={headerStyle}>
+    <header style={headerStyle} data-testid="stream-pulse-header">
       <div style={sidebarFill ? styles.streamPulseHeaderMainSidebar : styles.streamPulseHeaderMain}>
         <div style={styles.streamPulseTitleRow}>
           <h2 style={styles.streamPulseTitle}>Stream Pulse</h2>
@@ -1439,18 +1478,41 @@ function StreamPulseHeader({
           </button>
         </label>
         ) : null}
-        <div style={iconRowStyle}>
-          {hideUtilityActions ? null : (
-            <>
-              <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onSettings} title="Settings">Settings</button>
-              <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onMini} title="Mini mode">Mini</button>
-              <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onHide} title="Hide overlay">Hide</button>
-            </>
-          )}
-        </div>
       </div>
       <AnalyticsHubCta backendUrl={backendUrl} compact={sidebarFill} />
     </header>
+  )
+}
+
+function PulsePanelFooter({
+  compact = false,
+  settingsOpen,
+  onToggleSettings,
+}: {
+  compact?: boolean
+  settingsOpen: boolean
+  onToggleSettings: () => void
+}) {
+  return (
+    <footer
+      className="pulse-panel-footer"
+      style={compact ? styles.panelFooterCompact : styles.panelFooter}
+      data-testid="pulse-panel-footer"
+    >
+      <div style={styles.panelFooterGearRow}>
+        <button
+          type="button"
+          className="pulse-settings-gear-btn"
+          style={styles.footerSettingsGear}
+          onClick={onToggleSettings}
+          title={settingsOpen ? 'Back to Pulse' : 'Settings'}
+          aria-label={settingsOpen ? 'Back to Pulse' : 'Open settings'}
+          aria-pressed={settingsOpen}
+        >
+          <SettingsGearIcon size={14} />
+        </button>
+      </div>
+    </footer>
   )
 }
 
@@ -1511,10 +1573,21 @@ function VodPulseStatusCard({
 
 function ClipSpikeCard({ clip }: { clip: ExtensionClip }) {
   const duration = formatClipDuration(clip.durationSeconds)
+  const [hovered, setHovered] = useState(false)
   return (
     <section style={styles.clipSpikeSection}>
       <h3 style={styles.clipSpikeHeading}>Clip spike</h3>
-      <a href={clip.url} target="_blank" rel="noreferrer" style={styles.clipSpikeCard}>
+      <a
+        href={clip.url}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          ...styles.clipSpikeCard,
+          ...(hovered ? styles.clipSpikeCardHover : null),
+        }}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+      >
         <div style={styles.clipThumbWrap}>
           {clip.thumbnailUrl ? (
             <img src={clip.thumbnailUrl} alt={clip.title} style={styles.clipThumb} loading="lazy" />
@@ -1522,6 +1595,7 @@ function ClipSpikeCard({ clip }: { clip: ExtensionClip }) {
             <div style={styles.clipThumbFallback} />
           )}
           {duration ? <span style={styles.clipDurationBadge}>{duration}</span> : null}
+          <span style={styles.clipSpikeCta}>{hovered ? 'Open on Twitch →' : 'Twitch clip'}</span>
         </div>
         <div style={styles.clipBody}>
           <strong style={styles.clipTitle}>{clip.title}</strong>
@@ -1609,7 +1683,7 @@ function ChattersIcon() {
 }
 
 function BrandMark() {
-  return <span style={styles.brandMark}><span style={styles.brandDot} /></span>
+  return <PeakBrandMark size={34} />
 }
 
 function StatusPill({ tracking, isLive, compact = false }: { tracking: boolean; isLive: boolean; compact?: boolean }) {
@@ -1725,90 +1799,114 @@ const styles: Record<string, CSSProperties> = {
   panel: { background: theme.bgCanvas, display: 'flex', flexDirection: 'column' },
   panelHidden: { display: 'none' },
   sidebarTabsWrap: { flexShrink: 0, padding: 8 },
-  headerTabsShell: { alignItems: 'center', display: 'flex', height: '100%', justifyContent: 'center', width: '100%' },
-  miniHost: { display: 'flex', height: '100%', width: '100%' },
-  collapsedHost: { display: 'flex', height: '100%', width: '100%' },
+  headerTabsShell: { alignItems: 'center', display: 'flex', height: '100%', width: '100%', justifyContent: 'center' },
+  panelScroll: { flex: '1 1 auto', minHeight: 0, overflow: 'auto', overflowX: 'hidden' as const },
+  panelFooter: {
+    borderTop: `1px solid ${theme.borderSubtle}`,
+    display: 'flex',
+    flexDirection: 'column',
+    flexShrink: 0,
+    gap: 4,
+    marginTop: 8,
+    paddingTop: 8,
+  },
+  panelFooterCompact: {
+    borderTop: `1px solid ${theme.borderSubtle}`,
+    display: 'flex',
+    flexDirection: 'column',
+    flexShrink: 0,
+    gap: 2,
+    marginTop: 6,
+    paddingTop: 6,
+  },
+  panelFooterGearRow: { display: 'flex', justifyContent: 'flex-end' },
+  footerSettingsGear: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    flexShrink: 0,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
   header: { alignItems: 'flex-start', display: 'flex', gap: 12, justifyContent: 'space-between' },
   titleRow: { alignItems: 'center', display: 'flex', gap: 12 },
   headerActions: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
   title: { fontSize: 22, fontWeight: 800, lineHeight: 1.15 },
   titleLogin: { color: theme.textSecondary, fontWeight: 700, marginLeft: 6 },
   subtitle: { color: theme.textSecondary, fontSize: 12, marginTop: 3 },
-  brandMark: { alignItems: 'center', background: theme.accent, borderRadius: 10, display: 'inline-flex', height: 34, justifyContent: 'center', minWidth: 34 },
-  brandDot: { background: theme.textPrimary, borderRadius: 999, display: 'block', height: 12, width: 12 },
-  statusLive: { alignItems: 'center', background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.55)', borderRadius: theme.radiusPill, color: theme.liveSoft, display: 'inline-flex', fontSize: 12, fontWeight: 800, gap: 8, padding: '7px 12px' },
+  statusLive: { alignItems: 'center', background: theme.statusOkBg, border: `1px solid ${theme.statusOkBorder}`, borderRadius: theme.radiusPill, color: theme.statusOkText, display: 'inline-flex', fontSize: 12, fontWeight: 800, gap: 8, padding: '7px 12px' },
   statusIdle: { alignItems: 'center', background: theme.panelElevated, border: `1px solid ${theme.border}`, borderRadius: theme.radiusPill, color: theme.textSecondary, display: 'inline-flex', fontSize: 12, fontWeight: 800, gap: 8, padding: '7px 12px' },
-  statusLiveCompact: { alignItems: 'center', background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: theme.radiusPill, color: theme.liveSoft, display: 'inline-flex', fontSize: 10, fontWeight: 800, gap: 6, padding: '4px 8px', width: 'fit-content' },
+  statusLiveCompact: { alignItems: 'center', background: theme.statusOkBg, border: `1px solid ${theme.statusOkBorder}`, borderRadius: theme.radiusPill, color: theme.statusOkText, display: 'inline-flex', fontSize: 10, fontWeight: 800, gap: 6, padding: '4px 8px', width: 'fit-content' },
   statusIdleCompact: { alignItems: 'center', background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: theme.radiusPill, color: theme.textSecondary, display: 'inline-flex', fontSize: 10, fontWeight: 800, gap: 6, padding: '4px 8px', width: 'fit-content' },
   dotGreen: { background: theme.live, borderRadius: 999, display: 'inline-block', height: 9, width: 9 },
-  dotMuted: { background: '#6b7280', borderRadius: 999, display: 'inline-block', height: 9, width: 9 },
-  trackingText: { alignItems: 'center', color: '#4ade80', display: 'inline-flex', fontWeight: 800, gap: 6 },
-  muted: { color: '#8b8ba0' },
+  dotMuted: { background: theme.textMuted, borderRadius: 999, display: 'inline-block', height: 9, width: 9 },
+  trackingText: { alignItems: 'center', color: theme.statusOkText, display: 'inline-flex', fontWeight: 800, gap: 6 },
+  muted: { color: theme.textMuted },
   smallButton: { background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, color: theme.textPrimary, cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: '7px 10px' },
-  primaryButtonSmall: { background: theme.accent, border: 0, borderRadius: theme.radiusButton, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '7px 12px' },
-  heatStripEmpty: { alignItems: 'center', background: '#101014', border: '1px dashed #3f3f50', borderRadius: 12, color: '#8b8ba0', display: 'flex', fontSize: 12, height: 112, justifyContent: 'center', padding: 16, textAlign: 'center' },
-  heatStripEmptyCompact: { alignItems: 'center', color: '#8b8ba0', display: 'flex', fontSize: 11, height: 44, justifyContent: 'center', minWidth: 96 },
-  trackPrompt: { background: '#1f1f27', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)', borderRadius: 12, marginBottom: 14, padding: 14 },
+  primaryButtonSmall: { background: theme.accent, border: 0, borderRadius: theme.radiusButton, color: theme.onAccent, cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '7px 12px' },
+  heatStripEmpty: { alignItems: 'center', background: theme.chartBg, border: `1px dashed ${theme.border}`, borderRadius: 12, color: theme.textMuted, display: 'flex', fontSize: 12, height: 112, justifyContent: 'center', padding: 16, textAlign: 'center' },
+  heatStripEmptyCompact: { alignItems: 'center', color: theme.textMuted, display: 'flex', fontSize: 11, height: 44, justifyContent: 'center', minWidth: 96 },
+  trackPrompt: { background: theme.panelElevated, border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)', borderRadius: 12, marginBottom: 14, padding: 14 },
   statsGrid: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 18 },
   recapGrid: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginBottom: 12 },
   statCard: { background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 12, minWidth: 0, padding: 12 },
-  statLabel: { color: '#a1a1b2', fontSize: 10, fontWeight: 800 },
+  statLabel: { color: theme.textSecondary, fontSize: 10, fontWeight: 800 },
   statValue: { fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginTop: 6 },
   statDetail: { fontSize: 12, fontWeight: 800, marginTop: 6 },
-  section: { borderTop: '1px solid rgba(63,63,80,0.75)', marginTop: 16, paddingTop: 16 },
-  sectionHeading: { alignItems: 'center', color: '#a1a1b2', display: 'flex', fontSize: 12, fontWeight: 800, justifyContent: 'space-between', marginBottom: 10, textTransform: 'uppercase' },
-  heatStrip: { alignItems: 'end', background: '#101014', borderRadius: 12, display: 'flex', gap: 5, height: 112, padding: '16px 14px 12px' },
+  section: { borderTop: `1px solid ${theme.borderSubtle}`, marginTop: 16, paddingTop: 16 },
+  sectionHeading: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 12, fontWeight: 800, justifyContent: 'space-between', marginBottom: 10, textTransform: 'uppercase' },
+  heatStrip: { alignItems: 'end', background: theme.chartBg, borderRadius: 12, display: 'flex', gap: 5, height: 112, padding: '16px 14px 12px' },
   heatStripCompact: { alignItems: 'end', display: 'flex', flex: 1, gap: 5, height: 44, justifyContent: 'flex-end', minWidth: 140 },
   heatBar: { borderRadius: 4, display: 'block', flex: '1 1 7px', minWidth: 4 },
-  axis: { color: '#8b8ba0', display: 'flex', fontSize: 11, justifyContent: 'space-between', marginTop: 8 },
+  axis: { color: theme.textMuted, display: 'flex', fontSize: 11, justifyContent: 'space-between', marginTop: 8 },
   lanes: { display: 'grid', gap: 12 },
   lane: { alignItems: 'center', display: 'grid', gap: 14, gridTemplateColumns: '74px 1fr' },
-  laneLabel: { color: '#8b8ba0', display: 'grid', fontSize: 11, gap: 2 },
+  laneLabel: { color: theme.textMuted, display: 'grid', fontSize: 11, gap: 2 },
   laneBars: { alignItems: 'end', display: 'flex', gap: 6, height: 34 },
   laneBar: { borderRadius: 4, display: 'block', flex: 1, minWidth: 6 },
   momentList: { display: 'grid', gap: 8 },
-  momentRow: { alignItems: 'center', background: '#22222b', borderRadius: 10, display: 'grid', gap: 10, gridTemplateColumns: '34px 1fr auto', padding: '10px 12px', transition: 'transform 0.15s ease, box-shadow 0.15s ease' },
-  rank: { alignItems: 'center', background: '#7c3aed', borderRadius: 9, display: 'inline-flex', fontWeight: 800, height: 34, justifyContent: 'center', width: 34 },
+  momentRow: { alignItems: 'center', background: theme.panelElevated, borderRadius: 10, display: 'grid', gap: 10, gridTemplateColumns: '34px 1fr auto', padding: '10px 12px', transition: 'transform 0.15s ease, box-shadow 0.15s ease' },
+  rank: { alignItems: 'center', background: theme.accentStrong, borderRadius: 9, display: 'inline-flex', fontWeight: 800, height: 34, justifyContent: 'center', width: 34 },
   momentMain: { display: 'grid', gap: 3, minWidth: 0 },
   rowActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 },
-  textButton: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 11, fontWeight: 800, padding: 0 },
-  textButtonLarge: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 14, fontWeight: 800, padding: '8px 0' },
+  textButton: { background: 'transparent', border: 0, color: theme.accentText, cursor: 'pointer', fontSize: 11, fontWeight: 800, padding: 0 },
+  textButtonLarge: { background: 'transparent', border: 0, color: theme.accentText, cursor: 'pointer', fontSize: 14, fontWeight: 800, padding: '8px 0' },
   score: { color: '#fb7185', display: 'grid', fontSize: 11, justifyItems: 'end' },
   footerActions: { display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr', marginTop: 14 },
   emoteChips: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  emoteChip: { alignItems: 'center', background: '#22222b', border: '1px solid #3f3f50', borderRadius: 999, color: '#fafafc', display: 'inline-flex', fontSize: 11, fontWeight: 800, gap: 6, padding: '6px 9px' },
+  emoteChip: { alignItems: 'center', background: theme.panelElevated, border: `1px solid ${theme.border}`, borderRadius: 999, color: theme.textPrimary, display: 'inline-flex', fontSize: 11, fontWeight: 800, gap: 6, padding: '6px 9px' },
   emoteChipImg: { display: 'block', objectFit: 'contain' },
   saveTools: { display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr 1fr', marginBottom: 12 },
-  offsetInput: { background: '#101014', border: '1px solid #3f3f50', borderRadius: 10, color: '#fafafc', font: 'inherit', minWidth: 0, padding: '10px 12px' },
+  offsetInput: { background: theme.chartBg, border: `1px solid ${theme.border}`, borderRadius: 10, color: theme.textPrimary, font: 'inherit', minWidth: 0, padding: '10px 12px' },
   savedList: { display: 'grid', gap: 8 },
-  savedRow: { alignItems: 'center', background: '#22222b', borderRadius: 10, display: 'grid', gap: 10, gridTemplateColumns: '1fr auto', padding: '9px 12px' },
-  savedMain: { background: 'transparent', border: 0, color: '#fafafc', cursor: 'pointer', display: 'grid', gap: 3, minWidth: 0, padding: 0, textAlign: 'left' },
+  savedRow: { alignItems: 'center', background: theme.panelElevated, borderRadius: 10, display: 'grid', gap: 10, gridTemplateColumns: '1fr auto', padding: '9px 12px' },
+  savedMain: { background: 'transparent', border: 0, color: theme.textPrimary, cursor: 'pointer', display: 'grid', gap: 3, minWidth: 0, padding: 0, textAlign: 'left' },
   primaryButton: { background: 'var(--pulse-accent, #8b5cf6)', border: 0, borderRadius: 10, color: 'var(--pulse-on-accent, #fff)', cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
   hubLinkButton: { background: 'var(--pulse-accent, #8b5cf6)', border: 0, borderRadius: 10, color: 'var(--pulse-on-accent, #fff)', cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
-  secondaryButton: { background: '#2b2b32', border: '1px solid #3f3f50', borderRadius: 10, color: '#fafafc', cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
-  stateBlock: { background: '#1f1f27', borderRadius: 12, marginTop: 16, padding: 16 },
+  secondaryButton: { background: theme.panelElevated, border: `1px solid ${theme.border}`, borderRadius: 10, color: theme.textPrimary, cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
+  stateBlock: { background: theme.panelElevated, borderRadius: 12, marginTop: 16, padding: 16 },
   stateTitle: { fontSize: 18, margin: '0 0 10px' },
-  stateText: { color: '#b7b7c6', fontSize: 13, lineHeight: 1.35, margin: '0 0 14px' },
+  stateText: { color: theme.textSecondary, fontSize: 13, lineHeight: 1.35, margin: '0 0 14px' },
   vodStateWrap: { display: 'grid', gap: 8 },
-  progressTrack: { background: '#33333d', borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
-  progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },
-  errorBlock: { background: '#1f1f27', borderRadius: 12, padding: 16 },
-  errorTitle: { color: '#f87171', fontSize: 18, margin: '0 0 10px' },
-  notice: { background: '#2a2440', border: '1px solid #3f3f50', borderRadius: 10, color: 'var(--pulse-accent-soft, #c4b5fd)', fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
-  noticeWarn: { background: 'rgba(249,115,22,0.12)', borderColor: 'rgba(249,115,22,0.35)', color: '#fdba74' },
-  noticeOk: { background: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.35)', color: '#86efac' },
-  streamPulseHeader: { alignItems: 'flex-start', border: '1px solid rgba(255,255,255,0.1)', borderRadius: theme.radiusButton, display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', marginBottom: 14, padding: '12px 14px', width: '100%' },
-  streamPulseHeaderSidebar: { alignItems: 'stretch', border: '1px solid rgba(255,255,255,0.1)', borderRadius: theme.radiusButton, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10, padding: '10px 12px', width: '100%' },
+  progressTrack: { background: theme.inputBg, borderRadius: 999, height: 8, marginBottom: 10, overflow: 'hidden' },
+  progressFill: { background: theme.accent, borderRadius: 999, display: 'block', height: '100%' },
+  errorBlock: { background: theme.panel, borderRadius: 12, padding: 16 },
+  errorTitle: { color: theme.error, fontSize: 18, margin: '0 0 10px' },
+  notice: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: 10, color: theme.accentText, fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
+  noticeWarn: { background: theme.statusWarnBg, borderColor: theme.statusWarnBorder, color: theme.statusWarnText },
+  noticeOk: { background: theme.statusOkBg, borderColor: theme.statusOkBorder, color: theme.statusOkText },
+  streamPulseHeader: { alignItems: 'flex-start', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', marginBottom: 14, padding: '12px 14px', width: '100%' },
+  streamPulseHeaderSidebar: { alignItems: 'stretch', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10, padding: '10px 12px', width: '100%' },
   streamPulseHeaderMain: { flex: '1 1 180px', minWidth: 0, width: '100%' },
   streamPulseHeaderMainSidebar: { flex: '0 0 auto', minWidth: 0, width: '100%' },
   streamPulseTitleRow: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
   streamPulseTitle: { fontSize: 13, fontWeight: 900, letterSpacing: '0.06em', margin: 0, textTransform: 'uppercase' },
   liveBadge: { background: '#dc2626', borderRadius: 4, color: '#fff', fontSize: 10, fontWeight: 900, padding: '2px 6px', textTransform: 'uppercase' },
   apiPillHosted: {
-    background: 'rgba(34, 197, 94, 0.14)',
-    border: '1px solid rgba(34, 197, 94, 0.35)',
+    background: theme.statusOkBg,
+    border: `1px solid ${theme.statusOkBorder}`,
     borderRadius: 999,
-    color: 'rgba(187, 247, 208, 0.95)',
+    color: theme.statusOkText,
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: '0.04em',
@@ -1816,10 +1914,10 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
   },
   apiPillLocal: {
-    background: 'rgba(245, 158, 11, 0.14)',
-    border: '1px solid rgba(245, 158, 11, 0.4)',
+    background: theme.statusWarnBg,
+    border: `1px solid ${theme.statusWarnBorder}`,
     borderRadius: 999,
-    color: 'rgba(253, 230, 138, 0.95)',
+    color: theme.statusWarnText,
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: '0.04em',
@@ -1839,23 +1937,19 @@ const styles: Record<string, CSSProperties> = {
   },
   streamPulseHeaderActions: { alignItems: 'flex-end', display: 'flex', flexDirection: 'column', flexShrink: 0, gap: 8 },
   streamPulseHeaderActionsSidebar: { alignItems: 'stretch', display: 'flex', flexDirection: 'column', gap: 10, width: '100%' },
-  trackStreamerButton: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3)', borderRadius: theme.radiusButton, color: 'var(--pulse-accent-ink, #ddd6fe)', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '8px 12px', textTransform: 'uppercase' },
-  trackStreamerButtonFull: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3)', borderRadius: theme.radiusButton, color: 'var(--pulse-accent-ink, #ddd6fe)', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '10px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
-  trackingButton: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', borderRadius: 999, color: 'var(--pulse-accent-soft, #c4b5fd)', display: 'inline-block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 10px', textTransform: 'uppercase' },
-  trackingButtonFull: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', borderRadius: 999, color: 'var(--pulse-accent-soft, #c4b5fd)', display: 'block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '8px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
-  headerIconButton: { background: 'transparent', border: 0, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 4px' },
-  headerIconButtonFull: { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '8px 6px', textAlign: 'center', width: '100%' },
+  trackStreamerButton: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: theme.radiusButton, color: theme.accentText, cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '8px 12px', textTransform: 'uppercase' },
+  trackStreamerButtonFull: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: theme.radiusButton, color: theme.accentText, cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '10px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
+  trackingButton: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: 999, color: theme.accentTextSubtle, display: 'inline-block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 10px', textTransform: 'uppercase' },
+  trackingButtonFull: { background: theme.accentSurface, border: `1px solid ${theme.borderAccent}`, borderRadius: 999, color: theme.accentTextSubtle, display: 'block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '8px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
   autoUpdateLabel: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8 },
   autoUpdateLabelFull: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8, justifyContent: 'space-between', width: '100%' },
   autoUpdateSwitch: { border: 0, borderRadius: 999, cursor: 'pointer', flexShrink: 0, height: 22, position: 'relative', width: 36 },
   autoUpdateKnob: { background: '#fff', borderRadius: 999, height: 18, position: 'absolute', top: 2, width: 18 },
-  headerIconRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  headerIconRowFull: { display: 'grid', gap: 6, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', width: '100%' },
   coverageNotice: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, lineHeight: 1.4, margin: '0 0 12px' },
-  liveNowBand: { background: 'rgba(0,0,0,0.25)', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, marginBottom: 14, padding: 12 },
+  liveNowBand: { background: theme.inputBg, border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, marginBottom: 14, padding: 12 },
   liveNowHeader: { alignItems: 'center', display: 'flex', justifyContent: 'space-between', marginBottom: 10 },
   liveNowTitle: { fontSize: 11, fontWeight: 900, letterSpacing: '0.05em', textTransform: 'uppercase' },
-  syncedBadge: { background: 'rgba(34,211,238,0.15)', border: '1px solid rgba(34,211,238,0.35)', borderRadius: 999, color: theme.accent2, fontSize: 10, fontWeight: 800, padding: '3px 8px' },
+  syncedBadge: { background: theme.statusOkBg, border: `1px solid ${theme.statusOkBorder}`, borderRadius: 999, color: theme.statusOkText, fontSize: 10, fontWeight: 800, padding: '3px 8px' },
   liveNowMetrics: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 10, width: '100%' },
   liveNowMetricsSidebar: { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
   liveNowMetricsCompact: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
@@ -1869,65 +1963,55 @@ const styles: Record<string, CSSProperties> = {
   sparklineLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' },
   chartWindowToggle: { alignItems: 'center', display: 'inline-flex', gap: 4 },
   chartWindowButton: { background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 6, color: theme.textSecondary, cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '3px 8px', textTransform: 'uppercase' },
-  chartWindowButtonActive: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2)', borderColor: 'rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', color: 'var(--pulse-accent-ink, #ddd6fe)' },
+  chartWindowButtonActive: { background: theme.accentSurface, borderColor: theme.borderAccent, color: theme.accentText },
   topEmotesRow: { alignItems: 'center', display: 'flex', gap: 8, marginTop: 10 },
   topEmotesLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' },
   topEmoteChips: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
-  topEmoteChip: { alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid transparent', borderRadius: 6, display: 'inline-flex', gap: 6, padding: '4px 6px' },
-  topEmoteChipButton: { background: 'rgba(255,255,255,0.05)', color: 'inherit', cursor: 'pointer', font: 'inherit' },
-  topEmoteChipActive: { background: 'rgba(74, 222, 128, 0.12)', borderColor: 'rgba(74, 222, 128, 0.45)' },
+  topEmoteChip: { alignItems: 'center', background: 'var(--pulse-surface-hover-fill, rgba(255,255,255,0.05))', border: '1px solid transparent', borderRadius: 6, display: 'inline-flex', gap: 6, padding: '4px 6px' },
+  topEmoteChipButton: { background: 'var(--pulse-surface-hover-fill, rgba(255,255,255,0.05))', color: 'inherit', cursor: 'pointer', font: 'inherit' },
+  topEmoteChipActive: { background: theme.statusOkBg, borderColor: theme.statusOkBorder },
   topEmoteImg: { display: 'block', height: 24, objectFit: 'contain', width: 24 },
   topEmoteName: { color: theme.textSecondary, fontSize: 11, fontWeight: 700 },
   topEmoteCount: { color: theme.textMuted, fontSize: 10, fontWeight: 800 },
   clipSpikeSection: { display: 'grid', gap: 10, marginBottom: 14, marginTop: 14 },
   clipSpikeHeading: { color: theme.textMuted, fontSize: 11, fontWeight: 900, letterSpacing: '0.04em', margin: 0, textTransform: 'uppercase' },
   analyticsFooter: { marginTop: 14, paddingBottom: 8, textAlign: 'center' },
-  analyticsFooterLink: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 11, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 0', textTransform: 'uppercase' },
-  clipSpikeCard: { background: 'rgba(255,255,255,0.035)', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, color: theme.textPrimary, display: 'block', overflow: 'hidden', textDecoration: 'none' },
-  clipThumbWrap: { aspectRatio: '16 / 9', background: '#101014', position: 'relative' },
+  analyticsFooterLink: { background: 'transparent', border: 0, color: theme.accentText, cursor: 'pointer', fontSize: 11, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 0', textTransform: 'uppercase' },
+  clipSpikeCard: {
+    background: 'var(--pulse-surface-hover-fill, rgba(255,255,255,0.035))',
+    border: `1px solid ${theme.border}`,
+    borderRadius: theme.radiusButton,
+    color: theme.textPrimary,
+    display: 'block',
+    overflow: 'hidden',
+    textDecoration: 'none',
+    transition: 'border-color 120ms ease, background 120ms ease, transform 120ms ease',
+  },
+  clipSpikeCardHover: {
+    background: 'rgba(34, 211, 238, 0.06)',
+    borderColor: 'rgba(34, 211, 238, 0.45)',
+    transform: 'translateY(-1px)',
+  },
+  clipThumbWrap: { aspectRatio: '16 / 9', background: theme.chartBg, position: 'relative' },
   clipThumb: { display: 'block', height: '100%', objectFit: 'cover', width: '100%' },
-  clipThumbFallback: { background: 'linear-gradient(135deg, #1f1f27, #101014)', height: '100%', width: '100%' },
-  clipDurationBadge: { background: 'rgba(0,0,0,0.75)', borderRadius: 4, bottom: 8, color: '#fafafc', fontSize: 11, fontWeight: 800, padding: '2px 8px', position: 'absolute', right: 8 },
+  clipThumbFallback: { background: `linear-gradient(135deg, ${theme.panelElevated}, ${theme.chartBg})`, height: '100%', width: '100%' },
+  clipDurationBadge: { background: 'rgba(0,0,0,0.75)', borderRadius: 4, bottom: 8, color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', position: 'absolute', right: 8 },
+  clipSpikeCta: {
+    background: 'rgba(0,0,0,0.72)',
+    borderRadius: 4,
+    bottom: 8,
+    color: '#e0f2fe',
+    fontSize: 10,
+    fontWeight: 800,
+    left: 8,
+    letterSpacing: '0.03em',
+    padding: '2px 8px',
+    position: 'absolute',
+    textTransform: 'uppercase',
+  },
   clipBody: { display: 'grid', gap: 6, padding: 12 },
   clipTitle: { display: '-webkit-box', fontSize: 13, fontWeight: 800, lineHeight: 1.35, overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 },
   clipViews: { color: theme.textMuted, fontSize: 11, fontWeight: 700 },
-  collectingBadge: { background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 999, color: '#fde68a', display: 'inline-block', fontSize: 10, fontWeight: 800, padding: '2px 8px', width: 'fit-content' },
+  collectingBadge: { background: theme.statusWarnBg, border: `1px solid ${theme.statusWarnBorder}`, borderRadius: 999, color: theme.statusWarnText, display: 'inline-block', fontSize: 10, fontWeight: 800, padding: '2px 8px', width: 'fit-content' },
   footerActionsSingle: { display: 'grid', gap: 8, marginTop: 12 },
-  settingsFabDock: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-    paddingTop: 4,
-  },
-  settingsGearFab: {
-    alignItems: 'center',
-    background: 'rgba(17, 17, 23, 0.96)',
-    border: `1px solid ${theme.borderAccent}`,
-    borderRadius: 999,
-    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
-    color: theme.textSecondary,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-}
-
-function SettingsGearIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M8 1.8 9.2 3.1l1.7-.3.8 1.6 1.6.8-.3 1.7 1.3 1.2v1.8L13.2 12l.3 1.7-1.6.8-.8 1.6-1.7-.3L8 16.2l-1.2-1.3-1.7.3-.8-1.6-1.6-.8.3-1.7L2.8 12V10.2l1.3-1.2-.3-1.7 1.6-.8.8-1.6 1.7.3L8 1.8Z"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
 }

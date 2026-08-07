@@ -1,0 +1,23 @@
+{
+  "$schema": "./local-package-overrides.schema.json",
+  "version": 1,
+  "mode": "explicit-sibling-override",
+  "sourceRepo": "../streampulse-backend",
+  "allowDirtySource": true,
+  "packages": {
+    "@streampulse/analytics-console": {
+      "path": "packages/analytics-console",
+      "owner": "streampulse-backend"
+    },
+    "@streampulse/pulse-charts": {
+      "path": "packages/pulse-charts",
+      "owner": "streampulse-backend"
+    },
+    "@streampulse/pulse-core": {
+      "path": "packages/pulse-core",
+      "owner": "streampulse-backend"
+    }
+  },
+  "reason": "This checkout predates the clean Pulse-owned packages workspace on origin/master. The sibling override remains explicit while current branch WIP and the backend feature checkout are reconciled.",
+  "migrationTarget": "streamclone-pulse origin/master packages/* (RPR-6)"
+}

@@ -3,9 +3,11 @@ export type PulseDebugStep =
   | 'vod.discover.page'
   | 'vod.discover.gql'
   | 'vod.hint.api'
+  | 'vod.archive.candidate'
   | 'vod.backfill.start'
   | 'vod.backfill.result'
   | 'vod.pulse.api'
+  | 'vod.live.bridge'
   | 'vod.helix.health'
   | 'ui.coverage'
 
@@ -77,9 +79,21 @@ export async function pulseDebug(
 ): Promise<void> {
   if (!cachedEnabled) return
 
-  const entry: PulseDebugEntry = { ts: Date.now(), step, message, data, level }
-  const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info
-  logFn(`[Pulse ${step}]`, message, data ?? '')
+  // Expected VOD discovery misses must never hit console.warn — Chrome Web Store
+  // Errors aggregates warn/error from content scripts even with debug logging on.
+  const consoleLevel: PulseDebugLevel =
+    step.startsWith('vod.discover.') && /no archive/i.test(message) ? 'info' : level
+
+  const entry: PulseDebugEntry = { ts: Date.now(), step, message, data, level: consoleLevel }
+  const logFn =
+    consoleLevel === 'error' ? console.error : consoleLevel === 'warn' ? console.warn : console.info
+  // Keep console payload as a single string — Chrome's extension Errors page stringifies
+  // extra object args as "[object Object]" and surfaces warn/error as store listing noise.
+  const detail =
+    data && Object.keys(data).length > 0
+      ? ` ${safeJson(data)}`
+      : ''
+  logFn(`[Pulse ${step}] ${message}${detail}`)
 
   const stored = await chrome.storage.local.get(LOG_KEY)
   const entries = (stored[LOG_KEY] as PulseDebugEntry[] | undefined) ?? []
@@ -90,9 +104,17 @@ export async function pulseDebug(
   await chrome.storage.local.set({ [LOG_KEY]: entries })
 }
 
+function safeJson(data: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(data)
+  } catch {
+    return ''
+  }
+}
+
 /** Format the latest VOD-related log lines for overlay error copy. */
 export async function summarizeVodDebugBlockers(
-  options?: { backendVodResolved?: boolean },
+  options?: { backendVodResolved?: boolean; backendHelixEnabled?: boolean | null },
 ): Promise<string | null> {
   const entries = await getPulseDebugLog()
   return summarizeVodDebugBlockersFromEntries(entries, options)
@@ -100,23 +122,27 @@ export async function summarizeVodDebugBlockers(
 
 export function summarizeVodDebugBlockersFromEntries(
   entries: PulseDebugEntry[],
-  options?: { backendVodResolved?: boolean },
+  options?: { backendVodResolved?: boolean; backendHelixEnabled?: boolean | null },
 ): string | null {
   if (options?.backendVodResolved) {
     return vodLocalDiscoveryDiagnostic(entries)
   }
-  return interpretVodDebugBlockers(entries)
+  return interpretVodDebugBlockers(entries, options)
 }
 
-export function interpretVodDebugBlockers(entries: PulseDebugEntry[]): string | null {
+export function interpretVodDebugBlockers(
+  entries: PulseDebugEntry[],
+  options?: { backendHelixEnabled?: boolean | null },
+): string | null {
   const vodEntries = entries.filter(entry => entry.step.startsWith('vod.') || entry.step === 'ui.coverage')
   if (vodEntries.length === 0) return null
 
   const last = (step: PulseDebugStep) => [...vodEntries].reverse().find(entry => entry.step === step)
   const parts: string[] = []
 
-  const helix = last('vod.helix.health')
-  const helixEnabled = helix?.data?.helixEnabled
+  const helixEnabled = typeof options?.backendHelixEnabled === 'boolean'
+    ? options.backendHelixEnabled
+    : latestHelixEvidence(vodEntries)
   if (helixEnabled === false) {
     parts.push('Backend Helix off (needs TWITCH_OAUTH_CLIENT_ID/SECRET)')
   } else if (helixEnabled == null) {
@@ -145,6 +171,18 @@ export function interpretVodDebugBlockers(entries: PulseDebugEntry[]): string | 
     return latest.map(entry => `${entry.step}: ${entry.message}`).join(' · ')
   }
   return parts.join(' · ')
+}
+
+function latestHelixEvidence(entries: PulseDebugEntry[]): boolean | undefined {
+  let latest: { ts: number; value: boolean } | undefined
+  for (const entry of entries) {
+    if (entry.step !== 'vod.helix.health' && entry.step !== 'vod.pulse.api') continue
+    if (typeof entry.data?.helixEnabled !== 'boolean') continue
+    if (!latest || entry.ts >= latest.ts) {
+      latest = { ts: entry.ts, value: entry.data.helixEnabled }
+    }
+  }
+  return latest?.value
 }
 
 function appendLocalVodDiscoveryNotes(vodEntries: PulseDebugEntry[], parts: string[]): void {

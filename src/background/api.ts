@@ -1,11 +1,10 @@
 import type {
-  CreatePulseBookmarkInput,
   ExtensionClip,
   ExtensionCoverageTierResponse,
   ExtensionHealthResponse,
   PastVodRow,
   PulseBackfillJob,
-  PulseBookmark,
+  PulseArchiveCandidate,
   PulsePayload,
 } from '../shared/messages.ts'
 import { clipWindowBounds, pickTopClip } from '../shared/clips.ts'
@@ -14,7 +13,7 @@ import {
   type AnalyticsStreamListItem,
   type MetadataStreamHistoryItem,
 } from '../shared/pastVods.ts'
-import { getBackendUrl, getBetaKey } from '../shared/storage.ts'
+import { getBackendUrl } from '../shared/storage.ts'
 import { pulseDebug } from '../shared/pulseDebug.ts'
 import { normalizeVodPulseHttpResponse } from '../vod/normalizeVodPulseFetch.ts'
 
@@ -22,10 +21,6 @@ async function pulseRequestHeaders(contentJson = false): Promise<HeadersInit> {
   const headers: Record<string, string> = {}
   if (contentJson) {
     headers['Content-Type'] = 'application/json'
-  }
-  const key = await getBetaKey()
-  if (key) {
-    headers['X-Streamclone-Beta-Key'] = key
   }
   return headers
 }
@@ -93,6 +88,83 @@ export async function fetchPulseVod(
     topMoments: payload.topMoments?.length ?? 0,
   })
   return payload
+}
+
+export async function fetchPulseStream(
+  streamId: string,
+  options: {
+    broadcasterLogin: string
+    allowLiveBridge?: boolean
+    window?: 'recent' | 'full'
+    baseUrl?: string
+  },
+): Promise<PulsePayload> {
+  const normalizedStreamId = streamId.trim()
+  const login = options.broadcasterLogin.trim().toLowerCase()
+  if (!normalizedStreamId || !login) {
+    throw new Error('pulse_stream_identity_required')
+  }
+
+  const root = options.baseUrl ?? await getBackendUrl()
+  const params = new URLSearchParams({
+    login,
+    allowLiveBridge: String(options.allowLiveBridge !== false),
+  })
+  if (options.window === 'full') {
+    params.set('window', 'full')
+  }
+  const res = await fetch(
+    `${root}/v1/extension/pulse/streams/${encodeURIComponent(normalizedStreamId)}?${params.toString()}`,
+    { headers: await pulseRequestHeaders() },
+  )
+  if (!res.ok) {
+    throw new Error(`pulse_stream ${res.status}`)
+  }
+
+  const payload = await res.json() as PulsePayload
+  if (payload.streamId && payload.streamId !== normalizedStreamId) {
+    throw new Error('pulse_stream_identity_mismatch')
+  }
+  await pulseDebug('vod.live.bridge', 'provisional live stream payload received', {
+    login,
+    streamId: normalizedStreamId,
+    mode: payload.mode ?? null,
+    provisional: payload.provisional ?? false,
+    resolutionState: payload.resolutionState ?? null,
+    vodId: payload.vodId ?? null,
+    rollups: payload.rollups.length,
+  })
+  return payload
+}
+
+/** Read-only bridge for a just-ended/live stream whose archive VOD is not in our row yet. */
+export async function fetchPulseArchiveCandidate(
+  streamId: string,
+  login: string,
+  baseUrl?: string,
+): Promise<PulseArchiveCandidate> {
+  const normalizedStreamId = streamId.trim()
+  const normalizedLogin = login.trim().toLowerCase()
+  if (!normalizedStreamId || !normalizedLogin) throw new Error('pulse_archive_identity_required')
+  const root = baseUrl ?? await getBackendUrl()
+  const res = await fetch(
+    `${root}/v1/extension/pulse/streams/${encodeURIComponent(normalizedStreamId)}/archive-candidate`,
+    { headers: await pulseRequestHeaders() },
+  )
+  if (!res.ok) throw new Error(`pulse_archive_candidate ${res.status}`)
+  const candidate = await res.json() as PulseArchiveCandidate
+  if (candidate.streamId && candidate.streamId !== normalizedStreamId) {
+    throw new Error('pulse_archive_identity_mismatch')
+  }
+  await pulseDebug('vod.archive.candidate', 'archive candidate received', {
+    login: normalizedLogin,
+    streamId: normalizedStreamId,
+    vodId: candidate.navigationVodId ?? null,
+    navigationValidated: candidate.navigationValidated,
+    analyticsResolutionState: candidate.analyticsResolutionState,
+    analyticsAvailable: candidate.analyticsAvailable,
+  })
+  return candidate
 }
 
 export async function fetchExtensionCoverage(
@@ -201,56 +273,11 @@ export async function postWatchChannel(login: string, baseUrl?: string): Promise
   }
 }
 
-export async function fetchPulseBookmarks(
-  params: { login?: string; streamId?: string; vodId?: string },
-  baseUrl?: string,
-): Promise<PulseBookmark[]> {
-  const root = baseUrl ?? await getBackendUrl()
-  const qs = new URLSearchParams()
-  if (params.login) qs.set('login', params.login)
-  if (params.streamId) qs.set('streamId', params.streamId)
-  if (params.vodId) qs.set('vodId', params.vodId)
-  const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const res = await fetch(`${root}/v1/pulse/bookmarks${suffix}`, {
-    headers: await pulseRequestHeaders(),
-  })
-  if (!res.ok) {
-    throw new Error(`bookmarks ${res.status}`)
-  }
-  const body = await res.json() as { items?: PulseBookmark[] }
-  return body.items ?? []
-}
-
-export async function createPulseBookmark(
-  bookmark: CreatePulseBookmarkInput,
-  baseUrl?: string,
-): Promise<PulseBookmark> {
-  const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/pulse/bookmarks`, {
-    method: 'POST',
-    headers: await pulseRequestHeaders(true),
-    body: JSON.stringify(bookmark),
-  })
-  if (!res.ok) {
-    throw new Error(`bookmark ${res.status}`)
-  }
-  return res.json() as Promise<PulseBookmark>
-}
-
-export async function deletePulseBookmark(id: string, baseUrl?: string): Promise<void> {
-  const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: await pulseRequestHeaders(),
-  })
-  if (!res.ok) {
-    throw new Error(`delete_bookmark ${res.status}`)
-  }
-}
-
 export async function fetchAlwaysTracked(baseUrl?: string): Promise<string[]> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetch(`${root}/v1/analytics/always-tracked`)
+  const res = await fetch(`${root}/v1/analytics/always-tracked`, {
+    headers: await pulseRequestHeaders(),
+  })
   if (!res.ok) {
     throw new Error(`always_tracked ${res.status}`)
   }
@@ -262,7 +289,7 @@ export async function setAlwaysTracked(login: string, track: boolean, baseUrl?: 
   const root = baseUrl ?? await getBackendUrl()
   const res = await fetch(`${root}/v1/analytics/always-tracked`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await pulseRequestHeaders(true),
     body: JSON.stringify({ channel: login, track }),
   })
   if (!res.ok) {
