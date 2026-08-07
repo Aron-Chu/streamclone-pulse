@@ -19,8 +19,8 @@ function validWindowMinutes(value: unknown): number | undefined {
 
 /**
  * True only for the explicit backend proof that the payload is a complete
- * historical projection for the requested range. `availableWindowMinutes` may
- * be omitted on the healthy path, but when present it must equal the request.
+ * historical projection for the requested range. Requires availableWindowMinutes
+ * to equal the request (aligned with ops historical-activity smoke).
  */
 export function isHubActivityHealthyHistoricalProjection(activity: HubActivity): boolean {
   const requested = validWindowMinutes(activity.windowMinutes)
@@ -29,7 +29,7 @@ export function isHubActivityHealthyHistoricalProjection(activity: HubActivity):
     activity.source === HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION &&
     activity.state === 'healthy' &&
     requested != null &&
-    (available == null || available === requested)
+    available === requested
   )
 }
 
@@ -64,9 +64,9 @@ export function resolveHubActivityChartWindowMinutes(activity: HubActivity): num
     return Math.min(requested, 30)
   }
 
-  // Backward-compatible legacy payload: it predates source/state metadata, so
-  // retain its requested chart geometry until the backend contract is present.
-  return requested
+  // Legacy / incomplete payloads without honesty metadata must not expand a
+  // long requested window into a fabricated historical chart grid.
+  return Math.min(requested, 30)
 }
 
 /** Short status chip / banner label for degraded pool-only activity. */

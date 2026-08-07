@@ -117,4 +117,26 @@ describe('hub activity honesty (live_pool_fallback)', () => {
     expect(resolveHubActivityChartWindowMinutes(incomplete)).toBe(30)
     expect(fillActivityPoints(incomplete.points, resolveHubActivityChartWindowMinutes(incomplete))).toHaveLength(30)
   })
+
+  it('does not expand legacy long-window payloads without honesty metadata', () => {
+    const legacy: HubActivity = {
+      points: makePoints(30),
+      windowMinutes: 1440,
+      channelCount: 12,
+    }
+    expect(isHubActivityHealthyHistoricalProjection(legacy)).toBe(false)
+    expect(resolveHubActivityChartWindowMinutes(legacy)).toBe(30)
+  })
+
+  it('requires availableWindowMinutes on the healthy projection path', () => {
+    const missingAvailable: HubActivity = {
+      points: makePoints(60),
+      windowMinutes: 1440,
+      channelCount: 12,
+      source: 'historical_projection',
+      state: 'healthy',
+    }
+    expect(isHubActivityHealthyHistoricalProjection(missingAvailable)).toBe(false)
+    expect(resolveHubActivityChartWindowMinutes(missingAvailable)).toBe(30)
+  })
 })
