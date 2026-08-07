@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
 import { usePublicHubData } from "../../hooks/usePublicHubData";
-import { usePoolWireEvents } from "../../hooks/usePoolWireEvents";
+import { useLiveActivity } from "../../hooks/useLiveActivity";
+import { isLiveActivityPortalReadEnabled } from "../../lib/liveActivity";
 import { getBackendUrl } from "../../lib/apiClient";
 import {
   resolveBackendSource,
@@ -56,12 +57,8 @@ const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
 ];
 
 const ACTIVITY_WINDOW_OPTIONS: HubActivityRangeOption[] = [
+  { key: "30m", label: "30m" },
   { key: "24h", label: "24h" },
-  { key: "7d", label: "7d" },
-  { key: "1m", label: "1mo" },
-  { key: "3m", label: "3mo" },
-  { key: "6m", label: "6mo" },
-  { key: "1y", label: "1 year" },
 ];
 
 const RAIL_COLORS = ["#1e3a5f", "#1a3d2b", "#2d1b4e", "#3d2a1b", "#1b3d3d"];
@@ -80,7 +77,7 @@ function formatUpdatedAgo(ts: number | null): string | undefined {
 function AnalyticsLandingContent() {
   const labels = useCommandCenterLabels();
   const [activityWindow, setActivityWindow] =
-    useState<PublicHubActivityWindow>("24h");
+    useState<PublicHubActivityWindow>("30m");
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const [selectedMomentKey, setSelectedMomentKey] = useState<string | null>(null);
@@ -103,40 +100,29 @@ function AnalyticsLandingContent() {
   const updatedAgo = formatUpdatedAgo(hub.lastUpdated);
   const chartLoading = loadingInitial || hub.activityRefreshing;
 
-  const poolWire = usePoolWireEvents({
-    hub: hub.data ? data : null,
-    pollSequence: hub.pollSequence,
-    lastSuccessfulPollAt: hub.lastSuccessfulPollAt,
-    hubEndpointOk: hub.hubEndpointOk,
-    healthy: hubUiState === "ready" || hubUiState === "empty",
-  });
+  const liveActivityPortalRead = isLiveActivityPortalReadEnabled();
+  const liveActivity = useLiveActivity({ enabled: liveActivityPortalRead });
 
   const [pulseLiveChannels, setPulseLiveChannels] = useState(false);
-  const seenWentLiveRef = useRef<Set<string>>(new Set());
-  const poolWireSeededRef = useRef(false);
+  const pulsedWentLiveRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const wentLive = poolWire.events.filter((e) => e.kind === "went_live");
-    if (!poolWire.initialized) return;
-    if (!poolWireSeededRef.current) {
-      poolWireSeededRef.current = true;
-      for (const event of wentLive) seenWentLiveRef.current.add(event.id);
-      return;
-    }
+    if (!liveActivityPortalRead) return;
     let newest = false;
-    for (const event of wentLive) {
-      if (!seenWentLiveRef.current.has(event.id)) {
-        seenWentLiveRef.current.add(event.id);
-        newest = true;
-      }
+    for (const event of liveActivity.allEvents) {
+      if (event.kind !== "went_live") continue;
+      if (!liveActivity.newIds.has(event.id)) continue;
+      if (pulsedWentLiveRef.current.has(event.id)) continue;
+      pulsedWentLiveRef.current.add(event.id);
+      newest = true;
     }
     if (!newest) return;
     setPulseLiveChannels(true);
     const t = window.setTimeout(() => setPulseLiveChannels(false), 700);
     return () => window.clearTimeout(t);
-  }, [poolWire.events, poolWire.initialized]);
+  }, [liveActivity.allEvents, liveActivity.newIds, liveActivityPortalRead]);
 
   const livePulseFeed = useMemo(() => resolveLivePulseMoments(data), [data]);
-  /** Live Wire is peaks/momentum only — lifecycle belongs in Pool Wire. */
+  /** Signal Wire is peaks/momentum only — lifecycle belongs in Live Activity. */
   const liveWireFeed = useMemo(
     () => ({
       ...livePulseFeed,
@@ -351,8 +337,8 @@ function AnalyticsLandingContent() {
     () => [
       { id: "section-overview", label: labels.overview },
       { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
-      { id: "section-live-wire", label: "Live Wire" },
-      { id: "section-network", label: labels.liveActivity },
+      { id: "section-signal-wire", label: "Signal Wire" },
+      { id: "section-network", label: labels.networkActivity },
       { id: "section-pulse-moments", label: labels.pulseMoments },
       { id: "section-emote-signal", label: labels.emoteSignal },
       { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },
@@ -462,6 +448,7 @@ function AnalyticsLandingContent() {
           loadSource={hub.loadSource}
           hubEndpointOk={hub.hubEndpointOk}
           activitySummary={activitySummary}
+          activity={data.activity}
           pipeline={data.corpusPipeline}
           liveRosterCount={data.coverage.liveChannels}
           error={hub.error}
@@ -477,9 +464,23 @@ function AnalyticsLandingContent() {
             lastSuccessfulPollAt={hub.lastSuccessfulPollAt}
             hubEndpointOk={hub.hubEndpointOk}
             error={hub.error}
-            poolWireEvents={poolWire.events}
-            poolWireInitialized={poolWire.initialized}
             pulseLiveChannels={pulseLiveChannels}
+            liveActivity={
+              liveActivityPortalRead
+                ? {
+                    events: liveActivity.events,
+                    status: liveActivity.status,
+                    metadata: liveActivity.metadata,
+                    asOf: liveActivity.asOf,
+                    window: liveActivity.window,
+                    kindFilter: liveActivity.kindFilter,
+                    onKindFilterChange: liveActivity.setKindFilter,
+                    newIds: liveActivity.newIds,
+                    lastSuccessfulAt: liveActivity.lastSuccessfulAt,
+                    loading: liveActivity.status === "loading",
+                  }
+                : undefined
+            }
           />
           <div className="hub-command-search" role="search" aria-label="Channel search">
             <HubSearch

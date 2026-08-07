@@ -4,6 +4,11 @@ export interface CommandCenterLabels {
   hubLede: string
   overview: string
   liveRail: string
+  /** Chart / network activity section — not the lifecycle Live Activity panel. */
+  networkActivity: string
+  /**
+   * @deprecated Use networkActivity. Kept briefly for call-site migration; value is Network activity.
+   */
   liveActivity: string
   pulseMoments: string
   emoteSignal: string
@@ -22,7 +27,9 @@ export const COMMAND_CENTER_LABELS: CommandCenterLabels = {
     'Live IRC pool status, current viewer totals, and network peaks from tracked channels — not all of Twitch.',
   overview: 'Overview',
   liveRail: 'Hottest live',
-  liveActivity: 'Live Activity',
+  // Chart section title — lifecycle feed is titled "Live Activity" in LiveActivityPanel.
+  networkActivity: 'Network activity',
+  liveActivity: 'Network activity',
   pulseMoments: 'Pulse Moments',
   emoteSignal: 'Emote Market',
   trackedChannels: 'Channel Screener',
@@ -41,7 +48,7 @@ export function sidebarLabelFor(
   const map: Record<string, keyof CommandCenterLabels> = {
     'section-overview': 'overview',
     'section-live-rail': 'liveRail',
-    'section-network': 'liveActivity',
+    'section-network': 'networkActivity',
     'section-pulse-moments': 'pulseMoments',
     'section-emote-signal': 'emoteSignal',
     'section-tracked': 'trackedChannels',

@@ -64,6 +64,8 @@ export interface HubRosterSummary {
   configuredRosterConfirmed?: number
   /** IRC-active configured-roster rows still unresolved after canonical lookup. */
   configuredRosterUnresolved?: number
+  /** False means rollup-signal telemetry was unavailable and totals are withheld. */
+  configuredRosterSignalsAvailable?: boolean
 }
 
 /**
@@ -77,6 +79,7 @@ export interface ConfiguredRosterDisplay {
   unresolved: number
   warming: number
   connectedQuiet: number
+  signalsAvailable: boolean
   /** True when counts are finite, non-negative, and conserve against live. */
   consistent: boolean
   /** Present when the payload is impossible or overflows; UI should degrade visibly. */
@@ -106,6 +109,7 @@ export function resolveConfiguredRosterDisplay(
     | 'connectedQuiet'
     | 'configuredRosterConfirmed'
     | 'configuredRosterUnresolved'
+    | 'configuredRosterSignalsAvailable'
   >,
 ): ConfiguredRosterDisplay {
   const liveParsed = sanitizeRosterCount(roster.live)
@@ -135,6 +139,19 @@ export function resolveConfiguredRosterDisplay(
   const unresolved = unresolvedParsed.count
   const warming = warmingParsed.count
   const connectedQuiet = quietParsed.count
+
+  if (roster.configuredRosterSignalsAvailable === false) {
+    return {
+      live,
+      confirmed: 0,
+      unresolved: 0,
+      warming,
+      connectedQuiet,
+      signalsAvailable: false,
+      consistent: false,
+      inconsistencyReason: 'configured-roster signal telemetry unavailable',
+    }
+  }
 
   const invalidBits = [
     liveParsed.invalid ? 'live' : '',
@@ -169,6 +186,7 @@ export function resolveConfiguredRosterDisplay(
     unresolved,
     warming,
     connectedQuiet,
+    signalsAvailable: true,
     consistent,
     inconsistencyReason,
   }
@@ -260,6 +278,8 @@ export interface HubActivityPoint {
   bucketComplete?: boolean
   /** Highest-count emotes for the bucket (top 10 for inspector; chart tooltip slices to 3). */
   topEmotes?: HubBucketEmote[]
+  /** True when the portal filled an omitted backend bucket for chart layout. */
+  synthetic?: boolean
 }
 
 export interface HubActivity {
@@ -268,6 +288,11 @@ export interface HubActivity {
   channelCount: number
   peakViewersAt?: number
   livePoolViewerSum?: number
+  /** Backend truth for the requested activity window. */
+  state?: string
+  source?: string
+  reason?: string
+  availableWindowMinutes?: number
 }
 
 export interface HubEmoteIntel {
@@ -688,8 +713,8 @@ function coverageStateWithPipeline(
 /**
  * Resolve a backend-relative asset path (e.g. "/emotes/<id>/1x.webp" or a
  * "/v1/..." avatar proxy) to an absolute URL against the configured backend.
- * The hub is served from the portal origin (5173 in dev, streampulse.stream in
- * prod) but emote/avatar assets live on the backend (8090 / api.streampulse.stream),
+ * The hub is served from the portal origin (5174 in dev, streampulse.stream in
+ * prod) but emote/avatar assets live on the backend (:8081 / api.streampulse.stream),
  * so relative paths would otherwise 404 against the portal and fall back to text.
  */
 function absoluteAssetUrl(url: string | undefined): string | undefined {
@@ -798,6 +823,7 @@ function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
  */
 export function normalizePublicHub(raw: PublicHubInput | null | undefined): PublicHub {
   const corpusPipeline = normalizeCorpusPipeline(raw?.corpusPipeline, raw?.generatedAt)
+  const hasAuthoritativeRosterLive = raw?.corpusPipeline?.roster?.live != null
   return {
     generatedAt: raw?.generatedAt ?? new Date().toISOString(),
     poolSize: raw?.poolSize ?? 0,
@@ -809,7 +835,12 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       vodsAnalyzed: raw?.corpus?.vodsAnalyzed ?? 0,
     },
     coverage: {
-      liveChannels: Math.max(raw?.coverage?.liveChannels ?? 0, corpusPipeline.roster.live),
+      // Older hub payloads used coverage.liveChannels for pool capacity. Once
+      // roster.live is present it is the authoritative count of channels that
+      // are actually live; do not present the tracked pool size as liveness.
+      liveChannels: hasAuthoritativeRosterLive
+        ? corpusPipeline.roster.live
+        : (raw?.coverage?.liveChannels ?? 0),
       trackingMax: raw?.coverage?.trackingMax ?? 0,
       backfillActive: raw?.coverage?.backfillActive ?? 0,
       backfillMax: raw?.coverage?.backfillMax ?? 0,
@@ -826,6 +857,10 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       channelCount: raw?.activity?.channelCount ?? 0,
       peakViewersAt: raw?.activity?.peakViewersAt,
       livePoolViewerSum: raw?.activity?.livePoolViewerSum,
+      state: raw?.activity?.state,
+      source: raw?.activity?.source,
+      reason: raw?.activity?.reason,
+      availableWindowMinutes: raw?.activity?.availableWindowMinutes,
     },
     emoteIntel: {
       emotesPerMin: raw?.emoteIntel?.emotesPerMin ?? 0,
@@ -923,6 +958,7 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
     hasChatRollup: point.hasChatRollup,
     hasViewerRollup: point.hasViewerRollup,
     bucketComplete: point.bucketComplete,
+    synthetic: point.synthetic,
     topEmotes: Array.isArray(point.topEmotes)
       ? point.topEmotes
           .filter((e) => e && typeof e.name === 'string' && e.name.length > 0)
@@ -1003,6 +1039,7 @@ function normalizeCorpusPipeline(
       zeroChatAfterAge: raw?.roster?.zeroChatAfterAge ?? 0,
       configuredRosterConfirmed: raw?.roster?.configuredRosterConfirmed,
       configuredRosterUnresolved: raw?.roster?.configuredRosterUnresolved,
+      configuredRosterSignalsAvailable: raw?.roster?.configuredRosterSignalsAvailable,
     },
     silver: normalizeTierCounts(raw?.silver ?? emptyTierCounts()),
     gold: normalizeTierCounts(raw?.gold ?? emptyTierCounts()),

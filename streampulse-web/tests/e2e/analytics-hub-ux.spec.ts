@@ -328,8 +328,11 @@ test.describe('analytics hub UX (interaction)', () => {
     await page.goto('/analytics')
     await expect(page.locator('.hub-live-rail-movers')).toHaveCount(0)
     await expect(page.getByTestId('live-pool-size')).toBeVisible()
-    await expect(page.getByTestId('pool-wire')).toBeVisible()
-    await expect(page.locator('#section-live-wire .hub-live-wire')).toBeVisible()
+    await expect(page.getByTestId('live-activity')).toBeVisible()
+    await expect(page.getByTestId('coverage-diagnostic')).toBeVisible()
+    await expect(page.locator('#section-signal-wire .hub-live-wire')).toBeVisible()
+    await expect(page.getByTestId('pool-wire')).toHaveCount(0)
+    await expect(page.getByText(/POOL\s+Stable/i)).toHaveCount(0)
     await expect(page.locator('#section-emote-signal .figma-economy-grid')).toBeVisible()
     await expect(page.getByRole('link', { name: /xQc/i }).first()).toBeVisible()
     await expect(page.getByText('96', { exact: true }).first()).toBeVisible()
@@ -337,11 +340,11 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('Live Wire selection coordinates one inspector and clear remains cleared', async ({ page }) => {
+  test('Signal Wire selection coordinates one inspector and clear remains cleared', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
 
-    const liveWire = page.locator('#section-live-wire')
+    const liveWire = page.locator('#section-signal-wire')
     const sodaChip = liveWire.locator('button.hub-live-wire__chip', {
       hasText: 'sodapoppin',
     })
@@ -359,7 +362,7 @@ test.describe('analytics hub UX (interaction)', () => {
 
     await sodaChip.click()
     await expect(sodaChip).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.locator('.hx-moment-marker.is-selected')).toHaveCount(1)
+    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
     await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(1)
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toContainText(
       'sodapoppin',
@@ -374,7 +377,7 @@ test.describe('analytics hub UX (interaction)', () => {
       .click()
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
-    await expect(page.locator('.hx-moment-marker.is-selected')).toHaveCount(0)
+    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
     await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(0)
 
     await assertNoWhiteAnalyticsSurfaces(page)

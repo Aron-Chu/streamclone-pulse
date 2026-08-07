@@ -2,7 +2,7 @@
 
 
 
-Vite + React portal for StreamPulse. Requires sibling **streampulse-backend** checkout at `../../streampulse-backend` for `@streampulse/pulse-core`, `@streampulse/pulse-charts`, and `@streampulse/analytics-console`.
+Vite + React portal for StreamPulse. This branch currently uses an explicit sibling package override for `@streampulse/pulse-core`, `@streampulse/pulse-charts`, and `@streampulse/analytics-console`. The override is recorded in [`../config/local-package-overrides.json`](../config/local-package-overrides.json) because this branch predates the clean Pulse-owned `packages/*` workspace on `origin/master`.
 
 
 
@@ -14,7 +14,10 @@ Vite + React portal for StreamPulse. Requires sibling **streampulse-backend** ch
 
 npm install
 
-npm run dev:hosted   # http://localhost:5173 → https://api.streampulse.stream (default)
+npm run check:package-cohort  # verify package links, source commit, and dirty state
+# Release/CI gate: npm run check:package-cohort:strict (rejects a dirty sibling source)
+
+npm run dev          # http://127.0.0.1:5174 → https://api.streampulse.stream (default)
 
 npm run dev:local    # explicit local StreamPulse backend at http://localhost:8081 (requires opt-in env)
 
@@ -32,9 +35,9 @@ npm run typecheck && npm test && npm run build
 
 |---------|---------|-------|
 
-| `npm run dev` / `dev:hosted` | `https://api.streampulse.stream` | Default — matches production portal |
+| `npm run dev` | `https://api.streampulse.stream` | Default — matches production portal |
 
-| `npm run dev:local` | `http://localhost:8081` | Copy `.env.development.localhost.example` → `.env.development.localhost` (sets `VITE_ALLOW_LOCAL_BACKEND=1`). Uses **streampulse-backend** compose — not Streamclone `:8090`. |
+| `npm run dev:local` | `http://localhost:8081` | Copy `.env.development.localhost.example` → `.env.development.localhost` (sets `VITE_ALLOW_LOCAL_BACKEND=1`). Uses **streampulse-backend** compose — not Streamclone `:8090`. Portal remains on `http://127.0.0.1:5174`. |
 
 | Production build / Pages deploy | `https://api.streampulse.stream` only | `check:backend-url` fails on localhost in bundle |
 
@@ -60,11 +63,11 @@ Copy `.env.development.localhost.example` to `.env.development.localhost` when y
 
 |---------|-----|
 
-| Blank page / empty `#root` | Kill stale process on port 5173, restart `npm run dev`, hard refresh |
+| Blank page / empty `#root` | Kill stale process on port 5174, restart `npm run dev`, hard refresh |
 
-| Port conflict (Vite on 5174) | Only one dev server; kill zombie on 5173 |
+| Port conflict (Vite on 5174) | Stop the process holding 5174. Vite uses `strictPort` and fails instead of moving to another checkout. |
 
-| `@streampulse/*` module errors | `npm install`; confirm sibling `streampulse-backend/packages/` exists |
+| `@streampulse/*` module errors | Run `npm run check:package-cohort`, then `npm install`; confirm the manifest target exists |
 
 | Hub data looks wrong | Default is hosted — check `sessionStorage.sp.backendUrlOverride` |
 
@@ -98,11 +101,11 @@ uploads the prebuilt `dist/` with `wrangler pages deploy`. The public site is fu
 
 static + the hosted API, so it works with your local PC off and never depends on
 
-`localhost:5173`.
+`127.0.0.1:5174`.
 
 
 
-**Cloudflare Git builds are NOT supported as-is.** `package.json` pulls workspace packages by relative path from the sibling **streampulse-backend** checkout:
+**Cloudflare Git builds are NOT supported on this historical branch as-is.** `package.json` pulls packages by relative path from the sibling **streampulse-backend** checkout:
 
 
 
@@ -117,12 +120,8 @@ static + the hosted API, so it works with your local PC off and never depends on
 
 
 A Cloudflare Git build clones only this repo, so those `file:` deps will not
-
-resolve. To use Git-triggered builds you would need to either (a) make both repos
-
-available to the build (git submodule / monorepo / a vendored copy step), or
-
-(b) publish `@streampulse/*` packages to a registry and switch to versioned deps. Until then, use the local
-
-`npm run pages:deploy:prod` path above. Do **not** add Vercel.
-
+resolve. The clean migration target is the in-repo workspace on
+`streamclone-pulse origin/master`; do not copy it into this dirty branch or
+silently switch sibling package sources. Until branch WIP is reconciled, use
+the local `npm run pages:deploy:prod` path above and run
+`npm run check:package-cohort` before every build. Do **not** add Vercel.

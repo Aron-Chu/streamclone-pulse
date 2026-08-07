@@ -137,6 +137,21 @@ describe('resolveConfiguredRosterDisplay', () => {
     expect(display.unresolved).toBe(2)
     expect(display.consistent).toBe(true)
   })
+
+  it('withholds roster totals when signal telemetry is unavailable', () => {
+    const display = resolveConfiguredRosterDisplay({
+      live: 90,
+      collecting: 0,
+      warming: 0,
+      connectedQuiet: 0,
+      configuredRosterConfirmed: 0,
+      configuredRosterUnresolved: 0,
+      configuredRosterSignalsAvailable: false,
+    })
+    expect(display.signalsAvailable).toBe(false)
+    expect(display.consistent).toBe(false)
+    expect(display.inconsistencyReason).toMatch(/unavailable/i)
+  })
 })
 
 describe('validatePublicHubInvariants configured roster conservation', () => {

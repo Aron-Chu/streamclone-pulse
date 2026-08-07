@@ -11,9 +11,9 @@
 export default {  content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
-    '../../streampulse-backend/packages/analytics-console/src/**/*.{js,ts,jsx,tsx}',
+    './node_modules/@streampulse/analytics-console/src/**/*.{js,ts,jsx,tsx}',
     // pulse-charts owns PulseMultiSignalChart SVG axis labels (fill-cyan-*, fill-zinc-*, …)
-    '../../streampulse-backend/packages/pulse-charts/src/**/*.{js,ts,jsx,tsx}',
+    './node_modules/@streampulse/pulse-charts/src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {},

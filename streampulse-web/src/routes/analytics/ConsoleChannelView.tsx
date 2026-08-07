@@ -8,8 +8,8 @@ import { useAnalyticsMotion } from '../../ui/motion/useAnalyticsMotion'
 import '../../ui/analytics-tailwind.css'
 import '../../ui/components/analytics/analytics-console.css'
 import '../../ui/components/analytics/figma-analytics.css'
-import '../../../../../streampulse-backend/packages/analytics-console/src/analytics-chart-motion.css'
-import '../../../../../streampulse-backend/packages/pulse-charts/pulse-chart-motion.css'
+import '@streampulse/analytics-console/analytics-chart-motion.css'
+import '@streampulse/pulse-charts/pulse-chart-motion.css'
 
 setupStreamcloneAnalyticsApi()
 

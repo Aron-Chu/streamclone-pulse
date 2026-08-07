@@ -107,6 +107,14 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
     setSelectedOffset(nearest?.offsetSeconds ?? offsetSeconds)
   }, [data.loading, data.session.moments, data.session.state, location.hash, location.search])
 
+  useEffect(() => {
+    if (selectedOffset == null || !Number.isFinite(selectedOffset)) return
+    const nextHash = `#t=${Math.floor(selectedOffset)}`
+    if (location.hash === nextHash) return
+    const url = `${location.pathname}${location.search}${nextHash}`
+    window.history.replaceState(null, '', url)
+  }, [selectedOffset, location.pathname, location.search, location.hash])
+
   const handleChartSelectOffset = (offsetSeconds: number) => {
     const nearest = nearestMomentForOffset(data.session.moments, offsetSeconds)
     if (nearest) setSelectedOffset(nearest.offsetSeconds)
@@ -282,6 +290,8 @@ export function FigmaChannelDashboard({ data }: FigmaChannelDashboardProps) {
               vodId={data.session.vodId}
               sessionHref={data.session.sessionHref}
               emoteLookup={emoteLookup}
+              login={data.login}
+              streamId={data.selectedStreamId}
             />
           ) : null}
           {data.session.bursts.length > 0 ? (

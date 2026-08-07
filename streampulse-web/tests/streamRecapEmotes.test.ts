@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 
 import { configureEmoteAssetBase } from '@streampulse/analytics-console/configureApi'
+import type { AnalyticsMinuteRollup } from '@streampulse/analytics-console'
 import { getEmoteImageUrl } from '@streampulse/analytics-console/utils/consoleFormat'
 import {
   enrichRecapEmoteFromCatalog,
@@ -168,7 +169,7 @@ describe('peak emote minute highlight', () => {
   ]
 
   const streamStartedAt = '2026-07-07T08:00:00.000Z'
-  const rollups = [
+  const rollups: AnalyticsMinuteRollup[] = [
     {
       minuteTs: '2026-07-07T10:53:00.000Z',
       chatCount: 100,

@@ -10,6 +10,21 @@ import {
   MOMENTS_INITIAL_VISIBLE,
   MOMENTS_MAX_VISIBLE,
 } from '@streampulse/analytics-console/utils/momentListDisplay'
+import type { ReplayHeatmapPoint } from '@streampulse/analytics-console/types/heatmap'
+
+function heatmapPoint(minuteTs: string, score: number, reason: string): ReplayHeatmapPoint {
+  return {
+    offsetSeconds: 0,
+    durationSeconds: 60,
+    score,
+    confidence: 1,
+    reason,
+    topEmotes: [],
+    vodId: null,
+    streamId: 'stream-1',
+    minuteTs,
+  }
+}
 
 describe('momentScoreTone', () => {
   it('maps score tiers to emerald, cyan, and amber', () => {
@@ -55,18 +70,8 @@ describe('enrichRecapMomentsFromHeatmap', () => {
     const enriched = enrichRecapMomentsFromHeatmap(
       [{ offsetSeconds: 120, score: 70, reasons: ['chat_spike'] }],
       [
-        {
-          minuteTs: '2026-07-07T12:10:00.000Z',
-          score: 88,
-          reason: 'twitch_emote_spike',
-          topEmotes: [],
-        },
-        {
-          minuteTs: '2026-07-07T12:15:00.000Z',
-          score: 75,
-          reason: 'chat_spike',
-          topEmotes: [],
-        },
+        heatmapPoint('2026-07-07T12:10:00.000Z', 88, 'twitch_emote_spike'),
+        heatmapPoint('2026-07-07T12:15:00.000Z', 75, 'chat_spike'),
       ],
       '2026-07-07T12:00:00.000Z',
       undefined,
@@ -86,7 +91,7 @@ describe('enrichRecapMomentsFromHeatmap', () => {
     }))
     const enriched = enrichRecapMomentsFromHeatmap(
       recap,
-      [{ minuteTs: '2026-07-07T12:30:00.000Z', score: 99, reason: 'chat_spike', topEmotes: [] }],
+      [heatmapPoint('2026-07-07T12:30:00.000Z', 99, 'chat_spike')],
       '2026-07-07T12:00:00.000Z',
       undefined,
       MOMENTS_MAX_VISIBLE,

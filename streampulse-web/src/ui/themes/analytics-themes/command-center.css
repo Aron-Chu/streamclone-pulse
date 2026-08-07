@@ -13,7 +13,8 @@
 
   --sp-text: rgba(255, 255, 255, 0.9);
   --sp-text-muted: rgba(255, 255, 255, 0.55);
-  --sp-text-faint: rgba(255, 255, 255, 0.42);
+  /* 5.25:1 on --sp-bg; remains AA-safe at the small metadata sizes used here. */
+  --sp-text-faint: rgba(255, 255, 255, 0.5);
 
   --sp-accent: #5eead4;
   --sp-accent-strong: #99f6e4;

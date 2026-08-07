@@ -13,6 +13,7 @@ import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScr
 import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
+import { BrandMark } from '../../ui/components/BrandMark'
 
 const CHROME_EXTENSION_URL = '/docs#extension'
 const EXTENSION_BETA_LABEL = 'Install extension (beta)'
@@ -22,6 +23,7 @@ function TopNav() {
     <header className="sl-header">
       <nav className="sl-nav" aria-label="StreamPulse">
         <Link to="/" className="sl-brand">
+          <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
         </Link>
         <div className="sl-menu">
@@ -59,7 +61,8 @@ function Hero({
           Find the Twitch moments people <span className="sl-grad">actually reacted to</span>.
         </h1>
         <p>
-          StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and VODs.
+          StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and
+          VODs.
         </p>
         <div className="sl-hero__actions">
           <Link to={CHROME_EXTENSION_URL} className={buttonClass('default', 'lg')}>
@@ -158,15 +161,17 @@ function Footer() {
     <footer className="sl-footer">
       <div className="sl-container sl-foot">
         <Link to="/" className="sl-brand">
-          <span className="sl-logo">SP</span>
+          <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
         </Link>
         <div className="sl-foot__links">
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
           <Link to="/analytics">Analytics</Link>
+          <Link to="/support">Support</Link>
+          <Link to="/privacy">Privacy</Link>
         </div>
-        <small>Public analytics for Streamclone Pulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
+        <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
       </div>
     </footer>
   )

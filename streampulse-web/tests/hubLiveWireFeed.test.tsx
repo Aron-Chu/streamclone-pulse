@@ -198,7 +198,7 @@ describe('HubLiveWireFeed', () => {
     expect(links[0]?.getAttribute('href')).toContain('/analytics/xqc')
     expect(links[1]?.getAttribute('href')).toContain('/analytics/sodapoppin')
     const kinds = container.querySelectorAll('.hub-live-wire__kind')
-    expect(kinds[0]?.textContent).toContain('Emote spike')
+    expect(kinds[0]?.textContent).toContain('Emote burst')
     expect(kinds[1]?.textContent).toContain('Chat spike')
     expect(screen.getByText(/Twitch emote spike/)).toBeTruthy()
   })
@@ -240,7 +240,7 @@ describe('HubLiveWireFeed', () => {
     expect(document.querySelector('.hub-live-wire__kind')?.textContent).toContain('Chat spike')
   })
 
-  it('filters lifecycle kinds out of Live Wire (Pool Wire owns openings)', () => {
+  it('filters lifecycle kinds out of Signal Wire (Live Activity owns openings)', () => {
     const now = Date.now()
     const hub = sampleHub()
     hub.livePulseMoments = [
@@ -384,7 +384,7 @@ describe('HubLiveWireFeed', () => {
     expect(container.querySelector('.hub-live-wire__kind')).toBeNull()
     expect(container.querySelector('.hub-live-wire__ticker-viewport--marquee')).toBeNull()
     expect(container.querySelectorAll('.hub-live-wire__chip-event').length).toBe(2)
-    expect(screen.getByText('Emote spike')).toBeTruthy()
+    expect(screen.getByText('Emote burst')).toBeTruthy()
     expect(screen.getByText('Chat spike')).toBeTruthy()
     expect(screen.getByText(/DinoDance/)).toBeTruthy()
     expect(screen.getByText('280 chat/m')).toBeTruthy()

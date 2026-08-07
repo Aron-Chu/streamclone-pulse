@@ -26,7 +26,7 @@ async function collectDomEvidence(page: Page): Promise<Omit<EvidenceStep, 'step'
   return page.evaluate(() => {
     const main = document.querySelector('main[data-hub-state]')
     const pool = document.querySelector('[data-testid="live-pool-size"]')
-    const liveWire = document.querySelector('.hub-live-wire, #section-live-wire')
+    const liveWire = document.querySelector('.hub-live-wire, #section-signal-wire')
     return {
       hubState: main?.getAttribute('data-hub-state') ?? null,
       poolText: pool?.textContent?.replace(/\s+/g, ' ').trim() ?? null,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
 import { internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
@@ -98,9 +98,6 @@ function BucketSelectionCue({ x, label, tone, motionEnabled }: BucketSelectionCu
       aria-hidden="true"
     >
       <span className="hx-bucket-cue__line" />
-      <span className="hx-bucket-cue__node">
-        <span className="hx-bucket-cue__ring" />
-      </span>
       {label ? <span className="hx-bucket-cue__label">{label}</span> : null}
     </span>
   )
@@ -298,9 +295,9 @@ export function HubActivityChart({
   accentBucketT = null,
   onBucketSelect,
   onBucketHover,
-  momentMarkers = [],
-  selectedMomentKey = null,
-  onSelectMomentKey,
+  momentMarkers: _momentMarkers = [],
+  selectedMomentKey: _selectedMomentKey = null,
+  onSelectMomentKey: _onSelectMomentKey,
   showProviderOverlay = false,
   emoteImages,
 }: HubActivityChartProps) {
@@ -311,6 +308,14 @@ export function HubActivityChart({
   const lastBucketTRef = useRef<number | null | undefined>(undefined)
   const [enabledProviders, setEnabledProviders] = useState<Set<ProviderKey> | null>(null)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<CoreSeriesKey | null>(null)
+  const pressStartRef = useRef<{ x: number; y: number; index: number } | null>(null)
+  const pressPointerIdRef = useRef<number | null>(null)
+  const pressEnteredRef = useRef(false)
+  const pressCancelledRef = useRef(false)
+  const [pressDragging, setPressDragging] = useState(false)
+  const keyboardIndexRef = useRef<number | null>(null)
+  const suppressClickUntilRef = useRef(0)
+  const [announcement, setAnnouncement] = useState('')
 
   const toggleSeriesFocus = useCallback((seriesKey: CoreSeriesKey) => {
     setFocusedSeriesKey((current) => (current === seriesKey ? null : seriesKey))
@@ -332,7 +337,7 @@ export function HubActivityChart({
   const chartAriaLabel = useMemo(() => {
     const poolLabel =
       (poolSize ?? channelCount) > 0
-        ? `${poolSize ?? channelCount} channels in live pool`
+        ? `${poolSize ?? channelCount} channels in tracked pool`
         : 'tracked streams'
     const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
     const selectedCopy =
@@ -365,6 +370,7 @@ export function HubActivityChart({
     () => chartActivityPoints(points, windowMinutes, undefined, livePoolViewerSum),
     [points, windowMinutes, livePoolViewerSum],
   )
+  const measuredChartPointCount = chartPoints.filter((point) => !point.synthetic).length
 
   const model = useMemo(() => {
     const n = chartPoints.length
@@ -473,13 +479,6 @@ export function HubActivityChart({
     const firstActive = active[0]
     const firstActiveIndex = firstActive ? chartPoints.findIndex((p) => p.t === firstActive.t) : -1
     const firstActiveX = firstActiveIndex >= 0 ? xAtIndex(firstActiveIndex) : 0
-    let lastViewerIdx = -1
-    for (let i = chartPoints.length - 1; i >= 0; i -= 1) {
-      if (chartPoints[i].viewers > 0) {
-        lastViewerIdx = i
-        break
-      }
-    }
     const sampleNote =
       firstActive && Math.max(0, Math.round((firstActive.t - startT) / 60_000)) > Math.max(15, windowMinutes * 0.2)
         ? `No live samples before ${axisLabel(Math.max(0, Math.round((lastT - firstActive.t) / 60_000)))}`
@@ -512,7 +511,6 @@ export function HubActivityChart({
       chatGapBands,
       bars,
       firstActiveX,
-      lastViewerIdx,
       sampleNote,
       internalGaps: internalGapCount(chartPoints, windowMinutes),
       peakViewers: chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0),
@@ -675,7 +673,6 @@ export function HubActivityChart({
     chatGapBands,
     bars,
     firstActiveX,
-    lastViewerIdx,
     sampleNote,
     internalGaps,
     peakViewers,
@@ -730,12 +727,133 @@ export function HubActivityChart({
 
   function handleClick(event: ReactMouseEvent<HTMLDivElement>) {
     if (!onBucketSelect) return
+    if (Date.now() < suppressClickUntilRef.current) return
     setFocusedSeriesKey(null)
     const best = nearestPointIndex(event.clientX)
     const point = chartPoints[best]
     const next = resolveChartBucketSelection(point, selectedBucketT)
     if (next === undefined) return
     onBucketSelect(next)
+  }
+
+  /** Touch tap/scrub uses horizontal intent; vertical motion remains page scroll. */
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!onBucketSelect || event.pointerType === 'mouse') return
+    if (event.button !== undefined && event.button !== 0) return
+    const best = nearestPointIndex(event.clientX)
+    pressPointerIdRef.current = event.pointerId
+    pressStartRef.current = { x: event.clientX, y: event.clientY, index: best }
+    pressEnteredRef.current = false
+    pressCancelledRef.current = false
+    commitHoverIndex(best)
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!onBucketSelect || event.pointerType === 'mouse' || !pressStartRef.current) return
+    const start = pressStartRef.current
+    const dx = event.clientX - start.x
+    const dy = event.clientY - start.y
+    if (!pressEnteredRef.current && Math.abs(dy) >= 6 && Math.abs(dy) > Math.abs(dx)) {
+      pressCancelledRef.current = true
+      pressStartRef.current = null
+      pressPointerIdRef.current = null
+      flushHover(null)
+      return
+    }
+    if (!pressEnteredRef.current && Math.abs(dx) >= 6 && Math.abs(dx) > Math.abs(dy)) {
+      pressEnteredRef.current = true
+      setPressDragging(true)
+      try {
+        wrapRef.current?.setPointerCapture(event.pointerId)
+      } catch {
+        /* ignore capture failures in test browsers */
+      }
+    }
+    if (pressEnteredRef.current) commitHoverIndex(nearestPointIndex(event.clientX))
+  }
+
+  function finalizePointerSelection(index: number) {
+    const point = chartPoints[index]
+    pressStartRef.current = null
+    pressPointerIdRef.current = null
+    pressEnteredRef.current = false
+    setPressDragging(false)
+    if (!point || !onBucketSelect || pressCancelledRef.current) {
+      pressCancelledRef.current = false
+      return
+    }
+    pressCancelledRef.current = false
+    setFocusedSeriesKey(null)
+    const next = resolveChartBucketSelection(point, selectedBucketT)
+    if (next === undefined) return
+    onBucketSelect(next)
+    setAnnouncement(next == null ? 'Bucket selection cleared' : `Selected ${formatActivityAxisTick(next, windowMinutes)}`)
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!onBucketSelect || event.pointerType === 'mouse') return
+    suppressClickUntilRef.current = Date.now() + 500
+    if (pressStartRef.current == null) {
+      pressCancelledRef.current = false
+      return
+    }
+    const index = pressEnteredRef.current ? nearestPointIndex(event.clientX) : pressStartRef.current.index
+    if (pressEnteredRef.current && pressPointerIdRef.current != null) {
+      try {
+        wrapRef.current?.releasePointerCapture(pressPointerIdRef.current)
+      } catch {
+        /* ignore capture failures in test browsers */
+      }
+    }
+    finalizePointerSelection(index)
+  }
+
+  function handlePointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'mouse') return
+    pressStartRef.current = null
+    pressPointerIdRef.current = null
+    pressEnteredRef.current = false
+    pressCancelledRef.current = false
+    setPressDragging(false)
+    flushHover(null)
+  }
+
+  function selectKeyboardIndex(index: number) {
+    const bounded = Math.max(0, Math.min(chartPoints.length - 1, index))
+    keyboardIndexRef.current = bounded
+    commitHoverIndex(bounded)
+    const point = chartPoints[bounded]
+    if (!point) return
+    setAnnouncement(`${formatActivityAxisTick(point.t, windowMinutes)}, ${compact(point.viewers)} viewers, ${compact(point.chat)} chat, ${compact(hubActivityEmoteCount(point))} emotes`)
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!bucketSelectEnabled || chartPoints.length === 0) return
+    const selectedIndex = selectedBucketT == null ? -1 : chartPoints.findIndex((point) => point.t === selectedBucketT)
+    const current = keyboardIndexRef.current ?? (hover ?? (selectedIndex >= 0 ? selectedIndex : 0))
+    if (event.key === 'Home') {
+      event.preventDefault()
+      selectKeyboardIndex(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      selectKeyboardIndex(chartPoints.length - 1)
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      const step = event.shiftKey ? 5 : 1
+      selectKeyboardIndex(current + (event.key === 'ArrowRight' ? step : -step))
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const point = chartPoints[current]
+      if (!point) return
+      setFocusedSeriesKey(null)
+      const next = resolveChartBucketSelection(point, selectedBucketT)
+      onBucketSelect?.(next ?? null)
+      setAnnouncement(next == null ? 'Bucket selection cleared' : `Selected ${formatActivityAxisTick(next, windowMinutes)}`)
+    } else if (event.key === 'Escape' && selectedBucketT != null) {
+      event.preventDefault()
+      onBucketSelect?.(null)
+      setAnnouncement('Bucket selection cleared')
+    }
   }
 
   const selectedIndex =
@@ -746,7 +864,7 @@ export function HubActivityChart({
       ? chartPoints.findIndex((point) => point.t === accentBucketT)
       : -1
 
-  const hp = hover != null ? chartPoints[hover] : null
+  const hp = hover != null && !chartPoints[hover]?.synthetic ? chartPoints[hover] : null
   const hx = crosshairEnabled ? smoothHx : crosshairTargets.hx
   const hy =
     crosshairEnabled && crosshairTargets.hasViewer ? smoothHy : crosshairTargets.hy
@@ -754,7 +872,8 @@ export function HubActivityChart({
     crosshairEnabled && crosshairTargets.hasEmote ? smoothEmoteHy : crosshairTargets.emoteHy
   const tipShift = hx < 18 ? '0%' : hx > 82 ? '-100%' : '-50%'
   const tipStyle = { left: `${hx}%`, transform: `translateX(${tipShift})` }
-  const minutesAgo = hp != null ? Math.max(0, Math.round((lastT - hp.t) / 60_000)) : 0
+  const tipPoint = hover != null ? chartPoints[hover] : null
+  const tipMinutesAgo = tipPoint != null ? Math.max(0, Math.round((lastT - tipPoint.t) / 60_000)) : 0
 
   function toggleProvider(key: ProviderKey) {
     if (showProviderOverlay) return
@@ -831,6 +950,11 @@ export function HubActivityChart({
           </div>
         ) : null}
         </div>
+        <div className="hx-chart-header__readout" aria-live="polite">
+          {hp ? (
+            <><strong>{axisLabel(Math.max(0, Math.round((lastT - hp.t) / 60_000)))}</strong> · Viewers {compact(hp.viewers)} · Chat {compact(hp.chat)} · Emotes {compact(emoteCount(hp))}</>
+          ) : hover != null ? 'No recorded activity in this bucket · Viewers — · Chat — · Emotes —' : ''}
+        </div>
       </div>
       {chartSummary ? (
         <p className="hx-chart-summary muted" role="status">
@@ -853,14 +977,21 @@ export function HubActivityChart({
           <div className="hx-plot-stack__plot hx-plot-stack__plot--chart">
             <div
               ref={wrapRef}
-              className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}`}
               data-hover={hover != null ? 'true' : undefined}
               data-selected={selectedIndex >= 0 ? 'true' : undefined}
+              className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}${pressDragging ? ' hx-chart2--dragging' : ''}`}
               role="img"
               aria-label={chartAriaLabel}
+              tabIndex={bucketSelectEnabled ? 0 : undefined}
               onMouseMove={handleMove}
               onMouseLeave={handleLeave}
+              onPointerLeave={handleLeave}
               onClick={bucketSelectEnabled ? handleClick : undefined}
+              onPointerDown={bucketSelectEnabled ? handlePointerDown : undefined}
+              onPointerMove={bucketSelectEnabled ? handlePointerMove : undefined}
+              onPointerUp={bucketSelectEnabled ? handlePointerUp : undefined}
+              onPointerCancel={bucketSelectEnabled ? handlePointerCancel : undefined}
+              onKeyDown={bucketSelectEnabled ? handleKeyDown : undefined}
             >
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <g className="grid">
@@ -974,31 +1105,7 @@ export function HubActivityChart({
               motionEnabled={motionEnabled}
             />
           ) : null}
-          {momentMarkers.length > 0 ? (
-            <div className="hx-moment-markers" aria-label="Fresh network peaks">
-              {momentMarkers.map((marker) => {
-                const idx = chartPoints.findIndex((point) => point.t === marker.bucketT)
-                if (idx < 0) return null
-                const x = xs[idx]
-                if (x == null) return null
-                const selected = selectedMomentKey === marker.key
-                return (
-                  <button
-                    key={marker.key}
-                    type="button"
-                    className={`hx-moment-marker${selected ? ' is-selected' : ''}`}
-                    style={{ left: `${x}%` }}
-                    title={marker.kind ?? 'Peak'}
-                    aria-pressed={selected}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onSelectMomentKey?.(marker.key)
-                    }}
-                  />
-                )
-              })}
-            </div>
-          ) : null}
+          {/* Teal/cyan on-plot peak pins intentionally omitted — selection stays via Signal Wire / Moments. */}
           <span className="ylab ylab--viewers">{compact(peakViewers)} peak viewers</span>
           <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>
           {hasTotalEmotes && !showProviderOverlay ? (
@@ -1037,25 +1144,18 @@ export function HubActivityChart({
               ))}
               {chatGapBands.length > 0 && internalGaps === 0 ? (
                 <span className="gap-note" style={{ left: '18%' }}>
-                  Chat gap — no IRC measurement recorded for this period
+                  No IRC chat rollups in this stretch
                 </span>
               ) : null}
             </>
           ) : null}
           {!sampleNote && (missingBuckets > 0 || internalGaps > 0) ? (
             <span className="gap-note" style={{ left: '70%' }}>
-              {points.length}/{expectedBuckets ?? points.length} buckets · {Math.round(coveragePct)}% coverage
+              {measuredChartPointCount}/{expectedBuckets ?? chartPoints.length} buckets · {Math.round(coveragePct)}% coverage
             </span>
           ) : null}
 
-          {hover == null ? (
-            lastViewerIdx >= 0 ? (
-              <span className="now" style={{ left: `${viewers[lastViewerIdx].x}%`, top: `${viewers[lastViewerIdx].y}%` }}>
-                <span className="halo" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
-                <i style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
-              </span>
-            ) : null
-          ) : (
+          {hover != null ? (
             <>
               <span className="cross hx-crosshair" style={{ left: `${hx}%` }} />
               {hp && hp.viewers > 0 ? (
@@ -1068,14 +1168,17 @@ export function HubActivityChart({
                 <span className="hdot hx-crosshair hx-crosshair--emotes" style={{ left: `${hx}%`, top: `${emoteHy}%` }} />
               ) : null}
             </>
-          )}
+          ) : null}
         </div>
+        <span className="hx-chart-sr" role="status">{announcement}</span>
             </div>
             <div className="hx-chart-tip-slot" aria-live="polite">
-            {hover != null && hp ? (
+            {hover != null && tipPoint ? (
               <div className="tip" style={tipStyle}>
-                <div className="t">{axisLabel(minutesAgo)}</div>
+                <div className="t">{axisLabel(tipMinutesAgo)}</div>
                 <div className="tip-metrics">
+                {hp ? (
+                  <>
                   <div className="row">
                     <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
                     Viewers&nbsp;<b>{compact(hp.viewers)}</b>
@@ -1083,7 +1186,7 @@ export function HubActivityChart({
                   <div className="row">
                     <span className="sw sw--bar sw--chat" />
                     {hp.hasChatRollup === false ? (
-                      <>Tracked IRC chat&nbsp;<b>no measurement</b></>
+                      <>Tracked IRC chat&nbsp;<b>no rollups</b></>
                     ) : hp.hasChatRollup === undefined ? (
                       <>Tracked IRC chat&nbsp;<b>legacy status unknown</b></>
                     ) : (
@@ -1102,11 +1205,30 @@ export function HubActivityChart({
                       {providerMeta[key].label}&nbsp;<b>{compact(providerValue(hp, key))}</b>/m
                     </div>
                   ))}
+                  </>
+                ) : (
+                  <>
+                    <div className="row">
+                      <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} />
+                      Viewers&nbsp;<b>—</b>
+                    </div>
+                    <div className="row">
+                      <span className="sw sw--bar sw--chat" />
+                      Tracked IRC chat&nbsp;<b>no recorded activity</b>
+                    </div>
+                    {hasTotalEmotes ? (
+                      <div className="row">
+                        <span className="sw sw--dash sw--emotes" />
+                        Total emotes&nbsp;<b>—</b>
+                      </div>
+                    ) : null}
+                  </>
+                )}
                 </div>
                 <div
-                  className={`tip-emotes${hp.topEmotes && hp.topEmotes.length > 0 ? '' : ' tip-emotes--empty'}`}
+                  className={`tip-emotes${hp?.topEmotes && hp.topEmotes.length > 0 ? '' : ' tip-emotes--empty'}`}
                 >
-                  {hp.topEmotes && hp.topEmotes.length > 0 ? (
+                  {hp?.topEmotes && hp.topEmotes.length > 0 ? (
                     <>
                       <span className="tip-emotes__label">Top emotes this bucket</span>
                       <ol className="tip-emotes__list">

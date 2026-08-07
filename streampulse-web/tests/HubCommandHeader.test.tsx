@@ -1,15 +1,33 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub } from '../src/lib/publicHub'
+import type { LiveActivityEvent } from '../src/lib/liveActivity'
 import { HubCommandHeader } from '../src/ui/components/analytics/HubCommandHeader'
 import { AnalyticsThemeProvider } from '../src/ui/providers/AnalyticsThemeProvider'
-import type { PoolWireEvent } from '../src/lib/poolWireReducer'
+
+function sampleEvent(): LiveActivityEvent {
+  return {
+    id: 'evt:1',
+    kind: 'went_live',
+    channel: { id: '1', login: 'xqc', displayName: 'xQc' },
+    streamId: 's1',
+    occurredAt: new Date(Date.now() - 34_000).toISOString(),
+    detectedAt: new Date(Date.now() - 30_000).toISOString(),
+    lastSeenLiveAt: null,
+    timestampPrecision: 'twitch_started_at',
+    category: 'Just Chatting',
+    source: 'metadata_poll',
+  }
+}
 
 function renderHeader(
   overrides: {
-    events?: PoolWireEvent[]
+    events?: LiveActivityEvent[]
+    status?: 'ready' | 'empty' | 'unavailable'
     lastSuccessfulPollAt?: number
     hubEndpointOk?: boolean
+    metadataState?: 'current' | 'degraded' | 'stale' | 'unavailable'
   } = {},
 ) {
   const hub = normalizePublicHub({
@@ -28,59 +46,77 @@ function renderHeader(
       collectorActive: 250,
       collectorMax: 250,
       roster: { live: 81 },
+      metadataSampledAgoSeconds: 20,
     },
     activity: {
       windowMinutes: 1440,
+      channelCount: 1,
       points: [
-        { t: Date.now() - 60_000, viewers: 500000, chatPerMin: 8000, emotesPerMin: 4000 },
+        { t: Date.now() - 60_000, viewers: 500000, chat: 8000, emotes: 4000, seventv: 4000 },
       ],
       livePoolViewerSum: 330800,
     },
   })
 
   return render(
-    <AnalyticsThemeProvider>
-      <HubCommandHeader
-        hub={hub}
-        lastSuccessfulPollAt={overrides.lastSuccessfulPollAt ?? Date.now() - 8_000}
-        hubEndpointOk={overrides.hubEndpointOk ?? true}
-        poolWireEvents={overrides.events ?? []}
-        poolWireInitialized
-      />
-    </AnalyticsThemeProvider>,
+    <MemoryRouter>
+      <AnalyticsThemeProvider>
+        <HubCommandHeader
+          hub={hub}
+          lastSuccessfulPollAt={overrides.lastSuccessfulPollAt ?? Date.now() - 8_000}
+          hubEndpointOk={overrides.hubEndpointOk ?? true}
+          liveActivity={{
+            events: overrides.events ?? [],
+            status: overrides.status ?? (overrides.events?.length ? 'ready' : 'empty'),
+            metadata: {
+              state: overrides.metadataState ?? 'current',
+              lastSuccessfulPollAt: new Date().toISOString(),
+            },
+            asOf: new Date().toISOString(),
+            window: '6h',
+            kindFilter: 'all',
+            onKindFilterChange: vi.fn(),
+            newIds: new Set(),
+            lastSuccessfulAt: Date.now(),
+          }}
+        />
+      </AnalyticsThemeProvider>
+    </MemoryRouter>,
   )
 }
 
 describe('HubCommandHeader command surface', () => {
-  it('renders primary KPIs, peak strip, trust line, and Pool Wire', () => {
-    renderHeader({
-      events: [
-        {
-          id: 'evt:1',
-          kind: 'went_live',
-          channelKey: 'login:xqc',
-          login: 'xqc',
-          displayName: 'xQc',
-          category: 'Just Chatting',
-          at: Date.now() - 34_000,
-          derived: false,
-        },
-      ],
-    })
+  it('renders primary KPIs, peak strip, trust line, Live Activity, and coverage diagnostic', () => {
+    renderHeader({ events: [sampleEvent()], status: 'ready' })
 
     expect(screen.getByTestId('live-pool-size')).toBeTruthy()
-    expect(screen.getByText(/Live channels/i)).toBeTruthy()
-    expect(screen.getByText(/Live pool viewers/i)).toBeTruthy()
+    expect(screen.getByText('Tracked channels', { exact: true })).toBeTruthy()
+    expect(screen.getByText(/Tracked live viewers/i)).toBeTruthy()
     expect(screen.getByText(/Last 1 day peaks/i)).toBeTruthy()
     expect(screen.getByTestId('hub-command-trust').textContent).toMatch(/IRC COVERAGE/)
-    expect(screen.getByTestId('pool-wire')).toBeTruthy()
-    expect(screen.getByText('Went live')).toBeTruthy()
+    expect(screen.getByTestId('live-activity')).toBeTruthy()
+    expect(screen.getByTestId('coverage-diagnostic').textContent).toMatch(
+      /81 tracked channels · metadata current/i,
+    )
+    expect(screen.getByTestId('live-activity-row').textContent).toMatch(/Went live/)
     expect(screen.getByText('xQc')).toBeTruthy()
+    expect(screen.queryByTestId('pool-wire')).toBeNull()
+    expect(screen.queryByText(/POOL\s+Stable/i)).toBeNull()
   })
 
-  it('shows compact POOL Stable copy when Pool Wire has no events', () => {
-    renderHeader({ events: [] })
-    expect(screen.getByTestId('pool-wire-stable').textContent).toMatch(/POOL\s+Stable/i)
-    expect(screen.queryByText(/Waiting for lifecycle changes/i)).toBeNull()
+  it('shows empty Live Activity without POOL Stable copy', () => {
+    renderHeader({ events: [], status: 'empty' })
+    expect(screen.getByTestId('live-activity-empty').textContent).toMatch(
+      /No confirmed stream changes/i,
+    )
+    expect(screen.queryByText(/POOL\s+Stable/i)).toBeNull()
+  })
+
+  it('coverage diagnostic is unavailable when live activity status is unavailable', () => {
+    renderHeader({ events: [], status: 'unavailable' })
+    expect(screen.getByTestId('coverage-diagnostic').textContent).toMatch(
+      /81 tracked channels · metadata unavailable/i,
+    )
+    expect(screen.getByTestId('coverage-diagnostic').textContent).not.toMatch(/metadata current/)
   })
 })

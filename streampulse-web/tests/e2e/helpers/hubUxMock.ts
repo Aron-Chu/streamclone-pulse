@@ -82,6 +82,44 @@ export async function installHubUxMock(page: Page): Promise<void> {
     }
     clearStoragePrefix(window.localStorage, 'sp:publicHub:v1:')
     clearStoragePrefix(window.sessionStorage, 'sp:bucketMoments:v1:')
+    // Promote Live Activity reads for hub UX mocks only — still server/mock rows, never Pool Wire.
+    window.sessionStorage.setItem('sp.liveActivityPortalRead', 'true')
+  })
+
+  await page.route(/\/v1\/portal\/analytics\/live-activity(\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        asOf: new Date(now).toISOString(),
+        window: '6h',
+        completeness: 'tracked_channels_only',
+        metadata: {
+          state: 'current',
+          lastSuccessfulPollAt: new Date(now - 20_000).toISOString(),
+        },
+        events: [
+          {
+            id: 'la:xqc:stream-a:went_live',
+            kind: 'went_live',
+            channel: {
+              id: 'uid-xqc',
+              login: 'xqc',
+              displayName: 'xQc',
+              avatarUrl: '',
+            },
+            streamId: 'stream-a',
+            occurredAt: new Date(now - 4 * 60_000).toISOString(),
+            detectedAt: new Date(now - 3 * 60_000).toISOString(),
+            lastSeenLiveAt: null,
+            timestampPrecision: 'twitch_started_at',
+            title: 'Ranked',
+            category: 'Just Chatting',
+            source: 'metadata_poll',
+          },
+        ],
+      }),
+    })
   })
 
   await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, async (route) => {

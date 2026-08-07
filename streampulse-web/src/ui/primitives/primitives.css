@@ -343,40 +343,6 @@
   opacity: 0.7;
 }
 
-/* ------------------------------------------------------------------ Tabs */
-.sc-tabs__list {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.2rem;
-  border-radius: var(--sc-radius);
-  background: hsl(var(--sc-secondary) / 0.5);
-}
-.sc-tabs__trigger {
-  border: 0;
-  border-radius: calc(var(--sc-radius) - 0.2rem);
-  padding: 0.35rem 0.75rem;
-  background: transparent;
-  color: hsl(var(--sc-muted-foreground));
-  font-family: var(--sc-font);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.sc-tabs__trigger:hover {
-  color: hsl(var(--sc-foreground));
-}
-.sc-tabs__trigger[data-state='active'] {
-  background: hsl(var(--sc-background));
-  color: hsl(var(--sc-foreground));
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
-}
-.sc-tabs__trigger:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px hsl(var(--sc-ring) / 0.5);
-}
-
 /* -------------------------------------------------------------- Skeleton */
 .sc-skeleton {
   display: block;

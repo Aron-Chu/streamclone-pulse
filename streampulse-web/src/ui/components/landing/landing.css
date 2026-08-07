@@ -176,17 +176,10 @@
   letter-spacing: -0.015em;
 }
 
-.sl-logo {
-  width: 1.7rem;
-  height: 1.7rem;
+.sl-brand__mark {
+  width: 1.75rem;
+  height: 1.75rem;
   border-radius: 0.46rem;
-  display: grid;
-  place-items: center;
-  color: hsl(var(--sc-primary-foreground));
-  background: linear-gradient(135deg, hsl(var(--sc-chart-5)), hsl(var(--sc-chart-2)));
-  box-shadow: 0 0 28px -10px hsl(var(--sc-chart-5));
-  font-size: 0.72rem;
-  font-weight: 900;
 }
 
 .sl-menu {
@@ -768,32 +761,11 @@
 @media (max-width: 960px) {
   .sl-menu { display: none; }
   .sl-chatbg { display: none; }
-  .sl-xtour__scene { height: auto; }
-  .sl-xtour__sticky { position: static; min-height: 0; transform: none !important; }
+  /* Match LiveSignalScrollGraph: keep tall scene + sticky pin; only [data-static] collapses. */
+  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 360vh; }
   .sl-xtour__grid { grid-template-columns: 1fr; }
   .sl-xtour__rail { display: none; }
-  .pulse-landing-panel.sl-ext { height: auto; max-height: 78vh; }
-  .sl-xtour .sl-ext__scrollport,
-  .sl-xtour .sl-ext__scrollport.is-playing {
-    overflow-y: auto;
-    scrollbar-width: none;
-  }
-  .sl-xtour .pulse-landing-panel .sl-ext__scrollport,
-  .sl-xtour .pulse-landing-panel .pulse-landing-scrollport {
-    overflow: hidden !important;
-  }
-  .sl-xtour .pulse-landing-panel .pulse-landing-scroll {
-    overflow-y: auto;
-    scrollbar-width: none;
-  }
-  .sl-xtour .sl-ext__scroll,
-  .sl-xtour .sl-ext__scroll.is-playing {
-    transform: none !important;
-  }
-  .sl-xtour .sl-ext__scroll > [data-tour-step] {
-    opacity: 1;
-    transform: none;
-  }
+  .pulse-landing-panel.sl-ext { height: min(72vh, 640px); max-height: 78vh; }
   .sl-featgrid,
   .sl-steps,
   .sl-resgrid { grid-template-columns: 1fr; }
@@ -805,6 +777,7 @@
   .sl-stage { padding: 0 1rem; }
   .sl-stage h1 { font-size: clamp(2.35rem, 15vw, 3.8rem); }
   .sl-ln-grid { grid-template-columns: 1fr; }
+  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 420vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {

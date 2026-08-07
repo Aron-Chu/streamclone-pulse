@@ -27,7 +27,7 @@ describe('analytics console moments overlap guard', () => {
     const path = await import('node:path')
     const consolePath = path.resolve(
       import.meta.dirname,
-      '../../../streampulse-backend/packages/analytics-console/src/components/AnalyticsConsole.tsx',
+      '../node_modules/@streampulse/analytics-console/src/components/AnalyticsConsole.tsx',
     )
     const source = await fs.readFile(consolePath, 'utf8')
     expect(source).toContain('recapMomentsAvailable')

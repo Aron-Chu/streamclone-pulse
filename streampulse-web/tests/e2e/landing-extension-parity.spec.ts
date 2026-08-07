@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test'
 import { installMockApi } from './helpers/mockApi'
 import { seedBetaKey } from './helpers/auth'
 import {
+  assertAnimatedTourAdvances,
   assertAnimatedTourHidesPanelScrollbar,
   assertPanelHasNoHorizontalOverflow,
+  assertStaticTourNativeScroll,
   scrollSceneToProgress,
   scrollTourToStep,
 } from './helpers/scrollTour'
@@ -101,9 +103,39 @@ test.describe('landing extension showcase parity', () => {
     await expect(panel).toBeVisible()
     await expect(panel.locator('[data-tour-step="4"]')).toBeVisible()
     await expect(panel.getByRole('tab', { name: 'Pulse' })).toBeVisible()
+    await assertStaticTourNativeScroll(page)
 
     await expect(panel).toHaveScreenshot('landing-extension-static-full.png', {
       maxDiffPixelRatio: 0.03,
     })
+  })
+
+  test('narrow 960px keeps pinned scroll animation', async ({ page }) => {
+    await page.setViewportSize({ width: 960, height: 800 })
+    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+      timeout: 15_000,
+    })
+    await assertAnimatedTourAdvances(page)
+  })
+
+  test('mid laptop 1280x720 keeps pinned scroll animation', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+      timeout: 15_000,
+    })
+    await assertAnimatedTourAdvances(page)
+  })
+
+  test('narrow reduced motion stays static and native-scrollable', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 960, height: 800 })
+    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: /pulse tab, feature by feature/i })).toBeVisible({
+      timeout: 15_000,
+    })
+    await assertStaticTourNativeScroll(page)
+    await expect(page.locator('.pulse-landing-panel [data-tour-step="4"]')).toBeVisible()
   })
 })

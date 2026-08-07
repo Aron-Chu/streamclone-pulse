@@ -14,12 +14,11 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(here, '..')
-const backendRoot = join(webRoot, '../../streampulse-backend')
 
 /** Packages whose TSX may emit Tailwind classes consumed under .sc-analytics-console */
 const EMBED_PACKAGE_SRC = [
-  join(backendRoot, 'packages/analytics-console/src'),
-  join(backendRoot, 'packages/pulse-charts/src'),
+  join(webRoot, 'node_modules/@streampulse/analytics-console/src'),
+  join(webRoot, 'node_modules/@streampulse/pulse-charts/src'),
 ]
 
 const tailwindConfigPath = join(webRoot, 'tailwind.config.js')
@@ -68,8 +67,8 @@ const analyticsCss = readText(analyticsTailwindCssPath)
 let failed = false
 
 for (const srcRoot of EMBED_PACKAGE_SRC) {
-  const rel = relative(backendRoot, srcRoot).replace(/\\/g, '/')
-  const needle = `packages/${rel.split('/').slice(1).join('/')}`
+  const packageName = srcRoot.includes('analytics-console') ? 'analytics-console' : 'pulse-charts'
+  const needle = `node_modules/@streampulse/${packageName}/src`
   if (!tailwindConfig.includes(needle)) {
     console.error(
       `check:analytics-tailwind: tailwind.config.js content must include embed package path: ${needle}`,

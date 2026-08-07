@@ -30,7 +30,7 @@ import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore
  * `@streampulse/analytics-console`.
  *
  * - **Chart minutes:** `downsampleTimeline()` to ~240 points on hosted API (prod).
- *   Local `:8090` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
+ *   Local `:8081` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
  * - **Top emotes:** `mergePortalTopEmotes()` — stream summary totals win over
  *   per-minute bucket catalog counts; channel emote identity (`/channels/{login}/emotes`)
  *   fills imageUrl/id gaps for recap-only or low-usage emotes.

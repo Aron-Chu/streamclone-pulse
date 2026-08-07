@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react'
-import type { HubCorpusPipeline } from '../../../lib/publicHub'
+import type { HubActivity, HubCorpusPipeline } from '../../../lib/publicHub'
 import type { PublicHubLoadSource } from '../../../lib/publicHub'
 import { backendSourceCaption, resolveBackendSource } from '../../../lib/backendSource'
 import type { ActivitySummary } from '../../../lib/hubActivitySummary'
@@ -10,6 +10,7 @@ export interface HubDataHealthBannerProps {
   hubEndpointOk: boolean
   activitySummary: ActivitySummary
   pipeline?: HubCorpusPipeline
+  activity?: HubActivity
   liveRosterCount: number
   error?: string | null
   backendUrl?: string
@@ -24,6 +25,7 @@ export function HubDataHealthBanner({
   hubEndpointOk,
   activitySummary,
   pipeline,
+  activity,
   liveRosterCount: _liveRosterCount,
   error,
   backendUrl,
@@ -54,6 +56,25 @@ export function HubDataHealthBanner({
 
   // Coverage / IRC details — only after load settles (avoid false 0/240 on first paint).
   if (!loading) {
+    if (
+      activity?.state === 'degraded' &&
+      activity.source === 'live_pool_fallback' &&
+      activity.reason === 'historical_projection_unavailable'
+    ) {
+      const available = activity.availableWindowMinutes ?? 0
+      messages.unshift({
+        tone: 'warn',
+        text: `Historical activity is unavailable — showing about ${available || 30} minutes of live pool data inside the ${activitySummary.windowLabel} frame.`,
+        detail: 'The empty stretches are missing history, not measured zero activity. Use a shorter supported window for a trustworthy trend.',
+      })
+    } else if (activity?.state === 'degraded' && activity.reason) {
+      messages.unshift({
+        tone: 'warn',
+        text: `Activity data is degraded for this ${activitySummary.windowLabel} window.`,
+        detail: activity.reason,
+      })
+    }
+
     if (activitySummary.gapCount > 0) {
       messages.push({
         tone: 'info',

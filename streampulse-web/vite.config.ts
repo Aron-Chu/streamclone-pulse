@@ -71,6 +71,7 @@ function portalRuntimeIdentity(metadata: typeof portalBuildMeta) {
     dirtyTreeHash: metadata.dirtyTreeHash,
     sourceFingerprint: metadata.sourceFingerprint,
     packageCohortFingerprint: packageCohort,
+    snapshotId: process.env.PULSE_RUNTIME_SNAPSHOT_ID?.trim() || null,
     serviceGeneration: `streampulse-portal:${metadata.commit === 'unknown' ? 'unknown' : metadata.commit.slice(0, 12)}:${metadata.dirtyTreeHash === 'clean' ? 'clean' : metadata.dirtyTreeHash.slice(0, 12)}:${packageCohort.slice(0, 12)}`,
   }
 }
@@ -172,25 +173,33 @@ export default defineConfig({
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
-    alias: {
-      '@': resolve(__dirname, 'src'),
+    alias: [
+      {
+        find: /^@streampulse\/analytics-console\/(.*)$/,
+        replacement: `${resolve(__dirname, 'node_modules/@streampulse/analytics-console/src')}/$1`,
+      },
+      {
+        find: /^@streampulse\/pulse-charts\/(.*)$/,
+        replacement: `${resolve(__dirname, 'node_modules/@streampulse/pulse-charts')}/$1`,
+      },
+      { find: '@', replacement: resolve(__dirname, 'src') },
       // Landing ExtensionShowcase bundles real overlay components from this repo's src/ui.
-      '@pulse-ext/ui': resolve(pulseRoot, 'src/ui'),
-      '@streampulse/analytics-console': resolve(
-        __dirname,
-        'node_modules/@streampulse/analytics-console/src/index.tsx',
-      ),
-      '@streampulse/pulse-charts': resolve(
-        __dirname,
-        'node_modules/@streampulse/pulse-charts/src/index.ts',
-      ),
-      '@streampulse/pulse-core': resolve(__dirname, 'node_modules/@streampulse/pulse-core'),
-      react: resolve(__dirname, 'node_modules/react'),
-      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
-      'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),
-      '@tanstack/react-query': resolve(__dirname, 'node_modules/@tanstack/react-query'),
-      zustand: resolve(__dirname, 'node_modules/zustand'),
-    },
+      { find: '@pulse-ext/ui', replacement: resolve(pulseRoot, 'src/ui') },
+      {
+        find: /^@streampulse\/analytics-console$/,
+        replacement: resolve(__dirname, 'node_modules/@streampulse/analytics-console/src/index.tsx'),
+      },
+      {
+        find: /^@streampulse\/pulse-charts$/,
+        replacement: resolve(__dirname, 'node_modules/@streampulse/pulse-charts/src/index.ts'),
+      },
+      { find: '@streampulse/pulse-core', replacement: resolve(__dirname, 'node_modules/@streampulse/pulse-core') },
+      { find: 'react', replacement: resolve(__dirname, 'node_modules/react') },
+      { find: 'react-dom', replacement: resolve(__dirname, 'node_modules/react-dom') },
+      { find: 'react-router-dom', replacement: resolve(__dirname, 'node_modules/react-router-dom') },
+      { find: '@tanstack/react-query', replacement: resolve(__dirname, 'node_modules/@tanstack/react-query') },
+      { find: 'zustand', replacement: resolve(__dirname, 'node_modules/zustand') },
+    ],
   },
   build: {
     outDir: 'dist',

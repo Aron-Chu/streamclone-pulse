@@ -156,10 +156,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (controllerRef.current === controller) {
         inFlightRef.current = false
         lastFetchAtRef.current = Date.now()
-      }
-      if (mountedRef.current) {
-        setLoading(false)
-        setRefreshing(false)
+        if (mountedRef.current) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     }
   }, [activityWindow, applySuccessfulLoad])
@@ -229,6 +229,9 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     return () => {
       mountedRef.current = false
       controllerRef.current?.abort()
+      // Strict Mode intentionally tears down and re-runs effects. The aborted
+      // request must not block the second mount from starting its load.
+      inFlightRef.current = false
       if (pollTimer) window.clearInterval(pollTimer)
       window.clearInterval(retryTimer)
       document.removeEventListener('visibilitychange', onVisible)

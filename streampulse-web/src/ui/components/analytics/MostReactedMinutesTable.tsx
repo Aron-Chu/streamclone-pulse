@@ -59,7 +59,6 @@ function PeakEmoteImage({ src, name }: { src: string; name: string }) {
 function ChannelCell({
   moment,
   fallback,
-  liveLogins,
   compact: compactLayout = false,
   showGame = true,
 }: {
@@ -72,7 +71,6 @@ function ChannelCell({
   const login = moment.login ?? fallback?.login
   const displayName = moment.displayName?.trim() || fallback?.displayName || login
   const profileImageUrl = moment.profileImageUrl ?? fallback?.profileImageUrl
-  const live = fallback?.live ?? (login ? liveLogins?.has(login.toLowerCase()) : false)
   if (!login && !displayName) return <span className="pulse-moments__channel-empty">—</span>
   const name = displayName?.trim() || login || ''
   const twitchHref = login ? `https://www.twitch.tv/${encodeURIComponent(login.toLowerCase())}` : undefined
@@ -85,7 +83,6 @@ function ChannelCell({
           {initial(name)}
         </span>
       )}
-      {live ? <span className="pulse-moments__channel-live-dot" aria-label="Live" title="Live now" /> : null}
       {twitchHref ? (
         <a
           className="pulse-moments__channel-name pulse-moments__channel-name--link"

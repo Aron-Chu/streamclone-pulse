@@ -33,7 +33,7 @@ export function resolveHubUiState(input: ResolveHubUiStateInput): HubUiState {
 }
 
 /**
- * Live Wire / network feed should pause only after a confirmed hub endpoint failure.
+ * Signal Wire / network feed should pause only after a confirmed hub endpoint failure.
  * `hubEndpointOk` defaults to false before the first successful fetch — that must not
  * look like "Public hub is unavailable".
  */

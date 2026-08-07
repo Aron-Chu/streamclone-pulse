@@ -6,11 +6,26 @@ import {
 } from '../../../lib/hubChartActivityModel'
 import { formatHubTrustLine, resolveHubTrustFreshness } from '../../../lib/hubTrustLine'
 import type { PublicHub } from '../../../lib/publicHub'
-import type { PoolWireEvent } from '../../../lib/poolWireReducer'
+import type { LiveActivityKindFilter, LiveActivityMetadata } from '../../../lib/liveActivity'
+import type { LiveActivityEvent } from '../../../lib/liveActivity'
+import type { LiveActivityUiStatus } from '../../../hooks/useLiveActivity'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
 import { compact } from './hubFormat'
-import { PoolWire } from './PoolWire'
+import { CoverageDiagnostic, LiveActivityPanel } from './LiveActivityPanel'
 import { useAnimatedNumber } from './useAnimatedNumber'
+
+export interface HubCommandHeaderLiveActivityProps {
+  events: LiveActivityEvent[]
+  status: LiveActivityUiStatus
+  metadata?: LiveActivityMetadata | null
+  asOf?: string | null
+  window?: string | null
+  kindFilter: LiveActivityKindFilter
+  onKindFilterChange: (kind: LiveActivityKindFilter) => void
+  newIds?: Set<string>
+  lastSuccessfulAt?: number | null
+  loading?: boolean
+}
 
 export interface HubCommandHeaderProps {
   hub: PublicHub
@@ -18,8 +33,7 @@ export interface HubCommandHeaderProps {
   lastSuccessfulPollAt?: number | null
   hubEndpointOk?: boolean
   error?: string | null
-  poolWireEvents?: PoolWireEvent[]
-  poolWireInitialized?: boolean
+  liveActivity?: HubCommandHeaderLiveActivityProps
   /** Pulse live-channels primary when a new went_live arrives. */
   pulseLiveChannels?: boolean
 }
@@ -36,8 +50,7 @@ export function HubCommandHeader({
   lastSuccessfulPollAt = null,
   hubEndpointOk = true,
   error = null,
-  poolWireEvents = [],
-  poolWireInitialized = false,
+  liveActivity,
   pulseLiveChannels = false,
 }: HubCommandHeaderProps) {
   const labels = useCommandCenterLabels()
@@ -51,7 +64,7 @@ export function HubCommandHeader({
   const peakViewers = chartModel.peakViewers
   const peakChat = chartModel.peakChatPerMin
   const peakEmotes = chartModel.peakEmotesPerMin
-  const liveInPool = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
+  const trackedPoolSize = hub.poolSize > 0 ? hub.poolSize : hub.liveChannels.length
   const liveViewersNow = chartInputs.livePoolViewerSum
   const collectorActive = hub.corpusPipeline.collectorActive
   const collectorMax = hub.corpusPipeline.collectorMax
@@ -67,6 +80,15 @@ export function HubCommandHeader({
     lastSuccessfulPollAt,
     freshness,
   })
+
+  const metadataState =
+    liveActivity?.metadata?.state ??
+    (hub.corpusPipeline.metadataSampledAgoSeconds != null &&
+    hub.corpusPipeline.metadataSampledAgoSeconds <= 120
+      ? 'current'
+      : hub.corpusPipeline.metadataSampledAgoSeconds != null
+        ? 'degraded'
+        : 'unavailable')
 
   return (
     <header
@@ -93,32 +115,38 @@ export function HubCommandHeader({
 
       <div className="hub-command-header__body">
         <div className="hub-command-header__metrics">
-          <div className="hub-command-header__primary" aria-label="Live pool scale">
+          <div className="hub-command-header__primary" aria-label="Tracked pool scale">
             <div
               className={`hub-command-header__primary-stat${pulseLiveChannels ? ' hub-command-header__primary-stat--pulse' : ''}`}
-              title="Channels with active IRC collectors in the hosted live pool — not all of Twitch."
+              title="Channels in the hosted tracking pool — not the number currently live on Twitch."
             >
               <span className="hub-command-header__primary-label">
                 <span className="hub-command-header__kpi-live" aria-hidden="true" />
-                Live channels
+                Tracked channels
               </span>
               <strong
                 className="hub-command-header__primary-value hub-command-header__primary-value--accent"
                 data-testid="live-pool-size"
               >
-                <AnimatedCompact value={liveInPool} loading={loading} />
+                <AnimatedCompact value={trackedPoolSize} loading={loading} />
               </strong>
             </div>
             <div
               className="hub-command-header__primary-stat"
-              title="Sum of viewer counts on hub live-channel rows right now — tracked pool only, not all of Twitch."
+              title="Sum of viewer counts on currently live rows in the tracked pool — not all of Twitch."
             >
-              <span className="hub-command-header__primary-label">Live pool viewers</span>
+              <span className="hub-command-header__primary-label">Tracked live viewers</span>
               <strong className="hub-command-header__primary-value hub-command-header__primary-value--viewers">
                 <AnimatedCompact value={liveViewersNow} loading={loading} />
               </strong>
             </div>
           </div>
+
+          <CoverageDiagnostic
+            trackedCount={trackedPoolSize}
+            metadataState={metadataState}
+            requestStatus={liveActivity?.status}
+          />
 
           <section
             className="hub-command-header__peaks"
@@ -158,11 +186,20 @@ export function HubCommandHeader({
         </div>
 
         <div className="hub-command-header__wire">
-          <PoolWire
-            events={poolWireEvents}
-            loading={loading}
-            initialized={poolWireInitialized}
-          />
+          {liveActivity ? (
+            <LiveActivityPanel
+              events={liveActivity.events}
+              status={liveActivity.status}
+              metadata={liveActivity.metadata}
+              asOf={liveActivity.asOf}
+              window={liveActivity.window}
+              kindFilter={liveActivity.kindFilter}
+              onKindFilterChange={liveActivity.onKindFilterChange}
+              newIds={liveActivity.newIds}
+              lastSuccessfulAt={liveActivity.lastSuccessfulAt}
+              loading={liveActivity.loading}
+            />
+          ) : null}
         </div>
       </div>
     </header>

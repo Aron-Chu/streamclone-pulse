@@ -124,7 +124,7 @@ try {
   line('Warming (hub KPI)', String(roster.warming ?? '—'))
   line('Collecting (hub KPI)', String(roster.collecting ?? '—'))
   line('Coverage state', cov.state ?? '—')
-  line('Live channels (cov)', String(cov.liveChannels ?? '—'))
+  line('Coverage pool rows', String(cov.liveChannels ?? '—'))
 
   console.log('\nCorpus (aggregates)')
   line('Streams tracked', String(corpus.streamsTracked ?? '—'))

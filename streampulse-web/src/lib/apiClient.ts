@@ -32,10 +32,56 @@ export interface ApiClientResult<T> {
   status: number
 }
 
+export interface ComposedAbort {
+  signal: AbortSignal
+  cleanup: () => void
+}
+
 const DEFAULT_TIMEOUT_MS = 8_000
 
 export function getBackendUrl(): string {
   return (getBackendUrlOverride() ?? DEFAULT_BACKEND_URL).replace(/\/+$/, '')
+}
+
+/**
+ * Compose multiple AbortSignals so any abort cancels the shared signal.
+ * Call `cleanup` when the request finishes so listeners are removed.
+ */
+export function composeAbortSignals(
+  ...signals: Array<AbortSignal | null | undefined>
+): ComposedAbort {
+  const active = signals.filter((s): s is AbortSignal => s != null)
+  if (active.length === 0) {
+    return { signal: new AbortController().signal, cleanup: () => {} }
+  }
+  if (active.length === 1) {
+    return { signal: active[0], cleanup: () => {} }
+  }
+
+  const controller = new AbortController()
+  const onAbort = () => {
+    if (!controller.signal.aborted) controller.abort()
+  }
+
+  for (const signal of active) {
+    if (signal.aborted) {
+      onAbort()
+      return { signal: controller.signal, cleanup: () => {} }
+    }
+  }
+
+  for (const signal of active) {
+    signal.addEventListener('abort', onAbort)
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const signal of active) {
+        signal.removeEventListener('abort', onAbort)
+      }
+    },
+  }
 }
 
 function buildUrl(path: string): string {
@@ -102,7 +148,14 @@ export async function apiClient<T = unknown>(
   path: string,
   options: ApiClientOptions = {},
 ): Promise<ApiClientResult<T>> {
-  const { gated = false, timeoutMs = DEFAULT_TIMEOUT_MS, headers, body, ...rest } = options
+  const {
+    gated = false,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    headers,
+    body,
+    signal: callerSignal,
+    ...rest
+  } = options
   const url = buildUrl(path)
   const requestHeaders = new Headers(headers)
 
@@ -123,17 +176,27 @@ export async function apiClient<T = unknown>(
   let lastError: ApiError | null = null
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+    if (callerSignal?.aborted) {
+      throw (
+        lastError ?? {
+          kind: 'unreachable',
+          message: 'Aborted',
+          status: 0,
+        }
+      )
+    }
+
+    const timeoutController = new AbortController()
+    const timer = window.setTimeout(() => timeoutController.abort(), timeoutMs)
+    const composed = composeAbortSignals(callerSignal, timeoutController.signal)
 
     try {
       const response = await fetch(url, {
         ...rest,
         headers: requestHeaders,
         body: requestBody,
-        signal: controller.signal,
+        signal: composed.signal,
       })
-      window.clearTimeout(timer)
 
       const payload = await readBody(response)
       const cache = parseCacheHeader(response.headers.get('X-Cache'))
@@ -160,8 +223,16 @@ export async function apiClient<T = unknown>(
         status: response.status,
       }
     } catch (error) {
-      window.clearTimeout(timer)
       if (isApiError(error)) throw error
+
+      // Caller abort — do not retry.
+      if (callerSignal?.aborted) {
+        throw {
+          kind: 'unreachable',
+          message: error instanceof Error ? error.message : 'Aborted',
+          status: 0,
+        } satisfies ApiError
+      }
 
       const unreachable: ApiError = {
         kind: 'unreachable',
@@ -174,6 +245,9 @@ export async function apiClient<T = unknown>(
         continue
       }
       throw lastError ?? unreachable
+    } finally {
+      window.clearTimeout(timer)
+      composed.cleanup()
     }
   }
 

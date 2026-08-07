@@ -6,15 +6,15 @@
     "paths": {
       "@/*": ["./src/*"],
       "@streampulse/analytics-console": [
-        "../../streampulse-backend/packages/analytics-console/src/index.tsx"
+        "./node_modules/@streampulse/analytics-console/src/index.tsx"
       ],
       "@streampulse/analytics-console/*": [
-        "../../streampulse-backend/packages/analytics-console/src/*"
+        "./node_modules/@streampulse/analytics-console/src/*"
       ],
       "@streampulse/pulse-charts": [
-        "../../streampulse-backend/packages/pulse-charts/src/index.ts"
+        "./node_modules/@streampulse/pulse-charts/src/index.ts"
       ],
-      "@streampulse/pulse-charts/*": ["../../streampulse-backend/packages/pulse-charts/src/*"]
+      "@streampulse/pulse-charts/*": ["./node_modules/@streampulse/pulse-charts/src/*"]
     }
   },
   "include": ["tests", "src/vite-env.d.ts"]

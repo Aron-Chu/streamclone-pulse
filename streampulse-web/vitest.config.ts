@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pulseRoot = resolve(__dirname, '..')
 
-const analyticsConsoleRoot = resolve(__dirname, '../../streampulse-backend/packages/analytics-console')
-const pulseChartsRoot = resolve(__dirname, '../../streampulse-backend/packages/pulse-charts')
+const analyticsConsoleRoot = resolve(__dirname, 'node_modules/@streampulse/analytics-console')
+const pulseChartsRoot = resolve(__dirname, 'node_modules/@streampulse/pulse-charts')
 
 export default defineConfig({
   plugins: [react()],
@@ -29,7 +29,7 @@ export default defineConfig({
       },
       {
         find: /^@streampulse\/pulse-charts\/(.*)$/,
-        replacement: `${resolve(pulseChartsRoot, 'src')}/$1`,
+        replacement: `${pulseChartsRoot}/$1`,
       },
       {
         find: '@streampulse/pulse-charts',
@@ -52,8 +52,6 @@ export default defineConfig({
     exclude: [
       'tests/e2e/**',
       'node_modules/**',
-      'tests/analyticsLandingPage.test.tsx',
-      'tests/analyticsHubEmpty.test.tsx',
     ],
     server: {
       deps: {

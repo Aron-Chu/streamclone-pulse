@@ -13,6 +13,7 @@ import { AnalyticsHubSidebar } from './AnalyticsHubSidebar'
 import { AnalyticsTopNav } from './AnalyticsTopNav'
 
 const NAV_ITEMS = [
+  { label: 'Home', to: '/', end: true },
   { label: 'Analytics', to: '/analytics', end: true },
 ]
 

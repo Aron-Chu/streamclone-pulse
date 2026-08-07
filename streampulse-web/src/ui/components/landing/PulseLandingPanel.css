@@ -97,7 +97,7 @@
   min-width: 0;
   overflow: hidden;
   color: #fafafc;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--sc-font);
 }
 
 .pulse-landing-shell .pulse-sidebar-tabs-wrap {

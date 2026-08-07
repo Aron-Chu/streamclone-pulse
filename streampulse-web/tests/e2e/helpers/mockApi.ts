@@ -18,6 +18,15 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
   await page.route(/\/v1\/extension\/health(\?.*)?$/, (route) =>
     json(route, 200, { ok: true, version: 'test' }),
   )
+  await page.route(/\/v1\/portal\/analytics\/live-activity(\?.*)?$/, (route) =>
+    json(route, 200, {
+      asOf: new Date().toISOString(),
+      window: '6h',
+      completeness: 'tracked_channels_only',
+      metadata: { state: 'current', lastSuccessfulPollAt: new Date().toISOString() },
+      events: [],
+    }),
+  )
   await page.route(/\/v1\/public\/hub(\?.*)?$/, (route) =>
     json(route, 200, {
       generatedAt: new Date().toISOString(),

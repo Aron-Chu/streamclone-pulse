@@ -65,7 +65,7 @@ export function HubCoverageTrustStrip({
     ingest?.connectedQuiet ??
     (chat5m != null ? Math.max(0, ircActive - chat5m) : undefined)
   const rosterDisplay = resolveConfiguredRosterDisplay(pipeline.roster)
-  const { confirmed, unresolved, warming, connectedQuiet, consistent } = rosterDisplay
+  const { confirmed, unresolved, warming, connectedQuiet, signalsAvailable, consistent } = rosterDisplay
   const collectorPct =
     ircMax > 0 ? Math.min(100, Math.round((ircActive / ircMax) * 100)) : 0
   const tone =
@@ -106,7 +106,9 @@ export function HubCoverageTrustStrip({
             <strong>Configured roster:</strong>{' '}
             {loading
               ? '…'
-              : `${compact(confirmed)} confirmed · ${compact(unresolved)} unresolved`}
+              : signalsAvailable
+                ? `${compact(confirmed)} confirmed · ${compact(unresolved)} unresolved`
+                : 'signal coverage unavailable'}
           </span>
           {!consistent && rosterDisplay.inconsistencyReason ? (
             <span className="hub-coverage-trust__inconsistent" role="status">
@@ -162,7 +164,7 @@ export function HubCoverageTrustStrip({
             </div>
             <div>
               <dt>Configured roster confirmed</dt>
-              <dd>{compact(confirmed)}</dd>
+              <dd>{signalsAvailable ? compact(confirmed) : '—'}</dd>
             </div>
             <div>
               <dt>Warming</dt>
@@ -174,7 +176,7 @@ export function HubCoverageTrustStrip({
             </div>
             <div>
               <dt>Unresolved</dt>
-              <dd>{compact(unresolved)}</dd>
+              <dd>{signalsAvailable ? compact(unresolved) : '—'}</dd>
             </div>
             <div>
               <dt>Metadata only — no chat coverage</dt>
@@ -189,8 +191,9 @@ export function HubCoverageTrustStrip({
             IRC collectors count admitted joins. Bound means a stream ID is attached. Chat seen last 5m is
             pool-wide IRC activity; configured roster confirmed is Top-N metadata rows with chat/emote
             rollups. Warming and connected quiet are diagnostic subcategories of unresolved — they are
-            never added into the unresolved total. Unresolved means IRC is active but rollups could not
-            be matched to the roster stream ID. Confirmed + unresolved must equal live roster count.
+            never added into the unresolved total. {signalsAvailable
+              ? 'Confirmed + unresolved equals the live roster count.'
+              : 'Configured-roster signal totals are withheld because the signal query is unavailable.'}
           </p>
         </div>
       ) : null}

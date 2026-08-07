@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../src/routes/index'
 
-const publicPaths = ['/', '/docs', '/status'] as const
+const publicPaths = ['/', '/docs', '/status', '/privacy', '/support', '/changelog'] as const
 
 describe('route smoke', () => {
   for (const path of publicPaths) {
@@ -59,5 +59,25 @@ describe('route smoke', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('heading', { name: /streamPulse clips/i })).toBeTruthy()
+  })
+
+  it('renders the current preview release in the public changelog', async () => {
+    render(
+      <MemoryRouter initialEntries={['/changelog']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('changelog-page')).toBeTruthy()
+    expect(screen.getByText('Private beta preview · local reliability pass')).toBeTruthy()
+    expect(screen.getByText('Current preview')).toBeTruthy()
+  })
+
+  it('renders a 404 for an unknown public path', async () => {
+    render(
+      <MemoryRouter initialEntries={['/definitely-not-a-route']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: /page not found/i })).toBeTruthy()
   })
 })

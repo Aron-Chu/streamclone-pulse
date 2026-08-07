@@ -29,13 +29,45 @@ describe('isOpenActivityBucket / dropTrailingOpenBucket', () => {
 
   it('detects open bucket when period end is after now', () => {
     expect(isOpenActivityBucket({ t: openStart, chat: 0, seventv: 0, viewers: 46_000 }, 24 * 60, nowMs)).toBe(true)
-    expect(isOpenActivityBucket({ t: completeStart, chat: 0, seventv: 0, viewers: 450_000 }, 24 * 60, nowMs)).toBe(false)
+  })
+
+  it('treats omitted bucketComplete as open even when the period ended by clock', () => {
+    // End-of-bucket / clock-skew race: Helix tip with partial IRC must not stay on chart.
+    expect(
+      isOpenActivityBucket(
+        { t: completeStart, chat: 17_000, seventv: 0, emotes: 0, viewers: 600_000 },
+        24 * 60,
+        nowMs,
+      ),
+    ).toBe(true)
   })
 
   it('drops trailing open bucket from chart series', () => {
     const points: HubActivityPoint[] = [
-      { t: completeStart, chat: 100, seventv: 10, viewers: 450_000 },
+      { t: completeStart, chat: 100, seventv: 10, viewers: 450_000, bucketComplete: true },
       { t: openStart, chat: 0, seventv: 0, viewers: 46_000, bucketComplete: false },
+    ]
+    const trimmed = dropTrailingOpenBucket(points, 24 * 60, nowMs)
+    expect(trimmed).toHaveLength(1)
+    expect(trimmed[0]?.t).toBe(completeStart)
+  })
+
+  it('drops omitted-complete tip after period end (Helix / partial IRC dip)', () => {
+    const tipStart = Date.parse('2026-07-04T10:00:00Z')
+    const priorStart = tipStart - bucketMs
+    const afterPeriodEnd = tipStart + bucketMs + 60_000
+    const points: HubActivityPoint[] = [
+      { t: priorStart, chat: 68_000, seventv: 16_000, emotes: 48_000, viewers: 590_000, bucketComplete: true },
+      { t: tipStart, chat: 17_000, seventv: 0, emotes: 0, viewers: 603_000 },
+    ]
+    const trimmed = dropTrailingOpenBucket(points, 24 * 60, afterPeriodEnd)
+    expect(trimmed).toHaveLength(1)
+    expect(trimmed[0]?.t).toBe(priorStart)
+  })
+
+  it('keeps trailing tip when bucketComplete is true', () => {
+    const points: HubActivityPoint[] = [
+      { t: completeStart, chat: 100, seventv: 10, viewers: 450_000, bucketComplete: true },
     ]
     const trimmed = dropTrailingOpenBucket(points, 24 * 60, nowMs)
     expect(trimmed).toHaveLength(1)
@@ -189,7 +221,23 @@ describe('summarizeActivity', () => {
       76,
     )
     expect(summary.footnote).toContain('network rollups')
-    expect(summary.footnote).toContain('76 channels in live pool')
+    expect(summary.footnote).toContain('76 channels in tracked pool')
+  })
+
+  it('counts measured chart buckets after deduplication and open-tip removal', () => {
+    const windowMinutes = 24 * 60
+    const bucketMs = 6 * 60_000
+    const end = Math.floor(Date.now() / bucketMs) * bucketMs
+    const points: HubActivityPoint[] = [
+      { t: end - bucketMs, chat: 10, seventv: 1, viewers: 100, bucketComplete: true },
+      { t: end - bucketMs + 1_000, chat: 12, seventv: 2, viewers: 110, bucketComplete: true },
+      { t: end, chat: 20, seventv: 3, viewers: 120, bucketComplete: false },
+    ]
+    const summary = summarizeActivity(points, windowMinutes, 3)
+    expect(summary.pointCount).toBe(1)
+    expect(summary.expectedBuckets).toBe(240)
+    expect(summary.missingBuckets).toBe(239)
+    expect(summary.coveragePct).toBeCloseTo(100 / 240)
   })
 })
 

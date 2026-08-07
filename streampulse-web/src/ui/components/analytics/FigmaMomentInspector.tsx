@@ -33,6 +33,8 @@ export interface FigmaMomentInspectorProps {
   variant?: 'default' | 'pulse-live'
   /** False when the channel is known offline — stops stale "Live IRC" copy. */
   channelLive?: boolean
+  streamId?: string
+  login?: string
 }
 
 function InfoAffordance({ description, label }: { description: string; label: string }) {
@@ -164,7 +166,7 @@ export function FigmaMomentInspector({
   momentHref,
   sessionHref,
   emoteLookup,
-  channel: _channel,
+  channel,
   liveChannels = [],
   variant = 'default',
   channelLive,
@@ -196,6 +198,7 @@ export function FigmaMomentInspector({
     <aside
       className={`figma-panel figma-panel--inspector${isLive ? ' pulse-moments__inspector pulse-moments__inspector--live pulse-moments__inspector--compact' : ''}`}
       aria-label={labels.inspector}
+      data-testid="figma-moment-inspector"
     >
       <header className="pulse-moments__inspector-head pulse-moments__inspector-head--split">
         <div className="pulse-moments__inspector-head-main">

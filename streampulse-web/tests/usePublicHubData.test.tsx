@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { StrictMode, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
 import * as publicHubCache from '../src/lib/publicHubCache'
@@ -119,6 +120,32 @@ describe('usePublicHubData', () => {
     expect(result.current.lastUpdated).not.toBeNull()
     expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
     expect(fetchPublicHub).not.toHaveBeenCalled()
+  })
+
+  it('restarts the aborted first load under Strict Mode without waiting for retry', async () => {
+    fetchPublicHubBase.mockImplementation((signal?: AbortSignal) =>
+      new Promise((resolve, reject) => {
+        const abort = () => reject(new DOMException('aborted', 'AbortError'))
+        if (signal?.aborted) {
+          abort()
+          return
+        }
+        signal?.addEventListener('abort', abort, { once: true })
+        window.setTimeout(() => {
+          signal?.removeEventListener('abort', abort)
+          resolve(hubResult(3))
+        }, 20)
+      }),
+    )
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <StrictMode>{children}</StrictMode>
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }), { wrapper })
+
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(3), { timeout: 1_000 })
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+    expect(result.current.loading).toBe(false)
   })
 
   it('marks liveEmpty when the pool is empty', async () => {
@@ -248,9 +275,9 @@ describe('usePublicHubData', () => {
     act(() => {
       rerender({ activityWindow: '24h' })
     })
-    await waitFor(() => expect(result.current.data?.poolSize).toBe(24))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(100))
     expect(result.current.loading).toBe(false)
-    expect(result.current.loadSource).toBe('cache')
+    expect(result.current.loadSource).toBe('full')
   })
 
   it('reads public-hub cache once on mount across unrelated rerenders', async () => {

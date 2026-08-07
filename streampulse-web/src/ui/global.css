@@ -14,7 +14,7 @@
   --border: #3f3f50;
   --radius-panel: 14px;
   --radius-button: 9px;
-  --font: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font: 'Geist Variable', 'Geist', Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 *,
@@ -79,15 +79,201 @@ select {
 }
 
 .app-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  text-decoration: none;
+}
+
+.app-nav__mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.46rem;
 }
 
 .app-nav__links {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 1.25rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.app-footer__identity {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.app-footer__note {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.app-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.changelog-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.changelog-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.changelog-hero h1 {
+  margin: 0.15rem 0 0.5rem;
+}
+
+.changelog-hero__summary {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.changelog-current {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 9.5rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.changelog-current strong {
+  color: var(--text-primary);
+  font-size: 1.15rem;
+}
+
+.changelog-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.changelog-status--unreleased {
+  border-color: rgba(251, 191, 36, 0.45);
+  color: var(--heat-high);
+}
+
+.changelog-status--released {
+  border-color: rgba(74, 222, 128, 0.45);
+  color: #86efac;
+}
+
+.changelog-callout {
+  margin-top: 1.25rem;
+  padding: 0.8rem 0.9rem;
+  border-left: 3px solid var(--violet-500);
+  background: rgba(139, 92, 246, 0.09);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.changelog-callout strong {
+  color: var(--text-primary);
+}
+
+.changelog-entry {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.changelog-entry__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.changelog-entry h2 {
+  margin: 0.15rem 0 0;
+  font-size: 1.15rem;
+}
+
+.changelog-entry__version {
+  margin: 0;
+  font: 700 0.75rem/1.2 var(--font);
+  letter-spacing: 0.04em;
+}
+
+.changelog-entry__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.changelog-entry__date {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.changelog-entry section h3 {
+  margin: 1.1rem 0 0.3rem;
+  font-size: 0.85rem;
+  color: var(--violet-500);
+}
+
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.changelog-footer-note {
+  margin: 1.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 620px) {
+  .app-footer,
+  .changelog-entry__header,
+  .changelog-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .changelog-current {
+    width: 100%;
+  }
 }
 
 .panel {
@@ -99,6 +285,47 @@ select {
 
 .panel--elevated {
   background: var(--bg-elevated);
+}
+
+.public-document {
+  line-height: 1.65;
+}
+
+.public-document h1 {
+  margin-top: 0;
+}
+
+.public-document h2 {
+  margin: 2rem 0 0.6rem;
+  font-size: 1.15rem;
+}
+
+.public-document p,
+.public-document li {
+  max-width: 76ch;
+}
+
+.public-document li + li {
+  margin-top: 0.45rem;
+}
+
+.public-document__back {
+  margin: 0 0 0.5rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--violet-500);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-document__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .btn {

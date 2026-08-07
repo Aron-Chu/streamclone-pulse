@@ -15,7 +15,7 @@ const VIEWPORTS = [
   { width: 1600, height: 900 },
 ] as const
 
-test.describe('analytics hub Live Wire ticker layout', () => {
+test.describe('analytics hub Signal Wire ticker layout', () => {
   test.beforeEach(async ({ page }) => {
     await installHubUxMock(page)
   })
@@ -27,7 +27,7 @@ test.describe('analytics hub Live Wire ticker layout', () => {
       await page.goto('/analytics')
 
       await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
-      await expect(page.locator('#section-live-wire')).toBeVisible()
+      await expect(page.locator('#section-signal-wire')).toBeVisible()
       await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
       await expect(page.locator('.figma-global-activity__annotation-lane')).toBeVisible()
       await expect(page.locator('.hub-live-wire__ticker-viewport--marquee')).toHaveCount(0)
@@ -35,13 +35,13 @@ test.describe('analytics hub Live Wire ticker layout', () => {
 
       const activityHub = page.locator('.figma-activity-hub')
       await expect(activityHub).toBeVisible()
-      await expect(activityHub.locator('#section-live-wire')).toBeVisible()
+      await expect(activityHub.locator('#section-signal-wire')).toBeVisible()
       await expect(
-        page.locator('.figma-global-activity__chart-col #section-live-wire'),
+        page.locator('.figma-global-activity__chart-col #section-signal-wire'),
       ).toBeVisible()
 
       const order = await page.evaluate(() => {
-        const wire = document.getElementById('section-live-wire')
+        const wire = document.getElementById('section-signal-wire')
         const chart = document.querySelector('.figma-global-activity__hub-chart')
         if (!wire || !chart) return null
         const wireBeforeChart =

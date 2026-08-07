@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "currentVersion": "0.1.0",
+  "releases": [
+    {
+      "version": "0.1.0",
+      "status": "unreleased",
+      "releasedAt": null,
+      "title": "Private beta preview · local reliability pass",
+      "summary": "A preview of the current extension and analytics work. This entry is not a released version; it documents the build currently available to local testers.",
+      "new": [
+        "A public changelog is now available from the extension settings and StreamPulse site footer.",
+        "Games Played can use compact game artwork with accessible hover and keyboard labels.",
+        "Release builds expose a build identity and package-cohort provenance for troubleshooting stale bundles."
+      ],
+      "improved": [
+        "Jump-in-player now distinguishes archived VOD seeking from live DVR seeking and reports the path it attempted.",
+        "Settings now show the installed extension version, connection mode, and a direct link to release notes.",
+        "Local extension delivery checks the canonical unpacked path and requires an explicit handoff before Chrome reload."
+      ],
+      "fixed": [
+        "Reduced confusing stale-bundle reports by checking artifact freshness against source and release-note inputs.",
+        "Added clearer diagnostics for VOD discovery, archive availability, and hosted persistence authentication."
+      ],
+      "knownIssues": [
+        "This preview is not a production release and may include dirty local package cohorts.",
+        "Chrome still requires a manual reload of the unpacked extension after a build; a changed dist directory alone does not reinject Twitch content.",
+        "A live stream may not expose a VOD id until Twitch publishes the archive after the stream ends."
+      ],
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
+    }
+  ]
+}

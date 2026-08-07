@@ -24,7 +24,7 @@ const VISIBLE_CAP_SECTION = 10
 const VISIBLE_CAP_TICKER = 12
 const DEDUPE_WINDOW_MS = 10 * 60 * 1000
 const MAX_NEW_ANIMATIONS_PER_POLL = 3
-/** Hard client freshness window — events older than this never render on Live Wire. */
+/** Hard client freshness window — events older than this never render on Signal Wire. */
 export const LIVE_WIRE_MAX_AGE_MS = 30 * 60 * 1000
 const LIVE_WIRE_QUIET_EMPTY = 'No network breakouts in the last 30m'
 
@@ -43,7 +43,7 @@ export function momentAtMs(at: number | undefined): number | null {
   return at > 1e12 ? at : at * 1000
 }
 
-/** True when the event occurred within the Live Wire freshness window. */
+/** True when the event occurred within the Signal Wire freshness window. */
 export function isLiveWireEventFresh(at: number | undefined, nowMs: number): boolean {
   const ms = momentAtMs(at)
   if (ms == null) return false
@@ -74,7 +74,15 @@ function kindMeta(kind: string | undefined): { label: string; icon: ReactNode } 
     normalized === 'emote_spike' ||
     normalized === 'seventv'
   ) {
-    return { label: 'Emote spike', icon: <TrendingUp aria-hidden="true" /> }
+    return { label: 'Emote burst', icon: <TrendingUp aria-hidden="true" /> }
+  }
+  if (
+    normalized === 'viewers' ||
+    normalized === 'viewer' ||
+    normalized === 'viewer_rise' ||
+    normalized === 'viewer_spike'
+  ) {
+    return { label: 'Viewer rise', icon: <Activity aria-hidden="true" /> }
   }
   return { label: 'Peak', icon: <Activity aria-hidden="true" /> }
 }
@@ -184,7 +192,7 @@ function WireHeader({ titleId, metaLabel }: WireHeaderProps) {
     <header className="hub-live-wire__head">
       <h2 id={titleId} className="hub-live-wire__title">
         <Radio aria-hidden="true" />
-        Live wire
+        Signal Wire
       </h2>
       <span className="hub-live-wire__meta">{metaLabel}</span>
     </header>
@@ -232,7 +240,7 @@ function LiveWireTickerScroller({ children }: LiveWireTickerScrollerProps) {
       <button
         type="button"
         className="hub-live-wire__ticker-nav hub-live-wire__ticker-nav--prev"
-        aria-label="Scroll live wire left"
+        aria-label="Scroll signal wire left"
         onClick={() => step(-1.5)}
         disabled={!canPrev}
       >
@@ -244,14 +252,14 @@ function LiveWireTickerScroller({ children }: LiveWireTickerScrollerProps) {
         onScroll={updateButtons}
         tabIndex={0}
         role="region"
-        aria-label="Live wire events"
+        aria-label="Signal wire events"
       >
         <div className="hub-live-wire__ticker-track">{children}</div>
       </div>
       <button
         type="button"
         className="hub-live-wire__ticker-nav hub-live-wire__ticker-nav--next"
-        aria-label="Scroll live wire right"
+        aria-label="Scroll signal wire right"
         onClick={() => step(1.5)}
         disabled={!canNext}
       >

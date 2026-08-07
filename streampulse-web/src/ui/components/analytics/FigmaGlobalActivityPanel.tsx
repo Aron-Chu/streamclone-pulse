@@ -104,7 +104,7 @@ export function ChartSourceBanner({
       </span>
       {poolSize > 0 ? (
         <span>
-          <strong>Pool:</strong> {compact(poolSize)} live in pool
+          <strong>Pool:</strong> {compact(poolSize)} tracked channels
           {ircActive > 0 && hub.corpusPipeline.collectorMax > 0
             ? ` · ${compact(ircActive)}/${compact(hub.corpusPipeline.collectorMax)} IRC`
             : ''}
@@ -159,7 +159,7 @@ export interface FigmaGlobalActivityPanelProps {
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
   onSelectMomentKey?: (key: string) => void;
-  /** Live Wire annotation lane feed (mounted above the plot). */
+  /** Signal Wire annotation lane feed (mounted above the plot). */
   annotationFeed?: LivePulseMomentsResult | null;
   annotationLoading?: boolean;
   annotationHubEndpointOk?: boolean;
@@ -376,11 +376,11 @@ export function FigmaGlobalActivityPanel({
   return (
     <section
       className="figma-global-activity"
-      aria-label={labels.liveActivity}
+      aria-label={labels.networkActivity}
     >
       <div className="figma-global-activity__headline">
         <div className="figma-global-activity__headline-row">
-          <h2 className="figma-block__title">{labels.liveActivity}</h2>
+          <h2 className="figma-block__title">{labels.networkActivity}</h2>
           {updatedAgo ? (
             <HubFreshnessCaption updatedAgo={updatedAgo} className="figma-global-activity__freshness" />
           ) : null}
@@ -447,7 +447,7 @@ export function FigmaGlobalActivityPanel({
           data-refreshing={activityRefreshing ? "true" : undefined}
         >
           {annotationFeed ? (
-            <div className="figma-global-activity__annotation-lane" id="section-live-wire">
+            <div className="figma-global-activity__annotation-lane" id="section-signal-wire">
               <HubLiveWireFeed
                 hub={hub}
                 feed={annotationFeed}
