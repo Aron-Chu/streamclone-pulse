@@ -57,6 +57,7 @@ const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
 ];
 
 const ACTIVITY_WINDOW_OPTIONS: HubActivityRangeOption[] = [
+  { key: "30m", label: "30m" },
   { key: "24h", label: "24h" },
   { key: "7d", label: "7d" },
   { key: "1m", label: "1mo" },
@@ -93,6 +94,9 @@ function AnalyticsLandingContent() {
   const hub = usePublicHubData({ enabled: true, activityWindow });
   const recentLogins = useHubRecentLogins();
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
+  // Requested range drives the endpoint/range tab; served range owns all bucket
+  // geometry so a bounded fallback cannot select or prefetch invented history.
+  const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);
   const loadingInitial = hub.loading && !hub.data;
   const hubUiState = resolveHubUiState({
     loading: hub.loading,
@@ -152,10 +156,10 @@ function AnalyticsLandingContent() {
       filterMomentsByBucket(
         poolMoments,
         bucketT,
-        data.activity.windowMinutes,
+        servedActivityWindowMinutes,
         data.liveChannels,
       ),
-    [data.activity.windowMinutes, data.liveChannels, poolMoments],
+    [data.liveChannels, poolMoments, servedActivityWindowMinutes],
   );
 
   const activeBucketMoments = useMemo(() => {
@@ -223,7 +227,7 @@ function AnalyticsLandingContent() {
     requestHubBucketMoments({
       bucketT: hoverBucketT,
       activityWindow,
-      activityWindowMinutes: data.activity.windowMinutes,
+      activityWindowMinutes: servedActivityWindowMinutes,
       signal: controller.signal,
       includeAdjacent: true,
     })
@@ -241,7 +245,7 @@ function AnalyticsLandingContent() {
     return () => controller.abort();
   }, [
     activityWindow,
-    data.activity.windowMinutes,
+    servedActivityWindowMinutes,
     hoverBucketT,
     optimisticBucketMoments,
     selectedBucketT,
@@ -266,7 +270,7 @@ function AnalyticsLandingContent() {
     const optimistic = filterMomentsByBucket(
       poolMoments,
       bucketT,
-      data.activity.windowMinutes,
+      servedActivityWindowMinutes,
       data.liveChannels,
     );
     const interim = cached.length > 0 ? cached : optimistic;
@@ -274,22 +278,22 @@ function AnalyticsLandingContent() {
     setBucketMomentsLoading(interim.length === 0);
   }, [
     activityWindow,
-    data.activity.windowMinutes,
     data.liveChannels,
     poolMoments,
+    servedActivityWindowMinutes,
   ]);
 
   const activitySummary = useMemo(
     () =>
       summarizeActivity(
         data.activity.points,
-        resolveHubActivityChartWindowMinutes(data.activity),
+        servedActivityWindowMinutes,
         data.poolSize,
       ),
     [
       data.poolSize,
       data.activity.points,
-      data.activity.windowMinutes,
+      servedActivityWindowMinutes,
       data.activity.availableWindowMinutes,
       data.activity.state,
       data.activity.source,
@@ -396,8 +400,8 @@ function AnalyticsLandingContent() {
 
   const accentBucketT = useMemo(() => {
     if (!selectedMoment?.at) return null;
-    return activityBucketKey(selectedMoment.at, data.activity.windowMinutes);
-  }, [data.activity.windowMinutes, selectedMoment]);
+    return activityBucketKey(selectedMoment.at, servedActivityWindowMinutes);
+  }, [selectedMoment, servedActivityWindowMinutes]);
 
   const handleSelectMoment = useCallback((moment: FigmaMomentRow) => {
     const key = momentRowKey(moment);
@@ -590,7 +594,7 @@ function AnalyticsLandingContent() {
               }
               onPoolMomentsChange={chartBucketSelectEnabled ? setPoolMoments : undefined}
               activityWindow={activityWindow}
-              activityWindowMinutes={data.activity.windowMinutes}
+              activityWindowMinutes={servedActivityWindowMinutes}
               updatedAgo={updatedAgo}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}

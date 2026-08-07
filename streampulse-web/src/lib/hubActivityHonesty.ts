@@ -4,9 +4,34 @@ import type { HubActivity } from './publicHub'
 /** Backend HubActivity.source when long-window projection is unavailable. */
 export const HUB_ACTIVITY_SOURCE_LIVE_POOL_FALLBACK = 'live_pool_fallback'
 
+/** Backend HubActivity.source for a complete historical projection. */
+export const HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION = 'historical_projection'
+
 /** Backend HubActivity.reason for projection-ineligible long windows. */
 export const HUB_ACTIVITY_REASON_HISTORICAL_UNAVAILABLE =
   'historical_projection_unavailable'
+
+function validWindowMinutes(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined
+}
+
+/**
+ * True only for the explicit backend proof that the payload is a complete
+ * historical projection for the requested range. `availableWindowMinutes` may
+ * be omitted on the healthy path, but when present it must equal the request.
+ */
+export function isHubActivityHealthyHistoricalProjection(activity: HubActivity): boolean {
+  const requested = validWindowMinutes(activity.windowMinutes)
+  const available = validWindowMinutes(activity.availableWindowMinutes)
+  return (
+    activity.source === HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION &&
+    activity.state === 'healthy' &&
+    requested != null &&
+    (available == null || available === requested)
+  )
+}
 
 /**
  * True when hub activity is pool-only / degraded rather than a complete
@@ -27,12 +52,21 @@ export function isHubActivityLivePoolFallback(activity: HubActivity): boolean {
  */
 export function resolveHubActivityChartWindowMinutes(activity: HubActivity): number {
   const requested = Math.max(1, activity.windowMinutes || 30)
-  if (!isHubActivityLivePoolFallback(activity)) return requested
-  const available = activity.availableWindowMinutes
-  if (typeof available === 'number' && Number.isFinite(available) && available > 0) {
-    return Math.max(1, Math.floor(available))
+  if (isHubActivityHealthyHistoricalProjection(activity)) return requested
+
+  const available = validWindowMinutes(activity.availableWindowMinutes)
+  if (available != null) {
+    // A contract-bearing payload that is not explicitly healthy must not expand
+    // an available served span into a requested historical grid.
+    return Math.min(requested, available)
   }
-  return Math.min(requested, 30)
+  if (isHubActivityLivePoolFallback(activity)) {
+    return Math.min(requested, 30)
+  }
+
+  // Backward-compatible legacy payload: it predates source/state metadata, so
+  // retain its requested chart geometry until the backend contract is present.
+  return requested
 }
 
 /** Short status chip / banner label for degraded pool-only activity. */
@@ -49,7 +83,7 @@ export function formatHubActivityServedLabel(activity: HubActivity): string {
   if (isHubActivityLivePoolFallback(activity)) {
     return 'Recent live activity only'
   }
-  return formatActivityWindowLabel(activity.windowMinutes)
+  return formatActivityWindowLabel(resolveHubActivityChartWindowMinutes(activity))
 }
 
 /** Longer explanation for title/tooltip when degraded. */

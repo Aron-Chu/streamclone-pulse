@@ -270,13 +270,14 @@ export interface HubActivity {
   peakViewersAt?: number
   livePoolViewerSum?: number
   /**
-   * Honesty contract (backend PR #84+): when historical projection is unavailable,
-   * state/source/reason mark pool-only fallback and availableWindowMinutes is the
-   * actual bounded span (typically 30). Do not treat windowMinutes alone as proof
-   * of complete 24h/7d/30d history.
+   * Honesty contract: a complete range is explicitly
+   * `source=historical_projection,state=healthy`; fallback is
+   * `source=live_pool_fallback,reason=historical_projection_unavailable`.
+   * availableWindowMinutes is the actual served span when it differs from the
+   * request. Do not treat windowMinutes alone as proof of complete history.
    */
-  state?: 'ok' | 'degraded' | 'empty' | string
-  source?: 'live_pool_fallback' | string
+  state?: 'healthy' | 'ok' | 'degraded' | 'empty' | string
+  source?: 'historical_projection' | 'live_pool_fallback' | string
   reason?: 'historical_projection_unavailable' | string
   availableWindowMinutes?: number
 }
@@ -456,6 +457,8 @@ export type PublicHubInput = Omit<Partial<PublicHub>, 'corpusPipeline'> & {
 
 export interface PublicHub {
   generatedAt: string
+  /** Additive backend build/version provenance when the hub endpoint supplies it. */
+  backendVersion?: string
   poolSize: number
   corpus: HubCorpus
   coverage: HubCoverage
@@ -490,6 +493,8 @@ interface PublicStatsSnapshot {
 interface PublicStatusSnapshot {
   status?: string
   api?: string
+  version?: string
+  backendVersion?: string
   degraded?: boolean
   updatedAt?: string
   components?: {
@@ -626,6 +631,7 @@ export async function fetchPublicHubStatsFallback(
     return {
       data: normalizePublicHub({
         generatedAt: stats?.updatedAt ?? status?.updatedAt ?? new Date().toISOString(),
+        backendVersion: status?.backendVersion ?? status?.version,
         corpus: stats
           ? {
               streamsTracked: stats.streamsTracked ?? 0,
@@ -829,6 +835,12 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
   const hasAuthoritativeRosterLive = raw?.corpusPipeline?.roster?.live != null
   return {
     generatedAt: raw?.generatedAt ?? new Date().toISOString(),
+    backendVersion:
+      typeof raw?.backendVersion === 'string'
+        ? raw.backendVersion
+        : typeof (raw as { version?: unknown } | undefined)?.version === 'string'
+          ? (raw as { version: string }).version
+          : undefined,
     poolSize: raw?.poolSize ?? 0,
     corpus: {
       streamsTracked: raw?.corpus?.streamsTracked ?? 0,

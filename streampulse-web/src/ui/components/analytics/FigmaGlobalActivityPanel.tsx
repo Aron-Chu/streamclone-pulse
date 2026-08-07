@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import {
   bucketMinutes,
-  formatActivityWindowLabel,
 } from "../../../lib/hubActivitySummary";
 import {
   formatHubActivityServedLabel,
   hubActivityHonestyChipLabel,
   hubActivityHonestyDetail,
   hubActivityHonestyEmptyCopy,
+  isHubActivityHealthyHistoricalProjection,
   isHubActivityLivePoolFallback,
+  resolveHubActivityChartWindowMinutes,
 } from "../../../lib/hubActivityHonesty";
 import {
   deriveHubChartActivityModel,
@@ -103,14 +104,9 @@ export function ChartSourceBanner({
   className?: string;
 }) {
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
-  const windowLabel = livePoolFallback
-    ? formatHubActivityServedLabel(hub.activity)
-    : formatActivityWindowLabel(hub.activity.windowMinutes);
-  const bucket = bucketMinutes(
-    livePoolFallback
-      ? Math.max(1, hub.activity.availableWindowMinutes ?? 30)
-      : hub.activity.windowMinutes,
-  );
+  const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
+  const windowLabel = formatHubActivityServedLabel(hub.activity);
+  const bucket = bucketMinutes(resolveHubActivityChartWindowMinutes(hub.activity));
   const poolSize = hub.poolSize;
   const ircActive = hub.corpusPipeline.collectorActive;
 
@@ -121,16 +117,37 @@ export function ChartSourceBanner({
     >
       <span>
         <strong>Source:</strong>{" "}
-        {livePoolFallback ? "Live pool fallback (recent only)" : "Live IRC collector plane"}
+        {livePoolFallback
+          ? "Live pool fallback (recent only)"
+          : healthyProjection
+            ? "Historical projection"
+            : "Legacy/unspecified activity source"}
       </span>
       <span>
         <strong>Window:</strong>{" "}
-        {livePoolFallback ? windowLabel : `last ${windowLabel}`}
+        {livePoolFallback ? windowLabel : healthyProjection ? `last ${windowLabel}` : `served ${windowLabel}`}
       </span>
       <span>
         <strong>Buckets:</strong> ~{bucket} min - {activitySummary.pointCount}/
         {activitySummary.expectedBuckets}
       </span>
+      <span>
+        <strong>Activity:</strong> {hub.activity.source ?? "unspecified"} / {hub.activity.state ?? "legacy"}
+      </span>
+      <span>
+        <strong>Generated:</strong> {hub.generatedAt || "unavailable"}
+      </span>
+      {hub.backendVersion ? (
+        <span>
+          <strong>Backend:</strong> {hub.backendVersion}
+        </span>
+      ) : null}
+      {import.meta.env.VITE_PORTAL_RELEASE ?? import.meta.env.VITE_GIT_SHA ? (
+        <span>
+          <strong>Portal:</strong>{" "}
+          {import.meta.env.VITE_PORTAL_RELEASE ?? import.meta.env.VITE_GIT_SHA}
+        </span>
+      ) : null}
       {poolSize > 0 ? (
         <span>
           <strong>Pool:</strong> {compact(poolSize)} tracked channels
@@ -242,12 +259,11 @@ export function FigmaGlobalActivityPanel({
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const prevWindowKeyRef = useRef(activityWindowKey);
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
+  const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
   const servedLabel = formatHubActivityServedLabel(hub.activity);
   const honestyDetail = hubActivityHonestyDetail(hub.activity);
   const honestyEmpty = hubActivityHonestyEmptyCopy(hub.activity);
-  const windowLabel = livePoolFallback
-    ? servedLabel
-    : formatActivityWindowLabel(hub.activity.windowMinutes);
+  const windowLabel = servedLabel;
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const hoverIntentRef = useRef<number | null>(null);
   const hoverIntentTimerRef = useRef<number | null>(null);
@@ -419,7 +435,9 @@ export function FigmaGlobalActivityPanel({
         <p className="figma-global-activity__lede muted">
           {livePoolFallback
             ? `Network viewer peaks from tracked channels — ${servedLabel}. Chat and emote lines come from the live tracking pool; full requested history is not available.`
-            : `Network viewer peaks from tracked channels — last ${windowLabel}. Chat and emote lines come from the live tracking pool.`}
+            : healthyProjection
+              ? `Network viewer peaks from tracked channels — last ${windowLabel}. Chat and emote lines come from the historical projection.`
+              : `Network viewer peaks from tracked channels — served ${servedLabel}. Historical projection provenance has not been confirmed.`}
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
         <ActivityViewerSanityBanner hub={hub} />

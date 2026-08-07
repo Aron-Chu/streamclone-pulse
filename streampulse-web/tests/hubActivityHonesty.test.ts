@@ -6,6 +6,7 @@ import {
 import {
   formatHubActivityServedLabel,
   hubActivityHonestyChipLabel,
+  isHubActivityHealthyHistoricalProjection,
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
 } from '../src/lib/hubActivityHonesty'
@@ -87,14 +88,33 @@ describe('hub activity honesty (live_pool_fallback)', () => {
     expect(chartPoints.length).toBe(filled.length)
   })
 
-  it('leaves healthy payloads on the requested window', () => {
+  it('accepts only an explicit, served-window-consistent healthy projection as full history', () => {
     const healthy: HubActivity = {
       points: makePoints(60),
       windowMinutes: 1440,
       channelCount: 12,
+      source: 'historical_projection',
+      state: 'healthy',
+      availableWindowMinutes: 1440,
     }
     expect(isHubActivityLivePoolFallback(healthy)).toBe(false)
+    expect(isHubActivityHealthyHistoricalProjection(healthy)).toBe(true)
     expect(resolveHubActivityChartWindowMinutes(healthy)).toBe(1440)
     expect(formatHubActivityServedLabel(healthy)).toBe('1 day')
+  })
+
+  it('does not promote a mismatched historical payload to a full requested chart', () => {
+    const incomplete: HubActivity = {
+      points: makePoints(30),
+      windowMinutes: 1440,
+      channelCount: 12,
+      source: 'historical_projection',
+      state: 'healthy',
+      availableWindowMinutes: 30,
+    }
+
+    expect(isHubActivityHealthyHistoricalProjection(incomplete)).toBe(false)
+    expect(resolveHubActivityChartWindowMinutes(incomplete)).toBe(30)
+    expect(fillActivityPoints(incomplete.points, resolveHubActivityChartWindowMinutes(incomplete))).toHaveLength(30)
   })
 })
