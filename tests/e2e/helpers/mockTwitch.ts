@@ -5,12 +5,13 @@ import type { BrowserContext, Page, Route } from '@playwright/test'
 
 const fixturesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/twitch')
 
-export type TwitchFixtureKind = 'live' | 'offline' | 'vod'
+export type TwitchFixtureKind = 'live' | 'offline' | 'vod' | 'caedrel-promo'
 
 const FILE_BY_KIND: Record<TwitchFixtureKind, string> = {
   live: 'channel-live.html',
   offline: 'channel-offline.html',
   vod: 'vod.html',
+  'caedrel-promo': 'channel-caedrel-promo.html',
 }
 
 function readFixture(kind: TwitchFixtureKind): string {

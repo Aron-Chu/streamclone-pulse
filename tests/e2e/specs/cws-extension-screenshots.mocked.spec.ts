@@ -117,7 +117,7 @@ async function scrollPulsePanel(page: import('@playwright/test').Page, progress:
     ({ rootId, p }) => {
       const host = document.getElementById(rootId)
       const body = host?.shadowRoot?.querySelector(
-        '.pulse-panel-body, .pulse-sidebar-content, [data-pulse-scroll]',
+        '[data-testid="pulse-panel-scroll"], .pulse-panel-scroll',
       ) as HTMLElement | null
       if (!body) return
       const max = Math.max(0, body.scrollHeight - body.clientHeight)
@@ -152,7 +152,9 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
   test('02 honest not-tracked / coverage state', async ({ extension, prepare }) => {
     await extension.page.setViewportSize({ width: W, height: H })
     await prepare({
-      scenario: 'live-partial',
+      // live-partial pairs rollups with coverage-warming and surfaces Warming UI.
+      // CWS listing needs the honest not-tracked panel copy.
+      scenario: 'live-not-tracked',
       twitchKind: 'live',
       storage: {
         overlayMode: 'expanded',
@@ -200,7 +202,26 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     await openTwitchChannel(extension.page, 'fixturechan')
     await waitForPulseRoot(extension.page)
     await assertPulseShadowContains(extension.page, /Most Reacted|Viewers|Collecting/i)
-    await scrollPulsePanel(extension.page, 0.55)
+    await extension.page.evaluate(rootId => {
+      const host = document.getElementById(rootId)
+      const root = host?.shadowRoot
+      const body = root?.querySelector(
+        '[data-testid="pulse-panel-scroll"], .pulse-panel-scroll',
+      ) as HTMLElement | null
+      const target = [...(root?.querySelectorAll('h2, h3, section') ?? [])].find(el =>
+        /^Most Reacted/i.test((el.textContent ?? '').trim())
+        || /Most Reacted So Far/i.test(el.textContent ?? ''),
+      ) as HTMLElement | undefined
+      if (body && target) {
+        const bodyRect = body.getBoundingClientRect()
+        const targetRect = target.getBoundingClientRect()
+        body.scrollTop += targetRect.top - bodyRect.top - 12
+      } else if (body) {
+        body.scrollTop = Math.round(Math.max(0, body.scrollHeight - body.clientHeight) * 0.85)
+      }
+    }, PULSE_ROOT_ID)
+    await extension.page.waitForTimeout(400)
+    await assertPulseShadowContains(extension.page, /Most Reacted/i)
     await writeExactStoreShot(extension.page, '04-most-reacted.png')
 
     writeFileSync(

@@ -15,6 +15,7 @@ export type ApiScenario =
   | 'live-other'
   | 'live-single-game'
   | 'live-partial'
+  | 'live-not-tracked'
   | 'live-viewer-plateau'
   | 'helix-off'
   | 'offline'
@@ -70,6 +71,12 @@ const SCENARIOS: Record<Exclude<ApiScenario, 'api-500' | 'timeout' | 'malformed'
     health: 'health-ok.json',
     pulse: 'pulse-live-partial.json',
     coverage: 'coverage-warming.json',
+    vod: 'vod-syncing.json',
+  },
+  'live-not-tracked': {
+    health: 'health-ok.json',
+    pulse: 'pulse-live-not-tracked.json',
+    coverage: 'coverage-not-tracked.json',
     vod: 'vod-syncing.json',
   },
   'live-viewer-plateau': {

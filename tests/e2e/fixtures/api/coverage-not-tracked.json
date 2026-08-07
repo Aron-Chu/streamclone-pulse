@@ -1,0 +1,18 @@
+{
+  "login": "fixturechan",
+  "coverageTier": "metadata_only",
+  "hostedCap": {
+    "activeLimit": 250,
+    "activeCount": 120,
+    "activeAvailable": true
+  },
+  "liveMetadata": {
+    "available": true,
+    "isLive": true,
+    "streamId": "stream-fixture-untracked",
+    "title": "Fixture not tracked live",
+    "category": "Just Chatting",
+    "startedAt": "2026-07-11T19:50:00.000Z",
+    "viewerCount": 80
+  }
+}

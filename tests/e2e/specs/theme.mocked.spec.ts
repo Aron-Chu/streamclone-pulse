@@ -37,13 +37,19 @@ async function hostSurfaceCanvas(page: import('@playwright/test').Page, hostId: 
 }
 
 async function openSettings(page: import('@playwright/test').Page): Promise<void> {
+  await expect
+    .poll(async () =>
+      page.evaluate(rootId => {
+        const root = document.getElementById(rootId)?.shadowRoot
+        return Boolean(root?.querySelector('button[aria-label="Open settings"], button[aria-label="Back to Pulse"]'))
+      }, PULSE_ROOT_ID),
+    )
+    .toBe(true)
   const clicked = await page.evaluate(rootId => {
-    const host = document.getElementById(rootId)
-    const root = host?.shadowRoot
-    const settings = [...(root?.querySelectorAll('button') ?? [])].find(button => {
-      const label = `${button.getAttribute('aria-label') ?? ''} ${button.getAttribute('title') ?? ''} ${button.textContent ?? ''}`
-      return /open settings|settings/i.test(label)
-    })
+    const root = document.getElementById(rootId)?.shadowRoot
+    const settings = root?.querySelector(
+      'button[aria-label="Open settings"], button[aria-label="Back to Pulse"]',
+    ) as HTMLButtonElement | null
     settings?.click()
     return Boolean(settings)
   }, PULSE_ROOT_ID)

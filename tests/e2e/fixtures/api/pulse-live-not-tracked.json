@@ -1,0 +1,36 @@
+{
+  "login": "fixturechan",
+  "isLive": true,
+  "tracking": false,
+  "streamId": "stream-fixture-untracked",
+  "vodId": null,
+  "startedAt": "2026-07-11T19:50:00.000Z",
+  "title": "Fixture not tracked live",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 600,
+  "coverageStartOffsetSeconds": 0,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "not_tracked",
+    "coverageStartOffsetSeconds": 0,
+    "coverageEndOffsetSeconds": 0,
+    "hasFullStreamCoverage": false,
+    "trackedFromStart": false,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Not tracked live"
+  },
+  "topEmotes": [],
+  "rollups": [],
+  "lanes": {
+    "composite": [],
+    "chat": [],
+    "seventv": [],
+    "viewers": []
+  },
+  "peaks": [],
+  "recap": null,
+  "games": []
+}

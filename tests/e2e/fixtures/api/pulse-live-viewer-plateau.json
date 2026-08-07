@@ -30,6 +30,12 @@
       "provider": "twitch"
     }
   ],
+  "lanes": {
+    "composite": [0.4, 0.5, 0.55, 0.6, 0.62],
+    "chat": [0.35, 0.4, 0.42, 0.45, 0.5],
+    "seventv": [0.2, 0.25, 0.28, 0.3, 0.32],
+    "viewers": [500, 7500, 14500, 21500, 120000]
+  },
   "rollups": [
     {
       "offsetSeconds": 3480,
@@ -504,10 +510,6 @@
       "topEmotes": []
     }
   ],
-  "peaks": {
-    "peakViewers": 120000,
-    "peakChat": 200,
-    "peakEmotes": 80
-  },
+  "peaks": [],
   "avgViewers": 55000
 }
