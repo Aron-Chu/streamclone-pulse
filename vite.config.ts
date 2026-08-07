@@ -76,6 +76,9 @@ function chromeExtensionPlugin() {
         plugins: [react()],
         resolve: extensionResolve(),
         build: {
+          // MV3 content script is a single IIFE with inlineDynamicImports — cannot code-split.
+          // Limit sits slightly above the current twitch.js size so future growth still warns.
+          chunkSizeWarningLimit: 540,
           outDir: 'dist',
           emptyOutDir: false,
           rollupOptions: {

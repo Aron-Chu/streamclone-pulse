@@ -658,8 +658,10 @@ export function PulseOverviewChart({
   ])
 
   const n = rollups.length
-  const systemReducedMotion = useReducedMotion()
-  const motionOff = reducedMotion || systemReducedMotion
+  // useReducedMotion already folds the stored system/on/off preference with the OS.
+  // The optional prop remains a force-on override (tests); do not add a parallel flag.
+  const preferenceMotionOff = useReducedMotion()
+  const motionOff = reducedMotion || preferenceMotionOff
   const crosshair = resolveChartCrosshairMode({
     pinIndex: selectedIndex ?? null,
     listPreviewIndex:

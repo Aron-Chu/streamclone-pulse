@@ -12,6 +12,7 @@ import {
   getKeepLocalCache,
   getOverlayPlacement,
   getChatClosedPulseDockEnabled,
+  getReduceMotionPreference,
   getThemePreference,
   isLocalStackBackendUrl,
   setAutoTrackPolicy,
@@ -21,11 +22,13 @@ import {
   setDefaultChartWindow,
   setKeepLocalCache,
   setOverlayPlacement,
+  setReduceMotionPreference,
   setThemePreference,
   type AutoTrackPolicy,
   type ColorSchemePreference,
   type DefaultChartWindow,
   type OverlayPlacement,
+  type ReduceMotionPreference,
   type ThemePreference,
 } from '../shared/storage.ts'
 import { getWatchlist, removeFromWatchlist } from '../shared/watchlist.ts'
@@ -103,6 +106,12 @@ const COLOR_SCHEME_OPTIONS: ReadonlyArray<{ value: ColorSchemePreference; label:
   { value: 'dark', label: 'Dark' },
 ]
 
+const REDUCE_MOTION_OPTIONS: ReadonlyArray<{ value: ReduceMotionPreference; label: string }> = [
+  { value: 'system', label: 'System' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' },
+]
+
 const CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: DefaultChartWindow; label: string }> = [
   { value: '15m', label: '15m' },
   { value: '30m', label: '30m' },
@@ -146,6 +155,7 @@ export function PulseSettingsPanel(props: {
   const [healthDetail, setHealthDetail] = useState('')
   const [accentTheme, setAccentTheme] = useState<ThemePreference>('aurora')
   const [colorScheme, setColorScheme] = useState<ColorSchemePreference>('auto')
+  const [reduceMotion, setReduceMotion] = useState<ReduceMotionPreference>('system')
   const [defaultChartWindow, setDefaultChartWindowState] = useState<DefaultChartWindow>('full')
   const [overlayPlacement, setOverlayPlacementState] = useState<OverlayPlacement>('sidebar')
   const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
@@ -159,12 +169,13 @@ export function PulseSettingsPanel(props: {
   const showEndpoint = connectionKind === 'local'
 
   const reload = useCallback(async () => {
-    const [au, cache, url, accent, scheme, chartWindow, placement, dockEnabled, trackPolicy, wl] = await Promise.all([
+    const [au, cache, url, accent, scheme, motionPref, chartWindow, placement, dockEnabled, trackPolicy, wl] = await Promise.all([
       getAutoUpdateEnabled(),
       getKeepLocalCache(),
       getBackendUrl(),
       getThemePreference(),
       getColorSchemePreference(),
+      getReduceMotionPreference(),
       getDefaultChartWindow(),
       getOverlayPlacement(),
       getChatClosedPulseDockEnabled(),
@@ -177,6 +188,7 @@ export function PulseSettingsPanel(props: {
     setAccentTheme(accent)
     applyAccentTheme(accent)
     setColorScheme(scheme)
+    setReduceMotion(motionPref)
     setDefaultChartWindowState(chartWindow)
     setOverlayPlacementState(placement)
     setChatClosedDockEnabledState(dockEnabled)
@@ -232,6 +244,11 @@ export function PulseSettingsPanel(props: {
   const pickColorScheme = (value: ColorSchemePreference) => {
     setColorScheme(value)
     void setColorSchemePreference(value)
+  }
+
+  const pickReduceMotion = (value: ReduceMotionPreference) => {
+    setReduceMotion(value)
+    void setReduceMotionPreference(value)
   }
 
   return (
@@ -291,6 +308,25 @@ export function PulseSettingsPanel(props: {
           </div>
           <div className="pulse-settings-hint">
             Auto follows Twitch light or dark. Light and Dark stay fixed.
+          </div>
+        </div>
+        <div className="pulse-settings-field">
+          <label className="pulse-settings-label">Reduce motion</label>
+          <div className="pulse-segment-row" role="group" aria-label="Reduce motion">
+            {REDUCE_MOTION_OPTIONS.map(option => (
+              <button
+                key={option.value}
+                type="button"
+                className={segmentClass(reduceMotion === option.value)}
+                aria-pressed={reduceMotion === option.value}
+                onClick={() => pickReduceMotion(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="pulse-settings-hint">
+            System follows your OS setting. On snaps chart motion; Off keeps glides and fades.
           </div>
         </div>
         <div className="pulse-settings-field">

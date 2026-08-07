@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "StreamPulse",
   "description": "Live Pulse overlay for Twitch — viewers, chat, emotes, and games.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "action": {
     "default_popup": "popup/index.html",
     "default_title": "StreamPulse",

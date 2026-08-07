@@ -460,6 +460,7 @@ export function GamesPlayedStrip({
               <span style={styles.gamesLabelMeta}>
                 {formatWindowLabel(displayedSlot.visibleStart, displayedSlot.visibleEnd)}
                 {displayedSlot.clipped ? ' · clipped' : ''}
+                {selectedKey ? ' · pinned' : ''}
               </span>
             </>
           ) : (

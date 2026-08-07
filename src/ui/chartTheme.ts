@@ -33,9 +33,7 @@ export const CHART_THEME = {
   },
   emote: {
     color: CHART_LANE.emoteBar,
-    barBaseline: 0.18,
     line: 0.72,
-    guide: 0.34,
   },
   chat: {
     color: CHART_LANE.chatBar,

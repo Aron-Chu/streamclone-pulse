@@ -6,6 +6,7 @@ import {
   DEFAULT_BACKEND_URL,
   DEFAULT_POLL_INTERVAL_MS,
   POLL_INTERVAL_OPTIONS_MS,
+  clearSessionPulseCache,
   getAutoTrackPolicy,
   getBackendUrl,
   getPollIntervalMs,
@@ -97,6 +98,15 @@ function OptionsApp() {
     setAutoTrackPolicyState(policy)
     await setAutoTrackPolicy(policy)
     flashSaved('Auto-track saved')
+  }
+
+  async function clearCachedPulseData(): Promise<void> {
+    const confirmed = window.confirm(
+      'Clear cached Pulse and coverage snapshots for this browser session? Charts will refetch on the next open channel.',
+    )
+    if (!confirmed) return
+    await clearSessionPulseCache()
+    flashSaved('Cleared')
   }
 
   async function refreshDebugLog(): Promise<void> {
@@ -258,6 +268,17 @@ function OptionsApp() {
         </section>
       ) : null}
 
+      <section style={styles.section} aria-label="Cached Pulse data">
+        <span style={styles.groupLabel}>Cached Pulse data</span>
+        <p style={styles.help}>
+          Session Pulse and coverage snapshots. Same clear path the service worker uses when the build id or package
+          cohort changes.
+        </p>
+        <button type="button" style={styles.secondaryButton} onClick={() => void clearCachedPulseData()}>
+          Clear cached Pulse data
+        </button>
+      </section>
+
       <section style={styles.section}>
         <span style={styles.groupLabel}>Watchlist / Protect</span>
         <p style={styles.help}>
@@ -380,6 +401,12 @@ function OptionsApp() {
           )
         ) : null}
       </section>
+
+      <footer style={styles.footer}>
+        <a href="https://streampulse.stream/privacy" target="_blank" rel="noreferrer" style={styles.footerLink}>
+          Privacy policy
+        </a>
+      </footer>
     </main>
   )
 }
@@ -478,6 +505,16 @@ const styles: Record<string, CSSProperties> = {
     padding: '10px 12px',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
+  },
+  footer: {
+    borderTop: `1px solid ${theme.border}`,
+    marginTop: 28,
+    paddingTop: 16,
+  },
+  footerLink: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    textDecoration: 'underline',
   },
 }
 

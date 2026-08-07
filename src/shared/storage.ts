@@ -11,7 +11,13 @@ const AUTO_TRACK_POLICY_KEY = 'autoTrackPolicy'
 const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
 const COLOR_SCHEME_PREFERENCE_KEY = 'colorSchemePreference'
-export { THEME_PREFERENCE_KEY, COLOR_SCHEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY }
+const REDUCE_MOTION_PREFERENCE_KEY = 'reduceMotionPreference'
+export {
+  THEME_PREFERENCE_KEY,
+  COLOR_SCHEME_PREFERENCE_KEY,
+  CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY,
+  REDUCE_MOTION_PREFERENCE_KEY,
+}
 const DEFAULT_CHART_WINDOW_KEY = 'defaultChartWindow'
 /** One-time sync flag: legacy sticky non-full defaults → Full stream. */
 const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY = 'defaultChartWindowMigratedToFullV1'
@@ -29,6 +35,8 @@ export type SidebarTab = 'chat' | 'pulse'
 export type AutoTrackPolicy = 'off' | 'followed' | 'ask'
 export type ThemePreference = 'aurora' | 'volt' | 'azure'
 export type ColorSchemePreference = 'auto' | 'light' | 'dark'
+/** User override for chart/UI motion. `system` follows OS prefers-reduced-motion. */
+export type ReduceMotionPreference = 'system' | 'on' | 'off'
 export type DefaultChartWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
 
 export interface OverlayDisplayPreferences {
@@ -43,6 +51,7 @@ export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
 export const DEFAULT_AUTO_TRACK_POLICY: AutoTrackPolicy = 'off'
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
 export const DEFAULT_COLOR_SCHEME_PREFERENCE: ColorSchemePreference = 'auto'
+export const DEFAULT_REDUCE_MOTION_PREFERENCE: ReduceMotionPreference = 'system'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
@@ -306,6 +315,31 @@ export async function setColorSchemePreference(pref: ColorSchemePreference): Pro
   })
 }
 
+export function resolveReduceMotionPreference(stored: unknown): ReduceMotionPreference {
+  return normalizeReduceMotionPreference(stored)
+}
+
+/** Effective motion-off flag from stored preference + OS media query. */
+export function resolveReducedMotionEnabled(
+  preference: ReduceMotionPreference,
+  systemPrefersReduce: boolean,
+): boolean {
+  if (preference === 'on') return true
+  if (preference === 'off') return false
+  return systemPrefersReduce
+}
+
+export async function getReduceMotionPreference(): Promise<ReduceMotionPreference> {
+  const stored = await syncStorageGet(REDUCE_MOTION_PREFERENCE_KEY)
+  return resolveReduceMotionPreference(stored[REDUCE_MOTION_PREFERENCE_KEY])
+}
+
+export async function setReduceMotionPreference(pref: ReduceMotionPreference): Promise<void> {
+  await syncStorageSet({
+    [REDUCE_MOTION_PREFERENCE_KEY]: normalizeReduceMotionPreference(pref),
+  })
+}
+
 /**
  * One-time migration: sticky legacy chart defaults (e.g. 60m from an older product
  * default) become Full stream. Explicit setDefaultChartWindow writes also mark the
@@ -485,6 +519,12 @@ export function normalizeColorSchemePreference(value: unknown): ColorSchemePrefe
   return value === 'auto' || value === 'light' || value === 'dark'
     ? value
     : DEFAULT_COLOR_SCHEME_PREFERENCE
+}
+
+function normalizeReduceMotionPreference(value: unknown): ReduceMotionPreference {
+  return value === 'system' || value === 'on' || value === 'off'
+    ? value
+    : DEFAULT_REDUCE_MOTION_PREFERENCE
 }
 
 function normalizeDefaultChartWindow(value: unknown): DefaultChartWindow {
