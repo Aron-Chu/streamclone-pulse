@@ -125,7 +125,7 @@ StreamPulse (logo)   Product   Dashboard   Docs   Status   [Install extension]  
 
 ### 4.3 IA principles
 
-- **Current live stream is always a distinct surface** from past streams (mirrors `CurrentStreamCard` vs `PastVodsSection` in the extension). Never merge live into the "Past streams" list.
+- **Current live stream is always a distinct surface** from past streams (mirrors live status vs `PastVodsSection` in the extension). Never merge live into the "Past streams" list.
 - **Coverage is a first-class object** on every channel/stream view (not buried) — it drives the "Load missed moments" CTA.
 - **Open full analytics** is a deep link out to the Streamclone web app for power users; the portal is the curated layer.
 - **Analytics is experienced through channels and streams, not a separate console.** The dashboard nav (`Dashboard · Watchlist · Moments · Streams · Analytics · Settings`) lists an **Analytics** item, but it resolves to `/dashboard/c/{login}` → `/dashboard/c/{login}/s/{streamId}` (and `/dashboard/streams`), never a raw internal Analytics UI.

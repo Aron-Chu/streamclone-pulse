@@ -31,6 +31,11 @@ function relativeDisplay(root, path) {
   return value || '.'
 }
 
+function isInside(root, candidate) {
+  const rel = relative(resolve(root), resolve(candidate))
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
 export function parseFileSpec(spec) {
   if (typeof spec !== 'string' || !spec.startsWith('file:')) return null
   const value = spec.slice('file:'.length)
@@ -147,8 +152,8 @@ export function inspectPackageCohort({ repoRoot = SCRIPT_ROOT, manifestPath = DE
 
   result.mode = manifest.mode ?? null
   if (manifest.version !== 1) fail(result, 'package override manifest version must be 1')
-  if (manifest.mode !== 'explicit-sibling-override') {
-    fail(result, 'package override manifest mode must be explicit-sibling-override')
+  if (!['explicit-sibling-override', 'explicit-snapshot'].includes(manifest.mode)) {
+    fail(result, 'package override manifest mode must be explicit-sibling-override or explicit-snapshot')
   }
   if (typeof manifest.sourceRepo !== 'string' || isAbsolute(manifest.sourceRepo)) {
     fail(result, 'sourceRepo must be a relative path')
@@ -239,7 +244,11 @@ export function inspectPackageCohort({ repoRoot = SCRIPT_ROOT, manifestPath = DE
         warn(result, `${consumer.label} has no installed ${dependency.name}; run npm install after confirming the manifest`)
       } else {
         const installedResolved = realpathSync(installedPath)
-        if (resolve(installedResolved) !== expected) {
+        const installedSnapshotCopy =
+          manifest.mode === 'explicit-snapshot' &&
+          isInside(consumer.path, installedResolved) &&
+          relative(consumer.path, installedResolved).replaceAll('\\', '/').includes('node_modules/@streampulse/')
+        if (resolve(installedResolved) !== expected && !installedSnapshotCopy) {
           fail(result, `${consumer.label} installed ${dependency.name} at ${relativeDisplay(root, installedResolved)}, expected ${record.expectedPath}`)
         }
       }

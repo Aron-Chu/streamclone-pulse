@@ -1,0 +1,43 @@
+{
+	"servers": {
+		"chrome-devtools": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"-y",
+				"chrome-devtools-mcp@latest"
+			],
+			"description": "Chrome DevTools MCP for Performance traces, computed CSS, network inspection. Opt-in per session."
+		},
+		"figma": {
+			"type": "http",
+			"url": "https://mcp.figma.com/mcp",
+			"description": "Remote Figma MCP for design frames, components, variables, Code Connect. Auth on first use."
+		},
+		"storybook": {
+			"type": "http",
+			"url": "http://localhost:6006/mcp",
+			"description": "Storybook MCP for component discovery + interaction tests. Only active when Storybook is running."
+		},
+		"io.github.upstash/context7": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"@upstash/context7-mcp@1.0.31"
+			],
+			"env": {
+				"CONTEXT7_API_KEY": "${input:CONTEXT7_API_KEY}"
+			},
+			"gallery": "https://api.mcp.github.com",
+			"version": "1.0.31"
+		}
+	},
+	"inputs": [
+		{
+			"id": "CONTEXT7_API_KEY",
+			"type": "promptString",
+			"description": "API key for authentication",
+			"password": true
+		}
+	]
+}

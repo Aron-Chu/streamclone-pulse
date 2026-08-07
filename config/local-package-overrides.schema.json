@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["version", "mode", "sourceRepo", "allowDirtySource", "packages"],
+  "properties": {
+    "version": { "const": 1 },
+    "mode": { "const": "explicit-sibling-override" },
+    "sourceRepo": { "type": "string", "pattern": "^(?![A-Za-z]:)[^/\\].*" },
+    "allowDirtySource": { "type": "boolean" },
+    "packages": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path", "owner"],
+        "properties": {
+          "path": { "type": "string" },
+          "owner": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "reason": { "type": "string" },
+    "migrationTarget": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -17,7 +17,7 @@ alwaysApply: false
 
 ```bash
 cd C:/Users/Aron/streamclone-pulse/streampulse-web
-npm run dev   # or npm run dev:hosted
+npm run dev   # hosted API by default; use npm run dev:local only for explicit local BFF work
 ```
 
 See `docs/contributing-wip-split.md` and `docs/website-portal/local-dev-runbook.md`.

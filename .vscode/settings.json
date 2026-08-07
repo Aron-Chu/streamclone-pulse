@@ -1,0 +1,12 @@
+{
+  "chat.agent.enabled": true,
+  "workbench.browser.enableChatTools": true,
+  "chat.mcp.discovery.enabled": {
+    "claude-desktop": true,
+    "windsurf": true,
+    "cursor-global": true,
+    "cursor-workspace": true
+  },
+  "github.copilot.chat.agent.thinkingBudget": 16384,
+  "github.copilot.chat.agent.maxRequests": 50
+}

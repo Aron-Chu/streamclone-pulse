@@ -8,8 +8,8 @@ Single checkout after [PR #25](https://github.com/Aron-Chu/streamclone-pulse/pul
 | Extension source + spec | `src/`, `docs/pulse-extension/` |
 | Command Center portal | `streampulse-web/` on `master` (or feature branch) |
 | **Figma UI (PNG exports)** | `docs/pulse-extension/figma/` + `figma-handoff.md` |
-| Shared TS scoring | sibling `streampulse-backend/packages/pulse-core` (`@streampulse/pulse-core`) |
-| Session analytics console UI | sibling `streampulse-backend/packages/analytics-console` (`file:` link in `streampulse-web`) |
+| Shared TS scoring | **Current branch override:** sibling `streampulse-backend/packages/pulse-core` (`@streampulse/pulse-core`), validated by `config/local-package-overrides.json` and `scripts/check-package-cohort.mjs`; migration target is Pulse-owned `packages/pulse-core` on `origin/master` |
+| Session analytics console UI | **Current branch override:** sibling `streampulse-backend/packages/analytics-console` (`file:` link in `streampulse-web`), validated by `config/local-package-overrides.json`; migration target is Pulse-owned `packages/analytics-console` on `origin/master` |
 | BFF + health + bookmarks + recap | **streampulse-backend** `internal/analytics/` |
 | Extension local BFF (planned) | `http://localhost:8081` — **streampulse-backend** compose |
 | StreamPulse portal (`streampulse-web`) | `https://api.streampulse.stream` (dev default); `npm run dev:local` → local backend opt-in |

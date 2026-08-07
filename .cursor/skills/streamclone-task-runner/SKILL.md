@@ -41,8 +41,8 @@ Portal and analytics hub (`/analytics`) use **`https://api.streampulse.stream`**
 ```bash
 # Portal preflight (see local-dev-runbook.md)
 cd streampulse-web && npm install
-npm run dev:hosted   # Vite → https://api.streampulse.stream
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5173/analytics
+npm run dev          # Vite → https://api.streampulse.stream (default; auto-restarts on config/package changes)
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5174/analytics
 
 # Portal/extension tests
 npm run typecheck && npm test

@@ -1,0 +1,22 @@
+# Local-only state inside .vscode/. The committed config files
+# (settings.json, mcp.json, extensions.json) are tracked; everything
+# else below this directory is per-machine or auth-bearing and must
+# never be committed.
+
+# Workspace backups / scratch
+*.code-workspace.bak
+*.code-workspace.local
+
+# Auth tokens / OAuth state (MCP servers, GitHub, Figma)
+*-oauth.json
+.auth/
+.token-cache/
+
+# Local extension cache
+extensions.json.local
+
+# Per-user MCP server logs
+.mcp-logs/
+
+# Browser profile for the integrated browser / DevTools MCP
+*.browser-profile/

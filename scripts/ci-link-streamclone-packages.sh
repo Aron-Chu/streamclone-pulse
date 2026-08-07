@@ -4,6 +4,11 @@ set -euo pipefail
 
 PACKAGES_ROOT="../streampulse-backend/packages"
 
+if [[ -f "_streampulse-backend/.package-source.json" ]]; then
+  mkdir -p "../streampulse-backend"
+  cp "_streampulse-backend/.package-source.json" "../streampulse-backend/.package-source.json"
+fi
+
 link_package() {
   local pkg="$1"
   local probe="$2"

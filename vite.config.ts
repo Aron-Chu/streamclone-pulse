@@ -8,6 +8,10 @@ const root = __dirname
 
 const extensionInputScope = [
   'src',
+  // The extension settings panel imports this canonical public manifest. Keep
+  // it in the provenance scope so a changelog edit cannot leave a stale
+  // unpacked extension claiming to be fresh.
+  'streampulse-web/src/lib/release-notes.json',
   'public',
   'popup',
   'options',

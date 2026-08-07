@@ -3,6 +3,10 @@ dist/
 *.zip
 .DS_Store
 
+# Local env overrides (keep .env.*.example tracked)
+.env.local
+.env
+
 # Playwright (uploaded by CI on failure; never commit)
 test-results/
 playwright-report/
@@ -13,3 +17,7 @@ playwright/.cache/
 _overlay*.tsx*
 _split_overlay.*
 .overlay-full.patch
+
+# Windows reserved device name accidentally created by shell redirects
+nul
+

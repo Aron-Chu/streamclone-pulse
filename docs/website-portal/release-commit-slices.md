@@ -61,7 +61,7 @@ Suggested message: `fix(portal): split app/test typecheck and sync console API s
 - `streampulse-web/src/ui/components/analytics/figma-analytics.css`
 - `streampulse-web/src/ui/components/hub/HubDataHealthBanner.tsx`
 - `streampulse-web/src/ui/themes/commandCenterLabels.ts`
-- `streampulse-web/tests/analyticsLandingPage.test.tsx`
+- `streampulse-web/tests/analyticsHubHonesty.test.tsx`
 
 Suggested message: `feat(portal): hub command header and landing polish`
 

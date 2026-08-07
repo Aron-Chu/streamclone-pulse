@@ -5,8 +5,8 @@ import { execSync } from 'node:child_process'
 const dist = join(process.cwd(), 'dist')
 const zip = join(process.cwd(), 'streamclone-pulse.zip')
 
-function listFiles(dir: string, base = dir): string[] {
-  const out: string[] = []
+function listFiles(dir, base = dir) {
+  const out = []
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
     if (statSync(full).isDirectory()) {

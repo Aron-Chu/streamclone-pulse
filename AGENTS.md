@@ -68,7 +68,7 @@ Cross-repo layout: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 - **Content scripts:** `chrome.runtime.sendMessage` only — no `fetch`.
 - **Service worker:** all HTTP to StreamPulse backend (`/v1/extension/*`, `/v1/analytics/.../watch`).
 - **Extension** default backend: `https://api.streampulse.stream` (hosted). Local BFF override → **streampulse-backend** compose (e.g. `http://localhost:8081`), not Streamclone `:8090`.
-- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit local backend only. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (restart after branch switch; `npm install` for `@streampulse/*` links).
+- **StreamPulse portal** (`streampulse-web`): hosted API by default (`https://api.streampulse.stream`); `npm run dev:local` for explicit local backend only. Portal Vite is fixed to `127.0.0.1:5174` with `strictPort`; the extension itself is a build artifact and does not serve an HTTP watch port. See [`docs/website-portal/local-dev-runbook.md`](docs/website-portal/local-dev-runbook.md) before starting Vite (run `npm run check:package-cohort` after branch/package changes; restart after branch switch; `npm install` for `@streampulse/*` links).
 - New Go APIs → implement in **streampulse-backend** `internal/analytics`, not here or in public Streamclone.
 - ReplayForge / auto clipper: candidates live in **streampulse-backend**; ReplayForge owns render/edit/export. Canonical contract: [`../replayforge/docs/INTEGRATION.md`](../replayforge/docs/INTEGRATION.md). **Current** handoff: `POST /v1/sources/streampulse/import` (RF fetches `GET /v1/pulse/clips/{id}`). Treat `POST /v1/triggers/manual` as legacy fallback only. Do not add new features to Streamclone `/v1/clipper` or `/studio`.
 - **CHAT/PULSE sidebar chrome is always on** when Twitch chat layout is present on channel pages. **`chatClosedPulseDockEnabled`** (default false) is the only opt-in for the bottom-right floating dock when chat is closed.
@@ -104,6 +104,7 @@ Skipping `npm run build` makes fixes look broken (stale `dist/content/twitch.js`
 - Chrome does **not** hot-reload an unpacked extension when `dist/` changes on disk. To actually see a new build:
   1. `chrome://extensions` → **Reload** the Streamclone Pulse extension
   2. Hard-refresh the Twitch tab
+- On worker startup, the extension reads `dist/build-meta.json` and clears cached Pulse/coverage snapshots when the build or package cohort changes; this prevents a fresh bundle from rendering data produced by an older worker.
 - `npm run dev` (`vite build --watch`) rebuilds `dist/` automatically on save but still requires the manual Chrome reload above.
 
 Local StreamPulse backend: `make up` (TODO) in **streampulse-backend** → `curl http://localhost:8081/v1/extension/health`. Streamclone `:8090` is watch-only — not extension/portal BFF.

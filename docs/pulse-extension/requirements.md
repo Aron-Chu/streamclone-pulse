@@ -1,6 +1,6 @@
 # Streamclone Pulse Extension — Requirements
 
-Status: **MVP shipped / in progress**. Canonical spec in this repo; implementation spans the **streamclone-pulse** extension and the streamclone backend.
+Status: **MVP shipped / in progress**. Canonical spec in this repo; implementation spans the **streamclone-pulse** extension and **streampulse-backend**.
 
 > **2026-07 hosted default:** Production extension and StreamPulse portal use `https://api.streampulse.stream`. Public [`/analytics`](https://streampulse.stream/analytics) needs **no beta key** and **no local stack**. Local BFF debugging uses `http://localhost:8081` (**streampulse-backend** compose) via explicit opt-in in extension Options — not Streamclone `:8090` (watch-only after boundary split).
 
@@ -10,14 +10,14 @@ Related code: `@streampulse/pulse-core` (**streampulse-backend** `packages/pulse
 
 ## TL;DR
 
-The Chrome extension is a **thin, Twitch-native Pulse viewer**, not a second analytics system. Streamclone already does the valuable work — IRC collection, 7TV tokenization, minute rollups, stream/VOD linking, heatmap scoring, and moment ranking. The extension only needs to:
+The Chrome extension is a **thin, Twitch-native Pulse viewer**, not a second analytics system. **streampulse-backend** does the analytics work — IRC collection, emote tokenization, minute rollups, stream/VOD linking, heatmap scoring, and moment ranking. The extension only needs to:
 
 1. Detect the current Twitch channel.
-2. Ask Streamclone to track it.
+2. Ask the StreamPulse BFF to track it.
 3. Render Pulse directly on the Twitch page.
-4. Let the user jump to peaks, **save moments**, or open the full Streamclone analytics view.
+4. Let the user jump to peaks, **save moments**, or open the full StreamPulse analytics view.
 
-**Design target:** *Native-feeling Twitch overlay, shared Streamclone logic, Streamclone backend as the source of truth.* The integration is **deep visually, light technically**.
+**Design target:** *Native-feeling Twitch overlay, shared StreamPulse logic, streampulse-backend as the source of truth.* The integration is **deep visually, light technically**.
 
 **MVP = Level 2.5 (historical):** Twitch overlay + local backend (`http://localhost:8081` streampulse-backend) + shared `@streampulse/pulse-core`. **Current default (2026-07):** hosted API + public `/analytics`; local BFF remains explicit dev opt-in in extension Options.
 
@@ -45,7 +45,7 @@ Twitch page
   -> Chrome extension content script (isolated world)
   -> Streamclone Pulse overlay (shared pulse-ui)
   -> Extension service worker (MV3 API bridge)
-  -> Streamclone analytics backend (Caddy :8090)
+  -> StreamPulse BFF (localhost :8081 opt-in / hosted api.streampulse.stream)
   -> IRC collector + 7TV rollups + heatmap scoring
 ```
 

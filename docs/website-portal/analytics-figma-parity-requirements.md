@@ -130,20 +130,22 @@ CSS variables live in [`../../streampulse-web/src/ui/components/analytics/figma-
 
 | Make section | Implementation |
 |---|---|
-| Nav + shell | [`AnalyticsFigmaShell.tsx`](../../streampulse-web/src/ui/components/analytics/AnalyticsFigmaShell.tsx) |
-| Hero | [`FigmaMakeHero.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaMakeHero.tsx) |
+| Nav + shell | [`AnalyticsFigmaShell.tsx`](../../streampulse-web/src/ui/components/analytics/AnalyticsFigmaShell.tsx) + [`AnalyticsHubSidebar.tsx`](../../streampulse-web/src/ui/components/analytics/AnalyticsHubSidebar.tsx) |
 | Session header | [`FigmaSessionHeaderStrip.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaSessionHeaderStrip.tsx) |
-| Chart + inspector grid | [`FigmaSessionDashboard.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaSessionDashboard.tsx) |
+| Hub activity + moments | [`FigmaGlobalActivityPanel.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaGlobalActivityPanel.tsx) + [`PulseMomentsLivePanel.tsx`](../../streampulse-web/src/ui/components/analytics/PulseMomentsLivePanel.tsx) |
+| Channel session (default) | `@streampulse/analytics-console` via [`ConsoleChannelView.tsx`](../../streampulse-web/src/routes/analytics/ConsoleChannelView.tsx) |
+| Channel session (`?figma=1`) | [`FigmaChannelDashboard.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaChannelDashboard.tsx) |
 | Live channel rail | [`FigmaLiveChannelRail.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaLiveChannelRail.tsx) |
 | Emote signal | [`FigmaEmoteSignalBlock.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaEmoteSignalBlock.tsx) |
-| Corpus pipeline | [`FigmaCorpusPipelineBlock.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaCorpusPipelineBlock.tsx) |
 | Styles | [`figma-analytics.css`](../../streampulse-web/src/ui/components/analytics/figma-analytics.css) |
 
 **Do not use on the `/analytics` landing:**
 
 - [`Home.tsx`](../../streampulse-web/src/routes/dashboard/Home.tsx) / `hubx`
 - [`hub.css`](../../streampulse-web/src/ui/components/hub/hub.css)
-- [`AnalyticsConsole`](../../../twitch-7tv-clone/packages/analytics-console/src/components/AnalyticsConsole.tsx) — the console is the default surface for **channel routes**, not for the aggregate landing.
+- `@streampulse/analytics-console` — the console is the default surface for
+  **channel routes**, not for the aggregate landing (source is owned by
+  `streampulse-backend/packages/analytics-console`).
 
 ## 7. Data Requirements
 
@@ -193,10 +195,10 @@ npm run dev
 
 Open:
 
-- `http://localhost:5173/analytics`
-- `http://localhost:5173/analytics/xqc`
-- `http://localhost:5173/analytics/xqc/<fixture-stream-id>` (canonical session route)
-- `http://localhost:5173/analytics/xqc/s/<fixture-stream-id>` (redirects to the canonical route)
+- `http://localhost:5174/analytics`
+- `http://localhost:5174/analytics/xqc`
+- `http://localhost:5174/analytics/xqc/<fixture-stream-id>` (canonical session route)
+- `http://localhost:5174/analytics/xqc/s/<fixture-stream-id>` (redirects to the canonical route)
 
 Automated:
 

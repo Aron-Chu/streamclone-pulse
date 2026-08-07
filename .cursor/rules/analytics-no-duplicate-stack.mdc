@@ -12,7 +12,7 @@ Portal session UI lives in **`streampulse-backend/packages/analytics-console`** 
 
 1. Run `npm run check:analytics-overlap` from `streampulse-web/` (must pass).
 2. Run `npm install` in `streampulse-web/` if you edited `packages/analytics-console` or `packages/pulse-charts`.
-3. Hard-refresh `http://127.0.0.1:5173` after restart — HMR does not reload linked packages reliably.
+3. Hard-refresh `http://127.0.0.1:5174` after restart — HMR does not reload linked packages reliably.
 
 ## DELETE or GATE — never stack
 

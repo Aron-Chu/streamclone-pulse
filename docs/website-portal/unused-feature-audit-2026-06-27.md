@@ -8,7 +8,7 @@ Scope: `streamclone-pulse/streampulse-web` public site, analytics hub, setup, do
 The site is usable as a public analytics hub and channel-console front door, but it still carries several older portal concepts that are no longer true in the current implementation. The biggest cleanup targets are not visual polish; they are product-contract mismatches:
 
 1. Authentication/account language is stale. `/login` redirects to `/analytics`, `/analytics/account` redirects to `/analytics`, and `auth.ts` is guest/no-op, but docs, tests, setup copy, and an unused `AccountPage` still talk about beta keys, device tokens, and account management.
-2. The setup install path is not production-ready. The Chrome Web Store link is still `https://chrome.google.com/webstore/detail/streamclone-pulse/placeholder`.
+2. ~~The setup install path is not production-ready (Chrome Web Store placeholder).~~ **Superseded:** `Setup.tsx` removed; `/setup` → `/analytics`; landing CTA points at `/docs#extension`.
 3. `/admin` exists publicly in the SPA but has a no-op route guard and, against the local stack, fails as a raw CORS/fetch error instead of showing a clean operator-access state.
 4. `/analytics/streams` is presented in navigation as both "Live now" and "Streams", but it immediately redirects to `/analytics`; there is no distinct streams directory route.
 5. The public landing page advertises "Public API" as "Soon" without a route or docs page. That is fine as roadmap copy, but it is currently a dead resource card.
@@ -135,10 +135,12 @@ Recommendation:
 Status: Fix before any public launch.  
 Severity: High conversion break.
 
-Evidence:
+Evidence (as of 2026-06-27 audit):
 
-- `Setup.tsx` has `CHROME_EXTENSION_URL = 'https://chrome.google.com/webstore/detail/streamclone-pulse/placeholder'`.
-- Browser click audit confirmed the `Add to Chrome` href is exactly that placeholder.
+- `Setup.tsx` had `CHROME_EXTENSION_URL = 'https://chrome.google.com/webstore/detail/streamclone-pulse/placeholder'`.
+- Browser click audit confirmed the `Add to Chrome` href was exactly that placeholder.
+
+Status update (post-cleanup): `Setup.tsx` was removed; `/setup` redirects to `/analytics`. Landing uses `CHROME_EXTENSION_URL = '/docs#extension'` (not the Web Store placeholder).
 
 Why it is useless right now:
 

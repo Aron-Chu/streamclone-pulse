@@ -1,16 +1,12 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+/** @deprecated Use scripts/gen-cws-icons.mjs (Peak mark). Kept as alias. */
+import { spawnSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-// Minimal 16x16 solid #9146FF PNG
-const png16 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAFUlEQVR42mP8z8BQz0AEYBxVSFUAAP//AwD5FQBq3R8AAAAASUVORK5CYII=',
-  'base64',
-)
-
-const dir = join(process.cwd(), 'public', 'icons')
-mkdirSync(dir, { recursive: true })
-for (const size of [16, 48, 128]) {
-  writeFileSync(join(dir, `icon${size}.png`), png16)
-}
-console.log('Wrote placeholder icons to public/icons')
+const root = join(dirname(fileURLToPath(import.meta.url)))
+const r = spawnSync(process.execPath, [join(root, 'gen-cws-icons.mjs')], {
+  stdio: 'inherit',
+  cwd: join(root, '..'),
+})
+process.exit(r.status ?? 1)

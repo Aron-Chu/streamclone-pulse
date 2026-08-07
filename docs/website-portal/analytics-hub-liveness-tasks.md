@@ -90,7 +90,7 @@ curl -fsS "https://api.streampulse.stream/v1/public/hub/moments?activityWindow=2
 - `streampulse-web/src/ui/components/analytics/HubLiveRailMoversStrip.tsx` (rewrite the render; keep the exported component name + props signature `{ movers: HubMover[]; loading?: boolean }`).
 - `streampulse-web/src/ui/components/analytics/figma-analytics.css` (replace the `.hub-live-rail-movers*` block, currently ~L2547).
 - `streampulse-web/src/ui/motion/useAnalyticsMotion.tsx` (optional: add a `reorderList(container, prevRects)` FLIP helper if you factor motion out).
-- `streampulse-web/tests/analyticsLandingPage.test.tsx` (or a new `tests/hubLiveRailMovers.test.tsx`) for unit coverage.
+- `streampulse-web/tests/hubLiveRailMovers.test.tsx` (or `tests/analyticsHubHonesty.test.tsx`) for unit coverage.
 
 **Data available** (`HubMover` in `streampulse-web/src/lib/publicHub.ts`)
 
@@ -179,7 +179,7 @@ curl -fsS "https://api.streampulse.stream/v1/public/hub/moments?activityWindow=2
 
 - [x] MOVERS-01 acceptance criteria + tests pass.
 - [x] WIRE-01 acceptance criteria + tests pass.
-- [x] `npm run typecheck` clean; hub liveness unit tests + `analyticsLandingPage` tests green.
+- [x] `npm run typecheck` clean; hub liveness unit tests + `analyticsHubHonesty` tests green.
 - [x] e2e honesty+parity: all 17 specs pass (parity uses `#section-live-wire`; `fetchPriority` warning removed).
 - [x] Stats-fallback/degraded hub state visible on canonical `/analytics` via `HubDataHealthBanner`; Live Wire gated when `hubEndpointOk === false` or `loadSource === 'stats-fallback'`.
 - [x] Hosted `/v1/public/hub/moments` smoke run 2026-07-06 — endpoint requires `bucketT`; sample returned `status: empty`, `reason: no_corpus_peaks_in_bucket` (healthy empty, not 5xx).

@@ -234,7 +234,7 @@ streampulse-web/
       apiClient.ts           # §8 — beta-key, 401, retry, error normalize
       auth.ts                # principalId, beta-key storage, guards
       coverage.ts            # re-export pulse-core coverage/backfill helpers
-      queryKeys.ts           # react-query keys + TTL discipline
+      (queryKeys.ts removed — react-query used without a shared keys module)
     ui/
       theme.ts               # tokens (mirror extension theme.ts)
       components/            # cards, badges, steppers, skeletons

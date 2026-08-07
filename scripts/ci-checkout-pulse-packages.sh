@@ -6,6 +6,7 @@ ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 DEST="${ROOT}/_streampulse-backend"
 PACKAGES=(pulse-core analytics-console pulse-charts)
 FALLBACK_REF="${PULSE_PACKAGES_FALLBACK_REF:-v0.3.0-rc27}"
+PACKAGE_SOURCE_REF=""
 
 sparse_clone() {
   local repo="$1"
@@ -28,12 +29,21 @@ sparse_clone() {
 }
 
 if [[ -n "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN:-}" ]]; then
+  PACKAGE_SOURCE_REF="master"
   echo "ci-checkout-pulse-packages: using streampulse-backend@master"
   sparse_clone "Aron-Chu/streampulse-backend" "master" "${STREAMPULSE_BACKEND_CHECKOUT_TOKEN}"
 else
+  PACKAGE_SOURCE_REF="${FALLBACK_REF}"
   echo "ci-checkout-pulse-packages: no PAT — using streamclone@${FALLBACK_REF} packages"
   sparse_clone "Aron-Chu/streamclone" "${FALLBACK_REF}"
 fi
+
+# The link step intentionally copies only package trees into the sibling path.
+# Preserve the immutable source identity without copying a Git directory or any
+# credential-bearing remote URL into the consumer checkout.
+SOURCE_COMMIT="$(git -C "${DEST}" rev-parse HEAD)"
+printf '{"version":1,"ref":"%s","commit":"%s","dirty":false}\n' \
+  "${PACKAGE_SOURCE_REF}" "${SOURCE_COMMIT}" > "${DEST}/.package-source.json"
 
 for pkg in "${PACKAGES[@]}"; do
   probe="${DEST}/packages/${pkg}"

@@ -7,6 +7,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       'tests/e2e/**',
+      'scripts/**',
       'streampulse-web/**',
       '_streamclone/**',
       '_streampulse-backend/**',

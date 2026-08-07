@@ -6,9 +6,9 @@
 | **Surface** | `/analytics` hub landing — `AnalyticsLandingPage` + `figma-activity-hub` |
 | **Code** | `streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx`, `PulseMomentsLivePanel`, `FigmaGlobalActivityPanel` |
 
-## Live Wire placement (2026-07 P1)
+## Signal Wire placement (was Live Wire)
 
-`HubLiveWireFeed` on hub landing — label **Live Wire** (`section-live-wire`, `hub-live-wire--lane`).
+`HubLiveWireFeed` on hub landing — label **Signal Wire** (`section-signal-wire`, `hub-live-wire--lane`).
 
 | Viewport | Placement |
 |----------|-----------|
@@ -28,8 +28,9 @@ Lane behavior: compact one-line chips for network peaks within the last **30 min
 
 **Section roles (avoid duplication):**
 - **Hottest live** — activity-ranked live pool cards (shared `rankLiveChannelsByActivity` with chart inspector “Top live by activity”); viewers are secondary context
-- **Live Wire** — fresh (≤30m) chart annotations + markers
-- **Pool Wire** — compact lifecycle heartbeat in the command header (`POOL Stable` when quiet)
+- **Signal Wire** — fresh (≤30m) chart annotations + markers (chat / emote / viewer peaks)
+- **Live Activity** — server-owned lifecycle timeline in the command header (`went_live` / `went_offline`); never `POOL Stable`
+- **Coverage** — compact tracked-channels + metadata freshness diagnostic linking to `#section-coverage`
 - **Emote Market** — leaders / concentration / provider; breadth & rotation gated on backend market fields
 - **Channel Screener** — multi-view tracked table (Overview / Momentum / Coverage / Anomalies)
 - **Top clips** — only when sanitized public published clips exist (never beta candidate queue)
@@ -86,14 +87,16 @@ Right column of network activity chart (~350px):
 
 - Do not move moment inspector into the chart rail on hub landing.
 - Do not reintroduce `.activity-bucket-inspector--moment` as a full moment body.
+- Do not restore cyan/teal on-plot peak pins (`.hx-moment-marker`) or the circular node on the gold bucket-selection cue (`.hx-bucket-cue__node` / `__ring`). Selection stays via Signal Wire chips + Pulse Moments rows; chart may keep a thin selection line only.
+- Do not restore Pulse Moments channel “Live now” pips (`.pulse-moments__channel-live-dot`) between avatar and name.
 
 ## Verification
 
 ```bash
 cd streampulse-web
 npm run check:analytics-overlap
-npm run dev:hosted
-npx playwright test tests/e2e/analytics-hub-ux.spec.ts tests/e2e/analytics-hub-live-wire-ticker.spec.ts --workers=1
+npm run dev
+npx playwright test tests/e2e/analytics-hub-ux.spec.ts tests/e2e/analytics-hub-live-wire-ticker.spec.ts tests/e2e/analytics-live-activity.spec.ts --workers=1
 ```
 
 Manual: annotation lane sits above the plot; click a chip → dark Pulse Moments inspector fills + chart accent + rail linked strip (not a second moment card); clear linked / lock another bucket → selection clears as designed.

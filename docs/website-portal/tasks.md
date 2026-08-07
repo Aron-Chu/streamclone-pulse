@@ -359,15 +359,15 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
   - Priority: P1
   - Depends on: WEB-004, WEB-008
   - Files likely touched:
-    - `streampulse-web/src/routes/public/Setup.tsx`
-    - `streampulse-web/src/ui/components/setup/*`
+    - `streampulse-web/src/routes/index.tsx` (`/setup` → `/analytics` redirect; dedicated `Setup.tsx` removed)
+    - Install/connect copy lives on public landing + extension options (not a standalone setup route)
   - Implementation notes:
-    - Steps: Install (detect extension), Connect (backend URL + Copy-config + beta-key field), Verify (health check), Track.
-    - Troubleshooting states: `not_installed`, `unreachable`, `unauthorized`, `mixed_content`, `version_mismatch`, `connected` (copy per PRD §7.3).
+    - Historical: Steps: Install (detect extension), Connect (backend URL + Copy-config + beta-key field), Verify (health check), Track.
+    - Current: `/setup` is a permanent redirect to the public analytics hub; do not reintroduce `Setup.tsx`.
   - Acceptance criteria:
-    - Renders all steps; health check + troubleshooting states display correct copy/actions.
+    - Old `/setup` bookmarks resolve to `/analytics`; no orphan Setup route module.
   - Tests:
-    - integration: health states; e2e first-run setup (TEST-009).
+    - route redirect coverage via AppRoutes (legacy `/setup` → `/analytics`).
 
 - [x] WEB-008: Health check + copy-config flow
   - Area: frontend
@@ -390,14 +390,14 @@ Checkbox `- [ ]` = pending/in progress/blocked · `- [x]` = done. Annotate `bloc
   - Priority: P1
   - Depends on: AUTH-001, WEB-004
   - Files likely touched:
-    - `streampulse-web/src/routes/public/Login.tsx`
+    - `streampulse-web/src/routes/index.tsx` (`/login` → `/analytics` redirect; dedicated `Login.tsx` removed)
   - Implementation notes:
-    - Capture beta key, store, derive principal, redirect `/dashboard`.
-    - Validate lazily on first gated dashboard call; surface 401 `hint` verbatim. "Request access" link to GitHub/Discord.
+    - Historical: Capture beta key, store, derive principal, redirect `/dashboard`.
+    - Current: public analytics is a no-login surface; `/login` permanently redirects to `/analytics`. Do not reintroduce `Login.tsx`.
   - Acceptance criteria:
-    - Valid key → dashboard; invalid → inline 401 message; no empty-dashboard flash.
+    - Old `/login` bookmarks resolve to `/analytics`; gated `/dashboard` remains behind `RequireAuth`.
   - Tests:
-    - integration: 401 flow (TEST-008); e2e login → dashboard.
+    - route redirect coverage via AppRoutes (legacy `/login` → `/analytics`).
 
 - [ ] WEB-010: `/docs` shell + `/status` page
   - Area: frontend / docs

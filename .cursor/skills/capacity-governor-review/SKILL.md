@@ -5,15 +5,8 @@ description: Review tracking pool caps, always-track eviction, rate limits, and 
 
 # Capacity governor review
 
-**Canonical copy:** `../streampulse-backend/.cursor/skills/pulse/capacity-governor-review/SKILL.md`
+Canonical copy: [`streampulse-backend/.cursor/skills/pulse/capacity-governor-review/SKILL.md`](../../../../streampulse-backend/.cursor/skills/pulse/capacity-governor-review/SKILL.md).
 
-Use the canonical skill in **streampulse-backend** for the full checklist, live-cap probe guidance, and escalation rules.
-
-This stub exists so Cursor discovers the skill from the streamclone-pulse checkout. Live caps are operator-configured on hosted-production-vps — probe via hosted API only:
-
-```bash
-curl -s https://api.streampulse.stream/v1/extension/health
-curl -s https://api.streampulse.stream/v1/public/hub
-```
-
-Do not use `http://localhost:8090` probes here. For tunnel/Caddy/compose changes escalate to the ops-diagnostics-reviewer (now in **streampulse-ops**).
+Capacity policy, live-cap review, and backend scaling checks are owned in
+**streampulse-backend**. Hosted runtime diagnostics and topology remain owned
+by **streampulse-ops**.

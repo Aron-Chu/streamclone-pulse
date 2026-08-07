@@ -19,7 +19,7 @@ Preserved local branches (history only, not active product):
 ```bash
 cd C:/Users/Aron/streamclone-pulse/streampulse-web
 npm install
-npm run dev   # or npm run dev:hosted
+npm run dev
 ```
 
 Linked from: [`AGENTS.md`](../AGENTS.md), [`docs/website-portal/local-dev-runbook.md`](website-portal/local-dev-runbook.md).

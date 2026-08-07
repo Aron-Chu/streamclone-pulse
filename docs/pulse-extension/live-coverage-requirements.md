@@ -5,7 +5,7 @@
 | **Status** | Draft v1 — requirements |
 | **Owner** | Aron-Chu |
 | **Scope** | Chrome MV3 extension + hosted analytics backend at `https://api.streampulse.stream` (+ StreamPulse portal parity) |
-| **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · streamclone [`roster-naming-truth-table.md`](../../twitch-7tv-clone/docs/pulse-extension/roster-naming-truth-table.md) · `internal/analytics/pulse_coverage.go` · `extension_api.go` |
+| **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · backend env-alias policy · `internal/analytics/pulse_coverage.go` · `extension_api.go` |
 | **Repos** | Extension: **streamclone-pulse**. Backend: **streamclone** (hosted at `https://api.streampulse.stream`; operator deploy in private **streampulse-ops**). Legacy rollback host is archive only. |
 
 ---
@@ -159,7 +159,7 @@ type CoverageState =
   | "already_available";       // PROPOSED for coverage UX when backfill job returns already_available (today: job status only)
 ```
 
-**Mapping note (current codebase):** streamclone `pulse_coverage.go` implements the first seven states except `backfill_available` and `already_available`. Extension `missedMoments.ts` may **derive** `waiting_for_vod` client-side when backend omits nested `coverage` — backend should always send canonical `coverage` on hosted API.
+**Mapping note (current codebase):** **streampulse-backend** `internal/analytics/pulse_coverage.go` implements the first seven states except `backfill_available` and `already_available`. Extension `missedMoments.ts` may **derive** `waiting_for_vod` client-side when backend omits nested `coverage` — backend should always send canonical `coverage` on hosted API.
 
 ### 5.2 Target payload (with field mapping)
 
@@ -397,7 +397,7 @@ curl -H "X-Streamclone-Beta-Key: $KEY" \
 
 | ID | Requirement |
 |----|-------------|
-| OPS-LATE-1 | When a cap-tier source (`top_roster`, `always_track`, `protected`) writes its first rollup **>120s** after Twitch stream start, increment **`pulse_late_cap_start_total{source}`** and surface alert guidance in [`pulse-metrics-runbook.md`](../../twitch-7tv-clone/docs/pulse-extension/pulse-metrics-runbook.md) §8. |
+| OPS-LATE-1 | When a cap-tier source (`top_roster`, `always_track`, `protected`) writes its first rollup **>120s** after Twitch stream start, increment **`pulse_late_cap_start_total{source}`** and surface alert guidance in the private ops monitoring record §8. |
 
 ---
 

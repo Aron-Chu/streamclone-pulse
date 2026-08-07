@@ -1,0 +1,13 @@
+# Generated dependencies, builds, and browser-test output.
+dist/
+node_modules/
+playwright-report/
+test-results/
+streampulse-web/dist/
+streampulse-web/node_modules/
+streampulse-web/playwright-report/
+streampulse-web/test-results/
+
+# Immutable evidence is retained but not default implementation context.
+docs/pulse-extension/evidence/
+streampulse-web/tests/e2e/evidence/

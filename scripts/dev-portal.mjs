@@ -6,26 +6,39 @@
 
 import { spawn } from 'node:child_process'
 import { watch } from 'node:fs'
-import { existsSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../streampulse-web')
 const viteBin = resolve(webRoot, 'node_modules/vite/bin/vite.js')
-const watchConfig = process.argv.includes('--watch-config')
+const watchConfig = !process.argv.includes('--no-watch-config')
+const packageCohortFiles = [
+  '../config/local-package-overrides.json',
+  '../package.json',
+  '../package-lock.json',
+  'package.json',
+  'package-lock.json',
+]
 
-const viteArgs = process.argv.filter(arg => arg !== '--watch-config').slice(2)
+const viteArgs = process.argv
+  .filter(arg => arg !== '--watch-config' && arg !== '--no-watch-config')
+  .slice(2)
 if (viteArgs.length === 0) {
-  viteArgs.push('--host', '--port', '5173')
+  // Reserve 5174 for the portal UI. A collision must fail loudly instead of
+  // silently moving this checkout to another port and showing the wrong build.
+  viteArgs.push('--host', '127.0.0.1', '--port', '5174', '--strictPort')
 }
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let vite = null
 let restarting = false
+let stopping = false
 /** @type {ReturnType<typeof setTimeout> | null} */
 let restartTimer = null
 
 function startVite() {
+  if (stopping) return
   const env = { ...process.env }
   const viteBackend = env.VITE_BACKEND_URL?.trim()
   if (viteBackend && /localhost|127\.0\.0\.1|laptopworker|:8081|:8090/i.test(viteBackend)) {
@@ -33,29 +46,83 @@ function startVite() {
     console.log('[dev-portal] ignoring localhost VITE_BACKEND_URL — portal dev uses hosted API')
   }
   console.log(`[dev-portal] starting vite ${viteArgs.join(' ')}`)
-  console.log('[dev-portal] prefer http://127.0.0.1:5173/analytics — localhost can stall on IPv6')
+  console.log('[dev-portal] prefer http://127.0.0.1:5174/analytics — strict port prevents stale-server fallback')
   vite = spawn(process.execPath, [viteBin, ...viteArgs], {
     cwd: webRoot,
     stdio: 'inherit',
     env,
+    windowsHide: true,
   })
   vite.on('exit', (code, signal) => {
+    vite = null
     if (restarting) return
+    if (stopping) return
     if (signal === 'SIGTERM' || signal === 'SIGKILL') return
     process.exit(code ?? 0)
   })
 }
 
+function stopVite() {
+  const child = vite
+  if (!child || child.exitCode !== null) {
+    vite = null
+    return Promise.resolve()
+  }
+  return new Promise((resolveStop) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      vite = null
+      resolveStop()
+    }
+    child.once('exit', finish)
+    try {
+      child.kill('SIGTERM')
+    } catch {
+      finish()
+      return
+    }
+    // Windows can leave the npm/Vite descendant alive after ChildProcess.kill.
+    // Escalate only to this exact PID and its descendants, never to a port or
+    // a process name that could belong to another checkout.
+    setTimeout(() => {
+      if (settled || child.exitCode !== null) return
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        })
+      } else {
+        child.kill('SIGKILL')
+      }
+      setTimeout(finish, 250)
+    }, 2000).unref()
+  })
+}
+
+function clearViteDependencyCache() {
+  const cache = resolve(webRoot, 'node_modules/.vite')
+  if (!existsSync(cache)) return
+  rmSync(cache, { recursive: true, force: true })
+  console.log('[dev-portal] cleared Vite dependency cache after package/config change')
+}
+
 function scheduleRestart(reason) {
   if (restartTimer) clearTimeout(restartTimer)
   restartTimer = setTimeout(() => {
-    console.log(`[dev-portal] restarting (${reason})`)
-    restarting = true
-    if (vite && !vite.killed) vite.kill('SIGTERM')
-    setTimeout(() => {
+    restartTimer = null
+    if (restarting || stopping) return
+    void (async () => {
+      console.log(`[dev-portal] restarting (${reason})`)
+      restarting = true
+      await stopVite()
+      if (reason.includes('package') || reason.includes('override') || reason.includes('lock') || reason.includes('vite.config')) {
+        clearViteDependencyCache()
+      }
       restarting = false
       startVite()
-    }, 400)
+    })()
   }, 250)
 }
 
@@ -75,15 +142,19 @@ if (watchConfig) {
     '.env.development',
     '.env.development.local',
     'vite.config.ts',
+    ...packageCohortFiles,
   ]) {
     watchFile(name)
   }
 } else {
-  console.log('[dev-portal] config/env watch disabled (pass --watch-config to enable auto-restart)')
+  console.log('[dev-portal] config/env watch disabled (pass --no-watch-config only for a deliberate one-shot config session)')
 }
 
-function shutdown() {
-  if (vite && !vite.killed) vite.kill('SIGTERM')
+async function shutdown() {
+  if (stopping) return
+  stopping = true
+  if (restartTimer) clearTimeout(restartTimer)
+  await stopVite()
   process.exit(0)
 }
 

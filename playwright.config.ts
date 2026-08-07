@@ -9,6 +9,10 @@ import { defineConfig } from '@playwright/test'
  * - per-test timeout 60s matches current suite (extension launch + SPA hops).
  * - expect timeout 20s covers Pulse root mount against mocked BFF.
  * Do not raise these without documenting a new timing requirement.
+ *
+ * Visibility: Chromium must be headed for MV3 extensions. Launch helpers park
+ * the window off-screen/minimized by default so local runs do not steal focus.
+ * Set PW_HEADED=1 for a normal desktop window when debugging.
  */
 export default defineConfig({
   testDir: 'tests/e2e/specs',
@@ -33,7 +37,7 @@ export default defineConfig({
       name: 'extension-mocked',
       testMatch: /.*\.mocked\.spec\.ts/,
       use: {
-        // Extensions require headed Chromium; CI uses xvfb-run.
+        // Persistent context is launched by helpers/extensionContext.ts (off-screen headed).
         headless: false,
       },
     },

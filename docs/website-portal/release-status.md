@@ -27,12 +27,12 @@ Last updated: 2026-07-07 (Gate 1 commits done; Gate 2 remote evidence captured; 
 | Portal `npm run build` (app-only tsc) | Done (local) | `streampulse-web`: split `tsconfig.json` / `tsconfig.test.json` |
 | Portal `npm test` | Done (local) | 62 files / 342 tests; hub landing empty tests excluded (known hang — e2e authority) |
 | Console API setup before render | Done | `ConsoleChannelView.tsx` module-top `setupStreamcloneAnalyticsApi()` |
-| Promotion manifest + `IMAGE_TAG` reconcile | **Operator (SSH)** | Preflight: `scripts/ops/ssh-access-preflight.sh`; remote health `v0.3.0-rc18` — [`release-gap-2026-07-07-remote.md`](../../../twitch-7tv-clone/docs/ops/evidence/release-gap-2026-07-07-remote.md) |
-| Redis bounded + TTL audit | **Operator (SSH)** | `scripts/ops/hosted-redis-audit.sh`, [`hosted-redis-bounds-runbook.md`](../../../twitch-7tv-clone/docs/ops/hosted-redis-bounds-runbook.md) |
-| Staged container limits | **Operator (SSH)** | [`hosted-limits-staged-runbook.md`](../../../twitch-7tv-clone/docs/ops/hosted-limits-staged-runbook.md), `release-gap-vps-execute.sh --limits-redis` |
+| Promotion manifest + `IMAGE_TAG` reconcile | **Operator (SSH)** | Private `streampulse-ops` evidence and preflight |
+| Redis bounded + TTL audit | **Operator (SSH)** | Private `streampulse-ops` runbook |
+| Staged container limits | **Operator (SSH)** | Private `streampulse-ops` runbook and guarded deploy script |
 | Focused cap-250 stability (2–6h) | **Operator (SSH)** | Sample monitor: `twitch-7tv-clone/runtime/evidence/cap250-soak/day-release-check-monitor-20260707T134629Z.txt`; full gate: `hosted-release-check-soak-loop.sh` `RELEASE_CHECK_HOURS=2` |
 | Cloudflare hub cache | **Operator (dashboard)** | 2026-07-07 probe: origin `X-Cache: HIT`, `CF-Cache-Status: DYNAMIC` — enable rule per [`hub-fanout-edge-cache.md`](./hub-fanout-edge-cache.md) |
-| Cloudflare `/v1/public/*` WAF | **Operator (dashboard)** | [`cloudflare-public-hub-waf.md`](../../../twitch-7tv-clone/docs/ops/cloudflare-public-hub-waf.md) |
+| Cloudflare `/v1/public/*` WAF | **Operator (dashboard)** | Private `streampulse-ops` edge ownership record |
 | Extension build + CWS checklist | **Operator submit** | [`chrome-web-store-review-checklist.md`](../pulse-extension/chrome-web-store-review-checklist.md) |
 
 ## Track B checklist
@@ -90,11 +90,6 @@ Gate 2 soak evidence, SSH probes, and promotion manifests live in private **stre
 
 See [`release-commit-slices.md`](./release-commit-slices.md) and [`release-gap-closure-tasks.md`](./release-gap-closure-tasks.md).
 
-## Excluded Vitest unit tests
+## Hub honesty unit tests
 
-Configured in [`streampulse-web/vitest.config.ts`](../../streampulse-web/vitest.config.ts) `test.exclude`. E2E owns hub landing honesty paths.
-
-| Excluded unit test | Reason | E2E owner |
-|--------------------|--------|-----------|
-| `analyticsLandingPage.test.tsx` | stats-fallback case OOM/hangs in full Vitest | [`tests/e2e/analytics-hub-metrics-honesty.spec.ts`](../../streampulse-web/tests/e2e/analytics-hub-metrics-honesty.spec.ts) |
-| `analyticsHubEmpty.test.tsx` | full landing render hang | same + [`tests/e2e/analytics-hub-ux.spec.ts`](../../streampulse-web/tests/e2e/analytics-hub-ux.spec.ts) |
+Full `AnalyticsLandingPage` mounts were removed (OOM/hang under Vitest). Unique asserts live in [`tests/analyticsHubHonesty.test.tsx`](../../streampulse-web/tests/analyticsHubHonesty.test.tsx). E2E still owns full-page hub paths: [`analytics-hub-metrics-honesty.spec.ts`](../../streampulse-web/tests/e2e/analytics-hub-metrics-honesty.spec.ts), [`analytics-hub-ux.spec.ts`](../../streampulse-web/tests/e2e/analytics-hub-ux.spec.ts).
