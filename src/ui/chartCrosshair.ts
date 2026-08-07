@@ -23,3 +23,8 @@ export function resolveChartCrosshairMode(args: {
     listPreviewIndex: showListPreview ? args.listPreviewIndex : null,
   }
 }
+
+/** Shared opacity transition for inspection layers and crosshair-adjacent UI. */
+export function chartInteractionOpacityTransition(reducedMotion: boolean): string {
+  return reducedMotion ? 'none' : 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)'
+}

@@ -26,6 +26,51 @@ export function barDisplayAxisMax(values: Array<number | null>): number {
   return Math.max(Math.ceil(p85 * 1.15), max * 0.55, 1)
 }
 
+/**
+ * Viewers strip Y max — tight ~3% top pad so a long plateau fills the strip.
+ * A brief spike above p98 soft-fits instead of leaving a tall empty band.
+ */
+export function viewerDisplayAxisMax(values: Array<number | null>): number {
+  const peaks = values.filter((value): value is number => value != null && value > 0)
+  if (peaks.length === 0) return 1
+  const max = Math.max(...peaks)
+  if (peaks.length < 8) return Math.max(1, Math.ceil(max * 1.03))
+  const sorted = [...peaks].sort((a, b) => a - b)
+  const p98Index = Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * 0.98))
+  const p98 = sorted[p98Index] ?? max
+  const ceil = max > p98 * 1.2 ? p98 : max
+  return Math.max(1, Math.ceil(ceil * 1.03))
+}
+
+/**
+ * Soft-fit a value into [0, axisMax] so typical minutes stay linear and outliers
+ * ease into the top of the lane instead of hard-clipping into a flat plateau.
+ */
+export function softFitValueToAxis(value: number, axisMax: number): number {
+  const max = Math.max(axisMax, 1)
+  if (!(value > 0)) return 0
+  if (value <= max) return value
+  const excess = value - max
+  const t = excess / (excess + max)
+  return max * (0.86 + 0.14 * t)
+}
+
+/** Soft-fit a nullable series for band plotting. plotMax is the linear axis ceiling. */
+export function softFitSeriesToAxis(
+  values: Array<number | null>,
+  axisMax: number,
+): { values: Array<number | null>; plotMax: number } {
+  const plotMax = Math.max(axisMax, 1)
+  return {
+    plotMax,
+    values: values.map(value => {
+      if (value == null) return null
+      if (value <= 0) return value
+      return softFitValueToAxis(value, plotMax)
+    }),
+  }
+}
+
 export function minuteEmoteTotal(point: ExtensionRollup): number {
   const total = point.totalEmoteCount ?? 0
   if (total > 0) return total
@@ -120,11 +165,22 @@ export function normalizeGameSegments(
       && Number.isFinite(game.durationSeconds)
       && game.offsetSeconds >= 0,
     )
-    .map(game => ({
-      ...game,
-      offsetSeconds: Math.max(0, game.offsetSeconds),
-      durationSeconds: Math.max(0, game.durationSeconds),
-    }))
+    .map(game => {
+      const offsetSeconds = Math.max(0, game.offsetSeconds)
+      let duration = Math.max(0, game.durationSeconds)
+      // Hosted payloads can inherit unclamped open-segment durations from an
+      // aliased prior session — never let Games played invent hours past Now.
+      if (durationSeconds > 0 && offsetSeconds < durationSeconds) {
+        duration = Math.min(duration, durationSeconds - offsetSeconds)
+      } else if (durationSeconds > 0 && offsetSeconds >= durationSeconds) {
+        duration = 0
+      }
+      return {
+        ...game,
+        offsetSeconds,
+        durationSeconds: duration,
+      }
+    })
 
   if (!cleaned.length) return []
 
@@ -153,7 +209,9 @@ export function chartDurationSeconds(
   if (rollups.length === 0) return Math.max(60, fallbackSeconds)
   const first = rollups[0]?.offsetSeconds ?? 0
   const last = rollups[rollups.length - 1]?.offsetSeconds ?? first
-  return Math.max(60, fallbackSeconds, last - first + 60)
+  // Prefer observed rollup span. Wall/VOD fallback must not invent empty hours
+  // past the last Pulse minute (zombie-live / late EndedAt).
+  return Math.max(60, last - first + 60)
 }
 
 /** Map extension offset rollups to chart minute timestamps for game segment plotting. */
@@ -207,6 +265,40 @@ export function extendViewerSeriesToLeadingEdge(
   return out
 }
 
+/**
+ * Chart-only: carry the last Helix viewer sample forward across trailing empty minutes
+ * so the viewer line reaches Now (Helix often lags the latest chat rollups).
+ */
+export function extendViewerSeriesToTrailingEdge(
+  values: Array<number | null>,
+): Array<number | null> {
+  return extendSeriesToTrailingEdge(values)
+}
+
+/**
+ * Chart-only: carry the last positive sample forward across trailing null/zero gaps
+ * (viewers, chat trends, emote trends).
+ */
+export function extendSeriesToTrailingEdge(
+  values: Array<number | null>,
+): Array<number | null> {
+  let lastIndex = -1
+  let lastValue = 0
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i]
+    if (value != null && value > 0) {
+      lastIndex = i
+      lastValue = value
+    }
+  }
+  if (lastIndex < 0 || lastIndex >= values.length - 1) return values
+  const out = [...values]
+  for (let i = lastIndex + 1; i < out.length; i += 1) {
+    out[i] = lastValue
+  }
+  return out
+}
+
 export function indexFromChartClick(
   clientX: number,
   rectLeft: number,
@@ -227,6 +319,18 @@ export function plotXForIndex(
 ): number {
   if (pointCount <= 1) return padLeft
   return padLeft + (index / (pointCount - 1)) * plotWidth
+}
+
+/** Cap early-stream bar width so 1–2 minutes never become half-chart slabs. */
+export const OVERVIEW_CHART_MAX_BAR_WIDTH_PX = 14
+
+export function overviewBarWidth(
+  plotWidth: number,
+  pointCount: number,
+  maxBarPx = OVERVIEW_CHART_MAX_BAR_WIDTH_PX,
+): number {
+  const natural = Math.max(1, plotWidth / Math.max(pointCount, 1) - 0.5)
+  return Math.min(natural, maxBarPx)
 }
 
 export function plotY(
@@ -253,7 +357,8 @@ export function valueYInBand(
   min = 0,
 ): number | null {
   if (value == null || value <= 0 || max <= 0) return null
-  return plotY(value, max, chartHeight, bandTop, chartHeight - bandBottom, min)
+  const y = plotY(value, max, chartHeight, bandTop, chartHeight - bandBottom, min)
+  return Math.max(bandTop, Math.min(bandBottom, y))
 }
 
 export function linePath(
@@ -303,9 +408,11 @@ function collectBandLinePoints(
   const padBottom = height - bandBottom
   return values.map((value, index) => {
     if (value === null || value < 0) return null
+    const y = plotY(value, max, height, bandTop, padBottom, min)
     return {
       x: plotXForIndex(index, n, padLeft, plotWidth),
-      y: plotY(value, max, height, bandTop, padBottom, min),
+      // Robust axis max can sit below true peaks — keep geometry inside the lane.
+      y: Math.max(bandTop, Math.min(bandBottom, y)),
     }
   })
 }
@@ -317,16 +424,19 @@ function smoothLineSegment(
   linear = false,
 ): string {
   if (segment.length === 0) return ''
-  if (segment.length === 1) return `M ${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+  const clampY = (y: number) => Math.max(bandTop, Math.min(bandBottom, y))
+  if (segment.length === 1) {
+    return `M ${segment[0].x.toFixed(1)} ${clampY(segment[0].y).toFixed(1)}`
+  }
   if (segment.length === 2 || linear) {
-    let d = `M ${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+    let d = `M ${segment[0].x.toFixed(1)} ${clampY(segment[0].y).toFixed(1)}`
     for (let i = 1; i < segment.length; i += 1) {
-      d += ` L ${segment[i].x.toFixed(1)} ${segment[i].y.toFixed(1)}`
+      d += ` L ${segment[i].x.toFixed(1)} ${clampY(segment[i].y).toFixed(1)}`
     }
     return d
   }
 
-  let d = `M ${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+  let d = `M ${segment[0].x.toFixed(1)} ${clampY(segment[0].y).toFixed(1)}`
   const slopes: number[] = new Array(segment.length)
   for (let i = 0; i < segment.length; i += 1) {
     if (i === 0) {
@@ -347,10 +457,10 @@ function smoothLineSegment(
     const p2 = segment[i + 1]
     const dx = p2.x - p1.x
     const cp1x = p1.x + dx * 0.35
-    const cp1y = Math.max(bandTop, Math.min(bandBottom, p1.y + slopes[i] * dx * 0.35))
+    const cp1y = clampY(p1.y + slopes[i] * dx * 0.35)
     const cp2x = p2.x - dx * 0.35
-    const cp2y = Math.max(bandTop, Math.min(bandBottom, p2.y - slopes[i + 1] * dx * 0.35))
-    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+    const cp2y = clampY(p2.y - slopes[i + 1] * dx * 0.35)
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${clampY(p2.y).toFixed(1)}`
   }
   return d
 }
@@ -418,7 +528,27 @@ export function linePathInBand(
   bandBottom: number,
   min = 0,
 ): string {
-  return linePath(values, max, width, height, padLeft, padRight, bandTop, height - bandBottom, min)
+  const points = collectBandLinePoints(
+    values,
+    max,
+    width,
+    height,
+    padLeft,
+    padRight,
+    bandTop,
+    bandBottom,
+    min,
+  )
+  let d = ''
+  let started = false
+  for (const point of points) {
+    if (!point) continue
+    d += started
+      ? ` L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+      : `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+    started = true
+  }
+  return d
 }
 
 /** Moving-average smooth for thin sidebar trace lanes. */
@@ -453,12 +583,28 @@ export function easeInOutCubic(t: number): number {
 /**
  * Chart display: ramp from 0 at stream start to the first positive sample so
  * trend/area lines rise gradually instead of jumping or backfilling flat.
+ * When the first positive sample is already at index 0, ease from 0 over the
+ * first ~min(8, n-1) samples so the left edge does not cliff.
  */
 export function rampNullableSeriesFromStreamStart(
   values: Array<number | null>,
 ): Array<number | null> {
   const firstIndex = values.findIndex(value => value != null && value > 0)
-  if (firstIndex <= 0) return values
+  if (firstIndex < 0) return values
+
+  if (firstIndex === 0) {
+    const rampEnd = Math.min(8, values.length - 1)
+    if (rampEnd <= 0) return values
+    const out = [...values]
+    out[0] = 0
+    for (let i = 1; i <= rampEnd; i += 1) {
+      const sample = values[i]
+      const target = sample != null && sample > 0 ? sample : values[0]!
+      out[i] = target * easeInOutCubic(i / rampEnd)
+    }
+    return out
+  }
+
   const anchor = values[firstIndex]!
   const out = [...values]
   out[0] = 0
@@ -545,20 +691,23 @@ export function areaPathInBand(
 export function chartBarBucketOpacity(args: {
   index: number
   activeIndex: number | null
-  baseOpacity: number
-  highlightOpacity?: number
+  /** Locked pin index — enables past/future split; hover-only keeps equal dimming. */
+  pinIndex?: number | null
 }): number {
-  const { index, activeIndex, baseOpacity, highlightOpacity = baseOpacity } = args
-  const REST_SCALE = 0.42
-  const DIM_SCALE = 0.32
-  const HIGHLIGHT_CAP = 0.95
-  const HIGHLIGHT_BOOST = 1.12
+  const { index, activeIndex, pinIndex = null } = args
+  const REST = 0.30
+  const PINNED_PAST = 0.30
+  const PINNED_FUTURE = 0.10
+  const DIMMED = 0.16
+  const ACTIVE = 0.85
 
-  if (activeIndex == null) {
-    return baseOpacity * REST_SCALE
+  if (pinIndex != null) {
+    if (index === pinIndex) return ACTIVE
+    if (index > pinIndex) return PINNED_FUTURE
+    return PINNED_PAST
   }
-  if (index === activeIndex) {
-    return Math.min(highlightOpacity * HIGHLIGHT_BOOST, HIGHLIGHT_CAP)
-  }
-  return baseOpacity * DIM_SCALE
+
+  if (activeIndex == null) return REST
+  if (index === activeIndex) return ACTIVE
+  return DIMMED
 }
