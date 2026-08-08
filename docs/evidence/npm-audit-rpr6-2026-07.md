@@ -31,6 +31,16 @@ findings that resolve to the same advisory:
 5. **GitHub Dependabot:** alerts dismissed as `vulnerable_code_not_used` with
    this evidence (public security closeout).
 
+## Related fix (2026-08-08): `nanoid` pin (not dispositioned)
+
+`npm audit` also reported **high** [`GHSA-2v37-7h3g-55p8`](https://github.com/advisories/GHSA-2v37-7h3g-55p8)
+(`nanoid` custom generators can loop when size is zero; range `<3.3.17`).
+This is a transitive PostCSS/Vite build dependency. Patched releases exist on
+the 3.3 line (`3.3.17` / `3.3.18`), so both root and `streampulse-web` pin
+`nanoid` to **`3.3.18`** via `overrides` rather than adding a disposition
+exception. Re-run `npm audit` after lock refresh; do not list nanoid in
+`DISPOSITIONED_HIGHS` unless a future advisory lacks a trivial pin.
+
 ## Owner follow-up (optional, separate program)
 
 - Schedule a dedicated React Router major upgrade when product-ready, then

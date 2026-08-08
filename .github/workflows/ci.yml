@@ -341,10 +341,12 @@ jobs:
       - name: npm audit (portal) with high-severity disposition
         run: |
           set -euo pipefail
-          # Two high findings (react-router RSC CSRF GHSA-qwww-vcr4-c8h2) are
-          # dispositioned in docs/evidence/npm-audit-rpr6-2026-07.md — portal is
-          # a classic Vite SPA (no RSC). The gate rejects command errors,
-          # malformed reports, schema drift, and new highs/criticals.
+          # High findings dispositioned in docs/evidence/npm-audit-rpr6-2026-07.md
+          # (currently react-router RSC CSRF GHSA-qwww-vcr4-c8h2). Portal is a
+          # classic Vite SPA (no RSC). Transient transitive highs (e.g. nanoid)
+          # should be pinned/fixed in package overrides when a patch exists.
+          # The gate rejects command errors, malformed reports, schema drift,
+          # and new highs/criticals.
           audit_json="${RUNNER_TEMP}/portal-npm-audit.json"
           audit_stderr="${RUNNER_TEMP}/portal-npm-audit.stderr"
           set +e
