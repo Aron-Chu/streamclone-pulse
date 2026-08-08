@@ -47,7 +47,8 @@
     "@streampulse/pulse-charts": {
       "react": "$react",
       "react-dom": "$react-dom"
-    }
+    },
+    "nanoid": "3.3.18"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

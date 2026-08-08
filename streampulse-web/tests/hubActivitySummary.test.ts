@@ -150,6 +150,37 @@ describe('fillActivityPoints', () => {
     expect(filled[filled.length - 2]?.hasChatRollup).toBe(true)
     expect(filled[filled.length - 1]?.hasChatRollup).toBeUndefined()
     expect(filled[0]?.hasChatRollup).toBe(false)
+    expect(filled[0]?.gapKind).toBe('unmeasured')
+  })
+
+  it('preserves attested gap markers and does not treat them as measured zeros', () => {
+    const gapT = alignedEnd - bucketMs
+    const sparse: HubActivityPoint[] = [
+      {
+        t: gapT,
+        chat: 0,
+        seventv: 0,
+        viewers: 0,
+        hasChatRollup: false,
+        hasViewerRollup: false,
+        gapKind: 'attested',
+        bucketComplete: true,
+      },
+      {
+        t: alignedEnd,
+        chat: 200,
+        seventv: 20,
+        viewers: 55_000,
+        hasChatRollup: true,
+        hasViewerRollup: true,
+        bucketComplete: true,
+      },
+    ]
+    const filled = fillActivityPoints(sparse, 7 * 24 * 60)
+    const gap = filled.find((point) => point.t === gapT)
+    expect(gap?.gapKind).toBe('attested')
+    expect(gap?.hasChatRollup).toBe(false)
+    expect(gap?.chat).toBe(0)
   })
 })
 

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
+import {
+  isActivityGapMarker,
+  isAttestedActivityGap,
+} from '../../../lib/hubActivityHonesty'
 import { internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
 import { useSmoothedScalar } from '../../motion/useSmoothedScalar'
@@ -193,6 +197,7 @@ function windowLabel(minutes: number): string {
 }
 
 function activePoint(point: HubActivityPoint): boolean {
+  if (isActivityGapMarker(point)) return false
   return (
     point.hasChatRollup ||
     point.hasViewerRollup ||
@@ -201,6 +206,21 @@ function activePoint(point: HubActivityPoint): boolean {
     emoteCount(point) > 0 ||
     point.viewers > 0
   )
+}
+
+/** True when a bucket must break chart lines (attested / unmeasured gap markers). */
+function pointHasSeriesSample(point: HubActivityPoint, value: number): boolean {
+  if (isActivityGapMarker(point)) return false
+  return value > 0
+}
+
+function pointHasViewerSample(point: HubActivityPoint): boolean {
+  if (isActivityGapMarker(point)) return false
+  return Boolean(point.hasViewerRollup || point.viewers > 0)
+}
+
+function isChatGapBucket(point: HubActivityPoint): boolean {
+  return point.hasChatRollup === false || isActivityGapMarker(point)
 }
 
 function buildLine(pts: Pt[]): string {
@@ -376,18 +396,18 @@ export function HubActivityChart({
     const n = chartPoints.length
     const viewerMax = chartPoints.reduce((acc, p) => Math.max(acc, p.viewers), 0) || 1
     const measuredChatValue = (point: HubActivityPoint): number =>
-      point.hasChatRollup === false ? 0 : point.chat
+      isChatGapBucket(point) ? 0 : point.chat
     const chatMax = chartPoints.reduce((acc, p) => Math.max(acc, measuredChatValue(p)), 0) || 1
     const emoteMax =
       chartPoints.reduce(
         (acc, p) =>
           Math.max(
             acc,
-            p.seventv,
-            p.twitch ?? 0,
-            p.bttv ?? 0,
-            p.ffz ?? 0,
-            emoteCount(p),
+            isActivityGapMarker(p) ? 0 : p.seventv,
+            isActivityGapMarker(p) ? 0 : (p.twitch ?? 0),
+            isActivityGapMarker(p) ? 0 : (p.bttv ?? 0),
+            isActivityGapMarker(p) ? 0 : (p.ffz ?? 0),
+            isActivityGapMarker(p) ? 0 : emoteCount(p),
           ),
         0,
       ) || 1
@@ -400,16 +420,26 @@ export function HubActivityChart({
     const atViewerY = (value: number): number => PAD + (1 - value / viewerMax) * (100 - PAD)
     const atChatY = (value: number): number => PAD + (1 - value / chatMax) * (100 - PAD)
     const atEmoteY = (value: number): number => PAD + (1 - value / emoteMax) * (100 - PAD)
-    const viewers = chartPoints.map((p, i) => ({ x: xs[i], y: atViewerY(p.viewers) }))
+    const viewers = chartPoints.map((p, i) => ({
+      x: xs[i],
+      y: atViewerY(isActivityGapMarker(p) ? 0 : p.viewers),
+    }))
     const chat = chartPoints.map((p, i) => ({ x: xs[i], y: atChatY(measuredChatValue(p)) }))
-    const totalEmotes = chartPoints.map((p, i) => ({ x: xs[i], y: atEmoteY(emoteCount(p)) }))
+    const totalEmotes = chartPoints.map((p, i) => ({
+      x: xs[i],
+      y: atEmoteY(isActivityGapMarker(p) ? 0 : emoteCount(p)),
+    }))
     const providerLines = PROVIDER_KEYS.reduce(
       (acc, key) => {
         acc[key] = splitLinePaths(
-          chartPoints.map((p, i) => ({ x: xs[i], y: atEmoteY(providerValue(p, key)) })),
+          chartPoints.map((p, i) => ({
+            x: xs[i],
+            y: atEmoteY(isActivityGapMarker(p) ? 0 : providerValue(p, key)),
+          })),
           chartPoints,
           windowMinutes,
-          chartPoints.map((p) => providerValue(p, key)),
+          chartPoints.map((p) => (isActivityGapMarker(p) ? 0 : providerValue(p, key))),
+          chartPoints.map((p) => pointHasSeriesSample(p, providerValue(p, key))),
         )
         return acc
       },
@@ -418,14 +448,22 @@ export function HubActivityChart({
     const LANE_PAD = 4
     const providerLaneLines = PROVIDER_KEYS.reduce(
       (acc, key) => {
-        const maxVal = chartPoints.reduce((a, p) => Math.max(a, providerValue(p, key)), 0) || 1
+        const maxVal =
+          chartPoints.reduce(
+            (a, p) => Math.max(a, isActivityGapMarker(p) ? 0 : providerValue(p, key)),
+            0,
+          ) || 1
         const atLaneY = (value: number): number =>
           LANE_PAD + (1 - value / maxVal) * (100 - LANE_PAD * 2)
         acc[key] = splitLinePaths(
-          chartPoints.map((p, i) => ({ x: xs[i], y: atLaneY(providerValue(p, key)) })),
+          chartPoints.map((p, i) => ({
+            x: xs[i],
+            y: atLaneY(isActivityGapMarker(p) ? 0 : providerValue(p, key)),
+          })),
           chartPoints,
           windowMinutes,
-          chartPoints.map((p) => providerValue(p, key)),
+          chartPoints.map((p) => (isActivityGapMarker(p) ? 0 : providerValue(p, key))),
+          chartPoints.map((p) => pointHasSeriesSample(p, providerValue(p, key))),
         )
         return acc
       },
@@ -458,18 +496,25 @@ export function HubActivityChart({
       if (x + w > 100) w = 100 - x
       return { x, w, y: 100 - h, h, index: i }
     })
-    const chatGapBands: { left: number; width: number }[] = []
+    const chatGapBands: { left: number; width: number; attested: boolean }[] = []
     let chatGapStart = -1
+    let chatGapAttested = false
     const flushChatGap = (endIndex: number) => {
       if (chatGapStart < 0 || endIndex < chatGapStart) return
       const left = Math.max(0, (xs[chatGapStart] ?? 0) - slotWidth / 2)
       const right = Math.min(100, (xs[endIndex] ?? 100) + slotWidth / 2)
-      chatGapBands.push({ left, width: Math.max(0.5, right - left) })
+      chatGapBands.push({
+        left,
+        width: Math.max(0.5, right - left),
+        attested: chatGapAttested,
+      })
       chatGapStart = -1
+      chatGapAttested = false
     }
     for (let i = 0; i < chartPoints.length; i += 1) {
-      if (chartPoints[i].hasChatRollup === false) {
+      if (isChatGapBucket(chartPoints[i])) {
         if (chatGapStart < 0) chatGapStart = i
+        if (isAttestedActivityGap(chartPoints[i])) chatGapAttested = true
       } else {
         flushChatGap(i - 1)
       }
@@ -497,13 +542,14 @@ export function HubActivityChart({
         chartPoints,
         windowMinutes,
         undefined,
-        chartPoints.map((p) => p.hasViewerRollup || p.viewers > 0),
+        chartPoints.map((p) => pointHasViewerSample(p)),
       ),
       totalEmoteLines: splitLinePaths(
         totalEmotes,
         chartPoints,
         windowMinutes,
-        chartPoints.map((p) => emoteCount(p)),
+        chartPoints.map((p) => (isActivityGapMarker(p) ? 0 : emoteCount(p))),
+        chartPoints.map((p) => pointHasSeriesSample(p, emoteCount(p))),
       ),
       providerLines,
       providerLaneLines,
@@ -513,14 +559,22 @@ export function HubActivityChart({
       firstActiveX,
       sampleNote,
       internalGaps: internalGapCount(chartPoints, windowMinutes),
-      peakViewers: chartPoints.reduce((a, p) => Math.max(a, p.viewers), 0),
+      peakViewers: chartPoints.reduce(
+        (a, p) => Math.max(a, isActivityGapMarker(p) ? 0 : p.viewers),
+        0,
+      ),
       peakChat: chartPoints.reduce((a, p) => Math.max(a, measuredChatValue(p)), 0),
-      peakEmotes: chartPoints.reduce((a, p) => Math.max(a, emoteCount(p)), 0),
+      peakEmotes: chartPoints.reduce(
+        (a, p) => Math.max(a, isActivityGapMarker(p) ? 0 : emoteCount(p)),
+        0,
+      ),
       emoteMax,
       peakViewerAt: (() => {
         let idx = 0
         for (let i = 0; i < chartPoints.length; i += 1) {
-          if (chartPoints[i].viewers >= chartPoints[idx].viewers) idx = i
+          const viewersAt = isActivityGapMarker(chartPoints[i]) ? 0 : chartPoints[i].viewers
+          const best = isActivityGapMarker(chartPoints[idx]) ? 0 : chartPoints[idx].viewers
+          if (viewersAt >= best) idx = i
         }
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
@@ -1098,13 +1152,15 @@ export function HubActivityChart({
               {chatGapBands.map((band, i) => (
                 <span
                   key={`chat-gap-band-${i}`}
-                  className="gap-fill gap-fill--internal gap-fill--chat-rollup"
+                  className={`gap-fill gap-fill--internal gap-fill--chat-rollup${band.attested ? ' gap-fill--attested' : ''}`}
                   style={{ left: `${band.left}%`, width: `${band.width}%` }}
                 />
               ))}
               {chatGapBands.length > 0 && internalGaps === 0 ? (
                 <span className="gap-note" style={{ left: '18%' }}>
-                  No IRC chat rollups in this stretch
+                  {chatGapBands.some((band) => band.attested)
+                    ? 'Attested historical gap — not measured'
+                    : 'No IRC chat rollups in this stretch'}
                 </span>
               ) : null}
             </>
@@ -1142,7 +1198,9 @@ export function HubActivityChart({
                   </div>
                   <div className="row">
                     <span className="sw sw--bar sw--chat" />
-                    {hp.hasChatRollup === false ? (
+                    {isAttestedActivityGap(hp) ? (
+                      <>Tracked IRC chat&nbsp;<b>attested gap</b></>
+                    ) : hp.hasChatRollup === false || isActivityGapMarker(hp) ? (
                       <>Tracked IRC chat&nbsp;<b>no rollups</b></>
                     ) : hp.hasChatRollup === undefined ? (
                       <>Tracked IRC chat&nbsp;<b>legacy status unknown</b></>
