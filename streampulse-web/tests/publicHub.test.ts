@@ -48,6 +48,36 @@ describe('normalizePublicHub', () => {
     ])
   })
 
+  it('preserves measured/accounted window honesty fields and attested gapKind', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 1440,
+        channelCount: 1,
+        measuredWindowMinutes: 1439,
+        accountedWindowMinutes: 1440,
+        registeredGapCount: 1,
+        availableWindowMinutes: 1440,
+        source: 'historical_projection',
+        state: 'healthy',
+        points: [
+          {
+            t: 1,
+            chat: 0,
+            seventv: 0,
+            viewers: 0,
+            hasChatRollup: false,
+            gapKind: 'attested',
+          },
+        ],
+      },
+    })
+
+    expect(hub.activity.measuredWindowMinutes).toBe(1439)
+    expect(hub.activity.accountedWindowMinutes).toBe(1440)
+    expect(hub.activity.registeredGapCount).toBe(1)
+    expect(hub.activity.points[0]?.gapKind).toBe('attested')
+  })
+
   it('keeps total emotes at least as high as 7TV activity', () => {
     const hub = normalizePublicHub({
       activity: {

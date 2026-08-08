@@ -10,7 +10,10 @@ import { livePoolViewerSum } from './hubMetricHelpers'
 /** Chart-only slice — excludes trust-line / refresh / poll metadata. */
 export interface HubChartActivityInputs {
   points: HubActivityPoint[]
-  /** Served chart window (available when degraded; else requested). */
+  /**
+   * Served chart window: available when degraded; accounted/requested when a
+   * healthy historical projection (including attested-gap accounted spans).
+   */
   windowMinutes: number
   livePoolViewerSum: number
 }
@@ -27,7 +30,9 @@ export function selectHubChartActivityInputs(hub: PublicHub): HubChartActivityIn
   return {
     points: hub.activity.points,
     // Degraded live-pool fallback charts against availableWindowMinutes so
-    // fillActivityPoints does not invent empty historical buckets.
+    // fillActivityPoints does not invent empty historical buckets. Healthy
+    // accounted windows (measured + attested gaps) chart the full served span
+    // so gap markers remain visible breaks — never interpolated measured zeros.
     windowMinutes: resolveHubActivityChartWindowMinutes(hub.activity),
     livePoolViewerSum: livePoolViewerSum(hub),
   }

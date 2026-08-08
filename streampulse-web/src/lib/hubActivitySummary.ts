@@ -1,5 +1,12 @@
 import type { HubActivityPoint } from './publicHub'
 
+/** Client chart-grid placeholder — keep in sync with hubActivityHonesty. */
+const GAP_KIND_UNMEASURED = 'unmeasured'
+
+function isGapMarker(point: Pick<HubActivityPoint, 'gapKind'>): boolean {
+  return point.gapKind === 'attested' || point.gapKind === GAP_KIND_UNMEASURED
+}
+
 /** All-provider emote uses for a hub activity bucket (7TV + Twitch + BTTV + FFZ). */
 export function hubActivityEmoteCount(point: HubActivityPoint): number {
   return Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
@@ -58,6 +65,9 @@ export function applyLivePoolViewerFloor(
   if (last.viewers >= threshold) {
     return points
   }
+  if (isGapMarker(last)) {
+    return points
+  }
   if (!(last.hasChatRollup || last.chat > 0 || (last.emotes ?? 0) > 0)) {
     return points
   }
@@ -96,13 +106,34 @@ export function chartActivityPoints(
   return normalizeActivityPointsForChart(trimmed, windowMinutes)
 }
 
-/** Merge a sparse hub activity series onto an evenly spaced bucket grid for charting. */
+/** Client-only chart-grid placeholder — never treated as measured data. */
+function unmeasuredGridPlaceholder(t: number): HubActivityPoint {
+  return {
+    t,
+    chat: 0,
+    seventv: 0,
+    viewers: 0,
+    hasChatRollup: false,
+    hasViewerRollup: false,
+    gapKind: GAP_KIND_UNMEASURED,
+  }
+}
+
+/**
+ * Merge a sparse hub activity series onto an evenly spaced bucket grid for charting.
+ * Missing buckets become unmeasured placeholders (not measured zeros). Backend
+ * attested gap markers (`gapKind: 'attested'`) are preserved and never rewritten
+ * as measured samples.
+ */
 export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: number): HubActivityPoint[] {
   if (points.length === 0) return []
   const bucketMs = activityBucketMs(windowMinutes)
   const lastT = points[points.length - 1]?.t ?? Date.now()
   const alignedEnd = activityBucketKey(lastT, windowMinutes)
-  const bucketCount = Math.min(HUB_ACTIVITY_MAX_POINTS, Math.max(2, Math.ceil(windowMinutes / bucketMinutes(windowMinutes))))
+  const bucketCount = Math.min(
+    HUB_ACTIVITY_MAX_POINTS,
+    Math.max(2, Math.ceil(windowMinutes / bucketMinutes(windowMinutes))),
+  )
   const alignedStart = alignedEnd - (bucketCount - 1) * bucketMs
 
   const byBucket = new Map<number, HubActivityPoint>()
@@ -116,6 +147,10 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
         // omit these fields and must not be rewritten as explicit gap markers.
         hasChatRollup: point.hasChatRollup,
         hasViewerRollup: point.hasViewerRollup,
+        gapKind:
+          typeof point.gapKind === 'string' && point.gapKind.trim().length > 0
+            ? point.gapKind.trim()
+            : undefined,
       })
     }
   }
@@ -123,16 +158,7 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
   const filled: HubActivityPoint[] = []
   for (let i = 0; i < bucketCount; i += 1) {
     const t = alignedStart + i * bucketMs
-    filled.push(
-      byBucket.get(t) ?? {
-        t,
-        chat: 0,
-        seventv: 0,
-        viewers: 0,
-        hasChatRollup: false,
-        hasViewerRollup: false,
-      },
-    )
+    filled.push(byBucket.get(t) ?? unmeasuredGridPlaceholder(t))
   }
   return filled
 }
@@ -141,6 +167,10 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
 export function activityPointRates(point: HubActivityPoint, windowMinutes: number): HubActivityPoint {
   const bucketMin = bucketMinutes(windowMinutes)
   if (bucketMin <= 1) return point
+  if (isGapMarker(point) || point.hasChatRollup === false) {
+    // Gap markers stay at zero rates — never scale invented totals into "measured".
+    return point
+  }
   const scale = 1 / bucketMin
   return {
     ...point,
@@ -165,28 +195,29 @@ export function normalizeActivityPointsForChart(
 /** Peak concurrent global viewers — same series as HubActivityChart tooltips. */
 export function peakActivityViewers(points: HubActivityPoint[], windowMinutes: number): number {
   return chartActivityPoints(points, windowMinutes).reduce(
-    (max, point) => Math.max(max, point.viewers),
+    (max, point) => Math.max(max, isGapMarker(point) ? 0 : point.viewers),
     0,
   )
 }
 
 /** Peak tracked IRC chat/min after coarse-bucket normalization — matches chart tooltip chat. */
 export function peakActivityChatPerMin(points: HubActivityPoint[], windowMinutes: number): number {
-  return chartActivityPoints(points, windowMinutes).reduce(
-    (max, point) => Math.max(max, point.chat),
-    0,
-  )
+  return chartActivityPoints(points, windowMinutes).reduce((max, point) => {
+    if (point.hasChatRollup === false || isGapMarker(point)) return max
+    return Math.max(max, point.chat)
+  }, 0)
 }
 
 /** Peak network emotes/min after coarse-bucket normalization — matches chart tooltip emotes. */
 export function peakActivityEmotesPerMin(points: HubActivityPoint[], windowMinutes: number): number {
-  return chartActivityPoints(points, windowMinutes).reduce(
-    (max, point) => Math.max(max, hubActivityEmoteCount(point)),
-    0,
-  )
+  return chartActivityPoints(points, windowMinutes).reduce((max, point) => {
+    if (isGapMarker(point)) return max
+    return Math.max(max, hubActivityEmoteCount(point))
+  }, 0)
 }
 
 function chartPointHasSignal(point: HubActivityPoint): boolean {
+  if (isGapMarker(point) || point.hasChatRollup === false) return false
   return (
     point.chat > 0 ||
     point.seventv > 0 ||
@@ -227,6 +258,7 @@ export function internalGapCount(points: Pick<HubActivityPoint, 't'>[], windowMi
 }
 
 function activePoint(point: HubActivityPoint): boolean {
+  if (isGapMarker(point)) return false
   return point.chat > 0 || point.seventv > 0 || Math.max(point.emotes ?? 0, point.seventv ?? 0) > 0
 }
 

@@ -239,6 +239,9 @@ export interface HubBucketEmote {
   count: number
 }
 
+/** How a non-measured hub activity bucket was accounted for. */
+export type HubActivityGapKind = 'attested' | 'unmeasured' | string
+
 export interface HubActivityPoint {
   t: number
   chat: number
@@ -256,6 +259,12 @@ export interface HubActivityPoint {
    */
   hasChatRollup?: boolean
   hasViewerRollup?: boolean
+  /**
+   * Gap provenance when the bucket is not measured data:
+   * - `attested` = backend registered known-gap (never invent zeros as measured)
+   * - `unmeasured` = client chart-grid placeholder (not measured; not attested)
+   */
+  gapKind?: HubActivityGapKind
   /** False when the bucket period has not ended yet (open/in-progress). */
   bucketComplete?: boolean
   /** Highest-count emotes for the bucket (top 10 for inspector; chart tooltip slices to 3). */
@@ -275,11 +284,20 @@ export interface HubActivity {
    * `source=live_pool_fallback,reason=historical_projection_unavailable`.
    * availableWindowMinutes is the actual served span when it differs from the
    * request. Do not treat windowMinutes alone as proof of complete history.
+   *
+   * Known-gap registry (when present):
+   * - measuredWindowMinutes = actual data buckets only
+   * - accountedWindowMinutes = measured + attested registered gaps
+   * - registeredGapCount = attested gaps inside the served window
+   * Never treat measured == full request as true when registered gaps exist.
    */
   state?: 'healthy' | 'ok' | 'degraded' | 'empty' | string
   source?: 'historical_projection' | 'live_pool_fallback' | string
   reason?: 'historical_projection_unavailable' | string
   availableWindowMinutes?: number
+  measuredWindowMinutes?: number
+  accountedWindowMinutes?: number
+  registeredGapCount?: number
 }
 
 export interface HubEmoteIntel {
@@ -875,12 +893,10 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       state: raw?.activity?.state,
       source: raw?.activity?.source,
       reason: raw?.activity?.reason,
-      availableWindowMinutes:
-        typeof raw?.activity?.availableWindowMinutes === 'number' &&
-        Number.isFinite(raw.activity.availableWindowMinutes) &&
-        raw.activity.availableWindowMinutes > 0
-          ? Math.floor(raw.activity.availableWindowMinutes)
-          : undefined,
+      availableWindowMinutes: normalizePositiveInt(raw?.activity?.availableWindowMinutes),
+      measuredWindowMinutes: normalizePositiveInt(raw?.activity?.measuredWindowMinutes),
+      accountedWindowMinutes: normalizePositiveInt(raw?.activity?.accountedWindowMinutes),
+      registeredGapCount: normalizeNonNegativeInt(raw?.activity?.registeredGapCount),
     },
     emoteIntel: {
       emotesPerMin: raw?.emoteIntel?.emotesPerMin ?? 0,
@@ -967,6 +983,18 @@ function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined):
   }
 }
 
+function normalizePositiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined
+}
+
+function normalizeNonNegativeInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined
+}
+
 function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubActivityPoint[] {
   if (!points) return []
   return points.map((point) => ({
@@ -977,6 +1005,10 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
     ffz: point.ffz ?? 0,
     hasChatRollup: point.hasChatRollup,
     hasViewerRollup: point.hasViewerRollup,
+    gapKind:
+      typeof point.gapKind === 'string' && point.gapKind.trim().length > 0
+        ? point.gapKind.trim()
+        : undefined,
     bucketComplete: point.bucketComplete,
     topEmotes: Array.isArray(point.topEmotes)
       ? point.topEmotes
