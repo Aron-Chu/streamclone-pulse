@@ -21,13 +21,13 @@ describe('resolveVodLinkState', () => {
   it('links when vod id is on stream detail', () => {
     const state = resolveVodLinkState({
       detail: {
-        vodId: '123',
-        stream: { vodId: '123', endedAt: null },
+        vodId: '2840778701',
+        stream: { vodId: '2840778701', endedAt: null },
       },
     })
     expect(state.status).toBe('linked')
-    expect(state.vodId).toBe('123')
-    expect(buildTwitchVodUrl(state.vodId!, 125)).toContain('123')
+    expect(state.vodId).toBe('2840778701')
+    expect(buildTwitchVodUrl(state.vodId!, 125)).toContain('2840778701')
     expect(buildTwitchVodUrl(state.vodId!, 125)).toContain('t=2m5s')
   })
 

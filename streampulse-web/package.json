@@ -30,7 +30,7 @@
     "test:e2e:analytics-local": "node scripts/run-analytics-local-e2e.mjs",
     "test:e2e:hosted": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
     "capture:analytics": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
-    "preview": "vite preview",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "check:analytics-routes-spa": "node scripts/check-analytics-routes-spa.mjs",
     "check:analytics-links": "node scripts/check-analytics-links.mjs",
     "check:analytics-tailwind": "node scripts/check-analytics-tailwind.mjs",

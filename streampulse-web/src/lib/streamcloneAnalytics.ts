@@ -270,6 +270,29 @@ function analyticsPath(path: string): string {
   return `/v1/analytics${path.startsWith('/') ? path : `/${path}`}`
 }
 
+/**
+ * Twitch publishes the archive VOD while the broadcast is still running, but the
+ * portal streams record only carries vodId once the stream closes. Stream history
+ * exposes it during the broadcast, which is how the extension links a live VOD.
+ */
+async function liveArchiveVodIdsByStreamId(login: string, period?: string): Promise<Map<string, string>> {
+  const suffix = period ? `?period=${encodeURIComponent(period)}` : ''
+  try {
+    const { data } = await apiClient<{
+      items?: Array<{ id?: string; streamId?: string; videoId?: string }>
+    }>(`/v1/channels/${encodeURIComponent(login)}/streams/history${suffix}`)
+    const byStreamId = new Map<string, string>()
+    for (const item of data.items ?? []) {
+      const streamId = String(item.streamId ?? item.id ?? '').trim()
+      const videoId = String(item.videoId ?? '').trim()
+      if (streamId && videoId) byStreamId.set(streamId, videoId)
+    }
+    return byStreamId
+  } catch {
+    return new Map()
+  }
+}
+
 function portalEmoteLookupKey(emote: { name: string; provider?: string }): string {
   const name = emote.name.trim().toLowerCase()
   if (!name) return ''
@@ -929,11 +952,14 @@ export const portalAnalyticsApi: AnalyticsApi = {
       )
     }
     const limit = period === 'all' ? 100 : 50
-    const { data } = await apiClient<{
-      channel: string
-      items: PortalStreamRecord[]
-      updatedAt: number
-    }>(portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${limit}`))
+    const [{ data }, archiveVodIds] = await Promise.all([
+      apiClient<{
+        channel: string
+        items: PortalStreamRecord[]
+        updatedAt: number
+      }>(portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${limit}`)),
+      liveArchiveVodIdsByStreamId(login, period),
+    ])
     return {
       channel: data.channel,
       items: (data.items ?? []).map((item) => ({
@@ -947,7 +973,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
         peakViewers: item.peakViewers,
         viewerSamples: item.viewerSamples,
         chatMessages: item.chatMessages,
-        vodId: item.vodId,
+        vodId: item.vodId?.trim() || archiveVodIds.get(item.streamId),
       })),
       updatedAt: data.updatedAt,
     }

@@ -5,7 +5,10 @@ export type OverlayPlacement = 'bottom' | 'right' | 'sidebar' | 'hidden'
 export type SidebarTab = 'chat' | 'pulse'
 export type AutoTrackPolicy = 'off' | 'followed' | 'ask'
 export type ThemePreference = 'aurora' | 'volt' | 'azure'
+export type ReduceMotionPreference = 'system' | 'on' | 'off'
 export type DefaultChartWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
+
+export const REDUCE_MOTION_PREFERENCE_KEY = 'reduceMotionPreference'
 
 export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
 export const DEFAULT_POLL_INTERVAL_MS = 30_000
@@ -13,6 +16,7 @@ export const DEFAULT_AUTO_UPDATE_ENABLED = true
 export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
+export const DEFAULT_REDUCE_MOTION_PREFERENCE: ReduceMotionPreference = 'system'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 
 export function isLocalStackBackendUrl(url: string): boolean {
@@ -74,4 +78,38 @@ export async function getAutoUpdateEnabled(): Promise<boolean> {
 
 export async function getThemePreference(): Promise<ThemePreference> {
   return 'aurora'
+}
+
+function normalizeReduceMotionPreference(value: unknown): ReduceMotionPreference {
+  return value === 'system' || value === 'on' || value === 'off'
+    ? value
+    : DEFAULT_REDUCE_MOTION_PREFERENCE
+}
+
+export function resolveReduceMotionPreference(stored: unknown): ReduceMotionPreference {
+  return normalizeReduceMotionPreference(stored)
+}
+
+/** Effective motion-off flag from stored preference + OS media query. */
+export function resolveReducedMotionEnabled(
+  preference: ReduceMotionPreference,
+  systemPrefersReduce: boolean,
+): boolean {
+  if (preference === 'on') return true
+  if (preference === 'off') return false
+  return systemPrefersReduce
+}
+
+/** Portal shim — no chrome.storage; always use the default preference. */
+export async function getReduceMotionPreference(): Promise<ReduceMotionPreference> {
+  return DEFAULT_REDUCE_MOTION_PREFERENCE
+}
+
+/** Portal shim — no chrome.storage; chart zoom hint stays dismissed. */
+export async function getChartZoomHintDismissed(): Promise<boolean> {
+  return true
+}
+
+export async function setChartZoomHintDismissed(_dismissed = true): Promise<void> {
+  /* no-op */
 }

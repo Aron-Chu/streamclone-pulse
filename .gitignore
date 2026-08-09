@@ -3,6 +3,9 @@ dist/
 *.zip
 .DS_Store
 
+# Scratch space (prod page mirrors, probe output) — never a source of truth
+.tmp/
+
 # Local env overrides (keep .env.*.example tracked)
 .env.local
 .env
@@ -21,3 +24,6 @@ _split_overlay.*
 # Windows reserved device name accidentally created by shell redirects
 nul
 
+
+# Local Claude session artifacts (this checkout only — keep out of repo)
+.claude/

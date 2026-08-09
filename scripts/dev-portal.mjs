@@ -4,15 +4,18 @@
  * Vite HMR handles src/ edits; this wrapper restarts the process for .env* and vite.config.ts.
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { watch } from 'node:fs'
 import { existsSync, rmSync } from 'node:fs'
+import net from 'node:net'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../streampulse-web')
 const viteBin = resolve(webRoot, 'node_modules/vite/bin/vite.js')
 const watchConfig = !process.argv.includes('--no-watch-config')
+const PORTAL_HOST = '127.0.0.1'
+const PORTAL_PORT = 5174
 const packageCohortFiles = [
   '../config/local-package-overrides.json',
   '../package.json',
@@ -27,7 +30,71 @@ const viteArgs = process.argv
 if (viteArgs.length === 0) {
   // Reserve 5174 for the portal UI. A collision must fail loudly instead of
   // silently moving this checkout to another port and showing the wrong build.
-  viteArgs.push('--host', '127.0.0.1', '--port', '5174', '--strictPort')
+  viteArgs.push('--host', PORTAL_HOST, '--port', String(PORTAL_PORT), '--strictPort')
+}
+
+const WILDCARD_HOSTS = new Set(['::', '0.0.0.0', 'true', ''])
+
+/**
+ * A wildcard bind and a loopback bind can hold the same port at once, and
+ * loopback wins for 127.0.0.1 traffic. Allowing `--host ::` therefore lets a
+ * different checkout silently serve the page while this server looks healthy.
+ */
+function assertLoopbackHost() {
+  const hostIndex = viteArgs.indexOf('--host')
+  if (hostIndex === -1) return
+  const value = (viteArgs[hostIndex + 1] ?? '').trim()
+  const wildcard = WILDCARD_HOSTS.has(value) || value.startsWith('--')
+  if (!wildcard && value !== PORTAL_HOST && value !== 'localhost') {
+    console.error(`[dev-portal] refusing --host ${value}: the portal dev server must bind ${PORTAL_HOST}.`)
+    process.exit(1)
+  }
+  if (wildcard) {
+    console.error('[dev-portal] refusing a wildcard --host (:: / 0.0.0.0).')
+    console.error('[dev-portal] A wildcard bind does not own 127.0.0.1:5174 — another checkout can')
+    console.error('[dev-portal] answer the browser while this process reports success. Drop the flag.')
+    process.exit(1)
+  }
+}
+
+function describePortOwner(port) {
+  if (process.platform !== 'win32') {
+    const res = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
+    return res.stdout?.trim() || 'unknown process'
+  }
+  const script = `Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue |` +
+    ' ForEach-Object { $p = Get-CimInstance Win32_Process -Filter "ProcessId=$($_.OwningProcess)"' +
+    ' -ErrorAction SilentlyContinue; "  $($_.LocalAddress):$($_.LocalPort) pid=$($_.OwningProcess) $($p.CommandLine)" }'
+  const res = spawnSync('powershell', ['-NoProfile', '-Command', script], { encoding: 'utf8' })
+  return res.stdout?.trim() || 'unknown process'
+}
+
+function requestedPort() {
+  const index = viteArgs.indexOf('--port')
+  if (index === -1) return PORTAL_PORT
+  const value = Number.parseInt(viteArgs[index + 1] ?? '', 10)
+  return Number.isFinite(value) && value > 0 ? value : PORTAL_PORT
+}
+
+/** Fail with the squatter's identity instead of Vite's bare "port in use". */
+function assertPortFree() {
+  const port = requestedPort()
+  return new Promise((done) => {
+    const probe = net.connect({ host: PORTAL_HOST, port })
+    const finish = (inUse) => {
+      probe.destroy()
+      if (!inUse) return done()
+      console.error(`[dev-portal] ${PORTAL_HOST}:${port} is already serving. Owner:`)
+      console.error(describePortOwner(port))
+      console.error('[dev-portal] Stop that process (often a stale `vite preview` or another worktree)')
+      console.error('[dev-portal] before starting dev, or you will review someone else\'s build.')
+      process.exit(1)
+    }
+    probe.setTimeout(1000)
+    probe.once('connect', () => finish(true))
+    probe.once('timeout', () => finish(false))
+    probe.once('error', () => finish(false))
+  })
 }
 
 /** @type {import('node:child_process').ChildProcess | null} */
@@ -133,6 +200,8 @@ function watchFile(relativePath) {
   console.log(`[dev-portal] watching ${relativePath}`)
 }
 
+assertLoopbackHost()
+await assertPortFree()
 startVite()
 
 if (watchConfig) {
