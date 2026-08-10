@@ -17,6 +17,9 @@ describe('commandCenterLabels', () => {
     expect(sidebarLabelFor('section-pulse-moments', COMMAND_CENTER_LABELS, 'fallback')).toBe(
       'Pulse Moments',
     )
+    expect(sidebarLabelFor('section-network', COMMAND_CENTER_LABELS, 'fallback')).toBe(
+      'Global activity',
+    )
     expect(sidebarLabelFor('unknown', COMMAND_CENTER_LABELS, 'fallback')).toBe('fallback')
   })
 })

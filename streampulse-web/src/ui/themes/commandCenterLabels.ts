@@ -4,6 +4,7 @@ export interface CommandCenterLabels {
   hubLede: string
   overview: string
   liveRail: string
+  /** Chart / global activity section — not the lifecycle Live Activity panel. */
   liveActivity: string
   pulseMoments: string
   emoteSignal: string
@@ -22,7 +23,7 @@ export const COMMAND_CENTER_LABELS: CommandCenterLabels = {
     'Live IRC pool status, current viewer totals, and network peaks from tracked channels — not all of Twitch.',
   overview: 'Overview',
   liveRail: 'Hottest live',
-  liveActivity: 'Live Activity',
+  liveActivity: 'Global activity',
   pulseMoments: 'Pulse Moments',
   emoteSignal: 'Emote Market',
   trackedChannels: 'Channel Screener',

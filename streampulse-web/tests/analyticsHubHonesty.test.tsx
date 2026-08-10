@@ -29,17 +29,17 @@ const quietActivity: ActivitySummary = {
 }
 
 describe('hub empty / honesty (ported from excluded landing tests)', () => {
-  it('keeps command-center section labels and Live Activity before Pulse Moments', () => {
+  it('keeps command-center section labels and Global activity before Pulse Moments', () => {
     expect(COMMAND_CENTER_LABELS.hubTitle).toBe('Command center')
     expect(COMMAND_CENTER_LABELS.hubEyebrow).toBe('Stream intelligence')
-    expect(COMMAND_CENTER_LABELS.liveActivity).toBe('Live Activity')
+    expect(COMMAND_CENTER_LABELS.liveActivity).toBe('Global activity')
     expect(COMMAND_CENTER_LABELS.pulseMoments).toBe('Pulse Moments')
     expect(COMMAND_CENTER_LABELS.pulseMoments).not.toMatch(/Moments feed/i)
 
     render(<AnalyticsHubSidebar />)
     const buttons = screen.getAllByRole('button')
     const labels = buttons.map((el) => el.textContent ?? '')
-    const liveIdx = labels.findIndex((t) => /Live Activity/i.test(t))
+    const liveIdx = labels.findIndex((t) => /Global activity/i.test(t))
     const pulseIdx = labels.findIndex((t) => /Pulse Moments/i.test(t))
     expect(liveIdx).toBeGreaterThanOrEqual(0)
     expect(pulseIdx).toBeGreaterThan(liveIdx)

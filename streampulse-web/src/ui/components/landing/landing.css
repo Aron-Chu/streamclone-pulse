@@ -717,6 +717,12 @@
   text-decoration: none;
   font-size: 0.86rem;
   font-weight: 600;
+  transition: color 0.15s ease;
+}
+
+.sl-foot__links a:hover,
+.sl-foot__links a:focus-visible {
+  color: hsl(var(--sc-foreground));
 }
 
 .sl-foot small {

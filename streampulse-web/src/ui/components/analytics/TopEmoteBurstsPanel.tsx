@@ -2,9 +2,7 @@ import type { FigmaEmoteBurst } from '../../../lib/figmaSessionAnalytics'
 import type { HubEmote } from '../../../lib/publicHub'
 import { withComputedBurstShare } from '../../../lib/emoteShare'
 import { resolveBurstEmote } from '../../../lib/pulseMomentsUtils'
-import { compact, providerLabel } from './hubFormat'
-import { EmoteImg } from './EmoteImg'
-import { SharePctDisplay } from './SharePctDisplay'
+import { EmoteRankRow, emoteRankRowProps } from './EmoteRankRow'
 
 export interface TopEmoteBurstsPanelProps {
   bursts: FigmaEmoteBurst[]
@@ -35,14 +33,15 @@ export function TopEmoteBurstsPanel({
   const plotEnabled = Boolean(onSelectBurst)
   const ranked = withComputedBurstShare(bursts).slice(0, maxRows ?? bursts.length)
   const maxCount = Math.max(...ranked.map((b) => b.count), 1)
+  const title = isLive ? 'Selected minute emotes' : 'Top emote bursts'
 
   return (
     <section
       className={`figma-panel figma-panel--bursts${isLive ? ' pulse-moments__bursts figma-panel--scope-minute' : ''}${className ? ` ${className}` : ''}`}
-      aria-label="Top emote bursts"
+      aria-label={title}
     >
       <header>
-        <h3>{isLive ? 'Selected minute emotes' : 'Top emote bursts'}</h3>
+        <h3>{title}</h3>
         {isLive && ranked.length > 0 ? (
           <p className="pulse-moments__bursts-subtitle">Emote breakdown (by share)</p>
         ) : null}
@@ -59,42 +58,36 @@ export function TopEmoteBurstsPanel({
       ) : (
         <div className={isLive ? 'pulse-moments__burst-table-wrap' : undefined}>
           {isLive ? (
-            <div className="pulse-moments__burst-table-head" aria-hidden="true">
+            <div
+              className="pulse-moments__burst-table-head emote-rank-row"
+              data-rank="true"
+              aria-hidden="true"
+            >
               <span>#</span>
               <span>Emote</span>
-              <span>Share</span>
               <span>Count</span>
-              <span>%</span>
+              <span>Share</span>
             </div>
           ) : null}
-          <ul className={`figma-burst-list${isLive ? ' pulse-moments__burst-list' : ''}${plotEnabled ? ' figma-burst-list--plot' : ''} pulse-moments__bursts-body`}>
+          <ul className={`emote-rank-list pulse-moments__bursts-body${isLive ? ' pulse-moments__burst-list' : ''}${plotEnabled ? ' emote-rank-list--plot' : ''}`}>
             {ranked.map((burst, index) => {
               const emote = resolveBurstEmote(burst, emoteLookup ?? new Map())
-              const width = Math.max(8, Math.round((burst.count / maxCount) * 100))
               const active = selectedCode === burst.code
               const canPlot = plotEnabled && Number.isFinite(burst.peakOffsetSeconds)
               const rowKey = `${burst.code}-${burst.peakOffset ?? burst.count}-${index}`
               const content = (
-                <>
-                  <span className="pulse-moments__burst-rank">{index + 1}</span>
-                  <span className="pulse-moments__burst-emote">
-                    <EmoteImg src={emote.imageUrl} name={emote.name} fallbackClassName="pulse-moments__burst-emote-fallback" />
-                    <span title={emote.name}>{emote.name}</span>
-                    {emote.provider && !isLive ? <small>{providerLabel(emote.provider)}</small> : null}
-                  </span>
-                  {isLive ? (
-                    <span className="pulse-moments__burst-bar" aria-hidden="true">
-                      <span style={{ width: `${width}%` }} />
-                    </span>
-                  ) : null}
-                  <span className="pulse-moments__burst-count">{compact(burst.count)}</span>
-                  <SharePctDisplay
-                    sharePct={burst.sharePct}
-                    shareEstimated={burst.shareEstimated}
-                    className="pulse-moments__burst-share"
-                  />
-                  {!isLive && burst.peakOffset ? <small>@ {burst.peakOffset}</small> : null}
-                </>
+                <EmoteRankRow
+                  rank={index + 1}
+                  name={emote.name}
+                  imageUrl={emote.imageUrl}
+                  provider={emote.provider}
+                  showProvider={false}
+                  count={burst.count}
+                  sharePct={burst.sharePct}
+                  shareEstimated={burst.shareEstimated}
+                  barPct={(burst.count / maxCount) * 100}
+                  suffix={!isLive && burst.peakOffset ? <small>@ {burst.peakOffset}</small> : null}
+                />
               )
 
               if (plotEnabled) {
@@ -102,7 +95,8 @@ export function TopEmoteBurstsPanel({
                   <li key={rowKey}>
                     <button
                       type="button"
-                      className={`figma-burst-list__plot-btn${active ? ' is-active' : ''}${!canPlot ? ' is-disabled' : ''}`}
+                      data-rank="true"
+                      className={`emote-rank-row emote-rank-row--plot${active ? ' is-active' : ''}${!canPlot ? ' is-disabled' : ''}`}
                       aria-pressed={active}
                       disabled={!canPlot}
                       title={canPlot ? `Plot ${burst.code} on chart` : plotDisabledHint}
@@ -114,7 +108,11 @@ export function TopEmoteBurstsPanel({
                 )
               }
 
-              return <li key={rowKey}>{content}</li>
+              return (
+                <li key={rowKey} {...emoteRankRowProps({ rank: true })}>
+                  {content}
+                </li>
+              )
             })}
           </ul>
         </div>

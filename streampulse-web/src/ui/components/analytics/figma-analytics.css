@@ -1805,6 +1805,204 @@
   flex: 0 0 auto;
 }
 
+/* Shared emote leaderboard row — used by the bucket inspector, the emote
+   economy rail, and the selected-minute burst list so all three read alike. */
+.emote-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.emote-rank-list--plot > li {
+  display: block;
+}
+
+.emote-rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3rem 2.9rem;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.34rem 0.5rem;
+  border-radius: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fma-border) 55%, transparent);
+  transition: background 120ms ease;
+}
+
+.emote-rank-row[data-rank='true'] {
+  grid-template-columns: 1.15rem minmax(0, 1fr) 3rem 2.9rem;
+}
+
+.emote-rank-row[data-provider-col='true'] {
+  grid-template-columns: minmax(0, 1fr) auto 3rem 2.9rem;
+}
+
+.emote-rank-row[data-rank='true'][data-provider-col='true'] {
+  grid-template-columns: 1.15rem minmax(0, 1fr) auto 3rem 2.9rem;
+}
+
+.emote-rank-list > li:last-child > .emote-rank-row,
+.emote-rank-list > li.emote-rank-row:last-child {
+  border-bottom: none;
+}
+
+.emote-rank-row:hover {
+  background: color-mix(in srgb, var(--fma-panel) 70%, transparent);
+}
+
+.emote-rank-row__rank {
+  font-family: var(--fma-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--sp-text-muted);
+  text-align: center;
+}
+
+.emote-rank-row__emote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-family: var(--fma-font);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--fma-text);
+}
+
+.emote-rank-row__emote img,
+.emote-rank-row__fallback {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  border-radius: 6px;
+}
+
+.emote-rank-row__emote img {
+  padding: 1px;
+  background: transparent;
+  transition: background 0.14s ease;
+}
+
+.emote-rank-row:hover .emote-rank-row__emote img {
+  background: var(--sp-surface-3-hover);
+}
+
+.emote-rank-row__fallback {
+  display: grid;
+  place-items: center;
+  background: var(--fma-accent-bg);
+  color: var(--fma-accent-text);
+  font-family: var(--fma-mono);
+  font-size: 0.52rem;
+  font-weight: 700;
+}
+
+.emote-rank-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emote-rank-row__provider-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 2.35rem;
+}
+
+.emote-rank-row__provider {
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.emote-rank-row__count {
+  font-family: var(--fma-mono);
+  font-size: 0.72rem;
+  text-align: right;
+  color: var(--fma-text);
+  white-space: nowrap;
+}
+
+.emote-rank-row__share-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.emote-rank-row__bar {
+  display: block;
+  width: 1.65rem;
+  height: 0.22rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sp-border) 65%, transparent);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.emote-rank-row__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fma-amber);
+}
+
+.emote-rank-row__share {
+  font-size: 0.62rem;
+  color: var(--fma-accent-text);
+  text-align: right;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.emote-rank-row--plot {
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--fma-border) 55%, transparent);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.emote-rank-row--plot.is-active {
+  background: var(--fma-accent-bg);
+}
+
+.emote-rank-row--plot.is-disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.emote-rank-row--plot:focus-visible {
+  outline: 2px solid var(--fma-accent-text);
+  outline-offset: -2px;
+}
+
+/* Head row for the selected-minute burst table shares the row grid. */
+.pulse-moments__burst-table-head.emote-rank-row {
+  border-bottom-color: color-mix(in srgb, var(--fma-border) 80%, transparent);
+  font-family: var(--fma-mono);
+  font-size: 0.52rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-text-muted);
+}
+
+.pulse-moments__burst-table-head.emote-rank-row:hover {
+  background: none;
+}
+
+.pulse-moments__burst-table-head.emote-rank-row > span:nth-child(3),
+.pulse-moments__burst-table-head.emote-rank-row > span:nth-child(4) {
+  text-align: right;
+}
+
 .activity-bucket-inspector__reserved-slot {
   flex-shrink: 0;
   min-height: 2.5rem;
