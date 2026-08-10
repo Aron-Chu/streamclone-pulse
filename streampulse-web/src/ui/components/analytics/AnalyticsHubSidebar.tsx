@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { COMMAND_CENTER_LABELS } from '../../themes/commandCenterLabels'
 
 export interface HubSidebarSection {
   id: string
@@ -8,7 +9,7 @@ export interface HubSidebarSection {
 
 const DEFAULT_SECTIONS: HubSidebarSection[] = [
   { id: 'section-overview', label: 'Overview' },
-  { id: 'section-network', label: 'Network activity' },
+  { id: 'section-network', label: COMMAND_CENTER_LABELS.networkActivity },
   { id: 'section-pulse-moments', label: 'Pulse Moments' },
   { id: 'section-emote-signal', label: 'Emote Market' },
   { id: 'section-tracked', label: 'Channel Screener' },

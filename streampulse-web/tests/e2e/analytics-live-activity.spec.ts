@@ -26,7 +26,7 @@ test.describe('analytics hub Live Activity', () => {
     await expect(page.locator('#section-signal-wire .hub-live-wire__title')).toContainText(
       'Signal Wire',
     )
-    await expect(page.getByRole('heading', { name: 'Network activity' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Global activity' })).toBeVisible()
 
     await expect(page.getByTestId('pool-wire')).toHaveCount(0)
     await expect(page.getByText(/POOL\s+Stable/i)).toHaveCount(0)

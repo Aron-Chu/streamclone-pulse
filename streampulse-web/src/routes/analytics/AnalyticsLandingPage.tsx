@@ -57,8 +57,10 @@ const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
 ];
 
 const ACTIVITY_WINDOW_OPTIONS: HubActivityRangeOption[] = [
-  { key: "30m", label: "30m" },
-  { key: "24h", label: "24h" },
+  { key: "30m", label: "30m", description: "Last 30 minutes" },
+  { key: "24h", label: "24h", description: "Last 24 hours" },
+  { key: "7d", label: "7d", description: "Last 7 days" },
+  { key: "30d", label: "30d", description: "Last 30 days" },
 ];
 
 const RAIL_COLORS = ["#1e3a5f", "#1a3d2b", "#2d1b4e", "#3d2a1b", "#1b3d3d"];
@@ -77,7 +79,7 @@ function formatUpdatedAgo(ts: number | null): string | undefined {
 function AnalyticsLandingContent() {
   const labels = useCommandCenterLabels();
   const [activityWindow, setActivityWindow] =
-    useState<PublicHubActivityWindow>("30m");
+    useState<PublicHubActivityWindow>("24h");
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const [selectedMomentKey, setSelectedMomentKey] = useState<string | null>(null);

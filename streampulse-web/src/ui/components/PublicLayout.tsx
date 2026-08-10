@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { BrandMark } from './BrandMark'
+import { GITHUB_REPO_URL } from '../../lib/externalLinks'
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,9 +25,12 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <span className="app-footer__note">Private beta preview · release history is canonical</span>
         </div>
         <nav aria-label="Footer">
+          <Link to="/docs">Docs</Link>
+          <Link to="/status">Status</Link>
           <Link to="/changelog">Changelog</Link>
           <Link to="/privacy">Privacy</Link>
           <Link to="/support">Support</Link>
+          <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
         </nav>
       </footer>
     </div>

@@ -507,7 +507,19 @@ interface PublicStatusSnapshot {
   updatedAt?: string
 }
 
-export type PublicHubActivityWindow = 'all' | '1y' | '6m' | '3m' | '1m' | '7d' | '24h' | '30m' | 'recent'
+// Mirrors the backend allowlist in hub_overview.go parseHubActivityWindow.
+// Anything outside it silently collapses to 30m server-side.
+export type PublicHubActivityWindow =
+  | 'all'
+  | '1y'
+  | '90d'
+  | '3m'
+  | '30d'
+  | '1m'
+  | '7d'
+  | '24h'
+  | '30m'
+  | 'recent'
 
 export type PublicHubLoadSource = 'full' | 'stats-fallback' | 'cache'
 

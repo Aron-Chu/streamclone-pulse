@@ -8,17 +8,10 @@ import { compact, getProviderColor } from '../analytics/hubFormat'
 import { preferResolvableEmoteUrl } from '../../../lib/emoteAssetUrl'
 import { EmoteProviderIcon } from '../analytics/EmoteProviderIcon'
 import { EmptyState, Skeleton } from './primitives'
+import { HubRangeMenu } from './HubRangeMenu'
 
-export interface HubActivityRangeOption {
-  key: string
-  label: string
-}
-
-export interface HubActivityRangeControl {
-  active: string
-  options: HubActivityRangeOption[]
-  onSelect: (key: string) => void
-}
+export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
+import type { HubActivityRangeControl } from './HubRangeMenu'
 
 export interface HubActivityMomentMarker {
   key: string
@@ -616,24 +609,7 @@ export function HubActivityChart({
     })
   }, [flushHover])
 
-  const rangeTabs = rangeControl ? (
-    <div className="hx-range-tabs hx-range-tabs--window" role="group" aria-label="Activity time window">
-      {rangeControl.options.map((option) => {
-        const active = option.key === rangeControl.active
-        return (
-          <button
-            key={option.key}
-            type="button"
-            className={active ? 'is-active' : undefined}
-            aria-pressed={active}
-            onClick={() => rangeControl.onSelect(option.key)}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
-  ) : null
+  const rangeTabs = rangeControl ? <HubRangeMenu control={rangeControl} /> : null
 
   if (loading) {
     return (
@@ -890,7 +866,7 @@ export function HubActivityChart({
     <>
       <div className="hx-chart-header">
         {rangeControl ? (
-          <div className="hx-chart-header__window" aria-label="Activity time window">
+          <div className="hx-chart-header__window">
             {rangeTabs}
           </div>
         ) : null}

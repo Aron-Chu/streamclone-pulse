@@ -3,8 +3,8 @@ import type { HubEmoteWithShare } from '../../../lib/emoteShare'
 import { Skeleton } from '../../primitives'
 import { EmoteImg } from './EmoteImg'
 import { EmoteProviderIcon } from './EmoteProviderIcon'
-import { SharePctDisplay } from './SharePctDisplay'
-import { compact, emoteProviderColor, providerCssVarKey, providerLabel } from './hubFormat'
+import { EmoteRankRow, emoteRankRowProps } from './EmoteRankRow'
+import { compact, emoteProviderColor, providerCssVarKey } from './hubFormat'
 
 function clampPct(value: number): number {
   if (!Number.isFinite(value)) return 0
@@ -60,56 +60,27 @@ export function HubTopEmotesTable({
   if (layout === 'inspector') {
     return (
       <ul
-        className={`hub-top-emotes-inspector${fill ? ' hub-top-emotes-inspector--fill' : ''}${className ? ` ${className}` : ''}`}
+        className={`hub-top-emotes-inspector emote-rank-list${fill ? ' hub-top-emotes-inspector--fill' : ''}${className ? ` ${className}` : ''}`}
         role="list"
         aria-label="Top emotes ranked by use count"
       >
-        {top.map((emote, index) => {
-          const rank = index + 1
-          return (
-            <li
-              key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
-              data-rank={rank}
-            >
-              <span className="hub-top-emotes-inspector__rank tnum" aria-hidden="true">
-                {rank}
-              </span>
-              <span className="figma-emote-chip hub-top-emotes-inspector__chip">
-                <EmoteImg
-                  src={emote.imageUrl}
-                  name={emote.name}
-                  width={18}
-                  height={18}
-                  fallbackClassName="figma-emote-chip__fallback"
-                />
-                <span className="hub-top-emotes-inspector__chip-name" title={emote.name}>
-                  {emote.name}
-                </span>
-              </span>
-              <span className="hub-top-emotes-inspector__provider-slot">
-                {emote.provider ? (
-                  <span
-                    className="pulse-moments__inspector-provider hub-top-emotes-inspector__provider"
-                    data-provider={providerCssVarKey(emote.provider)}
-                  >
-                    {providerLabel(emote.provider)}
-                  </span>
-                ) : null}
-              </span>
-              <span className="hub-top-emotes-inspector__count tnum">{compact(emote.count)}</span>
-              <span className="hub-top-emotes-inspector__share-cell">
-                <span className="hub-top-emotes-inspector__bar" aria-hidden="true">
-                  <i style={{ width: `${clampPct((emote.count / max) * 100)}%` }} />
-                </span>
-                <SharePctDisplay
-                  sharePct={emote.sharePct}
-                  shareEstimated={(emote as HubEmoteWithShare).shareEstimated}
-                  className="hub-top-emotes-inspector__share"
-                />
-              </span>
-            </li>
-          )
-        })}
+        {top.map((emote, index) => (
+          <li
+            key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
+            {...emoteRankRowProps({ rank: true, provider: true })}
+          >
+            <EmoteRankRow
+              rank={index + 1}
+              name={emote.name}
+              imageUrl={emote.imageUrl}
+              provider={emote.provider}
+              count={emote.count}
+              sharePct={emote.sharePct}
+              shareEstimated={(emote as HubEmoteWithShare).shareEstimated}
+              barPct={(emote.count / max) * 100}
+            />
+          </li>
+        ))}
       </ul>
     )
   }
@@ -117,26 +88,24 @@ export function HubTopEmotesTable({
   if (layout === 'leaderboard') {
     return (
       <ul
-        className={`figma-burst-list figma-burst-list--ranked figma-burst-list--sidebar hub-top-emotes-sidebar${fill ? ' hub-top-emotes-sidebar--fill' : ''}${className ? ` ${className}` : ''}`}
+        className={`hub-top-emotes-sidebar emote-rank-list${fill ? ' hub-top-emotes-sidebar--fill' : ''}${className ? ` ${className}` : ''}`}
         role="list"
         aria-label="Top emotes ranked by use count"
       >
         {top.map((emote, index) => (
-          <li key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}>
-            <span className="figma-emote-chip">
-              <EmoteImg src={emote.imageUrl} name={emote.name} fallbackClassName="figma-emote-chip__fallback" />
-              <span title={emote.name}>{emote.name}</span>
-            </span>
-            <span
-              className="figma-burst-list__provider"
-              data-provider={providerCssVarKey(emote.provider)}
-            >
-              {providerLabel(emote.provider)}
-            </span>
-            <span className="figma-burst-list__count">{compact(emote.count)}</span>
-            <SharePctDisplay
+          <li
+            key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
+            {...emoteRankRowProps({ rank: true, provider: true })}
+          >
+            <EmoteRankRow
+              rank={index + 1}
+              name={emote.name}
+              imageUrl={emote.imageUrl}
+              provider={emote.provider}
+              count={emote.count}
               sharePct={emote.sharePct}
               shareEstimated={(emote as HubEmoteWithShare).shareEstimated}
+              barPct={(emote.count / max) * 100}
             />
           </li>
         ))}

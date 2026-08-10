@@ -14,6 +14,7 @@ import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
+import { GITHUB_REPO_URL } from '../../lib/externalLinks'
 
 const CHROME_EXTENSION_URL = '/docs#extension'
 const EXTENSION_BETA_LABEL = 'Install extension (beta)'
@@ -168,8 +169,10 @@ function Footer() {
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
           <Link to="/analytics">Analytics</Link>
+          <Link to="/changelog">Changelog</Link>
           <Link to="/support">Support</Link>
           <Link to="/privacy">Privacy</Link>
+          <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
         </div>
         <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
       </div>

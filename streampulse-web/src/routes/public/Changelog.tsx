@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import releaseManifest from '../../lib/release-notes.json'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { ROADMAP_URL } from '../../lib/externalLinks'
 
 type ReleaseEntry = (typeof releaseManifest.releases)[number]
 
@@ -51,6 +52,8 @@ function ReleaseCard({ release }: { release: ReleaseEntry }) {
 
 export default function Changelog() {
   const current = releaseManifest.releases.find(release => release.version === releaseManifest.currentVersion)
+  const shipped = releaseManifest.releases.filter(release => release.status === 'released')
+  const previews = releaseManifest.releases.filter(release => release.status !== 'released')
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="changelog-page">
@@ -79,9 +82,35 @@ export default function Changelog() {
           have been explicitly published. Local builds may include a dirty package cohort and should be treated as test
           previews.
         </div>
-        <div className="changelog-list" aria-label="Release history">
-          {releaseManifest.releases.map(release => <ReleaseCard key={release.version} release={release} />)}
-        </div>
+        <section className="changelog-group" aria-labelledby="changelog-shipped">
+          <h2 id="changelog-shipped" className="changelog-group__title">Shipped</h2>
+          {shipped.length === 0 ? (
+            <div className="changelog-empty">
+              <p className="changelog-empty__lead">No shipped releases yet.</p>
+              <p>
+                Nothing has cleared the release bar, so there is nothing to report here. Everything below is a preview
+                build. Follow the{' '}
+                <a href={ROADMAP_URL} target="_blank" rel="noreferrer noopener">roadmap on GitHub</a> to see what is
+                being worked on next.
+              </p>
+            </div>
+          ) : (
+            <div className="changelog-list" aria-label="Shipped releases">
+              {shipped.map(release => <ReleaseCard key={release.version} release={release} />)}
+            </div>
+          )}
+        </section>
+        {previews.length > 0 ? (
+          <section className="changelog-group" aria-labelledby="changelog-previews">
+            <h2 id="changelog-previews" className="changelog-group__title">In preview</h2>
+            <p className="changelog-group__note muted">
+              Visible to testers. These are not promises of a production release and may change or be withdrawn.
+            </p>
+            <div className="changelog-list" aria-label="Preview releases">
+              {previews.map(release => <ReleaseCard key={release.version} release={release} />)}
+            </div>
+          </section>
+        ) : null}
         <p className="changelog-footer-note">
           Have a question about a preview? <Link to="/support">Contact support</Link> or review the <Link to="/docs">installation notes</Link>.
         </p>

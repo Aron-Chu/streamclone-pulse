@@ -979,6 +979,10 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }
   },
 
+  // Public portal page mounts may share the AnalyticsConsole shell with the extension
+  // dashboard. The shell's first effect registers tracking via /v1/analytics/channels/{login}/watch
+  // — a gated extension endpoint. Public reads do not require it, so swallow CORS / 4xx
+  // noise silently and let the page render from cache or public endpoints.
   async watchAnalyticsChannel(login: string) {
     try {
       await apiClient(analyticsPath(`/channels/${encodeURIComponent(login)}/watch`), {
@@ -986,7 +990,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
         gated: true,
       })
     } catch {
-      // Public portal reads do not require watch registration.
+      // Public portal reads do not require watch registration — CORS / 4xx is expected.
     }
     return { ok: true }
   },

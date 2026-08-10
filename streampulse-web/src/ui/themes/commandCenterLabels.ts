@@ -4,10 +4,10 @@ export interface CommandCenterLabels {
   hubLede: string
   overview: string
   liveRail: string
-  /** Chart / network activity section — not the lifecycle Live Activity panel. */
+  /** Chart / global activity section. */
   networkActivity: string
   /**
-   * @deprecated Use networkActivity. Kept briefly for call-site migration; value is Network activity.
+   * @deprecated Use networkActivity. Kept briefly for call-site migration; value is Global activity.
    */
   liveActivity: string
   pulseMoments: string
@@ -28,8 +28,8 @@ export const COMMAND_CENTER_LABELS: CommandCenterLabels = {
   overview: 'Overview',
   liveRail: 'Hottest live',
   // Chart section title — lifecycle feed is titled "Live Activity" in LiveActivityPanel.
-  networkActivity: 'Network activity',
-  liveActivity: 'Network activity',
+  networkActivity: 'Global activity',
+  liveActivity: 'Global activity',
   pulseMoments: 'Pulse Moments',
   emoteSignal: 'Emote Market',
   trackedChannels: 'Channel Screener',

@@ -1820,14 +1820,6 @@
   line-height: 1.4;
 }
 
-.hub-top-emotes-inspector__chip.figma-emote-chip img,
-.hub-top-emotes-inspector__chip.figma-emote-chip .figma-emote-chip__fallback {
-  width: 1.28rem;
-  height: 1.28rem;
-  border-radius: 5px;
-  flex: 0 0 auto;
-}
-
 .activity-bucket-inspector__bucket-streamers--pending {
   min-height: 2.5rem;
 }
@@ -1873,73 +1865,137 @@
   white-space: nowrap;
 }
 
-.hub-top-emotes-inspector li {
-  display: grid;
-  grid-template-columns: 0.95rem minmax(0, 1fr) 2.85rem 2.15rem minmax(2.35rem, auto);
-  align-items: center;
-  gap: 0.28rem;
-  padding: 0.16rem 0.05rem;
-  min-height: 1.55rem;
+/* Shared emote leaderboard row — used by the bucket inspector, the emote
+   economy rail, and the selected-minute burst list so all three read alike. */
+.emote-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.hub-top-emotes-inspector__rank {
+.emote-rank-list--plot > li {
+  display: block;
+}
+
+.emote-rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3rem 2.9rem;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.34rem 0.5rem;
+  border-radius: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fma-border) 55%, transparent);
+  transition: background 120ms ease;
+}
+
+.emote-rank-row[data-rank='true'] {
+  grid-template-columns: 1.15rem minmax(0, 1fr) 3rem 2.9rem;
+}
+
+.emote-rank-row[data-provider-col='true'] {
+  grid-template-columns: minmax(0, 1fr) auto 3rem 2.9rem;
+}
+
+.emote-rank-row[data-rank='true'][data-provider-col='true'] {
+  grid-template-columns: 1.15rem minmax(0, 1fr) auto 3rem 2.9rem;
+}
+
+.emote-rank-list > li:last-child > .emote-rank-row,
+.emote-rank-list > li.emote-rank-row:last-child {
+  border-bottom: none;
+}
+
+.emote-rank-row:hover {
+  background: color-mix(in srgb, var(--fma-panel) 70%, transparent);
+}
+
+.emote-rank-row__rank {
   font-family: var(--fma-mono);
-  font-size: 0.54rem;
+  font-size: 0.58rem;
   font-weight: 700;
   color: var(--sp-text-muted);
   text-align: center;
 }
 
-.hub-top-emotes-inspector__chip.figma-emote-chip {
+.emote-rank-row__emote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   min-width: 0;
-  gap: 0.28rem;
-  font-size: 0.68rem;
-  line-height: 1.15;
+  font-family: var(--fma-font);
+  font-size: 0.72rem;
+  font-weight: 500;
   color: var(--fma-text);
 }
 
-.hub-top-emotes-inspector__chip.figma-emote-chip .hub-top-emotes-inspector__chip-name {
+.emote-rank-row__emote img,
+.emote-rank-row__fallback {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  border-radius: 6px;
+}
+
+.emote-rank-row__emote img {
+  padding: 1px;
+  background: transparent;
+  transition: background 0.14s ease;
+}
+
+.emote-rank-row:hover .emote-rank-row__emote img {
+  background: var(--sp-surface-3-hover);
+}
+
+.emote-rank-row__fallback {
+  display: grid;
+  place-items: center;
+  background: var(--fma-accent-bg);
+  color: var(--fma-accent-text);
+  font-family: var(--fma-mono);
+  font-size: 0.52rem;
+  font-weight: 700;
+}
+
+.emote-rank-row__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--fma-text);
 }
 
-.hub-top-emotes-inspector__provider-slot {
+.emote-rank-row__provider-slot {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 2.85rem;
-  flex-shrink: 0;
-}
-
-.hub-top-emotes-inspector__provider.pulse-moments__inspector-provider {
-  flex-shrink: 0;
-  font-size: 0.48rem;
-  padding: 0.06rem 0.28rem;
+  justify-content: flex-end;
   min-width: 2.35rem;
-  justify-content: center;
-  text-align: center;
 }
 
-.hub-top-emotes-inspector__count {
+.emote-rank-row__provider {
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.emote-rank-row__count {
   font-family: var(--fma-mono);
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   text-align: right;
   color: var(--fma-text);
   white-space: nowrap;
 }
 
-.hub-top-emotes-inspector__share-cell {
+.emote-rank-row__share-cell {
   display: flex;
-  flex-direction: row;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.22rem;
+  gap: 0.28rem;
   min-width: 0;
 }
 
-.hub-top-emotes-inspector__bar {
+.emote-rank-row__bar {
   display: block;
   width: 1.65rem;
   height: 0.22rem;
@@ -1949,19 +2005,62 @@
   flex: 0 0 auto;
 }
 
-.hub-top-emotes-inspector__bar i {
+.emote-rank-row__bar i {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--fma-amber);
 }
 
-.hub-top-emotes-inspector__share.figma-burst-list__share {
-  font-size: 0.54rem;
+.emote-rank-row__share {
+  font-size: 0.62rem;
   color: var(--fma-accent-text);
   text-align: right;
   white-space: nowrap;
   flex: 0 0 auto;
+}
+
+.emote-rank-row--plot {
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--fma-border) 55%, transparent);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.emote-rank-row--plot.is-active {
+  background: var(--fma-accent-bg);
+}
+
+.emote-rank-row--plot.is-disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.emote-rank-row--plot:focus-visible {
+  outline: 2px solid var(--fma-accent-text);
+  outline-offset: -2px;
+}
+
+/* Head row for the selected-minute burst table shares the row grid. */
+.pulse-moments__burst-table-head.emote-rank-row {
+  border-bottom-color: color-mix(in srgb, var(--fma-border) 80%, transparent);
+  font-family: var(--fma-mono);
+  font-size: 0.52rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-text-muted);
+}
+
+.pulse-moments__burst-table-head.emote-rank-row:hover {
+  background: none;
+}
+
+.pulse-moments__burst-table-head.emote-rank-row > span:nth-child(3),
+.pulse-moments__burst-table-head.emote-rank-row > span:nth-child(4) {
+  text-align: right;
 }
 
 .activity-bucket-inspector__reserved-slot {
@@ -1981,118 +2080,11 @@
   color: var(--sp-text-muted);
 }
 
-.figma-global-activity__emotes-panel .figma-burst-list--sidebar,
-.activity-bucket-inspector .hub-top-emotes-sidebar,
 .figma-economy-embed .hub-top-emotes-sidebar {
   flex: 1;
   padding: 0.15rem 0;
   margin: 0;
   list-style: none;
-}
-
-.figma-global-activity__emotes-panel .figma-burst-list--sidebar li,
-.activity-bucket-inspector .hub-top-emotes-sidebar li,
-.figma-economy-embed .hub-top-emotes-sidebar li {
-  grid-template-columns: minmax(0, 1fr) auto 3rem 2.5rem;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.4rem 0.55rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--fma-border) 55%, transparent);
-  border-radius: 8px;
-  transition: background 120ms ease;
-}
-
-.figma-global-activity__emotes-panel .figma-burst-list--sidebar li:last-child,
-.activity-bucket-inspector .hub-top-emotes-sidebar li:last-child,
-.figma-economy-embed .hub-top-emotes-sidebar li:last-child {
-  border-bottom: none;
-}
-
-.figma-global-activity__emotes-panel .figma-burst-list--sidebar li:hover,
-.activity-bucket-inspector .hub-top-emotes-sidebar li:hover,
-.figma-economy-embed .hub-top-emotes-sidebar li:hover {
-  background: color-mix(in srgb, var(--fma-panel) 70%, transparent);
-}
-
-.figma-global-activity__emotes-panel .figma-emote-chip,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip {
-  color: var(--fma-text);
-  gap: 0.5rem;
-  min-width: 0;
-  font-family: var(--fma-font);
-  font-size: 0.72rem;
-  font-weight: 500;
-}
-
-.figma-global-activity__emotes-panel .figma-emote-chip span,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip span,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.figma-global-activity__emotes-panel .figma-emote-chip img,
-.figma-global-activity__emotes-panel .figma-emote-chip__fallback,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip img,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip__fallback,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip img,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip__fallback {
-  width: 1.4rem;
-  height: 1.4rem;
-  flex: 0 0 auto;
-  border-radius: 6px;
-}
-
-.figma-global-activity__emotes-panel .figma-emote-chip img,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip img,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip img {
-  padding: 1px;
-  background: transparent;
-  transition: background 0.14s ease;
-}
-
-.figma-global-activity__emotes-panel .figma-emote-chip:hover img,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip:hover img,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip:hover img {
-  background: var(--sp-surface-3-hover);
-}
-
-.figma-global-activity__emotes-panel .figma-emote-chip__fallback,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-emote-chip__fallback,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-emote-chip__fallback {
-  display: grid;
-  place-items: center;
-  background: var(--fma-accent-bg);
-  color: var(--fma-accent-text);
-  font-family: var(--fma-mono);
-  font-size: 0.52rem;
-  font-weight: 700;
-}
-
-.figma-global-activity__emotes-panel .figma-burst-list__provider,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-burst-list__provider,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-burst-list__provider {
-  justify-self: end;
-  text-align: right;
-  font-size: 0.56rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  opacity: 0.85;
-}
-
-.figma-global-activity__emotes-panel .figma-burst-list__count,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-burst-list__count,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-burst-list__count {
-  font-size: 0.72rem;
-}
-
-.figma-global-activity__emotes-panel .figma-burst-list__share,
-.activity-bucket-inspector .hub-top-emotes-sidebar .figma-burst-list__share,
-.figma-economy-embed .hub-top-emotes-sidebar .figma-burst-list__share {
-  color: var(--fma-accent-text);
 }
 
 .hub-top-emotes-table-wrap {
@@ -4647,7 +4639,7 @@ button.hub-live-wire__chip {
 
 .figma-global-activity__hub-chart .hx-chart-header {
   margin-bottom: 0.35rem;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.45rem 0.55rem;
 }
@@ -4673,12 +4665,6 @@ button.hub-live-wire__chip {
 
 .figma-global-activity__hub-chart .hx-plot-stack .hx-axis {
   margin-top: 0.05rem;
-}
-
-@media (max-width: 900px) {
-  .figma-global-activity__hub-chart .hx-chart-header {
-    flex-wrap: wrap;
-  }
 }
 
 .figma-global-activity__hub-chart .hx-provider-lanes {

@@ -17,8 +17,8 @@ import { FigmaSessionHeaderStrip } from './FigmaSessionHeaderStrip'
 import { FigmaSignalChart, type PlottedEmote } from './FigmaSignalChart'
 import { MostReactedMinutesTable } from './MostReactedMinutesTable'
 import { TopEmoteBurstsPanel } from './TopEmoteBurstsPanel'
-import { compact, providerLabel } from './hubFormat'
-import { EmoteImg } from './EmoteImg'
+import { compact } from './hubFormat'
+import { EmoteRankRow, emoteRankRowProps } from './EmoteRankRow'
 import type { PortalStreamSummary } from '../../../lib/streamcloneAnalytics'
 
 function pct(value?: number): string {
@@ -71,13 +71,16 @@ function TopEmotesPanel({ summary }: { summary: PortalStreamSummary | null }) {
       {emotes.length === 0 ? (
         <p className="muted">Top emotes appear once the backend records emote rollups for this session.</p>
       ) : (
-        <ul className="figma-burst-list figma-burst-list--ranked">
+        <ul className="emote-rank-list">
           {emotes.slice(0, 8).map((emote) => (
-            <li key={emote.key ?? emote.name}>
-              <EmoteImg src={absolutizeEmoteAssetUrl(emote.imageUrl)} name={emote.name} width={18} height={18} />
-              <strong>{emote.name}</strong>
-              <span className="figma-burst-list__provider">{providerLabel(emote.provider)}</span>
-              <span className="figma-burst-list__count">{compact(emote.count)}</span>
+            <li key={emote.key ?? emote.name} {...emoteRankRowProps({ provider: true })}>
+              <EmoteRankRow
+                name={emote.name}
+                imageUrl={absolutizeEmoteAssetUrl(emote.imageUrl)}
+                provider={emote.provider}
+                showProvider
+                count={emote.count}
+              />
             </li>
           ))}
         </ul>
