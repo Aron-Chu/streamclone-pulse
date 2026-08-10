@@ -55,6 +55,22 @@ function formatWindowLabel(startOffset: number, endOffset: number): string {
   return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${formatStreamDuration(span)}`
 }
 
+/** Stable hue per game so art-less chips stay distinguishable instead of looking broken. */
+function hueForGame(gameName: string): number {
+  let hash = 0
+  for (let i = 0; i < gameName.length; i += 1) {
+    hash = (hash * 31 + gameName.charCodeAt(i)) % 360
+  }
+  return hash
+}
+
+function initialsForGame(gameName: string): string {
+  const words = gameName.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase()
+  return `${words[0]![0]}${words[words.length - 1]![0]}`.toUpperCase()
+}
+
 function countHiddenAhead(node: HTMLDivElement, total: number): number {
   const overflow = node.scrollWidth - node.clientWidth
   if (overflow <= 1 || total <= 0) return 0
@@ -243,7 +259,7 @@ export function GamesPlayedStrip({
             tabIndex={0}
             aria-label="Scroll games played"
           >
-            <div className="flex min-h-11 min-w-full w-max items-stretch justify-center gap-1" role="list">
+            <div className="flex min-h-11 min-w-full w-max items-stretch gap-1 [justify-content:safe_center]" role="list">
             {gameSlots.map((slot, index) => {
               const { segment } = slot
               const key = gameSegmentKey(segment)
@@ -252,6 +268,7 @@ export function GamesPlayedStrip({
               const title = `${segment.gameName} · ${formatWindowLabel(slot.visibleStart, slot.visibleEnd)}${
                 slot.clipped ? ' · clipped to chart' : ''
               }`
+              const hue = hueForGame(segment.gameName)
 
               return (
                 <button
@@ -281,7 +298,19 @@ export function GamesPlayedStrip({
                         loading="lazy"
                         decoding="async"
                       />
-                    ) : null}
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="grid h-4 w-3 shrink-0 place-items-center rounded-sm text-[7px] font-semibold leading-none"
+                        style={{
+                          background: `linear-gradient(150deg, hsl(${hue} 42% 28%), hsl(${(hue + 28) % 360} 34% 15%))`,
+                          boxShadow: `inset 0 0 0 1px hsl(${hue} 45% 62% / 0.28)`,
+                          color: `hsl(${hue} 60% 88%)`,
+                        }}
+                      >
+                        {initialsForGame(segment.gameName)}
+                      </span>
+                    )}
                     <span className="min-w-0 truncate text-[10px] font-black leading-snug text-orange-200">
                       {segment.gameName}
                     </span>
