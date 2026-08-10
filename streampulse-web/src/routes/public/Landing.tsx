@@ -15,6 +15,7 @@ import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { GITHUB_REPO_URL } from '../../lib/externalLinks'
 
 function TopNav() {
   return (
@@ -169,6 +170,7 @@ function Footer() {
           <Link to="/analytics">Analytics</Link>
           <Link to="/support">Support</Link>
           <Link to="/privacy">Privacy</Link>
+          <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
         </div>
         <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>
       </div>

@@ -1427,6 +1427,101 @@
 .hubx .hx-chart-header__window .hx-range-tabs--window {
   margin-right: 0;
 }
+.hubx .hx-range-menu {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.hubx .hx-range-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.26rem 0.4rem 0.26rem 0.6rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9999px;
+  background: hsl(var(--muted) / 0.65);
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.hubx .hx-range-menu__trigger:hover {
+  border-color: hsl(var(--primary) / 0.4);
+  background: hsl(var(--muted) / 0.85);
+}
+.hubx .hx-range-menu__trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+}
+.hubx .hx-range-menu__trigger svg {
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+.hubx .hx-range-menu__trigger[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.hubx .hx-range-menu__value {
+  font-variant-numeric: tabular-nums;
+}
+.hubx .hx-range-menu__list {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  z-index: 40;
+  min-width: 11rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.6rem;
+  background: hsl(var(--background));
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.45);
+}
+.hubx .hx-range-menu__list:focus-visible {
+  outline: none;
+}
+.hubx .hx-range-menu__option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.36rem 0.5rem;
+  border-radius: 0.4rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.hubx .hx-range-menu__option.is-active {
+  background: hsl(var(--muted) / 0.7);
+  color: hsl(var(--foreground));
+}
+.hubx .hx-range-menu__option.is-selected {
+  color: hsl(var(--foreground));
+}
+.hubx .hx-range-menu__option.is-selected .hx-range-menu__option-label::after {
+  content: '';
+  display: inline-block;
+  width: 0.32rem;
+  height: 0.32rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  vertical-align: middle;
+}
+.hubx .hx-range-menu__option-label {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.hubx .hx-range-menu__option-desc {
+  font-size: 0.68rem;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.85;
+}
 .hubx .hx-provider-chips {
   display: inline-flex;
   align-items: center;
