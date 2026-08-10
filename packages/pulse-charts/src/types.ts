@@ -15,6 +15,7 @@ export interface ChartGameSegment {
   id?: number | string
   gameName: string
   boxArtUrl?: string
+  categoryId?: string
   offsetSeconds: number
   durationSeconds: number
   /** Response-only honesty: e.g. snapshot, stored, category_fallback */

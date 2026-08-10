@@ -62,6 +62,7 @@ type ChartGameSegment = {
   streamId: string
   gameName: string
   boxArtUrl: string
+  categoryId?: string
   offsetSeconds: number
   durationSeconds: number
   createdAt: string
