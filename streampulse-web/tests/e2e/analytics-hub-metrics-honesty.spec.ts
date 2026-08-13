@@ -182,7 +182,7 @@ test.describe('hub metrics honesty (mocked hub)', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     await expect(page.getByText('Tracked channels', { exact: true })).toBeVisible()
-    await expect(page.getByText('Live viewers now', { exact: true })).toBeVisible()
+    await expect(page.getByText('Live pool sum now', { exact: true })).toBeVisible()
     await expect(page.getByText('Peak emotes/min', { exact: true })).toBeVisible()
     await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
@@ -303,7 +303,7 @@ test.describe('hub metrics honesty (hosted API)', () => {
     await page.goto('/analytics', { waitUntil: 'domcontentloaded' })
 
     await expect(page.getByText('Tracked channels', { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('Live viewers now', { exact: true })).toBeVisible()
+    await expect(page.getByText('Live pool sum now', { exact: true })).toBeVisible()
     await expect(page.getByText('Corpus streams', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Tracked streams', { exact: true })).toHaveCount(0)
 
