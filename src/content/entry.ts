@@ -11,7 +11,11 @@ import {
   updateOverlayVodState,
 } from './mount.tsx'
 
-import { overlaySessionKey, placeholderLoginForContext, shouldActivateOverlay } from './contentActivation.ts'
+import {
+  overlaySessionKey,
+  resolveVodActivationLogin,
+  shouldActivateOverlay,
+} from './contentActivation.ts'
 
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
@@ -30,6 +34,8 @@ import { getWatchlist } from '../shared/watchlist.ts'
 import { isPulseRosterEligible } from '../ui/pulseEligibility.ts'
 
 import { vodPulseToChannelPayload } from '../vod/vodPulseToChannelPayload.ts'
+import { provisionalPulseMatchesVod } from '../vod/provisionalLivePulse.ts'
+import { readVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 import { recoverStaleTwitchSidebarChrome } from './twitchSidebarChrome.ts'
 
 type ActiveSession =
@@ -157,10 +163,16 @@ function stableActiveVodLogin(): string | undefined {
   return login
 }
 
+function isActiveVodSession(vodId: string): boolean {
+  return activeSession?.kind === 'vod' && activeSession.vodId === vodId
+}
+
 function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
-  if (!activeSession || activeSession.kind !== 'vod' || activeSession.vodId !== message.vodId) {
+  if (!isActiveVodSession(message.vodId)) {
     return
   }
+  const currentSession = activeSession
+  if (!currentSession || currentSession.kind !== 'vod') return
 
   updateOverlayVodState({
     vodPulse: message.vodPulse,
@@ -168,13 +180,15 @@ function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
   })
 
   const payload = message.vodPulse ? vodPulseToChannelPayload(message.vodPulse) : null
-  const provisionalPayload = message.provisionalPulse ?? null
+  const provisionalPayload = provisionalPulseMatchesVod(message.vodPulse, message.provisionalPulse)
+    ? message.provisionalPulse ?? null
+    : null
   const channelLogin = (
     message.vodPulse?.channelLogin
-    ?? provisionalPayload?.login
+    ?? payload?.login
   )?.trim().toLowerCase()
 
-  if (channelLogin && channelLogin !== activeSession.login) {
+  if (channelLogin && channelLogin !== currentSession.login) {
     activeSession = { kind: 'vod', vodId: message.vodId, login: channelLogin }
     updateOverlayLogin(channelLogin)
   }
@@ -185,17 +199,58 @@ function applyVodPulseMessage(message: VodPulseUpdateMessage): void {
   updateOverlayPayload(displayedPayload, message.error)
 }
 
-async function fetchVodPulse(vodId: string): Promise<void> {
-  updateOverlayVodState({ loading: true })
-  const response = await sendBackgroundMessage({
-    type: 'GET_PULSE_VOD',
-    vodId,
-    channelLogin: stableActiveVodLogin(),
+const VOD_FETCH_ATTEMPTS = 2
+const VOD_FETCH_RETRY_DELAY_MS = 300
+
+function isVodPulseUpdateMessage(value: unknown): value is VodPulseUpdateMessage {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && 'type' in value
+    && value.type === 'VOD_PULSE_UPDATE',
+  )
+}
+
+function waitForVodFetchRetry(): Promise<void> {
+  return new Promise(resolve => {
+    window.setTimeout(resolve, VOD_FETCH_RETRY_DELAY_MS)
   })
-  if ('type' in response && response.type === 'VOD_PULSE_UPDATE') {
-    applyVodPulseMessage(response)
-    return
+}
+
+async function fetchVodPulse(vodId: string): Promise<void> {
+  if (!isActiveVodSession(vodId)) return
+  updateOverlayVodState({ loading: true })
+
+  for (let attempt = 0; attempt < VOD_FETCH_ATTEMPTS; attempt += 1) {
+    if (!isActiveVodSession(vodId)) return
+    try {
+      const bridge = await readVodAnalyticsBridge(vodId)
+      if (!isActiveVodSession(vodId)) return
+      const response = await sendBackgroundMessage({
+        type: 'GET_PULSE_VOD',
+        vodId,
+        channelLogin: stableActiveVodLogin() ?? bridge?.login,
+        streamId: bridge?.streamId,
+      })
+
+      if (isVodPulseUpdateMessage(response)) {
+        // A normal missing/syncing/ready response is terminal. Retry only a
+        // transport/API failure that returned no VOD payload.
+        if (response.vodPulse || !response.error || attempt + 1 >= VOD_FETCH_ATTEMPTS) {
+          applyVodPulseMessage(response)
+          return
+        }
+      } else if (attempt + 1 >= VOD_FETCH_ATTEMPTS) {
+        break
+      }
+    } catch {
+      // The service worker can be cold during a tab/extension reload. Retry once.
+    }
+
+    if (!isActiveVodSession(vodId)) return
+    await waitForVodFetchRetry()
   }
+
   applyVodPulseMessage({
     type: 'VOD_PULSE_UPDATE',
     vodId,
@@ -281,10 +336,23 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   installOverlayPrefsListener()
   livePoll.stop()
 
-  const login = placeholderLoginForContext(context)
+  const login = resolveVodActivationLogin({
+    contextLogin: context.login,
+    scrapedLogin: null,
+    vodId,
+  })
 
   if (activeSession?.kind === 'vod' && activeSession.vodId === vodId) {
     updateOverlayContext(context)
+    const bridge = await readVodAnalyticsBridge(vodId)
+    if (!isActiveVodSession(vodId)) return
+    const betterLogin = (context.login ?? bridge?.login)?.trim().toLowerCase()
+    const currentLogin = activeSession.login.trim().toLowerCase()
+    if (betterLogin && (currentLogin.startsWith('__vod__:') || betterLogin !== currentLogin)) {
+      activeSession = { kind: 'vod', vodId, login: betterLogin }
+      updateOverlayLogin(betterLogin)
+      await fetchVodPulse(vodId)
+    }
     return
   }
 

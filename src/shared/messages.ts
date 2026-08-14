@@ -285,6 +285,8 @@ export interface GetPulseVodMessage {
   vodId: string
   /** Stable channel context from /{login}/videos/{id}; pure VOD routes omit it. */
   channelLogin?: string
+  /** Exact VOD-scoped bridge identity, never a page scrape. */
+  streamId?: string
 }
 
 export interface GetPulseStreamMessage {

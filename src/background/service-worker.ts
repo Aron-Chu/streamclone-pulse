@@ -32,7 +32,7 @@ import {
   handleTwitchTabNavigation,
 } from './pulsePrefetch.ts'
 import { shouldAllowPulseRevalidate } from './pulseRevalidateGate.ts'
-import { vodPulseStateAllowsRetry } from '../vod/normalizeVodPulseFetch.ts'
+import { resolveProvisionalVodStreamTarget } from '../vod/provisionalLivePulse.ts'
 import {
   planWatchlistStartupSync,
   planWatchlistStorageDelta,
@@ -302,28 +302,29 @@ function stableVodLogin(login?: string): string | undefined {
 async function resolveProvisionalLivePulse(
   vodPulse: import('../types/vodPulseTypes.ts').ExtensionVodPulseResponse,
   channelLogin?: string,
+  streamId?: string,
 ): Promise<PulsePayload | null> {
-  const login = stableVodLogin(channelLogin)
-  if (!login || vodPulse.retryable === false || !vodPulseStateAllowsRetry(vodPulse)) {
-    return null
-  }
+  const target = resolveProvisionalVodStreamTarget(vodPulse, { channelLogin, streamId })
+  if (!target) return null
 
   try {
-    const channelPulse = await fetchPulseChannel(login, { window: 'full' })
-    const streamId = channelPulse.streamId?.trim()
-    if (!channelPulse.isLive || !channelPulse.tracking || !streamId) {
-      return null
-    }
-    return await fetchPulseStream(streamId, {
-      broadcasterLogin: login,
+    const bridged = await fetchPulseStream(target.streamId, {
+      broadcasterLogin: target.login,
       allowLiveBridge: true,
       window: 'full',
-    })
+    }).catch(() => null)
+    if (!bridged) return null
+    if (bridged.streamId?.trim() && bridged.streamId.trim() !== target.streamId) return null
+    if (stableVodLogin(bridged.login) !== target.login) return null
+    if ((bridged.rollups?.length ?? 0) > 0 || (bridged.peaks?.length ?? 0) > 0 || bridged.recap) {
+      return bridged
+    }
+    return null
   } catch (error) {
     await pulseDebug(
       'vod.live.bridge',
       'provisional live stream bridge unavailable',
-      { login, error: error instanceof Error ? error.message : 'bridge_failed' },
+      { login: target.login, error: error instanceof Error ? error.message : 'bridge_failed' },
       'warn',
     )
     return null
@@ -434,7 +435,11 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
         case 'GET_PULSE_VOD': {
           try {
             const vodPulse = await fetchPulseVod(message.vodId)
-            const provisionalPulse = await resolveProvisionalLivePulse(vodPulse, message.channelLogin)
+            const provisionalPulse = await resolveProvisionalLivePulse(
+              vodPulse,
+              message.channelLogin,
+              message.streamId,
+            )
             sendResponse({
               type: 'VOD_PULSE_UPDATE',
               vodId: message.vodId,

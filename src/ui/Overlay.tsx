@@ -83,6 +83,7 @@ import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState, vodPulseStateAllowsRetry } from '../vod/normalizeVodPulseFetch.ts'
+import { rememberVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { exactLiveArchiveVodId } from '../shared/twitchVodGql.ts'
@@ -1162,6 +1163,15 @@ export function Overlay({
   }
 
   function openVodUrlOrOffer(url: string, successText: string): void {
+    const vodIdMatch = url.match(/\/videos\/(\d{6,20})/)
+    const vodId = vodIdMatch?.[1] ?? payload?.vodId ?? context.vodId
+    if (vodId && login) {
+      void rememberVodAnalyticsBridge({
+        vodId,
+        login,
+        streamId: payload?.streamId,
+      })
+    }
     // Archive discovery often completes after the original click activation
     // has expired. Same-tab navigation is not popup-gated and is therefore
     // the reliable default for a verified archive. Keep the explicit link as
