@@ -584,6 +584,27 @@ export function HubActivityChart({
     }
   }, [chartPoints, windowMinutes])
 
+  // Destructure before any early return so hook order stays stable across
+  // loading → data transitions (React hook rules).
+  const { timeDomain } = model
+
+  // Moment markers → render-ready annotations: spikes vs regular, resolved
+  // collisions in the chart's coordinate space, selected-state dimming.
+  const chartAnnotations = useMemo<HubChartAnnotation[]>(() => {
+    if (momentMarkers.length === 0) return []
+    const pre = momentMarkers
+      .map((marker) => {
+        const at = marker.at ?? marker.bucketT
+        const x = timeDomain ? hubTimeXPercent(at, timeDomain) : null
+        if (x == null) return null
+        return markerToAnnotation(marker, x)
+      })
+      .filter((a): a is HubChartAnnotation => a != null)
+    const resolved = resolveAnnotationCollisions(pre, { minSpacingPx: 24 })
+    const selectedKey = selectedMomentKey
+    return selectedKey ? resolved.map((a) => (a.key === selectedKey ? { ...a, labelOmitted: false } : a)) : resolved
+  }, [momentMarkers, timeDomain, selectedMomentKey])
+
   const ticks = useMemo(() => {
     return activityAxisTickIndices(chartPoints.length).map((index) =>
       formatActivityAxisTick(chartPoints[index]?.t ?? 0, windowMinutes),
@@ -712,7 +733,6 @@ export function HubActivityChart({
     chatMax,
     xs,
     lastT,
-    timeDomain,
     rhythmAvg,
     rhythmLoud,
     viewers,
@@ -732,23 +752,6 @@ export function HubActivityChart({
     peakViewerAt,
     peakChatAt,
   } = model
-
-  // Moment markers → render-ready annotations: spikes vs regular, resolved
-  // collisions in the chart's coordinate space, selected-state dimming.
-  const chartAnnotations = useMemo<HubChartAnnotation[]>(() => {
-    if (momentMarkers.length === 0) return []
-    const pre = momentMarkers
-      .map((marker) => {
-        const at = marker.at ?? marker.bucketT
-        const x = timeDomain ? hubTimeXPercent(at, timeDomain) : null
-        if (x == null) return null
-        return markerToAnnotation(marker, x)
-      })
-      .filter((a): a is HubChartAnnotation => a != null)
-    const resolved = resolveAnnotationCollisions(pre, { minSpacingPx: 24 })
-    const selectedKey = selectedMomentKey
-    return selectedKey ? resolved.map((a) => (a.key === selectedKey ? { ...a, labelOmitted: false } : a)) : resolved
-  }, [momentMarkers, timeDomain, selectedMomentKey])
 
   const chartSummary = (() => {
     const parts: string[] = []
@@ -1114,58 +1117,9 @@ export function HubActivityChart({
               }}
             />
           </g>
-          {/* Dark underlay stroked behind the viewers line so it reads crisply over
-              the stacked bars and provider lines regardless of what's behind. */}
-          <g className={seriesFocusClass(focusedSeriesKey, 'viewers')}>
-          {viewerLines.map((line, i) => (
-            <path
-              key={`view-underlay-${i}`}
-              className="hx-chart-line hx-chart-line-underlay"
-              d={line}
-              fill="none"
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-          {viewerLines.map((line, i) => (
-            <path
-              key={`view-${i}`}
-              className="hx-chart-line hx-chart-line--viewers"
-              d={line}
-              fill="none"
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-          </g>
-          {hasTotalEmotes && !showProviderOverlay
-            ? (
-              <g className={seriesFocusClass(focusedSeriesKey, 'emotes')}>
-              {totalEmoteLines.map((line, i) => (
-                <g key={`emote-${i}`}>
-                  <path
-                    className="hx-chart-line hx-chart-line-underlay hx-chart-line-underlay--emotes"
-                    d={line}
-                    fill="none"
-                    vectorEffect="non-scaling-stroke"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    className="hx-chart-line hx-chart-line--emotes"
-                    d={line}
-                    fill="none"
-                    vectorEffect="non-scaling-stroke"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              ))}
-              </g>
-            )
-            : null}
+          {/* Old viewer/emote/provider line overlay removed in the Global Activity
+              redesign; the stacked bars + rhythm lines + annotations carry the story now. */}
+          {/* provider overlay region kept for the existing kebab toggle */}
           {showProviderOverlay
             ? shownProviders.map((key) => (
               <g key={key} className={seriesFocusClass(focusedSeriesKey, `provider:${key}`)}>
@@ -1185,6 +1139,12 @@ export function HubActivityChart({
               </g>
             ))
             : null}
+          <HubActivityMomentAnnotations
+            annotations={chartAnnotations}
+            height={100}
+            reducedMotion={reducedMotion}
+            selectedAnnotationKey={selectedMomentKey}
+          />
         </svg>
 
         <div className="hx-chart2__layer">
@@ -1204,12 +1164,6 @@ export function HubActivityChart({
               motionEnabled={motionEnabled}
             />
           ) : null}
-          <HubActivityMomentAnnotations
-            annotations={chartAnnotations}
-            height={100}
-            reducedMotion={reducedMotion}
-            selectedAnnotationKey={selectedMomentKey}
-          />
           {/* Preserved legacy interaction layer: keyboard/touch hit targets with the
               chart-marker contract (data-chart-marker-key, selection kind, aria-pressed,
               focus ring). Visuals come from HubActivityMomentAnnotations; these buttons

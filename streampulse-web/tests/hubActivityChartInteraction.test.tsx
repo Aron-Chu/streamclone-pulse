@@ -49,15 +49,32 @@ describe('HubActivityChart interaction contract', () => {
       <HubActivityChart points={points} windowMinutes={2} channelCount={1} />,
     )
 
-    const viewerLine = container.querySelector('.hx-chart-line--viewers')
-    expect(viewerLine).not.toBeNull()
-    expect(viewerLine?.getAttribute('d')).toBeTruthy()
+    // Viewer foreground in the redesigned chart: stacked-bar viewer segments
+    // (the old line path was replaced by stacked contribution bars in Task 9).
+    const viewerSegments = container.querySelectorAll('.hx-bar-segment--viewers')
+    expect(viewerSegments.length).toBeGreaterThan(0)
     expect(container.querySelectorAll('.hx-moment-marker')).toHaveLength(0)
     expect(container.querySelectorAll('.hdot')).toHaveLength(0)
     expect(container.querySelectorAll('.hx-bucket-cue__node, .hx-bucket-cue__ring')).toHaveLength(0)
     expect(container.querySelectorAll('.hx-chart-line--chat-detail')).toHaveLength(0)
+    expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(0)
     expect(container.querySelectorAll('.hx-chart-tip-slot .tip')).toHaveLength(0)
     expect(container.querySelectorAll('.hx-chart-header__readout')).toHaveLength(1)
+  })
+
+  it('dims unfocused series on legend click without restoring cue nodes', () => {
+    const { container } = render(
+      <HubActivityChart points={points} windowMinutes={2} channelCount={1} />,
+    )
+
+    const viewers = container.querySelector('.hx-legend-chip')
+    expect(viewers).not.toBeNull()
+    fireEvent.click(viewers!)
+
+    expect(container.querySelector('.bars.hx-series.is-dimmed')).not.toBeNull()
+    expect(container.querySelector('.hx-series.is-dimmed .hx-chart-line--viewers')).toBeNull()
+    expect(container.querySelectorAll('.hx-bucket-cue__node, .hx-bucket-cue__ring')).toHaveLength(0)
+    expect(container.querySelectorAll('.hx-moment-marker')).toHaveLength(0)
   })
 
   it('selects the nearest signal bucket and toggles the selected bucket off', () => {
