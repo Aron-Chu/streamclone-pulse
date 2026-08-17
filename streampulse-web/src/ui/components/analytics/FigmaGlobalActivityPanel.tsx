@@ -156,9 +156,11 @@ export interface FigmaGlobalActivityPanelProps {
   /** Visual-only bucket highlight when a moment is selected without a locked bucket. */
   accentBucketT?: number | null;
   momentMarkers?: HubActivityMomentMarker[];
+  /** Marker key → channel login, used for annotation labels. Optional. */
+  markerChannelNames?: Map<string, string>;
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
-  onSelectMomentKey?: (key: string) => void;
+  onSelectMomentKey?: (key: string | null) => void;
   /** Signal Wire annotation lane feed (mounted above the plot). */
   annotationFeed?: LivePulseMomentsResult | null;
   annotationLoading?: boolean;
@@ -201,6 +203,7 @@ export function FigmaGlobalActivityPanel({
   liveChannels = [],
   accentBucketT = null,
   momentMarkers = [],
+  markerChannelNames = new Map(),
   selectedMomentKey = null,
   onSelectMoment,
   onSelectMomentKey,
@@ -215,6 +218,7 @@ export function FigmaGlobalActivityPanel({
   const inspectorRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const prevWindowKeyRef = useRef(activityWindowKey);
   const windowLabel = formatActivityWindowLabel(hub.activity.windowMinutes);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
@@ -302,10 +306,17 @@ export function FigmaGlobalActivityPanel({
   }, [clearBucketFocus, hoverBucketT, selectedBucketT]);
 
   // Chart inputs ignore trust-line / refresh metadata — only activity fields + live pool sum.
-  const chartInputs = selectHubChartActivityInputs(hub);
+  const chartInputs = useMemo(
+    () => ({
+      ...selectHubChartActivityInputs(hub),
+      markers: momentMarkers,
+      markerChannelNames,
+    }),
+    [hub, momentMarkers, markerChannelNames],
+  );
   const chartModel = useMemo(
     () => deriveHubChartActivityModel(chartInputs),
-    [chartInputs.points, chartInputs.windowMinutes, chartInputs.livePoolViewerSum],
+    [chartInputs.points, chartInputs.windowMinutes, chartInputs.livePoolViewerSum, chartInputs.markers, chartInputs.markerChannelNames],
   );
   const { chartPoints, peakViewers, peakChatPerMin } = chartModel;
   const peakPoint = chartPoints.reduce(
@@ -363,7 +374,7 @@ export function FigmaGlobalActivityPanel({
     if (!activityWindowKey || !motionEnabled) return;
     if (prevWindowKeyRef.current === activityWindowKey) return;
     prevWindowKeyRef.current = activityWindowKey;
-    fadeThemeCenter(bodyRef.current);
+    fadeThemeCenter(plotRef.current, 0.2);
   }, [activityWindowKey, fadeThemeCenter, motionEnabled]);
 
   const chartNote = chartBucketSelectEnabled
@@ -461,7 +472,10 @@ export function FigmaGlobalActivityPanel({
               />
             </div>
           ) : null}
-          <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
+          <div
+            ref={plotRef}
+            className="hubx figma-global-activity__chart figma-global-activity__hub-chart"
+          >
             <HubActivityChart
               points={chartInputs.points}
               windowMinutes={chartInputs.windowMinutes}

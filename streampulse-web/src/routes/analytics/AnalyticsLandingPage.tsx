@@ -88,6 +88,14 @@ function AnalyticsLandingContent() {
   const [hoverBucketMoments, setHoverBucketMoments] = useState<FigmaMomentRow[]>([]);
   const [hoverBucketMomentsLoading, setHoverBucketMomentsLoading] = useState(false);
   const [poolMoments, setPoolMoments] = useState<FigmaMomentRow[]>([]);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setSelectedMomentKey(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const hub = usePublicHubData({ enabled: true, activityWindow });
   const recentLogins = useHubRecentLogins();
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
@@ -338,7 +346,7 @@ function AnalyticsLandingContent() {
   const sidebarSections = useMemo<HubSidebarSection[]>(
     () => [
       { id: "section-overview", label: labels.overview },
-      { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
+      { id: "section-live-rail", label: labels.liveRail, hidden: false },
       { id: "section-signal-wire", label: "Signal Wire" },
       { id: "section-network", label: labels.networkActivity },
       { id: "section-pulse-moments", label: labels.pulseMoments },
@@ -346,7 +354,7 @@ function AnalyticsLandingContent() {
       { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },
       { id: "section-coverage", label: labels.coverage },
     ],
-    [featuredChannels.length, labels, showTrackedTable],
+    [labels, showTrackedTable],
   );
 
   const topMovers = useMemo(
@@ -393,7 +401,7 @@ function AnalyticsLandingContent() {
 
   const momentMarkers = useMemo(() => {
     const now = Date.now();
-    const markers: { key: string; bucketT: number; kind?: string }[] = [];
+    const markers: Array<{ key: string; bucketT: number; at: number; kind?: string }> = [];
     for (const moment of liveWireFeed.moments) {
       if (!isLiveWireEventFresh(moment.at, now)) continue;
       if (moment.at == null || !Number.isFinite(moment.at)) continue;
@@ -401,12 +409,23 @@ function AnalyticsLandingContent() {
       markers.push({
         key,
         bucketT: activityBucketKey(moment.at, data.activity.windowMinutes),
+        at: moment.at,
         kind: moment.kind,
       });
       if (markers.length >= 12) break;
     }
     return markers;
   }, [data.activity.windowMinutes, liveWireFeed.moments]);
+
+  const markerChannelNames = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const moment of liveWireFeed.moments) {
+      const login = moment.login?.trim();
+      if (!login) continue;
+      byKey.set(momentRowKey(moment), login);
+    }
+    return byKey;
+  }, [liveWireFeed.moments]);
 
   return (
     <AnalyticsFigmaShell
@@ -438,26 +457,28 @@ function AnalyticsLandingContent() {
         aria-label="StreamPulse analytics"
         data-hub-state={hubUiState}
       >
-        {hub.loadSource === "cache" && hub.refreshing ? (
-          <div
-            className="figma-hub-fallback-banner figma-hub-fallback-banner--info"
-            role="status"
-          >
-            Cached snapshot - refreshing...
-          </div>
-        ) : null}
-        <HubDataHealthBanner
-          loadSource={hub.loadSource}
-          hubEndpointOk={hub.hubEndpointOk}
-          activitySummary={activitySummary}
-          activity={data.activity}
-          pipeline={data.corpusPipeline}
-          liveRosterCount={data.coverage.liveChannels}
-          error={hub.error}
-          backendUrl={getBackendUrl()}
-          loading={loadingInitial || hubUiState === "loading"}
-        />
-        <HubBackendSourceBanner />
+        <div className="hub-status-strip" data-testid="hub-status-strip">
+          {hub.loadSource === "cache" && hub.refreshing ? (
+            <div
+              className="figma-hub-fallback-banner figma-hub-fallback-banner--info"
+              role="status"
+            >
+              Cached snapshot - refreshing...
+            </div>
+          ) : null}
+          <HubDataHealthBanner
+            loadSource={hub.loadSource}
+            hubEndpointOk={hub.hubEndpointOk}
+            activitySummary={activitySummary}
+            activity={data.activity}
+            pipeline={data.corpusPipeline}
+            liveRosterCount={data.coverage.liveChannels}
+            error={hub.error}
+            backendUrl={getBackendUrl()}
+            loading={loadingInitial || hubUiState === "loading"}
+          />
+          <HubBackendSourceBanner />
+        </div>
 
         <SectionReveal id="section-overview">
           <HubCommandHeader
@@ -496,7 +517,7 @@ function AnalyticsLandingContent() {
           </div>
         </SectionReveal>
 
-        {featuredChannels.length > 0 ? (
+        {loadingInitial || featuredChannels.length > 0 ? (
           <SectionReveal
             as="section"
             id="section-live-rail"
@@ -505,8 +526,9 @@ function AnalyticsLandingContent() {
             <div className="hub-live-rail-section__head">
               <h2 className="hub-live-rail-section__title">{labels.liveRail}</h2>
               <span className="hub-live-rail-section__meta">
-                Showing top {featuredChannels.length} by activity of{" "}
-                {compact(data.liveChannels.length)} in pool
+                {loadingInitial
+                  ? "Loading live pool…"
+                  : `Showing top ${featuredChannels.length} by activity of ${compact(data.liveChannels.length)} in pool`}
               </span>
             </div>
             <FigmaLiveChannelRail
@@ -515,7 +537,20 @@ function AnalyticsLandingContent() {
               loading={loadingInitial}
             />
           </SectionReveal>
-        ) : null}
+        ) : (
+          <SectionReveal
+            as="section"
+            id="section-live-rail"
+            className="hub-live-rail-section hub-live-rail-section--empty"
+          >
+            <div className="hub-live-rail-section__head">
+              <h2 className="hub-live-rail-section__title">{labels.liveRail}</h2>
+            </div>
+            <p className="hub-live-rail-section__empty" role="status">
+              No live channels in the hottest pool right now.
+            </p>
+          </SectionReveal>
+        )}
 
         <SectionReveal id="section-network">
           <div className="figma-activity-hub">
@@ -564,9 +599,14 @@ function AnalyticsLandingContent() {
               onClearLinkedMoment={() => setSelectedMomentKey(null)}
               accentBucketT={accentBucketT}
               momentMarkers={momentMarkers}
+              markerChannelNames={markerChannelNames}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
               onSelectMomentKey={(key) => {
+                if (key == null) {
+                  setSelectedMomentKey(null);
+                  return;
+                }
                 const moment = momentLookupPool.get(key);
                 if (moment) handleSelectMoment(moment);
               }}
