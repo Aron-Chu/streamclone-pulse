@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { HubActivityPoint } from '../src/lib/publicHub'
 import {
   barXPercent,
   barWidthPercent,
@@ -32,7 +33,7 @@ describe('hubChartGeometry', () => {
   })
 
   it('rhythmLines returns single avg value when points.length === 1', () => {
-    const points = [{ t: 0, viewers: 500 }]
+    const points: [HubActivityPoint] = [{ t: 0, chat: 0, seventv: 0, viewers: 500 }]
     const lines = rhythmLines(points, { dims: { height: 100, paddingBottom: 0 } })
     expect(lines).not.toBeNull()
     expect(lines!.avg).toBe(100) // 500 / 500 data-max — single point is its own baseline
@@ -40,7 +41,7 @@ describe('hubChartGeometry', () => {
   })
 
   it('rhythmLines returns avg (median) and loud (p90) for many points', () => {
-    const points = Array.from({ length: 100 }, (_, i) => ({ t: i, viewers: i * 10 }))
+    const points = Array.from({ length: 100 }, (_, i): HubActivityPoint => ({ t: i, chat: 0, seventv: 0, viewers: i * 10 }))
     const lines = rhythmLines(points, { dims: { height: 100, paddingBottom: 0 } })
     expect(lines).not.toBeNull()
     expect(lines!.avg).toBe((500 / 990) * 100) // median 500 / data-max 990
