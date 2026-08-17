@@ -17,6 +17,8 @@ export interface HubChartAnnotation {
   xPercent?: number
   opacity?: number
   labelOmitted?: boolean
+  /** Original marker kind (e.g. 'emote_spike') — used for the selection-kind hint. */
+  rawKind?: string
 }
 
 const SPIKE_KINDS = new Set(['chat_spike', 'emote_spike', 'viewer_spike'])
