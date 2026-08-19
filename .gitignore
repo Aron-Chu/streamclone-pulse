@@ -29,3 +29,6 @@ listing-assets/
 
 # Uncertified / operator-regenerated CWS capture outputs (not the approved mocked RC set)
 docs/pulse-extension/cws-screenshots/
+
+# Visual companion mockups (brainstorming)
+.superpowers/
