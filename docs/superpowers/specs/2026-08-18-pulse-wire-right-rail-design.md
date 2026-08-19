@@ -1,183 +1,183 @@
-# Live Wire → fixed right-rail catch-moment radar
+# Live Wire → responsive sticky right-rail catch-moment radar
 
 | | |
 |---|---|
-| **Status** | Approved design (brainstorming), revised per review |
+| **Status** | Approved design (brainstorming), revised per review ×2 |
 | **Owner repo** | `streamclone-pulse` |
 | **Surface** | `/analytics` hub landing — `AnalyticsLandingPage` |
 | **Primary file** | `streampulse-web/src/ui/components/analytics/HubLiveWireFeed.tsx` |
-| **Layout shell** | `AnalyticsFigmaShell` / `figma-analytics.css` (`figma-analytics__frame`) |
-| **Data resolver** | `resolveLivePulseMoments` → `LivePulseMomentsResult` (source-aware; `livePulseMomentsFromPublicHub` is **deprecated**) |
+| **Layout shell** | `AnalyticsFigmaShell` → `figma-analytics.css` (`figma-analytics__frame`) |
+| **Data resolver** | `resolveLivePulseMoments` → `LivePulseMomentsResult` (`livePulseMomentsFromPublicHub` is **deprecated**) |
+| **Naming** | Locked: **Live Wire**. Do **not** use "Pulse Wire" in this surface (no-resurrection naming rule). |
 
 ## Summary
 
-Turn **Live Wire** (the system's "Pulse Wire") from a horizontal chart-attached
-annotation lane into a **fixed right rail** — a persistent, always-visible
-"catch-moment radar." Each moment is a **Callout card** showing the channel,
-**current category**, chat/emote magnitude, top emotes, and a clear
-**leave to channel analytics / jump-to-VOD** action. The rail shows a tight
-**"Live now"** band plus a compact **"Older retained moments"** disclosure.
+Turn **Live Wire** from a horizontal chart-attached annotation lane into a
+**responsive sticky right rail** — a persistent, always-visible "catch-moment
+radar" on the hub landing. Each moment is a **Callout card**: channel,
+category, chat/emote magnitude, top emotes, and sibling **leave-to-analytics /
+jump-to-VOD** actions. The rail shows a tight **"Live now"** band plus a
+compact, honestly-partial **"Older retained"** disclosure.
 
-Decisions (confirmed via interactive mockups): **Approach A fixed right rail**,
-**Callout card anatomy**, **tiered Live now + older-retained** (renamed from
-"Earlier today" — see §Tiered freshness for why).
+The rail is a **responsive sticky grid child** and is **never `position: fixed`**.
+Responsive contract (single, no contradiction): **sticky rail at ≥ 1440px**;
+**normal in-flow Live Wire section below the center column at all narrower
+widths**. No drawer is shipped.
 
-This spec **supersedes** the hub-landing "Live Wire placement" contract in
-`docs/website-portal/analytics-command-center-layout.md`, which mandated a
-chart-attached lane, a shared `selectedMomentKey`, and removal of the third rail
-column. The supersession is explicit and the affected tests/audit must be updated
-in the **same implementation batch** (§Conflict supersession).
+Confirmed via interactive mockups: **Approach A rail**, **Callout cards**,
+**tiered Live now + older-retained** (partial). This spec **supersedes** the
+hub-landing "Live Wire placement" contract in
+`docs/website-portal/analytics-command-center-layout.md` (lane + shared
+selection + no third rail).
 
 ## Motivation
 
-Currently Live Wire renders as one-line chips above the Global Activity chart
+Live Wire currently renders as one-line chips above the Global Activity chart
 (`layout="lane"`) and its click **selects** the moment in place (shared
 `selectedMomentKey`). That makes it a passive annotation, not a catch surface,
 and it is cramped to one horizontal line. Users want a **glanceable radar** that
-**launches to the channel analytics / VOD** rather than inspecting in place,
-shows **categories**, and is detailed enough to be a real feature.
+**launches to channel analytics / VOD** rather than inspecting in place, shows
+**categories**, and is detailed enough to be a real feature.
 
 ## Goals / non-goals
 
 **Goals**
-- Persistent right rail that mirrors the left sidebar, always on at desktop widths.
-- Each moment card surfaces: channel, **current category**, Chat + Emotes magnitude, top emotes, age, NEW badge, and a clear jump/launch action.
-- Tiered freshness: "Live now" (≤30m) + compact, honestly-labeled "Older retained moments" disclosure.
-- Native to the existing theme (reuse `--sp-*` tokens and `hub-live-wire__*` / `figma-*` class conventions); restrained, consistent motion.
-- Reuse existing data and helpers (`resolveLivePulseMoments`, `buildAnalyticsHref`, `buildVodTimestampUrl`, `formatChatRate`, `formatMomentViewersLabel`, `HubMomentRailBody`'s proven href logic).
+- Responsive sticky right rail mirroring the left sidebar; always on at desktop `≥ 1440px`; in-flow section below the center at narrower widths.
+- Each moment card: channel, **best-available category**, Chat + Emotes magnitude, top emotes, age, NEW badge, sibling jump actions.
+- Tiered freshness: "Live now" (≤30m) + compact, honestly-partial "Older retained" disclosure.
+- Reuse the existing theme (`--sp-*` tokens, `hub-live-wire__*` / `figma-*` conventions), `resolveLivePulseMoments`, and a **new shared action resolver** modeled on the mounted moment inspector.
 
 **Non-goals**
-- **No new backend API / new data fields.** Reuse `LivePulseMomentsResult`. This means the rail shows only **currently-retained** moment rows; it is **not** a full day archive.
-- Do NOT keep the in-place moment inspection model on the rail. Chart + Pulse Moments keep their own selection; the rail is decoupled.
-- Do NOT add a *second* right rail or a competing sticky column.
-- No client-side derived "score" — display only backend-authored `moment.score` if present; otherwise omit, never invent.
-- No `href="#"` fallbacks (see §Navigation).
+- **No new backend API / fields.** Reuse `LivePulseMomentsResult`. Rail shows only currently-retained rows; it is **not** a day archive.
+- Do NOT keep the in-place inspection model on the rail; rail is decoupled from `selectedMomentKey`.
+- Do NOT ship a slide-over drawer in this batch (deferred — see §Responsive contract).
+- No client-side derived score; no `href="#"`; **no missing-vs-zero distinction** (see §Magnitude bars).
 
 ## Conflict supersession (REQUIRED in same batch)
 
-1. **Canonical layout contract:** Update `docs/website-portal/analytics-command-center-layout.md`'s "Live Wire placement (2026-07 P1)" section to mark it superseded on the hub landing by this spec (rail replaces the lane; selection decoupled; third column reintroduced). Update the "Do not regress" bullets accordingly.
-2. **Refactor audit:** Update the relevant analytics refactor/unused-feature audits that still describe the lane model.
-3. **E2E contract:** `streampulse-web/tests/e2e/analytics-hub-live-wire-ticker.spec.ts` currently **asserts the opposite** of the new design and must be **replaced**, not augmented:
-   - line 29, 80: `expect('.figma-analytics__side-rail--right').toHaveCount(0)` (asserts no right rail) → flip to assert the new rail is present at desktop widths.
-   - lines 30–53: asserts `#section-live-wire` is visible **inside** the chart col and the lane is **above the chart** → replace with rail-anchoring assertions.
-   - Keep `assertNoPageHorizontalOverflow` and the viewport matrix.
-4. **Naming:** Use **Live Wire** everywhere (matches the active liveness contract/`#section-live-wire`). "Pulse Wire" only appears as the product-facing label if a copy decision keeps it; otherwise it is deprecated in this surface. Use `resolveLivePulseMoments` (not the deprecated `livePulseMomentsFromPublicHub`).
+This batch must update — not merely add tests for — every contract that encodes
+the opposite layout:
 
-## Layout
+1. **Canonical layout/liveness docs:** `docs/website-portal/analytics-command-center-layout.md` ("Live Wire placement 2026-07 P1", "Do not regress") and the analytics refactor/liveness/figma-parity docs: mark the hub-landing lane model **superseded**.
+2. **E2E specs that assert the opposite contract** (all must be reconciled):
+   - `analytics-hub-live-wire-ticker.spec.ts` — asserts `.figma-analytics__side-rail--right` count 0 (L29, L80) and lane-inside-chart-col (L30–53).
+   - `analytics-figma-parity.spec.ts` — L34–35 assert `.hub-live-wire--ticker` visible and `side-rail--right` count 0.
+   - `analytics-hub-ux.spec.ts` — "Live Wire selection coordinates one inspector" (L340+) asserts lane-chip selection linkage.
+   - `analytics-hub-chart-contract.spec.ts` — L54–55, L80 assert lane chips / `--new` badge behavior.
+   - Any lane-selection unit test asserting `selectedMomentKey` wiring on the hub landing.
+3. **Naming:** use **Live Wire**; remove "Pulse Wire" copy from this surface and from launch docs touched by this batch.
+4. **Checker:** `streampulse-web/scripts/check-analytics-links.mjs` currently validates `/analytics/{login}` and `/analytics/{login}/s/{streamId}`. Align the spec's route contract to that real `buildAnalyticsHref` contract (do not claim a `#t={offset}` in-app route that the checker does not expect), and run it. Scope commands as `npm --prefix streampulse-web run check:analytics-links` / `check:analytics-overlap`.
 
-`figma-analytics__frame` is currently `grid-template-columns: 220px minmax(0, 1fr)` at wide widths. Extend to a three-column grid **only when there is enough room** for a viable center workspace.
+## Responsive contract (single source of truth — P0)
 
-### Breakpoints (no overlapping ranges)
+| Viewport | Columns | Live Wire |
+|----------|---------|-----------|
+| **≥ 1440px** | `220px minmax(0,1fr) 320px` | **Sticky right rail** (3rd grid child). |
+| **all < 1440px** (incl. 1100–1439) | `minmax(0,1fr)` (sidebar hidden at ≤1024) | **In-flow Live Wire section below the center column.** |
 
-| Viewport | Columns | Rail behavior |
-|----------|---------|---------------|
-| **≥ 1440px** | `220px minmax(0,1fr) 320px` | Sticky full-height rail, internally scrolls. |
-| **1100 – 1439px** | `220px minmax(0,1fr)` | **No persistent rail.** The rail becomes a slide-over drawer opened by a "Live Wire" control. Center keeps full width. |
-| **< 1100px** |`minmax(0,1fr)` | No rail in flow. Optional stacked "Live Wire" section below the main content (smallest coherent mobile flow), or the drawer control. |
+- **No drawer** in this batch. A slide-over drawer is explicitly deferred because it needs a trigger, `role="dialog"` semantics, focus trap/restoration, Escape + backdrop, and scroll lock — do not ship it half-specified.
+- At `1100–1439` the rail is not persistent; Live Wire renders as a normal in-flow block section under the main column. This avoids the earlier contradiction.
+- The left sidebar is hidden at `≤ 1024px` (existing rule, `figma-analytics.css` L908), so at 1024 the layout is a single column.
 
-### Minimum-center-width policy (P0 #3)
+## AnalyticsFigmaShell — right-rail slot (P0)
 
-- The **third column must not engage unless the center workspace stays ≥ 720px** after the left sidebar + rail + shell gaps + padding.
-- The chart inspector reserves ~350px until the `min-width: 1100px` breakpoint, and the embedded Pulse Moments grid needs `minmax(240px, 0.72fr) + minmax(0, 1.85fr)`. Because of these **nested fixed-width constraints**, do **not** force the rail at < 1440px with the current nested layouts; that is why the persistent rail starts at 1440px. (Container-query conversion of the nested grid is a documented future option to lower the persistent-rail threshold, out of scope here.)
-- **Expected center-column widths** (document in tests, ±pad tolerance):
-  - 1024px → no rail; center ≈ 1024 − shell/sidebar/padding (≈ 700–760px).
-  - 1100px → no rail; center ≈ 220 + gaps (≈ 800px).
-  - 1440px → rail 320px engaged; center ≈ 1440 − 220 − 320 − gaps − padding (≈ 800px).
-  - 1520px → rail engaged; center ≈ 880px.
-  - 1600px → rail engaged; center ≈ 960px.
-- The Chart / Pulse Moments center column already uses `minmax(0, 1fr)`, so it flexes to the remaining width once the rail is gated correctly.
+- Add an optional, **landing-only** prop `rightRail?: ReactNode` to `AnalyticsFigmaShell` (default `undefined` → no change for channel/session routes).
+- Add a **scoped** modifier: when `rightRail` is present, the frame gets class `figma-analytics__frame--with-right-rail`, and the grid becomes `220px minmax(0,1fr) 320px` **only at `≥ 1440px`**.
+- Explicit grid placement: `grid-template-areas` for `"sidebar center rail"` at `≥1440`; `"sidebar center"` (or `"center"` when sidebar hidden) below; rail as a named grid item in the 3rd column.
+- **Do not make a global three-column rule** — the existing channel/session routes must be unaffected. Only the landing page passes `rightRail`.
 
-### Sticky rail mechanics (P0 #4)
+### Minimum-center-width policy (P0)
 
-- The rail is a **sticky grid child** (`position: sticky; top: <header offset>`), **not** `position: fixed` — a fixed element would misalign against the centered shell on wide screens.
-- Aligned to the centered shell's right edge; define a `top` offset below the top nav, a `max-height: calc(100vh - <top> - <footer gap>)`, and **one internal scroll owner** (`overflow-y: auto`) so the page never double-scrolls.
-- On mobile (< 1100px), the **stacked section** is the smallest coherent mobile flow: render Live Wire as a normal in-flow section below the main content; no drawer trigger, no dialog semantics, no focus trap, no scroll lock. (A slide-over drawer is explicitly listed as a **future** enhancement because it requires a trigger, `role="dialog"` semantics, focus trapping/restoration, Escape + backdrop handling, and scroll locking — do not ship it half-specified in this batch.)
+- The third column must never starve the center. Because the chart inspector reserves ~350px until `min-width: 1100px` and the embedded Pulse Moments grid needs `minmax(240px,0.72fr)+minmax(0,1.85fr)`, the persistent rail **only engages at `≥ 1440px`** on the current nested grids.
+- **Expected center widths** (shell is `max-width: min(1520px,100%)`; sidebar hidden at ≤1024; 1.25rem gaps×2 + 1.25rem padding×2 at the rail breakpoint):
+
+| Viewport | Sidebar | Rail | Center ≈ |
+|----------|---------|------|----------|
+| 1024px | hidden | none (in-flow below) | 1000px |
+| 1100px | 220px | none (in-flow below) | 836px |
+| 1440px | 220px | 320px sticky | 836px |
+| 1520px | 220px | 320px sticky | 900px (shell cap) |
+| 1600px | 220px | 320px sticky | 900px (capped at 1520) |
+
+- Assert these in an E2E computed-layout test (with pad tolerance).
+
+### Sticky rail mechanics (P0/P1)
+
+- Rail is a **sticky grid child**: `position: sticky; top: <nav+header offset>`, aligned to the centered shell's right edge.
+- **Never `position: fixed`** (misaligns on wide screens where the shell is centered/capped).
+- **Scroll ownership:** the **document remains the page scroll owner**; the rail is a **second, intentional scroll owner** via `overflow-y: auto` with a **viewport-bounded height** (`max-height: calc(100vh - <top> - <footer-gap>)`). Ensure **no descendant creates a nested scroll container** (single internal scroller only).
 
 ## Moment card (Callout card)
 
-Vertical card (320px rail / 260px fallback, dark `--sp-surface-2`, teal `--sp-accent`):
+Vertical card (320px rail / in-flow width below 1440; dark `--sp-surface-2`, teal `--sp-accent`):
 
 ```
 [avatar]  display name            [2m ago] [NEW]
           Just Chatting ▸ category sub-line
 
-Chat      ████████████░░  38k/m
-Emotes    ████████░░░░░░  12k/m
+Chat       ████████████░░  38k/min
+Emotes     ████████░░░░░░  12k/min
 
-[emoji][emoji][emoji]      View moment →
+[emoji][emoji][emoji]    [View moment] [Jump to VOD]
 ```
 
-- **Header row:** `Avatar` + `displayName`; sub-line shows the **category**. **Honesty (P0 #1/P1 #7):** the category comes from `moment.category`; for older retained rows it is the **current-roster** category (via `hub.liveChannels`), **not necessarily event-time metadata**. Do not present it as the game played at the moment unless `moment.category` is event-time. Where absent, show a neutral "—"/omit, never a placeholder.
-- **Right of header:** `relativeTime(moment.at)` + `NEW` badge (see §Freshness & NEW for the deterministic rule).
-- **Twin magnitude bars:** `Chat` / `Emotes` mini bars. **Normalize each dimension independently** across the currently-visible set (chat vs max-chat, emotes vs max-emotes). **Distinguish missing from zero** (missing → "—" and no bar; zero → 0 bar). Never derive a new client-side score.
-- **Top emotes:** up to 1–3 thumbnails from `moment.topEmotes` via `EmoteImg` + `resolveMomentEmote`; omit row/emoji entirely when there are no emote rollups.
-- **Accessibility:** each bar carries an accessible label ("Chat 38k/min"), not color-only.
+- **Header row:** `Avatar` + `displayName`; sub-line = **best-available category** (see §Category provenance).
+- **Right of header:** `relativeTime(moment.at)` + `NEW` (see §Freshness & NEW).
+- **Magnitude bars:** Chat / Emotes, each **normalized independently** against its own max in the visible set. Because backend numeric fields use `omitempty`, **absent and zero are indistinguishable on the wire** → **treat both as unavailable** ("—", no bar). No client-side score. Accessible bar labels ("Chat 38k/min").
+- **Top emotes:** up to 1–3 thumbnails from `moment.topEmotes` via `EmoteImg` + `resolveMomentEmote`; omit entirely when no emote rollups.
+- **Actions:** **sibling** (non-nested) controls; see §Navigation.
 
-## Navigation (P0 #5)
+### Category provenance (P1)
 
-- **No nested controls.** Render the card as a non-interactive `article` (in a `role="list"`/`<ul>` of `role="listitem"`) with **sibling** action buttons/links — do NOT wrap the whole card in a link and nest a VOD link inside it.
-- **Primary action** "View moment": use `moment.href`, falling back to `buildAnalyticsHref({ login, streamId, offsetSeconds })` (canonical `/analytics/{login}/{streamId}#t={offset}`). **Never fall back to `href="#"`** — if there is no href and no login, render a disabled state instead.
-- **VOD action**: when `vodId` is present, a sibling **"Jump to VOD"** via `buildVodTimestampUrl(vodId, offsetSeconds)`, external (`target="_blank" rel="noreferrer"`).
-- Reuse the href-resolution logic already proven in `HubMomentRailBody` (extract to a shared helper rather than reimplementing), including `primaryExternal` and disabled-state handling ("No VOD indexed yet"/"Live tracking only").
+`moment.category` may be **event-time data or a current fallback**; client enrichment can fall back to the **current roster** (`hub.liveChannels`, as the old lane did). Present it as **"best-available category"**, never claim it is the game played at the moment unless event-time provenance is added.
 
-## Tiered freshness (P0 #1)
+## Navigation (P0/P1)
 
-- **"Live now" (top):** moments where `0 <= now - at <= 30 min` (freshness window), **newest first**. New cards slide in from the right on poll (max 3 per poll — `MAX_NEW_ANIMATIONS_PER_POLL`, `useAnalyticsMotion` `animateEnterHorizontal`).
-- **"Older retained moments" (below, collapsed):** the **remaining rows the payload actually holds** that are older than the Live-now window. Label it honestly as **partial retained rows** — the payload is a per-poll snapshot of currently-live peaks with **no historical horizon, completeness indicator, or total count**; it is **not a day archive**. The disclosure counts **only rows actually rendered** (no fabricated counts). Expanding lists them newest-first with a subtle age fade.
-- **A real historical tier requires a new backend contract** (a `livePulseMoments` history endpoint with horizon + completeness + total). Explicitly **out of scope**; do not fake it client-side.
+- **No nested controls.** Render each card as a non-interactive `article` (`<ul role="list">` / `<li role="listitem">`) with **sibling** action elements. Never wrap the whole card in a link and nest another link inside.
+- **`HubMomentRailBody` is NOT the reuse source** (it is currently unmounted and promotes VOD to primary when analytics is unavailable; it does not render sibling analytics+VOD). Instead build a **new shared action resolver** modeled on the **mounted inspector** (`FigmaMomentInspector`, which already computes `openMomentHref` and `vodHref = buildVodTimestampUrl(...)`), exposing both actions as siblings:
+  - **Analytics action:** canonical in-app `buildAnalyticsHref({ login, streamId })` → `/analytics/{login}` or `/analytics/{login}/s/{streamId}` (the contract `check:analytics-links` validates). Prefer `moment.href` when present, else `buildAnalyticsHref`.
+  - **VOD action:** external `buildVodTimestampUrl(vodId, offsetSeconds)` → `https://www.twitch.tv/videos/{vodId}?t={offset}s`, `target="_blank" rel="noreferrer"`, only when `vodId` is set.
+  - If neither analytics nor VOD is available, render a **disabled state** ("Live tracking only" / "No VOD indexed yet") — **never `href="#"`**.
 
-## Freshness & NEW (P0 #6) — deterministic contract
+## Tiered freshness (P0)
 
-- **Live now** = a *valid* wall-clock timestamp satisfying `0 <= now - at <= 30min`. Validate `momentAtMs`: reject `null`, non-finite, `<= 0`, and **future** timestamps (`at > now`).
-- **NEW** is granted only to a moment **first observed in a successfully applied poll** with a **stable poll identity** (e.g. the poll/fetch sequence that produced the current row set). NEW must **never** be granted on:
-  - initial cache hydration,
-  - fallback/featured data,
-  - cache-only responses,
-  - degraded endpoints (`isHubNetworkDegraded`).
-- **Reduced motion** (`prefers-reduced-motion`): suppress entrance animation but **retain the semantic NEW label**. NEW has an **explicit expiration** (the Live-now window); after it expires the badge clears regardless of animation state.
+- **Three-way timestamp classifier** (P0): given `momentAtMs(at)`:
+  - **valid (`0 <= now - at <= 30m`)** → **Live now** band.
+  - **valid (`now - at > 30m`)** → **Older retained** group.
+  - **missing / invalid / non-finite / `<= 0` / future (`at > now`)** → **omitted entirely** (never placed in the older tier).
+- **Live now:** newest first; new cards animate in on poll (max 3/poll — `MAX_NEW_ANIMATIONS_PER_POLL`).
+- **Older retained (collapsed):** the **remaining actual payload rows** older than 30m. Honestly-labeled **partial** (per-poll snapshot of live peaks; no historical horizon/completeness/total in the payload); counts **only rendered rows**. A real historical tier needs a new backend contract — **out of scope**.
 
-## Optional data honesty (P1 #7)
+## Freshness & NEW (P0) — poll identity must actually be wired
 
-- Avatar, category, emotes, viewers, and VOD are all **optional**. Define and render honest missing states ("—", disabled action, no emoji row) — never placeholders or fabricated values.
-- `viewers`/`chatPerMin`/`emotesPerMin` may be absent → show "—", not "0".
-- Live/current info (`profileImageUrl`, roster category) is enrichment for display, **not** event-time truth; label/derive conservatively.
+- `usePublicHubData` exposes `pollSequence`, but `liveWireFeedProps` currently does **not** pass it to Live Wire. **Wire it through** so Live Wire can key "this row set came from poll sequence N".
+- **NEW rule:** NEW is granted only to a moment **newly present in a successfully applied poll of a healthy, full network feed**. Required gates:
+  - `loadSource === "full"` **and** healthy network (`!isHubNetworkDegraded(loadSource, hubEndpointOk)`).
+  - A stable poll identity (on `pollSequence`).
+- **Do NOT grant NEW** on: initial cache hydration, fallback/featured data, cache-only responses, degraded/no-network, or `stats-fallback`. **Cache hydration also increments `pollSequence` and reports `hubEndpointOk: true`**, so `pollSequence` alone is insufficient — always gate on `loadSource === "full"` + healthy network.
+- **First-snapshot rule:** the first full-network snapshot after hydration is a baseline (rows establish the seen-set; they do not all flash NEW).
+- **Cache→network transition:** when transitioning from cache to a full network poll, the *first* network-poll rows are the new seen-set; NEW applies from the poll *after* that (`prevSeen` captured at baseline).
+- **Reduced motion:** suppress entrance animation but keep the semantic NEW label. NEW expires once the moment leaves the Live-now window (explicit expiration), regardless of animation state.
+
+## Motion (P1)
+
+- The existing `animateEnterHorizontal` animates from `x: -24` (enters from the **left**). The rail wants entry from the **right**. Add a **directional option** to `useAnalyticsMotion` (e.g. `animateEnterHorizontal(el, { from: 'right' })` → `x: +24`) or add a dedicated right-entry helper. Do **not** claim right-entry while reusing the left-entry helper unmodified.
+- Respect `prefers-reduced-motion`.
 
 ## Data & errors
 
-- Feed: reuse the `LivePulseMomentsResult` already built on the landing page (`liveWireFeed` / `liveWireFeedProps`), via `resolveLivePulseMoments`. No new fetching.
-- Degraded hub: `isHubNetworkDegraded(loadSource, hubEndpointOk)` → rail shows the aggregate-only honesty banner (existing `feed.banner` copy) and **no NEW / no entrance motion**. Never fabricate moments on cache/fallback/degraded.
+- Feed: reuse the `LivePulseMomentsResult` already built on the landing page (`liveWireFeed` / `liveWireFeedProps`), via `resolveLivePulseMoments`, and add `loadSource` + `pollSequence` to `liveWireFeedProps`.
+- Degraded hub: `isHubNetworkDegraded` → honesty banner (existing `feed.banner` copy), no NEW, no entrance motion. Never fabricate moments on cache/fallback/degraded.
 
 ## Accessibility & performance
 
-- Rail is semantic `<aside aria-label="Live Wire">` (page already uses `<aside>` for the left sidebar). Cards are `article` list items; actions are real links/buttons, focusable; `NEW` is a visible badge, not color-only.
-- Single internal scroll owner; sticky grid child; respect reduced motion.
-- Reuse `useAnalyticsMotion`; no new deps. Plain DOM + CSS; the component's existing `:1000`-ms `now` interval is unchanged.
-
-## Conflict with existing right-recap rail
-
-The **session console** has a separate "Pulse moments recap" right `aside` (see `analytics-session-pulse-moments.spec.ts`, `HubMomentRailBody`). That is a **different surface** (session dashboard recap) and is **unaffected** — this spec only changes the **hub landing** Live Wire. Do not confuse or merge the two; shared href helpers may be reused, but the session recap rail stays as-is.
-
-## Testing (P2 #9 — replace, not just add)
-
-- **Replace** the assertions in `analytics-hub-live-wire-ticker.spec.ts` (see §Conflict supersession) so the contract matches the rail, and keep `assertNoPageHorizontalOverflow` across the viewport matrix.
-- Cover (new tests):
-  - Timestamp boundaries: exactly 30:00, just-under, just-over, missing, invalid, zero, future.
-  - Cache/degraded/fallback: no NEW, no entrance motion; honesty banner.
-  - Poll identity: NEW only on successfully applied poll; expiration clears it.
-  - Missing fields: no avatar/no category/no emotes/no VOD render honest states; missing vs zero bars.
-  - Bar normalization: Chat and Emotes each normalize against their own max; accessible labels.
-  - Canonical links: primary `buildAnalyticsHref` path, VOD `buildVodTimestampUrl` path, no `href="#"`.
-  - Disclosure: "Older retained moments" collapses/expands; counts only rendered rows.
-  - Non-nested controls: article + sibling actions (no link-in-link; `npm run check:analytics-links`).
-  - Sticky/internal scroll: rail sticky, single scroll owner, no double scroll.
-  - Reduced motion: animation suppressed, NEW retained.
-  - **Computed layouts at 1024 / 1100 / 1280 / 1439 / 1440 / 1520 / 1600**, verifying center-width policy and rail presence/absence.
-- **Run `npm run check:analytics-overlap`** (and `check:analytics-links`) as part of the batch.
+- Rail: semantic `<aside aria-label="Live Wire">`; cards are `article` list items with sibling focusable actions; `NEW` is a visible badge, not color-only.
+- Single internal scroll owner; sticky grid child (never fixed); respect reduced motion.
+- Reuse `useAnalyticsMotion` (with the new directional option); no new deps. The component's existing `:1000`-ms `now` interval is unchanged.
 
 ## Out of scope (later)
 
-- Real historical "earlier today" tier (requires new backend contract with horizon/completeness/total).
-- Slide-over drawer with full dialog semantics (mobile/1100–1439). Documented future enhancement.
+- Real historical "earlier today" tier (needs a new backend contract with horizon/completeness/total).
+- Slide-over drawer with full dialog semantics (deferred).
 - Lowering the persistent-rail threshold via container-query conversion of the nested chart/Pulse Moments grid.
-- Persisting the disclosure open/closed state.
-- Server-driven ranking and category-filter chips inside the rail.
+- Persisting the disclosure open/closed state; server-driven ranking; category-filter chips.
