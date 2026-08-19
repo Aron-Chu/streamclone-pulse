@@ -46,6 +46,12 @@ export function normalizeRatePct(rate: number | undefined, maxRate: number): str
   return `${Math.round(pct)}%`
 }
 
+/** Translate an entry direction into the horizontal offset (px) for a slide-in
+ *  tween. `right` (rail cards entering from the right edge) → +24, else −24. */
+export function buildDirectionalX(from?: 'left' | 'right'): number {
+  return from === 'right' ? 24 : -24
+}
+
 /**
  * Dedupe moment items by `login`, dropping items whose login appeared within
  * the previous `windowMs` (a recent re-surge is not a fresh moment), then cap

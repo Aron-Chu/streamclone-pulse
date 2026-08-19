@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type ElementType, type ReactNode } from 'react'
 import gsap from 'gsap'
 import { Flip } from 'gsap/Flip'
+import { buildDirectionalX } from '../../lib/liveWire'
 import { useAnalyticsThemeOptional } from '../providers/AnalyticsThemeProvider'
 
 let flipRegistered = false
@@ -100,9 +101,9 @@ export function useAnalyticsMotion() {
   )
 
   const animateEnterHorizontal = useCallback(
-    (el: HTMLElement | null) => {
+    (el: HTMLElement | null, opts?: { from?: 'left' | 'right' }) => {
       if (!el || !motionEnabled) return
-      gsap.from(el, { x: -24, opacity: 0, duration: 0.35, ease: 'power3.out' })
+      gsap.from(el, { x: buildDirectionalX(opts?.from), opacity: 0, duration: 0.35, ease: 'power3.out' })
     },
     [motionEnabled],
   )
