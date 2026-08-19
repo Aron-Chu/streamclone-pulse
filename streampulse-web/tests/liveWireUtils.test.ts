@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildDirectionalX,
   capNewKeysPerPoll,
   classifyMomentWindow,
   dedupeMomentsByLogin,
@@ -43,6 +44,17 @@ describe('classifyMomentWindow', () => {
     expect(classifyMomentWindow(Number.NaN, now, WINDOW)).toBe('omit')
     expect(classifyMomentWindow(0, now, WINDOW)).toBe('omit')
     expect(classifyMomentWindow(now + 60_000, now, WINDOW)).toBe('omit')
+  })
+})
+
+describe('buildDirectionalX', () => {
+  it('defaults to left (-24) for undefined/left', () => {
+    expect(buildDirectionalX()).toBe(-24)
+    expect(buildDirectionalX('left')).toBe(-24)
+  })
+
+  it('returns +24 for right entry', () => {
+    expect(buildDirectionalX('right')).toBe(24)
   })
 })
 
