@@ -375,16 +375,6 @@ function AnalyticsLandingContent() {
     [data.topMovers, data.liveChannels],
   );
 
-  const liveWireFeedProps = {
-    hub: data,
-    feed: liveWireFeed,
-    activityWindow,
-    loading: loadingInitial || hubUiState === "loading",
-    hubEndpointOk: hub.hubEndpointOk,
-    // Do not default to "full" — that made pending hubEndpointOk=false look like a confirmed outage.
-    loadSource: hub.loadSource ?? undefined,
-  };
-
   const momentLookupPool = useMemo(() => {
     const byKey = new Map<string, FigmaMomentRow>();
     for (const moment of [...poolMoments, ...bucketMoments, ...liveWireFeed.moments]) {
@@ -571,11 +561,6 @@ function AnalyticsLandingContent() {
               accentBucketT={accentBucketT}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
-              annotationFeed={liveWireFeed}
-              annotationLoading={liveWireFeedProps.loading}
-              annotationHubEndpointOk={hub.hubEndpointOk}
-              annotationLoadSource={hub.loadSource ?? undefined}
-              annotationActivityWindow={activityWindow}
             />
             <PulseMomentsLivePanel
               hub={data}

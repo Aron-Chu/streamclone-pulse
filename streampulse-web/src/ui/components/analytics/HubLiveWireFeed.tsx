@@ -57,7 +57,7 @@ export interface HubLiveWireFeedProps {
   loading?: boolean
   hubEndpointOk?: boolean
   loadSource?: PublicHubLoadSource
-  layout?: 'section' | 'ticker' | 'lane'
+  layout?: 'section' | 'ticker'
   titleId?: string
   selectedMomentKey?: string | null
   onSelectMoment?: (moment: FigmaMomentRow) => void
@@ -274,8 +274,7 @@ export function HubLiveWireFeed({
   onSelectMoment,
 }: HubLiveWireFeedProps) {
   const isTicker = layout === 'ticker'
-  const isLane = layout === 'lane'
-  const visibleCap = isTicker || isLane ? VISIBLE_CAP_TICKER : VISIBLE_CAP_SECTION
+  const visibleCap = isTicker ? VISIBLE_CAP_TICKER : VISIBLE_CAP_SECTION
   const { animateEnter, animateEnterHorizontal, motionEnabled } = useAnalyticsMotion()
   const hubDegraded = isHubNetworkDegraded(loadSource, hubEndpointOk)
   const isLiveNetwork = feed.source === 'network' && !hubDegraded
@@ -349,7 +348,7 @@ export function HubLiveWireFeed({
     )
 
     setActiveNewKeys(freshKeys)
-    const animate = isTicker || isLane ? animateEnterHorizontal : animateEnter
+    const animate = isTicker ? animateEnterHorizontal : animateEnter
     for (const key of freshKeys) {
       const el = rowRefs.current.get(key)
       if (el) animate(el)
@@ -360,7 +359,6 @@ export function HubLiveWireFeed({
     animateEnter,
     animateEnterHorizontal,
     isLiveNetwork,
-    isLane,
     isTicker,
     motionEnabled,
     visibleMoments,
@@ -480,12 +478,10 @@ export function HubLiveWireFeed({
     )
   }
 
-  const rootClass = `hub-live-wire${isTicker || isLane ? ' hub-live-wire--ticker' : ''}${
-    isLane ? ' hub-live-wire--lane' : ''
-  }`
+  const rootClass = `hub-live-wire${isTicker ? ' hub-live-wire--ticker' : ''}`
 
   if (loading && visibleMoments.length === 0) {
-    if (isTicker || isLane) {
+    if (isTicker) {
       return (
         <section className={rootClass} aria-labelledby={titleId} aria-busy="true">
           <WireHeader titleId={titleId} metaLabel={metaLabel} />
@@ -514,7 +510,7 @@ export function HubLiveWireFeed({
     )
   }
 
-  if (isTicker || isLane) {
+  if (isTicker) {
     return (
       <section className={rootClass} aria-labelledby={titleId}>
         <WireHeader titleId={titleId} metaLabel={metaLabel} />

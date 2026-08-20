@@ -22,9 +22,6 @@ import {
   HubActivityChart,
   type HubActivityRangeControl,
 } from "../hub/HubActivityChart";
-import { HubLiveWireFeed } from "./HubLiveWireFeed";
-import type { LivePulseMomentsResult } from "../../../lib/figmaSessionAnalytics";
-import type { PublicHubActivityWindow, PublicHubLoadSource } from "../../../lib/publicHub";
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
 import { ActivityBucketInspector } from "./ActivityBucketInspector";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
@@ -203,12 +200,6 @@ export interface FigmaGlobalActivityPanelProps {
   accentBucketT?: number | null;
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
-  /** Live Wire annotation lane feed (mounted above the plot). */
-  annotationFeed?: LivePulseMomentsResult | null;
-  annotationLoading?: boolean;
-  annotationHubEndpointOk?: boolean;
-  annotationLoadSource?: PublicHubLoadSource;
-  annotationActivityWindow?: PublicHubActivityWindow;
 }
 
 function formatPeakTime(ts: number): string {
@@ -246,11 +237,6 @@ export function FigmaGlobalActivityPanel({
   accentBucketT = null,
   selectedMomentKey = null,
   onSelectMoment,
-  annotationFeed = null,
-  annotationLoading = false,
-  annotationHubEndpointOk,
-  annotationLoadSource,
-  annotationActivityWindow = "24h",
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
   const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
@@ -498,21 +484,6 @@ export function FigmaGlobalActivityPanel({
           ref={chartAreaRef}
           data-refreshing={activityRefreshing ? "true" : undefined}
         >
-          {annotationFeed ? (
-            <div className="figma-global-activity__annotation-lane" id="section-live-wire">
-              <HubLiveWireFeed
-                hub={hub}
-                feed={annotationFeed}
-                activityWindow={annotationActivityWindow}
-                loading={annotationLoading}
-                hubEndpointOk={annotationHubEndpointOk}
-                loadSource={annotationLoadSource}
-                layout="lane"
-                selectedMomentKey={selectedMomentKey}
-                onSelectMoment={onSelectMoment}
-              />
-            </div>
-          ) : null}
           <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
             <HubActivityChart
               points={chartInputs.points}

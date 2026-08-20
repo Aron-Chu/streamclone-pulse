@@ -3371,25 +3371,6 @@
   object-fit: cover;
 }
 
-/* Chart-attached annotation lane (Live Wire inside chart stack) */
-.figma-global-activity__annotation-lane {
-  margin: 0 0 0.35rem;
-  min-width: 0;
-}
-
-.hub-live-wire--lane {
-  padding: 0.35rem 0.15rem 0.4rem;
-  border-bottom-color: color-mix(in srgb, var(--fma-border) 70%, transparent);
-}
-
-.hub-live-wire--lane .hub-live-wire__title {
-  font-size: 0.68rem;
-}
-
-.hub-live-wire--lane .hub-live-wire__ticker-viewport {
-  min-height: 2.35rem;
-}
-
 .hub-live-wire__chip--selected {
   border-color: color-mix(in srgb, var(--sp-accent) 70%, var(--fma-border));
   background: color-mix(in srgb, var(--sp-accent-bg) 55%, var(--fma-panel));
@@ -3402,7 +3383,7 @@ button.hub-live-wire__chip {
   text-align: left;
 }
 
-/* Live Wire — horizontal ticker / annotation lane above Network Activity chart */
+/* Live Wire — horizontal ticker (legacy; superseded by the right rail) */
 .hub-live-wire--ticker {
   gap: 0.35rem;
   padding: 0.5rem 0.75rem 0.55rem;
