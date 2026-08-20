@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AnalyticsConsole,
   configureAnalyticsApi,
+  SessionIdentityMismatchError,
   type AnalyticsApi,
 } from '@streampulse/analytics-console'
 
@@ -193,12 +194,50 @@ describe('analytics console Layer 2 gating', () => {
     })
 
     await waitFor(() => {
-      expect(api.getPulseStreamRecap).toHaveBeenCalledWith(STREAM_ID)
-      expect(api.getReplayHeatmap).toHaveBeenCalled()
+      expect(api.getPulseStreamRecap).toHaveBeenCalledWith(
+        STREAM_ID,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      )
+      expect(api.getReplayHeatmap).not.toHaveBeenCalled()
       expect(api.getStreamSummary).toHaveBeenCalled()
-      expect(api.getSyncStatus).toHaveBeenCalledWith(STREAM_ID)
-      expect(api.getStreamGameSegments).toHaveBeenCalledWith(STREAM_ID)
+      expect(api.getSyncStatus).not.toHaveBeenCalled()
+      expect(api.getStreamGameSegments).toHaveBeenCalledWith(
+        STREAM_ID,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      )
     })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Spikes' })[0]!)
+    await waitFor(() => expect(api.getReplayHeatmap).toHaveBeenCalled())
+  })
+
+  it('fails closed when the backend returns another broadcast', async () => {
+    const requestedStreamId = '319987163228'
+    const api = createMockApi({
+      getAnalyticsStreams: vi.fn().mockResolvedValue({
+        items: [{
+          streamId: requestedStreamId,
+          login: LOGIN,
+          title: 'Aug 20 broadcast',
+          category: 'Just Chatting',
+          startedAt: '2026-08-20T18:05:35.000Z',
+        }],
+      }),
+      getAnalyticsStream: vi.fn().mockRejectedValue(new SessionIdentityMismatchError({
+        requestedStreamId,
+        returnedStreamId: '319974084316',
+        returnedStartedAt: '2026-08-19T17:58:07.000Z',
+      })),
+    })
+
+    renderConsole(`/analytics/${LOGIN}/2026-08-20`, api)
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('session_identity_mismatch').length).toBeGreaterThan(0)
+    })
+    expect(api.getStreamGameSegments).not.toHaveBeenCalled()
+    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
+    expect(api.getReplayHeatmap).not.toHaveBeenCalled()
   })
 
   it('refetches Layer 2 endpoints when Refresh is clicked on the session route', async () => {

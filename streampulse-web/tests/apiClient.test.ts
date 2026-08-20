@@ -69,6 +69,35 @@ describe('apiClient', () => {
     })
   })
 
+  it('propagates caller cancellation without retrying', async () => {
+    const caller = new AbortController()
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo, init?: RequestInit) => {
+      calls += 1
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })
+      })
+    }))
+    const request = apiClient('/v1/portal/analytics/streams/s1/minutes', { signal: caller.signal, timeoutMs: 100 })
+    caller.abort()
+    await expect(request).rejects.toMatchObject({ kind: 'aborted' })
+    expect(calls).toBe(1)
+  })
+
+  it('classifies its own timeout and does not perform a second long request', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo, init?: RequestInit) => {
+      calls += 1
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('timeout', 'AbortError')), { once: true })
+      })
+    }))
+    await expect(apiClient('/v1/portal/analytics/streams/s1/minutes', { timeoutMs: 5 })).rejects.toMatchObject({
+      kind: 'timeout',
+    })
+    expect(calls).toBe(1)
+  })
+
   it('retries once on 500 but not on 401', async () => {
     let calls = 0
     vi.stubGlobal(

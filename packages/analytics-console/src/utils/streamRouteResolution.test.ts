@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   recapMatchesStreamIds,
   resolveCanonicalStreamId,
+  resolveMatchedStream,
+  resolveTargetQueryStreamId,
 } from './streamRouteResolution.ts'
 
 describe('resolveCanonicalStreamId', () => {
@@ -18,5 +20,34 @@ describe('recapMatchesStreamIds', () => {
     expect(recapMatchesStreamIds('canonical-b', 'list-a', 'canonical-b')).toBe(true)
     expect(recapMatchesStreamIds('other', 'list-a', 'canonical-b')).toBe(false)
     expect(recapMatchesStreamIds(null, 'list-a', 'canonical-b')).toBe(false)
+  })
+})
+
+describe('date session resolution', () => {
+  const streams = [
+    {
+      streamId: 'aug-20',
+      login: 'hasanabi',
+      startedAt: '2026-08-20T18:05:35Z',
+    },
+    {
+      streamId: 'aug-19',
+      login: 'hasanabi',
+      startedAt: '2026-08-19T17:58:07Z',
+    },
+  ]
+
+  it('resolves distinct UTC dates to distinct exact ids', () => {
+    expect(resolveMatchedStream('2026-08-20', streams)).toMatchObject({ streamId: 'aug-20' })
+    expect(resolveMatchedStream('2026-08-19', streams)).toMatchObject({ streamId: 'aug-19' })
+  })
+
+  it('does not silently choose when two sessions share a UTC date', () => {
+    const sameDay = [
+      ...streams,
+      { streamId: 'second-aug-20', login: 'hasanabi', startedAt: '2026-08-20T23:05:35Z' },
+    ]
+    expect(resolveMatchedStream('2026-08-20', sameDay)).toBeUndefined()
+    expect(resolveTargetQueryStreamId('2026-08-20', undefined, sameDay, false)).toBeUndefined()
   })
 })

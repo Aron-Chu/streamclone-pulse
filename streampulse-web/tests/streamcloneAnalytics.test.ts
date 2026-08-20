@@ -91,7 +91,7 @@ describe('streamcloneAnalytics adapter', () => {
     expect(segments[0]?.durationSeconds).toBe(28_800)
   })
 
-  it('getAnalyticsStream + getPulseStreamRecap pass through remapped portal streamId (no rewrite to request id)', async () => {
+  it('fails closed when detail remaps the requested stream id', async () => {
     getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
     const requestId = 'alias-stream-A'
     const remappedId = 'canonical-stream-B'
@@ -148,13 +148,54 @@ describe('streamcloneAnalytics adapter', () => {
     })
 
     const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
-    const detail = (await portalAnalyticsApi.getAnalyticsStream(requestId)) as AnalyticsStreamDetail
-    const recap = (await portalAnalyticsApi.getPulseStreamRecap(requestId)) as PulseStreamRecap | null
+    await expect(portalAnalyticsApi.getAnalyticsStream(requestId)).rejects.toMatchObject({
+      kind: 'session_identity_mismatch',
+      details: {
+        requestedStreamId: requestId,
+        returnedStreamId: remappedId,
+      },
+    })
+    expect(apiClientMock).toHaveBeenCalledTimes(1)
+    expect(apiClientMock.mock.calls[0]?.[0]).toContain(`/streams/${requestId}`)
+  })
 
-    expect(detail.stream?.streamId).toBe(remappedId)
-    expect(detail.stream?.streamId).not.toBe(requestId)
-    expect(recap?.streamId).toBe(remappedId)
-    expect(recap?.streamId).not.toBe(requestId)
+  it('rejects duplicate and out-of-window minute buckets', async () => {
+    const { assertPortalMinutesIntegrity } = await import('../src/lib/streamcloneAnalytics')
+    const startedAt = '2026-08-20T18:00:00.000Z'
+    expect(() => assertPortalMinutesIntegrity(
+      'stream-1',
+      { stream: { streamId: 'stream-1', startedAt, endedAt: '2026-08-20T19:00:00.000Z' } },
+      {
+        streamId: 'stream-1',
+        channel: 'test',
+        startedAt,
+        minutes: [
+          { offsetSeconds: 0, chatCount: 1 },
+          { offsetSeconds: 0, chatCount: 2 },
+          { offsetSeconds: 4_000, chatCount: 1 },
+        ],
+        updatedAt: Date.now(),
+      },
+    )).toThrowError(/Timeline data is being repaired/)
+  })
+
+  it('rejects heatmap points from before the requested session', async () => {
+    const { assertPortalHeatmapIntegrity } = await import('../src/lib/streamcloneAnalytics')
+    expect(() => assertPortalHeatmapIntegrity(
+      'stream-1',
+      {
+        streamId: 'stream-1',
+        points: [{
+          streamId: '',
+          minuteTs: '2026-08-19T18:00:00.000Z',
+          offsetSeconds: 0,
+        }],
+      },
+      {
+        streamId: 'stream-1',
+        startedAt: '2026-08-20T18:00:00.000Z',
+      },
+    )).toThrowError(/Moment ranking is temporarily unavailable/)
   })
 
   it('getAnalyticsLive maps viewerSamples and chatMessages from portal stream record', async () => {
@@ -345,7 +386,7 @@ describe('streamcloneAnalytics adapter', () => {
     expect(catalogEntry?.id).not.toBe('425618')
   })
 
-  it('getAnalyticsStream prefers stream summary topEmote totals over minute bucket sums', async () => {
+  it('getAnalyticsStream leaves summary topEmote totals to staged enrichment', async () => {
     getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
     apiClientMock.mockImplementation((path: string) => {
       if (path.endsWith('/minutes')) {
@@ -390,7 +431,8 @@ describe('streamcloneAnalytics adapter', () => {
     const detail = (await portalAnalyticsApi.getAnalyticsStream('317839735654')) as AnalyticsStreamDetail
 
     expect(detail.topEmotes[0]?.name).toBe('Sapo')
-    expect(detail.topEmotes[0]?.count).toBe(10400)
+    expect(detail.topEmotes[0]?.count).toBe(115)
+    expect(apiClientMock.mock.calls.some(([path]) => String(path).endsWith('/summary'))).toBe(false)
   })
 
   it('getAnalyticsStream uses portal totalEmoteCount when topEmotes only expose top three', async () => {
@@ -833,7 +875,7 @@ describe('streamcloneAnalytics adapter', () => {
       )
     })
 
-    it('getAnalyticsStream merges channel emotes catalog on hosted portal routes', async () => {
+    it('getAnalyticsStream does not block on the channel emote catalog', async () => {
       getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
       apiClientMock.mockImplementation((path: string) => {
         if (path.includes('/streams/s1') && !path.includes('/minutes') && !path.includes('/summary')) {
@@ -882,10 +924,8 @@ describe('streamcloneAnalytics adapter', () => {
         channel: 'jynxzi',
       })) as AnalyticsStreamDetail
 
-      expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/jynxzi/emotes?range=30d')
-      expect(detail.topEmotes?.find((emote) => emote.name === '67')).toMatchObject({
-        imageUrl: 'https://cdn.7tv.app/emote/01ABC/4x.webp',
-      })
+      expect(apiClientMock.mock.calls.some(([path]) => String(path).includes('/channels/jynxzi/emotes'))).toBe(false)
+      expect(detail.topEmotes).toEqual([])
     })
   })
 })

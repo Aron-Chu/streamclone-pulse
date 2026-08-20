@@ -1,6 +1,11 @@
 export interface AnalyticsStreamOptions {
   sparse?: boolean
   channel?: string
+  signal?: AbortSignal
+}
+
+export interface AnalyticsRequestOptions {
+  signal?: AbortSignal
 }
 
 export interface PulseBookmarkQuery {
@@ -56,12 +61,12 @@ export interface StreamSummaryResponse {
 export interface AnalyticsApi {
   ensureChannelEmotes(login: string, twitchId: string, providers?: string[]): Promise<unknown>
   getAnalyticsStream(streamId: string, opts?: AnalyticsStreamOptions): Promise<unknown | null>
-  getStreamStatus?(streamId: string): Promise<unknown | null>
-  getStreamMinutesTail?(streamId: string, afterOffset: number): Promise<unknown | null>
-  getStreamSummary?(streamId: string, channel?: string): Promise<StreamSummaryResponse | null>
-  getAnalyticsStreams(login: string, limit?: number): Promise<unknown>
+  getStreamStatus?(streamId: string, options?: AnalyticsRequestOptions): Promise<unknown | null>
+  getStreamMinutesTail?(streamId: string, afterOffset: number, options?: AnalyticsRequestOptions): Promise<unknown | null>
+  getStreamSummary?(streamId: string, channel?: string, options?: AnalyticsRequestOptions): Promise<StreamSummaryResponse | null>
+  getAnalyticsStreams(login: string, limit?: number, options?: AnalyticsRequestOptions): Promise<unknown>
   getPulseBookmarks(params?: PulseBookmarkQuery): Promise<unknown>
-  getPulseStreamRecap(streamId: string): Promise<unknown | null>
+  getPulseStreamRecap(streamId: string, options?: AnalyticsRequestOptions): Promise<unknown | null>
   getTimeseriesStatus(): Promise<unknown>
   createPulseBookmark(input: Record<string, unknown>): Promise<unknown>
   deletePulseBookmark(id: string): Promise<void>
@@ -69,12 +74,12 @@ export interface AnalyticsApi {
   getChannel(login: string): Promise<unknown>
   getChannelStreamHistory(login: string, period?: string): Promise<unknown>
   watchAnalyticsChannel(login: string): Promise<unknown>
-  getAnalyticsLive(login: string): Promise<unknown>
-  getSyncStatus(streamId: string): Promise<unknown | null>
+  getAnalyticsLive(login: string, options?: AnalyticsRequestOptions): Promise<unknown>
+  getSyncStatus(streamId: string, options?: AnalyticsRequestOptions): Promise<unknown | null>
   startHistoricalSync(streamId: string, login?: string, options?: StartHistoricalSyncOptions): Promise<unknown>
-  getStreamGameSegments(streamId: string): Promise<unknown>
-  getReplayHeatmap(streamId: string, window?: number, channel?: string): Promise<unknown | null>
-  getReplayHeatmapDetail(streamId: string, window?: number, channel?: string): Promise<unknown | null>
+  getStreamGameSegments(streamId: string, options?: AnalyticsRequestOptions): Promise<unknown>
+  getReplayHeatmap(streamId: string, window?: number, channel?: string, options?: AnalyticsRequestOptions): Promise<unknown | null>
+  getReplayHeatmapDetail(streamId: string, window?: number, channel?: string, options?: AnalyticsRequestOptions): Promise<unknown | null>
   getVodStoryboardThumb(vodId: string, offsetSec: number): Promise<unknown | null>
   getTwitchDayClips(login: string, startedAt: string, endedAt: string): Promise<TwitchDayClipsResponse>
   getSetupWelcome(): Promise<SetupWelcome>

@@ -22,6 +22,7 @@ export type {
   SyncPhase,
   SyncStatus,
 } from './apiTypes.ts'
+import type { AnalyticsRequestOptions } from './configureApi.ts'
 
 export type AnalyticsViewMode = 'overview' | 'emotes' | 'spikes'
 
@@ -33,12 +34,12 @@ export async function ensureChannelEmotes(login: string, twitchId: string, provi
 
 export async function getAnalyticsStream(
   streamId: string,
-  opts?: { sparse?: boolean; channel?: string },
+  opts?: { sparse?: boolean; channel?: string; signal?: AbortSignal },
 ): Promise<AnalyticsStreamDetail | null> {
   return api().getAnalyticsStream(streamId, opts) as Promise<AnalyticsStreamDetail | null>
 }
 
-export async function getStreamStatus(streamId: string): Promise<{
+export async function getStreamStatus(streamId: string, options?: AnalyticsRequestOptions): Promise<{
   channel?: string
   state?: string
   syncPhase?: string
@@ -52,39 +53,40 @@ export async function getStreamStatus(streamId: string): Promise<{
 } | null> {
   const fn = api().getStreamStatus
   if (!fn) return null
-  return fn(streamId) as ReturnType<typeof getStreamStatus>
+  return fn(streamId, options) as ReturnType<typeof getStreamStatus>
 }
 
 /** Live-tail minutes after a known offset; returns a sparse detail with only new/replacement rollups. */
 export async function getStreamMinutesTail(
   streamId: string,
   afterOffset: number,
+  options?: AnalyticsRequestOptions,
 ): Promise<AnalyticsStreamDetail | null> {
   const fn = api().getStreamMinutesTail
   if (!fn) return null
-  return fn(streamId, afterOffset) as Promise<AnalyticsStreamDetail | null>
+  return fn(streamId, afterOffset, options) as Promise<AnalyticsStreamDetail | null>
 }
 
-export async function getStreamSummary(streamId: string, channel?: string) {
+export async function getStreamSummary(streamId: string, channel?: string, options?: AnalyticsRequestOptions) {
   const fn = api().getStreamSummary
   if (!fn) return null
-  return fn(streamId, channel)
+  return fn(streamId, channel, options)
 }
 
-export async function getAnalyticsStreams(login: string, limit = 20): Promise<AnalyticsStreamsResponse> {
-  return api().getAnalyticsStreams(login, limit) as Promise<AnalyticsStreamsResponse>
+export async function getAnalyticsStreams(login: string, limit = 20, options?: AnalyticsRequestOptions): Promise<AnalyticsStreamsResponse> {
+  return api().getAnalyticsStreams(login, limit, options) as Promise<AnalyticsStreamsResponse>
 }
 
-export async function getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
-  return api().getAnalyticsLive(login) as Promise<AnalyticsStreamDetail>
+export async function getAnalyticsLive(login: string, options?: AnalyticsRequestOptions): Promise<AnalyticsStreamDetail> {
+  return api().getAnalyticsLive(login, options) as Promise<AnalyticsStreamDetail>
 }
 
 export async function getPulseBookmarks(params: Record<string, unknown> = {}) {
   return api().getPulseBookmarks(params)
 }
 
-export async function getPulseStreamRecap(streamId: string): Promise<PulseStreamRecap | null> {
-  return api().getPulseStreamRecap(streamId) as Promise<PulseStreamRecap | null>
+export async function getPulseStreamRecap(streamId: string, options?: AnalyticsRequestOptions): Promise<PulseStreamRecap | null> {
+  return api().getPulseStreamRecap(streamId, options) as Promise<PulseStreamRecap | null>
 }
 
 export async function getTimeseriesStatus() {
@@ -115,8 +117,8 @@ export async function watchAnalyticsChannel(login: string) {
   return api().watchAnalyticsChannel(login)
 }
 
-export async function getSyncStatus(streamId: string): Promise<SyncStatus | null> {
-  return api().getSyncStatus(streamId) as Promise<SyncStatus | null>
+export async function getSyncStatus(streamId: string, options?: AnalyticsRequestOptions): Promise<SyncStatus | null> {
+  return api().getSyncStatus(streamId, options) as Promise<SyncStatus | null>
 }
 
 export async function startHistoricalSync(
@@ -127,16 +129,16 @@ export async function startHistoricalSync(
   return api().startHistoricalSync(streamId, login, options)
 }
 
-export async function getStreamGameSegments(streamId: string): Promise<GameSegment[]> {
-  return api().getStreamGameSegments(streamId) as Promise<GameSegment[]>
+export async function getStreamGameSegments(streamId: string, options?: AnalyticsRequestOptions): Promise<GameSegment[]> {
+  return api().getStreamGameSegments(streamId, options) as Promise<GameSegment[]>
 }
 
-export async function getReplayHeatmap(streamId: string, window = 60, channel?: string) {
-  return api().getReplayHeatmap(streamId, window, channel)
+export async function getReplayHeatmap(streamId: string, window = 60, channel?: string, options?: AnalyticsRequestOptions) {
+  return api().getReplayHeatmap(streamId, window, channel, options)
 }
 
-export async function getReplayHeatmapDetail(streamId: string, window = 60, channel?: string) {
-  return api().getReplayHeatmapDetail(streamId, window, channel)
+export async function getReplayHeatmapDetail(streamId: string, window = 60, channel?: string, options?: AnalyticsRequestOptions) {
+  return api().getReplayHeatmapDetail(streamId, window, channel, options)
 }
 
 export async function getSetupWelcome() {

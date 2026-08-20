@@ -37,7 +37,9 @@ export function useAnalyticsLive(login: string, options: UseAnalyticsLiveOptions
   const { enabled = true, refetchInterval, withTimeout = false } = options
   return useQuery({
     queryKey: analyticsLiveQueryKey(login),
-    queryFn: () => (withTimeout ? fetchLiveWithTimeout(login) : getAnalyticsLive(login)),
+    queryFn: ({ signal }) => (withTimeout
+      ? fetchLiveWithTimeout(login)
+      : getAnalyticsLive(login, { signal })),
     enabled: Boolean(login) && enabled,
     staleTime: 30_000,
     retry: false,

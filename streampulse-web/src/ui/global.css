@@ -288,9 +288,53 @@ select {
 }
 
 .analytics-route-fallback {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 72rem);
+}
+
+.analytics-route-fallback__skeleton {
+  display: grid;
+  gap: 0.75rem;
+  min-height: 24rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--bg-surface, #14141c) 78%, transparent);
+}
+
+.analytics-route-fallback__skeleton-line,
+.analytics-route-fallback__skeleton-chart {
+  border-radius: 0.4rem;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text-muted) 10%, transparent),
+    color-mix(in srgb, var(--text-muted) 22%, transparent),
+    color-mix(in srgb, var(--text-muted) 10%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: analytics-route-fallback-shimmer 1.5s ease-in-out infinite;
+}
+
+.analytics-route-fallback__skeleton-line {
+  width: 42%;
+  height: 0.9rem;
+}
+
+.analytics-route-fallback__skeleton-line--wide {
+  width: 68%;
+  height: 1.6rem;
+}
+
+.analytics-route-fallback__skeleton-chart {
+  min-height: 18rem;
+  margin-top: 0.5rem;
+}
+
+@keyframes analytics-route-fallback-shimmer {
+  to {
+    background-position: -200% 0;
+  }
 }
 
 .analytics-route-fallback__spinner {

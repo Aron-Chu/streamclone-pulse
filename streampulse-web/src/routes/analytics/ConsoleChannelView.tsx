@@ -42,6 +42,7 @@ export default function ConsoleChannelView() {
           mode="public"
           shellNested
           showGameSegments
+          enableLayoutControls
           enableSyncActions={usesLocalAnalyticsBackend()}
           buildSessionPath={portalSessionPath}
         />

@@ -3,13 +3,12 @@ import { Link } from 'react-router-dom'
 import type { AnalyticsStream } from '../../apiTypes.ts'
 import {
   streamIsSidebarVisible,
-  analyticsStreamPathSlug,
   streamSyncBadgeState,
   streamSyncBadgeLabel,
   streamSyncBadgeTitle,
   type StreamSyncEvidence,
 } from '../../utils/syncedLiveStream.ts'
-import { count, duration, formatDateTime } from '../../utils/consoleFormat.ts'
+import { count, displayStreamTitle, duration, formatDateTime } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 
 export function StreamSidebar({
@@ -18,6 +17,7 @@ export function StreamSidebar({
   activeID,
   isLiveView,
   liveState,
+  liveStreamId,
   syncing,
   syncedOnly,
   onSyncedOnlyChange,
@@ -34,6 +34,7 @@ export function StreamSidebar({
   activeID?: string
   isLiveView: boolean
   liveState?: string
+  liveStreamId?: string
   liveSessionPath?: string
   syncing?: boolean
   syncedOnly?: boolean
@@ -52,6 +53,9 @@ export function StreamSidebar({
   const [archiveExpanded, setArchiveExpanded] = useState(false)
   const MOBILE_COLLAPSED_ROWS = 2
   const hasCollapsibleRows = visibleStreams.length > MOBILE_COLLAPSED_ROWS
+  const hasListedLiveSession = Boolean(
+    liveStreamId && visibleStreams.some((stream) => stream.streamId === liveStreamId),
+  )
 
   return (
     <div className="flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035] xl:max-h-[calc(100vh-12rem)]">
@@ -74,7 +78,7 @@ export function StreamSidebar({
         </label>
       ) : null}
       <div className="sc-console-scroll min-h-0 flex-1 overflow-y-auto">
-        <Link
+        {!hasListedLiveSession ? <Link
           to={liveSessionPath ?? buildChannelPath(login)}
           className={`sc-stream-row block border-b border-white/5 px-3 py-2.5 transition hover:bg-white/[0.05] ${
             isLiveView ? 'border-l-2 border-l-red-400 bg-red-500/10' : 'border-l-2 border-l-transparent'
@@ -87,7 +91,7 @@ export function StreamSidebar({
           <div className="mt-1 text-[10px] font-semibold text-zinc-500">
             {liveState === 'live' ? 'Live tracking' : 'Most recent session'}
           </div>
-        </Link>
+        </Link> : null}
         {streams.length === 0 ? (
           <div className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-500">
             No past streams indexed yet.
@@ -99,9 +103,7 @@ export function StreamSidebar({
         ) : (
           <div className="divide-y divide-white/5">
             {visibleStreams.map((stream, rowIndex) => {
-              const targetSlug = analyticsStreamPathSlug(stream, streams)
-              const dateSlug = targetSlug !== stream.streamId ? targetSlug : ''
-              const isActive = !isLiveView && (activeID === stream.streamId || activeID === dateSlug || activeID === targetSlug)
+              const isActive = !isLiveView && activeID === stream.streamId
               const syncBadge = streamSyncBadgeState(
                 stream,
                 Boolean(syncing && isActive),
@@ -124,7 +126,7 @@ export function StreamSidebar({
               return (
                 <Link
                   key={stream.streamId}
-                  to={buildSessionPath(login, targetSlug)}
+                  to={buildSessionPath(login, stream.streamId)}
                   className={`sc-stream-row block border-l-2 px-3 py-2.5 transition hover:bg-white/[0.05] ${mobileHiddenClass} ${
                     isActive ? 'border-l-cyan-400 bg-cyan-400/10' : 'border-l-transparent'
                   }`}
@@ -133,7 +135,7 @@ export function StreamSidebar({
                     {formatDateTime(stream.startedAt)}
                   </div>
                   <div className="mt-0.5 line-clamp-2 text-[13px] font-bold leading-snug text-white">
-                    {stream.title || 'Untitled stream'}
+                    {displayStreamTitle(stream, login, [`${login} stream`])}
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {(stream.gamesSummary || stream.category) ? (

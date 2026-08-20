@@ -6,7 +6,6 @@ import {
   getAnalyticsLive,
   getAnalyticsStream,
   getAnalyticsStreams,
-  getChannelStreamHistory,
   getPulseStreamRecap,
   getReplayHeatmap,
   getStreamGameSegments,
@@ -15,10 +14,10 @@ import {
   getStreamSummary,
   getSyncStatus,
   startHistoricalSync,
-  watchAnalyticsChannel,
   type AnalyticsMinuteRollup,
 } from '../api.ts'
 import type { AnalyticsStream, AnalyticsStreamDetail, SyncStatus } from '../apiTypes.ts'
+import { isSessionDataError, type SessionDataError } from '../utils/sessionDataErrors.ts'
 import type { HeatmapResponse } from '../types/heatmap.ts'
 import { useAnalyticsLive } from '../hooks/useAnalyticsLive.ts'
 import { syncCtaLabel } from '../utils/syncLabel.ts'
@@ -33,11 +32,9 @@ import {
   type StreamCollectionState,
 } from '../utils/statCards.ts'
 import { isActiveLiveCollectorStream, isSyncPrefetchPlaceholder, resolveChannelActuallyLive } from '../utils/analyticsStreamRow.ts'
-import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget } from '../utils/syncedLiveStream.ts'
+import { resolveCanonicalLiveSessionTarget } from '../utils/syncedLiveStream.ts'
 import {
   isDateSlugUnresolved,
-  recapMatchesStreamIds,
-  resolveCanonicalStreamId,
   resolveMatchedStream,
   resolveTargetQueryStreamId,
 } from '../utils/streamRouteResolution.ts'
@@ -93,9 +90,73 @@ function maxDefinedCount(...values: Array<number | undefined>): number | undefin
   return defined.length > 0 ? Math.max(...defined) : undefined
 }
 
+function SessionDataState({
+  kind,
+  dateLabel,
+  title,
+  onRetry,
+}: {
+  kind: 'session_identity_mismatch' | 'timeline_integrity_error' | 'heatmap_integrity_error'
+  dateLabel: string
+  title?: string
+  onRetry: () => void
+}) {
+  const identity = kind === 'session_identity_mismatch'
+  const heatmap = kind === 'heatmap_integrity_error'
+  const heading = identity
+    ? 'Session analytics unavailable'
+    : heatmap
+      ? 'Moment ranking unavailable'
+      : 'Timeline data is being repaired'
+  const message = identity
+    ? 'The server returned a different broadcast for this date. No other session data was rendered.'
+    : heatmap
+      ? 'The server returned cross-session moment data. The chart remains available without those markers.'
+      : 'This session returned duplicate or out-of-window minute buckets. The chart is withheld until the timeline is trustworthy.'
+  return (
+    <div
+      className="rounded border border-amber-400/25 bg-amber-500/[0.06] px-4 py-8 text-center"
+      data-session-data-state={kind}
+      data-testid={kind}
+      data-requested-date={dateLabel}
+    >
+      <div className="text-base font-black text-amber-100">{heading}</div>
+      <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-amber-100/70">{message}</p>
+      {title ? <p className="mt-2 text-xs font-bold text-zinc-500">{title}</p> : null}
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-5 rounded border border-amber-300/25 bg-amber-400/10 px-3 py-1.5 text-xs font-black uppercase text-amber-100 transition hover:bg-amber-400/20"
+      >
+        Retry
+      </button>
+    </div>
+  )
+}
+
+function heatmapPointsFitSession(
+  response: HeatmapResponse | null | undefined,
+  stream: AnalyticsStream | undefined,
+): boolean {
+  if (!response || !stream?.startedAt) return true
+  const startMs = Date.parse(stream.startedAt)
+  const endMs = stream.endedAt ? Date.parse(stream.endedAt) : Date.now()
+  if (!Number.isFinite(startMs)) return false
+  return response.points.every((point) => {
+    const pointMs = Date.parse(point.minuteTs)
+    return (
+      (!point.streamId || point.streamId === stream.streamId)
+      && Number.isFinite(pointMs)
+      && pointMs >= startMs - 60_000
+      && (!Number.isFinite(endMs) || pointMs <= endMs + 300_000)
+    )
+  })
+}
+
 export interface AnalyticsConsoleProps {
   mode?: 'public' | 'local' | string
   showGameSegments?: boolean
+  enableLayoutControls?: boolean
   /** When true, use lg breakpoint for 3-col layout (portal Figma shell already consumes sidebar width). */
   shellNested?: boolean
   /** Enable sync / re-sync CTAs (local dev portal; hosted waits for API-008 rate limits). */
@@ -115,6 +176,7 @@ function defaultChannelPath(login: string): string {
 export function AnalyticsConsole({
   mode = 'public',
   showGameSegments = true,
+  enableLayoutControls = false,
   shellNested = false,
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
@@ -134,6 +196,8 @@ export function AnalyticsConsole({
   const [previewRollup, setPreviewRollup] = useState<AnalyticsMinuteRollup | null>(null)
   const [viewMode, setViewMode] = useState<AnalyticsViewMode>('overview')
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('moments')
+  const [streamsVisible, setStreamsVisible] = useState(true)
+  const [chartFocused, setChartFocused] = useState(false)
   const [syncedOnlyFilter, setSyncedOnlyFilter] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -141,6 +205,7 @@ export function AnalyticsConsole({
   const [syncNotice, setSyncNotice] = useState<string | null>(null)
   const [liveSyncStatus, setLiveSyncStatus] = useState<SyncStatus | null>(null)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null)
+  const [enrichmentReady, setEnrichmentReady] = useState(false)
   const appliedDeepLinkKey = useRef<string | null>(null)
 
   const handleSelectRollup = useCallback((rollup: AnalyticsMinuteRollup | null) => {
@@ -161,31 +226,23 @@ export function AnalyticsConsole({
     setSyncError(null)
     setSyncNotice(null)
     setLiveSyncStatus(null)
+    setEnrichmentReady(false)
+    setStreamsVisible(true)
+    setChartFocused(false)
   }, [channelLogin, streamId])
-
-  useEffect(() => {
-    if (!channelLogin) return
-    watchAnalyticsChannel(channelLogin).catch(() => undefined)
-  }, [channelLogin])
 
   const liveQuery = useAnalyticsLive(channelLogin, { enabled: isLiveRoute })
   const streamsQuery = useQuery({
     queryKey: ['analytics-console-streams', channelLogin],
-    queryFn: () => getAnalyticsStreams(channelLogin, 20),
+    queryFn: ({ signal }) => getAnalyticsStreams(channelLogin, 100, { signal }),
     enabled: Boolean(channelLogin),
     staleTime: 30_000,
     refetchInterval: 30_000,
-  })
-  const historyQuery = useQuery({
-    queryKey: ['analytics-console-history', channelLogin],
-    queryFn: () => getChannelStreamHistory(channelLogin, 'all'),
-    enabled: Boolean(channelLogin),
-    staleTime: 120_000,
-    retry: 2,
+    retry: false,
   })
 
-  const historyItems = (historyQuery.data as { items?: HistoryStreamItem[] } | undefined)?.items
-  const listsLoading = streamsQuery.isLoading || historyQuery.isLoading
+  const historyItems = streamsQuery.data?.items as HistoryStreamItem[] | undefined
+  const listsLoading = streamsQuery.isLoading
 
   const sidebarStreams = useMemo(() => {
     const local = streamsQuery.data?.items ?? []
@@ -237,6 +294,7 @@ export function AnalyticsConsole({
         return bTime - aTime
       })
   }, [streamsQuery.data?.items, historyItems, channelLogin])
+  const newestStream = sidebarStreams[0]
 
   const matchedStream = useMemo(() => {
     if (!streamId) return undefined
@@ -245,7 +303,7 @@ export function AnalyticsConsole({
 
   const targetQueryStreamId = useMemo(() => {
     if (isLiveRoute) {
-      return liveQuery.data?.stream?.streamId || streamsQuery.data?.items?.[0]?.streamId || ''
+      return liveQuery.data?.stream?.streamId || newestStream?.streamId || ''
     }
     const resolved = resolveTargetQueryStreamId(streamId, matchedStream, historyItems, listsLoading)
     return resolved ?? ''
@@ -256,7 +314,7 @@ export function AnalyticsConsole({
     historyItems,
     listsLoading,
     liveQuery.data?.stream?.streamId,
-    streamsQuery.data?.items,
+    newestStream?.streamId,
   ])
 
   const sessionResolving = Boolean(
@@ -266,19 +324,50 @@ export function AnalyticsConsole({
     isHistoricalRoute && isDateSlugUnresolved(streamId, matchedStream, listsLoading),
   )
 
-  const liveActiveStreamId =
-    liveQuery.data?.stream?.streamId || streamsQuery.data?.items?.[0]?.streamId || ''
+  useEffect(() => {
+    if (
+      !isHistoricalRoute
+      || !/^\d{4}-\d{2}-\d{2}$/.test(streamId)
+      || !matchedStream?.streamId
+      || targetQueryStreamId !== matchedStream.streamId
+    ) {
+      return
+    }
+    navigate(buildSessionPath(channelLogin, matchedStream.streamId), { replace: true })
+  }, [
+    buildSessionPath,
+    channelLogin,
+    isHistoricalRoute,
+    matchedStream?.streamId,
+    navigate,
+    streamId,
+    targetQueryStreamId,
+  ])
+
+  const liveActiveStreamId = liveQuery.data?.stream?.streamId || newestStream?.streamId || ''
+  const liveReturnedStreamId = liveQuery.data?.stream?.streamId
+    || (isSessionDataError(liveQuery.error) ? liveQuery.error.details.returnedStreamId : undefined)
+  const liveIdentityMismatch = Boolean(
+    isLiveRoute
+    && liveReturnedStreamId
+    && newestStream?.streamId
+    && liveReturnedStreamId !== newestStream.streamId,
+  )
 
   const historicalDetailQuery = useQuery({
     queryKey: ['analytics-console-detail', targetQueryStreamId, channelLogin],
-    queryFn: async () => {
+    queryFn: ({ signal }) => {
       if (!targetQueryStreamId) return null
-      // First load is always full timeline; status polls merge via statusQuery below.
-      return getAnalyticsStream(targetQueryStreamId, { sparse: false, channel: channelLogin })
+      return getAnalyticsStream(targetQueryStreamId, {
+        sparse: false,
+        channel: channelLogin,
+        signal,
+      })
     },
     enabled: Boolean(channelLogin && targetQueryStreamId && isHistoricalRoute && !sessionNotFound),
     staleTime: 30_000,
     refetchInterval: false,
+    retry: false,
   })
 
   const detailQuery = isLiveRoute ? liveQuery : historicalDetailQuery
@@ -286,14 +375,17 @@ export function AnalyticsConsole({
 
   const statusQuery = useQuery({
     queryKey: ['analytics-console-status', targetQueryStreamId, channelLogin],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!targetQueryStreamId) return null
-      const status = await getStreamStatus(targetQueryStreamId)
-      if (status) return status
-      // Fallback sparse detail when status endpoint is unavailable (local routes).
-      return getAnalyticsStream(targetQueryStreamId, { sparse: true, channel: channelLogin })
+      return getStreamStatus(targetQueryStreamId, { signal })
     },
-    enabled: Boolean(isHistoricalRoute && targetQueryStreamId && baseDetail),
+    enabled: Boolean(
+      isHistoricalRoute
+      && targetQueryStreamId
+      && baseDetail
+      && enrichmentReady
+      && rightPanelTab === 'status',
+    ),
     staleTime: 30_000,
     refetchInterval: (query) => {
       const failureCount = query.state.errorUpdateCount ?? 0
@@ -310,7 +402,7 @@ export function AnalyticsConsole({
       if (vod === 'pending_live' || vod === 'resolving' || vod === 'request_failed') return backoff
       return false
     },
-    retry: 1,
+    retry: false,
   })
 
   const statusMerged = useMemo(() => {
@@ -328,9 +420,9 @@ export function AnalyticsConsole({
   const liveTailAfterOffset = maxRollupOffsetSeconds(statusMerged)
   const minutesTailQuery = useQuery({
     queryKey: ['analytics-console-minutes-tail', targetQueryStreamId, liveTailAfterOffset],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!targetQueryStreamId || liveTailAfterOffset < 0) return null
-      return getStreamMinutesTail(targetQueryStreamId, liveTailAfterOffset)
+      return getStreamMinutesTail(targetQueryStreamId, liveTailAfterOffset, { signal })
     },
     enabled: Boolean(sessionIsLive && targetQueryStreamId && liveTailAfterOffset >= 0 && statusMerged),
     staleTime: 15_000,
@@ -341,64 +433,86 @@ export function AnalyticsConsole({
     if (!statusMerged) return undefined
     return mergeMinutesTailIntoDetail(statusMerged, minutesTailQuery.data ?? undefined)
   }, [statusMerged, minutesTailQuery.data])
+  const sessionDataError: SessionDataError | null =
+    isSessionDataError(detailQuery.error)
+      ? detailQuery.error
+      : isSessionDataError(liveQuery.error)
+        ? liveQuery.error
+      : isSessionDataError(minutesTailQuery.error)
+        ? minutesTailQuery.error
+        : null
 
   const chartDetailReady = Boolean(
-    detail?.rollups?.some(rollupHasMinuteData) || detail?.stream?.streamId,
+    detail?.rollups?.some(rollupHasMinuteData),
   )
+  useEffect(() => {
+    if (!chartDetailReady) return
+    const timer = window.setTimeout(() => setEnrichmentReady(true), 250)
+    return () => window.clearTimeout(timer)
+  }, [chartDetailReady, targetQueryStreamId])
 
   const gamesQuery = useQuery({
     queryKey: ['analytics-console-games', targetQueryStreamId],
-    queryFn: () => getStreamGameSegments(targetQueryStreamId),
-    // Games are safe on live + historical once a stream id resolves (not Layer-2-only).
-    enabled: Boolean(showGameSegments && targetQueryStreamId),
+    queryFn: ({ signal }) => getStreamGameSegments(targetQueryStreamId, { signal }),
+    enabled: Boolean(showGameSegments && targetQueryStreamId && enrichmentReady),
     staleTime: 60_000,
     refetchInterval: sessionIsLive ? 75_000 : false,
+    retry: false,
   })
 
   const syncQuery = useQuery({
     queryKey: ['analytics-console-sync', targetQueryStreamId],
-    queryFn: () => getSyncStatus(targetQueryStreamId),
-    enabled: Boolean(layer2Enabled && targetQueryStreamId && chartDetailReady),
+    queryFn: ({ signal }) => getSyncStatus(targetQueryStreamId, { signal }),
+    enabled: Boolean(layer2Enabled && targetQueryStreamId && chartDetailReady && enrichmentReady && rightPanelTab === 'status'),
     staleTime: 30_000,
     refetchInterval: syncing ? 2000 : false,
   })
 
   const summaryQuery = useQuery({
     queryKey: ['analytics-console-summary', targetQueryStreamId, channelLogin],
-    queryFn: () => getStreamSummary(targetQueryStreamId, channelLogin),
-    enabled: Boolean(layer2Enabled && targetQueryStreamId && channelLogin && chartDetailReady),
+    queryFn: ({ signal }) => getStreamSummary(targetQueryStreamId, channelLogin, { signal }),
+    enabled: Boolean(layer2Enabled && targetQueryStreamId && channelLogin && chartDetailReady && enrichmentReady),
     staleTime: 30_000,
+    retry: false,
   })
 
   const recapQuery = useQuery({
     queryKey: ['analytics-console-recap', targetQueryStreamId],
-    queryFn: () => getPulseStreamRecap(targetQueryStreamId),
-    enabled: Boolean(layer2Enabled && targetQueryStreamId && chartDetailReady),
+    queryFn: ({ signal }) => getPulseStreamRecap(targetQueryStreamId, { signal }),
+    enabled: Boolean(layer2Enabled && targetQueryStreamId && chartDetailReady && enrichmentReady && rightPanelTab === 'moments'),
     staleTime: 120_000,
-    retry: 1,
+    retry: false,
   })
 
   const heatmapQuery = useQuery({
     queryKey: ['analytics-console-heatmap', targetQueryStreamId, channelLogin],
-    queryFn: async () => {
-      const data = await getReplayHeatmap(targetQueryStreamId, 60, channelLogin)
+    queryFn: async ({ signal }) => {
+      const data = await getReplayHeatmap(targetQueryStreamId, 60, channelLogin, { signal })
       return (data ?? null) as HeatmapResponse | null
     },
-    enabled: Boolean(layer2Enabled && targetQueryStreamId && channelLogin && chartDetailReady),
+    enabled: Boolean(layer2Enabled && targetQueryStreamId && channelLogin && chartDetailReady && enrichmentReady && rightPanelTab === 'moments' && viewMode === 'spikes'),
     staleTime: 120_000,
-    retry: 1,
+    retry: false,
   })
 
-  const heatmapPoints = heatmapQuery.data?.points
+  const heatmapIntegrityBlocked = Boolean(
+    heatmapQuery.data
+    && !heatmapPointsFitSession(heatmapQuery.data, detail?.stream),
+  )
+  const heatmapPoints = heatmapIntegrityBlocked ? undefined : heatmapQuery.data?.points
 
-  const canonicalStreamId = resolveCanonicalStreamId(detail?.stream?.streamId, targetQueryStreamId)
-
+  const recapCandidate = recapQuery.isSuccess ? recapQuery.data : null
   const recapForStream =
-    recapQuery.isSuccess
-    && recapQuery.data
-    && recapMatchesStreamIds(recapQuery.data.streamId, targetQueryStreamId, canonicalStreamId)
+    recapCandidate
+    && recapCandidate.streamId === targetQueryStreamId
+    && (!recapCandidate.durationSeconds
+      || !detail?.stream?.startedAt
+      || recapCandidate.durationSeconds <= (
+        (Date.now() - Date.parse(detail.stream.startedAt)) / 1000 + 300
+      ))
       ? recapQuery.data
       : null
+  const recapIntegrityBlocked = Boolean(recapCandidate && !recapForStream)
 
   const isActiveLiveCollector = isActiveLiveCollectorStream(detail?.stream, detail?.state)
   // Deep-linked live sessions must keep advancing — path shape is not authoritative.
@@ -480,7 +594,6 @@ export function AnalyticsConsole({
     try {
       const refetches: Array<Promise<unknown>> = [
         streamsQuery.refetch(),
-        historyQuery.refetch(),
         detailQuery.refetch(),
       ]
       if (layer2Enabled && targetQueryStreamId) {
@@ -499,7 +612,6 @@ export function AnalyticsConsole({
     channelLogin,
     refreshing,
     streamsQuery,
-    historyQuery,
     detailQuery,
     gamesQuery,
     syncQuery,
@@ -600,46 +712,47 @@ export function AnalyticsConsole({
     }
   }, [enableSyncActions, layer2Enabled, targetQueryStreamId, refetchChartDuringSync])
 
-  const stream = detail?.stream
+  const detailForRender = sessionDataError || liveIdentityMismatch ? undefined : detail
+  const stream = detailForRender?.stream
   const fallbackVodId = useMemo(
     () =>
       resolveSessionFallbackVodId({
         sidebarStreams,
         targetQueryStreamId,
-        detail,
+        detail: detailForRender,
       }),
-    [sidebarStreams, targetQueryStreamId, detail],
+    [sidebarStreams, targetQueryStreamId, detailForRender],
   )
   const recapMomentsAvailable = useMemo(
     () => Boolean(layer2Enabled && recapForStream && hasRecapMomentsAvailable(recapForStream)),
     [layer2Enabled, recapForStream],
   )
-  const channelIsLive = useMemo(() => resolveChannelActuallyLive(detail), [detail])
-  const streamVodId = resolveAnalyticsVodId(detail, recapForStream?.vodId) ?? fallbackVodId
+  const channelIsLive = useMemo(() => resolveChannelActuallyLive(detailForRender), [detailForRender])
+  const streamVodId = resolveAnalyticsVodId(detailForRender, recapForStream?.vodId) ?? fallbackVodId
   const vodLinkState = useMemo(
     () =>
       resolveVodLinkState({
-        detail,
+        detail: detailForRender,
         recapVodId: recapForStream?.vodId,
         fallbackVodId,
         isLiveCollector: isActiveLiveCollector,
         channelIsLive,
       }),
-    [detail, recapForStream?.vodId, fallbackVodId, isActiveLiveCollector, channelIsLive],
+    [detailForRender, recapForStream?.vodId, fallbackVodId, isActiveLiveCollector, channelIsLive],
   )
-  const rollupCount = detail?.rollups?.length ?? 0
+  const rollupCount = detailForRender?.rollups?.length ?? 0
   const isLongStreamChart = rollupCount >= 360
 
   const headerState = channelIsLive || isActiveLiveCollector || sessionIsLive
     ? 'live'
     : isHistoricalRoute
-      ? detail?.state && detail.state !== 'live'
-        ? detail.state
+      ? detailForRender?.state && detailForRender.state !== 'live'
+        ? detailForRender.state
         : 'historical'
-      : detail?.state || (detailQuery.isLoading ? 'loading' : 'not_collected')
+      : detailForRender?.state || (detailQuery.isLoading ? 'loading' : 'not_collected')
 
   const headerStats = useMemo(() => {
-    const rollups = detail?.rollups ?? []
+    const rollups = detailForRender?.rollups ?? []
     const viewerStats = computeRollupViewerStats(rollups)
     const chatStats = computeRollupChatStats(rollups)
     return {
@@ -649,47 +762,47 @@ export function AnalyticsConsole({
       chat: chatStats.chat > 0 ? chatStats.chat : stream?.chatMessages,
       emotes: chatStats.emotes > 0 ? chatStats.emotes : undefined,
     }
-  }, [detail?.rollups, stream])
+  }, [detailForRender?.rollups, stream])
 
   const statCardClasses = useMemo(
     () =>
       classifyStatCards({
-        state: (detail?.state as StreamCollectionState) ?? 'not_collected',
+        state: (detailForRender?.state as StreamCollectionState) ?? 'not_collected',
         avgViewers: stream?.avgViewers ?? 0,
         peakViewers: stream?.peakViewers ?? 0,
-        rollups: detail?.rollups ?? [],
+        rollups: detailForRender?.rollups ?? [],
       }),
-    [detail?.state, detail?.rollups, stream?.avgViewers, stream?.peakViewers],
+    [detailForRender?.state, detailForRender?.rollups, stream?.avgViewers, stream?.peakViewers],
   )
 
   const chartEmoteKeys = useMemo(
-    () => resolveChartEmoteKeys(emotePlotSelection, detail?.topEmotes ?? [], viewMode),
-    [emotePlotSelection, detail?.topEmotes, viewMode],
+    () => resolveChartEmoteKeys(emotePlotSelection, detailForRender?.topEmotes ?? [], viewMode),
+    [emotePlotSelection, detailForRender?.topEmotes, viewMode],
   )
 
   const chartEmoteKeysOrdered = useMemo(() => Array.from(chartEmoteKeys), [chartEmoteKeys])
 
   const chartGames = useMemo(() => {
     if (!showGameSegments || !targetQueryStreamId) return []
-    return deriveChartGameSegments(targetQueryStreamId, detail, gamesQuery.data, {
+    return deriveChartGameSegments(targetQueryStreamId, detailForRender, gamesQuery.data, {
       // Public portal: only render backend game segments, never silent category synthesis.
       allowCategoryFallback: mode !== 'public' && showGameSegments,
     })
-  }, [showGameSegments, mode, targetQueryStreamId, detail, gamesQuery.data])
+  }, [showGameSegments, mode, targetQueryStreamId, detailForRender, gamesQuery.data])
 
   const liveRouteSessionTarget = useMemo(() => {
     if (!isLiveRoute) return undefined
     return resolveCanonicalLiveSessionTarget(sidebarStreams, {
-      liveStreamId: detail?.stream?.streamId || liveQuery.data?.stream?.streamId || liveActiveStreamId,
+      liveStreamId: detailForRender?.stream?.streamId || liveQuery.data?.stream?.streamId || liveActiveStreamId,
       channelLive: channelIsLive || isActiveLiveCollector,
       channelLogin,
-      startedAt: detail?.stream?.startedAt ?? liveQuery.data?.stream?.startedAt,
+      startedAt: detailForRender?.stream?.startedAt ?? liveQuery.data?.stream?.startedAt,
     })
   }, [
     isLiveRoute,
     sidebarStreams,
-    detail?.stream?.streamId,
-    detail?.stream?.startedAt,
+    detailForRender?.stream?.streamId,
+    detailForRender?.stream?.startedAt,
     liveQuery.data?.stream?.streamId,
     liveQuery.data?.stream?.startedAt,
     liveActiveStreamId,
@@ -700,8 +813,8 @@ export function AnalyticsConsole({
 
   const liveRouteSessionSlug = useMemo(() => {
     if (!liveRouteSessionTarget) return undefined
-    return analyticsStreamPathSlug(liveRouteSessionTarget, sidebarStreams)
-  }, [liveRouteSessionTarget, sidebarStreams])
+    return liveRouteSessionTarget.streamId
+  }, [liveRouteSessionTarget])
 
   const shouldRedirectLiveRouteToSession = Boolean(
     isLiveRoute
@@ -723,16 +836,16 @@ export function AnalyticsConsole({
 
   const canonicalLiveSessionSlug = useMemo(() => {
     const target = resolveCanonicalLiveSessionTarget(sidebarStreams, {
-      liveStreamId: detail?.stream?.streamId || liveActiveStreamId,
+      liveStreamId: detailForRender?.stream?.streamId || liveActiveStreamId,
       channelLive: channelIsLive || isActiveLiveCollector,
       channelLogin,
-      startedAt: detail?.stream?.startedAt,
+      startedAt: detailForRender?.stream?.startedAt,
     })
-    return target ? analyticsStreamPathSlug(target, sidebarStreams) : undefined
+    return target?.streamId
   }, [
     sidebarStreams,
-    detail?.stream?.streamId,
-    detail?.stream?.startedAt,
+    detailForRender?.stream?.streamId,
+    detailForRender?.stream?.startedAt,
     liveActiveStreamId,
     channelIsLive,
     isActiveLiveCollector,
@@ -743,13 +856,13 @@ export function AnalyticsConsole({
     isHistoricalRoute
     && !detailQuery.isLoading
     && matchedStream
-    && (detail?.minutesUnavailable || !detail?.rollups?.some(rollupHasMinuteData))
+    && (detailForRender?.minutesUnavailable || !detailForRender?.rollups?.some(rollupHasMinuteData))
     && ((matchedStream.viewerSamples ?? 0) > 0 || (matchedStream.chatMessages ?? 0) > 0),
   )
 
   const activeSyncEvidence = useMemo(() => {
-    if (!isHistoricalRoute || !detail) return undefined
-    const rollups = detail.rollups ?? []
+    if (!isHistoricalRoute || !detailForRender) return undefined
+    const rollups = detailForRender.rollups ?? []
     return {
       hasViewerMinutes: rollups.some(
         row => !row.missing && ((row.viewerSamples ?? 0) > 0 || (row.viewerAvg ?? 0) > 0),
@@ -757,10 +870,10 @@ export function AnalyticsConsole({
       hasChatMinutes: rollups.some(
         row => !row.missing && ((row.chatCount ?? 0) > 0 || (row.totalEmoteCount ?? 0) > 0),
       ),
-      coveragePct: summaryQuery.data?.metrics?.data_coverage_pct ?? detail.chatCoveragePct,
+      coveragePct: summaryQuery.data?.metrics?.data_coverage_pct ?? detailForRender.chatCoveragePct,
       syncHealthState: summaryQuery.data?.metrics?.sync_health_state,
     }
-  }, [detail, isHistoricalRoute, summaryQuery.data?.metrics])
+  }, [detailForRender, isHistoricalRoute, summaryQuery.data?.metrics])
 
   const handlePreviewRecapOffset = useCallback(
     (offsetSeconds: number | null) => {
@@ -768,20 +881,20 @@ export function AnalyticsConsole({
         setPreviewRollup(null)
         return
       }
-      const rollups = detail?.momentRollups?.length
-        ? detail.momentRollups
-        : detail?.rollups ?? []
+      const rollups = detailForRender?.momentRollups?.length
+        ? detailForRender.momentRollups
+        : detailForRender?.rollups ?? []
       if (!rollups.length) return
-      const nearest = findNearestRollupByOffset(rollups, detail?.stream?.startedAt, offsetSeconds)
+      const nearest = findNearestRollupByOffset(rollups, detailForRender?.stream?.startedAt, offsetSeconds)
       if (nearest) setPreviewRollup(nearest)
     },
-    [detail?.momentRollups, detail?.rollups, detail?.stream?.startedAt],
+    [detailForRender?.momentRollups, detailForRender?.rollups, detailForRender?.stream?.startedAt],
   )
 
   const selectedOffsetSeconds = useMemo(() => {
-    if (!selectedRollup || !detail?.stream?.startedAt) return null
-    return rollupOffsetSeconds(selectedRollup, detail.stream.startedAt)
-  }, [selectedRollup, detail?.stream?.startedAt])
+    if (!selectedRollup || !detailForRender?.stream?.startedAt) return null
+    return rollupOffsetSeconds(selectedRollup, detailForRender.stream.startedAt)
+  }, [detailForRender?.stream?.startedAt, selectedRollup])
 
   const matchedRecapMoment = useMemo(() => {
     if (selectedOffsetSeconds == null || !recapForStream) return null
@@ -803,22 +916,22 @@ export function AnalyticsConsole({
   }, [chartGames, selectedOffsetSeconds])
 
   const syncLabel = useMemo(() => {
-    const rollups = detail?.rollups ?? []
+    const rollups = detailForRender?.rollups ?? []
     const hasChat = rollups.some((row) => (row.chatCount ?? 0) > 0 || (row.totalEmoteCount ?? 0) > 0)
     const hasViewers = rollups.some((row) => (row.viewerSamples ?? 0) > 0 || (row.viewerAvg ?? 0) > 0)
     return syncCtaLabel({ syncing, hasChatRollups: hasChat, hasViewerSamples: hasViewers })
-  }, [detail?.rollups, syncing])
+  }, [detailForRender?.rollups, syncing])
 
   const qualityDiagnosis = useMemo(
     () =>
       diagnoseStreamQuality({
-        detail,
+        detail: detailForRender,
         summaryMetrics: summaryQuery.data?.metrics,
-        analyticsQuality: summaryQuery.data?.analyticsQuality ?? detail?.analyticsQuality,
+        analyticsQuality: summaryQuery.data?.analyticsQuality ?? detailForRender?.analyticsQuality,
         isLive: isActiveLiveCollector,
-        syncing: syncing || detail?.state === 'syncing',
+        syncing: syncing || detailForRender?.state === 'syncing',
       }),
-    [detail, summaryQuery.data, isActiveLiveCollector, syncing],
+    [detailForRender, summaryQuery.data, isActiveLiveCollector, syncing],
   )
 
   const activeSyncStatus = liveSyncStatus ?? syncQuery.data ?? null
@@ -831,7 +944,16 @@ export function AnalyticsConsole({
     )
   }
 
-  const headerTitle = displayStreamTitle(stream, channelLogin, ['Untitled stream'])
+  const headerTitle = displayStreamTitle(
+    stream ?? matchedStream,
+    channelLogin,
+    [
+      matchedStream?.title,
+      streamId && /^\d{4}-\d{2}-\d{2}$/.test(streamId)
+        ? `${channelLogin} stream on ${streamId}`
+        : `${channelLogin} stream`,
+    ],
+  )
 
   return (
     <section className="analytics-console text-zinc-200" aria-label={`Analytics for ${channelLogin}`}>
@@ -864,13 +986,13 @@ export function AnalyticsConsole({
                   isHistoricalRoute,
                 )}
               </span>
-              {!detail?.availability ? <ChatCoverageBadge detail={detail} /> : null}
+              {!detailForRender?.availability ? <ChatCoverageBadge detail={detailForRender} /> : null}
               {mode === 'public' ? (
                 <>
-                  <ViewerSourceBadge source={detail?.viewerSource} />
-                  <AnalyticsQualityChip detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
-                  <CoverageFacets detail={detail} summaryMetrics={summaryQuery.data?.metrics} />
-                  <VodAvailabilityChip detail={detail} />
+                  <ViewerSourceBadge source={detailForRender?.viewerSource} />
+                  <AnalyticsQualityChip detail={detailForRender} summaryMetrics={summaryQuery.data?.metrics} />
+                  <CoverageFacets detail={detailForRender} summaryMetrics={summaryQuery.data?.metrics} />
+                  <VodAvailabilityChip detail={detailForRender} />
                 </>
               ) : null}
             </div>
@@ -887,11 +1009,32 @@ export function AnalyticsConsole({
               <span>
                 {lastRefreshedAt
                   ? `Refreshed ${relativeTime(lastRefreshedAt)}`
-                  : `Updated ${detail?.updatedAt ? relativeTime(detail.updatedAt) : '-'}`}
+                  : `Updated ${detailForRender?.updatedAt ? relativeTime(detailForRender.updatedAt) : '-'}`}
               </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {enableLayoutControls ? (
+              <>
+                <button
+                  type="button"
+                  aria-expanded={streamsVisible}
+                  aria-controls="analytics-console-streams"
+                  onClick={() => setStreamsVisible(value => !value)}
+                  className="rounded border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[11px] font-black uppercase text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  {streamsVisible ? 'Hide streams' : 'Show streams'}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={chartFocused}
+                  onClick={() => setChartFocused(value => !value)}
+                  className="rounded border border-violet-400/25 bg-violet-500/10 px-3 py-1.5 text-[11px] font-black uppercase text-violet-200 transition hover:bg-violet-500/20"
+                >
+                  {chartFocused ? 'Exit chart focus' : 'Focus chart'}
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleRefresh()}
@@ -935,18 +1078,21 @@ export function AnalyticsConsole({
 
         <div
           className={
-            shellNested
+            chartFocused
+              ? 'grid grid-cols-1 gap-4'
+              : shellNested
               ? 'grid gap-4 lg:grid-cols-[minmax(260px,280px)_minmax(0,1fr)_minmax(260px,280px)]'
               : 'grid gap-4 xl:grid-cols-[minmax(260px,280px)_minmax(0,1fr)_minmax(260px,280px)]'
           }
         >
-          <aside className="order-3 min-w-0 w-full xl:order-none xl:sticky xl:top-4 xl:self-start">
+          {streamsVisible && !chartFocused ? <aside id="analytics-console-streams" className="order-3 min-w-0 w-full xl:order-none xl:sticky xl:top-4 xl:self-start">
             <StreamSidebar
               login={channelLogin}
               streams={sidebarStreams}
               activeID={isHistoricalRoute ? streamId : undefined}
               isLiveView={isLiveRoute}
-              liveState={channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detail?.state : undefined}
+              liveStreamId={liveActiveStreamId}
+              liveState={channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detailForRender?.state : undefined}
               liveSessionPath={
                 canonicalLiveSessionSlug
                   ? buildSessionPath(channelLogin, canonicalLiveSessionSlug)
@@ -959,7 +1105,7 @@ export function AnalyticsConsole({
               activeMinutesUnavailable={activeMinutesUnavailable}
               activeSyncEvidence={activeSyncEvidence}
             />
-          </aside>
+          </aside> : null}
 
           <section className="order-1 min-w-0 xl:order-none">
             {sessionResolving ? (
@@ -972,12 +1118,28 @@ export function AnalyticsConsole({
                 Session not found for <span className="font-mono">{streamId}</span>. Pick another stream from the sidebar.
               </div>
             ) : null}
-            {!sessionResolving && !sessionNotFound ? (
+            {liveIdentityMismatch ? (
+              <SessionDataState
+                kind="session_identity_mismatch"
+                dateLabel="live"
+                title="Live session identity is updating."
+                onRetry={() => void liveQuery.refetch()}
+              />
+            ) : null}
+            {sessionDataError ? (
+              <SessionDataState
+                kind={sessionDataError.kind}
+                dateLabel={/^\d{4}-\d{2}-\d{2}$/.test(streamId) ? streamId : 'session'}
+                title={matchedStream?.title}
+                onRetry={() => void detailQuery.refetch()}
+              />
+            ) : null}
+            {!sessionResolving && !sessionNotFound && !liveIdentityMismatch && !sessionDataError ? (
             <div className="min-w-0 space-y-4">
               <CoverageStartBanner
-                offsetSeconds={detail?.coverageStartOffsetSeconds}
-                missingRanges={detail?.availability?.missingRanges}
-                message={detail?.availability?.coverageMessage}
+                offsetSeconds={detailForRender?.coverageStartOffsetSeconds}
+                missingRanges={detailForRender?.availability?.missingRanges}
+                message={detailForRender?.availability?.coverageMessage}
               />
               <StreamQualityBanner
                 diagnosis={qualityDiagnosis}
@@ -1003,8 +1165,8 @@ export function AnalyticsConsole({
                 stream={stream}
                 syncing={syncing}
                 hasChartData={
-                  (detail?.rollups ?? []).some(rollupHasMinuteData)
-                  || rollupsHaveViewerData(detail?.rollups ?? [])
+                  (detailForRender?.rollups ?? []).some(rollupHasMinuteData)
+                  || rollupsHaveViewerData(detailForRender?.rollups ?? [])
                 }
                 vodLinkState={vodLinkState}
                 sessionStreamId={targetQueryStreamId}
@@ -1012,7 +1174,7 @@ export function AnalyticsConsole({
                 buildSessionPath={buildSessionPath}
               />
               <AnalyticsChart
-                detail={detail}
+                detail={detailForRender}
                 selectedEmotes={chartEmoteKeys}
                 onSelectEmote={toggleSelected}
                 onClearEmotePlots={clearEmotePlots}
@@ -1022,7 +1184,7 @@ export function AnalyticsConsole({
                 onSelectRollup={handleSelectRollup}
                 onRefresh={() => void handleRefresh()}
                 refreshing={refreshing}
-                loading={detailQuery.isLoading && !detail}
+                loading={detailQuery.isLoading && !detailForRender}
                 games={chartGames}
                 canSync={enableSyncActions}
                 syncing={syncing}
@@ -1034,7 +1196,7 @@ export function AnalyticsConsole({
                 viewMode={viewMode}
                 onViewModeChange={handleViewMode}
                 vodLinkState={vodLinkState}
-                topEmotesCatalog={detail?.topEmotes}
+                topEmotesCatalog={detailForRender?.topEmotes}
                 heatmapPoint={matchedHeatmapPoint}
                 heatmapPoints={heatmapPoints}
                 recapMoment={matchedRecapMoment}
@@ -1061,12 +1223,20 @@ export function AnalyticsConsole({
             ) : null}
           </section>
 
-          <aside className="order-2 w-full min-w-0 space-y-3 xl:order-none">
+          {!chartFocused ? <aside className="order-2 w-full min-w-0 space-y-3 xl:order-none">
+            {recapIntegrityBlocked || heatmapIntegrityBlocked ? (
+              <div
+                className="rounded border border-amber-400/20 bg-amber-500/[0.05] px-3 py-3 text-xs font-semibold text-amber-100/80"
+                data-session-moment-state="integrity-blocked"
+              >
+                Moment ranking unavailable for this session because the server returned cross-session data.
+              </div>
+            ) : null}
             {layer2Enabled && recapForStream ? (
               <StreamRecapPanel
                 recap={recapForStream}
-                topEmotesCatalog={detail?.topEmotes}
-                rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+                topEmotesCatalog={detailForRender?.topEmotes}
+                rollups={detailForRender?.momentRollups ?? detailForRender?.rollups ?? []}
                 streamStartedAt={stream?.startedAt}
                 vodId={streamVodId}
                 onJumpToOffset={handleJumpToRecapOffset}
@@ -1098,18 +1268,18 @@ export function AnalyticsConsole({
                       onSelectOffset={handleJumpToRecapOffset}
                       onPreviewOffset={handlePreviewRecapOffset}
                       layout="rightRail"
-                      rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+                      rollups={detailForRender?.momentRollups ?? detailForRender?.rollups ?? []}
                       heatmapPoints={heatmapPoints}
-                      topEmotesCatalog={detail?.topEmotes}
+                      topEmotesCatalog={detailForRender?.topEmotes}
                     />
                   ) : (
                     <MomentReviewPanel
-                      rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+                      rollups={detailForRender?.momentRollups ?? detailForRender?.rollups ?? []}
                       selectedRollup={selectedRollup}
                       previewRollup={previewRollup}
                       onSelectRollup={handleSelectRollup}
                       onPreviewRollup={setPreviewRollup}
-                      topEmotesCatalog={detail?.topEmotes}
+                      topEmotesCatalog={detailForRender?.topEmotes}
                       heatmapPoints={layer2Enabled ? heatmapPoints : undefined}
                       streamStartedAt={stream?.startedAt}
                       embedded
@@ -1118,7 +1288,7 @@ export function AnalyticsConsole({
                 ) : null}
                 {rightPanelTab === 'emotes' ? (
                   <TopEmoteTable
-                    emotes={detail?.topEmotes ?? []}
+                    emotes={detailForRender?.topEmotes ?? []}
                     selected={chartEmoteKeys}
                     plottedKeys={chartEmoteKeysOrdered}
                     onSelect={toggleSelected}
@@ -1126,7 +1296,7 @@ export function AnalyticsConsole({
                   />
                 ) : null}
                 {rightPanelTab === 'status' && layer2Enabled ? (
-                  <SyncStatusPanel detail={detail} syncStatus={activeSyncStatus} />
+                  <SyncStatusPanel detail={detailForRender} syncStatus={activeSyncStatus} />
                 ) : rightPanelTab === 'status' ? (
                   <p className="p-4 text-[11px] font-semibold text-zinc-500">
                     Open a session from the sidebar for sync status and Layer 2 detail.
@@ -1134,7 +1304,7 @@ export function AnalyticsConsole({
                 ) : null}
               </div>
             </div>
-          </aside>
+          </aside> : null}
         </div>
       </div>
     </section>

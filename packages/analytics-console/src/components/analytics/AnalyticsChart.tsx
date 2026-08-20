@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from 'react'
 
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail, GameSegment } from '../../api.ts'
 import type { PulseRecapMoment } from '../../apiTypes.ts'
@@ -40,6 +40,41 @@ import {
 import { emoteChipSelectionStyle, emoteLegendSwatchStyle } from './chartTheme.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
 import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
+import {
+  fullChartViewport,
+  normalizeChartViewport,
+  wheelZoomChartViewport,
+  type ChartViewport,
+} from '../../utils/chartViewport.ts'
+
+function useSmoothedViewport(target: ChartViewport, motionEnabled: boolean): ChartViewport {
+  const [displayed, setDisplayed] = useState(target)
+  const displayedRef = useRef(displayed)
+  useEffect(() => {
+    const from = displayedRef.current
+    if (!motionEnabled) {
+      displayedRef.current = target
+      setDisplayed(target)
+      return
+    }
+    const startedAt = performance.now()
+    let frame = 0
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / 220)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const next = {
+        startSeconds: from.startSeconds + (target.startSeconds - from.startSeconds) * eased,
+        endSeconds: from.endSeconds + (target.endSeconds - from.endSeconds) * eased,
+      }
+      displayedRef.current = next
+      setDisplayed(next)
+      if (progress < 1) frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [motionEnabled, target.endSeconds, target.startSeconds])
+  return displayed
+}
 
 function chartVisibleRangeFromRollups(
   rollups: Array<{ minuteTs: string }>,
@@ -272,8 +307,78 @@ function AnalyticsChart({
     () => (isLive ? chartVisibleRangeFromRollups(rollups, streamStartedAt) : null),
     [isLive, rollups, streamStartedAt],
   )
+  const chartDomainStartSeconds = useMemo(() => {
+    const first = rollups.find(rollupHasMinuteData)
+    if (!first || !streamStartedAt) return 0
+    const startMs = Date.parse(streamStartedAt)
+    const firstMs = Date.parse(first.minuteTs)
+    if (!Number.isFinite(startMs) || !Number.isFinite(firstMs)) return 0
+    return Math.max(0, Math.round((firstMs - startMs) / 1000))
+  }, [rollups, streamStartedAt])
+  const [viewportTarget, setViewportTarget] = useState<ChartViewport>(() => fullChartViewport(0))
+  useEffect(() => {
+    setViewportTarget(current => {
+      const full = fullChartViewport(gamesDurationSeconds, chartDomainStartSeconds)
+      const currentSpan = current.endSeconds - current.startSeconds
+      if (currentSpan <= 0 || current.endSeconds >= gamesDurationSeconds - 5) return full
+      return normalizeChartViewport(current, gamesDurationSeconds, chartDomainStartSeconds)
+    })
+  }, [chartDomainStartSeconds, gamesDurationSeconds, detail?.stream?.streamId])
+  const effectiveViewport = useSmoothedViewport(
+    normalizeChartViewport(viewportTarget, gamesDurationSeconds, chartDomainStartSeconds),
+    motionEnabled,
+  )
+  const chartRollups = useMemo(() => {
+    if (
+      effectiveViewport.startSeconds <= chartDomainStartSeconds + 1
+      && effectiveViewport.endSeconds >= gamesDurationSeconds - 5
+    ) {
+      return rollups
+    }
+    const startMs = streamStartedAt ? Date.parse(streamStartedAt) : Number.NaN
+    if (!Number.isFinite(startMs)) return rollups
+    const start = startMs + effectiveViewport.startSeconds * 1000
+    const end = startMs + effectiveViewport.endSeconds * 1000
+    const visible = rollups.filter(point => {
+      const ts = Date.parse(point.minuteTs)
+      return Number.isFinite(ts) && ts >= start && ts <= end
+    })
+    return visible.length > 0 ? visible : rollups
+  }, [
+    chartDomainStartSeconds,
+    effectiveViewport.endSeconds,
+    effectiveViewport.startSeconds,
+    gamesDurationSeconds,
+    rollups,
+    streamStartedAt,
+  ])
+  const handleChartWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    if (gamesDurationSeconds <= chartDomainStartSeconds + 1) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const progress = rect.width > 0
+      ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+      : 0.5
+    const anchor = effectiveViewport.startSeconds
+      + progress * (effectiveViewport.endSeconds - effectiveViewport.startSeconds)
+    setViewportTarget(current => wheelZoomChartViewport(
+      current,
+      gamesDurationSeconds,
+      event.deltaY,
+      anchor,
+      chartDomainStartSeconds,
+    ))
+  }, [
+    chartDomainStartSeconds,
+    effectiveViewport.endSeconds,
+    effectiveViewport.startSeconds,
+    gamesDurationSeconds,
+  ])
+  const resetViewport = useCallback(() => {
+    setViewportTarget(fullChartViewport(gamesDurationSeconds, chartDomainStartSeconds))
+  }, [chartDomainStartSeconds, gamesDurationSeconds])
 
-  const hoverPoint = hoverRollup ?? rollups[rollups.length - 1] ?? null
+  const hoverPoint = hoverRollup ?? chartRollups[chartRollups.length - 1] ?? null
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
     setFocusedSeriesKey(current => (current === seriesKey ? null : seriesKey))
   }, [])
@@ -463,6 +568,51 @@ function AnalyticsChart({
               chatCount={hoverPoint?.chatCount}
               emoteTotal={hoverPoint ? minuteEmoteTotal(hoverPoint) : null}
             />
+            <div
+              className="inline-flex shrink-0 items-center gap-0.5 rounded border border-white/10 bg-white/[0.03] p-0.5"
+              data-chart-viewport-controls
+              aria-label="Chart zoom controls"
+            >
+              <span className="px-1 text-[10px] font-bold tabular-nums text-zinc-500">
+                {Math.max(1, Math.round((effectiveViewport.endSeconds - effectiveViewport.startSeconds) / 60))}m
+              </span>
+              <button
+                type="button"
+                aria-label="Zoom chart out"
+                onClick={() => setViewportTarget(current => wheelZoomChartViewport(
+                  current,
+                  gamesDurationSeconds,
+                  120,
+                  undefined,
+                  chartDomainStartSeconds,
+                ))}
+                className="rounded px-1.5 py-1 text-[10px] font-black text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom chart in"
+                onClick={() => setViewportTarget(current => wheelZoomChartViewport(
+                  current,
+                  gamesDurationSeconds,
+                  -120,
+                  undefined,
+                  chartDomainStartSeconds,
+                ))}
+                className="rounded px-1.5 py-1 text-[10px] font-black text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                aria-label="Reset chart zoom"
+                onClick={resetViewport}
+                className="rounded px-1.5 py-1 text-[10px] font-black text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                Full
+              </button>
+            </div>
             {canSync && !coreMinuteChartsBlocked && (!hasChatData || needsViewerResync) ? (
               <button
                 type="button"
@@ -576,11 +726,11 @@ function AnalyticsChart({
         </div>
       </div>
 
-      <div ref={chartInteractionRef}>
+      <div ref={chartInteractionRef} onWheel={handleChartWheel}>
       <PulseMultiSignalChartInner
         chromeless
         variant="console"
-        rollups={rollups}
+        rollups={chartRollups}
         games={chartGames}
         streamStartedAt={streamStartedAt}
         chartStreamId={detail?.stream?.streamId ?? null}

@@ -2,6 +2,10 @@ import {
   configureAnalyticsApi,
   configureEmoteAssetBase,
   minuteRollupSpanSeconds,
+  HeatmapIntegrityError,
+  SessionIdentityMismatchError,
+  TimelineIntegrityError,
+  isSessionDataError,
   type AnalyticsApi,
   type AnalyticsStreamOptions,
   type PulseBookmarkQuery,
@@ -19,7 +23,7 @@ import type {
   PulseStreamRecap,
   SyncStatus,
 } from '@streampulse/analytics-console'
-import { apiClient, getBackendUrl } from './apiClient'
+import { apiClient, getBackendUrl, isApiError } from './apiClient'
 import { resolveBackendSource } from './backendSource'
 import { hasBetaKey } from './auth'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
@@ -127,6 +131,14 @@ interface PortalStreamDetail {
   viewerSource?: string
   signalWatermarks?: PortalSignalWatermarks
   availability?: PortalSessionAvailability
+}
+
+type PortalRequestOptions = { signal?: AbortSignal }
+
+function markPortalPerformance(name: string): void {
+  if (import.meta.env.DEV && typeof performance !== 'undefined') {
+    performance.mark(`streampulse:portal:${name}`)
+  }
 }
 
 interface PortalMinutePoint {
@@ -515,6 +527,113 @@ function validPeakObservation(
   return peakObservation
 }
 
+export function assertPortalMinutesIntegrity(
+  requestedStreamId: string,
+  detail: { stream?: { streamId?: string; startedAt?: string; endedAt?: string | null } },
+  minutes: PortalStreamMinutesResponse,
+  nowMs = Date.now(),
+): void {
+  const requested = requestedStreamId.trim()
+  const returned = minutes.streamId?.trim()
+  const detailStreamId = detail.stream?.streamId?.trim()
+  const startedAt = detail.stream?.startedAt
+  const startedMs = Date.parse(startedAt ?? '')
+  const responseStartedMs = Date.parse(minutes.startedAt ?? '')
+  if (
+    (!returned && !minutes.startedAt && (minutes.minutes?.length ?? 0) === 0)
+  ) {
+    return
+  }
+  if (
+    !requested
+    || !returned
+    || returned !== requested
+    || (detailStreamId && detailStreamId !== requested)
+    || !Number.isFinite(startedMs)
+    || !Number.isFinite(responseStartedMs)
+    || Math.abs(startedMs - responseStartedMs) > 60_000
+  ) {
+    throw new SessionIdentityMismatchError({
+      requestedStreamId: requested,
+      returnedStreamId: returned,
+      requestedStartedAt: startedAt,
+      returnedStartedAt: minutes.startedAt,
+    })
+  }
+
+  const endMs = detail.stream?.endedAt
+    ? Date.parse(detail.stream.endedAt)
+    : nowMs
+  const effectiveEndMs = Number.isFinite(endMs) ? endMs : nowMs
+  const maxOffsetSeconds = Math.max(
+    0,
+    Math.floor((effectiveEndMs - startedMs) / 1000),
+  ) + 300
+  const seen = new Set<number>()
+  let duplicateOffsetCount = 0
+  let outOfWindowCount = 0
+  let invalidPointCount = 0
+  let previousOffset = -1
+
+  for (const point of minutes.minutes ?? []) {
+    const offset = point.offsetSeconds
+    if (!Number.isFinite(offset) || offset < 0 || !Number.isInteger(offset)) {
+      invalidPointCount += 1
+      continue
+    }
+    if (seen.has(offset)) duplicateOffsetCount += 1
+    seen.add(offset)
+    if (offset < previousOffset) invalidPointCount += 1
+    previousOffset = offset
+    if (offset > maxOffsetSeconds) outOfWindowCount += 1
+  }
+
+  if (duplicateOffsetCount || outOfWindowCount || invalidPointCount) {
+    throw new TimelineIntegrityError({
+      requestedStreamId: requested,
+      returnedStreamId: returned,
+      duplicateOffsetCount,
+      outOfWindowCount,
+      invalidPointCount,
+      message: 'Timeline data is being repaired because minute buckets are not unique and session-scoped.',
+    })
+  }
+}
+
+export function assertPortalHeatmapIntegrity(
+  requestedStreamId: string,
+  response: { streamId?: string; points?: Array<{ streamId?: string; minuteTs?: string; offsetSeconds?: number }> },
+  stream: { streamId?: string; startedAt?: string; endedAt?: string | null },
+  nowMs = Date.now(),
+): void {
+  const requested = requestedStreamId.trim()
+  const returned = response.streamId?.trim()
+  const startedMs = Date.parse(stream.startedAt ?? '')
+  const endedMs = stream.endedAt ? Date.parse(stream.endedAt) : nowMs
+  let invalidPointCount = 0
+  for (const point of response.points ?? []) {
+    const pointMs = Date.parse(point.minuteTs ?? '')
+    const pointStreamId = point.streamId?.trim()
+    if (
+      (pointStreamId && pointStreamId !== requested)
+      || !Number.isFinite(pointMs)
+      || (Number.isFinite(startedMs) && pointMs < startedMs - 60_000)
+      || (Number.isFinite(endedMs) && pointMs > endedMs + 300_000)
+      || (point.offsetSeconds != null && (!Number.isFinite(point.offsetSeconds) || point.offsetSeconds < 0))
+    ) {
+      invalidPointCount += 1
+    }
+  }
+  if (!requested || returned !== requested || invalidPointCount > 0) {
+    throw new HeatmapIntegrityError({
+      requestedStreamId: requested,
+      returnedStreamId: returned,
+      invalidPointCount,
+      message: 'Moment ranking is temporarily unavailable because the server returned cross-session data.',
+    })
+  }
+}
+
 function absolutizeRecapMoment(moment: PortalRecapMoment): PulseRecapMoment {
   const { peakObservation, ...rest } = moment
   const normalized = {
@@ -553,7 +672,7 @@ export function portalMinutesToRollups(
   if (!Number.isFinite(startMs)) return { rollups: [], catalog: [] }
   const catalogByKey = new Map<string, AnalyticsTopEmote>()
   const rollups = minutes.map((minute) => {
-    const minuteMs = startMs + Math.max(0, minute.offsetSeconds) * 1000
+    const minuteMs = startMs + minute.offsetSeconds * 1000
     const seventv = minute.seventvEmoteCount ?? 0
     const chat = minute.chatCount ?? 0
     const viewerLatest = minute.viewerLatest ?? minute.viewerMax ?? minute.viewerAvg ?? 0
@@ -607,17 +726,51 @@ async function fetchPortalStreamBundle(
   includeMinutes: boolean,
   channelLogin?: string,
   opts?: { enrichChannelEmotes?: boolean; includeSummary?: boolean },
+  requestOptions?: PortalRequestOptions,
 ) {
+  markPortalPerformance('session-detail-start')
   const enrichEmotes = opts?.enrichChannelEmotes === true
   const includeSummary = opts?.includeSummary !== false && includeMinutes
-  const detailPromise = apiClient<PortalStreamDetail>(portalPath(`/streams/${encodeURIComponent(streamId)}`))
+  const { data: detail } = await apiClient<PortalStreamDetail>(
+    portalPath(`/streams/${encodeURIComponent(streamId)}`),
+    { signal: requestOptions?.signal },
+  )
+  markPortalPerformance('session-detail-complete')
+  const returnedStreamId = detail.stream?.streamId?.trim()
+  if (!returnedStreamId || returnedStreamId !== streamId.trim()) {
+    if (import.meta.env.DEV) {
+      console.warn('[streamcloneAnalytics] session identity mismatch', {
+        requestedStreamId: streamId.trim(),
+        returnedStreamId,
+      })
+    }
+    throw new SessionIdentityMismatchError({
+      requestedStreamId: streamId.trim(),
+      returnedStreamId,
+      requestedStartedAt: undefined,
+      returnedStartedAt: detail.stream?.startedAt,
+    })
+  }
+
   let minutesFetchFailed = false
   const minutesPromise = includeMinutes
-    ? apiClient<PortalStreamMinutesResponse>(portalPath(`/streams/${encodeURIComponent(streamId)}/minutes`), {
-        timeoutMs: PORTAL_MINUTES_TIMEOUT_MS,
-      })
+    ? apiClient<PortalStreamMinutesResponse>(
+        portalPath(`/streams/${encodeURIComponent(streamId)}/minutes`),
+        {
+          timeoutMs: PORTAL_MINUTES_TIMEOUT_MS,
+          signal: requestOptions?.signal,
+        },
+      )
+        .then((res) => {
+          assertPortalMinutesIntegrity(streamId, detail, res.data)
+          markPortalPerformance('minutes-complete')
+          return res
+        })
         .then((res) => res)
-        .catch(() => {
+        .catch((error) => {
+          if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+            throw error
+          }
           minutesFetchFailed = true
           if (import.meta.env.DEV) {
             console.warn(`[streamcloneAnalytics] portal minutes unavailable for stream ${streamId}`)
@@ -626,11 +779,10 @@ async function fetchPortalStreamBundle(
         })
     : Promise.resolve(null)
   const summaryPromise = includeSummary
-    ? fetchPortalStreamSummary(streamId)
+    ? fetchPortalStreamSummary(streamId, requestOptions)
     : Promise.resolve(null)
 
-  const [detailRes, minutesRes, summaryRes] = await Promise.all([
-    detailPromise,
+  const [minutesRes, summaryRes] = await Promise.all([
     minutesPromise,
     summaryPromise,
   ])
@@ -643,8 +795,8 @@ async function fetchPortalStreamBundle(
   if (enrichEmotes && !usesLocalAnalyticsRoutes()) {
     const login =
       channelLogin?.trim()
-      || detailRes.data.stream?.login?.trim()
-      || detailRes.data.channel?.trim()
+      || detail.stream?.login?.trim()
+      || detail.channel?.trim()
       || ''
     if (login) {
       channelEmotes = await fetchPortalChannelEmotesCatalog(login)
@@ -652,7 +804,7 @@ async function fetchPortalStreamBundle(
   }
 
   return {
-    detail: detailRes.data,
+    detail,
     minutes: minutesRes?.data ?? null,
     summary: summaryData,
     channelEmotes,
@@ -856,16 +1008,23 @@ export const portalAnalyticsApi: AnalyticsApi = {
       if (opts?.channel) params.set('channel', opts.channel)
       const { data } = await apiClient<AnalyticsStreamDetail>(
         analyticsPath(`/streams/${encodeURIComponent(streamId)}?${params.toString()}`),
+        { signal: opts?.signal },
       )
+      if (data.stream?.streamId?.trim() !== streamId.trim()) {
+        throw new SessionIdentityMismatchError({
+          requestedStreamId: streamId.trim(),
+          returnedStreamId: data.stream?.streamId,
+          returnedStartedAt: data.stream?.startedAt,
+        })
+      }
       return data
     }
     const includeMinutes = opts?.sparse !== true
     const bundle = await fetchPortalStreamBundle(streamId, includeMinutes, opts?.channel, {
-      // Full timeline load may enrich identity from the 30-day catalog once.
-      // Sparse status polls must stay lightweight — no catalog, no summary fan-out.
-      enrichChannelEmotes: includeMinutes,
-      includeSummary: includeMinutes,
-    })
+      // Summary and channel emotes are staged after the first chart paint.
+      enrichChannelEmotes: false,
+      includeSummary: false,
+    }, { signal: opts?.signal })
     return portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary, {
       includeMinutes,
       minutesFetchFailed: bundle.minutesFetchFailed,
@@ -873,7 +1032,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
     })
   },
 
-  async getStreamStatus(streamId: string) {
+  async getStreamStatus(streamId: string, options?: PortalRequestOptions) {
     if (!streamId) return null
     if (usesLocalAnalyticsRoutes()) return null
     const { data } = await apiClient<{
@@ -887,21 +1046,24 @@ export const portalAnalyticsApi: AnalyticsApi = {
       chatCoveragePct?: number
       updatedAt?: number
       availability?: PortalSessionAvailability
-    }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`))
+      }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`), { signal: options?.signal })
     return data
   },
 
-  async getStreamMinutesTail(streamId: string, afterOffset: number) {
+  async getStreamMinutesTail(streamId: string, afterOffset: number, options?: PortalRequestOptions) {
     if (!streamId || !Number.isFinite(afterOffset) || afterOffset < 0) return null
     if (usesLocalAnalyticsRoutes()) return null
     const params = new URLSearchParams({ afterOffset: String(Math.floor(afterOffset)) })
     const { data } = await apiClient<PortalStreamMinutesResponse>(
       portalPath(`/streams/${encodeURIComponent(streamId)}/minutes?${params.toString()}`),
-      { timeoutMs: PORTAL_MINUTES_TIMEOUT_MS },
+      { timeoutMs: PORTAL_MINUTES_TIMEOUT_MS, signal: options?.signal },
     )
     if (!data?.minutes?.length || !data.startedAt) {
       return { channel: data?.channel ?? '', state: 'live', rollups: [], topEmotes: [], sources: [], updatedAt: data?.updatedAt ?? Date.now() }
     }
+    assertPortalMinutesIntegrity(streamId, {
+      stream: { streamId: data.streamId, startedAt: data.startedAt },
+    }, data)
     const converted = portalMinutesToRollups(data.startedAt, data.minutes)
     return {
       channel: data.channel,
@@ -913,24 +1075,26 @@ export const portalAnalyticsApi: AnalyticsApi = {
     } as AnalyticsStreamDetail
   },
 
-  async getAnalyticsStreams(login: string, limit = 20): Promise<AnalyticsStreamsResponse> {
+  async getAnalyticsStreams(login: string, limit = 20, options?: PortalRequestOptions): Promise<AnalyticsStreamsResponse> {
     const path = usesLocalAnalyticsRoutes()
       ? analyticsPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
       : portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
-    const { data } = await apiClient<AnalyticsStreamsResponse>(path)
+    const { data } = await apiClient<AnalyticsStreamsResponse>(path, { signal: options?.signal })
     return data
   },
 
-  async getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
+  async getAnalyticsLive(login: string, options?: PortalRequestOptions): Promise<AnalyticsStreamDetail> {
     if (usesLocalAnalyticsRoutes()) {
       try {
         // Sparse live status — full minute timelines are loaded via session detail, not polled.
         const params = new URLSearchParams({ sparse: 'true' })
         const { data } = await apiClient<AnalyticsStreamDetail>(
           analyticsPath(`/channels/${encodeURIComponent(login)}/live?${params.toString()}`),
+          { signal: options?.signal },
         )
         return data
-      } catch {
+      } catch (error) {
+        if (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout')) throw error
         return {
           channel: login,
           state: 'not_collected',
@@ -942,13 +1106,29 @@ export const portalAnalyticsApi: AnalyticsApi = {
       }
     }
     try {
-      const channelEmotesPromise = fetchPortalChannelEmotesCatalog(login)
       const { data } = await apiClient<PortalChannelLiveResponse>(
         portalPath(`/channels/${encodeURIComponent(login)}/live`),
+        { signal: options?.signal },
       )
-      const channelEmotes = await channelEmotesPromise
-      return portalLiveResponseToAnalytics(data, channelEmotes)
-    } catch {
+      if (!data.stream?.streamId?.trim()) {
+        return portalLiveResponseToAnalytics(data)
+      }
+      if (data.rollups?.length) {
+        assertPortalMinutesIntegrity(data.stream.streamId, {
+          stream: data.stream,
+        }, {
+          streamId: data.stream.streamId,
+          channel: data.channel,
+          startedAt: data.stream.startedAt,
+          minutes: data.rollups,
+          updatedAt: data.updatedAt,
+        })
+      }
+      return portalLiveResponseToAnalytics(data)
+    } catch (error) {
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       return {
         channel: login,
         state: 'not_collected',
@@ -960,7 +1140,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }
   },
 
-  async getStreamSummary(streamId: string, channel?: string) {
+  async getStreamSummary(streamId: string, channel?: string, options?: PortalRequestOptions) {
     if (!streamId.trim()) return null
     if (usesLocalAnalyticsRoutes()) {
       try {
@@ -969,8 +1149,16 @@ export const portalAnalyticsApi: AnalyticsApi = {
         const suffix = params.toString() ? `?${params.toString()}` : ''
         const { data } = await apiClient<{
           metrics?: PortalStreamSummaryMetrics
+          stream?: PortalStreamRecord
           updatedAt?: number
-        }>(analyticsPath(`/streams/${encodeURIComponent(streamId)}/summary${suffix}`))
+        }>(analyticsPath(`/streams/${encodeURIComponent(streamId)}/summary${suffix}`), { signal: options?.signal })
+        if (data.stream?.streamId && data.stream.streamId !== streamId.trim()) {
+          throw new SessionIdentityMismatchError({
+            requestedStreamId: streamId.trim(),
+            returnedStreamId: data.stream.streamId,
+            returnedStartedAt: data.stream.startedAt,
+          })
+        }
         const metrics = data.metrics
         let analyticsQuality: string | undefined
         if (metrics?.sync_health_state === 'synced' && (metrics.data_coverage_pct ?? 0) >= 80) {
@@ -987,7 +1175,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
         return null
       }
     }
-    return fetchPortalStreamSummary(streamId)
+    return fetchPortalStreamSummary(streamId, options)
   },
 
   async getPulseBookmarks(_params?: PulseBookmarkQuery) {
@@ -997,13 +1185,17 @@ export const portalAnalyticsApi: AnalyticsApi = {
     return { items: [], supported: true as const }
   },
 
-  async getPulseStreamRecap(streamId: string): Promise<PulseStreamRecap | null> {
+  async getPulseStreamRecap(streamId: string, options?: PortalRequestOptions): Promise<PulseStreamRecap | null> {
     try {
       const { data } = await apiClient<PortalStreamRecapResponse>(
         portalPath(`/streams/${encodeURIComponent(streamId)}/recap`),
+        { signal: options?.signal },
       )
       return normalizePulseStreamRecap(data)
-    } catch {
+    } catch (error) {
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       return null
     }
   },
@@ -1083,17 +1275,19 @@ export const portalAnalyticsApi: AnalyticsApi = {
     return { ok: true }
   },
 
-  async getSyncStatus(streamId: string): Promise<SyncStatus | null> {
+  async getSyncStatus(streamId: string, options?: PortalRequestOptions): Promise<SyncStatus | null> {
     try {
       if (usesLocalAnalyticsRoutes()) {
         const { data } = await apiClient<SyncStatus & { phase?: string }>(
           analyticsPath(`/streams/${encodeURIComponent(streamId)}/sync/status`),
+          { signal: options?.signal },
         )
         if (data.phase === 'idle') return null
         return { ...data, streamId }
       }
       const { data } = await apiClient<PortalSyncStatus>(
         portalPath(`/streams/${encodeURIComponent(streamId)}/sync/status`),
+        { signal: options?.signal },
       )
       return {
         streamId,
@@ -1102,7 +1296,10 @@ export const portalAnalyticsApi: AnalyticsApi = {
         updatedAt: data.updatedAt ?? new Date().toISOString(),
         stale: data.stale,
       }
-    } catch {
+    } catch (error) {
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       return null
     }
   },
@@ -1123,36 +1320,62 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }).then((res) => res.data)
   },
 
-  async getStreamGameSegments(streamId: string): Promise<GameSegment[]> {
+  async getStreamGameSegments(streamId: string, options?: PortalRequestOptions): Promise<GameSegment[]> {
     try {
-      const { data } = await apiClient<GameSegment[]>(gamesEndpoint(streamId))
-      if (Array.isArray(data)) return data
-    } catch {
+      const { data } = await apiClient<GameSegment[]>(gamesEndpoint(streamId), { signal: options?.signal })
+      if (Array.isArray(data)) {
+        const wrong = data.find((segment) => segment.streamId && segment.streamId !== streamId)
+        if (wrong) {
+          throw new SessionIdentityMismatchError({
+            requestedStreamId: streamId,
+            returnedStreamId: wrong.streamId,
+          })
+        }
+        return data
+      }
+    } catch (error) {
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       /* backend is source of truth; do not synthesize a misleading single-game span */
     }
     return []
   },
 
-  async getReplayHeatmap(streamId: string, window = 60, channel?: string) {
+  async getReplayHeatmap(streamId: string, window = 60, channel?: string, options?: PortalRequestOptions) {
     const params = new URLSearchParams({ window: String(window) })
     if (channel) params.set('channel', channel)
     try {
-      return apiClient(
+      const { data } = await apiClient<{
+        streamId: string
+        points: Array<{ streamId?: string; minuteTs?: string; offsetSeconds?: number }>
+        [key: string]: unknown
+      }>(
         portalPath(`/streams/${encodeURIComponent(streamId)}/replay-heatmap?${params.toString()}`),
-      ).then((res) => res.data)
-    } catch {
+        { signal: options?.signal },
+      )
+      assertPortalHeatmapIntegrity(streamId, data, { streamId })
+      return data
+    } catch (error) {
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       return null
     }
   },
 
-  async getReplayHeatmapDetail(streamId: string, window = 60, channel?: string) {
+  async getReplayHeatmapDetail(streamId: string, window = 60, channel?: string, options?: PortalRequestOptions) {
     const params = new URLSearchParams({ window: String(window), detail: 'true' })
     if (channel) params.set('channel', channel)
     try {
       return apiClient(
         portalPath(`/streams/${encodeURIComponent(streamId)}/replay-heatmap?${params.toString()}`),
+        { signal: options?.signal },
       ).then((res) => res.data)
-    } catch {
+    } catch (error) {
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       return null
     }
   },
@@ -1189,14 +1412,27 @@ let configured = false
 /** Session-scoped: avoid re-hitting /summary when detail+summaryQuery overlap on live ticks. */
 const portalStreamSummaryInflight = new Map<string, Promise<PortalStreamSummary | null>>()
 
-export async function fetchPortalStreamSummary(streamId: string): Promise<PortalStreamSummary | null> {
+export async function fetchPortalStreamSummary(
+  streamId: string,
+  options?: PortalRequestOptions,
+): Promise<PortalStreamSummary | null> {
   if (!streamId.trim()) return null
   const key = streamId.trim()
   const existing = portalStreamSummaryInflight.get(key)
   if (existing) return existing
   const pending = (async () => {
     try {
-      const { data } = await apiClient<PortalStreamSummary>(portalPath(`/streams/${encodeURIComponent(streamId)}/summary`))
+      const { data } = await apiClient<PortalStreamSummary>(
+        portalPath(`/streams/${encodeURIComponent(streamId)}/summary`),
+        { signal: options?.signal },
+      )
+      if (data.stream?.streamId && data.stream.streamId !== streamId.trim()) {
+        throw new SessionIdentityMismatchError({
+          requestedStreamId: streamId.trim(),
+          returnedStreamId: data.stream.streamId,
+          returnedStartedAt: data.stream.startedAt,
+        })
+      }
       if (!data.topEmotes?.length) return data
       return {
         ...data,
@@ -1205,8 +1441,11 @@ export async function fetchPortalStreamSummary(streamId: string): Promise<Portal
           imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
         })),
       }
-    } catch {
+    } catch (error) {
       portalStreamSummaryInflight.delete(key)
+      if (isSessionDataError(error) || (isApiError(error) && (error.kind === 'aborted' || error.kind === 'timeout'))) {
+        throw error
+      }
       return null
     }
   })()

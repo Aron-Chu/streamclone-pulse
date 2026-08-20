@@ -6,10 +6,17 @@ export function AnalyticsRouteFallback() {
 
   return (
     <div className="app-main" role="status" aria-live="polite">
-      <p className="muted analytics-route-fallback">
-        <span className="analytics-route-fallback__spinner" aria-hidden="true" />
-        {message}
-      </p>
+      <div className="analytics-route-fallback" aria-label={message}>
+        <p className="muted">
+          <span className="analytics-route-fallback__spinner" aria-hidden="true" />
+          {message}
+        </p>
+        <div className="analytics-route-fallback__skeleton" aria-hidden="true">
+          <div className="analytics-route-fallback__skeleton-line analytics-route-fallback__skeleton-line--wide" />
+          <div className="analytics-route-fallback__skeleton-line" />
+          <div className="analytics-route-fallback__skeleton-chart" />
+        </div>
+      </div>
     </div>
   )
 }

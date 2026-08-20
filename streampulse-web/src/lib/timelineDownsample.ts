@@ -1,7 +1,7 @@
 /** Portal minutes for long streams can be 1k+ points — cap chart render density. */
 export const PORTAL_CHART_MAX_POINTS = 240
 
-export const PORTAL_MINUTES_TIMEOUT_MS = 120_000
+export const PORTAL_MINUTES_TIMEOUT_MS = 15_000
 
 function uniformDownsample<T>(items: T[], maxPoints: number): T[] {
   const step = Math.ceil(items.length / maxPoints)

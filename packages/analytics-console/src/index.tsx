@@ -1,5 +1,6 @@
 export type {
   AnalyticsApi,
+  AnalyticsRequestOptions,
   AnalyticsStreamOptions,
   PulseBookmarkQuery,
   SetupWelcome,
@@ -29,6 +30,13 @@ export {
   getConfiguredAnalyticsApi,
   resolveEmoteAssetUrl,
 } from './configureApi.ts'
+export {
+  HeatmapIntegrityError,
+  SessionDataError,
+  SessionIdentityMismatchError,
+  TimelineIntegrityError,
+  isSessionDataError,
+} from './utils/sessionDataErrors.ts'
 export {
   clampGamesDurationSeconds,
   deriveChartGameSegments,

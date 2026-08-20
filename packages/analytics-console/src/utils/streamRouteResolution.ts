@@ -1,5 +1,4 @@
 import type { AnalyticsStream } from '../apiTypes.ts'
-import { getLocalDateString } from './consoleFormat.ts'
 
 export interface HistoryStreamItem {
   id?: string
@@ -19,20 +18,15 @@ export function resolveMatchedStream(
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(streamIdParam)) {
     const pool = routableStreams ?? combinedStreams
-    return pool.find((s) => {
+    const matches = pool.filter((s) => {
       if (!s.startedAt) return false
       const date = new Date(s.startedAt)
       if (Number.isNaN(date.getTime())) return false
 
       const utcDateStr = date.toISOString().slice(0, 10)
-      if (utcDateStr === streamIdParam) return true
-
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      const localDateStr = `${year}-${month}-${day}`
-      return localDateStr === streamIdParam
+      return utcDateStr === streamIdParam
     })
+    return matches.length === 1 ? matches[0] : undefined
   }
 
   return undefined
@@ -50,11 +44,11 @@ export function resolveTargetQueryStreamId(
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(streamIdParam)) {
     if (historyItems?.length) {
-      const fromHistory = historyItems.find((s) => {
+      const matches = historyItems.filter((s) => {
         if (!s.startedAt) return false
-        if (s.startedAt.slice(0, 10) === streamIdParam) return true
-        return getLocalDateString(s.startedAt) === streamIdParam
+        return new Date(s.startedAt).toISOString().slice(0, 10) === streamIdParam
       })
+      const fromHistory = matches.length === 1 ? matches[0] : undefined
       const id = fromHistory?.streamId ?? fromHistory?.id
       if (id) return id
     }

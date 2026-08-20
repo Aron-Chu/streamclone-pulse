@@ -7,6 +7,7 @@ import {
 export type ApiErrorKind =
   | 'unreachable'
   | 'aborted'
+  | 'timeout'
   | 'unauthorized'
   | 'rate_limited'
   | 'server'
@@ -124,7 +125,14 @@ export async function apiClient<T = unknown>(
   path: string,
   options: ApiClientOptions = {},
 ): Promise<ApiClientResult<T>> {
-  const { gated = false, timeoutMs = DEFAULT_TIMEOUT_MS, headers, body, ...rest } = options
+  const {
+    gated = false,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    headers,
+    body,
+    signal: callerSignal,
+    ...rest
+  } = options
   const url = buildUrl(path)
   const requestHeaders = new Headers(headers)
 
@@ -142,14 +150,23 @@ export async function apiClient<T = unknown>(
     requestBody = JSON.stringify(body)
   }
 
+  if (callerSignal?.aborted) {
+    throw abortedApiError(callerSignal.reason)
+  }
+
   let lastError: ApiError | null = null
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController()
-    const timer = window.setTimeout(
-      () => controller.abort(new DOMException('request timeout', 'TimeoutError')),
-      timeoutMs,
-    )
+    let timedOut = false
+    const abortFromCaller = () => {
+      controller.abort(callerSignal?.reason ?? new DOMException('request aborted', 'AbortError'))
+    }
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true })
+    const timer = globalThis.setTimeout(() => {
+      timedOut = true
+      controller.abort(new DOMException('request timeout', 'TimeoutError'))
+    }, timeoutMs)
 
     try {
       const response = await fetch(url, {
@@ -158,7 +175,6 @@ export async function apiClient<T = unknown>(
         body: requestBody,
         signal: controller.signal,
       })
-      window.clearTimeout(timer)
 
       const payload = await readBody(response)
       const cache = parseCacheHeader(response.headers.get('X-Cache'))
@@ -170,9 +186,7 @@ export async function apiClient<T = unknown>(
 
       if (!response.ok) {
         const error = normalizeApiError(response.status, payload, response.headers.get('Retry-After'))
-        // Do not auto-retry 429 — callers honor Retry-After / backoff.
-        const retryable = response.status >= 500
-        if (retryable && attempt === 0) {
+        if (response.status >= 500 && attempt === 0) {
           lastError = error
           await sleep(jitter(250))
           continue
@@ -186,23 +200,17 @@ export async function apiClient<T = unknown>(
         status: response.status,
       }
     } catch (error) {
-      window.clearTimeout(timer)
       if (isApiError(error)) throw error
-
-      // Distinguish caller-initiated aborts (refresh supersession, unmount) and our
-      // own per-attempt timeout from genuine network errors. Both surface as
-      // DOMException with .name === 'AbortError', but they are NOT user-facing
-      // failures — propagating them as `kind: 'unreachable'` painted the hub
-      // banner with Chrome's raw "signal is aborted without reason" text.
-      const isAbort =
-        error instanceof DOMException && error.name === 'AbortError'
-      if (isAbort) {
-        const aborted: ApiError = {
-          kind: 'aborted',
-          message: error.message,
+      if (callerSignal?.aborted) throw abortedApiError(callerSignal.reason)
+      if (timedOut || controller.signal.aborted) {
+        throw {
+          kind: 'timeout',
+          message: 'Request timed out',
           status: 0,
-        }
-        throw aborted
+        } satisfies ApiError
+      }
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw abortedApiError(error)
       }
 
       const unreachable: ApiError = {
@@ -216,8 +224,19 @@ export async function apiClient<T = unknown>(
         continue
       }
       throw lastError ?? unreachable
+    } finally {
+      globalThis.clearTimeout(timer)
+      callerSignal?.removeEventListener('abort', abortFromCaller)
     }
   }
 
   throw lastError ?? { kind: 'server', message: 'Request failed' }
+}
+
+function abortedApiError(reason: unknown): ApiError {
+  return {
+    kind: 'aborted',
+    message: reason instanceof Error ? reason.message : 'Request aborted',
+    status: 0,
+  }
 }
