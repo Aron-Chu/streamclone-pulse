@@ -65,7 +65,11 @@ function AnalyticsFigmaShellInner({
             : undefined
         }
       />
-      <div className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}`}>
+      <div
+        className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}${
+          rightRail ? ' figma-analytics__frame--with-right-rail' : ''
+        }`}
+      >
         {hideSidebar ? null : (
           <aside className="figma-analytics__sidebar" aria-label="Hub section navigation">
             <AnalyticsHubSidebar
