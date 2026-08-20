@@ -22,8 +22,18 @@ export interface AnalyticsHubSidebarProps {
   statusTone?: 'ready' | 'degraded' | 'offline'
 }
 
+/**
+ * Live Wire is a sticky right rail, not an in-flow scroll section, so it is
+ * excluded from the scroll-spy observer (action-only) and its "target" is the
+ * single rail <aside> rather than a section id.
+ */
+const LIVE_WIRE_SECTION_ID = 'section-live-wire'
+
 function scrollToSection(id: string) {
-  const el = document.getElementById(id)
+  const el =
+    id === LIVE_WIRE_SECTION_ID
+      ? document.querySelector<HTMLElement>('.figma-analytics__right-rail')
+      : document.getElementById(id)
   if (!el) return
   el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -36,7 +46,11 @@ export function AnalyticsHubSidebar({
   const [activeId, setActiveId] = useState(sections[0]?.id ?? '')
 
   useEffect(() => {
-    const visible = sections.filter((section) => !section.hidden)
+    // Live Wire is action-only: it's a sticky rail, so it must not pin the
+    // scroll-spy active state. Exclude it from observation entirely.
+    const visible = sections.filter(
+      (section) => !section.hidden && section.id !== LIVE_WIRE_SECTION_ID,
+    )
     if (visible.length === 0) return
 
     const observer = new IntersectionObserver(
