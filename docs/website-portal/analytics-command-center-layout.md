@@ -6,17 +6,18 @@
 | **Surface** | `/analytics` hub landing — `AnalyticsLandingPage` + `figma-activity-hub` |
 | **Code** | `streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx`, `PulseMomentsLivePanel`, `FigmaGlobalActivityPanel` |
 
-## Live Wire placement (2026-07 P1)
+## Live Wire placement (2026-08 P1 — right-rail "catch-moment radar")
 
-`HubLiveWireFeed` on hub landing — label **Live Wire** (`section-live-wire`, `hub-live-wire--lane`).
+`HubLiveWireFeed` on hub landing — label **Live Wire** (`section-live-wire`). The chart-attached **annotation lane** (2026-07 `layout="lane"`) is **superseded** and removed; Live Wire is now a **responsive sticky right rail** mounted once via the `AnalyticsFigmaShell` `rightRail` slot.
 
 | Viewport | Placement |
 |----------|-----------|
-| **All widths** | Chart-attached **annotation lane** inside `.figma-global-activity__chart-col` (under range controls / above the plot), `layout="lane"` |
+| **≥ 1440px** | **Sticky right rail** — third frame column (`220px minmax(0,1fr) 320px`), `figma-analytics__frame--with-right-rail` |
+| **< 1440px** (incl. 1100–1439) | Rail collapses to an **in-flow section below the center column** (single-mount rail repositioned by grid-area; sidebar hidden at ≤ 1024px) |
 
-The sticky right rail and third frame column are **removed** — the chart and Pulse Moments grid use the full center column width at every breakpoint.
+The landing passes `rightRail={<HubLiveWireFeed {...liveWireFeedProps} layout="rail" />}`. Channel/session routes do **not** pass `rightRail`, so the frame's default two-column layout is unaffected.
 
-Lane behavior: compact one-line chips for network peaks within the last **30 minutes**. Primary click **selects** the moment (shared `selectedMomentKey` with Pulse Moments + chart markers). Deep-link to channel analytics stays secondary (row/href elsewhere), not the default chip click. Quiet empty: `No network breakouts in the last 30m`. `NEW` requires event age ≤ 30m **and** first observation this poll. It does **not** repeat the emote-velocity leaderboard (`topMovers` lives only in Emote Market). New network moments slide in from the left on poll only (max 3 per poll).
+Rail behavior: tiered Live Wire cards for network peaks within the last **30 minutes** (a "Live now" band plus an "Older" retained disclosure). Each card is a non-interactive `article` with **sibling** actions: Analytics (canonical in-app `buildAnalyticsHref`) and, when `vodId` exists, a VOD jump (`buildVodTimestampUrl`, external). No `href="#"`: if neither action is available the card renders a disabled state. `NEW` requires a healthy full network feed (`source==='network' && loadSource==='full' && hubEndpointOk===true`), event age ≤ 30m, **and** first observation this poll (baselined on first healthy snapshot, so there is no initial-load burst; max 3 animated per poll, sliding in from the right). It does **not** repeat the emote-velocity leaderboard (`topMovers` lives only in Emote Market). The sidebar entry for Live Wire is **action-only** (not part of the scroll-spy) — it scrolls the single right rail into view.
 
 ### Shared moment selection
 
@@ -28,7 +29,7 @@ Lane behavior: compact one-line chips for network peaks within the last **30 min
 
 **Section roles (avoid duplication):**
 - **Hottest live** — activity-ranked live pool cards (shared `rankLiveChannelsByActivity` with chart inspector “Top live by activity”); viewers are secondary context
-- **Live Wire** — fresh (≤30m) chart annotations + markers
+- **Live Wire** — fresh (≤30m) catch-moment card rail
 - **Pool Wire** — compact lifecycle heartbeat in the command header (`POOL Stable` when quiet)
 - **Emote Market** — leaders / concentration / provider; breadth & rotation gated on backend market fields
 - **Channel Screener** — multi-view tracked table (Overview / Momentum / Coverage / Anomalies)
@@ -37,7 +38,7 @@ Lane behavior: compact one-line chips for network peaks within the last **30 min
 ## Section order (top → bottom)
 
 1. Command-center hero (search, Hottest live rail, coverage strip)
-2. **Network activity** — `figma-activity-hub`: chart stack (**annotation lane** → plot + markers) → Pulse Moments embedded two-up
+2. **Network activity** — `figma-activity-hub`: chart stack (plot + markers) → Pulse Moments embedded two-up; **Live Wire** rides as the right rail (or in-flow below at < 1440px)
 3. Emote Market, Top clips (if any), Channel Screener, Coverage
 
 ## Pulse Moments embedded layout (2026-07)
@@ -96,7 +97,7 @@ npm run dev:hosted
 npx playwright test tests/e2e/analytics-hub-ux.spec.ts tests/e2e/analytics-hub-live-wire-ticker.spec.ts --workers=1
 ```
 
-Manual: annotation lane sits above the plot; click a chip → dark Pulse Moments inspector fills + chart accent + rail linked strip (not a second moment card); clear linked / lock another bucket → selection clears as designed.
+Manual: at ≥ 1440px the Live Wire rail is sticky on the right; at < 1440px it drops in-flow below the center column (single mount, never duplicated). Resize to confirm the rail is repositioned, not remounted. On a healthy full network feed, a genuinely new network moment within 30m animates in from the right with a `NEW` badge; reducing motion preserves the semantic `NEW` without the slide.
 
 ## Related
 

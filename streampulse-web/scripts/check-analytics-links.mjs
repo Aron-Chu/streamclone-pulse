@@ -9,10 +9,17 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-function buildAnalyticsHref({ login, streamId }) {
-  const safeLogin = encodeURIComponent(login.trim().toLowerCase())
-  if (!streamId) return `/analytics/${safeLogin}`
-  return `/analytics/${safeLogin}/s/${encodeURIComponent(streamId)}`
+function buildAnalyticsHref({ login, streamId, offsetSeconds }) {
+  const safeChannel = encodeURIComponent(login.trim().toLowerCase())
+  // Canonical channel-session route is /analytics/{channel}/{streamId}.
+  // The /s/{streamId} form is a backcompat redirect alias only.
+  const base = streamId
+    ? `/analytics/${safeChannel}/${encodeURIComponent(streamId)}`
+    : `/analytics/${safeChannel}`
+  if (offsetSeconds != null && offsetSeconds > 0) {
+    return `${base}#t=${Math.floor(offsetSeconds)}`
+  }
+  return base
 }
 
 function analyticsActionLabel() {
@@ -21,11 +28,12 @@ function analyticsActionLabel() {
 
 const cases = [
   { login: 'xqc', streamId: undefined, want: '/analytics/xqc' },
-  { login: 'XQC', streamId: '12345', want: '/analytics/xqc/s/12345' },
+  { login: 'XQC', streamId: '12345', want: '/analytics/xqc/12345' },
+  { login: 'xqc', streamId: '12345', offsetSeconds: 120, want: '/analytics/xqc/12345#t=120' },
 ]
 
-for (const { login, streamId, want } of cases) {
-  const got = buildAnalyticsHref({ login, streamId })
+for (const { login, streamId, offsetSeconds, want } of cases) {
+  const got = buildAnalyticsHref({ login, streamId, offsetSeconds })
   if (got !== want) {
     console.error(`buildAnalyticsHref mismatch: got ${got}, want ${want}`)
     process.exit(1)

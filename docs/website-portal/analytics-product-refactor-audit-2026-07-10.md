@@ -8,7 +8,7 @@ Method: Playwright review at desktop and mobile widths, source tracing, and comp
 
 Use a hybrid of directions A and C:
 
-- **Live Wire becomes a truly live annotation layer for the activity chart.** It contains only events from the last 15-30 minutes. New events enter briefly above their chart bucket, then settle into chart markers. It is not a second moments list.
+- **Live Wire becomes a truly live annotation layer for the activity chart.** It contains only events from the last 15-30 minutes. New events enter briefly above their chart bucket, then settle into chart markers. It is not a second moments list. *(Superseded 2026-08: Live Wire shipped as a responsive sticky **right-rail "catch-moment radar"** (`layout="rail"` via the shell `rightRail` slot) with tiered Live-now/Older disclosure and sibling Analytics + VOD actions — see [`analytics-command-center-layout.md`](analytics-command-center-layout.md). The annotation-lane wording below is the historical 2026-07 direction.)*
 - **Pulse Moments remains the durable ranked investigation surface.** It can cover the selected chart range and owns filters, ranking, inspection, and VOD jumps.
 - **Featured live channels becomes Hottest live in v1.** Rank it by a backend-owned activity ordering, not raw viewers and not a new client scoring formula.
 - **Pool Wire remains lifecycle-only.** Keep it compact in the command header. An empty wire should read as a healthy quiet state, not consume another product section.
@@ -104,6 +104,8 @@ Recommended fields:
 Do not create a new Pulse score in React. Prefer a backend `hottestLive` ordering or explicit `hotRank`, `rankDelta`, and `reason` fields. Until that contract exists, reuse the backend order behind the existing Top live by activity inspector rather than adding a different formula.
 
 ### 3. Live annotations
+
+> **Superseded 2026-08:** this section is the historical 2026-07 direction (chart-attached annotation lane). The shipped contract is the **Live Wire right rail** — tiered cards in the shell's `rightRail` slot (sticky at ≥ 1440px, in-flow below the center column below that), `NEW` gated on a healthy full network feed + first observation this poll (baselined, no initial burst, max 3 animated per poll, right-entry), and never `href="#"` (sibling Analytics / VOD actions or a disabled state). See [`analytics-command-center-layout.md`](analytics-command-center-layout.md).
 
 Remove the full-width stale ticker. Add a narrow annotation lane attached to the chart.
 
