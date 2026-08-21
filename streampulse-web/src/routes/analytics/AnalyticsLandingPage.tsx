@@ -35,6 +35,7 @@ import {
   ChartSourceBanner,
   FigmaGlobalActivityPanel,
 } from "../../ui/components/analytics/FigmaGlobalActivityPanel";
+import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
 import { ChromeInstallCta } from "../../ui/components/ChromeInstallCta";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
@@ -384,6 +385,7 @@ function AnalyticsLandingContent() {
     hubEndpointOk: hub.hubEndpointOk,
     // Do not default to "full" — that made pending hubEndpointOk=false look like a confirmed outage.
     loadSource: hub.loadSource ?? undefined,
+    pollSequence: hub.pollSequence,
   };
 
   const momentLookupPool = useMemo(() => {
@@ -436,6 +438,7 @@ function AnalyticsLandingContent() {
           : backendSourceLabel(backendSource)
       }
       sidebarSections={sidebarSections}
+      rightRail={<HubLiveWireFeed {...liveWireFeedProps} layout="rail" />}
     >
       <main
         className="figma-analytics__main"
@@ -572,11 +575,6 @@ function AnalyticsLandingContent() {
               accentBucketT={accentBucketT}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
-              annotationFeed={liveWireFeed}
-              annotationLoading={liveWireFeedProps.loading}
-              annotationHubEndpointOk={hub.hubEndpointOk}
-              annotationLoadSource={hub.loadSource ?? undefined}
-              annotationActivityWindow={activityWindow}
             />
             <PulseMomentsLivePanel
               hub={data}

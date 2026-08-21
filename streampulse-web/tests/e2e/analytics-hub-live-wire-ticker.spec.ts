@@ -15,59 +15,59 @@ const VIEWPORTS = [
   { width: 1600, height: 900 },
 ] as const
 
-test.describe('analytics hub Live Wire ticker layout', () => {
+test.describe('analytics hub Live Wire right rail layout', () => {
   test.beforeEach(async ({ page }) => {
     await installHubUxMock(page)
   })
 
   for (const viewport of VIEWPORTS) {
-    test(`horizontal ticker above chart @ ${viewport.width}px`, async ({ page }) => {
+    test(`single Live Wire right rail @ ${viewport.width}px`, async ({ page }) => {
       const errors = attachConsoleErrorGuard(page)
       await page.setViewportSize(viewport)
       await page.goto('/analytics')
 
-      await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
-      await expect(page.locator('#section-live-wire')).toBeVisible()
-      await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
-      await expect(page.locator('.figma-global-activity__annotation-lane')).toBeVisible()
-      await expect(page.locator('.hub-live-wire__ticker-viewport--marquee')).toHaveCount(0)
-      await expect(page.locator('.hub-live-wire__chip-event').first()).toBeVisible()
+      // Single mount: one rail <aside>, never duplicated at any width.
+      const rail = page.locator('.figma-analytics__right-rail')
+      await expect(rail).toHaveCount(1)
+      await expect(page.locator('.hub-live-wire--rail')).toBeVisible()
+      await expect(page.locator('.hub-live-wire__rail-list .hub-live-wire__rail-card').first()).toBeVisible()
 
-      const activityHub = page.locator('.figma-activity-hub')
-      await expect(activityHub).toBeVisible()
-      await expect(activityHub.locator('#section-live-wire')).toBeVisible()
-      await expect(
-        page.locator('.figma-global-activity__chart-col #section-live-wire'),
-      ).toBeVisible()
+      // Live network feed from the mock → 2 moments in the "Live now" tier.
+      await expect(page.locator('.hub-live-wire__rail-tier--live')).toHaveText('Live now')
+      await expect(page.locator('.hub-live-wire__rail-list .hub-live-wire__rail-card')).toHaveCount(2)
 
-      const order = await page.evaluate(() => {
-        const wire = document.getElementById('section-live-wire')
-        const chart = document.querySelector('.figma-global-activity__hub-chart')
-        if (!wire || !chart) return null
-        const wireBeforeChart =
-          wire.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING
-        const chartCol = document.querySelector('.figma-global-activity__chart-col')
-        const wireInChartCol = chartCol?.contains(wire) ?? false
-        return wireBeforeChart && wireInChartCol ? 'lane-above-chart-in-col' : 'other'
-      })
-      expect(order).toBe('lane-above-chart-in-col')
+      // Cards expose sibling actions; no href="#" anywhere in the rail.
+      await expect(page.locator('.hub-live-wire__action[href="#"]')).toHaveCount(0)
+      await expect(page.locator('.hub-live-wire__action', { hasText: 'View moment' }).first()).toBeVisible()
 
-      if (viewport.width >= 1100) {
-        const grid = page.locator('.pulse-moments-live--embedded .pulse-moments-live__grid')
-        await expect(grid).toBeVisible()
-        const mainBox = await page.locator('.figma-analytics__main').boundingBox()
-        const gridBox = await grid.boundingBox()
-        expect(mainBox).toBeTruthy()
-        expect(gridBox).toBeTruthy()
-        expect(gridBox!.x + gridBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 2)
+      const frame = page.locator('.figma-analytics__frame--with-right-rail')
+      await expect(frame).toHaveCount(1)
+      const mainBox = await page.locator('.figma-analytics__main').boundingBox()
+      const railBox = await rail.boundingBox()
+      expect(mainBox).toBeTruthy()
+      expect(railBox).toBeTruthy()
+
+      if (viewport.width >= 1440) {
+        // Rail is the 3rd frame column, to the right of the center column.
+        expect(railBox!.x).toBeGreaterThanOrEqual(mainBox!.x + mainBox!.width - 4)
+        // Sticky rail participates in the frame grid (not display:none).
+        await expect(rail).toHaveCSS('display', 'block')
+        await expect(rail).toHaveCSS('position', 'sticky')
+      } else {
+        // Rail is in-flow below the center column (single mount, repositioned by grid-area).
+        expect(railBox!.y).toBeGreaterThanOrEqual(mainBox!.y + mainBox!.height - 4)
       }
+
+      // The old in-chart annotation lane is gone.
+      await expect(page.locator('.figma-global-activity__annotation-lane')).toHaveCount(0)
+      await expect(page.locator('.hub-live-wire--lane')).toHaveCount(0)
 
       await assertNoPageHorizontalOverflow(page)
       await assertNoConsoleErrors(page, errors)
     })
   }
 
-  test('ticker survives 1440px at deviceScaleFactor 1.25', async ({ browser }) => {
+  test('rail survives 1440px at deviceScaleFactor 1.25', async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
       deviceScaleFactor: 1.25,
@@ -76,8 +76,9 @@ test.describe('analytics hub Live Wire ticker layout', () => {
     const errors = attachConsoleErrorGuard(page)
     await installHubUxMock(page)
     await page.goto('/analytics')
-    await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
-    await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
+    await expect(page.locator('.figma-analytics__right-rail')).toHaveCount(1)
+    await expect(page.locator('.hub-live-wire--rail')).toBeVisible()
+    await expect(page.locator('.hub-live-wire__action[href="#"]')).toHaveCount(0)
     await assertNoPageHorizontalOverflow(page)
     await assertNoConsoleErrors(page, errors)
     await context.close()

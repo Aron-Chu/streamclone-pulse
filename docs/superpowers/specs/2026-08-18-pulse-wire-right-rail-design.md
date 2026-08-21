@@ -66,7 +66,7 @@ the opposite layout:
    - `analytics-hub-chart-contract.spec.ts` — L54–55, L80 assert lane chips / `--new` badge behavior.
    - Any lane-selection unit test asserting `selectedMomentKey` wiring on the hub landing.
 3. **Naming:** use **Live Wire**; remove "Pulse Wire" copy from this surface and from launch docs touched by this batch.
-4. **Checker:** `streampulse-web/scripts/check-analytics-links.mjs` currently validates `/analytics/{login}` and `/analytics/{login}/s/{streamId}`. Align the spec's route contract to that real `buildAnalyticsHref` contract (do not claim a `#t={offset}` in-app route that the checker does not expect), and run it. Scope commands as `npm --prefix streampulse-web run check:analytics-links` / `check:analytics-overlap`.
+4. **Checker:** `streampulse-web/scripts/check-analytics-links.mjs` must mirror the canonical `buildAnalyticsHref` contract (`/analytics/{channel}` and `/analytics/{channel}/{streamId}`, with the `#t={offset}` VOD-scrub fragment when `offsetSeconds > 0`). The `/s/{streamId}` form is a backcompat redirect alias only — not the canonical expectation. Run it after aligning. Scope commands as `npm --prefix streampulse-web run check:analytics-links` / `check:analytics-overlap`.
 
 ## Responsive contract (single source of truth — P0)
 
@@ -135,7 +135,7 @@ Emotes     ████████░░░░░░  12k/min
 
 - **No nested controls.** Render each card as a non-interactive `article` (`<ul role="list">` / `<li role="listitem">`) with **sibling** action elements. Never wrap the whole card in a link and nest another link inside.
 - **`HubMomentRailBody` is NOT the reuse source** (it is currently unmounted and promotes VOD to primary when analytics is unavailable; it does not render sibling analytics+VOD). Instead build a **new shared action resolver** modeled on the **mounted inspector** (`FigmaMomentInspector`, which already computes `openMomentHref` and `vodHref = buildVodTimestampUrl(...)`), exposing both actions as siblings:
-  - **Analytics action:** canonical in-app `buildAnalyticsHref({ login, streamId })` → `/analytics/{login}` or `/analytics/{login}/s/{streamId}` (the contract `check:analytics-links` validates). Prefer `moment.href` when present, else `buildAnalyticsHref`.
+  - **Analytics action:** canonical in-app `buildAnalyticsHref({ login, streamId })` → `/analytics/{login}` or `/analytics/{login}/{streamId}` (the contract `check:analytics-links` validates). Prefer `moment.href` when present, else `buildAnalyticsHref`.
   - **VOD action:** external `buildVodTimestampUrl(vodId, offsetSeconds)` → `https://www.twitch.tv/videos/{vodId}?t={offset}s`, `target="_blank" rel="noreferrer"`, only when `vodId` is set.
   - If neither analytics nor VOD is available, render a **disabled state** ("Live tracking only" / "No VOD indexed yet") — **never `href="#"`**.
 

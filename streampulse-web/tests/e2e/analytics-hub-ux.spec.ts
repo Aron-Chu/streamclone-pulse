@@ -329,7 +329,7 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(page.locator('.hub-live-rail-movers')).toHaveCount(0)
     await expect(page.getByTestId('live-pool-size')).toBeVisible()
     await expect(page.getByTestId('pool-wire')).toBeVisible()
-    await expect(page.locator('#section-live-wire .hub-live-wire')).toBeVisible()
+    await expect(page.locator('.figma-analytics__right-rail .hub-live-wire')).toBeVisible()
     await expect(page.locator('#section-emote-signal .figma-economy-grid')).toBeVisible()
     await expect(page.getByRole('link', { name: /xQc/i }).first()).toBeVisible()
     await expect(page.getByText('96', { exact: true }).first()).toBeVisible()
@@ -337,45 +337,36 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('Live Wire selection coordinates one inspector and clear remains cleared', async ({ page }) => {
+  test('Live Wire rail is action-only: tiered cards, sibling actions, no selection coupling', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
 
-    const liveWire = page.locator('#section-live-wire')
-    const sodaChip = liveWire.locator('button.hub-live-wire__chip', {
-      hasText: 'sodapoppin',
-    })
-    await expect(sodaChip).toBeVisible()
+    const rail = page.locator('.figma-analytics__right-rail .hub-live-wire')
+    await expect(rail).toBeVisible()
+    await expect(rail.locator('.hub-live-wire__rail-tier--live')).toHaveText('Live now')
 
+    // Cards are non-interactive articles with sibling action links — never a
+    // wrapped card link, never a selected-moment chip, never href="#".
+    await expect(rail.locator('.hub-live-wire__chip')).toHaveCount(0)
+    await expect(rail.locator('a.hub-live-wire__rail-card')).toHaveCount(0)
+    await expect(rail.locator('.hub-live-wire__action[href="#"]')).toHaveCount(0)
+
+    const sodaCard = rail.locator('.hub-live-wire__rail-card', { hasText: 'sodapoppin' })
+    await expect(sodaCard).toBeVisible()
+    await expect(sodaCard.locator('.hub-live-wire__action', { hasText: 'View moment' })).toBeVisible()
+
+    // No selection coupling: the rail never drives the Pulse Moments inspector
+    // or the chart bucket accent (old lane-chip model is gone).
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
-    await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
-    await expect(
-      page.locator('.pulse-moments-live__side .pulse-moments__inspector'),
-    ).toBeVisible()
-    await expect(
-      page.locator('.activity-bucket-inspector .hub-moment-rail'),
-    ).toHaveCount(0)
-    await expect(page.locator('.pulse-moments-live__banner')).toHaveCount(0)
-
-    await sodaChip.click()
-    await expect(sodaChip).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
-    await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(1)
-    await expect(page.locator('.pulse-moments__peak-row.is-active')).toContainText(
-      'sodapoppin',
-    )
-    await expect(page.getByTestId('bucket-inspector-linked-moment')).toContainText(
-      'sodapoppin',
-    )
-
-    await page
-      .getByTestId('bucket-inspector-linked-moment')
-      .getByRole('button', { name: 'Clear' })
-      .click()
-    await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
-    await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
-    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
     await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(0)
+    await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
+
+    // Sibling action deep-links to the canonical analytics route.
+    const viewMoment = sodaCard.locator('.hub-live-wire__action', { hasText: 'View moment' })
+    await expect(viewMoment).toHaveAttribute(
+      'href',
+      /\/analytics\/sodapoppin\/s2(?:#t=\d+)?$/,
+    )
 
     await assertNoWhiteAnalyticsSurfaces(page)
     await assertNoConsoleErrors(page, errors)
@@ -455,7 +446,9 @@ test.describe('analytics hub UX (interaction)', () => {
 
     const topEmotesList = inspector.locator('.hub-top-emotes-inspector')
     await expect(topEmotesList).toBeVisible()
-    await expect(inspector.locator('.hub-top-emotes-inspector__provider').first()).toBeVisible()
+    await expect(
+      inspector.locator('.hub-top-emotes-inspector li.emote-rank-row .emote-rank-row__provider').first(),
+    ).toBeVisible()
 
     const rowStyle = await topEmotesList.locator('li').first().evaluate((node) => {
       const styles = window.getComputedStyle(node)
@@ -506,7 +499,7 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(page.locator('.pulse-moments-live__side .pulse-moments__inspector')).toBeVisible()
     await expect(page.locator('.activity-bucket-inspector--moment')).toHaveCount(0)
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toBeVisible()
-    await expect(page.locator('.pulse-moments__burst-bar span').first()).toBeVisible()
+    await expect(page.locator('.pulse-moments-live__side .emote-rank-row *[class*="share"]').first()).toBeVisible()
 
     await assertNoConsoleErrors(page, errors)
   })
