@@ -47,6 +47,18 @@ describe('extensionChartPoints', () => {
     expect(sampled.some(point => (point.viewerCount ?? 0) === 42_000)).toBe(true)
   })
 
+  it('uses the requested signal to choose each bucket representative', () => {
+    const rollups = [
+      { offsetSeconds: 0, chatCount: 90, sevenTvEmoteCount: 1, viewerCount: 10 },
+      { offsetSeconds: 60, chatCount: 1, sevenTvEmoteCount: 80, viewerCount: 20 },
+      { offsetSeconds: 120, chatCount: 2, sevenTvEmoteCount: 2, viewerCount: 900 },
+    ]
+
+    expect(downsampleRollupsForChart(rollups, 1, 'chat')[0]?.offsetSeconds).toBe(0)
+    expect(downsampleRollupsForChart(rollups, 1, 'emotes')[0]?.offsetSeconds).toBe(60)
+    expect(downsampleRollupsForChart(rollups, 1, 'viewers')[0]?.offsetSeconds).toBe(120)
+  })
+
   it('finds nearest chart point by offset', () => {
     const points = chartPointsFromExtensionRollups([
       rollup(0, 1),

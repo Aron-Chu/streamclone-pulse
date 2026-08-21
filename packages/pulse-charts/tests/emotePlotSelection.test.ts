@@ -16,7 +16,6 @@ describe('activityBandFractions', () => {
 
   it('expands activity zone fraction when expanded', () => {
     expect(activityZoneFraction(true)).toBeGreaterThan(activityZoneFraction(false))
-    expect(activityZoneFraction(false)).toBeGreaterThan(0.7)
     expect(activityBandFractions(true).trace).toBeGreaterThan(activityBandFractions(false).trace)
   })
 

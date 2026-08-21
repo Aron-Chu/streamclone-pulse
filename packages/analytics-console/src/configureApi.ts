@@ -1,3 +1,5 @@
+import type { AnalyticsTopEmote } from './apiTypes.ts'
+
 export interface AnalyticsStreamOptions {
   sparse?: boolean
   channel?: string
@@ -49,6 +51,7 @@ export interface StreamSummaryMetrics {
 export interface StreamSummaryResponse {
   channel?: string
   metrics?: StreamSummaryMetrics
+  topEmotes?: AnalyticsTopEmote[]
   analyticsQuality?: string
   updatedAt?: number
 }

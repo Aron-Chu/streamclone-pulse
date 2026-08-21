@@ -243,7 +243,7 @@ export function resolveChartBucketSelection(
 
 /** Max gap between adjacent points before the chart breaks the line (aligned with HubActivityChart). */
 export function maxConnectedGapMs(windowMinutes: number): number {
-  return Math.max(5 * 60_000, activityBucketMs(windowMinutes) * 2.5)
+  return Math.max(10 * 60_000, activityBucketMs(windowMinutes) * 3)
 }
 
 /** Count corpus gaps where stored rollups are missing between adjacent buckets. */

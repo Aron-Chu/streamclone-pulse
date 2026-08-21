@@ -99,13 +99,27 @@ export function gameNameAtOffset(
 /** Synthesize one chart segment when the games API is empty but stream category is known. */
 export function deriveChartGameSegments(
   streamId: string,
-  detail: { stream?: { category?: string }; rollups?: Array<{ minuteTs: string }> } | null | undefined,
+  detail: { stream?: { category?: string; categoryId?: string }; rollups?: Array<{ minuteTs: string }> } | null | undefined,
   apiSegments: ChartGameSegment[] | null | undefined,
   options?: { allowCategoryFallback?: boolean },
 ): ChartGameSegment[] {
-  if (apiSegments?.length) return apiSegments
-  if (options?.allowCategoryFallback === false) return []
   const category = detail?.stream?.category?.trim() ?? ''
+  const categoryId = detail?.stream?.categoryId?.trim() || undefined
+  if (apiSegments?.length) {
+    // A segment can be valid but still lack identity when the portal stream
+    // record was synthesized from the current category. Only repair a segment
+    // whose name matches that category; never apply one game's id to another
+    // historical segment.
+    if (!categoryId || !category) return apiSegments
+    const normalizedCategory = category.toLowerCase()
+    return apiSegments.map(segment => {
+      if (segment.categoryId?.trim() || segment.gameName.trim().toLowerCase() !== normalizedCategory) {
+        return segment
+      }
+      return { ...segment, categoryId }
+    })
+  }
+  if (options?.allowCategoryFallback === false) return []
   if (!category || PLACEHOLDER_CATEGORIES.test(category)) return []
   const rollups = detail?.rollups ?? []
   const durationSeconds = minuteRollupSpanSeconds(rollups)
@@ -116,6 +130,7 @@ export function deriveChartGameSegments(
       streamId,
       gameName: category,
       boxArtUrl: '',
+      categoryId,
       offsetSeconds: 0,
       durationSeconds,
       createdAt: new Date(0).toISOString(),

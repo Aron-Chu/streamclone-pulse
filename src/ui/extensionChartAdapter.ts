@@ -70,10 +70,13 @@ export function extensionGamesToChartGames(
 ): ChartGameSegment[] {
   const normalized = normalizeGameSegments(
     (games ?? []).map(game => ({
+      id: game.id,
       gameName: game.gameName,
+      categoryId: game.categoryId,
       boxArtUrl: game.boxArtUrl,
       offsetSeconds: game.offsetSeconds,
       durationSeconds: game.durationSeconds,
+      source: game.source,
     })),
     durationSeconds,
   )

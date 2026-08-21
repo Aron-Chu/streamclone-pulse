@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   buildGamesPlayedTimelineSlots,
@@ -9,6 +9,7 @@ import {
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { theme } from './theme.ts'
+import { fetchTwitchDirectoryBoxArt, gameArtCandidates } from './twitchGameArt.ts'
 
 /** Equal chip floor so short late games stay readable (not crushed by flexGrow). */
 export const GAMES_PLAYED_CHIP_MIN_WIDTH_PX = 96
@@ -41,6 +42,84 @@ function formatStreamDuration(durationSeconds: number): string {
 function formatWindowLabel(startOffset: number, endOffset: number): string {
   const span = Math.max(0, endOffset - startOffset)
   return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${formatStreamDuration(span)}`
+}
+
+export function initialsForGame(gameName: string): string {
+  const words = gameName.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase()
+  return `${words[0]![0]}${words[words.length - 1]![0]}`.toUpperCase()
+}
+
+function hueForGame(gameName: string): number {
+  let hash = 0
+  for (let index = 0; index < gameName.length; index += 1) {
+    hash = (hash * 31 + gameName.charCodeAt(index)) % 360
+  }
+  return hash
+}
+
+function GameArt({ game }: { game: ExtensionGameSegment }) {
+  const candidates = useMemo(
+    () => gameArtCandidates(game.boxArtUrl, game.categoryId),
+    [game.boxArtUrl, game.categoryId],
+  )
+  const [candidateIndex, setCandidateIndex] = useState(0)
+  const [directoryArt, setDirectoryArt] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    setCandidateIndex(0)
+    setDirectoryArt(null)
+    if (candidates.length === 0) {
+      void fetchTwitchDirectoryBoxArt(game.gameName).then(url => {
+        if (active) setDirectoryArt(url)
+      })
+    }
+    return () => {
+      active = false
+    }
+  }, [candidates, game.gameName])
+
+  const resolved = candidates[candidateIndex] ?? directoryArt
+  if (!resolved) {
+    const hue = hueForGame(game.gameName)
+    return (
+      <span
+        style={{ ...styles.gameArtFallback, background: `hsl(${hue} 28% 22%)` }}
+        aria-hidden="true"
+        data-game-art-fallback
+      >
+        {initialsForGame(game.gameName)}
+      </span>
+    )
+  }
+
+  return (
+    <img
+      src={resolved}
+      alt=""
+      width={28}
+      height={38}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      style={styles.gameArt}
+      data-game-art
+      onError={() => {
+        if (candidateIndex < candidates.length) {
+          if (candidateIndex + 1 < candidates.length) {
+            setCandidateIndex(candidateIndex + 1)
+            return
+          }
+          setCandidateIndex(candidates.length)
+          void fetchTwitchDirectoryBoxArt(game.gameName).then(setDirectoryArt)
+          return
+        }
+        setDirectoryArt(null)
+      }}
+    />
+  )
 }
 
 /**
@@ -85,6 +164,7 @@ export function GamesPlayedStrip({
     <div
       style={styles.gamesStrip}
       aria-label="Games played"
+      data-games-played="true"
       onPointerLeave={handleStripLeave}
     >
       <div style={styles.headerRow}>
@@ -122,6 +202,7 @@ export function GamesPlayedStrip({
                 key={`${segment.gameName}-${segment.offsetSeconds}-${index}`}
                 type="button"
                 role="listitem"
+                className="pulse-game-card"
                 style={cardStyle}
                 title={title}
                 aria-label={title}
@@ -129,13 +210,16 @@ export function GamesPlayedStrip({
                 onFocus={() => onHighlightKey?.(key)}
                 onBlur={() => onHighlightKey?.(null)}
               >
-                <span style={styles.gameName}>{segment.gameName}</span>
-                <span style={styles.gameMeta}>
-                  <span style={styles.gameStart}>{formatHeatOffset(slot.visibleStart)}</span>
-                  <span style={styles.gameMetaSep} aria-hidden="true">
-                    –
+                <GameArt game={segment} />
+                <span style={styles.gameText}>
+                  <span style={styles.gameName}>{segment.gameName}</span>
+                  <span style={styles.gameMeta}>
+                    <span style={styles.gameStart}>{formatHeatOffset(slot.visibleStart)}</span>
+                    <span style={styles.gameMetaSep} aria-hidden="true">
+                      –
+                    </span>
+                    <span style={styles.gameDuration}>{formatHeatOffset(slot.visibleEnd)}</span>
                   </span>
-                  <span style={styles.gameDuration}>{formatHeatOffset(slot.visibleEnd)}</span>
                 </span>
               </button>
             )
@@ -193,16 +277,15 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid rgba(249, 115, 22, 0.32)',
     borderRadius: 8,
     cursor: 'pointer',
-    display: 'flex',
+    display: 'grid',
     flex: `1 1 ${GAMES_PLAYED_CHIP_MIN_WIDTH_PX}px`,
-    flexDirection: 'column',
-    gap: 2,
-    justifyContent: 'center',
+    gap: 7,
+    gridTemplateColumns: '28px minmax(0, 1fr)',
     minWidth: GAMES_PLAYED_CHIP_MIN_WIDTH_PX,
     outline: 'none',
     overflow: 'hidden',
-    padding: '6px 8px',
-    textAlign: 'center',
+    padding: '3px 7px 3px 4px',
+    textAlign: 'left',
   },
   gameCardClipped: {
     borderStyle: 'dashed',
@@ -221,6 +304,27 @@ const styles: Record<string, CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  gameText: { display: 'grid', gap: 2, minWidth: 0 },
+  gameArt: {
+    borderRadius: 4,
+    display: 'block',
+    height: 38,
+    objectFit: 'cover',
+    width: 28,
+  },
+  gameArtFallback: {
+    alignItems: 'center',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 4,
+    color: '#f8fafc',
+    display: 'flex',
+    fontSize: 9,
+    fontWeight: 850,
+    height: 38,
+    justifyContent: 'center',
+    letterSpacing: '0.02em',
+    width: 28,
   },
   gameMeta: {
     alignItems: 'center',

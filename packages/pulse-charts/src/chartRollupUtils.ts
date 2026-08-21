@@ -40,38 +40,34 @@ export function seriesMax(values: Array<number | null>) {
 }
 
 export function viewerValue(point: ChartMinuteRollup) {
-  return point.viewerLatest || point.viewerAvg || point.viewerMax || 0
+  return point.viewerLatest || point.viewerAvg || point.viewerMax || (point as any).viewerCount || 0
 }
 
-export function chartViewerValue(point: ChartMinuteRollup) {
-  if ((point.viewerSamples ?? 0) > 0 && (point.viewerAvg ?? 0) > 0) {
-    return point.viewerAvg!
-  }
-  return viewerValue(point)
+/** Compatibility-only latest value for KPI surfaces, never chart geometry. */
+export function viewerLatestKpiValue(point: ChartMinuteRollup & { viewerCount?: number }) {
+  return point.viewerLatest || point.viewerCount || 0
 }
 
-export function decimateSeriesForRender(
-  values: Array<number | null>,
-  maxPoints: number,
-): Array<number | null> {
-  const n = values.length
-  if (n === 0 || maxPoints <= 0 || n <= maxPoints) return values
-  const bucketSize = n / maxPoints
-  const out: Array<number | null> = []
-  for (let bucket = 0; bucket < maxPoints; bucket++) {
-    const start = Math.floor(bucket * bucketSize)
-    const end = Math.min(n, Math.floor((bucket + 1) * bucketSize))
-    if (end <= start) continue
-    let peak: number | null = null
-    for (let i = start; i < end; i++) {
-      const value = values[i]
-      if (value !== null && value > 0 && (peak === null || value > peak)) {
-        peak = value
-      }
-    }
-    out.push(peak)
+/** Sampled minute average for chart geometry; falls back to latest/max/count if samples omitted. */
+export function chartViewerValue(point: ChartMinuteRollup): number | null {
+  if (point.missing) return null
+  if (point.viewerSamples !== undefined && point.viewerSamples !== null) {
+    if (point.viewerSamples <= 0) return null
+    if (point.viewerAvg == null || !Number.isFinite(point.viewerAvg)) return null
+    return Math.max(0, point.viewerAvg)
   }
-  return out
+  const fallback = viewerValue(point)
+  return fallback > 0 ? fallback : null
+}
+
+/** Observed chart viewer value, with missing/unobserved minutes kept as gaps. */
+export function viewerObservedValue(point: ChartMinuteRollup): number | null {
+  return chartViewerValue(point)
+}
+
+/** Same observed value as the plot — sampled average when samples exist. */
+export function viewerReadoutValue(point: ChartMinuteRollup): number | null {
+  return viewerObservedValue(point)
 }
 
 export function rollingMedianWindow(values: Array<number | null>, window: number): Array<number | null> {
@@ -211,10 +207,6 @@ function smoothCompositeSeries(
 
 /**
  * Builds the calm overview curve from every available primary signal.
- *
- * Each source is normalized independently before weighting so a 4,000-viewer
- * stream cannot visually erase chat and emote movement. The 5th/95th percentile
- * bounds keep one-off spikes from flattening the rest of the curve.
  */
 export function buildCompositeOverviewSeries(
   signals: CompositeOverviewSignal[],

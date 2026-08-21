@@ -244,14 +244,11 @@ let currentCoverageTier: ExtensionCoverageTierResponse | null = null
 let displayPreferenceRequestId = 0
 
 function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
-  // Do not use `#id` selectors — browsers may collapse duplicate IDs to one match.
-  const doomed: HTMLElement[] = []
-  for (const node of document.querySelectorAll('*')) {
-    if (!(node instanceof HTMLElement) || node.id !== id) continue
+  // Attribute selectors return every duplicate ID without scanning the full DOM.
+  for (const node of Array.from(document.querySelectorAll<HTMLElement>(`[id="${id}"]`))) {
     if (keep && node === keep && keep.isConnected) continue
-    doomed.push(node)
+    node.remove()
   }
-  for (const node of doomed) node.remove()
 }
 
 function reconcileOverlayHosts(): void {
@@ -262,6 +259,7 @@ function reconcileOverlayHosts(): void {
     tabsRoot = null
     tabsHostEl = null
     tabsShadowRoot = null
+    lastTabsRenderKey = ''
   }
   if (!panelHostEl?.isConnected) {
     panelRoot?.unmount()
@@ -273,9 +271,13 @@ function reconcileOverlayHosts(): void {
   purgeExtraHosts(PANEL_HOST_ID, panelHostEl)
 }
 
-/** Public: drop orphan duplicate hosts without resetting overlay payload. */
+/** Public: drop duplicates and restore detached hosts without resetting session state. */
 export function ensureUniqueOverlayHosts(): void {
   reconcileOverlayHosts()
+  if (!currentLogin || (tabsHostEl && panelHostEl)) return
+  ensureOverlayHostElements()
+  syncSidebarObserver()
+  renderOverlay(currentPayload, currentError)
 }
 
 function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; root: Root } {
@@ -292,6 +294,21 @@ function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; 
   mountPoint.className = 'pulse-root'
   shadow.appendChild(mountPoint)
   return { host, shadow, root: createRoot(mountPoint) }
+}
+
+function ensureOverlayHostElements(): void {
+  if (!tabsHostEl) {
+    const tabs = createShadowHost(TAB_HOST_ID)
+    tabsHostEl = tabs.host
+    tabsShadowRoot = tabs.shadow
+    tabsRoot = tabs.root
+  }
+  if (!panelHostEl) {
+    const panel = createShadowHost(PANEL_HOST_ID)
+    panelHostEl = panel.host
+    panelShadowRoot = panel.shadow
+    panelRoot = panel.root
+  }
 }
 
 function applyFixedRect(host: HTMLElement | null, rect: ChatRectSnapshot | null, visible: boolean): void {
@@ -588,18 +605,7 @@ export function mountOverlay(
     resetSidebarFallback()
   }
 
-  if (!tabsHostEl) {
-    const tabs = createShadowHost(TAB_HOST_ID)
-    tabsHostEl = tabs.host
-    tabsShadowRoot = tabs.shadow
-    tabsRoot = tabs.root
-  }
-  if (!panelHostEl) {
-    const panel = createShadowHost(PANEL_HOST_ID)
-    panelHostEl = panel.host
-    panelShadowRoot = panel.shadow
-    panelRoot = panel.root
-  }
+  ensureOverlayHostElements()
 
   installThemeSyncListener()
   installMountStorageListener()

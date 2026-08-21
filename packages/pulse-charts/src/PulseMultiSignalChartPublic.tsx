@@ -1,13 +1,21 @@
 import { useMemo } from 'react'
-import type { ChartGameSegment, ChartMinuteRollup, ChartPlayhead } from './types.ts'
+import type { ChartGameSegment, ChartMinuteRollup, ChartPlayhead, ChartReactionPoint } from './types.ts'
 import { normalizeGameSegments } from './gameSegments.ts'
 import { gamesNormalizeDurationSeconds } from './gameSegmentChart.ts'
 import { rollupsForChart } from './chartSession.ts'
-import { PulseMultiSignalChartInner } from './PulseMultiSignalChart.tsx'
+import {
+  PulseMultiSignalChartInner,
+  type ChartDragPanMode,
+  type ChartLineWeightMode,
+} from './PulseMultiSignalChart.tsx'
+import type { ChartViewport } from './chartViewport.ts'
 
 export interface PulseMultiSignalChartProps {
   rollups: ChartMinuteRollup[]
+  /** Optional full-resolution viewer source for idle/detail geometry; defaults to `rollups`. */
+  detailRollups?: ChartMinuteRollup[]
   games?: ChartGameSegment[]
+  reactionPoints?: ChartReactionPoint[]
   streamStartedAt?: string
   chartStreamId?: string | null
   peakViewersFallback?: number
@@ -15,12 +23,20 @@ export interface PulseMultiSignalChartProps {
   viewerSource?: string
   selectedRollupIndex?: number | null
   previewRollupIndex?: number | null
+  selectedOffsetSeconds?: number | null
+  previewOffsetSeconds?: number | null
   onSelectRollupIndex?: (index: number | null) => void
+  /** Select a raw stream-relative offset without snapping to the display LOD. */
+  onSelectOffset?: (offsetSeconds: number) => void
+  /** Select an authored reaction window at its refined stream-relative offset. */
+  onSelectReactionMoment?: (moment: ChartReactionPoint) => void
+  /** Preview an authored reaction window while pointing at its lane. */
+  onPreviewReactionMoment?: (moment: ChartReactionPoint | null) => void
   selectedEmoteKeys?: Set<string>
   showSpikes?: boolean
-  showMomentDots?: boolean
-  showDots?: boolean
+  onShowSpikesChange?: (value: boolean) => void
   activityExpanded?: boolean
+  onActivityExpandedChange?: (value: boolean) => void
   isLive?: boolean
   height?: number
   playhead?: ChartPlayhead | null
@@ -32,11 +48,18 @@ export interface PulseMultiSignalChartProps {
   durationSeconds?: number
   chromeless?: boolean
   highlightedGameSegmentKey?: string | null
+  viewport?: ChartViewport | null
+  onViewportChange?: (viewport: ChartViewport) => void
+  viewportDomainStartSeconds?: number
+  dragPanMode?: ChartDragPanMode
+  lineWeightMode?: ChartLineWeightMode
 }
 
 export function PulseMultiSignalChart({
   rollups: allRollups,
+  detailRollups: detailRollupsProp,
   games = [],
+  reactionPoints = [],
   streamStartedAt,
   chartStreamId = null,
   peakViewersFallback = 0,
@@ -44,12 +67,17 @@ export function PulseMultiSignalChart({
   viewerSource,
   selectedRollupIndex = null,
   previewRollupIndex = null,
+  selectedOffsetSeconds = null,
+  previewOffsetSeconds = null,
   onSelectRollupIndex,
+  onSelectOffset,
+  onSelectReactionMoment,
+  onPreviewReactionMoment,
   selectedEmoteKeys = new Set(),
-  showSpikes = false,
-  showMomentDots = false,
-  showDots = false,
-  activityExpanded = false,
+  showSpikes,
+  onShowSpikesChange,
+  activityExpanded,
+  onActivityExpandedChange,
   isLive = false,
   height,
   playhead = null,
@@ -61,8 +89,17 @@ export function PulseMultiSignalChart({
   durationSeconds = 0,
   chromeless = false,
   highlightedGameSegmentKey = null,
+  viewport,
+  onViewportChange,
+  viewportDomainStartSeconds = 0,
+  dragPanMode = 'off',
+  lineWeightMode = 'fixed',
 }: PulseMultiSignalChartProps) {
   const chartRollups = useMemo(() => rollupsForChart(allRollups, isLive), [allRollups, isLive])
+  const detailRollups = useMemo(
+    () => detailRollupsProp?.length ? detailRollupsProp : allRollups,
+    [allRollups, detailRollupsProp],
+  )
   const selectedRollup = selectedRollupIndex != null ? chartRollups[selectedRollupIndex] ?? null : null
   const previewRollup = previewRollupIndex != null ? chartRollups[previewRollupIndex] ?? null : null
   const chartOffsets = useMemo(() => {
@@ -99,15 +136,19 @@ export function PulseMultiSignalChart({
   return (
     <PulseMultiSignalChartInner
       rollups={chartRollups}
+      detailRollups={detailRollups}
       games={chartGames}
+      reactionPoints={reactionPoints}
       streamStartedAt={streamStartedAt}
       chartStreamId={chartStreamId}
       peakViewersFallback={peakViewersFallback}
       avgViewersFallback={avgViewersFallback}
       viewerSource={viewerSource}
       selectedEmotes={selectedEmoteKeys}
-      selectedRollup={selectedRollup}
-      previewRollup={previewRollup}
+       selectedRollup={selectedRollup}
+       previewRollup={previewRollup}
+       selectedOffsetSeconds={selectedOffsetSeconds}
+       previewOffsetSeconds={previewOffsetSeconds}
       onSelectRollup={rollup => {
         if (!onSelectRollupIndex) return
         if (!rollup) {
@@ -117,18 +158,27 @@ export function PulseMultiSignalChart({
         const idx = chartRollups.findIndex(point => point.minuteTs === rollup.minuteTs)
         onSelectRollupIndex(idx >= 0 ? idx : null)
       }}
-      isLive={isLive}
-      syncing={syncing}
-      showSpikes={showSpikes || showMomentDots}
-      showDots={showDots}
-      activityExpanded={activityExpanded}
+      onSelectOffset={onSelectOffset}
+      onSelectReactionMoment={onSelectReactionMoment}
+      onPreviewReactionMoment={onPreviewReactionMoment}
+       isLive={isLive}
+       syncing={syncing}
+       showSpikes={showSpikes}
+       onShowSpikesChange={onShowSpikesChange}
+       activityExpanded={activityExpanded}
+       onActivityExpandedChange={onActivityExpandedChange}
       height={height}
       playhead={playhead}
       variant={variant}
       motionEnabled={motionEnabled}
       chromeless={chromeless}
       highlightedGameSegmentKey={highlightedGameSegmentKey}
-      durationSeconds={durationSeconds}
-    />
+       durationSeconds={durationSeconds}
+       viewport={viewport}
+       onViewportChange={onViewportChange}
+       viewportDomainStartSeconds={viewportDomainStartSeconds}
+       dragPanMode={dragPanMode}
+       lineWeightMode={lineWeightMode}
+     />
   )
 }

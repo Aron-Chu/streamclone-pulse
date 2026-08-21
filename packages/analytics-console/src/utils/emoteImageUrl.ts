@@ -1,37 +1,19 @@
 const TWITCH_CDN_TEMPLATE = 'https://static-cdn.jtvnw.net/emoticons/v2/%s/default/dark/2.0'
-const SEVEN_TV_CDN_TEMPLATE = 'https://cdn.7tv.app/emote/%s/4x.webp'
+const SEVEN_TV_CDN_TEMPLATE = 'https://cdn.7tv.app/emote/%s/2x.webp'
 const FFZ_CDN_TEMPLATE = 'https://cdn.frankerfacez.com/emoticon/%s/4'
 const BTTV_CDN_TEMPLATE = 'https://cdn.betterttv.net/emote/%s/3x'
 
 const LOCAL_EMOTE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const SEVEN_TV_EMOTE_ID = /^[0-9A-HJKMNP-TV-Z]{20,32}$/i
 
-export const ALLOWED_EMOTE_IMAGE_HOSTS = Object.freeze([
-  'cdn.7tv.app',
-  'static-cdn.jtvnw.net',
-  'cdn.frankerfacez.com',
-  'cdn.betterttv.net',
-  'api.streampulse.stream',
-])
-
-/** Allow only https emote CDN / hosted proxy URLs (or relative /emotes/ paths). */
-export function isAllowedEmoteImageUrl(url: string | undefined, assetBase = ''): boolean {
-  return sanitizeEmoteImageUrl(url, assetBase) !== undefined
-}
-
-/**
- * Return URL.href only after https + host allowlist validation for img src binding.
- */
-export function sanitizeEmoteImageUrl(url: string | undefined, assetBase = ''): string | undefined {
-  if (!url?.trim()) return undefined
-  const trimmed = url.trim()
+export function preferSmallerSevenTVAsset(url: string): string {
   try {
-    const parsed = new URL(trimmed, assetBase || 'https://api.streampulse.stream')
-    if (parsed.protocol !== 'https:') return undefined
-    if (!ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())) return undefined
-    return parsed.href
+    const parsed = new URL(url)
+    if (parsed.hostname.toLowerCase() !== 'cdn.7tv.app') return url
+    parsed.pathname = parsed.pathname.replace(/\/(?:1x|3x|4x)\.(webp|avif)$/i, '/2x.$1')
+    return parsed.toString()
   } catch {
-    return undefined
+    return url
   }
 }
 
@@ -70,18 +52,10 @@ export function preferResolvableEmoteUrl(
   assetBase = '',
 ): string | undefined {
   const absDirect = direct?.trim() || undefined
-  if (absDirect && !isBackendEmoteProxyUrl(absDirect, assetBase)) {
-    const safe = sanitizeEmoteImageUrl(absDirect, assetBase)
-    if (safe) return safe
-  }
+  if (absDirect && !isBackendEmoteProxyUrl(absDirect, assetBase)) return absDirect
   const absFallback = fallback?.trim() || undefined
-  if (absFallback && !isBackendEmoteProxyUrl(absFallback, assetBase)) {
-    const safe = sanitizeEmoteImageUrl(absFallback, assetBase)
-    if (safe) return safe
-  }
-  return (
-    sanitizeEmoteImageUrl(absDirect, assetBase) ?? sanitizeEmoteImageUrl(absFallback, assetBase)
-  )
+  if (absFallback && !isBackendEmoteProxyUrl(absFallback, assetBase)) return absFallback
+  return absDirect ?? absFallback
 }
 
 export interface ResolveEmoteImageUrlOptions {

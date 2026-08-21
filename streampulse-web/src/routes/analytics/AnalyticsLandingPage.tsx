@@ -360,8 +360,9 @@ function AnalyticsLandingContent() {
     () => [
       { id: "section-overview", label: labels.overview },
       { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
-      { id: "section-live-wire", label: "Live Wire" },
-      { id: "section-network", label: labels.liveActivity },
+      { id: "section-hottest", label: "Hottest live" },
+      { id: "section-live-wire", label: "Pulse Wire" },
+      { id: "section-global-activity", label: "Global Activity" },
       { id: "section-pulse-moments", label: labels.pulseMoments },
       { id: "section-emote-signal", label: labels.emoteSignal },
       { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },

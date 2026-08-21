@@ -1,21 +1,27 @@
-import type { HubActivityPoint } from './publicHub'
-import type { PublicHub } from './publicHub'
+import type { HubActivityPoint, PublicHub } from './publicHub'
 import {
   chartActivityPoints,
   hubActivityEmoteCount,
 } from './hubActivitySummary'
 import { resolveHubActivityChartWindowMinutes } from './hubActivityHonesty'
 import { livePoolViewerSum } from './hubMetricHelpers'
+import { rhythmLines as computeRhythmLines, type RhythmLines } from './hubChartGeometry'
+import {
+  classifyMomentMarker,
+  type HubChartAnnotation,
+} from './hubChartMarkers'
+import type { HubActivityMomentMarker } from '../ui/components/hub/HubActivityChart'
 
 /** Chart-only slice — excludes trust-line / refresh / poll metadata. */
 export interface HubChartActivityInputs {
   points: HubActivityPoint[]
-  /**
-   * Served chart window: available when degraded; accounted/requested when a
-   * healthy historical projection (including attested-gap accounted spans).
-   */
+  /** Served chart window minutes (degraded live-pool vs accounted healthy). */
   windowMinutes: number
   livePoolViewerSum: number
+  /** Moment markers for annotation labels; optional, falls back to marker key. */
+  markers?: HubActivityMomentMarker[]
+  /** Marker key → channel login, used for annotation labels. Optional. */
+  markerChannelNames?: Map<string, string>
 }
 
 export interface HubChartActivityModel {
@@ -23,6 +29,8 @@ export interface HubChartActivityModel {
   peakViewers: number
   peakChatPerMin: number
   peakEmotesPerMin: number
+  rhythmLines: RhythmLines | null
+  annotations: HubChartAnnotation[]
 }
 
 /** Select normalized chart inputs without reading refresh/trust-line fields. */
@@ -61,5 +69,26 @@ export function deriveHubChartActivityModel(
     const emotes = hubActivityEmoteCount(point)
     if (emotes > peakEmotesPerMin) peakEmotesPerMin = emotes
   }
-  return { chartPoints, peakViewers, peakChatPerMin, peakEmotesPerMin }
+
+  const rhythmLines = computeRhythmLines(chartPoints, {
+    dims: { height: 0, paddingBottom: 0 }, // geometry renders in own coordinate space; values reused by subcomponent
+  })
+
+  const rawAnnotations: HubChartAnnotation[] = (inputs.markers ?? []).map((m) => ({
+    key: m.key,
+    bucketT: m.bucketT,
+    at: m.at,
+    kind: classifyMomentMarker(m),
+    channelName: inputs.markerChannelNames?.get(m.key) ?? m.key,
+    source: 'network',
+  }))
+
+  return {
+    chartPoints,
+    peakViewers,
+    peakChatPerMin,
+    peakEmotesPerMin,
+    rhythmLines,
+    annotations: rawAnnotations,
+  }
 }

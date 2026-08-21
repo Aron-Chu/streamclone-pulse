@@ -4,7 +4,12 @@ import {
   scrapeVodFromPageTexts,
   scrapeVodIdFromText,
 } from '../src/shared/vodIdPatterns.ts'
-import { scrapeStreamIdFromPageHtml, scrapeVodIdFromPageHtml } from '../src/content/twitchVodDiscovery.ts'
+import {
+  navigationCandidateFromPageTexts,
+  resolveNativeLiveVodLink,
+  scrapeStreamIdFromPageHtml,
+  scrapeVodIdFromPageHtml,
+} from '../src/content/twitchVodDiscovery.ts'
 import {
   parseArchiveListVodFromGql,
   parseLiveArchiveVodFromGql,
@@ -176,5 +181,28 @@ describe('parseArchiveListVodFromGql', () => {
 describe('scrapeStreamIdFromPageHtml', () => {
   it('reads broadcast id separately from vod id', () => {
     expect(scrapeStreamIdFromPageHtml('{"broadcastId":"315762508393"}')).toBe('315762508393')
+  })
+})
+
+describe('live VOD navigation candidates', () => {
+  it('accepts an explicit Twitch watch-from-beginning control', () => {
+    expect(resolveNativeLiveVodLink([
+      { href: '/videos/2839713915', ariaLabel: 'Watch from beginning' },
+    ])).toEqual({
+      vodId: '2839713915',
+      source: 'native_twitch_control',
+      href: 'https://www.twitch.tv/videos/2839713915',
+    })
+  })
+
+  it('rejects unrelated video cards and conflicting archive metadata', () => {
+    expect(resolveNativeLiveVodLink([
+      { href: '/videos/2839713915', text: 'Yesterday highlight' },
+    ])).toBeNull()
+    expect(navigationCandidateFromPageTexts(
+      '{"broadcastId":"999999999999","archiveVideoId":"2839713915"}',
+      [],
+      '317426400740',
+    )).toBeNull()
   })
 })

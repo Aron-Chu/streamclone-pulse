@@ -9,7 +9,8 @@ describe('deriveChartGameSegments', () => {
         id: 1,
         streamId: 's1',
         gameName: 'VALORANT',
-        boxArtUrl: '',
+        categoryId: '516575',
+        boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/516575-210x280.jpg',
         offsetSeconds: 0,
         durationSeconds: 1200,
         createdAt: new Date(0).toISOString(),
@@ -17,6 +18,10 @@ describe('deriveChartGameSegments', () => {
     ]
     const got = deriveChartGameSegments('s1', { stream: { category: 'Fortnite' }, rollups: [] }, apiSegments)
     expect(got).toEqual(apiSegments)
+    expect(got[0]).toMatchObject({
+      categoryId: '516575',
+      boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/516575-210x280.jpg',
+    })
   })
 
   it('returns empty when category fallback is disabled for public portal', () => {

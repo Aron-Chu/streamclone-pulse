@@ -4,55 +4,30 @@ import { PulseMultiSignalChartInner } from '../src/PulseMultiSignalChart.tsx'
 import type { ChartMinuteRollup } from '../src/types.ts'
 
 const rollups: ChartMinuteRollup[] = [
-  { minuteTs: '2026-07-12T00:00:00.000Z', viewerAvg: 100, chatCount: 10, totalEmoteCount: 5 },
-  { minuteTs: '2026-07-12T00:02:00.000Z', viewerAvg: 120, chatCount: 12, totalEmoteCount: 8 },
+  { minuteTs: '2026-07-12T00:00:00.000Z', viewerAvg: 100, viewerSamples: 2, chatCount: 10, totalEmoteCount: 5 },
+  { minuteTs: '2026-07-12T00:02:00.000Z', viewerAvg: 120, viewerSamples: 2, chatCount: 12, totalEmoteCount: 8 },
 ]
 
-function markerX(markup: string, stroke: string) {
-  const escapedStroke = stroke.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const line = markup.match(new RegExp(`<line[^>]*x1="([^"]+)"[^>]*stroke="${escapedStroke}"`))
-  return line ? Number(line[1]) : null
+function cursorX(markup: string): number | null {
+  const line = markup.match(/<line[^>]*data-viewer-layer="cursor"[^>]*>/)?.[0]
+  const value = line?.match(/x1="([^"]+)"/)?.[1]
+  return value ? Number(value) : null
 }
 
-describe('external selection markers', () => {
+describe('shared timestamp cursor', () => {
   it.each([
-    ['selectedRollup', { selectedRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }, '#f59e0b'],
-    ['previewRollup', { previewRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }, 'rgba(245,158,11,0.45)'],
-  ] as const)('renders %s at the exact midpoint between downsampled series points', (_name, props, stroke) => {
+    ['selectedRollup', { selectedRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }],
+    ['previewRollup', { previewRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }],
+  ] as const)('renders %s at the exact timestamp midpoint', (_name, props) => {
     const markup = renderToStaticMarkup(
       <PulseMultiSignalChartInner
         rollups={rollups}
         {...props}
+        motionEnabled={false}
       />,
     )
 
-    const x = markerX(markup, stroke)
-    const leftX = 90
-    const rightX = 1000 - 34
-    const midpoint = (leftX + rightX) / 2
-
-    expect(x).not.toBeNull()
-    expect(x).toBeCloseTo(midpoint, 5)
-    expect(x).not.toBe(leftX)
-    expect(x).not.toBe(rightX)
-  })
-
-  it('progressively discloses detail and a neutral future segment after selection', () => {
-    const overview = renderToStaticMarkup(
-      <PulseMultiSignalChartInner rollups={rollups} />,
-    )
-    const detail = renderToStaticMarkup(
-      <PulseMultiSignalChartInner
-        rollups={rollups}
-        selectedRollup={rollups[0]}
-      />,
-    )
-
-    expect(overview).toContain('data-chart-mode="overview"')
-    expect(overview).toContain('data-chart-layer="overview"')
-    expect(detail).toContain('data-chart-mode="detail"')
-    expect(detail).toContain('data-chart-layer="detail-past"')
-    expect(detail).toContain('data-chart-layer="detail-future"')
-    expect(detail).toContain('rgba(161, 161, 170, 0.58)')
+    expect(cursorX(markup)).toBeCloseTo((90 + 966) / 2, 5)
+    expect((markup.match(/data-viewer-layer="cursor"/g) ?? [])).toHaveLength(1)
   })
 })

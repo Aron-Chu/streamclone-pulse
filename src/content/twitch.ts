@@ -1,5 +1,16 @@
-const RESERVED = new Set([
+/** Twitch system routes that must never be treated as channel logins. */
+export const TWITCH_SYSTEM_ROUTES = new Set([
   'directory',
+  'following',
+  'search',
+  'browse',
+  'downloads',
+  'turbo',
+  'wallet',
+  'jobs',
+  'store',
+  'login',
+  'signup',
   'settings',
   'subscriptions',
   'inventory',
@@ -14,6 +25,10 @@ const RESERVED = new Set([
   'drops',
   'moderator',
   'dashboard',
+  'products',
+  'privacy',
+  'legal',
+  'help',
 ])
 
 export type TwitchPageKind = 'channel' | 'vod' | 'non-channel'
@@ -49,7 +64,7 @@ export function parseTwitchPage(pathname: string): TwitchPageContext {
       : { kind: 'non-channel', login: null, vodId: null }
   }
 
-  if (RESERVED.has(head)) {
+  if (TWITCH_SYSTEM_ROUTES.has(head)) {
     return { kind: 'non-channel', login: null, vodId: null }
   }
 

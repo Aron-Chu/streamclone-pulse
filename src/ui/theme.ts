@@ -14,9 +14,13 @@ export const theme = {
   panel: '#262633',
   panelElevated: '#2a2440',
   panelGlass: 'rgba(17, 17, 23, 0.92)',
+  inputBg: '#20202a',
   textPrimary: '#fafafc',
   textSecondary: '#a1a1b2',
   textMuted: '#8b8ba0',
+  accentText: accentTokens.accentInk,
+  accentTextSubtle: accentTokens.accentSoft,
+  accentSurface: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.12)',
   accent: accentTokens.accent,
   accentStrong: accentTokens.accentStrong,
   accentSoft: accentTokens.accentSoft,
@@ -25,6 +29,7 @@ export const theme = {
   live: '#22c55e',
   liveSoft: '#86efac',
   border: '#3f3f50',
+  borderSubtle: 'rgba(255, 255, 255, 0.12)',
   borderAccent: accentTokens.borderAccent,
   error: '#f87171',
   warning: '#fdba74',
@@ -106,23 +111,25 @@ export const shadowStyles = `
     transform: none !important;
   }
   .pulse-moment-row-button:focus,
-  .pulse-moment-row-button:focus-visible,
   .pulse-moment-row-button:active {
     outline: none !important;
     box-shadow: none !important;
   }
+  .pulse-moment-row-button:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.85) !important;
+    outline-offset: 2px;
+    border-radius: 7px;
+  }
   .pulse-moment-row-button .pulse-moment-row {
-    border: none;
-    box-shadow: inset 0 0 0 1px transparent;
-    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
   }
   .pulse-moment-row-button:hover .pulse-moment-row {
-    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16) !important;
+    background: rgba(255, 255, 255, 0.095) !important;
   }
   .pulse-moment-row-selected {
-    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45) !important;
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.14) !important;
+    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.5) !important;
+    background: rgba(255, 255, 255, 0.09) !important;
   }
   .pulse-top-emote-chip {
     background: rgba(255, 255, 255, 0.04);
@@ -140,44 +147,18 @@ export const shadowStyles = `
     border-color: rgba(251, 191, 36, 0.45) !important;
     box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.18);
   }
-  .pulse-seven-tv-toggle:hover {
-    background: rgba(255, 255, 255, 0.03);
+  .pulse-seven-tv-option {
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease,
+      background 0.15s ease, opacity 0.15s ease;
   }
-  .pulse-seven-tv-row {
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  .pulse-seven-tv-option:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.09) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+    transform: translateY(-1px) scale(1.05);
   }
-  .pulse-seven-tv-row:hover {
-    background: rgba(255, 255, 255, 0.06) !important;
-    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
-    transform: translateY(-1px);
-  }
-  .pulse-seven-tv-row-active {
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
-    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28) !important;
-  }
-  .pulse-seven-tv-row:focus-visible {
+  .pulse-seven-tv-option:focus-visible {
     outline: 2px solid rgba(103, 232, 249, 0.85);
     outline-offset: 2px;
-  }
-  .pulse-seven-tv-row-disabled:hover {
-    background: inherit !important;
-    border-color: inherit !important;
-    transform: none !important;
-  }
-  .pulse-emote-picker-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.35);
-    border-radius: 999px;
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.55);
-    border-radius: 999px;
   }
   .pulse-chart-legend-chip {
     transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
@@ -283,18 +264,31 @@ export const shadowStyles = `
     border: 1px solid rgba(167, 139, 250, 0.35);
     border-radius: 10px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-    display: none;
+    display: grid;
+    justify-items: center;
     left: 50%;
+    max-width: 176px;
+    min-width: 76px;
+    opacity: 0;
     padding: 8px;
     pointer-events: none;
     position: absolute;
     top: calc(100% + 8px);
-    transform: translateX(-50%);
+    transform: translate(-50%, 4px) scale(0.96);
+    transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+    visibility: hidden;
     z-index: 20;
   }
-  .pulse-emote-hover-wrap:hover .pulse-emote-hover-preview {
-    display: grid;
-    justify-items: center;
+  .pulse-emote-hover-wrap--above .pulse-emote-hover-preview {
+    bottom: calc(100% + 8px);
+    top: auto;
+    transform: translate(-50%, 4px) scale(0.96);
+  }
+  .pulse-emote-hover-wrap:hover .pulse-emote-hover-preview,
+  .pulse-seven-tv-option:focus-visible .pulse-emote-hover-preview {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+    visibility: visible;
   }
   .pulse-inspector-emote-row {
     border-radius: 8px;

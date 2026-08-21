@@ -28,6 +28,15 @@ test.describe('portal games (mocked)', () => {
   }) => {
     const games = loadXqcGames()
     expect(games).toHaveLength(7)
+    const hydratedGames = games.map((game, index) =>
+      index === 0
+        ? {
+            ...game,
+            categoryId: '509658',
+            boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/509658-210x280.jpg',
+          }
+        : game,
+    )
 
     const harness = await installPortalAcceptanceHarness(page)
     // Minutes sparse across the long fixture so duration covers last segment start.
@@ -54,7 +63,7 @@ test.describe('portal games (mocked)', () => {
       }
     })
     harness.setMinutesPayload(minutes)
-    harness.setGamesPayload(games)
+    harness.setGamesPayload(hydratedGames)
     harness.detail.setFallback({
       kind: 'json',
       body: buildDetail({
@@ -80,8 +89,13 @@ test.describe('portal games (mocked)', () => {
       await showAll.click()
     }
 
+    await expect(strip.locator('img').first()).toHaveAttribute(
+      'src',
+      /509658-210x280\.jpg/,
+    )
+
     for (const name of [...new Set(GAME_NAMES)]) {
-      await expect(strip.getByText(name, { exact: true }).first()).toBeVisible()
+      await expect(strip.getByRole('listitem', { name: new RegExp(name, 'i') }).first()).toBeVisible()
     }
 
     const chips = strip.locator('[role="listitem"]')

@@ -19,6 +19,7 @@ import {
   isVodActivationCurrent,
 } from './activationGate.ts'
 import { createRouteSyncScheduler } from './routeSyncScheduler.ts'
+import { shouldScheduleChatGeometryFromMutations } from './twitchChat.ts'
 
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
@@ -488,8 +489,8 @@ const routeSync = createRouteSyncScheduler(syncFromLocation, {
   maxWaitMs: NAV_MAX_WAIT_MS,
 })
 
-const observer = new MutationObserver(() => {
-  routeSync.schedule()
+const observer = new MutationObserver(mutations => {
+  if (shouldScheduleChatGeometryFromMutations(mutations)) routeSync.schedule()
 })
 
 observer.observe(document.documentElement, { childList: true, subtree: true })

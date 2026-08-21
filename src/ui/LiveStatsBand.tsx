@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, RefObject } from 'react'
 import {
   deriveLiveStats,
   formatHeatOffset,
@@ -11,6 +11,13 @@ import {
   type TrendDirection,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
+import type { InspectionPreviewStore } from './inspectionPreviewStore.ts'
+import { useInspectionPreview } from './inspectionPreviewStore.ts'
+import {
+  inspectionSelectionFromPoint,
+  normalizedInspectionBucket,
+  type InspectionSelection,
+} from './momentInspection.ts'
 import {
   isFullHistoryUnlockedFor,
   makeFullHistoryActivation,
@@ -58,10 +65,14 @@ import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
+import { MomentInspectionTray } from './MomentInspectionTray.tsx'
+import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
+import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
+import { resolveMostReactedHeat, findHeatPointAtOffset } from './mostReacted.ts'
 
 export interface LiveStatsBandProps {
   payload: PulsePayload
@@ -81,14 +92,68 @@ export interface LiveStatsBandProps {
   onRequestFullTimeline?: () => Promise<void>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
+  inspectionPreviewStore?: InspectionPreviewStore | null
+  inspectionCommitted?: InspectionSelection | null
+  onInspectionPreview?: (selection: InspectionSelection | null) => void
+  onInspectionCommit?: (selection: InspectionSelection) => void
+  onInspectionClear?: () => void
+  inspectionBoundaryRef?: RefObject<HTMLElement | null>
   onSaveMoment?: (point: LiveHeatPoint) => void
   saveMomentBusy?: boolean
   pinOffsetSeconds?: number | null
   previewOffsetSeconds?: number | null
+  selectedReactionMoment?: LiveHeatPoint | null
+  onJumpMoment?: (point: LiveHeatPoint) => void
   hasVodContext?: boolean
   coverageTier?: string | null
   /** Marketing landing — read-only panel with no navigation or chart pinning. */
   demoMode?: boolean
+}
+
+function chartPointFromRollup(
+  rollup: NonNullable<PulsePayload['rollups']>[number],
+  startedAt?: string,
+): LiveHeatPoint {
+  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN
+  const minuteTs = Number.isFinite(startedAtMs)
+    ? new Date(startedAtMs + rollup.offsetSeconds * 1_000).toISOString()
+    : ''
+  return {
+    minuteTs,
+    offsetSeconds: rollup.offsetSeconds,
+    score: 0,
+    reason: 'chat_spike',
+    reasonLabel: 'Chart activity',
+    chatCount: Math.max(0, rollup.chatCount ?? 0),
+    emoteCount: minuteEmoteTotal(rollup),
+    viewerCount: Math.max(0, rollup.viewerCount ?? 0) || undefined,
+    topEmotes: (rollup.topEmotes ?? []).slice(0, 3).map((emote, index) => ({
+      key: emote.id ?? `${emote.name}-${emote.provider ?? 'unknown'}-${index}`,
+      name: emote.name,
+      provider: emote.provider,
+      imageUrl: emote.imageUrl,
+      count: Math.max(0, emote.count ?? 0),
+    })),
+    estimated: true,
+    collecting: false,
+  }
+}
+
+function chartInspectionSelection(
+  rollup: NonNullable<PulsePayload['rollups']>[number],
+  heatPoints: LiveHeatPoint[],
+  startedAt?: string,
+): InspectionSelection {
+  const authoritativePoint = findHeatPointAtOffset(heatPoints, rollup.offsetSeconds, 30)
+  if (authoritativePoint) return inspectionSelectionFromPoint('chart', authoritativePoint)
+  const point = chartPointFromRollup(rollup, startedAt)
+  return {
+    source: 'chart',
+    offsetSeconds: rollup.offsetSeconds,
+    bucketOffsetSeconds: normalizedInspectionBucket(rollup.offsetSeconds),
+    point,
+    selectionType: 'minute',
+  }
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -202,15 +267,24 @@ export function LiveStatsBand({
   onRequestFullTimeline,
   onChartWindowChange,
   onPinOffset,
+  inspectionPreviewStore = null,
+  inspectionCommitted = null,
+  onInspectionPreview,
+  onInspectionCommit,
+  onInspectionClear,
+  inspectionBoundaryRef,
   onSaveMoment,
   saveMomentBusy = false,
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
+  selectedReactionMoment = null,
+  onJumpMoment,
   hasVodContext = false,
   coverageTier = null,
   demoMode = false,
 }: LiveStatsBandProps) {
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
+  const inspectionPreview = useInspectionPreview(inspectionPreviewStore)
   const stats: LiveStats = useMemo(
     () => deriveLiveStats(toLiveStatsInputFromExtension(payload)),
     [payload],
@@ -317,11 +391,13 @@ export function LiveStatsBand({
     awaitingFullRollups,
   })
   const canShowFullTimeline = hasFullRollups || fullTimeline || currentOffsetSeconds > 0
-  const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
+  const heatPoints = useMemo(() => resolveMostReactedHeat(payload).points, [payload])
+  const committedOffsetSeconds = inspectionCommitted?.offsetSeconds ?? pinOffsetSeconds
+  const transientPreviewOffsetSeconds = inspectionPreview?.offsetSeconds ?? previewOffsetSeconds
 
   const unlockFullForCurrentActivation = (): void => {
     setUnlockedActivation(activation)
@@ -395,22 +471,22 @@ export function LiveStatsBand({
   ])
 
   useEffect(() => {
-    onPinOffset?.(null)
-  }, [payload.streamId, onPinOffset])
+    if (!onInspectionClear) onPinOffset?.(null)
+  }, [payload.streamId, onInspectionClear, onPinOffset])
 
   const pinChartIndex = useMemo(() => {
-    if (pinOffsetSeconds == null) return null
-    return findChartIndexByOffset(chartOffsets, pinOffsetSeconds, {
+    if (committedOffsetSeconds == null) return null
+    return findChartIndexByOffset(chartOffsets, committedOffsetSeconds, {
       bucketed: chartWindow === 'full',
     })
-  }, [pinOffsetSeconds, chartOffsets, chartWindow])
+  }, [committedOffsetSeconds, chartOffsets, chartWindow])
 
   const previewChartIndex = useMemo(() => {
-    if (previewOffsetSeconds == null) return null
-    return findChartIndexByOffset(chartOffsets, previewOffsetSeconds, {
+    if (transientPreviewOffsetSeconds == null) return null
+    return findChartIndexByOffset(chartOffsets, transientPreviewOffsetSeconds, {
       bucketed: chartWindow === 'full',
     })
-  }, [previewOffsetSeconds, chartOffsets, chartWindow])
+  }, [transientPreviewOffsetSeconds, chartOffsets, chartWindow])
 
   const previewRollup =
     previewChartIndex != null ? displayRollups[previewChartIndex] : undefined
@@ -419,24 +495,21 @@ export function LiveStatsBand({
     pinChartIndex != null ? displayRollups[pinChartIndex] : undefined
 
   const minuteAtRollup = useMemo(() => {
-    if (selectedRollup) return selectedRollup
+    if (previewRollup) return previewRollup
     if (chartHoverOffsetSeconds != null) {
       return displayRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
     }
-    if (previewRollup) return previewRollup
+    if (selectedRollup) return selectedRollup
     return undefined
-  }, [selectedRollup, chartHoverOffsetSeconds, displayRollups, previewRollup])
+  }, [previewRollup, chartHoverOffsetSeconds, displayRollups, selectedRollup])
 
   const minuteAtOffsetSeconds = minuteAtRollup?.offsetSeconds ?? 0
   const showChartReadout = Boolean(
-    minuteAtRollup && (pinOffsetSeconds != null || chartHoverOffsetSeconds != null),
+    minuteAtRollup
+      && (committedOffsetSeconds != null
+        || transientPreviewOffsetSeconds != null
+        || chartHoverOffsetSeconds != null),
   )
-
-  useEffect(() => {
-    if (pinChartIndex != null) {
-      setEmotePanelExpanded(false)
-    }
-  }, [pinChartIndex])
 
   const topEmotesForChips = useMemo(() => {
     const fromRollups = aggregateChartEmotes(rollups, PLOT_PICKER_EMOTE_LIMIT)
@@ -491,7 +564,21 @@ export function LiveStatsBand({
         : { color: theme.textMuted }
 
   const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
-  const selectedOffsetSeconds = selectedRollup?.offsetSeconds ?? null
+  const committedPoint =
+    inspectionCommitted?.point
+    ?? (committedOffsetSeconds != null
+      ? selectedReactionMoment ?? resolvePinnedMomentPoint({
+          pinOffsetSeconds: committedOffsetSeconds,
+          heatPoints,
+        })
+      : null)
+  const previewPoint =
+    inspectionPreview?.point
+    ?? (transientPreviewOffsetSeconds != null
+      ? findHeatPointAtOffset(heatPoints, transientPreviewOffsetSeconds)
+      : null)
+  const inspectionPoint = previewPoint ?? committedPoint
+  const inspectionMode = previewPoint ? 'preview' : 'selected'
 
   const chartGames = useMemo(
     () => extensionGamesForOverviewChart(payload.games, payload.category, currentOffsetSeconds),
@@ -508,19 +595,39 @@ export function LiveStatsBand({
     [hoveredGameKey, chartGames, currentOffsetSeconds, visibleRange],
   )
 
-  function handleChartSelect(index: number): void {
+  const handleChartSelect = useCallback((index: number): void => {
     const rollup = displayRollups[index]
     if (!rollup || rollup.missing) return
     setSelectedEmoteKeys([])
     setFocusedSeriesKey(null)
-    onPinOffset?.(rollup.offsetSeconds)
+    if (onInspectionCommit) {
+      onInspectionCommit(chartInspectionSelection(rollup, heatPoints, payload.startedAt))
+    } else {
+      onPinOffset?.(rollup.offsetSeconds)
+    }
     setChartHoverOffsetSeconds(null)
-  }
+  }, [displayRollups, heatPoints, onInspectionCommit, onPinOffset, payload.startedAt])
 
-  function handleClearChartSelection(): void {
-    onPinOffset?.(null)
+  const handleClearChartSelection = useCallback((): void => {
+    if (onInspectionClear) onInspectionClear()
+    else onPinOffset?.(null)
     setChartHoverOffsetSeconds(null)
-  }
+  }, [onInspectionClear, onPinOffset])
+
+  const handleChartHover = useCallback((offsetSeconds: number | null): void => {
+    setChartHoverOffsetSeconds(offsetSeconds)
+    if (!onInspectionPreview) return
+    if (offsetSeconds == null) {
+      onInspectionPreview(null)
+      return
+    }
+    const rollup = displayRollups.find(point => point.offsetSeconds === offsetSeconds)
+    onInspectionPreview(
+      rollup && !rollup.missing
+        ? chartInspectionSelection(rollup, heatPoints, payload.startedAt)
+        : null,
+    )
+  }, [displayRollups, heatPoints, onInspectionPreview, payload.startedAt])
 
   const chartIdentity = `${payload.login}:${payload.streamId ?? ''}:${payload.vodId ?? ''}:${payload.startedAt ?? ''}`
   const chartRegionId = `pulse-live-chart-${useId().replace(/:/g, '')}`
@@ -873,8 +980,8 @@ export function LiveStatsBand({
             onFocusedSeriesKeyChange={demoMode ? undefined : setFocusedSeriesKey}
             onSelectIndex={demoMode ? undefined : handleChartSelect}
             onClearSelection={demoMode ? undefined : handleClearChartSelection}
-            clearSelectionBoundaryRef={chartInteractionRef}
-            onHoverOffsetChange={setChartHoverOffsetSeconds}
+             clearSelectionBoundaryRef={inspectionBoundaryRef ?? chartInteractionRef}
+             onHoverOffsetChange={handleChartHover}
             highlightedGameSegmentKey={chartHighlightedGameKeyValue}
             overlayLines={emoteOverlays}
             emptyMessage={chartEmpty}
@@ -886,20 +993,34 @@ export function LiveStatsBand({
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <SevenTvEmotePanel
-            expanded={emotePanelExpanded}
-            onToggleExpanded={demoMode ? () => undefined : () => setEmotePanelExpanded(open => !open)}
             backendUrl={backendUrl}
             rollups={rollups}
             topEmotes={topEmotesForChips}
             selectedKeys={selectedEmoteKeys}
             onToggleEmote={toggleEmotePanelKey}
-            selectedOffsetSeconds={selectedOffsetSeconds}
-            sidebarCompact
             selectedPlotColors={selectedPlotColors}
             maxSelected={MAX_PLOTTED_EMOTES}
             rollupsLoading={chartLoading}
+            readOnly={demoMode}
           />
         ) : null}
+        <MomentInspectionTray state={inspectionPoint ? 'active' : 'idle'}>
+          {inspectionPoint ? (
+            <SelectedMomentCard
+              point={inspectionPoint}
+              mode={inspectionMode}
+              backendUrl={backendUrl}
+              onJump={point => {
+                onJumpMoment?.(point)
+                if (!onJumpMoment) onJumpToOffset?.(point.offsetSeconds)
+              }}
+              onSave={onSaveMoment}
+              saveBusy={saveMomentBusy}
+              onAnalytics={point => onOpenAnalytics?.(point.offsetSeconds)}
+              jumpLabel={hasVodContext || payload.vodId ? 'Jump in VOD' : 'Jump in player'}
+            />
+          ) : undefined}
+        </MomentInspectionTray>
       </div>
     </PulseSectionCard>
   )

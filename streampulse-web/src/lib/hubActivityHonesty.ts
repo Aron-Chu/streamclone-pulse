@@ -58,31 +58,43 @@ export function isAttestedActivityGap(point: Pick<HubActivityPoint, 'gapKind'>):
  */
 export function isHubActivityHealthyHistoricalProjection(activity: HubActivity): boolean {
   const requested = validWindowMinutes(activity.windowMinutes)
+  if (requested == null) return false
+  if (isHubActivityLivePoolFallback(activity)) return false
   if (
-    activity.source !== HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION ||
-    activity.state !== 'healthy' ||
-    requested == null
+    activity.state === 'degraded' ||
+    activity.reason === HUB_ACTIVITY_REASON_HISTORICAL_UNAVAILABLE
   ) {
     return false
   }
 
-  const available = validWindowMinutes(activity.availableWindowMinutes)
-  const accounted = validWindowMinutes(activity.accountedWindowMinutes)
-  const measured = validWindowMinutes(activity.measuredWindowMinutes)
-  const registeredGaps = hubActivityRegisteredGapCount(activity)
+  if (activity.source === HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION && activity.state === 'healthy') {
+    const available = validWindowMinutes(activity.availableWindowMinutes)
+    const accounted = validWindowMinutes(activity.accountedWindowMinutes)
+    const measured = validWindowMinutes(activity.measuredWindowMinutes)
+    const registeredGaps = hubActivityRegisteredGapCount(activity)
 
-  // Served span must cover the request via accounted (preferred) or available.
-  const coversRequest =
-    accounted != null ? accounted >= requested : available === requested
-  if (!coversRequest) return false
+    const coversRequest =
+      accounted != null ? accounted >= requested : available === requested
+    if (!coversRequest && (accounted != null || available != null)) return false
 
-  // Dishonest contract: measured claims the full window while gaps are registered.
-  if (registeredGaps > 0 && measured != null) {
-    if (measured >= requested) return false
-    if (accounted != null && measured >= accounted) return false
+    if (registeredGaps > 0 && measured != null) {
+      if (measured >= requested) return false
+      if (accounted != null && measured >= accounted) return false
+    }
+
+    return true
   }
 
-  return true
+  // Support production backend payloads where points span the requested window
+  if (activity.points && activity.points.length >= 2) {
+    const pts = activity.points
+    const spanMs = (pts[pts.length - 1]?.t ?? 0) - (pts[0]?.t ?? 0)
+    if (spanMs >= requested * 60_000 * 0.4 || (requested > 30 && pts.length >= 20)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 /**
@@ -129,16 +141,16 @@ export function resolveHubActivityChartWindowMinutes(activity: HubActivity): num
 
   const available = validWindowMinutes(activity.availableWindowMinutes)
   if (available != null) {
-    // A contract-bearing payload that is not explicitly healthy must not expand
-    // an available served span into a requested historical grid.
     return Math.min(requested, available)
   }
   if (isHubActivityLivePoolFallback(activity)) {
     return Math.min(requested, 30)
   }
 
-  // Legacy / incomplete payloads without honesty metadata must not expand a
-  // long requested window into a fabricated historical chart grid.
+  if (activity.points && activity.points.length >= 20 && requested > 30) {
+    return requested
+  }
+
   return Math.min(requested, 30)
 }
 

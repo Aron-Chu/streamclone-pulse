@@ -8,8 +8,7 @@ import {
 } from '@streampulse/pulse-core'
 import { CollapsedPill } from './CollapsedPill.tsx'
 import { MiniDock } from './MiniDock.tsx'
-import { LiveStatsBand } from './LiveStatsBand.tsx'
-import { MostReactedSection } from './MostReactedSection.tsx'
+import { LiveMomentInteractionSurface } from './LiveMomentInteractionSurface.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
@@ -269,9 +268,6 @@ function OverlayMain({
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
   const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
-  const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
-  const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
-  const [chartPreviewOffset, setChartPreviewOffset] = useState<number | null>(null)
   const [alwaysTrackedLogins, setAlwaysTrackedLogins] = useState<string[]>([])
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
@@ -363,22 +359,6 @@ function OverlayMain({
       setFullTimeline(false)
     }
   }
-
-  const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
-    setMostReactedPinOffset(offsetSeconds)
-    if (offsetSeconds != null) {
-      setChartPinOffset(offsetSeconds)
-      setChartPreviewOffset(null)
-    }
-  }, [])
-
-  const handleChartPin = useCallback((offsetSeconds: number | null) => {
-    setChartPinOffset(offsetSeconds)
-    if (offsetSeconds != null) {
-      setMostReactedPinOffset(offsetSeconds)
-      setChartPreviewOffset(null)
-    }
-  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -488,9 +468,6 @@ function OverlayMain({
     setMissedJob(null)
     setCoverageCheckError(null)
     setPanelView('pulse')
-    setChartPinOffset(null)
-    setMostReactedPinOffset(null)
-    setChartPreviewOffset(null)
   }, [payload?.streamId, payload?.login])
 
   const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
@@ -1475,51 +1452,40 @@ function OverlayMain({
       {!error && !isVodPage && payload && pulseSupported && pulseLiveAccess.state === 'full_live' ? (
         <>
           {displayPayload && (panelSections?.showLiveStatsBand || panelSections?.showMostReacted) ? (
-            <div>
-              {panelSections?.showLiveStatsBand ? (
-                <LiveStatsBand
-                  payload={displayPayload}
-                  backendUrl={backendUrl}
-                  sidebarFill={sidebarSnapped}
-                  compact={metricsCompact && !sidebarSnapped}
-                  coverageStartOffsetSeconds={coverageStart}
-                  currentOffsetSeconds={payload.currentOffsetSeconds}
-                  isLive={uiIsLive}
-                  fullTimeline={fullTimeline}
-                  showLoadFromStart={!hostedBackend && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking })}
-                  loadFromStartBusy={missedBusy}
-                  onLoadFromStart={() => void loadStreamFromStart()}
-                  onJumpToOffset={jumpToOffset}
-                  onOpenAnalytics={openAnalytics}
-                  onOpenFullAnalytics={() => openAnalytics()}
-                  onRequestFullTimeline={requestFullTimeline}
-                  onChartWindowChange={handleChartWindowChange}
-                  onPinOffset={handleChartPin}
-                  pinOffsetSeconds={chartPinOffset}
-                  onSaveMoment={point => void saveMoment(point)}
-                  saveMomentBusy={saveBusy}
-                  previewOffsetSeconds={chartPreviewOffset}
-                  hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
-                  coverageTier={coverageTierState?.coverageTier ?? null}
-                />
-              ) : null}
-
-              {panelSections?.showMostReacted ? (
-                <MostReactedSection
-                  payload={displayPayload}
-                  backendUrl={backendUrl}
-                  sidebarFill={sidebarSnapped}
-                  pinnedOffsetSeconds={mostReactedPinOffset}
-                  onJump={jumpMoment}
-                  onSave={point => void saveMoment(point)}
-                  onAnalytics={openAnalyticsForMoment}
-                  onHighlightOffset={setChartPreviewOffset}
-                  onPinOffset={handleMostReactedPin}
-                  saveBusy={saveBusy}
-                  hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
-                />
-              ) : null}
-            </div>
+            <LiveMomentInteractionSurface
+              liveStatsProps={panelSections?.showLiveStatsBand ? {
+                  payload: displayPayload,
+                  backendUrl,
+                  sidebarFill: sidebarSnapped,
+                  compact: metricsCompact && !sidebarSnapped,
+                  coverageStartOffsetSeconds: coverageStart,
+                  currentOffsetSeconds: payload.currentOffsetSeconds,
+                  isLive: uiIsLive,
+                  fullTimeline,
+                  showLoadFromStart: !hostedBackend && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking }),
+                  loadFromStartBusy: missedBusy,
+                  onLoadFromStart: () => void loadStreamFromStart(),
+                  onJumpToOffset: jumpToOffset,
+                  onOpenAnalytics: openAnalytics,
+                  onOpenFullAnalytics: () => openAnalytics(),
+                  onRequestFullTimeline: requestFullTimeline,
+                  onChartWindowChange: handleChartWindowChange,
+                  onSaveMoment: point => void saveMoment(point),
+                  saveMomentBusy: saveBusy,
+                  hasVodContext: Boolean(payload?.vodId ?? context.vodId),
+                  coverageTier: coverageTierState?.coverageTier ?? null,
+                } : null}
+              mostReactedProps={panelSections?.showMostReacted ? {
+                  payload: displayPayload,
+                  backendUrl,
+                  sidebarFill: sidebarSnapped,
+                  onJump: jumpMoment,
+                  onSave: point => void saveMoment(point),
+                  onAnalytics: openAnalyticsForMoment,
+                  saveBusy,
+                  hasVodContext: Boolean(payload?.vodId ?? context.vodId),
+                } : null}
+            />
           ) : null}
 
           {payload && pulseLiveAccess.state === 'full_live' && !hostedBackend && shouldShowMissedMomentsBanner(payload) ? (

@@ -126,9 +126,14 @@ export function heatmapPointsToMomentCandidates(
   maxCandidates = PORTAL_MOMENT_MAX_CANDIDATES,
 ): PortalMomentCandidate[] {
   const ranked = heatmapPoints
-    .filter(point => Number.isFinite(point.score) && point.score > 0 && point.minuteTs)
+    .filter(point => {
+      const score = Number.isFinite(point.reactionScore) ? (point.reactionScore ?? 0) : point.score
+      return Number.isFinite(score) && score > 0 && point.minuteTs
+    })
     .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score
+      const aScore = Number.isFinite(a.reactionScore) ? (a.reactionScore ?? 0) : a.score
+      const bScore = Number.isFinite(b.reactionScore) ? (b.reactionScore ?? 0) : b.score
+      if (bScore !== aScore) return bScore - aScore
       return offsetSecondsFromMinuteTs(a.minuteTs, streamStartedAt)
         - offsetSecondsFromMinuteTs(b.minuteTs, streamStartedAt)
     })
@@ -139,11 +144,13 @@ export function heatmapPointsToMomentCandidates(
       ? heatmapEmoteToRollupHit(point.topEmotes[0], catalog)
       : undefined
     const reason = point.reason?.trim() || 'manual'
-    const score = Math.round(point.score)
+    const score = Math.round(Number.isFinite(point.reactionScore) ? (point.reactionScore ?? 0) : point.score)
     return {
       minuteTs: point.minuteTs,
       minuteBucket: normalizeMinuteBucket(point.minuteTs),
-      offsetSeconds: offsetSecondsFromMinuteTs(point.minuteTs, streamStartedAt),
+      offsetSeconds: Number.isFinite(point.offsetSeconds)
+        ? Math.max(0, Math.round(point.offsetSeconds))
+        : offsetSecondsFromMinuteTs(point.minuteTs, streamStartedAt),
       score,
       scoreLabel: `${score}/100`,
       reason,

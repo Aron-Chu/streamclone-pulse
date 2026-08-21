@@ -32,6 +32,9 @@ export const CHART_BAR_ALPHA = {
   selectedSpike: 0.9,
 } as const
 
+/** Opacity multiplier for chart geometry after a committed cursor. */
+export const AFTER_CURSOR_OPACITY = 0.36
+
 /** @deprecated Prefer CHART_LANE + CHART_INTERACTION; kept for existing imports. */
 export const CHART_THEME = {
   background: 'var(--pulse-chart-bg, #0d0d12)',

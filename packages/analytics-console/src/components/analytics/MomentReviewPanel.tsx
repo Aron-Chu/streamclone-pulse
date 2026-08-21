@@ -130,7 +130,7 @@ export function MomentReviewPanel({
         <p className="text-[10px] font-semibold text-zinc-600">{LIVE_HEAT_RANKED_SUBTITLE}</p>
       </div>
       <div ref={scrollRef} className="sc-console-scroll flex max-h-72 flex-col gap-1 overflow-y-auto">
-        {candidates.map(({ rollup, scoreLabel, reasonLabel, estimated }) => {
+        {candidates.map(({ rollup, scoreLabel, reasonLabel, estimated }, index) => {
           const offsetLabel = streamStartedAt
             ? formatHeatOffset(rollupOffsetSeconds(rollup, streamStartedAt))
             : new Date(rollup.minuteTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -146,7 +146,7 @@ export function MomentReviewPanel({
 
           return (
             <button
-              key={rollup.minuteTs}
+              key={`${rollup.minuteTs}-${index}-${scoreLabel}`}
               type="button"
               data-moment-row
               data-minute-ts={rollup.minuteTs}

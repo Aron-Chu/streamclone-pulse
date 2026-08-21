@@ -49,13 +49,14 @@ export async function getStreamStatus(streamId: string): Promise<{
   chatCoveragePct?: number
   updatedAt?: number
   availability?: import('./apiTypes.ts').SessionAvailability
+  stream?: AnalyticsStreamDetail['stream']
 } | null> {
   const fn = api().getStreamStatus
   if (!fn) return null
   return fn(streamId) as ReturnType<typeof getStreamStatus>
 }
 
-/** Live-tail minutes after a known offset; returns a sparse detail with only new/replacement rollups. */
+/** Live-tail minutes after a known offset; returns sparse replacement rollups. */
 export async function getStreamMinutesTail(
   streamId: string,
   afterOffset: number,

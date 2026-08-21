@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../../apiTypes.ts'
 import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../../types/heatmap.ts'
 import { minuteEmoteTotal, viewerValue } from './chartRollupUtils.ts'
@@ -7,7 +7,6 @@ import { buildSelectedMomentDisplay } from '../../utils/selectedMomentDisplay.ts
 import { count, getEmoteImageUrl } from '../../utils/consoleFormat.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
 import { EmoteProviderBadge } from './ConsoleBits.tsx'
-import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
 
 export function SelectedMomentPanel({
   rollup,
@@ -20,6 +19,9 @@ export function SelectedMomentPanel({
   heatmapPoints,
   recapMoment,
   gameName,
+  vodAlignSeconds,
+  onClear,
+  extra = null,
 }: {
   rollup: AnalyticsMinuteRollup | null
   rollups: AnalyticsMinuteRollup[]
@@ -31,8 +33,10 @@ export function SelectedMomentPanel({
   heatmapPoints?: ReplayHeatmapPoint[]
   recapMoment?: PulseRecapMoment | null
   gameName?: string | null
+  vodAlignSeconds?: number | null
+  onClear?: () => void
+  extra?: ReactNode
 }) {
-  const { motionEnabled } = useConsoleMotion()
   const display = useMemo(
     () =>
       rollup
@@ -47,6 +51,7 @@ export function SelectedMomentPanel({
             heatmapPoints,
             recapMoment,
             gameName,
+            vodAlignSeconds,
           })
         : null,
     [
@@ -59,6 +64,7 @@ export function SelectedMomentPanel({
       rollups,
       startedAt,
       topEmotesCatalog,
+      vodAlignSeconds,
       vodLinkState,
     ],
   )
@@ -66,7 +72,7 @@ export function SelectedMomentPanel({
   if (!rollup || !display) {
     return (
       <div className="rounded border border-white/10 bg-[#0d0d12] p-4 text-center text-xs text-zinc-500 italic">
-        Click the graph or a ranked row to select a moment.
+        Hover to preview a minute, then click to select it. Press Esc or Clear to release the selection.
       </div>
     )
   }
@@ -78,41 +84,53 @@ export function SelectedMomentPanel({
 
   return (
     <div
-      key={rollup.minuteTs}
-      className={`relative overflow-hidden rounded border border-amber-500/10 bg-[#0d0d12] p-4${motionEnabled ? ' sc-selected-moment-panel' : ''}`}
+      className="relative overflow-hidden rounded border border-amber-500/10 bg-[#0d0d12] p-4"
       role="region"
-      aria-label={`Selected moment at ${offsetStr || timeStr}`}
+      aria-label={`Selected minute containing ${offsetStr || timeStr}`}
     >
       <div className="absolute left-0 right-0 top-0 h-1 bg-gradient-to-r from-amber-500/25 via-amber-400/60 to-amber-500/25" />
 
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-black uppercase text-amber-300/80">
-            Selected Moment
+            Selected Minute
           </span>
           <span className="text-sm font-black text-white">
             {timeStr} · {dateStr}
           </span>
         </div>
-        {vodUrl ? (
-          <a
-            href={vodUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 self-start whitespace-nowrap rounded border border-violet-400/20 bg-violet-500/10 px-3 py-1.5 text-xs font-black text-violet-100 transition hover:border-violet-300/40 hover:bg-violet-500/20"
-            title={offsetStr ? `Open Twitch VOD at ${offsetStr}` : 'Open Twitch VOD'}
-          >
-            {vodLinkState.label}
-            {offsetStr ? ` · ${offsetStr}` : ''}
-          </a>
-        ) : (
-          <span
-            title={vodLinkState.detail}
-            className="inline-flex shrink-0 self-start whitespace-nowrap rounded border border-white/5 bg-zinc-800 px-3 py-1.5 text-xs font-black text-zinc-500"
-          >
-            {vodLinkState.label}
-          </span>
-        )}
+        <div className="flex shrink-0 items-start gap-2">
+          {onClear ? (
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex self-start whitespace-nowrap rounded border border-amber-400/20 bg-amber-500/5 px-2.5 py-1.5 text-xs font-black text-amber-200/80 transition hover:border-amber-300/40 hover:bg-amber-500/15 hover:text-amber-100"
+              title="Clear this selected minute (Esc)"
+              aria-label="Clear selected minute"
+            >
+              Clear
+            </button>
+          ) : null}
+          {vodUrl ? (
+            <a
+              href={vodUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 self-start whitespace-nowrap rounded border border-violet-400/20 bg-violet-500/10 px-3 py-1.5 text-xs font-black text-violet-100 transition hover:border-violet-300/40 hover:bg-violet-500/20"
+              title={offsetStr ? `Open Twitch VOD at ${offsetStr}` : 'Open Twitch VOD'}
+            >
+              {vodLinkState.label}
+              {offsetStr ? ` · ${offsetStr}` : ''}
+            </a>
+          ) : (
+            <span
+              title={vodLinkState.detail}
+              className="inline-flex shrink-0 self-start whitespace-nowrap rounded border border-white/5 bg-zinc-800 px-3 py-1.5 text-xs font-black text-zinc-500"
+            >
+              {vodLinkState.label}
+            </span>
+          )}
+        </div>
       </div>
 
       {!vodUrl && vodLinkState.detail ? (
@@ -197,6 +215,8 @@ export function SelectedMomentPanel({
           ))}
         </div>
       ) : null}
+
+      {extra ? <div className="mt-3">{extra}</div> : null}
     </div>
   )
 }

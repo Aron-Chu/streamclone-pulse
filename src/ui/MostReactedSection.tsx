@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  LIVE_HEAT_SUBTITLE,
-  LIVE_HEAT_TITLE,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
+import { reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import {
   MOST_REACTED_VISIBLE_COUNT,
-  heatPointMatchesOffset,
   resolveMostReactedHeat,
   sortLiveHeatPoints,
   type MomentSortMode,
@@ -17,7 +15,6 @@ import {
 import { PulseMomentRow } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
-import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { theme } from './theme.ts'
 
 export interface MostReactedSectionProps {
@@ -30,6 +27,8 @@ export interface MostReactedSectionProps {
   onAnalytics: (point: LiveHeatPoint) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
   onPinOffset?: (offsetSeconds: number | null) => void
+  onPreviewMoment?: (point: LiveHeatPoint | null) => void
+  onSelectMoment?: (point: LiveHeatPoint) => void
   saveBusy?: boolean
   hasVodContext?: boolean
   demoMode?: boolean
@@ -56,6 +55,8 @@ export function MostReactedSection({
   onAnalytics,
   onHighlightOffset,
   onPinOffset,
+  onPreviewMoment,
+  onSelectMoment,
   saveBusy = false,
   hasVodContext = false,
   demoMode = false,
@@ -65,7 +66,6 @@ export function MostReactedSection({
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [listExpanded, setListExpanded] = useState(false)
   const selectedRowRef = useRef<HTMLDivElement | null>(null)
-  const selectedCardRef = useRef<HTMLDivElement | null>(null)
 
   const sortedPoints = useMemo(
     () => sortLiveHeatPoints(heat.points, sortMode),
@@ -87,6 +87,11 @@ export function MostReactedSection({
   const hiddenPointCount = Math.max(0, sortedPoints.length - MOST_REACTED_VISIBLE_COUNT)
   const jumpLabel = resolveJumpLabel(payload, hasVodContext)
 
+  const isPinnedPoint = (point: LiveHeatPoint): boolean => {
+    if (pinnedOffsetSeconds == null || !Number.isFinite(pinnedOffsetSeconds)) return false
+    return reactionAnalyticalOffset(point) === pinnedOffsetSeconds
+  }
+
   useEffect(() => {
     setListExpanded(false)
   }, [payload.streamId, sortMode])
@@ -107,8 +112,9 @@ export function MostReactedSection({
 
   return (
     <PulseSectionCard
-      title={LIVE_HEAT_TITLE}
-      subtitle={LIVE_HEAT_SUBTITLE}
+      title="Top moments"
+      titleTone="muted"
+      style={styles.sectionCard}
       meta={
         heat.visible ? (
           <PulseThemedSelect
@@ -122,29 +128,9 @@ export function MostReactedSection({
         ) : undefined
       }
     >
-      {pinnedOffsetSeconds != null && pinnedMomentPoint ? (
-        <div
-          ref={selectedCardRef}
-          style={{
-            ...styles.selectedSlot,
-            minHeight: 132,
-          }}
-        >
-          <SelectedMomentCard
-            point={pinnedMomentPoint}
-            backendUrl={backendUrl}
-            jumpLabel={jumpLabel}
-            onJump={demoMode ? () => undefined : onJump}
-            onSave={demoMode ? () => undefined : onSave}
-            saveBusy={saveBusy}
-            onAnalytics={demoMode ? () => undefined : onAnalytics}
-          />
-        </div>
-      ) : null}
       <div style={styles.momentList}>
         {visiblePoints.map(point => {
-          const selected =
-            pinnedOffsetSeconds != null && heatPointMatchesOffset(point, pinnedOffsetSeconds)
+          const selected = isPinnedPoint(point)
           return (
             <PulseMomentRow
               key={`${point.offsetSeconds}-${point.reason}-${point.minuteTs}`}
@@ -152,11 +138,15 @@ export function MostReactedSection({
               backendUrl={backendUrl}
               selected={selected}
               scrollRef={selected ? node => { selectedRowRef.current = node } : undefined}
-              onHighlight={demoMode ? () => undefined : setHoveredOffset}
-              onSelect={demoMode ? () => undefined : next => {
-                onPinOffset?.(next.offsetSeconds)
-                setHoveredOffset(null)
-              }}
+                onHighlight={demoMode ? () => undefined : offset => {
+                  setHoveredOffset(offset)
+                  onPreviewMoment?.(offset == null ? null : point)
+                }}
+               onSelect={demoMode ? () => undefined : next => {
+                 if (onSelectMoment) onSelectMoment(next)
+                 else onPinOffset?.(next.offsetSeconds)
+                 setHoveredOffset(null)
+               }}
             />
           )
         })}
@@ -192,7 +182,11 @@ export function MostReactedSection({
 }
 
 const styles: Record<string, CSSProperties> = {
-  selectedSlot: { flexShrink: 0 },
+  sectionCard: {
+    gap: 8,
+    marginBottom: 12,
+    padding: 12,
+  },
   momentList: { display: 'grid', gap: 4 },
   expandButton: {
     alignItems: 'center',

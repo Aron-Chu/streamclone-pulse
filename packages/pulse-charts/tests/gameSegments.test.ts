@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   gameSegmentPlotBounds,
   gameSegmentPlotBoundsByOffsets,
+  gameSegmentPlotBoundsByTimestampScale,
   plotXForOffsetSeconds,
 } from '../src/gameSegmentChart.ts'
+import { buildViewerTimestampScale } from '../src/viewerGeometry.ts'
 import { hasMeaningfulGameSegments, gameSegmentKey, normalizeGameSegments } from '../src/gameSegments.ts'
 import {
   activeGameCapTitle,
@@ -112,6 +114,25 @@ describe('plotXForOffsetSeconds', () => {
     expect(plotXForOffsetSeconds(100, offsets, 0, 100)).toBe(50)
     expect(plotXForOffsetSeconds(400, offsets, 0, 100)).toBe(100)
     expect(plotXForOffsetSeconds(250, offsets, 0, 100)).toBeCloseTo(75, 5)
+  })
+})
+
+describe('shared timestamp game bounds', () => {
+  it('uses the chart-wide timestamp domain instead of an index-only projection', () => {
+    const scale = buildViewerTimestampScale([
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:01:00.000Z',
+      '2026-01-01T00:05:00.000Z',
+    ], { width: 1000, padLeft: 90, padRight: 34 })
+    const bounds = gameSegmentPlotBoundsByTimestampScale(
+      { offsetSeconds: 60, durationSeconds: 60 },
+      scale,
+      '2026-01-01T00:00:00.000Z',
+    )
+
+    expect(bounds).not.toBeNull()
+    expect(bounds!.startX).toBeCloseTo(scale.xForTimestamp('2026-01-01T00:01:00.000Z'), 5)
+    expect(bounds!.endX).toBeCloseTo(scale.xForTimestamp('2026-01-01T00:02:00.000Z'), 5)
   })
 })
 

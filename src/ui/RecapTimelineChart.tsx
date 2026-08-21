@@ -64,7 +64,6 @@ export function RecapTimelineChart({
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
-  const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
   const onRequestFullRollupsRef = useRef(onRequestFullRollups)
@@ -219,9 +218,6 @@ export function RecapTimelineChart({
   }, [chartIdentity])
 
   useEffect(() => {
-    if (pinOffsetSeconds != null) {
-      setEmotePanelExpanded(false)
-    }
     setChartHoverOffsetSeconds(null)
   }, [pinOffsetSeconds])
 
@@ -380,15 +376,11 @@ export function RecapTimelineChart({
 
       {topEmotesForPicker.length > 0 ? (
         <SevenTvEmotePanel
-          expanded={emotePanelExpanded}
-          onToggleExpanded={() => setEmotePanelExpanded(open => !open)}
           backendUrl={backendUrl}
           rollups={minuteRollups}
           topEmotes={topEmotesForPicker}
           selectedKeys={selectedEmoteKeys}
           onToggleEmote={toggleEmotePlot}
-          selectedOffsetSeconds={pinRollup?.offsetSeconds ?? null}
-          sidebarCompact
           selectedPlotColors={selectedPlotColors}
           maxSelected={MAX_PLOTTED_EMOTES}
           rollupsLoading={timelineLoadingFlag}

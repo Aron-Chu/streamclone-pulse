@@ -34,4 +34,18 @@ describe('buildChartSeries plotted emotes', () => {
     const plotted = series.find((item) => item.dashed)
     expect(plotted?.values).toEqual([3, null])
   })
+
+  it('leaves chat-only minutes as viewer gaps instead of drawing a false zero', () => {
+    const series = buildChartSeries([
+      rollups[0]!,
+      {
+        minuteTs: '2026-07-04T18:02:00.000Z',
+        chatCount: 18,
+        totalEmoteCount: 2,
+      },
+      rollups[1]!,
+    ], new Set())
+
+    expect(series.find(item => item.key === 'viewers')?.values).toEqual([1000, null, 1100])
+  })
 })

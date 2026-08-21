@@ -134,11 +134,7 @@ export function AnalyticsQualityChip({
   return (
     <span
       className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${analyticsQualityChipClass(label)}`}
-      title={
-        detail?.availability
-          ? 'Backend-authored analytics quality'
-          : 'Derived from backend analyticsQuality when present'
-      }
+      title="Derived from coverage, sync health, and rollup availability"
     >
       Analytics {label}
     </span>
@@ -152,33 +148,15 @@ export function CoverageFacets({
   detail?: AnalyticsStreamDetail
   summaryMetrics?: StreamSummaryMetrics
 }) {
-  const dataPct =
-    detail?.availability?.coveragePct
-    ?? (detail as { dataCoveragePct?: number } | undefined)?.dataCoveragePct
-    ?? summaryMetrics?.data_coverage_pct
-  const chatPct = detail?.chatCoveragePct
+  const chatPct = detail?.chatCoveragePct ?? summaryMetrics?.data_coverage_pct
   const viewerSamples = summaryMetrics?.viewerSampleCount ?? detail?.stream?.viewerSamples
-  const corpus = detail?.availability?.corpusState
-  const backfill = detail?.availability?.backfillState
-  if (dataPct == null && chatPct == null && !viewerSamples && !corpus && !backfill) return null
+  if (chatPct == null && !viewerSamples) return null
   const parts: string[] = []
-  if (dataPct != null && dataPct > 0) parts.push(`Data ${Math.round(dataPct)}%`)
-  // Only label chat when chatCoveragePct is distinct chat evidence (not a data alias).
-  if (chatPct != null && chatPct > 0 && (dataPct == null || Math.abs(chatPct - dataPct) > 0.5)) {
-    parts.push(`Chat ${Math.round(chatPct)}%`)
-  }
+  if (chatPct != null && chatPct > 0) parts.push(`Chat ${Math.round(chatPct)}%`)
   if (viewerSamples != null && viewerSamples > 0) parts.push(`Viewer samples ${viewerSamples}`)
-  if (corpus === 'ready') parts.push('Corpus ready')
-  if (corpus === 'pending') parts.push('Corpus pending')
-  if (corpus === 'failed' || corpus === 'absent') parts.push(`Corpus ${corpus}`)
-  if (corpus === 'query_failed') parts.push('Corpus query failed')
-  if (backfill && backfill !== 'idle') parts.push(`Backfill ${backfill}`)
   if (parts.length === 0) return null
   return (
-    <span
-      className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-semibold normal-case text-zinc-400"
-      title={detail?.availability?.corpusMessage || detail?.availability?.coverageMessage}
-    >
+    <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-semibold normal-case text-zinc-400">
       {parts.join(' · ')}
     </span>
   )
@@ -193,9 +171,7 @@ export function CoverageStartBanner({
   missingRanges?: Array<{ fromOffsetSeconds: number; toOffsetSeconds: number }>
   message?: string
 }) {
-  const authoredEnd = missingRanges?.[0]?.toOffsetSeconds
-  const start = authoredEnd ?? offsetSeconds
-  // Keep 0–120 visible — do not suppress ranges ending at exactly 120.
+  const start = missingRanges?.[0]?.toOffsetSeconds ?? offsetSeconds
   if (start == null || start <= 0) return null
   const mins = Math.floor(start / 60)
   const secs = start % 60
@@ -205,8 +181,7 @@ export function CoverageStartBanner({
       className="rounded border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] font-semibold text-amber-100/90"
       role="status"
     >
-      {message?.trim()
-        || `Partial data coverage — missing 0:00–${label} (backend-authored)`}
+      {message?.trim() || `Partial data coverage — missing 0:00–${label} (backend-authored)`}
     </div>
   )
 }

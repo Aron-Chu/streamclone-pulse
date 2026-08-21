@@ -2,47 +2,53 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
 
-describe('PulseOverviewChart progressive disclosure', () => {
+describe('PulseOverviewChart signal disclosure', () => {
   const rollups = [
     { offsetSeconds: 0, viewerCount: 100, chatCount: 10, sevenTvEmoteCount: 3 },
     { offsetSeconds: 60, viewerCount: 140, chatCount: 25, sevenTvEmoteCount: 9 },
     { offsetSeconds: 120, viewerCount: 120, chatCount: 18, sevenTvEmoteCount: 5 },
   ]
 
-  it('renders one dominant overview line with dormant detail layers at rest', () => {
-    const html = renderToStaticMarkup(
-      <PulseOverviewChart
-        reducedMotion
-        rollups={rollups}
-      />,
-    )
+  it('keeps viewer, chat, and emote trends visible at rest without bars or composite overview', () => {
+    const html = renderToStaticMarkup(<PulseOverviewChart reducedMotion rollups={rollups} />)
 
-    expect(html).toContain('data-chart-layer="overview"')
-    expect(html).toContain('data-chart-layer="detail-past"')
-    expect(html).toContain('data-chart-layer="detail-future"')
+    expect(html).toContain('data-chart-mode="signals"')
+    expect(html).toContain('data-chart-layer="signals" opacity="1"')
+    expect(html).toContain('data-chart-layer="interaction" opacity="0"')
+    expect(html).toContain('data-chart-series="viewers"')
+    expect(html).toContain('data-chart-series="chat"')
+    expect(html).toContain('data-chart-series="emotes"')
+    expect(html).not.toContain('data-chart-layer="overview"')
     expect(html).toContain('data-chart-scrubber="true"')
-    expect(html).toContain('data-chart-primary-signals="chat emotes"')
-    expect(html).toContain('data-chart-context-signals="viewers"')
-    expect(html).toContain('fill="none" stroke="#22d3ee"')
-    expect(html).toContain('data-chart-mode="overview"')
-    expect(html).toContain('data-chart-layer="detail" opacity="0"')
-    expect(html).toContain('data-chart-layer="detail-annotations" opacity="0"')
-    expect(html).toContain('stroke-width="2.6" opacity="0.96"')
   })
 
-  it('fully replaces the overview with detailed past and faded future after selection', () => {
+  it('keeps bars, marker, and committed time identity visible after pointer leave', () => {
     const html = renderToStaticMarkup(
-      <PulseOverviewChart
-        reducedMotion
-        rollups={rollups}
-        selectedIndex={1}
-      />,
+      <PulseOverviewChart reducedMotion rollups={rollups} selectedIndex={1} />,
     )
 
     expect(html).toContain('data-chart-mode="detail"')
-    expect(html).toContain('data-chart-layer="detail" opacity="1"')
-    expect(html).toContain('data-chart-layer="detail-annotations" opacity="1"')
-    expect(html).toContain('data-chart-layer="detail-future"')
-    expect(html).toContain('stroke="rgba(161, 161, 170, 0.52)"')
+    expect(html).toContain('data-chart-active-index="1"')
+    expect(html).toContain('data-chart-locked-index="1"')
+    expect(html).toContain('data-chart-layer="interaction" opacity="1"')
+    expect(html).toContain('stroke="rgba(var(--pulse-accent-soft-rgb, 196, 181, 253), 0.88)"')
+    expect(html).toContain('>00:01:00<')
+  })
+
+  it('keeps the committed lock primary while another bucket is a muted preview', () => {
+    const html = renderToStaticMarkup(
+      <PulseOverviewChart
+        reducedMotion
+        rollups={rollups}
+        selectedIndex={0}
+        previewIndex={2}
+      />,
+    )
+
+    expect(html).toContain('data-chart-active-index="0"')
+    expect(html).toContain('data-chart-locked-index="0"')
+    expect(html).toContain('data-chart-preview-index="2"')
+    expect(html).toContain('data-chart-hover-band="muted"')
+    expect(html).toContain('>00:00:00<')
   })
 })

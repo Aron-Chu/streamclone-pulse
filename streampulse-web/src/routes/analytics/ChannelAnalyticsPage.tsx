@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useRecordHubRecentLogin } from '../../hooks/useRecordHubRecentLogin'
+import { AnalyticsRouteFallback } from '../AnalyticsRouteFallback'
 
 const FigmaChannelView = lazy(() => import('./FigmaChannelView'))
 const ConsoleChannelView = lazy(() => import('./ConsoleChannelView'))
@@ -17,7 +18,7 @@ export default function ChannelAnalyticsPage() {
   const figmaMode = searchParams.get('figma') === '1'
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AnalyticsRouteFallback />}>
       {figmaMode ? <FigmaChannelView /> : <ConsoleChannelView />}
     </Suspense>
   )

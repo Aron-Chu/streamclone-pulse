@@ -267,7 +267,12 @@ export interface ExtensionRollup {
 }
 
 export interface ExtensionPeak {
+  momentId?: string
   offsetSeconds: number
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
   score: number
   reasons: string[]
   reasonLabel?: string
@@ -377,10 +382,13 @@ export interface PulseRecapEmote {
 }
 
 export interface ExtensionGameSegment {
+  id?: number | string
   gameName: string
+  categoryId?: string
   boxArtUrl?: string
   offsetSeconds: number
   durationSeconds: number
+  source?: string
 }
 
 export interface PulseRecapMoment {

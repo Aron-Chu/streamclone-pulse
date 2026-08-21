@@ -184,7 +184,7 @@ function WireHeader({ titleId, metaLabel }: WireHeaderProps) {
     <header className="hub-live-wire__head">
       <h2 id={titleId} className="hub-live-wire__title">
         <Radio aria-hidden="true" />
-        Live wire
+        Pulse wire
       </h2>
       <span className="hub-live-wire__meta">{metaLabel}</span>
     </header>

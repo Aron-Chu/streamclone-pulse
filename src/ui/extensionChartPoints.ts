@@ -4,6 +4,8 @@ import { rollupActivityScore } from './segmentedBarChart.ts'
 
 export const EXTENSION_CHART_MAX_POINTS = 120
 
+export type ChartRepresentativeSignal = 'activity' | 'chat' | 'emotes' | 'viewers'
+
 export interface ExtensionChartPoint {
   offsetSeconds: number
   chatNorm: number
@@ -45,6 +47,7 @@ export function chartBucketRanges(
 export function downsampleRollupsForChart(
   rollups: ExtensionRollup[],
   maxPoints = EXTENSION_CHART_MAX_POINTS,
+  representativeSignal: ChartRepresentativeSignal = 'activity',
 ): ExtensionRollup[] {
   const n = rollups.length
   if (n === 0 || maxPoints <= 0 || n <= maxPoints) return rollups
@@ -57,18 +60,30 @@ export function downsampleRollupsForChart(
     if (end <= start) continue
 
     let best = rollups[start]!
-    let bestScore = rollupActivityScore(best)
+    const representativeScore = (rollup: ExtensionRollup): number => {
+      switch (representativeSignal) {
+        case 'chat':
+          return Math.max(0, rollup.chatCount ?? 0)
+        case 'emotes':
+          return minuteEmoteTotal(rollup)
+        case 'viewers':
+          return chartViewerValue(rollup)
+        default:
+          return rollupActivityScore(rollup)
+      }
+    }
+    let bestScore = representativeScore(best)
     let peakViewers = chartViewerValue(best)
     for (let i = start + 1; i < end; i += 1) {
       const rollup = rollups[i]!
-      const score = rollupActivityScore(rollup)
+      const score = representativeScore(rollup)
       if (score > bestScore) {
         best = rollup
         bestScore = score
       }
       peakViewers = Math.max(peakViewers, chartViewerValue(rollup))
     }
-    if (peakViewers > chartViewerValue(best)) {
+    if (representativeSignal === 'activity' && peakViewers > chartViewerValue(best)) {
       out.push({ ...best, viewerCount: peakViewers })
     } else {
       out.push(best)

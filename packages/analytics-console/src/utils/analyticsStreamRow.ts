@@ -3,7 +3,12 @@ import type { AnalyticsMinuteRollup, AnalyticsStreamDetail } from '../apiTypes.t
 
 export function isPlaceholderStreamTitle(title?: string) {
   const trimmed = title?.trim() ?? ''
-  return trimmed === '' || trimmed === 'Syncing...' || trimmed === 'Syncing…'
+  return (
+    trimmed === ''
+    || trimmed === 'Syncing...'
+    || trimmed === 'Syncing…'
+    || trimmed.toLowerCase() === 'live'
+  )
 }
 
 /** Legacy prefetch stub — API now dedupes server-side; keep for older rows during rollout. */

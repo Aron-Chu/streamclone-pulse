@@ -24,9 +24,7 @@ export function streamSyncBadgeState(
   const hasViewers = (stream.viewerSamples ?? 0) > 0 || evidence?.hasViewerMinutes === true
   const hasChat = (stream.chatMessages ?? 0) > 0 || evidence?.hasChatMinutes === true
   const hasPartialCoverage =
-    (evidence?.coveragePct != null
-      && Number.isFinite(evidence.coveragePct)
-      && evidence.coveragePct < 99.5)
+    (evidence?.coveragePct != null && Number.isFinite(evidence.coveragePct) && evidence.coveragePct < 99.5)
     || ['partial', 'viewer_only', 'chat_only', 'degraded', 'limited'].includes(health)
   if (hasViewers && hasChat) return hasPartialCoverage ? 'partial' : 'synced'
   if (hasViewers || hasChat) return 'partial'
@@ -36,9 +34,7 @@ export function streamSyncBadgeState(
     && stream.chatMessages === undefined
     && evidence?.hasViewerMinutes === undefined
     && evidence?.hasChatMinutes === undefined
-  ) {
-    return 'unknown'
-  }
+  ) return 'unknown'
   return 'stats_only'
 }
 
@@ -50,8 +46,6 @@ export function streamSyncBadgeLabel(badge: StreamSyncBadge): string {
       return 'Synced'
     case 'partial':
       return 'Partial'
-    case 'unknown':
-      return 'Check status'
     default:
       return 'Stats only'
   }

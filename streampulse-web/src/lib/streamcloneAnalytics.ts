@@ -112,6 +112,14 @@ interface PortalSessionAvailability {
   corpusMessage?: string
 }
 
+interface PortalChatCoverageSummary {
+  chatSpanMinutes: number
+  streamSpanMinutes: number
+  coveragePct: number
+  partial: boolean
+  vodDurationSec?: number
+}
+
 interface PortalStreamDetail {
   channel: string
   state: string
@@ -122,6 +130,7 @@ interface PortalStreamDetail {
   vodAlignSeconds?: number
   syncPhase?: string
   chatCoveragePct?: number
+  chatCoverage?: PortalChatCoverageSummary
   analyticsQuality?: string
   dataSourceBadges?: Array<{ source: string; state: string; label?: string }>
   viewerSource?: string
@@ -223,6 +232,7 @@ interface PortalChannelLiveResponse {
   signalWatermarks?: PortalSignalWatermarks
   analyticsQuality?: string
   chatCoveragePct?: number
+  chatCoverage?: PortalChatCoverageSummary
   availability?: PortalSessionAvailability
 }
 
@@ -610,7 +620,37 @@ async function fetchPortalStreamBundle(
 ) {
   const enrichEmotes = opts?.enrichChannelEmotes === true
   const includeSummary = opts?.includeSummary !== false && includeMinutes
-  const detailPromise = apiClient<PortalStreamDetail>(portalPath(`/streams/${encodeURIComponent(streamId)}`))
+  const { data: detail } = await apiClient<PortalStreamDetail>(
+    portalPath(`/streams/${encodeURIComponent(streamId)}`),
+  )
+
+  // Resolve identity before starting the expensive minute bundle. A stale
+  // alias on a current-session detail must not make the user wait for (or
+  // render) the previous session's timeline.
+  if (
+    channelLogin?.trim()
+    && detail.stream?.streamId?.trim()
+    && detail.stream.streamId.trim() !== streamId.trim()
+  ) {
+    const liveFallback = await recoverHostedLiveStreamAfterCanonicalRemap(
+      streamId,
+      detail.stream.streamId,
+      channelLogin,
+      [],
+    )
+    if (liveFallback) {
+      return {
+        detail,
+        minutes: null,
+        summary: null,
+        channelEmotes: [],
+        minutesFetchFailed: false,
+        includeMinutes,
+        liveFallback,
+      }
+    }
+  }
+
   let minutesFetchFailed = false
   const minutesPromise = includeMinutes
     ? apiClient<PortalStreamMinutesResponse>(portalPath(`/streams/${encodeURIComponent(streamId)}/minutes`), {
@@ -629,11 +669,7 @@ async function fetchPortalStreamBundle(
     ? fetchPortalStreamSummary(streamId)
     : Promise.resolve(null)
 
-  const [detailRes, minutesRes, summaryRes] = await Promise.all([
-    detailPromise,
-    minutesPromise,
-    summaryPromise,
-  ])
+  const [minutesRes, summaryRes] = await Promise.all([minutesPromise, summaryPromise])
 
   // summaryRes is PortalStreamSummary | null (already unwrapped)
   const summaryData = summaryRes
@@ -643,8 +679,8 @@ async function fetchPortalStreamBundle(
   if (enrichEmotes && !usesLocalAnalyticsRoutes()) {
     const login =
       channelLogin?.trim()
-      || detailRes.data.stream?.login?.trim()
-      || detailRes.data.channel?.trim()
+      || detail.stream?.login?.trim()
+      || detail.channel?.trim()
       || ''
     if (login) {
       channelEmotes = await fetchPortalChannelEmotesCatalog(login)
@@ -652,12 +688,13 @@ async function fetchPortalStreamBundle(
   }
 
   return {
-    detail: detailRes.data,
+    detail,
     minutes: minutesRes?.data ?? null,
     summary: summaryData,
     channelEmotes,
     minutesFetchFailed,
     includeMinutes,
+    liveFallback: undefined,
   }
 }
 
@@ -727,11 +764,18 @@ function portalLiveResponseToAnalytics(
     vodId: data.vodId ?? stream?.vodId,
     syncPhase: data.syncPhase,
     viewerSource: data.viewerSource,
-    coverageStartOffsetSeconds:
-      data.coverageStartOffsetSeconds
-      ?? data.availability?.missingRanges?.[0]?.toOffsetSeconds,
+    coverageStartOffsetSeconds: data.coverageStartOffsetSeconds,
     analyticsQuality: data.analyticsQuality,
     chatCoveragePct: data.chatCoveragePct ?? data.availability?.coveragePct,
+    chatCoverage: data.chatCoverage
+      ? {
+          chatSpanMinutes: data.chatCoverage.chatSpanMinutes,
+          streamSpanMinutes: data.chatCoverage.streamSpanMinutes,
+          coveragePct: data.chatCoverage.coveragePct,
+          partial: data.chatCoverage.partial,
+          vodDurationSec: data.chatCoverage.vodDurationSec,
+        }
+      : undefined,
     availability: data.availability
       ? {
           version: data.availability.version,
@@ -812,12 +856,19 @@ function portalDetailToAnalytics(
       : undefined,
     syncPhase: detail.syncPhase,
     chatCoveragePct: detail.chatCoveragePct,
+    chatCoverage: detail.chatCoverage
+      ? {
+          chatSpanMinutes: detail.chatCoverage.chatSpanMinutes,
+          streamSpanMinutes: detail.chatCoverage.streamSpanMinutes,
+          coveragePct: detail.chatCoverage.coveragePct,
+          partial: detail.chatCoverage.partial,
+          vodDurationSec: detail.chatCoverage.vodDurationSec,
+        }
+      : undefined,
     timelineMinutes: rawMinuteCount > 0 ? rawMinuteCount : rollups.length,
     analyticsQuality: summary?.analyticsQuality ?? detail.analyticsQuality,
     viewerSource: detail.viewerSource,
-    coverageStartOffsetSeconds:
-      minutes?.coverageStartOffsetSeconds
-      ?? detail.availability?.missingRanges?.[0]?.toOffsetSeconds,
+    coverageStartOffsetSeconds: minutes?.coverageStartOffsetSeconds,
     minutesUnavailable,
     availability: detail.availability
       ? {
@@ -842,6 +893,29 @@ function portalDetailToAnalytics(
   } as AnalyticsStreamDetail
 }
 
+async function recoverHostedLiveStreamAfterCanonicalRemap(
+  requestedStreamId: string,
+  detailStreamId: string | undefined,
+  channelLogin: string | undefined,
+  channelEmotes: AnalyticsTopEmote[],
+): Promise<AnalyticsStreamDetail | undefined> {
+  const channel = channelLogin?.trim()
+  const requested = requestedStreamId.trim()
+  if (!channel || !requested || !detailStreamId || detailStreamId.trim() === requested) {
+    return undefined
+  }
+
+  try {
+    const { data } = await apiClient<PortalChannelLiveResponse>(
+      portalPath(`/channels/${encodeURIComponent(channel)}/live`),
+    )
+    if (data.stream?.streamId?.trim() !== requested) return undefined
+    return portalLiveResponseToAnalytics(data, channelEmotes)
+  } catch {
+    return undefined
+  }
+}
+
 export const portalAnalyticsApi: AnalyticsApi = {
   async ensureChannelEmotes(login: string, twitchId: string, providers?: string[]) {
     return apiClient(portalPath(`/channels/${encodeURIComponent(login)}/emotes`), {
@@ -861,34 +935,44 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }
     const includeMinutes = opts?.sparse !== true
     const bundle = await fetchPortalStreamBundle(streamId, includeMinutes, opts?.channel, {
-      // Full timeline load may enrich identity from the 30-day catalog once.
-      // Sparse status polls must stay lightweight — no catalog, no summary fan-out.
-      enrichChannelEmotes: includeMinutes,
-      includeSummary: includeMinutes,
+      // Detail + minutes are the first paint contract. Summary, recap, games,
+      // and channel emote enrichment are independent staged queries in the
+      // analytics console and must not delay the chart.
+      enrichChannelEmotes: false,
+      includeSummary: false,
     })
-    return portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary, {
+    if (bundle.liveFallback) return bundle.liveFallback
+    const detail = portalDetailToAnalytics(bundle.detail, bundle.minutes, bundle.summary, {
       includeMinutes,
       minutesFetchFailed: bundle.minutesFetchFailed,
       channelEmotes: bundle.channelEmotes,
     })
+    return detail
   },
 
   async getStreamStatus(streamId: string) {
     if (!streamId) return null
     if (usesLocalAnalyticsRoutes()) return null
-    const { data } = await apiClient<{
-      channel?: string
-      state?: string
-      syncPhase?: string
-      streamId?: string
-      vodId?: string
-      analyticsQuality?: string
-      dataCoveragePct?: number
-      chatCoveragePct?: number
-      updatedAt?: number
-      availability?: PortalSessionAvailability
-    }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`))
-    return data
+    try {
+      const { data } = await apiClient<{
+        channel?: string
+        state?: string
+        syncPhase?: string
+        streamId?: string
+        vodId?: string
+        analyticsQuality?: string
+        dataCoveragePct?: number
+        chatCoveragePct?: number
+        updatedAt?: number
+        availability?: PortalSessionAvailability
+      }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`))
+      return data
+    } catch {
+      // The hosted deploy does not register /streams/{id}/status (go 404). Treat an
+      // unavailable status endpoint as "no status" rather than a hard query failure,
+      // so the status poll doesn't error+retry on every channel load.
+      return null
+    }
   },
 
   async getStreamMinutesTail(streamId: string, afterOffset: number) {
@@ -942,12 +1026,12 @@ export const portalAnalyticsApi: AnalyticsApi = {
       }
     }
     try {
-      const channelEmotesPromise = fetchPortalChannelEmotesCatalog(login)
       const { data } = await apiClient<PortalChannelLiveResponse>(
         portalPath(`/channels/${encodeURIComponent(login)}/live`),
       )
-      const channelEmotes = await channelEmotesPromise
-      return portalLiveResponseToAnalytics(data, channelEmotes)
+      // Keep the live frame a single request. The channel emote catalog is
+      // enrichment, not required to render the current stream/chart.
+      return portalLiveResponseToAnalytics(data)
     } catch {
       return {
         channel: login,

@@ -1,7 +1,7 @@
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail } from '../apiTypes.ts'
 import { rollupOffsetSeconds } from './momentSelection.ts'
 
-/** Append/replace rollups from a live-tail minutes response without resetting the chart. */
+/** Append/replace live-tail rollups without resetting the chart timeline. */
 export function mergeMinutesTailIntoDetail(
   base: AnalyticsStreamDetail,
   tail: Pick<AnalyticsStreamDetail, 'rollups' | 'topEmotes' | 'updatedAt'> | null | undefined,
@@ -21,9 +21,9 @@ export function mergeMinutesTailIntoDetail(
   const rollups = Array.from(byOffset.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([, row]) => row)
-  const topByKey = new Map((base.topEmotes ?? []).map((e) => [e.key ?? e.name, e]))
-  for (const e of tail.topEmotes ?? []) {
-    topByKey.set(e.key ?? e.name, e)
+  const topByKey = new Map((base.topEmotes ?? []).map((emote) => [emote.key ?? emote.name, emote]))
+  for (const emote of tail.topEmotes ?? []) {
+    topByKey.set(emote.key ?? emote.name, emote)
   }
   return {
     ...base,
