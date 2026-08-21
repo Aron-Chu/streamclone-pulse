@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-08-13T02:13:39.715Z",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "deviceScaleFactor": 1,
+  "prefersReducedMotion": false,
+  "phase": "loading",
+  "fixture": "landing-hub-delayed",
+  "interaction": "fold",
+  "browser": {
+    "name": "chromium",
+    "version": "149.0.7827.55"
+  },
+  "git": {
+    "headShort": "d57dfb9",
+    "dirty": true
+  },
+  "buildIdentity": null,
+  "url": "http://127.0.0.1:5174/",
+  "firstPaintHubRequests": []
+}

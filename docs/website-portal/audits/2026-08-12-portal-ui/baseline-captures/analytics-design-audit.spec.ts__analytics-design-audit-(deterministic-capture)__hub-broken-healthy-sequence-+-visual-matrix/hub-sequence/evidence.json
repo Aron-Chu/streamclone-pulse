@@ -1,0 +1,138 @@
+[
+  {
+    "step": "01-immediate-first-paint",
+    "hubState": null,
+    "poolText": null,
+    "liveWireSnippet": null,
+    "consoleErrors": [],
+    "failedRequests": [],
+    "capture": {
+      "timestamp": "2026-08-13T02:07:45.394Z",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1,
+      "prefersReducedMotion": false,
+      "phase": "loading",
+      "fixture": "hub-ready-delayed",
+      "interaction": "fold",
+      "browser": {
+        "name": "chromium",
+        "version": "149.0.7827.55"
+      },
+      "git": {
+        "headShort": "d57dfb9",
+        "dirty": true
+      },
+      "buildIdentity": null,
+      "url": "http://127.0.0.1:5174/analytics",
+      "firstPaintHubRequests": []
+    }
+  },
+  {
+    "step": "02-after-hub-response",
+    "hubStatus": 200,
+    "poolSize": 96,
+    "hubState": "ready",
+    "poolText": "37",
+    "liveWireSnippet": "Signal Wirelast 30m · newest first4m agoXChat spike·xQc·410 chat/mNEW5m agoXEmote burst·xQc·DinoDance · 123NEW8m agoSChat spike·sodapoppin·280 chat/mNEW",
+    "consoleErrors": [],
+    "failedRequests": [
+      "net::ERR_ABORTED https://api.streampulse.stream/v1/public/hub?activityWindow=24h",
+      "net::ERR_ABORTED https://api.streampulse.stream/v1/portal/analytics/live-activity?window=6h&limit=20&kind=all"
+    ],
+    "capture": {
+      "timestamp": "2026-08-13T02:07:47.123Z",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1,
+      "prefersReducedMotion": false,
+      "phase": "loading",
+      "fixture": "hub-ready",
+      "interaction": "fold",
+      "browser": {
+        "name": "chromium",
+        "version": "149.0.7827.55"
+      },
+      "git": {
+        "headShort": "d57dfb9",
+        "dirty": true
+      },
+      "buildIdentity": null,
+      "url": "http://127.0.0.1:5174/analytics"
+    }
+  },
+  {
+    "step": "03-after-ui-ready",
+    "hubStatus": 200,
+    "poolSize": 96,
+    "hubState": "ready",
+    "poolText": "96",
+    "liveWireSnippet": "Signal Wirelast 30m · newest first4m agoXChat spike·xQc·410 chat/mNEW5m agoXEmote burst·xQc·DinoDance · 123NEW8m agoSChat spike·sodapoppin·280 chat/mNEW",
+    "consoleErrors": [],
+    "failedRequests": [
+      "net::ERR_ABORTED https://api.streampulse.stream/v1/public/hub?activityWindow=24h",
+      "net::ERR_ABORTED https://api.streampulse.stream/v1/portal/analytics/live-activity?window=6h&limit=20&kind=all"
+    ],
+    "capture": {
+      "timestamp": "2026-08-13T02:07:47.556Z",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1,
+      "prefersReducedMotion": false,
+      "phase": "ready",
+      "fixture": "hub-ready",
+      "interaction": "fold",
+      "browser": {
+        "name": "chromium",
+        "version": "149.0.7827.55"
+      },
+      "git": {
+        "headShort": "d57dfb9",
+        "dirty": true
+      },
+      "buildIdentity": null,
+      "url": "http://127.0.0.1:5174/analytics"
+    }
+  },
+  {
+    "step": "04-after-scroll-return",
+    "hubStatus": 200,
+    "poolSize": 96,
+    "hubState": "ready",
+    "poolText": "96",
+    "liveWireSnippet": "Signal Wirelast 30m · newest first4m agoXChat spike·xQc·410 chat/mNEW5m agoXEmote burst·xQc·DinoDance · 123NEW8m agoSChat spike·sodapoppin·280 chat/mNEW",
+    "consoleErrors": [],
+    "failedRequests": [
+      "net::ERR_ABORTED https://api.streampulse.stream/v1/public/hub?activityWindow=24h",
+      "net::ERR_ABORTED https://api.streampulse.stream/v1/portal/analytics/live-activity?window=6h&limit=20&kind=all"
+    ],
+    "capture": {
+      "timestamp": "2026-08-13T02:07:47.631Z",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1,
+      "prefersReducedMotion": false,
+      "phase": "ready",
+      "fixture": "hub-ready",
+      "interaction": "fold",
+      "browser": {
+        "name": "chromium",
+        "version": "149.0.7827.55"
+      },
+      "git": {
+        "headShort": "d57dfb9",
+        "dirty": true
+      },
+      "buildIdentity": null,
+      "url": "http://127.0.0.1:5174/analytics"
+    }
+  }
+]

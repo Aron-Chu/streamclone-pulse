@@ -1,0 +1,30 @@
+{
+  "fallbackTickerLikely": false,
+  "hasSkipLink": true,
+  "mobileMenuDisplay": "none",
+  "mobileNavRightDisplay": "none",
+  "heroCtas": [
+    {
+      "text": "Install extension (beta)",
+      "href": "/docs#extension"
+    },
+    {
+      "text": "Open Analytics",
+      "href": "/analytics"
+    }
+  ],
+  "motionSignatures": {
+    "emoteRain": true,
+    "chatBackdrop": true,
+    "tickers": 2,
+    "extensionTour": true,
+    "signalGraph": true
+  },
+  "hubOnCriticalPathNote": "Landing polls /v1/public/hub; first-paint may already have outstanding hub requests.",
+  "hubHitsSample": [
+    "GET /v1/public/hub?activityWindow=24h",
+    "GET /v1/public/hub?activityWindow=24h",
+    "GET /v1/public/hub?activityWindow=24h",
+    "GET /v1/public/hub?activityWindow=24h"
+  ]
+}

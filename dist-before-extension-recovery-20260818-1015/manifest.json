@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "StreamPulse",
+  "description": "Live Pulse overlay for Twitch channels powered by the StreamPulse analytics API.",
+  "version": "0.1.3",
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_title": "StreamPulse"
+  },
+  "options_page": "options/index.html",
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.twitch.tv/*"
+      ],
+      "js": [
+        "content/twitch.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://api.streampulse.stream/*",
+    "https://cdn.7tv.app/*",
+    "https://static-cdn.jtvnw.net/*",
+    "https://cdn.frankerfacez.com/*",
+    "https://*.twitch.tv/*"
+  ],
+  "optional_host_permissions": [
+    "http://localhost:8081/*",
+    "http://127.0.0.1:8081/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,156 @@
+[
+  {
+    "timestamp": "2026-08-13T02:08:19.711Z",
+    "viewport": {
+      "width": 360,
+      "height": 740
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": false,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  },
+  {
+    "timestamp": "2026-08-13T02:08:20.298Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": false,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  },
+  {
+    "timestamp": "2026-08-13T02:08:21.014Z",
+    "viewport": {
+      "width": 768,
+      "height": 900
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": false,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  },
+  {
+    "timestamp": "2026-08-13T02:08:21.821Z",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": false,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  },
+  {
+    "timestamp": "2026-08-13T02:08:22.658Z",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": false,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  },
+  {
+    "timestamp": "2026-08-13T02:08:23.472Z",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": true,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  },
+  {
+    "timestamp": "2026-08-13T02:08:23.939Z",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "deviceScaleFactor": 1,
+    "prefersReducedMotion": true,
+    "phase": "ready",
+    "fixture": "landing-hub-ready",
+    "interaction": "fold",
+    "browser": {
+      "name": "chromium",
+      "version": "149.0.7827.55"
+    },
+    "git": {
+      "headShort": "d57dfb9",
+      "dirty": true
+    },
+    "buildIdentity": null,
+    "url": "http://127.0.0.1:5174/"
+  }
+]

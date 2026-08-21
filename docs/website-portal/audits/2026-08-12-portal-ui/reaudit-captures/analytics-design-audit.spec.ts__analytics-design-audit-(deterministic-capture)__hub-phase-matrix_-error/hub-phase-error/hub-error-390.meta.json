@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-08-13T02:13:47.666Z",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "deviceScaleFactor": 1,
+  "prefersReducedMotion": false,
+  "phase": "error",
+  "fixture": "hub-error",
+  "interaction": "fold",
+  "browser": {
+    "name": "chromium",
+    "version": "149.0.7827.55"
+  },
+  "git": {
+    "headShort": "d57dfb9",
+    "dirty": true
+  },
+  "buildIdentity": null,
+  "url": "http://127.0.0.1:5174/analytics",
+  "mode": "error"
+}

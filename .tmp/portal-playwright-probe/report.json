@@ -1,0 +1,53 @@
+[
+  {
+    "url": "http://127.0.0.1:5174/",
+    "status": 200,
+    "navError": null,
+    "elapsed": 4149,
+    "title": "StreamPulse — Twitch reaction analytics",
+    "bodyPreview": "",
+    "consoleErrors": [],
+    "consoleWarns": [],
+    "pageErrors": [
+      "SyntaxError: The requested module '/src/shims/extension-storage.ts' does not provide an export named 'DEFAULT_REDUCE_MOTION_PREFERENCE'"
+    ],
+    "failedRequests": [],
+    "screenshot": "C:\\Users\\Aron\\streamclone-pulse\\.tmp\\portal-playwright-probe\\http_127_0_0_1_5174.png",
+    "rootChildCount": 0,
+    "htmlLen": 2045
+  },
+  {
+    "url": "http://localhost:5174/",
+    "status": 200,
+    "navError": null,
+    "elapsed": 4459,
+    "title": "StreamPulse — Twitch reaction analytics",
+    "bodyPreview": "",
+    "consoleErrors": [],
+    "consoleWarns": [],
+    "pageErrors": [
+      "SyntaxError: The requested module '/src/shims/extension-storage.ts' does not provide an export named 'DEFAULT_REDUCE_MOTION_PREFERENCE'"
+    ],
+    "failedRequests": [],
+    "screenshot": "C:\\Users\\Aron\\streamclone-pulse\\.tmp\\portal-playwright-probe\\http_localhost_5174.png",
+    "rootChildCount": 0,
+    "htmlLen": 2045
+  },
+  {
+    "url": "http://127.0.0.1:5174/analytics",
+    "status": 200,
+    "navError": null,
+    "elapsed": 4120,
+    "title": "StreamPulse — Twitch reaction analytics",
+    "bodyPreview": "",
+    "consoleErrors": [],
+    "consoleWarns": [],
+    "pageErrors": [
+      "SyntaxError: The requested module '/src/shims/extension-storage.ts' does not provide an export named 'DEFAULT_REDUCE_MOTION_PREFERENCE'"
+    ],
+    "failedRequests": [],
+    "screenshot": "C:\\Users\\Aron\\streamclone-pulse\\.tmp\\portal-playwright-probe\\http_127_0_0_1_5174_analytics.png",
+    "rootChildCount": 0,
+    "htmlLen": 2045
+  }
+]

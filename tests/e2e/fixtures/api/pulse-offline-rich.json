@@ -1,0 +1,86 @@
+{
+  "login": "fixturechan",
+  "isLive": false,
+  "tracking": false,
+  "streamId": "stream-fixture-rich-offline",
+  "vodId": "2806037629",
+  "startedAt": "2026-08-15T12:00:00Z",
+  "endedAt": "2026-08-15T12:12:00Z",
+  "title": "Previous stream with moments",
+  "category": "Just Chatting",
+  "peakViewers": 1210,
+  "currentOffsetSeconds": 720,
+  "durationSeconds": 720,
+  "coverageStartOffsetSeconds": 0,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 0,
+    "coverageEndOffsetSeconds": 720,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Channel offline"
+  },
+  "topEmotes": [],
+  "rollups": [
+    { "offsetSeconds": 0, "chatCount": 20, "sevenTvEmoteCount": 4, "totalEmoteCount": 7, "viewerCount": 1000, "viewerAvg": 1000, "viewerSamples": 1 },
+    { "offsetSeconds": 60, "chatCount": 24, "sevenTvEmoteCount": 5, "totalEmoteCount": 8, "viewerAvg": 1050, "viewerSamples": 1 },
+    { "offsetSeconds": 120, "chatCount": 28, "sevenTvEmoteCount": 6, "totalEmoteCount": 9, "viewerAvg": 1100, "viewerSamples": 1 },
+    { "offsetSeconds": 180, "chatCount": 80, "sevenTvEmoteCount": 25, "totalEmoteCount": 42, "viewerAvg": 1200, "viewerSamples": 1 },
+    { "offsetSeconds": 240, "chatCount": 32, "sevenTvEmoteCount": 8, "totalEmoteCount": 12, "viewerAvg": 1180, "viewerSamples": 1 },
+    { "offsetSeconds": 300, "chatCount": 29, "sevenTvEmoteCount": 7, "totalEmoteCount": 11, "viewerAvg": 1160, "viewerSamples": 1 },
+    { "offsetSeconds": 360, "chatCount": 35, "sevenTvEmoteCount": 9, "totalEmoteCount": 14, "viewerAvg": 1210, "viewerSamples": 1 },
+    { "offsetSeconds": 420, "chatCount": 31, "sevenTvEmoteCount": 7, "totalEmoteCount": 10, "viewerAvg": 1190, "viewerSamples": 1 },
+    { "offsetSeconds": 480, "chatCount": 26, "sevenTvEmoteCount": 6, "totalEmoteCount": 9, "viewerAvg": 1140, "viewerSamples": 1 },
+    { "offsetSeconds": 540, "chatCount": 38, "sevenTvEmoteCount": 10, "totalEmoteCount": 16, "viewerAvg": 1170, "viewerSamples": 1 },
+    { "offsetSeconds": 600, "chatCount": 30, "sevenTvEmoteCount": 7, "totalEmoteCount": 11, "viewerAvg": 1130, "viewerSamples": 1 },
+    { "offsetSeconds": 660, "chatCount": 27, "sevenTvEmoteCount": 6, "totalEmoteCount": 9, "viewerAvg": 1090, "viewerSamples": 1 }
+  ],
+  "fullRollups": [
+    { "offsetSeconds": 0, "chatCount": 20, "sevenTvEmoteCount": 4, "totalEmoteCount": 7, "viewerCount": 1000, "viewerAvg": 1000, "viewerSamples": 1 },
+    { "offsetSeconds": 60, "chatCount": 24, "sevenTvEmoteCount": 5, "totalEmoteCount": 8, "viewerAvg": 1050, "viewerSamples": 1 },
+    { "offsetSeconds": 120, "chatCount": 28, "sevenTvEmoteCount": 6, "totalEmoteCount": 9, "viewerAvg": 1100, "viewerSamples": 1 },
+    { "offsetSeconds": 180, "chatCount": 80, "sevenTvEmoteCount": 25, "totalEmoteCount": 42, "viewerAvg": 1200, "viewerSamples": 1 },
+    { "offsetSeconds": 240, "chatCount": 32, "sevenTvEmoteCount": 8, "totalEmoteCount": 12, "viewerAvg": 1180, "viewerSamples": 1 },
+    { "offsetSeconds": 300, "chatCount": 29, "sevenTvEmoteCount": 7, "totalEmoteCount": 11, "viewerAvg": 1160, "viewerSamples": 1 },
+    { "offsetSeconds": 360, "chatCount": 35, "sevenTvEmoteCount": 9, "totalEmoteCount": 14, "viewerAvg": 1210, "viewerSamples": 1 },
+    { "offsetSeconds": 420, "chatCount": 31, "sevenTvEmoteCount": 7, "totalEmoteCount": 10, "viewerAvg": 1190, "viewerSamples": 1 },
+    { "offsetSeconds": 480, "chatCount": 26, "sevenTvEmoteCount": 6, "totalEmoteCount": 9, "viewerAvg": 1140, "viewerSamples": 1 },
+    { "offsetSeconds": 540, "chatCount": 38, "sevenTvEmoteCount": 10, "totalEmoteCount": 16, "viewerAvg": 1170, "viewerSamples": 1 },
+    { "offsetSeconds": 600, "chatCount": 30, "sevenTvEmoteCount": 7, "totalEmoteCount": 11, "viewerAvg": 1130, "viewerSamples": 1 },
+    { "offsetSeconds": 660, "chatCount": 27, "sevenTvEmoteCount": 6, "totalEmoteCount": 9, "viewerAvg": 1090, "viewerSamples": 1 }
+  ],
+  "lanes": { "composite": [], "chat": [], "seventv": [] },
+  "peaks": [
+    {
+      "offsetSeconds": 185,
+      "score": 91,
+      "reactionScore": 91,
+      "reasons": ["emote_spike"],
+      "reasonLabel": "Emote spike",
+      "dominantSignal": "emote",
+      "chatCount": 80,
+      "emoteCount": 42
+    }
+  ],
+  "recap": {
+    "streamId": "stream-fixture-rich-offline",
+    "login": "fixturechan",
+    "vodId": "2806037629",
+    "durationSeconds": 720,
+    "totalMessages": 400,
+    "peakChatPerMin": 80,
+    "topMoments": [
+      { "offsetSeconds": 185, "score": 91, "reactionScore": 91, "reasons": ["emote_spike"], "chatCount": 80, "emoteCount": 42 }
+    ],
+    "topEmotes": [],
+    "clipCandidates": []
+  },
+  "games": [
+    { "gameName": "Just Chatting", "offsetSeconds": 0, "durationSeconds": 720 }
+  ],
+  "helixEnabled": true,
+  "rosterEligible": true,
+  "top500Eligible": true
+}

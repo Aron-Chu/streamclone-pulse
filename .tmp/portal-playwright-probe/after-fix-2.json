@@ -1,0 +1,22 @@
+[
+  {
+    "url": "http://127.0.0.1:5174/",
+    "status": 200,
+    "title": "StreamPulse — Twitch reaction analytics",
+    "rootChildCount": 2,
+    "bodyPreview": "streampulse-portal@a5329744d5a5-dirty · source · dirty · input feb6bf9a46c2 · cohort 73aff49f1200\n\nspeed7tv: nahhh that clip\n\nxqcL_: W\n\nmarcus_tt: bro what was that\n\npeepoVIP: \n\nclip_it_pls: someone clip that\n\n7tvAndy: 7tv carrying chat fr\n\nlurker_mode: just got here\n\nnight_owl_x: LMAO\n\nsub_w_gift: ty for the sub\n\ntoastEnjoyer: mods??\n\nkai_fan42: chat is moving\n\nnoCap_fr: 00:42 was insane\n\nspeed7tv: nahhh that clip\n\nxqcL_: W\n\nmarcus_tt: bro what was that\n\npeepoVIP: \n\nclip_it_pls: someone clip that\n\n7tvAndy: 7tv carrying chat fr\n\nlurker_mode: just got here\n\nnight_owl_x: LMAO\n\nsub_w_gift: ty for",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "screenshot": "C:\\Users\\Aron\\streamclone-pulse\\.tmp\\portal-playwright-probe\\after-fix-home.png"
+  },
+  {
+    "url": "http://127.0.0.1:5174/analytics",
+    "status": 200,
+    "title": "StreamPulse Analytics",
+    "rootChildCount": 2,
+    "bodyPreview": "streampulse-portal@a5329744d5a5-dirty · source · dirty · input feb6bf9a46c2 · cohort 73aff49f1200\nSkip to analytics content\nStreamPulse\nAnalytics Hub\nHome\nAnalytics\nSTATUS\nLive\nOVERVIEW\nHOTTEST LIVE\nSIGNAL WIRE\nNETWORK ACTIVITY\nPULSE MOMENTS\nEMOTE MARKET\nCHANNEL SCREENER\nCOVERAGE\nLive\nActivity coverage 97% for this window (29/30 buckets).\n1 bucket missing from stored rollups.\n\nSTREAM INTELLIGENCE\n\nCommand center\n\nLive IRC pool status, current viewer totals, and network peaks from tracked channels — not all of Twitch.\n\nIRC COVERAGE 310/310 · UPDATED 0S AGO · LIVE\n\nTRACKED CHANNELS\n310\nTRACKED L",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "screenshot": "C:\\Users\\Aron\\streamclone-pulse\\.tmp\\portal-playwright-probe\\after-fix-analytics.png"
+  }
+]

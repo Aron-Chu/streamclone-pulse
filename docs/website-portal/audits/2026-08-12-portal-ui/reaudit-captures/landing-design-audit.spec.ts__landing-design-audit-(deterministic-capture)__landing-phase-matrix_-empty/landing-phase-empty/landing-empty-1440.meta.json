@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-08-13T02:13:45.325Z",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "deviceScaleFactor": 1,
+  "prefersReducedMotion": false,
+  "phase": "empty",
+  "fixture": "landing-hub-empty",
+  "interaction": "fold",
+  "browser": {
+    "name": "chromium",
+    "version": "149.0.7827.55"
+  },
+  "git": {
+    "headShort": "d57dfb9",
+    "dirty": true
+  },
+  "buildIdentity": null,
+  "url": "http://127.0.0.1:5174/",
+  "dom": {
+    "title": "Find the Twitch moments people actually reacted to.",
+    "tickers": [
+      {
+        "label": "Trending emotes",
+        "itemCount": 0,
+        "sample": "Trending emotesWaiting on live hubNo live rollup yet — we do not invent traction."
+      },
+      {
+        "label": "Trending channels",
+        "itemCount": 0,
+        "sample": "Trending channelsWaiting on live hubNo live rollup yet — we do not invent traction."
+      }
+    ],
+    "navLinks": [
+      {
+        "text": "Pulse tab",
+        "href": "#demo",
+        "visible": true
+      },
+      {
+        "text": "Signals",
+        "href": "#analysis",
+        "visible": true
+      },
+      {
+        "text": "Roadmap",
+        "href": "#roadmap",
+        "visible": true
+      },
+      {
+        "text": "Docs",
+        "href": "/docs",
+        "visible": true
+      },
+      {
+        "text": "Open Analytics",
+        "href": "/analytics",
+        "visible": true
+      }
+    ],
+    "heroCtas": [
+      {
+        "text": "Install extension (beta)",
+        "href": "/docs#extension"
+      },
+      {
+        "text": "Open Analytics",
+        "href": "/analytics"
+      }
+    ],
+    "hasSkipLink": true,
+    "skipHref": "#demo",
+    "mobileNavToggleVisible": false,
+    "motionSignatures": {
+      "emoteRain": true,
+      "chatBackdrop": true,
+      "tickers": 2,
+      "extensionTour": true,
+      "signalGraph": true
+    },
+    "menuDisplay": "flex",
+    "navRightDisplay": "block"
+  }
+}

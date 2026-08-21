@@ -1,0 +1,1 @@
+import{L as e}from"./storage.js";export{e as restrictCredentialStorageAccess};

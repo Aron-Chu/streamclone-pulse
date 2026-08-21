@@ -1,0 +1,117 @@
+{
+  "login": "fixturechan",
+  "isLive": true,
+  "tracking": true,
+  "streamId": "stream-fixture-1",
+  "vodId": null,
+  "startedAt": "2026-07-11T18:00:00.000Z",
+  "title": "Fixture live stream with moments",
+  "category": "Just Chatting",
+  "currentOffsetSeconds": 3600,
+  "coverageStartOffsetSeconds": 30,
+  "helixEnabled": true,
+  "top500Eligible": true,
+  "rosterEligible": true,
+  "coverage": {
+    "state": "full_stream_tracked",
+    "coverageStartOffsetSeconds": 30,
+    "coverageEndOffsetSeconds": 3600,
+    "hasFullStreamCoverage": true,
+    "trackedFromStart": true,
+    "hasGaps": false,
+    "canBackfill": false,
+    "message": "Full stream tracked"
+  },
+  "topEmotes": [],
+  "rollups": [
+    {
+      "offsetSeconds": 3480,
+      "chatCount": 140,
+      "totalEmoteCount": 55,
+      "sevenTvEmoteCount": 28,
+      "viewerCount": 1100,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3540,
+      "chatCount": 96,
+      "totalEmoteCount": 310,
+      "sevenTvEmoteCount": 250,
+      "viewerCount": 1180,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3600,
+      "chatCount": 120,
+      "totalEmoteCount": 80,
+      "sevenTvEmoteCount": 42,
+      "viewerCount": 1200,
+      "topEmotes": []
+    }
+  ],
+  "fullRollups": [
+    {
+      "offsetSeconds": 3480,
+      "chatCount": 140,
+      "totalEmoteCount": 55,
+      "sevenTvEmoteCount": 28,
+      "viewerCount": 1100,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3540,
+      "chatCount": 96,
+      "totalEmoteCount": 310,
+      "sevenTvEmoteCount": 250,
+      "viewerCount": 1180,
+      "topEmotes": []
+    },
+    {
+      "offsetSeconds": 3600,
+      "chatCount": 120,
+      "totalEmoteCount": 80,
+      "sevenTvEmoteCount": 42,
+      "viewerCount": 1200,
+      "topEmotes": []
+    }
+  ],
+  "lanes": {
+    "composite": [0.5, 0.7, 0.8],
+    "chat": [0.4, 0.6, 0.7],
+    "seventv": [0.3, 0.5, 0.6],
+    "viewers": [1100, 1180, 1200]
+  },
+  "peaks": [
+    {
+      "offsetSeconds": 3480,
+      "score": 90,
+      "reasons": ["chat_spike"],
+      "reasonLabel": "Peak chat",
+      "dominantSignal": "chat",
+      "chatCount": 140,
+      "emoteCount": 55
+    },
+    {
+      "offsetSeconds": 3540,
+      "score": 86,
+      "reasons": ["emote_spike"],
+      "reasonLabel": "Emote burst",
+      "dominantSignal": "emote",
+      "chatCount": 96,
+      "emoteCount": 310
+    }
+  ],
+  "recap": null,
+  "games": [
+    {
+      "gameName": "League of Legends",
+      "offsetSeconds": 0,
+      "durationSeconds": 3510
+    },
+    {
+      "gameName": "Just Chatting",
+      "offsetSeconds": 3510,
+      "durationSeconds": 90
+    }
+  ]
+}

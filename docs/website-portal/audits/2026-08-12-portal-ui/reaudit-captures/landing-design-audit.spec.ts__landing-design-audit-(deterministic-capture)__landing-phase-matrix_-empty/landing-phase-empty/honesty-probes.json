@@ -1,0 +1,18 @@
+{
+  "mode": "empty",
+  "tickerSamples": [
+    {
+      "label": "Trending emotes",
+      "itemCount": 0,
+      "sample": "Trending emotesWaiting on live hubNo live rollup yet — we do not invent traction."
+    },
+    {
+      "label": "Trending channels",
+      "itemCount": 0,
+      "sample": "Trending channelsWaiting on live hubNo live rollup yet — we do not invent traction."
+    }
+  ],
+  "containsFallbackEmote": false,
+  "containsFallbackMover": false,
+  "containsFallbackCount": false
+}

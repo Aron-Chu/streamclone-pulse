@@ -1,0 +1,77 @@
+{
+  "repository": "streamclone-pulse-extension",
+  "commit": "f0aefce4b2f2f43eb04a850a8defaa893675a4c2",
+  "dirty": true,
+  "dirtyTreeHash": "5915d9b667979f74874509f05d2e49f33c7beb28b77107c8f8713485f14cebb3",
+  "sourceFingerprint": "540494cc055eecb33d498ad810e5937cecee255667b2096a3566cf3979039bc7",
+  "packageCohortFingerprint": "e8d93267e3a9b04d78b0d1717ee997d05df9d463d82411a18af1435dcd64784d",
+  "packageCohort": {
+    "mode": "explicit-sibling-override",
+    "source": {
+      "path": "../streampulse-backend",
+      "commit": "3d60b267df8d58cd1618fba3d5129366a38e3515",
+      "shortCommit": "3d60b267df8d",
+      "branch": "feat/reaction-profile-v1",
+      "dirty": true,
+      "dirtyPathCount": 120,
+      "packageTreeFingerprint": "5e6c638d2ce06bf9a8608d66e05ba8c713dbc4d37d576875184b3b149d4940dd"
+    },
+    "dependencies": [
+      {
+        "consumer": "extension root",
+        "name": "@streampulse/pulse-charts",
+        "spec": "file:../streampulse-backend/packages/pulse-charts",
+        "resolvedPath": "../streampulse-backend/packages/pulse-charts",
+        "manifestPath": "packages/pulse-charts",
+        "expectedPath": "../streampulse-backend/packages/pulse-charts"
+      },
+      {
+        "consumer": "extension root",
+        "name": "@streampulse/pulse-core",
+        "spec": "file:../streampulse-backend/packages/pulse-core",
+        "resolvedPath": "../streampulse-backend/packages/pulse-core",
+        "manifestPath": "packages/pulse-core",
+        "expectedPath": "../streampulse-backend/packages/pulse-core"
+      },
+      {
+        "consumer": "portal",
+        "name": "@streampulse/analytics-console",
+        "spec": "file:../../streampulse-backend/packages/analytics-console",
+        "resolvedPath": "../streampulse-backend/packages/analytics-console",
+        "manifestPath": "packages/analytics-console",
+        "expectedPath": "../streampulse-backend/packages/analytics-console"
+      },
+      {
+        "consumer": "portal",
+        "name": "@streampulse/pulse-charts",
+        "spec": "file:../../streampulse-backend/packages/pulse-charts",
+        "resolvedPath": "../streampulse-backend/packages/pulse-charts",
+        "manifestPath": "packages/pulse-charts",
+        "expectedPath": "../streampulse-backend/packages/pulse-charts"
+      },
+      {
+        "consumer": "portal",
+        "name": "@streampulse/pulse-core",
+        "spec": "file:../../streampulse-backend/packages/pulse-core",
+        "resolvedPath": "../streampulse-backend/packages/pulse-core",
+        "manifestPath": "packages/pulse-core",
+        "expectedPath": "../streampulse-backend/packages/pulse-core"
+      }
+    ]
+  },
+  "inputScope": [
+    "src",
+    "streampulse-web/src/lib/release-notes.json",
+    "public",
+    "popup",
+    "options",
+    "manifest.json",
+    "vite.config.ts",
+    "scripts/build-provenance.mjs",
+    "package.json",
+    "package-lock.json"
+  ],
+  "mode": "source",
+  "buildId": "streamclone-pulse-extension@f0aefce4b2f2-dirty",
+  "builtAt": "2026-08-13T23:23:53.499Z"
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "streampulse.extension-build-provenance/v2",
+  "kind": "local-dirty-development-build",
+  "target": "development",
+  "buildId": "15d69706",
+  "sourceDigest": "15d697061295fd5edacda0f3f9166587d11d63c2d13926d53222f4aa76efbee6",
+  "packageBuildCommit": "f7e1dea6d22a55025419d014ebec914647822d68",
+  "dirty": true,
+  "files": {
+    "background/service-worker.js": "432aba16368f6e1377d1028394143beecda5dc2213c6e1cc482b53faaa4d97c0",
+    "chunks/analyticsConsent.js": "b64ae69a8c2ffb4d05eb62b8d36d9b27b10f7b27a9e9970899eeeb58028aa739",
+    "chunks/extensionDiagnostics.js": "471a5b788886e3bc6fc628b0a509bf166cfce0ca59bf2f2f064e3596898f54fe",
+    "chunks/jsx-runtime.js": "2ee386b69ad644d2fea972d0751470c1db2952e8022340e1d201a18e21e2c2a4",
+    "chunks/storage.js": "24cc3921bf19b7afa82519e732bb8329f5b2fc698268d7ee2c13a5942748a385",
+    "chunks/storage2.js": "25d8c721f048660a3650c3874c334cb737a7b8a3ea5d4031f2c63eda0563064e",
+    "content/twitch.js": "b6362c6b94aef3c51a19b68098361aadd3df7810d44a7e57566a4118af767c85",
+    "extension-target.json": "395e191f3dd5a105468e5aa0f38f3a460298caf43700bf24439d12fa80b3ace3",
+    "icons/icon128.png": "47b57263390a39d3e9d6a836b119b5c2e7ced7a7be64af40784891b5f00e871a",
+    "icons/icon16.png": "f147b8427927af8e3f413aabc0b290bce9c3fbdcdc422d7aa915aa71a9e39158",
+    "icons/icon48.png": "888a6e38643e408b1b1feb1184fc30e0de5c09a35d1309ea20e4712b934d59a1",
+    "manifest.json": "4e57e2f959548863beb7318e441c9c09190614cff6df586db5ec42d35db940d6",
+    "options/index.html": "bd45e912f1ff58df98fd3291c172da5059280f21fe37d614169f29d4d27b7fff",
+    "options/options.js": "780733c6b32e1f6d880081de1e96110777174e072861220ef4d78435d5812ffd",
+    "popup/index.html": "0a62ae481a58ee068c4eae840fab9bf1266fd101e488781ecfa98490dbf49284",
+    "popup/popup.js": "4bb0099e22cbba37242b232a21c14570ca54ee686d271814df1f85211bfa30b4"
+  }
+}

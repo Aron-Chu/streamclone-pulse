@@ -1,0 +1,84 @@
+{
+  "timestamp": "2026-08-13T02:07:25.257Z",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "deviceScaleFactor": 1,
+  "prefersReducedMotion": false,
+  "phase": "ready",
+  "fixture": "landing-hub-ready",
+  "interaction": "fold",
+  "browser": {
+    "name": "chromium",
+    "version": "149.0.7827.55"
+  },
+  "git": {
+    "headShort": "d57dfb9",
+    "dirty": true
+  },
+  "buildIdentity": null,
+  "url": "http://127.0.0.1:5174/",
+  "mobileDom": {
+    "title": "Find the Twitch moments people actually reacted to.",
+    "tickers": [
+      {
+        "label": "Trending emotes",
+        "itemCount": 16,
+        "sample": "Trending emoteswidespeedlaugh 22.1K +41%degloved 18.6K +34%widereacting 15.4K +28%peepoHappy 12.1K +12%forsenPls 9.8K +8%WAYTOODANK 7.2KgachiBASS 5.9K +6%Kappa 3.3K +2%widespeedlaugh 22.1K +41%degloved 18.6K +34%widereacting 15.4K +28%peepo"
+      },
+      {
+        "label": "Trending channels",
+        "itemCount": 12,
+        "sample": "Trending channelsCcaseoh_ 482/min +62%Jjynxzi 410/min +38%Kkaicenat 377/min +19%Xxqc 299/min -7%Ffanum 241/min +11%Lludwig 188/minCcaseoh_ 482/min +62%Jjynxzi 410/min +38%Kkaicenat 377/min +19%Xxqc 299/min -7%Ffanum 241/min +11%Lludwig 188/"
+      }
+    ],
+    "navLinks": [
+      {
+        "text": "Pulse tab",
+        "href": "#demo",
+        "visible": true
+      },
+      {
+        "text": "Signals",
+        "href": "#analysis",
+        "visible": true
+      },
+      {
+        "text": "Roadmap",
+        "href": "#roadmap",
+        "visible": true
+      },
+      {
+        "text": "Docs",
+        "href": "/docs",
+        "visible": true
+      },
+      {
+        "text": "Open Analytics",
+        "href": "/analytics",
+        "visible": true
+      }
+    ],
+    "heroCtas": [
+      {
+        "text": "Install extension (beta)",
+        "href": "/docs#extension"
+      },
+      {
+        "text": "Open Analytics",
+        "href": "/analytics"
+      }
+    ],
+    "hasSkipLink": true,
+    "motionSignatures": {
+      "emoteRain": true,
+      "chatBackdrop": true,
+      "tickers": 2,
+      "extensionTour": true,
+      "signalGraph": true
+    },
+    "menuDisplay": "none",
+    "navRightDisplay": "none"
+  }
+}

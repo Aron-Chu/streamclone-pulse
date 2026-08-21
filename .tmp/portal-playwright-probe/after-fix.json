@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "title": "StreamPulse — Twitch reaction analytics",
+  "rootChildCount": 0,
+  "bodyPreview": "",
+  "pageErrors": [
+    "SyntaxError: The requested module '/src/shims/extension-storage.ts?t=1786213516505' does not provide an export named 'getChartZoomHintDismissed'"
+  ],
+  "consoleErrors": [],
+  "screenshot": "C:\\Users\\Aron\\streamclone-pulse\\.tmp\\portal-playwright-probe\\after-fix.png"
+}

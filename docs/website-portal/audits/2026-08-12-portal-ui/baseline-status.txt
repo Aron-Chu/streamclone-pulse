@@ -1,0 +1,136 @@
+ M .gitignore
+A  docs/audits/2026-08-10-extension-speed-security.md
+A  docs/auto-recovery.md
+A  docs/orphaned-worktrees-2026-08-09.md
+M  src/content/entry.ts
+M  src/content/twitchChat.ts
+M  src/content/twitchLayout.ts
+M  src/popup/popup.tsx
+ M src/shared/messages.ts
+A  src/shared/releaseManifest.ts
+M  src/shared/storage.ts
+ M src/types/vodPulseTypes.ts
+AM src/ui/ChartPositionRail.tsx
+ M src/ui/CoverageCard.tsx
+MM src/ui/GamesPlayedStrip.tsx
+MM src/ui/LiveStatsBand.tsx
+ D src/ui/MorphPath.tsx
+ M src/ui/MostReactedSection.tsx
+ M src/ui/Overlay.tsx
+ M src/ui/PulseMomentRow.tsx
+MM src/ui/PulseOverviewChart.tsx
+M  src/ui/PulseSettingsPanel.tsx
+MM src/ui/RecapTimelineChart.tsx
+ M src/ui/SelectedMomentCard.tsx
+M  src/ui/SevenTvEmotePanel.tsx
+MM src/ui/StreamRecapSection.tsx
+ D src/ui/chartMorphGeometry.ts
+ M src/ui/chartPointerIntent.ts
+ M src/ui/chartReadout.ts
+MM src/ui/chartRollupUtils.ts
+ M src/ui/chartSelectedMoment.ts
+MM src/ui/chartTheme.ts
+AM src/ui/chartViewport.ts
+ M src/ui/chatActivityEmotes.ts
+ D src/ui/coverageDiagnostics.ts
+ M src/ui/extensionChartAdapter.ts
+ M src/ui/extensionChartPoints.ts
+ M src/ui/missedMoments.ts
+ M src/ui/mostReacted.ts
+ M src/ui/recapChartPeaks.ts
+ M src/ui/recapMomentMetrics.ts
+ D src/ui/recapTraceExpand.ts
+M  src/ui/theme.ts
+M  src/ui/twitchGameArt.ts
+ M src/vod/vodPulseToChannelPayload.ts
+ M store/cws/screenshots/01-live-pulse.png
+ M streampulse-web/package-lock.json
+ M streampulse-web/package.json
+ M streampulse-web/src/lib/figmaSessionAnalytics.ts
+ M streampulse-web/src/lib/prefetchHubBucketMoments.ts
+ M streampulse-web/src/lib/sentry.ts
+ M streampulse-web/src/lib/streamcloneAnalytics.ts
+ M streampulse-web/src/main.tsx
+ M streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx
+ M streampulse-web/src/ui/PortalErrorBoundary.tsx
+ M streampulse-web/src/ui/analytics-tailwind.css
+ M streampulse-web/src/ui/components/analytics/ActivityBucketInspector.tsx
+ M streampulse-web/src/ui/components/analytics/FigmaChannelDashboard.tsx
+ M streampulse-web/src/ui/components/analytics/FigmaGlobalActivityPanel.tsx
+ M streampulse-web/src/ui/components/analytics/FigmaSignalChart.tsx
+ M streampulse-web/src/ui/components/analytics/HubLiveWireFeed.tsx
+ M streampulse-web/src/ui/components/analytics/PulseMomentsLivePanel.tsx
+ M streampulse-web/src/ui/components/analytics/figma-analytics.css
+ M streampulse-web/src/ui/components/hub/HubActivityChart.tsx
+ M streampulse-web/src/ui/components/hub/hub.css
+ M streampulse-web/src/ui/themes/analytics-hub-fonts.css
+ M streampulse-web/src/ui/themes/analytics-surfaces.css
+ M streampulse-web/tests/FigmaSignalChart.test.tsx
+ M streampulse-web/tests/activityBucketInspectorLinked.test.tsx
+ M streampulse-web/tests/e2e/analytics-console-moments.spec.ts
+ M streampulse-web/tests/e2e/analytics-design-audit.spec.ts
+ M streampulse-web/tests/e2e/analytics-hub-chart-contract.spec.ts
+ M streampulse-web/tests/e2e/helpers/hubUxMock.ts
+ M streampulse-web/tests/e2e/helpers/portalConsoleMock.ts
+ M streampulse-web/tests/e2e/session-signal-tape.spec.ts
+ M streampulse-web/tests/gameSegmentChart.test.ts
+ M streampulse-web/tests/hubActivityChart.test.tsx
+ M streampulse-web/tests/hubLiveWireFeed.test.tsx
+ M streampulse-web/tests/prefetchHubBucketMoments.test.ts
+ M streampulse-web/tests/pulseMomentsLivePanel.test.tsx
+ M streampulse-web/tests/selectedMomentDisplay.test.ts
+ M streampulse-web/tests/streamcloneAnalytics.test.ts
+ M streampulse-web/vite.config.ts
+ M streampulse-web/vitest.config.ts
+ D tests/MorphPath.test.tsx
+AM tests/PulseOverviewChart.hover.test.tsx
+MM tests/PulseOverviewChart.test.tsx
+ M tests/SelectedMomentCard.test.tsx
+A  tests/__bench.chart.test.ts
+A  tests/__bench.pipeline.test.ts
+AM tests/__bench.render.test.ts
+ D tests/chartMorphGeometry.test.ts
+ M tests/chartPointerIntent.test.ts
+ M tests/chartReadout.test.ts
+M  tests/chartRollupUtils.test.ts
+M  tests/chartSelectedMoment.test.ts
+AM tests/chartViewport.test.ts
+ M tests/chatActivityEmotes.test.ts
+A  tests/chatMutationFilter.test.ts
+ D tests/coverageDiagnostics.test.ts
+ M tests/e2e/fixtures/api/pulse-live-ready.json
+MM tests/e2e/specs/chart-inspection.mocked.spec.ts
+A  tests/e2e/specs/pressure.mocked.spec.ts
+ M tests/extensionChartPoints.test.ts
+ M tests/missedMoments.test.ts
+A  tests/overviewBarGeometry.test.ts
+ M tests/recapChartPeaks.test.ts
+ M tests/recapMomentMetrics.test.ts
+ D tests/recapTraceExpand.test.ts
+M  tests/twitchGameArt.test.ts
+?? .claude/
+?? src/ui/chartPanMath.ts
+?? src/ui/chartSelectionHitTest.ts
+?? src/ui/chartTimeChip.ts
+?? src/ui/coverageProgress.ts
+?? src/ui/fullTimelineState.ts
+?? src/ui/lateStartSurface.ts
+?? src/ui/observedViewport.ts
+?? src/ui/presentationPathInBand.ts
+?? streampulse-web/src/lib/hubTimeScale.ts
+?? streampulse-web/tests/e2e/analytics-chart-controls.spec.ts
+?? streampulse-web/tests/e2e/analytics-design-audit.fixtures.test.ts
+?? streampulse-web/tests/e2e/hub-mobile-annotations.spec.ts
+?? streampulse-web/tests/hubCoveragePercent.test.ts
+?? streampulse-web/tests/hubTimeScale.test.ts
+?? tests/PulseMomentRow.clock.test.tsx
+?? tests/PulseOverviewChart.presentation.test.tsx
+?? tests/chartFullStreamClickPan.test.ts
+?? tests/chartIdentityContract.test.ts
+?? tests/chartPanMath.test.ts
+?? tests/chartSelectionHitTest.test.ts
+?? tests/chartTruthRemainingContracts.test.ts
+?? tests/chartTruthZeroViewerRender.test.ts
+?? tests/observedViewport.test.ts
+?? tests/overlayFullTimelineHonesty.test.ts
+?? tests/viewerAvgContract.test.ts
