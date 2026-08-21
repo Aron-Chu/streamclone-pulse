@@ -169,6 +169,14 @@ export async function installHubUxMock(page: Page): Promise<void> {
             (best, p) => (p.viewers > (best?.viewers ?? 0) ? p : best),
             activityPoints[0],
           )?.t,
+          // Healthy historical projection contract — without these, the honest
+          // chart window resolver clamps the 24h series to 30m (legacy path),
+          // leaving every point an unmeasured placeholder and the chart empty.
+          source: 'historical_projection',
+          state: 'healthy',
+          availableWindowMinutes: 24 * 60,
+          accountedWindowMinutes: 24 * 60,
+          measuredWindowMinutes: 24 * 60,
         },
         emoteIntel: {
           emotesPerMin: 88,
