@@ -266,7 +266,7 @@ export function HubLiveWireFeed({
     }
 
     return (
-      <li role="listitem">
+      <li role="listitem" key={key}>
         <article
           className={`hub-live-wire__rail-card${isNew ? ' hub-live-wire__card--new' : ''}`}
           ref={refCb as never}
