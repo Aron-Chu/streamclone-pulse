@@ -137,6 +137,21 @@ export function resolveHubActivityChartWindowMinutes(activity: HubActivity): num
     return Math.min(requested, 30)
   }
 
+  // Legacy payloads have no honesty metadata, but a long, timestamp-spanning
+  // point series is enough evidence to preserve the requested chart grid.
+  const firstPoint = activity.points?.[0]?.t
+  const lastPoint = activity.points?.[activity.points.length - 1]?.t
+  const pointSpanMs = (lastPoint ?? 0) - (firstPoint ?? 0)
+  if (
+    requested > 30 &&
+    activity.points &&
+    activity.points.length >= 20 &&
+    Number.isFinite(pointSpanMs) &&
+    pointSpanMs >= requested * 60_000 * 0.4
+  ) {
+    return requested
+  }
+
   // Legacy / incomplete payloads without honesty metadata must not expand a
   // long requested window into a fabricated historical chart grid.
   return Math.min(requested, 30)

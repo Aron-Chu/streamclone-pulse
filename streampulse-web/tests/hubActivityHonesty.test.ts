@@ -23,10 +23,10 @@ import {
   type PublicHub,
 } from '../src/lib/publicHub'
 
-function makePoints(count: number, endMs = Date.now()): HubActivityPoint[] {
+function makePoints(count: number, endMs = Date.now(), stepMs = 60_000): HubActivityPoint[] {
   const end = Math.floor(endMs / 60_000) * 60_000
   return Array.from({ length: count }, (_, i) => ({
-    t: end - (count - 1 - i) * 60_000,
+    t: end - (count - 1 - i) * stepMs,
     chat: 10 + i,
     seventv: 5,
     viewers: 1000 + i,
@@ -140,6 +140,18 @@ describe('hub activity honesty (live_pool_fallback)', () => {
     }
     expect(isHubActivityHealthyHistoricalProjection(legacy)).toBe(false)
     expect(resolveHubActivityChartWindowMinutes(legacy)).toBe(30)
+  })
+
+  it('keeps a legacy point series that spans the requested long window', () => {
+    const legacy: HubActivity = {
+      points: makePoints(240, Date.now(), 6 * 60_000),
+      windowMinutes: 1440,
+      channelCount: 12,
+    }
+
+    expect(isHubActivityHealthyHistoricalProjection(legacy)).toBe(false)
+    expect(resolveHubActivityChartWindowMinutes(legacy)).toBe(1440)
+    expect(fillActivityPoints(legacy.points, resolveHubActivityChartWindowMinutes(legacy))).toHaveLength(240)
   })
 
   it('requires availableWindowMinutes on the healthy projection path', () => {
