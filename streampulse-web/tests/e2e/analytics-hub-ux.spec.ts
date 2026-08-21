@@ -446,7 +446,9 @@ test.describe('analytics hub UX (interaction)', () => {
 
     const topEmotesList = inspector.locator('.hub-top-emotes-inspector')
     await expect(topEmotesList).toBeVisible()
-    await expect(inspector.locator('.hub-top-emotes-inspector__provider').first()).toBeVisible()
+    await expect(
+      inspector.locator('.hub-top-emotes-inspector li.emote-rank-row .emote-rank-row__provider').first(),
+    ).toBeVisible()
 
     const rowStyle = await topEmotesList.locator('li').first().evaluate((node) => {
       const styles = window.getComputedStyle(node)
@@ -497,7 +499,7 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(page.locator('.pulse-moments-live__side .pulse-moments__inspector')).toBeVisible()
     await expect(page.locator('.activity-bucket-inspector--moment')).toHaveCount(0)
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toBeVisible()
-    await expect(page.locator('.pulse-moments__burst-bar span').first()).toBeVisible()
+    await expect(page.locator('.pulse-moments-live__side .emote-rank-row *[class*="share"]').first()).toBeVisible()
 
     await assertNoConsoleErrors(page, errors)
   })
