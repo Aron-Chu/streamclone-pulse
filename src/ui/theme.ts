@@ -14,13 +14,9 @@ export const theme = {
   panel: '#262633',
   panelElevated: '#2a2440',
   panelGlass: 'rgba(17, 17, 23, 0.92)',
-  inputBg: '#20202a',
   textPrimary: '#fafafc',
   textSecondary: '#a1a1b2',
   textMuted: '#8b8ba0',
-  accentText: accentTokens.accentInk,
-  accentTextSubtle: accentTokens.accentSoft,
-  accentSurface: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.12)',
   accent: accentTokens.accent,
   accentStrong: accentTokens.accentStrong,
   accentSoft: accentTokens.accentSoft,
@@ -29,7 +25,6 @@ export const theme = {
   live: '#22c55e',
   liveSoft: '#86efac',
   border: '#3f3f50',
-  borderSubtle: 'rgba(255, 255, 255, 0.12)',
   borderAccent: accentTokens.borderAccent,
   error: '#f87171',
   warning: '#fdba74',
@@ -111,25 +106,23 @@ export const shadowStyles = `
     transform: none !important;
   }
   .pulse-moment-row-button:focus,
+  .pulse-moment-row-button:focus-visible,
   .pulse-moment-row-button:active {
     outline: none !important;
     box-shadow: none !important;
   }
-  .pulse-moment-row-button:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.85) !important;
-    outline-offset: 2px;
-    border-radius: 7px;
-  }
   .pulse-moment-row-button .pulse-moment-row {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+    border: none;
+    box-shadow: inset 0 0 0 1px transparent;
+    background: rgba(255, 255, 255, 0.03);
   }
   .pulse-moment-row-button:hover .pulse-moment-row {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16) !important;
-    background: rgba(255, 255, 255, 0.095) !important;
+    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
   }
   .pulse-moment-row-selected {
-    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.5) !important;
-    background: rgba(255, 255, 255, 0.09) !important;
+    box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45) !important;
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.14) !important;
   }
   .pulse-top-emote-chip {
     background: rgba(255, 255, 255, 0.04);
@@ -147,18 +140,48 @@ export const shadowStyles = `
     border-color: rgba(251, 191, 36, 0.45) !important;
     box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.18);
   }
-  .pulse-seven-tv-option {
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease,
-      background 0.15s ease, opacity 0.15s ease;
+  .pulse-seven-tv-toggle:hover {
+    background: rgba(255, 255, 255, 0.03);
   }
-  .pulse-seven-tv-option:not(:disabled):hover {
-    background: rgba(255, 255, 255, 0.09) !important;
-    border-color: rgba(255, 255, 255, 0.28) !important;
-    transform: translateY(-1px) scale(1.05);
+  .pulse-seven-tv-row {
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
-  .pulse-seven-tv-option:focus-visible {
+  .pulse-seven-tv-row:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
+    transform: translateY(-1px);
+  }
+  .pulse-seven-tv-row-active {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28) !important;
+  }
+  .pulse-seven-tv-row:focus-visible {
     outline: 2px solid rgba(103, 232, 249, 0.85);
     outline-offset: 2px;
+  }
+  .pulse-seven-tv-row-disabled:hover {
+    background: inherit !important;
+    border-color: inherit !important;
+    transform: none !important;
+  }
+  .pulse-overview-chart:focus-visible {
+    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.8);
+    outline-offset: -2px;
+  }
+  .pulse-emote-picker-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.35);
+    border-radius: 999px;
+  }
+  .pulse-emote-picker-scroll::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.55);
+    border-radius: 999px;
   }
   .pulse-chart-legend-chip {
     transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
@@ -264,31 +287,18 @@ export const shadowStyles = `
     border: 1px solid rgba(167, 139, 250, 0.35);
     border-radius: 10px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-    display: grid;
-    justify-items: center;
+    display: none;
     left: 50%;
-    max-width: 176px;
-    min-width: 76px;
-    opacity: 0;
     padding: 8px;
     pointer-events: none;
     position: absolute;
     top: calc(100% + 8px);
-    transform: translate(-50%, 4px) scale(0.96);
-    transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
-    visibility: hidden;
+    transform: translateX(-50%);
     z-index: 20;
   }
-  .pulse-emote-hover-wrap--above .pulse-emote-hover-preview {
-    bottom: calc(100% + 8px);
-    top: auto;
-    transform: translate(-50%, 4px) scale(0.96);
-  }
-  .pulse-emote-hover-wrap:hover .pulse-emote-hover-preview,
-  .pulse-seven-tv-option:focus-visible .pulse-emote-hover-preview {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-    visibility: visible;
+  .pulse-emote-hover-wrap:hover .pulse-emote-hover-preview {
+    display: grid;
+    justify-items: center;
   }
   .pulse-inspector-emote-row {
     border-radius: 8px;
@@ -1021,6 +1031,8 @@ export const shadowStyles = `
   .placement-sidebar.pulse-sidebar-panel .pulse-panel-body {
     height: 100%;
     overflow: auto;
+    /* Keep chart/rail wheel gestures from chaining into the Twitch page. */
+    overscroll-behavior: contain;
   }
   .sidebar-chat-only .pulse-panel-body {
     display: none !important;
@@ -1079,6 +1091,128 @@ export const shadowStyles = `
     box-shadow: none;
     overflow: visible;
   }
+  :host {
+    --pulse-motion-fast: 100ms;
+    --pulse-motion-interactive: 140ms;
+    --pulse-motion-data: 180ms;
+    --pulse-ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --pulse-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .pulse-chart-emote-marker {
+    align-items: center;
+    appearance: none;
+    background: rgba(9, 14, 20, 0.92);
+    border: 1px solid rgba(52, 211, 153, 0.65);
+    border-radius: 999px;
+    box-sizing: border-box;
+    color: ${theme.textPrimary};
+    cursor: pointer;
+    display: inline-flex;
+    height: 30px;
+    justify-content: center;
+    min-height: 30px;
+    min-width: 30px;
+    padding: 4px;
+    pointer-events: auto;
+    position: absolute;
+    transform: translate(-50%, -50%) scale(0.96);
+    transition: opacity var(--pulse-motion-data) var(--pulse-ease-out), transform var(--pulse-motion-interactive) var(--pulse-ease-out), border-color var(--pulse-motion-fast) var(--pulse-ease-standard);
+    z-index: 3;
+  }
+  .pulse-chart-emote-marker:hover,
+  .pulse-chart-emote-marker:focus-visible {
+    border-color: ${theme.liveSoft};
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+  .pulse-chart-emote-marker:focus-visible {
+    outline: 2px solid ${theme.accentSoft};
+    outline-offset: 2px;
+  }
+  .pulse-chart-emote-marker-count {
+    background: ${theme.accentStrong};
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 999px;
+    color: ${theme.onAccent};
+    font-size: 8px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 900;
+    line-height: 1;
+    max-width: 42px;
+    overflow: hidden;
+    padding: 2px 3px;
+    pointer-events: none;
+    position: absolute;
+    right: -9px;
+    text-overflow: ellipsis;
+    top: -8px;
+    white-space: nowrap;
+  }
+  .pulse-chart-emote-marker-tooltip {
+    background: rgba(7, 12, 20, 0.96);
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    border-radius: 7px;
+    color: ${theme.textPrimary};
+    display: grid;
+    font-size: 9px;
+    gap: 2px;
+    max-width: 170px;
+    padding: 5px 7px;
+    pointer-events: none;
+    position: absolute;
+    transform: translate(-50%, -100%);
+    white-space: nowrap;
+    z-index: 4;
+  }
+  .pulse-chart-emote-marker-tooltip span {
+    color: ${theme.textMuted};
+    font-variant-numeric: tabular-nums;
+  }
+  .pulse-chart-emote-marker-summary {
+    bottom: 2px;
+    color: ${theme.textMuted};
+    font-size: 8px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    pointer-events: none;
+    position: absolute;
+    right: 5px;
+    z-index: 2;
+  }
+  .pulse-settings-bottom-bar,
+  .pulse-settings-header-control {
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--pulse-motion-interactive) var(--pulse-ease-standard),
+      border-color var(--pulse-motion-fast) var(--pulse-ease-standard),
+      color var(--pulse-motion-fast) var(--pulse-ease-standard),
+      box-shadow var(--pulse-motion-fast) var(--pulse-ease-standard),
+      transform var(--pulse-motion-fast) var(--pulse-ease-out);
+  }
+  .pulse-settings-bottom-bar:hover,
+  .pulse-settings-header-control:hover {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.14) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.52) !important;
+    color: ${theme.textPrimary} !important;
+  }
+  .pulse-settings-bottom-bar:active,
+  .pulse-settings-header-control:active {
+    transform: translateY(1px);
+  }
+  .pulse-settings-bottom-bar:focus-visible,
+  .pulse-settings-header-control:focus-visible {
+    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.9);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 1px rgba(17, 17, 23, 0.95);
+  }
+  .pulse-settings-bottom-bar {
+    padding-bottom: max(9px, env(safe-area-inset-bottom)) !important;
+  }
+  .pulse-settings-header-control .pulse-settings-gear-icon {
+    transition: transform var(--pulse-motion-interactive) var(--pulse-ease-out);
+  }
+  .pulse-settings-header-control:hover .pulse-settings-gear-icon,
+  .pulse-settings-header-control:focus-visible .pulse-settings-gear-icon {
+    transform: rotate(9deg);
+  }
   .sc-chart-root .sc-chart-plot {
     transition: opacity 0.2s ease;
   }
@@ -1092,6 +1226,20 @@ export const shadowStyles = `
   @media (prefers-reduced-motion: reduce) {
     .sc-chart-root .sc-chart-plot,
     .sc-emote-plot-line {
+      transition: none !important;
+    }
+    .pulse-chart-emote-marker {
+      transition: none !important;
+      transform: translate(-50%, -50%);
+    }
+    .pulse-chart-emote-marker:hover,
+    .pulse-chart-emote-marker:focus-visible {
+      transform: translate(-50%, -50%);
+    }
+    .pulse-settings-bottom-bar,
+    .pulse-settings-header-control,
+    .pulse-settings-header-control .pulse-settings-gear-icon {
+      transform: none !important;
       transition: none !important;
     }
   }

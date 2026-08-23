@@ -3,6 +3,13 @@ import type { CSSProperties } from 'react'
 import { deriveLiveStats, formatHeatOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionEmote, PulsePayload } from '../shared/messages.ts'
 import {
+  fullHistoryActivationKey,
+  hasStableFullHistoryActivation,
+  hasValidatedFullHistory,
+  makeFullHistoryActivation,
+  type FullHistoryRequestResult,
+} from '../shared/fullHistoryAuth.ts'
+import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
   chartEmptyMessage,
@@ -10,13 +17,13 @@ import {
   emoteSelectionKey,
   findChartIndexByOffset,
   fullRollupsMissingStreamPrefix,
-  hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
   PLOT_PICKER_EMOTE_LIMIT,
   pruneUnavailableEmoteSelections,
   toggleEmotePlotKeys,
 } from './chatActivityEmotes.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
+import { safeGameTimeline } from './extensionChartAdapter.ts'
 import { downsampleRollupsForChart } from './extensionChartPoints.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
@@ -38,7 +45,7 @@ export interface RecapTimelineChartProps {
   sidebarFill?: boolean
   highlightedGameSegmentKey?: string | null
   onSelectPoint: (point: LiveHeatPoint) => void
-  onRequestFullRollups?: () => Promise<void>
+  onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }
 
 function formatCompactNumber(value: number): string {
@@ -60,19 +67,28 @@ export function RecapTimelineChart({
   onSelectPoint,
   onRequestFullRollups,
 }: RecapTimelineChartProps) {
-  const hasFullRollups = hasFullTimelineRollups(payload)
+  const activation = makeFullHistoryActivation(payload)
+  const activationKey = fullHistoryActivationKey(activation)
+  const hasFullRollups = hasValidatedFullHistory(payload, activation)
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
+  const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const fullTimelineRequestedRef = useRef(false)
   const onRequestFullRollupsRef = useRef(onRequestFullRollups)
-  const chartIdentity = `${payload.login}:${payload.streamId ?? ''}:${payload.vodId ?? ''}:${payload.startedAt ?? ''}`
+  const chartIdentity = `${activationKey}:${payload.startedAt ?? ''}`
   onRequestFullRollupsRef.current = onRequestFullRollups
 
   const currentOffsetSeconds = useMemo(
     () => recapStreamDurationSeconds(payload),
     [payload],
+  )
+
+  // Reject stale cross-stream timelines before they reach the chart overlay.
+  const recapGames = useMemo(
+    () => safeGameTimeline(payload.games, currentOffsetSeconds),
+    [payload.games, currentOffsetSeconds],
   )
 
   const minuteRollups = useMemo(() => {
@@ -186,30 +202,23 @@ export function RecapTimelineChart({
 
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
 
-  function handleClearChartHover(): void {
+  const handleClearChartHover = useCallback((): void => {
     setChartHoverOffsetSeconds(null)
-  }
+  }, [])
 
   useEffect(() => {
     fullTimelineRequestedRef.current = false
   }, [chartIdentity])
 
   useEffect(() => {
-    if (
-      (hasFullRollups && !fullRollupsMissingStreamPrefix(payload))
-      || fullTimelineRequestedRef.current
-    ) {
-      return
-    }
+    if (hasFullRollups || fullTimelineRequestedRef.current) return
+    if (!hasStableFullHistoryActivation(activation)) return
     const request = onRequestFullRollupsRef.current
     if (!request) return
     fullTimelineRequestedRef.current = true
     setTimelineLoading(true)
-    void request().finally(() => {
-      setTimelineLoading(false)
-      fullTimelineRequestedRef.current = false
-    })
-  }, [hasFullRollups, payload.streamId])
+    void request().finally(() => setTimelineLoading(false))
+  }, [activation, activationKey, hasFullRollups])
 
   useEffect(() => {
     setChartHoverOffsetSeconds(null)
@@ -218,10 +227,13 @@ export function RecapTimelineChart({
   }, [chartIdentity])
 
   useEffect(() => {
+    if (pinOffsetSeconds != null) {
+      setEmotePanelExpanded(false)
+    }
     setChartHoverOffsetSeconds(null)
   }, [pinOffsetSeconds])
 
-  function selectPointAtIndex(index: number): void {
+  const selectPointAtIndex = useCallback((index: number): void => {
     const rollup = displayRollups[index]
     if (!rollup) return
 
@@ -235,12 +247,12 @@ export function RecapTimelineChart({
         peaks: payload.peaks,
       }),
     )
-  }
+  }, [catalog, displayRollups, mergedMoments, minuteRollups, onSelectPoint, payload.peaks, payload.startedAt])
 
-  function handleChartSelect(index: number): void {
+  const handleChartSelect = useCallback((index: number): void => {
     selectPointAtIndex(index)
     setChartHoverOffsetSeconds(null)
-  }
+  }, [selectPointAtIndex])
 
   function toggleEmotePlot(emote: ExtensionEmote): void {
     const key = emoteSelectionKey(emote)
@@ -349,7 +361,9 @@ export function RecapTimelineChart({
         ) : null}
         <PulseOverviewChart
           rollups={displayRollups}
-          games={payload.games}
+          games={recapGames}
+          backendUrl={backendUrl}
+          interactionResetKey={`${payload.login}:${payload.streamId ?? payload.vodId ?? ''}`}
           durationSeconds={currentOffsetSeconds}
           streamStartedAt={payload.startedAt}
           height={chartHeight}
@@ -376,11 +390,15 @@ export function RecapTimelineChart({
 
       {topEmotesForPicker.length > 0 ? (
         <SevenTvEmotePanel
+          expanded={emotePanelExpanded}
+          onToggleExpanded={() => setEmotePanelExpanded(open => !open)}
           backendUrl={backendUrl}
           rollups={minuteRollups}
           topEmotes={topEmotesForPicker}
           selectedKeys={selectedEmoteKeys}
           onToggleEmote={toggleEmotePlot}
+          selectedOffsetSeconds={pinRollup?.offsetSeconds ?? null}
+          sidebarCompact
           selectedPlotColors={selectedPlotColors}
           maxSelected={MAX_PLOTTED_EMOTES}
           rollupsLoading={timelineLoadingFlag}

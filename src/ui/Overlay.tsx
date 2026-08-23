@@ -8,10 +8,12 @@ import {
 } from '@streampulse/pulse-core'
 import { CollapsedPill } from './CollapsedPill.tsx'
 import { MiniDock } from './MiniDock.tsx'
-import { LiveMomentInteractionSurface } from './LiveMomentInteractionSurface.tsx'
+import { LiveStatsBand } from './LiveStatsBand.tsx'
+import { MostReactedSection } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
+import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
 import type { ExtensionClip, ExtensionCoverageTierResponse, PulseBackfillJob, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
@@ -45,7 +47,12 @@ import {
   isAbortError,
   type BackfillOperationToken,
 } from './backfillOperation.ts'
-import { sameFullHistoryActivation } from '../shared/fullHistoryAuth.ts'
+import {
+  hasStableFullHistoryActivation,
+  hasValidatedFullHistory,
+  sameFullHistoryActivation,
+  type FullHistoryRequestResult,
+} from '../shared/fullHistoryAuth.ts'
 import {
   isTwitchChattersOpen,
   readTwitchCollapseLabel,
@@ -268,6 +275,9 @@ function OverlayMain({
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
   const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
+  const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
+  const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
+  const [chartPreviewOffset, setChartPreviewOffset] = useState<number | null>(null)
   const [alwaysTrackedLogins, setAlwaysTrackedLogins] = useState<string[]>([])
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
@@ -359,6 +369,22 @@ function OverlayMain({
       setFullTimeline(false)
     }
   }
+
+  const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
+    setMostReactedPinOffset(offsetSeconds)
+    if (offsetSeconds != null) {
+      setChartPinOffset(offsetSeconds)
+      setChartPreviewOffset(null)
+    }
+  }, [])
+
+  const handleChartPin = useCallback((offsetSeconds: number | null) => {
+    setChartPinOffset(offsetSeconds)
+    if (offsetSeconds != null) {
+      setMostReactedPinOffset(offsetSeconds)
+      setChartPreviewOffset(null)
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -468,6 +494,9 @@ function OverlayMain({
     setMissedJob(null)
     setCoverageCheckError(null)
     setPanelView('pulse')
+    setChartPinOffset(null)
+    setMostReactedPinOffset(null)
+    setChartPreviewOffset(null)
   }, [payload?.streamId, payload?.login])
 
   const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
@@ -610,8 +639,10 @@ function OverlayMain({
       const { response, payload: next } = await fetchPulseTransport(full)
       if (op && !tokenIsLive(op)) return null
       if (full && response) {
-        applyPulseResponse(response as PulseUpdateMessage, op)
-        if (!op || tokenIsLive(op)) setFullTimeline(true)
+        const applied = applyPulseResponse(response as PulseUpdateMessage, op)
+        if ((!op || tokenIsLive(op)) && hasValidatedFullHistory(applied, currentActivation())) {
+          setFullTimeline(true)
+        }
       }
       return next
     } finally {
@@ -1054,7 +1085,6 @@ function OverlayMain({
   }
 
   async function loadStreamFromStart(): Promise<void> {
-    setFullTimeline(true)
     setNotice(null)
     void requestFullTimeline()
     // Seeking the current playback surface must not wait for optional archive
@@ -1066,7 +1096,6 @@ function OverlayMain({
   }
 
   function seekToStreamStart(): void {
-    setFullTimeline(true)
     setNotice(null)
     const vodId = payload?.vodId ?? undefined
     const offset = 0
@@ -1180,20 +1209,35 @@ function OverlayMain({
     })
   }
 
-  async function requestFullTimeline(): Promise<void> {
-    const token = backfillOpsRef.current.begin(currentActivation())
+  async function requestFullTimeline(): Promise<FullHistoryRequestResult> {
+    const activation = currentActivation()
+    if (!hasStableFullHistoryActivation(activation)) {
+      return { ok: false, reason: 'activation_unavailable' }
+    }
+    const token = backfillOpsRef.current.begin(activation)
     try {
       const { response } = await fetchPulseTransport(true)
-      if (!tokenIsLive(token)) return
-      if (response) applyPulseResponse(response as PulseUpdateMessage, token)
-      if (!tokenIsLive(token)) return
+      if (!tokenIsLive(token)) return { ok: false, reason: 'activation_changed' }
+      if (!response || typeof response !== 'object' || !('type' in response)) {
+        return { ok: false, reason: 'missing_payload' }
+      }
+      const next = applyPulseResponse(response as PulseUpdateMessage, token)
+      if (!tokenIsLive(token)) return { ok: false, reason: 'activation_changed' }
+      if (!next) return { ok: false, reason: 'missing_payload' }
+      if (!hasValidatedFullHistory(next, activation)) {
+        return { ok: false, reason: 'incomplete_history' }
+      }
       setFullTimeline(true)
+      return { ok: true, payload: next }
     } catch (err) {
-      if (!tokenIsLive(token) || isAbortError(err)) return
+      if (!tokenIsLive(token) || isAbortError(err)) {
+        return { ok: false, reason: 'activation_changed' }
+      }
       setNotice({
         kind: 'warn',
         text: err instanceof Error ? err.message : 'Could not load full stream chart.',
       })
+      return { ok: false, reason: 'request_failed' }
     }
   }
 
@@ -1452,40 +1496,51 @@ function OverlayMain({
       {!error && !isVodPage && payload && pulseSupported && pulseLiveAccess.state === 'full_live' ? (
         <>
           {displayPayload && (panelSections?.showLiveStatsBand || panelSections?.showMostReacted) ? (
-            <LiveMomentInteractionSurface
-              liveStatsProps={panelSections?.showLiveStatsBand ? {
-                  payload: displayPayload,
-                  backendUrl,
-                  sidebarFill: sidebarSnapped,
-                  compact: metricsCompact && !sidebarSnapped,
-                  coverageStartOffsetSeconds: coverageStart,
-                  currentOffsetSeconds: payload.currentOffsetSeconds,
-                  isLive: uiIsLive,
-                  fullTimeline,
-                  showLoadFromStart: !hostedBackend && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking }),
-                  loadFromStartBusy: missedBusy,
-                  onLoadFromStart: () => void loadStreamFromStart(),
-                  onJumpToOffset: jumpToOffset,
-                  onOpenAnalytics: openAnalytics,
-                  onOpenFullAnalytics: () => openAnalytics(),
-                  onRequestFullTimeline: requestFullTimeline,
-                  onChartWindowChange: handleChartWindowChange,
-                  onSaveMoment: point => void saveMoment(point),
-                  saveMomentBusy: saveBusy,
-                  hasVodContext: Boolean(payload?.vodId ?? context.vodId),
-                  coverageTier: coverageTierState?.coverageTier ?? null,
-                } : null}
-              mostReactedProps={panelSections?.showMostReacted ? {
-                  payload: displayPayload,
-                  backendUrl,
-                  sidebarFill: sidebarSnapped,
-                  onJump: jumpMoment,
-                  onSave: point => void saveMoment(point),
-                  onAnalytics: openAnalyticsForMoment,
-                  saveBusy,
-                  hasVodContext: Boolean(payload?.vodId ?? context.vodId),
-                } : null}
-            />
+            <div>
+              {panelSections?.showLiveStatsBand ? (
+                <LiveStatsBand
+                  payload={displayPayload}
+                  backendUrl={backendUrl}
+                  sidebarFill={sidebarSnapped}
+                  compact={metricsCompact && !sidebarSnapped}
+                  coverageStartOffsetSeconds={coverageStart}
+                  currentOffsetSeconds={payload.currentOffsetSeconds}
+                  isLive={uiIsLive}
+                  fullTimeline={fullTimeline}
+                  showLoadFromStart={!hostedBackend && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking })}
+                  loadFromStartBusy={missedBusy}
+                  onLoadFromStart={() => void loadStreamFromStart()}
+                  onJumpToOffset={jumpToOffset}
+                  onOpenAnalytics={openAnalytics}
+                  onOpenFullAnalytics={() => openAnalytics()}
+                  onRequestFullTimeline={requestFullTimeline}
+                  onChartWindowChange={handleChartWindowChange}
+                  onPinOffset={handleChartPin}
+                  pinOffsetSeconds={chartPinOffset}
+                  onSaveMoment={point => void saveMoment(point)}
+                  saveMomentBusy={saveBusy}
+                  previewOffsetSeconds={chartPreviewOffset}
+                  hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
+                  coverageTier={coverageTierState?.coverageTier ?? null}
+                />
+              ) : null}
+
+              {panelSections?.showMostReacted ? (
+                <MostReactedSection
+                  payload={displayPayload}
+                  backendUrl={backendUrl}
+                  sidebarFill={sidebarSnapped}
+                  pinnedOffsetSeconds={mostReactedPinOffset}
+                  onJump={jumpMoment}
+                  onSave={point => void saveMoment(point)}
+                  onAnalytics={openAnalyticsForMoment}
+                  onHighlightOffset={setChartPreviewOffset}
+                  onPinOffset={handleMostReactedPin}
+                  saveBusy={saveBusy}
+                  hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
+                />
+              ) : null}
+            </div>
           ) : null}
 
           {payload && pulseLiveAccess.state === 'full_live' && !hostedBackend && shouldShowMissedMomentsBanner(payload) ? (
@@ -1560,18 +1615,19 @@ function OverlayMain({
           ) : null}
 
           {sidebarBodyOnly && panelView === 'pulse' && !sidebarChatOnly ? (
-            <div style={styles.settingsFabDock}>
-              <button
-                type="button"
-                className="pulse-settings-gear-fab"
-                style={styles.settingsGearFab}
-                aria-label="Open settings"
-                title="Settings"
-                onClick={() => setPanelView('settings')}
-              >
-                <SettingsGearIcon />
-              </button>
-            </div>
+            <button
+              type="button"
+              className="pulse-settings-bottom-bar"
+              data-pulse-settings-entry="bottom-bar"
+              style={styles.settingsBottomBar}
+              aria-label="Open settings"
+              title="Settings"
+              onClick={() => setPanelView('settings')}
+            >
+              <SettingsGearIcon size={16} />
+              <span>Settings</span>
+              <span aria-hidden="true">›</span>
+            </button>
           ) : null}
         </>
       ) : null}
@@ -1699,7 +1755,18 @@ function StreamPulseHeader({
         <div style={iconRowStyle}>
           {hideUtilityActions ? null : (
             <>
-              <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onSettings} title="Settings">Settings</button>
+              <button
+                type="button"
+                className="pulse-settings-header-control"
+                data-pulse-settings-entry="header"
+                style={{ ...(sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton), ...styles.settingsHeaderButton }}
+                onClick={onSettings}
+                aria-label="Open settings"
+                title="Settings"
+              >
+                <SettingsGearIcon size={14} />
+                <span>Settings</span>
+              </button>
               <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onMini} title="Mini mode">Mini</button>
               <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onHide} title="Hide overlay">Hide</button>
             </>
@@ -2119,6 +2186,7 @@ const styles: Record<string, CSSProperties> = {
   trackingButtonFull: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', borderRadius: 999, color: 'var(--pulse-accent-soft, #c4b5fd)', display: 'block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '8px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
   headerIconButton: { background: 'transparent', border: 0, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 4px' },
   headerIconButtonFull: { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '8px 6px', textAlign: 'center', width: '100%' },
+  settingsHeaderButton: { alignItems: 'center', display: 'inline-flex', gap: 4, justifyContent: 'center', whiteSpace: 'nowrap' },
   autoUpdateLabel: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8 },
   autoUpdateLabelFull: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8, justifyContent: 'space-between', width: '100%' },
   autoUpdateSwitch: { border: 0, borderRadius: 999, cursor: 'pointer', flexShrink: 0, height: 22, position: 'relative', width: 36 },
@@ -2167,6 +2235,7 @@ const styles: Record<string, CSSProperties> = {
   clipViews: { color: theme.textMuted, fontSize: 11, fontWeight: 700 },
   collectingBadge: { background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 999, color: '#fde68a', display: 'inline-block', fontSize: 10, fontWeight: 800, padding: '2px 8px', width: 'fit-content' },
   footerActionsSingle: { display: 'grid', gap: 8, marginTop: 12 },
+  settingsBottomBar: { alignItems: 'center', background: 'rgba(17, 17, 23, 0.96)', border: `1px solid ${theme.borderAccent}`, borderRadius: 8, boxSizing: 'border-box', color: theme.textSecondary, cursor: 'pointer', display: 'flex', fontSize: 11, fontWeight: 800, gap: 8, justifyContent: 'space-between', marginTop: 8, minHeight: 40, padding: '9px 11px', textAlign: 'left', width: '100%' },
   settingsFabDock: {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -2186,22 +2255,4 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'center',
     width: 34,
   },
-}
-
-function SettingsGearIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M8 1.8 9.2 3.1l1.7-.3.8 1.6 1.6.8-.3 1.7 1.3 1.2v1.8L13.2 12l.3 1.7-1.6.8-.8 1.6-1.7-.3L8 16.2l-1.2-1.3-1.7.3-.8-1.6-1.6-.8.3-1.7L2.8 12V10.2l1.3-1.2-.3-1.7 1.6-.8.8-1.6 1.7.3L8 1.8Z"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
 }

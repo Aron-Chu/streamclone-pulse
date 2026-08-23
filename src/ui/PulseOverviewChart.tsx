@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, RefObject } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatCount } from './mostReacted.ts'
 import {
   GameSegmentOverlay,
   gameSegmentKey,
@@ -22,7 +23,6 @@ import {
   chartViewerValue,
   extendSeriesToTrailingEdge,
   extendViewerSeriesToTrailingEdge,
-  indexFromChartClick,
   minuteEmoteTotal,
   overviewBarWidth,
   plotXForIndex,
@@ -34,7 +34,12 @@ import {
   smoothSeriesValues,
   trendSmoothingWindow,
 } from './chartRollupUtils.ts'
+import { resolveChartCrosshairMode } from './chartCrosshair.ts'
 import { prefersReducedMotion, useSmoothedScalar } from './motion/useSmoothedScalar.ts'
+import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
+import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, viewportBuckets, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
+import { buildPlottedEmoteMarkerLayout, type PlottedEmoteMarker } from './chartEmoteMarkers.ts'
+import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 
 export interface PulseOverviewChartProps {
   rollups: ExtensionRollup[]
@@ -63,6 +68,12 @@ export interface PulseOverviewChartProps {
   focusedSeriesKey?: string | null
   onFocusedSeriesKeyChange?: (key: string | null) => void
   highlightedGameSegmentKey?: string | null
+  viewport?: ChartViewport
+  onViewportChange?: (viewport: ChartViewport) => void
+  onJumpToOffset?: (offsetSeconds: number) => void
+  backendUrl?: string
+  /** Reset ephemeral chart interaction when the live stream/channel changes. */
+  interactionResetKey?: string
 }
 
 const DEFAULT_WIDTH = 320
@@ -81,15 +92,18 @@ const SIDEBAR_EMOTE_TRACE_FRACTION = 0.18
 const SIDEBAR_EMOTE_BARS_FRACTION = 0.32
 const ACTIVITY_CHAT_FRACTION_EXPANDED = 0.62
 const ACTIVITY_EMOTE_BARS_FRACTION_EXPANDED = 0.26
-const CHAT_TREND_STROKE = 2.8
-const EMOTE_TREND_STROKE = 2.5
+const RESTING_TREND_STROKE = 2
+const CHAT_TREND_STROKE = RESTING_TREND_STROKE
+const EMOTE_TREND_STROKE = RESTING_TREND_STROKE
 const TRACE_LANE_MIN_HEIGHT = 16
 const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
 const FOCUS_DIM_FACTOR = 0.14
 const FOCUS_LANE_BOOST = 0.78
-const SCRUB_TRANSITION_MS = 420
-const SCRUB_TRANSITION_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
+// Hover chrome fades in/out with one short ease-out; plotted data geometry is
+// always immediate (no line morphing, no delayed data animation).
+const MARKER_FADE_MS = 140
+const MARKER_FADE_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
 const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.52)'
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
@@ -143,6 +157,10 @@ function rebalanceFractionsForFocus(
 
 function interpolateNumber(from: number, to: number, progress: number): number {
   return from + (to - from) * progress
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
 }
 
 function plotBandForActivityZone(
@@ -201,39 +219,70 @@ function selectionColumnRect(
   return { x, y: top, width: barWidth, height: Math.max(1, bottom - top), fill }
 }
 
-export function HoverBucketBand({
-  x,
-  width,
-  top,
-  bottom,
-  muted = false,
-}: {
+type SignalBar = {
+  key: string
   x: number
+  y: number
   width: number
-  top: number
-  bottom: number
-  muted?: boolean
-}) {
-  return (
-    <g
-      data-chart-hover-band={muted ? 'muted' : 'solo'}
-      data-chart-hover-x={x}
-      transform={`translate(${x} 0)`}
-    >
-      <rect
-        x={0}
-        y={top}
-        width={width}
-        height={Math.max(1, bottom - top)}
-        fill={muted ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.07)'}
-        pointerEvents="none"
-      />
-    </g>
-  )
+  height: number
+  hasValue: boolean
 }
 
-export function PulseOverviewChart({
-  rollups,
+const SignalBarLane = memo(function SignalBarLane({
+  bars,
+  seriesKey,
+  color,
+  pinIndex,
+  activeIndex,
+  focusedSeriesKey,
+  restAlpha,
+}: {
+  bars: SignalBar[]
+  seriesKey: 'chat' | 'emotes'
+  color: string
+  pinIndex: number | null
+  activeIndex: number | null
+  focusedSeriesKey: string | null
+  restAlpha: number
+}) {
+  return (
+    <>
+      {bars.map((bar, index) => {
+        const { key, hasValue: _hasValue, ...geometry } = bar
+        const base = (() => {
+          if (!bar.hasValue) return CHART_BAR_ALPHA.empty
+          if (pinIndex === index) return CHART_BAR_ALPHA.selectedSpike
+          return chartBarBucketOpacity({
+            index,
+            activeIndex,
+            baseOpacity: restAlpha,
+            highlightOpacity: Math.min(1, restAlpha * 2.4),
+            fadeFutureAfterActive: true,
+          })
+        })()
+        const opacity = seriesFocusOpacity(focusedSeriesKey, seriesKey, base)
+        return (
+          <rect
+            key={key}
+            {...geometry}
+            data-chart-signal-bar={seriesKey}
+            fill={color}
+            opacity={opacity}
+            pointerEvents="none"
+          />
+        )
+      })}
+    </>
+  )
+})
+
+const DIRECT_HOVER_MARKER_STYLE: CSSProperties = {
+  opacity: 0,
+  pointerEvents: 'none',
+}
+
+function PulseOverviewChartImpl({
+  rollups: sourceRollups,
   games = [],
   durationSeconds = 0,
   streamStartedAt,
@@ -257,13 +306,98 @@ export function PulseOverviewChart({
   focusedSeriesKey = null,
   onFocusedSeriesKeyChange,
   highlightedGameSegmentKey = null,
+  viewport: externalViewport,
+  onViewportChange,
+  onJumpToOffset,
+  backendUrl = '',
+  interactionResetKey,
 }: PulseOverviewChartProps) {
   const chartId = useId().replace(/:/g, '')
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const internalViewport: ChartViewport = externalViewport ?? { startSeconds: 0, endSeconds: Math.max(0, durationSeconds) }
+  // Without an external viewport the chart owns sampling: cap the raw timeline so
+  // full-range rendering stays bounded while zoom (external viewport) can recover
+  // detail from the raw source.
+  const visibleRollups = useMemo(() => externalViewport ? viewportBuckets(sourceRollups, internalViewport, EXTENSION_CHART_MAX_POINTS) : downsampleRollupsForChart(sourceRollups), [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds])
+  const rollups = visibleRollups
+  // Selection/preview props arrive as indexes into the FULL source rollup list,
+  // while everything below renders against the viewport-filtered list.
+  // Map between the two domains by offsetSeconds so pins stay accurate when zoomed.
+  const fullIndexByOffset = useMemo(() => {
+    const map = new Map<number, number>()
+    sourceRollups.forEach((r, i) => {
+      if (!map.has(r.offsetSeconds)) map.set(r.offsetSeconds, i)
+    })
+    return map
+  }, [sourceRollups])
+  const fullIndexFromVisible = useCallback(
+    (vi: number | null): number | null => {
+      if (vi == null || vi < 0 || vi >= visibleRollups.length) return null
+      return fullIndexByOffset.get(visibleRollups[vi].offsetSeconds) ?? null
+    },
+    [visibleRollups, fullIndexByOffset],
+  )
+  const directHoverMarkerRef = useRef<SVGLineElement | null>(null)
+  const [focusedEmoteMarkerKey, setFocusedEmoteMarkerKey] = useState<string | null>(null)
   const [width, setWidth] = useState(DEFAULT_WIDTH)
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
-  const pendingHoverIndexRef = useRef<number | null>(null)
+  // Pointer previews are committed to lightweight SVG chrome imperatively
+  // (Aug-16 hover shell): keeping them out of React prevents every hovered
+  // bucket from reconciling the complete chart subtree.
+  const hoverIndexRef = useRef<number | null>(null)
+  const interactionLayerRef = useRef<SVGGElement | null>(null)
+  const emoteBarsGroupRef = useRef<SVGGElement | null>(null)
+  const chatBarsGroupRef = useRef<SVGGElement | null>(null)
+  const readoutGroupRef = useRef<SVGGElement | null>(null)
+  const readoutRectRef = useRef<SVGRectElement | null>(null)
+  const readoutTextRef = useRef<SVGTextElement | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const pendingHoverTargetRef = useRef<{ clientX: number } | null>(null)
   const hoverFrameRef = useRef<number | null>(null)
+  const captureBoundsRef = useRef<{ left: number; width: number } | null>(null)
+  const scrubberRef = useRef<SVGRectElement | null>(null)
+  const hoverOffsetChangeRef = useRef(onHoverOffsetChange)
+  hoverOffsetChangeRef.current = onHoverOffsetChange
+  // Latest viewport state for the native non-passive wheel listener below.
+  // React registers root wheel listeners as passive, so onWheel preventDefault()
+  // is ignored and zoom gestures would scroll the host Twitch page.
+  const wheelStateRef = useRef({ onViewportChange, internalViewport, durationSeconds, width })
+  wheelStateRef.current = { onViewportChange, internalViewport, durationSeconds, width }
+
+  useIsomorphicLayoutEffect(() => {
+    const node = containerRef.current
+    if (!node || typeof node.addEventListener !== 'function') return
+    const handleWheel = (event: WheelEvent) => {
+      const state = wheelStateRef.current
+      if (!state.onViewportChange || state.durationSeconds <= 0 || event.ctrlKey) return
+      // Cancel and contain BEFORE any zoom math — including at zoom limits — so
+      // the gesture never chains into the page scrollport.
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = node.getBoundingClientRect()
+      const plotWidth = Math.max(1, state.width - PAD_LEFT - PAD_RIGHT)
+      const fraction = clampNumber(
+        (event.clientX - rect.left - PAD_LEFT) / plotWidth,
+        0,
+        1,
+      )
+      const anchorSeconds =
+        state.internalViewport.startSeconds +
+        fraction * (state.internalViewport.endSeconds - state.internalViewport.startSeconds)
+      state.onViewportChange(
+        wheelZoom({
+          viewport: state.internalViewport,
+          deltaY: event.deltaY,
+          deltaMode: event.deltaMode,
+          anchorSeconds,
+          durationSeconds: state.durationSeconds,
+        }),
+      )
+    }
+    node.addEventListener('wheel', handleWheel, { passive: false })
+    return () => node.removeEventListener('wheel', handleWheel)
+    // Attach once; handler reads live state through the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useIsomorphicLayoutEffect(() => {
     const node = containerRef.current
@@ -274,6 +408,7 @@ export function PulseOverviewChart({
       const next = Math.round(raw)
       if (next === lastRounded) return
       lastRounded = next
+      captureBoundsRef.current = null
       // Tiny pre-layout widths (e.g. 1px) make plotWidth = width-pads = -15 and SVG rects throw.
       setWidth(next >= minPlotWidth ? next : DEFAULT_WIDTH)
     }
@@ -290,47 +425,30 @@ export function PulseOverviewChart({
     return () => {
       if (hoverFrameRef.current != null) {
         cancelAnimationFrame(hoverFrameRef.current)
+        hoverFrameRef.current = null
+      }
+      pendingHoverTargetRef.current = null
+      captureBoundsRef.current = null
+      if (hoverIndexRef.current != null) {
+        hoverIndexRef.current = null
+        applyInspectionDOM(null)
+        hoverOffsetChangeRef.current?.(null)
       }
     }
-  }, [])
+    // The reset key is the only dependency by design. A parent callback may be
+    // recreated during polling, but that must not clear an active hover.
+  }, [interactionResetKey])
 
   useEffect(() => {
-    function handlePointerDown(event: Event): void {
+    function handlePointerDown(event: PointerEvent): void {
       const boundary = clearSelectionBoundaryRef?.current ?? containerRef.current
-      if (!boundary) return
-      const path = event.composedPath()
-      const rootNode = boundary.getRootNode()
-      const ownerShadowRoot =
-        rootNode && 'host' in rootNode ? rootNode as ShadowRoot : null
-      const insideBoundary =
-        boundary.contains(event.target as Node) || path.includes(boundary)
-      // A document listener sees a closed-shadow-root event with the host as
-      // its target. The root listener below handles the real boundary check;
-      // skip the retargeted document copy so an internal row click can toggle.
-      if (
-        insideBoundary
-        || (ownerShadowRoot && path.includes(ownerShadowRoot.host))
-      ) return
+      if (!boundary || boundary.contains(event.target as Node)) return
       if (event.defaultPrevented) return
-      setHoverIndex(null)
-      onHoverOffsetChange?.(null)
+      clearHoverPreview()
       onClearSelection?.()
     }
-    const boundary = clearSelectionBoundaryRef?.current ?? containerRef.current
-    const rootNode = boundary?.getRootNode()
-    const ownerShadowRoot =
-      rootNode && 'host' in rootNode ? rootNode as ShadowRoot : null
-    const ownerTarget = ownerShadowRoot ?? document
-    ownerTarget.addEventListener('pointerdown', handlePointerDown)
-    if (ownerTarget !== document) {
-      document.addEventListener('pointerdown', handlePointerDown)
-    }
-    return () => {
-      ownerTarget.removeEventListener('pointerdown', handlePointerDown)
-      if (ownerTarget !== document) {
-        document.removeEventListener('pointerdown', handlePointerDown)
-      }
-    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [clearSelectionBoundaryRef, onClearSelection, onHoverOffsetChange])
 
   const timelineDuration = useMemo(
@@ -341,13 +459,10 @@ export function PulseOverviewChart({
   const chartGames = useMemo((): ChartGameSegment[] => {
     const normalized = normalizeChartGameSegments(
       (games ?? []).map((game, index) => ({
-        id: game.id ?? index,
+        id: index,
         gameName: game.gameName,
-        categoryId: game.categoryId,
-        boxArtUrl: game.boxArtUrl,
         offsetSeconds: game.offsetSeconds,
         durationSeconds: game.durationSeconds,
-        source: game.source,
       })),
       timelineDuration,
     )
@@ -554,6 +669,46 @@ export function PulseOverviewChart({
   const emoteLaneBottom = emoteLane.bandBottom
   const emoteLaneHeight = Math.max(8, emoteLane.bandHeight)
 
+  // Markers use the raw source so long-session downsampling cannot silently
+  // discard emote totals. Their horizontal domain matches the rendered
+  // viewport; pixel-space cells keep the overlay bounded at narrow widths.
+  const emoteMarkerDomain = useMemo(() => {
+    const finiteOffsets = sourceRollups
+      .map(rollup => rollup.offsetSeconds)
+      .filter(offsetSeconds => Number.isFinite(offsetSeconds))
+    const first = finiteOffsets[0] ?? 0
+    const last = finiteOffsets[finiteOffsets.length - 1] ?? first
+    return {
+      from: externalViewport ? internalViewport.startSeconds : first,
+      to: externalViewport
+        ? internalViewport.endSeconds
+        : Math.max(durationSeconds, last + 60),
+    }
+  }, [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds, durationSeconds])
+  const emoteMarkerLayout = useMemo(
+    () => buildPlottedEmoteMarkerLayout(sourceRollups, {
+      pixelWidth: plotWidth,
+      fromOffsetSeconds: emoteMarkerDomain.from,
+      toOffsetSeconds: emoteMarkerDomain.to,
+      markerSpacingPx: 28,
+      maxMarkers: 32,
+      maxLanes: 2,
+    }),
+    [sourceRollups, plotWidth, emoteMarkerDomain.from, emoteMarkerDomain.to],
+  )
+  const emoteMarkerPositions = useMemo(
+    () => emoteMarkerLayout.markers.map(marker => ({
+      marker,
+      x: PAD_LEFT + marker.xFraction * plotWidth,
+      y: Math.min(emoteLaneBottom - 8, emoteLaneTop + 9 + marker.lane * 13),
+      stemY: emoteLaneBottom - 2,
+    })),
+    [emoteMarkerLayout.markers, plotWidth, emoteLaneTop, emoteLaneBottom],
+  )
+  const focusedEmoteMarker = focusedEmoteMarkerKey == null
+    ? null
+    : emoteMarkerLayout.markers.find(marker => marker.key === focusedEmoteMarkerKey) ?? null
+
   const viewerAreaPath = useMemo(() => {
     if (viewerMax <= 0) return ''
     return areaPathInBand(
@@ -666,18 +821,46 @@ export function PulseOverviewChart({
     )
   }, [emoteDetailValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
 
-  const n = rollups.length
-  const pinIndex = selectedIndex ?? null
+  const n = visibleRollups.length
+
+  // Parent selection/preview props are FULL-domain indexes; render them in the
+  // visible viewport domain by offset lookup (visible ⇄ full mapping both ways).
+  const visibleIndexByOffset = useMemo(() => {
+    const map = new Map<number, number>()
+    visibleRollups.forEach((rollup, index) => {
+      if (!map.has(rollup.offsetSeconds)) map.set(rollup.offsetSeconds, index)
+    })
+    return map
+  }, [visibleRollups])
+  const visibleIndexFromFull = useCallback(
+    (fullIdx: number | null | undefined): number | null => {
+      if (fullIdx == null) return null
+      const rollup = sourceRollups[fullIdx]
+      if (!rollup) return null
+      return visibleIndexByOffset.get(rollup.offsetSeconds) ?? null
+    },
+    [sourceRollups, visibleIndexByOffset],
+  )
+
+  const pinIndex = visibleIndexFromFull(selectedIndex ?? null)
+  const previewVisibleIndex = visibleIndexFromFull(previewIndex ?? null)
   const listPreviewIndex =
-    previewIndex != null && previewIndex !== pinIndex ? previewIndex : null
-  const activeIndex = pinIndex ?? listPreviewIndex ?? hoverIndex ?? previewIndex
-  const hoverPreviewIndex =
-    hoverIndex != null && hoverIndex !== pinIndex && hoverIndex !== listPreviewIndex
-      ? hoverIndex
-      : null
-  const hovering = hoverIndex != null || listPreviewIndex != null
+    previewVisibleIndex != null && previewVisibleIndex !== pinIndex ? previewVisibleIndex : null
+
+  const activeIndex = pinIndex ?? listPreviewIndex
+  // Raw past/future detail paths render only for a committed inspection (pin or
+  // legend/preview). Direct pointer hover reveals marker/bars/readout imperatively
+  // while keeping the single smoothed line geometry — no double-painted underlay,
+  // and no React reconciliation per hovered bucket.
+  const detailActive = pinIndex != null || listPreviewIndex != null
+  // Full-stream overview: attenuate resting signal strength so the dense full-range
+  // timeline stays calm; zoomed ranges keep full strength.
+  const viewportSpan = internalViewport.endSeconds - internalViewport.startSeconds
+  const overviewRange =
+    externalViewport != null &&
+    durationSeconds > 0 &&
+    viewportSpan >= Math.max(1, durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS)
   const motionEnabled = !reducedMotion && !prefersReducedMotion()
-  const scrubActive = hovering || pinIndex != null
   const scrubX =
     activeIndex != null && n > 0
       ? plotXForIndex(activeIndex, n, PAD_LEFT, plotWidth)
@@ -685,15 +868,16 @@ export function PulseOverviewChart({
   const scrubPastWidth = Math.max(0, Math.min(plotWidth, scrubX - PAD_LEFT + 1))
   const scrubFutureX = Math.max(PAD_LEFT, Math.min(width - PAD_RIGHT, scrubX))
   const scrubFutureWidth = Math.max(0, width - PAD_RIGHT - scrubFutureX)
-  const scrubTransition = motionEnabled
-    ? [
-        `opacity ${SCRUB_TRANSITION_MS}ms ${SCRUB_TRANSITION_EASING}`,
-        `transform ${SCRUB_TRANSITION_MS}ms ${SCRUB_TRANSITION_EASING}`,
-      ].join(', ')
+  const markerFade = motionEnabled
+    ? `opacity ${MARKER_FADE_MS}ms ${MARKER_FADE_EASING}`
     : undefined
-  const interactionLayerOpacity = scrubActive ? 1 : 0
-  const activeTimeLabel =
-    activeIndex != null ? formatHeatOffset(rollups[activeIndex]?.offsetSeconds ?? 0) : ''
+  const interactionLayerOpacity = activeIndex != null || highlightedGamePlotBounds != null ? 1 : 0
+  const activeRollup = activeIndex != null ? visibleRollups[activeIndex] : undefined
+  const activeViewerValue = activeIndex != null ? viewers[activeIndex] : null
+  const activeTimeLabel = activeRollup
+    ? formatHeatOffset(activeRollup.offsetSeconds) +
+      (activeViewerValue != null ? ` · ${formatCount(activeViewerValue)}` : '')
+    : ''
   const activeTimeLabelWidth = Math.max(34, activeTimeLabel.length * 5.5 + 12)
   const activeTimeLabelX = Math.max(
     PAD_LEFT,
@@ -710,9 +894,24 @@ export function PulseOverviewChart({
     scrubPastClip: `${chartId}-scrub-past-clip`,
     scrubFutureClip: `${chartId}-scrub-future-clip`,
   }
+  // Overlay series values are aligned to the FULL rollup list by the parent; remap
+  // them into the visible viewport domain so traces stay on the right minutes.
+  const visibleOverlayLines = useMemo(
+    () => {
+      if (!externalViewport) return overlayLines
+      return overlayLines.map(series => ({
+        ...series,
+        values: visibleRollups.map(r => {
+          const fi = fullIndexByOffset.get(r.offsetSeconds)
+          return fi == null ? 0 : (series.values[fi] ?? 0)
+        }),
+      }))
+    },
+    [overlayLines, externalViewport, visibleRollups, fullIndexByOffset],
+  )
   const dashedOverlays = useMemo(
-    () => overlayLines.filter(series => series.dashed),
-    [overlayLines],
+    () => visibleOverlayLines.filter(series => series.dashed),
+    [visibleOverlayLines],
   )
 
   const traceAxis = useMemo(
@@ -768,23 +967,6 @@ export function PulseOverviewChart({
     traceLaneBottom,
   ])
 
-  const signalBarOpacity = (seriesKey: 'chat' | 'emotes', index: number, hasValue: boolean): number => {
-    if (!scrubActive) return 0
-    const base = (() => {
-      if (!hasValue) return CHART_BAR_ALPHA.empty
-      if (pinIndex === index) return CHART_BAR_ALPHA.selectedSpike
-      if (hoverPreviewIndex === index) return CHART_BAR_ALPHA.selected
-      return chartBarBucketOpacity({
-        index,
-        activeIndex,
-        baseOpacity: CHART_BAR_ALPHA.resting,
-        highlightOpacity: CHART_BAR_ALPHA.spike,
-        fadeFutureAfterActive: true,
-      })
-    })()
-    return seriesFocusOpacity(focusedSeriesKey, seriesKey, base)
-  }
-
   const toggleSeriesFocus = useCallback((seriesKey: string) => {
     if (!onFocusedSeriesKeyChange) return
     onFocusedSeriesKeyChange(focusedSeriesKey === seriesKey ? null : seriesKey)
@@ -800,22 +982,12 @@ export function PulseOverviewChart({
   )
   const hoverColumn = pinIndex == null
     ? selectionColumnRect(
-      hoverPreviewIndex,
+      listPreviewIndex,
       n,
       plotWidth,
       crosshairTop,
       crosshairBottom,
       'rgba(255, 255, 255, 0.06)',
-    )
-    : null
-  const ghostColumn = pinIndex != null
-    ? selectionColumnRect(
-      listPreviewIndex ?? hoverPreviewIndex,
-      n,
-      plotWidth,
-      crosshairTop,
-      crosshairBottom,
-      'rgba(255, 255, 255, 0.04)',
     )
     : null
 
@@ -843,33 +1015,154 @@ export function PulseOverviewChart({
     })
   }, [chat, n, plotWidth, chatBarAxisMax, chatLaneBottom, chatLaneHeight])
 
+  // Live render values for imperative chrome updates (hover runs outside React).
+  const chromeStateRef = useRef({ visibleRollups, viewers, n, plotWidth, width })
+  chromeStateRef.current = { visibleRollups, viewers, n, plotWidth, width }
+
+  // React owns committed chrome (pin/preview); reapply the imperative hover
+  // layer whenever the underlying geometry or committed state changes so a
+  // stale hover position never survives a resize/viewport/pin update.
+  useLayoutEffect(() => {
+    const hover = hoverIndexRef.current
+    if (hover == null) {
+      // Restore React-owned committed attributes that imperative hover may
+      // have overwritten during a previous pointer pass.
+      const svg = svgRef.current
+      if (svg) {
+        svg.removeAttribute('data-chart-hover-index')
+        if (listPreviewIndex != null) {
+          svg.setAttribute('data-chart-preview-index', String(listPreviewIndex))
+        } else {
+          svg.removeAttribute('data-chart-preview-index')
+        }
+      }
+      return
+    }
+    applyInspectionDOM(hover)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, n, plotWidth, listPreviewIndex])
+
+  // Imperative inspection shell (Aug-16 pattern): direct pointer hover moves the
+  // marker, reveals whisper bars, and rewrites the readout without reconciling
+  // the chart subtree. Committed pins/previews still flow through React props.
+  function applyInspectionDOM(index: number | null): void {
+    const svg = svgRef.current
+    if (svg) {
+      // Direct hover previews through the same attribute the committed
+      // list-preview uses; the resync layout effect restores React's value
+      // whenever committed state or geometry changes.
+      if (index == null) {
+        svg.removeAttribute('data-chart-hover-index')
+        svg.removeAttribute('data-chart-preview-index')
+      } else {
+        svg.setAttribute('data-chart-hover-index', String(index))
+        svg.setAttribute('data-chart-preview-index', String(index))
+      }
+    }
+    const visible = index != null
+    const layer = interactionLayerRef.current
+    if (layer) layer.setAttribute('opacity', visible ? '1' : '0')
+    const emoteGroup = emoteBarsGroupRef.current
+    if (emoteGroup) emoteGroup.setAttribute('opacity', visible ? '1' : '0')
+    const chatGroup = chatBarsGroupRef.current
+    if (chatGroup) chatGroup.setAttribute('opacity', visible ? '1' : '0')
+    const chrome = chromeStateRef.current
+    const marker = directHoverMarkerRef.current
+    if (marker) {
+      if (visible) {
+        const x = plotXForIndex(index, chrome.n, PAD_LEFT, chrome.plotWidth)
+        marker.setAttribute('x1', String(x))
+        marker.setAttribute('x2', String(x))
+        marker.style.opacity = '0.75'
+      } else {
+        marker.style.opacity = '0'
+      }
+    }
+    const readout = readoutGroupRef.current
+    if (readout) readout.setAttribute('opacity', visible ? '1' : '0')
+    if (visible) {
+      const rectEl = readoutRectRef.current
+      const textEl = readoutTextRef.current
+      const rollup = chrome.visibleRollups[index]
+      if (rectEl && textEl && rollup) {
+        const viewerValue = chrome.viewers[index]
+        const label =
+          formatHeatOffset(rollup.offsetSeconds) +
+          (viewerValue != null ? ` · ${formatCount(viewerValue)}` : '')
+        const labelWidth = Math.max(34, label.length * 5.5 + 12)
+        const x = plotXForIndex(index, chrome.n, PAD_LEFT, chrome.plotWidth)
+        const labelX = Math.max(
+          PAD_LEFT,
+          Math.min(chrome.width - PAD_RIGHT - labelWidth, x - labelWidth / 2),
+        )
+        rectEl.setAttribute('x', String(labelX))
+        rectEl.setAttribute('width', String(labelWidth))
+        textEl.setAttribute('x', String(labelX + labelWidth / 2))
+        textEl.textContent = label
+      }
+    }
+  }
+
+  function clearHoverPreview(): void {
+    if (hoverIndexRef.current == null && !directHoverMarkerRef.current) return
+    hoverIndexRef.current = null
+    applyInspectionDOM(null)
+    onHoverOffsetChange?.(null)
+  }
+
   function flushHoverIndex(): void {
     hoverFrameRef.current = null
-    const index = pendingHoverIndexRef.current
-    setHoverIndex(prev => {
-      if (prev === index) return prev
-      return index
-    })
-    onHoverOffsetChange?.(index != null ? rollups[index]?.offsetSeconds ?? null : null)
+    const pending = pendingHoverTargetRef.current
+    pendingHoverTargetRef.current = null
+    const bounds = captureBoundsRef.current
+    if (!pending || !bounds) return
+    const index = indexForPointer(pending.clientX, bounds)
+    if (hoverIndexRef.current === index) return
+    hoverIndexRef.current = index
+    applyInspectionDOM(index)
+    const offset =
+      index != null ? chromeStateRef.current.visibleRollups[index]?.offsetSeconds ?? null : null
+    onHoverOffsetChange?.(offset)
   }
 
   function handlePointer(clientX: number, target: SVGRectElement): void {
-    const rect = target.getBoundingClientRect()
-    const index = indexFromChartClick(clientX, rect.left, rect.width, n)
-    if (pendingHoverIndexRef.current === index && hoverFrameRef.current != null) return
-    pendingHoverIndexRef.current = index
+    if (!captureBoundsRef.current) {
+      const rect = target.getBoundingClientRect()
+      captureBoundsRef.current = { left: rect.left, width: rect.width }
+    }
+    pendingHoverTargetRef.current = { clientX }
     if (hoverFrameRef.current != null) return
     hoverFrameRef.current = requestAnimationFrame(flushHoverIndex)
   }
 
   function handlePointerLeave(): void {
-    pendingHoverIndexRef.current = null
+    pendingHoverTargetRef.current = null
+    captureBoundsRef.current = null
     if (hoverFrameRef.current != null) {
       cancelAnimationFrame(hoverFrameRef.current)
       hoverFrameRef.current = null
     }
-    setHoverIndex(prev => (prev == null ? prev : null))
-    onHoverOffsetChange?.(null)
+    clearHoverPreview()
+  }
+
+  /** Resolve pointer pixels against ordered sample time, not array position. */
+  function indexForPointer(clientX: number, bounds: { left: number; width: number }): number | null {
+    if (n <= 0 || bounds.width <= 0) return null
+    const fraction = clampNumber((clientX - bounds.left) / bounds.width, 0, 1)
+    const firstOffset = visibleRollups[0]?.offsetSeconds ?? internalViewport.startSeconds
+    const lastOffset = visibleRollups[n - 1]?.offsetSeconds ?? internalViewport.endSeconds
+    const targetOffset = firstOffset + fraction * Math.max(0, lastOffset - firstOffset)
+    const index = nearestRollupIndex(visibleRollups, targetOffset)
+    return index >= 0 ? index : null
+  }
+
+  function previewKeyboardIndex(index: number): void {
+    if (n <= 0) return
+    const next = Math.min(n - 1, Math.max(0, index))
+    pendingHoverTargetRef.current = null
+    hoverIndexRef.current = next
+    applyInspectionDOM(next)
+    onHoverOffsetChange?.(visibleRollups[next]?.offsetSeconds ?? null)
   }
 
   function laneKeyFromPointerY(clientY: number, svgRect: DOMRect): string | null {
@@ -885,6 +1178,7 @@ export function PulseOverviewChart({
     if (n === 0) return
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
+    captureBoundsRef.current = { left: rect.left, width: rect.width }
     if (onFocusedSeriesKeyChange && event.detail >= 2) {
       const laneKey = laneKeyFromPointerY(event.clientY, rect)
       if (laneKey) {
@@ -892,30 +1186,36 @@ export function PulseOverviewChart({
         return
       }
     }
-    const index = indexFromChartClick(event.clientX, rect.left, rect.width, n)
-    pendingHoverIndexRef.current = index
+    const index = indexForPointer(event.clientX, { left: rect.left, width: rect.width })
+    pendingHoverTargetRef.current = null
     if (hoverFrameRef.current != null) {
       cancelAnimationFrame(hoverFrameRef.current)
       hoverFrameRef.current = null
     }
-    setHoverIndex(index)
-    onSelectIndex?.(index)
+    const clickedFullIndex = index == null ? null : (fullIndexFromVisible(index) ?? index)
+    // The lock takes over the chrome: clear ephemeral hover state so the
+    // committed pin/preview rendering is the single visible inspection.
+    clearHoverPreview()
+    // Clicking the already-locked bucket releases the lock (toggle).
+    if (clickedFullIndex == null) return
+    if (selectedIndex != null && clickedFullIndex === selectedIndex) {
+      onClearSelection?.()
+      return
+    }
+    onSelectIndex?.(clickedFullIndex)
   }
 
   const pinTargetX =
     pinIndex != null && n > 0 ? plotXForIndex(pinIndex, n, PAD_LEFT, plotWidth) : 0
-  const hoverLineX =
-    hoverPreviewIndex != null && n > 0
-      ? plotXForIndex(hoverPreviewIndex, n, PAD_LEFT, plotWidth)
-      : null
   const listPreviewTargetX =
     listPreviewIndex != null && n > 0
       ? plotXForIndex(listPreviewIndex, n, PAD_LEFT, plotWidth)
       : 0
-  // Direct bucket X for pointer hover; RAF-smooth only list/external selection.
+  // Preview/pin lines track their bucket immediately (no smoothing lag/drift);
+  // only hover chrome fades, via markerFade above.
   const smoothListPreviewX = useSmoothedScalar(
     listPreviewTargetX,
-    motionEnabled && listPreviewIndex != null,
+    false,
   )
   const pinX = pinIndex != null ? pinTargetX : null
   const listPreviewLineX = listPreviewIndex != null ? smoothListPreviewX : null
@@ -940,13 +1240,24 @@ export function PulseOverviewChart({
   return (
     <div ref={containerRef} id={chartRegionId} className="pulse-sparkline-wrap" style={shellStyle}>
       <svg
+        ref={svgRef}
+        data-testid="pulse-overview-chart"
+        data-chart-hover-render="imperative"
+        data-chart-point-count={n}
+        data-chart-point-cap={EXTENSION_CHART_MAX_POINTS}
+        data-chart-viewport-start={internalViewport.startSeconds}
+        data-chart-viewport-end={internalViewport.endSeconds}
+        data-chart-active-index={activeIndex ?? undefined}
+        data-chart-active-offset={
+          activeIndex != null ? visibleRollups[activeIndex]?.offsetSeconds ?? undefined : undefined
+        }
+        data-chart-locked-index={pinIndex ?? undefined}
+        data-chart-preview-index={listPreviewIndex ?? undefined}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
+        className="pulse-overview-chart"
         aria-label="Chat and emote activity timeline with viewer context. Move or drag across the plot to inspect a moment."
-        data-chart-mode={scrubActive ? 'detail' : 'signals'}
-        data-testid="pulse-overview-chart"
-        data-chart-active-index={activeIndex ?? undefined}
-        data-chart-locked-index={pinIndex ?? undefined}
+        data-chart-mode={detailActive ? 'detail' : 'signals'}
         style={{ ...styles.svg, height }}
       >
         <defs>
@@ -1002,8 +1313,7 @@ export function PulseOverviewChart({
           y2={viewerBandTop}
           stroke={hexToRgba(CHART_THEME.viewer.color, CHART_THEME.viewer.guide * 0.85)}
           strokeWidth="1"
-          opacity={scrubActive && showViewerStrip ? 1 : 0}
-          style={{ transition: scrubTransition }}
+          opacity={detailActive && showViewerStrip ? 1 : 0}
         />
         <line
           x1={PAD_LEFT}
@@ -1012,8 +1322,7 @@ export function PulseOverviewChart({
           y2={activityBottom}
           stroke="rgba(255,255,255,0.08)"
           strokeWidth="1"
-          opacity={scrubActive ? 1 : 0}
-          style={{ transition: scrubTransition }}
+          opacity={detailActive ? 1 : 0}
         />
 
         <line
@@ -1023,8 +1332,7 @@ export function PulseOverviewChart({
           y2={viewerBandBottom + 2}
           stroke="rgba(255,255,255,0.12)"
           strokeWidth="1"
-          opacity={scrubActive && showViewerStrip ? 1 : 0}
-          style={{ transition: scrubTransition }}
+          opacity={detailActive && showViewerStrip ? 1 : 0}
         />
 
         <g clipPath={`url(#${svgIds.plotClip})`}>
@@ -1046,22 +1354,19 @@ export function PulseOverviewChart({
               <path
                 d={viewerAreaPath}
                 fill={`url(#${svgIds.viewerGradient})`}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.08 : 0.12)}
-                style={{ transition: scrubTransition }}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.06 : 0.03)}
               />
               <path
                 d={viewerDetailAreaPath}
                 fill="rgba(161, 161, 170, 0.12)"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 1 : 0)}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 1 : 0)}
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
-                style={{ transition: scrubTransition }}
               />
               <path
                 d={viewerDetailAreaPath}
                 fill={`url(#${svgIds.viewerGradient})`}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.14 : 0)}
+                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.14 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
-                style={{ transition: scrubTransition }}
               />
             </g>
           ) : null}
@@ -1074,9 +1379,8 @@ export function PulseOverviewChart({
                 stroke={CHART_THEME.viewer.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="1.25"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.34 : 0.82)}
-                style={{ transition: scrubTransition }}
+                 strokeWidth={RESTING_TREND_STROKE}
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0 : overviewRange ? 0.55 : 0.62)}
               />
               <path
                 d={viewerDetailLinePath}
@@ -1085,10 +1389,9 @@ export function PulseOverviewChart({
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="1.1"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.22 : 0)}
+                 strokeWidth="1.1"
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.22 : 0)}
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
-                style={{ transition: scrubTransition }}
               />
               <path
                 d={viewerDetailLinePath}
@@ -1097,10 +1400,9 @@ export function PulseOverviewChart({
                 stroke={CHART_THEME.viewer.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="1.35"
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', scrubActive ? 0.34 : 0)}
+                 strokeWidth="1.35"
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.34 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
-                style={{ transition: scrubTransition }}
               />
             </g>
           ) : null}
@@ -1134,17 +1436,6 @@ export function PulseOverviewChart({
               pointerEvents="none"
             />
           ) : null}
-          {ghostColumn ? (
-            <g data-chart-preview-index={listPreviewIndex ?? hoverPreviewIndex ?? undefined}>
-              <HoverBucketBand
-                x={ghostColumn.x}
-                width={ghostColumn.width}
-                top={ghostColumn.y}
-                bottom={ghostColumn.y + ghostColumn.height}
-                muted
-              />
-            </g>
-          ) : null}
           <line
             x1={PAD_LEFT}
             x2={width - PAD_RIGHT}
@@ -1165,17 +1456,21 @@ export function PulseOverviewChart({
           />
 
           <g clipPath={`url(#${svgIds.emoteClip})`}>
-            {emoteBars.map((bar, index) => (
-              <rect
-                key={bar.key}
-                x={bar.x}
-                y={bar.y}
-                width={bar.width}
-                height={bar.height}
-                fill={CHART_THEME.emote.color}
-                opacity={signalBarOpacity('emotes', index, bar.hasValue)}
-              />
-            ))}
+            <g
+              ref={emoteBarsGroupRef}
+              data-chart-signal-group="emotes"
+              opacity={activeIndex != null ? 1 : 0}
+            >
+            <SignalBarLane
+              bars={emoteBars}
+              seriesKey="emotes"
+              color={CHART_THEME.emote.color}
+              pinIndex={pinIndex}
+              activeIndex={activeIndex}
+              focusedSeriesKey={focusedSeriesKey}
+              restAlpha={0.12}
+            />
+            </g>
             {emoteLinePath ? (
               <path
                 d={emoteLinePath}
@@ -1184,14 +1479,13 @@ export function PulseOverviewChart({
                 stroke={CHART_THEME.emote.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={EMOTE_TREND_STROKE}
-                opacity={seriesFocusOpacity(
-                  focusedSeriesKey,
-                  'emotes',
-                  scrubActive ? 0.24 : 0.84,
-                )}
+                 strokeWidth={EMOTE_TREND_STROKE}
+                  opacity={seriesFocusOpacity(
+                    focusedSeriesKey,
+                    'emotes',
+                    detailActive ? 0 : overviewRange ? 0.3 : 0.58,
+                  )}
                 pointerEvents="none"
-                style={{ transition: scrubTransition }}
               />
             ) : null}
             {emoteDetailLinePath ? (
@@ -1202,10 +1496,9 @@ export function PulseOverviewChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={EMOTE_TREND_STROKE}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', scrubActive ? 0.44 : 0)}
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', detailActive ? 0.44 : 0)}
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
                 pointerEvents="none"
-                style={{ transition: scrubTransition }}
               />
             ) : null}
             {emoteDetailLinePath ? (
@@ -1215,27 +1508,30 @@ export function PulseOverviewChart({
                 stroke={CHART_THEME.emote.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={EMOTE_TREND_STROKE + 0.35}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', scrubActive ? 0.94 : 0)}
+                 strokeWidth={EMOTE_TREND_STROKE}
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes', detailActive ? 0.94 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
                 pointerEvents="none"
-                style={{ transition: scrubTransition }}
               />
             ) : null}
           </g>
 
           <g clipPath={`url(#${svgIds.chatClip})`}>
-            {chatBars.map((bar, index) => (
-              <rect
-                key={bar.key}
-                x={bar.x}
-                y={bar.y}
-                width={bar.width}
-                height={bar.height}
-                fill={CHART_THEME.chat.color}
-                opacity={signalBarOpacity('chat', index, bar.hasValue)}
-              />
-            ))}
+            <g
+              ref={chatBarsGroupRef}
+              data-chart-signal-group="chat"
+              opacity={activeIndex != null ? 1 : 0}
+            >
+            <SignalBarLane
+              bars={chatBars}
+              seriesKey="chat"
+              color={CHART_THEME.chat.color}
+              pinIndex={pinIndex}
+              activeIndex={activeIndex}
+              focusedSeriesKey={focusedSeriesKey}
+              restAlpha={0.08}
+            />
+            </g>
             {chatLinePath ? (
               <path
                 d={chatLinePath}
@@ -1244,10 +1540,41 @@ export function PulseOverviewChart({
                 stroke={CHART_THEME.chat.line}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={CHAT_TREND_STROKE}
-                opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? 0.24 : 0.88)}
+                 strokeWidth={CHAT_TREND_STROKE}
+                  opacity={seriesFocusOpacity(
+                    focusedSeriesKey,
+                    'chat',
+                    detailActive ? 0 : overviewRange ? 0.3 : 0.58,
+                  )}
                 pointerEvents="none"
-                style={{ transition: scrubTransition }}
+              />
+            ) : null}
+            {chatDetailLinePath ? (
+              <path
+                d={chatDetailLinePath}
+                data-chart-layer="detail-future"
+                fill="none"
+                stroke={SCRUB_FUTURE_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={CHAT_TREND_STROKE}
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', detailActive ? 0.46 : 0)}
+                clipPath={`url(#${svgIds.scrubFutureClip})`}
+                pointerEvents="none"
+              />
+            ) : null}
+            {chatDetailLinePath ? (
+              <path
+                d={chatDetailLinePath}
+                data-chart-layer="detail-past"
+                fill="none"
+                stroke={CHART_THEME.chat.line}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                 strokeWidth={CHAT_TREND_STROKE}
+                 opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', detailActive ? 0.96 : 0)}
+                clipPath={`url(#${svgIds.scrubPastClip})`}
+                pointerEvents="none"
               />
             ) : null}
           </g>
@@ -1255,12 +1582,7 @@ export function PulseOverviewChart({
           <g clipPath={`url(#${svgIds.traceClip})`}>
             {tracePaths.map(series => {
               if (!series.path) return null
-              const baseOpacity =
-                activeIndex != null || hovering
-                  ? activeIndex != null
-                    ? TRACE_LINE_OPACITY
-                    : 0.72
-                  : 0.55
+              const baseOpacity = detailActive ? TRACE_LINE_OPACITY : overviewRange ? 0.25 : 0.55
               return (
                 <g key={series.key}>
                   <path
@@ -1271,29 +1593,27 @@ export function PulseOverviewChart({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
-                    strokeDasharray={normalizationProgress >= 1 ? undefined : '4 3'}
-                    opacity={seriesFocusOpacity(
-                      focusedSeriesKey,
-                      series.key,
-                      scrubActive ? 0.3 : 0.82,
-                    )}
-                    style={{ transition: scrubTransition }}
-                  />
-                  <path
-                    d={series.detailPath}
-                    fill="none"
-                    stroke={SCRUB_FUTURE_STROKE}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
-                    strokeDasharray={normalizationProgress >= 1 ? undefined : '4 3'}
-                    opacity={seriesFocusOpacity(
-                      focusedSeriesKey,
-                      series.key,
-                      scrubActive ? 0.42 : 0,
-                    )}
+                    strokeDasharray={normalizationProgress >= 1 ? undefined : series.dash ?? '4 3'}
+                     opacity={seriesFocusOpacity(
+                       focusedSeriesKey,
+                       series.key,
+                       detailActive ? 0 : overviewRange ? 0.25 : 0.58,
+                     )}
+                   />
+                   <path
+                     d={series.detailPath}
+                     fill="none"
+                     stroke={SCRUB_FUTURE_STROKE}
+                     strokeLinecap="round"
+                     strokeLinejoin="round"
+                     strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
+                     strokeDasharray={normalizationProgress >= 1 ? undefined : series.dash ?? '4 3'}
+                     opacity={seriesFocusOpacity(
+                       focusedSeriesKey,
+                       series.key,
+                       detailActive ? 0.42 : 0,
+                     )}
                     clipPath={`url(#${svgIds.scrubFutureClip})`}
-                    style={{ transition: scrubTransition }}
                   />
                   <path
                     d={series.detailPath}
@@ -1301,28 +1621,49 @@ export function PulseOverviewChart({
                     stroke={series.color}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={normalizeOverlaySeries ? 2.5 : TRACE_LINE_STROKE + 0.25}
-                    strokeDasharray={normalizationProgress >= 1 ? undefined : '4 3'}
-                    opacity={seriesFocusOpacity(
-                      focusedSeriesKey,
-                      series.key,
-                      scrubActive ? TRACE_LINE_OPACITY : 0,
-                    )}
+                     strokeWidth={normalizeOverlaySeries ? 2.25 : TRACE_LINE_STROKE}
+                     strokeDasharray={normalizationProgress >= 1 ? undefined : series.dash ?? '4 3'}
+                     opacity={seriesFocusOpacity(
+                       focusedSeriesKey,
+                       series.key,
+                       detailActive ? TRACE_LINE_OPACITY : 0,
+                     )}
                     clipPath={`url(#${svgIds.scrubPastClip})`}
-                    style={{ transition: scrubTransition }}
                   />
                 </g>
               )
             })}
           </g>
+          {emoteMarkerPositions.length > 0 ? (
+            <g
+              data-chart-emote-marker-rail="true"
+              pointerEvents="none"
+              opacity={overviewRange ? 0.9 : 1}
+            >
+              {emoteMarkerPositions.map(({ marker, x, y, stemY }) => (
+                <line
+                  key={`${marker.key}-stem`}
+                  x1={x}
+                  x2={x}
+                  y1={y + 7}
+                  y2={stemY}
+                  stroke={CHART_INTERACTION.emoteMarkerFill}
+                  strokeWidth="1"
+                  strokeDasharray="2 2"
+                  opacity={0.55}
+                />
+              ))}
+            </g>
+          ) : null}
           </g>
         </g>
 
         <g
+          ref={interactionLayerRef}
           data-chart-layer="interaction"
           opacity={interactionLayerOpacity}
-          pointerEvents={scrubActive ? undefined : 'none'}
-          style={{ transition: scrubTransition }}
+          pointerEvents="none"
+          style={{ transition: markerFade }}
         >
         {/* Paint game dividers above chat/emote bars so they stay visible through the full plot. */}
         {chartGames.length > 0 ? (
@@ -1336,6 +1677,7 @@ export function PulseOverviewChart({
             gameBandTop={gameBandTop}
             gameBandHeight={0}
             dividerExtent={gameDividerExtent}
+            highlightedSegmentKey={highlightedGameSegmentKey}
             isLive={isLive}
           />
         ) : null}
@@ -1374,22 +1716,21 @@ export function PulseOverviewChart({
           </g>
         ) : null}
 
-        {hoverLineX != null ? (
-          <line
-            x1={hoverLineX}
-            x2={hoverLineX}
-            y1={crosshairTop}
-            y2={crosshairBottom}
-            stroke={CHART_INTERACTION.hoverLine}
-            strokeWidth="1"
-            strokeDasharray="2 2"
-            opacity={0.75}
-            pointerEvents="none"
-          />
-        ) : null}
+        <line
+          ref={directHoverMarkerRef}
+          data-chart-hover-marker="true"
+          x1={PAD_LEFT}
+          x2={PAD_LEFT}
+          y1={crosshairTop}
+          y2={crosshairBottom}
+          stroke={CHART_INTERACTION.hoverLine}
+          strokeWidth="1"
+          strokeDasharray="2 2"
+          style={DIRECT_HOVER_MARKER_STYLE}
+        />
 
         {listPreviewLineX != null ? (
-          <line
+          <line data-chart-hover-band="muted"
             x1={listPreviewLineX}
             x2={listPreviewLineX}
             y1={crosshairTop}
@@ -1415,57 +1756,32 @@ export function PulseOverviewChart({
           />
         ) : null}
 
-        {scrubActive ? (
-          <g pointerEvents="none" aria-hidden="true">
-            <rect
-              x={activeTimeLabelX}
-              y={1}
-              width={activeTimeLabelWidth}
-              height={14}
-              rx={7}
-              fill="rgba(7, 12, 20, 0.92)"
-              stroke={CHART_INTERACTION.hoverLine}
-              strokeWidth={0.75}
-            />
-            <text
-              x={activeTimeLabelX + activeTimeLabelWidth / 2}
-              y={11}
-              fill={CHART_INTERACTION.hoverLine}
-              fontSize="8.5"
-              fontWeight="800"
-              textAnchor="middle"
-            >
-              {activeTimeLabel}
-            </text>
-          </g>
-        ) : null}
-
-        {chatLinePath ? (
-          <g clipPath={`url(#${svgIds.chatClip})`} pointerEvents="none">
-            <path
-              d={chatDetailLinePath}
-              fill="none"
-              stroke={SCRUB_FUTURE_STROKE}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={CHAT_TREND_STROKE}
-              opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? 0.46 : 0)}
-              clipPath={`url(#${svgIds.scrubFutureClip})`}
-              style={{ transition: scrubTransition }}
-            />
-            <path
-              d={chatDetailLinePath}
-              fill="none"
-              stroke={CHART_THEME.chat.line}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={CHAT_TREND_STROKE + 0.35}
-              opacity={seriesFocusOpacity(focusedSeriesKey, 'chat', scrubActive ? 0.96 : 0)}
-              clipPath={`url(#${svgIds.scrubPastClip})`}
-              style={{ transition: scrubTransition }}
-            />
-          </g>
-        ) : null}
+        {/* Always mounted: hover updates position/text imperatively; the
+            interaction layer opacity hides it when nothing is inspected. */}
+        <g ref={readoutGroupRef} pointerEvents="none" aria-hidden="true">
+          <rect
+            ref={readoutRectRef}
+            x={activeTimeLabelX}
+            y={1}
+            width={activeTimeLabelWidth}
+            height={14}
+            rx={7}
+            fill="rgba(7, 12, 20, 0.92)"
+            stroke={CHART_INTERACTION.hoverLine}
+            strokeWidth={0.75}
+          />
+          <text
+            ref={readoutTextRef}
+            x={activeTimeLabelX + activeTimeLabelWidth / 2}
+            y={11}
+            fill={CHART_INTERACTION.hoverLine}
+            fontSize="8.5"
+            fontWeight="800"
+            textAnchor="middle"
+          >
+            {activeTimeLabel}
+          </text>
+        </g>
 
         {axisTicks(n).map(tickIndex => {
           const offset = rollups[tickIndex]?.offsetSeconds ?? 0
@@ -1491,7 +1807,11 @@ export function PulseOverviewChart({
         </g>
 
         <rect
+          ref={scrubberRef}
           data-chart-scrubber="true"
+          tabIndex={onSelectIndex || onViewportChange ? 0 : undefined}
+          role="application"
+          aria-label="Chart plot. Press Enter to inspect the previewed minute, Escape to release the selection."
           x={PAD_LEFT}
           y={PAD_TOP}
           width={plotWidth}
@@ -1503,7 +1823,13 @@ export function PulseOverviewChart({
             event.currentTarget.setPointerCapture(event.pointerId)
             handlePointer(event.clientX, event.currentTarget)
           }}
-          onPointerMove={event => handlePointer(event.clientX, event.currentTarget)}
+          onPointerMove={event => {
+            // Contain pointer gestures (hover scrub, drag intent) inside the chart.
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.stopPropagation()
+            }
+            handlePointer(event.clientX, event.currentTarget)
+          }}
           onPointerLeave={event => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
               handlePointerLeave()
@@ -1513,6 +1839,14 @@ export function PulseOverviewChart({
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId)
             }
+            // A drag ending outside the plot must not leave stale hover chrome.
+            const rect = event.currentTarget.getBoundingClientRect()
+            const inside =
+              event.clientX >= rect.left &&
+              event.clientX <= rect.right &&
+              event.clientY >= rect.top &&
+              event.clientY <= rect.bottom
+            if (!inside) handlePointerLeave()
           }}
           onPointerCancel={event => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -1521,24 +1855,169 @@ export function PulseOverviewChart({
             handlePointerLeave()
           }}
           onClick={handleClick}
+          onKeyDown={event => {
+            // Escape clears ephemeral hover first, then the committed lock, then
+            // the viewport. It also releases focus so a following Tab is honest.
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              handlePointerLeave()
+              if (pinIndex != null) {
+                onClearSelection?.()
+              } else if (onViewportChange && durationSeconds > 0) {
+                onViewportChange({ startSeconds: 0, endSeconds: durationSeconds })
+              }
+              event.currentTarget.blur()
+              return
+            }
+            // Enter/Space commit the previewed bucket as a lock.
+            if ((event.key === 'Enter' || event.key === ' ') && onSelectIndex) {
+              const lockable = hoverIndexRef.current ?? listPreviewIndex
+              if (lockable != null) {
+                event.preventDefault()
+                clearHoverPreview()
+                onSelectIndex(fullIndexFromVisible(lockable) ?? lockable)
+              }
+              return
+            }
+            if (onSelectIndex && n > 0) {
+              const current = hoverIndexRef.current ?? pinIndex ?? listPreviewIndex ?? 0
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault()
+                previewKeyboardIndex(current + (event.key === 'ArrowLeft' ? -1 : 1))
+                return
+              }
+              if (event.key === 'Home' || event.key === 'End') {
+                event.preventDefault()
+                previewKeyboardIndex(event.key === 'Home' ? 0 : n - 1)
+                return
+              }
+            }
+            if (!onViewportChange || durationSeconds <= 0) return
+            const currentDuration = internalViewport.endSeconds - internalViewport.startSeconds
+            if (event.key === '+' || event.key === '=') {
+              event.preventDefault()
+              onViewportChange(zoomViewport({ viewport: internalViewport, zoomSeconds: Math.max(MIN_VIEWPORT_SECONDS, currentDuration / 1.5), durationSeconds }))
+            } else if (event.key === '-') {
+              event.preventDefault()
+              onViewportChange(zoomViewport({ viewport: internalViewport, zoomSeconds: Math.min(durationSeconds, currentDuration * 1.5), durationSeconds }))
+            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+              event.preventDefault()
+              onViewportChange(panViewport(internalViewport, event.key === 'ArrowLeft' ? -60 : 60, durationSeconds))
+            }
+          }}
         />
       </svg>
+      {emoteMarkerPositions.length > 0 ? (
+        <div
+          data-chart-emote-markers="true"
+          aria-label={`Emote markers: ${formatCount(emoteMarkerLayout.totalCount)} uses across ${emoteMarkerLayout.totalEventCount} plotted entries`}
+          style={styles.emoteMarkerLayer}
+        >
+          {emoteMarkerPositions.map(({ marker, x, y }) => {
+            const markerLabel = `${marker.name}, ${formatCount(marker.count)} uses at ${formatHeatOffset(marker.offsetSeconds)}`
+            return (
+              <button
+                key={marker.key}
+                type="button"
+                className="pulse-chart-emote-marker"
+                data-chart-emote-marker="true"
+                data-chart-emote-marker-key={marker.key}
+                aria-label={markerLabel}
+                title={markerLabel}
+                style={{ left: `${(x / Math.max(1, width)) * 100}%`, top: y }}
+                onPointerDown={event => event.stopPropagation()}
+                onPointerEnter={event => {
+                  setFocusedEmoteMarkerKey(marker.key)
+                  if (scrubberRef.current) handlePointer(event.clientX, scrubberRef.current)
+                }}
+                onPointerMove={event => {
+                  if (scrubberRef.current) handlePointer(event.clientX, scrubberRef.current)
+                }}
+                onPointerLeave={() => setFocusedEmoteMarkerKey(current => current === marker.key ? null : current)}
+                onFocus={() => setFocusedEmoteMarkerKey(marker.key)}
+                onBlur={() => setFocusedEmoteMarkerKey(current => current === marker.key ? null : current)}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (!onSelectIndex) return
+                  const visibleIndex = nearestRollupIndex(visibleRollups, marker.offsetSeconds)
+                  if (visibleIndex < 0) return
+                  clearHoverPreview()
+                  onSelectIndex(fullIndexFromVisible(visibleIndex) ?? visibleIndex)
+                }}
+              >
+                <PulseEmoteImg
+                  emote={{
+                    id: marker.id,
+                    name: marker.name,
+                    imageUrl: marker.imageUrl,
+                    provider: marker.provider,
+                    count: marker.count,
+                  }}
+                  backendUrl={backendUrl}
+                  width={18}
+                  height={18}
+                />
+                {marker.count > 1 || marker.eventCount > 1 ? (
+                  <span className="pulse-chart-emote-marker-count" aria-hidden="true">
+                    {formatCount(marker.count)}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+          {focusedEmoteMarker ? (
+            <div
+              className="pulse-chart-emote-marker-tooltip"
+              data-chart-emote-marker-tooltip="true"
+              role="tooltip"
+              style={{
+                left: `${Math.min(86, Math.max(14, ((PAD_LEFT + (focusedEmoteMarker.xFraction * plotWidth)) / Math.max(1, width)) * 100))}%`,
+                top: Math.max(4, emoteLaneTop - 4),
+              }}
+            >
+              <strong>{focusedEmoteMarker.name}</strong>
+              <span>{formatHeatOffset(focusedEmoteMarker.offsetSeconds)} · {formatCount(focusedEmoteMarker.count)} uses</span>
+              {focusedEmoteMarker.clusteredNames.length > 1 ? (
+                <span>{focusedEmoteMarker.clusteredNames.join(' · ')}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {emoteMarkerLayout.hiddenMarkerCount > 0 ? (
+            <span
+              className="pulse-chart-emote-marker-summary"
+              data-chart-emote-marker-summary="true"
+              title={`${emoteMarkerLayout.hiddenMarkerCount} dense emote markers merged or hidden; aggregate totals remain plotted.`}
+            >
+              +{emoteMarkerLayout.hiddenMarkerCount} dense
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
 
+// Memoized (Aug-16 pattern): parent poll renders must not reconcile the whole
+// chart subtree; imperative hover already bypasses React for pointer chrome.
+export const PulseOverviewChart = memo(PulseOverviewChartImpl)
+
 const styles: Record<string, CSSProperties> = {
   shell: {
     background: CHART_THEME.background,
-    border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 8,
     minWidth: 0,
     overflow: 'hidden',
+    position: 'relative',
     width: '100%',
   },
   svg: {
     display: 'block',
     width: '100%',
+  },
+  emoteMarkerLayer: {
+    inset: 0,
+    pointerEvents: 'none',
+    position: 'absolute',
   },
   empty: {
     alignItems: 'center',

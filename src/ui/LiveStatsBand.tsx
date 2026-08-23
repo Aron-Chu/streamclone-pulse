@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
-import type { CSSProperties, RefObject } from 'react'
+import type { CSSProperties } from 'react'
 import {
   deriveLiveStats,
   formatHeatOffset,
@@ -11,17 +11,12 @@ import {
   type TrendDirection,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
-import type { InspectionPreviewStore } from './inspectionPreviewStore.ts'
-import { useInspectionPreview } from './inspectionPreviewStore.ts'
 import {
-  inspectionSelectionFromPoint,
-  normalizedInspectionBucket,
-  type InspectionSelection,
-} from './momentInspection.ts'
-import {
-  isFullHistoryUnlockedFor,
+  fullHistoryActivationKey,
+  hasStableFullHistoryActivation,
+  hasValidatedFullHistory,
   makeFullHistoryActivation,
-  type FullHistoryActivation,
+  type FullHistoryRequestResult,
 } from '../shared/fullHistoryAuth.ts'
 import {
   getDefaultChartWindow,
@@ -36,19 +31,19 @@ import {
   aggregateChartEmotes,
   buildEmoteOverlaySeries,
   pruneUnavailableEmoteSelections,
+  selectedEmotesInPlotOrder,
   CHART_WINDOW_OPTIONS,
   chartEmptyMessage,
-  chartTimelineWindowLabel,
   chartWindowNeedsFullFetch,
   describeRollupGap,
   emoteAveragesFromRollups,
   emoteSelectionKey,
   findChartIndexByOffset,
   fullRollupsMissingStreamPrefix,
-  hasFullTimelineRollups,
   MAX_PLOTTED_EMOTES,
   PLOT_PICKER_EMOTE_LIMIT,
   prepareChartRollups,
+  plottedCoverageLabel,
   toggleEmotePlotKeys,
   type ChartTimelineWindow,
 } from './chatActivityEmotes.ts'
@@ -65,14 +60,13 @@ import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
-import { MomentInspectionTray } from './MomentInspectionTray.tsx'
-import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
-import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
-import { resolveMostReactedHeat, findHeatPointAtOffset } from './mostReacted.ts'
+import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
+import { ChartPositionRail } from './ChartPositionRail.tsx'
+import { resolveViewport, type ChartViewport } from './chartViewport.ts'
 
 export interface LiveStatsBandProps {
   payload: PulsePayload
@@ -89,71 +83,17 @@ export interface LiveStatsBandProps {
   onJumpToOffset?: (offsetSeconds: number) => void
   onOpenAnalytics?: (offsetSeconds: number) => void
   onOpenFullAnalytics?: () => void
-  onRequestFullTimeline?: () => Promise<void>
+  onRequestFullTimeline?: () => Promise<FullHistoryRequestResult>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
-  inspectionPreviewStore?: InspectionPreviewStore | null
-  inspectionCommitted?: InspectionSelection | null
-  onInspectionPreview?: (selection: InspectionSelection | null) => void
-  onInspectionCommit?: (selection: InspectionSelection) => void
-  onInspectionClear?: () => void
-  inspectionBoundaryRef?: RefObject<HTMLElement | null>
   onSaveMoment?: (point: LiveHeatPoint) => void
   saveMomentBusy?: boolean
   pinOffsetSeconds?: number | null
   previewOffsetSeconds?: number | null
-  selectedReactionMoment?: LiveHeatPoint | null
-  onJumpMoment?: (point: LiveHeatPoint) => void
   hasVodContext?: boolean
   coverageTier?: string | null
   /** Marketing landing — read-only panel with no navigation or chart pinning. */
   demoMode?: boolean
-}
-
-function chartPointFromRollup(
-  rollup: NonNullable<PulsePayload['rollups']>[number],
-  startedAt?: string,
-): LiveHeatPoint {
-  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN
-  const minuteTs = Number.isFinite(startedAtMs)
-    ? new Date(startedAtMs + rollup.offsetSeconds * 1_000).toISOString()
-    : ''
-  return {
-    minuteTs,
-    offsetSeconds: rollup.offsetSeconds,
-    score: 0,
-    reason: 'chat_spike',
-    reasonLabel: 'Chart activity',
-    chatCount: Math.max(0, rollup.chatCount ?? 0),
-    emoteCount: minuteEmoteTotal(rollup),
-    viewerCount: Math.max(0, rollup.viewerCount ?? 0) || undefined,
-    topEmotes: (rollup.topEmotes ?? []).slice(0, 3).map((emote, index) => ({
-      key: emote.id ?? `${emote.name}-${emote.provider ?? 'unknown'}-${index}`,
-      name: emote.name,
-      provider: emote.provider,
-      imageUrl: emote.imageUrl,
-      count: Math.max(0, emote.count ?? 0),
-    })),
-    estimated: true,
-    collecting: false,
-  }
-}
-
-function chartInspectionSelection(
-  rollup: NonNullable<PulsePayload['rollups']>[number],
-  heatPoints: LiveHeatPoint[],
-  startedAt?: string,
-): InspectionSelection {
-  const authoritativePoint = findHeatPointAtOffset(heatPoints, rollup.offsetSeconds, 30)
-  if (authoritativePoint) return inspectionSelectionFromPoint('chart', authoritativePoint)
-  const point = chartPointFromRollup(rollup, startedAt)
-  return {
-    source: 'chart',
-    offsetSeconds: rollup.offsetSeconds,
-    bucketOffsetSeconds: normalizedInspectionBucket(rollup.offsetSeconds),
-    point,
-    selectionType: 'minute',
-  }
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -190,6 +130,7 @@ const STANDARD_NUMBER = new Intl.NumberFormat('en-US', {
   notation: 'standard',
   maximumFractionDigits: 1,
 })
+const METRIC_MOTION_MS = 180
 
 function formatSignedDelta(delta: number | null): string {
   if (delta === null) return '-'
@@ -201,13 +142,21 @@ function formatNumber(value: number): string {
   return (value >= 10_000 ? COMPACT_NUMBER : STANDARD_NUMBER).format(value)
 }
 
-function useCountUp(value: number, duration = 420): number {
+function useCountUp(value: number, duration = METRIC_MOTION_MS): number {
   const [display, setDisplay] = useState(value)
+  const displayRef = useRef(value)
   const fromRef = useRef(value)
   const startRef = useRef(0)
+  const reducedMotion = prefersReducedMotion()
+  displayRef.current = display
 
   useEffect(() => {
-    fromRef.current = display
+    if (reducedMotion) {
+      fromRef.current = value
+      setDisplay(value)
+      return
+    }
+    fromRef.current = displayRef.current
     startRef.current = performance.now()
     let frame = 0
     const tick = (now: number) => {
@@ -218,7 +167,7 @@ function useCountUp(value: number, duration = 420): number {
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [value, duration])
+  }, [duration, reducedMotion, value])
 
   return display
 }
@@ -267,30 +216,20 @@ export function LiveStatsBand({
   onRequestFullTimeline,
   onChartWindowChange,
   onPinOffset,
-  inspectionPreviewStore = null,
-  inspectionCommitted = null,
-  onInspectionPreview,
-  onInspectionCommit,
-  onInspectionClear,
-  inspectionBoundaryRef,
   onSaveMoment,
   saveMomentBusy = false,
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
-  selectedReactionMoment = null,
-  onJumpMoment,
   hasVodContext = false,
   coverageTier = null,
   demoMode = false,
 }: LiveStatsBandProps) {
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
-  const inspectionPreview = useInspectionPreview(inspectionPreviewStore)
   const stats: LiveStats = useMemo(
     () => deriveLiveStats(toLiveStatsInputFromExtension(payload)),
     [payload],
   )
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
-  const hasFullRollups = hasFullTimelineRollups(payload)
   const activation = useMemo(
     () =>
       makeFullHistoryActivation({
@@ -300,18 +239,23 @@ export function LiveStatsBand({
       }),
     [payload.login, payload.streamId, payload.vodId],
   )
-  const activationKey = `${activation.login}|${activation.streamId}|${activation.vodId}`
+  const activationKey = fullHistoryActivationKey(activation)
+  const hasFullRollups = hasValidatedFullHistory(payload, activation)
+  const effectiveCurrentOffsetSeconds = Math.max(
+    0,
+    currentOffsetSeconds,
+    payload.currentOffsetSeconds ?? 0,
+  )
   const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('60m')
+  const [chartViewport, setChartViewport] = useState<ChartViewport>(() => resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' }))
+  const chartViewportUserChangedRef = useRef(false)
   const [timelineLoading, setTimelineLoading] = useState(false)
-  /** Exactly one Full request latch per activation key. */
-  const fullTimelineRequestedKeyRef = useRef<string | null>(null)
+  const [fullTimelineFailed, setFullTimelineFailed] = useState(false)
+  /** Exactly one automatic Full request latch per stable activation key. */
+  const fullTimelineAutoRequestedKeyRef = useRef<string | null>(null)
+  const fullTimelineInFlightKeyRef = useRef<string | null>(null)
   /** After the user picks a range, ignore late async default hydration for this stream. */
   const chartWindowUserPickedRef = useRef(false)
-  /**
-   * Full unlock is activation-scoped (login + stream/VOD), not a reusable boolean.
-   * Synchronous invalidate during render so request effects never see stale unlock.
-   */
-  const [unlockedActivation, setUnlockedActivation] = useState<FullHistoryActivation | null>(null)
   const [activationSeen, setActivationSeen] = useState(activation)
   if (
     activation.login !== activationSeen.login
@@ -319,11 +263,11 @@ export function LiveStatsBand({
     || activation.vodId !== activationSeen.vodId
   ) {
     setActivationSeen(activation)
-    setUnlockedActivation(null)
     chartWindowUserPickedRef.current = false
-    fullTimelineRequestedKeyRef.current = null
+    fullTimelineAutoRequestedKeyRef.current = null
+    fullTimelineInFlightKeyRef.current = null
+    setFullTimelineFailed(false)
   }
-  const fullHistoryUnlocked = isFullHistoryUnlockedFor(unlockedActivation, activation)
   const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
   const onRequestFullTimelineRef = useRef(onRequestFullTimeline)
   onRequestFullTimelineRef.current = onRequestFullTimeline
@@ -349,7 +293,7 @@ export function LiveStatsBand({
           setChartWindow('full')
           return
         }
-        // Stored Full is shown but does not unlock / request until explicit Load.
+        // Stored range is a truthful startup fallback while Full loads automatically.
         setChartWindow(window)
       } catch {
         // Storage denied / extension context invalidated — keep in-memory default.
@@ -364,20 +308,22 @@ export function LiveStatsBand({
     () =>
       prepareChartRollups(payload, {
         chartWindow,
-        currentOffsetSeconds,
+        currentOffsetSeconds: effectiveCurrentOffsetSeconds,
         coverageStartOffsetSeconds,
+        activation,
       }),
-    [payload, chartWindow, currentOffsetSeconds, coverageStartOffsetSeconds],
+    [payload, chartWindow, effectiveCurrentOffsetSeconds, coverageStartOffsetSeconds, activation],
   )
   const displayRollups = useMemo(() => downsampleRollupsForChart(rollups), [rollups])
+  // Pin/preview indexes must match the chart's source domain (raw prepared rollups).
   const chartOffsets = useMemo(
-    () => displayRollups.map(rollup => rollup.offsetSeconds),
-    [displayRollups],
+    () => rollups.map(rollup => rollup.offsetSeconds),
+    [rollups],
   )
   const rollupGapNotice = chartWindow === 'full' && hasFullRollups ? describeRollupGap(rollups) : null
-  const awaitingFullRollups =
-    chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)
-    && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload))
+  const needsFullRollups =
+    chartWindowNeedsFullFetch(chartWindow, payload, effectiveCurrentOffsetSeconds, activation)
+    && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload, activation))
   // Only block the chart while a full-timeline request is in flight.
   // After the fetch settles without fullRollups, show emptyMessage — never stay on
   // "Loading timeline…" forever (mock / degraded BFF).
@@ -387,32 +333,22 @@ export function LiveStatsBand({
     chartWindow,
     hasFullRollups,
     confidence: stats.confidence,
-    currentOffsetSeconds,
-    awaitingFullRollups,
+    currentOffsetSeconds: effectiveCurrentOffsetSeconds,
+    awaitingFullRollups: timelineLoading && needsFullRollups,
   })
   const canShowFullTimeline = hasFullRollups || fullTimeline || currentOffsetSeconds > 0
+  const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
-  const heatPoints = useMemo(() => resolveMostReactedHeat(payload).points, [payload])
-  const committedOffsetSeconds = inspectionCommitted?.offsetSeconds ?? pinOffsetSeconds
-  const transientPreviewOffsetSeconds = inspectionPreview?.offsetSeconds ?? previewOffsetSeconds
-
-  const unlockFullForCurrentActivation = (): void => {
-    setUnlockedActivation(activation)
-  }
 
   const handleChartWindowChange = (window: ChartTimelineWindow): void => {
     chartWindowUserPickedRef.current = true
     setChartWindow(window)
-    // Persist preference (including Full). Full alone does not unlock this activation.
+    // Persist the user's fallback/pre-load preference. Polling remains recent.
     if (!demoMode) {
       void setDefaultChartWindow(window as DefaultChartWindow)
-    }
-    if (window === 'full') {
-      // Picking Full from the range control is an explicit Full load for this activation.
-      unlockFullForCurrentActivation()
     }
     onChartWindowChange?.(window)
   }
@@ -422,94 +358,118 @@ export function LiveStatsBand({
   }, [payload.streamId, chartWindow])
 
   useEffect(() => {
+    chartViewportUserChangedRef.current = false
+    setChartViewport(resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the stream/VOD activation changes
+  }, [activationKey])
+
+  useEffect(() => {
+    setChartViewport(current => {
+       if (!chartViewportUserChangedRef.current) {
+         return resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' })
+       }
+      const currentDuration = Math.max(0, current.endSeconds - current.startSeconds)
+       if (currentDuration <= 0 || current.endSeconds <= effectiveCurrentOffsetSeconds) return current
+       return resolveViewport({
+         durationSeconds: effectiveCurrentOffsetSeconds,
+         zoomSeconds: currentDuration,
+         currentViewport: current,
+       })
+     })
+  }, [effectiveCurrentOffsetSeconds])
+
+  useEffect(() => {
     if (!fullTimeline) return
-    unlockFullForCurrentActivation()
     // Only force Full when the user has not already chosen another range.
     if (chartWindowUserPickedRef.current) return
     setChartWindow('full')
     // eslint-disable-next-line react-hooks/exhaustive-deps -- activation-scoped unlock uses current activation
   }, [fullTimeline, activationKey])
 
-  useEffect(() => {
-    if (!fullHistoryUnlocked && !fullTimeline) {
-      return
-    }
-    if (!chartWindowNeedsFullFetch(chartWindow, payload, currentOffsetSeconds)) {
-      return
-    }
-    if (hasFullRollups && !fullRollupsMissingStreamPrefix(payload)) {
-      return
-    }
-    // Exactly one Full request per activation unlock (no duplicates while in-flight / after).
-    if (fullTimelineRequestedKeyRef.current === activationKey) {
-      return
-    }
+  const requestFullTimeline = useCallback((automatic: boolean): void => {
     const request = onRequestFullTimelineRef.current
-    if (!request) return
-    const requestFor = activationKey
-    fullTimelineRequestedKeyRef.current = requestFor
+    if (!request || !hasStableFullHistoryActivation(activation)) return
+    if (fullTimelineInFlightKeyRef.current === activationKey) return
+    if (automatic && fullTimelineAutoRequestedKeyRef.current === activationKey) return
+
+    if (automatic) fullTimelineAutoRequestedKeyRef.current = activationKey
+    fullTimelineInFlightKeyRef.current = activationKey
     setTimelineLoading(true)
+    setFullTimelineFailed(false)
     void request()
+      .then(result => {
+        if (fullHistoryActivationKey(activation) !== activationKey) return
+        if (result.ok && hasValidatedFullHistory(result.payload, activation)) {
+          setFullTimelineFailed(false)
+          if (!chartWindowUserPickedRef.current) setChartWindow('full')
+          return
+        }
+        setFullTimelineFailed(true)
+      })
       .catch(() => {
-        /* Overlay surfaces errors; allow a later explicit retry after stream change. */
+        if (fullHistoryActivationKey(activation) === activationKey) setFullTimelineFailed(true)
       })
       .finally(() => {
-        setTimelineLoading(false)
-        // Keep latch for this activation so effect re-runs do not re-request.
-        if (fullTimelineRequestedKeyRef.current === requestFor) {
-          /* retain */
+        if (fullTimelineInFlightKeyRef.current === activationKey) {
+          fullTimelineInFlightKeyRef.current = null
+          setTimelineLoading(false)
         }
       })
-  }, [
-    chartWindow,
-    currentOffsetSeconds,
-    hasFullRollups,
-    payload,
-    fullHistoryUnlocked,
-    fullTimeline,
-    activationKey,
-  ])
+  }, [activation, activationKey])
 
   useEffect(() => {
-    if (!onInspectionClear) onPinOffset?.(null)
-  }, [payload.streamId, onInspectionClear, onPinOffset])
+    if (!hasStableFullHistoryActivation(activation)) return
+    if (hasValidatedFullHistory(payload, activation)) {
+      setFullTimelineFailed(false)
+      if (!chartWindowUserPickedRef.current) setChartWindow('full')
+      return
+    }
+    requestFullTimeline(true)
+  }, [activation, activationKey, payload, requestFullTimeline])
+
+  useEffect(() => {
+    onPinOffset?.(null)
+  }, [payload.streamId, onPinOffset])
 
   const pinChartIndex = useMemo(() => {
-    if (committedOffsetSeconds == null) return null
-    return findChartIndexByOffset(chartOffsets, committedOffsetSeconds, {
+    if (pinOffsetSeconds == null) return null
+    return findChartIndexByOffset(chartOffsets, pinOffsetSeconds, {
       bucketed: chartWindow === 'full',
     })
-  }, [committedOffsetSeconds, chartOffsets, chartWindow])
+  }, [pinOffsetSeconds, chartOffsets, chartWindow])
 
   const previewChartIndex = useMemo(() => {
-    if (transientPreviewOffsetSeconds == null) return null
-    return findChartIndexByOffset(chartOffsets, transientPreviewOffsetSeconds, {
+    if (previewOffsetSeconds == null) return null
+    return findChartIndexByOffset(chartOffsets, previewOffsetSeconds, {
       bucketed: chartWindow === 'full',
     })
-  }, [transientPreviewOffsetSeconds, chartOffsets, chartWindow])
+  }, [previewOffsetSeconds, chartOffsets, chartWindow])
 
   const previewRollup =
-    previewChartIndex != null ? displayRollups[previewChartIndex] : undefined
+    previewChartIndex != null ? rollups[previewChartIndex] : undefined
 
   const selectedRollup =
-    pinChartIndex != null ? displayRollups[pinChartIndex] : undefined
+    pinChartIndex != null ? rollups[pinChartIndex] : undefined
 
   const minuteAtRollup = useMemo(() => {
-    if (previewRollup) return previewRollup
-    if (chartHoverOffsetSeconds != null) {
-      return displayRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
-    }
     if (selectedRollup) return selectedRollup
+    if (chartHoverOffsetSeconds != null) {
+      return rollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
+    }
+    if (previewRollup) return previewRollup
     return undefined
-  }, [previewRollup, chartHoverOffsetSeconds, displayRollups, selectedRollup])
+  }, [selectedRollup, chartHoverOffsetSeconds, rollups, previewRollup])
 
   const minuteAtOffsetSeconds = minuteAtRollup?.offsetSeconds ?? 0
   const showChartReadout = Boolean(
-    minuteAtRollup
-      && (committedOffsetSeconds != null
-        || transientPreviewOffsetSeconds != null
-        || chartHoverOffsetSeconds != null),
+    minuteAtRollup && (pinOffsetSeconds != null || chartHoverOffsetSeconds != null),
   )
+
+  useEffect(() => {
+    if (pinChartIndex != null) {
+      setEmotePanelExpanded(false)
+    }
+  }, [pinChartIndex])
 
   const topEmotesForChips = useMemo(() => {
     const fromRollups = aggregateChartEmotes(rollups, PLOT_PICKER_EMOTE_LIMIT)
@@ -530,14 +490,13 @@ export function LiveStatsBand({
   }, [topEmotesForChips, rollups, chartLoading])
 
   const selectedEmotesForOverlay = useMemo(
-    () =>
-      topEmotesForChips.filter(emote => selectedEmoteKeys.includes(emoteSelectionKey(emote))),
+    () => selectedEmotesInPlotOrder(topEmotesForChips, selectedEmoteKeys),
     [topEmotesForChips, selectedEmoteKeys],
   )
   const emoteOverlays = useMemo(
     () =>
       selectedEmotesForOverlay.length > 0
-        ? buildEmoteOverlaySeries(displayRollups, selectedEmotesForOverlay, rollups)
+        ? buildEmoteOverlaySeries(rollups, selectedEmotesForOverlay, rollups)
         : [],
     [displayRollups, rollups, selectedEmotesForOverlay],
   )
@@ -564,70 +523,65 @@ export function LiveStatsBand({
         : { color: theme.textMuted }
 
   const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
-  const committedPoint =
-    inspectionCommitted?.point
-    ?? (committedOffsetSeconds != null
-      ? selectedReactionMoment ?? resolvePinnedMomentPoint({
-          pinOffsetSeconds: committedOffsetSeconds,
-          heatPoints,
-        })
-      : null)
-  const previewPoint =
-    inspectionPreview?.point
-    ?? (transientPreviewOffsetSeconds != null
-      ? findHeatPointAtOffset(heatPoints, transientPreviewOffsetSeconds)
-      : null)
-  const inspectionPoint = previewPoint ?? committedPoint
-  const inspectionMode = previewPoint ? 'preview' : 'selected'
+  const selectedOffsetSeconds = selectedRollup?.offsetSeconds ?? null
 
   const chartGames = useMemo(
     () => extensionGamesForOverviewChart(payload.games, payload.category, currentOffsetSeconds),
     [payload.games, payload.category, currentOffsetSeconds],
   )
 
+  const chartRailRollups = useMemo(
+    () => (hasFullRollups ? payload.fullRollups ?? [] : []),
+    [hasFullRollups, payload.fullRollups],
+  )
+  const chartRailDurationSeconds = useMemo(() => {
+    // Include the trailing minute span of the last rollup so the final "Now"
+    // bucket is never dropped by viewport bucketing (Aug-16 rollupSpan.end).
+    const lastRollupEnd =
+      chartRailRollups.length > 0
+        ? (chartRailRollups[chartRailRollups.length - 1]?.offsetSeconds ?? 0) + 60
+        : 0
+    return Math.max(
+      currentOffsetSeconds,
+      payload.currentOffsetSeconds ?? 0,
+      lastRollupEnd,
+    )
+  }, [currentOffsetSeconds, payload.currentOffsetSeconds, chartRailRollups])
+  const chartCoverageStartSeconds = Math.max(
+    0,
+    coverageStartOffsetSeconds,
+    payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,
+  )
+
+  const handleChartViewportChange = useCallback((next: ChartViewport): void => {
+    chartViewportUserChangedRef.current = true
+    setChartViewport(next)
+  }, [])
+
   const visibleRange = useMemo(
     () => chartVisibleRangeFromRollups(displayRollups),
     [displayRollups],
   )
+  const gamesVisibleRange = chartWindow === 'full' ? null : visibleRange
 
   const chartHighlightedGameKeyValue = useMemo(
-    () => chartHighlightedGameKey(hoveredGameKey, chartGames, currentOffsetSeconds, visibleRange),
-    [hoveredGameKey, chartGames, currentOffsetSeconds, visibleRange],
+    () => chartHighlightedGameKey(hoveredGameKey, chartGames, currentOffsetSeconds, gamesVisibleRange),
+    [hoveredGameKey, chartGames, currentOffsetSeconds, gamesVisibleRange],
   )
 
   const handleChartSelect = useCallback((index: number): void => {
-    const rollup = displayRollups[index]
+    const rollup = rollups[index]
     if (!rollup || rollup.missing) return
-    setSelectedEmoteKeys([])
+    // Preserve plotted emote overlays across chart selections.
     setFocusedSeriesKey(null)
-    if (onInspectionCommit) {
-      onInspectionCommit(chartInspectionSelection(rollup, heatPoints, payload.startedAt))
-    } else {
-      onPinOffset?.(rollup.offsetSeconds)
-    }
+    onPinOffset?.(rollup.offsetSeconds)
     setChartHoverOffsetSeconds(null)
-  }, [displayRollups, heatPoints, onInspectionCommit, onPinOffset, payload.startedAt])
+  }, [onPinOffset, rollups])
 
   const handleClearChartSelection = useCallback((): void => {
-    if (onInspectionClear) onInspectionClear()
-    else onPinOffset?.(null)
+    onPinOffset?.(null)
     setChartHoverOffsetSeconds(null)
-  }, [onInspectionClear, onPinOffset])
-
-  const handleChartHover = useCallback((offsetSeconds: number | null): void => {
-    setChartHoverOffsetSeconds(offsetSeconds)
-    if (!onInspectionPreview) return
-    if (offsetSeconds == null) {
-      onInspectionPreview(null)
-      return
-    }
-    const rollup = displayRollups.find(point => point.offsetSeconds === offsetSeconds)
-    onInspectionPreview(
-      rollup && !rollup.missing
-        ? chartInspectionSelection(rollup, heatPoints, payload.startedAt)
-        : null,
-    )
-  }, [displayRollups, heatPoints, onInspectionPreview, payload.startedAt])
+  }, [onPinOffset])
 
   const chartIdentity = `${payload.login}:${payload.streamId ?? ''}:${payload.vodId ?? ''}:${payload.startedAt ?? ''}`
   const chartRegionId = `pulse-live-chart-${useId().replace(/:/g, '')}`
@@ -789,10 +743,11 @@ export function LiveStatsBand({
       <div ref={sparklineBlockRef} style={styles.sparklineBlock}>
         <GamesPlayedStrip
           games={chartGames}
-          durationSeconds={currentOffsetSeconds}
+          activationKey={activationKey}
+          durationSeconds={chartRailDurationSeconds}
           highlightedKey={chartHighlightedGameKeyValue}
           onHighlightKey={setHoveredGameKey}
-          visibleRange={visibleRange}
+          visibleRange={gamesVisibleRange}
           plotPadLeft={4}
           plotPadRight={12}
         />
@@ -918,20 +873,16 @@ export function LiveStatsBand({
                   {loadFromStartBusy ? 'Loading…' : 'Load full stream chart'}
                 </button>
               ) : null}
-              {chartWindow === 'full' && !fullHistoryUnlocked && onRequestFullTimeline ? (
+              {fullTimelineFailed && onRequestFullTimeline ? (
                 <button
                   type="button"
                   data-testid="load-full-history"
                   style={styles.streamStartLink}
                   disabled={timelineLoading || demoMode}
-                  title="Full is remembered as a preference but must be loaded for each new stream activation."
-                  onClick={() => {
-                    chartWindowUserPickedRef.current = true
-                    unlockFullForCurrentActivation()
-                    void setDefaultChartWindow('full')
-                  }}
+                  title="Retry this activation's one-shot full-history request. Live polling remains recent."
+                  onClick={() => requestFullTimeline(false)}
                 >
-                  {timelineLoading ? 'Loading…' : 'Load full history'}
+                  {timelineLoading ? 'Loading…' : 'Retry full history'}
                 </button>
               ) : null}
             </p>
@@ -947,7 +898,7 @@ export function LiveStatsBand({
             />
             {showPartialRangeStatus ? (
               <span style={styles.partialRangeHint} aria-live="polite">
-                Showing last {chartTimelineWindowLabel(chartWindow)}
+                {plottedCoverageLabel(rollups)}
                 <span style={styles.timelineHintSep}> · </span>
                 <button
                   type="button"
@@ -964,9 +915,11 @@ export function LiveStatsBand({
         </div>
         <div ref={chartInteractionRef} style={styles.chartStack}>
           <PulseOverviewChart
-            rollups={displayRollups}
+            rollups={rollups}
             games={chartGames}
-            durationSeconds={currentOffsetSeconds}
+            backendUrl={backendUrl}
+            interactionResetKey={chartIdentity}
+            durationSeconds={chartRailDurationSeconds}
             streamStartedAt={payload.startedAt}
             height={chartHeight}
             chartRegionId={chartRegionId}
@@ -980,47 +933,47 @@ export function LiveStatsBand({
             onFocusedSeriesKeyChange={demoMode ? undefined : setFocusedSeriesKey}
             onSelectIndex={demoMode ? undefined : handleChartSelect}
             onClearSelection={demoMode ? undefined : handleClearChartSelection}
-             clearSelectionBoundaryRef={inspectionBoundaryRef ?? chartInteractionRef}
-             onHoverOffsetChange={handleChartHover}
-            highlightedGameSegmentKey={chartHighlightedGameKeyValue}
+            clearSelectionBoundaryRef={chartInteractionRef}
+             onHoverOffsetChange={setChartHoverOffsetSeconds}
+             viewport={hasFullRollups ? chartViewport : undefined}
+             onViewportChange={hasFullRollups ? handleChartViewportChange : undefined}
+             onJumpToOffset={onJumpToOffset}
+             highlightedGameSegmentKey={chartHighlightedGameKeyValue}
             overlayLines={emoteOverlays}
             emptyMessage={chartEmpty}
             loading={chartLoading}
             isLive={isLive}
-            emoteSyncTone={emoteSyncTone}
-          />
-        </div>
+             emoteSyncTone={emoteSyncTone}
+           />
+            {hasFullRollups ? (
+              <ChartPositionRail
+                viewport={chartViewport}
+                durationSeconds={chartRailDurationSeconds}
+                onViewportChange={handleChartViewportChange}
+                onJumpToOffset={onJumpToOffset}
+                disabled={timelineLoading || demoMode}
+                coverageStartSeconds={chartCoverageStartSeconds}
+                ariaLabel="Chart zoom and position"
+              />
+            ) : null}
+          </div>
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <SevenTvEmotePanel
+            expanded={emotePanelExpanded}
+            onToggleExpanded={demoMode ? () => undefined : () => setEmotePanelExpanded(open => !open)}
             backendUrl={backendUrl}
             rollups={rollups}
             topEmotes={topEmotesForChips}
             selectedKeys={selectedEmoteKeys}
             onToggleEmote={toggleEmotePanelKey}
+            selectedOffsetSeconds={selectedOffsetSeconds}
+            sidebarCompact
             selectedPlotColors={selectedPlotColors}
             maxSelected={MAX_PLOTTED_EMOTES}
             rollupsLoading={chartLoading}
-            readOnly={demoMode}
           />
         ) : null}
-        <MomentInspectionTray state={inspectionPoint ? 'active' : 'idle'}>
-          {inspectionPoint ? (
-            <SelectedMomentCard
-              point={inspectionPoint}
-              mode={inspectionMode}
-              backendUrl={backendUrl}
-              onJump={point => {
-                onJumpMoment?.(point)
-                if (!onJumpMoment) onJumpToOffset?.(point.offsetSeconds)
-              }}
-              onSave={onSaveMoment}
-              saveBusy={saveMomentBusy}
-              onAnalytics={point => onOpenAnalytics?.(point.offsetSeconds)}
-              jumpLabel={hasVodContext || payload.vodId ? 'Jump in VOD' : 'Jump in player'}
-            />
-          ) : undefined}
-        </MomentInspectionTray>
       </div>
     </PulseSectionCard>
   )

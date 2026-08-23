@@ -3,6 +3,7 @@ import {
   chartPointsFromExtensionRollups,
   downsampleRollupsForChart,
   nearestChartPointIndex,
+  nearestRollupIndex,
 } from '../src/ui/extensionChartPoints.ts'
 import type { ExtensionRollup } from '../src/shared/messages.ts'
 
@@ -47,18 +48,6 @@ describe('extensionChartPoints', () => {
     expect(sampled.some(point => (point.viewerCount ?? 0) === 42_000)).toBe(true)
   })
 
-  it('uses the requested signal to choose each bucket representative', () => {
-    const rollups = [
-      { offsetSeconds: 0, chatCount: 90, sevenTvEmoteCount: 1, viewerCount: 10 },
-      { offsetSeconds: 60, chatCount: 1, sevenTvEmoteCount: 80, viewerCount: 20 },
-      { offsetSeconds: 120, chatCount: 2, sevenTvEmoteCount: 2, viewerCount: 900 },
-    ]
-
-    expect(downsampleRollupsForChart(rollups, 1, 'chat')[0]?.offsetSeconds).toBe(0)
-    expect(downsampleRollupsForChart(rollups, 1, 'emotes')[0]?.offsetSeconds).toBe(60)
-    expect(downsampleRollupsForChart(rollups, 1, 'viewers')[0]?.offsetSeconds).toBe(120)
-  })
-
   it('finds nearest chart point by offset', () => {
     const points = chartPointsFromExtensionRollups([
       rollup(0, 1),
@@ -67,5 +56,21 @@ describe('extensionChartPoints', () => {
     ])
     expect(nearestChartPointIndex(points, 55)).toBe(1)
     expect(nearestChartPointIndex(points, 0)).toBe(0)
+  })
+
+  it('finds nearest ordered rollups with clamping, ties, irregular gaps, and empty input', () => {
+    const samples = [
+      rollup(10, 1),
+      rollup(35, 2),
+      rollup(120, 3),
+      rollup(121, 4),
+    ]
+    expect(nearestRollupIndex([], 10)).toBe(-1)
+    expect(nearestRollupIndex(samples, 35)).toBe(1)
+    expect(nearestRollupIndex(samples, -100)).toBe(0)
+    expect(nearestRollupIndex(samples, 999)).toBe(3)
+    expect(nearestRollupIndex(samples, 22.5)).toBe(0)
+    expect(nearestRollupIndex(samples, 100)).toBe(2)
+    expect(nearestRollupIndex(samples, 120.6)).toBe(3)
   })
 })
