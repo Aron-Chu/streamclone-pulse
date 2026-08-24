@@ -378,6 +378,11 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).pageScrollY, { timeout: 5_000 })
       .toBeGreaterThan(0)
 
+    await extension.page.evaluate(rootId => {
+      const svg = document.getElementById(rootId)?.shadowRoot?.querySelector('svg[data-testid="pulse-overview-chart"]')
+      svg?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    }, PULSE_ROOT_ID)
+
     const before = await probeChart(extension.page)
     expect(before.svg!.y + before.svg!.height).toBeGreaterThan(0)
     expect(before.svg!.y).toBeLessThan(900)
