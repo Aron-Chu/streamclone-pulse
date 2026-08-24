@@ -322,7 +322,7 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
-  test('emote marker rail stays bounded and supports focus, tooltip, and keyboard activation', async ({
+  test('selected overlays have no automatic marker rail and zoom controls appear after zooming', async ({
     extension,
     prepare,
     evidence,
@@ -336,24 +336,27 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).svg, { timeout: 20_000 })
       .not.toBeNull()
 
-    const rail = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-emote-marker-rail="true"]`)
-    const markers = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-emote-marker="true"]`)
-    await expect(rail).toBeVisible()
-    await expect(markers.first()).toBeVisible()
-    expect(await markers.count()).toBeLessThanOrEqual(32)
-
-    const marker = markers.first()
-    await expect(marker).toHaveAttribute('aria-label', /uses at/)
-    await marker.focus()
     await expect(
-      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-emote-marker-tooltip="true"]`),
-    ).toBeVisible()
+      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-emote-marker]`),
+    ).toHaveCount(0)
+    await expect(
+      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-emote-marker-rail]`),
+    ).toHaveCount(0)
 
-    await marker.press('Enter')
+    const scrubber = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-scrubber="true"]`)
+    await scrubber.focus()
+    await expect(scrubber).toBeFocused()
+    expect(await scrubber.evaluate(node => getComputedStyle(node).outlineStyle)).toBe('none')
+    await scrubber.press('=')
+    await expect(
+      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-viewport-controls]`),
+    ).toBeVisible()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-in]`)).toBeVisible()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-out]`)).toBeVisible()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-reset]`)).toBeVisible()
     await expect
       .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
-      .not.toBeNull()
-    expect((await probeChart(extension.page)).activeOffset).not.toBeNull()
+      .toBeNull()
 
     assertNoUncaughtErrors(evidence)
   })
@@ -368,11 +371,15 @@ test.describe('chart preview/lock interactions', () => {
     await waitForPulseRoot(extension.page)
 
     const games = extension.page.locator(`#${PULSE_ROOT_ID} [data-games-played="true"]`)
+    const range = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-range-controls]`)
     const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    await expect(range).toBeVisible()
     await expect(games).toBeVisible()
     await expect(chart).toBeVisible()
+    const rangeBox = await range.boundingBox()
     const gamesBox = await games.boundingBox()
     const chartBox = await chart.boundingBox()
+    expect(rangeBox?.y ?? Infinity).toBeLessThan(gamesBox?.y ?? -Infinity)
     expect(gamesBox?.y ?? Infinity).toBeLessThan(chartBox?.y ?? -Infinity)
 
     const settings = extension.page.locator(`#${PULSE_ROOT_ID} [data-pulse-settings-entry="bottom-bar"]`)

@@ -48,13 +48,61 @@ export function extensionRollupsToChartMinutes(
   })
 }
 
-/** Live overlay chart: show current category when backend omits games (rc15 live gap). */
+/** Tolerance (seconds) a game timeline may overrun the known stream duration before it is treated as cross-stream stale data. */
+export const GAME_TIMELINE_TOLERANCE_SECONDS = 120
+
+/**
+ * Coherence guard for backend-supplied game timelines: rejects the ENTIRE array
+ * when it cannot belong to the current stream — any segment starting at/beyond
+ * the stream duration, any segment ending more than the tolerance beyond it, or
+ * segments whose total covered time overruns the stream by more than the
+ * tolerance. Unknown/zero durations never reject (nothing to compare against).
+ */
+export function rejectIncoherentGameTimeline(
+  games: ExtensionGameSegment[],
+  durationSeconds: number,
+): boolean {
+  if (!games.length) return false
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false
+
+  let totalCoveredSeconds = 0
+  for (const game of games) {
+    if (!Number.isFinite(game.offsetSeconds) || !Number.isFinite(game.durationSeconds)) continue
+    if (game.offsetSeconds >= durationSeconds) return true
+    const covered = Math.max(0, game.durationSeconds)
+    totalCoveredSeconds += covered
+    if (game.offsetSeconds + covered > durationSeconds + GAME_TIMELINE_TOLERANCE_SECONDS) {
+      return true
+    }
+  }
+  return totalCoveredSeconds > durationSeconds + GAME_TIMELINE_TOLERANCE_SECONDS
+}
+
+/**
+ * Sanitized game timeline for recap/VOD surfaces: returns the array only when
+ * it coherently belongs to the given duration, otherwise undefined so callers
+ * render an honest empty/fallback state instead of a stale cross-stream list.
+ */
+export function safeGameTimeline(
+  games: ExtensionGameSegment[] | undefined,
+  durationSeconds: number,
+): ExtensionGameSegment[] | undefined {
+  if (!games?.length) return undefined
+  return rejectIncoherentGameTimeline(games, durationSeconds) ? undefined : games
+}
+
+/**
+ * Live overlay chart: show current category when backend omits games (rc15 live gap)
+ * or supplies an incoherent cross-stream timeline (stale game segments).
+ */
 export function extensionGamesForOverviewChart(
   games: ExtensionGameSegment[] | undefined,
   category: string | undefined,
   durationSeconds: number,
 ): ExtensionGameSegment[] {
-  if (games?.length) return games
+  const suppliedGames =
+    games?.length && !rejectIncoherentGameTimeline(games, durationSeconds) ? games : undefined
+  if (suppliedGames?.length) return suppliedGames
   const gameName = String(category ?? '').trim()
   if (!gameName || durationSeconds <= 0) return []
   return [{
@@ -70,13 +118,11 @@ export function extensionGamesToChartGames(
 ): ChartGameSegment[] {
   const normalized = normalizeGameSegments(
     (games ?? []).map(game => ({
-      id: game.id,
       gameName: game.gameName,
-      categoryId: game.categoryId,
       boxArtUrl: game.boxArtUrl,
+      categoryId: game.categoryId,
       offsetSeconds: game.offsetSeconds,
       durationSeconds: game.durationSeconds,
-      source: game.source,
     })),
     durationSeconds,
   )

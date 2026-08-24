@@ -15,9 +15,11 @@ export function extensionResolve() {
     alias: {
       react: resolve(root, 'node_modules/react'),
       'react-dom': resolve(root, 'node_modules/react-dom'),
-      // In-repo RPR-6 packages (src exports for Vite DX)
+      // In-repo RPR-6 packages (src exports for Vite DX).
+      // pulse-charts resolves to a curated extension surface so portal-only
+      // chart machinery is never bundled into the content script.
       '@streampulse/pulse-core': resolve(root, 'packages/pulse-core/src/index.ts'),
-      '@streampulse/pulse-charts': resolve(root, 'packages/pulse-charts/src/index.ts'),
+      '@streampulse/pulse-charts': resolve(root, 'packages/pulse-charts/src/extension.ts'),
     },
   }
 }

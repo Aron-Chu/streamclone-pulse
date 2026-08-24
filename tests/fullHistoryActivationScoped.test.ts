@@ -7,14 +7,18 @@ vi.mock('../src/shared/storage.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/shared/storage.ts')>()
   return {
     ...actual,
-    getDefaultChartWindow: vi.fn(async () => 'full' as const),
+    getDefaultChartWindow: vi.fn(async () => '60m' as const),
     setDefaultChartWindow: vi.fn(async () => undefined),
     migrateDefaultChartWindowToRecentV2Once: vi.fn(async () => undefined),
   }
 })
 
 vi.mock('../src/ui/PulseOverviewChart.tsx', () => ({
-  PulseOverviewChart: () => null,
+  PulseOverviewChart: ({ rollups, loading }: { rollups: unknown[]; loading?: boolean }) =>
+    createElement('div', {
+      'data-chart-point-count': rollups.length,
+      'data-chart-loading': loading ? 'true' : 'false',
+    }),
 }))
 
 vi.mock('../src/ui/PulseEmoteImg.tsx', () => ({
@@ -32,6 +36,8 @@ vi.mock('../src/ui/SevenTvEmotePanel.tsx', () => ({
 import type { PulsePayload } from '../src/shared/messages.ts'
 import {
   fullHistoryActivationKey,
+  hasStableFullHistoryActivation,
+  hasValidatedFullHistory,
   isFullHistoryUnlockedFor,
   makeFullHistoryActivation,
   sameFullHistoryActivation,
@@ -83,10 +89,11 @@ describe('fullHistoryAuth helpers (B1)', () => {
       streamId: '42',
       vodId: 'vod-1',
     })
-    expect(fullHistoryActivationKey(activation)).toBe('streamer_a|42|vod-1')
+    expect(fullHistoryActivationKey(activation)).toBe('streamer_a|stream:42')
+    expect(hasStableFullHistoryActivation(activation)).toBe(true)
   })
 
-  it('requires exact login+stream+vod for unlock', () => {
+  it('prefers stream identity so later VOD linking does not create a new activation', () => {
     const current = makeFullHistoryActivation({
       login: 'a',
       streamId: 's1',
@@ -100,6 +107,12 @@ describe('fullHistoryAuth helpers (B1)', () => {
     expect(sameFullHistoryActivation(unlocked, current)).toBe(true)
     expect(isFullHistoryUnlockedFor(unlocked, current)).toBe(true)
     expect(
+      sameFullHistoryActivation(
+        makeFullHistoryActivation({ login: 'a', streamId: 's1', vodId: 'vod-later' }),
+        current,
+      ),
+    ).toBe(true)
+    expect(
       isFullHistoryUnlockedFor(
         makeFullHistoryActivation({ login: 'a', streamId: 's2', vodId: '' }),
         current,
@@ -111,6 +124,38 @@ describe('fullHistoryAuth helpers (B1)', () => {
     const payload = makePayload()
     expect(chartWindowNeedsFullFetch('full', payload, payload.currentOffsetSeconds)).toBe(true)
   })
+
+  it('rejects short incomplete fullRollups and accepts coverage-spanning sparse history', () => {
+    const activation = makeFullHistoryActivation({ login: 'streamer_a', streamId: 'stream-a' })
+    const incomplete = makePayload({
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 1 },
+        { offsetSeconds: 60, chatCount: 2 },
+      ],
+    })
+    expect(hasValidatedFullHistory(incomplete, activation)).toBe(false)
+
+    const sparse = makePayload({
+      coverageStartOffsetSeconds: 2700,
+      coverage: {
+        state: 'partial_tracking',
+        coverageStartOffsetSeconds: 2700,
+        coverageEndOffsetSeconds: 7140,
+        hasFullStreamCoverage: false,
+        hasGaps: true,
+        missingRanges: [{ fromOffsetSeconds: 3600, toOffsetSeconds: 4200 }],
+        canBackfill: false,
+        message: 'Partial coverage',
+      },
+      fullRollups: [
+        { offsetSeconds: 2700, chatCount: 12 },
+        { offsetSeconds: 3540, chatCount: 18 },
+        { offsetSeconds: 4260, chatCount: 9 },
+        { offsetSeconds: 7140, chatCount: 22 },
+      ],
+    })
+    expect(hasValidatedFullHistory(sparse, activation)).toBe(true)
+  })
 })
 
 describe('LiveStatsBand activation-scoped Full (B1)', () => {
@@ -121,7 +166,7 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
       true
     vi.clearAllMocks()
-    vi.mocked(getDefaultChartWindow).mockResolvedValue('full')
+    vi.mocked(getDefaultChartWindow).mockResolvedValue('60m')
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -137,7 +182,11 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
   function renderBand(
     props: Partial<ComponentProps<typeof LiveStatsBand>> & { payload: PulsePayload },
   ) {
-    const onRequestFullTimeline = props.onRequestFullTimeline ?? vi.fn(async () => undefined)
+    const successPayload = makeFullPayload(props.payload)
+    const onRequestFullTimeline = props.onRequestFullTimeline ?? vi.fn(async () => ({
+      ok: true as const,
+      payload: successPayload,
+    }))
     act(() => {
       root.render(
         createElement(LiveStatsBand, {
@@ -160,7 +209,7 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
           backendUrl: 'http://localhost:8081',
           showLoadFromStart: true,
           onLoadFromStart: () => undefined,
-          onRequestFullTimeline: vi.fn(async () => undefined),
+          onRequestFullTimeline: vi.fn(async () => ({ ok: true as const, payload: makeFullPayload(props.payload) })),
           ...props,
           payload: props.payload,
         }),
@@ -168,71 +217,73 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     })
   }
 
-  it('A→B stream change: zero Full requests after switch until explicit unlock', async () => {
-    const onRequestFullTimeline = vi.fn(async () => undefined)
+  it('automatically requests Full exactly once for a stable activation despite rerenders', async () => {
+    const payload = makePayload()
+    const onRequestFullTimeline = vi.fn(async () => ({ ok: true as const, payload: makeFullPayload(payload) }))
+    renderBand({ payload, onRequestFullTimeline })
+    await flushMicrotasks()
+    rerenderBand({ payload: { ...payload, currentOffsetSeconds: 7260 }, onRequestFullTimeline })
+    await flushMicrotasks()
+
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets the automatic latch when stream activation changes', async () => {
+    const onRequestFullTimeline = vi.fn(async () => ({ ok: false as const, reason: 'incomplete_history' as const }))
     const payloadA = makePayload({ login: 'streamer_a', streamId: 'stream-a' })
     renderBand({ payload: payloadA, onRequestFullTimeline })
     await flushMicrotasks()
-
-    expect(onRequestFullTimeline).not.toHaveBeenCalled()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
 
     const payloadB = makePayload({ login: 'streamer_b', streamId: 'stream-b' })
     rerenderBand({ payload: payloadB, onRequestFullTimeline })
     await flushMicrotasks()
-    expect(onRequestFullTimeline).not.toHaveBeenCalled()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(2)
   })
 
-  it('ABA: returning to A does not auto Full until explicit', async () => {
-    const onRequestFullTimeline = vi.fn(async () => undefined)
-    const payloadA = makePayload({ login: 'streamer_a', streamId: 'stream-a' })
-    const payloadB = makePayload({ login: 'streamer_b', streamId: 'stream-b' })
-
-    renderBand({ payload: payloadA, onRequestFullTimeline })
-    await flushMicrotasks()
-
-    rerenderBand({ payload: payloadB, onRequestFullTimeline })
-    await flushMicrotasks()
-
-    rerenderBand({ payload: payloadA, onRequestFullTimeline })
-    await flushMicrotasks()
-
-    expect(onRequestFullTimeline).not.toHaveBeenCalled()
-  })
-
-  it('stored Full preference on mount: zero Full requests + Load full history visible', async () => {
-    const onRequestFullTimeline = vi.fn(async () => undefined)
+  it('stored Full preference still performs one automatic request', async () => {
+    vi.mocked(getDefaultChartWindow).mockResolvedValue('full')
+    const payload = makePayload()
+    const onRequestFullTimeline = vi.fn(async () => ({ ok: true as const, payload: makeFullPayload(payload) }))
     renderBand({ payload: makePayload(), onRequestFullTimeline })
     await flushMicrotasks()
 
-    expect(onRequestFullTimeline).not.toHaveBeenCalled()
-    const loadButton = container.querySelector('[data-testid="load-full-history"]')
-    expect(loadButton).not.toBeNull()
-    expect(loadButton?.textContent).toMatch(/Load full history/i)
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
   })
 
-  it('explicit load: exactly one Full request', async () => {
-    const onRequestFullTimeline = vi.fn(async () => undefined)
-    renderBand({ payload: makePayload(), onRequestFullTimeline })
-    await flushMicrotasks()
-
-    const loadButton = container.querySelector('[data-testid="load-full-history"]') as HTMLButtonElement
-    expect(loadButton).not.toBeNull()
-
-    await act(async () => {
-      loadButton.click()
-      await Promise.resolve()
-    })
+  it('failed automatic request exposes a bounded explicit retry', async () => {
+    const payload = makePayload()
+    const onRequestFullTimeline = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false as const, reason: 'missing_payload' as const })
+      .mockResolvedValueOnce({ ok: true as const, payload: makeFullPayload(payload) })
+    renderBand({ payload, onRequestFullTimeline })
     await flushMicrotasks()
 
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+    const retryButton = container.querySelector('[data-testid="load-full-history"]') as HTMLButtonElement
+    expect(retryButton?.textContent).toMatch(/Retry full history/i)
 
     await act(async () => {
-      loadButton.click()
+      retryButton.click()
       await Promise.resolve()
     })
     await flushMicrotasks()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(2)
+  })
 
-    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+  it('keeps the recent chart points rendered after the Full request fails', async () => {
+    const payload = makePayload({ currentOffsetSeconds: 7_200 })
+    const onRequestFullTimeline = vi.fn(async () => ({
+      ok: false as const,
+      reason: 'request_failed' as const,
+    }))
+    renderBand({ payload, onRequestFullTimeline })
+    await flushMicrotasks()
+
+    const chart = container.querySelector('[data-chart-point-count]')
+    expect(chart?.getAttribute('data-chart-point-count')).toBe(String(payload.rollups?.length ?? 0))
+    expect(chart?.getAttribute('data-chart-loading')).toBe('false')
   })
 
   it('chart picker calls setDefaultChartWindow', async () => {
@@ -253,11 +304,11 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     expect(setDefaultChartWindow).toHaveBeenCalledWith('full')
   })
 
-  it('stream change while pending: late response does not re-request on new activation', async () => {
-    let resolveA: (() => void) | undefined
+  it('stream change while pending ignores the late result and requests the new activation once', async () => {
+    let resolveA: ((result: { ok: false; reason: 'activation_changed' }) => void) | undefined
     const onRequestFullTimeline = vi.fn(
       () =>
-        new Promise<void>(resolve => {
+        new Promise<{ ok: false; reason: 'activation_changed' }>(resolve => {
           resolveA = resolve
         }),
     )
@@ -266,27 +317,23 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     renderBand({ payload: payloadA, onRequestFullTimeline })
     await flushMicrotasks()
 
-    const loadButton = container.querySelector('[data-testid="load-full-history"]') as HTMLButtonElement
-    await act(async () => {
-      loadButton.click()
-    })
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
 
     const payloadB = makePayload({ login: 'streamer_b', streamId: 'stream-b' })
     rerenderBand({ payload: payloadB, onRequestFullTimeline })
     await flushMicrotasks()
-    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(2)
 
     await act(async () => {
-      resolveA?.()
+      resolveA?.({ ok: false, reason: 'activation_changed' })
       await Promise.resolve()
     })
     await flushMicrotasks()
-    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(2)
   })
 
-  it('late storage hydration does not overwrite user range pick after stream change', async () => {
-    let resolveHydrate: ((value: 'full') => void) | undefined
+  it('late storage hydration does not overwrite a user range pick', async () => {
+    let resolveHydrate: ((value: '15m') => void) | undefined
     vi.mocked(getDefaultChartWindow).mockImplementation(
       () =>
         new Promise(resolve => {
@@ -295,7 +342,11 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     )
 
     const payloadA = makePayload({ login: 'streamer_a', streamId: 'stream-a' })
-    renderBand({ payload: payloadA })
+    const onRequestFullTimeline = vi.fn(async () => ({
+      ok: false as const,
+      reason: 'request_failed' as const,
+    }))
+    renderBand({ payload: payloadA, onRequestFullTimeline })
     await flushMicrotasks()
 
     const fullStreamButton = Array.from(container.querySelectorAll('button')).find(button =>
@@ -305,17 +356,29 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
       fullStreamButton!.click()
     })
 
-    const payloadB = makePayload({ login: 'streamer_b', streamId: 'stream-b' })
-    rerenderBand({ payload: payloadB })
-
     await act(async () => {
-      resolveHydrate?.('full')
+      resolveHydrate?.('15m')
       await Promise.resolve()
       await Promise.resolve()
     })
     await flushMicrotasks()
 
-    const loadButton = container.querySelector('[data-testid="load-full-history"]')
-    expect(loadButton).not.toBeNull()
+    const rangeButton = container.querySelector('button[aria-label="Chart time range"]')
+    expect(rangeButton?.textContent).toContain('Full stream')
   })
 })
+
+function makeFullPayload(payload: PulsePayload): PulsePayload {
+  const coverageStart = payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0
+  const end = Math.max(coverageStart, payload.currentOffsetSeconds - 60)
+  const fullRollups = Array.from(
+    { length: Math.floor((end - coverageStart) / 60) + 1 },
+    (_, index) => ({
+      offsetSeconds: coverageStart + index * 60,
+      chatCount: 12,
+      sevenTvEmoteCount: 3,
+      totalEmoteCount: 3,
+    }),
+  )
+  return { ...payload, fullRollups }
+}

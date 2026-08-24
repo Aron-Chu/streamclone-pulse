@@ -143,45 +143,31 @@ export const shadowStyles = `
   .pulse-seven-tv-toggle:hover {
     background: rgba(255, 255, 255, 0.03);
   }
-  .pulse-seven-tv-row {
+  .pulse-seven-tv-chip {
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
-  .pulse-seven-tv-row:hover {
+  .pulse-seven-tv-chip:hover {
     background: rgba(255, 255, 255, 0.06) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35) !important;
     transform: translateY(-1px);
   }
-  .pulse-seven-tv-row-active {
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08) !important;
-    border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28) !important;
+  .pulse-seven-tv-chip-active {
+    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.18) !important;
+    border-color: rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;
+    box-shadow: 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.78);
   }
-  .pulse-seven-tv-row:focus-visible {
+  .pulse-seven-tv-chip:focus-visible {
     outline: 2px solid rgba(103, 232, 249, 0.85);
     outline-offset: 2px;
   }
-  .pulse-seven-tv-row-disabled:hover {
+  .pulse-seven-tv-chip-disabled:hover {
     background: inherit !important;
     border-color: inherit !important;
     transform: none !important;
   }
-  .pulse-overview-chart:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.8);
-    outline-offset: -2px;
-  }
-  .pulse-emote-picker-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.35);
-    border-radius: 999px;
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.55);
-    border-radius: 999px;
+  .pulse-overview-chart:focus-visible,
+  .pulse-overview-chart [data-chart-scrubber]:focus-visible {
+    outline: none !important;
   }
   .pulse-chart-legend-chip {
     transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
@@ -1098,86 +1084,6 @@ export const shadowStyles = `
     --pulse-ease-out: cubic-bezier(0.2, 0, 0, 1);
     --pulse-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .pulse-chart-emote-marker {
-    align-items: center;
-    appearance: none;
-    background: rgba(9, 14, 20, 0.92);
-    border: 1px solid rgba(52, 211, 153, 0.65);
-    border-radius: 999px;
-    box-sizing: border-box;
-    color: ${theme.textPrimary};
-    cursor: pointer;
-    display: inline-flex;
-    height: 30px;
-    justify-content: center;
-    min-height: 30px;
-    min-width: 30px;
-    padding: 4px;
-    pointer-events: auto;
-    position: absolute;
-    transform: translate(-50%, -50%) scale(0.96);
-    transition: opacity var(--pulse-motion-data) var(--pulse-ease-out), transform var(--pulse-motion-interactive) var(--pulse-ease-out), border-color var(--pulse-motion-fast) var(--pulse-ease-standard);
-    z-index: 3;
-  }
-  .pulse-chart-emote-marker:hover,
-  .pulse-chart-emote-marker:focus-visible {
-    border-color: ${theme.liveSoft};
-    transform: translate(-50%, -50%) scale(1.06);
-  }
-  .pulse-chart-emote-marker:focus-visible {
-    outline: 2px solid ${theme.accentSoft};
-    outline-offset: 2px;
-  }
-  .pulse-chart-emote-marker-count {
-    background: ${theme.accentStrong};
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    border-radius: 999px;
-    color: ${theme.onAccent};
-    font-size: 8px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 900;
-    line-height: 1;
-    max-width: 42px;
-    overflow: hidden;
-    padding: 2px 3px;
-    pointer-events: none;
-    position: absolute;
-    right: -9px;
-    text-overflow: ellipsis;
-    top: -8px;
-    white-space: nowrap;
-  }
-  .pulse-chart-emote-marker-tooltip {
-    background: rgba(7, 12, 20, 0.96);
-    border: 1px solid rgba(52, 211, 153, 0.45);
-    border-radius: 7px;
-    color: ${theme.textPrimary};
-    display: grid;
-    font-size: 9px;
-    gap: 2px;
-    max-width: 170px;
-    padding: 5px 7px;
-    pointer-events: none;
-    position: absolute;
-    transform: translate(-50%, -100%);
-    white-space: nowrap;
-    z-index: 4;
-  }
-  .pulse-chart-emote-marker-tooltip span {
-    color: ${theme.textMuted};
-    font-variant-numeric: tabular-nums;
-  }
-  .pulse-chart-emote-marker-summary {
-    bottom: 2px;
-    color: ${theme.textMuted};
-    font-size: 8px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 800;
-    pointer-events: none;
-    position: absolute;
-    right: 5px;
-    z-index: 2;
-  }
   .pulse-settings-bottom-bar,
   .pulse-settings-header-control {
     -webkit-tap-highlight-color: transparent;
@@ -1227,14 +1133,6 @@ export const shadowStyles = `
     .sc-chart-root .sc-chart-plot,
     .sc-emote-plot-line {
       transition: none !important;
-    }
-    .pulse-chart-emote-marker {
-      transition: none !important;
-      transform: translate(-50%, -50%);
-    }
-    .pulse-chart-emote-marker:hover,
-    .pulse-chart-emote-marker:focus-visible {
-      transform: translate(-50%, -50%);
     }
     .pulse-settings-bottom-bar,
     .pulse-settings-header-control,

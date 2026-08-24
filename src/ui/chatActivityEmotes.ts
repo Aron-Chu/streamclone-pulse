@@ -1,6 +1,11 @@
 import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streampulse/pulse-core'
-import { CHART_THEME, emoteChartColor } from './chartTheme.ts'
+import { CHART_THEME, emoteChartColor, emoteChartDash } from './chartTheme.ts'
 import type { ExtensionEmote, ExtensionRollup, PulseCoverage, PulsePayload } from '../shared/messages.ts'
+import {
+  fullHistoryActivationKey,
+  hasValidatedFullHistory,
+  type FullHistoryActivation,
+} from '../shared/fullHistoryAuth.ts'
 import { chartBucketRanges } from './extensionChartPoints.ts'
 import { firstActiveRollupOffset } from './chartRollupUtils.ts'
 
@@ -148,9 +153,10 @@ export function chartWindowNeedsFullFetch(
   window: ChartTimelineWindow,
   payload?: PulsePayload,
   currentOffsetSeconds = 0,
+  activation?: FullHistoryActivation,
 ): boolean {
   if (window !== '2h' && window !== '4h' && window !== 'full') return false
-  if (payload && hasFullTimelineRollups(payload) && !fullRollupsMissingStreamPrefix(payload)) {
+  if (payload && hasValidatedFullHistory(payload, activation)) {
     return false
   }
 
@@ -172,8 +178,11 @@ export function chartWindowNeedsFullFetch(
  * Default BFF polls tail-trim fullRollups to FULL_TIMELINE_MAX_POINTS (480) minutes.
  * Long streams look "complete" but drop the opening ~ (duration - 480) minutes.
  */
-export function fullRollupsMissingStreamPrefix(payload: PulsePayload | null | undefined): boolean {
-  if (!payload?.fullRollups?.length) return true
+export function fullRollupsMissingStreamPrefix(
+  payload: PulsePayload | null | undefined,
+  activation?: FullHistoryActivation,
+): boolean {
+  if (!payload?.fullRollups?.length || !hasValidatedFullHistory(payload, activation)) return true
   const full = payload.fullRollups
   const current = Math.max(0, payload.currentOffsetSeconds ?? 0)
   if (current <= FULL_TIMELINE_MAX_POINTS * 60) return false
@@ -271,8 +280,11 @@ export function rollupSeries(payload: PulsePayload, window: RollupWindow = 'rece
 }
 
 /** Chart rollups: prefer full-stream payload whenever the backend sends it. */
-export function chartRollupSeries(payload: PulsePayload): ExtensionRollup[] {
-  return rollupSeries(payload, hasFullTimelineRollups(payload) ? 'full' : 'recent')
+export function chartRollupSeries(
+  payload: PulsePayload,
+  activation?: FullHistoryActivation,
+): ExtensionRollup[] {
+  return rollupSeries(payload, hasFullTimelineRollups(payload, activation) ? 'full' : 'recent')
 }
 
 /** Zero-fill / bucket sparse full-stream rollups so the chart spans stream start → now. */
@@ -383,9 +395,14 @@ export function resolveFullChartFromOffset(
 
 export function densifyRollupsForTimeline(
   rollups: ExtensionRollup[],
-  options: { fromOffset: number; toOffset: number; maxPoints: number },
+  options: {
+    fromOffset: number
+    toOffset: number
+    maxPoints: number
+    missingRanges?: PulseCoverage['missingRanges']
+  },
 ): ExtensionRollup[] {
-  const { fromOffset, toOffset, maxPoints } = options
+  const { fromOffset, toOffset, maxPoints, missingRanges = [] } = options
   if (rollups.length === 0 || toOffset <= fromOffset || maxPoints < 2) {
     return rollups
   }
@@ -395,17 +412,27 @@ export function densifyRollupsForTimeline(
     byOffset.set(rollup.offsetSeconds, rollup)
   }
 
+  const isMissingOffset = (offsetSeconds: number): boolean => missingRanges.some(range => (
+    offsetSeconds >= range.fromOffsetSeconds && offsetSeconds < range.toOffsetSeconds
+  ))
+
   const step = 60
   const totalMinutes = Math.floor((toOffset - fromOffset) / step) + 1
   if (totalMinutes <= maxPoints) {
     const out: ExtensionRollup[] = []
     for (let off = fromOffset; off <= toOffset; off += step) {
+      const existing = byOffset.get(off)
       out.push(
-        byOffset.get(off) ?? {
+        existing ?? (isMissingOffset(off) ? {
           offsetSeconds: off,
           chatCount: 0,
           sevenTvEmoteCount: 0,
-        },
+          missing: true,
+        } : {
+          offsetSeconds: off,
+          chatCount: 0,
+          sevenTvEmoteCount: 0,
+        }),
       )
     }
     return out
@@ -421,10 +448,14 @@ export function densifyRollupsForTimeline(
     let totalEmoteSum = 0
     let viewerSum = 0
     let viewerSamples = 0
+    let missingMinutes = 0
     const bucketTopEmotes: ExtensionEmote[][] = []
     for (let off = bucketStart; off < bucketEnd; off += step) {
       const rollup = byOffset.get(off)
-      if (!rollup) continue
+      if (!rollup) {
+        if (isMissingOffset(off)) missingMinutes += 1
+        continue
+      }
       chatSum += rollup.chatCount ?? 0
       sevenTvSum += rollup.sevenTvEmoteCount ?? 0
       totalEmoteSum += rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0
@@ -436,11 +467,16 @@ export function densifyRollupsForTimeline(
       if (rollup.topEmotes?.length) bucketTopEmotes.push(rollup.topEmotes)
     }
     const minutesInBucket = Math.max(1, Math.floor((bucketEnd - bucketStart) / step))
+    const provenMinutesInBucket = Math.max(0, minutesInBucket - missingMinutes)
+    if (provenMinutesInBucket === 0) {
+      out.push({ offsetSeconds: bucketStart, chatCount: 0, sevenTvEmoteCount: 0, missing: true })
+      continue
+    }
     out.push({
       offsetSeconds: bucketStart,
-      chatCount: Math.round(chatSum / minutesInBucket),
-      sevenTvEmoteCount: Math.round(sevenTvSum / minutesInBucket),
-      totalEmoteCount: totalEmoteSum > 0 ? Math.round(totalEmoteSum / minutesInBucket) : undefined,
+      chatCount: Math.round(chatSum / provenMinutesInBucket),
+      sevenTvEmoteCount: Math.round(sevenTvSum / provenMinutesInBucket),
+      totalEmoteCount: totalEmoteSum > 0 ? Math.round(totalEmoteSum / provenMinutesInBucket) : undefined,
       viewerCount: viewerSamples > 0 ? Math.round(viewerSum / viewerSamples) : undefined,
       topEmotes: mergeTopEmotesAcrossMinutes(bucketTopEmotes),
     })
@@ -453,6 +489,7 @@ type PrepareChartRollupsCache = {
   chartWindow: ChartTimelineWindow
   currentOffsetSeconds: number
   coverageStartOffsetSeconds: number | undefined
+  activationKey: string
   result: ExtensionRollup[]
 }
 
@@ -465,8 +502,11 @@ export function prepareChartRollups(
     currentOffsetSeconds: number
     /** When tracking started late, full-stream charts align here instead of 00:00. */
     coverageStartOffsetSeconds?: number
+    /** Full data is usable only for the current stream/VOD activation. */
+    activation?: FullHistoryActivation
   },
 ): ExtensionRollup[] {
+  const activationKey = options.activation ? fullHistoryActivationKey(options.activation) : ''
   const cache = prepareChartRollupsCache
   if (
     cache
@@ -474,16 +514,27 @@ export function prepareChartRollups(
     && cache.chartWindow === options.chartWindow
     && cache.currentOffsetSeconds === options.currentOffsetSeconds
     && cache.coverageStartOffsetSeconds === options.coverageStartOffsetSeconds
+    && cache.activationKey === activationKey
   ) {
     return cache.result
   }
 
-  const hasFull = hasFullTimelineRollups(payload)
-  const useFullSource = hasFull || options.chartWindow === 'full'
+  const hasFull = hasFullTimelineRollups(payload, options.activation)
+  // A Full request is optional enrichment. Keep the recent tail on screen while
+  // it is loading, fails, or is rejected as belonging to another activation.
+  const useFullSource = hasFull
   const raw = rollupSeries(payload, useFullSource ? 'full' : 'recent')
   let result: ExtensionRollup[]
   if (options.chartWindow === 'full' && !hasFull) {
-    result = []
+    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
+    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
+    const fromOffset = Math.max(0, toOffset - CHART_WINDOW_SECONDS['60m'])
+    const windowed = raw.filter(
+      rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset,
+    )
+    // Never blank a live chart just because the optional full-history request
+    // has not completed. If the window is sparse, retain the newest samples.
+    result = (windowed.length > 0 ? windowed : raw).slice(-SPARKLINE_MAX_POINTS)
   } else if (options.chartWindow !== 'full') {
     const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
     const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
@@ -506,7 +557,8 @@ export function prepareChartRollups(
       result = densifyRollupsForTimeline(raw, {
         fromOffset,
         toOffset,
-        maxPoints: chartMaxPoints(payload, options.chartWindow),
+        maxPoints: chartMaxPoints(payload, options.chartWindow, options.activation),
+        missingRanges: payload.coverage?.missingRanges,
       })
     }
   }
@@ -516,6 +568,7 @@ export function prepareChartRollups(
     chartWindow: options.chartWindow,
     currentOffsetSeconds: options.currentOffsetSeconds,
     coverageStartOffsetSeconds: options.coverageStartOffsetSeconds,
+    activationKey,
     result,
   }
   return result
@@ -615,13 +668,17 @@ export function findChartIndexByOffset(
   return findRollupIndexByOffset(chartOffsets, targetOffsetSeconds, options?.toleranceSeconds ?? 90)
 }
 
-export function chartMaxPoints(payload: PulsePayload, window: ChartTimelineWindow = '30m'): number {
+export function chartMaxPoints(
+  payload: PulsePayload,
+  window: ChartTimelineWindow = '30m',
+  activation?: FullHistoryActivation,
+): number {
   if (window === '15m') return 15
   if (window === '30m') return 30
   if (window === '60m') return SPARKLINE_MAX_POINTS
   if (window === '2h') return 120
   if (window === '4h') return 240
-  return hasFullTimelineRollups(payload) ? FULL_TIMELINE_MAX_POINTS : SPARKLINE_MAX_POINTS
+  return hasFullTimelineRollups(payload, activation) ? FULL_TIMELINE_MAX_POINTS : SPARKLINE_MAX_POINTS
 }
 
 export function chartEmptyMessage(options: {
@@ -674,8 +731,19 @@ export function describeRollupGap(rollups: ExtensionRollup[]): string | null {
   return `Missing chat data from ${formatHeatOffset(gapAfter + 60)} to ${formatHeatOffset(gapBefore)}`
 }
 
-export function hasFullTimelineRollups(payload: PulsePayload | null | undefined): boolean {
-  return (payload?.fullRollups?.length ?? 0) > 0
+export function plottedCoverageLabel(rollups: ExtensionRollup[]): string {
+  const proven = rollups.filter(rollup => !rollup.missing)
+  if (proven.length === 0) return 'Waiting for tracked rollups'
+  const first = proven[0]!.offsetSeconds
+  const last = proven[proven.length - 1]!.offsetSeconds + 60
+  return `Plotted ${formatHeatOffset(first)}–${formatHeatOffset(last)}`
+}
+
+export function hasFullTimelineRollups(
+  payload: PulsePayload | null | undefined,
+  activation?: FullHistoryActivation,
+): boolean {
+  return hasValidatedFullHistory(payload, activation)
 }
 
 export function isSevenTvProvider(provider?: string): boolean {
@@ -821,6 +889,7 @@ export interface EmoteOverlaySeries {
   values: number[]
   primary?: boolean
   dashed?: boolean
+  dash?: string
 }
 
 export function buildBaselineEmoteOverlays(rollups: ExtensionRollup[]): EmoteOverlaySeries[] {
@@ -912,7 +981,20 @@ export function buildEmoteOverlaySeries(
     values: buildBucketedEmoteSeries(source, displayRollups, emote, countIndex),
     primary: index === 0,
     dashed: true,
+    dash: emoteChartDash(index),
   }))
+}
+
+/** Plot selected emotes in the order the user picked them, not chip order. */
+export function selectedEmotesInPlotOrder(
+  emotes: ExtensionEmote[],
+  selectedKeys: string[],
+): ExtensionEmote[] {
+  const emotesByKey = new Map(emotes.map(emote => [emoteSelectionKey(emote), emote]))
+  return selectedKeys.flatMap(key => {
+    const emote = emotesByKey.get(key)
+    return emote ? [emote] : []
+  })
 }
 
 export function mergeEmoteOverlaySeries(series: EmoteOverlaySeries[]): EmoteOverlaySeries[] {

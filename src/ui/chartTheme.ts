@@ -5,11 +5,11 @@ import type { CSSProperties } from 'react'
  *
  * - **Semantic lanes** (chat purple, emote green, trend stroke): fixed so the legend
  *   always matches the bars/lines regardless of Aurora/Volt/Azure accent pick.
- * - **Interaction chrome** (pin band, crosshair, marker rings): uses `--pulse-*` CSS
+ * - **Interaction chrome** (pin band and crosshair): uses `--pulse-*` CSS
  *   variables from overlayTheme so selection follows the user's accent theme.
  */
 export const CHART_SIGNAL = {
-  chat: '#a78bfa',
+  chat: '#c4b5fd',
   emotes: '#34d399',
   viewers: '#22d3ee',
   heat: '#fbbf24',
@@ -31,9 +31,6 @@ export const CHART_BAR_ALPHA = {
   selected: 0.78,
   selectedSpike: 0.9,
 } as const
-
-/** Opacity multiplier for chart geometry after a committed cursor. */
-export const AFTER_CURSOR_OPACITY = 0.36
 
 /** @deprecated Prefer CHART_LANE + CHART_INTERACTION; kept for existing imports. */
 export const CHART_THEME = {
@@ -69,6 +66,7 @@ export const CHART_THEME = {
   legendSwatch: 0.7,
   emoteFocus: CHART_SIGNAL.game,
   perEmotePalette: ['#fb7185', '#fbbf24', '#38bdf8', '#c084fc', '#4ade80'],
+  perEmoteDashes: ['7 3', '2 3', '7 2 2 2', '1 3', '10 3 2 3', '4 2 1 2 1 2'],
 } as const
 
 /** Pin / preview crosshair — follows accent theme via CSS variables. */
@@ -80,19 +78,16 @@ export const CHART_INTERACTION = {
   hoverLine: 'rgba(255, 255, 255, 0.22)',
   activityFill: 'rgba(255, 255, 255, 0.025)',
   gridLine: 'rgba(255, 255, 255, 0.08)',
-  markerRing: 'rgba(255, 255, 255, 0.92)',
-  trendMarkerFill: CHART_LANE.chatTrend,
-  emoteMarkerFill: CHART_LANE.emoteBar,
-} as const
-
-export const CHART_MARKER_RADIUS = {
-  pin: 3.75,
-  preview: 3.25,
 } as const
 
 export function emoteChartColor(index: number): string {
   const palette = CHART_THEME.perEmotePalette
   return palette[((index % palette.length) + palette.length) % palette.length]!
+}
+
+export function emoteChartDash(index: number): string {
+  const dashes = CHART_THEME.perEmoteDashes
+  return dashes[((index % dashes.length) + dashes.length) % dashes.length]!
 }
 
 export function emoteLegendSwatchStyle(color: string): CSSProperties {

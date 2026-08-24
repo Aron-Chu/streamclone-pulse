@@ -38,8 +38,6 @@ import { resolveChartCrosshairMode } from './chartCrosshair.ts'
 import { prefersReducedMotion, useSmoothedScalar } from './motion/useSmoothedScalar.ts'
 import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
 import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, viewportBuckets, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
-import { buildPlottedEmoteMarkerLayout, type PlottedEmoteMarker } from './chartEmoteMarkers.ts'
-import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 
 export interface PulseOverviewChartProps {
   rollups: ExtensionRollup[]
@@ -309,7 +307,6 @@ function PulseOverviewChartImpl({
   viewport: externalViewport,
   onViewportChange,
   onJumpToOffset,
-  backendUrl = '',
   interactionResetKey,
 }: PulseOverviewChartProps) {
   const chartId = useId().replace(/:/g, '')
@@ -338,7 +335,6 @@ function PulseOverviewChartImpl({
     [visibleRollups, fullIndexByOffset],
   )
   const directHoverMarkerRef = useRef<SVGLineElement | null>(null)
-  const [focusedEmoteMarkerKey, setFocusedEmoteMarkerKey] = useState<string | null>(null)
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   // Pointer previews are committed to lightweight SVG chrome imperatively
   // (Aug-16 hover shell): keeping them out of React prevents every hovered
@@ -668,46 +664,6 @@ function PulseOverviewChartImpl({
   const emoteLaneTop = emoteLane.bandTop
   const emoteLaneBottom = emoteLane.bandBottom
   const emoteLaneHeight = Math.max(8, emoteLane.bandHeight)
-
-  // Markers use the raw source so long-session downsampling cannot silently
-  // discard emote totals. Their horizontal domain matches the rendered
-  // viewport; pixel-space cells keep the overlay bounded at narrow widths.
-  const emoteMarkerDomain = useMemo(() => {
-    const finiteOffsets = sourceRollups
-      .map(rollup => rollup.offsetSeconds)
-      .filter(offsetSeconds => Number.isFinite(offsetSeconds))
-    const first = finiteOffsets[0] ?? 0
-    const last = finiteOffsets[finiteOffsets.length - 1] ?? first
-    return {
-      from: externalViewport ? internalViewport.startSeconds : first,
-      to: externalViewport
-        ? internalViewport.endSeconds
-        : Math.max(durationSeconds, last + 60),
-    }
-  }, [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds, durationSeconds])
-  const emoteMarkerLayout = useMemo(
-    () => buildPlottedEmoteMarkerLayout(sourceRollups, {
-      pixelWidth: plotWidth,
-      fromOffsetSeconds: emoteMarkerDomain.from,
-      toOffsetSeconds: emoteMarkerDomain.to,
-      markerSpacingPx: 28,
-      maxMarkers: 32,
-      maxLanes: 2,
-    }),
-    [sourceRollups, plotWidth, emoteMarkerDomain.from, emoteMarkerDomain.to],
-  )
-  const emoteMarkerPositions = useMemo(
-    () => emoteMarkerLayout.markers.map(marker => ({
-      marker,
-      x: PAD_LEFT + marker.xFraction * plotWidth,
-      y: Math.min(emoteLaneBottom - 8, emoteLaneTop + 9 + marker.lane * 13),
-      stemY: emoteLaneBottom - 2,
-    })),
-    [emoteMarkerLayout.markers, plotWidth, emoteLaneTop, emoteLaneBottom],
-  )
-  const focusedEmoteMarker = focusedEmoteMarkerKey == null
-    ? null
-    : emoteMarkerLayout.markers.find(marker => marker.key === focusedEmoteMarkerKey) ?? null
 
   const viewerAreaPath = useMemo(() => {
     if (viewerMax <= 0) return ''
@@ -1634,27 +1590,6 @@ function PulseOverviewChartImpl({
               )
             })}
           </g>
-          {emoteMarkerPositions.length > 0 ? (
-            <g
-              data-chart-emote-marker-rail="true"
-              pointerEvents="none"
-              opacity={overviewRange ? 0.9 : 1}
-            >
-              {emoteMarkerPositions.map(({ marker, x, y, stemY }) => (
-                <line
-                  key={`${marker.key}-stem`}
-                  x1={x}
-                  x2={x}
-                  y1={y + 7}
-                  y2={stemY}
-                  stroke={CHART_INTERACTION.emoteMarkerFill}
-                  strokeWidth="1"
-                  strokeDasharray="2 2"
-                  opacity={0.55}
-                />
-              ))}
-            </g>
-          ) : null}
           </g>
         </g>
 
@@ -1817,7 +1752,7 @@ function PulseOverviewChartImpl({
           width={plotWidth}
           height={height - PAD_TOP - PAD_BOTTOM}
           fill="transparent"
-          style={{ cursor: 'crosshair', touchAction: 'none' }}
+          style={{ cursor: 'crosshair', outline: 'none', touchAction: 'none' }}
           onPointerDown={event => {
             event.stopPropagation()
             event.currentTarget.setPointerCapture(event.pointerId)
@@ -1907,92 +1842,6 @@ function PulseOverviewChartImpl({
           }}
         />
       </svg>
-      {emoteMarkerPositions.length > 0 ? (
-        <div
-          data-chart-emote-markers="true"
-          aria-label={`Emote markers: ${formatCount(emoteMarkerLayout.totalCount)} uses across ${emoteMarkerLayout.totalEventCount} plotted entries`}
-          style={styles.emoteMarkerLayer}
-        >
-          {emoteMarkerPositions.map(({ marker, x, y }) => {
-            const markerLabel = `${marker.name}, ${formatCount(marker.count)} uses at ${formatHeatOffset(marker.offsetSeconds)}`
-            return (
-              <button
-                key={marker.key}
-                type="button"
-                className="pulse-chart-emote-marker"
-                data-chart-emote-marker="true"
-                data-chart-emote-marker-key={marker.key}
-                aria-label={markerLabel}
-                title={markerLabel}
-                style={{ left: `${(x / Math.max(1, width)) * 100}%`, top: y }}
-                onPointerDown={event => event.stopPropagation()}
-                onPointerEnter={event => {
-                  setFocusedEmoteMarkerKey(marker.key)
-                  if (scrubberRef.current) handlePointer(event.clientX, scrubberRef.current)
-                }}
-                onPointerMove={event => {
-                  if (scrubberRef.current) handlePointer(event.clientX, scrubberRef.current)
-                }}
-                onPointerLeave={() => setFocusedEmoteMarkerKey(current => current === marker.key ? null : current)}
-                onFocus={() => setFocusedEmoteMarkerKey(marker.key)}
-                onBlur={() => setFocusedEmoteMarkerKey(current => current === marker.key ? null : current)}
-                onClick={event => {
-                  event.stopPropagation()
-                  if (!onSelectIndex) return
-                  const visibleIndex = nearestRollupIndex(visibleRollups, marker.offsetSeconds)
-                  if (visibleIndex < 0) return
-                  clearHoverPreview()
-                  onSelectIndex(fullIndexFromVisible(visibleIndex) ?? visibleIndex)
-                }}
-              >
-                <PulseEmoteImg
-                  emote={{
-                    id: marker.id,
-                    name: marker.name,
-                    imageUrl: marker.imageUrl,
-                    provider: marker.provider,
-                    count: marker.count,
-                  }}
-                  backendUrl={backendUrl}
-                  width={18}
-                  height={18}
-                />
-                {marker.count > 1 || marker.eventCount > 1 ? (
-                  <span className="pulse-chart-emote-marker-count" aria-hidden="true">
-                    {formatCount(marker.count)}
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-          {focusedEmoteMarker ? (
-            <div
-              className="pulse-chart-emote-marker-tooltip"
-              data-chart-emote-marker-tooltip="true"
-              role="tooltip"
-              style={{
-                left: `${Math.min(86, Math.max(14, ((PAD_LEFT + (focusedEmoteMarker.xFraction * plotWidth)) / Math.max(1, width)) * 100))}%`,
-                top: Math.max(4, emoteLaneTop - 4),
-              }}
-            >
-              <strong>{focusedEmoteMarker.name}</strong>
-              <span>{formatHeatOffset(focusedEmoteMarker.offsetSeconds)} · {formatCount(focusedEmoteMarker.count)} uses</span>
-              {focusedEmoteMarker.clusteredNames.length > 1 ? (
-                <span>{focusedEmoteMarker.clusteredNames.join(' · ')}</span>
-              ) : null}
-            </div>
-          ) : null}
-          {emoteMarkerLayout.hiddenMarkerCount > 0 ? (
-            <span
-              className="pulse-chart-emote-marker-summary"
-              data-chart-emote-marker-summary="true"
-              title={`${emoteMarkerLayout.hiddenMarkerCount} dense emote markers merged or hidden; aggregate totals remain plotted.`}
-            >
-              +{emoteMarkerLayout.hiddenMarkerCount} dense
-            </span>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -2013,11 +1862,6 @@ const styles: Record<string, CSSProperties> = {
   svg: {
     display: 'block',
     width: '100%',
-  },
-  emoteMarkerLayer: {
-    inset: 0,
-    pointerEvents: 'none',
-    position: 'absolute',
   },
   empty: {
     alignItems: 'center',
