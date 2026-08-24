@@ -79,6 +79,27 @@ describe('LiveStatsBand chart layout', () => {
     expect(chartIdx).toBeLessThan(plotIdx)
   })
 
+  it('keeps variable coverage metadata below the chart beside viewport controls', () => {
+    const markup = renderToStaticMarkup(
+      <LiveStatsBand
+        payload={makePayload([])}
+        backendUrl="http://localhost:8081"
+        currentOffsetSeconds={600}
+        onJumpMoment={vi.fn()}
+        onOpenAnalytics={vi.fn()}
+        onPinOffset={vi.fn()}
+      />,
+    )
+    const chartIdx = markup.indexOf('data-testid="pulse-overview-chart"')
+    const rangeIdx = markup.indexOf('data-chart-visible-range')
+    const viewportIdx = markup.indexOf('data-chart-viewport-controls')
+    expect(chartIdx).toBeGreaterThan(-1)
+    expect(rangeIdx).toBeGreaterThan(-1)
+    expect(viewportIdx).toBeGreaterThan(-1)
+    expect(chartIdx).toBeLessThan(rangeIdx)
+    expect(rangeIdx).toBeLessThan(markup.indexOf('Plot on chart'))
+  })
+
   it('pins the chart index without rendering the removed legacy moment tray', () => {
     const markup = renderToStaticMarkup(
       <LiveStatsBand

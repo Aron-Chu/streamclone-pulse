@@ -118,25 +118,31 @@ export function StreamActivityChartHeader({
 const styles: Record<string, CSSProperties> = {
   header: { display: 'grid', gap: 6, minWidth: 0, overflow: 'visible' },
   headerTop: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     display: 'flex',
     gap: 8,
     justifyContent: 'space-between',
+    minHeight: 16,
     minWidth: 0,
   },
   titleRow: {
     alignItems: 'center',
-    display: 'inline-flex',
-    flexWrap: 'wrap',
+    display: 'flex',
+    flex: '1 1 auto',
     gap: 8,
     minWidth: 0,
+    overflow: 'hidden',
   },
   title: {
     color: theme.textMuted,
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: '0.04em',
+    lineHeight: '12px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
   },
   expandSlot: {
     alignItems: 'center',
@@ -150,9 +156,11 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
   },
   chartLegend: {
+    alignItems: 'center',
     display: 'flex',
     flexWrap: 'wrap',
     gap: 4,
+    minHeight: 14,
     minWidth: 0,
   },
   chartLegendItem: {

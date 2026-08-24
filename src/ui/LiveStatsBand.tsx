@@ -939,53 +939,7 @@ export function LiveStatsBand({
               ) : undefined
             }
           />
-          {(showCoverageStartHint || sparseActivityWarmup || lateViewerSamples || (showLoadFromStart && onLoadFromStart)) ? (
-            <p style={styles.timelineHint}>
-              {showCoverageStartHint ? (
-                <span
-                  style={
-                    coverageHint.tone === 'warn'
-                      ? styles.timelineHintWarn
-                      : undefined
-                  }
-                >
-                  {coverageHint.text}
-                </span>
-              ) : null}
-              {showCoverageStartHint && sparseActivityWarmup ? (
-                <span style={styles.timelineHintSep}> · </span>
-              ) : null}
-              {sparseActivityWarmup && firstActivityOffsetSeconds != null ? (
-                <span>Activity chart from {formatHeatOffset(firstActivityOffsetSeconds)}</span>
-              ) : null}
-              {(showCoverageStartHint || sparseActivityWarmup) && lateViewerSamples ? (
-                <span style={styles.timelineHintSep}> · </span>
-              ) : null}
-              {lateViewerSamples ? (
-                <span>Viewer samples from {formatHeatOffset(viewerStartOffsetSeconds)}</span>
-              ) : null}
-              {(showCoverageStartHint || sparseActivityWarmup || lateViewerSamples) ? (
-                showLoadFromStart && onLoadFromStart ? (
-                  <span style={styles.timelineHintSep}> · </span>
-                ) : null
-              ) : null}
-              {showLoadFromStart && onLoadFromStart ? (
-                <button
-                  type="button"
-                  style={styles.streamStartLink}
-                  disabled={loadFromStartBusy}
-                  title="Expand the activity chart from stream start and jump the player when a VOD is available."
-                  onClick={onLoadFromStart}
-                >
-                  {loadFromStartBusy ? 'Loading…' : 'Load full stream chart'}
-                </button>
-              ) : null}
-            </p>
-          ) : null}
           <div style={styles.chartRangeRow} data-chart-range-controls>
-            <span style={styles.chartRangeStatus} data-chart-visible-range aria-live="polite">
-              {chartRangeStatus}
-            </span>
             <PulseThemedSelect
               label="Range"
               value={chartWindow}
@@ -1099,53 +1053,105 @@ export function LiveStatsBand({
             isLive={isLive}
              emoteSyncTone={emoteSyncTone}
            />
-            {chartRailVisible ? (
-              <div style={styles.chartViewportControls} data-chart-viewport-controls>
-                <div style={styles.chartRailRow}>
-                  <ChartPositionRail
-                    viewport={chartViewportForRender}
-                    durationSeconds={chartRailDurationSeconds}
-                    onViewportChange={handleChartViewportChange}
-                    onJumpToOffset={onJumpToOffset}
-                    disabled={timelineLoading || demoMode}
-                    coverageStartSeconds={chartCoverageStartSeconds}
-                    ariaLabel="Chart zoom and position"
-                    hideRangeLabel
-                  />
+            <div style={styles.chartViewportControls} data-chart-viewport-controls>
+              <div style={styles.chartViewportMeta} data-chart-viewport-meta>
+                <div style={styles.chartViewportMetaRow}>
+                  <span style={styles.chartRangeStatus} data-chart-visible-range aria-live="polite">
+                    {chartRangeStatus}
+                  </span>
                 </div>
-                <div style={styles.chartZoomControls} aria-label="Chart zoom controls">
-                  <button
-                    type="button"
-                    data-chart-zoom-out
-                    style={styles.chartZoomButton}
-                    disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds) - 5}
-                    aria-label="Zoom out chart"
-                    onClick={() => changeChartZoom('out')}
-                  >
-                    −
-                  </button>
-                  <button
-                    type="button"
-                    data-chart-zoom-reset
-                    style={styles.chartZoomReset}
-                    disabled={timelineLoading || demoMode || chartAtAvailableRange}
-                    onClick={resetChartViewport}
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    data-chart-zoom-in
-                    style={styles.chartZoomButton}
-                    disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds))}
-                    aria-label="Zoom in chart"
-                    onClick={() => changeChartZoom('in')}
-                  >
-                    +
-                  </button>
-                </div>
+                {(showCoverageStartHint || sparseActivityWarmup || lateViewerSamples || (showLoadFromStart && onLoadFromStart)) ? (
+                  <p style={styles.timelineHint}>
+                    {showCoverageStartHint ? (
+                      <span
+                        style={
+                          coverageHint.tone === 'warn'
+                            ? styles.timelineHintWarn
+                            : undefined
+                        }
+                      >
+                        {coverageHint.text}
+                      </span>
+                    ) : null}
+                    {showCoverageStartHint && sparseActivityWarmup ? (
+                      <span style={styles.timelineHintSep}> · </span>
+                    ) : null}
+                    {sparseActivityWarmup && firstActivityOffsetSeconds != null ? (
+                      <span>Activity chart from {formatHeatOffset(firstActivityOffsetSeconds)}</span>
+                    ) : null}
+                    {(showCoverageStartHint || sparseActivityWarmup) && lateViewerSamples ? (
+                      <span style={styles.timelineHintSep}> · </span>
+                    ) : null}
+                    {lateViewerSamples ? (
+                      <span>Viewer samples from {formatHeatOffset(viewerStartOffsetSeconds)}</span>
+                    ) : null}
+                    {(showCoverageStartHint || sparseActivityWarmup || lateViewerSamples) ? (
+                      showLoadFromStart && onLoadFromStart ? (
+                        <span style={styles.timelineHintSep}> · </span>
+                      ) : null
+                    ) : null}
+                    {showLoadFromStart && onLoadFromStart ? (
+                      <button
+                        type="button"
+                        style={styles.streamStartLink}
+                        disabled={loadFromStartBusy}
+                        title="Expand the activity chart from stream start and jump the player when a VOD is available."
+                        onClick={onLoadFromStart}
+                      >
+                        {loadFromStartBusy ? 'Loading…' : 'Load full stream chart'}
+                      </button>
+                    ) : null}
+                  </p>
+                ) : null}
               </div>
-            ) : null}
+              {chartRailVisible ? (
+                <div style={styles.chartViewportRailRow}>
+                  <div style={styles.chartRailRow}>
+                    <ChartPositionRail
+                      viewport={chartViewportForRender}
+                      durationSeconds={chartRailDurationSeconds}
+                      onViewportChange={handleChartViewportChange}
+                      onJumpToOffset={onJumpToOffset}
+                      disabled={timelineLoading || demoMode}
+                      coverageStartSeconds={chartCoverageStartSeconds}
+                      ariaLabel="Chart zoom and position"
+                      hideRangeLabel
+                    />
+                  </div>
+                  <div style={styles.chartZoomControls} aria-label="Chart zoom controls">
+                    <button
+                      type="button"
+                      data-chart-zoom-out
+                      style={styles.chartZoomButton}
+                      disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds) - 5}
+                      aria-label="Zoom out chart"
+                      onClick={() => changeChartZoom('out')}
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      data-chart-zoom-reset
+                      style={styles.chartZoomReset}
+                      disabled={timelineLoading || demoMode || chartAtAvailableRange}
+                      onClick={resetChartViewport}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      data-chart-zoom-in
+                      style={styles.chartZoomButton}
+                      disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds))}
+                      aria-label="Zoom in chart"
+                      onClick={() => changeChartZoom('in')}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
@@ -1199,11 +1205,18 @@ const styles: Record<string, CSSProperties> = {
   trendArrow: { fontSize: 11, fontWeight: 900 },
   emoteSyncNote: { fontSize: 10, fontWeight: 700, margin: '8px 0 0' },
   timelineHint: {
+    alignItems: 'center',
     color: theme.textMuted,
+    display: 'flex',
+    flexWrap: 'nowrap',
     fontSize: 10,
     fontWeight: 600,
     lineHeight: 1.35,
     margin: 0,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   timelineHintWarn: {
     color: '#fcd34d',
@@ -1237,28 +1250,34 @@ const styles: Record<string, CSSProperties> = {
   chartRangeRow: {
     alignItems: 'center',
     display: 'flex',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: 8,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     margin: 0,
     minHeight: 26,
+    minWidth: 0,
+    overflow: 'hidden',
   },
   chartRangeStatus: {
     color: theme.textSecondary,
-    flex: '1 1 150px',
+    flex: '1 1 auto',
     fontSize: 10,
     fontWeight: 700,
     lineHeight: 1.35,
     minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   partialRangeHint: {
     color: theme.textMuted,
-    flex: '1 1 180px',
+    flex: '0 0 auto',
     fontSize: 10,
     fontWeight: 600,
     lineHeight: 1.35,
     minWidth: 0,
     textAlign: 'right',
+    whiteSpace: 'nowrap',
   },
   chartLeadIn: {
     display: 'grid',
@@ -1363,10 +1382,26 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
   },
   chartViewportControls: {
+    display: 'grid',
+    gap: 4,
+    marginTop: 4,
+    minWidth: 0,
+  },
+  chartViewportMeta: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0,
+  },
+  chartViewportMetaRow: {
+    alignItems: 'center',
+    display: 'flex',
+    minHeight: 14,
+    minWidth: 0,
+  },
+  chartViewportRailRow: {
     alignItems: 'center',
     display: 'flex',
     gap: 8,
-    marginTop: 2,
     minWidth: 0,
   },
   chartRailRow: { flex: '1 1 auto', minWidth: 0 },

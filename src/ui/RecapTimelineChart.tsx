@@ -377,12 +377,6 @@ export function RecapTimelineChart({
         showViewerLegend={showViewerStrip}
         focusedSeriesKey={focusedSeriesKey}
         onToggleSeriesFocus={toggleSeriesFocus}
-        rightControl={
-          <div style={styles.rangeMetaWrap}>
-            <span style={styles.rangeMeta}>{chartRangeStatus}</span>
-            {rollupSinceHint ? <span style={styles.rollupSince}>{rollupSinceHint}</span> : null}
-          </div>
-        }
         expandControl={
           <button
             type="button"
@@ -490,51 +484,61 @@ export function RecapTimelineChart({
           loading={(timelineLoading && minuteRollups.length === 0) || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
           isLive={false}
         />
-        {chartRailVisible ? (
-          <div style={styles.chartViewportControls} data-chart-viewport-controls>
-            <div style={styles.chartRailRow}>
-              <ChartPositionRail
-                viewport={chartViewportForRender}
-                durationSeconds={chartDurationSeconds}
-                onViewportChange={handleChartViewportChange}
-                coverageStartSeconds={chartCoverageStartSeconds}
-                ariaLabel="Recap chart zoom and position"
-                hideRangeLabel
-              />
-            </div>
-            <div style={styles.chartZoomControls} aria-label="Recap chart zoom controls">
-              <button
-                type="button"
-                data-chart-zoom-out
-                style={styles.chartZoomButton}
-                disabled={viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartDurationSeconds - chartCoverageStartSeconds) - 5}
-                aria-label="Zoom out recap chart"
-                onClick={() => changeChartZoom('out')}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                data-chart-zoom-reset
-                style={styles.chartZoomReset}
-                disabled={chartAtAvailableRange}
-                onClick={resetChartViewport}
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                data-chart-zoom-in
-                style={styles.chartZoomButton}
-                disabled={viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartDurationSeconds - chartCoverageStartSeconds))}
-                aria-label="Zoom in recap chart"
-                onClick={() => changeChartZoom('in')}
-              >
-                +
-              </button>
+        <div style={styles.chartViewportControls} data-chart-viewport-controls>
+          <div style={styles.chartViewportMeta} data-chart-viewport-meta>
+            <div style={styles.chartViewportMetaRow}>
+              <span style={styles.chartRangeStatus} data-chart-visible-range aria-live="polite">
+                {chartRangeStatus}
+              </span>
+              {rollupSinceHint ? <span style={styles.rollupSince}>{rollupSinceHint}</span> : null}
             </div>
           </div>
-        ) : null}
+          {chartRailVisible ? (
+            <div style={styles.chartViewportRailRow}>
+              <div style={styles.chartRailRow}>
+                <ChartPositionRail
+                  viewport={chartViewportForRender}
+                  durationSeconds={chartDurationSeconds}
+                  onViewportChange={handleChartViewportChange}
+                  coverageStartSeconds={chartCoverageStartSeconds}
+                  ariaLabel="Recap chart zoom and position"
+                  hideRangeLabel
+                />
+              </div>
+              <div style={styles.chartZoomControls} aria-label="Recap chart zoom controls">
+                <button
+                  type="button"
+                  data-chart-zoom-out
+                  style={styles.chartZoomButton}
+                  disabled={viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartDurationSeconds - chartCoverageStartSeconds) - 5}
+                  aria-label="Zoom out recap chart"
+                  onClick={() => changeChartZoom('out')}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  data-chart-zoom-reset
+                  style={styles.chartZoomReset}
+                  disabled={chartAtAvailableRange}
+                  onClick={resetChartViewport}
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  data-chart-zoom-in
+                  style={styles.chartZoomButton}
+                  disabled={viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartDurationSeconds - chartCoverageStartSeconds))}
+                  aria-label="Zoom in recap chart"
+                  onClick={() => changeChartZoom('in')}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {topEmotesForPicker.length > 0 ? (
@@ -563,10 +567,35 @@ const styles: Record<string, CSSProperties> = {
   block: { display: 'grid', gap: 6 },
   chartStack: { display: 'grid', gap: 0 },
   chartViewportControls: {
+    display: 'grid',
+    gap: 4,
+    marginTop: 4,
+    minWidth: 0,
+  },
+  chartViewportMeta: { display: 'grid', gap: 2, minWidth: 0 },
+  chartViewportMetaRow: {
     alignItems: 'center',
     display: 'flex',
     gap: 8,
-    marginTop: 2,
+    minHeight: 14,
+    minWidth: 0,
+  },
+  chartRangeStatus: {
+    color: theme.textMuted,
+    flex: '1 1 auto',
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
+  },
+  chartViewportRailRow: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 8,
     minWidth: 0,
   },
   chartRailRow: { flex: '1 1 auto', minWidth: 0 },
@@ -598,20 +627,14 @@ const styles: Record<string, CSSProperties> = {
     height: 24,
     padding: '0 7px',
   },
-  rangeMetaWrap: { display: 'grid', gap: 2, justifyItems: 'end' },
-  rangeMeta: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontWeight: 700,
-    letterSpacing: '0.03em',
-    textTransform: 'uppercase',
-    whiteSpace: 'nowrap',
-  },
   rollupSince: {
     color: theme.textMuted,
+    flex: '0 0 auto',
     fontSize: 9,
     fontWeight: 600,
     lineHeight: 1.3,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
   readout: {
