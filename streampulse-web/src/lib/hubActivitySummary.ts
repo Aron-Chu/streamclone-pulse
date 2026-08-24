@@ -227,6 +227,38 @@ function chartPointHasSignal(point: HubActivityPoint): boolean {
   )
 }
 
+export type HubActivityChartState = 'ready' | 'quiet' | 'unmeasured'
+
+/** True when a chart bucket is backed by a measured or backend-attested point. */
+export function isMeasuredActivityPoint(point: HubActivityPoint): boolean {
+  return !isGapMarker(point)
+}
+
+/** True when a measured bucket contains at least one non-zero chart signal. */
+export function hasMeasuredActivitySignal(point: HubActivityPoint): boolean {
+  if (!isMeasuredActivityPoint(point)) return false
+  return (
+    point.chat > 0 ||
+    point.seventv > 0 ||
+    (point.emotes ?? 0) > 0 ||
+    (point.twitch ?? 0) > 0 ||
+    (point.bttv ?? 0) > 0 ||
+    (point.ffz ?? 0) > 0 ||
+    point.viewers > 0
+  )
+}
+
+/**
+ * Classify the rendered chart series after sparse points have been normalized.
+ * This prevents an SVG shell with no visible data from masquerading as a
+ * functioning chart.
+ */
+export function resolveHubActivityChartState(points: HubActivityPoint[]): HubActivityChartState {
+  const measured = points.filter(isMeasuredActivityPoint)
+  if (measured.length === 0) return 'unmeasured'
+  return measured.some(hasMeasuredActivitySignal) ? 'ready' : 'quiet'
+}
+
 /**
  * Resolve chart bucket click — no live-horizon guard; historical buckets are selectable.
  * Returns null to clear selection, undefined to ignore, or bucket timestamp to select.
@@ -325,10 +357,16 @@ export function summarizeActivity(
   poolSize: number,
   updatedAgo?: string,
 ): ActivitySummary {
-  const pointCount = points.length
   const safeWindow = Math.max(1, windowMinutes)
-  const nonZeroCount = points.filter(activePoint).length
-  const gapCount = internalGapCount(points, windowMinutes)
+  // Summaries are consumed beside the rendered chart. Count the same
+  // normalized, open-bucket-trimmed grid that the chart consumes rather than
+  // raw API rows. A degraded coarse fallback can contain several minute keys
+  // for one bucket; reporting those raw keys produced impossible values such as
+  // `161/30 buckets` in the footer.
+  const chartPoints = chartActivityPoints(points, safeWindow)
+  const pointCount = chartPoints.filter(isMeasuredActivityPoint).length
+  const nonZeroCount = chartPoints.filter(activePoint).length
+  const gapCount = internalGapCount(chartPoints, safeWindow)
   const bucket = bucketMinutes(windowMinutes)
   const expectedBuckets = Math.min(HUB_ACTIVITY_MAX_POINTS, Math.ceil(safeWindow / bucket))
   const missingBuckets = Math.max(0, expectedBuckets - pointCount)

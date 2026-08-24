@@ -77,6 +77,56 @@ describe('hubChartActivityModel', () => {
     expect(second.peakChatPerMin).toBe(first.peakChatPerMin)
     expect(second.peakEmotesPerMin).toBe(first.peakEmotesPerMin)
     expect(first.chartPoints.length).toBeGreaterThan(0)
+    expect(first.chartState).toBe('ready')
+    expect(first.measuredPointCount).toBeGreaterThan(0)
+    expect(first.signalPointCount).toBeGreaterThan(0)
+  })
+
+  it('keeps healthy 24h projection and degraded 30m fallback on separate domains', () => {
+    const healthyHub = normalizePublicHub({
+      activity: {
+        points: Array.from({ length: 60 }, (_, i) => ({
+          t: i * 60_000,
+          chat: 20 + i,
+          seventv: 2,
+          viewers: 100 + i,
+          hasChatRollup: true,
+          hasViewerRollup: true,
+          bucketComplete: true,
+        })),
+        windowMinutes: 1440,
+        channelCount: 2,
+        state: 'healthy',
+        source: 'historical_projection',
+        availableWindowMinutes: 1440,
+      },
+    })
+    const degradedHub = normalizePublicHub({
+      activity: {
+        points: Array.from({ length: 30 }, (_, i) => ({
+          t: i * 60_000,
+          chat: 20 + i,
+          seventv: 2,
+          viewers: 100 + i,
+          hasChatRollup: true,
+          hasViewerRollup: true,
+          bucketComplete: true,
+        })),
+        windowMinutes: 1440,
+        channelCount: 2,
+        state: 'degraded',
+        source: 'live_pool_fallback',
+        reason: 'historical_projection_unavailable',
+        availableWindowMinutes: 30,
+      },
+    })
+
+    const healthyInputs = selectHubChartActivityInputs(healthyHub)
+    const degradedInputs = selectHubChartActivityInputs(degradedHub)
+    expect(healthyInputs.windowMinutes).toBe(1440)
+    expect(degradedInputs.windowMinutes).toBe(30)
+    expect(deriveHubChartActivityModel(healthyInputs).chartState).toBe('ready')
+    expect(deriveHubChartActivityModel(degradedInputs).chartState).toBe('ready')
   })
 
   it('does not re-enter chartActivityPoints when only a trust-line clock changes', () => {

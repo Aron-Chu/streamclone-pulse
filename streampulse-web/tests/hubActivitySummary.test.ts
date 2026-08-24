@@ -254,6 +254,26 @@ describe('summarizeActivity', () => {
     expect(summary.footnote).toContain('network rollups')
     expect(summary.footnote).toContain('76 channels in tracked pool')
   })
+
+  it('summarizes normalized buckets instead of duplicated coarse fallback rows', () => {
+    const bucketMs = 6 * 60_000
+    const bucketT = Math.floor(Date.now() / bucketMs) * bucketMs - bucketMs
+    const duplicateRows = Array.from({ length: 6 }, (_, index) => ({
+      t: bucketT + index * 60_000,
+      chat: 600,
+      seventv: 60,
+      viewers: 100,
+      hasChatRollup: true,
+      hasViewerRollup: true,
+      bucketComplete: true,
+    }))
+
+    const summary = summarizeActivity(duplicateRows, 24 * 60, 307)
+
+    expect(summary.expectedBuckets).toBe(240)
+    expect(summary.pointCount).toBe(1)
+    expect(summary.footnote).toContain('1/240 buckets')
+  })
 })
 
 describe('peakActivityEmotesPerMin', () => {

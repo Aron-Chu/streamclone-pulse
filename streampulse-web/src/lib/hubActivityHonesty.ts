@@ -73,6 +73,8 @@ export function isHubActivityHealthyHistoricalProjection(activity: HubActivity):
     const measured = validWindowMinutes(activity.measuredWindowMinutes)
     const registeredGaps = hubActivityRegisteredGapCount(activity)
 
+    if (available == null && accounted == null) return false
+
     const coversRequest =
       accounted != null ? accounted >= requested : available === requested
     if (!coversRequest && (accounted != null || available != null)) return false
@@ -83,15 +85,6 @@ export function isHubActivityHealthyHistoricalProjection(activity: HubActivity):
     }
 
     return true
-  }
-
-  // Support production backend payloads where points span the requested window
-  if (activity.points && activity.points.length >= 2) {
-    const pts = activity.points
-    const spanMs = (pts[pts.length - 1]?.t ?? 0) - (pts[0]?.t ?? 0)
-    if (spanMs >= requested * 60_000 * 0.4 || (requested > 30 && pts.length >= 20)) {
-      return true
-    }
   }
 
   return false
@@ -145,10 +138,6 @@ export function resolveHubActivityChartWindowMinutes(activity: HubActivity): num
   }
   if (isHubActivityLivePoolFallback(activity)) {
     return Math.min(requested, 30)
-  }
-
-  if (activity.points && activity.points.length >= 20 && requested > 30) {
-    return requested
   }
 
   return Math.min(requested, 30)
@@ -210,4 +199,34 @@ export function hubActivityHonestyEmptyCopy(
     title: 'Recent live activity only',
     description: `Full ${requested} history is not available yet. Waiting for live-pool chat and emotes — empty buckets are not filled with historical placeholders.`,
   }
+}
+
+/**
+ * Detect a fallback payload whose timestamp domain contradicts the advertised
+ * served window. Plotting this shape makes coarse aggregate rows look like
+ * minute-level plateaus, so the chart must refuse it until the backend returns
+ * a bounded payload.
+ */
+export function hubActivityContractIssues(activity: HubActivity): string[] {
+  if (!isHubActivityLivePoolFallback(activity)) return []
+  const points = activity.points
+    .filter((point) => Number.isFinite(point.t))
+    .sort((a, b) => a.t - b.t)
+  if (points.length < 2) return []
+  const served =
+    validWindowMinutes(activity.servedWindowMinutes) ??
+    validWindowMinutes(activity.availableWindowMinutes) ??
+    30
+  const spanMinutes = Math.max(0, (points[points.length - 1].t - points[0].t) / 60_000)
+  const issues: string[] = []
+  if (spanMinutes > served + 1) {
+    issues.push(`payload spans ${Math.round(spanMinutes)} minutes but advertises ${served} served minutes`)
+  }
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].t <= points[i - 1].t) {
+      issues.push('payload timestamps are not strictly increasing')
+      break
+    }
+  }
+  return issues
 }

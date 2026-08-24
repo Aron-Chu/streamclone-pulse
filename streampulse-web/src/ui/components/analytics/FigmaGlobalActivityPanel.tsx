@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import {
   bucketMinutes,
+  formatActivityWindowLabel,
 } from "../../../lib/hubActivitySummary";
 import {
   formatHubActivityServedLabel,
   hubActivityHonestyChipLabel,
   hubActivityHonestyDetail,
   hubActivityHonestyEmptyCopy,
+  hubActivityContractIssues,
   isHubActivityHealthyHistoricalProjection,
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
@@ -249,6 +251,8 @@ export function FigmaGlobalActivityPanel({
   const servedLabel = formatHubActivityServedLabel(hub.activity);
   const honestyDetail = hubActivityHonestyDetail(hub.activity);
   const honestyEmpty = hubActivityHonestyEmptyCopy(hub.activity);
+  const activityContractIssues = hubActivityContractIssues(hub.activity);
+  const activityContractIssue = activityContractIssues[0] ?? null;
   const windowLabel = servedLabel;
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const hoverIntentRef = useRef<number | null>(null);
@@ -340,15 +344,24 @@ export function FigmaGlobalActivityPanel({
     () => deriveHubChartActivityModel(chartInputs),
     [chartInputs.points, chartInputs.windowMinutes, chartInputs.livePoolViewerSum],
   );
-  const { chartPoints, peakViewers, peakChatPerMin } = chartModel;
-  const peakPoint = chartPoints.reduce(
-    (best, point) => (point.viewers > (best?.viewers ?? 0) ? point : best),
-    chartPoints[0],
+  const {
+    chartPoints,
+    peakViewers,
+    peakViewersAt,
+    peakChatPerMin,
+  } = chartModel;
+  const requestedWindowLabel = formatActivityWindowLabel(
+    Math.max(1, hub.activity.windowMinutes || 30),
   );
-  const peakChatPoint = chartPoints.reduce(
-    (best, point) => (point.chat > (best?.chat ?? 0) ? point : best),
-    chartPoints[0],
-  );
+  const chartState = loading
+    ? "loading"
+    : activityContractIssue
+      ? "unavailable"
+    : chartModel.chartState === "ready"
+      ? livePoolFallback
+        ? "degraded"
+        : "ready"
+      : chartModel.chartState;
   const poolSize = hub.poolSize;
   const ircActive = hub.corpusPipeline.collectorActive;
 
@@ -410,6 +423,10 @@ export function FigmaGlobalActivityPanel({
     <section
       className="figma-global-activity"
       aria-label={labels.liveActivity}
+      data-hub-activity-state={chartState}
+      data-hub-requested-window-minutes={hub.activity.windowMinutes}
+      data-hub-served-window-minutes={chartInputs.windowMinutes}
+      data-hub-activity-source={hub.activity.source ?? "unspecified"}
     >
       <div className="figma-global-activity__headline">
         <div className="figma-global-activity__headline-row">
@@ -426,8 +443,12 @@ export function FigmaGlobalActivityPanel({
               : `Network viewer peaks from tracked channels — served ${servedLabel}. Historical projection provenance has not been confirmed.`}
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
-        <ActivityViewerSanityBanner hub={hub} />
-        {peakPoint && peakViewers > 0 ? (
+        <ActivityViewerSanityBanner
+          hub={hub}
+          chartPeakViewers={peakViewers}
+          chartWindowMinutes={chartInputs.windowMinutes}
+        />
+        {peakViewersAt != null && peakViewers > 0 ? (
           <div className="figma-global-activity__peak-row" role="group" aria-label="Peak summary">
             <span className="figma-global-activity__peak-stat">
               <span className="figma-global-activity__peak-label">Peak global viewers</span>
@@ -445,9 +466,9 @@ export function FigmaGlobalActivityPanel({
                 <strong>{compact(peakChatPerMin)}</strong>
               </span>
             ) : null}
-            {peakPoint.t ? (
+            {peakViewersAt ? (
               <span className="figma-global-activity__peak-time muted">
-                {formatPeakTime(peakPoint.t)}
+                {formatPeakTime(peakViewersAt)}
               </span>
             ) : null}
           </div>
@@ -478,6 +499,13 @@ export function FigmaGlobalActivityPanel({
           </span>
         ) : null}
       </p>
+      <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
+        {activityContractIssue
+          ? `Activity payload withheld: ${activityContractIssue}.`
+          : livePoolFallback
+          ? `Showing ${servedLabel} of requested ${requestedWindowLabel}; historical projection is unavailable.`
+          : `Showing served ${servedLabel}.`}
+      </p>
       <div className="figma-global-activity__body" ref={bodyRef}>
         <div
           className="figma-global-activity__chart-col"
@@ -494,6 +522,7 @@ export function FigmaGlobalActivityPanel({
               expectedBuckets={activitySummary.expectedBuckets}
               missingBuckets={activitySummary.missingBuckets}
               coveragePct={activitySummary.coveragePct}
+              dataIssue={activityContractIssue}
               loading={loading}
               footnote={
                 livePoolFallback

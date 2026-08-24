@@ -1,7 +1,11 @@
 import type { HubActivityPoint, PublicHub } from './publicHub'
 import {
   chartActivityPoints,
+  hasMeasuredActivitySignal,
   hubActivityEmoteCount,
+  isMeasuredActivityPoint,
+  resolveHubActivityChartState,
+  type HubActivityChartState,
 } from './hubActivitySummary'
 import { resolveHubActivityChartWindowMinutes } from './hubActivityHonesty'
 import { livePoolViewerSum } from './hubMetricHelpers'
@@ -26,9 +30,15 @@ export interface HubChartActivityInputs {
 
 export interface HubChartActivityModel {
   chartPoints: HubActivityPoint[]
+  chartState: HubActivityChartState
+  measuredPointCount: number
+  signalPointCount: number
   peakViewers: number
+  peakViewersAt: number | null
   peakChatPerMin: number
+  peakChatAt: number | null
   peakEmotesPerMin: number
+  peakEmotesAt: number | null
   rhythmLines: RhythmLines | null
   annotations: HubChartAnnotation[]
 }
@@ -61,13 +71,27 @@ export function deriveHubChartActivityModel(
     inputs.livePoolViewerSum,
   )
   let peakViewers = 0
+  let peakViewersAt: number | null = null
   let peakChatPerMin = 0
+  let peakChatAt: number | null = null
   let peakEmotesPerMin = 0
+  let peakEmotesAt: number | null = null
+  const measuredPointCount = chartPoints.filter(isMeasuredActivityPoint).length
+  const signalPointCount = chartPoints.filter(hasMeasuredActivitySignal).length
   for (const point of chartPoints) {
-    if (point.viewers > peakViewers) peakViewers = point.viewers
-    if (point.chat > peakChatPerMin) peakChatPerMin = point.chat
+    if (point.viewers > peakViewers) {
+      peakViewers = point.viewers
+      peakViewersAt = point.t
+    }
+    if (point.chat > peakChatPerMin) {
+      peakChatPerMin = point.chat
+      peakChatAt = point.t
+    }
     const emotes = hubActivityEmoteCount(point)
-    if (emotes > peakEmotesPerMin) peakEmotesPerMin = emotes
+    if (emotes > peakEmotesPerMin) {
+      peakEmotesPerMin = emotes
+      peakEmotesAt = point.t
+    }
   }
 
   const rhythmLines = computeRhythmLines(chartPoints, {
@@ -85,9 +109,15 @@ export function deriveHubChartActivityModel(
 
   return {
     chartPoints,
+    chartState: resolveHubActivityChartState(chartPoints),
+    measuredPointCount,
+    signalPointCount,
     peakViewers,
+    peakViewersAt,
     peakChatPerMin,
+    peakChatAt,
     peakEmotesPerMin,
+    peakEmotesAt,
     rhythmLines,
     annotations: rawAnnotations,
   }

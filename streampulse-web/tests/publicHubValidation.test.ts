@@ -1,7 +1,54 @@
 import { describe, expect, it } from 'vitest'
 import { normalizePublicHub, validatePublicHubInvariants } from '../src/lib/publicHub'
+import { hubActivityContractIssues, isHubActivityLivePoolFallback } from '../src/lib/hubActivityHonesty'
 
 describe('validatePublicHubInvariants', () => {
+  it('preserves explicit requested and served activity windows', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 1440,
+        requestedWindowMinutes: 1440,
+        servedWindowMinutes: 30,
+        availableWindowMinutes: 30,
+        state: 'degraded',
+        source: 'live_pool_fallback',
+        reason: 'historical_projection_unavailable',
+        channelCount: 1,
+        points: [],
+      },
+    })
+    expect(hub.activity.requestedWindowMinutes).toBe(1440)
+    expect(hub.activity.servedWindowMinutes).toBe(30)
+  })
+
+  it('withholds a fallback payload whose timestamps span beyond the served window', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 1440,
+        requestedWindowMinutes: 1440,
+        servedWindowMinutes: 30,
+        availableWindowMinutes: 30,
+        state: 'degraded',
+        source: 'live_pool_fallback',
+        reason: 'historical_projection_unavailable',
+        channelCount: 1,
+        points: [
+          { t: 0, chat: 10, seventv: 1, viewers: 100 },
+          { t: 32 * 60_000, chat: 10, seventv: 1, viewers: 100 },
+        ],
+      },
+    })
+    expect(hub.activity.source).toBe('live_pool_fallback')
+    expect(hub.activity.points).toHaveLength(2)
+    expect(hub.activity.points[0]?.t).toBe(0)
+    expect(hub.activity.points[1]?.t).toBe(32 * 60_000)
+    expect(hub.activity.servedWindowMinutes).toBe(30)
+    expect(isHubActivityLivePoolFallback(hub.activity)).toBe(true)
+    expect(hubActivityContractIssues(hub.activity)).toEqual([
+      'payload spans 32 minutes but advertises 30 served minutes',
+    ])
+  })
+
   it('warns when roster live count exceeds bounded hub rows', () => {
     const hub = normalizePublicHub({
       poolSize: 50,

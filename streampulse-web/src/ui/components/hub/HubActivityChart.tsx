@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
-import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection } from '../../../lib/hubActivitySummary'
+import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState } from '../../../lib/hubActivitySummary'
 import { isActivityGapMarker, isAttestedActivityGap } from '../../../lib/hubActivityHonesty'
 import { hubBucketBarRect, hubBucketCenterX, hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
@@ -19,16 +19,6 @@ import { classifyMomentMarker, resolveAnnotationCollisions, type HubChartAnnotat
 
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
 import type { HubActivityRangeControl } from './HubRangeMenu'
-
-/** Median-viewer depth for the rhythm baseline, as a % of chart height. */
-function rhythmLinesAvg(viewerMax: number, height: number): number | null {
-  return viewerMax > 0 ? 50 : null
-}
-
-/** 90th-percentile-viewer depth for the rhythm "loud" line, as a % of chart height. */
-function rhythmLinesLoud(viewerMax: number, height: number): number | null {
-  return viewerMax > 0 ? 75 : null
-}
 
 /** Map a chart moment marker to a renderable annotation in chart % space. */
 function markerToAnnotation(marker: HubActivityMomentMarker, xPercent: number): HubChartAnnotation {
@@ -66,6 +56,8 @@ export interface HubActivityChartProps {
   /** Honest empty-state copy when the hub serves an attested gap / no activity. */
   emptyTitle?: string
   emptyDescription?: string
+  /** Backend payload contract issue; do not render misleading chart geometry. */
+  dataIssue?: string | null
   loading?: boolean
   footnote?: string
   /** Optional time-window selector rendered above the chart (24h/7d/1mo/…). */
@@ -409,6 +401,7 @@ export function HubActivityChart({
   missingBuckets = 0,
   emptyTitle,
   emptyDescription,
+  dataIssue,
   loading,
   footnote,
   rangeControl,
@@ -461,7 +454,7 @@ export function HubActivityChart({
       (poolSize ?? channelCount) > 0
         ? `${poolSize ?? channelCount} channels in tracked pool`
         : 'tracked streams'
-    const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel})`
+    const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel}); each signal uses its own scale and values are not stacked`
     const selectedCopy =
       selectedBucketT != null
         ? ` Selected bucket: ${formatActivityAxisTick(selectedBucketT, windowMinutes)}.`
@@ -492,7 +485,14 @@ export function HubActivityChart({
     () => chartActivityPoints(points, windowMinutes, undefined, livePoolViewerSum),
     [points, windowMinutes, livePoolViewerSum],
   )
-  const measuredChartPointCount = chartPoints.filter((point) => !isActivityGapMarker(point)).length
+  const measuredChartPointCount = chartPoints.filter(isMeasuredActivityPoint).length
+  const chatCoveragePointCount = chartPoints.filter((point) => !isAttestedActivityGap(point)).length
+  const chatRollupPointCount = chartPoints.filter(
+    (point) => !isAttestedActivityGap(point) && point.hasChatRollup !== false,
+  ).length
+  const missingChatRollupCount = Math.max(0, chatCoveragePointCount - chatRollupPointCount)
+  const signalChartPointCount = chartPoints.filter(hasMeasuredActivitySignal).length
+  const chartDataState = resolveHubActivityChartState(chartPoints)
 
   const model = useMemo(() => {
     const n = chartPoints.length
@@ -521,11 +521,6 @@ export function HubActivityChart({
       endExclusive: lastT + bucketDurationMs,
       bucketDurationMs,
     }
-    // rhythm reference lines share the stacked-bar scale so they sit
-    // directly on the bars (median = avg, p90 = loud), excluding the
-    // in-progress trailing bucket so it cannot skew the baseline.
-    const rhythmAvg = rhythmLinesAvg(viewerMax, 100)
-    const rhythmLoud = rhythmLinesLoud(viewerMax, 100)
     const startT = timeDomain.start
     const xAtIndex = (i: number): number => {
       if (n <= 1) return 50
@@ -594,9 +589,9 @@ export function HubActivityChart({
       chatGapAttested = false
     }
     for (let i = 0; i < chartPoints.length; i += 1) {
-      if (isAttestedActivityGap(chartPoints[i])) {
+      if (isAttestedActivityGap(chartPoints[i]) || chartPoints[i]?.hasChatRollup === false) {
         if (chatGapStart < 0) chatGapStart = i
-        chatGapAttested = true
+        chatGapAttested = chatGapAttested || isAttestedActivityGap(chartPoints[i])
       } else {
         flushChatGap(i - 1)
       }
@@ -611,30 +606,12 @@ export function HubActivityChart({
         ? `No live samples before ${axisLabel(Math.max(0, Math.round((lastT - firstActive.t) / 60_000)))}`
         : ''
 
-    const slotWidth = n > 1 ? (xs[1] - xs[0]) : 4
-    const barW = Math.max(1, Math.min(6, slotWidth * 0.7))
-    const bars = chartPoints.map((p, i) => {
-      const cx = xs[i] ?? 50
-      const h = (measuredChatValue(p) / chatMax) * (100 - PAD)
-      let x = cx - barW / 2
-      let w = barW
-      if (x < 0) {
-        w += x
-        x = 0
-      }
-      if (x + w > 100) w = 100 - x
-      return { x, w, y: 100 - h, h, index: i }
-    })
-
     return {
       n,
       chatMax,
       xs,
       lastT,
       timeDomain,
-      rhythmAvg,
-      rhythmLoud,
-      bars,
       viewers,
       chat,
       totalEmotes,
@@ -665,14 +642,14 @@ export function HubActivityChart({
       peakViewerAt: (() => {
         let idx = 0
         for (let i = 0; i < chartPoints.length; i += 1) {
-          if (chartPoints[i].viewers >= chartPoints[idx].viewers) idx = i
+          if (chartPoints[i].viewers > chartPoints[idx].viewers) idx = i
         }
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
       peakChatAt: (() => {
         let idx = 0
         for (let i = 0; i < chartPoints.length; i += 1) {
-          if (measuredChatValue(chartPoints[i]) >= measuredChatValue(chartPoints[idx])) idx = i
+          if (measuredChatValue(chartPoints[i]) > measuredChatValue(chartPoints[idx])) idx = i
         }
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
@@ -800,6 +777,9 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        <div className="hx-chart-state hx-chart-state--loading" data-hub-chart-state="loading" role="status" aria-live="polite">
+          Loading measured activity…
+        </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 220, marginTop: '0.7rem' }} aria-hidden="true">
           {Array.from({ length: 24 }).map((_, i) => (
             <Skeleton key={i} width={10} height={`${30 + ((i * 37) % 60)}%`} radius="3px" style={{ flex: 1 }} />
@@ -813,7 +793,8 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
-        <EmptyState icon={<Activity aria-hidden="true" />}>
+        <div className="hx-chart-state" data-hub-chart-state="unmeasured" role="status" aria-live="polite">
+          <EmptyState icon={<Activity aria-hidden="true" />}>
           {emptyTitle ? (
             <>
               <strong>{emptyTitle}</strong>
@@ -822,7 +803,42 @@ export function HubActivityChart({
           ) : (
             'Waiting for live activity — the chart draws once channels start sending chat and emotes.'
           )}
-        </EmptyState>
+          </EmptyState>
+        </div>
+      </>
+    )
+  }
+
+  if (dataIssue) {
+    return (
+      <>
+        {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        <div className="hx-chart-state" data-hub-chart-state="unavailable" role="status" aria-live="polite">
+          <EmptyState icon={<Activity aria-hidden="true" />}>
+            <strong>Activity payload unavailable</strong> — {dataIssue} The chart is withheld until the served window and timestamps agree.
+          </EmptyState>
+        </div>
+      </>
+    )
+  }
+
+  if (chartDataState !== 'ready') {
+    const title =
+      chartDataState === 'unmeasured'
+        ? emptyTitle ?? 'No measured activity in this window'
+        : 'Measured activity is quiet'
+    const description =
+      chartDataState === 'unmeasured'
+        ? emptyDescription ?? 'The backend has not supplied usable viewer, chat, or emote buckets for the served window.'
+        : 'The served buckets are measured, but viewer, chat, and emote counts are all zero.'
+    return (
+      <>
+        {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        <div className="hx-chart-state" data-hub-chart-state={chartDataState} role="status" aria-live="polite">
+          <EmptyState icon={<Activity aria-hidden="true" />}>
+            <strong>{title}</strong> — {description}
+          </EmptyState>
+        </div>
       </>
     )
   }
@@ -831,9 +847,6 @@ export function HubActivityChart({
     chatMax,
     xs,
     lastT,
-    rhythmAvg,
-    rhythmLoud,
-    bars,
     viewers,
     chat,
     viewerLines,
@@ -1133,7 +1146,13 @@ export function HubActivityChart({
           {chartSummary}
         </p>
       ) : null}
-      <div className="hx-plot-stack" data-hub-compact={compactAnnotations ? 'true' : undefined}>
+      <div
+        className="hx-plot-stack"
+        data-hub-compact={compactAnnotations ? 'true' : undefined}
+        data-hub-chart-state="ready"
+        data-hub-measured-points={measuredChartPointCount}
+        data-hub-signal-points={signalChartPointCount}
+      >
         <div
           className="hx-chart-series-labels"
           data-hub-chart-series-labels
@@ -1197,26 +1216,32 @@ export function HubActivityChart({
               <line key={y} x1="0" y1={y} x2="100" y2={y} vectorEffect="non-scaling-stroke" />
             ))}
           </g>
-          <g className={`hx-bar-series-layer bars hx-series ${focusedSeriesKey != null && focusedSeriesKey !== 'chat' ? 'is-dimmed' : ''} ${seriesFocusClass(focusedSeriesKey, 'chat')}`} aria-hidden="true">
-            {bars.map((bar) =>
-              bar.h > 0.35 ? (
-                <rect
-                  key={bar.index}
-                  data-index={bar.index}
-                  className={`hx-chat-bar${hover === bar.index ? ' is-active' : ''}${selectedIndex === bar.index ? ' is-selected' : ''}${accentIndex === bar.index && selectedIndex !== bar.index ? ' is-accent' : ''}`}
-                  x={bar.x}
-                  y={bar.y}
-                  width={bar.w}
-                  height={bar.h}
-                  rx="0.5"
-                  onClick={() => onBucketSelect?.(chartPoints[bar.index]?.t ?? null)}
-                  style={{ cursor: onBucketSelect ? 'pointer' : 'default' }}
-                />
-              ) : null,
-            )}
-          </g>
-          {/* Continuous smoothed viewer curve with crisp underlay */}
-          <g opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers')}>
+          {/* Chat is the only bar series. Viewer and emote values use independent
+              line scales; unlike units are never stacked into one total. */}
+          <HubActivityBarSeries
+            points={chartPoints}
+            timeDomain={timeDomain}
+            height={100}
+            paddingBottom={0}
+            chatMax={chatMax}
+            focusedSeriesKey={focusedSeriesKey}
+            highlightBarT={hover != null ? chartPoints[hover]?.t ?? null : null}
+            selectedBarT={selectedIndex >= 0 ? chartPoints[selectedIndex]?.t ?? null : null}
+            trailingBucketT={chartPoints[chartPoints.length - 1]?.bucketComplete === false
+              ? chartPoints[chartPoints.length - 1]?.t ?? null
+              : null}
+            onBarClick={(bucketT) => {
+              if (!onBucketSelect) return
+              const point = chartPoints.find((candidate) => candidate.t === bucketT)
+              const next = point ? resolveChartBucketSelection(point, selectedBucketT) : undefined
+              if (next !== undefined) onBucketSelect(next)
+            }}
+            onBarHover={(bucketT) => {
+              const index = bucketT == null ? null : chartPoints.findIndex((point) => point.t === bucketT)
+              commitHoverIndex(index != null && index >= 0 ? index : null)
+            }}
+          />
+          <g className={seriesFocusClass(focusedSeriesKey, 'viewers')} aria-label="Viewers trend">
             {viewerLines.map((line, i) => (
               <path
                 key={`view-underlay-${i}`}
@@ -1240,9 +1265,8 @@ export function HubActivityChart({
               />
             ))}
           </g>
-          {/* Continuous smoothed total emotes curve */}
           {hasTotalEmotes && !showProviderOverlay ? (
-            <g opacity={seriesFocusOpacity(focusedSeriesKey, 'emotes')}>
+            <g className={seriesFocusClass(focusedSeriesKey, 'emotes')} aria-label="Total emotes per minute trend">
               {totalEmoteLines.map((line, i) => (
                 <g key={`emote-${i}`}>
                   <path
@@ -1487,7 +1511,14 @@ export function HubActivityChart({
             <span className="hx-chart-status__note">Data gap — no measurements recorded for this period</span>
           ) : null}
           {!sampleNote && chatGapBands.some((b) => b.attested) && internalGaps === 0 ? (
-            <span className="hx-chart-status__note">No IRC chat rollups in this stretch</span>
+            <span className="hx-chart-status__note">Attested historical gap — not measured</span>
+          ) : null}
+          {!sampleNote && chatGapBands.some((b) => !b.attested) && internalGaps === 0 ? (
+            <span className="hx-chart-status__note">
+              {chatRollupPointCount === 0
+                ? 'No IRC chat rollups in this stretch'
+                : `Partial IRC chat rollup coverage — ${missingChatRollupCount} bucket${missingChatRollupCount === 1 ? '' : 's'} missing`}
+            </span>
           ) : null}
           {!sampleNote && (missingBuckets > 0 || internalGaps > 0) ? (
             <span className="hx-chart-status__note">
