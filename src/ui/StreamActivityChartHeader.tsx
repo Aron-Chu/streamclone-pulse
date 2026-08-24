@@ -105,16 +105,6 @@ export function StreamActivityChartHeader({
           'Emotes',
           <span style={{ ...styles.chartLegendDot, background: CHART_LANE.emoteBar }} />,
         )}
-        {renderLegendItem(
-          'chat',
-          'Chat trend',
-          <span style={styles.chartLegendStroke} />,
-        )}
-        {renderLegendItem(
-          'emotes',
-          'Emote trend',
-          <span style={{ ...styles.chartLegendStroke, borderColor: CHART_LANE.emoteBar }} />,
-        )}
       </div>
       {overlayLegend ? <div style={styles.overlayLegendRow}>{overlayLegend}</div> : null}
     </div>

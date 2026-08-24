@@ -1,19 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
-import { extensionEmoteImageUrl } from '../shared/emoteUrl.ts'
+import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
+import { resolveProxiedEmoteSrc } from '../shared/emoteImageProxy.ts'
 import { theme } from './theme.ts'
 
 export interface PulseEmoteImgProps {
-  emote: Pick<ExtensionEmote, 'id' | 'name' | 'imageUrl' | 'provider' | 'count'>
+  emote: Pick<ExtensionEmote, 'id' | 'name' | 'imageUrl' | 'provider' | 'providerEmoteId' | 'count'>
   backendUrl: string
   width?: number
   height?: number
   style?: CSSProperties
   className?: string
   showHoverPreview?: boolean
-  hoverPreviewPlacement?: 'above' | 'below'
-  decorative?: boolean
 }
 
 export function PulseEmoteImg({
@@ -24,57 +23,78 @@ export function PulseEmoteImg({
   style,
   className = 'pulse-emote-img',
   showHoverPreview = false,
-  hoverPreviewPlacement = 'below',
-  decorative = false,
 }: PulseEmoteImgProps) {
-  const resolved = extensionEmoteImageUrl(emote, backendUrl)
-  const [failed, setFailed] = useState(false)
+  const candidates = useMemo(
+    () => extensionEmoteImageUrls(emote, backendUrl),
+    [emote.id, emote.imageUrl, emote.name, emote.provider, emote.providerEmoteId, backendUrl],
+  )
+  const candidateKey = candidates.join('\n')
+  const [candidateIndex, setCandidateIndex] = useState(0)
+  const [resolved, setResolved] = useState<string | undefined>()
 
   useEffect(() => {
-    setFailed(false)
-  }, [resolved])
+    setCandidateIndex(0)
+  }, [candidateKey])
 
-  const mainContent = !resolved || failed ? (
-    <span
-      className="pulse-emote-fallback"
-      style={{ ...styles.fallback, width, height }}
-      title={showHoverPreview ? undefined : emote.name}
-      aria-hidden={decorative || undefined}
-    >
-      {emote.name.slice(0, 2)}
-    </span>
-  ) : (
+  const candidate = candidates[candidateIndex]
+
+  useEffect(() => {
+    let active = true
+    setResolved(undefined)
+    if (!candidate) return () => { active = false }
+    resolveProxiedEmoteSrc(candidate)
+      .then(next => {
+        if (!active) return
+        if (next) {
+          setResolved(next)
+        } else {
+          setCandidateIndex(index => index + 1)
+        }
+      })
+      .catch(() => {
+        if (active) setCandidateIndex(index => index + 1)
+      })
+    return () => {
+      active = false
+    }
+  }, [candidate])
+
+  if (!resolved) {
+    if (candidate) {
+      return (
+        <span className="pulse-emote-loading" style={{ ...styles.loading, width, height }} aria-hidden="true" />
+      )
+    }
+    return (
+      <span className="pulse-emote-fallback" style={styles.fallback} title={emote.name}>
+        {emote.name.slice(0, 6)}
+      </span>
+    )
+  }
+
+  const img = (
     <img
       src={resolved}
-      alt={decorative ? '' : emote.name}
+      alt={emote.name}
       width={width}
       height={height}
       className={className}
       style={{ ...styles.img, ...style }}
       referrerPolicy="no-referrer"
       loading="lazy"
-      onError={() => setFailed(true)}
+      decoding="async"
+      onError={() => setCandidateIndex(index => index + 1)}
     />
   )
 
-  if (!showHoverPreview) return mainContent
+  if (!showHoverPreview) return img
 
   return (
-    <span
-      className={`pulse-emote-hover-wrap pulse-emote-hover-wrap--${hoverPreviewPlacement}`}
-      title={`${emote.name} · ${emote.count}`}
-    >
-      {mainContent}
+    <span className="pulse-emote-hover-wrap" title={`${emote.name} · ${emote.count}`}>
+      {img}
       <span className="pulse-emote-hover-preview" aria-hidden="true">
-        {resolved && !failed ? (
-          <img src={resolved} alt="" width={48} height={48} referrerPolicy="no-referrer" />
-        ) : (
-          <span style={{ ...styles.previewFallback, width: 48, height: 48 }}>
-            {emote.name.slice(0, 2)}
-          </span>
-        )}
+        <span style={styles.previewSwatch}>{emote.name.slice(0, 6)}</span>
         <span style={styles.previewName}>{emote.name}</span>
-        <span style={styles.previewCount}>{emote.count} uses</span>
       </span>
     </span>
   )
@@ -82,25 +102,16 @@ export function PulseEmoteImg({
 
 const styles: Record<string, CSSProperties> = {
   img: { display: 'block', objectFit: 'contain' },
+  loading: {
+    background: 'rgba(148, 163, 184, 0.12)',
+    borderRadius: 4,
+    display: 'block',
+  },
   fallback: {
-    alignItems: 'center',
     color: theme.textSecondary,
-    display: 'flex',
     fontSize: 10,
     fontWeight: 700,
-    justifyContent: 'center',
-    lineHeight: 1,
-    overflow: 'hidden',
-  },
-  previewFallback: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 6,
-    color: theme.textPrimary,
-    display: 'flex',
-    fontSize: 14,
-    fontWeight: 850,
-    justifyContent: 'center',
+    padding: '0 4px',
   },
   previewName: {
     color: theme.textPrimary,
@@ -108,17 +119,21 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 800,
     marginTop: 4,
-    lineHeight: 1.2,
-    maxWidth: 160,
+    maxWidth: 72,
+    overflow: 'hidden',
     textAlign: 'center',
-    overflowWrap: 'anywhere',
-  },
-  previewCount: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 700,
-    marginTop: 2,
+    textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  previewSwatch: {
+    alignItems: 'center',
+    color: theme.textSecondary,
+    display: 'flex',
+    fontSize: 11,
+    fontWeight: 800,
+    height: 48,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 48,
   },
 }

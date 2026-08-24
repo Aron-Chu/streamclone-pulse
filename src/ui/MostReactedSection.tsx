@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
+  LIVE_HEAT_SUBTITLE,
+  LIVE_HEAT_TITLE,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
-import { reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import {
   MOST_REACTED_VISIBLE_COUNT,
+  heatPointMatchesOffset,
   resolveMostReactedHeat,
   sortLiveHeatPoints,
   type MomentSortMode,
@@ -15,6 +17,7 @@ import {
 import { PulseMomentRow } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { theme } from './theme.ts'
 
 export interface MostReactedSectionProps {
@@ -27,8 +30,6 @@ export interface MostReactedSectionProps {
   onAnalytics: (point: LiveHeatPoint) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
   onPinOffset?: (offsetSeconds: number | null) => void
-  onPreviewMoment?: (point: LiveHeatPoint | null) => void
-  onSelectMoment?: (point: LiveHeatPoint) => void
   saveBusy?: boolean
   hasVodContext?: boolean
   demoMode?: boolean
@@ -55,8 +56,6 @@ export function MostReactedSection({
   onAnalytics,
   onHighlightOffset,
   onPinOffset,
-  onPreviewMoment,
-  onSelectMoment,
   saveBusy = false,
   hasVodContext = false,
   demoMode = false,
@@ -66,6 +65,7 @@ export function MostReactedSection({
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [listExpanded, setListExpanded] = useState(false)
   const selectedRowRef = useRef<HTMLDivElement | null>(null)
+  const selectedCardRef = useRef<HTMLDivElement | null>(null)
 
   const sortedPoints = useMemo(
     () => sortLiveHeatPoints(heat.points, sortMode),
@@ -86,11 +86,8 @@ export function MostReactedSection({
     : sortedPoints.slice(0, MOST_REACTED_VISIBLE_COUNT)
   const hiddenPointCount = Math.max(0, sortedPoints.length - MOST_REACTED_VISIBLE_COUNT)
   const jumpLabel = resolveJumpLabel(payload, hasVodContext)
-
-  const isPinnedPoint = (point: LiveHeatPoint): boolean => {
-    if (pinnedOffsetSeconds == null || !Number.isFinite(pinnedOffsetSeconds)) return false
-    return reactionAnalyticalOffset(point) === pinnedOffsetSeconds
-  }
+  const hasExplicitPeaks = payload.peaks !== undefined
+  const isCollectingMoments = hasExplicitPeaks && (payload.peaks?.length ?? 0) === 0
 
   useEffect(() => {
     setListExpanded(false)
@@ -108,13 +105,10 @@ export function MostReactedSection({
     return () => cancelAnimationFrame(frame)
   }, [pinnedOffsetSeconds, sortMode, listExpanded])
 
-  if (!heat.visible && !pinnedMomentPoint) return null
-
   return (
     <PulseSectionCard
-      title="Top moments"
-      titleTone="muted"
-      style={styles.sectionCard}
+      title={LIVE_HEAT_TITLE}
+      subtitle={LIVE_HEAT_SUBTITLE}
       meta={
         heat.visible ? (
           <PulseThemedSelect
@@ -128,9 +122,46 @@ export function MostReactedSection({
         ) : undefined
       }
     >
+      {!heat.visible && !pinnedMomentPoint ? (
+        <div
+          data-testid="most-reacted-status"
+          data-most-reacted-state={isCollectingMoments ? 'collecting' : 'empty'}
+          role="status"
+          style={styles.status}
+        >
+          <strong style={styles.statusTitle}>
+            {isCollectingMoments ? 'Collecting reaction moments' : 'No reaction moments yet'}
+          </strong>
+          <span style={styles.statusText}>
+            {isCollectingMoments
+              ? `Top moments appear after enough chat and emote rollups are complete. ${heat.completedRollupCount} completed minute${heat.completedRollupCount === 1 ? '' : 's'} recorded.`
+              : 'There are no qualifying chat or emote moments in this stream yet.'}
+          </span>
+        </div>
+      ) : null}
+      {pinnedOffsetSeconds != null && pinnedMomentPoint ? (
+        <div
+          ref={selectedCardRef}
+          style={{
+            ...styles.selectedSlot,
+            minHeight: 132,
+          }}
+        >
+          <SelectedMomentCard
+            point={pinnedMomentPoint}
+            backendUrl={backendUrl}
+            jumpLabel={jumpLabel}
+            onJump={demoMode ? () => undefined : onJump}
+            onSave={demoMode ? () => undefined : onSave}
+            saveBusy={saveBusy}
+            onAnalytics={demoMode ? () => undefined : onAnalytics}
+          />
+        </div>
+      ) : null}
       <div style={styles.momentList}>
         {visiblePoints.map(point => {
-          const selected = isPinnedPoint(point)
+          const selected =
+            pinnedOffsetSeconds != null && heatPointMatchesOffset(point, pinnedOffsetSeconds)
           return (
             <PulseMomentRow
               key={`${point.offsetSeconds}-${point.reason}-${point.minuteTs}`}
@@ -138,15 +169,11 @@ export function MostReactedSection({
               backendUrl={backendUrl}
               selected={selected}
               scrollRef={selected ? node => { selectedRowRef.current = node } : undefined}
-                onHighlight={demoMode ? () => undefined : offset => {
-                  setHoveredOffset(offset)
-                  onPreviewMoment?.(offset == null ? null : point)
-                }}
-               onSelect={demoMode ? () => undefined : next => {
-                 if (onSelectMoment) onSelectMoment(next)
-                 else onPinOffset?.(next.offsetSeconds)
-                 setHoveredOffset(null)
-               }}
+              onHighlight={demoMode ? () => undefined : setHoveredOffset}
+              onSelect={demoMode ? () => undefined : next => {
+                onPinOffset?.(next.offsetSeconds)
+                setHoveredOffset(null)
+              }}
             />
           )
         })}
@@ -182,12 +209,18 @@ export function MostReactedSection({
 }
 
 const styles: Record<string, CSSProperties> = {
-  sectionCard: {
-    gap: 8,
-    marginBottom: 12,
-    padding: 12,
-  },
+  selectedSlot: { flexShrink: 0 },
   momentList: { display: 'grid', gap: 4 },
+  status: {
+    background: 'rgba(255, 255, 255, 0.035)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: 8,
+    display: 'grid',
+    gap: 4,
+    padding: '10px 12px',
+  },
+  statusTitle: { color: theme.textSecondary, fontSize: 11, fontWeight: 800 },
+  statusText: { color: theme.textMuted, fontSize: 10, lineHeight: 1.4 },
   expandButton: {
     alignItems: 'center',
     background: 'transparent',

@@ -8,7 +8,6 @@ import { theme } from './theme.ts'
 
 export interface SelectedMomentCardProps {
   point: LiveHeatPoint
-  mode?: 'selected' | 'preview'
   backendUrl: string
   onJump: (point: LiveHeatPoint) => void
   onSave?: (point: LiveHeatPoint) => void
@@ -19,7 +18,6 @@ export interface SelectedMomentCardProps {
 
 export function SelectedMomentCard({
   point,
-  mode = 'selected',
   backendUrl,
   onJump,
   onSave,
@@ -28,7 +26,6 @@ export function SelectedMomentCard({
   jumpLabel = 'Jump',
 }: SelectedMomentCardProps) {
   const offsetLabel = formatHeatOffset(point.offsetSeconds)
-  const label = mode === 'preview' ? 'Preview moment' : 'Selected moment'
   const [pulse, setPulse] = useState(false)
   const [swapping, setSwapping] = useState(false)
   const [entering, setEntering] = useState(true)
@@ -65,11 +62,11 @@ export function SelectedMomentCard({
           .filter(Boolean)
           .join(' ') || undefined
       }
-      aria-label={`${label} at ${offsetLabel}`}
+      aria-label={`Selected moment at ${offsetLabel}`}
     >
       <div className={swapping ? 'pulse-moment-card-swap' : undefined}>
         <div style={styles.header}>
-          <span style={styles.kicker}>{label}</span>
+          <span style={styles.kicker}>Selected moment</span>
           <span style={styles.offset}>{offsetLabel}</span>
         </div>
         <p style={{ ...styles.reason, ...momentReasonLabelStyle(point.reason, point.reasonLabel, 'md') }}>

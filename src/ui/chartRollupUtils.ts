@@ -292,6 +292,15 @@ export function plotXForIndex(
 /** Cap early-stream bar width so 1–2 minutes never become half-chart slabs. */
 export const OVERVIEW_CHART_MAX_BAR_WIDTH_PX = 14
 
+export const TARGET_BAR_PITCH_PX = 1.2
+
+export function widthDerivedBucketCount(plotWidth: number, pointCount: number, pitch = TARGET_BAR_PITCH_PX): number {
+  if (pointCount <= 0 || pitch <= 0) return 0
+  const derived = Math.round(plotWidth / pitch)
+  const clamped = Math.min(260, Math.max(24, derived))
+  return pointCount <= clamped ? pointCount : clamped
+}
+
 export function overviewBarWidth(
   plotWidth: number,
   pointCount: number,
