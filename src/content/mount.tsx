@@ -216,6 +216,7 @@ let chatClosedPulseDockEnabled = false
 let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
 let overlayHostObserver: MutationObserver | null = null
+let overlayHostReconcileTimer: ReturnType<typeof setTimeout> | null = null
 
 function installOverlayDiagnosticsOnce(): void {
   if (overlayDiagnosticsInstalled) return
@@ -280,7 +281,11 @@ function installOverlayHostObserver(): void {
     // the route. Reconcile that mutation immediately instead of waiting for the
     // debounced route scheduler, while ignoring normal chat/page churn.
     if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(containsOverlayHost))) return
-    reconcileOverlayHosts()
+    if (overlayHostReconcileTimer != null) return
+    overlayHostReconcileTimer = setTimeout(() => {
+      overlayHostReconcileTimer = null
+      reconcileOverlayHosts()
+    }, 50)
   })
   overlayHostObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
@@ -726,6 +731,10 @@ export function unmountOverlay(): void {
   displayPreferenceRequestId += 1
   overlayHostObserver?.disconnect()
   overlayHostObserver = null
+  if (overlayHostReconcileTimer != null) {
+    clearTimeout(overlayHostReconcileTimer)
+    overlayHostReconcileTimer = null
+  }
   stopObserve?.()
   stopObserve = null
   sidebarLayout = null
