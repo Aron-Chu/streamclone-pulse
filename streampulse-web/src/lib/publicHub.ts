@@ -275,6 +275,10 @@ export interface HubActivity {
   points: HubActivityPoint[]
   /** Requested activity window (minutes). Preserved even when served data is shorter. */
   windowMinutes: number
+  /** Explicit backend request window. Falls back to windowMinutes for legacy payloads. */
+  requestedWindowMinutes?: number
+  /** Explicit backend served window. Falls back to availableWindowMinutes for legacy payloads. */
+  servedWindowMinutes?: number
   channelCount: number
   peakViewersAt?: number
   livePoolViewerSum?: number
@@ -887,6 +891,12 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
     activity: {
       points: normalizeActivityPoints(raw?.activity?.points),
       windowMinutes: raw?.activity?.windowMinutes ?? 7 * 24 * 60,
+      requestedWindowMinutes:
+        normalizePositiveInt(raw?.activity?.requestedWindowMinutes) ??
+        normalizePositiveInt(raw?.activity?.windowMinutes),
+      servedWindowMinutes:
+        normalizePositiveInt(raw?.activity?.servedWindowMinutes) ??
+        normalizePositiveInt(raw?.activity?.availableWindowMinutes),
       channelCount: raw?.activity?.channelCount ?? 0,
       peakViewersAt: raw?.activity?.peakViewersAt,
       livePoolViewerSum: raw?.activity?.livePoolViewerSum,

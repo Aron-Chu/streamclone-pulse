@@ -277,7 +277,7 @@ test.describe('hub metrics sanity banner (mocked sparse rollups)', () => {
     const errors = attachConsoleErrorGuard(page)
     await installSparseViewerRollupMock(page)
     await page.goto('/analytics')
-    await page.getByRole('button', { name: /^24h$/i }).click()
+    await page.getByRole('button', { name: /Activity time window:.*24h/i }).click()
     await expect(page.getByText('Live pool sum now', { exact: true })).toBeVisible()
     await expect(page.locator('.figma-global-activity__peak-row').getByText('83K', { exact: true })).toBeVisible()
     await assertNoConsoleErrors(page, errors)
