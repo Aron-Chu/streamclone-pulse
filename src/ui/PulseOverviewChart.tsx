@@ -393,9 +393,10 @@ function PulseOverviewChartImpl({
     }
     node.addEventListener('wheel', handleWheel, { passive: false })
     return () => node.removeEventListener('wheel', handleWheel)
-    // Attach once; handler reads live state through the ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    // The loading/empty branches and the plotted branch render different
+    // container nodes. Rebind after the chart node replaces the placeholder;
+    // otherwise the first live-data render loses the non-passive wheel guard.
+  }, [loading, visibleRollups.length])
 
   useIsomorphicLayoutEffect(() => {
     const node = containerRef.current
