@@ -58,31 +58,36 @@ export function isAttestedActivityGap(point: Pick<HubActivityPoint, 'gapKind'>):
  */
 export function isHubActivityHealthyHistoricalProjection(activity: HubActivity): boolean {
   const requested = validWindowMinutes(activity.windowMinutes)
+  if (requested == null) return false
+  if (isHubActivityLivePoolFallback(activity)) return false
   if (
-    activity.source !== HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION ||
-    activity.state !== 'healthy' ||
-    requested == null
+    activity.state === 'degraded' ||
+    activity.reason === HUB_ACTIVITY_REASON_HISTORICAL_UNAVAILABLE
   ) {
     return false
   }
 
-  const available = validWindowMinutes(activity.availableWindowMinutes)
-  const accounted = validWindowMinutes(activity.accountedWindowMinutes)
-  const measured = validWindowMinutes(activity.measuredWindowMinutes)
-  const registeredGaps = hubActivityRegisteredGapCount(activity)
+  if (activity.source === HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION && activity.state === 'healthy') {
+    const available = validWindowMinutes(activity.availableWindowMinutes)
+    const accounted = validWindowMinutes(activity.accountedWindowMinutes)
+    const measured = validWindowMinutes(activity.measuredWindowMinutes)
+    const registeredGaps = hubActivityRegisteredGapCount(activity)
 
-  // Served span must cover the request via accounted (preferred) or available.
-  const coversRequest =
-    accounted != null ? accounted >= requested : available === requested
-  if (!coversRequest) return false
+    if (available == null && accounted == null) return false
 
-  // Dishonest contract: measured claims the full window while gaps are registered.
-  if (registeredGaps > 0 && measured != null) {
-    if (measured >= requested) return false
-    if (accounted != null && measured >= accounted) return false
+    const coversRequest =
+      accounted != null ? accounted >= requested : available === requested
+    if (!coversRequest && (accounted != null || available != null)) return false
+
+    if (registeredGaps > 0 && measured != null) {
+      if (measured >= requested) return false
+      if (accounted != null && measured >= accounted) return false
+    }
+
+    return true
   }
 
-  return true
+  return false
 }
 
 /**
@@ -129,16 +134,12 @@ export function resolveHubActivityChartWindowMinutes(activity: HubActivity): num
 
   const available = validWindowMinutes(activity.availableWindowMinutes)
   if (available != null) {
-    // A contract-bearing payload that is not explicitly healthy must not expand
-    // an available served span into a requested historical grid.
     return Math.min(requested, available)
   }
   if (isHubActivityLivePoolFallback(activity)) {
     return Math.min(requested, 30)
   }
 
-  // Legacy / incomplete payloads without honesty metadata must not expand a
-  // long requested window into a fabricated historical chart grid.
   return Math.min(requested, 30)
 }
 
@@ -198,4 +199,34 @@ export function hubActivityHonestyEmptyCopy(
     title: 'Recent live activity only',
     description: `Full ${requested} history is not available yet. Waiting for live-pool chat and emotes — empty buckets are not filled with historical placeholders.`,
   }
+}
+
+/**
+ * Detect a fallback payload whose timestamp domain contradicts the advertised
+ * served window. Plotting this shape makes coarse aggregate rows look like
+ * minute-level plateaus, so the chart must refuse it until the backend returns
+ * a bounded payload.
+ */
+export function hubActivityContractIssues(activity: HubActivity): string[] {
+  if (!isHubActivityLivePoolFallback(activity)) return []
+  const points = activity.points
+    .filter((point) => Number.isFinite(point.t))
+    .sort((a, b) => a.t - b.t)
+  if (points.length < 2) return []
+  const served =
+    validWindowMinutes(activity.servedWindowMinutes) ??
+    validWindowMinutes(activity.availableWindowMinutes) ??
+    30
+  const spanMinutes = Math.max(0, (points[points.length - 1].t - points[0].t) / 60_000)
+  const issues: string[] = []
+  if (spanMinutes > served + 1) {
+    issues.push(`payload spans ${Math.round(spanMinutes)} minutes but advertises ${served} served minutes`)
+  }
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].t <= points[i - 1].t) {
+      issues.push('payload timestamps are not strictly increasing')
+      break
+    }
+  }
+  return issues
 }

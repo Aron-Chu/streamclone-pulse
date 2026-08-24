@@ -1383,7 +1383,7 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
-  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: opacity 0.16s ease, border-color 0.16s ease, background 0.16s ease;
 }
 .hubx .hx-legend-chip:hover {
   border-color: hsl(var(--border));
@@ -1396,6 +1396,9 @@
 }
 .hubx .hx-legend-chip.is-dimmed {
   opacity: 0.4;
+}
+.hubx .hx-series-label--compact {
+  display: none;
 }
 .hubx .hx-chart-actions {
   display: flex;
@@ -1412,6 +1415,16 @@
   justify-content: space-between;
   gap: 0.45rem 0.75rem;
   margin-bottom: 0.45rem;
+}
+.hubx .hx-chart-header__readout {
+  flex: 1 1 100%;
+  min-height: 1.15rem;
+  color: var(--fma-muted);
+  font-family: var(--sp-font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  text-align: right;
 }
 .hubx .hx-chart-header__window {
   display: flex;
@@ -1552,6 +1565,61 @@
 .hubx .hx-provider-chip:hover {
   border-color: hsl(var(--primary) / 0.4);
 }
+
+@container hub-activity-chart (max-width: 720px) {
+  .hubx .hx-chart-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hubx .hx-chart-header__window,
+  .hubx .hx-chart-header .hx-chart-actions,
+  .hubx .hx-legend,
+  .hubx .hx-provider-chips {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .hubx .hx-chart-header .hx-chart-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hubx .hx-legend {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .hubx .hx-legend-chip {
+    min-width: 0;
+    margin: 0;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .hubx .hx-series-label--full {
+    display: none;
+  }
+
+  .hubx .hx-series-label--compact {
+    display: inline;
+  }
+
+  .hubx .hx-provider-chips {
+    margin-left: 0;
+    padding-top: 0.45rem;
+    padding-left: 0;
+    border-top: 1px solid hsl(var(--border));
+    border-left: 0;
+  }
+
+  .hubx .hx-chart-header__readout {
+    text-align: left;
+  }
+}
 .hubx .hx-econ-split__table {
   min-width: 0;
 }
@@ -1637,9 +1705,8 @@
 .hubx .hx-legend .sw--chat {
   background: hsl(var(--sp-chart-chat, var(--chart-bar))) !important;
 }
-/* activity chart — chat-volume bars sit BEHIND the velocity lines as a subtle
-   faded-purple volume backdrop. Default fill stays quiet so lines dominate;
-   hover/selection only slightly lift opacity. */
+/* Activity chart chat-volume bars use the tracked-chat purple token. They are
+   the only bar series; viewers and emotes remain independent line scales. */
 .hubx .hx-chart2 .bars .hx-chat-bar {
   fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.08);
   opacity: 1;
@@ -1661,8 +1728,43 @@
   stroke-width: 0.5px;
   opacity: 1;
 }
+.hubx .hx-chart2 [data-component="HubActivityBarSeries"] .hx-chat-bar {
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.34);
+  opacity: 0.82;
+  transition: fill 120ms ease, opacity 120ms ease, filter 120ms ease;
+}
+.hubx .hx-chart2 [data-component="HubActivityBarSeries"] .hx-chat-bar.is-selected {
+  fill: hsl(var(--sp-chart-chat, var(--chart-bar)) / 0.62);
+  opacity: 1;
+  filter: brightness(1.15);
+}
+.hubx .hx-chart2 [data-component="HubActivityBarSeries"] g[data-live="true"] .hx-chat-bar {
+  opacity: 0.42;
+}
 .hubx .hx-chart2--selectable {
   cursor: crosshair;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hubx .hx-chart2--selectable:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.hubx .hx-chart2--dragging,
+.hubx .hx-chart2--dragging * {
+  cursor: grabbing !important;
+}
+.hubx .hx-chart-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .hubx .hx-chart2 .hx-chart-line--chat-bg {
   stroke: hsl(var(--chart-bar) / 0.7);
@@ -1697,20 +1799,22 @@
   margin-top: 0.7rem;
   overflow: hidden;
   cursor: crosshair;
-  /* Allow vertical page scroll to bubble up; horizontal pan feeds our press-drag scrub. */
-  touch-action: pan-y;
   border-radius: calc(var(--radius) + 0.2rem);
   background: hsl(240 10% 6% / 0.4);
   box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.45);
-}
-.hubx .hx-chart2[data-scrubbing='true'] {
-  cursor: grabbing;
 }
 .hubx .hx-chart2 svg {
   display: block;
   width: 100%;
   height: 100%;
   overflow: visible;
+  animation: hx-plot-window-settle 200ms ease;
+}
+.hubx .hx-chart2 .hx-series {
+  transition: opacity 160ms ease;
+}
+.hubx .hx-chart2 .hx-series.is-dimmed {
+  opacity: 0.14;
 }
 .hubx .hx-chart2 .grid line {
   stroke: hsl(var(--border));
@@ -1723,10 +1827,6 @@
 }
 .hubx .hx-chart2 .hx-chart-line {
   filter: none;
-}
-.hubx .hx-chart2 .hx-chart-line--chat {
-  stroke: hsl(var(--chart-bar));
-  stroke-width: 2;
 }
 .hubx .hx-chart2__layer {
   position: absolute;
@@ -1783,6 +1883,94 @@
 }
 .hubx .hx-chart-axis-labels__right {
   justify-self: end;
+}
+
+.hubx .hx-chart-series-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem 0.55rem;
+  margin: 0 0 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.03em;
+  color: hsl(var(--muted-foreground));
+}
+.hubx .hx-chart-series-labels__item {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.hubx .hx-chart-series-labels__item--viewers {
+  color: hsl(var(--sp-chart-viewers, var(--chart-2)));
+}
+.hubx .hx-chart-series-labels__item--emotes {
+  color: hsl(var(--sp-chart-emotes, var(--chart-4)));
+}
+.hubx .hx-chart-series-labels__item--chat {
+  color: hsl(var(--sp-chart-chat, var(--chart-bar)));
+}
+.hubx .hx-chart-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0.28rem 0 0.12rem;
+  min-height: 0;
+}
+.hubx .hx-chart-status:empty {
+  display: none;
+}
+.hubx .hx-chart-status__note {
+  display: block;
+  padding: 0.18rem 0.45rem;
+  border-radius: 0.35rem;
+  border: 1px solid hsl(var(--border) / 0.55);
+  background: hsl(var(--sp-surface-2, var(--secondary)) / 0.45);
+  color: hsl(var(--foreground));
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.hubx .hx-chart-state {
+  min-height: 11rem;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  border: 1px solid hsl(var(--border) / 0.55);
+  border-radius: 0.45rem;
+  background: hsl(var(--sp-surface-2, var(--secondary)) / 0.28);
+  text-align: center;
+}
+
+.hubx .hx-chart-state--loading {
+  min-height: 2rem;
+  place-items: start;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+}
+
+@media (min-width: 720px) {
+  .hubx .hx-chart-series-labels {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* Shared label/plot grid — provider lanes overlay abbrev pills on full-width plots. */
@@ -1973,6 +2161,52 @@
   color: hsl(var(--fma-amber));
   pointer-events: none;
 }
+.hubx .hx-chart2 .hx-signal-marker {
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  z-index: 3;
+  width: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translateX(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.hubx .hx-chart2 .hx-signal-marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: hsl(var(--fma-amber) / 0.7);
+  border-radius: 1px;
+}
+.hubx .hx-chart2 .hx-signal-marker[data-chart-selection-kind*="chat"]::before {
+  background: hsl(var(--sp-chart-chat, 199 89% 48%) / 0.75);
+}
+.hubx .hx-chart2 .hx-signal-marker[data-chart-selection-kind*="emote"]::before {
+  background: hsl(var(--sp-chart-emotes, 160 84% 39%) / 0.8);
+}
+.hubx .hx-chart2 .hx-signal-marker--preview::before {
+  opacity: 0.85;
+  width: 3px;
+}
+.hubx .hx-chart2 .hx-signal-marker--selected::before {
+  width: 3px;
+  background: hsl(var(--fma-amber));
+  box-shadow: 0 0 0 1px hsl(var(--fma-amber) / 0.35);
+}
+.hubx .hx-chart2 .hx-signal-marker:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .hubx .hx-chart2 .hx-bucket-cue__line {
   position: absolute;
   top: 0;
@@ -2089,6 +2323,14 @@
 
 .figma-global-activity__chart-col[data-refreshing="true"] .hx-chart2 {
   animation: hx-chart-refresh-pulse 0.45s ease;
+}
+@keyframes hx-plot-window-settle {
+  from {
+    opacity: 0.78;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes hx-bucket-cue-bounce {
   0% {
@@ -3529,6 +3771,32 @@
     flex: 1 1 auto;
   }
 }
+@media (max-width: 719px) {
+  .hubx .hx-chart-axis-labels {
+    display: none;
+  }
+  .hubx .hx-chart2 .ylab {
+    display: none;
+  }
+  .hubx .hx-chart-header,
+  .hubx .hx-chart-actions,
+  .hubx .hx-legend,
+  .hubx .hx-provider-chips,
+  .hubx .hx-chart-series-labels,
+  .hubx .hx-chart-status {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .hubx .hx-chart-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hubx .hx-chart-header .hx-chart-actions,
+  .hubx .hx-legend {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
 @media (max-width: 560px) {
   .hubx .hx-sumgrid,
   .hubx .hx-kpis {
@@ -3545,4 +3813,70 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Global Activity redesign — stacked contribution bars + rhythm lines + moment annotations */
+.hubx {
+  --hub-bar-viewers: #a78bfa; /* violet-400 */
+  --hub-bar-chat: #22d3ee; /* cyan-400 */
+  --hub-bar-emotes: #fbbf24; /* amber-400 */
+  --hub-bar-spike: #22d3ee; /* cyan-400 */
+  --hub-bar-accent: #a78bfa; /* violet-400 */
+}
+
+.hubx .hx-bar-segment {
+  transition: fill-opacity 120ms ease-out;
+}
+.hubx .hx-bar-segment.is-selected {
+  filter: brightness(1.15);
+}
+.hubx .hx-bar-segment--viewers {
+  fill: var(--hub-bar-viewers);
+}
+.hubx .hx-bar-segment--chat {
+  fill: var(--hub-bar-chat);
+}
+.hubx .hx-bar-segment--emotes {
+  fill: var(--hub-bar-emotes);
+}
+
+.hubx .hx-rhythm-line {
+  stroke: var(--hub-bar-accent);
+  stroke-width: 1;
+  pointer-events: none;
+}
+.hubx .hx-rhythm-line--avg {
+  stroke-opacity: 0.1;
+}
+.hubx .hx-rhythm-line--loud {
+  stroke-opacity: 0.16;
+}
+
+.hubx .hx-spike-glow {
+  fill: var(--hub-bar-spike);
+  pointer-events: none;
+}
+
+.hubx .hx-moment-stamp {
+  fill: var(--hub-bar-viewers);
+  fill-opacity: 0.85;
+  stroke: var(--hub-bar-accent);
+  stroke-width: 0.5;
+}
+.hubx .hx-moment-stamp--spike {
+  fill: var(--hub-bar-spike);
+  fill-opacity: 0.95;
+  stroke: none;
+}
+.hubx .hx-moment-stamp__connector {
+  stroke: var(--hub-bar-accent);
+  stroke-opacity: 0.6;
+}
+.hubx .hx-moment-stamp__label {
+  fill: var(--hub-bar-accent);
+  font-weight: 600;
+}
+.hubx .hx-moment-stamp.is-selected {
+  stroke: var(--hub-bar-accent);
+  stroke-width: 1.5;
 }
