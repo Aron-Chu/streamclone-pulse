@@ -10,7 +10,11 @@ import {
 import { HubBackendSourceBanner } from "../../ui/components/analytics/HubBackendSourceBanner";
 import { HubDataHealthBanner } from "../../ui/components/hub/HubDataHealthBanner";
 import { resolveLivePulseMoments, mapHubPulseMoment, momentRowKey } from "../../lib/figmaSessionAnalytics";
-import { summarizeActivity, activityBucketKey } from "../../lib/hubActivitySummary";
+import {
+  summarizeActivity,
+  activityBucketKey,
+  formatActivityWindowLabel,
+} from "../../lib/hubActivitySummary";
 import { resolveHubActivityChartWindowMinutes } from "../../lib/hubActivityHonesty";
 import {
   aggregateEmotesFromMoments,
@@ -66,6 +70,23 @@ const ACTIVITY_WINDOW_OPTIONS: HubActivityRangeOption[] = [
   { key: "1y", label: "1 year" },
 ];
 
+const ACTIVITY_WINDOW_MINUTES: Record<string, number> = {
+  "30m": 30,
+  "24h": 24 * 60,
+  "7d": 7 * 24 * 60,
+  "1m": 30 * 24 * 60,
+  "3m": 3 * 30 * 24 * 60,
+  "6m": 6 * 30 * 24 * 60,
+  "1y": 365 * 24 * 60,
+};
+
+function compactWindowLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return formatActivityWindowLabel(minutes);
+}
+
 const RAIL_COLORS = ["#1e3a5f", "#1a3d2b", "#2d1b4e", "#3d2a1b", "#1b3d3d"];
 
 function formatUpdatedAgo(ts: number | null): string | undefined {
@@ -97,6 +118,22 @@ function AnalyticsLandingContent() {
   // Requested range drives the endpoint/range tab; served range owns all bucket
   // geometry so a bounded fallback cannot select or prefetch invented history.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);
+  const activityRangeOptions = useMemo(
+    () =>
+      ACTIVITY_WINDOW_OPTIONS.map((option) => {
+        const requestedMinutes = ACTIVITY_WINDOW_MINUTES[option.key] ?? servedActivityWindowMinutes;
+        if (servedActivityWindowMinutes >= requestedMinutes || option.key === "30m") {
+          return option;
+        }
+        const servedLabel = compactWindowLabel(servedActivityWindowMinutes);
+        return {
+          ...option,
+          label: `${option.label} · ${servedLabel} served`,
+          description: `${option.label} requested; only ${formatActivityWindowLabel(servedActivityWindowMinutes)} is currently available`,
+        };
+      }),
+    [servedActivityWindowMinutes],
+  );
   const loadingInitial = hub.loading && !hub.data;
   const hubUiState = resolveHubUiState({
     loading: hub.loading,
@@ -544,7 +581,7 @@ function AnalyticsLandingContent() {
               }
               rangeControl={{
                 active: activityWindow,
-                options: ACTIVITY_WINDOW_OPTIONS,
+                options: activityRangeOptions,
                 onSelect: (key) => {
                   setActivityWindow(key as PublicHubActivityWindow);
                   setSelectedBucketT(null);

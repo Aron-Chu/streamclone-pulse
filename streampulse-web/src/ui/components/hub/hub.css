@@ -1774,6 +1774,16 @@
   stroke: hsl(var(--sp-chart-viewers, var(--chart-2)));
   stroke-width: 2.25;
 }
+.hubx .hx-chart2 .hx-chart-point-underlay {
+  fill: hsl(var(--background) / 0.92);
+  pointer-events: none;
+}
+.hubx .hx-chart2 .hx-chart-point--viewers {
+  fill: hsl(var(--sp-chart-viewers, var(--chart-2)));
+}
+.hubx .hx-chart2 .hx-chart-point--emotes {
+  fill: hsl(var(--sp-chart-emotes, var(--chart-4)));
+}
 .hubx .hx-chart2 .hx-chart-line-underlay--emotes {
   stroke-width: 4;
 }

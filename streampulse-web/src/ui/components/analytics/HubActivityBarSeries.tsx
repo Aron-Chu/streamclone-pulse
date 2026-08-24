@@ -42,6 +42,12 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
   onBarHover,
 }: HubActivityBarSeriesProps) {
   const widthPct = barWidthPercent(timeDomain)
+  // Leave a small, stable gutter between buckets.  A full-width translucent
+  // rect per minute reads as one continuous filled area on the dark chart,
+  // especially when chat stays high for a live pool.  The gutter preserves
+  // the bar grammar without changing the timestamp domain or bucket count.
+  const visualWidthPct = widthPct * 0.72
+  const visualInsetPct = (widthPct - visualWidthPct) / 2
   const usableHeight = Math.max(0, height - paddingBottom)
   const safeChatMax = Math.max(1, chatMax)
   return (
@@ -49,6 +55,7 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
       {points.map((p) => {
         const x = barXPercent(p.t, timeDomain)
         if (x == null) return null
+        const visualX = x + visualInsetPct
         const isLive = trailingBucketT != null && p.t === trailingBucketT
         const opacity = isLive ? 0.4 : 1
         if (p.hasChatRollup === false || p.chat <= 0 || widthPct <= 0 || usableHeight <= 0) return null
@@ -68,9 +75,9 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
           >
             <rect
               className={`hx-chat-bar hx-bar-segment hx-bar-segment--chat ${isHighlighted ? 'is-selected' : ''}`}
-              x={`${x}%`}
+              x={`${visualX}%`}
               y={y}
-              width={`${widthPct}%`}
+              width={`${visualWidthPct}%`}
               height={barHeight}
               fillOpacity={focusedOpacity(focusedSeriesKey, 'chat')}
             />

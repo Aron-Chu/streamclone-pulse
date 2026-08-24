@@ -346,8 +346,11 @@ function splitLinePaths(
   }
   if (measured.length === 0) return []
   if (measured.length === 1) {
-    const p = measured[0].pt
-    return [`M0 ${p.y.toFixed(2)} L100 ${p.y.toFixed(2)}`]
+    // A single viewer sample is not a trend.  Extending it to both chart
+    // edges creates the exact flat line that made sparse fallback payloads
+    // look like a measured 24h history.  The caller renders an isolated dot
+    // for this case instead.
+    return []
   }
 
   const rawSegments: Pt[][] = []
@@ -379,6 +382,47 @@ function splitLinePaths(
   })
 
   return segments.map(buildLine).filter(Boolean)
+}
+
+/**
+ * Return samples that cannot form a connected line segment.  These are
+ * rendered as small points so a sparse signal remains visible without
+ * inventing a horizontal trend across unmeasured buckets.
+ */
+function isolatedLinePoints(
+  pts: Pt[],
+  source: HubActivityPoint[],
+  windowMinutes: number,
+  sampleValues?: number[],
+  hasSample?: boolean[],
+): Pt[] {
+  const maxGap = maxConnectedGapMs(windowMinutes)
+  const measured: Array<{ pt: Pt; t: number }> = []
+  for (let i = 0; i < pts.length; i += 1) {
+    const isSample = hasSample
+      ? hasSample[i]
+      : !sampleValues || (sampleValues[i] ?? 0) > 0
+    if (isSample && pts[i]) measured.push({ pt: pts[i], t: source[i]?.t ?? 0 })
+  }
+  if (measured.length === 0) return []
+
+  const isolated: Pt[] = []
+  let segment: Array<{ pt: Pt; t: number }> = [measured[0]]
+  const flush = () => {
+    if (segment.length === 1) isolated.push(segment[0].pt)
+  }
+  for (let i = 1; i < measured.length; i += 1) {
+    const previous = measured[i - 1]
+    const current = measured[i]
+    if (current.t - previous.t > maxGap) {
+      flush()
+      segment = [current]
+    } else {
+      segment.push(current)
+    }
+  }
+  flush()
+  return isolated
 }
 
 /** Close a lane line path to the baseline for a semi-transparent area fill. */
@@ -534,6 +578,8 @@ export function HubActivityChart({
     const viewers = chartPoints.map((p, i) => ({ x: xs[i], y: atViewerY(p.viewers) }))
     const chat = chartPoints.map((p, i) => ({ x: xs[i], y: atChatY(measuredChatValue(p)) }))
     const totalEmotes = chartPoints.map((p, i) => ({ x: xs[i], y: atEmoteY(emoteCount(p)) }))
+    const viewerSamples = chartPoints.map((p) => p.hasViewerRollup || p.viewers > 0)
+    const emoteSamples = chartPoints.map((p) => emoteCount(p))
     const providerLines = PROVIDER_KEYS.reduce(
       (acc, key) => {
         acc[key] = splitLinePaths(
@@ -620,13 +666,26 @@ export function HubActivityChart({
         chartPoints,
         windowMinutes,
         undefined,
-        chartPoints.map((p) => p.hasViewerRollup || p.viewers > 0),
+        viewerSamples,
       ),
       totalEmoteLines: splitLinePaths(
         totalEmotes,
         chartPoints,
         windowMinutes,
-        chartPoints.map((p) => emoteCount(p)),
+        emoteSamples,
+      ),
+      viewerDots: isolatedLinePoints(
+        viewers,
+        chartPoints,
+        windowMinutes,
+        undefined,
+        viewerSamples,
+      ),
+      emoteDots: isolatedLinePoints(
+        totalEmotes,
+        chartPoints,
+        windowMinutes,
+        emoteSamples,
       ),
       providerLines,
       providerLaneLines,
@@ -850,7 +909,9 @@ export function HubActivityChart({
     viewers,
     chat,
     viewerLines,
+    viewerDots,
     totalEmoteLines,
+    emoteDots,
     providerLines,
     providerLaneLines,
     internalGapBands,
@@ -1264,6 +1325,22 @@ export function HubActivityChart({
                 strokeLinejoin="round"
               />
             ))}
+            {viewerDots.map((point, i) => (
+              <g key={`view-dot-${i}`} className="hx-chart-point-group">
+                <circle
+                  className="hx-chart-point-underlay"
+                  cx={point.x}
+                  cy={point.y}
+                  r="3.6"
+                />
+                <circle
+                  className="hx-chart-point hx-chart-point--viewers"
+                  cx={point.x}
+                  cy={point.y}
+                  r="1.8"
+                />
+              </g>
+            ))}
           </g>
           {hasTotalEmotes && !showProviderOverlay ? (
             <g className={seriesFocusClass(focusedSeriesKey, 'emotes')} aria-label="Total emotes per minute trend">
@@ -1284,6 +1361,22 @@ export function HubActivityChart({
                     vectorEffect="non-scaling-stroke"
                     strokeLinecap="round"
                     strokeLinejoin="round"
+                  />
+                </g>
+              ))}
+              {emoteDots.map((point, i) => (
+                <g key={`emote-dot-${i}`} className="hx-chart-point-group">
+                  <circle
+                    className="hx-chart-point-underlay"
+                    cx={point.x}
+                    cy={point.y}
+                    r="3.2"
+                  />
+                  <circle
+                    className="hx-chart-point hx-chart-point--emotes"
+                    cx={point.x}
+                    cy={point.y}
+                    r="1.5"
                   />
                 </g>
               ))}

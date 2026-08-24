@@ -22,6 +22,23 @@ describe('HubActivityChart chat measurement honesty', () => {
     expect(container.querySelectorAll('.hx-chart-line--emotes')).not.toHaveLength(0)
   })
 
+  it('renders a sparse single viewer sample as a point instead of a flat trend', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const { container } = render(
+      <HubActivityChart
+        points={[
+          { t: end - 60_000, chat: 10, seventv: 2, emotes: 2, viewers: 0, hasChatRollup: true, bucketComplete: true },
+          { t: end, chat: 20, seventv: 4, emotes: 4, viewers: 457_000, hasChatRollup: true, hasViewerRollup: true, bucketComplete: true },
+        ]}
+        windowMinutes={2}
+        channelCount={1}
+      />,
+    )
+
+    expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(0)
+    expect(container.querySelectorAll('.hx-chart-point--viewers')).toHaveLength(1)
+  })
+
   it('withholds a malformed fallback payload instead of plotting misleading geometry', () => {
     const start = Math.floor((Date.now() - 40 * 60_000) / 60_000) * 60_000
     const { container } = render(
