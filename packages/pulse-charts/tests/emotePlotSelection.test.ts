@@ -16,6 +16,11 @@ describe('activityBandFractions', () => {
 
   it('expands activity zone fraction when expanded', () => {
     expect(activityZoneFraction(true)).toBeGreaterThan(activityZoneFraction(false))
+    // The shared chart is viewer-led: the collapsed activity lanes occupy the
+    // lower portion beneath the viewer lane, rather than consuming the whole
+    // plot before the user expands it.
+    expect(activityZoneFraction(false)).toBeGreaterThan(0.3)
+    expect(activityZoneFraction(false)).toBeLessThan(0.6)
     expect(activityBandFractions(true).trace).toBeGreaterThan(activityBandFractions(false).trace)
   })
 

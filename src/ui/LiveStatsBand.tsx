@@ -8,6 +8,7 @@ import {
   type LiveConfidenceState,
   type LiveHeatPoint,
   type LiveStats,
+  type LiveViewerMetadata,
   type TrendDirection,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
@@ -100,6 +101,7 @@ export interface LiveStatsBandProps {
   previewOffsetSeconds?: number | null
   hasVodContext?: boolean
   coverageTier?: string | null
+  liveMetadata?: LiveViewerMetadata | null
   /** Marketing landing — read-only panel with no navigation or chart pinning. */
   demoMode?: boolean
 }
@@ -141,13 +143,17 @@ const STANDARD_NUMBER = new Intl.NumberFormat('en-US', {
 const METRIC_MOTION_MS = 180
 
 function formatSignedDelta(delta: number | null): string {
-  if (delta === null) return '-'
+  if (delta === null) return '—'
   if (delta === 0) return '0'
   return delta > 0 ? `+${delta.toLocaleString()}` : `-${Math.abs(delta).toLocaleString()}`
 }
 
 function formatNumber(value: number): string {
   return (value >= 10_000 ? COMPACT_NUMBER : STANDARD_NUMBER).format(value)
+}
+
+function formatMaybeNumber(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? formatNumber(value) : '—'
 }
 
 function useCountUp(value: number, duration = METRIC_MOTION_MS): number {
@@ -185,14 +191,14 @@ function AnimatedMetric({
   format,
   valueStyle,
 }: {
-  value: number
+  value: number | null
   format?: (value: number) => string
   valueStyle?: CSSProperties
 }) {
-  const animated = useCountUp(value)
+  const animated = useCountUp(value ?? 0)
   return (
     <span style={{ ...styles.metricValue, ...valueStyle }}>
-      {format ? format(animated) : formatNumber(animated)}
+      {value == null ? '—' : format ? format(animated) : formatNumber(animated)}
     </span>
   )
 }
@@ -230,12 +236,20 @@ export function LiveStatsBand({
   previewOffsetSeconds = null,
   hasVodContext = false,
   coverageTier = null,
+  liveMetadata = null,
   demoMode = false,
 }: LiveStatsBandProps) {
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
+  const statsInput = useMemo(
+    () => ({
+      ...toLiveStatsInputFromExtension(payload),
+      liveMetadata,
+    }),
+    [payload, liveMetadata],
+  )
   const stats: LiveStats = useMemo(
-    () => deriveLiveStats(toLiveStatsInputFromExtension(payload)),
-    [payload],
+    () => deriveLiveStats(statsInput),
+    [statsInput],
   )
   const confidenceStyle = CONFIDENCE_STYLES[stats.confidence]
   const activation = useMemo(
@@ -260,8 +274,8 @@ export function LiveStatsBand({
   const previousChartDurationRef = useRef(effectiveCurrentOffsetSeconds)
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [fullTimelineFailed, setFullTimelineFailed] = useState(false)
-  /** Exactly one automatic Full request latch per stable activation key. */
-  const fullTimelineAutoRequestedKeyRef = useRef<string | null>(null)
+  /** Explicit Full requests are de-duplicated per activation; retries are still user-triggered. */
+  const fullTimelineRequestedKeyRef = useRef<string | null>(null)
   const fullTimelineInFlightKeyRef = useRef<string | null>(null)
   /** After the user picks a range, ignore late async default hydration for this stream. */
   const chartWindowUserPickedRef = useRef(false)
@@ -269,8 +283,12 @@ export function LiveStatsBand({
   if (fullHistoryActivationKey(activationSeen) !== activationKey) {
     setActivationSeen(activation)
     chartWindowUserPickedRef.current = false
-    fullTimelineAutoRequestedKeyRef.current = null
+    fullTimelineRequestedKeyRef.current = null
     fullTimelineInFlightKeyRef.current = null
+    // A pending request from the previous surface must not leave the new
+    // activation's explicit Full action disabled. Its eventual result is
+    // still ignored by the activation guard below.
+    setTimelineLoading(false)
     setFullTimelineFailed(false)
   }
   const sparklineBlockRef = useRef<HTMLDivElement | null>(null)
@@ -298,7 +316,8 @@ export function LiveStatsBand({
           setChartWindow('full')
           return
         }
-        // Stored range is a truthful startup fallback while Full loads automatically.
+        // Stored range is only a display preference. Full history is fetched by
+        // an explicit user action below, never by activation or rerender.
         setChartWindow(window)
       } catch {
         // Storage denied / extension context invalidated — keep in-memory default.
@@ -350,16 +369,6 @@ export function LiveStatsBand({
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
-  const handleChartWindowChange = (window: ChartTimelineWindow): void => {
-    chartWindowUserPickedRef.current = true
-    setChartWindow(window)
-    // Persist the user's fallback/pre-load preference. Polling remains recent.
-    if (!demoMode) {
-      void setDefaultChartWindow(window as DefaultChartWindow)
-    }
-    onChartWindowChange?.(window)
-  }
-
   useEffect(() => {
     setHoveredGameKey(null)
   }, [payload.streamId, chartWindow])
@@ -394,13 +403,14 @@ export function LiveStatsBand({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- activation-scoped unlock uses current activation
   }, [fullTimeline, activationKey])
 
-  const requestFullTimeline = useCallback((automatic: boolean): void => {
+  const requestFullTimeline = useCallback((retry = false): void => {
     const request = onRequestFullTimelineRef.current
     if (!request || !hasStableFullHistoryActivation(activation)) return
+    if (hasValidatedFullHistory(payload, activation)) return
     if (fullTimelineInFlightKeyRef.current === activationKey) return
-    if (automatic && fullTimelineAutoRequestedKeyRef.current === activationKey) return
+    if (!retry && fullTimelineRequestedKeyRef.current === activationKey) return
 
-    if (automatic) fullTimelineAutoRequestedKeyRef.current = activationKey
+    if (!retry) fullTimelineRequestedKeyRef.current = activationKey
     fullTimelineInFlightKeyRef.current = activationKey
     setTimelineLoading(true)
     setFullTimelineFailed(false)
@@ -423,17 +433,18 @@ export function LiveStatsBand({
           setTimelineLoading(false)
         }
       })
-  }, [activation, activationKey])
+  }, [activation, activationKey, payload])
 
-  useEffect(() => {
-    if (!hasStableFullHistoryActivation(activation)) return
-    if (hasValidatedFullHistory(payload, activation)) {
-      setFullTimelineFailed(false)
-      if (!chartWindowUserPickedRef.current) setChartWindow('full')
-      return
+  const handleChartWindowChange = (window: ChartTimelineWindow): void => {
+    chartWindowUserPickedRef.current = true
+    setChartWindow(window)
+    // Persist the user's fallback/pre-load preference. Polling remains recent.
+    if (!demoMode) {
+      void setDefaultChartWindow(window as DefaultChartWindow)
     }
-    requestFullTimeline(true)
-  }, [activation, activationKey, payload, requestFullTimeline])
+    onChartWindowChange?.(window)
+    if (window === 'full') requestFullTimeline()
+  }
 
   useEffect(() => {
     onPinOffset?.(null)
@@ -668,7 +679,16 @@ export function LiveStatsBand({
     setChartHoverOffsetSeconds(null)
   }, [onPinOffset])
 
-  const chartIdentity = `${payload.login}:${payload.streamId ?? ''}:${payload.vodId ?? ''}:${payload.startedAt ?? ''}`
+  // A linked VOD can arrive asynchronously for the same stream. Keep that
+  // enrichment on the same chart surface; a real stream/route/mode change
+  // still resets all ephemeral chart choices.
+  const chartIdentity = [
+    payload.login,
+    payload.streamId ?? (payload.vodId ?? ''),
+    payload.startedAt ?? '',
+    isLive ? 'live' : 'recap',
+    payload.mode ?? '',
+  ].join(':')
   const chartRegionId = `pulse-live-chart-${useId().replace(/:/g, '')}`
   const chartExpansion = useChartExpansion({
     identity: chartIdentity,
@@ -682,6 +702,13 @@ export function LiveStatsBand({
 
   useEffect(() => {
     setFocusedSeriesKey(null)
+    setSelectedEmoteKeys([])
+    setEmotePanelExpanded(false)
+    setChartHoverOffsetSeconds(null)
+    onPinOffset?.(null)
+    // Reset coupled chart selection state only when the surface identity
+    // changes. Same-stream VOD enrichment intentionally keeps this identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartIdentity])
 
   function resetChartExpansion(): void {
@@ -729,7 +756,10 @@ export function LiveStatsBand({
   })
   const showCoverageStartHint =
     coverageHint.show && (chartWindow === 'full' || !fullTimeline)
-  const showViewerStrip = rollups.some(rollup => (rollup.viewerCount ?? 0) > 0)
+  const showViewerStrip = rollups.some(
+    rollup => !rollup.missing && typeof rollup.viewerCount === 'number' && rollup.viewerCount > 0,
+  )
+  const viewerPeak = Math.max(0, payload.peakViewers ?? 0, stats.currentViewers ?? 0)
   const viewerStartOffsetSeconds = Math.max(
     0,
     payload.viewerStartOffsetSeconds ?? firstViewerOffsetSeconds(rollups),
@@ -760,6 +790,13 @@ export function LiveStatsBand({
     : chartAtAvailableRange
       ? `Available coverage · from ${formatHeatOffset(chartCoverageStartSeconds)}`
       : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
+  const readoutChat = minuteAtRollup && !minuteAtRollup.missing ? minuteAtRollup.chatCount : null
+  const readoutEmotes = minuteAtRollup && !minuteAtRollup.missing
+    ? minuteEmoteTotal(minuteAtRollup)
+    : null
+  const readoutViewers = minuteAtRollup && !minuteAtRollup.missing
+    ? minuteAtRollup.viewerCount
+    : null
 
   return (
     <PulseSectionCard
@@ -810,6 +847,7 @@ export function LiveStatsBand({
             }}
           >
             {formatSignedDelta(stats.viewerDelta5m)} · 5m
+            {stats.viewerState === 'stale' ? ' · stale' : stats.viewerState === 'unknown' ? ' · unavailable' : ''}
           </span>
         </div>
         <div style={styles.metric}>
@@ -969,6 +1007,18 @@ export function LiveStatsBand({
                 </button>
               </span>
             ) : null}
+            {!showPartialRangeStatus && needsFullRollups && !fullTimelineFailed && onRequestFullTimeline ? (
+              <button
+                type="button"
+                data-testid="load-full-history"
+                style={styles.streamStartLink}
+                disabled={timelineLoading || demoMode}
+                title="Load the full stream chart (live polling remains recent)"
+                onClick={() => requestFullTimeline()}
+              >
+                {timelineLoading ? 'Loading…' : 'Load full history'}
+              </button>
+            ) : null}
             {fullTimelineFailed && onRequestFullTimeline ? (
               <button
                 type="button"
@@ -976,7 +1026,7 @@ export function LiveStatsBand({
                 style={styles.streamStartLink}
                 disabled={timelineLoading || demoMode}
                 title="Retry this activation's one-shot full-history request. Live polling remains recent."
-                onClick={() => requestFullTimeline(false)}
+                onClick={() => requestFullTimeline(true)}
               >
                 {timelineLoading ? 'Loading…' : 'Retry full history'}
               </button>
@@ -1006,10 +1056,12 @@ export function LiveStatsBand({
               {formatHeatOffset(minuteAtOffsetSeconds)}
             </span>
             <span style={styles.chartReadoutSep}>·</span>
-            <span>chat {formatNumber(minuteAtRollup?.chatCount ?? 0)}/min</span>
+            <span>viewers {formatMaybeNumber(readoutViewers)}</span>
+            <span style={styles.chartReadoutSep}>·</span>
+            <span>chat {formatMaybeNumber(readoutChat)}/min</span>
             <span style={styles.chartReadoutSep}>·</span>
             <span>
-              emotes {formatNumber(minuteAtRollup ? minuteEmoteTotal(minuteAtRollup) : 0)}/min
+              emotes {formatMaybeNumber(readoutEmotes)}/min
             </span>
           </p>
         </div>
@@ -1027,6 +1079,7 @@ export function LiveStatsBand({
             selectedIndex={demoMode ? null : pinChartIndex}
             previewIndex={demoMode ? null : previewChartIndex}
             showViewerStrip={showViewerStrip}
+            viewerPeak={viewerPeak}
             activityExpanded={activityExpanded}
             normalizeOverlaySeries={selectedEmotesForOverlay.length > 0}
             focusedSeriesKey={demoMode ? null : focusedSeriesKey}

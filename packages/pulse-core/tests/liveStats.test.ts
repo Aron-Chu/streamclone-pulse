@@ -9,6 +9,7 @@ import {
   splitEmoteProviderRates,
   buildSparkline,
   deriveLiveStats,
+  resolveViewerDataState,
   trendArrowGlyph,
   type LiveStatsInput,
   type LiveStatsRollup,
@@ -94,6 +95,58 @@ describe('deriveLiveStats', () => {
     const stats = deriveLiveStats({ state: 'live', rollups: makeRollups(8) })
     assert.equal(stats.viewersStale, false)
     assert.equal(stats.currentViewers, 100)
+  })
+
+  it('uses live metadata with explicit fresh, stale, and unknown states', () => {
+    const fresh = deriveLiveStats({
+      state: 'live',
+      rollups: [],
+      liveMetadata: { available: true, isLive: true, viewerCount: 812, freshnessSeconds: 12 },
+    })
+    const stale = deriveLiveStats({
+      state: 'live',
+      rollups: [],
+      liveMetadata: { available: true, isLive: true, viewerCount: 812, freshnessSeconds: 240 },
+    })
+    const unknown = deriveLiveStats({
+      state: 'live',
+      rollups: [],
+      liveMetadata: { available: true, isLive: true },
+    })
+
+    assert.equal(fresh.currentViewers, 812)
+    assert.equal(fresh.viewerSource, 'liveMetadata')
+    assert.equal(fresh.viewerState, 'fresh')
+    assert.equal(stale.viewerState, 'stale')
+    assert.equal(stale.viewersStale, true)
+    assert.equal(unknown.currentViewers, null)
+    assert.equal(unknown.viewerState, 'unknown')
+    assert.equal(resolveViewerDataState(null), 'unknown')
+  })
+
+  it('does not turn an unobserved viewer field into zero', () => {
+    const stats = deriveLiveStats({
+      state: 'live',
+      rollups: [{ chatCount: 12, viewerSamples: 0 }],
+    })
+    assert.equal(stats.currentViewers, null)
+    assert.equal(stats.viewerState, 'unknown')
+  })
+
+  it('does not surface stale live metadata on an offline recap surface', () => {
+    const stats = deriveLiveStats({
+      state: 'historical',
+      rollups: [{ chatCount: 12, viewerSamples: 1, viewerLatest: 4_200 }],
+      liveMetadata: {
+        available: true,
+        isLive: true,
+        viewerCount: 18_809,
+        freshnessSeconds: 180_000,
+      },
+    })
+    assert.equal(stats.currentViewers, 4_200)
+    assert.equal(stats.viewerSource, 'rollup')
+    assert.equal(stats.viewerState, 'fresh')
   })
 })
 

@@ -1543,6 +1543,7 @@ function OverlayMain({
                   previewOffsetSeconds={chartPreviewOffset}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
+                  liveMetadata={coverageTierState?.liveMetadata ?? null}
                 />
               ) : null}
 

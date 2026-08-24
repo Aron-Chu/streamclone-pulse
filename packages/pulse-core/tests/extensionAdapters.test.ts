@@ -130,6 +130,24 @@ describe('splitEmoteProviderRates via extension mapping', () => {
     assert.equal(stats.completedRollupCount, 7)
     assert.notEqual(stats.confidence, 'Waiting for first minute')
   })
+
+  it('preserves liveMetadata and leaves an omitted viewer count unknown', () => {
+    const input = toLiveStatsInputFromExtension({
+      isLive: true,
+      liveMetadata: {
+        available: true,
+        isLive: true,
+        viewerCount: 1_204,
+        freshnessSeconds: 4,
+      },
+      rollups: [{ offsetSeconds: 0, chatCount: 4 }],
+    })
+    const stats = deriveLiveStats(input)
+    assert.equal(input.rollups[0]?.viewerSamples, undefined)
+    assert.equal(stats.currentViewers, 1_204)
+    assert.equal(stats.viewerSource, 'liveMetadata')
+    assert.equal(stats.viewerState, 'fresh')
+  })
 })
 
 describe('toLiveHeatInputFromExtension', () => {

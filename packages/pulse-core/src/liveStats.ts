@@ -42,7 +42,21 @@ export const TREND_STABLE_RATIO = 0.1
  */
 export const SYNCED_ROLLUP_THRESHOLD = 5
 
+/** A live metadata snapshot older than this is still useful, but not current. */
+export const LIVE_METADATA_STALE_AFTER_SECONDS = 90
+
 export type TrendDirection = 'up' | 'down' | 'stable'
+
+export type ViewerDataState = 'fresh' | 'stale' | 'unknown'
+
+/** Minimal live viewer metadata shape shared by extension and portal adapters. */
+export interface LiveViewerMetadata {
+  available?: boolean
+  isLive?: boolean | null
+  viewerCount?: number | null
+  snapshotTime?: string | null
+  freshnessSeconds?: number | null
+}
 
 /**
  * Data confidence states surfaced by the band (Req 18.1). They communicate how
@@ -85,6 +99,7 @@ export interface LiveStatsInput {
   state: StreamCollectionState
   rollups: LiveStatsRollup[]
   topEmotes?: LiveTopEmote[]
+  liveMetadata?: LiveViewerMetadata | null
   /** Stream-level average viewers (TwitchTracker / Helix), 0 when unknown. */
   avgViewers?: number
   /** Stream-level peak viewers (TwitchTracker / Helix), 0 when unknown. */
@@ -98,7 +113,10 @@ export interface EmoteProviderRate {
 }
 
 export interface LiveStats {
-  currentViewers: number
+  currentViewers: number | null
+  /** Provenance/freshness of the current viewer value. */
+  viewerState: ViewerDataState
+  viewerSource: 'liveMetadata' | 'rollup' | 'unknown'
   /** True when currentViewers is a carried last-known sample, not the latest minute. */
   viewersStale: boolean
   /** Signed change in viewers over the last DELTA_WINDOW_MINUTES, or null if unknown. */
@@ -133,10 +151,44 @@ function isCompletedRollup(r: LiveStatsRollup): boolean {
   )
 }
 
-function viewerOf(r: LiveStatsRollup): number {
-  const latest = r.viewerLatest ?? 0
-  if (latest > 0) return latest
-  return r.viewerAvg ?? 0
+function viewerOf(r: LiveStatsRollup): number | null {
+  if (r.missing || (r.viewerSamples != null && r.viewerSamples <= 0)) return null
+  const latest = r.viewerLatest
+  if (typeof latest === 'number' && Number.isFinite(latest) && latest > 0) return latest
+  const average = r.viewerAvg
+  if (typeof average === 'number' && Number.isFinite(average) && average > 0) return average
+  // An explicit sampled zero is a measured value. An omitted viewer field is
+  // not, and must remain unknown rather than becoming a displayed 0.
+  if (r.viewerSamples != null && r.viewerSamples > 0) {
+    if (typeof latest === 'number' && Number.isFinite(latest) && latest >= 0) return latest
+    if (typeof average === 'number' && Number.isFinite(average) && average >= 0) return average
+  }
+  return null
+}
+
+function liveMetadataViewerValue(metadata: LiveViewerMetadata | null | undefined): number | null {
+  if (!metadata || metadata.available === false || metadata.isLive === false) return null
+  const value = metadata.viewerCount
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null
+  return Math.round(value)
+}
+
+/** Resolve the explicit freshness state carried by live metadata. */
+export function resolveViewerDataState(
+  metadata: LiveViewerMetadata | null | undefined,
+  nowMs = Date.now(),
+): ViewerDataState {
+  if (liveMetadataViewerValue(metadata) == null) return 'unknown'
+  const freshnessSeconds = metadata?.freshnessSeconds
+  if (typeof freshnessSeconds === 'number' && Number.isFinite(freshnessSeconds) && freshnessSeconds >= 0) {
+    return freshnessSeconds <= LIVE_METADATA_STALE_AFTER_SECONDS ? 'fresh' : 'stale'
+  }
+  const snapshotMs = metadata?.snapshotTime ? Date.parse(metadata.snapshotTime) : Number.NaN
+  if (Number.isFinite(snapshotMs) && Number.isFinite(nowMs)) {
+    const ageSeconds = Math.max(0, (nowMs - snapshotMs) / 1000)
+    return ageSeconds <= LIVE_METADATA_STALE_AFTER_SECONDS ? 'fresh' : 'stale'
+  }
+  return 'unknown'
 }
 
 /**
@@ -188,16 +240,17 @@ export function liveConfidenceState(input: LiveStatsInput): LiveConfidenceState 
   const chatBearing = completed.filter(r => (r.chatCount ?? 0) > 0).length
   const hasTrackerAverages = (input.avgViewers ?? 0) > 0 || (input.peakViewers ?? 0) > 0
   const isLive = input.state === 'live' || input.state === 'syncing'
+  const hasLiveViewerMetadata = isLive && liveMetadataViewerValue(input.liveMetadata) != null
 
   if (completed.length === 0) {
+    if (hasTrackerAverages || hasLiveViewerMetadata) return 'Stats only'
     if (isLive) return 'Waiting for first minute'
-    if (hasTrackerAverages) return 'Stats only'
     return 'Waiting for first minute'
   }
 
   if (chatBearing >= SYNCED_ROLLUP_THRESHOLD) return 'Synced'
 
-  if (isLive) return 'Collecting'
+  if (isLive) return hasLiveViewerMetadata && chatBearing === 0 ? 'Stats only' : 'Collecting'
 
   if (chatBearing > 0) return 'Synced'
   if (hasTrackerAverages) return 'Stats only'
@@ -223,12 +276,12 @@ export function buildSparkline(
  * 18.3). Pure and deterministic: identical input yields identical output.
  */
 /** Last known non-zero viewers in completed minutes (Helix trailing gaps often omit samples). */
-function lastKnownViewers(completed: LiveStatsRollup[]): number {
+function lastKnownViewers(completed: LiveStatsRollup[]): number | null {
   for (let i = completed.length - 1; i >= 0; i -= 1) {
     const value = viewerOf(completed[i]!)
-    if (value > 0) return value
+    if (value != null) return value
   }
-  return 0
+  return null
 }
 
 export function deriveLiveStats(input: LiveStatsInput): LiveStats {
@@ -238,20 +291,34 @@ export function deriveLiveStats(input: LiveStatsInput): LiveStats {
 
   // Prefer last minute when it has viewers; otherwise carry forward during Helix gaps
   // so the band does not flash 0 / huge negative 5m deltas while chat still flows.
-  const lastViewers = last ? viewerOf(last) : 0
-  const currentViewers = lastViewers > 0 ? lastViewers : lastKnownViewers(completed)
-  const viewersStale = currentViewers > 0 && lastViewers <= 0
+  const lastViewers = last ? viewerOf(last) : null
+  const carriedViewers = lastViewers != null ? lastViewers : lastKnownViewers(completed)
+  // Coverage metadata is a live snapshot. Never let stale live coverage
+  // become the current viewer count on an offline channel or VOD surface.
+  const isLive = input.state === 'live' || input.state === 'syncing'
+  const metadataViewers = isLive ? liveMetadataViewerValue(input.liveMetadata) : null
+  const metadataState = metadataViewers != null ? resolveViewerDataState(input.liveMetadata) : 'unknown'
+  const currentViewers = metadataViewers ?? carriedViewers
+  const viewerSource = metadataViewers != null ? 'liveMetadata' : currentViewers != null ? 'rollup' : 'unknown'
+  const viewerState: ViewerDataState = metadataViewers != null
+    ? metadataState
+    : currentViewers == null
+      ? 'unknown'
+      : lastViewers == null
+        ? 'stale'
+        : 'fresh'
+  const viewersStale = viewerState === 'stale'
 
   let viewerDelta5m: number | null = null
-  if (!viewersStale && completed.length > DELTA_WINDOW_MINUTES) {
+  if (currentViewers != null && viewerState === 'fresh' && completed.length > DELTA_WINDOW_MINUTES) {
     const prior = completed[completed.length - 1 - DELTA_WINDOW_MINUTES]
     if (prior) {
       const rawPrior = viewerOf(prior)
       const priorViewers =
-        rawPrior > 0
+        rawPrior != null
           ? rawPrior
           : lastKnownViewers(completed.slice(0, completed.length - DELTA_WINDOW_MINUTES))
-      viewerDelta5m = currentViewers - priorViewers
+      if (priorViewers != null) viewerDelta5m = currentViewers - priorViewers
     }
   }
 
@@ -274,6 +341,8 @@ export function deriveLiveStats(input: LiveStatsInput): LiveStats {
 
   return {
     currentViewers,
+    viewerState,
+    viewerSource,
     viewersStale,
     viewerDelta5m,
     chatPerMin1m,

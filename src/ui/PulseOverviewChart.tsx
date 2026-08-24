@@ -8,19 +8,21 @@ import {
   gameSegmentPlotBounds,
   gameSegmentPlotBoundsByOffsets,
   normalizeGameSegments as normalizeChartGameSegments,
+  buildViewerGeometry,
+  buildViewerOverviewAreaPath,
+  viewerScaleBounds,
   type ChartGameSegment,
   type ChartMinuteRollup,
+  type ViewerTimedValue,
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment, ExtensionRollup } from '../shared/messages.ts'
 import { activityAxisBoundsFromZero, overlaySeriesAxisMax } from './chatActivityEmotes.ts'
 import type { EmoteOverlaySeries } from './chatActivityEmotes.ts'
 import { CHART_BAR_ALPHA, CHART_INTERACTION, CHART_LANE, CHART_THEME, hexToRgba } from './chartTheme.ts'
 import {
-  areaPathInBand,
   barDisplayAxisMax,
   chartBarBucketOpacity,
   chartDurationSeconds,
-  chartViewerValue,
   extendSeriesToTrailingEdge,
   minuteEmoteTotal,
   overviewBarWidth,
@@ -50,6 +52,8 @@ export interface PulseOverviewChartProps {
   activityExpanded?: boolean
   activityExpansionProgress?: number
   showViewerStrip?: boolean
+  /** Stream-level peak keeps the viewers axis honest when the visible window is sparse. */
+  viewerPeak?: number | null
   onSelectIndex?: (index: number) => void
   onClearSelection?: () => void
   /** Clicks inside this node (e.g. Selected moment card below chart) must not clear the pin. */
@@ -217,6 +221,13 @@ function selectionColumnRect(
   return { x, y: top, width: barWidth, height: Math.max(1, bottom - top), fill }
 }
 
+/** A viewer value is observed only when the rollup actually carries it. */
+function viewerObservedValue(point: ExtensionRollup): number | null {
+  if (point.missing) return null
+  const value = point.viewerCount
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
 type SignalBar = {
   key: string
   x: number
@@ -291,6 +302,7 @@ function PulseOverviewChartImpl({
   activityExpanded = false,
   activityExpansionProgress,
   showViewerStrip: showViewerStripProp = true,
+  viewerPeak = null,
   onSelectIndex,
   onClearSelection,
   clearSelectionBoundaryRef,
@@ -479,7 +491,7 @@ function PulseOverviewChartImpl({
   )
 
   const viewers = useMemo(
-    () => rollups.map(point => (point.missing ? null : chartViewerValue(point) || null)),
+    () => rollups.map(viewerObservedValue),
     [rollups],
   )
   // The parent may know that viewer samples exist elsewhere in the full
@@ -496,10 +508,6 @@ function PulseOverviewChartImpl({
   )
 
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
-  const viewerTrendValues = useMemo(
-    () => smoothNullableSeriesValues(viewers, trendWindow),
-    [viewers, trendWindow],
-  )
   const chatTrendValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
@@ -518,10 +526,6 @@ function PulseOverviewChartImpl({
       ),
     [emotes, trendWindow],
   )
-  const viewerDetailValues = useMemo(
-    () => viewers,
-    [viewers],
-  )
   const chatDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
@@ -537,14 +541,19 @@ function PulseOverviewChartImpl({
     [emotes],
   )
 
-  const viewerMax = useMemo(() => seriesMax(viewerTrendValues), [viewerTrendValues])
+  const viewerMax = useMemo(() => seriesMax(viewers), [viewers])
   const chatMax = useMemo(() => seriesMax(chat), [chat])
   const emoteMax = useMemo(() => seriesMax(emotes), [emotes])
   const chatTrendAxisMax = Math.max(chatMax, 1)
   const emoteTrendAxisMax = Math.max(emoteMax, 1)
   const chatBarAxisMax = useMemo(() => barDisplayAxisMax(chat), [chat])
   const emoteBarAxisMax = useMemo(() => barDisplayAxisMax(emotes), [emotes])
-  const viewerAxisMax = Math.max(viewerMax, 1)
+  const viewerAxis = useMemo(
+    () => viewerScaleBounds(viewers, viewerPeak ?? 0, true),
+    [viewers, viewerPeak],
+  )
+  const viewerAxisMin = viewerAxis.min
+  const viewerAxisMax = viewerAxis.max
 
   const expansionProgress = Math.min(1, Math.max(0, activityExpansionProgress ?? (activityExpanded ? 1 : 0)))
   const normalizationProgress = activityExpansionProgress == null
@@ -669,61 +678,46 @@ function PulseOverviewChartImpl({
   const emoteLaneBottom = emoteLane.bandBottom
   const emoteLaneHeight = Math.max(8, emoteLane.bandHeight)
 
-  const viewerAreaPath = useMemo(() => {
-    if (viewerMax <= 0) return ''
-    return areaPathInBand(
-      viewerTrendValues,
-      viewerAxisMax,
+  const viewerTimedValues = useMemo<ViewerTimedValue[]>(
+    () => rollups.map((point, index) => ({
+      minuteTs: chartMinuteRollups[index]?.minuteTs ?? new Date(Math.max(0, point.offsetSeconds) * 1000).toISOString(),
+      value: viewers[index] ?? null,
+    })),
+    [chartMinuteRollups, rollups, viewers],
+  )
+  // Viewer geometry uses the timestamp domain and explicit null segments. It
+  // preserves sparse endpoints and does not imply continuity across a long
+  // unobserved interval, while chat/emote lines retain their existing lanes.
+  const viewerGeometry = useMemo(() => {
+    if (!showViewerStrip || viewerMax <= 0) return null
+    const axisSpan = Math.max(1, viewerAxisMax - viewerAxisMin)
+    return buildViewerGeometry(viewerTimedValues, viewerTimedValues, {
       width,
-      height,
-      PAD_LEFT,
-      PAD_RIGHT,
-      viewerBandTop,
-      viewerBandBottom,
-    )
-  }, [viewerTrendValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
-
-  const viewerLinePath = useMemo(() => {
-    if (viewerMax <= 0) return ''
-    return smoothLinePathInBand(
-      viewerTrendValues,
-      viewerAxisMax,
-      width,
-      height,
-      PAD_LEFT,
-      PAD_RIGHT,
-      viewerBandTop,
-      viewerBandBottom,
-    )
-  }, [viewerTrendValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
-
-  const viewerDetailAreaPath = useMemo(() => {
-    if (viewerMax <= 0) return ''
-    return areaPathInBand(
-      viewerDetailValues,
-      viewerAxisMax,
-      width,
-      height,
-      PAD_LEFT,
-      PAD_RIGHT,
-      viewerBandTop,
-      viewerBandBottom,
-    )
-  }, [viewerDetailValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
-
-  const viewerDetailLinePath = useMemo(() => {
-    if (viewerMax <= 0) return ''
-    return smoothLinePathInBand(
-      viewerDetailValues,
-      viewerAxisMax,
-      width,
-      height,
-      PAD_LEFT,
-      PAD_RIGHT,
-      viewerBandTop,
-      viewerBandBottom,
-    )
-  }, [viewerDetailValues, viewerMax, viewerAxisMax, width, height, viewerBandTop, viewerBandBottom])
+      padLeft: PAD_LEFT,
+      padRight: PAD_RIGHT,
+      bandTop: viewerBandTop,
+      bandBottom: viewerBandBottom,
+      plotCssWidth: plotWidth,
+      valueToY: value => viewerBandBottom - ((value - viewerAxisMin) / axisSpan) * (viewerBandBottom - viewerBandTop),
+    })
+  }, [
+    plotWidth,
+    showViewerStrip,
+    height,
+    viewerAxisMax,
+    viewerAxisMin,
+    viewerBandBottom,
+    viewerBandTop,
+    viewerTimedValues,
+    width,
+    viewerMax,
+  ])
+  const viewerAreaPath = viewerGeometry?.idleAreaPathD ?? ''
+  const viewerLinePath = viewerGeometry?.idlePathD ?? ''
+  const viewerDetailAreaPath = viewerGeometry
+    ? buildViewerOverviewAreaPath(viewerGeometry.detailSegments, viewerBandBottom)
+    : ''
+  const viewerDetailLinePath = viewerGeometry?.detailPathD ?? ''
 
   const chatLinePath = useMemo(() => {
     if (chatMax <= 0) return ''
@@ -1207,6 +1201,8 @@ function PulseOverviewChartImpl({
         data-chart-point-cap={EXTENSION_CHART_MAX_POINTS}
         data-chart-viewport-start={internalViewport.startSeconds}
         data-chart-viewport-end={internalViewport.endSeconds}
+        data-chart-viewer-axis-min={showViewerStrip ? viewerAxisMin : undefined}
+        data-chart-viewer-axis-max={showViewerStrip ? viewerAxisMax : undefined}
         data-chart-active-index={activeIndex ?? undefined}
         data-chart-active-offset={
           activeIndex != null ? visibleRollups[activeIndex]?.offsetSeconds ?? undefined : undefined
@@ -1364,6 +1360,29 @@ function PulseOverviewChartImpl({
                  opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.34 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
               />
+            </g>
+          ) : null}
+          {showViewerStrip && viewerGeometry ? (
+            <g
+              data-chart-layer="viewer-points"
+              clipPath={`url(#${svgIds.viewerClip})`}
+              pointerEvents="none"
+            >
+              {viewerGeometry.overviewSegments.flatMap(segment => segment).map(point => (
+                <circle
+                  key={`${point.minuteTs}-${point.index}`}
+                  data-chart-viewer-point="true"
+                  cx={point.x}
+                  cy={point.y ?? viewerBandBottom}
+                  r={point.value === 0 ? 1.6 : 2.2}
+                  fill={CHART_THEME.viewer.color}
+                  opacity={seriesFocusOpacity(
+                    focusedSeriesKey,
+                    'viewers',
+                    detailActive ? 0.8 : 0.9,
+                  )}
+                />
+              ))}
             </g>
           ) : null}
 

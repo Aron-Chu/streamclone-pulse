@@ -9,7 +9,12 @@ import type {
 import { LIVE_HEAT_MAX_EMOTES } from './liveHeat.ts'
 import { displayMomentReasonLabel } from './momentScore.ts'
 import { resolveEmoteImageUrl } from './emoteImageUrl.ts'
-import type { LiveStatsInput, LiveStatsRollup, LiveTopEmote } from './liveStats.ts'
+import type {
+  LiveStatsInput,
+  LiveStatsRollup,
+  LiveTopEmote,
+  LiveViewerMetadata,
+} from './liveStats.ts'
 
 export interface ExtensionEmoteLike {
   id?: string
@@ -24,7 +29,7 @@ export interface ExtensionRollupLike {
   chatCount?: number
   sevenTvEmoteCount?: number
   totalEmoteCount?: number
-  viewerCount?: number
+  viewerCount?: number | null
   topEmotes?: ExtensionEmoteLike[]
   missing?: boolean
 }
@@ -43,6 +48,7 @@ export interface ExtensionPeakLike {
 export interface ExtensionPulseLike {
   isLive: boolean
   startedAt?: string
+  liveMetadata?: LiveViewerMetadata | null
   topEmotes?: ExtensionEmoteLike[]
   rollups: ExtensionRollupLike[]
   fullRollups?: ExtensionRollupLike[]
@@ -187,7 +193,12 @@ function isSevenTvProvider(provider?: string): boolean {
 }
 
 function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string): LiveStatsRollup {
-  const viewerCount = r.viewerCount ?? 0
+  const viewerCount = r.viewerCount
+  const hasViewerSample =
+    !r.missing
+    && typeof viewerCount === 'number'
+    && Number.isFinite(viewerCount)
+    && viewerCount >= 0
   let totalEmoteCount = r.totalEmoteCount
   let seventvEmoteCount = r.sevenTvEmoteCount
 
@@ -206,21 +217,26 @@ function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string
     chatCount: r.chatCount,
     totalEmoteCount,
     seventvEmoteCount,
-    viewerLatest: viewerCount > 0 ? viewerCount : undefined,
-    viewerSamples: viewerCount > 0 ? 1 : undefined,
+    viewerLatest: hasViewerSample ? viewerCount : undefined,
+    viewerSamples: hasViewerSample ? 1 : undefined,
     missing: r.missing,
   }
 }
 
 function extensionRollupToHeatRollup(r: ExtensionRollupLike, startedAt?: string): LiveHeatRollup {
-  const viewerCount = r.viewerCount ?? 0
+  const viewerCount = r.viewerCount
+  const hasViewerSample =
+    !r.missing
+    && typeof viewerCount === 'number'
+    && Number.isFinite(viewerCount)
+    && viewerCount >= 0
   return {
     minuteTs: minuteTsFromOffset(startedAt, r.offsetSeconds),
     chatCount: r.chatCount,
     totalEmoteCount: r.totalEmoteCount,
     seventvEmoteCount: r.sevenTvEmoteCount,
     emotes: rollupTopEmotesToEmotesMap(r.topEmotes),
-    viewerSamples: viewerCount > 0 ? 1 : 0,
+    viewerSamples: hasViewerSample ? 1 : 0,
     missing: r.missing,
   }
 }
@@ -281,7 +297,11 @@ function extensionEmoteToCatalogEmote(emote: ExtensionEmoteLike): LiveHeatCatalo
 export function toLiveStatsInputFromExtension(payload: ExtensionPulseLike | null): LiveStatsInput {
   const rollupsSource = extensionRollupsForDerivation(payload)
   if (!payload || rollupsSource.length === 0) {
-    return { state: payload?.isLive ? 'live' : 'historical', rollups: [] }
+    return {
+      state: payload?.isLive ? 'live' : 'historical',
+      rollups: [],
+      liveMetadata: payload?.liveMetadata ?? null,
+    }
   }
 
   const rollups = rollupsSource.map(r => extensionRollupToStatsRollup(r, payload.startedAt))
@@ -296,6 +316,7 @@ export function toLiveStatsInputFromExtension(payload: ExtensionPulseLike | null
     state: payload.isLive ? 'live' : 'historical',
     rollups,
     topEmotes: topEmotesSource,
+    liveMetadata: payload.liveMetadata ?? null,
   }
 }
 

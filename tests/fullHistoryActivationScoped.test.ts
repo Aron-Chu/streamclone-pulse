@@ -217,41 +217,71 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     })
   }
 
-  it('automatically requests Full exactly once for a stable activation despite rerenders', async () => {
+  it('does not request Full on activation or rerender; an explicit action requests once', async () => {
     const payload = makePayload()
     const onRequestFullTimeline = vi.fn(async () => ({ ok: true as const, payload: makeFullPayload(payload) }))
     renderBand({ payload, onRequestFullTimeline })
     await flushMicrotasks()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(0)
+
+    const fullStreamButton = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Full stream'),
+    )
+    expect(fullStreamButton).toBeDefined()
+    await act(async () => {
+      fullStreamButton!.click()
+      await Promise.resolve()
+    })
+    await flushMicrotasks()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+
     rerenderBand({ payload: { ...payload, currentOffsetSeconds: 7260 }, onRequestFullTimeline })
     await flushMicrotasks()
 
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
   })
 
-  it('resets the automatic latch when stream activation changes', async () => {
+  it('does not request Full for a new activation until explicitly chosen', async () => {
     const onRequestFullTimeline = vi.fn(async () => ({ ok: false as const, reason: 'incomplete_history' as const }))
     const payloadA = makePayload({ login: 'streamer_a', streamId: 'stream-a' })
     renderBand({ payload: payloadA, onRequestFullTimeline })
     await flushMicrotasks()
-    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(0)
 
     const payloadB = makePayload({ login: 'streamer_b', streamId: 'stream-b' })
     rerenderBand({ payload: payloadB, onRequestFullTimeline })
     await flushMicrotasks()
-    expect(onRequestFullTimeline).toHaveBeenCalledTimes(2)
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(0)
+    const fullStreamButton = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Full stream'),
+    )
+    await act(async () => {
+      fullStreamButton!.click()
+      await Promise.resolve()
+    })
+    await flushMicrotasks()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
   })
 
-  it('stored Full preference still performs one automatic request', async () => {
+  it('stored Full preference does not perform an automatic request', async () => {
     vi.mocked(getDefaultChartWindow).mockResolvedValue('full')
     const payload = makePayload()
     const onRequestFullTimeline = vi.fn(async () => ({ ok: true as const, payload: makeFullPayload(payload) }))
     renderBand({ payload: makePayload(), onRequestFullTimeline })
     await flushMicrotasks()
 
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(0)
+    const loadButton = container.querySelector('[data-testid="load-full-history"]') as HTMLButtonElement
+    expect(loadButton?.textContent).toMatch(/Load full history/i)
+    await act(async () => {
+      loadButton.click()
+      await Promise.resolve()
+    })
+    await flushMicrotasks()
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
   })
 
-  it('failed automatic request exposes a bounded explicit retry', async () => {
+  it('failed explicit request exposes a bounded explicit retry', async () => {
     const payload = makePayload()
     const onRequestFullTimeline = vi
       .fn()
@@ -260,6 +290,15 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     renderBand({ payload, onRequestFullTimeline })
     await flushMicrotasks()
 
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(0)
+    const fullStreamButton = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Full stream'),
+    ) as HTMLButtonElement
+    await act(async () => {
+      fullStreamButton.click()
+      await Promise.resolve()
+    })
+    await flushMicrotasks()
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
     const retryButton = container.querySelector('[data-testid="load-full-history"]') as HTMLButtonElement
     expect(retryButton?.textContent).toMatch(/Retry full history/i)
@@ -317,10 +356,29 @@ describe('LiveStatsBand activation-scoped Full (B1)', () => {
     renderBand({ payload: payloadA, onRequestFullTimeline })
     await flushMicrotasks()
 
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(0)
+    const fullStreamButtonA = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Full stream'),
+    )
+    await act(async () => {
+      fullStreamButtonA!.click()
+      await Promise.resolve()
+    })
+    await flushMicrotasks()
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
 
     const payloadB = makePayload({ login: 'streamer_b', streamId: 'stream-b' })
     rerenderBand({ payload: payloadB, onRequestFullTimeline })
+    await flushMicrotasks()
+    expect(onRequestFullTimeline).toHaveBeenCalledTimes(1)
+
+    const fullStreamButtonB = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Full stream'),
+    )
+    await act(async () => {
+      fullStreamButtonB!.click()
+      await Promise.resolve()
+    })
     await flushMicrotasks()
     expect(onRequestFullTimeline).toHaveBeenCalledTimes(2)
 

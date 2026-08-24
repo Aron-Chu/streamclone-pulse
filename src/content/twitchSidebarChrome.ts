@@ -44,6 +44,13 @@ const HIDE_RULES = `
 
   }
 
+`
+
+
+
+/** Pulse-only body chrome; Chat mode must leave native scrolling affordances intact. */
+const PULSE_BODY_HIDE_RULES = `
+
   [data-a-target="chat-scrollable-area__scroll-button"],
 
   button[aria-label*="Scroll to bottom" i],
@@ -90,8 +97,6 @@ const HIDE_RULES = `
 
 `
 
-
-
 /** Hide native chat messages while Pulse tab owns the sidebar body. */
 
 const MESSAGES_HIDE_RULES = `
@@ -122,7 +127,7 @@ const MESSAGES_HIDE_RULES = `
 
 function sidebarHideStyleContent(hideMessages: boolean): string {
 
-  return HIDE_RULES + (hideMessages ? MESSAGES_HIDE_RULES : '')
+  return HIDE_RULES + (hideMessages ? PULSE_BODY_HIDE_RULES + MESSAGES_HIDE_RULES : '')
 
 }
 
@@ -163,5 +168,3 @@ export function applyTwitchSidebarChromeHides(active: boolean, hideMessages = fa
   document.head.appendChild(style)
 
 }
-
-

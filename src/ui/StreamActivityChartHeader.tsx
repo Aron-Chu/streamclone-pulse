@@ -78,9 +78,13 @@ export function StreamActivityChartHeader({
       <div style={styles.headerTop}>
         <div style={styles.titleRow}>
           <span style={styles.title}>Stream activity</span>
-          {expandControl ? <div style={styles.expandSlot}>{expandControl}</div> : null}
         </div>
-        {rightControl ? <div style={styles.controls}>{rightControl}</div> : null}
+        {expandControl || rightControl ? (
+          <div style={styles.controls}>
+            {expandControl ? <div style={styles.expandSlot}>{expandControl}</div> : null}
+            {rightControl}
+          </div>
+        ) : null}
       </div>
       <div style={styles.chartLegend} aria-label="Chart series legend">
         {showViewerLegend

@@ -826,6 +826,7 @@ function PulseMultiSignalChartInnerImpl({
   durationSeconds = 0,
   viewport: viewportProp,
   onViewportChange,
+  viewportMotionEnabled = true,
   viewportDomainStartSeconds = 0,
   layoutMode = "viewer-led",
   dragPanMode = "off",
@@ -884,6 +885,8 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode?: ChartLayoutMode;
   /** Optional graph-surface navigation. The extension keeps its existing gesture path. */
   dragPanMode?: ChartDragPanMode;
+  /** Disable viewport easing while the parent rail is being dragged/resized. */
+  viewportMotionEnabled?: boolean;
   /** Portal-only opt-in; shared/extension callers retain the fixed stroke contract. */
   lineWeightMode?: ChartLineWeightMode;
 }) {
@@ -1055,7 +1058,7 @@ function PulseMultiSignalChartInnerImpl({
   ]);
   const effectiveViewport = useSmoothedChartViewport(
     targetViewport,
-    motionEnabled,
+    motionEnabled && viewportMotionEnabled,
   );
   const isZoomed =
     inferredDurationSeconds > 0 &&
@@ -2151,16 +2154,19 @@ function PulseMultiSignalChartInnerImpl({
   const selectedMarkerX = useMemo(() => {
     const offset = Number.isFinite(selectedOffsetSeconds)
       ? selectedOffsetSeconds
-      : selectedRollup
-        ? pointOffsetSeconds(selectedRollup.minuteTs, streamStartedAt)
-        : null;
-    if (!Number.isFinite(offset) || !streamStartedAt) return null;
-    if (offset! < effectiveViewport.startSeconds || offset! > effectiveViewport.endSeconds) {
+        : selectedRollup
+          ? pointOffsetSeconds(selectedRollup.minuteTs, streamStartedAt)
+          : null;
+    if (!Number.isFinite(offset) && !selectedRollup) return null;
+    if (Number.isFinite(offset)
+      && (offset! < effectiveViewport.startSeconds || offset! > effectiveViewport.endSeconds)) {
       return null;
     }
-    const startMs = Date.parse(streamStartedAt);
-    if (!Number.isFinite(startMs)) return null;
-    return timestampScale.xForTimestampMs(startMs + offset! * 1000);
+    if (Number.isFinite(offset) && streamStartedAt) {
+      const startMs = Date.parse(streamStartedAt);
+      if (Number.isFinite(startMs)) return timestampScale.xForTimestampMs(startMs + offset! * 1000);
+    }
+    return selectedRollup ? timestampScale.xForTimestamp(selectedRollup.minuteTs) : null;
   }, [effectiveViewport, selectedOffsetSeconds, selectedRollup, streamStartedAt, timestampScale]);
   const previewMarkerOffsetSeconds = typeof previewOffsetSeconds === "number"
     && Number.isFinite(previewOffsetSeconds)
@@ -2170,14 +2176,17 @@ function PulseMultiSignalChartInnerImpl({
       : null;
   const previewMarkerX = useMemo(() => {
     const offset = previewMarkerOffsetSeconds;
-    if (!Number.isFinite(offset) || !streamStartedAt) return null;
-    if (offset! < effectiveViewport.startSeconds || offset! > effectiveViewport.endSeconds) {
+    if (!Number.isFinite(offset) && !previewRollup) return null;
+    if (Number.isFinite(offset)
+      && (offset! < effectiveViewport.startSeconds || offset! > effectiveViewport.endSeconds)) {
       return null;
     }
-    const startMs = Date.parse(streamStartedAt);
-    if (!Number.isFinite(startMs)) return null;
-    return timestampScale.xForTimestampMs(startMs + offset! * 1000);
-  }, [effectiveViewport, previewMarkerOffsetSeconds, streamStartedAt, timestampScale]);
+    if (Number.isFinite(offset) && streamStartedAt) {
+      const startMs = Date.parse(streamStartedAt);
+      if (Number.isFinite(startMs)) return timestampScale.xForTimestampMs(startMs + offset! * 1000);
+    }
+    return previewRollup ? timestampScale.xForTimestamp(previewRollup.minuteTs) : null;
+  }, [effectiveViewport, previewMarkerOffsetSeconds, previewRollup, streamStartedAt, timestampScale]);
   const selectedSourceIndex = selectedRollup
     ? rollups.findIndex((rollup) => rollup.minuteTs === selectedRollup.minuteTs)
     : -1;
@@ -3408,24 +3417,31 @@ function PulseMultiSignalChartInnerImpl({
             // Keep elapsed labels legible when the website chart is rendered in
             // a narrow container. The extension retains its established eight-
             // tick density because it uses the fixed 1000-unit compact viewBox.
+            const visibleAxisRollups = rollups.filter((point) => {
+              const offset = pointOffsetSeconds(point.minuteTs, streamStartedAt);
+              return offset == null
+                || (offset >= effectiveViewport.startSeconds
+                  && offset <= effectiveViewport.endSeconds);
+            });
+            const axisRollups = visibleAxisRollups.length > 1 ? visibleAxisRollups : rollups;
             const responsiveTickLimit = variant === "console"
               ? Math.max(2, Math.min(8, Math.floor(plotWidthPx / 90) + 1))
               : 8;
-            const numTicks = Math.min(responsiveTickLimit, rollups.length);
+            const numTicks = Math.min(responsiveTickLimit, axisRollups.length);
             if (numTicks <= 1) return null;
             const tickIndices = [];
             for (let i = 0; i < numTicks; i++) {
               tickIndices.push(
-                Math.round((i / (numTicks - 1)) * (rollups.length - 1)),
+                Math.round((i / (numTicks - 1)) * (axisRollups.length - 1)),
               );
             }
             return tickIndices.map((idx) => {
-              const item = rollups[idx];
+              const item = axisRollups[idx];
               if (!item) return null;
               const x = timestampScale.xForTimestamp(
                 item.minuteTs,
                 idx,
-                rollups.length,
+                axisRollups.length,
               );
               return (
                 <g key={idx} className="opacity-60" data-chart-x-axis-tick="true">
