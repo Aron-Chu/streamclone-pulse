@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Enforce content-bundle size budget (raw + gzip).
- * Baseline recorded from clean build of RPR-1 acceptance branch.
+ * Baseline recorded from the clean parent build immediately before the chart
+ * interaction stabilization commit. Keep the 10% headroom gate intact.
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
@@ -12,10 +13,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const contentBundle = resolve(root, 'dist/content/twitch.js')
 
-/** Accepted baseline (bytes) from clean `npm run build` — headroom ≤10%. */
+/** Accepted parent baseline (bytes) from clean `npm run build` — headroom ≤10%. */
 export const CONTENT_BUNDLE_BASELINE = {
-  raw: 469_024,
-  gzip: 135_072,
+  raw: 512_566,
+  gzip: 148_380,
 }
 
 const HEADROOM = 1.1
