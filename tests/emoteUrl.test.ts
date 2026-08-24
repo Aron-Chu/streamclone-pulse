@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extensionEmoteImageUrl } from '../src/shared/emoteUrl.ts'
+import { extensionEmoteImageUrl, extensionEmoteImageUrls } from '../src/shared/emoteUrl.ts'
 
 describe('extensionEmoteImageUrl', () => {
   it('prefixes local emote proxy paths with the configured backend', () => {
@@ -49,5 +49,34 @@ describe('extensionEmoteImageUrl', () => {
       'http://localhost:8081',
     )
     expect(url).toBe('https://cdn.7tv.app/emote/62a3bf572b964d6cc2766004/4x.webp')
+  })
+
+  it('tries backend metadata before provider identity fallbacks', () => {
+    const urls = extensionEmoteImageUrls(
+      {
+        id: 'local-id',
+        provider: 'bttv',
+        providerEmoteId: 'provider-id',
+        imageUrl: 'https://cdn.streampulse.stream/emotes/provider-id.webp',
+      },
+      'https://api.streampulse.stream',
+    )
+    expect(urls).toEqual([
+      'https://cdn.streampulse.stream/emotes/provider-id.webp',
+      'https://cdn.betterttv.net/emote/provider-id/3x',
+    ])
+  })
+
+  it('drops unsafe backend URLs instead of making them candidates', () => {
+    const urls = extensionEmoteImageUrls(
+      {
+        id: 'local-id',
+        provider: 'seventv',
+        providerEmoteId: 'provider-id',
+        imageUrl: 'https://evil.example/emote.webp',
+      },
+      'https://api.streampulse.stream',
+    )
+    expect(urls).toEqual(['https://cdn.7tv.app/emote/provider-id/4x.webp'])
   })
 })

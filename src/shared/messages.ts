@@ -236,6 +236,7 @@ export type BackgroundRequest =
 
 export interface ExtensionEmote {
   id?: string
+  providerEmoteId?: string
   name: string
   imageUrl?: string
   count: number
@@ -378,6 +379,7 @@ export interface PulseRecapEmote {
   count: number
   provider?: string
   id?: string
+  providerEmoteId?: string
   imageUrl?: string
 }
 
