@@ -10,6 +10,7 @@ import {
   hubActivityHonestyDetail,
   hubActivityHonestyEmptyCopy,
   hubActivityContractIssues,
+  hubActivityPointsWithinServedWindow,
   isHubActivityHealthyHistoricalProjection,
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
@@ -364,12 +365,28 @@ export function FigmaGlobalActivityPanel({
     peakViewersAt,
     peakChatPerMin,
   } = chartModel;
+  // A legacy fallback can contain stale rows from the requested long range.
+  // The chart model has already bounded those rows to the served slice; keep
+  // the raw contract issue visible in diagnostics without withholding a
+  // truthful recent chart when the rendered inputs are now bounded.
+  const fallbackPayloadRepaired = Boolean(
+    activityContractIssue &&
+      livePoolFallback &&
+      chartModel.chartState !== "unmeasured" &&
+      hubActivityPointsWithinServedWindow(
+        chartInputs.points,
+        chartInputs.windowMinutes,
+      ),
+  );
+  const blockingActivityContractIssue = fallbackPayloadRepaired
+    ? null
+    : activityContractIssue;
   const requestedWindowLabel = formatActivityWindowLabel(
     Math.max(1, hub.activity.windowMinutes || 30),
   );
   const chartState = loading
     ? "loading"
-    : activityContractIssue
+    : blockingActivityContractIssue
       ? "unavailable"
     : chartModel.chartState === "ready"
       ? livePoolFallback
@@ -441,6 +458,7 @@ export function FigmaGlobalActivityPanel({
       data-hub-requested-window-minutes={hub.activity.windowMinutes}
       data-hub-served-window-minutes={chartInputs.windowMinutes}
       data-hub-activity-source={hub.activity.source ?? "unspecified"}
+      data-hub-activity-repaired={fallbackPayloadRepaired ? "true" : undefined}
     >
       <div className="figma-global-activity__headline">
         <div className="figma-global-activity__headline-row">
@@ -514,8 +532,10 @@ export function FigmaGlobalActivityPanel({
         ) : null}
       </p>
       <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
-        {activityContractIssue
-          ? `Activity payload withheld: ${activityContractIssue}.`
+        {fallbackPayloadRepaired
+          ? `Showing bounded last ${formatActivityWindowLabel(chartInputs.windowMinutes)} of live-pool activity; older fallback rows were discarded because historical projection is unavailable.`
+          : blockingActivityContractIssue
+          ? `Activity payload withheld: ${blockingActivityContractIssue}.`
           : livePoolFallback
           ? `Showing ${servedLabel} of requested ${requestedWindowLabel}; historical projection is unavailable.`
           : `Showing served ${servedLabel}.`}
@@ -551,7 +571,7 @@ export function FigmaGlobalActivityPanel({
               expectedBuckets={activitySummary.expectedBuckets}
               missingBuckets={activitySummary.missingBuckets}
               coveragePct={activitySummary.coveragePct}
-              dataIssue={activityContractIssue}
+              dataIssue={blockingActivityContractIssue}
               loading={loading}
               footnote={
                 livePoolFallback

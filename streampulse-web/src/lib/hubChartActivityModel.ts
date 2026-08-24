@@ -7,7 +7,10 @@ import {
   resolveHubActivityChartState,
   type HubActivityChartState,
 } from './hubActivitySummary'
-import { resolveHubActivityChartWindowMinutes } from './hubActivityHonesty'
+import {
+  boundedHubActivityPoints,
+  resolveHubActivityChartWindowMinutes,
+} from './hubActivityHonesty'
 import { livePoolViewerSum } from './hubMetricHelpers'
 import { rhythmLines as computeRhythmLines, type RhythmLines } from './hubChartGeometry'
 import {
@@ -46,7 +49,7 @@ export interface HubChartActivityModel {
 /** Select normalized chart inputs without reading refresh/trust-line fields. */
 export function selectHubChartActivityInputs(hub: PublicHub): HubChartActivityInputs {
   return {
-    points: hub.activity.points,
+    points: boundedHubActivityPoints(hub.activity),
     // Degraded live-pool fallback charts against availableWindowMinutes so
     // fillActivityPoints does not invent empty historical buckets. Healthy
     // accounted windows (measured + attested gaps) chart the full served span
