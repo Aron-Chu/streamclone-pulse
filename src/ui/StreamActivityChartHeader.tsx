@@ -4,6 +4,7 @@ import { theme } from './theme.ts'
 
 export interface StreamActivityChartHeaderProps {
   rightControl?: ReactNode
+  leadingControl?: ReactNode
   expandControl?: ReactNode
   overlayLegend?: ReactNode
   focusedSeriesKey?: string | null
@@ -31,6 +32,7 @@ function legendChipStyle(focused: boolean, dimmed: boolean): CSSProperties {
 
 export function StreamActivityChartHeader({
   rightControl,
+  leadingControl,
   expandControl,
   overlayLegend,
   focusedSeriesKey = null,
@@ -79,8 +81,9 @@ export function StreamActivityChartHeader({
         <div style={styles.titleRow}>
           <span style={styles.title}>Stream activity</span>
         </div>
-        {expandControl || rightControl ? (
+        {leadingControl || expandControl || rightControl ? (
           <div style={styles.controls}>
+            {leadingControl ? <div style={styles.leadingSlot}>{leadingControl}</div> : null}
             {expandControl ? <div style={styles.expandSlot}>{expandControl}</div> : null}
             {rightControl}
           </div>
@@ -145,6 +148,11 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   expandSlot: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    flexShrink: 0,
+  },
+  leadingSlot: {
     alignItems: 'center',
     display: 'inline-flex',
     flexShrink: 0,

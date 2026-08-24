@@ -2,8 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
   formatHeatOffset,
+  formatMomentClock,
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
   LIVE_HEAT_SUBTITLE,
+  reactionAnalyticalOffset,
+  reactionLeadInOffset,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import { CollapsedPill } from './CollapsedPill.tsx'
@@ -100,6 +103,8 @@ function coverageErrorMessage(raw: string | null | undefined, fallback: string):
   return formatPulseApiError(raw) ?? fallback
 }
 
+export type SidebarTabChangeSource = 'user' | 'sync'
+
 interface OverlayProps {
   login: string
   context: TwitchPageContext
@@ -117,7 +122,7 @@ interface OverlayProps {
   /** When sidebar snap splits tabs + body hosts, mount owns tab/mode truth. */
   sidebarTab?: SidebarTab
   overlayMode?: OverlayMode
-  onSidebarTabChange?: (tab: SidebarTab) => void
+  onSidebarTabChange?: (tab: SidebarTab, source?: SidebarTabChangeSource) => void
   onOverlayModeChange?: (mode: OverlayMode) => void
   onPulseRefresh?: () => Promise<void>
   onPulsePayloadUpdate?: (message: PulseUpdateMessage) => void
@@ -172,7 +177,7 @@ function OverlayTabsShell({
       void getSidebarTab().then(tab => {
         if (!mounted || requestId !== tabRequestId) return
         setSidebarTabState(tab)
-        onSidebarTabChange?.(tab)
+        onSidebarTabChange?.(tab, 'sync')
       })
     }
     void (async () => {
@@ -189,7 +194,7 @@ function OverlayTabsShell({
       }
       if (tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
-        onSidebarTabChange?.(storedSidebarTab)
+        onSidebarTabChange?.(storedSidebarTab, 'sync')
       }
     })()
     const storageHandler = (
@@ -222,8 +227,11 @@ function OverlayTabsShell({
       onOverlayModeChange?.('expanded')
     }
     setSidebarTabState(next)
+    // The content mount must hide/show the panel synchronously on a direct
+    // click. Waiting for sync storage here leaves the old Pulse host intercepting
+    // Twitch chat during the transition window.
+    onSidebarTabChange?.(next, 'user')
     await setSidebarTab(next)
-    onSidebarTabChange?.(next)
   }
 
   if (resolvedPlacement === 'hidden') {
@@ -468,7 +476,7 @@ function OverlayMain({
       if (backendId === backendRequestId) setBackendUrlState(storedBackend)
       if (tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
-        onSidebarTabChange?.(storedSidebarTab)
+        onSidebarTabChange?.(storedSidebarTab, 'sync')
       }
       if (autoUpdateId === autoUpdateRequestId) setAutoUpdate(storedAutoUpdate)
     })()
@@ -485,7 +493,7 @@ function OverlayMain({
         void getSidebarTab().then(tab => {
           if (!mounted || requestId !== tabRequestId) return
           setSidebarTabState(tab)
-          onSidebarTabChange?.(tab)
+          onSidebarTabChange?.(tab, 'sync')
         })
       }
       if (changes.backendUrl) {
@@ -614,8 +622,10 @@ function OverlayMain({
       await persistMode('expanded')
     }
     setSidebarTabState(next)
+    // Apply user tab intent before the storage write resolves so the hidden
+    // Pulse host cannot win the next click in native Twitch chat.
+    onSidebarTabChange?.(next, 'user')
     await setSidebarTab(next)
-    onSidebarTabChange?.(next)
   }
 
   async function persistMode(next: OverlayMode): Promise<void> {
@@ -1205,6 +1215,7 @@ function OverlayMain({
 
   async function saveMoment(point: LiveHeatPoint): Promise<void> {
     if (!payload) return
+    const analyticalOffset = reactionAnalyticalOffset(point)
     setSaveBusy(true)
     setNotice(null)
     try {
@@ -1214,14 +1225,14 @@ function OverlayMain({
           login: payload.login,
           streamId: payload.streamId,
           vodId: payload.vodId ?? undefined,
-          offsetSeconds: point.offsetSeconds,
-          label: `${formatHeatOffset(point.offsetSeconds)} · ${point.reasonLabel}`,
+          offsetSeconds: analyticalOffset,
+          label: `${formatMomentClock(point)} · ${point.reasonLabel}`,
           score: point.score,
           source: 'extension',
         },
       })
       if ('type' in response && response.type === 'BOOKMARK') {
-        setNotice({ kind: 'ok', text: `Saved moment at ${formatHeatOffset(point.offsetSeconds)}.` })
+        setNotice({ kind: 'ok', text: `Saved moment at ${formatMomentClock(point)}.` })
         return
       }
       if ('error' in response && response.error) {
@@ -1282,7 +1293,7 @@ function OverlayMain({
   }
 
   function openAnalyticsForMoment(point: LiveHeatPoint): void {
-    openAnalytics(point.offsetSeconds)
+    openAnalytics(reactionAnalyticalOffset(point))
   }
 
   function jumpMoment(point: LiveHeatPoint): void {
@@ -1295,7 +1306,7 @@ function OverlayMain({
       effectiveIsLive: uiIsLive,
       payloadIsLive: payload?.isLive,
       liveCurrentOffset: payload?.currentOffsetSeconds,
-      offsetSeconds: point.offsetSeconds,
+      offsetSeconds: reactionLeadInOffset(point, 5),
     })
 
     if (action.kind === 'seek-vod') {

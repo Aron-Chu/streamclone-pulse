@@ -70,6 +70,9 @@ export const CHAT_BOTTOM_CLAMP_SELECTORS: readonly string[] = [
 
 /** Composer controls whose own transitions can change the panel bottom clamp. */
 export const CHAT_COMPOSER_SELECTORS: readonly string[] = [
+  '[data-a-target="chat-input"][contenteditable="true"]',
+  '[data-test-selector="chat-input"][contenteditable="true"]',
+  '[contenteditable="true"][role="textbox"]',
   '[data-a-target="chat-input"]',
   '[data-test-selector="chat-input"]',
   '[data-a-target="chat-input-grid"]',
@@ -79,6 +82,55 @@ export const CHAT_COMPOSER_SELECTORS: readonly string[] = [
   '[data-a-target="video-chat"]',
   '[data-a-target="video-chat-input"]',
 ]
+
+/** The actual editable Twitch composer, ordered before wrapper/grid selectors. */
+export const CHAT_EDITOR_SELECTORS: readonly string[] = [
+  '[data-a-target="chat-input"][contenteditable="true"]',
+  '[data-test-selector="chat-input"][contenteditable="true"]',
+  '[contenteditable="true"][role="textbox"]',
+  'textarea[data-a-target="chat-input"]',
+  'textarea[placeholder*="Send a message" i]',
+]
+
+function isVisibleChatEditor(element: Element): element is HTMLElement {
+  const HTMLElementCtor = element.ownerDocument.defaultView?.HTMLElement
+    ?? (typeof HTMLElement !== 'undefined' ? HTMLElement : null)
+  if (!HTMLElementCtor || !(element instanceof HTMLElementCtor)) return false
+  const rect = element.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return false
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element)
+  if (style?.display === 'none' || style?.visibility === 'hidden') return false
+  if (element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true') return false
+  return true
+}
+
+/** Resolve the visible editable Twitch chat control, never its layout wrapper. */
+export function resolveNativeChatComposer(doc: Document = document): HTMLElement | null {
+  for (const selector of CHAT_EDITOR_SELECTORS) {
+    let nodes: NodeListOf<Element>
+    try {
+      nodes = doc.querySelectorAll(selector)
+    } catch {
+      continue
+    }
+    for (const node of Array.from(nodes)) {
+      if (isVisibleChatEditor(node)) return node
+    }
+  }
+  return null
+}
+
+/** Focus the native editor only when the caller has a direct user gesture. */
+export function focusNativeChatComposer(doc: Document = document): boolean {
+  const editor = resolveNativeChatComposer(doc)
+  if (!editor) return false
+  try {
+    editor.focus({ preventScroll: true })
+  } catch {
+    editor.focus()
+  }
+  return doc.activeElement === editor || editor.contains(doc.activeElement)
+}
 
 /** Stream Chat title text inside the header row. */
 export const CHAT_HEADER_TITLE_SELECTORS: readonly string[] = [

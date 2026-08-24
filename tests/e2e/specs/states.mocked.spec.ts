@@ -26,6 +26,33 @@ test.describe('extension mocked states', () => {
     assertNoPulseVodDiscoverWarnings(evidence)
   })
 
+  test('switching to Chat restores Twitch input and hands focus to it', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({
+      scenario: 'live-ready',
+      twitchKind: 'live',
+      storage: { sidebarTab: 'pulse', defaultChartWindowMigratedToRecentV2: true },
+    })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const chatTab = extension.page.getByRole('tab', { name: 'Chat', exact: true })
+    const pulseTab = extension.page.getByRole('tab', { name: 'Pulse', exact: true })
+    const composer = extension.page.locator('[data-a-target="chat-input"] textarea')
+    await expect(chatTab).toBeVisible()
+    await chatTab.click()
+    await expect(composer).toBeFocused({ timeout: 5_000 })
+    await expect(pulseTab).toHaveAttribute('aria-selected', 'false')
+
+    await pulseTab.click()
+    await expect(pulseTab).toHaveAttribute('aria-selected', 'true')
+    await expect(composer).not.toBeFocused()
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('live ready game dividers span viewers through emote lane', async ({
     extension,
     prepare,

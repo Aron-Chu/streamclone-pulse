@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   LIVE_HEAT_SUBTITLE,
   LIVE_HEAT_TITLE,
+  reactionAnalyticalOffset,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import type { PulsePayload } from '../shared/messages.ts'
@@ -64,8 +65,6 @@ export function MostReactedSection({
   const [sortMode, setSortMode] = useState<MomentSortMode>('reaction')
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [listExpanded, setListExpanded] = useState(false)
-  const selectedRowRef = useRef<HTMLDivElement | null>(null)
-  const selectedCardRef = useRef<HTMLDivElement | null>(null)
 
   const sortedPoints = useMemo(
     () => sortLiveHeatPoints(heat.points, sortMode),
@@ -80,6 +79,16 @@ export function MostReactedSection({
       }),
     [pinnedOffsetSeconds, heat.points],
   )
+  const hoveredMomentPoint = useMemo(
+    () =>
+      resolvePinnedMomentPoint({
+        pinOffsetSeconds: hoveredOffset,
+        heatPoints: heat.points,
+      }),
+    [hoveredOffset, heat.points],
+  )
+  const inspectionPoint = hoveredMomentPoint ?? pinnedMomentPoint
+  const inspectionState = hoveredMomentPoint ? 'preview' : pinnedMomentPoint ? 'active' : 'idle'
 
   const visiblePoints = listExpanded
     ? sortedPoints
@@ -96,14 +105,6 @@ export function MostReactedSection({
   useEffect(() => {
     onHighlightOffset?.(hoveredOffset)
   }, [hoveredOffset, onHighlightOffset])
-
-  useEffect(() => {
-    if (pinnedOffsetSeconds == null) return
-    const frame = requestAnimationFrame(() => {
-      selectedRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [pinnedOffsetSeconds, sortMode, listExpanded])
 
   return (
     <PulseSectionCard
@@ -139,25 +140,31 @@ export function MostReactedSection({
           </span>
         </div>
       ) : null}
-      {pinnedOffsetSeconds != null && pinnedMomentPoint ? (
-        <div
-          ref={selectedCardRef}
-          style={{
-            ...styles.selectedSlot,
-            minHeight: 132,
-          }}
-        >
+      <div
+        data-selected-minute-slot="true"
+        data-inspection-tray-state={inspectionState}
+        aria-live="polite"
+        style={styles.selectedSlot}
+      >
+        {inspectionPoint ? (
           <SelectedMomentCard
-            point={pinnedMomentPoint}
+            point={inspectionPoint}
             backendUrl={backendUrl}
+            compact
             jumpLabel={jumpLabel}
             onJump={demoMode ? () => undefined : onJump}
             onSave={demoMode ? () => undefined : onSave}
             saveBusy={saveBusy}
             onAnalytics={demoMode ? () => undefined : onAnalytics}
+            onClear={demoMode || !pinnedMomentPoint ? undefined : () => onPinOffset?.(null)}
           />
-        </div>
-      ) : null}
+        ) : (
+          <div style={styles.idleSlot}>
+            <span style={styles.idleTitle}>Moment inspector</span>
+            <span style={styles.idleText}>Hover to preview · click to lock a moment</span>
+          </div>
+        )}
+      </div>
       <div style={styles.momentList}>
         {visiblePoints.map(point => {
           const selected =
@@ -168,10 +175,9 @@ export function MostReactedSection({
               point={point}
               backendUrl={backendUrl}
               selected={selected}
-              scrollRef={selected ? node => { selectedRowRef.current = node } : undefined}
               onHighlight={demoMode ? () => undefined : setHoveredOffset}
               onSelect={demoMode ? () => undefined : next => {
-                onPinOffset?.(next.offsetSeconds)
+                onPinOffset?.(selected ? null : reactionAnalyticalOffset(next))
                 setHoveredOffset(null)
               }}
             />
@@ -209,7 +215,36 @@ export function MostReactedSection({
 }
 
 const styles: Record<string, CSSProperties> = {
-  selectedSlot: { flexShrink: 0 },
+  selectedSlot: {
+    contain: 'layout',
+    flexShrink: 0,
+    height: 78,
+    marginBottom: 6,
+    minHeight: 78,
+    minWidth: 0,
+    overflow: 'hidden',
+  },
+  idleSlot: {
+    alignItems: 'center',
+    background: 'rgba(255, 255, 255, 0.018)',
+    border: '1px solid rgba(255, 255, 255, 0.07)',
+    borderRadius: 8,
+    boxSizing: 'border-box',
+    display: 'flex',
+    gap: 6,
+    height: 72,
+    justifyContent: 'center',
+    padding: '7px 10px',
+    width: '100%',
+  },
+  idleTitle: {
+    color: theme.textSecondary,
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  },
+  idleText: { color: theme.textMuted, fontSize: 9, fontWeight: 600 },
   momentList: { display: 'grid', gap: 4 },
   status: {
     background: 'rgba(255, 255, 255, 0.035)',

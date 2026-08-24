@@ -62,6 +62,7 @@ export interface LiveHeatPoint {
   minuteTs: string
   offsetSeconds: number
   score: number
+  compositeScore?: number
   reactionScore?: number
   viewerMomentumScore?: number
   reactionOnsetOffsetSeconds?: number

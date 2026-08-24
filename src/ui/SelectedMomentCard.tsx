@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { displayMomentReasonLabel, formatHeatOffset, type LiveHeatPoint } from '@streampulse/pulse-core'
+import { displayMomentReasonLabel, formatMomentClock, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatSelectedMomentActivity } from './momentActivity.ts'
 import { momentReasonLabelStyle, overlayGhostChipButton } from './momentReasonStyles.ts'
@@ -12,8 +12,10 @@ export interface SelectedMomentCardProps {
   onJump: (point: LiveHeatPoint) => void
   onSave?: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
+  onClear?: () => void
   saveBusy?: boolean
   jumpLabel?: string
+  compact?: boolean
 }
 
 export function SelectedMomentCard({
@@ -22,10 +24,12 @@ export function SelectedMomentCard({
   onJump,
   onSave,
   onAnalytics,
+  onClear,
   saveBusy = false,
   jumpLabel = 'Jump',
+  compact = false,
 }: SelectedMomentCardProps) {
-  const offsetLabel = formatHeatOffset(point.offsetSeconds)
+  const offsetLabel = formatMomentClock(point)
   const [pulse, setPulse] = useState(false)
   const [swapping, setSwapping] = useState(false)
   const [entering, setEntering] = useState(true)
@@ -53,7 +57,7 @@ export function SelectedMomentCard({
 
   return (
     <div
-      style={styles.wrap}
+      style={compact ? styles.compactWrap : styles.wrap}
       className={
         [
           entering ? 'pulse-moment-card-enter' : undefined,
@@ -64,18 +68,33 @@ export function SelectedMomentCard({
       }
       aria-label={`Selected moment at ${offsetLabel}`}
     >
-      <div className={swapping ? 'pulse-moment-card-swap' : undefined}>
-        <div style={styles.header}>
+      <div className={swapping ? 'pulse-moment-card-swap' : undefined} style={compact ? styles.compactBody : undefined}>
+        <div style={compact ? styles.compactHeader : styles.header}>
           <span style={styles.kicker}>Selected moment</span>
           <span style={styles.offset}>{offsetLabel}</span>
+          {onClear ? (
+            <button
+              type="button"
+              style={styles.close}
+              aria-label="Clear selected moment"
+              title="Clear selected moment"
+              onPointerDown={event => event.stopPropagation()}
+              onClick={onClear}
+            >
+              ×
+            </button>
+          ) : null}
         </div>
-        <p style={{ ...styles.reason, ...momentReasonLabelStyle(point.reason, point.reasonLabel, 'md') }}>
+        <p style={{
+          ...(compact ? styles.compactReason : styles.reason),
+          ...momentReasonLabelStyle(point.reason, point.reasonLabel, compact ? 'sm' : 'md'),
+        }}>
           {displayMomentReasonLabel(point.reason, point.reasonLabel)}
         </p>
-        <p style={styles.counts}>
+        <p style={compact ? styles.compactCounts : styles.counts}>
           {formatSelectedMomentActivity(point)}
         </p>
-        {point.topEmotes.length > 0 ? (
+        {!compact && point.topEmotes.length > 0 ? (
           <ul style={styles.list}>
             {point.topEmotes.map(emote => (
               <li key={emote.key} style={styles.item}>
@@ -86,7 +105,7 @@ export function SelectedMomentCard({
             ))}
           </ul>
         ) : null}
-        <div style={styles.actions}>
+        <div style={compact ? styles.compactActions : styles.actions}>
           <button
             type="button"
             className="pulse-action-chip pulse-action-chip-primary"
@@ -96,7 +115,7 @@ export function SelectedMomentCard({
           >
             {jumpLabel}
           </button>
-          {onSave ? (
+          {!compact && onSave ? (
             <button
               type="button"
               className="pulse-action-chip"
@@ -115,7 +134,7 @@ export function SelectedMomentCard({
             onPointerDown={event => event.stopPropagation()}
             onClick={() => onAnalytics(point)}
           >
-            Open Analytics
+            {compact ? 'Analytics' : 'Open Analytics'}
           </button>
         </div>
       </div>
@@ -132,7 +151,31 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 132,
     padding: '10px 12px',
   },
+  compactWrap: {
+    alignItems: 'stretch',
+    background: 'rgba(255, 255, 255, 0.025)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 8,
+    boxSizing: 'border-box',
+    height: 72,
+    minHeight: 72,
+    overflow: 'hidden',
+    padding: '7px 9px',
+  },
+  compactBody: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gridTemplateRows: '16px 17px 22px',
+    minWidth: 0,
+  },
   header: { alignItems: 'baseline', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
+  compactHeader: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 7,
+    gridColumn: '1 / -1',
+    minWidth: 0,
+  },
   kicker: {
     color: theme.textMuted,
     fontSize: 9,
@@ -147,13 +190,53 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
   },
   reason: { fontWeight: 700, margin: '4px 0 0' },
+  compactReason: {
+    alignSelf: 'center',
+    margin: 0,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   counts: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, margin: '2px 0 8px' },
+  compactCounts: {
+    alignSelf: 'center',
+    color: theme.textMuted,
+    fontSize: 9,
+    fontWeight: 600,
+    gridColumn: 2,
+    gridRow: 2,
+    margin: 0,
+    minWidth: 0,
+    overflow: 'hidden',
+    textAlign: 'right',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   list: { display: 'grid', gap: 6, listStyle: 'none', margin: '0 0 10px', padding: 0 },
   item: { alignItems: 'center', display: 'flex', gap: 8 },
   img: { display: 'block', objectFit: 'contain' },
   name: { color: theme.textPrimary, flex: 1, fontSize: 12, fontWeight: 700 },
   uses: { color: theme.textMuted, fontSize: 11, fontVariantNumeric: 'tabular-nums' },
   actions: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  compactActions: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 4,
+    gridColumn: '1 / -1',
+    gridRow: 3,
+    minWidth: 0,
+  },
+  close: {
+    background: 'transparent',
+    border: 0,
+    color: theme.textMuted,
+    cursor: 'pointer',
+    fontSize: 15,
+    lineHeight: 1,
+    marginLeft: 'auto',
+    padding: '0 2px',
+  },
   actionPrimary: {
     ...overlayGhostChipButton,
     background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.12)',

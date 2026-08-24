@@ -10,6 +10,13 @@ export const FOLLOW_LIVE_EPSILON_SECONDS = 5
 
 export const MIN_VIEWPORT_SECONDS = 5 * 60
 
+/**
+ * Pointer movement is measured in CSS pixels, not seconds. Keeping this
+ * threshold in the viewport module gives the rail and chart-surface adapters
+ * the same click-versus-drag contract regardless of stream length.
+ */
+export const CHART_DRAG_INTENT_PX = 6
+
 export function viewportDurationSeconds(viewport: ChartViewport): number {
   return Math.max(0, viewport.endSeconds - viewport.startSeconds)
 }
@@ -96,6 +103,38 @@ export function clampViewportToCoverage(
   const latestStart = Math.max(coverageStart, durationSeconds - span)
   const startSeconds = clamp(viewport.startSeconds, coverageStart, latestStart)
   return { startSeconds, endSeconds: startSeconds + span }
+}
+
+/** Resize one edge while preserving the opposite edge and coverage bounds. */
+export function resizeViewportEdge(
+  viewport: ChartViewport,
+  edge: 'start' | 'end',
+  deltaSeconds: number,
+  durationSeconds: number,
+  coverageStartSeconds = 0,
+): ChartViewport {
+  if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+
+  const normalized = clampViewportToCoverage(viewport, durationSeconds, coverageStart)
+  const minimumDuration = Math.min(MIN_VIEWPORT_SECONDS, availableDuration)
+  if (edge === 'start') {
+    const maxStart = normalized.endSeconds - minimumDuration
+    return clampViewportToCoverage(
+      { startSeconds: clamp(normalized.startSeconds + deltaSeconds, coverageStart, maxStart), endSeconds: normalized.endSeconds },
+      durationSeconds,
+      coverageStart,
+    )
+  }
+
+  const minEnd = normalized.startSeconds + minimumDuration
+  return clampViewportToCoverage(
+    { startSeconds: normalized.startSeconds, endSeconds: clamp(normalized.endSeconds + deltaSeconds, minEnd, durationSeconds) },
+    durationSeconds,
+    coverageStart,
+  )
 }
 
 export function resolveViewport(args: ResolveViewportArgs): ChartViewport {
@@ -284,6 +323,11 @@ export interface RailGeometry {
   totalWidth: number
 }
 
+/**
+ * Rail coordinates are stream-relative [0, duration]. A non-zero coverage
+ * start is rendered as an unavailable prefix; pointer navigation rejects that
+ * prefix, while the thumb and selected markers use the same full-stream scale.
+ */
 export function railGeometry(
   viewport: ChartViewport,
   durationSeconds: number,

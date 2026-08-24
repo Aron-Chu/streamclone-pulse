@@ -2,7 +2,8 @@ import type { CSSProperties } from 'react'
 import {
   LIVE_HEAT_COLLECTING_LABEL,
   displayMomentReasonLabel,
-  formatHeatOffset,
+  formatMomentClock,
+  reactionAnalyticalOffset,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
@@ -27,7 +28,8 @@ export function PulseMomentRow({
   onHighlight,
   scrollRef,
 }: PulseMomentRowProps) {
-  const offsetLabel = formatHeatOffset(point.offsetSeconds)
+  const offsetLabel = formatMomentClock(point)
+  const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
   const body = (
     <div
@@ -101,9 +103,9 @@ export function PulseMomentRow({
         onSelect(point)
         event.currentTarget.blur()
       }}
-      onMouseEnter={() => onHighlight(point.offsetSeconds)}
+      onMouseEnter={() => onHighlight(analyticalOffset)}
       onMouseLeave={() => onHighlight(null)}
-      onFocus={() => onHighlight(point.offsetSeconds)}
+      onFocus={() => onHighlight(analyticalOffset)}
       onBlur={() => onHighlight(null)}
       aria-pressed={selected}
       aria-label={`Select ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}

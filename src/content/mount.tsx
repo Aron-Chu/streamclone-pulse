@@ -1,5 +1,5 @@
 import { createRoot, type Root } from 'react-dom/client'
-import { Overlay } from '../ui/Overlay.tsx'
+import { Overlay, type SidebarTabChangeSource } from '../ui/Overlay.tsx'
 import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
 import { resolveOverlayErrorState } from '../shared/pulseError.ts'
 import type { ExtensionCoverageTierResponse, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
@@ -27,6 +27,7 @@ import { shadowStyles, theme } from '../ui/theme.ts'
 import {
   observeChatSnapLayout,
   buildSidebarBodyRect,
+  focusNativeChatComposer,
   SIDEBAR_MINI_PANEL_HEIGHT,
   SIDEBAR_COLLAPSED_PILL_HEIGHT,
   resolveChatDockBottomY,
@@ -219,12 +220,53 @@ let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
 let overlayHostObserver: MutationObserver | null = null
 let overlayHostReconcileTimer: ReturnType<typeof setTimeout> | null = null
+let chatFocusFrameOne: number | null = null
+let chatFocusFrameTwo: number | null = null
 
 function installOverlayDiagnosticsOnce(): void {
   if (overlayDiagnosticsInstalled) return
   overlayDiagnosticsInstalled = true
   installContentDiagnosticsEmitters({ feature: 'overlay' })
 }
+
+function cancelChatFocusSchedule(): void {
+  if (chatFocusFrameOne != null) window.cancelAnimationFrame(chatFocusFrameOne)
+  if (chatFocusFrameTwo != null) window.cancelAnimationFrame(chatFocusFrameTwo)
+  chatFocusFrameOne = null
+  chatFocusFrameTwo = null
+}
+
+/** Tell chart/rail surfaces to release pointer capture before Chat owns the body. */
+function cancelPulseInteractions(): void {
+  cancelChatFocusSchedule()
+  document.dispatchEvent(new CustomEvent('streampulse:deactivate-interactions'))
+  const activeElements = [
+    tabsShadowRoot?.activeElement,
+    panelShadowRoot?.activeElement,
+    document.activeElement,
+  ]
+  for (const element of activeElements) {
+    if (element instanceof HTMLElement) element.blur()
+  }
+}
+
+function scheduleNativeChatFocus(): void {
+  cancelChatFocusSchedule()
+  if (typeof window.requestAnimationFrame !== 'function') {
+    window.setTimeout(() => {
+      if (currentSidebarTab === 'chat' && sidebarLayout) focusNativeChatComposer()
+    }, 0)
+    return
+  }
+  chatFocusFrameOne = window.requestAnimationFrame(() => {
+    chatFocusFrameOne = null
+    chatFocusFrameTwo = window.requestAnimationFrame(() => {
+      chatFocusFrameTwo = null
+      if (currentSidebarTab === 'chat' && sidebarLayout) focusNativeChatComposer()
+    })
+  })
+}
+
 let currentSidebarTab: SidebarTab = 'pulse'
 let currentOverlayMode: OverlayMode = 'expanded'
 let currentPayload: PulsePayload | null = null
@@ -388,8 +430,17 @@ function applySidebarSnapLayout(): void {
   const showPanel = pulseTabActive
   if (!showPanel) {
     applyFixedRect(panelHostEl, null, false)
-    if (panelHostEl) panelHostEl.style.overflow = ''
+    if (panelHostEl) {
+      panelHostEl.style.overflow = ''
+      panelHostEl.setAttribute('aria-hidden', 'true')
+      ;(panelHostEl as HTMLElement & { inert?: boolean }).inert = true
+    }
     return
+  }
+
+  if (panelHostEl) {
+    panelHostEl.removeAttribute('aria-hidden')
+    ;(panelHostEl as HTMLElement & { inert?: boolean }).inert = false
   }
 
   const bodyRect = buildSidebarBodyRect(sidebarLayout)
@@ -427,11 +478,19 @@ function applyHostVisibility(visibility: OverlayHostVisibility): void {
 
   if (visibility.mode === 'floating') {
     applyFloatingHost(panelHostEl)
+    panelHostEl?.removeAttribute('aria-hidden')
+    if (panelHostEl) {
+      (panelHostEl as HTMLElement & { inert?: boolean }).inert = false
+    }
     return
   }
 
   applyFixedRect(tabsHostEl, null, false)
   applyFixedRect(panelHostEl, null, false)
+  panelHostEl?.removeAttribute('aria-hidden')
+  if (panelHostEl) {
+    (panelHostEl as HTMLElement & { inert?: boolean }).inert = false
+  }
   if (panelHostEl) panelHostEl.style.overflow = ''
 }
 
@@ -506,9 +565,11 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     panelHostWidth: sidebarLayout?.panel.width ?? sidebarLayout?.column.width ?? 0,
     sidebarTab: currentSidebarTab,
     overlayMode: currentOverlayMode,
-    onSidebarTabChange: (tab: SidebarTab) => {
+    onSidebarTabChange: (tab: SidebarTab, source: SidebarTabChangeSource = 'sync') => {
+      if (tab !== currentSidebarTab || source === 'user') cancelPulseInteractions()
       currentSidebarTab = tab
       renderOverlay(currentPayload, currentError)
+      if (tab === 'chat' && source === 'user') scheduleNativeChatFocus()
     },
     onOverlayModeChange: (mode: OverlayMode) => {
       currentOverlayMode = mode

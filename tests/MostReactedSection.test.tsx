@@ -72,4 +72,25 @@ describe('MostReactedSection', () => {
     expect(html).toContain('data-most-reacted-state="empty"')
     expect(html).toContain('No reaction moments yet')
   })
+
+  it('keeps a compact inspection slot mounted so selecting a moment cannot move the list', () => {
+    const idle = renderSection(makePayload({ peaks: [peak] }))
+    const active = renderToStaticMarkup(
+      <MostReactedSection
+        payload={makePayload({ peaks: [peak] })}
+        backendUrl="https://api.streampulse.stream"
+        pinnedOffsetSeconds={120}
+        onJump={() => undefined}
+        onSave={() => undefined}
+        onAnalytics={() => undefined}
+      />,
+    )
+
+    expect(idle).toContain('data-selected-minute-slot="true"')
+    expect(active).toContain('data-selected-minute-slot="true"')
+    expect(idle).toContain('data-inspection-tray-state="idle"')
+    expect(active).toContain('data-inspection-tray-state="active"')
+    expect(active).toContain('Clear selected moment')
+    expect(active).toContain('height:72px')
+  })
 })

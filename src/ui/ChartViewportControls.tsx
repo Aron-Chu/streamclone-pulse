@@ -68,6 +68,7 @@ export interface ChartViewportControlsProps {
   zoomOutDisabled?: boolean
   resetDisabled?: boolean
   onViewportChange: (viewport: ChartViewport) => void
+  onInteractionChange?: (active: boolean) => void
   onJumpToOffset?: (offsetSeconds: number) => void
   onZoomIn: () => void
   onZoomOut: () => void
@@ -91,12 +92,13 @@ export function ChartViewportControls({
   zoomOutDisabled = false,
   resetDisabled = false,
   onViewportChange,
+  onInteractionChange,
   onJumpToOffset,
   onZoomIn,
   onZoomOut,
   onReset,
 }: ChartViewportControlsProps) {
-  if (!hasMeaningfulData || !shouldShowChartRail(viewport, durationSeconds)) return null
+  if (!hasMeaningfulData || !shouldShowChartRail(viewport, durationSeconds, coverageStartSeconds)) return null
 
   return (
     <div style={styles.viewportControls} data-chart-viewport-controls="true">
@@ -120,6 +122,7 @@ export function ChartViewportControls({
             viewport={viewport}
             durationSeconds={durationSeconds}
             onViewportChange={onViewportChange}
+            onInteractionChange={onInteractionChange}
             onJumpToOffset={onJumpToOffset}
             disabled={disabled}
             coverageStartSeconds={coverageStartSeconds}

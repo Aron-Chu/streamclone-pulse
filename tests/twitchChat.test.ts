@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { JSDOM } from 'jsdom'
 import {
   CHAT_HEADER_SELECTORS,
   CHAT_MESSAGE_LIST_IGNORE_SELECTORS,
@@ -11,9 +12,11 @@ import {
   DEFAULT_CHAT_HEADER_HEIGHT,
   isChatRectInViewport,
   isUsableChatRect,
+  focusNativeChatComposer,
   MIN_CHAT_HEIGHT,
   MIN_CHAT_WIDTH,
   pickChatColumn,
+  resolveNativeChatComposer,
   resolveChatContentTop,
   resolveChatPanelRect,
   resolveChatHeaderBarRect,
@@ -226,6 +229,29 @@ describe('message-area selectors', () => {
     expect(resolveChatHeaderHeight(doc, { querySelector: () => null } as unknown as Element)).toBe(
       DEFAULT_CHAT_HEADER_HEIGHT,
     )
+  })
+})
+
+describe('native chat handoff', () => {
+  it('resolves and focuses the visible editable composer instead of its wrapper', () => {
+    const dom = new JSDOM('<div data-a-target="chat-input"></div><div role="textbox" contenteditable="true"></div>')
+    const wrapper = dom.window.document.querySelector('[data-a-target="chat-input"]') as HTMLElement
+    const editor = dom.window.document.querySelector('[contenteditable="true"]') as HTMLElement
+    Object.defineProperty(wrapper, 'getBoundingClientRect', { value: () => rect(320, 48) })
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => rect(320, 32) })
+
+    expect(resolveNativeChatComposer(dom.window.document)).toBe(editor)
+    expect(focusNativeChatComposer(dom.window.document)).toBe(true)
+    expect(dom.window.document.activeElement).toBe(editor)
+  })
+
+  it('skips hidden editors so a route transition cannot steal focus', () => {
+    const dom = new JSDOM('<div role="textbox" contenteditable="true" style="display:none"></div>')
+    const editor = dom.window.document.querySelector('[contenteditable="true"]') as HTMLElement
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => rect(320, 32) })
+
+    expect(resolveNativeChatComposer(dom.window.document)).toBeNull()
+    expect(focusNativeChatComposer(dom.window.document)).toBe(false)
   })
 })
 

@@ -13,6 +13,11 @@ export type ReactionIdentityFields = {
   precisionSeconds?: number | null
 }
 
+function hasSecondLevelPrecision(fields: ReactionIdentityFields): boolean {
+  const precision = fields.precisionSeconds ?? 60
+  return precision > 0 && precision < 60
+}
+
 /** Floor a stream-relative offset to the start of its minute (display only). */
 export function floorOffsetToMinute(offsetSeconds: number): number {
   const s = Math.max(0, Math.floor(offsetSeconds))
@@ -21,9 +26,8 @@ export function floorOffsetToMinute(offsetSeconds: number): number {
 
 /** Analytical pin / announcement / select offset — never seek. */
 export function reactionAnalyticalOffset(fields: ReactionIdentityFields): number {
-  const precision = fields.precisionSeconds ?? 60
   const onset = fields.reactionOnsetOffsetSeconds
-  if (precision === 1 && onset != null && Number.isFinite(onset)) {
+  if (hasSecondLevelPrecision(fields) && onset != null && Number.isFinite(onset)) {
     return Math.max(0, Math.round(onset))
   }
   return Math.max(0, Math.round(fields.offsetSeconds))
@@ -35,9 +39,8 @@ export function reactionAnalyticalOffset(fields: ReactionIdentityFields): number
  * so floored `:00` does not look exact and stream-start remainders never look like precision.
  */
 export function formatMomentClock(fields: ReactionIdentityFields): string {
-  const precision = fields.precisionSeconds ?? 60
   const onset = fields.reactionOnsetOffsetSeconds
-  if (precision === 1 && onset != null && Number.isFinite(onset)) {
+  if (hasSecondLevelPrecision(fields) && onset != null && Number.isFinite(onset)) {
     return formatHeatOffset(Math.max(0, Math.round(onset)))
   }
   const floored = floorOffsetToMinute(fields.offsetSeconds)
@@ -55,6 +58,38 @@ export function reactionSeekOffset(fields: ReactionIdentityFields): number {
     return Math.max(0, Math.round(seek))
   }
   return Math.max(0, Math.round(fields.offsetSeconds))
+}
+
+/**
+ * Playback target with a small lead-in for human context.
+ *
+ * This is deliberately separate from analytical identity and chart pinning:
+ * coarse minute moments stay coarse, while refined moments use their onset and
+ * never seek later than five seconds before that onset. A backend-provided
+ * earlier seek target is retained when it already gives at least that lead.
+ */
+export function reactionLeadInOffset(
+  fields: ReactionIdentityFields,
+  leadSeconds = 5,
+): number {
+  const lead = Math.max(0, Math.round(leadSeconds))
+  const explicitSeek = fields.seekOffsetSeconds
+  const onset = fields.reactionOnsetOffsetSeconds
+  if (
+    hasSecondLevelPrecision(fields)
+    && onset != null
+    && Number.isFinite(onset)
+  ) {
+    const leadTarget = Math.max(0, Math.round(onset) - lead)
+    if (explicitSeek != null && Number.isFinite(explicitSeek)) {
+      return Math.min(Math.max(0, Math.round(explicitSeek)), leadTarget)
+    }
+    return leadTarget
+  }
+  if (explicitSeek != null && Number.isFinite(explicitSeek)) {
+    return Math.max(0, Math.round(explicitSeek))
+  }
+  return Math.max(0, Math.round(fields.offsetSeconds) - lead)
 }
 
 export type ChartSelectionProvenance =

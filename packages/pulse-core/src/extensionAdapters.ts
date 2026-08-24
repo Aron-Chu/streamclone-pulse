@@ -38,12 +38,22 @@ export interface ExtensionRollupLike {
 export interface ExtensionPeakLike {
   offsetSeconds: number
   score: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
   reasons: string[]
   reasonLabel?: string
   dominantSignal?: string
   chatCount?: number
   emoteCount?: number
   topEmotes?: ExtensionEmoteLike[]
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
 }
 
 export interface ExtensionPulseLike {
@@ -130,6 +140,9 @@ export function peaksToLiveHeatPoints(
       minuteTs: minuteTsFromOffset(startedAt, peak.offsetSeconds) ?? '',
       offsetSeconds: Math.max(0, peak.offsetSeconds),
       score: Math.round(peak.score),
+      compositeScore: peak.compositeScore,
+      reactionScore: peak.reactionScore,
+      viewerMomentumScore: peak.viewerMomentumScore,
       estimated: false,
       reason,
       reasonLabel,
@@ -137,6 +150,13 @@ export function peaksToLiveHeatPoints(
       emoteCount: Math.max(0, Math.round(peak.emoteCount ?? 0)),
       topEmotes: peakTopEmotesToLiveHeatEmotes(peak, catalog, byName),
       collecting: false,
+      reactionOnsetOffsetSeconds: peak.reactionOnsetOffsetSeconds,
+      reactionApexOffsetSeconds: peak.reactionApexOffsetSeconds,
+      seekOffsetSeconds: peak.seekOffsetSeconds,
+      precisionSeconds: peak.precisionSeconds,
+      refinementStatus: peak.refinementStatus,
+      refinementConfidence: peak.refinementConfidence,
+      reactionScoringVersion: peak.reactionScoringVersion,
     }
   })
 }

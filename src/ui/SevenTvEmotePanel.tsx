@@ -43,6 +43,7 @@ export interface SevenTvEmotePanelProps {
   topEmotes: ExtensionEmote[]
   selectedKeys: string[]
   onToggleEmote: (emote: ExtensionEmote) => void
+  onClearSelection?: () => void
   selectedOffsetSeconds: number | null
   sidebarCompact?: boolean
   /** Kept for the chart/recap call sites; picker chips use a neutral treatment. */
@@ -67,6 +68,7 @@ export function SevenTvEmotePanel({
   topEmotes,
   selectedKeys,
   onToggleEmote,
+  onClearSelection,
   sidebarCompact = false,
   maxSelected = 6,
   rollupsLoading = false,
@@ -119,45 +121,62 @@ export function SevenTvEmotePanel({
 
   return (
     <div className="pulse-seven-tv-panel" style={styles.panel}>
-      <button
-        type="button"
-        className="pulse-seven-tv-toggle"
-        style={styles.toggle}
-        onClick={onToggleExpanded}
-        aria-expanded={expanded}
-        aria-controls="pulse-emote-picker-list"
-      >
-        <span style={styles.toggleLabel}>
-          Plot on chart · {selectedCount}/{selectionLimit}
-        </span>
-        {!expanded && previewEmotes.length > 0 ? (
-          <span style={styles.togglePreview} title={previewNames} aria-hidden="true">
-            {previewEmotes.map(emote => (
-              <PulseEmoteImg
-                key={emoteSelectionKey(emote)}
-                emote={emote}
-                backendUrl={backendUrl}
-                width={18}
-                height={18}
-                style={styles.previewImg}
-              />
-            ))}
-          </span>
-        ) : null}
-        <span
-          className="pulse-seven-tv-chevron"
-          data-emote-picker-chevron
-          data-expanded={expanded ? 'true' : 'false'}
-          style={{
-            ...styles.chevron,
-            ...(reducedMotion ? styles.motionReducedChevron : null),
-            transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-          }}
-          aria-hidden="true"
+      <div style={styles.headerRow}>
+        <button
+          type="button"
+          className="pulse-seven-tv-toggle"
+          style={styles.toggle}
+          onClick={onToggleExpanded}
+          aria-expanded={expanded}
+          aria-controls="pulse-emote-picker-list"
         >
-          ▾
-        </span>
-      </button>
+          <span style={styles.toggleLabel}>
+            Plot on chart · {selectedCount}/{selectionLimit}
+          </span>
+          {!expanded && previewEmotes.length > 0 ? (
+            <span style={styles.togglePreview} title={previewNames} aria-hidden="true">
+              {previewEmotes.map(emote => (
+                <PulseEmoteImg
+                  key={emoteSelectionKey(emote)}
+                  emote={emote}
+                  backendUrl={backendUrl}
+                  width={18}
+                  height={18}
+                  style={styles.previewImg}
+                />
+              ))}
+            </span>
+          ) : null}
+          <span
+            className="pulse-seven-tv-chevron"
+            data-emote-picker-chevron
+            data-expanded={expanded ? 'true' : 'false'}
+            style={{
+              ...styles.chevron,
+              ...(reducedMotion ? styles.motionReducedChevron : null),
+              transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+            }}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        </button>
+        {selectedCount > 0 ? (
+          <button
+            type="button"
+            data-emote-picker-clear
+            style={styles.clearButton}
+            aria-label="Clear plotted emotes"
+            title="Remove all plotted emote lines"
+            onClick={event => {
+              event.stopPropagation()
+              onClearSelection?.()
+            }}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
 
       <div
         className="pulse-seven-tv-body"
@@ -249,6 +268,12 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 8,
     overflow: 'hidden',
   },
+  headerRow: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 4,
+    minWidth: 0,
+  },
   toggle: {
     alignItems: 'center',
     background: 'transparent',
@@ -259,7 +284,20 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: '8px 10px',
     textAlign: 'left',
-    width: '100%',
+    flex: '1 1 auto',
+    minWidth: 0,
+  },
+  clearButton: {
+    background: 'rgba(139, 92, 246, 0.12)',
+    border: '1px solid rgba(167, 139, 250, 0.3)',
+    borderRadius: 6,
+    color: '#ddd6fe',
+    cursor: 'pointer',
+    flex: '0 0 auto',
+    fontSize: 9,
+    fontWeight: 800,
+    minHeight: 25,
+    padding: '3px 7px',
   },
   toggleLabel: {
     color: theme.textMuted,
@@ -319,7 +357,9 @@ const styles: Record<string, CSSProperties> = {
   chip: {
     alignItems: 'center',
     background: 'rgba(255, 255, 255, 0.045)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderStyle: 'solid',
+    borderWidth: 1,
     borderRadius: 999,
     color: theme.textPrimary,
     cursor: 'pointer',

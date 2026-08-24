@@ -296,6 +296,9 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).previewIndex, { timeout: 5_000 })
       .not.toBeNull()
     expect((await probeChart(extension.page)).lockedIndex).toBeNull()
+    await expect(
+      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-bucket-preview="true"]`),
+    ).toContainText('minute bucket')
 
     // Keyboard events go to the focused element; hover alone never focuses
     // anything, so focus the scrubber explicitly before committing.
@@ -448,6 +451,44 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('dragging the zoom thumb pans the visible range without changing its span', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const scrubber = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-scrubber="true"]`)
+    await expect(scrubber).toBeVisible()
+    await scrubber.focus()
+    await scrubber.press('=')
+
+    const before = await probeChart(extension.page)
+    const thumb = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-rail-thumb]`)
+    await expect(thumb).toBeVisible()
+    await thumb.scrollIntoViewIfNeeded()
+    const thumbBox = await thumb.boundingBox()
+    expect(thumbBox).not.toBeNull()
+
+    await extension.page.mouse.move(thumbBox!.x + thumbBox!.width / 2, thumbBox!.y + thumbBox!.height / 2)
+    await extension.page.mouse.down()
+    await extension.page.mouse.move(
+      thumbBox!.x + thumbBox!.width / 2 + 42,
+      thumbBox!.y + thumbBox!.height / 2,
+      { steps: 4 },
+    )
+    await extension.page.mouse.up()
+
+    await expect
+      .poll(async () => (await probeChart(extension.page)).viewportStart, { timeout: 5_000 })
+      .not.toBe(before.viewportStart)
+    const after = await probeChart(extension.page)
+    expect(viewportSpan(after)).toBeCloseTo(viewportSpan(before), 0)
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('selected overlays have no automatic marker rail and zoom controls appear after zooming', async ({
     extension,
     prepare,
@@ -484,6 +525,41 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
       .toBeNull()
 
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('top moment markers are opt-in and share chart selection clearing', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const toggle = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-moment-toggle="true"]`)
+    const markers = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-moment-marker="true"]`)
+    await expect(toggle).toBeVisible()
+    await expect(toggle).toBeEnabled()
+    await expect(markers).toHaveCount(0)
+
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(markers).toHaveCount(1)
+    await expect(markers.first()).toHaveAttribute('data-chart-moment-marker-offset', '3600')
+    expect(await markers.first().getAttribute('data-chart-moment-precision')).toBeNull()
+
+    await markers.first().click()
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .not.toBeNull()
+
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(markers).toHaveCount(0)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .toBeNull()
     assertNoUncaughtErrors(evidence)
   })
 

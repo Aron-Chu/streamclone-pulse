@@ -1,14 +1,15 @@
-import { memo, useCallback, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
+  CHART_DRAG_INTENT_PX,
   FOLLOW_LIVE_EPSILON_SECONDS,
   clampViewportToCoverage,
   isFollowingLive,
   jumpToOffset,
-  MIN_VIEWPORT_SECONDS,
   panViewport,
   railGeometry,
+  resizeViewportEdge,
   resolveViewport,
   viewportDurationSeconds,
   type ChartViewport,
@@ -28,6 +29,8 @@ export interface ChartPositionRailProps {
   coverageStartSeconds?: number
   /** Let the parent place the visible range text with the chart controls. */
   hideRangeLabel?: boolean
+  /** Fires when direct pointer manipulation starts or ends. */
+  onInteractionChange?: (active: boolean) => void
 }
 
 /** Keep the rail useful on short streams without mounting it for an empty chart. */
@@ -37,10 +40,17 @@ const DEFAULT_FOCUS_SECONDS = 60 * 60
 const MIN_PAN_SECONDS = 60
 const SHIFT_PAN_SECONDS = 10 * 60
 const RESIZE_HANDLE_PX = 8
+const POINTER_CLICK_THRESHOLD_PX = CHART_DRAG_INTENT_PX
 
-export function shouldShowChartRail(viewport: ChartViewport, durationSeconds: number): boolean {
+export function shouldShowChartRail(
+  viewport: ChartViewport,
+  durationSeconds: number,
+  coverageStartSeconds = 0,
+): boolean {
   const viewportDuration = viewportDurationSeconds(viewport)
-  return durationSeconds >= MIN_MEANINGFUL_CHART_DURATION_SECONDS && viewportDuration > 0
+  const coverageStart = clamp(coverageStartSeconds, 0, Math.max(0, durationSeconds))
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  return availableDuration >= MIN_MEANINGFUL_CHART_DURATION_SECONDS && viewportDuration > 0
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -83,9 +93,10 @@ export function resolveRailPointerViewport(args: {
     coverageStart,
   )
   const viewportDuration = viewportDurationSeconds(normalizedViewport)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
   let base = normalizedViewport
   if (
-    viewportDuration >= durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS
+    viewportDuration >= availableDuration - FOLLOW_LIVE_EPSILON_SECONDS
     && durationSeconds > DEFAULT_FOCUS_SECONDS
   ) {
     base = resolveViewport({
@@ -163,19 +174,25 @@ export function resolveRailKeyboardViewport(args: {
         : panViewport(normalizedViewport, panSeconds, durationSeconds, true, coverageStartSeconds)
       break
     case '[':
-      next = {
-        startSeconds: normalizedViewport.startSeconds + panSeconds,
-        endSeconds: normalizedViewport.endSeconds,
-      }
+      next = resizeViewportEdge(
+        normalizedViewport,
+        'start',
+        panSeconds,
+        durationSeconds,
+        coverageStartSeconds,
+      )
       break
     case ']':
-      next = {
-        startSeconds: normalizedViewport.startSeconds,
-        endSeconds: normalizedViewport.endSeconds - panSeconds,
-      }
+      next = resizeViewportEdge(
+        normalizedViewport,
+        'end',
+        -panSeconds,
+        durationSeconds,
+        coverageStartSeconds,
+      )
       break
     case 'Home':
-      jumpOffsetSeconds = Math.max(0, coverageStartSeconds)
+      jumpOffsetSeconds = Math.max(0, Math.min(durationSeconds, coverageStartSeconds))
       next = jumpToOffset(
         normalizedViewport,
         jumpOffsetSeconds,
@@ -217,20 +234,92 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   ariaLabel = 'Chart position',
   coverageStartSeconds = 0,
   hideRangeLabel = false,
+  onInteractionChange,
 }: ChartPositionRailProps) {
   const trackRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{
     pointerId: number
     startClientX: number
     startViewport: ChartViewport
-    dragSeconds: number
     mode: DragMode
+    active: boolean
   } | null>(null)
+  const trackClickRef = useRef<{
+    pointerId: number
+    startClientX: number
+    movedPx: number
+  } | null>(null)
+  const pendingViewportRef = useRef<ChartViewport | null>(null)
+  const frameRef = useRef<number | null>(null)
+  const interactionActiveRef = useRef(false)
+  const [interacting, setInteracting] = useState(false)
   const normalizedViewport = clampViewportToCoverage(viewport, durationSeconds, coverageStartSeconds)
   const viewportDuration = viewportDurationSeconds(normalizedViewport)
-  const showRail = shouldShowChartRail(normalizedViewport, durationSeconds)
+  const showRail = shouldShowChartRail(normalizedViewport, durationSeconds, coverageStartSeconds)
   const geometry = railGeometry(normalizedViewport, durationSeconds, 100, coverageStartSeconds)
   const following = isFollowingLive(normalizedViewport, durationSeconds)
+
+  const setInteractionActive = useCallback((active: boolean) => {
+    if (interactionActiveRef.current === active) return
+    interactionActiveRef.current = active
+    setInteracting(active)
+    onInteractionChange?.(active)
+  }, [onInteractionChange])
+
+  const flushPendingViewport = useCallback(() => {
+    if (frameRef.current != null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(frameRef.current)
+    }
+    frameRef.current = null
+    const next = pendingViewportRef.current
+    pendingViewportRef.current = null
+    if (next) onViewportChange(next)
+  }, [onViewportChange])
+
+  const queueViewportChange = useCallback((next: ChartViewport) => {
+    pendingViewportRef.current = next
+    if (frameRef.current != null) return
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      flushPendingViewport()
+      return
+    }
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null
+      const pending = pendingViewportRef.current
+      pendingViewportRef.current = null
+      if (pending) onViewportChange(pending)
+    })
+  }, [flushPendingViewport, onViewportChange])
+
+  const releasePointerCapture = useCallback((pointerId: number) => {
+    try {
+      trackRef.current?.releasePointerCapture(pointerId)
+    } catch {
+      // The browser may already have released the pointer capture.
+    }
+  }, [])
+
+  const finishPointerInteraction = useCallback((pointerId?: number) => {
+    trackClickRef.current = null
+    dragStateRef.current = null
+    pendingViewportRef.current = null
+    if (frameRef.current != null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(frameRef.current)
+    }
+    frameRef.current = null
+    setInteractionActive(false)
+    if (pointerId != null) releasePointerCapture(pointerId)
+  }, [releasePointerCapture, setInteractionActive])
+
+  useEffect(() => () => {
+    finishPointerInteraction()
+  }, [finishPointerInteraction])
+
+  useEffect(() => {
+    const cancel = () => finishPointerInteraction()
+    document.addEventListener('streampulse:deactivate-interactions', cancel)
+    return () => document.removeEventListener('streampulse:deactivate-interactions', cancel)
+  }, [finishPointerInteraction])
 
   const beginDrag = useCallback((
     event: ReactPointerEvent<HTMLElement>,
@@ -241,11 +330,12 @@ export const ChartPositionRail = memo(function ChartPositionRail({
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startViewport,
-      dragSeconds: 0,
       mode,
+      active: false,
     }
+    trackClickRef.current = null
     try {
-      event.currentTarget.setPointerCapture(event.pointerId)
+      trackRef.current?.setPointerCapture(event.pointerId)
     } catch {
       // Pointer capture may fail after the pointer has already been released.
     }
@@ -254,32 +344,41 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   const onTrackPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || !showRail) return
     const track = trackRef.current
-    if (!track || durationSeconds <= 0) return
+    if (!track || durationSeconds <= 0 || event.target !== track) return
+    event.preventDefault()
+    event.stopPropagation()
+    trackClickRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      movedPx: 0,
+    }
+    try {
+      track.setPointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture is best effort; pointerup can still complete a click.
+    }
+  }, [disabled, durationSeconds, showRail])
+
+  const onThumbPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || !showRail) return
+    event.preventDefault()
+    event.stopPropagation()
+    beginDrag(event, 'pan', normalizedViewport)
+  }, [beginDrag, disabled, normalizedViewport, showRail])
+
+  const resolveTrackClick = useCallback((clientX: number): RailPointerViewportResult | null => {
+    const track = trackRef.current
+    if (!track) return null
     const rect = track.getBoundingClientRect()
-    const result = resolveRailPointerViewport({
-      clientX: event.clientX,
+    return resolveRailPointerViewport({
+      clientX,
       trackLeft: rect.left,
       trackWidth: Math.max(1, rect.width),
       viewport: normalizedViewport,
       durationSeconds,
       coverageStartSeconds,
     })
-    if (!result) return
-    event.preventDefault()
-    event.stopPropagation()
-    onViewportChange(result.viewport)
-    onJumpToOffset?.(result.offsetSeconds)
-    beginDrag(event, 'pan', result.viewport)
-  }, [
-    beginDrag,
-    coverageStartSeconds,
-    disabled,
-    durationSeconds,
-    onJumpToOffset,
-    onViewportChange,
-    showRail,
-    normalizedViewport,
-  ])
+  }, [coverageStartSeconds, durationSeconds, normalizedViewport])
 
   const onResizePointerDown = useCallback((
     event: ReactPointerEvent<HTMLDivElement>,
@@ -292,49 +391,66 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   }, [beginDrag, disabled, normalizedViewport, showRail])
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const click = trackClickRef.current
+    if (click && click.pointerId === event.pointerId) {
+      click.movedPx = Math.max(click.movedPx, Math.abs(event.clientX - click.startClientX))
+      if (click.movedPx >= POINTER_CLICK_THRESHOLD_PX) {
+        trackClickRef.current = null
+        releasePointerCapture(event.pointerId)
+      }
+      return
+    }
     const state = dragStateRef.current
     const track = trackRef.current
     if (!state || state.pointerId !== event.pointerId || !track || durationSeconds <= 0) return
     event.stopPropagation()
     const rect = track.getBoundingClientRect()
     if (rect.width <= 0) return
-    const deltaSeconds = (event.clientX - state.startClientX) * (durationSeconds / rect.width)
-    state.dragSeconds = Math.abs(deltaSeconds)
+    const deltaPixels = event.clientX - state.startClientX
+    if (!state.active) {
+      if (Math.abs(deltaPixels) < POINTER_CLICK_THRESHOLD_PX) return
+      state.active = true
+      setInteractionActive(true)
+    }
+    const deltaSeconds = deltaPixels * (durationSeconds / rect.width)
     let next: ChartViewport
     if (state.mode === 'pan') {
       next = panViewport(state.startViewport, deltaSeconds, durationSeconds, true, coverageStartSeconds)
-    } else if (state.mode === 'resize-start') {
-      const start = clamp(
-        state.startViewport.startSeconds + deltaSeconds,
-        coverageStartSeconds,
-        state.startViewport.endSeconds - Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, durationSeconds - coverageStartSeconds)),
-      )
-      next = { startSeconds: start, endSeconds: state.startViewport.endSeconds }
     } else {
-      const end = clamp(
-        state.startViewport.endSeconds + deltaSeconds,
-        state.startViewport.startSeconds + Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, durationSeconds - coverageStartSeconds)),
+      next = resizeViewportEdge(
+        state.startViewport,
+        state.mode === 'resize-start' ? 'start' : 'end',
+        deltaSeconds,
         durationSeconds,
+        coverageStartSeconds,
       )
-      next = { startSeconds: state.startViewport.startSeconds, endSeconds: end }
     }
-    onViewportChange(clampViewportToCoverage(next, durationSeconds, coverageStartSeconds))
-  }, [coverageStartSeconds, durationSeconds, onViewportChange])
+    queueViewportChange(clampViewportToCoverage(next, durationSeconds, coverageStartSeconds))
+  }, [coverageStartSeconds, durationSeconds, queueViewportChange, setInteractionActive])
 
   const onPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const click = trackClickRef.current
+    if (click && click.pointerId === event.pointerId) {
+      if (click.movedPx <= POINTER_CLICK_THRESHOLD_PX) {
+        const result = resolveTrackClick(event.clientX)
+        if (result) {
+          onViewportChange(result.viewport)
+          onJumpToOffset?.(result.offsetSeconds)
+        }
+      }
+      finishPointerInteraction(event.pointerId)
+      return
+    }
     const state = dragStateRef.current
     if (!state || state.pointerId !== event.pointerId) return
     event.stopPropagation()
-    if (state.mode === 'pan' && state.dragSeconds < FOLLOW_LIVE_EPSILON_SECONDS) {
-      onViewportChange(state.startViewport)
-    }
-    dragStateRef.current = null
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    } catch {
-      // Pointer capture may already have been released.
-    }
-  }, [onViewportChange])
+    if (state.active) flushPendingViewport()
+    finishPointerInteraction(event.pointerId)
+  }, [finishPointerInteraction, flushPendingViewport, onJumpToOffset, onViewportChange, resolveTrackClick])
+
+  const onPointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    finishPointerInteraction(event.pointerId)
+  }, [finishPointerInteraction])
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (disabled || durationSeconds <= 0) return
@@ -370,8 +486,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     : '0%'
   // Animate thumb movement for wheel/keyboard/click jumps; skip during active
   // pointer drags and for reduced-motion users so tracking stays immediate.
-  const dragging = dragStateRef.current != null
-  const thumbTransition = !prefersReducedMotion() && !dragging
+  const thumbTransition = !prefersReducedMotion() && !interacting
     ? 'transform 140ms cubic-bezier(0.22, 1, 0.36, 1), width 140ms cubic-bezier(0.22, 1, 0.36, 1)'
     : undefined
   const atAvailableRange = following && normalizedViewport.startSeconds <= coverageStartSeconds + FOLLOW_LIVE_EPSILON_SECONDS
@@ -393,12 +508,18 @@ export const ChartPositionRail = memo(function ChartPositionRail({
         aria-valuemax={Math.round(durationSeconds)}
         aria-valuenow={Math.round(normalizedViewport.startSeconds)}
         aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}. Arrow keys pan; Alt+arrows or [ ] resize the window.`}
-        style={{ ...styles.track, height, cursor: disabled ? 'default' : 'pointer', touchAction: 'none' }}
+        style={{
+          ...styles.track,
+          height,
+          cursor: disabled ? 'default' : interacting ? 'grabbing' : 'pointer',
+          touchAction: 'none',
+        }}
         data-chart-rail
         onPointerDown={onTrackPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onLostPointerCapture={onPointerCancel}
         onKeyDown={handleKeyDown}
       >
         {coverageStartSeconds > 0 ? (
@@ -418,6 +539,10 @@ export const ChartPositionRail = memo(function ChartPositionRail({
           }}
           data-chart-rail-thumb
           aria-hidden
+          onPointerDown={onThumbPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
         >
           <div
             style={{ ...styles.resizeHandle, left: 0 }}
@@ -426,7 +551,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
             onPointerDown={event => onResizePointerDown(event, 'start')}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
+            onPointerCancel={onPointerCancel}
           />
           <div
             style={{ ...styles.resizeHandle, right: 0 }}
@@ -435,7 +560,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
             onPointerDown={event => onResizePointerDown(event, 'end')}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
+            onPointerCancel={onPointerCancel}
           />
         </div>
       </div>
@@ -473,6 +598,7 @@ const styles: Record<string, CSSProperties> = {
     opacity: 0.45,
     position: 'absolute',
     top: 0,
+    pointerEvents: 'none',
   },
   thumb: {
     borderRadius: 4,

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent, RefObject } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import { formatHeatOffset, formatMomentClock, reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import { formatCount } from './mostReacted.ts'
 import {
   GameSegmentOverlay,
@@ -15,7 +15,7 @@ import {
   type ChartMinuteRollup,
   type ViewerTimedValue,
 } from '@streampulse/pulse-charts'
-import type { ExtensionGameSegment, ExtensionRollup } from '../shared/messages.ts'
+import type { ExtensionGameSegment, ExtensionPeak, ExtensionRollup } from '../shared/messages.ts'
 import { activityAxisBoundsFromZero, overlaySeriesAxisMax } from './chatActivityEmotes.ts'
 import type { EmoteOverlaySeries } from './chatActivityEmotes.ts'
 import { CHART_BAR_ALPHA, CHART_INTERACTION, CHART_LANE, CHART_THEME, hexToRgba } from './chartTheme.ts'
@@ -38,6 +38,7 @@ import {
 import { resolveChartCrosshairMode } from './chartCrosshair.ts'
 import { prefersReducedMotion, useSmoothedScalar } from './motion/useSmoothedScalar.ts'
 import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
+import { panDeltaSecondsFromPointer } from './chartPanMath.ts'
 import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, viewportBuckets, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
 
 export interface PulseOverviewChartProps {
@@ -64,6 +65,9 @@ export interface PulseOverviewChartProps {
   isLive?: boolean
   emoteSyncTone?: 'ok' | 'warn' | 'muted'
   overlayLines?: EmoteOverlaySeries[]
+  /** Backend-authored top moments; hidden until the user opts into markers. */
+  peakMarkers?: readonly ExtensionPeak[]
+  showPeakMarkers?: boolean
   normalizeOverlaySeries?: boolean
   reducedMotion?: boolean
   focusedSeriesKey?: string | null
@@ -117,10 +121,17 @@ const TRACE_LINE_STROKE = 2.25
 const TRACE_LINE_OPACITY = 0.95
 const FOCUS_DIM_FACTOR = 0.14
 const FOCUS_LANE_BOOST = 0.78
+const MAX_CHART_MOMENT_MARKERS = 12
+const CHART_MOMENT_MARKER_COLORS = {
+  chat: '#a78bfa',
+  emotes: '#34d399',
+  viewers: '#67e8f9',
+} as const
 // Hover chrome fades in/out with one short ease-out; plotted data geometry is
 // always immediate (no line morphing, no delayed data animation).
 const MARKER_FADE_MS = 140
 const MARKER_FADE_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
+const PLOT_DRAG_THRESHOLD_PX = 5
 const SCRUB_FUTURE_STROKE = 'rgba(161, 161, 170, 0.52)'
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
@@ -178,6 +189,33 @@ function interpolateNumber(from: number, to: number, progress: number): number {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function chartMomentSignal(peak: ExtensionPeak): keyof typeof CHART_MOMENT_MARKER_COLORS {
+  const dominant = `${peak.dominantSignal ?? ''} ${(peak.reasons ?? []).join(' ')}`.toLowerCase()
+  if (dominant.includes('viewer')) return 'viewers'
+  if (dominant.includes('emote')) return 'emotes'
+  return 'chat'
+}
+
+function interpolatePlotXForOffset(
+  offsetSeconds: number,
+  rollups: readonly ExtensionRollup[],
+  plotWidth: number,
+): number {
+  if (rollups.length === 0) return PAD_LEFT
+  if (rollups.length === 1) return plotXForIndex(0, 1, PAD_LEFT, plotWidth)
+  let rightIndex = rollups.findIndex(rollup => rollup.offsetSeconds >= offsetSeconds)
+  if (rightIndex < 0) rightIndex = rollups.length - 1
+  const leftIndex = Math.max(0, rightIndex - (rollups[rightIndex]?.offsetSeconds === offsetSeconds ? 0 : 1))
+  if (leftIndex === rightIndex) return plotXForIndex(rightIndex, rollups.length, PAD_LEFT, plotWidth)
+  const left = rollups[leftIndex]!
+  const right = rollups[rightIndex]!
+  const span = right.offsetSeconds - left.offsetSeconds
+  const fraction = span > 0 ? clampNumber((offsetSeconds - left.offsetSeconds) / span, 0, 1) : 0
+  const leftX = plotXForIndex(leftIndex, rollups.length, PAD_LEFT, plotWidth)
+  const rightX = plotXForIndex(rightIndex, rollups.length, PAD_LEFT, plotWidth)
+  return leftX + (rightX - leftX) * fraction
 }
 
 function plotBandForActivityZone(
@@ -325,6 +363,8 @@ function PulseOverviewChartImpl({
   emptyMessage,
   loading = false,
   overlayLines = [],
+  peakMarkers = [],
+  showPeakMarkers = false,
   normalizeOverlaySeries = false,
   reducedMotion = false,
   isLive = false,
@@ -379,6 +419,17 @@ function PulseOverviewChartImpl({
   const hoverFrameRef = useRef<number | null>(null)
   const captureBoundsRef = useRef<{ left: number; width: number } | null>(null)
   const scrubberRef = useRef<SVGRectElement | null>(null)
+  const plotDragRef = useRef<{
+    pointerId: number
+    startClientX: number
+    movedPx: number
+    active: boolean
+    startViewport: ChartViewport
+  } | null>(null)
+  const pendingPlotViewportRef = useRef<ChartViewport | null>(null)
+  const plotFrameRef = useRef<number | null>(null)
+  const suppressNextClickRef = useRef(false)
+  const [plotDragging, setPlotDragging] = useState(false)
   const hoverOffsetChangeRef = useRef(onHoverOffsetChange)
   hoverOffsetChangeRef.current = onHoverOffsetChange
   // Latest viewport state for the native non-passive wheel listener below.
@@ -455,6 +506,8 @@ function PulseOverviewChartImpl({
       }
       pendingHoverTargetRef.current = null
       captureBoundsRef.current = null
+      finishPlotInteraction()
+      suppressNextClickRef.current = false
       if (hoverIndexRef.current != null) {
         hoverIndexRef.current = null
         applyInspectionDOM(null)
@@ -485,6 +538,18 @@ function PulseOverviewChartImpl({
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [clearSelectionBoundaryRef, onClearSelection, onHoverOffsetChange])
+
+  useEffect(() => {
+    const cancel = () => {
+      finishPlotInteraction()
+      handlePointerLeave()
+    }
+    document.addEventListener('streampulse:deactivate-interactions', cancel)
+    return () => document.removeEventListener('streampulse:deactivate-interactions', cancel)
+    // The interaction reset key is the lifecycle boundary; hover callbacks are
+    // intentionally not dependencies because this listener only cancels refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interactionResetKey])
 
   const timelineDuration = useMemo(
     () => chartDurationSeconds(rollups, durationSeconds),
@@ -818,6 +883,62 @@ function PulseOverviewChartImpl({
     [sourceRollups, visibleIndexByOffset],
   )
 
+  const visibleMomentMarkers = useMemo(() => {
+    if (!showPeakMarkers || peakMarkers.length === 0 || n === 0) return []
+    const firstOffset = visibleRollups[0]?.offsetSeconds ?? internalViewport.startSeconds
+    const lastOffset = visibleRollups[n - 1]?.offsetSeconds ?? internalViewport.endSeconds
+    return [...peakMarkers]
+      .filter(peak => Number.isFinite(peak.offsetSeconds) && Number.isFinite(peak.score))
+      .sort((left, right) => right.score - left.score || left.offsetSeconds - right.offsetSeconds)
+      .slice(0, MAX_CHART_MOMENT_MARKERS)
+      .map((peak, rank) => {
+        const offsetSeconds = reactionAnalyticalOffset(peak)
+        if (offsetSeconds < firstOffset - 60 || offsetSeconds > lastOffset + 60) return null
+        const sourceIndex = nearestRollupIndex(visibleRollups, offsetSeconds)
+        if (sourceIndex < 0) return null
+        const signal = chartMomentSignal(peak)
+        const band = signal === 'viewers'
+          ? { top: viewerBandTop, bottom: viewerBandBottom }
+          : signal === 'emotes'
+            ? { top: emoteLaneTop, bottom: emoteLaneBottom }
+            : { top: chatLaneTop, bottom: chatLaneBottom }
+        return {
+          peak,
+          rank,
+          offsetSeconds,
+          sourceIndex,
+          x: interpolatePlotXForOffset(offsetSeconds, visibleRollups, plotWidth),
+          y: band.top + Math.max(4, (band.bottom - band.top) * 0.24),
+          signal,
+          color: CHART_MOMENT_MARKER_COLORS[signal],
+        }
+      })
+      .filter((marker): marker is NonNullable<typeof marker> => marker !== null)
+  }, [
+    chatLaneBottom,
+    chatLaneTop,
+    emoteLaneBottom,
+    emoteLaneTop,
+    internalViewport.endSeconds,
+    internalViewport.startSeconds,
+    n,
+    peakMarkers,
+    plotWidth,
+    showPeakMarkers,
+    viewerBandBottom,
+    viewerBandTop,
+    visibleRollups,
+  ])
+
+  const handlePeakMarkerClick = useCallback((sourceIndex: number): void => {
+    const fullIndex = fullIndexFromVisible(sourceIndex) ?? sourceIndex
+    if (selectedIndex != null && fullIndex === selectedIndex) {
+      onClearSelection?.()
+      return
+    }
+    onSelectIndex?.(fullIndex)
+  }, [fullIndexFromVisible, onClearSelection, onSelectIndex, selectedIndex])
+
   const pinIndex = visibleIndexFromFull(selectedIndex ?? null)
   const previewVisibleIndex = visibleIndexFromFull(previewIndex ?? null)
   const listPreviewIndex =
@@ -1089,6 +1210,116 @@ function PulseOverviewChartImpl({
     onHoverOffsetChange?.(null)
   }
 
+  function flushPlotViewport(): void {
+    if (plotFrameRef.current != null) {
+      cancelAnimationFrame(plotFrameRef.current)
+      plotFrameRef.current = null
+    }
+    const pending = pendingPlotViewportRef.current
+    pendingPlotViewportRef.current = null
+    if (pending) onViewportChange?.(pending)
+  }
+
+  function queuePlotViewport(next: ChartViewport): void {
+    pendingPlotViewportRef.current = next
+    if (plotFrameRef.current != null) return
+    plotFrameRef.current = requestAnimationFrame(() => {
+      plotFrameRef.current = null
+      const pending = pendingPlotViewportRef.current
+      pendingPlotViewportRef.current = null
+      if (pending) onViewportChange?.(pending)
+    })
+  }
+
+  function finishPlotInteraction(pointerId?: number): void {
+    const scrubber = scrubberRef.current
+    if (pointerId != null) {
+      try {
+        scrubber?.releasePointerCapture(pointerId)
+      } catch {
+        // Pointer capture may already have been released.
+      }
+    }
+    plotDragRef.current = null
+    pendingPlotViewportRef.current = null
+    if (plotFrameRef.current != null) {
+      cancelAnimationFrame(plotFrameRef.current)
+      plotFrameRef.current = null
+    }
+    setPlotDragging(false)
+  }
+
+  function handlePlotPointerDown(event: ReactPointerEvent<SVGRectElement>): void {
+    if (n === 0) return
+    event.stopPropagation()
+    suppressNextClickRef.current = false
+    plotDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      movedPx: 0,
+      active: false,
+      startViewport: internalViewport,
+    }
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture is best effort; normal hover still works without it.
+    }
+    handlePointer(event.clientX, event.currentTarget)
+  }
+
+  function handlePlotPointerMove(event: ReactPointerEvent<SVGRectElement>): void {
+    const state = plotDragRef.current
+    if (!state || state.pointerId !== event.pointerId) {
+      handlePointer(event.clientX, event.currentTarget)
+      return
+    }
+    const deltaPx = event.clientX - state.startClientX
+    state.movedPx = Math.max(state.movedPx, Math.abs(deltaPx))
+    const rect = event.currentTarget.getBoundingClientRect()
+    const visibleDuration = state.startViewport.endSeconds - state.startViewport.startSeconds
+    const availableDuration = Math.max(0, durationSeconds - coverageStartSeconds)
+    if (!state.active && state.movedPx > PLOT_DRAG_THRESHOLD_PX && onViewportChange && rect.width > 0) {
+      if (visibleDuration < availableDuration - FOLLOW_LIVE_EPSILON_SECONDS) {
+        state.active = true
+        setPlotDragging(true)
+        suppressNextClickRef.current = true
+        clearHoverPreview()
+      }
+    }
+    if (!state.active) {
+      handlePointer(event.clientX, event.currentTarget)
+      return
+    }
+    event.stopPropagation()
+    const deltaSeconds = panDeltaSecondsFromPointer(deltaPx, visibleDuration, rect.width)
+    queuePlotViewport(panViewport(
+      state.startViewport,
+      deltaSeconds,
+      durationSeconds,
+      true,
+      coverageStartSeconds,
+    ))
+  }
+
+  function handlePlotPointerUp(event: ReactPointerEvent<SVGRectElement>): void {
+    const state = plotDragRef.current
+    if (!state || state.pointerId !== event.pointerId) return
+    if (state.active) {
+      event.preventDefault()
+      event.stopPropagation()
+      flushPlotViewport()
+      clearHoverPreview()
+    }
+    finishPlotInteraction(event.pointerId)
+  }
+
+  function handlePlotPointerCancel(event: ReactPointerEvent<SVGRectElement>): void {
+    const state = plotDragRef.current
+    if (state?.active) clearHoverPreview()
+    finishPlotInteraction(event.pointerId)
+  }
+
   function flushHoverIndex(): void {
     hoverFrameRef.current = null
     const pending = pendingHoverTargetRef.current
@@ -1155,6 +1386,12 @@ function PulseOverviewChartImpl({
 
   function handleClick(event: MouseEvent<SVGRectElement>): void {
     if (n === 0) return
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
     captureBoundsRef.current = { left: rect.left, width: rect.width }
@@ -1829,18 +2066,14 @@ function PulseOverviewChartImpl({
           width={plotWidth}
           height={height - PAD_TOP - PAD_BOTTOM}
           fill="transparent"
-          style={{ cursor: 'crosshair', outline: 'none', touchAction: 'none' }}
-          onPointerDown={event => {
-            event.stopPropagation()
-            event.currentTarget.setPointerCapture(event.pointerId)
-            handlePointer(event.clientX, event.currentTarget)
-          }}
+          style={{ cursor: plotDragging ? 'grabbing' : 'crosshair', outline: 'none', touchAction: 'none' }}
+          onPointerDown={handlePlotPointerDown}
           onPointerMove={event => {
             // Contain pointer gestures (hover scrub, drag intent) inside the chart.
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.stopPropagation()
             }
-            handlePointer(event.clientX, event.currentTarget)
+            handlePlotPointerMove(event)
           }}
           onPointerLeave={event => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -1848,9 +2081,7 @@ function PulseOverviewChartImpl({
             }
           }}
           onPointerUp={event => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId)
-            }
+            handlePlotPointerUp(event)
             // A drag ending outside the plot must not leave stale hover chrome.
             const rect = event.currentTarget.getBoundingClientRect()
             const inside =
@@ -1861,10 +2092,12 @@ function PulseOverviewChartImpl({
             if (!inside) handlePointerLeave()
           }}
           onPointerCancel={event => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId)
-            }
+            handlePlotPointerCancel(event)
             handlePointerLeave()
+          }}
+          onLostPointerCapture={() => {
+            if (plotDragRef.current?.active) clearHoverPreview()
+            finishPlotInteraction()
           }}
           onClick={handleClick}
           onKeyDown={event => {
@@ -1918,6 +2151,71 @@ function PulseOverviewChartImpl({
             }
           }}
         />
+
+        {/* Paint after the transparent scrubber so opted-in moment dots are
+            actual interactive targets instead of being covered by the plot. */}
+        {visibleMomentMarkers.length > 0 ? (
+          <g data-chart-moment-markers="true" aria-label="Top moment markers">
+            {visibleMomentMarkers.map(marker => (
+              <g
+                key={`${marker.peak.offsetSeconds}-${marker.peak.score}-${marker.rank}`}
+                pointerEvents="none"
+              >
+                <line
+                  x1={marker.x}
+                  x2={marker.x}
+                  y1={crosshairTop}
+                  y2={crosshairBottom}
+                  stroke={marker.color}
+                  strokeWidth="1"
+                  strokeDasharray="2 4"
+                  opacity="0.38"
+                  pointerEvents="none"
+                />
+                <g
+                  data-chart-moment-marker="true"
+                  data-chart-moment-marker-offset={marker.offsetSeconds}
+                  data-chart-moment-marker-precision={marker.peak.precisionSeconds ?? undefined}
+                  role={onSelectIndex ? 'button' : undefined}
+                  tabIndex={onSelectIndex ? 0 : undefined}
+                  aria-label={`${formatMomentClock(marker.peak)} ${marker.peak.reasonLabel ?? marker.signal} · score ${Math.round(marker.peak.score)}`}
+                  pointerEvents={onSelectIndex ? 'all' : 'none'}
+                  style={{ cursor: onSelectIndex ? 'pointer' : 'default' }}
+                  onClick={event => {
+                    event.stopPropagation()
+                    handlePeakMarkerClick(marker.sourceIndex)
+                  }}
+                  onKeyDown={event => {
+                    if (!onSelectIndex || (event.key !== 'Enter' && event.key !== ' ')) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handlePeakMarkerClick(marker.sourceIndex)
+                  }}
+                >
+                  <title>
+                    {formatMomentClock(marker.peak)} · {marker.peak.reasonLabel ?? marker.signal} · score {Math.round(marker.peak.score)}
+                  </title>
+                  <circle
+                    cx={marker.x}
+                    cy={marker.y}
+                    r="9"
+                    fill="transparent"
+                    pointerEvents="all"
+                  />
+                  <circle
+                    cx={marker.x}
+                    cy={marker.y}
+                    r="3.5"
+                    fill={marker.color}
+                    stroke="#18181f"
+                    strokeWidth="1.5"
+                    pointerEvents="none"
+                  />
+                </g>
+              </g>
+            ))}
+          </g>
+        ) : null}
       </svg>
     </div>
   )

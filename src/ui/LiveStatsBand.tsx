@@ -357,7 +357,10 @@ export function LiveStatsBand({
   const canShowFullTimeline = hasFullRollups || fullTimeline || currentOffsetSeconds > 0
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
+  const chartHoverUpdateFrameRef = useRef<number | null>(null)
+  const pendingChartHoverOffsetRef = useRef<number | null>(null)
   const [selectedEmoteKeys, setSelectedEmoteKeys] = useState<string[]>([])
+  const [showPeakMarkers, setShowPeakMarkers] = useState(false)
   const [focusedSeriesKey, setFocusedSeriesKey] = useState<string | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
 
@@ -365,6 +368,27 @@ export function LiveStatsBand({
     onPinOffset?.(null)
     setChartHoverOffsetSeconds(null)
   }, [onPinOffset])
+
+  const handleChartHoverOffsetChange = useCallback((offsetSeconds: number | null): void => {
+    pendingChartHoverOffsetRef.current = offsetSeconds
+    if (chartHoverUpdateFrameRef.current != null) return
+    chartHoverUpdateFrameRef.current = requestAnimationFrame(() => {
+      chartHoverUpdateFrameRef.current = null
+      const pending = pendingChartHoverOffsetRef.current
+      pendingChartHoverOffsetRef.current = null
+      setChartHoverOffsetSeconds(pending)
+    })
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (chartHoverUpdateFrameRef.current != null) {
+        cancelAnimationFrame(chartHoverUpdateFrameRef.current)
+        chartHoverUpdateFrameRef.current = null
+      }
+      pendingChartHoverOffsetRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     setHoveredGameKey(null)
@@ -469,14 +493,20 @@ export function LiveStatsBand({
   const selectedRollup =
     pinChartIndex != null ? rollups[pinChartIndex] : undefined
 
+  const hoveredRollup = useMemo(() => {
+    if (chartHoverOffsetSeconds == null) return undefined
+    const index = findChartIndexByOffset(chartOffsets, chartHoverOffsetSeconds, {
+      bucketed: chartWindow === 'full',
+    })
+    return index != null ? rollups[index] : undefined
+  }, [chartHoverOffsetSeconds, chartOffsets, chartWindow, rollups])
+
   const minuteAtRollup = useMemo(() => {
+    if (hoveredRollup) return hoveredRollup
     if (selectedRollup) return selectedRollup
-    if (chartHoverOffsetSeconds != null) {
-      return rollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
-    }
     if (previewRollup) return previewRollup
     return undefined
-  }, [selectedRollup, chartHoverOffsetSeconds, rollups, previewRollup])
+  }, [hoveredRollup, selectedRollup, previewRollup])
 
   const minuteAtOffsetSeconds = minuteAtRollup?.offsetSeconds ?? 0
   const showChartReadout = Boolean(
@@ -547,6 +577,35 @@ export function LiveStatsBand({
     () => extensionGamesForOverviewChart(payload.games, payload.category, currentOffsetSeconds),
     [payload.games, payload.category, currentOffsetSeconds],
   )
+
+  const chartPeakMarkers = useMemo(() => {
+    const recapMoments = payload.recap?.topMoments ?? []
+    const source = payload.peaks !== undefined
+      ? payload.peaks
+      : recapMoments.map(moment => ({
+          offsetSeconds: moment.offsetSeconds,
+          score: moment.score,
+          compositeScore: moment.compositeScore,
+          reactionScore: moment.reactionScore,
+          viewerMomentumScore: moment.viewerMomentumScore,
+          reasons: moment.reasons,
+          reasonLabel: moment.reasons[0],
+          dominantSignal: moment.reasons[0] ?? 'composite',
+          chatCount: moment.chatCount,
+          emoteCount: moment.emoteCount,
+          reactionOnsetOffsetSeconds: moment.reactionOnsetOffsetSeconds,
+          reactionApexOffsetSeconds: moment.reactionApexOffsetSeconds,
+          seekOffsetSeconds: moment.seekOffsetSeconds,
+          precisionSeconds: moment.precisionSeconds,
+          refinementStatus: moment.refinementStatus,
+          refinementConfidence: moment.refinementConfidence,
+          reactionScoringVersion: moment.reactionScoringVersion,
+        }))
+    return [...source]
+      .filter(marker => Number.isFinite(marker.offsetSeconds) && Number.isFinite(marker.score))
+      .sort((left, right) => right.score - left.score || left.offsetSeconds - right.offsetSeconds)
+      .slice(0, 12)
+  }, [payload.peaks, payload.recap?.topMoments])
 
   const chartRailRollups = useMemo(
     () => (hasFullRollups ? payload.fullRollups ?? [] : rollups),
@@ -715,6 +774,7 @@ export function LiveStatsBand({
   useEffect(() => {
     setFocusedSeriesKey(null)
     setSelectedEmoteKeys([])
+    setShowPeakMarkers(false)
     setEmotePanelExpanded(false)
     setChartHoverOffsetSeconds(null)
     onPinOffset?.(null)
@@ -821,6 +881,9 @@ export function LiveStatsBand({
   const readoutViewers = minuteAtRollup && !minuteAtRollup.missing
     ? minuteAtRollup.viewerCount
     : null
+  const readoutTopEmotes = minuteAtRollup?.missing
+    ? []
+    : (minuteAtRollup?.topEmotes ?? []).slice(0, 3)
   const chartStatusText = [
     emoteSyncLabel,
     emoteChartHint,
@@ -917,6 +980,28 @@ export function LiveStatsBand({
             showViewerLegend={showViewerStrip}
             focusedSeriesKey={focusedSeriesKey}
             onToggleSeriesFocus={toggleSeriesFocus}
+            leadingControl={
+              <button
+                type="button"
+                className={`pulse-chart-toggle-btn${showPeakMarkers ? ' pulse-chart-toggle-btn-active' : ''}`}
+                style={{
+                  ...styles.expandButton,
+                  ...(showPeakMarkers ? styles.expandButtonActive : null),
+                }}
+                data-chart-action="true"
+                data-chart-moment-toggle="true"
+                disabled={chartPeakMarkers.length === 0}
+                aria-pressed={showPeakMarkers}
+                aria-label={showPeakMarkers ? 'Hide top moment markers' : 'Show top moment markers'}
+                title={chartPeakMarkers.length > 0 ? 'Show top backend-ranked moments on the chart' : 'No backend moments are available yet'}
+                onClick={() => {
+                  handleClearChartSelection()
+                  setShowPeakMarkers(current => !current)
+                }}
+              >
+                Moments{chartPeakMarkers.length > 0 ? ` · ${chartPeakMarkers.length}` : ''}
+              </button>
+            }
             expandControl={
               <button
                 type="button"
@@ -1063,6 +1148,27 @@ export function LiveStatsBand({
               <span style={styles.chartReadoutSep}>·</span>
               <span>emotes {formatMaybeNumber(readoutEmotes)}/min</span>
             </p>
+            <div style={styles.chartBucketPreview} data-chart-bucket-preview="true">
+              <span>
+                viewers {readoutViewers != null ? formatMaybeNumber(readoutViewers) : 'unavailable'}
+              </span>
+              <span style={styles.chartReadoutSep}>·</span>
+              <span>{minuteAtRollup?.missing ? 'No data for this bucket' : 'minute bucket'}</span>
+              {readoutTopEmotes.length > 0 ? (
+                <span style={styles.chartBucketEmotes} aria-label="Top emotes in this bucket">
+                  {readoutTopEmotes.map(emote => (
+                    <PulseEmoteImg
+                      key={`${emote.id ?? emote.name}:${emote.count}`}
+                      emote={emote}
+                      backendUrl={backendUrl}
+                      width={14}
+                      height={14}
+                      style={styles.chartBucketEmote}
+                    />
+                  ))}
+                </span>
+              ) : null}
+            </div>
           </div>
           <PulseOverviewChart
             rollups={rollups}
@@ -1085,13 +1191,15 @@ export function LiveStatsBand({
             onSelectIndex={demoMode ? undefined : handleChartSelect}
             onClearSelection={demoMode ? undefined : handleClearChartSelection}
             clearSelectionBoundaryRef={chartInteractionRef}
-            onHoverOffsetChange={setChartHoverOffsetSeconds}
+            onHoverOffsetChange={handleChartHoverOffsetChange}
             viewport={chartUsesViewport ? chartViewportForRender : undefined}
             coverageStartSeconds={chartCoverageStartSeconds}
             onViewportChange={chartUsesViewport ? handleChartViewportChange : undefined}
             onJumpToOffset={onJumpToOffset}
             highlightedGameSegmentKey={chartHighlightedGameKeyValue}
             overlayLines={emoteOverlays}
+            peakMarkers={chartPeakMarkers}
+            showPeakMarkers={showPeakMarkers}
             emptyMessage={chartEmpty}
             loading={chartLoading}
             isLive={isLive}
@@ -1178,6 +1286,10 @@ export function LiveStatsBand({
               topEmotes={topEmotesForChips}
               selectedKeys={selectedEmoteKeys}
               onToggleEmote={toggleEmotePanelKey}
+              onClearSelection={() => {
+                handleClearChartSelection()
+                setSelectedEmoteKeys([])
+              }}
               selectedOffsetSeconds={selectedOffsetSeconds}
               sidebarCompact
               selectedPlotColors={selectedPlotColors}
@@ -1279,9 +1391,10 @@ const styles: Record<string, CSSProperties> = {
   },
   chartReadoutSlot: {
     alignItems: 'center',
-    display: 'flex',
+    display: 'grid',
+    gap: 1,
     left: 6,
-    minHeight: 18,
+    minHeight: 30,
     pointerEvents: 'none',
     position: 'absolute',
     right: 6,
@@ -1295,7 +1408,7 @@ const styles: Record<string, CSSProperties> = {
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 700,
     gap: 4,
-    lineHeight: '18px',
+    lineHeight: '15px',
     margin: 0,
     minWidth: 0,
     overflow: 'hidden',
@@ -1305,6 +1418,22 @@ const styles: Record<string, CSSProperties> = {
   },
   chartReadoutTime: { color: theme.textPrimary, fontWeight: 800 },
   chartReadoutSep: { color: theme.textMuted },
+  chartBucketPreview: {
+    alignItems: 'center',
+    color: theme.textMuted,
+    display: 'flex',
+    fontSize: 9,
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 700,
+    gap: 4,
+    lineHeight: '12px',
+    minHeight: 12,
+    minWidth: 0,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+  },
+  chartBucketEmotes: { alignItems: 'center', display: 'inline-flex', gap: 2, marginLeft: 2 },
+  chartBucketEmote: { display: 'block', objectFit: 'contain' },
   chartRangeRow: {
     alignItems: 'center',
     display: 'flex',
