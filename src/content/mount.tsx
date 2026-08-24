@@ -215,6 +215,7 @@ let sidebarFallbackTimer: ReturnType<typeof setTimeout> | null = null
 let chatClosedPulseDockEnabled = false
 let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
+let overlayHostObserver: MutationObserver | null = null
 
 function installOverlayDiagnosticsOnce(): void {
   if (overlayDiagnosticsInstalled) return
@@ -239,6 +240,15 @@ function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
   for (const node of doomed) node.remove()
 }
 
+function containsOverlayHost(node: Node): boolean {
+  if (!(node instanceof Element)) return false
+  if (node.id === TAB_HOST_ID || node.id === PANEL_HOST_ID) return true
+  for (const descendant of node.querySelectorAll('*')) {
+    if (descendant.id === TAB_HOST_ID || descendant.id === PANEL_HOST_ID) return true
+  }
+  return false
+}
+
 function reconcileOverlayHosts(): void {
   if (!tabsHostEl?.isConnected) {
     stopObserve?.()
@@ -261,6 +271,18 @@ function reconcileOverlayHosts(): void {
 /** Public: drop orphan duplicate hosts without resetting overlay payload. */
 export function ensureUniqueOverlayHosts(): void {
   reconcileOverlayHosts()
+}
+
+function installOverlayHostObserver(): void {
+  if (overlayHostObserver || typeof MutationObserver === 'undefined' || !document.documentElement) return
+  overlayHostObserver = new MutationObserver(mutations => {
+    // Twitch and extension reinjection can append a second host without changing
+    // the route. Reconcile that mutation immediately instead of waiting for the
+    // debounced route scheduler, while ignoring normal chat/page churn.
+    if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(containsOverlayHost))) return
+    reconcileOverlayHosts()
+  })
+  overlayHostObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; root: Root } {
@@ -589,6 +611,7 @@ export function mountOverlay(
     panelShadowRoot = panel.shadow
     panelRoot = panel.root
   }
+  installOverlayHostObserver()
 
   installThemeSyncListener()
   installMountStorageListener()
@@ -701,6 +724,8 @@ export function updateOverlayVodState(input: {
 
 export function unmountOverlay(): void {
   displayPreferenceRequestId += 1
+  overlayHostObserver?.disconnect()
+  overlayHostObserver = null
   stopObserve?.()
   stopObserve = null
   sidebarLayout = null
