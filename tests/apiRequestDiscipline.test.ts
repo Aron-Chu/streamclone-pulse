@@ -59,6 +59,23 @@ describe('fetchWithTimeout', () => {
 })
 
 describe('extension API discipline', () => {
+  it('bypasses the browser cache for live extension API reads', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      login: 'xqc',
+      streamId: '123456',
+      rollups: [],
+    }), { headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchPulseChannel('xqc', {
+      baseUrl: 'https://api.streampulse.stream',
+      window: 'full',
+      streamId: '123456',
+    })
+
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ cache: 'no-store' }))
+  })
+
   it('surfaces HTTP 401 from pulse channel', async () => {
     vi.stubGlobal(
       'fetch',
@@ -107,6 +124,98 @@ describe('extension API discipline', () => {
       window: 'full',
       streamId: '123456',
     })).rejects.toThrow(/pulse_stream_mismatch/)
+  })
+
+  it('falls back from an unavailable exact-stream Full route to channel Full only on 404/405/409', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 404 }))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ login: 'xqc', streamId: '123456', rollups: [] }),
+        { headers: { 'content-type': 'application/json' } },
+      ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchPulseChannel('xqc', {
+      baseUrl: 'https://api.streampulse.stream',
+      window: 'full',
+      streamId: '123456',
+    })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://api.streampulse.stream/v1/extension/pulse/streams/123456?login=xqc&allowLiveBridge=true&window=full',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://api.streampulse.stream/v1/extension/pulse/channels/xqc?window=full',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('falls back from an exact-stream identity-conflict 409 and accepts normalized same-stream channel data', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'broadcaster_mismatch' }), { status: 409 }))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ login: 'XQC', streamId: '123456', rollups: [] }),
+        { headers: { 'content-type': 'application/json' } },
+      ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchPulseChannel(' XqC ', {
+      baseUrl: 'https://api.streampulse.stream',
+      window: 'full',
+      streamId: '123456',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://api.streampulse.stream/v1/extension/pulse/channels/xqc?window=full',
+      expect.objectContaining({ signal: expect.any(AbortSignal), cache: 'no-store' }),
+    )
+  })
+
+  it('rejects a 409 channel fallback whose normalized login differs from the active request', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 409 }))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ login: 'other_channel', streamId: '123456', rollups: [] }),
+        { headers: { 'content-type': 'application/json' } },
+      )))
+
+    await expect(fetchPulseChannel('xqc', {
+      baseUrl: 'https://api.streampulse.stream',
+      window: 'full',
+      streamId: '123456',
+    })).rejects.toThrow(/pulse_login_mismatch/)
+  })
+
+  it('rejects a channel Full fallback whose stream identity differs', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 405 }))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ login: 'xqc', streamId: 'other-stream', rollups: [] }),
+        { headers: { 'content-type': 'application/json' } },
+      )))
+
+    await expect(fetchPulseChannel('xqc', {
+      baseUrl: 'https://api.streampulse.stream',
+      window: 'full',
+      streamId: '123456',
+    })).rejects.toThrow(/pulse_stream_mismatch/)
+  })
+
+  it('does not fall back from an exact-stream Full route on a server error', async () => {
+    const fetchMock = vi.fn(async () => new Response('', { status: 500 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchPulseChannel('xqc', {
+      baseUrl: 'https://api.streampulse.stream',
+      window: 'full',
+      streamId: '123456',
+    })).rejects.toThrow(/pulse 500/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('rejects malformed pulse envelopes instead of treating them as empty data', async () => {

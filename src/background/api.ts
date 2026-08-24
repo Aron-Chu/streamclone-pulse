@@ -93,7 +93,15 @@ async function beginRequest(
     else upstreamSignal.addEventListener('abort', onUpstreamAbort, { once: true })
   }
   try {
-    const response = await fetchImpl(input, { ...init, signal: controller.signal })
+    // Pulse and coverage responses are live data. Prevent the browser/network
+    // cache from replaying a previous stream snapshot after a route change or
+    // extension reload; the service-worker session cache owns the explicit
+    // short TTL/SWR policy instead.
+    const response = await fetchImpl(input, {
+      ...init,
+      cache: init?.cache ?? 'no-store',
+      signal: controller.signal,
+    })
     responseContexts.set(response, context)
     return response
   } catch (err) {
@@ -416,16 +424,33 @@ export async function fetchPulseChannel(
   options?: { window?: 'recent' | 'full'; baseUrl?: string; streamId?: string },
 ): Promise<PulsePayload> {
   const root = options?.baseUrl ?? await getBackendUrl()
+  const normalizedLogin = login.trim().toLowerCase()
   const streamId = options?.streamId?.trim()
-  const exactStream = options?.window === 'full'
+  const exactStreamId = options?.window === 'full'
     && streamId
     && /^[A-Za-z0-9_-]{1,64}$/.test(streamId)
-  const url = exactStream
-    ? `${root}/v1/extension/pulse/streams/${encodeURIComponent(streamId)}?login=${encodeURIComponent(login)}&allowLiveBridge=true&window=full`
-    : `${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${options?.window === 'full' ? '?window=full' : ''}`
-  const res = await fetchWithTimeout(url, {
+    ? streamId
+    : undefined
+  const exactStreamRequest = Boolean(exactStreamId)
+  const channelUrl = `${root}/v1/extension/pulse/channels/${encodeURIComponent(normalizedLogin)}${options?.window === 'full' ? '?window=full' : ''}`
+  const url = exactStreamRequest
+    ? `${root}/v1/extension/pulse/streams/${encodeURIComponent(exactStreamId!)}?login=${encodeURIComponent(normalizedLogin)}&allowLiveBridge=true&window=full`
+    : channelUrl
+  let res = await fetchWithTimeout(url, {
     headers: await pulseRequestHeaders(false, root),
   })
+  let usedChannelFallback = false
+  // A hosted deployment may reject the exact-stream route while the channel
+  // Full route remains healthy. Treat 409 as an identity conflict, but never
+  // trust that fallback until the returned login and stream id are validated
+  // against this request below.
+  if (!res.ok && exactStreamRequest && (res.status === 404 || res.status === 405 || res.status === 409)) {
+    await releaseResponse(res)
+    res = await fetchWithTimeout(channelUrl, {
+      headers: await pulseRequestHeaders(false, root),
+    })
+    usedChannelFallback = true
+  }
   if (!res.ok) {
     await releaseResponse(res)
     throw new Error(`pulse ${res.status}`)
@@ -438,13 +463,13 @@ export async function fetchPulseChannel(
   if (typeof pulse.login !== 'string') {
     throw new Error('extension_api_invalid_pulse_payload')
   }
-  if (pulse.login.trim().toLowerCase() !== login.trim().toLowerCase()) {
+  if (pulse.login.trim().toLowerCase() !== normalizedLogin) {
     throw new Error('pulse_login_mismatch')
   }
   if (!Array.isArray(pulse.rollups)) {
     throw new Error('extension_api_invalid_pulse_payload')
   }
-  if (exactStream && String(pulse.streamId ?? '').trim() !== streamId) {
+  if (exactStreamRequest && String(pulse.streamId ?? '').trim() !== exactStreamId) {
     throw new Error('pulse_stream_mismatch')
   }
   const typedPayload = pulse as unknown as PulsePayload
@@ -452,7 +477,8 @@ export async function fetchPulseChannel(
   await pulseDebug('vod.pulse.api', 'pulse payload received', {
     login,
     window: options?.window ?? 'recent',
-    exactStream: Boolean(exactStream),
+    exactStream: exactStreamRequest,
+    channelFallback: usedChannelFallback,
     streamId: typedPayload.streamId ?? null,
     vodId: typedPayload.vodId ?? null,
     tracking: typedPayload.tracking,

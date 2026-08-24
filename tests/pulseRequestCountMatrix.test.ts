@@ -202,6 +202,38 @@ describe('production pulse GET_PULSE coordinator matrix', () => {
     expect(keys).toEqual(['xqc:full:-'])
   })
 
+  it('coalesces one Full sequence per stream activation and preserves recent on failure', async () => {
+    let fullFetches = 0
+    const recentPayload = fakePayload()
+    const recentEntry: PulseCacheEntry = {
+      payload: recentPayload,
+      fetchedAt: Date.now(),
+      window: 'recent',
+      streamId: 's1',
+    }
+    const state = createPulseCoordinatorState()
+    const deps = {
+      getCached: async (_login: string, window: PulseCacheWindow) => window === 'recent' ? recentEntry : null,
+      getCoverage: async () => null,
+      fetchPulse: async (_login: string, window: PulseCacheWindow) => {
+        expect(window).toBe('full')
+        fullFetches += 1
+        await new Promise(resolve => setTimeout(resolve, 15))
+        return { payload: null, coverageTier: null, error: 'pulse 409' }
+      },
+    }
+
+    const [first, second] = await Promise.all([
+      handleGetPulse({ login: 'xqc', window: 'full', streamId: 's1', explicitFull: true }, deps, state),
+      handleGetPulse({ login: 'xqc', window: 'full', streamId: 's1', explicitFull: true }, deps, state),
+    ])
+
+    expect(fullFetches).toBe(1)
+    expect(first.payload).toBe(recentPayload)
+    expect(second.payload).toBe(recentPayload)
+    expect(first.error).toBe('pulse 409')
+  })
+
   it('stored Full preference alone does not imply syncFetch when recent cache is fresh', async () => {
     // Activation with stored Full preference still polls recent until user unlocks.
     let fetches = 0

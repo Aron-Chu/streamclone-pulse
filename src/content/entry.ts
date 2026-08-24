@@ -18,8 +18,7 @@ import {
   isSameChannelActivationCurrent,
   isVodActivationCurrent,
 } from './activationGate.ts'
-import { createRouteSyncScheduler } from './routeSyncScheduler.ts'
-import { shouldScheduleChatGeometryFromMutations } from './twitchChat.ts'
+import { createRoutePathTracker, createRouteSyncScheduler } from './routeSyncScheduler.ts'
 
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
@@ -489,23 +488,35 @@ const routeSync = createRouteSyncScheduler(syncFromLocation, {
   maxWaitMs: NAV_MAX_WAIT_MS,
 })
 
-const observer = new MutationObserver(mutations => {
-  if (shouldScheduleChatGeometryFromMutations(mutations)) routeSync.schedule()
+const routePathTracker = createRoutePathTracker(window.location.pathname)
+
+function scheduleRouteSync(force = false): void {
+  const pathname = window.location.pathname
+  const pathChanged = routePathTracker.observe(pathname)
+  if (!force && !pathChanged) return
+  if (force) routePathTracker.mark(pathname)
+  routeSync.schedule()
+}
+
+// Chat geometry has its own filtered observer in twitchChat.ts. This observer
+// is only a fallback for URL changes that do not emit a history event.
+const observer = new MutationObserver(() => {
+  scheduleRouteSync()
 })
 
 observer.observe(document.documentElement, { childList: true, subtree: true })
-window.addEventListener('popstate', () => routeSync.schedule())
+window.addEventListener('popstate', () => scheduleRouteSync(true))
 
 const originalPushState = history.pushState.bind(history)
 history.pushState = (...args) => {
   originalPushState(...args)
-  routeSync.schedule()
+  scheduleRouteSync(true)
 }
 
 const originalReplaceState = history.replaceState.bind(history)
 history.replaceState = (...args) => {
   originalReplaceState(...args)
-  routeSync.schedule()
+  scheduleRouteSync(true)
 }
 
 setInterval(() => {

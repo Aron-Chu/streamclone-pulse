@@ -292,7 +292,7 @@ export function GamesPlayedStrip({
   }, [gameSlots.length, scrollState.maxScroll])
 
   useEffect(() => {
-    trackRef.current?.scrollTo({ left: 0, behavior: 'auto' })
+    trackRef.current?.scrollTo?.({ left: 0, behavior: 'auto' })
     setActiveKey(null)
     setSelectedKey(null)
     onSelectKey?.(null)
@@ -308,7 +308,19 @@ export function GamesPlayedStrip({
     if (activeKey && !validKeys.has(activeKey)) setActiveKey(null)
   }, [activeKey, gameSlots, onSelectKey, selectedKey])
 
-  if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) return null
+  if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
+    return (
+      <div data-games-played data-games-played-empty aria-label="Games played" style={styles.gamesEmpty}>
+        <div data-games-played-header style={styles.headerRow}>
+          <span data-games-played-label style={styles.gamesLabel}>Games played</span>
+          <span data-games-played-count style={styles.gameCount}>Unavailable</span>
+        </div>
+        <p data-games-played-empty-copy style={styles.emptyCopy}>
+          {segments.length > 0 ? 'Game metadata is unavailable for the visible stream.' : 'No game metadata is available for this stream yet.'}
+        </p>
+      </div>
+    )
+  }
 
   const displayedKey = activeKey ?? selectedKey
   const displayedSlot = displayedKey ? gameSlots.find(slot => gameSegmentKey(slot.segment) === displayedKey) : null
@@ -429,6 +441,7 @@ export function GamesPlayedStrip({
 
 const styles: Record<string, CSSProperties> = {
   gamesStrip: { display: 'grid', gap: 4, marginBottom: 2, minWidth: 0, width: '100%' },
+  gamesEmpty: { display: 'grid', gap: 4, marginBottom: 2, minWidth: 0, width: '100%' },
   headerRow: { ...GAMES_PLAYED_HEADER_LAYOUT.headerRow },
   gamesLabelShell: { alignItems: 'baseline', display: 'flex', gap: 6, ...GAMES_PLAYED_HEADER_LAYOUT.gamesLabelShell },
   gamesLabelName: { color: theme.textPrimary, flex: '0 1 auto', fontSize: 10, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
@@ -436,6 +449,7 @@ const styles: Record<string, CSSProperties> = {
   gamesLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' },
   headerTrail: { alignItems: 'center', display: 'flex', gap: 6, minWidth: 0, ...GAMES_PLAYED_HEADER_LAYOUT.headerTrail },
   gameCount: { color: theme.textSecondary, fontSize: 10, fontVariantNumeric: 'tabular-nums', fontWeight: 800, whiteSpace: 'nowrap' },
+  emptyCopy: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35, margin: 0 },
   headerNav: { display: 'flex', gap: 3 },
   headerArrow: { alignItems: 'center', background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 6, color: theme.textPrimary, cursor: 'pointer', display: 'flex', fontSize: 16, height: 24, justifyContent: 'center', lineHeight: 1, padding: 0, width: 24 },
   disabled: { cursor: 'default', opacity: 0.35 },

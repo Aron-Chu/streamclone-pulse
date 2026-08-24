@@ -3,6 +3,7 @@ import {
   GAMES_PLAYED_ART_WIDTH_PX,
   GAMES_PLAYED_CHIP_MIN_WIDTH_PX,
   GAMES_PLAYED_HIT_TARGET_HEIGHT_PX,
+  initialsForGame,
   resolveGameArtCandidates,
   resolveGamesPlayedActivationKey,
   safeGameArtUrl,
@@ -31,5 +32,11 @@ describe('GamesPlayedStrip equal chips', () => {
     expect(resolveGamesPlayedActivationKey('xqc|stream:one', 'old')).toBe('xqc|stream:one')
     expect(resolveGamesPlayedActivationKey(undefined, 'stream-two')).toBe('stream-two')
     expect(resolveGamesPlayedActivationKey(null, null)).toBeNull()
+  })
+
+  it('uses truthful game initials when official box art is unavailable', () => {
+    expect(initialsForGame('League of Legends')).toBe('LL')
+    expect(initialsForGame('Just Chatting')).toBe('JC')
+    expect(initialsForGame('')).toBe('?')
   })
 })

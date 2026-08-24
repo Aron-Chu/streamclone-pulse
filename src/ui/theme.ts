@@ -1124,19 +1124,14 @@ export const shadowStyles = `
   .pulse-settings-header-control:focus-visible .pulse-settings-gear-icon {
     transform: rotate(9deg);
   }
-  .sc-chart-root .sc-chart-plot {
-    transition: opacity 0.2s ease;
-  }
-  .sc-emote-plot-line {
-    transition: opacity 0.2s ease, stroke-opacity 0.2s ease;
-  }
-  .sc-hover-line,
-  .sc-playhead-line {
-    will-change: transform;
+  .pulse-chart-overview-path.pulse-chart-motion-enabled,
+  .pulse-chart-detail-path.pulse-chart-motion-enabled {
+    /* Crossfade stable SVG layers; never transition the path's d attribute. */
+    transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   @media (prefers-reduced-motion: reduce) {
-    .sc-chart-root .sc-chart-plot,
-    .sc-emote-plot-line {
+    .pulse-chart-overview-path,
+    .pulse-chart-detail-path {
       transition: none !important;
     }
     .pulse-settings-bottom-bar,

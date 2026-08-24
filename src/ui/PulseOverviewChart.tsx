@@ -78,6 +78,21 @@ export interface PulseOverviewChartProps {
   interactionResetKey?: string
 }
 
+/**
+ * Chart actions live beside the plot, so they must not be mistaken for a
+ * passive outside click. Keeping this as an explicit marker avoids treating
+ * every button in the surrounding Twitch panel as part of the chart.
+ */
+export function isChartActionPointerTarget(event: Pick<PointerEvent, 'composedPath' | 'target'>): boolean {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  const candidates = path.length > 0 ? path : [event.target]
+  return candidates.some(node => (
+    typeof Element !== 'undefined'
+    && node instanceof Element
+    && node.getAttribute('data-chart-action') === 'true'
+  ))
+}
+
 const DEFAULT_WIDTH = 320
 const DEFAULT_HEIGHT = 160
 const PAD_LEFT = 4
@@ -459,6 +474,10 @@ function PulseOverviewChartImpl({
         ? composedPath.includes(boundary)
         : boundary.contains(event.target as Node)
       if (isInsideBoundary) return
+      // Range, Full stream, picker, and viewport controls are outside the
+      // plot boundary but still belong to the chart. Let their click handlers
+      // run first; they clear the selection after accepting the action.
+      if (isChartActionPointerTarget(event)) return
       if (event.defaultPrevented) return
       clearHoverPreview()
       onClearSelection?.()
@@ -494,12 +513,13 @@ function PulseOverviewChartImpl({
     () => rollups.map(viewerObservedValue),
     [rollups],
   )
-  // The parent may know that viewer samples exist elsewhere in the full
-  // timeline. Only reserve the viewer lane when the current viewport contains
-  // a real sample, otherwise the chart spends space on an empty lane.
-  // Preserve an explicit zero sample as data. A zero-valued viewer lane is
-  // materially different from an unavailable viewer lane.
-  const showViewerStrip = showViewerStripProp && viewers.some(value => value != null)
+  // The parent may reserve this lane when viewer capability is known even
+  // before the first sample. Missing values stay blank/unavailable; an
+  // explicit zero remains a real sample.
+  const showViewerStrip = showViewerStripProp && (
+    viewers.some(value => value != null)
+    || viewerPeak != null
+  )
   const chat = useMemo(
     () => rollups.map(point => (point.missing ? null : (point.chatCount ?? 0) || null)),
     [rollups],
@@ -543,7 +563,6 @@ function PulseOverviewChartImpl({
     [emotes],
   )
 
-  const viewerMax = useMemo(() => seriesMax(viewers), [viewers])
   const chatMax = useMemo(() => seriesMax(chat), [chat])
   const emoteMax = useMemo(() => seriesMax(emotes), [emotes])
   const chatTrendAxisMax = Math.max(chatMax, 1)
@@ -687,11 +706,12 @@ function PulseOverviewChartImpl({
     })),
     [chartMinuteRollups, rollups, viewers],
   )
+  const viewerSamplesObserved = viewerTimedValues.some(point => point.value != null)
   // Viewer geometry uses the timestamp domain and explicit null segments. It
   // preserves sparse endpoints and does not imply continuity across a long
   // unobserved interval, while chat/emote lines retain their existing lanes.
   const viewerGeometry = useMemo(() => {
-    if (!showViewerStrip) return null
+    if (!showViewerStrip || !viewerSamplesObserved) return null
     const axisSpan = Math.max(1, viewerAxisMax - viewerAxisMin)
     return buildViewerGeometry(viewerTimedValues, viewerTimedValues, {
       width,
@@ -710,9 +730,9 @@ function PulseOverviewChartImpl({
     viewerAxisMin,
     viewerBandBottom,
     viewerBandTop,
+    viewerSamplesObserved,
     viewerTimedValues,
     width,
-    viewerMax,
   ])
   const viewerAreaPath = viewerGeometry?.idleAreaPathD ?? ''
   const viewerLinePath = viewerGeometry?.idlePathD ?? ''
@@ -804,11 +824,11 @@ function PulseOverviewChartImpl({
     previewVisibleIndex != null && previewVisibleIndex !== pinIndex ? previewVisibleIndex : null
 
   const activeIndex = pinIndex ?? listPreviewIndex
-  // Raw past/future detail paths render only for a committed inspection (pin or
-  // legend/preview). Direct pointer hover reveals marker/bars/readout imperatively
-  // while keeping the single smoothed line geometry — no double-painted underlay,
-  // and no React reconciliation per hovered bucket.
-  const detailActive = pinIndex != null || listPreviewIndex != null
+  // Only a committed pin switches the plotted signal layers to raw bucket detail.
+  // Direct pointer/list hover keeps the overview geometry stable and uses the
+  // crosshair/readout as its inspection cue, avoiding an aggressive path swap
+  // while a user is only previewing a moment.
+  const detailActive = pinIndex != null
   // Full-stream overview: attenuate resting signal strength so the dense full-range
   // timeline stays calm; zoomed ranges keep full strength.
   const viewportSpan = internalViewport.endSeconds - internalViewport.startSeconds
@@ -827,6 +847,9 @@ function PulseOverviewChartImpl({
   const markerFade = motionEnabled
     ? `opacity ${MARKER_FADE_MS}ms ${MARKER_FADE_EASING}`
     : undefined
+  const chartPathMotionClassName = motionEnabled ? ' pulse-chart-motion-enabled' : ''
+  const overviewPathClassName = `pulse-chart-overview-path${chartPathMotionClassName}`
+  const detailPathClassName = `pulse-chart-detail-path${chartPathMotionClassName}`
   const interactionLayerOpacity = activeIndex != null || highlightedGamePlotBounds != null ? 1 : 0
   const activeRollup = activeIndex != null ? visibleRollups[activeIndex] : undefined
   const activeViewerValue = activeIndex != null ? viewers[activeIndex] : null
@@ -1310,18 +1333,24 @@ function PulseOverviewChartImpl({
           {showViewerStrip && viewerAreaPath ? (
             <g clipPath={`url(#${svgIds.viewerClip})`}>
               <path
+                className={overviewPathClassName}
                 d={viewerAreaPath}
+                data-chart-path-state="overview"
                 fill={`url(#${svgIds.viewerGradient})`}
                 opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.06 : 0.03)}
               />
               <path
+                className={detailPathClassName}
                 d={viewerDetailAreaPath}
+                data-chart-path-state="detail"
                 fill="rgba(161, 161, 170, 0.12)"
                 opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 1 : 0)}
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
               />
               <path
+                className={detailPathClassName}
                 d={viewerDetailAreaPath}
+                data-chart-path-state="detail"
                 fill={`url(#${svgIds.viewerGradient})`}
                 opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0.14 : 0)}
                 clipPath={`url(#${svgIds.scrubPastClip})`}
@@ -1331,7 +1360,9 @@ function PulseOverviewChartImpl({
           {showViewerStrip && viewerLinePath ? (
             <g clipPath={`url(#${svgIds.viewerClip})`}>
               <path
+                className={overviewPathClassName}
                 d={viewerLinePath}
+                data-chart-path-state="overview"
                 data-chart-series="viewers"
                 fill="none"
                 stroke={CHART_THEME.viewer.color}
@@ -1341,8 +1372,10 @@ function PulseOverviewChartImpl({
                  opacity={seriesFocusOpacity(focusedSeriesKey, 'viewers', detailActive ? 0 : overviewRange ? 0.55 : 0.62)}
               />
               <path
+                className={detailPathClassName}
                 d={viewerDetailLinePath}
                 data-chart-layer="detail-future"
+                data-chart-path-state="detail"
                 fill="none"
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
@@ -1352,8 +1385,10 @@ function PulseOverviewChartImpl({
                 clipPath={`url(#${svgIds.scrubFutureClip})`}
               />
               <path
+                className={detailPathClassName}
                 d={viewerDetailLinePath}
                 data-chart-layer="detail-past"
+                data-chart-path-state="detail"
                 fill="none"
                 stroke={CHART_THEME.viewer.color}
                 strokeLinecap="round"
@@ -1454,7 +1489,9 @@ function PulseOverviewChartImpl({
             </g>
             {emoteLinePath ? (
               <path
+                className={overviewPathClassName}
                 d={emoteLinePath}
+                data-chart-path-state="overview"
                 data-chart-series="emotes"
                 fill="none"
                 stroke={CHART_THEME.emote.color}
@@ -1471,7 +1508,9 @@ function PulseOverviewChartImpl({
             ) : null}
             {emoteDetailLinePath ? (
               <path
+                className={detailPathClassName}
                 d={emoteDetailLinePath}
+                data-chart-path-state="detail"
                 fill="none"
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
@@ -1484,7 +1523,9 @@ function PulseOverviewChartImpl({
             ) : null}
             {emoteDetailLinePath ? (
               <path
+                className={detailPathClassName}
                 d={emoteDetailLinePath}
+                data-chart-path-state="detail"
                 fill="none"
                 stroke={CHART_THEME.emote.color}
                 strokeLinecap="round"
@@ -1515,7 +1556,9 @@ function PulseOverviewChartImpl({
             </g>
             {chatLinePath ? (
               <path
+                className={overviewPathClassName}
                 d={chatLinePath}
+                data-chart-path-state="overview"
                 data-chart-series="chat"
                 fill="none"
                 stroke={CHART_THEME.chat.line}
@@ -1532,8 +1575,10 @@ function PulseOverviewChartImpl({
             ) : null}
             {chatDetailLinePath ? (
               <path
+                className={detailPathClassName}
                 d={chatDetailLinePath}
                 data-chart-layer="detail-future"
+                data-chart-path-state="detail"
                 fill="none"
                 stroke={SCRUB_FUTURE_STROKE}
                 strokeLinecap="round"
@@ -1546,8 +1591,10 @@ function PulseOverviewChartImpl({
             ) : null}
             {chatDetailLinePath ? (
               <path
+                className={detailPathClassName}
                 d={chatDetailLinePath}
                 data-chart-layer="detail-past"
+                data-chart-path-state="detail"
                 fill="none"
                 stroke={CHART_THEME.chat.line}
                 strokeLinecap="round"
@@ -1567,8 +1614,9 @@ function PulseOverviewChartImpl({
               return (
                 <g key={series.key}>
                   <path
-                    className="sc-emote-plot-line"
+                    className={`sc-emote-plot-line ${overviewPathClassName}`}
                     d={series.path}
+                    data-chart-path-state="overview"
                     fill="none"
                     stroke={series.color}
                     strokeLinecap="round"
@@ -1582,7 +1630,9 @@ function PulseOverviewChartImpl({
                      )}
                    />
                    <path
+                     className={detailPathClassName}
                      d={series.detailPath}
+                     data-chart-path-state="detail"
                      fill="none"
                      stroke={SCRUB_FUTURE_STROKE}
                      strokeLinecap="round"
@@ -1596,9 +1646,11 @@ function PulseOverviewChartImpl({
                      )}
                     clipPath={`url(#${svgIds.scrubFutureClip})`}
                   />
-                  <path
-                    d={series.detailPath}
-                    fill="none"
+                   <path
+                     className={detailPathClassName}
+                     d={series.detailPath}
+                     data-chart-path-state="detail"
+                     fill="none"
                     stroke={series.color}
                     strokeLinecap="round"
                     strokeLinejoin="round"

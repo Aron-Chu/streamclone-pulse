@@ -35,7 +35,12 @@ import {
   type PulseCacheWindow,
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
-import { resolvePulsePanelSections } from './pulsePanelLayout.ts'
+import {
+  pulseSurfaceStatusLabel,
+  resolvePulsePanelSections,
+  resolvePulsePanelSurfaceState,
+  type PulsePanelSurfaceState,
+} from './pulsePanelLayout.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
@@ -544,8 +549,17 @@ function OverlayMain({
         warming,
         pageIsLive,
         pulseLiveAccess: pulseLiveAccess.state,
+        error,
+        pulseSupported,
       })
     : null
+  const panelSurfaceState = resolvePulsePanelSurfaceState({
+    payload,
+    error,
+    pageIsLive,
+    pulseLiveAccess: pulseLiveAccess.state,
+    pulseSupported,
+  })
   const recapCoverageTier = coverageTierState
   const recapUiState = payload
     ? resolveRecapUiState({
@@ -565,23 +579,19 @@ function OverlayMain({
   const showSidebarTabs = sidebarSnapped && resolvedPlacement === 'sidebar' && sidebarPart !== 'body'
   const sidebarBodyOnly = sidebarPart === 'body'
   const isVodPage = context.kind === 'vod' && payload?.mode !== 'live_dvr'
-  const hasLivePanel = Boolean(
-    !error && payload && pulseSupported && pulseLiveAccess.state === 'full_live',
-  )
   const hasRecapPanel = Boolean(
-    !error && payload && pulseSupported && panelSections?.showRecap,
+    payload
+    && pulseSupported
+    && panelSections?.showRecap
+    && panelSurfaceState !== 'identity_mismatch',
   )
   const showHostedOfflineFallback = Boolean(
     !isVodPage
-    && sidebarBodyOnly
-    && !uiIsLive
-    && hostedBackend
     && payload
-    && !error
-    && pulseSupported
-    && !hasLivePanel
+    && panelSections?.showOffline
     && !hasRecapPanel,
   )
+  const canRenderPayload = Boolean(payload && panelSurfaceState !== 'identity_mismatch')
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
   const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < 360
   const shellClass = [
@@ -1439,6 +1449,7 @@ function OverlayMain({
         >
       <StreamPulseHeader
         isLive={uiIsLive}
+        surfaceState={panelSurfaceState}
         pulseLiveAccess={pulseLiveAccess.state}
         pulseSupported={pulseSupported}
         trackBusy={trackBusy}
@@ -1455,9 +1466,9 @@ function OverlayMain({
       />
 
       {showHostedOfflineFallback ? (
-        <PulseSectionCard title="Channel offline" titleTone="muted">
+        <PulseSectionCard title="Channel offline" titleTone="muted" className="pulse-offline-state">
           <p style={styles.stateText}>
-            No live Pulse session for this channel right now. Check back when they go live, or use Analytics Hub above to browse tracked channels.
+            No live Pulse session or recap is available for <strong>{login}</strong> right now. Check back when they go live, or use Analytics Hub above to browse tracked channels.
           </p>
           <div style={styles.footerActions}>
             <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>
@@ -1483,17 +1494,25 @@ function OverlayMain({
         <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openSettings} />
       ) : null}
 
+      {error && payload && panelSurfaceState !== 'identity_mismatch' ? (
+        <PulseRefreshError error={error} onRetry={() => void refreshPulse()} />
+      ) : null}
+
+      {panelSurfaceState === 'identity_mismatch' ? (
+        <PulseIdentityMismatchPanel login={login} onRetry={() => void refreshPulse()} />
+      ) : null}
+
       {softStaleRefreshWarning && payload ? (
         <div role="status" style={styles.softStaleBanner}>
           Live refresh paused briefly — showing last good chart.
         </div>
       ) : null}
 
-      {!error && payload && !pulseSupported ? (
+      {payload && !pulseSupported ? (
         <PulseRosterUnsupportedPanel login={login} />
       ) : null}
 
-      {!error && !isVodPage && hostedBackend && uiIsLive && pulseSupported && pulseLiveAccess.state !== 'full_live' ? (
+      {!isVodPage && hostedBackend && uiIsLive && pulseSupported && panelSurfaceState === 'live_untracked' ? (
         <PulseNotTrackedPanel
           login={login}
           hostedActiveCount={pulseLiveAccess.hostedActiveCount}
@@ -1501,7 +1520,7 @@ function OverlayMain({
         />
       ) : null}
 
-      {!error && !isVodPage && !hostedBackend && payload && pulseSupported && pulseLiveAccess.state === 'not_irc_tracked' ? (
+      {!isVodPage && !hostedBackend && payload && pulseSupported && panelSurfaceState === 'live_untracked' ? (
         <PulseLiveUnavailablePanel
           variant="not_irc_tracked"
           login={login}
@@ -1512,7 +1531,7 @@ function OverlayMain({
         />
       ) : null}
 
-      {!error && !isVodPage && !hostedBackend && payload && pulseSupported && pulseLiveAccess.state === 'late_session' ? (
+      {!isVodPage && !hostedBackend && payload && pulseSupported && panelSurfaceState === 'live_late' ? (
         <PulseLiveUnavailablePanel
           variant="late_session"
           login={login}
@@ -1523,7 +1542,7 @@ function OverlayMain({
         />
       ) : null}
 
-      {!error && !isVodPage && payload && pulseSupported && pulseLiveAccess.state === 'full_live' ? (
+      {!isVodPage && canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live' ? (
         <>
           {displayPayload && (panelSections?.showLiveStatsBand || panelSections?.showMostReacted) ? (
             <div>
@@ -1534,10 +1553,10 @@ function OverlayMain({
                   sidebarFill={sidebarSnapped}
                   compact={metricsCompact && !sidebarSnapped}
                   coverageStartOffsetSeconds={coverageStart}
-                  currentOffsetSeconds={payload.currentOffsetSeconds}
+                  currentOffsetSeconds={payload?.currentOffsetSeconds ?? 0}
                   isLive={uiIsLive}
                   fullTimeline={fullTimeline}
-                  showLoadFromStart={!hostedBackend && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking })}
+                  showLoadFromStart={!hostedBackend && Boolean(payload && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking }))}
                   loadFromStartBusy={missedBusy}
                   onLoadFromStart={() => void loadStreamFromStart()}
                   onJumpToOffset={jumpToOffset}
@@ -1601,7 +1620,7 @@ function OverlayMain({
         </>
       ) : null}
 
-      {isVodPage && !hasRecapPanel ? (
+      {isVodPage && !hasRecapPanel && panelSurfaceState !== 'identity_mismatch' ? (
         <VodPulseStatusCard
           vodPulse={vodPulse}
           loading={vodPulseLoading}
@@ -1610,7 +1629,7 @@ function OverlayMain({
         />
       ) : null}
 
-      {!error && payload && pulseSupported ? (
+      {canRenderPayload && pulseSupported ? (
         <>
           {panelSections?.showRecap && payload ? (
             <StreamRecapSection
@@ -1638,7 +1657,7 @@ function OverlayMain({
           <PastVodsSection
             login={login}
             backendUrl={backendUrl}
-            liveStreamId={payload.streamId}
+            liveStreamId={payload?.streamId}
             isLive={uiIsLive}
             channelOffline={!uiIsLive}
             onOpenFromStart={openStreamStartToLive}
@@ -1687,6 +1706,7 @@ function OverlayMain({
 
 function StreamPulseHeader({
   isLive,
+  surfaceState,
   pulseLiveAccess,
   pulseSupported,
   trackBusy,
@@ -1702,6 +1722,7 @@ function StreamPulseHeader({
   onHide,
 }: {
   isLive: boolean
+  surfaceState: PulsePanelSurfaceState
   pulseLiveAccess: import('./resolvePulseLiveAccess.ts').PulseLiveAccessState
   pulseSupported: boolean
   trackBusy: boolean
@@ -1723,19 +1744,7 @@ function StreamPulseHeader({
   const autoUpdateStyle = sidebarFill ? styles.autoUpdateLabelFull : styles.autoUpdateLabel
   const iconRowStyle = sidebarFill ? styles.headerIconRowFull : styles.headerIconRow
 
-  const statusLabel = hostedBackend
-    ? pulseLiveAccess === 'full_live'
-      ? 'Live chart'
-      : 'Not tracked'
-    : !pulseSupported
-      ? 'Limited roster'
-      : pulseLiveAccess === 'full_live'
-        ? 'Live chart'
-        : pulseLiveAccess === 'late_session'
-          ? 'Joined late'
-          : pulseLiveAccess === 'not_irc_tracked'
-            ? 'Not in IRC pool'
-            : 'Pulse'
+  const statusLabel = pulseSurfaceStatusLabel(surfaceState)
 
   return (
     <header style={headerStyle}>
@@ -2086,6 +2095,28 @@ function BackendError({ backendUrl, onRetry, onSettings }: { backendUrl: string;
   )
 }
 
+function PulseRefreshError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div role="status" className="pulse-refresh-error" style={styles.refreshError}>
+      <span>{formatPulseApiError(error) ?? 'The latest Pulse refresh failed; showing the last good data.'}</span>
+      <button type="button" style={styles.textButtonLarge} onClick={onRetry}>Retry</button>
+    </div>
+  )
+}
+
+function PulseIdentityMismatchPanel({ login, onRetry }: { login: string; onRetry: () => void }) {
+  return (
+    <PulseSectionCard title="Stream changed" titleTone="muted" className="pulse-identity-mismatch-state">
+      <p style={styles.stateText}>
+        StreamPulse received data for a different broadcast while refreshing <strong>{login}</strong>. The previous stream was not reused.
+      </p>
+      <div style={styles.footerActions}>
+        <button type="button" style={styles.secondaryButton} onClick={onRetry}>Refresh current stream</button>
+      </div>
+    </PulseSectionCard>
+  )
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US', { notation: value >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value)
 }
@@ -2181,6 +2212,21 @@ const styles: Record<string, CSSProperties> = {
   progressFill: { background: 'var(--pulse-accent-soft, #a78bfa)', borderRadius: 999, display: 'block', height: '100%' },
   errorBlock: { background: '#1f1f27', borderRadius: 12, padding: 16 },
   errorTitle: { color: '#f87171', fontSize: 18, margin: '0 0 10px' },
+  refreshError: {
+    alignItems: 'center',
+    background: 'rgba(245, 158, 11, 0.1)',
+    border: '1px solid rgba(245, 158, 11, 0.28)',
+    borderRadius: 8,
+    color: '#fcd34d',
+    display: 'flex',
+    flexWrap: 'wrap',
+    fontSize: 11,
+    fontWeight: 700,
+    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    padding: '7px 9px',
+  },
   notice: { background: '#2a2440', border: '1px solid #3f3f50', borderRadius: 10, color: 'var(--pulse-accent-soft, #c4b5fd)', fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
   noticeWarn: { background: 'rgba(249,115,22,0.12)', borderColor: 'rgba(249,115,22,0.35)', color: '#fdba74' },
   noticeOk: { background: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.35)', color: '#86efac' },

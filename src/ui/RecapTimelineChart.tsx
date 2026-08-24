@@ -134,10 +134,8 @@ export function RecapTimelineChart({
       : (!hasFullRollups || fullRollupsMissingStreamPrefix(payload)) && timelineLoading
         ? 'Loading full stream…'
         : null
-  // A measured zero is still viewer data. Keep the lane visible for quiet
-  // recap minutes, while omitted/missing samples remain an honest gap.
   const showViewerStrip = minuteRollups.some(
-    rollup => !rollup.missing && typeof rollup.viewerCount === 'number' && Number.isFinite(rollup.viewerCount),
+    rollup => !rollup.missing && typeof rollup.viewerCount === 'number',
   )
   const chartCoverageStartSeconds = Math.max(
     0,
@@ -253,10 +251,11 @@ export function RecapTimelineChart({
 
   const chartInteractionRef = useRef<HTMLDivElement | null>(null)
 
-  const handleClearChartHover = useCallback((): void => {
+  const handleClearChartSelection = useCallback((): void => {
     setChartHoverOffsetSeconds(null)
     onClearSelection?.()
   }, [onClearSelection])
+  const handleClearChartHover = handleClearChartSelection
 
   useEffect(() => {
     fullTimelineRequestedRef.current = false
@@ -317,6 +316,7 @@ export function RecapTimelineChart({
   }, [selectPointAtIndex])
 
   function toggleEmotePlot(emote: ExtensionEmote): void {
+    handleClearChartSelection()
     const key = emoteSelectionKey(emote)
     setSelectedEmoteKeys(current => toggleEmotePlotKeys(current, key, MAX_PLOTTED_EMOTES))
   }
@@ -344,6 +344,7 @@ export function RecapTimelineChart({
 
   const changeChartZoom = useCallback((direction: 'in' | 'out'): void => {
     if (chartDurationSeconds <= 0) return
+    handleClearChartSelection()
     const availableDuration = Math.max(0, chartDurationSeconds - chartCoverageStartSeconds)
     const currentDuration = viewportDurationSeconds(chartViewportForRender)
     const nextDuration = direction === 'in'
@@ -355,15 +356,22 @@ export function RecapTimelineChart({
       durationSeconds: chartDurationSeconds,
       coverageStartSeconds: chartCoverageStartSeconds,
     }))
-  }, [chartCoverageStartSeconds, chartDurationSeconds, chartViewportForRender, handleChartViewportChange])
+  }, [
+    chartCoverageStartSeconds,
+    chartDurationSeconds,
+    chartViewportForRender,
+    handleChartViewportChange,
+    handleClearChartSelection,
+  ])
 
   const resetChartViewport = useCallback((): void => {
+    handleClearChartSelection()
     handleChartViewportChange(resolveViewport({
       durationSeconds: chartDurationSeconds,
       zoomSeconds: 'full',
       coverageStartSeconds: chartCoverageStartSeconds,
     }))
-  }, [chartCoverageStartSeconds, chartDurationSeconds, handleChartViewportChange])
+  }, [chartCoverageStartSeconds, chartDurationSeconds, handleChartViewportChange, handleClearChartSelection])
 
   const chartRailVisible = shouldShowChartRail(chartViewportForRender, chartDurationSeconds)
   const chartAtAvailableRange = chartViewportForRender.startSeconds <= chartCoverageStartSeconds + 5
@@ -390,6 +398,7 @@ export function RecapTimelineChart({
               ...(tracesExpanded ? styles.expandButtonActive : null),
             }}
             onClick={() => {
+              handleClearChartSelection()
               if (tracesExpanded) {
                 setFocusedSeriesKey(null)
                 chartExpansion.reset()
@@ -418,6 +427,7 @@ export function RecapTimelineChart({
                     key={key}
                     type="button"
                     className="pulse-chart-overlay-legend-chip"
+                    data-chart-action="true"
                     style={{
                       ...styles.overlayLegendChip,
                       borderColor: plotColor,
@@ -514,6 +524,7 @@ export function RecapTimelineChart({
                 <button
                   type="button"
                   data-chart-zoom-out
+                  data-chart-action="true"
                   style={styles.chartZoomButton}
                   disabled={viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartDurationSeconds - chartCoverageStartSeconds) - 5}
                   aria-label="Zoom out recap chart"
@@ -524,6 +535,7 @@ export function RecapTimelineChart({
                 <button
                   type="button"
                   data-chart-zoom-reset
+                  data-chart-action="true"
                   style={styles.chartZoomReset}
                   disabled={chartAtAvailableRange}
                   onClick={resetChartViewport}
@@ -533,6 +545,7 @@ export function RecapTimelineChart({
                 <button
                   type="button"
                   data-chart-zoom-in
+                  data-chart-action="true"
                   style={styles.chartZoomButton}
                   disabled={viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartDurationSeconds - chartCoverageStartSeconds))}
                   aria-label="Zoom in recap chart"
@@ -546,20 +559,25 @@ export function RecapTimelineChart({
         </div>
 
       {topEmotesForPicker.length > 0 ? (
-        <SevenTvEmotePanel
-          expanded={emotePanelExpanded}
-          onToggleExpanded={() => setEmotePanelExpanded(open => !open)}
-          backendUrl={backendUrl}
-          rollups={minuteRollups}
-          topEmotes={topEmotesForPicker}
-          selectedKeys={selectedEmoteKeys}
-          onToggleEmote={toggleEmotePlot}
-          selectedOffsetSeconds={pinRollup?.offsetSeconds ?? null}
-          sidebarCompact
-          selectedPlotColors={selectedPlotColors}
-          maxSelected={MAX_PLOTTED_EMOTES}
-          rollupsLoading={timelineLoadingFlag}
-        />
+        <div data-chart-action="true">
+          <SevenTvEmotePanel
+            expanded={emotePanelExpanded}
+            onToggleExpanded={() => {
+              handleClearChartSelection()
+              setEmotePanelExpanded(open => !open)
+            }}
+            backendUrl={backendUrl}
+            rollups={minuteRollups}
+            topEmotes={topEmotesForPicker}
+            selectedKeys={selectedEmoteKeys}
+            onToggleEmote={toggleEmotePlot}
+            selectedOffsetSeconds={pinRollup?.offsetSeconds ?? null}
+            sidebarCompact
+            selectedPlotColors={selectedPlotColors}
+            maxSelected={MAX_PLOTTED_EMOTES}
+            rollupsLoading={timelineLoadingFlag}
+          />
+        </div>
       ) : null}
 
       {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}

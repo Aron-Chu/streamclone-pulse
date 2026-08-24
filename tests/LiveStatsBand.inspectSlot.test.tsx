@@ -68,29 +68,27 @@ describe('LiveStatsBand chart layout', () => {
     )
     const activityIdx = markup.indexOf('Stream activity')
     const gamesIdx = markup.indexOf('data-games-played="true"')
+    const toolbarIdx = markup.indexOf('data-chart-toolbar="true"')
     const chartIdx = markup.indexOf('data-testid="pulse-overview-chart"')
+    const viewportIdx = markup.indexOf('data-chart-viewport-controls="true"')
     const plotIdx = markup.indexOf('Plot on chart')
     expect(activityIdx).toBeGreaterThan(-1)
     expect(gamesIdx).toBeGreaterThan(-1)
+    expect(toolbarIdx).toBeGreaterThan(-1)
     expect(chartIdx).toBeGreaterThan(-1)
+    expect(viewportIdx).toBeGreaterThan(-1)
     expect(plotIdx).toBeGreaterThan(-1)
     expect(activityIdx).toBeLessThan(gamesIdx)
-    expect(gamesIdx).toBeLessThan(chartIdx)
+    expect(gamesIdx).toBeLessThan(toolbarIdx)
+    expect(toolbarIdx).toBeLessThan(chartIdx)
+    expect(chartIdx).toBeLessThan(viewportIdx)
     expect(chartIdx).toBeLessThan(plotIdx)
   })
 
-  it('keeps range controls below Games Played and above the chart', () => {
-    const payload = makePayload([])
-    payload.games = [{
-      id: 'game-1',
-      categoryId: '509658',
-      gameName: 'Just Chatting',
-      offsetSeconds: 0,
-      durationSeconds: 600,
-    }]
+  it('keeps variable coverage metadata below the chart beside viewport controls', () => {
     const markup = renderToStaticMarkup(
       <LiveStatsBand
-        payload={payload}
+        payload={makePayload([])}
         backendUrl="http://localhost:8081"
         currentOffsetSeconds={600}
         onJumpMoment={vi.fn()}
@@ -99,16 +97,55 @@ describe('LiveStatsBand chart layout', () => {
       />,
     )
     const chartIdx = markup.indexOf('data-testid="pulse-overview-chart"')
-    const gamesIdx = markup.indexOf('data-games-played="true"')
-    const rangeIdx = markup.indexOf('data-chart-range-controls')
-    const viewportIdx = markup.indexOf('data-chart-viewport-controls')
+    const rangeIdx = markup.indexOf('data-chart-visible-range')
+    const viewportIdx = markup.indexOf('data-chart-viewport-controls="true"')
     expect(chartIdx).toBeGreaterThan(-1)
-    expect(gamesIdx).toBeGreaterThan(-1)
     expect(rangeIdx).toBeGreaterThan(-1)
     expect(viewportIdx).toBeGreaterThan(-1)
-    expect(gamesIdx).toBeLessThan(rangeIdx)
-    expect(rangeIdx).toBeLessThan(chartIdx)
+    expect(chartIdx).toBeLessThan(rangeIdx)
+    expect(chartIdx).toBeLessThan(viewportIdx)
     expect(rangeIdx).toBeLessThan(markup.indexOf('Plot on chart'))
+  })
+
+  it('keeps an unavailable viewer token out of the compact one-line readout', () => {
+    const markup = renderToStaticMarkup(
+      <LiveStatsBand
+        payload={makePayload([refinedPeak])}
+        backendUrl="http://localhost:8081"
+        currentOffsetSeconds={600}
+        pinOffsetSeconds={120}
+        onJumpMoment={vi.fn()}
+        onOpenAnalytics={vi.fn()}
+        onPinOffset={vi.fn()}
+      />,
+    )
+    const readoutStart = markup.indexOf('data-chart-readout="true"')
+    const readoutEnd = markup.indexOf('</p>', readoutStart)
+    expect(readoutStart).toBeGreaterThan(-1)
+    expect(markup.slice(readoutStart, readoutEnd)).not.toContain('viewers')
+    expect(markup.slice(readoutStart, readoutEnd)).toContain('chat')
+    expect(markup.slice(readoutStart, readoutEnd)).toContain('emotes')
+    expect(markup.slice(Math.max(0, readoutStart - 240), readoutEnd)).toContain('white-space:nowrap')
+  })
+
+  it('keeps the rail and zoom controls visible for a short full-range chart', () => {
+    const payload = makePayload([])
+    payload.currentOffsetSeconds = 60
+    payload.rollups = payload.rollups.slice(0, 1)
+    const markup = renderToStaticMarkup(
+      <LiveStatsBand
+        payload={payload}
+        backendUrl="http://localhost:8081"
+        currentOffsetSeconds={60}
+        onJumpMoment={vi.fn()}
+        onOpenAnalytics={vi.fn()}
+        onPinOffset={vi.fn()}
+      />,
+    )
+    expect(markup).toContain('data-chart-rail="true"')
+    expect(markup).toContain('data-chart-zoom-out="true"')
+    expect(markup).toContain('data-chart-zoom-reset="true"')
+    expect(markup).toContain('data-chart-zoom-in="true"')
   })
 
   it('pins the chart index without rendering the removed legacy moment tray', () => {

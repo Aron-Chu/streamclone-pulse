@@ -11,6 +11,27 @@ import type { ExtensionEmote, ExtensionGameSegment, ExtensionRollup } from '../s
 import type { GamesPlayedVisibleRange } from './GamesPlayedStrip.tsx'
 import { emoteSelectionKey } from './chatActivityEmotes.ts'
 
+/** Normalize runtime viewer values without collapsing missing data into zero. */
+export function extensionViewerCount(value: unknown): number | undefined {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    ? value
+    : undefined
+}
+
+export function extensionRollupViewerCount(rollup: Pick<ExtensionRollup, 'viewerCount' | 'missing'>): number | undefined {
+  if (rollup.missing) return undefined
+  return extensionViewerCount(rollup.viewerCount)
+}
+
+/** True only when at least one real, non-missing viewer sample exists. */
+export function hasExtensionViewerSamples(
+  rollups: Array<Pick<ExtensionRollup, 'viewerCount' | 'missing'>>,
+): boolean {
+  return rollups.some(rollup => extensionRollupViewerCount(rollup) !== undefined)
+}
+
 function minuteTsFromOffset(startedAt: string | undefined, offsetSeconds: number): string {
   if (startedAt) {
     const startMs = Date.parse(startedAt)
@@ -32,11 +53,7 @@ export function extensionRollupsToChartMinutes(
       if (!key) continue
       emotes[key] = (emotes[key] ?? 0) + (emote.count ?? 0)
     }
-    const viewerCount = typeof rollup.viewerCount === 'number'
-      && Number.isFinite(rollup.viewerCount)
-      && rollup.viewerCount >= 0
-      ? rollup.viewerCount
-      : undefined
+    const viewerCount = extensionRollupViewerCount(rollup)
     const chartMinute: ChartMinuteRollup = {
       minuteTs: minuteTsFromOffset(startedAt, rollup.offsetSeconds),
       finalized: rollup.finalized,

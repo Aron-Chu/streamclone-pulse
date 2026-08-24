@@ -1,6 +1,64 @@
 import type { ExtensionEmote, ExtensionGameSegment, ExtensionPeak, ExtensionRollup, PulseCoverage, PulsePayload } from '../shared/messages.ts'
 import { makeFullHistoryActivation, sameFullHistoryActivation } from '../shared/fullHistoryAuth.ts'
 
+export type PulsePayloadMergeSource = 'recent' | 'full'
+
+export interface PulsePayloadMergeOptions {
+  /** Explicit transport source; omitted callers retain shape-based compatibility. */
+  source?: PulsePayloadMergeSource
+}
+
+const RECENT_AUTHORITATIVE_FIELDS = [
+  'login',
+  'streamId',
+  'vodId',
+  'isLive',
+  'tracking',
+  'mode',
+  'provisional',
+  'resolutionState',
+  'retryable',
+  'currentOffsetSeconds',
+  'startedAt',
+  'endedAt',
+  'latestEndedAt',
+  'title',
+  'category',
+  'durationSeconds',
+  'coverageStartOffsetSeconds',
+  'viewerStartOffsetSeconds',
+  'helixEnabled',
+  'rosterEligible',
+  'top500Eligible',
+] as const satisfies readonly (keyof PulsePayload)[]
+
+function preserveRecentAuthoritativeFields(
+  previous: PulsePayload,
+  incoming: PulsePayload,
+  source: PulsePayloadMergeSource,
+  sameSurface: boolean,
+  sameActivation: boolean,
+): PulsePayload {
+  if (source !== 'full' || !sameSurface || !sameActivation) return incoming
+
+  // Full history is enrichment. A response can be archival or stale even when
+  // its rollups belong to the same stream, so recent live identity/status wins.
+  const next: Record<string, unknown> = { ...incoming }
+  for (const field of RECENT_AUTHORITATIVE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(previous, field)) {
+      next[field] = previous[field]
+    }
+  }
+  // A live recent payload may legitimately omit end timestamps. Do not let a
+  // stale Full response manufacture an ended-looking payload while isLive is
+  // retained as true.
+  if (previous.isLive === true) {
+    if (!Object.prototype.hasOwnProperty.call(previous, 'endedAt')) delete next.endedAt
+    if (!Object.prototype.hasOwnProperty.call(previous, 'latestEndedAt')) delete next.latestEndedAt
+  }
+  return next as unknown as PulsePayload
+}
+
 function samePayloadValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true
   if (a === null || b === null || typeof a !== typeof b) return false
@@ -219,10 +277,21 @@ function mergeRollupsByOffset(previous: ExtensionRollup[], incoming: ExtensionRo
   return [...byOffset.values()].sort((a, b) => a.offsetSeconds - b.offsetSeconds)
 }
 
-/** Keep full-stream rollups when a lightweight recent poll returns a slimmer payload. */
-export function mergePulsePayload(previous: PulsePayload | null | undefined, incoming: PulsePayload): PulsePayload {
+/**
+ * Merge a payload without letting a Full-history enrichment downgrade recent
+ * live truth or let a recent poll discard validated same-stream Full rollups.
+ */
+export function mergePulsePayload(
+  previous: PulsePayload | null | undefined,
+  incoming: PulsePayload,
+  options: PulsePayloadMergeOptions = {},
+): PulsePayload {
   if (!previous) return incoming
 
+  // The response envelope predates explicit source metadata. Full responses
+  // carry fullRollups, so retain that inference for existing callers while
+  // allowing request-aware callers/tests to pass the source explicitly.
+  const source = options.source ?? (incoming.fullRollups !== undefined ? 'full' : 'recent')
   const sameSurface = samePayloadSurface(previous, incoming)
   const sameActivation = sameFullHistoryActivation(
     makeFullHistoryActivation(previous),
@@ -233,9 +302,11 @@ export function mergePulsePayload(previous: PulsePayload | null | undefined, inc
   // Recent responses omit fullRollups when they intentionally provide only a
   // recent tail. A full-window response supplies the field, including [] on a
   // validated empty/error result; never use array length as provenance.
-  const mergedFull = incoming.fullRollups === undefined
-    ? prevFull
-    : incoming.fullRollups
+  const mergedFull = source === 'full'
+    ? incoming.fullRollups === undefined
+      ? prevFull
+      : incoming.fullRollups
+    : prevFull ?? (sameActivation ? incoming.fullRollups : undefined)
 
   const mergedRollups = sameSurface
     ? mergeRollupsByOffset(previous.rollups, incoming.rollups)
@@ -275,9 +346,9 @@ export function mergePulsePayload(previous: PulsePayload | null | undefined, inc
     : mergedCoverage
 
   const next: PulsePayload = {
-    ...incoming,
+    ...preserveRecentAuthoritativeFields(previous, incoming, source, sameSurface, sameActivation),
     rollups,
-    fullRollups: fullRollups?.length ? fullRollups : incoming.fullRollups,
+    fullRollups,
     coverage: stableCoverage,
     peaks,
     games,

@@ -180,6 +180,40 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('chart zoom performs on the first click after a moment is pinned', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    await expect
+      .poll(async () => (await probeChart(extension.page)).svg, { timeout: 20_000 })
+      .not.toBeNull()
+
+    const box = (await probeChart(extension.page)).svg!
+    await extension.page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .not.toBeNull()
+
+    const spanBefore = viewportSpan(await probeChart(extension.page))
+    const zoomIn = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-in]`)
+    await expect(zoomIn).toBeVisible()
+    await expect(zoomIn).toBeEnabled()
+    await zoomIn.click()
+
+    await expect
+      .poll(async () => viewportSpan(await probeChart(extension.page)), { timeout: 5_000 })
+      .toBeLessThan(spanBefore)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .toBeNull()
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('recap charts expose the same bounded rail and outside-click clearing', async ({
     extension,
     prepare,
@@ -453,7 +487,7 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
-  test('keeps Games Played and range controls above the plot and opens settings from the bottom bar', async ({
+  test('keeps Games Played above the plot and opens settings from the bottom bar', async ({
     extension,
     prepare,
     evidence,

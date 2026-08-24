@@ -11,6 +11,29 @@ import { theme } from './theme.ts'
 
 const INITIAL_VISIBLE_EMOTES = 12
 
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ))
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduced(mediaQuery.matches)
+    onChange()
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', onChange)
+      return () => mediaQuery.removeEventListener('change', onChange)
+    }
+    mediaQuery.addListener(onChange)
+    return () => mediaQuery.removeListener(onChange)
+  }, [])
+
+  return reduced
+}
+
 export interface SevenTvEmotePanelProps {
   expanded: boolean
   onToggleExpanded: () => void
@@ -49,6 +72,7 @@ export function SevenTvEmotePanel({
   rollupsLoading = false,
 }: SevenTvEmotePanelProps) {
   const [showAll, setShowAll] = useState(false)
+  const reducedMotion = useReducedMotion()
   useEffect(() => {
     if (!expanded) setShowAll(false)
   }, [expanded])
@@ -62,23 +86,33 @@ export function SevenTvEmotePanel({
     return map
   }, [topEmotes, rollups, rollupsLoading])
 
-  if (topEmotes.length === 0) return null
-
-  const selectedEmotes = topEmotes.filter(emote => selectedKeys.includes(emoteSelectionKey(emote)))
+  const selectionLimit = Math.max(1, Math.trunc(maxSelected))
+  const availableKeys = useMemo(
+    () => new Set(topEmotes.map(emote => emoteSelectionKey(emote))),
+    [topEmotes],
+  )
+  const normalizedSelectedKeys = useMemo(
+    () => selectedKeys.filter(key => availableKeys.has(key)).slice(0, selectionLimit),
+    [availableKeys, selectedKeys, selectionLimit],
+  )
+  const selectedKeySet = useMemo(() => new Set(normalizedSelectedKeys), [normalizedSelectedKeys])
+  const selectedEmotes = topEmotes.filter(emote => selectedKeySet.has(emoteSelectionKey(emote)))
   const previewEmotes =
     selectedEmotes.length > 0
-      ? selectedEmotes.slice(0, maxSelected)
-      : topEmotes.slice(0, Math.min(6, maxSelected))
+      ? selectedEmotes.slice(0, selectionLimit)
+      : topEmotes.slice(0, Math.min(6, selectionLimit))
   const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
-  const selectedCount = selectedKeys.length
-  const atCap = selectedCount >= maxSelected
+  const selectedCount = normalizedSelectedKeys.length
+  const atCap = selectedCount >= selectionLimit
   const hiddenCount = Math.max(0, topEmotes.length - INITIAL_VISIBLE_EMOTES)
   const visibleEmotes = showAll ? topEmotes : topEmotes.slice(0, INITIAL_VISIBLE_EMOTES)
+
+  if (topEmotes.length === 0) return null
 
   function handleChipActivate(emote: ExtensionEmote, activity: EmoteWindowActivity): void {
     if (activity !== 'active') return
     const key = emoteSelectionKey(emote)
-    const selected = selectedKeys.includes(key)
+    const selected = selectedKeySet.has(key)
     if (!selected && atCap) return
     onToggleEmote(emote)
   }
@@ -94,7 +128,7 @@ export function SevenTvEmotePanel({
         aria-controls="pulse-emote-picker-list"
       >
         <span style={styles.toggleLabel}>
-          Plot on chart · {selectedCount}/{maxSelected}
+          Plot on chart · {selectedCount}/{selectionLimit}
         </span>
         {!expanded && previewEmotes.length > 0 ? (
           <span style={styles.togglePreview} title={previewNames} aria-hidden="true">
@@ -116,6 +150,7 @@ export function SevenTvEmotePanel({
           data-expanded={expanded ? 'true' : 'false'}
           style={{
             ...styles.chevron,
+            ...(reducedMotion ? styles.motionReducedChevron : null),
             transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
           }}
           aria-hidden="true"
@@ -129,25 +164,29 @@ export function SevenTvEmotePanel({
         data-emote-picker-body
         data-expanded={expanded ? 'true' : 'false'}
         aria-hidden={!expanded}
-        style={{ ...styles.body, ...(expanded ? styles.bodyExpanded : null) }}
+        style={{
+          ...styles.body,
+          ...(expanded ? styles.bodyExpanded : null),
+          ...(reducedMotion ? styles.motionReduced : null),
+        }}
       >
-        <div>
+        <div style={styles.bodyInner}>
           <div
             id="pulse-emote-picker-list"
             className="pulse-emote-picker-grid"
             style={styles.chipGrid}
             data-emote-picker-grid
             role="listbox"
-            aria-label={`Plot on chart · ${selectedCount} of ${maxSelected} selected`}
+            aria-label={`Plot on chart · ${selectedCount} of ${selectionLimit} selected`}
             aria-multiselectable="true"
           >
             {visibleEmotes.map(emote => {
               const key = emoteSelectionKey(emote)
-              const selected = selectedKeys.includes(key)
+              const selected = selectedKeySet.has(key)
               const activity = activityByKey.get(key) ?? 'none'
               const plottable = activity === 'active'
               const disabled = !plottable || (!selected && atCap)
-              const hint = activityHint(activity, maxSelected, !selected && atCap)
+              const hint = activityHint(activity, selectionLimit, !selected && atCap)
               return (
                 <button
                   type="button"
@@ -246,19 +285,30 @@ const styles: Record<string, CSSProperties> = {
     marginLeft: 'auto',
     transition: 'transform .18s cubic-bezier(.2,0,0,1)',
   },
+  motionReducedChevron: { transition: 'none' },
   body: {
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    borderTop: '0 solid transparent',
     display: 'grid',
-    gap: 7,
-    maxHeight: 0,
+    gap: 0,
+    gridTemplateRows: '0fr',
     opacity: 0,
     overflow: 'hidden',
-    padding: '7px 8px 8px',
+    padding: '0 8px',
     pointerEvents: 'none',
     transform: 'translateY(-4px)',
-    transition: 'max-height .18s cubic-bezier(.2,0,0,1), opacity .18s cubic-bezier(.2,0,0,1), transform .18s cubic-bezier(.2,0,0,1)',
+    transition: 'grid-template-rows .22s cubic-bezier(.2,0,0,1), opacity .18s cubic-bezier(.2,0,0,1), padding .22s cubic-bezier(.2,0,0,1), border-color .22s cubic-bezier(.2,0,0,1), transform .18s cubic-bezier(.2,0,0,1)',
   },
-  bodyExpanded: { maxHeight: 480, opacity: 1, pointerEvents: 'auto', transform: 'translateY(0)' },
+  bodyExpanded: {
+    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    gap: 7,
+    gridTemplateRows: '1fr',
+    opacity: 1,
+    padding: '7px 8px 8px',
+    pointerEvents: 'auto',
+    transform: 'translateY(0)',
+  },
+  motionReduced: { transition: 'none', transform: 'none' },
+  bodyInner: { minHeight: 0, overflow: 'hidden' },
   chipGrid: {
     alignItems: 'center',
     display: 'flex',

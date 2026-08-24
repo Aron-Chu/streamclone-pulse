@@ -68,6 +68,10 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect(collapsedBody).not.toBeNull()
     expect(collapsedBody?.getAttribute('data-expanded')).toBe('false')
     expect(collapsedBody?.getAttribute('aria-hidden')).toBe('true')
+    expect((collapsedBody as HTMLElement).style.gridTemplateRows).toBe('0fr')
+    expect((collapsedBody as HTMLElement).style.padding).toBe('0px 8px')
+    expect((collapsedBody as HTMLElement).style.borderTop).toBe('0px solid transparent')
+    expect((collapsedBody as HTMLElement).style.maxHeight).toBe('')
     expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(-1)
     expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(-1)
 
@@ -75,6 +79,9 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect(container.querySelector('[data-emote-picker-body]')).toBe(collapsedBody)
     expect(container.querySelector('[data-emote-picker-body]')?.getAttribute('data-expanded')).toBe('true')
     expect(container.querySelector('[data-emote-picker-body]')?.getAttribute('aria-hidden')).toBe('false')
+    expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.gridTemplateRows).toBe('1fr')
+    expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.padding).toBe('7px 8px 8px')
+    expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.transition).toContain('grid-template-rows')
     expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(0)
     expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(0)
   })
@@ -101,6 +108,20 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect(chips.slice(0, 6).every(chip => chip.getAttribute('aria-selected') === 'true')).toBe(true)
     expect(chips[6]?.disabled).toBe(true)
     expect(container.querySelector('.pulse-seven-tv-chip-active')?.className).toContain('pulse-seven-tv-chip-active')
+  })
+
+  it('normalizes stale selections to the six-line cap in the accessible label', () => {
+    const selectedKeys = emotes.slice(0, 8).map(emote => emoteSelectionKey(emote))
+    renderPicker(selectedKeys)
+    expect(container.querySelector('.pulse-seven-tv-toggle')?.textContent).toContain('6/6')
+    expect(container.querySelector('[data-emote-picker-grid]')?.getAttribute('aria-label')).toContain('6 of 6 selected')
+  })
+
+  it('does not retain a clipping max-height when the expanded list grows', () => {
+    renderPicker([], true)
+    const body = container.querySelector('[data-emote-picker-body]') as HTMLElement
+    expect(body.style.maxHeight).toBe('')
+    expect(container.querySelector('[data-emote-picker-body] > div')?.getAttribute('style')).toContain('min-height: 0')
   })
 
   it('resets the expanded list when the picker is closed and reopened', () => {

@@ -10,6 +10,31 @@ export type RouteSyncScheduler = {
   flush: () => void
 }
 
+/**
+ * Tracks the pathname observed by the fallback MutationObserver in the content
+ * script. Twitch renders chat messages continuously, so the observer must not
+ * schedule route work unless the URL actually moved.
+ */
+export type RoutePathTracker = {
+  observe: (pathname: string) => boolean
+  mark: (pathname: string) => void
+}
+
+export function createRoutePathTracker(initialPathname: string): RoutePathTracker {
+  let lastPathname = initialPathname
+
+  return {
+    observe(pathname) {
+      if (pathname === lastPathname) return false
+      lastPathname = pathname
+      return true
+    },
+    mark(pathname) {
+      lastPathname = pathname
+    },
+  }
+}
+
 export function createRouteSyncScheduler(
   run: () => void,
   options?: {

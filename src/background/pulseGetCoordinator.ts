@@ -178,6 +178,19 @@ export async function handleGetPulse(
 
     network.syncFetches = 1
     const fetched = await deps.fetchPulse(args.login, window, forceCoverage, args.streamId)
+    // Full history is optional enrichment. If that one-shot request fails,
+    // return the activation-matched recent cache instead of making callers
+    // replace a healthy live chart with an empty/error payload.
+    const requestedStreamId = String(args.streamId ?? '').trim()
+    const recentFallback = !fetched.payload && window === 'full' && requestedStreamId
+      ? await deps.getCached(args.login, 'recent', requestedStreamId)
+      : null
+    const recentFallbackPayload = recentFallback?.payload
+    const fallbackMatchesActivation = Boolean(
+      recentFallbackPayload
+      && String(recentFallbackPayload.streamId ?? '').trim() === requestedStreamId,
+    )
+    const returnedPayload = fetched.payload ?? (fallbackMatchesActivation ? recentFallbackPayload ?? null : null)
     if (fetched.payload) {
       deps.onBroadcast?.(
         args.login,
@@ -192,14 +205,14 @@ export async function handleGetPulse(
       state.lastRevalidateFailureAt.set(key, now())
       deps.onBroadcast?.(
         args.login,
-        null,
+        returnedPayload,
         fetched.error,
         null,
         { streamId: args.streamId, window },
       )
     }
     return {
-      payload: fetched.payload,
+      payload: returnedPayload,
       coverageTier: fetched.coverageTier,
       error: fetched.error,
       network,

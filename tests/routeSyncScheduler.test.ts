@@ -1,5 +1,30 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createRouteSyncScheduler } from '../src/content/routeSyncScheduler.ts'
+import {
+  createRoutePathTracker,
+  createRouteSyncScheduler,
+} from '../src/content/routeSyncScheduler.ts'
+
+describe('createRoutePathTracker', () => {
+  it('reports a pathname change once and ignores mutation churn afterward', () => {
+    const tracker = createRoutePathTracker('/xqc')
+
+    expect(tracker.observe('/xqc')).toBe(false)
+    expect(tracker.observe('/xqc')).toBe(false)
+    expect(tracker.observe('/following')).toBe(true)
+    expect(tracker.observe('/following')).toBe(false)
+    expect(tracker.observe('/search')).toBe(true)
+    expect(tracker.observe('/search')).toBe(false)
+  })
+
+  it('can be marked after a history event so the next mutation is a no-op', () => {
+    const tracker = createRoutePathTracker('/xqc')
+
+    tracker.mark('/browse')
+
+    expect(tracker.observe('/browse')).toBe(false)
+    expect(tracker.observe('/shroud')).toBe(true)
+  })
+})
 
 describe('routeSyncScheduler', () => {
   it('fires within maxWait under continuous mutations', () => {

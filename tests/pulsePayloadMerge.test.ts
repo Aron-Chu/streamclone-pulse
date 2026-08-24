@@ -57,6 +57,56 @@ describe('mergePulsePayload', () => {
     expect(merged.coverage?.hasFullStreamCoverage).toBe(true)
   })
 
+  it('lets Full enrich same-stream rollups without downgrading recent live truth', () => {
+    const previous = basePayload({
+      streamId: 'stream-a',
+      isLive: true,
+      tracking: true,
+      mode: 'live_dvr',
+      resolutionState: 'live_stream_validated',
+      currentOffsetSeconds: 3600,
+      fullRollups: [{ offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 }],
+    })
+    const incoming = basePayload({
+      streamId: 'stream-a',
+      isLive: false,
+      tracking: false,
+      mode: 'vod',
+      resolutionState: 'ended',
+      currentOffsetSeconds: 1,
+      endedAt: '2026-08-24T00:00:00.000Z',
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 2, sevenTvEmoteCount: 1 },
+        { offsetSeconds: 3600, chatCount: 8, sevenTvEmoteCount: 3 },
+      ],
+    })
+
+    const merged = mergePulsePayload(previous, incoming, { source: 'full' })
+
+    expect(merged.isLive).toBe(true)
+    expect(merged.tracking).toBe(true)
+    expect(merged.mode).toBe('live_dvr')
+    expect(merged.resolutionState).toBe('live_stream_validated')
+    expect(merged.currentOffsetSeconds).toBe(3600)
+    expect(merged.endedAt).toBeUndefined()
+    expect(merged.fullRollups).toEqual(incoming.fullRollups)
+  })
+
+  it('preserves same-stream Full rollups when a recent response includes an empty field', () => {
+    const fullRollups = [
+      { offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 },
+      { offsetSeconds: 60, chatCount: 4, sevenTvEmoteCount: 2 },
+    ]
+    const previous = basePayload({ streamId: 'stream-a', fullRollups })
+    const recent = basePayload({ streamId: 'stream-a', fullRollups: [], currentOffsetSeconds: 3660 })
+
+    const merged = mergePulsePayload(previous, recent, { source: 'recent' })
+
+    expect(merged.fullRollups).toBe(previous.fullRollups)
+    expect(merged.fullRollups).toEqual(fullRollups)
+    expect(merged.currentOffsetSeconds).toBe(3660)
+  })
+
   it('replaces an explicitly supplied full timeline, even when it is shorter or empty', () => {
     const previous = basePayload({
       streamId: 'stream-a',

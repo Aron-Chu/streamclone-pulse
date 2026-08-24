@@ -3,13 +3,23 @@ import { describe, expect, it } from 'vitest'
 import {
   ChartPositionRail,
   LONG_STREAM_OVERVIEW_SECONDS,
+  MIN_MEANINGFUL_CHART_DURATION_SECONDS,
+  resolveRailKeyboardViewport,
+  resolveRailPointerViewport,
   shouldShowChartRail,
 } from '../src/ui/ChartPositionRail.tsx'
 
 describe('ChartPositionRail', () => {
-  it('shows a persistent rail once a timeline has meaningful coverage', () => {
-    expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 5 * 60 }, 5 * 60)).toBe(true)
-    expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 60 }, 60)).toBe(false)
+  it('shows a full-range rail once a short timeline has meaningful data', () => {
+    const fullViewport = { startSeconds: 0, endSeconds: 60 * 60 }
+    expect(shouldShowChartRail(fullViewport, 60 * 60)).toBe(true)
+    expect(
+      shouldShowChartRail(
+        { startSeconds: 0, endSeconds: MIN_MEANINGFUL_CHART_DURATION_SECONDS },
+        MIN_MEANINGFUL_CHART_DURATION_SECONDS,
+      ),
+    ).toBe(true)
+    expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 30 }, 30)).toBe(false)
     expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 30 * 60 }, 60 * 60)).toBe(true)
   })
 
@@ -32,6 +42,8 @@ describe('ChartPositionRail', () => {
     expect(html).toContain('data-chart-rail-thumb="true"')
     expect(html).toContain('aria-label="Chart zoom and position"')
     expect(html).toContain('aria-valuemax="7200"')
+    expect(html).toContain('data-chart-rail-handle="start"')
+    expect(html).toContain('data-chart-rail-handle="end"')
     expect(html).not.toContain('display:none')
   })
 
@@ -62,5 +74,65 @@ describe('ChartPositionRail', () => {
 
     expect(html).toContain('aria-valuenow="21060"')
     expect(html).toContain('data-chart-rail-uncovered')
+  })
+
+  it('bounds pointer navigation to covered timeline data', () => {
+    expect(resolveRailPointerViewport({
+      clientX: 8,
+      trackLeft: 0,
+      trackWidth: 100,
+      viewport: { startSeconds: 300, endSeconds: 600 },
+      durationSeconds: 1_000,
+      coverageStartSeconds: 200,
+    })).toBeNull()
+
+    const result = resolveRailPointerViewport({
+      clientX: 90,
+      trackLeft: 0,
+      trackWidth: 100,
+      viewport: { startSeconds: 300, endSeconds: 600 },
+      durationSeconds: 1_000,
+      coverageStartSeconds: 200,
+    })
+    expect(result?.offsetSeconds).toBe(900)
+    expect(result?.viewport.startSeconds).toBeGreaterThanOrEqual(200)
+    expect(result?.viewport.endSeconds).toBeLessThanOrEqual(1_000)
+  })
+
+  it('keeps a short-stream rail bounded while still reporting the clicked offset', () => {
+    const result = resolveRailPointerViewport({
+      clientX: 50,
+      trackLeft: 0,
+      trackWidth: 100,
+      viewport: { startSeconds: 0, endSeconds: 240 },
+      durationSeconds: 240,
+    })
+
+    expect(result?.offsetSeconds).toBe(120)
+    expect(result?.viewport).toEqual({ startSeconds: 0, endSeconds: 240 })
+  })
+
+  it('keeps keyboard pan and Home/End navigation inside coverage', () => {
+    const args = {
+      viewport: { startSeconds: 300, endSeconds: 600 },
+      durationSeconds: 1_000,
+      coverageStartSeconds: 200,
+    }
+    expect(resolveRailKeyboardViewport({ ...args, key: 'ArrowLeft' })?.viewport).toEqual({
+      startSeconds: 240,
+      endSeconds: 540,
+    })
+    expect(resolveRailKeyboardViewport({ ...args, key: 'Home' })?.viewport).toEqual({
+      startSeconds: 200,
+      endSeconds: 500,
+    })
+    expect(resolveRailKeyboardViewport({ ...args, key: 'End' })?.viewport).toEqual({
+      startSeconds: 700,
+      endSeconds: 1_000,
+    })
+    expect(resolveRailKeyboardViewport({ ...args, key: 'ArrowRight', shiftKey: true })?.viewport).toEqual({
+      startSeconds: 700,
+      endSeconds: 1_000,
+    })
   })
 })

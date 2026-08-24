@@ -30,9 +30,9 @@ export interface ChartPositionRailProps {
   hideRangeLabel?: boolean
 }
 
-/** Show a position rail once there is enough timeline to navigate or whenever the user zooms in. */
+/** Keep the rail useful on short streams without mounting it for an empty chart. */
+export const MIN_MEANINGFUL_CHART_DURATION_SECONDS = 60
 export const LONG_STREAM_OVERVIEW_SECONDS = 90 * 60
-export const MIN_RAIL_OVERVIEW_SECONDS = 5 * 60
 const DEFAULT_FOCUS_SECONDS = 60 * 60
 const MIN_PAN_SECONDS = 60
 const SHIFT_PAN_SECONDS = 10 * 60
@@ -40,11 +40,7 @@ const RESIZE_HANDLE_PX = 8
 
 export function shouldShowChartRail(viewport: ChartViewport, durationSeconds: number): boolean {
   const viewportDuration = viewportDurationSeconds(viewport)
-  if (durationSeconds <= 0 || viewportDuration <= 0) return false
-  return (
-    viewportDuration < durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS
-    || durationSeconds >= MIN_RAIL_OVERVIEW_SECONDS
-  )
+  return durationSeconds >= MIN_MEANINGFUL_CHART_DURATION_SECONDS && viewportDuration > 0
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -52,6 +48,164 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 type DragMode = 'pan' | 'resize-start' | 'resize-end'
+
+export interface RailPointerViewportResult {
+  viewport: ChartViewport
+  offsetSeconds: number
+}
+
+/** Resolve a rail click before a pointer drag begins, keeping it inside coverage. */
+export function resolveRailPointerViewport(args: {
+  clientX: number
+  trackLeft: number
+  trackWidth: number
+  viewport: ChartViewport
+  durationSeconds: number
+  coverageStartSeconds?: number
+}): RailPointerViewportResult | null {
+  const {
+    clientX,
+    trackLeft,
+    trackWidth,
+    durationSeconds,
+    coverageStartSeconds = 0,
+  } = args
+  if (durationSeconds <= 0 || trackWidth <= 0) return null
+
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const offsetX = clamp(clientX - trackLeft, 0, trackWidth)
+  const offsetSeconds = (offsetX / trackWidth) * durationSeconds
+  if (offsetSeconds < coverageStart) return null
+
+  const normalizedViewport = clampViewportToCoverage(
+    args.viewport,
+    durationSeconds,
+    coverageStart,
+  )
+  const viewportDuration = viewportDurationSeconds(normalizedViewport)
+  let base = normalizedViewport
+  if (
+    viewportDuration >= durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS
+    && durationSeconds > DEFAULT_FOCUS_SECONDS
+  ) {
+    base = resolveViewport({
+      durationSeconds,
+      zoomSeconds: DEFAULT_FOCUS_SECONDS,
+      anchorSeconds: offsetSeconds,
+      coverageStartSeconds: coverageStart,
+    })
+  }
+
+  return {
+    viewport: clampViewportToCoverage(
+      jumpToOffset(
+        base,
+        offsetSeconds,
+        durationSeconds,
+        viewportDurationSeconds(base),
+        coverageStart,
+      ),
+      durationSeconds,
+      coverageStart,
+    ),
+    offsetSeconds,
+  }
+}
+
+export interface RailKeyboardViewportResult {
+  viewport: ChartViewport
+  jumpOffsetSeconds: number | null
+}
+
+/** Resolve keyboard rail navigation through the same coverage bounds as pointer input. */
+export function resolveRailKeyboardViewport(args: {
+  key: string
+  viewport: ChartViewport
+  durationSeconds: number
+  coverageStartSeconds?: number
+  shiftKey?: boolean
+  altKey?: boolean
+}): RailKeyboardViewportResult | null {
+  const {
+    key,
+    durationSeconds,
+    coverageStartSeconds = 0,
+    shiftKey = false,
+    altKey = false,
+  } = args
+  if (durationSeconds <= 0) return null
+
+  const normalizedViewport = clampViewportToCoverage(
+    args.viewport,
+    durationSeconds,
+    coverageStartSeconds,
+  )
+  const viewportDuration = viewportDurationSeconds(normalizedViewport)
+  const panSeconds = shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS
+  let next: ChartViewport | null = null
+  let jumpOffsetSeconds: number | null = null
+
+  switch (key) {
+    case 'ArrowLeft':
+      next = altKey
+        ? {
+            startSeconds: normalizedViewport.startSeconds - panSeconds,
+            endSeconds: normalizedViewport.endSeconds,
+          }
+        : panViewport(normalizedViewport, -panSeconds, durationSeconds, true, coverageStartSeconds)
+      break
+    case 'ArrowRight':
+      next = altKey
+        ? {
+            startSeconds: normalizedViewport.startSeconds + panSeconds,
+            endSeconds: normalizedViewport.endSeconds,
+          }
+        : panViewport(normalizedViewport, panSeconds, durationSeconds, true, coverageStartSeconds)
+      break
+    case '[':
+      next = {
+        startSeconds: normalizedViewport.startSeconds + panSeconds,
+        endSeconds: normalizedViewport.endSeconds,
+      }
+      break
+    case ']':
+      next = {
+        startSeconds: normalizedViewport.startSeconds,
+        endSeconds: normalizedViewport.endSeconds - panSeconds,
+      }
+      break
+    case 'Home':
+      jumpOffsetSeconds = Math.max(0, coverageStartSeconds)
+      next = jumpToOffset(
+        normalizedViewport,
+        jumpOffsetSeconds,
+        durationSeconds,
+        viewportDuration,
+        coverageStartSeconds,
+      )
+      break
+    case 'End':
+      jumpOffsetSeconds = durationSeconds
+      next = jumpToOffset(
+        normalizedViewport,
+        jumpOffsetSeconds,
+        durationSeconds,
+        viewportDuration,
+        coverageStartSeconds,
+      )
+      break
+    case 'Escape':
+      next = { startSeconds: coverageStartSeconds, endSeconds: durationSeconds }
+      break
+    default:
+      return null
+  }
+
+  return {
+    viewport: clampViewportToCoverage(next, durationSeconds, coverageStartSeconds),
+    jumpOffsetSeconds,
+  }
+}
 
 export const ChartPositionRail = memo(function ChartPositionRail({
   viewport,
@@ -101,30 +255,21 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     if (disabled || !showRail) return
     const track = trackRef.current
     if (!track || durationSeconds <= 0) return
-    event.preventDefault()
-    event.stopPropagation()
     const rect = track.getBoundingClientRect()
-    const offsetX = clamp(event.clientX - rect.left, 0, rect.width)
-    const offsetSeconds = (offsetX / Math.max(1, rect.width)) * durationSeconds
-    if (offsetSeconds < coverageStartSeconds) return
-
-    let base = normalizedViewport
-    if (viewportDuration >= durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS && durationSeconds > DEFAULT_FOCUS_SECONDS) {
-      base = resolveViewport({
-        durationSeconds,
-        zoomSeconds: DEFAULT_FOCUS_SECONDS,
-        anchorSeconds: offsetSeconds,
-        coverageStartSeconds,
-      })
-    }
-    const next = clampViewportToCoverage(
-      jumpToOffset(base, offsetSeconds, durationSeconds, viewportDurationSeconds(base), coverageStartSeconds),
+    const result = resolveRailPointerViewport({
+      clientX: event.clientX,
+      trackLeft: rect.left,
+      trackWidth: Math.max(1, rect.width),
+      viewport: normalizedViewport,
       durationSeconds,
       coverageStartSeconds,
-    )
-    onViewportChange(next)
-    onJumpToOffset?.(offsetSeconds)
-    beginDrag(event, 'pan', next)
+    })
+    if (!result) return
+    event.preventDefault()
+    event.stopPropagation()
+    onViewportChange(result.viewport)
+    onJumpToOffset?.(result.offsetSeconds)
+    beginDrag(event, 'pan', result.viewport)
   }, [
     beginDrag,
     coverageStartSeconds,
@@ -134,7 +279,6 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     onViewportChange,
     showRail,
     normalizedViewport,
-    viewportDuration,
   ])
 
   const onResizePointerDown = useCallback((
@@ -194,42 +338,18 @@ export const ChartPositionRail = memo(function ChartPositionRail({
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (disabled || durationSeconds <= 0) return
-    let next: ChartViewport | null = null
-    let jump: number | null = null
-    switch (event.key) {
-      case 'ArrowLeft':
-        next = event.altKey
-          ? { startSeconds: normalizedViewport.startSeconds - (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: normalizedViewport.endSeconds }
-        : panViewport(normalizedViewport, event.shiftKey ? -SHIFT_PAN_SECONDS : -MIN_PAN_SECONDS, durationSeconds, true, coverageStartSeconds)
-        break
-      case 'ArrowRight':
-        next = event.altKey
-          ? { startSeconds: normalizedViewport.startSeconds + (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: normalizedViewport.endSeconds }
-          : panViewport(normalizedViewport, event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS, durationSeconds, true, coverageStartSeconds)
-        break
-      case '[':
-        next = { startSeconds: normalizedViewport.startSeconds + (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: normalizedViewport.endSeconds }
-        break
-      case ']':
-        next = { startSeconds: normalizedViewport.startSeconds, endSeconds: normalizedViewport.endSeconds - (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS) }
-        break
-      case 'Home':
-        jump = Math.max(0, coverageStartSeconds)
-        next = jumpToOffset(normalizedViewport, jump, durationSeconds, viewportDuration, coverageStartSeconds)
-        break
-      case 'End':
-        jump = durationSeconds
-        next = jumpToOffset(normalizedViewport, jump, durationSeconds, viewportDuration, coverageStartSeconds)
-        break
-      case 'Escape':
-        next = { startSeconds: coverageStartSeconds, endSeconds: durationSeconds }
-        break
-      default:
-        return
-    }
+    const result = resolveRailKeyboardViewport({
+      key: event.key,
+      viewport: normalizedViewport,
+      durationSeconds,
+      coverageStartSeconds,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+    })
+    if (!result) return
     event.preventDefault()
-    onViewportChange(clampViewportToCoverage(next, durationSeconds, coverageStartSeconds))
-    if (jump != null) onJumpToOffset?.(jump)
+    onViewportChange(result.viewport)
+    if (result.jumpOffsetSeconds != null) onJumpToOffset?.(result.jumpOffsetSeconds)
   }, [
     coverageStartSeconds,
     disabled,
@@ -272,7 +392,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
         aria-valuemin={Math.round(clamp(coverageStartSeconds, 0, durationSeconds))}
         aria-valuemax={Math.round(durationSeconds)}
         aria-valuenow={Math.round(normalizedViewport.startSeconds)}
-        aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}. Alt+arrows or [ ] resize the window.`}
+        aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}. Arrow keys pan; Alt+arrows or [ ] resize the window.`}
         style={{ ...styles.track, height, cursor: disabled ? 'default' : 'pointer', touchAction: 'none' }}
         data-chart-rail
         onPointerDown={onTrackPointerDown}
@@ -302,6 +422,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
           <div
             style={{ ...styles.resizeHandle, left: 0 }}
             data-chart-rail-resize="start"
+            data-chart-rail-handle="start"
             onPointerDown={event => onResizePointerDown(event, 'start')}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -310,6 +431,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
           <div
             style={{ ...styles.resizeHandle, right: 0 }}
             data-chart-rail-resize="end"
+            data-chart-rail-handle="end"
             onPointerDown={event => onResizePointerDown(event, 'end')}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -361,11 +483,17 @@ const styles: Record<string, CSSProperties> = {
     top: 0,
   },
   resizeHandle: {
-    bottom: 0,
+    background: 'rgba(255, 255, 255, 0.72)',
+    border: '1px solid rgba(17, 17, 23, 0.45)',
+    borderRadius: 2,
+    bottom: 2,
+    boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.12)',
     cursor: 'ew-resize',
+    height: 8,
+    opacity: 0.9,
     position: 'absolute',
-    top: 0,
-    width: RESIZE_HANDLE_PX,
+    top: 2,
+    width: RESIZE_HANDLE_PX - 2,
     zIndex: 1,
   },
 }

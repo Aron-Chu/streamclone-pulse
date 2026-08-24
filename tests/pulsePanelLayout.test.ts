@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { resolvePulsePanelSections } from '../src/ui/pulsePanelLayout.ts'
+import {
+  pulseSurfaceStatusLabel,
+  resolvePulsePanelSections,
+  resolvePulsePanelSurfaceState,
+} from '../src/ui/pulsePanelLayout.ts'
 import type { PulsePayload } from '../src/shared/messages.ts'
 
 function basePayload(overrides: Partial<PulsePayload> = {}): PulsePayload {
@@ -138,11 +142,49 @@ describe('resolvePulsePanelSections', () => {
     expect(sections.showMostReacted).toBe(true)
   })
 
-  it('does not show offline block; past streams section handles offline context', () => {
+  it('shows an explicit offline state when no recap exists', () => {
     const sections = resolvePulsePanelSections(
       basePayload({ isLive: false, tracking: false, recap: null }),
       { liveHeatVisible: false, warming: false, pageIsLive: false },
     )
-    expect(sections.showOffline).toBe(false)
+    expect(sections.surfaceState).toBe('offline_empty')
+    expect(sections.showOffline).toBe(true)
+  })
+})
+
+describe('resolvePulsePanelSurfaceState', () => {
+  it.each([
+    ['loading', { payload: null, error: null }],
+    ['error', { payload: null, error: 'request failed' }],
+    ['identity_mismatch', { payload: basePayload({ resolutionState: 'identity_mismatch' }) }],
+    ['unsupported', { payload: basePayload(), pulseSupported: false }],
+    ['live_tracked', { payload: basePayload(), pulseLiveAccess: 'full_live' as const }],
+    ['live_late', { payload: basePayload(), pulseLiveAccess: 'late_session' as const }],
+    ['live_untracked', { payload: basePayload(), pulseLiveAccess: 'not_tracked' as const }],
+    ['offline_recap', {
+      payload: basePayload({
+        isLive: false,
+        recap: { streamId: '1', login: 'test', durationSeconds: 60, totalMessages: 1, peakChatPerMin: 1, topMoments: [], topEmotes: [], clipCandidates: [] },
+      }),
+      pulseLiveAccess: 'offline' as const,
+    }],
+    ['offline_empty', { payload: basePayload({ isLive: false, recap: null }), pulseLiveAccess: 'offline' as const }],
+  ] as const)('resolves %s without a blank fall-through', (expected, input) => {
+    expect(resolvePulsePanelSurfaceState(input)).toBe(expected)
+  })
+
+  it('treats broadcaster mismatch errors as identity state even with a cached payload', () => {
+    expect(resolvePulsePanelSurfaceState({
+      payload: basePayload(),
+      error: '409 broadcaster_mismatch',
+      pulseLiveAccess: 'full_live',
+    })).toBe('identity_mismatch')
+  })
+
+  it('reserves Not tracked for genuine live-untracked state', () => {
+    expect(pulseSurfaceStatusLabel('live_untracked')).toBe('Not tracked')
+    expect(pulseSurfaceStatusLabel('offline_empty')).not.toBe('Not tracked')
+    expect(pulseSurfaceStatusLabel('offline_recap')).toBe('Replay ready')
+    expect(pulseSurfaceStatusLabel('error')).toBe('Unavailable')
   })
 })
