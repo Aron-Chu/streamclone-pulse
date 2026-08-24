@@ -9,6 +9,7 @@ import {
   computeHeaderTabsRect,
   createBoundedRemeasureScheduler,
   DEFAULT_CHAT_HEADER_HEIGHT,
+  isChatRectInViewport,
   isUsableChatRect,
   MIN_CHAT_HEIGHT,
   MIN_CHAT_WIDTH,
@@ -168,6 +169,16 @@ describe('isUsableChatRect', () => {
 
   it('rejects short popout remnants', () => {
     expect(isUsableChatRect(rect(320, 80))).toBe(false)
+  })
+})
+
+describe('isChatRectInViewport', () => {
+  it('rejects a chat column pushed completely beyond the viewport', () => {
+    expect(isChatRectInViewport({ left: 1_024, right: 1_364, top: 0, bottom: 900 }, 1_024, 900)).toBe(false)
+  })
+
+  it('accepts a partially clipped but still visible column', () => {
+    expect(isChatRectInViewport({ left: 980, right: 1_320, top: 0, bottom: 900 }, 1_024, 900)).toBe(true)
   })
 })
 

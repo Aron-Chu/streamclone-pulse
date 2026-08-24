@@ -159,6 +159,20 @@ export function isUsableChatRect(rect: RectLike | null | undefined): boolean {
 }
 
 /**
+ * Twitch can leave a measurable right column just beyond the viewport after a
+ * recap route restores its layout. Do not snap a fixed Pulse host to a
+ * rectangle that cannot be seen; the caller can use the floating dock.
+ */
+export function isChatRectInViewport(
+  rect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> | null | undefined,
+  viewportWidth: number,
+  viewportHeight: number,
+): boolean {
+  if (!rect || !Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight)) return false
+  return rect.right > 0 && rect.left < viewportWidth && rect.bottom > 0 && rect.top < viewportHeight
+}
+
+/**
  * Pure selection helper: given candidates in priority order, return the first
  * one whose rect is large enough to host the panel, or null when none qualify
  * (e.g. all zero-width because chat is popped out or in theater mode).
@@ -713,6 +727,16 @@ export function buildSidebarBodyRect(layout: SidebarSnapLayout): ChatRectSnapsho
 export function measureSidebarSnapLayout(doc: Document = document): SidebarSnapLayout | null {
   const resolved = resolveChatColumn(doc)
   if (!resolved || !isUsableChatRect(resolved.rect)) return null
+
+  const viewportWidth = doc.defaultView?.innerWidth ?? doc.documentElement?.clientWidth
+  const viewportHeight = doc.defaultView?.innerHeight ?? doc.documentElement?.clientHeight
+  if (
+    viewportWidth != null
+    && viewportHeight != null
+    && Number.isFinite(viewportWidth)
+    && Number.isFinite(viewportHeight)
+    && !isChatRectInViewport(resolved.rect, viewportWidth, viewportHeight)
+  ) return null
 
   const column = toChatRectSnapshot(resolved.rect)
   const header = resolveChatHeaderBarRect(doc, column) ?? resolveChatHeaderRect(doc)
