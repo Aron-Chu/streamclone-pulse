@@ -65,7 +65,7 @@ import { theme } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
-import { ChartPositionRail, LONG_STREAM_OVERVIEW_SECONDS, shouldShowChartRail } from './ChartPositionRail.tsx'
+import { ChartPositionRail, shouldShowChartRail } from './ChartPositionRail.tsx'
 import {
   advanceFollowingLiveViewport,
   clampViewportToCoverage,
@@ -336,7 +336,10 @@ export function LiveStatsBand({
     hasFullRollups
     || chartWindow === 'full'
     || (needsFullRollups && !hasFullRollups)
-    || effectiveCurrentOffsetSeconds >= LONG_STREAM_OVERVIEW_SECONDS
+    // Keep wheel/keyboard zoom available on recent timelines once there is
+    // enough coverage for the chart's five-minute minimum viewport. The rail
+    // itself remains hidden until the view is zoomed or the stream is long.
+    || effectiveCurrentOffsetSeconds >= MIN_VIEWPORT_SECONDS
   // Full history is optional enrichment. Keep recent points rendered while the
   // activation-scoped request is pending or has failed.
   const chartLoading = timelineLoading && rollups.length === 0
