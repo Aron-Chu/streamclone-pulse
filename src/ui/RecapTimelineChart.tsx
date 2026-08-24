@@ -577,7 +577,6 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     display: 'flex',
     gap: 8,
-    minHeight: 14,
     minWidth: 0,
   },
   chartRangeStatus: {

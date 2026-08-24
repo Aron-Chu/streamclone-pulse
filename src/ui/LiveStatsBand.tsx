@@ -1395,7 +1395,6 @@ const styles: Record<string, CSSProperties> = {
   chartViewportMetaRow: {
     alignItems: 'center',
     display: 'flex',
-    minHeight: 14,
     minWidth: 0,
   },
   chartViewportRailRow: {
