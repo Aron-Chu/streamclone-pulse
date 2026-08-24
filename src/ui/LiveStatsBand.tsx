@@ -1053,6 +1053,7 @@ export function LiveStatsBand({
             isLive={isLive}
              emoteSyncTone={emoteSyncTone}
            />
+        </div>
             <div style={styles.chartViewportControls} data-chart-viewport-controls>
               <div style={styles.chartViewportMeta} data-chart-viewport-meta>
                 <div style={styles.chartViewportMetaRow}>
@@ -1152,7 +1153,6 @@ export function LiveStatsBand({
                 </div>
               ) : null}
             </div>
-          </div>
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <SevenTvEmotePanel

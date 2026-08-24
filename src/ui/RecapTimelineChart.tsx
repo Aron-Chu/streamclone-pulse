@@ -484,6 +484,7 @@ export function RecapTimelineChart({
           loading={(timelineLoading && minuteRollups.length === 0) || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
           isLive={false}
         />
+      </div>
         <div style={styles.chartViewportControls} data-chart-viewport-controls>
           <div style={styles.chartViewportMeta} data-chart-viewport-meta>
             <div style={styles.chartViewportMetaRow}>
@@ -539,7 +540,6 @@ export function RecapTimelineChart({
             </div>
           ) : null}
         </div>
-      </div>
 
       {topEmotesForPicker.length > 0 ? (
         <SevenTvEmotePanel
