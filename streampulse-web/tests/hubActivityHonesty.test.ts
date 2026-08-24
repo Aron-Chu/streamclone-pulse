@@ -5,9 +5,11 @@ import {
   maxConnectedGapMs,
 } from '../src/lib/hubActivitySummary'
 import {
+  boundedHubActivityPoints,
   formatHubActivityServedLabel,
   hubActivityHonestyChipLabel,
   hubActivityHonestyDetail,
+  hubActivityPointsWithinServedWindow,
   hubActivityRegisteredGapCount,
   isAttestedActivityGap,
   isHubActivityFullyMeasured,
@@ -15,7 +17,10 @@ import {
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
 } from '../src/lib/hubActivityHonesty'
-import { selectHubChartActivityInputs } from '../src/lib/hubChartActivityModel'
+import {
+  deriveHubChartActivityModel,
+  selectHubChartActivityInputs,
+} from '../src/lib/hubChartActivityModel'
 import {
   normalizePublicHub,
   type HubActivity,
@@ -91,6 +96,34 @@ describe('hub activity honesty (live_pool_fallback)', () => {
       0,
     )
     expect(chartPoints.length).toBe(filled.length)
+  })
+
+  it('bounds a malformed long fallback payload to the latest served minutes', () => {
+    const end = Math.floor(Date.parse('2026-08-24T03:09:00Z') / 60_000) * 60_000
+    const malformed: HubActivity = {
+      ...degraded,
+      points: Array.from({ length: 1370 }, (_, index) => ({
+        t: end - (1369 - index) * 60_000,
+        chat: 10 + (index % 4),
+        seventv: 2,
+        viewers: index === 1369 ? 457_000 : 0,
+        hasChatRollup: true,
+        hasViewerRollup: true,
+        bucketComplete: true,
+      })),
+    }
+
+    expect(hubActivityPointsWithinServedWindow(malformed.points, 30)).toBe(false)
+    const bounded = boundedHubActivityPoints(malformed)
+    expect(bounded).toHaveLength(30)
+    expect(bounded[0]?.t).toBe(end - 29 * 60_000)
+    expect(bounded.at(-1)?.t).toBe(end)
+    expect(hubActivityPointsWithinServedWindow(bounded, 30)).toBe(true)
+
+    const hub = hubWithActivity(malformed)
+    const inputs = selectHubChartActivityInputs(hub)
+    expect(inputs.points).toHaveLength(30)
+    expect(deriveHubChartActivityModel(inputs).chartState).toBe('ready')
   })
 
   it('keeps the degraded path unchanged when measured/accounted fields are absent', () => {

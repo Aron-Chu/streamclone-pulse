@@ -143,6 +143,44 @@ export function resolveHubActivityChartWindowMinutes(activity: HubActivity): num
   return Math.min(requested, 30)
 }
 
+/**
+ * Repair the legacy live-pool fallback shape at the chart boundary.
+ *
+ * Older API instances returned a recent 30-minute fallback together with
+ * stale rows from the requested long range. Those rows are not historical
+ * measurements and must not influence the chart's bucket anchor. Keep the
+ * newest served-minute slice, in chronological order, until the backend
+ * bounded fallback response is promoted.
+ */
+export function boundedHubActivityPoints(activity: HubActivity): HubActivityPoint[] {
+  if (!isHubActivityLivePoolFallback(activity)) return activity.points
+
+  const points = activity.points
+    .filter((point) => Number.isFinite(point.t))
+    .sort((a, b) => a.t - b.t)
+  if (points.length < 2) return points
+
+  const served = resolveHubActivityChartWindowMinutes(activity)
+  const latest = Math.floor(points[points.length - 1].t / 60_000) * 60_000
+  const cutoff = latest - Math.max(0, served - 1) * 60_000
+  return points.filter((point) => point.t >= cutoff && point.t <= latest)
+}
+
+/** True when a chart input series fits inside its advertised served window. */
+export function hubActivityPointsWithinServedWindow(
+  points: Pick<HubActivityPoint, 't'>[],
+  servedWindowMinutes: number,
+): boolean {
+  const timestamps = points
+    .map((point) => point.t)
+    .filter((timestamp) => Number.isFinite(timestamp))
+    .sort((a, b) => a - b)
+  if (timestamps.length < 2) return true
+  const served = validWindowMinutes(servedWindowMinutes) ?? 30
+  const spanMinutes = (timestamps[timestamps.length - 1] - timestamps[0]) / 60_000
+  return spanMinutes <= served + 1
+}
+
 /** Short status chip / banner label for degraded pool-only activity. */
 export function hubActivityHonestyChipLabel(activity: HubActivity): string | null {
   if (isHubActivityLivePoolFallback(activity)) return 'Recent live activity only'
@@ -202,10 +240,9 @@ export function hubActivityHonestyEmptyCopy(
 }
 
 /**
- * Detect a fallback payload whose timestamp domain contradicts the advertised
- * served window. Plotting this shape makes coarse aggregate rows look like
- * minute-level plateaus, so the chart must refuse it until the backend returns
- * a bounded payload.
+ * Detect a fallback payload whose raw timestamp domain contradicts the
+ * advertised served window. The chart may repair this legacy shape locally,
+ * but the issue remains useful for diagnostics and backend rollout checks.
  */
 export function hubActivityContractIssues(activity: HubActivity): string[] {
   if (!isHubActivityLivePoolFallback(activity)) return []
