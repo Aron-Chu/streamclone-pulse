@@ -133,6 +133,19 @@ describe('deriveLiveStats', () => {
     assert.equal(stats.viewerState, 'unknown')
   })
 
+  it('uses explicit finalization so a quiet completed minute is retained', () => {
+    const stats = deriveLiveStats({
+      state: 'live',
+      rollups: [
+        { finalized: true, chatCount: 0, totalEmoteCount: 0, viewerSamples: 0 },
+        { finalized: false, chatCount: 99, totalEmoteCount: 3, viewerSamples: 0 },
+      ],
+    })
+    assert.equal(stats.completedRollupCount, 1)
+    assert.equal(stats.chatPerMin1m, 0)
+    assert.equal(stats.totalEmotePerMin, 0)
+  })
+
   it('does not surface stale live metadata on an offline recap surface', () => {
     const stats = deriveLiveStats({
       state: 'historical',

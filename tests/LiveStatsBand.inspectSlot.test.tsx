@@ -79,10 +79,18 @@ describe('LiveStatsBand chart layout', () => {
     expect(chartIdx).toBeLessThan(plotIdx)
   })
 
-  it('keeps variable coverage metadata below the chart beside viewport controls', () => {
+  it('keeps range controls below Games Played and above the chart', () => {
+    const payload = makePayload([])
+    payload.games = [{
+      id: 'game-1',
+      categoryId: '509658',
+      gameName: 'Just Chatting',
+      offsetSeconds: 0,
+      durationSeconds: 600,
+    }]
     const markup = renderToStaticMarkup(
       <LiveStatsBand
-        payload={makePayload([])}
+        payload={payload}
         backendUrl="http://localhost:8081"
         currentOffsetSeconds={600}
         onJumpMoment={vi.fn()}
@@ -91,12 +99,15 @@ describe('LiveStatsBand chart layout', () => {
       />,
     )
     const chartIdx = markup.indexOf('data-testid="pulse-overview-chart"')
-    const rangeIdx = markup.indexOf('data-chart-visible-range')
+    const gamesIdx = markup.indexOf('data-games-played="true"')
+    const rangeIdx = markup.indexOf('data-chart-range-controls')
     const viewportIdx = markup.indexOf('data-chart-viewport-controls')
     expect(chartIdx).toBeGreaterThan(-1)
+    expect(gamesIdx).toBeGreaterThan(-1)
     expect(rangeIdx).toBeGreaterThan(-1)
     expect(viewportIdx).toBeGreaterThan(-1)
-    expect(chartIdx).toBeLessThan(rangeIdx)
+    expect(gamesIdx).toBeLessThan(rangeIdx)
+    expect(rangeIdx).toBeLessThan(chartIdx)
     expect(rangeIdx).toBeLessThan(markup.indexOf('Plot on chart'))
   })
 

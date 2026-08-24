@@ -125,6 +125,11 @@ interface OverlayProps {
 
 type NoticeKind = 'ok' | 'warn' | 'info'
 
+/** Old responses must not repaint the Clip Spike card after navigation/unmount. */
+export function shouldApplyTopClipResponse(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId
+}
+
 export function Overlay(props: OverlayProps) {
   if (props.sidebarPart === 'tabs') {
     return <OverlayTabsShell {...props} />
@@ -266,6 +271,7 @@ function OverlayMain({
   const [awaitingTrack, setAwaitingTrack] = useState(pendingTrackPrompt)
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [topClip, setTopClip] = useState<ExtensionClip | null>(null)
+  const topClipRequestRef = useRef(0)
   const [fullTimeline, setFullTimeline] = useState(false)
   const [missedBusy, setMissedBusy] = useState(false)
   const [missedRefreshed, setMissedRefreshed] = useState(false)
@@ -498,10 +504,12 @@ function OverlayMain({
   }, [])
 
   useEffect(() => {
+    const requestId = ++topClipRequestRef.current
+    setTopClip(null)
     if (!payload) return
-    void loadTopClip()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when stream/vod context changes
-  }, [payload?.login, payload?.streamId, payload?.vodId, payload?.startedAt, payload?.isLive])
+    void loadTopClip(requestId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh only when the clip activation changes
+  }, [surfaceIdentity])
 
   useEffect(() => {
     setFullTimeline(false)
@@ -1093,13 +1101,14 @@ function OverlayMain({
     })
   }
 
-  async function loadTopClip(): Promise<void> {
+  async function loadTopClip(requestId: number): Promise<void> {
     const res = await sendBackgroundMessage({
       type: 'GET_CLIP',
       login,
       startedAt: payload?.startedAt,
       isLive: payload?.isLive,
     })
+    if (!mountedRef.current || !shouldApplyTopClipResponse(requestId, topClipRequestRef.current)) return
     if ('type' in res && res.type === 'CLIP') {
       setTopClip(res.clip)
     }
@@ -1859,7 +1868,7 @@ function VodPulseStatusCard({
   )
 }
 
-function ClipSpikeCard({ clip, backendUrl }: { clip: ExtensionClip; backendUrl: string }) {
+export function ClipSpikeCard({ clip, backendUrl }: { clip: ExtensionClip; backendUrl: string }) {
   const duration = formatClipDuration(clip.durationSeconds)
   const clipUrl = safeTwitchNavigationUrl(clip.url)
   const thumbnailUrl = safeImageUrl(clip.thumbnailUrl, backendUrl)
@@ -1867,10 +1876,25 @@ function ClipSpikeCard({ clip, backendUrl }: { clip: ExtensionClip; backendUrl: 
   return (
     <section style={styles.clipSpikeSection}>
       <h3 style={styles.clipSpikeHeading}>Clip spike</h3>
-      <a href={clipUrl} target="_blank" rel="noreferrer" referrerPolicy="no-referrer" style={styles.clipSpikeCard}>
+      <a
+        className="pulse-clip-spike-card"
+        data-clip-spike-card
+        href={clipUrl}
+        target="_blank"
+        rel="noreferrer"
+        referrerPolicy="no-referrer"
+        style={styles.clipSpikeCard}
+        aria-label={`Clip spike: ${clip.title}`}
+      >
         <div style={styles.clipThumbWrap}>
           {thumbnailUrl ? (
-            <img src={thumbnailUrl} alt={clip.title} style={styles.clipThumb} loading="lazy" referrerPolicy="no-referrer" />
+            <img
+              src={thumbnailUrl}
+              alt={clip.title}
+              style={styles.clipThumb}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
           ) : (
             <div style={styles.clipThumbFallback} />
           )}

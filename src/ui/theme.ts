@@ -105,11 +105,15 @@ export const shadowStyles = `
     box-shadow: none !important;
     transform: none !important;
   }
-  .pulse-moment-row-button:focus,
-  .pulse-moment-row-button:focus-visible,
+  .pulse-moment-row-button:focus:not(:focus-visible),
   .pulse-moment-row-button:active {
     outline: none !important;
     box-shadow: none !important;
+  }
+  .pulse-moment-row-button:focus-visible {
+    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 1px rgba(17, 17, 23, 0.95) !important;
   }
   .pulse-moment-row-button .pulse-moment-row {
     border: none;
@@ -143,6 +147,7 @@ export const shadowStyles = `
   .pulse-seven-tv-toggle:hover {
     background: rgba(255, 255, 255, 0.03);
   }
+  .pulse-seven-tv-toggle:focus-visible,.pulse-seven-tv-more:focus-visible,.pulse-seven-tv-chip:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,196,181,253),.95);outline-offset:2px}
   .pulse-seven-tv-chip {
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
@@ -155,10 +160,6 @@ export const shadowStyles = `
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.18) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;
     box-shadow: 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.78);
-  }
-  .pulse-seven-tv-chip:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.85);
-    outline-offset: 2px;
   }
   .pulse-seven-tv-chip-disabled:hover {
     background: inherit !important;
@@ -219,6 +220,9 @@ export const shadowStyles = `
     background: rgba(139, 92, 246, 0.2) !important;
     border-color: rgba(167, 139, 250, 0.5) !important;
   }
+  .pulse-clip-spike-card{transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}
+  .pulse-clip-spike-card:hover,.pulse-clip-spike-card:focus-visible{background:rgba(var(--pulse-accent-rgb,139,92,246),.08)!important;border-color:rgba(var(--pulse-accent-light-rgb,167,139,250),.58)!important;box-shadow:0 8px 22px rgba(0,0,0,.24)}
+  .pulse-clip-spike-card:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,196,181,253),.95);outline-offset:2px}
   .pulse-recap-analytics-cta {
     transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   }
@@ -442,6 +446,7 @@ export const shadowStyles = `
     }
   }
   @media (prefers-reduced-motion: reduce) {
+  .pulse-clip-spike-card{transform:none!important;transition:none!important}
     .pulse-signal-selection-animated {
       transition: none;
     }

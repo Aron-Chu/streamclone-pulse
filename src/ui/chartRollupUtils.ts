@@ -26,22 +26,6 @@ export function barDisplayAxisMax(values: Array<number | null>): number {
   return Math.max(Math.ceil(p85 * 1.15), max * 0.55, 1)
 }
 
-/** Compress outliers into the top fifth of a lane without flattening typical values. */
-export function softFitValueToAxis(value: number, axisMax: number): number {
-  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(axisMax) || axisMax <= 0) return 0
-  const knee = axisMax * 0.8
-  if (value <= knee) return value
-  const headroom = Math.max(1, axisMax - knee)
-  return Math.min(axisMax, knee + headroom * (1 - Math.exp(-(value - knee) / headroom)))
-}
-
-export function softFitSeriesToAxis(
-  values: Array<number | null>,
-  axisMax: number,
-): Array<number | null> {
-  return values.map(value => value == null ? null : softFitValueToAxis(value, axisMax))
-}
-
 export function widthDerivedBucketCount(
   plotWidth: number,
   viewportMinutes: number,
@@ -203,7 +187,7 @@ export function firstViewerOffsetSeconds(
 ): number {
   let earliest = -1
   for (const rollup of rollups) {
-    if ((rollup.viewerCount ?? 0) <= 0) continue
+    if (typeof rollup.viewerCount !== 'number' || !Number.isFinite(rollup.viewerCount) || rollup.viewerCount <= 0) continue
     if (earliest < 0 || rollup.offsetSeconds < earliest) {
       earliest = rollup.offsetSeconds
     }

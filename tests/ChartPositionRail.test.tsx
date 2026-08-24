@@ -7,9 +7,9 @@ import {
 } from '../src/ui/ChartPositionRail.tsx'
 
 describe('ChartPositionRail', () => {
-  it('stays hidden for short full-range timelines until the user zooms', () => {
-    const fullViewport = { startSeconds: 0, endSeconds: 60 * 60 }
-    expect(shouldShowChartRail(fullViewport, 60 * 60)).toBe(false)
+  it('shows a persistent rail once a timeline has meaningful coverage', () => {
+    expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 5 * 60 }, 5 * 60)).toBe(true)
+    expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 60 }, 60)).toBe(false)
     expect(shouldShowChartRail({ startSeconds: 0, endSeconds: 30 * 60 }, 60 * 60)).toBe(true)
   })
 

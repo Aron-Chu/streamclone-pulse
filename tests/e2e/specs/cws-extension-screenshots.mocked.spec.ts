@@ -199,7 +199,7 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     })
     await openTwitchChannel(extension.page, 'fixturechan')
     await waitForPulseRoot(extension.page)
-    await assertPulseShadowContains(extension.page, /Top moments|Most Reacted|Viewers|Collecting/i)
+    await assertPulseShadowContains(extension.page, /Most Reacted|Viewers|Collecting/i)
     await scrollPulsePanel(extension.page, 0.55)
     await writeExactStoreShot(extension.page, '04-most-reacted.png')
 

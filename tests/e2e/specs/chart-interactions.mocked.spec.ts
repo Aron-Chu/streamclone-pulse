@@ -453,7 +453,7 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
-  test('keeps Games Played above the plot and opens settings from the bottom bar', async ({
+  test('keeps Games Played and range controls above the plot and opens settings from the bottom bar', async ({
     extension,
     prepare,
     evidence,
@@ -471,8 +471,8 @@ test.describe('chart preview/lock interactions', () => {
     const rangeBox = await range.boundingBox()
     const gamesBox = await games.boundingBox()
     const chartBox = await chart.boundingBox()
-    expect(rangeBox?.y ?? Infinity).toBeLessThan(gamesBox?.y ?? -Infinity)
-    expect(gamesBox?.y ?? Infinity).toBeLessThan(chartBox?.y ?? -Infinity)
+    expect(gamesBox?.y ?? Infinity).toBeLessThan(rangeBox?.y ?? -Infinity)
+    expect(rangeBox?.y ?? Infinity).toBeLessThan(chartBox?.y ?? -Infinity)
 
     const settings = extension.page.locator(`#${PULSE_ROOT_ID} [data-pulse-settings-entry="bottom-bar"]`)
     await expect(settings).toBeVisible()

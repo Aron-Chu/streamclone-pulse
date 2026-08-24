@@ -16,6 +16,8 @@ export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting'] as const
 export const EXPECTED_HOST_PERMISSIONS = [
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
+  'https://cdn.betterttv.net/*',
+  'https://cdn.streampulse.stream/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
   'https://*.twitch.tv/*',
@@ -172,13 +174,13 @@ export async function clickBookmarkButton(page: Page): Promise<void> {
 }
 
 /**
- * Click the first Top moments row inside the Pulse shadow root,
+ * Click the first Most Reacted moment row inside the Pulse shadow root,
  * then wait for the selected-moment Bookmark CTA.
  */
 export async function selectFirstMostReactedMoment(page: Page): Promise<void> {
   await expect
     .poll(async () => pulseShadowText(page), { timeout: 20_000 })
-    .toMatch(/Top moments|Most Reacted/i)
+    .toMatch(/Most Reacted/i)
 
   const clicked = await page.evaluate(rootId => {
     const host = document.getElementById(rootId)
@@ -196,7 +198,7 @@ export async function selectFirstMostReactedMoment(page: Page): Promise<void> {
     row.click()
     return true
   }, PULSE_ROOT_ID)
-  expect(clicked, 'expected a Top moments row to click').toBe(true)
+  expect(clicked, 'expected a Most Reacted row to click').toBe(true)
 
   await expect(async () => {
     const hasBookmark = await page.evaluate(rootId => {

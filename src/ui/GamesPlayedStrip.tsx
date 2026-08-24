@@ -9,6 +9,9 @@ import {
 } from '@streampulse/pulse-charts'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { theme } from './theme.ts'
+import { isRenderableGameName } from './extensionChartAdapter.ts'
+
+export { isRenderableGameName } from './extensionChartAdapter.ts'
 
 export const GAMES_PLAYED_ICON_SIZE_PX = 64
 export const GAMES_PLAYED_ART_WIDTH_PX = 46
@@ -22,7 +25,6 @@ const CHIP_GAP_PX = 8
 const CHIP_STEP_PX = GAMES_PLAYED_HIT_TARGET_PX + CHIP_GAP_PX
 const SCROLL_EDGE_EPSILON_PX = 0.5
 const GAME_ART_PATH = /^\/ttv-boxart\/\d+(?:_IGDB)?-\d+x\d+\.(?:jpe?g|png)$/i
-
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => (
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -234,7 +236,13 @@ export function GamesPlayedStrip({
   })
   const reducedMotion = useReducedMotion()
   const resolvedActivationKey = resolveGamesPlayedActivationKey(activationKey, streamId)
-  const segments = useMemo(() => normalizeGameSegments(games ?? [], durationSeconds), [games, durationSeconds])
+  const segments = useMemo(
+    () => normalizeGameSegments(
+      (games ?? []).filter(game => isRenderableGameName(game.gameName)),
+      durationSeconds,
+    ),
+    [games, durationSeconds],
+  )
   const timelineRange = useMemo(
     () => resolveGamesPlayedTimelineRange(visibleRange, durationSeconds, segments),
     [durationSeconds, segments, visibleRange],

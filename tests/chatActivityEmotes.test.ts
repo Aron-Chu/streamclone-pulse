@@ -176,6 +176,23 @@ describe('chatActivityEmotes', () => {
     expect(rollupSeries(payload, 'full')).toHaveLength(3)
   })
 
+  it('keeps an explicitly finalized quiet minute in the recent chart', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      rollups: [
+        { offsetSeconds: 0, finalized: true, chatCount: 0, totalEmoteCount: 0 },
+        { offsetSeconds: 60, finalized: false, chatCount: 0, totalEmoteCount: 0 },
+        { offsetSeconds: 120, chatCount: 4 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    expect(rollupSeries(payload, 'recent').map(rollup => rollup.offsetSeconds)).toEqual([0, 120])
+  })
+
   it('keeps a validated live full fallback nonempty while preserving its missing gap', () => {
     const activation = makeFullHistoryActivation({ login: 'xqc', streamId: '320977139673', vodId: '2852444512' })
     const fullRollups = Array.from({ length: 226 }, (_, index) => index * 60)
@@ -255,6 +272,36 @@ describe('chatActivityEmotes', () => {
 
     expect(prepared.map(rollup => rollup.offsetSeconds)).toEqual([19_880, 19_940, 20_000])
     expect(prepared.some(rollup => (rollup.chatCount ?? 0) > 0)).toBe(true)
+  })
+
+  it('preserves recent viewer samples when full history omits the tail viewer lane', () => {
+    const activation = makeFullHistoryActivation({ login: 'jynxzi', streamId: 'viewer-tail' })
+    const payload: PulsePayload = {
+      login: 'jynxzi',
+      streamId: activation.streamId,
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 120,
+      rollups: [
+        { offsetSeconds: 120, chatCount: 12, viewerCount: 42_000 },
+      ],
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 2 },
+        { offsetSeconds: 60, chatCount: 4 },
+        { offsetSeconds: 120, chatCount: 12 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+
+    const prepared = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: payload.currentOffsetSeconds,
+      activation,
+    })
+
+    expect(prepared.find(rollup => rollup.offsetSeconds === 120)?.viewerCount).toBe(42_000)
   })
 
   it('chartRollupSeries uses full stream rollups and keeps quiet minutes', () => {

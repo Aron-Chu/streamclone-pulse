@@ -26,6 +26,7 @@ export interface ExtensionEmoteLike {
 
 export interface ExtensionRollupLike {
   offsetSeconds: number
+  finalized?: boolean
   chatCount?: number
   sevenTvEmoteCount?: number
   totalEmoteCount?: number
@@ -214,6 +215,7 @@ function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string
 
   return {
     minuteTs: minuteTsFromOffset(startedAt, r.offsetSeconds),
+    finalized: r.finalized,
     chatCount: r.chatCount,
     totalEmoteCount,
     seventvEmoteCount,

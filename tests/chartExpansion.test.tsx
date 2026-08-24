@@ -233,6 +233,29 @@ describe('useChartExpansion', () => {
 })
 
 describe('chart shells and controls', () => {
+  it('keeps the recap viewer lane for explicit zero samples', () => {
+    const html = renderToStaticMarkup(
+      <RecapTimelineChart
+        payload={makePayload({
+          isLive: false,
+          vodId: 'vod-zero-viewers',
+          rollups: [
+            { offsetSeconds: 0, viewerCount: 0, chatCount: 10, sevenTvEmoteCount: 2 },
+            { offsetSeconds: 60, viewerCount: 0, chatCount: 12, sevenTvEmoteCount: 3 },
+          ],
+          currentOffsetSeconds: 120,
+        })}
+        backendUrl="https://api.example.test"
+        peakOffsets={[]}
+        catalog={[]}
+        onSelectPoint={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('data-chart-series="viewers"')
+    expect(html).toContain('data-chart-viewer-axis-min="0"')
+  })
+
   it('keeps populated, loading, and empty shells at the same animated height', () => {
     const loading = renderToStaticMarkup(
       <PulseOverviewChart rollups={[]} loading height={216} chartRegionId="chart-region" />,

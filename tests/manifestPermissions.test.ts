@@ -19,6 +19,8 @@ const EXPECTED_PERMISSIONS = ['storage', 'scripting']
 const EXPECTED_HOST_PERMISSIONS = [
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
+  'https://cdn.betterttv.net/*',
+  'https://cdn.streampulse.stream/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
   'https://*.twitch.tv/*',

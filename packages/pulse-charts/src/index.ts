@@ -130,6 +130,7 @@ export {
 } from './chartViewport.ts'
 export {
   LONG_STREAM_OVERVIEW_SECONDS,
+  MIN_RAIL_OVERVIEW_SECONDS,
   shouldShowChartRail,
   isFollowingLive,
   jumpViewportToOffset,

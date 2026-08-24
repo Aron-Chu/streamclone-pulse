@@ -30,8 +30,9 @@ export interface ChartPositionRailProps {
   hideRangeLabel?: boolean
 }
 
-/** Show a position rail for long timelines or whenever the user zooms in. */
+/** Show a position rail once there is enough timeline to navigate or whenever the user zooms in. */
 export const LONG_STREAM_OVERVIEW_SECONDS = 90 * 60
+export const MIN_RAIL_OVERVIEW_SECONDS = 5 * 60
 const DEFAULT_FOCUS_SECONDS = 60 * 60
 const MIN_PAN_SECONDS = 60
 const SHIFT_PAN_SECONDS = 10 * 60
@@ -42,7 +43,7 @@ export function shouldShowChartRail(viewport: ChartViewport, durationSeconds: nu
   if (durationSeconds <= 0 || viewportDuration <= 0) return false
   return (
     viewportDuration < durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS
-    || durationSeconds >= LONG_STREAM_OVERVIEW_SECONDS
+    || durationSeconds >= MIN_RAIL_OVERVIEW_SECONDS
   )
 }
 
@@ -154,7 +155,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     const rect = track.getBoundingClientRect()
     if (rect.width <= 0) return
     const deltaSeconds = (event.clientX - state.startClientX) * (durationSeconds / rect.width)
-    state.dragSeconds += Math.abs(deltaSeconds)
+    state.dragSeconds = Math.abs(deltaSeconds)
     let next: ChartViewport
     if (state.mode === 'pan') {
       next = panViewport(state.startViewport, deltaSeconds, durationSeconds, true, coverageStartSeconds)
@@ -358,7 +359,6 @@ const styles: Record<string, CSSProperties> = {
     left: 0,
     position: 'absolute',
     top: 0,
-    willChange: 'transform',
   },
   resizeHandle: {
     bottom: 0,

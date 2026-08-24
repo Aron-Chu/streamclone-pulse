@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
 import {
   emoteActivityInRollups,
@@ -49,6 +49,10 @@ export function SevenTvEmotePanel({
   rollupsLoading = false,
 }: SevenTvEmotePanelProps) {
   const [showAll, setShowAll] = useState(false)
+  useEffect(() => {
+    if (!expanded) setShowAll(false)
+  }, [expanded])
+
   const activityByKey = useMemo(() => {
     const map = new Map<string, EmoteWindowActivity>()
     for (const emote of topEmotes) {
@@ -106,13 +110,28 @@ export function SevenTvEmotePanel({
             ))}
           </span>
         ) : null}
-        <span style={styles.chevron} aria-hidden="true">
-          {expanded ? '▾' : '▸'}
+        <span
+          className="pulse-seven-tv-chevron"
+          data-emote-picker-chevron
+          data-expanded={expanded ? 'true' : 'false'}
+          style={{
+            ...styles.chevron,
+            transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+          }}
+          aria-hidden="true"
+        >
+          ▾
         </span>
       </button>
 
-      {expanded ? (
-        <div style={styles.body}>
+      <div
+        className="pulse-seven-tv-body"
+        data-emote-picker-body
+        data-expanded={expanded ? 'true' : 'false'}
+        aria-hidden={!expanded}
+        style={{ ...styles.body, ...(expanded ? styles.bodyExpanded : null) }}
+      >
+        <div>
           <div
             id="pulse-emote-picker-list"
             className="pulse-emote-picker-grid"
@@ -138,6 +157,7 @@ export function SevenTvEmotePanel({
                   aria-disabled={disabled}
                   aria-label={`${emote.name}, ${formatCount(emote.count)} uses. ${hint}`}
                   disabled={disabled}
+                  tabIndex={expanded ? 0 : -1}
                   className={`pulse-seven-tv-chip${selected ? ' pulse-seven-tv-chip-active' : ''}${disabled ? ' pulse-seven-tv-chip-disabled' : ''}`}
                   style={{
                     ...styles.chip,
@@ -167,15 +187,17 @@ export function SevenTvEmotePanel({
             <button
               type="button"
               data-emote-picker-more
+              className="pulse-seven-tv-more"
               style={styles.moreButton}
               aria-expanded={showAll}
+              tabIndex={expanded ? 0 : -1}
               onClick={() => setShowAll(current => !current)}
             >
               {showAll ? 'Show fewer' : `+${hiddenCount} more`}
             </button>
           ) : null}
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }
@@ -216,13 +238,27 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
   },
   previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
-  chevron: { color: theme.accentSoft, flexShrink: 0, fontSize: 11, fontWeight: 900, marginLeft: 'auto' },
+  chevron: {
+    color: theme.accentSoft,
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 900,
+    marginLeft: 'auto',
+    transition: 'transform .18s cubic-bezier(.2,0,0,1)',
+  },
   body: {
     borderTop: '1px solid rgba(255, 255, 255, 0.06)',
     display: 'grid',
     gap: 7,
+    maxHeight: 0,
+    opacity: 0,
+    overflow: 'hidden',
     padding: '7px 8px 8px',
+    pointerEvents: 'none',
+    transform: 'translateY(-4px)',
+    transition: 'max-height .18s cubic-bezier(.2,0,0,1), opacity .18s cubic-bezier(.2,0,0,1), transform .18s cubic-bezier(.2,0,0,1)',
   },
+  bodyExpanded: { maxHeight: 480, opacity: 1, pointerEvents: 'auto', transform: 'translateY(0)' },
   chipGrid: {
     alignItems: 'center',
     display: 'flex',

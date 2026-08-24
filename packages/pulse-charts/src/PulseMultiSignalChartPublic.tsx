@@ -50,6 +50,8 @@ export interface PulseMultiSignalChartProps {
   highlightedGameSegmentKey?: string | null
   viewport?: ChartViewport | null
   onViewportChange?: (viewport: ChartViewport) => void
+  /** Disable viewport easing while the parent rail is being dragged/resized. */
+  viewportMotionEnabled?: boolean
   viewportDomainStartSeconds?: number
   dragPanMode?: ChartDragPanMode
   lineWeightMode?: ChartLineWeightMode
@@ -91,6 +93,7 @@ export function PulseMultiSignalChart({
   highlightedGameSegmentKey = null,
   viewport,
   onViewportChange,
+  viewportMotionEnabled = true,
   viewportDomainStartSeconds = 0,
   dragPanMode = 'off',
   lineWeightMode = 'fixed',
@@ -176,6 +179,7 @@ export function PulseMultiSignalChart({
        durationSeconds={durationSeconds}
        viewport={viewport}
        onViewportChange={onViewportChange}
+       viewportMotionEnabled={viewportMotionEnabled}
        viewportDomainStartSeconds={viewportDomainStartSeconds}
        dragPanMode={dragPanMode}
        lineWeightMode={lineWeightMode}

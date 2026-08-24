@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "StreamPulse",
   "description": "Live Pulse overlay for Twitch channels powered by the StreamPulse analytics API.",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "action": {
     "default_popup": "popup/index.html",
     "default_title": "StreamPulse"
@@ -23,6 +23,8 @@
   "host_permissions": [
     "https://api.streampulse.stream/*",
     "https://cdn.7tv.app/*",
+    "https://cdn.betterttv.net/*",
+    "https://cdn.streampulse.stream/*",
     "https://static-cdn.jtvnw.net/*",
     "https://cdn.frankerfacez.com/*",
     "https://*.twitch.tv/*"

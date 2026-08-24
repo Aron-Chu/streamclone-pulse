@@ -1,5 +1,6 @@
 export interface ChartMinuteRollup {
   minuteTs: string
+  finalized?: boolean
   viewerAvg?: number
   viewerMax?: number
   viewerLatest?: number

@@ -22,7 +22,11 @@ export default defineConfig({
       '**/dist/**',
       'tests/e2e/**',
       'streampulse-web/**',
+      // Analytics Console owns its own test environment/config; its source
+      // tests are not extension tests and otherwise leak into root Vitest.
+      'packages/analytics-console/**',
       'packages/**/tests/**',
+      '**/.claude/**',
       '_streamclone/**',
       '_streampulse-backend/**',
       '../twitch-7tv-clone/**',

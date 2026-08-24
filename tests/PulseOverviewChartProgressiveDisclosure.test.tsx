@@ -68,6 +68,22 @@ describe('PulseOverviewChart signal disclosure', () => {
     expect(still.match(/transition:/g) ?? []).toHaveLength(0)
   })
 
+  it('keeps an explicit zero viewer sample visible as a viewer lane', () => {
+    const html = renderToStaticMarkup(
+      <PulseOverviewChart
+        reducedMotion
+        rollups={[
+          { offsetSeconds: 0, viewerCount: 0, chatCount: 8, sevenTvEmoteCount: 2 },
+          { offsetSeconds: 60, viewerCount: 0, chatCount: 10, sevenTvEmoteCount: 3 },
+        ]}
+      />,
+    )
+
+    expect(html).toContain('data-chart-series="viewers"')
+    expect(html).toContain('data-chart-viewer-axis-min="0"')
+    expect(html).toContain('data-chart-viewer-axis-max="1"')
+  })
+
   it('keeps the committed lock primary while another bucket is a muted preview', () => {
     const html = renderToStaticMarkup(
       <PulseOverviewChart

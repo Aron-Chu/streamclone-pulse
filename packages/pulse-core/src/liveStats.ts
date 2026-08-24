@@ -74,6 +74,8 @@ export type StreamCollectionState = 'live' | 'historical' | 'not_collected' | 's
 /** Minimal rollup shape needed for live stats. Mirrors AnalyticsMinuteRollup. */
 export interface LiveStatsRollup {
   minuteTs?: string
+  /** Explicit backend finalization state; absent preserves the legacy heuristic. */
+  finalized?: boolean
   viewerAvg?: number
   viewerMax?: number
   viewerLatest?: number
@@ -144,6 +146,7 @@ export interface LiveStats {
 /** A rollup that actually carries data (not a synthetic gap-fill row). */
 function isCompletedRollup(r: LiveStatsRollup): boolean {
   if (r.missing) return false
+  if (typeof r.finalized === 'boolean') return r.finalized
   return (
     (r.viewerSamples ?? 0) > 0 ||
     (r.chatCount ?? 0) > 0 ||

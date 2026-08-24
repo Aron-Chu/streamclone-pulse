@@ -134,7 +134,11 @@ export function RecapTimelineChart({
       : (!hasFullRollups || fullRollupsMissingStreamPrefix(payload)) && timelineLoading
         ? 'Loading full stream…'
         : null
-  const showViewerStrip = minuteRollups.some(rollup => (rollup.viewerCount ?? 0) > 0)
+  // A measured zero is still viewer data. Keep the lane visible for quiet
+  // recap minutes, while omitted/missing samples remain an honest gap.
+  const showViewerStrip = minuteRollups.some(
+    rollup => !rollup.missing && typeof rollup.viewerCount === 'number' && Number.isFinite(rollup.viewerCount),
+  )
   const chartCoverageStartSeconds = Math.max(
     0,
     payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,

@@ -18,6 +18,8 @@ export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
 export const ALLOWED_HOST_PERMISSIONS_STORE = Object.freeze([
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
+  'https://cdn.betterttv.net/*',
+  'https://cdn.streampulse.stream/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
   'https://*.twitch.tv/*',

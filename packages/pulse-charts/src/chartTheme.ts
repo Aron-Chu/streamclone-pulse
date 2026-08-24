@@ -26,7 +26,7 @@ export const CHART_THEME = {
   },
   chat: {
     color: "#a78bfa",
-    line: "#d4d4d8",
+    line: "#a78bfa",
     lineOpacity: 0.84,
     whisperBar: 0.12,
     guide: 0.22,

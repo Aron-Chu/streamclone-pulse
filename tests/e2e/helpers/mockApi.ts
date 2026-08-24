@@ -11,7 +11,6 @@ function readJson(name: string): unknown {
 
 export type ApiScenario =
   | 'live-ready'
-  | 'plot-rich'
   | 'live-emote-picker'
   | 'live-partial'
   | 'helix-off'
@@ -21,8 +20,6 @@ export type ApiScenario =
   | 'api-500'
   | 'timeout'
   | 'malformed'
-  | 'offline-rich'
-  | 'offline-lock-rich'
 
 export interface MockApiController {
   setScenario: (scenario: ApiScenario) => void
@@ -43,12 +40,6 @@ const SCENARIOS: Record<Exclude<ApiScenario, 'api-500' | 'timeout' | 'malformed'
   'live-ready': {
     health: 'health-ok.json',
     pulse: 'pulse-live-ready.json',
-    coverage: 'coverage-active.json',
-    vod: 'vod-ready.json',
-  },
-  'plot-rich': {
-    health: 'health-ok.json',
-    pulse: 'pulse-live-plot-rich.json',
     coverage: 'coverage-active.json',
     vod: 'vod-ready.json',
   },
@@ -87,18 +78,6 @@ const SCENARIOS: Record<Exclude<ApiScenario, 'api-500' | 'timeout' | 'malformed'
     pulse: 'pulse-offline.json',
     coverage: 'coverage-active.json',
     vod: 'vod-syncing.json',
-  },
-  'offline-rich': {
-    health: 'health-ok.json',
-    pulse: 'pulse-offline-rich.json',
-    coverage: 'coverage-active.json',
-    vod: 'vod-ready.json',
-  },
-  'offline-lock-rich': {
-    health: 'health-ok.json',
-    pulse: 'pulse-offline.json',
-    coverage: 'coverage-active.json',
-    vod: 'vod-ready.json',
   },
 }
 

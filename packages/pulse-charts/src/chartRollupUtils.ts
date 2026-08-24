@@ -57,7 +57,11 @@ export function chartViewerValue(point: ChartMinuteRollup): number | null {
     return Math.max(0, point.viewerAvg)
   }
   const fallback = viewerValue(point)
-  return fallback > 0 ? fallback : null
+  if (fallback > 0) return fallback
+  const explicitCount = (point as ChartMinuteRollup & { viewerCount?: unknown }).viewerCount
+  return typeof explicitCount === 'number' && Number.isFinite(explicitCount)
+    ? Math.max(0, explicitCount)
+    : null
 }
 
 /** Observed chart viewer value, with missing/unobserved minutes kept as gaps. */
@@ -113,8 +117,8 @@ export function viewerSourceLabel(source?: string) {
 
 export function analyzeViewerCoverage(rollups: ChartMinuteRollup[]) {
   const indexed = rollups
-    .map((point, idx) => ({ idx, value: !point.missing ? viewerValue(point) : 0 }))
-    .filter(point => point.value > 0)
+    .map((point, idx) => ({ idx, value: chartViewerValue(point) }))
+    .filter((point): point is { idx: number; value: number } => point.value != null)
   if (indexed.length < 3) {
     return {
       hasViewerRollups: false,
@@ -154,14 +158,14 @@ export function minuteEmoteTotal(point: ChartMinuteRollup) {
 export function rollupHasMinuteData(point: ChartMinuteRollup) {
   return !point.missing && (
     (point.viewerSamples ?? 0) > 0
-    || viewerValue(point) > 0
+    || (chartViewerValue(point) ?? 0) > 0
     || (point.chatCount ?? 0) > 0
     || minuteEmoteTotal(point) > 0
   )
 }
 
 export function rollupsHaveViewerData(rollups: ChartMinuteRollup[]) {
-  return rollups.some(point => !point.missing && viewerValue(point) > 0)
+  return rollups.some(point => chartViewerValue(point) !== null)
 }
 
 export interface CompositeOverviewSignal {

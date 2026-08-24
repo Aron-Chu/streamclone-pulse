@@ -44,11 +44,11 @@ describe('SevenTvEmotePanel packed picker', () => {
     container.remove()
   })
 
-  function renderPicker(selectedKeys: string[] = []) {
+  function renderPicker(selectedKeys: string[] = [], expanded = true) {
     act(() => {
       root.render(
         createElement(SevenTvEmotePanel, {
-          expanded: true,
+          expanded,
           onToggleExpanded: vi.fn(),
           backendUrl: 'https://api.streampulse.stream',
           rollups,
@@ -61,6 +61,23 @@ describe('SevenTvEmotePanel packed picker', () => {
       )
     })
   }
+
+  it('keeps the picker mounted for enter/exit motion and removes collapsed controls from tab order', () => {
+    renderPicker([], false)
+    const collapsedBody = container.querySelector('[data-emote-picker-body]')
+    expect(collapsedBody).not.toBeNull()
+    expect(collapsedBody?.getAttribute('data-expanded')).toBe('false')
+    expect(collapsedBody?.getAttribute('aria-hidden')).toBe('true')
+    expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(-1)
+    expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(-1)
+
+    renderPicker([], true)
+    expect(container.querySelector('[data-emote-picker-body]')).toBe(collapsedBody)
+    expect(container.querySelector('[data-emote-picker-body]')?.getAttribute('data-expanded')).toBe('true')
+    expect(container.querySelector('[data-emote-picker-body]')?.getAttribute('aria-hidden')).toBe('false')
+    expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(0)
+    expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(0)
+  })
 
   it('shows twelve chips first and expands the rest with one more control', () => {
     renderPicker()
@@ -84,5 +101,16 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect(chips.slice(0, 6).every(chip => chip.getAttribute('aria-selected') === 'true')).toBe(true)
     expect(chips[6]?.disabled).toBe(true)
     expect(container.querySelector('.pulse-seven-tv-chip-active')?.className).toContain('pulse-seven-tv-chip-active')
+  })
+
+  it('resets the expanded list when the picker is closed and reopened', () => {
+    renderPicker()
+    act(() => {
+      ;(container.querySelector('[data-emote-picker-more]') as HTMLButtonElement).click()
+    })
+    expect(container.querySelectorAll('[data-emote-picker-grid] .pulse-seven-tv-chip')).toHaveLength(14)
+    renderPicker([], false)
+    renderPicker([], true)
+    expect(container.querySelectorAll('[data-emote-picker-grid] .pulse-seven-tv-chip')).toHaveLength(12)
   })
 })

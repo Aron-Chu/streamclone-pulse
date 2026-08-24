@@ -359,6 +359,7 @@ export function LiveStatsBand({
     // enough coverage for the chart's five-minute minimum viewport. The rail
     // itself remains hidden until the view is zoomed or the stream is long.
     || effectiveCurrentOffsetSeconds >= MIN_VIEWPORT_SECONDS
+    || ((rollups[rollups.length - 1]?.offsetSeconds ?? 0) + 60 >= MIN_VIEWPORT_SECONDS)
   // Full history is optional enrichment. Keep recent points rendered while the
   // activation-scoped request is pending or has failed.
   const chartLoading = timelineLoading && rollups.length === 0
@@ -572,6 +573,7 @@ export function LiveStatsBand({
     payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,
     chartRailRollups[0]?.offsetSeconds ?? 0,
   )
+  const chartHasMeaningfulData = rollups.some(rollup => !rollup.missing)
 
   const chartViewportForRender = useMemo(
     () => clampViewportToCoverage(
@@ -757,7 +759,9 @@ export function LiveStatsBand({
   const showCoverageStartHint =
     coverageHint.show && (chartWindow === 'full' || !fullTimeline)
   const showViewerStrip = rollups.some(
-    rollup => !rollup.missing && typeof rollup.viewerCount === 'number' && rollup.viewerCount > 0,
+    // An explicit zero is still a real viewer sample. Keep the lane visible
+    // so a quiet/hidden-viewer period is not mistaken for missing coverage.
+    rollup => !rollup.missing && typeof rollup.viewerCount === 'number' && Number.isFinite(rollup.viewerCount),
   )
   const viewerPeak = Math.max(0, payload.peakViewers ?? 0, stats.currentViewers ?? 0)
   const viewerStartOffsetSeconds = Math.max(
@@ -778,6 +782,7 @@ export function LiveStatsBand({
   const showPartialRangeStatus = chartWindow !== 'full'
   const chartRailVisible =
     chartUsesViewport
+    && chartHasMeaningfulData
     && shouldShowChartRail(chartViewportForRender, chartRailDurationSeconds)
   const chartAtAvailableRange =
     chartRailDurationSeconds <= 0
@@ -871,11 +876,13 @@ export function LiveStatsBand({
         </div>
       </div>
 
-      {emoteChartHint ? <p style={styles.metricHintBelow}>{emoteChartHint}</p> : null}
-
-      {emoteSyncLabel ? (
-        <p style={{ ...styles.emoteSyncNote, ...emoteSyncStyle }}>{emoteSyncLabel}</p>
-      ) : null}
+      <div style={styles.chartStatusLane} aria-live="polite">
+        {emoteSyncLabel ? (
+          <span style={{ ...styles.emoteSyncNote, ...emoteSyncStyle }}>{emoteSyncLabel}</span>
+        ) : emoteChartHint ? (
+          <span style={styles.metricHintBelow}>{emoteChartHint}</span>
+        ) : null}
+      </div>
 
       <div ref={sparklineBlockRef} style={styles.sparklineBlock}>
         <div style={styles.chartLeadIn}>
@@ -939,7 +946,18 @@ export function LiveStatsBand({
               ) : undefined
             }
           />
-          <div style={styles.chartRangeRow} data-chart-range-controls>
+        </div>
+        <GamesPlayedStrip
+          games={chartGames}
+          activationKey={activationKey}
+          durationSeconds={chartRailDurationSeconds}
+          highlightedKey={chartHighlightedGameKeyValue}
+          onHighlightKey={setHoveredGameKey}
+          visibleRange={gamesVisibleRange}
+          plotPadLeft={4}
+          plotPadRight={12}
+        />
+        <div style={styles.chartRangeRow} data-chart-range-controls>
             <PulseThemedSelect
               label="Range"
               value={chartWindow}
@@ -985,39 +1003,6 @@ export function LiveStatsBand({
                 {timelineLoading ? 'Loading…' : 'Retry full history'}
               </button>
             ) : null}
-          </div>
-        </div>
-        <GamesPlayedStrip
-          games={chartGames}
-          activationKey={activationKey}
-          durationSeconds={chartRailDurationSeconds}
-          highlightedKey={chartHighlightedGameKeyValue}
-          onHighlightKey={setHoveredGameKey}
-          visibleRange={gamesVisibleRange}
-          plotPadLeft={4}
-          plotPadRight={12}
-        />
-        <div style={styles.chartReadoutSlot}>
-          <p
-            style={{
-              ...styles.chartReadout,
-              opacity: showChartReadout ? 1 : 0,
-            }}
-            aria-live="polite"
-            aria-hidden={!showChartReadout}
-          >
-            <span style={styles.chartReadoutTime}>
-              {formatHeatOffset(minuteAtOffsetSeconds)}
-            </span>
-            <span style={styles.chartReadoutSep}>·</span>
-            <span>viewers {formatMaybeNumber(readoutViewers)}</span>
-            <span style={styles.chartReadoutSep}>·</span>
-            <span>chat {formatMaybeNumber(readoutChat)}/min</span>
-            <span style={styles.chartReadoutSep}>·</span>
-            <span>
-              emotes {formatMaybeNumber(readoutEmotes)}/min
-            </span>
-          </p>
         </div>
         <div ref={chartInteractionRef} style={styles.chartStack}>
           <PulseOverviewChart
@@ -1053,6 +1038,28 @@ export function LiveStatsBand({
             isLive={isLive}
              emoteSyncTone={emoteSyncTone}
            />
+        </div>
+        <div style={styles.chartReadoutSlot}>
+          <p
+            style={{
+              ...styles.chartReadout,
+              opacity: showChartReadout ? 1 : 0,
+            }}
+            aria-live="polite"
+            aria-hidden={!showChartReadout}
+          >
+            <span style={styles.chartReadoutTime}>{formatHeatOffset(minuteAtOffsetSeconds)}</span>
+            {readoutViewers != null ? (
+              <>
+                <span style={styles.chartReadoutSep}>·</span>
+                <span>viewers {formatMaybeNumber(readoutViewers)}</span>
+              </>
+            ) : null}
+            <span style={styles.chartReadoutSep}>·</span>
+            <span>chat {formatMaybeNumber(readoutChat)}/min</span>
+            <span style={styles.chartReadoutSep}>·</span>
+            <span>emotes {formatMaybeNumber(readoutEmotes)}/min</span>
+          </p>
         </div>
             <div style={styles.chartViewportControls} data-chart-viewport-controls>
               <div style={styles.chartViewportMeta}>
@@ -1198,12 +1205,44 @@ const styles: Record<string, CSSProperties> = {
   metricValue: { fontSize: 22, fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' },
   metricValueRow: { alignItems: 'flex-end', display: 'flex', gap: 5, minWidth: 0 },
   metricRow: { alignItems: 'center', display: 'flex', gap: 4 },
-  metricMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 600, minHeight: 14 },
-  metricHintBelow: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35, margin: '0 0 8px' },
+  metricMeta: {
+    color: theme.textSecondary,
+    fontSize: 10,
+    fontWeight: 600,
+    minHeight: 14,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  metricHintBelow: {
+    color: theme.textMuted,
+    display: 'block',
+    fontSize: 9,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    margin: 0,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   metricHint: { color: theme.textMuted, fontSize: 9, fontWeight: 600, lineHeight: 1.35 },
   providerRate: { marginRight: 8 },
   trendArrow: { fontSize: 11, fontWeight: 900 },
-  emoteSyncNote: { fontSize: 10, fontWeight: 700, margin: '8px 0 0' },
+  emoteSyncNote: {
+    display: 'block',
+    fontSize: 10,
+    fontWeight: 700,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  chartStatusLane: {
+    minHeight: 14,
+    minWidth: 0,
+    overflow: 'hidden',
+  },
   timelineHint: {
     alignItems: 'center',
     color: theme.textMuted,
@@ -1235,7 +1274,7 @@ const styles: Record<string, CSSProperties> = {
   chartReadout: {
     color: theme.textSecondary,
     display: 'flex',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     fontSize: 10,
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 700,
@@ -1243,10 +1282,14 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: '20px',
     margin: 0,
     minHeight: 20,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     width: '100%',
   },
-  chartReadoutTime: { color: theme.textPrimary, fontWeight: 800 },
-  chartReadoutSep: { color: theme.textMuted },
+  chartReadoutTime: { color: theme.textPrimary, flexShrink: 0, fontWeight: 800 },
+  chartReadoutSep: { color: theme.textMuted, flexShrink: 0 },
   chartRangeRow: {
     alignItems: 'center',
     display: 'flex',
@@ -1282,6 +1325,7 @@ const styles: Record<string, CSSProperties> = {
   chartLeadIn: {
     display: 'grid',
     gap: 4,
+    minWidth: 0,
   },
   sparklineBlock: {
     display: 'grid',

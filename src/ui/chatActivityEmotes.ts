@@ -269,6 +269,10 @@ export function rollupSeries(payload: PulsePayload, window: RollupWindow = 'rece
   const filtered = source.filter(rollup => {
     if (rollup.missing) return false
     if (window === 'full') return true
+    // A finalized quiet bucket is real timeline coverage. Keep it so the
+    // recent chart can render an honest flat segment instead of skipping the
+    // minute and making the stream look stalled.
+    if (rollup.finalized === true) return true
     return (
       (rollup.chatCount ?? 0) > 0
       || (rollup.totalEmoteCount ?? 0) > 0
@@ -495,6 +499,36 @@ type PrepareChartRollupsCache = {
 
 let prepareChartRollupsCache: PrepareChartRollupsCache | null = null
 
+/**
+ * Full-history responses can omit Helix viewer samples even when the recent
+ * poll already has them. Preserve those matching tail samples so switching to
+ * Full does not make the viewer lane disappear or imply a zero value.
+ */
+function mergeRecentViewerSamples(
+  rollups: ExtensionRollup[],
+  recentRollups: ExtensionRollup[],
+): ExtensionRollup[] {
+  const recentViewers = new Map<number, number>()
+  for (const rollup of recentRollups) {
+    if (
+      rollup.missing
+      || typeof rollup.viewerCount !== 'number'
+      || !Number.isFinite(rollup.viewerCount)
+      || rollup.viewerCount < 0
+    ) continue
+    recentViewers.set(rollup.offsetSeconds, rollup.viewerCount)
+  }
+  if (recentViewers.size === 0) return rollups
+
+  return rollups.map(rollup => {
+    if (rollup.missing || typeof rollup.viewerCount === 'number') return rollup
+    const viewerCount = recentViewers.get(rollup.offsetSeconds)
+    return viewerCount === undefined
+      ? rollup
+      : { ...rollup, viewerCount }
+  })
+}
+
 export function prepareChartRollups(
   payload: PulsePayload,
   options: {
@@ -562,6 +596,8 @@ export function prepareChartRollups(
       })
     }
   }
+
+  result = mergeRecentViewerSamples(result, payload.rollups)
 
   prepareChartRollupsCache = {
     payload,

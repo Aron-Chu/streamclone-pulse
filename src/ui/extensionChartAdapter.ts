@@ -32,24 +32,50 @@ export function extensionRollupsToChartMinutes(
       if (!key) continue
       emotes[key] = (emotes[key] ?? 0) + (emote.count ?? 0)
     }
-    const viewerCount = rollup.viewerCount ?? 0
-    return {
+    const viewerCount = typeof rollup.viewerCount === 'number'
+      && Number.isFinite(rollup.viewerCount)
+      && rollup.viewerCount >= 0
+      ? rollup.viewerCount
+      : undefined
+    const chartMinute: ChartMinuteRollup = {
       minuteTs: minuteTsFromOffset(startedAt, rollup.offsetSeconds),
-      viewerAvg: viewerCount,
-      viewerMax: viewerCount,
-      viewerLatest: viewerCount,
-      viewerSamples: viewerCount > 0 ? 1 : 0,
+      finalized: rollup.finalized,
       chatCount: rollup.chatCount ?? 0,
       totalEmoteCount: rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0,
       seventvEmoteCount: rollup.sevenTvEmoteCount ?? 0,
       emotes,
       missing: rollup.missing,
     }
+    if (viewerCount === undefined) return chartMinute
+    return {
+      ...chartMinute,
+      viewerAvg: viewerCount,
+      viewerMax: viewerCount,
+      viewerLatest: viewerCount,
+      viewerSamples: 1,
+    }
   })
 }
 
 /** Tolerance (seconds) a game timeline may overrun the known stream duration before it is treated as cross-stream stale data. */
 export const GAME_TIMELINE_TOLERANCE_SECONDS = 120
+
+const PLACEHOLDER_GAME_NAME_PATTERN = /^(?:live|unknown|syncing(?:\.\.\.)?|loading|unavailable|n\/?a|none|-)$/i
+
+/** Placeholder categories are transport/status values, not games users played. */
+export function isRenderableGameName(gameName: string | null | undefined): boolean {
+  const normalized = String(gameName ?? '').trim().replace(/…/g, '...')
+  return normalized.length > 0 && !PLACEHOLDER_GAME_NAME_PATTERN.test(normalized)
+}
+
+/** Compatibility alias for existing callers that use the older terminology. */
+export const isDisplayableGameName = isRenderableGameName
+
+function filterRenderableGameSegments(
+  games: ExtensionGameSegment[] | undefined,
+): ExtensionGameSegment[] {
+  return (games ?? []).filter(game => isRenderableGameName(game.gameName))
+}
 
 /**
  * Coherence guard for backend-supplied game timelines: rejects the ENTIRE array
@@ -88,7 +114,9 @@ export function safeGameTimeline(
   durationSeconds: number,
 ): ExtensionGameSegment[] | undefined {
   if (!games?.length) return undefined
-  return rejectIncoherentGameTimeline(games, durationSeconds) ? undefined : games
+  const renderableGames = filterRenderableGameSegments(games)
+  if (renderableGames.length === 0) return undefined
+  return rejectIncoherentGameTimeline(renderableGames, durationSeconds) ? undefined : renderableGames
 }
 
 /**
@@ -100,11 +128,14 @@ export function extensionGamesForOverviewChart(
   category: string | undefined,
   durationSeconds: number,
 ): ExtensionGameSegment[] {
+  const renderableGames = filterRenderableGameSegments(games)
   const suppliedGames =
-    games?.length && !rejectIncoherentGameTimeline(games, durationSeconds) ? games : undefined
+    renderableGames.length > 0 && !rejectIncoherentGameTimeline(renderableGames, durationSeconds)
+      ? renderableGames
+      : undefined
   if (suppliedGames?.length) return suppliedGames
   const gameName = String(category ?? '').trim()
-  if (!gameName || durationSeconds <= 0) return []
+  if (!isRenderableGameName(gameName) || durationSeconds <= 0) return []
   return [{
     gameName,
     offsetSeconds: 0,
@@ -117,7 +148,7 @@ export function extensionGamesToChartGames(
   durationSeconds: number,
 ): ChartGameSegment[] {
   const normalized = normalizeGameSegments(
-    (games ?? []).map(game => ({
+    filterRenderableGameSegments(games).map(game => ({
       gameName: game.gameName,
       boxArtUrl: game.boxArtUrl,
       categoryId: game.categoryId,

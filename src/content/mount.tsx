@@ -101,7 +101,9 @@ const BASE_STYLE = `
   }
   * { box-sizing: border-box; }
   button, input, select, textarea { font: inherit; }
-  button:focus, button:focus-visible { outline: none !important; }
+  /* Keep mouse focus quiet while preserving the browser keyboard indicator. */
+  button:focus:not(:focus-visible), input:focus:not(:focus-visible),
+  select:focus:not(:focus-visible), textarea:focus:not(:focus-visible) { outline: none; }
   .pulse-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .pulse-no-scrollbar::-webkit-scrollbar { display: none; }
   .pulse-root {

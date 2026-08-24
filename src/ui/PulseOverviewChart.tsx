@@ -497,7 +497,9 @@ function PulseOverviewChartImpl({
   // The parent may know that viewer samples exist elsewhere in the full
   // timeline. Only reserve the viewer lane when the current viewport contains
   // a real sample, otherwise the chart spends space on an empty lane.
-  const showViewerStrip = showViewerStripProp && viewers.some(value => value != null && value > 0)
+  // Preserve an explicit zero sample as data. A zero-valued viewer lane is
+  // materially different from an unavailable viewer lane.
+  const showViewerStrip = showViewerStripProp && viewers.some(value => value != null)
   const chat = useMemo(
     () => rollups.map(point => (point.missing ? null : (point.chatCount ?? 0) || null)),
     [rollups],
@@ -689,7 +691,7 @@ function PulseOverviewChartImpl({
   // preserves sparse endpoints and does not imply continuity across a long
   // unobserved interval, while chat/emote lines retain their existing lanes.
   const viewerGeometry = useMemo(() => {
-    if (!showViewerStrip || viewerMax <= 0) return null
+    if (!showViewerStrip) return null
     const axisSpan = Math.max(1, viewerAxisMax - viewerAxisMin)
     return buildViewerGeometry(viewerTimedValues, viewerTimedValues, {
       width,
