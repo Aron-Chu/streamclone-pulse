@@ -300,6 +300,15 @@ describe('chatActivityEmotes', () => {
         currentOffsetSeconds: 7200,
       }),
     ).toContain('no rollups')
+
+    expect(chartEmptyMessage({
+      rollupCount: 59,
+      visibleRollupCount: 0,
+      chartWindow: 'full',
+      hasFullRollups: false,
+      confidence: 'Collecting',
+      currentOffsetSeconds: 25_200,
+    })).toContain('available outside this view')
   })
 
   it('slices rollups for the 2h chart window', () => {

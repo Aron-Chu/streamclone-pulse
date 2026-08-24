@@ -22,7 +22,6 @@ import {
   chartDurationSeconds,
   chartViewerValue,
   extendSeriesToTrailingEdge,
-  extendViewerSeriesToTrailingEdge,
   minuteEmoteTotal,
   overviewBarWidth,
   plotXForIndex,
@@ -67,6 +66,7 @@ export interface PulseOverviewChartProps {
   onFocusedSeriesKeyChange?: (key: string | null) => void
   highlightedGameSegmentKey?: string | null
   viewport?: ChartViewport
+  coverageStartSeconds?: number
   onViewportChange?: (viewport: ChartViewport) => void
   onJumpToOffset?: (offsetSeconds: number) => void
   backendUrl?: string
@@ -290,7 +290,7 @@ function PulseOverviewChartImpl({
   previewIndex = null,
   activityExpanded = false,
   activityExpansionProgress,
-  showViewerStrip = true,
+  showViewerStrip: showViewerStripProp = true,
   onSelectIndex,
   onClearSelection,
   clearSelectionBoundaryRef,
@@ -305,6 +305,7 @@ function PulseOverviewChartImpl({
   onFocusedSeriesKeyChange,
   highlightedGameSegmentKey = null,
   viewport: externalViewport,
+  coverageStartSeconds = 0,
   onViewportChange,
   onJumpToOffset,
   interactionResetKey,
@@ -356,8 +357,8 @@ function PulseOverviewChartImpl({
   // Latest viewport state for the native non-passive wheel listener below.
   // React registers root wheel listeners as passive, so onWheel preventDefault()
   // is ignored and zoom gestures would scroll the host Twitch page.
-  const wheelStateRef = useRef({ onViewportChange, internalViewport, durationSeconds, width })
-  wheelStateRef.current = { onViewportChange, internalViewport, durationSeconds, width }
+  const wheelStateRef = useRef({ onViewportChange, internalViewport, durationSeconds, width, coverageStartSeconds })
+  wheelStateRef.current = { onViewportChange, internalViewport, durationSeconds, width, coverageStartSeconds }
 
   useIsomorphicLayoutEffect(() => {
     const node = containerRef.current
@@ -386,6 +387,7 @@ function PulseOverviewChartImpl({
           deltaMode: event.deltaMode,
           anchorSeconds,
           durationSeconds: state.durationSeconds,
+          coverageStartSeconds: state.coverageStartSeconds,
         }),
       )
     }
@@ -438,7 +440,12 @@ function PulseOverviewChartImpl({
   useEffect(() => {
     function handlePointerDown(event: PointerEvent): void {
       const boundary = clearSelectionBoundaryRef?.current ?? containerRef.current
-      if (!boundary || boundary.contains(event.target as Node)) return
+      if (!boundary) return
+      const composedPath = typeof event.composedPath === 'function' ? event.composedPath() : []
+      const isInsideBoundary = composedPath.length > 0
+        ? composedPath.includes(boundary)
+        : boundary.contains(event.target as Node)
+      if (isInsideBoundary) return
       if (event.defaultPrevented) return
       clearHoverPreview()
       onClearSelection?.()
@@ -474,6 +481,10 @@ function PulseOverviewChartImpl({
     () => rollups.map(point => (point.missing ? null : chartViewerValue(point) || null)),
     [rollups],
   )
+  // The parent may know that viewer samples exist elsewhere in the full
+  // timeline. Only reserve the viewer lane when the current viewport contains
+  // a real sample, otherwise the chart spends space on an empty lane.
+  const showViewerStrip = showViewerStripProp && viewers.some(value => value != null && value > 0)
   const chat = useMemo(
     () => rollups.map(point => (point.missing ? null : (point.chatCount ?? 0) || null)),
     [rollups],
@@ -485,12 +496,7 @@ function PulseOverviewChartImpl({
 
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
   const viewerTrendValues = useMemo(
-    () =>
-      rampNullableSeriesFromStreamStart(
-        extendViewerSeriesToTrailingEdge(
-          smoothNullableSeriesValues(viewers, trendWindow),
-        ),
-      ),
+    () => smoothNullableSeriesValues(viewers, trendWindow),
     [viewers, trendWindow],
   )
   const chatTrendValues = useMemo(
@@ -512,10 +518,7 @@ function PulseOverviewChartImpl({
     [emotes, trendWindow],
   )
   const viewerDetailValues = useMemo(
-    () =>
-      rampNullableSeriesFromStreamStart(
-        extendViewerSeriesToTrailingEdge(viewers),
-      ),
+    () => viewers,
     [viewers],
   )
   const chatDetailValues = useMemo(
@@ -1799,7 +1802,7 @@ function PulseOverviewChartImpl({
               if (pinIndex != null) {
                 onClearSelection?.()
               } else if (onViewportChange && durationSeconds > 0) {
-                onViewportChange({ startSeconds: 0, endSeconds: durationSeconds })
+                onViewportChange({ startSeconds: coverageStartSeconds, endSeconds: durationSeconds })
               }
               event.currentTarget.blur()
               return
@@ -1831,13 +1834,13 @@ function PulseOverviewChartImpl({
             const currentDuration = internalViewport.endSeconds - internalViewport.startSeconds
             if (event.key === '+' || event.key === '=') {
               event.preventDefault()
-              onViewportChange(zoomViewport({ viewport: internalViewport, zoomSeconds: Math.max(MIN_VIEWPORT_SECONDS, currentDuration / 1.5), durationSeconds }))
+              onViewportChange(zoomViewport({ viewport: internalViewport, zoomSeconds: Math.max(Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, durationSeconds - coverageStartSeconds)), currentDuration / 1.5), durationSeconds, coverageStartSeconds }))
             } else if (event.key === '-') {
               event.preventDefault()
-              onViewportChange(zoomViewport({ viewport: internalViewport, zoomSeconds: Math.min(durationSeconds, currentDuration * 1.5), durationSeconds }))
+              onViewportChange(zoomViewport({ viewport: internalViewport, zoomSeconds: Math.min(Math.max(0, durationSeconds - coverageStartSeconds), currentDuration * 1.5), durationSeconds, coverageStartSeconds }))
             } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
               event.preventDefault()
-              onViewportChange(panViewport(internalViewport, event.key === 'ArrowLeft' ? -60 : 60, durationSeconds))
+              onViewportChange(panViewport(internalViewport, event.key === 'ArrowLeft' ? -60 : 60, durationSeconds, true, coverageStartSeconds))
             }
           }}
         />

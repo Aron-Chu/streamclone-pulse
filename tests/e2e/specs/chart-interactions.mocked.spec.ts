@@ -153,6 +153,93 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('clicking outside the chart clears the committed moment', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).svg, { timeout: 20_000 })
+      .not.toBeNull()
+
+    const box = (await probeChart(extension.page)).svg!
+    await extension.page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .not.toBeNull()
+
+    // The visible-range control is outside the chart boundary but remains a
+    // normal clickable surface. Its pointerdown must release the pin.
+    await extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-visible-range]`).click()
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .toBeNull()
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('recap charts expose the same bounded rail and outside-click clearing', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'vod-ready', twitchKind: 'vod' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    await expect(
+      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-viewport-controls]`),
+    ).toBeVisible()
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    await expect(chart).toBeVisible()
+    await expect(chart.locator('path[data-chart-series="chat"]')).toHaveCount(1)
+    const games = extension.page.locator(`#${PULSE_ROOT_ID} [data-games-played="true"]`)
+    await expect(games).toBeVisible()
+    expect((await games.boundingBox())?.y ?? Infinity).toBeLessThan((await chart.boundingBox())?.y ?? -Infinity)
+
+    const box = await chart.boundingBox()
+    expect(box).not.toBeNull()
+    await extension.page.mouse.click(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .not.toBeNull()
+
+    // Games Played is outside the chart interaction boundary and exercises the
+    // real document-level clear path through the extension shadow root.
+    await games.click()
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .toBeNull()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-rail]`)).toBeVisible()
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('clearing the chart also clears the coupled Most Reacted selection', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    const mostReactedRow = extension.page.locator(`#${PULSE_ROOT_ID} .pulse-moment-row-button`).first()
+    await expect(mostReactedRow).toBeVisible()
+    await mostReactedRow.click()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [aria-label^="Selected moment at"]`)).toHaveCount(1)
+    await expect(mostReactedRow).toHaveAttribute('aria-pressed', 'true')
+
+    await extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-visible-range]`).click()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [aria-label^="Selected moment at"]`)).toHaveCount(0)
+    await expect(mostReactedRow).toHaveAttribute('aria-pressed', 'false')
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .toBeNull()
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('hover previews a bucket and Enter commits it as the lock', async ({
     extension,
     prepare,

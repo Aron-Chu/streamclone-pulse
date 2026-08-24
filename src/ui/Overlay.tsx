@@ -282,6 +282,22 @@ function OverlayMain({
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
   )
+  // Route/session identity is deliberately separate from payload.vodId. A
+  // channel payload can gain its linked VOD asynchronously without becoming a
+  // new UI surface, while a real channel/VOD/stream transition must clear all
+  // chart and notice state.
+  const activationIdentity = [
+    login,
+    payload?.streamId ?? '',
+    context.kind,
+    context.vodId ?? '',
+    payload?.startedAt ?? '',
+  ].join(':')
+  const surfaceIdentity = [
+    activationIdentity,
+    effectivePulseIsLive(payload, pageIsLive, context) ? 'live' : 'recap',
+    payload?.mode ?? '',
+  ].join(':')
   /** Activation + generation + abort — obsolete backfill/Full ops must not mutate UI. */
   const backfillOpsRef = useRef(createBackfillOperationController())
   const mountedRef = useRef(true)
@@ -303,7 +319,11 @@ function OverlayMain({
     setMissedBusy(false)
     setMissedJob(null)
     setFullTimeline(false)
-  }, [login, payload?.streamId, payload?.vodId, context.vodId])
+  }, [login, payload?.streamId, context.vodId])
+
+  useEffect(() => {
+    setNotice(null)
+  }, [surfaceIdentity])
 
   // Recurring live poll always stays on window=recent. Explicit full-timeline
   // actions (requestFullTimeline) are one-shot fetches; do not flip the poll window.
@@ -372,18 +392,14 @@ function OverlayMain({
 
   const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
     setMostReactedPinOffset(offsetSeconds)
-    if (offsetSeconds != null) {
-      setChartPinOffset(offsetSeconds)
-      setChartPreviewOffset(null)
-    }
+    setChartPinOffset(offsetSeconds)
+    setChartPreviewOffset(null)
   }, [])
 
   const handleChartPin = useCallback((offsetSeconds: number | null) => {
     setChartPinOffset(offsetSeconds)
-    if (offsetSeconds != null) {
-      setMostReactedPinOffset(offsetSeconds)
-      setChartPreviewOffset(null)
-    }
+    setMostReactedPinOffset(offsetSeconds)
+    setChartPreviewOffset(null)
   }, [])
 
   useEffect(() => {
@@ -497,7 +513,7 @@ function OverlayMain({
     setChartPinOffset(null)
     setMostReactedPinOffset(null)
     setChartPreviewOffset(null)
-  }, [payload?.streamId, payload?.login])
+  }, [surfaceIdentity])
 
   const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
@@ -1005,6 +1021,11 @@ function OverlayMain({
 
   const coverageForPoll = payload ? resolvePulseCoverage(payload) : undefined
   const sawLiveRef = useRef(false)
+  useEffect(() => {
+    // Reset only when leaving the activation, not when that same stream moves
+    // from live to recap; the latter is what authorizes VOD linkage polling.
+    sawLiveRef.current = uiIsLive
+  }, [activationIdentity])
   useEffect(() => {
     if (uiIsLive) sawLiveRef.current = true
   }, [uiIsLive])

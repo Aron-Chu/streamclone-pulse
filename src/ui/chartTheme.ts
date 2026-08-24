@@ -20,7 +20,7 @@ export const CHART_SIGNAL = {
 export const CHART_LANE = {
   chatBar: CHART_SIGNAL.chat,
   emoteBar: CHART_SIGNAL.emotes,
-  chatTrend: '#d4d4d8',
+  chatTrend: '#a78bfa',
 } as const
 
 /** Shared visual ladder for every chat/emote bar surface. */

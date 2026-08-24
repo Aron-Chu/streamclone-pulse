@@ -580,22 +580,33 @@ export function areaPath(
   let d = ''
   let started = false
   let firstX = padLeft
+  let lastX = padLeft
+  const closeSegment = () => {
+    if (!started) return
+    d += ` L ${lastX} ${baseline} L ${firstX} ${baseline} Z`
+    started = false
+  }
   for (let i = 0; i < n; i += 1) {
     const value = values[i]
-    if (value === null || value < 0) continue
+    if (value === null || value < 0) {
+      // Keep unsupported viewer intervals visibly unsupported. Do not fill an
+      // area from the last known sample across an unmeasured gap.
+      closeSegment()
+      continue
+    }
     const x = plotXForIndex(i, n, padLeft, plotWidth)
     const y = plotY(value, max, height, padTop, padBottom, min)
     if (!started) {
       firstX = x
-      d = `M ${x} ${baseline} L ${x} ${y}`
+      d += `${d ? ' ' : ''}M ${x} ${baseline} L ${x} ${y}`
       started = true
     } else {
       d += ` L ${x} ${y}`
     }
+    lastX = x
   }
-  if (!started) return ''
-  const lastX = plotXForIndex(n - 1, n, padLeft, plotWidth)
-  return `${d} L ${lastX} ${baseline} L ${firstX} ${baseline} Z`
+  closeSegment()
+  return d
 }
 
 /** Plot a filled area inside a vertical band (matches linePathInBand). */

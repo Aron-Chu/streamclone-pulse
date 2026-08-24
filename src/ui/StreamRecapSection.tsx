@@ -35,9 +35,11 @@ import { pickRecapRollups, recapMomentToLiveHeatPoint } from './recapMomentMetri
 import {
   chartHighlightedGameKey,
   chartVisibleRangeFromRollups,
+  safeGameTimeline,
 } from './extensionChartAdapter.ts'
 import type { RecapUiState } from './recapUiState.ts'
 import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
+import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
 import { PulseMomentRow } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { theme } from './theme.ts'
@@ -54,7 +56,7 @@ export interface StreamRecapSectionProps {
   onAnalytics: (point: LiveHeatPoint) => void
   onOpenAnalytics: (offsetSeconds?: number) => void
   onRetry?: () => void
-  onRequestFullRollups?: () => Promise<void>
+  onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
   sidebarFill?: boolean
   hideHubLink?: boolean
 }
@@ -359,7 +361,7 @@ function RecapReadyContent({
   hideHubLink?: boolean
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
-  onRequestFullRollups?: () => Promise<void>
+  onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }) {
   const mergedMoments = useMemo(
     () => mergeRecapMoments(recap, payload.peaks, RECAP_MOMENTS_MAX_COUNT, pickRecapRollups(payload)),
@@ -452,13 +454,18 @@ function RecapReadyContent({
     [mergedMoments, payload.peaks],
   )
   const recapDurationSeconds = recapStreamDurationSeconds(payload)
+  // Reject stale cross-stream timelines before they reach the strip/chart.
+  const recapGames = useMemo(
+    () => safeGameTimeline(payload.games, recapDurationSeconds),
+    [payload.games, recapDurationSeconds],
+  )
   const recapVisibleRange = useMemo(
     () => chartVisibleRangeFromRollups(pickRecapRollups(payload)),
     [payload],
   )
   const recapChartHighlightedGameKey = useMemo(
-    () => chartHighlightedGameKey(hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange),
-    [hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange],
+    () => chartHighlightedGameKey(hoveredGameKey, recapGames, recapDurationSeconds, recapVisibleRange),
+    [hoveredGameKey, recapGames, recapDurationSeconds, recapVisibleRange],
   )
 
   useEffect(() => {
@@ -494,6 +501,13 @@ function RecapReadyContent({
         onSelectSpike={selectChatSpike}
         onSelectBurst={selectEmoteBurst}
       />
+      <RecapGamesStrip
+        games={recapGames}
+        durationSeconds={recapDurationSeconds}
+        highlightedKey={recapChartHighlightedGameKey}
+        onHighlightKey={setHoveredGameKey}
+        visibleRange={recapVisibleRange}
+      />
       <RecapTimelineChart
         payload={payload}
         backendUrl={backendUrl}
@@ -503,6 +517,7 @@ function RecapReadyContent({
         previewOffsetSeconds={hoveredOffset}
         sidebarFill={sidebarFill}
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
+        onClearSelection={clearRecapSelection}
         onSelectPoint={point => {
           markUserSelected()
           if (selectedPoint?.offsetSeconds === point.offsetSeconds) {
@@ -516,13 +531,6 @@ function RecapReadyContent({
           setHoveredOffset(null)
         }}
         onRequestFullRollups={onRequestFullRollups}
-      />
-      <RecapGamesStrip
-        games={payload.games}
-        durationSeconds={recapDurationSeconds}
-        highlightedKey={recapChartHighlightedGameKey}
-        onHighlightKey={setHoveredGameKey}
-        visibleRange={recapVisibleRange}
       />
       {selectedPoint ? (
         <SelectedMomentCard
@@ -583,7 +591,7 @@ function OfflineFallbackContent({
   onJump: (point: LiveHeatPoint) => void
   onAnalytics: (point: LiveHeatPoint) => void
   onOpenAnalytics: (offsetSeconds?: number) => void
-  onRequestFullRollups?: () => Promise<void>
+  onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }) {
   const meta = coverage?.liveMetadata ?? null
   const peaks = lastStreamPeakStats(payload)
@@ -612,8 +620,14 @@ function OfflineFallbackContent({
     heroPoint ? offlinePointKey(heroPoint) : null,
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
+  const userSelectedRef = useRef(false)
 
   useEffect(() => {
+    userSelectedRef.current = false
+  }, [payload.login, payload.streamId, payload.vodId, payload.startedAt])
+
+  useEffect(() => {
+    if (userSelectedRef.current) return
     if (!heroPoint) {
       setSelectedKey(null)
       setOverridePoint(null)
@@ -624,19 +638,33 @@ function OfflineFallbackContent({
   }, [payload.streamId, heroPoint?.offsetSeconds, heroPoint?.score])
 
   const selectedPoint =
-    peakPoints.find(point => offlinePointKey(point) === selectedKey) ?? overridePoint ?? heroPoint
+    selectedKey == null
+      ? null
+      : peakPoints.find(point => offlinePointKey(point) === selectedKey) ?? overridePoint
+
+  function clearOfflineSelection(): void {
+    userSelectedRef.current = true
+    setSelectedKey(null)
+    setOverridePoint(null)
+    setHoveredOffset(null)
+  }
   const chartPeakOffsets = useMemo(
     () => resolveRecapChartPeakOffsets(undefined, payload.peaks),
     [payload.peaks],
   )
   const recapDurationSeconds = recapStreamDurationSeconds(payload)
+  // Reject stale cross-stream timelines before they reach the strip/chart.
+  const recapGames = useMemo(
+    () => safeGameTimeline(payload.games, recapDurationSeconds),
+    [payload.games, recapDurationSeconds],
+  )
   const recapVisibleRange = useMemo(
     () => chartVisibleRangeFromRollups(pickRecapRollups(payload)),
     [payload],
   )
   const recapChartHighlightedGameKey = useMemo(
-    () => chartHighlightedGameKey(hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange),
-    [hoveredGameKey, payload.games, recapDurationSeconds, recapVisibleRange],
+    () => chartHighlightedGameKey(hoveredGameKey, recapGames, recapDurationSeconds, recapVisibleRange),
+    [hoveredGameKey, recapGames, recapDurationSeconds, recapVisibleRange],
   )
 
   useEffect(() => {
@@ -675,6 +703,13 @@ function OfflineFallbackContent({
         totalMessages={totalMessages}
         peakViewers={peakViewers}
       />
+      <RecapGamesStrip
+        games={recapGames}
+        durationSeconds={recapDurationSeconds}
+        highlightedKey={recapChartHighlightedGameKey}
+        onHighlightKey={setHoveredGameKey}
+        visibleRange={recapVisibleRange}
+      />
       <RecapTimelineChart
         payload={payload}
         backendUrl={backendUrl}
@@ -684,7 +719,9 @@ function OfflineFallbackContent({
         previewOffsetSeconds={hoveredOffset}
         sidebarFill={sidebarFill}
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
+        onClearSelection={clearOfflineSelection}
         onSelectPoint={point => {
+          userSelectedRef.current = true
           const key = offlinePointKey(point)
           setSelectedKey(key)
           const matched = peakPoints.some(existing => offlinePointKey(existing) === key)
@@ -692,13 +729,6 @@ function OfflineFallbackContent({
           setHoveredOffset(null)
         }}
         onRequestFullRollups={onRequestFullRollups}
-      />
-      <RecapGamesStrip
-        games={payload.games}
-        durationSeconds={recapDurationSeconds}
-        highlightedKey={recapChartHighlightedGameKey}
-        onHighlightKey={setHoveredGameKey}
-        visibleRange={recapVisibleRange}
       />
       {selectedPoint ? (
         <SelectedMomentCard
@@ -722,6 +752,7 @@ function OfflineFallbackContent({
                   selected={key === selectedKey}
                   onHighlight={setHoveredOffset}
                   onSelect={next => {
+                    userSelectedRef.current = true
                     setSelectedKey(offlinePointKey(next))
                     setOverridePoint(null)
                     setHoveredOffset(null)

@@ -49,6 +49,8 @@ export interface ResolveViewportArgs {
   anchorSeconds?: number
   currentViewport?: ChartViewport
   followEnd?: boolean
+  /** First covered offset. Full/reset/zoom operations never navigate before it. */
+  coverageStartSeconds?: number
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -63,6 +65,39 @@ function safeZoom(zoomSeconds: number): number {
   return zoomSeconds
 }
 
+/**
+ * Normalize a viewport against the timeline that can actually be plotted.
+ *
+ * The chart may know the stream duration before it has received the first
+ * rollup. Keeping the viewport in the uncovered prefix makes the chart look
+ * broken even though valid recent data is present. This helper is deliberately
+ * pure so parents, the rail, and wheel/keyboard controls can share the same
+ * invariant without relying on a later effect to repair the UI.
+ */
+export function clampViewportToCoverage(
+  viewport: ChartViewport,
+  durationSeconds: number,
+  coverageStartSeconds = 0,
+): ChartViewport {
+  if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+
+  const requestedDuration = viewportDurationSeconds(viewport)
+  const minimumDuration = requestedDuration > 0
+    ? Math.min(requestedDuration, availableDuration)
+    : Math.min(MIN_VIEWPORT_SECONDS, availableDuration)
+  const span = clamp(
+    requestedDuration > 0 ? requestedDuration : availableDuration,
+    minimumDuration,
+    availableDuration,
+  )
+  const latestStart = Math.max(coverageStart, durationSeconds - span)
+  const startSeconds = clamp(viewport.startSeconds, coverageStart, latestStart)
+  return { startSeconds, endSeconds: startSeconds + span }
+}
+
 export function resolveViewport(args: ResolveViewportArgs): ChartViewport {
   const {
     durationSeconds,
@@ -72,24 +107,27 @@ export function resolveViewport(args: ResolveViewportArgs): ChartViewport {
     followEnd,
   } = args
   if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
+  const coverageStart = clamp(args.coverageStartSeconds ?? 0, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
   if (zoomSeconds === 'full') {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+    return { startSeconds: coverageStart, endSeconds: durationSeconds }
   }
-  if (durationSeconds < MIN_VIEWPORT_SECONDS) {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+  if (availableDuration < MIN_VIEWPORT_SECONDS) {
+    return { startSeconds: coverageStart, endSeconds: durationSeconds }
   }
-  const rawZoom = Math.min(safeZoom(zoomSeconds), durationSeconds)
-  if (rawZoom <= 0) return { startSeconds: 0, endSeconds: durationSeconds }
-  const zoom = clamp(rawZoom, MIN_VIEWPORT_SECONDS, durationSeconds)
+  const rawZoom = Math.min(safeZoom(zoomSeconds), availableDuration)
+  if (rawZoom <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+  const zoom = clamp(rawZoom, MIN_VIEWPORT_SECONDS, availableDuration)
   const candidateAnchor =
     anchorSeconds
     ?? (followEnd && currentViewport ? Math.min(durationSeconds, currentViewport.endSeconds) : undefined)
     ?? viewportCenterSeconds(
-      currentViewport ?? { startSeconds: 0, endSeconds: durationSeconds },
+      currentViewport ?? { startSeconds: coverageStart, endSeconds: durationSeconds },
     )
   const rawStart = candidateAnchor - zoom / 2
-  const maxStart = Math.max(0, durationSeconds - zoom)
-  const startSeconds = clamp(rawStart, 0, maxStart)
+  const maxStart = Math.max(coverageStart, durationSeconds - zoom)
+  const startSeconds = clamp(rawStart, coverageStart, maxStart)
   const endSeconds = startSeconds + zoom
   return { startSeconds, endSeconds }
 }
@@ -99,20 +137,52 @@ export function panViewport(
   deltaSeconds: number,
   durationSeconds: number,
   clampToFull = true,
+  coverageStartSeconds = 0,
 ): ChartViewport {
   if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
-  const duration = viewportDurationSeconds(viewport)
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+  const normalizedViewport = clampViewportToCoverage(viewport, durationSeconds, coverageStart)
+  const duration = viewportDurationSeconds(normalizedViewport)
   if (duration <= 0) {
-    if (clampToFull) return { startSeconds: 0, endSeconds: durationSeconds }
+    if (clampToFull) return { startSeconds: coverageStart, endSeconds: durationSeconds }
     return viewport
   }
-  if (clampToFull && duration >= durationSeconds) {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+  if (clampToFull && duration >= availableDuration) {
+    return { startSeconds: coverageStart, endSeconds: durationSeconds }
   }
-  const maxStart = Math.max(0, durationSeconds - duration)
-  const rawStart = viewport.startSeconds + deltaSeconds
-  const startSeconds = clamp(rawStart, 0, maxStart)
+  const maxStart = Math.max(coverageStart, durationSeconds - duration)
+  const rawStart = normalizedViewport.startSeconds + deltaSeconds
+  const startSeconds = clamp(rawStart, coverageStart, maxStart)
   return { startSeconds, endSeconds: startSeconds + duration }
+}
+
+/** Advance only a viewport that was already following the previous live tail. */
+export function advanceFollowingLiveViewport(args: {
+  viewport: ChartViewport
+  previousDurationSeconds: number
+  durationSeconds: number
+  coverageStartSeconds?: number
+}): ChartViewport {
+  const {
+    viewport,
+    previousDurationSeconds,
+    durationSeconds,
+    coverageStartSeconds = 0,
+  } = args
+  if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
+  const normalized = clampViewportToCoverage(viewport, durationSeconds, coverageStartSeconds)
+  if (!isFollowingLive(viewport, previousDurationSeconds)) return normalized
+  const span = viewportDurationSeconds(normalized)
+  return resolveViewport({
+    durationSeconds,
+    zoomSeconds: span,
+    anchorSeconds: durationSeconds,
+    currentViewport: normalized,
+    followEnd: true,
+    coverageStartSeconds,
+  })
 }
 
 export interface ZoomViewportArgs {
@@ -120,28 +190,37 @@ export interface ZoomViewportArgs {
   zoomSeconds: number
   anchorSeconds?: number
   durationSeconds: number
+  coverageStartSeconds?: number
 }
 
 export function zoomViewport(args: ZoomViewportArgs): ChartViewport {
-  const { viewport, zoomSeconds, anchorSeconds, durationSeconds } = args
+  const { viewport, zoomSeconds, anchorSeconds, durationSeconds, coverageStartSeconds = 0 } = args
   if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
-  if (durationSeconds < MIN_VIEWPORT_SECONDS) {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+  if (availableDuration < MIN_VIEWPORT_SECONDS) {
+    return { startSeconds: coverageStart, endSeconds: durationSeconds }
   }
-  const rawZoom = Math.min(safeZoom(zoomSeconds), durationSeconds)
-  if (rawZoom <= 0) return { startSeconds: 0, endSeconds: durationSeconds }
-  const zoom = clamp(rawZoom, MIN_VIEWPORT_SECONDS, durationSeconds)
+  const rawZoom = Math.min(safeZoom(zoomSeconds), availableDuration)
+  if (rawZoom <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+  const zoom = clamp(rawZoom, MIN_VIEWPORT_SECONDS, availableDuration)
   const currentDuration = viewportDurationSeconds(viewport)
-  const anchor = anchorSeconds ?? viewportCenterSeconds(viewport)
+  const normalizedViewport = clampViewportToCoverage(viewport, durationSeconds, coverageStart)
+  const anchor = anchorSeconds ?? viewportCenterSeconds(normalizedViewport)
   if (currentDuration <= 0) {
-    const maxStart = Math.max(0, durationSeconds - zoom)
-    const start = clamp(anchor - zoom / 2, 0, maxStart)
+    const maxStart = Math.max(coverageStart, durationSeconds - zoom)
+    const start = clamp(anchor - zoom / 2, coverageStart, maxStart)
     return { startSeconds: start, endSeconds: start + zoom }
   }
-  const fractional = (anchor - viewport.startSeconds) / currentDuration
+  const baseViewport = (
+    viewport.startSeconds >= coverageStart
+    && viewport.endSeconds <= durationSeconds
+  ) ? viewport : normalizedViewport
+  const fractional = (anchor - baseViewport.startSeconds) / Math.max(1, viewportDurationSeconds(baseViewport))
   const desiredStart = anchor - fractional * zoom
-  const maxStart = Math.max(0, durationSeconds - zoom)
-  const startSeconds = clamp(desiredStart, 0, maxStart)
+  const maxStart = Math.max(coverageStart, durationSeconds - zoom)
+  const startSeconds = clamp(desiredStart, coverageStart, maxStart)
   return { startSeconds, endSeconds: startSeconds + zoom }
 }
 
@@ -209,16 +288,24 @@ export function railGeometry(
   viewport: ChartViewport,
   durationSeconds: number,
   railWidth: number,
+  coverageStartSeconds = 0,
 ): RailGeometry {
   if (durationSeconds <= 0 || railWidth <= 0) {
     return { thumbX: 0, thumbWidth: railWidth, totalWidth: railWidth }
   }
-  const viewportDuration = viewportDurationSeconds(viewport)
-  if (viewportDuration <= 0 || viewportDuration >= durationSeconds) {
+  const normalizedViewport = clampViewportToCoverage(viewport, durationSeconds, coverageStartSeconds)
+  const viewportDuration = viewportDurationSeconds(normalizedViewport)
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (viewportDuration <= 0 || availableDuration <= 0) {
     return { thumbX: 0, thumbWidth: railWidth, totalWidth: railWidth }
   }
-  const rawThumbX = (viewport.startSeconds / durationSeconds) * railWidth
-  const rawThumbWidth = (viewportDuration / durationSeconds) * railWidth
+  const effectiveStart = viewportDuration >= availableDuration
+    ? coverageStart
+    : normalizedViewport.startSeconds
+  const effectiveDuration = Math.min(viewportDuration, availableDuration)
+  const rawThumbX = (effectiveStart / durationSeconds) * railWidth
+  const rawThumbWidth = (effectiveDuration / durationSeconds) * railWidth
   const thumbWidth = Math.max(8, Math.min(railWidth, rawThumbWidth))
   const maxX = Math.max(0, railWidth - thumbWidth)
   const thumbX = Math.min(maxX, Math.max(0, rawThumbX))
@@ -241,21 +328,25 @@ export function jumpToOffset(
   offsetSeconds: number,
   durationSeconds: number,
   zoomSeconds: number | 'full',
+  coverageStartSeconds = 0,
 ): ChartViewport {
   if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
   if (zoomSeconds === 'full' || !Number.isFinite(zoomSeconds)) {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+    return { startSeconds: coverageStart, endSeconds: durationSeconds }
   }
-  if (durationSeconds < MIN_VIEWPORT_SECONDS) {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+  if (availableDuration < MIN_VIEWPORT_SECONDS) {
+    return { startSeconds: coverageStart, endSeconds: durationSeconds }
   }
-  const rawZoom = Math.min(zoomSeconds, durationSeconds)
-  if (rawZoom <= 0) return { startSeconds: 0, endSeconds: durationSeconds }
-  const zoom = clamp(rawZoom, MIN_VIEWPORT_SECONDS, durationSeconds)
-  const clampedOffset = Math.max(0, Math.min(durationSeconds, offsetSeconds))
-  const maxStart = Math.max(0, durationSeconds - zoom)
+  const rawZoom = Math.min(zoomSeconds, availableDuration)
+  if (rawZoom <= 0) return { startSeconds: coverageStart, endSeconds: durationSeconds }
+  const zoom = clamp(rawZoom, MIN_VIEWPORT_SECONDS, availableDuration)
+  const clampedOffset = Math.max(coverageStart, Math.min(durationSeconds, offsetSeconds))
+  const maxStart = Math.max(coverageStart, durationSeconds - zoom)
   const rawStart = clampedOffset - zoom / 2
-  const startSeconds = clamp(rawStart, 0, maxStart)
+  const startSeconds = clamp(rawStart, coverageStart, maxStart)
   return { startSeconds, endSeconds: startSeconds + zoom }
 }
 
@@ -265,6 +356,7 @@ export interface WheelZoomArgs {
   deltaMode?: number
   anchorSeconds?: number
   durationSeconds: number
+  coverageStartSeconds?: number
 }
 
 const WHEEL_LINE_HEIGHT_PX = 16
@@ -288,20 +380,34 @@ export function wheelZoomRatio(deltaY: number, deltaMode = 0): number {
 }
 
 export function wheelZoom(args: WheelZoomArgs): ChartViewport {
-  const { viewport, deltaY, deltaMode = 0, anchorSeconds, durationSeconds } = args
+  const { viewport, deltaY, deltaMode = 0, anchorSeconds, durationSeconds, coverageStartSeconds = 0 } = args
   if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
-  const currentDuration = viewportDurationSeconds(viewport)
+  const normalizedViewport = clampViewportToCoverage(viewport, durationSeconds, coverageStartSeconds)
+  const currentDuration = viewportDurationSeconds(normalizedViewport)
   if (currentDuration <= 0) {
-    return { startSeconds: 0, endSeconds: durationSeconds }
+    return normalizedViewport
   }
   const ratio = wheelZoomRatio(deltaY, deltaMode)
-  if (ratio === 1) return viewport
-  const desired = clamp(currentDuration * ratio, MIN_VIEWPORT_SECONDS, durationSeconds)
-  if (desired === currentDuration) return viewport
+  if (ratio === 1) {
+    return normalizedViewport.startSeconds === viewport.startSeconds
+      && normalizedViewport.endSeconds === viewport.endSeconds
+      ? viewport
+      : normalizedViewport
+  }
+  const normalizedDuration = viewportDurationSeconds(normalizedViewport)
+  const availableDuration = Math.max(0, durationSeconds - clamp(coverageStartSeconds, 0, durationSeconds))
+  const desired = clamp(normalizedDuration * ratio, Math.min(MIN_VIEWPORT_SECONDS, availableDuration), availableDuration)
+  if (desired === normalizedDuration) {
+    return normalizedViewport.startSeconds === viewport.startSeconds
+      && normalizedViewport.endSeconds === viewport.endSeconds
+      ? viewport
+      : normalizedViewport
+  }
   return zoomViewport({
-    viewport,
+    viewport: normalizedViewport,
     zoomSeconds: desired,
-    anchorSeconds: anchorSeconds ?? viewportCenterSeconds(viewport),
+    anchorSeconds: anchorSeconds ?? viewportCenterSeconds(normalizedViewport),
     durationSeconds,
+    coverageStartSeconds,
   })
 }

@@ -24,7 +24,6 @@ import {
 } from './chatActivityEmotes.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
 import { safeGameTimeline } from './extensionChartAdapter.ts'
-import { downsampleRollupsForChart } from './extensionChartPoints.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
 import { pickRecapRollups } from './recapMomentMetrics.ts'
@@ -34,6 +33,15 @@ import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
 import { theme } from './theme.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
+import { ChartPositionRail, shouldShowChartRail } from './ChartPositionRail.tsx'
+import {
+  clampViewportToCoverage,
+  MIN_VIEWPORT_SECONDS,
+  resolveViewport,
+  viewportDurationSeconds,
+  zoomViewport,
+  type ChartViewport,
+} from './chartViewport.ts'
 
 export interface RecapTimelineChartProps {
   payload: PulsePayload
@@ -45,6 +53,7 @@ export interface RecapTimelineChartProps {
   sidebarFill?: boolean
   highlightedGameSegmentKey?: string | null
   onSelectPoint: (point: LiveHeatPoint) => void
+  onClearSelection?: () => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }
 
@@ -65,6 +74,7 @@ export function RecapTimelineChart({
   sidebarFill: _sidebarFill = false,
   highlightedGameSegmentKey = null,
   onSelectPoint,
+  onClearSelection,
   onRequestFullRollups,
 }: RecapTimelineChartProps) {
   const activation = makeFullHistoryActivation(payload)
@@ -84,7 +94,6 @@ export function RecapTimelineChart({
     () => recapStreamDurationSeconds(payload),
     [payload],
   )
-
   // Reject stale cross-stream timelines before they reach the chart overlay.
   const recapGames = useMemo(
     () => safeGameTimeline(payload.games, currentOffsetSeconds),
@@ -98,14 +107,16 @@ export function RecapTimelineChart({
     return zeroFillRollupsForRecap(source, 0, currentOffsetSeconds)
   }, [payload, currentOffsetSeconds])
 
-  const displayRollups = useMemo(
-    () => downsampleRollupsForChart(minuteRollups),
-    [minuteRollups],
-  )
+  const chartDurationSeconds = useMemo(() => {
+    const lastRollupEnd = minuteRollups.length > 0
+      ? (minuteRollups[minuteRollups.length - 1]?.offsetSeconds ?? 0) + 60
+      : 0
+    return Math.max(currentOffsetSeconds, lastRollupEnd)
+  }, [currentOffsetSeconds, minuteRollups])
 
   const chartOffsets = useMemo(
-    () => displayRollups.map(rollup => rollup.offsetSeconds),
-    [displayRollups],
+    () => minuteRollups.map(rollup => rollup.offsetSeconds),
+    [minuteRollups],
   )
 
   const mergedMoments = useMemo(
@@ -114,13 +125,6 @@ export function RecapTimelineChart({
   )
 
   const stats = deriveLiveStats(toLiveStatsInputFromExtension(payload))
-  const chartEmpty = chartEmptyMessage({
-    rollupCount: minuteRollups.length,
-    chartWindow: 'full',
-    hasFullRollups,
-    confidence: stats.confidence,
-    currentOffsetSeconds,
-  })
   const rollupGapNotice = hasFullRollups ? describeRollupGap(pickRecapRollups(payload)) : null
   const sourceRollups = pickRecapRollups(payload)
   const firstRollupOffset = sourceRollups[0]?.offsetSeconds ?? 0
@@ -131,6 +135,49 @@ export function RecapTimelineChart({
         ? 'Loading full stream…'
         : null
   const showViewerStrip = minuteRollups.some(rollup => (rollup.viewerCount ?? 0) > 0)
+  const chartCoverageStartSeconds = Math.max(
+    0,
+    payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,
+    sourceRollups[0]?.offsetSeconds ?? 0,
+  )
+  const [chartViewport, setChartViewport] = useState<ChartViewport>(() => resolveViewport({
+    durationSeconds: chartDurationSeconds,
+    zoomSeconds: 'full',
+    coverageStartSeconds: chartCoverageStartSeconds,
+  }))
+  const chartViewportForRender = useMemo(
+    () => clampViewportToCoverage(
+      chartViewport,
+      chartDurationSeconds,
+      chartCoverageStartSeconds,
+    ),
+    [chartCoverageStartSeconds, chartDurationSeconds, chartViewport],
+  )
+
+  useEffect(() => {
+    setChartViewport(current => {
+      const next = clampViewportToCoverage(
+        current,
+        chartDurationSeconds,
+        chartCoverageStartSeconds,
+      )
+      if (next.startSeconds === current.startSeconds && next.endSeconds === current.endSeconds) return current
+      return next
+    })
+  }, [chartCoverageStartSeconds, chartDurationSeconds])
+
+  const visibleChartRollupCount = minuteRollups.filter(rollup => (
+    rollup.offsetSeconds >= chartViewportForRender.startSeconds
+    && rollup.offsetSeconds < chartViewportForRender.endSeconds
+  )).length
+  const chartEmpty = chartEmptyMessage({
+    rollupCount: minuteRollups.length,
+    visibleRollupCount: visibleChartRollupCount,
+    chartWindow: 'full',
+    hasFullRollups,
+    confidence: stats.confidence,
+    currentOffsetSeconds,
+  })
 
   const topEmotesForPicker = useMemo(() => {
     const fromRollups = aggregateChartEmotes(minuteRollups, PLOT_PICKER_EMOTE_LIMIT)
@@ -160,9 +207,9 @@ export function RecapTimelineChart({
   const emoteOverlays = useMemo(
     () =>
       selectedEmotesForOverlay.length > 0
-        ? buildEmoteOverlaySeries(displayRollups, selectedEmotesForOverlay, minuteRollups)
+        ? buildEmoteOverlaySeries(minuteRollups, selectedEmotesForOverlay, minuteRollups)
         : [],
-    [displayRollups, minuteRollups, selectedEmotesForOverlay],
+    [minuteRollups, selectedEmotesForOverlay],
   )
 
   const selectedPlotColors = useMemo(() => {
@@ -183,17 +230,17 @@ export function RecapTimelineChart({
     return findChartIndexByOffset(chartOffsets, previewOffsetSeconds, { bucketed: true })
   }, [previewOffsetSeconds, chartOffsets])
 
-  const pinRollup = pinChartIndex != null ? displayRollups[pinChartIndex] : undefined
-  const previewRollup = previewChartIndex != null ? displayRollups[previewChartIndex] : undefined
+  const pinRollup = pinChartIndex != null ? minuteRollups[pinChartIndex] : undefined
+  const previewRollup = previewChartIndex != null ? minuteRollups[previewChartIndex] : undefined
 
   const readoutRollup = useMemo(() => {
     if (pinRollup) return pinRollup
     if (chartHoverOffsetSeconds != null) {
-      return displayRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
+      return minuteRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
     }
     if (previewRollup) return previewRollup
     return undefined
-  }, [chartHoverOffsetSeconds, displayRollups, pinRollup, previewRollup])
+  }, [chartHoverOffsetSeconds, minuteRollups, pinRollup, previewRollup])
 
   const showChartReadout = Boolean(
     readoutRollup
@@ -204,7 +251,8 @@ export function RecapTimelineChart({
 
   const handleClearChartHover = useCallback((): void => {
     setChartHoverOffsetSeconds(null)
-  }, [])
+    onClearSelection?.()
+  }, [onClearSelection])
 
   useEffect(() => {
     fullTimelineRequestedRef.current = false
@@ -227,6 +275,16 @@ export function RecapTimelineChart({
   }, [chartIdentity])
 
   useEffect(() => {
+    setChartViewport(resolveViewport({
+      durationSeconds: chartDurationSeconds,
+      zoomSeconds: 'full',
+      coverageStartSeconds: chartCoverageStartSeconds,
+    }))
+    // Activation changes are the only reason to reset a user's chosen range.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartIdentity])
+
+  useEffect(() => {
     if (pinOffsetSeconds != null) {
       setEmotePanelExpanded(false)
     }
@@ -234,7 +292,7 @@ export function RecapTimelineChart({
   }, [pinOffsetSeconds])
 
   const selectPointAtIndex = useCallback((index: number): void => {
-    const rollup = displayRollups[index]
+    const rollup = minuteRollups[index]
     if (!rollup) return
 
     onSelectPoint(
@@ -247,7 +305,7 @@ export function RecapTimelineChart({
         peaks: payload.peaks,
       }),
     )
-  }, [catalog, displayRollups, mergedMoments, minuteRollups, onSelectPoint, payload.peaks, payload.startedAt])
+  }, [catalog, mergedMoments, minuteRollups, onSelectPoint, payload.peaks, payload.startedAt])
 
   const handleChartSelect = useCallback((index: number): void => {
     selectPointAtIndex(index)
@@ -272,6 +330,47 @@ export function RecapTimelineChart({
     setFocusedSeriesKey(current => (current === seriesKey ? null : seriesKey))
   }, [])
 
+  const handleChartViewportChange = useCallback((next: ChartViewport): void => {
+    setChartViewport(clampViewportToCoverage(
+      next,
+      chartDurationSeconds,
+      chartCoverageStartSeconds,
+    ))
+  }, [chartCoverageStartSeconds, chartDurationSeconds])
+
+  const changeChartZoom = useCallback((direction: 'in' | 'out'): void => {
+    if (chartDurationSeconds <= 0) return
+    const availableDuration = Math.max(0, chartDurationSeconds - chartCoverageStartSeconds)
+    const currentDuration = viewportDurationSeconds(chartViewportForRender)
+    const nextDuration = direction === 'in'
+      ? Math.max(Math.min(MIN_VIEWPORT_SECONDS, availableDuration), currentDuration / 1.5)
+      : Math.min(availableDuration, currentDuration * 1.5)
+    handleChartViewportChange(zoomViewport({
+      viewport: chartViewportForRender,
+      zoomSeconds: nextDuration,
+      durationSeconds: chartDurationSeconds,
+      coverageStartSeconds: chartCoverageStartSeconds,
+    }))
+  }, [chartCoverageStartSeconds, chartDurationSeconds, chartViewportForRender, handleChartViewportChange])
+
+  const resetChartViewport = useCallback((): void => {
+    handleChartViewportChange(resolveViewport({
+      durationSeconds: chartDurationSeconds,
+      zoomSeconds: 'full',
+      coverageStartSeconds: chartCoverageStartSeconds,
+    }))
+  }, [chartCoverageStartSeconds, chartDurationSeconds, handleChartViewportChange])
+
+  const chartRailVisible = shouldShowChartRail(chartViewportForRender, chartDurationSeconds)
+  const chartAtAvailableRange = chartViewportForRender.startSeconds <= chartCoverageStartSeconds + 5
+    && chartViewportForRender.endSeconds >= chartDurationSeconds - 5
+  const chartIsFullRange = chartAtAvailableRange && chartCoverageStartSeconds <= 5
+  const chartRangeStatus = chartIsFullRange
+    ? 'Full stream'
+    : chartAtAvailableRange
+      ? `Available coverage · from ${formatHeatOffset(chartCoverageStartSeconds)}`
+      : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
+
   return (
     <div style={styles.block}>
       <StreamActivityChartHeader
@@ -280,7 +379,7 @@ export function RecapTimelineChart({
         onToggleSeriesFocus={toggleSeriesFocus}
         rightControl={
           <div style={styles.rangeMetaWrap}>
-            <span style={styles.rangeMeta}>Full stream</span>
+            <span style={styles.rangeMeta}>{chartRangeStatus}</span>
             {rollupSinceHint ? <span style={styles.rollupSince}>{rollupSinceHint}</span> : null}
           </div>
         }
@@ -360,11 +459,11 @@ export function RecapTimelineChart({
           </p>
         ) : null}
         <PulseOverviewChart
-          rollups={displayRollups}
+          rollups={minuteRollups}
           games={recapGames}
           backendUrl={backendUrl}
           interactionResetKey={`${payload.login}:${payload.streamId ?? payload.vodId ?? ''}`}
-          durationSeconds={currentOffsetSeconds}
+          durationSeconds={chartDurationSeconds}
           streamStartedAt={payload.startedAt}
           height={chartHeight}
           chartRegionId={chartRegionId}
@@ -380,12 +479,62 @@ export function RecapTimelineChart({
           onClearSelection={handleClearChartHover}
           clearSelectionBoundaryRef={chartInteractionRef}
           onHoverOffsetChange={setChartHoverOffsetSeconds}
+          viewport={chartViewportForRender}
+          coverageStartSeconds={chartCoverageStartSeconds}
+          onViewportChange={handleChartViewportChange}
           highlightedGameSegmentKey={highlightedGameSegmentKey}
           overlayLines={emoteOverlays}
           emptyMessage={chartEmpty || 'Loading full stream rollups…'}
-          loading={timelineLoading || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
+          // Full history is enrichment for recap too: keep any recent/partial
+          // rollups drawable while the one-shot request is pending or fails.
+          loading={(timelineLoading && minuteRollups.length === 0) || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
           isLive={false}
         />
+        {chartRailVisible ? (
+          <div style={styles.chartViewportControls} data-chart-viewport-controls>
+            <div style={styles.chartRailRow}>
+              <ChartPositionRail
+                viewport={chartViewportForRender}
+                durationSeconds={chartDurationSeconds}
+                onViewportChange={handleChartViewportChange}
+                coverageStartSeconds={chartCoverageStartSeconds}
+                ariaLabel="Recap chart zoom and position"
+                hideRangeLabel
+              />
+            </div>
+            <div style={styles.chartZoomControls} aria-label="Recap chart zoom controls">
+              <button
+                type="button"
+                data-chart-zoom-out
+                style={styles.chartZoomButton}
+                disabled={viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartDurationSeconds - chartCoverageStartSeconds) - 5}
+                aria-label="Zoom out recap chart"
+                onClick={() => changeChartZoom('out')}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                data-chart-zoom-reset
+                style={styles.chartZoomReset}
+                disabled={chartAtAvailableRange}
+                onClick={resetChartViewport}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                data-chart-zoom-in
+                style={styles.chartZoomButton}
+                disabled={viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartDurationSeconds - chartCoverageStartSeconds))}
+                aria-label="Zoom in recap chart"
+                onClick={() => changeChartZoom('in')}
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {topEmotesForPicker.length > 0 ? (
@@ -413,6 +562,42 @@ export function RecapTimelineChart({
 const styles: Record<string, CSSProperties> = {
   block: { display: 'grid', gap: 6 },
   chartStack: { display: 'grid', gap: 0 },
+  chartViewportControls: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 8,
+    marginTop: 2,
+    minWidth: 0,
+  },
+  chartRailRow: { flex: '1 1 auto', minWidth: 0 },
+  chartZoomControls: { alignItems: 'center', display: 'inline-flex', gap: 4, flexShrink: 0 },
+  chartZoomButton: {
+    alignItems: 'center',
+    background: 'rgba(139, 92, 246, 0.12)',
+    border: '1px solid rgba(167, 139, 250, 0.32)',
+    borderRadius: 6,
+    color: '#ddd6fe',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    fontSize: 14,
+    fontWeight: 900,
+    height: 24,
+    justifyContent: 'center',
+    lineHeight: 1,
+    padding: 0,
+    width: 24,
+  },
+  chartZoomReset: {
+    background: 'transparent',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: 6,
+    color: theme.textMuted,
+    cursor: 'pointer',
+    fontSize: 9,
+    fontWeight: 800,
+    height: 24,
+    padding: '0 7px',
+  },
   rangeMetaWrap: { display: 'grid', gap: 2, justifyItems: 'end' },
   rangeMeta: {
     color: theme.textMuted,

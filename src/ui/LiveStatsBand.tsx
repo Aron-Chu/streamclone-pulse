@@ -65,8 +65,10 @@ import { theme } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
-import { ChartPositionRail, shouldShowChartRail } from './ChartPositionRail.tsx'
+import { ChartPositionRail, LONG_STREAM_OVERVIEW_SECONDS, shouldShowChartRail } from './ChartPositionRail.tsx'
 import {
+  advanceFollowingLiveViewport,
+  clampViewportToCoverage,
   MIN_VIEWPORT_SECONDS,
   resolveViewport,
   viewportDurationSeconds,
@@ -124,7 +126,7 @@ const CONFIDENCE_STYLES: Record<
   'Stats only': {
     background: 'rgba(113, 113, 122, 0.15)',
     border: 'rgba(161, 161, 170, 0.3)',
-    color: '#d4d4d8',
+    color: '#a78bfa',
   },
 }
 
@@ -255,6 +257,7 @@ export function LiveStatsBand({
   const [chartWindow, setChartWindow] = useState<ChartTimelineWindow>('60m')
   const [chartViewport, setChartViewport] = useState<ChartViewport>(() => resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' }))
   const chartViewportUserChangedRef = useRef(false)
+  const previousChartDurationRef = useRef(effectiveCurrentOffsetSeconds)
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [fullTimelineFailed, setFullTimelineFailed] = useState(false)
   /** Exactly one automatic Full request latch per stable activation key. */
@@ -263,11 +266,7 @@ export function LiveStatsBand({
   /** After the user picks a range, ignore late async default hydration for this stream. */
   const chartWindowUserPickedRef = useRef(false)
   const [activationSeen, setActivationSeen] = useState(activation)
-  if (
-    activation.login !== activationSeen.login
-    || activation.streamId !== activationSeen.streamId
-    || activation.vodId !== activationSeen.vodId
-  ) {
+  if (fullHistoryActivationKey(activationSeen) !== activationKey) {
     setActivationSeen(activation)
     chartWindowUserPickedRef.current = false
     fullTimelineAutoRequestedKeyRef.current = null
@@ -334,18 +333,13 @@ export function LiveStatsBand({
   // Full request is pending. Keep the full-domain viewport/rail visible in
   // that fallback state so the chart never loses its navigation affordance.
   const chartUsesViewport =
-    hasFullRollups || chartWindow === 'full' || (needsFullRollups && !hasFullRollups)
+    hasFullRollups
+    || chartWindow === 'full'
+    || (needsFullRollups && !hasFullRollups)
+    || effectiveCurrentOffsetSeconds >= LONG_STREAM_OVERVIEW_SECONDS
   // Full history is optional enrichment. Keep recent points rendered while the
   // activation-scoped request is pending or has failed.
   const chartLoading = timelineLoading && rollups.length === 0
-  const chartEmpty = chartEmptyMessage({
-    rollupCount: rollups.length,
-    chartWindow,
-    hasFullRollups,
-    confidence: stats.confidence,
-    currentOffsetSeconds: effectiveCurrentOffsetSeconds,
-    awaitingFullRollups: timelineLoading && needsFullRollups,
-  })
   const canShowFullTimeline = hasFullRollups || fullTimeline || currentOffsetSeconds > 0
   const [emotePanelExpanded, setEmotePanelExpanded] = useState(false)
   const [chartHoverOffsetSeconds, setChartHoverOffsetSeconds] = useState<number | null>(null)
@@ -369,23 +363,24 @@ export function LiveStatsBand({
 
   useEffect(() => {
     chartViewportUserChangedRef.current = false
+    previousChartDurationRef.current = effectiveCurrentOffsetSeconds
     setChartViewport(resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' }))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the stream/VOD activation changes
   }, [activationKey])
 
   useEffect(() => {
+    const previousDurationSeconds = previousChartDurationRef.current
+    previousChartDurationRef.current = effectiveCurrentOffsetSeconds
     setChartViewport(current => {
-       if (!chartViewportUserChangedRef.current) {
-         return resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' })
-       }
-      const currentDuration = Math.max(0, current.endSeconds - current.startSeconds)
-       if (currentDuration <= 0 || current.endSeconds <= effectiveCurrentOffsetSeconds) return current
-       return resolveViewport({
-         durationSeconds: effectiveCurrentOffsetSeconds,
-         zoomSeconds: currentDuration,
-         currentViewport: current,
-       })
-     })
+      if (!chartViewportUserChangedRef.current) {
+        return resolveViewport({ durationSeconds: effectiveCurrentOffsetSeconds, zoomSeconds: 'full' })
+      }
+      return advanceFollowingLiveViewport({
+        viewport: current,
+        previousDurationSeconds,
+        durationSeconds: effectiveCurrentOffsetSeconds,
+      })
+    })
   }, [effectiveCurrentOffsetSeconds])
 
   useEffect(() => {
@@ -557,45 +552,93 @@ export function LiveStatsBand({
       lastRollupEnd,
     )
   }, [currentOffsetSeconds, payload.currentOffsetSeconds, chartRailRollups])
-  const chartCoverageStartSeconds = hasFullRollups
-    ? Math.max(
-        0,
-        coverageStartOffsetSeconds,
-        payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,
+  const chartCoverageStartSeconds = Math.max(
+    0,
+    coverageStartOffsetSeconds,
+    payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,
+    chartRailRollups[0]?.offsetSeconds ?? 0,
+  )
+
+  const chartViewportForRender = useMemo(
+    () => clampViewportToCoverage(
+      chartViewport,
+      chartRailDurationSeconds,
+      chartCoverageStartSeconds,
+    ),
+    [chartCoverageStartSeconds, chartRailDurationSeconds, chartViewport],
+  )
+
+  // Repair a stale viewport as soon as rollup coverage changes. The derived
+  // value above prevents a blank frame; this effect keeps future interactions
+  // and persisted state on the same invariant.
+  useEffect(() => {
+    setChartViewport(current => {
+      const next = clampViewportToCoverage(
+        current,
+        chartRailDurationSeconds,
+        chartCoverageStartSeconds,
       )
-    : Math.max(
-        0,
-        coverageStartOffsetSeconds,
-        payload.coverageStartOffsetSeconds ?? payload.coverage?.coverageStartOffsetSeconds ?? 0,
-        rollups[0]?.offsetSeconds ?? 0,
-      )
+      if (
+        next.startSeconds === current.startSeconds
+        && next.endSeconds === current.endSeconds
+      ) return current
+      return next
+    })
+  }, [chartCoverageStartSeconds, chartRailDurationSeconds])
+
+  const visibleChartRollupCount = chartUsesViewport
+    ? rollups.filter(rollup => (
+        rollup.offsetSeconds >= chartViewportForRender.startSeconds
+        && rollup.offsetSeconds < chartViewportForRender.endSeconds
+      )).length
+    : rollups.length
+
+  const chartEmpty = chartEmptyMessage({
+    rollupCount: rollups.length,
+    visibleRollupCount: visibleChartRollupCount,
+    chartWindow,
+    hasFullRollups,
+    confidence: stats.confidence,
+    currentOffsetSeconds: effectiveCurrentOffsetSeconds,
+    awaitingFullRollups: timelineLoading && needsFullRollups,
+  })
 
   const handleChartViewportChange = useCallback((next: ChartViewport): void => {
     chartViewportUserChangedRef.current = true
-    setChartViewport(next)
-  }, [])
+    setChartViewport(clampViewportToCoverage(
+      next,
+      chartRailDurationSeconds,
+      chartCoverageStartSeconds,
+    ))
+  }, [chartCoverageStartSeconds, chartRailDurationSeconds])
 
   const changeChartZoom = useCallback((direction: 'in' | 'out'): void => {
     if (chartRailDurationSeconds <= 0) return
-    const currentDuration = viewportDurationSeconds(chartViewport)
+    const currentDuration = viewportDurationSeconds(chartViewportForRender)
+    const availableDuration = Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds)
     const nextDuration = direction === 'in'
-      ? Math.max(MIN_VIEWPORT_SECONDS, currentDuration / 1.5)
-      : Math.min(chartRailDurationSeconds, currentDuration * 1.5)
+      ? Math.max(Math.min(MIN_VIEWPORT_SECONDS, availableDuration), currentDuration / 1.5)
+      : Math.min(availableDuration, currentDuration * 1.5)
     handleChartViewportChange(
       zoomViewport({
-        viewport: chartViewport,
+        viewport: chartViewportForRender,
         zoomSeconds: nextDuration,
         durationSeconds: chartRailDurationSeconds,
+        coverageStartSeconds: chartCoverageStartSeconds,
       }),
     )
-  }, [chartRailDurationSeconds, chartViewport, handleChartViewportChange])
+  }, [chartCoverageStartSeconds, chartRailDurationSeconds, chartViewportForRender, handleChartViewportChange])
 
   const resetChartViewport = useCallback((): void => {
     if (chartRailDurationSeconds <= 0) return
     handleChartViewportChange(
-      resolveViewport({ durationSeconds: chartRailDurationSeconds, zoomSeconds: 'full' }),
+      resolveViewport({
+        durationSeconds: chartRailDurationSeconds,
+        zoomSeconds: 'full',
+        coverageStartSeconds: chartCoverageStartSeconds,
+      }),
     )
-  }, [chartRailDurationSeconds, handleChartViewportChange])
+  }, [chartCoverageStartSeconds, chartRailDurationSeconds, handleChartViewportChange])
 
   const visibleRange = useMemo(
     () => chartVisibleRangeFromRollups(displayRollups),
@@ -702,20 +745,18 @@ export function LiveStatsBand({
   const showPartialRangeStatus = chartWindow !== 'full'
   const chartRailVisible =
     chartUsesViewport
-    && shouldShowChartRail(chartViewport, chartRailDurationSeconds)
-  const chartIsFullRange =
+    && shouldShowChartRail(chartViewportForRender, chartRailDurationSeconds)
+  const chartAtAvailableRange =
     chartRailDurationSeconds <= 0
-    || (chartViewport.startSeconds <= chartCoverageStartSeconds + 5
-      && chartViewport.endSeconds >= chartRailDurationSeconds - 5)
-  const chartRangeStatus = !chartIsFullRange
-    ? `Viewing ${formatHeatOffset(chartViewport.startSeconds)} – ${formatHeatOffset(chartViewport.endSeconds)}`
-    : chartWindow === 'full'
-      ? hasFullRollups
-        ? 'Full stream'
-        : rollups.length > 0
-          ? `Recent activity · ${plottedCoverageLabel(rollups)}`
-          : 'Waiting for chart data'
-      : plottedCoverageLabel(rollups)
+    || (chartViewportForRender.startSeconds <= chartCoverageStartSeconds + 5
+      && chartViewportForRender.endSeconds >= chartRailDurationSeconds - 5)
+  const chartIsFullRange =
+    chartAtAvailableRange && chartCoverageStartSeconds <= 5
+  const chartRangeStatus = chartIsFullRange
+    ? 'Full stream'
+    : chartAtAvailableRange
+      ? `Available coverage · from ${formatHeatOffset(chartCoverageStartSeconds)}`
+      : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
 
   return (
     <PulseSectionCard
@@ -991,7 +1032,8 @@ export function LiveStatsBand({
             onClearSelection={demoMode ? undefined : handleClearChartSelection}
             clearSelectionBoundaryRef={chartInteractionRef}
              onHoverOffsetChange={setChartHoverOffsetSeconds}
-             viewport={chartUsesViewport ? chartViewport : undefined}
+             viewport={chartUsesViewport ? chartViewportForRender : undefined}
+             coverageStartSeconds={chartCoverageStartSeconds}
              onViewportChange={chartUsesViewport ? handleChartViewportChange : undefined}
              onJumpToOffset={onJumpToOffset}
              highlightedGameSegmentKey={chartHighlightedGameKeyValue}
@@ -1005,7 +1047,7 @@ export function LiveStatsBand({
               <div style={styles.chartViewportControls} data-chart-viewport-controls>
                 <div style={styles.chartRailRow}>
                   <ChartPositionRail
-                    viewport={chartViewport}
+                    viewport={chartViewportForRender}
                     durationSeconds={chartRailDurationSeconds}
                     onViewportChange={handleChartViewportChange}
                     onJumpToOffset={onJumpToOffset}
@@ -1020,7 +1062,7 @@ export function LiveStatsBand({
                     type="button"
                     data-chart-zoom-out
                     style={styles.chartZoomButton}
-                    disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewport) >= chartRailDurationSeconds - 5}
+                    disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewportForRender) >= Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds) - 5}
                     aria-label="Zoom out chart"
                     onClick={() => changeChartZoom('out')}
                   >
@@ -1030,7 +1072,7 @@ export function LiveStatsBand({
                     type="button"
                     data-chart-zoom-reset
                     style={styles.chartZoomReset}
-                    disabled={timelineLoading || demoMode || chartIsFullRange}
+                    disabled={timelineLoading || demoMode || chartAtAvailableRange}
                     onClick={resetChartViewport}
                   >
                     Reset
@@ -1039,7 +1081,7 @@ export function LiveStatsBand({
                     type="button"
                     data-chart-zoom-in
                     style={styles.chartZoomButton}
-                    disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewport) <= MIN_VIEWPORT_SECONDS}
+                    disabled={timelineLoading || demoMode || viewportDurationSeconds(chartViewportForRender) <= Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, chartRailDurationSeconds - chartCoverageStartSeconds))}
                     aria-label="Zoom in chart"
                     onClick={() => changeChartZoom('in')}
                   >
@@ -1253,7 +1295,7 @@ const styles: Record<string, CSSProperties> = {
   },
   chartLegendStroke: {
     background: 'transparent',
-    border: '1.5px solid #d4d4d8',
+    border: '1.5px solid #a78bfa',
     borderRadius: 1,
     flexShrink: 0,
     height: 0,

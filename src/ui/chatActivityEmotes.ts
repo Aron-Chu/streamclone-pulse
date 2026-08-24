@@ -683,6 +683,8 @@ export function chartMaxPoints(
 
 export function chartEmptyMessage(options: {
   rollupCount: number
+  /** Visible count after viewport filtering; defaults to the source count. */
+  visibleRollupCount?: number
   chartWindow: ChartTimelineWindow
   hasFullRollups: boolean
   confidence: string
@@ -691,6 +693,7 @@ export function chartEmptyMessage(options: {
 }): string {
   const {
     rollupCount,
+    visibleRollupCount = rollupCount,
     chartWindow,
     hasFullRollups,
     confidence,
@@ -701,7 +704,10 @@ export function chartEmptyMessage(options: {
   if (awaitingFullRollups) {
     return 'Loading full stream rollups from Streamclone…'
   }
-  if (rollupCount >= 1) return ''
+  if (visibleRollupCount >= 1) return ''
+  if (rollupCount >= 1) {
+    return 'Chart data is available outside this view. Reset or move the chart window to the covered range.'
+  }
   if (confidence === 'Waiting for first minute') {
     return 'Collecting the first minute of chat rollups. The graph appears here automatically.'
   }

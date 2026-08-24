@@ -3,6 +3,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent a
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   FOLLOW_LIVE_EPSILON_SECONDS,
+  clampViewportToCoverage,
   isFollowingLive,
   jumpToOffset,
   MIN_VIEWPORT_SECONDS,
@@ -49,24 +50,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function clampToCoverage(
-  viewport: ChartViewport,
-  durationSeconds: number,
-  coverageStartSeconds: number,
-): ChartViewport {
-  if (durationSeconds <= 0) return { startSeconds: 0, endSeconds: 0 }
-  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
-  const requestedDuration = Math.max(0, viewport.endSeconds - viewport.startSeconds)
-  const span = clamp(
-    requestedDuration,
-    Math.min(MIN_VIEWPORT_SECONDS, durationSeconds),
-    durationSeconds,
-  )
-  const latestStart = Math.max(coverageStart, durationSeconds - span)
-  const start = clamp(viewport.startSeconds, coverageStart, latestStart)
-  return { startSeconds: start, endSeconds: start + span }
-}
-
 type DragMode = 'pan' | 'resize-start' | 'resize-end'
 
 export const ChartPositionRail = memo(function ChartPositionRail({
@@ -88,10 +71,11 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     dragSeconds: number
     mode: DragMode
   } | null>(null)
-  const viewportDuration = viewportDurationSeconds(viewport)
-  const showRail = shouldShowChartRail(viewport, durationSeconds)
-  const geometry = railGeometry(viewport, durationSeconds, 100)
-  const following = isFollowingLive(viewport, durationSeconds)
+  const normalizedViewport = clampViewportToCoverage(viewport, durationSeconds, coverageStartSeconds)
+  const viewportDuration = viewportDurationSeconds(normalizedViewport)
+  const showRail = shouldShowChartRail(normalizedViewport, durationSeconds)
+  const geometry = railGeometry(normalizedViewport, durationSeconds, 100, coverageStartSeconds)
+  const following = isFollowingLive(normalizedViewport, durationSeconds)
 
   const beginDrag = useCallback((
     event: ReactPointerEvent<HTMLElement>,
@@ -123,16 +107,17 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     const offsetSeconds = (offsetX / Math.max(1, rect.width)) * durationSeconds
     if (offsetSeconds < coverageStartSeconds) return
 
-    let base = viewport
+    let base = normalizedViewport
     if (viewportDuration >= durationSeconds - FOLLOW_LIVE_EPSILON_SECONDS && durationSeconds > DEFAULT_FOCUS_SECONDS) {
       base = resolveViewport({
         durationSeconds,
         zoomSeconds: DEFAULT_FOCUS_SECONDS,
         anchorSeconds: offsetSeconds,
+        coverageStartSeconds,
       })
     }
-    const next = clampToCoverage(
-      jumpToOffset(base, offsetSeconds, durationSeconds, viewportDurationSeconds(base)),
+    const next = clampViewportToCoverage(
+      jumpToOffset(base, offsetSeconds, durationSeconds, viewportDurationSeconds(base), coverageStartSeconds),
       durationSeconds,
       coverageStartSeconds,
     )
@@ -147,7 +132,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     onJumpToOffset,
     onViewportChange,
     showRail,
-    viewport,
+    normalizedViewport,
     viewportDuration,
   ])
 
@@ -158,8 +143,8 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     if (disabled || !showRail) return
     event.preventDefault()
     event.stopPropagation()
-    beginDrag(event, edge === 'start' ? 'resize-start' : 'resize-end', viewport)
-  }, [beginDrag, disabled, showRail, viewport])
+    beginDrag(event, edge === 'start' ? 'resize-start' : 'resize-end', normalizedViewport)
+  }, [beginDrag, disabled, normalizedViewport, showRail])
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const state = dragStateRef.current
@@ -172,23 +157,23 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     state.dragSeconds += Math.abs(deltaSeconds)
     let next: ChartViewport
     if (state.mode === 'pan') {
-      next = panViewport(state.startViewport, deltaSeconds, durationSeconds)
+      next = panViewport(state.startViewport, deltaSeconds, durationSeconds, true, coverageStartSeconds)
     } else if (state.mode === 'resize-start') {
       const start = clamp(
         state.startViewport.startSeconds + deltaSeconds,
-        0,
-        state.startViewport.endSeconds - Math.min(MIN_VIEWPORT_SECONDS, durationSeconds),
+        coverageStartSeconds,
+        state.startViewport.endSeconds - Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, durationSeconds - coverageStartSeconds)),
       )
       next = { startSeconds: start, endSeconds: state.startViewport.endSeconds }
     } else {
       const end = clamp(
         state.startViewport.endSeconds + deltaSeconds,
-        state.startViewport.startSeconds + Math.min(MIN_VIEWPORT_SECONDS, durationSeconds),
+        state.startViewport.startSeconds + Math.min(MIN_VIEWPORT_SECONDS, Math.max(0, durationSeconds - coverageStartSeconds)),
         durationSeconds,
       )
       next = { startSeconds: state.startViewport.startSeconds, endSeconds: end }
     }
-    onViewportChange(clampToCoverage(next, durationSeconds, coverageStartSeconds))
+    onViewportChange(clampViewportToCoverage(next, durationSeconds, coverageStartSeconds))
   }, [coverageStartSeconds, durationSeconds, onViewportChange])
 
   const onPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
@@ -213,36 +198,36 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     switch (event.key) {
       case 'ArrowLeft':
         next = event.altKey
-          ? { startSeconds: viewport.startSeconds - (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: viewport.endSeconds }
-          : panViewport(viewport, event.shiftKey ? -SHIFT_PAN_SECONDS : -MIN_PAN_SECONDS, durationSeconds)
+          ? { startSeconds: normalizedViewport.startSeconds - (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: normalizedViewport.endSeconds }
+        : panViewport(normalizedViewport, event.shiftKey ? -SHIFT_PAN_SECONDS : -MIN_PAN_SECONDS, durationSeconds, true, coverageStartSeconds)
         break
       case 'ArrowRight':
         next = event.altKey
-          ? { startSeconds: viewport.startSeconds + (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: viewport.endSeconds }
-          : panViewport(viewport, event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS, durationSeconds)
+          ? { startSeconds: normalizedViewport.startSeconds + (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: normalizedViewport.endSeconds }
+          : panViewport(normalizedViewport, event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS, durationSeconds, true, coverageStartSeconds)
         break
       case '[':
-        next = { startSeconds: viewport.startSeconds + (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: viewport.endSeconds }
+        next = { startSeconds: normalizedViewport.startSeconds + (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS), endSeconds: normalizedViewport.endSeconds }
         break
       case ']':
-        next = { startSeconds: viewport.startSeconds, endSeconds: viewport.endSeconds - (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS) }
+        next = { startSeconds: normalizedViewport.startSeconds, endSeconds: normalizedViewport.endSeconds - (event.shiftKey ? SHIFT_PAN_SECONDS : MIN_PAN_SECONDS) }
         break
       case 'Home':
         jump = Math.max(0, coverageStartSeconds)
-        next = jumpToOffset(viewport, jump, durationSeconds, viewportDuration)
+        next = jumpToOffset(normalizedViewport, jump, durationSeconds, viewportDuration, coverageStartSeconds)
         break
       case 'End':
         jump = durationSeconds
-        next = jumpToOffset(viewport, jump, durationSeconds, viewportDuration)
+        next = jumpToOffset(normalizedViewport, jump, durationSeconds, viewportDuration, coverageStartSeconds)
         break
       case 'Escape':
-        next = { startSeconds: Math.max(0, coverageStartSeconds), endSeconds: durationSeconds }
+        next = { startSeconds: coverageStartSeconds, endSeconds: durationSeconds }
         break
       default:
         return
     }
     event.preventDefault()
-    onViewportChange(clampToCoverage(next, durationSeconds, coverageStartSeconds))
+    onViewportChange(clampViewportToCoverage(next, durationSeconds, coverageStartSeconds))
     if (jump != null) onJumpToOffset?.(jump)
   }, [
     coverageStartSeconds,
@@ -250,14 +235,14 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     durationSeconds,
     onJumpToOffset,
     onViewportChange,
-    viewport,
+    normalizedViewport,
     viewportDuration,
   ])
 
   if (!showRail) return <div style={{ display: 'none' }} aria-hidden />
 
-  const startLabel = formatHeatOffset(viewport.startSeconds)
-  const endLabel = formatHeatOffset(viewport.endSeconds)
+  const startLabel = formatHeatOffset(normalizedViewport.startSeconds)
+  const endLabel = formatHeatOffset(normalizedViewport.endSeconds)
   const totalLabel = formatHeatOffset(durationSeconds)
   const coverageWidth = durationSeconds > 0
     ? `${clamp(coverageStartSeconds / durationSeconds, 0, 1) * 100}%`
@@ -268,8 +253,11 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   const thumbTransition = !prefersReducedMotion() && !dragging
     ? 'transform 140ms cubic-bezier(0.22, 1, 0.36, 1), width 140ms cubic-bezier(0.22, 1, 0.36, 1)'
     : undefined
-  const rangeText = following && viewport.startSeconds <= coverageStartSeconds + FOLLOW_LIVE_EPSILON_SECONDS
-    ? 'Full stream'
+  const atAvailableRange = following && normalizedViewport.startSeconds <= coverageStartSeconds + FOLLOW_LIVE_EPSILON_SECONDS
+  const rangeText = atAvailableRange
+    ? coverageStartSeconds > FOLLOW_LIVE_EPSILON_SECONDS
+      ? `Available coverage · from ${formatHeatOffset(coverageStartSeconds)}`
+      : 'Full stream'
     : `Viewing ${startLabel} – ${endLabel} of ${totalLabel}`
 
   return (
@@ -280,9 +268,9 @@ export const ChartPositionRail = memo(function ChartPositionRail({
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label={ariaLabel}
-        aria-valuemin={0}
+        aria-valuemin={Math.round(clamp(coverageStartSeconds, 0, durationSeconds))}
         aria-valuemax={Math.round(durationSeconds)}
-        aria-valuenow={Math.round(viewport.startSeconds)}
+        aria-valuenow={Math.round(normalizedViewport.startSeconds)}
         aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}. Alt+arrows or [ ] resize the window.`}
         style={{ ...styles.track, height, cursor: disabled ? 'default' : 'pointer', touchAction: 'none' }}
         data-chart-rail

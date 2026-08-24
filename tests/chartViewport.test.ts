@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtensionRollup } from '../src/shared/messages.ts'
 import {
+  advanceFollowingLiveViewport,
+  clampViewportToCoverage,
   FOLLOW_LIVE_EPSILON_SECONDS,
   isFollowingLive,
   isViewportAtTimelineEnd,
@@ -88,6 +90,24 @@ describe('isViewportAtTimelineEnd', () => {
   })
 })
 
+describe('advanceFollowingLiveViewport', () => {
+  it('moves a user-zoomed viewport with the advancing live tail', () => {
+    expect(advanceFollowingLiveViewport({
+      viewport: { startSeconds: 3_300, endSeconds: 3_600 },
+      previousDurationSeconds: 3_600,
+      durationSeconds: 3_900,
+    })).toEqual({ startSeconds: 3_600, endSeconds: 3_900 })
+  })
+
+  it('keeps a manually panned historical viewport fixed', () => {
+    expect(advanceFollowingLiveViewport({
+      viewport: { startSeconds: 1_000, endSeconds: 1_200 },
+      previousDurationSeconds: 3_600,
+      durationSeconds: 3_900,
+    })).toEqual({ startSeconds: 1_000, endSeconds: 1_200 })
+  })
+})
+
 describe('resolveViewport', () => {
   it('returns the full stream for zoomSeconds = "full"', () => {
     expect(resolveViewport({ durationSeconds: 100, zoomSeconds: 'full' })).toEqual({
@@ -132,6 +152,37 @@ describe('resolveViewport', () => {
     expect(resolveViewport({ durationSeconds: 50, zoomSeconds: 120, anchorSeconds: 25 }))
       .toEqual({ startSeconds: 0, endSeconds: 50 })
   })
+
+  it('starts Full at plotted coverage when the stream began before rollups', () => {
+    expect(resolveViewport({
+      durationSeconds: 25_200,
+      zoomSeconds: 'full',
+      coverageStartSeconds: 21_060,
+    })).toEqual({ startSeconds: 21_060, endSeconds: 25_200 })
+  })
+})
+
+describe('clampViewportToCoverage', () => {
+  it('repairs a viewport stranded before recent fallback coverage', () => {
+    expect(clampViewportToCoverage(
+      { startSeconds: 8_280, endSeconds: 15_540 },
+      25_200,
+      21_060,
+    )).toEqual({ startSeconds: 21_060, endSeconds: 25_200 })
+  })
+
+  it('preserves a zoomed span while clamping it to the covered interval', () => {
+    expect(clampViewportToCoverage(
+      { startSeconds: 21_600, endSeconds: 24_600 },
+      25_200,
+      21_060,
+    )).toEqual({ startSeconds: 21_600, endSeconds: 24_600 })
+    expect(clampViewportToCoverage(
+      { startSeconds: 15_000, endSeconds: 18_000 },
+      25_200,
+      21_060,
+    )).toEqual({ startSeconds: 21_060, endSeconds: 24_060 })
+  })
 })
 
 describe('panViewport', () => {
@@ -164,6 +215,16 @@ describe('panViewport', () => {
   it('respects clampToFull = false', () => {
     expect(panViewport({ startSeconds: 10, endSeconds: 30 }, 5, 100, false))
       .toEqual({ startSeconds: 15, endSeconds: 35 })
+  })
+
+  it('never pans before late-start coverage', () => {
+    expect(panViewport(
+      { startSeconds: 2_200, endSeconds: 2_800 },
+      -2_000,
+      3_600,
+      true,
+      2_400,
+    )).toEqual({ startSeconds: 2_400, endSeconds: 3_000 })
   })
 })
 

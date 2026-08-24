@@ -48,4 +48,19 @@ describe('ChartPositionRail', () => {
     expect(html).toContain('data-chart-rail="true"')
     expect(html).not.toContain('Viewing 01:00:00')
   })
+
+  it('renders an incoming stale viewport at the covered edge', () => {
+    const html = renderToStaticMarkup(
+      <ChartPositionRail
+        viewport={{ startSeconds: 2_000, endSeconds: 4_000 }}
+        durationSeconds={25_200}
+        coverageStartSeconds={21_060}
+        onViewportChange={() => undefined}
+        ariaLabel="Chart zoom and position"
+      />,
+    )
+
+    expect(html).toContain('aria-valuenow="21060"')
+    expect(html).toContain('data-chart-rail-uncovered')
+  })
 })
