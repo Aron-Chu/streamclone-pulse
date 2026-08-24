@@ -1055,7 +1055,7 @@ export function LiveStatsBand({
            />
         </div>
             <div style={styles.chartViewportControls} data-chart-viewport-controls>
-              <div style={styles.chartViewportMeta} data-chart-viewport-meta>
+              <div style={styles.chartViewportMeta}>
                 <div style={styles.chartViewportMetaRow}>
                   <span style={styles.chartRangeStatus} data-chart-visible-range aria-live="polite">
                     {chartRangeStatus}
