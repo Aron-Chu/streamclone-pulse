@@ -39,6 +39,7 @@ import {
   ChartSourceBanner,
   FigmaGlobalActivityPanel,
 } from "../../ui/components/analytics/FigmaGlobalActivityPanel";
+import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
 import { ChromeInstallCta } from "../../ui/components/ChromeInstallCta";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
@@ -66,7 +67,6 @@ const ACTIVITY_WINDOW_OPTIONS: HubActivityRangeOption[] = [
   { key: "7d", label: "7d" },
   { key: "1m", label: "1mo" },
   { key: "3m", label: "3mo" },
-  { key: "6m", label: "6mo" },
   { key: "1y", label: "1 year" },
 ];
 
@@ -76,7 +76,6 @@ const ACTIVITY_WINDOW_MINUTES: Record<string, number> = {
   "7d": 7 * 24 * 60,
   "1m": 30 * 24 * 60,
   "3m": 3 * 30 * 24 * 60,
-  "6m": 6 * 30 * 24 * 60,
   "1y": 365 * 24 * 60,
 };
 
@@ -128,7 +127,7 @@ function AnalyticsLandingContent() {
         const servedLabel = compactWindowLabel(servedActivityWindowMinutes);
         return {
           ...option,
-          label: `${option.label} · ${servedLabel} served`,
+          label: `${option.label} · ${servedLabel} available`,
           description: `${option.label} requested; only ${formatActivityWindowLabel(servedActivityWindowMinutes)} is currently available`,
         };
       }),
@@ -397,8 +396,9 @@ function AnalyticsLandingContent() {
     () => [
       { id: "section-overview", label: labels.overview },
       { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
-      { id: "section-live-wire", label: "Live Wire" },
-      { id: "section-network", label: labels.liveActivity },
+      { id: "section-hottest", label: "Hottest live" },
+      { id: "section-live-wire", label: "Pulse Wire" },
+      { id: "section-global-activity", label: "Global Activity" },
       { id: "section-pulse-moments", label: labels.pulseMoments },
       { id: "section-emote-signal", label: labels.emoteSignal },
       { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },
@@ -420,6 +420,7 @@ function AnalyticsLandingContent() {
     hubEndpointOk: hub.hubEndpointOk,
     // Do not default to "full" — that made pending hubEndpointOk=false look like a confirmed outage.
     loadSource: hub.loadSource ?? undefined,
+    pollSequence: hub.pollSequence,
   };
 
   const momentLookupPool = useMemo(() => {
@@ -444,10 +445,14 @@ function AnalyticsLandingContent() {
     const key = momentRowKey(moment);
     setSelectedMomentKey(key);
     if (moment.at != null && Number.isFinite(moment.at)) {
-      setSelectedBucketT(null);
+      setSelectedBucketT(
+        chartBucketSelectEnabled
+          ? activityBucketKey(moment.at, servedActivityWindowMinutes)
+          : null,
+      );
       setHoverBucketT(null);
     }
-  }, []);
+  }, [chartBucketSelectEnabled, servedActivityWindowMinutes]);
 
   return (
     <AnalyticsFigmaShell
@@ -472,6 +477,17 @@ function AnalyticsLandingContent() {
           : backendSourceLabel(backendSource)
       }
       sidebarSections={sidebarSections}
+      rightRail={
+        <HubLiveWireFeed
+          {...liveWireFeedProps}
+          layout="rail"
+          // A bounded live-pool fallback has no historical chart bucket to
+          // inspect. Do not render a button that would silently do nothing;
+          // the Live Wire card still links to the channel/moment when that
+          // route is available.
+          onSelectMoment={chartBucketSelectEnabled ? handleSelectMoment : undefined}
+        />
+      }
     >
       <main
         className="figma-analytics__main"
@@ -608,11 +624,6 @@ function AnalyticsLandingContent() {
               accentBucketT={accentBucketT}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
-              annotationFeed={liveWireFeed}
-              annotationLoading={liveWireFeedProps.loading}
-              annotationHubEndpointOk={hub.hubEndpointOk}
-              annotationLoadSource={hub.loadSource ?? undefined}
-              annotationActivityWindow={activityWindow}
             />
             <PulseMomentsLivePanel
               hub={data}

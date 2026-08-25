@@ -25,9 +25,6 @@ import {
   HubActivityChart,
   type HubActivityRangeControl,
 } from "../hub/HubActivityChart";
-import { HubLiveWireFeed } from "./HubLiveWireFeed";
-import type { LivePulseMomentsResult } from "../../../lib/figmaSessionAnalytics";
-import type { PublicHubActivityWindow, PublicHubLoadSource } from "../../../lib/publicHub";
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
 import { ActivityBucketInspector } from "./ActivityBucketInspector";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
@@ -109,6 +106,12 @@ export function ChartSourceBanner({
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
   const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
   const windowLabel = formatHubActivityServedLabel(hub.activity);
+  const requestedWindowLabel = formatActivityWindowLabel(
+    Math.max(1, hub.activity.windowMinutes || 30),
+  );
+  const availableWindowLabel = formatActivityWindowLabel(
+    resolveHubActivityChartWindowMinutes(hub.activity),
+  );
   const bucket = bucketMinutes(resolveHubActivityChartWindowMinutes(hub.activity));
   const poolSize = hub.poolSize;
   const ircActive = hub.corpusPipeline.collectorActive;
@@ -128,7 +131,11 @@ export function ChartSourceBanner({
       </span>
       <span>
         <strong>Window:</strong>{" "}
-        {livePoolFallback ? windowLabel : healthyProjection ? `last ${windowLabel}` : `served ${windowLabel}`}
+        {livePoolFallback
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available`
+          : healthyProjection
+            ? `last ${windowLabel}`
+            : `served ${windowLabel}`}
       </span>
       <span>
         <strong>Buckets:</strong> ~{bucket} min - {activitySummary.pointCount}/
@@ -206,12 +213,6 @@ export interface FigmaGlobalActivityPanelProps {
   accentBucketT?: number | null;
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
-  /** Live Wire annotation lane feed (mounted above the plot). */
-  annotationFeed?: LivePulseMomentsResult | null;
-  annotationLoading?: boolean;
-  annotationHubEndpointOk?: boolean;
-  annotationLoadSource?: PublicHubLoadSource;
-  annotationActivityWindow?: PublicHubActivityWindow;
 }
 
 function formatPeakTime(ts: number): string {
@@ -249,11 +250,6 @@ export function FigmaGlobalActivityPanel({
   accentBucketT = null,
   selectedMomentKey = null,
   onSelectMoment,
-  annotationFeed = null,
-  annotationLoading = false,
-  annotationHubEndpointOk,
-  annotationLoadSource,
-  annotationActivityWindow = "24h",
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
   const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
@@ -269,6 +265,12 @@ export function FigmaGlobalActivityPanel({
   const activityContractIssues = hubActivityContractIssues(hub.activity);
   const activityContractIssue = activityContractIssues[0] ?? null;
   const windowLabel = servedLabel;
+  const requestedWindowLabel = formatActivityWindowLabel(
+    Math.max(1, hub.activity.windowMinutes || 30),
+  );
+  const availableWindowLabel = formatActivityWindowLabel(
+    resolveHubActivityChartWindowMinutes(hub.activity),
+  );
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const hoverIntentRef = useRef<number | null>(null);
   const hoverIntentTimerRef = useRef<number | null>(null);
@@ -381,9 +383,6 @@ export function FigmaGlobalActivityPanel({
   const blockingActivityContractIssue = fallbackPayloadRepaired
     ? null
     : activityContractIssue;
-  const requestedWindowLabel = formatActivityWindowLabel(
-    Math.max(1, hub.activity.windowMinutes || 30),
-  );
   const chartState = loading
     ? "loading"
     : blockingActivityContractIssue
@@ -533,11 +532,11 @@ export function FigmaGlobalActivityPanel({
       </p>
       <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
         {fallbackPayloadRepaired
-          ? `Showing bounded last ${formatActivityWindowLabel(chartInputs.windowMinutes)} of live-pool activity; older fallback rows were discarded because historical projection is unavailable.`
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
           : blockingActivityContractIssue
           ? `Activity payload withheld: ${blockingActivityContractIssue}.`
           : livePoolFallback
-          ? `Showing ${servedLabel} of requested ${requestedWindowLabel}; historical projection is unavailable.`
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
           : `Showing served ${servedLabel}.`}
       </p>
       <div className="figma-global-activity__body" ref={bodyRef}>
@@ -546,21 +545,6 @@ export function FigmaGlobalActivityPanel({
           ref={chartAreaRef}
           data-refreshing={activityRefreshing ? "true" : undefined}
         >
-          {annotationFeed ? (
-            <div className="figma-global-activity__annotation-lane" id="section-live-wire">
-              <HubLiveWireFeed
-                hub={hub}
-                feed={annotationFeed}
-                activityWindow={annotationActivityWindow}
-                loading={annotationLoading}
-                hubEndpointOk={annotationHubEndpointOk}
-                loadSource={annotationLoadSource}
-                layout="lane"
-                selectedMomentKey={selectedMomentKey}
-                onSelectMoment={onSelectMoment}
-              />
-            </div>
-          ) : null}
           <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
             <HubActivityChart
               points={chartInputs.points}

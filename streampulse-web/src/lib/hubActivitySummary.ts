@@ -7,8 +7,29 @@ function isGapMarker(point: Pick<HubActivityPoint, 'gapKind'>): boolean {
   return point.gapKind === 'attested' || point.gapKind === GAP_KIND_UNMEASURED
 }
 
+/**
+ * Chart transforms need a chronological series. The public API contract
+ * normally returns points in order, but a stale/merged cache or a legacy
+ * fallback can contain rows out of order. Keep the raw payload unchanged for
+ * diagnostics; normalize only at the chart boundary so the latest row is
+ * reliably treated as the trailing bucket and x positions never run
+ * backwards.
+ */
+function sortActivityPoints(points: HubActivityPoint[]): HubActivityPoint[] {
+  return points
+    .map((point, index) => ({ point, index }))
+    .sort((left, right) => left.point.t - right.point.t || left.index - right.index)
+    .map(({ point }) => point)
+}
+
 /** All-provider emote uses for a hub activity bucket (7TV + Twitch + BTTV + FFZ). */
 export function hubActivityEmoteCount(point: HubActivityPoint): number {
+  // The backend's `emotes` field is the all-provider total. Provider columns
+  // are supporting lanes and may be partial on legacy payloads, so never let a
+  // larger individual lane overwrite an explicit total.
+  if (typeof point.emotes === 'number' && Number.isFinite(point.emotes)) {
+    return Math.max(0, point.emotes)
+  }
   return Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
 }
 
@@ -101,7 +122,8 @@ export function chartActivityPoints(
   nowMs?: number,
   livePoolViewerSum?: number,
 ): HubActivityPoint[] {
-  const floored = applyLivePoolViewerFloor(points, livePoolViewerSum, windowMinutes)
+  const ordered = sortActivityPoints(points)
+  const floored = applyLivePoolViewerFloor(ordered, livePoolViewerSum, windowMinutes)
   const trimmed = dropTrailingOpenBucket(floored, windowMinutes, nowMs ?? Date.now())
   return normalizeActivityPointsForChart(trimmed, windowMinutes)
 }
@@ -127,8 +149,9 @@ function unmeasuredGridPlaceholder(t: number): HubActivityPoint {
  */
 export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: number): HubActivityPoint[] {
   if (points.length === 0) return []
+  const ordered = sortActivityPoints(points)
   const bucketMs = activityBucketMs(windowMinutes)
-  const lastT = points[points.length - 1]?.t ?? Date.now()
+  const lastT = ordered[ordered.length - 1]?.t ?? Date.now()
   const alignedEnd = activityBucketKey(lastT, windowMinutes)
   const bucketCount = Math.min(
     HUB_ACTIVITY_MAX_POINTS,
@@ -137,7 +160,7 @@ export function fillActivityPoints(points: HubActivityPoint[], windowMinutes: nu
   const alignedStart = alignedEnd - (bucketCount - 1) * bucketMs
 
   const byBucket = new Map<number, HubActivityPoint>()
-  for (const point of points) {
+  for (const point of ordered) {
     const key = activityBucketKey(point.t, windowMinutes)
     const existing = byBucket.get(key)
     if (!existing || point.t >= existing.t) {
@@ -291,7 +314,7 @@ export function internalGapCount(points: Pick<HubActivityPoint, 't'>[], windowMi
 
 function activePoint(point: HubActivityPoint): boolean {
   if (isGapMarker(point)) return false
-  return point.chat > 0 || point.seventv > 0 || Math.max(point.emotes ?? 0, point.seventv ?? 0) > 0
+  return point.chat > 0 || point.seventv > 0 || hubActivityEmoteCount(point) > 0
 }
 
 export function formatActivityWindowLabel(minutes: number): string {

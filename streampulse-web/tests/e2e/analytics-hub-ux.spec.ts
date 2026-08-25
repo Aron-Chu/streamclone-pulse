@@ -329,7 +329,7 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(page.locator('.hub-live-rail-movers')).toHaveCount(0)
     await expect(page.getByTestId('live-pool-size')).toBeVisible()
     await expect(page.getByTestId('pool-wire')).toBeVisible()
-    await expect(page.locator('#section-live-wire .hub-live-wire')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
     await expect(page.locator('#section-emote-signal .figma-economy-grid')).toBeVisible()
     await expect(page.getByRole('link', { name: /xQc/i }).first()).toBeVisible()
     await expect(page.getByText('96', { exact: true }).first()).toBeVisible()
@@ -341,11 +341,10 @@ test.describe('analytics hub UX (interaction)', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
 
-    const liveWire = page.locator('#section-live-wire')
-    const sodaChip = liveWire.locator('button.hub-live-wire__chip', {
-      hasText: 'sodapoppin',
-    })
-    await expect(sodaChip).toBeVisible()
+    const liveWire = page.getByRole('region', { name: 'Live Wire' })
+    const sodaCard = liveWire.locator('article').filter({ hasText: 'sodapoppin' }).first()
+    await expect(sodaCard).toBeVisible()
+    const sodaInspect = sodaCard.getByRole('button', { name: 'Inspect this minute' })
 
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
@@ -357,13 +356,9 @@ test.describe('analytics hub UX (interaction)', () => {
     ).toHaveCount(0)
     await expect(page.locator('.pulse-moments-live__banner')).toHaveCount(0)
 
-    await sodaChip.click()
-    await expect(sodaChip).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
-    await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(1)
-    await expect(page.locator('.pulse-moments__peak-row.is-active')).toContainText(
-      'sodapoppin',
-    )
+    await sodaInspect.click()
+    const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
+    await expect(chart).toHaveAttribute('data-selected', 'true')
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toContainText(
       'sodapoppin',
     )
@@ -373,9 +368,7 @@ test.describe('analytics hub UX (interaction)', () => {
       .getByRole('button', { name: 'Clear' })
       .click()
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
-    await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
-    await expect(page.locator('.hx-moment-marker')).toHaveCount(0)
-    await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(0)
+    await expect(chart).not.toHaveAttribute('data-selected', 'true')
 
     await assertNoWhiteAnalyticsSurfaces(page)
     await assertNoConsoleErrors(page, errors)

@@ -9,6 +9,7 @@ function build24hActivityPoints(now: number): Array<{
   ffz: number
   viewers: number
   emotes: number
+  bucketComplete: boolean
 }> {
   const bucketMs = 6 * 60_000
   const alignedEnd = Math.floor(now / bucketMs) * bucketMs
@@ -21,6 +22,7 @@ function build24hActivityPoints(now: number): Array<{
     ffz: number
     viewers: number
     emotes: number
+    bucketComplete: boolean
   }> = []
   for (let i = 0; i < 48; i += 1) {
     const t = alignedEnd - i * bucketMs
@@ -31,8 +33,9 @@ function build24hActivityPoints(now: number): Array<{
       twitch: 4,
       bttv: 2,
       ffz: 1,
-      viewers: 500_000 + i * 2_000,
-      emotes: 40 + i,
+    viewers: 500_000 + i * 2_000,
+    emotes: 40 + i,
+    bucketComplete: true,
     })
   }
   const historicalT = alignedEnd - 8 * 60 * 60 * 1000
@@ -45,6 +48,7 @@ function build24hActivityPoints(now: number): Array<{
     ffz: 2,
     viewers: 920_000,
     emotes: 88,
+    bucketComplete: true,
   })
   return points.sort((a, b) => a.t - b.t)
 }
@@ -66,10 +70,20 @@ function buildLiveChannels(count: number) {
   })
 }
 
-export async function installHubUxMock(page: Page): Promise<void> {
+export type HubUxMockMode = 'ready' | 'empty' | 'error' | 'zero-live'
+
+export type HubUxMockOptions = {
+  mode?: HubUxMockMode
+  hubDelayMs?: number
+}
+
+export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<void> {
+  const mode = options.mode ?? 'ready'
+  const hubDelayMs = options.hubDelayMs ?? 0
+  const noLiveData = mode === 'empty' || mode === 'zero-live'
   const now = Date.now()
-  const liveChannels = buildLiveChannels(14)
-  const activityPoints = build24hActivityPoints(now)
+  const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14)
+  const activityPoints = noLiveData || mode === 'error' ? [] : build24hActivityPoints(now)
 
   await page.addInitScript(() => {
     const clearStoragePrefix = (storage: Storage, prefix: string) => {
@@ -85,13 +99,19 @@ export async function installHubUxMock(page: Page): Promise<void> {
   })
 
   await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, async (route) => {
+    if (mode === 'error') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'unavailable' }) })
+      return
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         status: 'ready',
         reason: undefined,
-        moments: [
+        moments: noLiveData
+          ? []
+          : [
           {
             login: 'xqc',
             displayName: 'xQc',
@@ -116,18 +136,25 @@ export async function installHubUxMock(page: Page): Promise<void> {
   })
 
   await page.route(/\/v1\/public\/hub(\?.*)?$/, async (route) => {
+    if (hubDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, hubDelayMs))
+    }
+    if (mode === 'error') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'unavailable' }) })
+      return
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         generatedAt: new Date().toISOString(),
-        poolSize: 96,
+        poolSize: mode === 'empty' ? 0 : 96,
         corpus: {
-          streamsTracked: 1200,
-          momentsDetected: 45000,
-          chatMessagesProcessed: 9_000_000,
-          emotesIndexed: 120_000,
-          vodsAnalyzed: 800,
+          streamsTracked: mode === 'empty' ? 0 : 1200,
+          momentsDetected: mode === 'empty' ? 0 : 45000,
+          chatMessagesProcessed: mode === 'empty' ? 0 : 9_000_000,
+          emotesIndexed: mode === 'empty' ? 0 : 120_000,
+          vodsAnalyzed: mode === 'empty' ? 0 : 800,
         },
         coverage: {
           liveChannels: liveChannels.length,
@@ -170,26 +197,35 @@ export async function installHubUxMock(page: Page): Promise<void> {
             activityPoints[0],
           )?.t,
         },
-        emoteIntel: {
-          emotesPerMin: 88,
-          topEmoteSharePct: 22,
-          uniqueEmotes: 140,
-          biggestPeakPerMin: 320,
-          seventvSharePct: 61,
-          providerShares: [{ provider: '7TV', count: 1200, sharePct: 58 }],
-        },
-        topEmotes: [
+        emoteIntel: noLiveData
+          ? {
+              emotesPerMin: 0,
+              topEmoteSharePct: 0,
+              uniqueEmotes: 0,
+              biggestPeakPerMin: 0,
+              seventvSharePct: 0,
+              providerShares: [],
+            }
+          : {
+              emotesPerMin: 88,
+              topEmoteSharePct: 22,
+              uniqueEmotes: 140,
+              biggestPeakPerMin: 320,
+              seventvSharePct: 61,
+              providerShares: [{ provider: '7TV', count: 1200, sharePct: 58 }],
+            },
+        topEmotes: noLiveData ? [] : [
           { name: 'KEKW', provider: '7tv', count: 900, sharePct: 22 },
           { name: 'OMEGALUL', provider: 'bttv', count: 640, sharePct: 16 },
         ],
-        topMovers: [
+        topMovers: noLiveData ? [] : [
           { login: 'xqc', displayName: 'xQc', emotesPerMin: 40, seventvPerMin: 30 },
           { login: 'sodapoppin', displayName: 'sodapoppin', emotesPerMin: 35, seventvPerMin: 28 },
           { login: 'channel2', displayName: 'channel2', emotesPerMin: 30, seventvPerMin: 22 },
         ],
         liveChannels,
         moments: [],
-        livePulseMoments: [
+        livePulseMoments: noLiveData ? [] : [
           {
             login: 'xqc',
             displayName: 'xQc',

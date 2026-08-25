@@ -122,6 +122,55 @@ describe('usePublicHubData', () => {
     expect(fetchPublicHub).not.toHaveBeenCalled()
   })
 
+  it('replaces a legacy coarse long-window fallback with the canonical 30m feed', async () => {
+    const longWindow = normalizePublicHub({
+      generatedAt: '2026-06-30T12:00:00.000Z',
+      activity: {
+        points: [
+          { t: 1_700_000_000_000, chat: 900, emotes: 90, seventv: 90, viewers: 1000 },
+          { t: 1_700_000_360_000, chat: 900, emotes: 90, seventv: 90, viewers: 1000 },
+        ],
+        windowMinutes: 1440,
+        requestedWindowMinutes: 1440,
+        servedWindowMinutes: 30,
+        availableWindowMinutes: 30,
+        state: 'degraded',
+        source: 'live_pool_fallback',
+        reason: 'historical_projection_unavailable',
+        channelCount: 1,
+      },
+    })
+    const recent = normalizePublicHub({
+      generatedAt: '2026-06-30T12:00:00.000Z',
+      activity: {
+        points: [
+          { t: 1_700_001_000_000, chat: 12, emotes: 3, seventv: 3, viewers: 1200 },
+          { t: 1_700_001_060_000, chat: 18, emotes: 4, seventv: 4, viewers: 1300 },
+        ],
+        windowMinutes: 30,
+        bucketMinutes: 1,
+        channelCount: 1,
+      },
+    })
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      Promise.resolve(
+        window === '30m'
+          ? { data: recent, loadSource: 'full' as const, hubEndpointOk: true, status: 200 }
+          : { data: longWindow, loadSource: 'full' as const, hubEndpointOk: true, status: 200 },
+      ),
+    )
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.activity.points[0]?.chat).toBe(12))
+
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+    expect(fetchPublicHubBase.mock.calls[0]?.[1]).toBe('24h')
+    expect(fetchPublicHubBase.mock.calls[1]?.[1]).toBe('30m')
+    expect(result.current.data?.activity.windowMinutes).toBe(1440)
+    expect(result.current.data?.activity.servedWindowMinutes).toBe(30)
+    expect(result.current.data?.activity.points.map((point) => point.chat)).toEqual([12, 18])
+  })
+
   it('restarts an aborted initial load during StrictMode effect replay', async () => {
     fetchPublicHubBase
       .mockImplementationOnce(
@@ -255,6 +304,28 @@ describe('usePublicHubData', () => {
     expect(result.current.loading).toBe(true)
     expect(result.current.data).toBeNull()
     await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+  })
+
+  it('rejects a stale coarse fallback from the browser cache', () => {
+    const staleFallback = normalizePublicHub({
+      activity: {
+        windowMinutes: 1440,
+        requestedWindowMinutes: 1440,
+        servedWindowMinutes: 30,
+        availableWindowMinutes: 30,
+        source: 'live_pool_fallback',
+        state: 'degraded',
+        channelCount: 1,
+        points: [
+          { t: 1_700_000_000_000, chat: 10, emotes: 2, seventv: 0, viewers: 100 },
+          { t: 1_700_003_600_000, chat: 12, emotes: 3, seventv: 0, viewers: 110 },
+        ],
+      },
+    })
+
+    writePublicHubCache(getBackendUrl(), '24h', staleFallback)
+
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
   })
 
   it('cache key changes by activityWindow', async () => {

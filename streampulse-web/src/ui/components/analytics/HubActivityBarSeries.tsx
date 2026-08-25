@@ -42,10 +42,8 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
   onBarHover,
 }: HubActivityBarSeriesProps) {
   const widthPct = barWidthPercent(timeDomain)
-  // Leave a small, stable gutter between buckets.  A full-width translucent
-  // rect per minute reads as one continuous filled area on the dark chart,
-  // especially when chat stays high for a live pool.  The gutter preserves
-  // the bar grammar without changing the timestamp domain or bucket count.
+  // Keep a small gutter between buckets so the chat bars remain legible as
+  // discrete bars instead of collapsing into one low-contrast filled block.
   const visualWidthPct = widthPct * 0.72
   const visualInsetPct = (widthPct - visualWidthPct) / 2
   const usableHeight = Math.max(0, height - paddingBottom)

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { normalizePublicHub, validatePublicHubInvariants } from '../src/lib/publicHub'
-import { hubActivityContractIssues, isHubActivityLivePoolFallback } from '../src/lib/hubActivityHonesty'
+import {
+  hubActivityContractIssues,
+  hubActivityNeedsRecentFallback,
+  isHubActivityLivePoolFallback,
+} from '../src/lib/hubActivityHonesty'
 
 describe('validatePublicHubInvariants', () => {
   it('preserves explicit requested and served activity windows', () => {
@@ -47,6 +51,28 @@ describe('validatePublicHubInvariants', () => {
     expect(hubActivityContractIssues(hub.activity)).toEqual([
       'payload spans 32 minutes but advertises 30 served minutes',
     ])
+    expect(hubActivityNeedsRecentFallback(hub.activity)).toBe(true)
+  })
+
+  it('accepts only an explicitly minute-cadence long-window fallback', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 1440,
+        requestedWindowMinutes: 1440,
+        servedWindowMinutes: 30,
+        availableWindowMinutes: 30,
+        bucketMinutes: 1,
+        state: 'degraded',
+        source: 'live_pool_fallback',
+        reason: 'historical_projection_unavailable',
+        channelCount: 1,
+        points: [
+          { t: 0, chat: 10, seventv: 1, viewers: 100 },
+          { t: 60_000, chat: 12, seventv: 1, viewers: 110 },
+        ],
+      },
+    })
+    expect(hubActivityNeedsRecentFallback(hub.activity)).toBe(false)
   })
 
   it('warns when roster live count exceeds bounded hub rows', () => {
