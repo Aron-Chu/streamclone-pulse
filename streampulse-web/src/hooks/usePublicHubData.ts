@@ -10,6 +10,7 @@ import {
   type PublicHubActivityWindow,
   type PublicHubLoadSource,
 } from '../lib/publicHub'
+import { hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
 import { computeJitteredDelayMs } from '../lib/pollDelay'
 import { isApiError } from '../lib/apiClient'
 
@@ -83,6 +84,29 @@ function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: Publ
   writePublicHubCacheForCurrentBackend(activityWindow, hub)
 }
 
+function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub): PublicHub {
+  const requestedActivity = requested.activity
+  return {
+    ...requested,
+    // The recent response is the authoritative generation timestamp for the
+    // displayed fallback series; corpus/roster metadata remains from the
+    // selected-window response.
+    generatedAt: recent.generatedAt,
+    activity: {
+      ...recent.activity,
+      windowMinutes: requestedActivity.windowMinutes,
+      requestedWindowMinutes:
+        requestedActivity.requestedWindowMinutes ?? requestedActivity.windowMinutes,
+      servedWindowMinutes: 30,
+      availableWindowMinutes: 30,
+      state: 'degraded',
+      source: 'live_pool_fallback',
+      reason: 'historical_projection_unavailable',
+      bucketMinutes: recent.activity.bucketMinutes ?? 1,
+    },
+  }
+}
+
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
   const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h', random = Math.random } = options
   // Mount-only cache hydrate — do not re-read localStorage on every render (P4-L01).
@@ -149,7 +173,49 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (!mountedRef.current || controller.signal.aborted) return
 
       if (base.hubEndpointOk) {
-        applySuccessfulLoad(base.data, base.loadSource, true)
+        let next = base.data
+        // Older hosted instances returned coarse long-window rows while
+        // claiming a 30m fallback. Fetch the canonical 30m endpoint so the
+        // chart never presents repeated aggregates as minute activity.
+        if (activityWindow !== '30m' && hubActivityNeedsRecentFallback(base.data.activity)) {
+          try {
+            const recent = await fetchPublicHubBase(controller.signal, '30m')
+            if (recent.hubEndpointOk) {
+              next = replaceWithCanonicalRecentActivity(base.data, recent.data)
+            } else {
+              next = {
+                ...base.data,
+                activity: {
+                  ...base.data.activity,
+                  points: [],
+                  servedWindowMinutes: 30,
+                  availableWindowMinutes: 30,
+                  bucketMinutes: 1,
+                  state: 'degraded',
+                  source: 'live_pool_fallback',
+                  reason: 'historical_projection_unavailable',
+                },
+              }
+            }
+          } catch {
+            // Never paint a known-invalid coarse payload if the repair request
+            // is unavailable; keep the shell and expose an honest empty chart.
+            next = {
+              ...base.data,
+              activity: {
+                ...base.data.activity,
+                points: [],
+                servedWindowMinutes: 30,
+                availableWindowMinutes: 30,
+                bucketMinutes: 1,
+                state: 'degraded',
+                source: 'live_pool_fallback',
+                reason: 'historical_projection_unavailable',
+              },
+            }
+          }
+        }
+        applySuccessfulLoad(next, base.loadSource, true)
         return
       }
 

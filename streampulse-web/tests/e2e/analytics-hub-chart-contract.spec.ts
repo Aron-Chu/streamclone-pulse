@@ -46,38 +46,38 @@ test('hub chart updates the external readout on hover and fades back to calm', a
   await expect(readout).not.toContainText('Viewers')
 })
 
-test('Signal Wire shows a real emote image and keeps chat plus emote from the same channel', async ({ page }) => {
+test('Live Wire explains the detected event and keeps chat plus emote from the same channel', async ({ page }) => {
   await installHubUxMock(page)
   await page.goto('/analytics')
 
-  const liveWire = page.locator('#section-signal-wire')
+  const liveWire = page.getByRole('region', { name: 'Live Wire' })
   await expect(liveWire).toBeVisible()
-  await expect(liveWire.locator('[data-signal-emote="true"]')).toHaveCount(1)
-  await expect(liveWire.locator('button.hub-live-wire__chip', { hasText: 'Emote burst' })).toHaveCount(1)
-  await expect(liveWire.locator('button.hub-live-wire__chip', { hasText: /xQc/ })).toHaveCount(2)
+  const first = liveWire.locator('article').first()
+  await expect(first).toContainText('xQc')
+  await expect(first).toContainText('Twitch emote spike')
+  await expect(first).toContainText('393/m')
+  await expect(first).toContainText('133/m')
+  await expect(first).toContainText('IRC measured')
+  await expect(first.getByRole('button', { name: 'Inspect this minute' })).toBeVisible()
 })
 
-test('Signal Wire selection renders an exact chart marker and Escape clears it', async ({ page }) => {
+test('Live Wire inspection selects the matching chart bucket and Escape clears it', async ({ page }) => {
   await installHubUxMock(page)
   await page.goto('/analytics')
 
-  const liveWire = page.locator('#section-signal-wire')
-  const emoteChip = liveWire.locator('button.hub-live-wire__chip', { hasText: 'Emote burst' })
-  await expect(emoteChip).toBeVisible()
-  await emoteChip.click()
-  await expect(emoteChip).toHaveAttribute('aria-pressed', 'true')
-
-  const marker = page.locator('[data-chart-marker-key][aria-pressed="true"]')
-  await expect(marker).toHaveCount(1)
+  const liveWire = page.getByRole('region', { name: 'Live Wire' })
+  await liveWire.getByRole('button', { name: 'Inspect this minute' }).first().click()
+  const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
+  await expect(chart).toHaveAttribute('data-selected', 'true')
+  await chart.focus()
   await page.keyboard.press('Escape')
-  await expect(emoteChip).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.locator('[data-chart-marker-key][aria-pressed="true"]')).toHaveCount(0)
+  await expect(chart).not.toHaveAttribute('data-selected', 'true')
 })
 
-test('reduced motion leaves Signal Wire without entrance animation class churn', async ({ page }) => {
+test('reduced motion leaves Live Wire without entrance animation class churn', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await installHubUxMock(page)
   await page.goto('/analytics')
-  await expect(page.locator('#section-signal-wire .hub-live-wire')).toBeVisible()
-  await expect(page.locator('.hub-live-wire__chip--new')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
+  await expect(page.locator('.hub-live-wire__rail-new')).toHaveCount(0)
 })

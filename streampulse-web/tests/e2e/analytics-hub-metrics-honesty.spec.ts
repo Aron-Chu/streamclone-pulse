@@ -142,6 +142,47 @@ async function installSparseViewerRollupMock(page: Page): Promise<void> {
   )
 }
 
+/** Mock a legacy degraded response whose payload still contains stale rows. */
+async function installStaleFallbackMock(page: Page): Promise<void> {
+  await installHubUxMock(page)
+  await page.route(/\/v1\/public\/hub(\?.*)?$/, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue()
+      return
+    }
+    const response = await route.fetch()
+    const hub = await response.json()
+    const bucketMs = 60_000
+    const alignedEnd = Math.floor(Date.now() / bucketMs) * bucketMs
+    const points = Array.from({ length: 173 }, (_, index) => {
+      const t = alignedEnd - (172 - index) * bucketMs
+      return {
+        t,
+        chat: 10 + (index % 4),
+        seventv: 12,
+        twitch: 7,
+        bttv: 2,
+        ffz: 1,
+        emotes: 22,
+        viewers: index % 9 === 0 ? 1_200 : undefined,
+        bucketComplete: index < 172,
+      }
+    })
+    hub.activity = {
+      ...hub.activity,
+      points,
+      windowMinutes: 24 * 60,
+      requestedWindowMinutes: 24 * 60,
+      availableWindowMinutes: 30,
+      servedWindowMinutes: 30,
+      source: 'live_pool_fallback',
+      state: 'degraded',
+      reason: 'historical_projection_unavailable',
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(hub) })
+  })
+}
+
 async function installTogetherChannelMock(page: Page): Promise<void> {
   await installHubUxMock(page)
   await page.route(/\/v1\/public\/hub(\?.*)?$/, async (route) => {
@@ -280,6 +321,43 @@ test.describe('hub metrics sanity banner (mocked sparse rollups)', () => {
     await page.getByRole('button', { name: /Activity time window:.*24h/i }).click()
     await expect(page.getByText('Live pool sum now', { exact: true })).toBeVisible()
     await expect(page.locator('.figma-global-activity__peak-row').getByText('83K', { exact: true })).toBeVisible()
+    await assertNoConsoleErrors(page, errors)
+  })
+})
+
+test.describe('hub range keyboard contract (mocked)', () => {
+  test('selects a requested range with keyboard and announces the new copy', async ({ page }) => {
+    const errors = attachConsoleErrorGuard(page)
+    await installHubUxMock(page)
+    await page.goto('/analytics')
+
+    const range = page.getByRole('button', { name: /Activity time window:/i })
+    await expect(range).toContainText('24h')
+    await range.focus()
+    await page.keyboard.press('Enter')
+    await expect(range).toHaveAttribute('aria-expanded', 'true')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await expect(range).toHaveAttribute('aria-expanded', 'false')
+    await expect(range).toContainText('7d')
+    await assertNoConsoleErrors(page, errors)
+  })
+})
+
+test.describe('hub fallback contract (mocked stale response)', () => {
+  test('repairs stale fallback rows to the latest 30 minutes and keeps the UI honest', async ({ page }) => {
+    const errors = attachConsoleErrorGuard(page)
+    await installStaleFallbackMock(page)
+    await page.goto('/analytics')
+
+    const range = page.getByRole('button', { name: /Activity time window:/i })
+    await expect(range).toContainText('24h · 30m available')
+    await expect(page.locator('[data-hub-served-window-minutes="30"]')).toBeVisible()
+    await expect(page.locator('[data-hub-activity-repaired="true"]')).toBeVisible()
+    await expect(page.getByTestId('hub-activity-served-window')).toContainText(/1 day requested · 30 minutes available/)
+    await expect(page.locator('.hx-provider-chips')).toHaveCount(0)
+    await expect(page.locator('.hx-provider-lanes .hx-provider-lane')).toHaveCount(4)
+    await expect(page.locator('.hx-chart2')).toBeVisible()
     await assertNoConsoleErrors(page, errors)
   })
 })

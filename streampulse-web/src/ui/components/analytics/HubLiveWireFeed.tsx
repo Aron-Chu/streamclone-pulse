@@ -54,6 +54,8 @@ export interface HubLiveWireFeedProps {
   layout?: 'section' | 'ticker' | 'rail'
   titleId?: string
   pollSequence?: number
+  /** Select the corresponding Global Activity bucket without nesting links. */
+  onSelectMoment?: (moment: FigmaMomentRow) => void
 }
 
 interface WireHeaderProps {
@@ -94,6 +96,7 @@ export function HubLiveWireFeed({
   layout = 'rail',
   titleId = 'hub-live-wire-title',
   pollSequence = 0,
+  onSelectMoment,
 }: HubLiveWireFeedProps) {
   const isRail = layout === 'rail'
   const { animateEnterHorizontal, motionEnabled } = useAnalyticsMotion()
@@ -129,7 +132,7 @@ export function HubLiveWireFeed({
   )
 
   // Valid retained candidates — NO 30m pre-filter. Older moments appear in the
-  // "Older retained" tier, not dropped.
+  // "Recent detections" disclosure, not dropped.
   const candidates = useMemo(() => {
     const peakOnly = feed.moments.filter((m) => !isLifecycleMomentKind(m.kind))
     return enrichPulseMomentRows(peakOnly, enrichCtx)
@@ -238,7 +241,7 @@ export function HubLiveWireFeed({
   }, [animateEnterHorizontal, healthyFullNetwork, pollSequence])
 
   const metaLabel = isLiveNetwork
-    ? 'live now · newest first'
+    ? 'detected in the last 30m · newest first'
     : hubDegraded
       ? 'live network feed paused'
       : 'snapshot — not live network cadence'
@@ -259,6 +262,12 @@ export function HubLiveWireFeed({
       newKeysRef.current.has(key) &&
       classifyMomentWindow(moment.at, now, LIVE_WINDOW_MS) === 'live'
     const profileImageUrl = moment.profileImageUrl ?? profileImageByLogin.get(login.toLowerCase())
+    const signalLabel = moment.label?.trim() || 'Activity moment'
+    const sourceLabel = moment.source === 'live_irc'
+      ? 'IRC measured'
+      : moment.source?.trim()
+      ? moment.source.split('_').join(' ')
+        : null
 
     const refCb = (el: HTMLElement | null) => {
       if (el) rowRefs.current.set(key, el)
@@ -278,6 +287,13 @@ export function HubLiveWireFeed({
               {category ? <span className="hub-live-wire__rail-category">{category}</span> : null}
             </span>
             <span className="hub-live-wire__rail-age">{relativeTime(moment.at, now)}</span>
+          </div>
+
+          <div className="hub-live-wire__rail-signal" aria-label="Detected event">
+            <strong>{signalLabel}</strong>
+            {moment.score != null && moment.score > 0 ? (
+              <span className="hub-live-wire__rail-score">score {moment.score}</span>
+            ) : null}
           </div>
 
           <div className="hub-live-wire__rail-metrics">
@@ -317,9 +333,29 @@ export function HubLiveWireFeed({
             </div>
           ) : null}
 
+          <div className="hub-live-wire__rail-evidence">
+            {sourceLabel ? <span>{sourceLabel}</span> : null}
+            {moment.confidence != null && moment.confidence > 0 ? (
+              <span>confidence {moment.confidence}%</span>
+            ) : null}
+            {moment.viewerDelta ? <span>{moment.viewerDelta}</span> : null}
+            {!sourceLabel && !(moment.confidence != null && moment.confidence > 0) && !moment.viewerDelta ? (
+              <span>Baseline comparison unavailable</span>
+            ) : null}
+          </div>
+
           <div className="hub-live-wire__rail-footer">
             {isNew ? <span className="hub-live-wire__rail-new">NEW</span> : null}
             <div className="hub-live-wire__rail-actions">
+              {onSelectMoment && moment.at != null ? (
+                <button
+                  type="button"
+                  className="hub-live-wire__action"
+                  onClick={() => onSelectMoment(moment)}
+                >
+                  Inspect this minute
+                </button>
+              ) : null}
               {actions.analyticsHref ? (
                 <Link className="hub-live-wire__action" to={actions.analyticsHref}>
                   View moment
@@ -403,7 +439,7 @@ export function HubLiveWireFeed({
                 aria-expanded={showOlder}
                 onClick={() => setShowOlder((v) => !v)}
               >
-                Older retained
+                Recent detections
                 <span className="hub-live-wire__disclosure-count">{olderMoments.length}</span>
                 <ChevronDown className="hub-live-wire__disclosure-chevron" aria-hidden="true" size={14} />
               </button>

@@ -354,7 +354,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   width: 100%;
-  max-width: min(1520px, 100%);
+  max-width: min(1820px, 100%);
   margin: 0 auto;
   padding: 0 1rem 2rem;
   box-sizing: border-box;
@@ -450,6 +450,10 @@
     grid-area: rail;
     display: block;
     margin-top: 1rem;
+    /* Cap + center the rail in its row-2 area so it reads as a section,
+       not a full-page-width bar (was stretching to the whole frame). */
+    width: min(100%, 848px);
+    place-self: center;
   }
 }
 
@@ -468,6 +472,8 @@
     grid-area: rail;
     display: block;
     margin-top: 1rem;
+    width: min(100%, 848px);
+    place-self: center;
   }
 }
 
@@ -3435,6 +3441,26 @@
   white-space: nowrap;
 }
 
+.hub-live-wire__rail-signal {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.hub-live-wire__rail-signal strong {
+  font-size: 0.7rem;
+  color: var(--sp-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hub-live-wire__rail-score {
+  font-family: var(--fma-mono);
+  font-size: 0.58rem;
+  color: var(--fma-muted);
+}
+
 .hub-live-wire__rail-metrics {
   display: flex;
   flex-direction: column;
@@ -3498,6 +3524,15 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.hub-live-wire__rail-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  font-family: var(--fma-mono);
+  font-size: 0.56rem;
+  color: var(--fma-muted);
 }
 
 .hub-live-wire__rail-footer {
@@ -4326,6 +4361,13 @@ button.hub-live-wire__chip {
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--sp-text-faint);
+}
+
+.figma-global-activity__served-window {
+  margin: -0.2rem 0 0.55rem;
+  color: var(--sp-text-faint);
+  font-size: 0.68rem;
+  line-height: 1.35;
 }
 
 /* The activity chart reuses the legacy .hubx design-system tokens, but .hubx is

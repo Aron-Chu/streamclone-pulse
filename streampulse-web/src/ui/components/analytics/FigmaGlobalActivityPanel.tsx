@@ -106,6 +106,12 @@ export function ChartSourceBanner({
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
   const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
   const windowLabel = formatHubActivityServedLabel(hub.activity);
+  const requestedWindowLabel = formatActivityWindowLabel(
+    Math.max(1, hub.activity.windowMinutes || 30),
+  );
+  const availableWindowLabel = formatActivityWindowLabel(
+    resolveHubActivityChartWindowMinutes(hub.activity),
+  );
   const bucket = bucketMinutes(resolveHubActivityChartWindowMinutes(hub.activity));
   const poolSize = hub.poolSize;
   const ircActive = hub.corpusPipeline.collectorActive;
@@ -125,7 +131,11 @@ export function ChartSourceBanner({
       </span>
       <span>
         <strong>Window:</strong>{" "}
-        {livePoolFallback ? windowLabel : healthyProjection ? `last ${windowLabel}` : `served ${windowLabel}`}
+        {livePoolFallback
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available`
+          : healthyProjection
+            ? `last ${windowLabel}`
+            : `served ${windowLabel}`}
       </span>
       <span>
         <strong>Buckets:</strong> ~{bucket} min - {activitySummary.pointCount}/
@@ -255,6 +265,12 @@ export function FigmaGlobalActivityPanel({
   const activityContractIssues = hubActivityContractIssues(hub.activity);
   const activityContractIssue = activityContractIssues[0] ?? null;
   const windowLabel = servedLabel;
+  const requestedWindowLabel = formatActivityWindowLabel(
+    Math.max(1, hub.activity.windowMinutes || 30),
+  );
+  const availableWindowLabel = formatActivityWindowLabel(
+    resolveHubActivityChartWindowMinutes(hub.activity),
+  );
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const hoverIntentRef = useRef<number | null>(null);
   const hoverIntentTimerRef = useRef<number | null>(null);
@@ -367,9 +383,6 @@ export function FigmaGlobalActivityPanel({
   const blockingActivityContractIssue = fallbackPayloadRepaired
     ? null
     : activityContractIssue;
-  const requestedWindowLabel = formatActivityWindowLabel(
-    Math.max(1, hub.activity.windowMinutes || 30),
-  );
   const chartState = loading
     ? "loading"
     : blockingActivityContractIssue
@@ -519,11 +532,11 @@ export function FigmaGlobalActivityPanel({
       </p>
       <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
         {fallbackPayloadRepaired
-          ? `Showing bounded last ${formatActivityWindowLabel(chartInputs.windowMinutes)} of live-pool activity; older fallback rows were discarded because historical projection is unavailable.`
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
           : blockingActivityContractIssue
           ? `Activity payload withheld: ${blockingActivityContractIssue}.`
           : livePoolFallback
-          ? `Showing ${servedLabel} of requested ${requestedWindowLabel}; historical projection is unavailable.`
+          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
           : `Showing served ${servedLabel}.`}
       </p>
       <div className="figma-global-activity__body" ref={bodyRef}>

@@ -14,6 +14,7 @@ import AnalyticsLandingPage from "../src/routes/analytics/AnalyticsLandingPage";
 const hubMockOpts = vi.hoisted(() => ({
   loadSource: "full" as "full" | "stats-fallback" | "cache",
   hubEndpointOk: true,
+  activityFallback: false,
 }));
 
 vi.mock("../src/hooks/usePublicHubData", () => ({
@@ -59,7 +60,29 @@ vi.mock("../src/hooks/usePublicHubData", () => ({
           zeroChatAfterAge: 0,
         },
       },
-      activity: { points: [], windowMinutes: 7 * 24 * 60, channelCount: 0 },
+      activity: hubMockOpts.activityFallback
+        ? {
+            points: [
+              {
+                t: Date.now() - 60_000,
+                chat: 10,
+                seventv: 2,
+                emotes: 4,
+                viewers: 100,
+                bucketComplete: true,
+              },
+            ],
+            windowMinutes: 24 * 60,
+            requestedWindowMinutes: 24 * 60,
+            availableWindowMinutes: 30,
+            servedWindowMinutes: 30,
+            bucketMinutes: 1,
+            source: "live_pool_fallback",
+            state: "degraded",
+            reason: "historical_projection_unavailable",
+            channelCount: 3,
+          }
+        : { points: [], windowMinutes: 7 * 24 * 60, channelCount: 0 },
       emoteIntel: {
         emotesPerMin: 0,
         topEmoteSharePct: 0,
@@ -154,6 +177,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
   afterEach(() => {
     hubMockOpts.loadSource = "full";
     hubMockOpts.hubEndpointOk = true;
+    hubMockOpts.activityFallback = false;
   });
 
   it("renders Pulse Moments Live without the removed Moments feed", async () => {
@@ -184,6 +208,37 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     expect(activityHub).toBeTruthy();
     expect(activityHub?.contains(liveActivity)).toBe(true);
     expect(activityHub?.contains(pulseMoments)).toBe(true);
+  });
+
+  it("exposes the served window when the activity payload has no measured buckets", async () => {
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    const liveActivity = await screen.findByRole("region", { name: /Live Activity/i });
+    expect(liveActivity.getAttribute("data-hub-activity-state")).toBe("unmeasured");
+    expect(liveActivity.getAttribute("data-hub-requested-window-minutes")).toBe("10080");
+    expect(liveActivity.getAttribute("data-hub-served-window-minutes")).toBe("30");
+    expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
+      "Showing served 30 minutes.",
+    );
+  });
+
+  it("labels a degraded range as requested versus available", async () => {
+    hubMockOpts.activityFallback = true;
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("region", { name: /Live Activity/i });
+    expect(screen.getByText("24h · 30m available")).toBeTruthy();
+    expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
+      "1 day requested · 30 minutes available",
+    );
   });
 
   it("uses the aggregate activity chart instead of the duplicate featured session block", async () => {

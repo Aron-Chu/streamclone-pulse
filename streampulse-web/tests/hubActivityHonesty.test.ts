@@ -9,6 +9,7 @@ import {
   formatHubActivityServedLabel,
   hubActivityHonestyChipLabel,
   hubActivityHonestyDetail,
+  hubActivityNeedsRecentFallback,
   hubActivityPointsWithinServedWindow,
   hubActivityRegisteredGapCount,
   isAttestedActivityGap,
@@ -248,6 +249,26 @@ describe('hub activity honesty (attested known gaps)', () => {
     expect(hub.activity.accountedWindowMinutes).toBe(1440)
     expect(hub.activity.registeredGapCount).toBe(1)
     expect(selectHubChartActivityInputs(hub).windowMinutes).toBe(1440)
+  })
+
+  it('keeps a partial historical projection on the requested range instead of falling back to 30m', () => {
+    const partialProjection: HubActivity = {
+      points: makePoints(239),
+      windowMinutes: 1440,
+      channelCount: 12,
+      source: 'historical_projection',
+      state: 'partial',
+      availableWindowMinutes: 1440,
+      servedWindowMinutes: 1440,
+      measuredWindowMinutes: 1434,
+      accountedWindowMinutes: 1440,
+      registeredGapCount: 1,
+      bucketMinutes: 6,
+    }
+
+    expect(isHubActivityHealthyHistoricalProjection(partialProjection)).toBe(true)
+    expect(resolveHubActivityChartWindowMinutes(partialProjection)).toBe(1440)
+    expect(hubActivityNeedsRecentFallback(partialProjection)).toBe(false)
   })
 
   it('rejects dishonest measured==full-window claims when registered gaps exist', () => {

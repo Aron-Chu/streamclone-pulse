@@ -5,7 +5,7 @@ import {
   resolveLivePulseMoments,
   type LivePulseMomentsResult,
 } from '../src/lib/figmaSessionAnalytics'
-import type { PublicHub } from '../src/lib/publicHub'
+import type { HubLivePulseMoment, PublicHub } from '../src/lib/publicHub'
 import { hubCorpusPipelineFixture } from '../src/lib/publicHub'
 import { HubLiveWireFeed } from '../src/ui/components/analytics/HubLiveWireFeed'
 import { AnalyticsThemeProvider } from '../src/ui/providers/AnalyticsThemeProvider'
@@ -25,12 +25,10 @@ vi.mock('gsap', () => ({
 
 /** A peak moment factory that keeps timestamp/identity fields consistent. */
 function makeMoment(
-  overrides: Partial<import('../src/lib/figmaSessionAnalytics').FigmaMomentRow> &
-    Pick<import('../src/lib/figmaSessionAnalytics').FigmaMomentRow, 'login'>,
-): import('../src/lib/figmaSessionAnalytics').FigmaMomentRow {
+  overrides: Partial<HubLivePulseMoment> & Pick<HubLivePulseMoment, 'login'>,
+): HubLivePulseMoment {
   return {
     offsetSeconds: 60,
-    score: 80,
     label: 'Chat spike',
     kind: 'chat_spike',
     chatPerMin: 200,
@@ -40,6 +38,7 @@ function makeMoment(
     at: Date.now() - 2 * 60_000,
     streamId: `s-${overrides.login}`,
     ...overrides,
+    score: overrides.score ?? 80,
   }
 }
 
@@ -217,6 +216,7 @@ describe('HubLiveWireFeed (right rail)', () => {
     const first = articles[0] as HTMLElement
     expect(first.textContent).toContain('xQc')
     expect(first.textContent).toContain('Minecraft')
+    expect(first.textContent).toContain('Twitch emote spike')
     // No outer Link wrapping the article.
     expect(first.closest('a')).toBeNull()
     // Sibling action links live inside the card.
@@ -225,7 +225,7 @@ describe('HubLiveWireFeed (right rail)', () => {
     expect(actionLinks.some((a) => (a.textContent ?? '').includes('View moment'))).toBe(true)
   })
 
-  it('keeps older-than-30m rows in the Older retained disclosure (no 30m omission)', () => {
+  it('keeps older-than-30m rows in the Recent detections disclosure (no 30m omission)', () => {
     const now = Date.now()
     const hub = sampleHub()
     hub.livePulseMoments = [
@@ -250,7 +250,7 @@ describe('HubLiveWireFeed (right rail)', () => {
 
     // Older rows are retained but hidden behind the collapsed disclosure.
     expect(screen.queryByText('sodapoppin')).toBeNull()
-    const disclosure = screen.getByRole('button', { name: /older retained/i })
+    const disclosure = screen.getByRole('button', { name: /recent detections/i })
     expect(disclosure.getAttribute('aria-expanded')).toBe('false')
     expect(disclosure.textContent).toContain('1')
 
