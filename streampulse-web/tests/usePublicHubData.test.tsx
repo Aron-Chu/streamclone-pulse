@@ -315,9 +315,10 @@ describe('usePublicHubData', () => {
         availableWindowMinutes: 30,
         source: 'live_pool_fallback',
         state: 'degraded',
+        channelCount: 1,
         points: [
-          { t: 1_700_000_000_000, chat: 10, emotes: 2, viewers: 100 },
-          { t: 1_700_003_600_000, chat: 12, emotes: 3, viewers: 110 },
+          { t: 1_700_000_000_000, chat: 10, emotes: 2, seventv: 0, viewers: 100 },
+          { t: 1_700_003_600_000, chat: 12, emotes: 3, seventv: 0, viewers: 110 },
         ],
       },
     })
