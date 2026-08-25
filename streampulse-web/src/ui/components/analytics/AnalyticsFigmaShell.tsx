@@ -23,6 +23,8 @@ export interface AnalyticsFigmaShellProps {
   sidebarSections?: Array<{ id: string; label: string; hidden?: boolean }>
   /** Hide hub section nav (session console routes use in-page chrome instead). */
   hideSidebar?: boolean
+  /** Optional Live Wire catch-moment rail, mounted as a single right aside. */
+  rightRail?: ReactNode
   children: ReactNode
 }
 
@@ -31,6 +33,7 @@ function AnalyticsFigmaShellInner({
   sidebarStatusLabel,
   sidebarSections,
   hideSidebar = false,
+  rightRail,
   children,
 }: AnalyticsFigmaShellProps) {
   const { labels } = useAnalyticsTheme()
@@ -62,7 +65,11 @@ function AnalyticsFigmaShellInner({
             : undefined
         }
       />
-      <div className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}`}>
+      <div
+        className={`figma-analytics__frame${hideSidebar ? ' figma-analytics__frame--no-sidebar' : ''}${
+          rightRail ? ' figma-analytics__frame--with-right-rail' : ''
+        }`}
+      >
         {hideSidebar ? null : (
           <aside className="figma-analytics__sidebar" aria-label="Hub section navigation">
             <AnalyticsHubSidebar
@@ -76,6 +83,12 @@ function AnalyticsFigmaShellInner({
         <div ref={centerRef} className="figma-analytics__center figma-analytics__center--themed">
           {children}
         </div>
+
+        {rightRail ? (
+          <aside className="figma-analytics__right-rail" aria-label="Live moments">
+            {rightRail}
+          </aside>
+        ) : null}
       </div>
     </div>
   )

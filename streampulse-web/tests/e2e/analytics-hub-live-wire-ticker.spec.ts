@@ -15,42 +15,37 @@ const VIEWPORTS = [
   { width: 1600, height: 900 },
 ] as const
 
-test.describe('analytics hub Live Wire ticker layout', () => {
+test.describe('analytics hub Live Wire right-rail layout', () => {
   test.beforeEach(async ({ page }) => {
     await installHubUxMock(page)
   })
 
   for (const viewport of VIEWPORTS) {
-    test(`horizontal ticker above chart @ ${viewport.width}px`, async ({ page }) => {
+    test(`single Live Wire rail stays usable @ ${viewport.width}px`, async ({ page }) => {
       const errors = attachConsoleErrorGuard(page)
       await page.setViewportSize(viewport)
       await page.goto('/analytics')
 
-      await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
-      await expect(page.locator('#section-live-wire')).toBeVisible()
-      await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
-      await expect(page.locator('.figma-global-activity__annotation-lane')).toBeVisible()
-      await expect(page.locator('.hub-live-wire__ticker-viewport--marquee')).toHaveCount(0)
-      await expect(page.locator('.hub-live-wire__chip-event').first()).toBeVisible()
+      const rail = page.locator('.figma-analytics__right-rail')
+      await expect(rail).toBeVisible()
+      await expect(rail).toHaveAttribute('aria-label', 'Live moments')
+      await expect(rail.getByRole('region', { name: 'Live Wire' })).toBeVisible()
+      await expect(page.locator('.figma-global-activity__annotation-lane')).toHaveCount(0)
+      await expect(page.locator('.hub-live-wire__ticker-viewport')).toHaveCount(0)
+      await expect(rail.getByRole('button', { name: 'Inspect this minute' }).first()).toBeVisible()
 
       const activityHub = page.locator('.figma-activity-hub')
       await expect(activityHub).toBeVisible()
-      await expect(activityHub.locator('#section-live-wire')).toBeVisible()
-      await expect(
-        page.locator('.figma-global-activity__chart-col #section-live-wire'),
-      ).toBeVisible()
 
       const order = await page.evaluate(() => {
-        const wire = document.getElementById('section-live-wire')
+        const wire = document.querySelector('.figma-analytics__right-rail')
         const chart = document.querySelector('.figma-global-activity__hub-chart')
         if (!wire || !chart) return null
-        const wireBeforeChart =
-          wire.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING
-        const chartCol = document.querySelector('.figma-global-activity__chart-col')
-        const wireInChartCol = chartCol?.contains(wire) ?? false
-        return wireBeforeChart && wireInChartCol ? 'lane-above-chart-in-col' : 'other'
+        const wireAfterChart =
+          chart.compareDocumentPosition(wire) & Node.DOCUMENT_POSITION_FOLLOWING
+        return wireAfterChart ? 'single-rail-after-center' : 'other'
       })
-      expect(order).toBe('lane-above-chart-in-col')
+      expect(order).toBe('single-rail-after-center')
 
       if (viewport.width >= 1100) {
         const grid = page.locator('.pulse-moments-live--embedded .pulse-moments-live__grid')
@@ -67,7 +62,7 @@ test.describe('analytics hub Live Wire ticker layout', () => {
     })
   }
 
-  test('ticker survives 1440px at deviceScaleFactor 1.25', async ({ browser }) => {
+  test('rail survives 1440px at deviceScaleFactor 1.25', async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
       deviceScaleFactor: 1.25,
@@ -76,8 +71,8 @@ test.describe('analytics hub Live Wire ticker layout', () => {
     const errors = attachConsoleErrorGuard(page)
     await installHubUxMock(page)
     await page.goto('/analytics')
-    await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
-    await expect(page.locator('.figma-analytics__side-rail--right')).toHaveCount(0)
+    await expect(page.locator('.figma-analytics__right-rail')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
     await assertNoPageHorizontalOverflow(page)
     await assertNoConsoleErrors(page, errors)
     await context.close()

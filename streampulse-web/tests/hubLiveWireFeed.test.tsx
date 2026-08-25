@@ -293,7 +293,7 @@ describe('HubLiveWireFeed (right rail)', () => {
     await vi.waitFor(() => {
       expect(screen.getByText('NEW')).toBeTruthy()
     })
-    // Right-entry motion: gsap from x:24.
+    // Right-rail entry motion starts just off the right edge.
     expect(gsapFrom).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ x: 24, opacity: 0 }),
