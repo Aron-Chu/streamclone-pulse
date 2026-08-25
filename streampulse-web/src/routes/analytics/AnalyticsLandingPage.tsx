@@ -15,7 +15,10 @@ import {
   activityBucketKey,
   formatActivityWindowLabel,
 } from "../../lib/hubActivitySummary";
-import { resolveHubActivityChartWindowMinutes } from "../../lib/hubActivityHonesty";
+import {
+  isHubActivityLivePoolFallback,
+  resolveHubActivityChartWindowMinutes,
+} from "../../lib/hubActivityHonesty";
 import {
   aggregateEmotesFromMoments,
   rankLiveChannelsByActivity,
@@ -121,7 +124,15 @@ function AnalyticsLandingContent() {
     () =>
       ACTIVITY_WINDOW_OPTIONS.map((option) => {
         const requestedMinutes = ACTIVITY_WINDOW_MINUTES[option.key] ?? servedActivityWindowMinutes;
-        if (servedActivityWindowMinutes >= requestedMinutes || option.key === "30m") {
+        // A healthy 24h response does not prove that a 7d projection is
+        // unavailable. Only annotate longer options while the current payload
+        // is explicitly the bounded live-pool fallback; the next selection
+        // fetches and proves its own requested window.
+        if (
+          !isHubActivityLivePoolFallback(data.activity) ||
+          servedActivityWindowMinutes >= requestedMinutes ||
+          option.key === "30m"
+        ) {
           return option;
         }
         const servedLabel = compactWindowLabel(servedActivityWindowMinutes);
@@ -131,7 +142,7 @@ function AnalyticsLandingContent() {
           description: `${option.label} requested; only ${formatActivityWindowLabel(servedActivityWindowMinutes)} is currently available`,
         };
       }),
-    [servedActivityWindowMinutes],
+    [data.activity, servedActivityWindowMinutes],
   );
   const loadingInitial = hub.loading && !hub.data;
   const hubUiState = resolveHubUiState({

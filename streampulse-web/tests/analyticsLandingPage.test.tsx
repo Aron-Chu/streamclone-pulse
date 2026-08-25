@@ -241,6 +241,20 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     );
   });
 
+  it("does not infer that longer projections are unavailable from a healthy current range", async () => {
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("region", { name: /Live Activity/i });
+    screen.getByRole("button", { name: /Activity time window:/i }).click();
+    const sevenDay = screen.getByRole("option", { name: /^7d$/ });
+    expect(sevenDay.textContent).toBe("7d");
+    expect(sevenDay.textContent).not.toMatch(/available/i);
+  });
+
   it("uses the aggregate activity chart instead of the duplicate featured session block", async () => {
     render(
       <MemoryRouter>
