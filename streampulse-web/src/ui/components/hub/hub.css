@@ -1535,37 +1535,6 @@
   color: hsl(var(--muted-foreground));
   opacity: 0.85;
 }
-.hubx .hx-provider-chips {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  padding-left: 0.65rem;
-  margin-left: 0.15rem;
-  border-left: 1px solid hsl(var(--border));
-}
-.hubx .hx-provider-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
-  color: hsl(var(--muted-foreground));
-  font-size: 0.68rem;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.hubx .hx-provider-chip.is-active {
-  border-color: hsl(var(--primary) / 0.55);
-  background: hsl(var(--primary) / 0.12);
-  color: hsl(var(--foreground));
-}
-.hubx .hx-provider-chip:hover {
-  border-color: hsl(var(--primary) / 0.4);
-}
-
 @container hub-activity-chart (max-width: 720px) {
   .hubx .hx-chart-header {
     flex-direction: column;
@@ -1574,8 +1543,7 @@
 
   .hubx .hx-chart-header__window,
   .hubx .hx-chart-header .hx-chart-actions,
-  .hubx .hx-legend,
-  .hubx .hx-provider-chips {
+  .hubx .hx-legend {
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -1608,14 +1576,6 @@
     display: inline;
   }
 
-  .hubx .hx-provider-chips {
-    margin-left: 0;
-    padding-top: 0.45rem;
-    padding-left: 0;
-    border-top: 1px solid hsl(var(--border));
-    border-left: 0;
-  }
-
   .hubx .hx-chart-header__readout {
     text-align: left;
   }
@@ -1632,8 +1592,9 @@
   border-radius: 9999px;
   background: hsl(var(--muted) / 0.65);
 }
-/* Window selector (24h/7d/1mo/…) sits on the left; legend + provider toggles
-   stay right-aligned in the same actions row. */
+/* Window selector (24h/7d/1mo/…) sits on the left; the core-series legend
+   stays right-aligned in the same actions row. Provider lanes are rendered
+   as fixed small multiples below the chart. */
 .hubx .hx-range-tabs--window {
   margin-right: auto;
 }
@@ -1774,6 +1735,11 @@
   stroke: hsl(var(--sp-chart-viewers, var(--chart-2)));
   stroke-width: 2.25;
 }
+/* Sparse viewer rollups are measured points separated by unknown buckets, not
+   a continuous zero-valued trend. Make that limitation visible in the line. */
+.hubx .hx-chart2--viewer-partial .hx-chart-line--viewers {
+  stroke-dasharray: 2 2;
+}
 .hubx .hx-chart2 .hx-chart-point-underlay {
   fill: hsl(var(--background) / 0.92);
   pointer-events: none;
@@ -1870,6 +1836,10 @@
   transform: translateX(-50%);
   text-align: center;
   color: hsl(var(--sp-chart-emotes, var(--chart-4)));
+}
+
+.hubx .hx-chart-status__note--viewers {
+  color: hsl(var(--sp-chart-viewers, var(--chart-2)));
 }
 
 .hubx .hx-chart-axis-labels {
@@ -2043,6 +2013,18 @@
 .hubx .hx-provider-lane {
   display: block;
   height: 20px;
+}
+.hubx .hx-provider-lane.is-unavailable {
+  opacity: 0.62;
+}
+.hubx .hx-provider-lane__empty {
+  position: absolute;
+  inset: 0 0.45rem 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.58rem;
+  font-style: italic;
 }
 .hubx .hx-provider-lane__label {
   position: absolute;
@@ -3791,7 +3773,6 @@
   .hubx .hx-chart-header,
   .hubx .hx-chart-actions,
   .hubx .hx-legend,
-  .hubx .hx-provider-chips,
   .hubx .hx-chart-series-labels,
   .hubx .hx-chart-status {
     max-width: 100%;

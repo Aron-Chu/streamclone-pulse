@@ -51,10 +51,10 @@ export function isAttestedActivityGap(point: Pick<HubActivityPoint, 'gapKind'>):
 }
 
 /**
- * True only for the explicit backend proof that the payload is a complete
- * historical projection for the requested range. Accounted coverage (data +
- * attested gaps) may satisfy the request; measured coverage alone must not
- * claim a full window when registered gaps exist.
+ * True for an explicit backend historical projection whose time domain is
+ * fully accounted for. A `partial` projection is still a valid historical
+ * range when its missing buckets are registered and the chart can render the
+ * gaps; measured coverage alone must not claim a full window.
  */
 export function isHubActivityHealthyHistoricalProjection(activity: HubActivity): boolean {
   const requested = validWindowMinutes(activity.windowMinutes)
@@ -67,7 +67,10 @@ export function isHubActivityHealthyHistoricalProjection(activity: HubActivity):
     return false
   }
 
-  if (activity.source === HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION && activity.state === 'healthy') {
+  if (
+    activity.source === HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION &&
+    (activity.state === 'healthy' || activity.state === 'partial' || activity.state === 'ok')
+  ) {
     const available = validWindowMinutes(activity.availableWindowMinutes)
     const accounted = validWindowMinutes(activity.accountedWindowMinutes)
     const measured = validWindowMinutes(activity.measuredWindowMinutes)
@@ -266,4 +269,21 @@ export function hubActivityContractIssues(activity: HubActivity): string[] {
     }
   }
   return issues
+}
+
+/**
+ * Legacy hosted instances sometimes label a long-window fallback as 30m while
+ * returning coarse projection rows (or rows from an older timestamp domain).
+ * The portal cannot reconstruct those values. Request the canonical 30m feed
+ * when the response does not explicitly prove a minute-cadence bounded series.
+ */
+export function hubActivityNeedsRecentFallback(activity: HubActivity): boolean {
+  if (!isHubActivityLivePoolFallback(activity)) return false
+  const requested = validWindowMinutes(activity.requestedWindowMinutes) ??
+    validWindowMinutes(activity.windowMinutes) ?? 30
+  if (requested <= 30) return false
+  const served = validWindowMinutes(activity.servedWindowMinutes) ??
+    validWindowMinutes(activity.availableWindowMinutes) ?? 30
+  if (served !== 30 || activity.bucketMinutes !== 1) return true
+  return hubActivityContractIssues(activity).length > 0
 }
