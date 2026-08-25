@@ -16,6 +16,7 @@ describe('buildSelectedMomentDisplay', () => {
       rollups: [rollup],
       startedAt: '2026-07-04T00:00:00.000Z',
       vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '2840778701', detail: '' },
+      vodAlignSeconds: 0,
     })
     expect(display.activityLine).toBe('589 chat · 115 emotes')
     expect(display.offsetSeconds).toBe(14_700)
