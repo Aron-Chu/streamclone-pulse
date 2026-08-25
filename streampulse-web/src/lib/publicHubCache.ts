@@ -1,5 +1,6 @@
 import { getBackendUrl } from './apiClient'
 import { normalizePublicHub, type PublicHub, type PublicHubActivityWindow } from './publicHub'
+import { hubActivityContractIssues } from './hubActivityHonesty'
 
 /** Staleness hint only — cached data may still render while refreshing. */
 export const PUBLIC_HUB_CACHE_STALE_MS = 10 * 60 * 1000
@@ -53,6 +54,10 @@ export function readPublicHubCache(
     if (!hasUsableHubShape(parsed.data)) return null
 
     const data = normalizePublicHub(parsed.data as Partial<PublicHub>)
+    // Do not hydrate a legacy long-window payload whose raw points contradict
+    // its advertised served window. The next network load will fetch a fresh
+    // canonical short fallback instead of briefly repainting stale plateaus.
+    if (hubActivityContractIssues(data.activity).length > 0) return null
     const cachedAt = parsed.cachedAt
     const generatedAt = typeof parsed.generatedAt === 'string' ? parsed.generatedAt : data.generatedAt
     const stale = Date.now() - cachedAt > PUBLIC_HUB_CACHE_STALE_MS

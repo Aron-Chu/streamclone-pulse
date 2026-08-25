@@ -306,6 +306,27 @@ describe('usePublicHubData', () => {
     await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
   })
 
+  it('rejects a stale coarse fallback from the browser cache', () => {
+    const staleFallback = normalizePublicHub({
+      activity: {
+        windowMinutes: 1440,
+        requestedWindowMinutes: 1440,
+        servedWindowMinutes: 30,
+        availableWindowMinutes: 30,
+        source: 'live_pool_fallback',
+        state: 'degraded',
+        points: [
+          { t: 1_700_000_000_000, chat: 10, emotes: 2, viewers: 100 },
+          { t: 1_700_003_600_000, chat: 12, emotes: 3, viewers: 110 },
+        ],
+      },
+    })
+
+    writePublicHubCache(getBackendUrl(), '24h', staleFallback)
+
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+  })
+
   it('cache key changes by activityWindow', async () => {
     writePublicHubCache(getBackendUrl(), '7d', sampleHub(7))
     writePublicHubCache(getBackendUrl(), '24h', sampleHub(24))

@@ -13,6 +13,7 @@ import {
   peakActivityViewers,
   resolveChartBucketSelection,
   summarizeActivity,
+  hubActivityEmoteCount,
 } from '../src/lib/hubActivitySummary'
 import type { HubActivityPoint } from '../src/lib/publicHub'
 
@@ -92,7 +93,56 @@ describe('applyLivePoolViewerFloor', () => {
   })
 })
 
+describe('hubActivityEmoteCount', () => {
+  it('uses the authoritative all-provider total when present', () => {
+    expect(
+      hubActivityEmoteCount({
+        t: Date.now(),
+        chat: 20,
+        seventv: 90,
+        twitch: 40,
+        bttv: 30,
+        ffz: 20,
+        emotes: 120,
+        viewers: 100,
+      }),
+    ).toBe(120)
+  })
+
+  it('falls back to the strongest provider signal for legacy rows without a total', () => {
+    expect(
+      hubActivityEmoteCount({
+        t: Date.now(),
+        chat: 20,
+        seventv: 90,
+        twitch: 40,
+        bttv: 30,
+        ffz: 20,
+        viewers: 100,
+      }),
+    ).toBe(90)
+  })
+})
+
 describe('chartActivityPoints', () => {
+  it('orders unsorted activity rows before selecting the trailing bucket', () => {
+    const nowMs = Date.parse('2026-07-04T10:31:00Z')
+    const older = Date.parse('2026-07-04T10:28:00Z')
+    const latest = Date.parse('2026-07-04T10:30:00Z')
+    const points: HubActivityPoint[] = [
+      { t: latest, chat: 300, seventv: 30, viewers: 30_000, bucketComplete: true },
+      { t: older, chat: 100, seventv: 10, viewers: 10_000, bucketComplete: true },
+    ]
+
+    const charted = chartActivityPoints(points, 30, nowMs)
+
+    expect(charted.map((point) => point.t)).toEqual(
+      [...charted].map((point) => point.t).sort((a, b) => a - b),
+    )
+    expect(charted.at(-1)?.t).toBe(latest)
+    expect(charted.at(-1)?.viewers).toBe(30_000)
+  })
+
   it('omits open bucket before coarse-bucket rate normalization', () => {
     const bucketMs = 6 * 60_000
     const nowMs = Date.parse('2026-07-04T10:07:00Z')

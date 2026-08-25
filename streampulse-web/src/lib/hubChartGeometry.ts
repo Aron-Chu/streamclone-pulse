@@ -1,6 +1,13 @@
 import type { HubActivityPoint } from './publicHub'
 import type { HubTimeDomain } from './hubTimeScale'
 
+function hubActivityEmoteCount(point: HubActivityPoint): number {
+  if (typeof point.emotes === 'number' && Number.isFinite(point.emotes)) {
+    return Math.max(0, point.emotes)
+  }
+  return Math.max(point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
+}
+
 export interface BarDims {
   height: number
   paddingBottom: number
@@ -76,7 +83,7 @@ export function barStackSegments(
   if (point.chat > 0 && maxes.chat > 0) {
     segments.push({ color: 'chat', height: (point.chat / maxes.chat) * usable })
   }
-  const emotes = Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
+  const emotes = hubActivityEmoteCount(point)
   if (emotes > 0 && maxes.emotes > 0) {
     segments.push({ color: 'emotes', height: (emotes / maxes.emotes) * usable })
   }

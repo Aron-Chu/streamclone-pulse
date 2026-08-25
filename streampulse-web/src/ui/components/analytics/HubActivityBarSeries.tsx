@@ -42,6 +42,10 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
   onBarHover,
 }: HubActivityBarSeriesProps) {
   const widthPct = barWidthPercent(timeDomain)
+  // Keep a small gutter between buckets so the chat bars remain legible as
+  // discrete bars instead of collapsing into one low-contrast filled block.
+  const visualWidthPct = widthPct * 0.72
+  const visualInsetPct = (widthPct - visualWidthPct) / 2
   const usableHeight = Math.max(0, height - paddingBottom)
   const safeChatMax = Math.max(1, chatMax)
   return (
@@ -49,6 +53,7 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
       {points.map((p) => {
         const x = barXPercent(p.t, timeDomain)
         if (x == null) return null
+        const visualX = x + visualInsetPct
         const isLive = trailingBucketT != null && p.t === trailingBucketT
         const opacity = isLive ? 0.4 : 1
         if (p.hasChatRollup === false || p.chat <= 0 || widthPct <= 0 || usableHeight <= 0) return null
@@ -68,9 +73,9 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
           >
             <rect
               className={`hx-chat-bar hx-bar-segment hx-bar-segment--chat ${isHighlighted ? 'is-selected' : ''}`}
-              x={`${x}%`}
+              x={`${visualX}%`}
               y={y}
-              width={`${widthPct}%`}
+              width={`${visualWidthPct}%`}
               height={barHeight}
               fillOpacity={focusedOpacity(focusedSeriesKey, 'chat')}
             />

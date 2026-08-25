@@ -22,6 +22,7 @@ function build24hActivityPoints(now: number): Array<{
     ffz: number
     viewers: number
     emotes: number
+    bucketComplete: boolean
   }> = []
   for (let i = 0; i < 48; i += 1) {
     const t = alignedEnd - i * bucketMs
