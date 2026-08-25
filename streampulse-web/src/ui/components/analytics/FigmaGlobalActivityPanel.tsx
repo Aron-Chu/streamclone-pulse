@@ -11,7 +11,7 @@ import {
   hubActivityHonestyEmptyCopy,
   hubActivityContractIssues,
   hubActivityPointsWithinServedWindow,
-  isHubActivityHealthyHistoricalProjection,
+  isHubActivityHistoricalProjection,
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
 } from "../../../lib/hubActivityHonesty";
@@ -104,7 +104,7 @@ export function ChartSourceBanner({
   className?: string;
 }) {
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
-  const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
+  const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
   const windowLabel = formatHubActivityServedLabel(hub.activity);
   const requestedWindowLabel = formatActivityWindowLabel(
     Math.max(1, hub.activity.windowMinutes || 30),
@@ -125,7 +125,7 @@ export function ChartSourceBanner({
         <strong>Source:</strong>{" "}
         {livePoolFallback
           ? "Live pool fallback (recent only)"
-          : healthyProjection
+          : historicalProjection
             ? "Historical projection"
             : "Legacy/unspecified activity source"}
       </span>
@@ -133,7 +133,7 @@ export function ChartSourceBanner({
         <strong>Window:</strong>{" "}
         {livePoolFallback
           ? `${requestedWindowLabel} requested · ${availableWindowLabel} available`
-          : healthyProjection
+          : historicalProjection
             ? `last ${windowLabel}`
             : `served ${windowLabel}`}
       </span>
@@ -258,7 +258,7 @@ export function FigmaGlobalActivityPanel({
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const prevWindowKeyRef = useRef(activityWindowKey);
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
-  const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
+  const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
   const servedLabel = formatHubActivityServedLabel(hub.activity);
   const honestyDetail = hubActivityHonestyDetail(hub.activity);
   const honestyEmpty = hubActivityHonestyEmptyCopy(hub.activity);
@@ -469,8 +469,8 @@ export function FigmaGlobalActivityPanel({
         <p className="figma-global-activity__lede muted">
           {livePoolFallback
             ? `Network viewer peaks from tracked channels — ${servedLabel}. Chat and emote lines come from the live tracking pool; full requested history is not available.`
-            : healthyProjection
-              ? `Network viewer peaks from tracked channels — last ${windowLabel}. Chat and emote lines come from the historical projection.`
+            : historicalProjection
+              ? `Network viewer peaks from tracked channels — last ${windowLabel}. Historical projection is active; sparse buckets remain visible as gaps.`
               : `Network viewer peaks from tracked channels — served ${servedLabel}. Historical projection provenance has not been confirmed.`}
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
