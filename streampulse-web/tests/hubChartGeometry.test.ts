@@ -73,6 +73,16 @@ describe('hubChartGeometry', () => {
     expect(segments[0].color).toBe('viewers')
   })
 
+  it('uses the explicit all-provider total for emote bar height', () => {
+    const dims: BarDims = { height: 100, paddingBottom: 0 }
+    const segments = barStackSegments(
+      { t: 0, viewers: 500, chat: 0, emotes: 10, seventv: 90 } as any,
+      dims,
+      { viewers: 1000, chat: 0, emotes: 100 },
+    )
+    expect(segments.find((segment) => segment.color === 'emotes')?.height).toBeCloseTo(10, 5)
+  })
+
   it('trailingBucketXPercent returns null when no time domain', () => {
     expect(trailingBucketXPercent(null)).toBeNull()
   })

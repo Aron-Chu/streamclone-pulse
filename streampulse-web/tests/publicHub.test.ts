@@ -78,12 +78,24 @@ describe('normalizePublicHub', () => {
     expect(hub.activity.points[0]?.gapKind).toBe('attested')
   })
 
-  it('keeps total emotes at least as high as 7TV activity', () => {
+  it('preserves an explicit all-provider total even when a provider lane is larger', () => {
     const hub = normalizePublicHub({
       activity: {
         windowMinutes: 30,
         channelCount: 1,
         points: [{ t: 1, chat: 100, emotes: 0, seventv: 37, viewers: 1000 }],
+      },
+    })
+
+    expect(hub.activity.points[0].emotes).toBe(0)
+  })
+
+  it('uses provider lanes only when the all-provider total is omitted', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 30,
+        channelCount: 1,
+        points: [{ t: 1, chat: 100, seventv: 37, viewers: 1000 }],
       },
     })
 

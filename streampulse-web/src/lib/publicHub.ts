@@ -275,6 +275,8 @@ export interface HubActivity {
   points: HubActivityPoint[]
   /** Requested activity window (minutes). Preserved even when served data is shorter. */
   windowMinutes: number
+  /** Actual bucket cadence in minutes for the returned points. */
+  bucketMinutes?: number
   /** Explicit backend request window. Falls back to windowMinutes for legacy payloads. */
   requestedWindowMinutes?: number
   /** Explicit backend served window. Falls back to availableWindowMinutes for legacy payloads. */
@@ -891,6 +893,7 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
     activity: {
       points: normalizeActivityPoints(raw?.activity?.points),
       windowMinutes: raw?.activity?.windowMinutes ?? 7 * 24 * 60,
+      bucketMinutes: normalizePositiveInt(raw?.activity?.bucketMinutes),
       requestedWindowMinutes:
         normalizePositiveInt(raw?.activity?.requestedWindowMinutes) ??
         normalizePositiveInt(raw?.activity?.windowMinutes),
@@ -1007,31 +1010,45 @@ function normalizeNonNegativeInt(value: unknown): number | undefined {
 
 function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubActivityPoint[] {
   if (!points) return []
-  return points.map((point) => ({
-    ...point,
-    emotes: Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0),
-    twitch: point.twitch ?? 0,
-    bttv: point.bttv ?? 0,
-    ffz: point.ffz ?? 0,
-    hasChatRollup: point.hasChatRollup,
-    hasViewerRollup: point.hasViewerRollup,
-    gapKind:
-      typeof point.gapKind === 'string' && point.gapKind.trim().length > 0
-        ? point.gapKind.trim()
+  return points.map((point) => {
+    const providerFallback = Math.max(
+      point.seventv ?? 0,
+      point.twitch ?? 0,
+      point.bttv ?? 0,
+      point.ffz ?? 0,
+    )
+    const emotes =
+      typeof point.emotes === 'number' && Number.isFinite(point.emotes)
+        ? Math.max(0, point.emotes)
+        : providerFallback
+    return {
+      ...point,
+      // Preserve an explicit all-provider total, including zero. Provider
+      // columns are only a defensive fallback for legacy rows that omit it.
+      emotes,
+      twitch: point.twitch ?? 0,
+      bttv: point.bttv ?? 0,
+      ffz: point.ffz ?? 0,
+      hasChatRollup: point.hasChatRollup,
+      hasViewerRollup: point.hasViewerRollup,
+      gapKind:
+        typeof point.gapKind === 'string' && point.gapKind.trim().length > 0
+          ? point.gapKind.trim()
+          : undefined,
+      bucketComplete: point.bucketComplete,
+      topEmotes: Array.isArray(point.topEmotes)
+        ? point.topEmotes
+            .filter((e) => e && typeof e.name === 'string' && e.name.length > 0)
+            .slice(0, 10)
+            .map((e) => ({
+              name: e.name,
+              provider: e.provider,
+              imageUrl: absolutizeEmoteAssetUrl(e.imageUrl),
+              count: Number(e.count) || 0,
+            }))
         : undefined,
-    bucketComplete: point.bucketComplete,
-    topEmotes: Array.isArray(point.topEmotes)
-      ? point.topEmotes
-          .filter((e) => e && typeof e.name === 'string' && e.name.length > 0)
-          .slice(0, 10)
-          .map((e) => ({
-            name: e.name,
-            provider: e.provider,
-            imageUrl: absolutizeEmoteAssetUrl(e.imageUrl),
-            count: Number(e.count) || 0,
-          }))
-      : undefined,
-  }))
+    }
+  })
 }
 
 function emptyTierCounts(): HubTierCounts {
