@@ -16,6 +16,7 @@ import {
   classifyMomentWindow,
   dedupeMomentsByLogin,
   normalizeRatePct,
+  partitionMomentWindow,
 } from '../../../lib/liveWire'
 import { resolveMomentActions } from '../../../lib/momentActions'
 import { resolveMomentEmote } from '../../../lib/pulseMomentsUtils'
@@ -87,6 +88,11 @@ function relativeTime(at: number | undefined, now: number): string {
   return `${Math.round(hr / 24)}d ago`
 }
 
+function reactionScoreLabel(score: number | undefined): string | null {
+  if (score == null || !Number.isFinite(score) || score <= 0) return null
+  return `Reaction score ${Math.round(Math.max(0, Math.min(100, score)))}/100`
+}
+
 export function HubLiveWireFeed({
   hub,
   feed,
@@ -139,14 +145,9 @@ export function HubLiveWireFeed({
   }, [enrichCtx, feed.moments])
 
   const { liveMoments, olderMoments } = useMemo(() => {
-    const live: FigmaMomentRow[] = []
-    const older: FigmaMomentRow[] = []
-    for (const m of candidates) {
-      const cls = classifyMomentWindow(m.at, now, LIVE_WINDOW_MS)
-      if (cls === 'live') live.push(m)
-      else if (cls === 'older') older.push(m)
-      // 'omit' (missing/future) entries are dropped
-    }
+    // Both sections share the same validator so missing/future timestamps can
+    // never leak into one section while being rejected from the other.
+    const { live, older } = partitionMomentWindow(candidates, now, LIVE_WINDOW_MS)
     const sortDesc = (rows: FigmaMomentRow[]) =>
       [...rows].sort(compareMomentsChronologically)
     return {
@@ -260,7 +261,7 @@ export function HubLiveWireFeed({
     const isNew =
       healthyFullNetwork &&
       newKeysRef.current.has(key) &&
-      classifyMomentWindow(moment.at, now, LIVE_WINDOW_MS) === 'live'
+      partitionMomentWindow([moment], now, LIVE_WINDOW_MS).live.length === 1
     const profileImageUrl = moment.profileImageUrl ?? profileImageByLogin.get(login.toLowerCase())
     const signalLabel = moment.label?.trim() || 'Activity moment'
     const sourceLabel = moment.source === 'live_irc'
@@ -291,8 +292,14 @@ export function HubLiveWireFeed({
 
           <div className="hub-live-wire__rail-signal" aria-label="Detected event">
             <strong>{signalLabel}</strong>
-            {moment.score != null && moment.score > 0 ? (
-              <span className="hub-live-wire__rail-score">score {moment.score}</span>
+            {reactionScoreLabel(moment.score) ? (
+              <span
+                className="hub-live-wire__rail-score"
+                title="Weighted breakout strength from the available chat, emote, and viewer signals; it is not a probability or a viewer total."
+                aria-label={`${reactionScoreLabel(moment.score)}; weighted breakout strength, not a probability or viewer total`}
+              >
+                {reactionScoreLabel(moment.score)}
+              </span>
             ) : null}
           </div>
 
@@ -333,15 +340,27 @@ export function HubLiveWireFeed({
             </div>
           ) : null}
 
-          <div className="hub-live-wire__rail-evidence">
+          <div className="hub-live-wire__rail-evidence" aria-label="Signal evidence">
             {sourceLabel ? <span>{sourceLabel}</span> : null}
             {moment.confidence != null && moment.confidence > 0 ? (
               <span>confidence {moment.confidence}%</span>
             ) : null}
             {moment.viewerDelta ? <span>{moment.viewerDelta}</span> : null}
-            {!sourceLabel && !(moment.confidence != null && moment.confidence > 0) && !moment.viewerDelta ? (
-              <span>Baseline comparison unavailable</span>
+            {reactionScoreLabel(moment.score) ? (
+              <span title="Weighted breakout strength from available signals; a baseline comparison is shown only when supplied by the source.">
+                {moment.viewerDelta ? 'weighted score · comparison available' : 'weighted score · baseline unavailable'}
+              </span>
             ) : null}
+            {(() => {
+              const missing: string[] = []
+              if (moment.chatPerMin == null || moment.chatPerMin <= 0) missing.push('chat rate')
+              if (moment.emotesPerMin == null || moment.emotesPerMin <= 0) missing.push('emote rate')
+              if (moment.viewers == null || moment.viewers <= 0) missing.push('viewer sample')
+              if (!sourceLabel && !(moment.confidence != null && moment.confidence > 0) && !moment.viewerDelta) {
+                return <span>Evidence limited · {missing.length > 0 ? `missing ${missing.join(', ')}` : 'baseline comparison unavailable'}</span>
+              }
+              return missing.length > 0 ? <span>Missing {missing.join(', ')}</span> : null
+            })()}
           </div>
 
           <div className="hub-live-wire__rail-footer">
@@ -424,7 +443,7 @@ export function HubLiveWireFeed({
         <>
           {liveMoments.length > 0 ? (
             <>
-              <h3 className="hub-live-wire__rail-tier hub-live-wire__rail-tier--live">Live now</h3>
+              <h3 className="hub-live-wire__rail-tier hub-live-wire__rail-tier--live">Live now <span className="hub-live-wire__rail-tier-note">· current 30m window</span></h3>
               <ul role="list" className="hub-live-wire__rail-list">
                 {liveMoments.map(renderCard)}
               </ul>
@@ -439,7 +458,7 @@ export function HubLiveWireFeed({
                 aria-expanded={showOlder}
                 onClick={() => setShowOlder((v) => !v)}
               >
-                Recent detections
+                Recent detections <span className="hub-live-wire__rail-tier-note">· earlier than 30m</span>
                 <span className="hub-live-wire__disclosure-count">{olderMoments.length}</span>
                 <ChevronDown className="hub-live-wire__disclosure-chevron" aria-hidden="true" size={14} />
               </button>

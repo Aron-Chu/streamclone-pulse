@@ -102,6 +102,18 @@ describe('normalizePublicHub', () => {
     expect(hub.activity.points[0].emotes).toBe(37)
   })
 
+  it('retains the Other residual when deriving a legacy total', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 30,
+        channelCount: 1,
+        points: [{ t: 1, chat: 100, seventv: 3, other: 11, viewers: 1000 }],
+      },
+    })
+
+    expect(hub.activity.points[0]?.emotes).toBe(11)
+  })
+
   it('enrichTopMoversWithAvatars joins avatars from live channels', () => {
     const movers = enrichTopMoversWithAvatars(
       [{ login: 'xqc', displayName: 'xQc', viewers: 1, seventvPerMin: 1, chatPerMin: 1, trendPct: 0 }],

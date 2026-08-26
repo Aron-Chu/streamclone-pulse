@@ -239,6 +239,36 @@ export interface HubBucketEmote {
   count: number
 }
 
+/**
+ * Coverage metadata for the viewer sum in one activity bucket.
+ *
+ * The backend emits the flat fields during the projection rollout. The
+ * nested form is accepted as an additive compatibility shape, but missing
+ * metadata is deliberately treated as unknown by the chart.
+ */
+export type HubViewerCoverageState = 'complete' | 'partial' | 'unknown' | string
+
+export interface HubViewerCoverage {
+  contributors?: number
+  expectedContributors?: number
+  coveragePct?: number
+  state?: HubViewerCoverageState
+  complete?: boolean
+}
+
+/** Provider coverage is separate from the provider count. An omitted count
+ * is unavailable; an explicit zero can be a measured zero. */
+export interface HubProviderCoverage {
+  measured?: boolean
+  measuredBuckets?: number
+  expectedBuckets?: number
+  state?: 'complete' | 'partial' | 'unknown' | 'unavailable' | string
+  complete?: boolean
+  lowerBound?: boolean
+}
+
+export type HubProviderCoverageMap = Record<string, HubProviderCoverage | boolean | string>
+
 /** How a non-measured hub activity bucket was accounted for. */
 export type HubActivityGapKind = 'attested' | 'unmeasured' | string
 
@@ -251,7 +281,27 @@ export interface HubActivityPoint {
   twitch?: number
   bttv?: number
   ffz?: number
+  /** Exact count for provider IDs not represented by the four fixed lanes. */
+  other?: number
   viewers: number
+  /** Number of distinct channels contributing the viewer sum in this bucket. */
+  viewerContributors?: number
+  /** Historical eligible/live denominator for the viewer sum, when known. */
+  viewerExpectedContributors?: number
+  /** Backend classification: complete, partial, or unknown. */
+  viewerCoverage?: HubViewerCoverageState
+  /** Optional percentage supplied by newer backends. */
+  viewerCoveragePct?: number
+  /** Explicit complete flag accepted for additive contract versions. */
+  viewerComplete?: boolean
+  /** Nested additive form accepted during contract rollout. */
+  viewerCoverageDetail?: HubViewerCoverage
+  /** Per-provider measured/partial state for this bucket. */
+  providerCoverage?: HubProviderCoverageMap
+  /** Exact provider-counter provenance for this bucket. */
+  providerCountsComplete?: boolean
+  /** True when provider counters are lower bounds from a truncated map. */
+  providerCountsLowerBound?: boolean
   /**
    * Three-valued chat measurement contract:
    * true = measured (including a legitimate zero), false = known gap,
@@ -304,6 +354,10 @@ export interface HubActivity {
   measuredWindowMinutes?: number
   accountedWindowMinutes?: number
   registeredGapCount?: number
+  /** Optional aggregate provider lane coverage for the requested window. */
+  providerCoverage?: HubProviderCoverageMap
+  /** True only when provider lanes fully decompose the authoritative total. */
+  providerTotalsComplete?: boolean
 }
 
 export interface HubEmoteIntel {
@@ -910,6 +964,11 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       measuredWindowMinutes: normalizePositiveInt(raw?.activity?.measuredWindowMinutes),
       accountedWindowMinutes: normalizePositiveInt(raw?.activity?.accountedWindowMinutes),
       registeredGapCount: normalizeNonNegativeInt(raw?.activity?.registeredGapCount),
+      providerCoverage: normalizeProviderCoverageMap(raw?.activity?.providerCoverage),
+      providerTotalsComplete:
+        typeof raw?.activity?.providerTotalsComplete === 'boolean'
+          ? raw.activity.providerTotalsComplete
+          : undefined,
     },
     emoteIntel: {
       emotesPerMin: raw?.emoteIntel?.emotesPerMin ?? 0,
@@ -1016,19 +1075,40 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
       point.twitch ?? 0,
       point.bttv ?? 0,
       point.ffz ?? 0,
+      point.other ?? 0,
     )
     const emotes =
       typeof point.emotes === 'number' && Number.isFinite(point.emotes)
         ? Math.max(0, point.emotes)
         : providerFallback
+    const viewerCoverageDetail = normalizeViewerCoverageDetail(point.viewerCoverageDetail)
+    const providerCoverage = normalizeProviderCoverageMap(point.providerCoverage)
     return {
       ...point,
       // Preserve an explicit all-provider total, including zero. Provider
       // columns are only a defensive fallback for legacy rows that omit it.
       emotes,
-      twitch: point.twitch ?? 0,
-      bttv: point.bttv ?? 0,
-      ffz: point.ffz ?? 0,
+      // Do not coerce omitted provider fields to zero. An omitted field means
+      // that provider was not measured for this bucket, while an explicit
+      // zero is a legitimate measured value in newer payloads.
+      twitch: normalizeActivityMetric(point.twitch),
+      bttv: normalizeActivityMetric(point.bttv),
+      ffz: normalizeActivityMetric(point.ffz),
+      other: normalizeActivityMetric(point.other),
+      viewerContributors: normalizeNonNegativeInt(point.viewerContributors),
+      viewerExpectedContributors: normalizeNonNegativeInt(point.viewerExpectedContributors),
+      viewerCoverage:
+        typeof point.viewerCoverage === 'string' && point.viewerCoverage.trim().length > 0
+          ? point.viewerCoverage.trim().toLowerCase()
+          : undefined,
+      viewerCoveragePct: normalizeCoveragePercent(point.viewerCoveragePct),
+      viewerComplete: typeof point.viewerComplete === 'boolean' ? point.viewerComplete : undefined,
+      viewerCoverageDetail,
+      providerCoverage,
+      providerCountsComplete:
+        typeof point.providerCountsComplete === 'boolean' ? point.providerCountsComplete : undefined,
+      providerCountsLowerBound:
+        typeof point.providerCountsLowerBound === 'boolean' ? point.providerCountsLowerBound : undefined,
       hasChatRollup: point.hasChatRollup,
       hasViewerRollup: point.hasViewerRollup,
       gapKind:
@@ -1049,6 +1129,63 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
         : undefined,
     }
   })
+}
+
+function normalizeActivityMetric(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function normalizeCoveragePercent(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
+  return Math.min(100, value)
+}
+
+function normalizeViewerCoverageDetail(value: unknown): HubViewerCoverage | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const raw = value as Partial<HubViewerCoverage>
+  const out: HubViewerCoverage = {
+    contributors: normalizeNonNegativeInt(raw.contributors),
+    expectedContributors: normalizeNonNegativeInt(raw.expectedContributors),
+    coveragePct: normalizeCoveragePercent(raw.coveragePct),
+    state:
+      typeof raw.state === 'string' && raw.state.trim().length > 0
+        ? raw.state.trim().toLowerCase()
+        : undefined,
+    complete: typeof raw.complete === 'boolean' ? raw.complete : undefined,
+  }
+  return Object.values(out).some((entry) => entry !== undefined) ? out : undefined
+}
+
+function normalizeProviderCoverageMap(value: unknown): HubProviderCoverageMap | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const out: HubProviderCoverageMap = {}
+  for (const [key, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.trim().toLowerCase()
+    if (!normalizedKey) continue
+    if (typeof rawValue === 'boolean') {
+      out[normalizedKey] = rawValue
+      continue
+    }
+    if (typeof rawValue === 'string') {
+      out[normalizedKey] = rawValue.trim().toLowerCase()
+      continue
+    }
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) continue
+    const raw = rawValue as Partial<HubProviderCoverage>
+    const coverage: HubProviderCoverage = {
+      measured: typeof raw.measured === 'boolean' ? raw.measured : undefined,
+      measuredBuckets: normalizeNonNegativeInt(raw.measuredBuckets),
+      expectedBuckets: normalizeNonNegativeInt(raw.expectedBuckets),
+      state:
+        typeof raw.state === 'string' && raw.state.trim().length > 0
+          ? raw.state.trim().toLowerCase()
+          : undefined,
+      complete: typeof raw.complete === 'boolean' ? raw.complete : undefined,
+      lowerBound: typeof raw.lowerBound === 'boolean' ? raw.lowerBound : undefined,
+    }
+    if (Object.values(coverage).some((entry) => entry !== undefined)) out[normalizedKey] = coverage
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function emptyTierCounts(): HubTierCounts {

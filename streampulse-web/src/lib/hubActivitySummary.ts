@@ -1,4 +1,4 @@
-import type { HubActivityPoint } from './publicHub'
+import type { HubActivityPoint, HubViewerCoverage } from './publicHub'
 
 /** Client chart-grid placeholder — keep in sync with hubActivityHonesty. */
 const GAP_KIND_UNMEASURED = 'unmeasured'
@@ -30,7 +30,204 @@ export function hubActivityEmoteCount(point: HubActivityPoint): number {
   if (typeof point.emotes === 'number' && Number.isFinite(point.emotes)) {
     return Math.max(0, point.emotes)
   }
-  return Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
+  return Math.max(
+    point.emotes ?? 0,
+    point.seventv ?? 0,
+    point.twitch ?? 0,
+    point.bttv ?? 0,
+    point.ffz ?? 0,
+    point.other ?? 0,
+  )
+}
+
+export type ViewerSampleQuality = 'complete' | 'partial' | 'unknown' | 'legacy'
+
+export interface ViewerCoverageAssessment {
+  /** A viewer observation exists, including an explicit measured zero. */
+  sampled: boolean
+  /** This observation can participate in a continuous global viewer line. */
+  qualified: boolean
+  quality: ViewerSampleQuality
+  contributors?: number
+  expectedContributors?: number
+  coveragePct?: number
+}
+
+function nonNegativeFinite(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function normalizeViewerCoverageState(value: unknown): ViewerSampleQuality | undefined {
+  if (typeof value !== 'string') return undefined
+  const state = value.trim().toLowerCase()
+  if (state === 'complete' || state === 'full' || state === 'qualified' || state === 'measured') return 'complete'
+  if (state === 'partial' || state === 'incomplete' || state === 'sparse' || state === 'degraded') return 'partial'
+  if (state === 'unknown' || state === 'unavailable' || state === 'none') return 'unknown'
+  return undefined
+}
+
+/**
+ * Resolve the viewer truth contract without guessing from the magnitude of a
+ * sum. Explicit backend coverage metadata wins. Rows without that metadata
+ * remain observable as unknown points, but can never form a connected global
+ * line or a peak. This is especially important for historical_projection
+ * payloads during the projection rollout.
+ */
+export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAssessment {
+  if (isGapMarker(point)) {
+    return { sampled: false, qualified: false, quality: 'unknown' }
+  }
+  const detail: HubViewerCoverage | undefined = point.viewerCoverageDetail
+  const contributors = nonNegativeFinite(point.viewerContributors ?? detail?.contributors)
+  const expectedContributors = nonNegativeFinite(
+    point.viewerExpectedContributors ?? detail?.expectedContributors,
+  )
+  const coveragePct = nonNegativeFinite(point.viewerCoveragePct ?? detail?.coveragePct)
+  const state = normalizeViewerCoverageState(point.viewerCoverage ?? detail?.state)
+  const explicitComplete = point.viewerComplete ?? detail?.complete
+  // An explicit false rollup flag is a known gap. Do not let a stale positive
+  // value in the same legacy row turn that gap into a visible viewer sample.
+  const sampled =
+    point.hasViewerRollup !== false &&
+    (point.hasViewerRollup === true || point.viewers > 0 || contributors != null)
+  const derivedCoveragePct =
+    contributors != null && expectedContributors != null && expectedContributors > 0
+      ? Math.min(100, (contributors / expectedContributors) * 100)
+      : undefined
+  const resolvedCoveragePct = coveragePct ?? derivedCoveragePct
+
+  if (!sampled) {
+    return {
+      sampled: false,
+      qualified: false,
+      quality: state ?? 'unknown',
+      contributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+
+  if (explicitComplete === true || state === 'complete') {
+    return {
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+  if (explicitComplete === false || state === 'partial') {
+    return {
+      sampled: true,
+      qualified: false,
+      quality: 'partial',
+      contributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+  if (state === 'unknown') {
+    return {
+      sampled: true,
+      qualified: false,
+      quality: 'unknown',
+      contributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+
+  if (contributors != null && expectedContributors != null && expectedContributors > 0) {
+    const complete = contributors >= expectedContributors
+    return {
+      sampled: true,
+      qualified: complete,
+      quality: complete ? 'complete' : 'partial',
+      contributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+  if (coveragePct != null) {
+    const complete = coveragePct >= 100
+    return {
+      sampled: true,
+      qualified: complete,
+      quality: complete ? 'complete' : 'partial',
+      contributors,
+      expectedContributors,
+      coveragePct,
+    }
+  }
+
+  // A positive legacy viewer number is a sample, not proof of a complete
+  // global population. Keep it visible as an unknown point only.
+  return {
+    sampled: true,
+    qualified: false,
+    quality: 'unknown',
+    contributors,
+    expectedContributors,
+    coveragePct: resolvedCoveragePct,
+  }
+}
+
+export function hasViewerSample(point: HubActivityPoint): boolean {
+  return assessViewerCoverage(point).sampled
+}
+
+export function isViewerCoverageQualified(point: HubActivityPoint): boolean {
+  return assessViewerCoverage(point).qualified
+}
+
+export function isViewerCoveragePartial(point: HubActivityPoint): boolean {
+  const assessment = assessViewerCoverage(point)
+  return assessment.sampled && !assessment.qualified
+}
+
+/** Stable provider aliases used by both legacy and projection payloads. */
+export type HubProviderLaneKey = 'sevenTv' | 'twitch' | 'bttv' | 'ffz'
+
+function providerCoverageEntry(point: HubActivityPoint, key: HubProviderLaneKey): unknown {
+  const map = point.providerCoverage
+  if (!map) return undefined
+  const aliases = key === 'sevenTv' ? ['seventv', '7tv', 'sevenTv'] : [key]
+  for (const alias of aliases) {
+    if (Object.prototype.hasOwnProperty.call(map, alias)) return map[alias]
+  }
+  return undefined
+}
+
+/** Whether one provider's value is an actual measured observation. */
+export function hasProviderSample(point: HubActivityPoint, key: HubProviderLaneKey): boolean {
+  if (isGapMarker(point)) return false
+  const value = point[key === 'sevenTv' ? 'seventv' : key]
+  const hasValue = typeof value === 'number' && Number.isFinite(value)
+  const explicit = providerCoverageEntry(point, key)
+  if (typeof explicit === 'boolean') return explicit && hasValue
+  if (typeof explicit === 'string') {
+    const state = explicit.trim().toLowerCase()
+    if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
+    // Go omits integer zero fields from JSON. An explicit complete coverage
+    // assertion is sufficient evidence that an absent provider value is a
+    // measured zero; partial/lower-bound states still require a numeric value.
+    if (state === 'complete') return true
+    if (state === 'partial' || state === 'measured' || state === 'available') return hasValue
+  }
+  if (explicit && typeof explicit === 'object') {
+    const detail = explicit as { measured?: unknown; complete?: unknown; lowerBound?: unknown; state?: unknown }
+    if (detail.measured === false) return false
+    if (typeof detail.state === 'string') {
+      const state = detail.state.trim().toLowerCase()
+      if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
+      if (state === 'complete' && detail.measured === true && detail.lowerBound !== true) return true
+      if (state === 'partial' || state === 'measured' || state === 'available') return detail.measured === true && hasValue
+    }
+    if (detail.measured === true && detail.complete === true && detail.lowerBound !== true) return true
+    if (typeof detail.measured === 'boolean') return detail.measured && hasValue
+  }
+  return hasValue
 }
 
 /** Mirrors hubActivityMaxPoints in streamclone internal/analytics/hub_overview.go */
@@ -123,8 +320,11 @@ export function chartActivityPoints(
   livePoolViewerSum?: number,
 ): HubActivityPoint[] {
   const ordered = sortActivityPoints(points)
-  const floored = applyLivePoolViewerFloor(ordered, livePoolViewerSum, windowMinutes)
-  const trimmed = dropTrailingOpenBucket(floored, windowMinutes, nowMs ?? Date.now())
+  // The live-pool sum is current-state context, not a historical observation.
+  // Keep the parameter for callers from older portal builds, but never use it
+  // to replace or floor a viewer bucket.
+  void livePoolViewerSum
+  const trimmed = dropTrailingOpenBucket(ordered, windowMinutes, nowMs ?? Date.now())
   return normalizeActivityPointsForChart(trimmed, windowMinutes)
 }
 
@@ -218,7 +418,7 @@ export function normalizeActivityPointsForChart(
 /** Peak concurrent global viewers — same series as HubActivityChart tooltips. */
 export function peakActivityViewers(points: HubActivityPoint[], windowMinutes: number): number {
   return chartActivityPoints(points, windowMinutes).reduce(
-    (max, point) => Math.max(max, isGapMarker(point) ? 0 : point.viewers),
+    (max, point) => Math.max(max, isGapMarker(point) || !isViewerCoverageQualified(point) ? 0 : point.viewers),
     0,
   )
 }
@@ -246,7 +446,7 @@ function chartPointHasSignal(point: HubActivityPoint): boolean {
     point.seventv > 0 ||
     (point.emotes ?? 0) > 0 ||
     (point.twitch ?? 0) > 0 ||
-    point.viewers > 0
+    (hasViewerSample(point) && point.viewers > 0)
   )
 }
 
@@ -267,7 +467,7 @@ export function hasMeasuredActivitySignal(point: HubActivityPoint): boolean {
     (point.twitch ?? 0) > 0 ||
     (point.bttv ?? 0) > 0 ||
     (point.ffz ?? 0) > 0 ||
-    point.viewers > 0
+    (hasViewerSample(point) && point.viewers > 0)
   )
 }
 

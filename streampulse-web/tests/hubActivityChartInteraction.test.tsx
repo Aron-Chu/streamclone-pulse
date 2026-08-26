@@ -12,6 +12,7 @@ const points = [
     viewers: 120,
     hasChatRollup: true,
     hasViewerRollup: true,
+    viewerCoverage: 'complete',
     bucketComplete: true,
   },
   {
@@ -21,11 +22,12 @@ const points = [
     viewers: 90,
     hasChatRollup: true,
     hasViewerRollup: true,
+    viewerCoverage: 'complete',
     bucketComplete: true,
   },
 ]
 
-type PointerEventType = 'pointerdown' | 'pointermove' | 'pointerup'
+type PointerEventType = 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel'
 
 function dispatchPointerEvent(
   target: HTMLElement,
@@ -40,7 +42,7 @@ function dispatchPointerEvent(
     clientY: { value: init.clientY },
     button: { value: 0 },
   })
-  target.dispatchEvent(event)
+  fireEvent(target, event)
 }
 
 describe('HubActivityChart interaction contract', () => {
@@ -217,5 +219,114 @@ describe('HubActivityChart interaction contract', () => {
       />,
     )
     expect(chart.getAttribute('data-hover')).toBeNull()
+  })
+
+  it('provides a keyboard navigator that zooms the plot without changing the range contract', () => {
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    expect(navigator).not.toBeNull()
+    const start = navigator.querySelector('[role="slider"][aria-label="Chart view start"]') as HTMLButtonElement
+    const end = navigator.querySelector('[role="slider"][aria-label="Chart view end"]') as HTMLButtonElement
+    const reset = navigator.querySelector('button[aria-label*="Reset chart view"]') as HTMLButtonElement
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    expect(start.getAttribute('aria-valuemax')).toBe('4')
+    expect(end.getAttribute('aria-valuemin')).toBe('1')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('0')
+
+    start.focus()
+    fireEvent.keyDown(start, { key: 'ArrowRight' })
+
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:5')
+    expect(end.getAttribute('aria-valuemin')).toBe('2')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('1')
+    expect(reset.disabled).toBe(false)
+
+    fireEvent.click(reset)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-end')).toBe('5')
+  })
+
+  it('brushes from full range, pans the window, resizes handles, and restores on pointer cancellation', () => {
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLDivElement
+    const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    const start = navigator.querySelector('[aria-label="Chart view start"]') as HTMLButtonElement
+    const end = navigator.querySelector('[aria-label="Chart view end"]') as HTMLButtonElement
+    Object.defineProperty(track, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 0, right: 500, top: 0, bottom: 20, width: 500, height: 20, x: 0, y: 0, toJSON: () => ({}) }),
+    })
+
+    // The full-range window used to swallow this gesture as an immovable pan.
+    // It is now an explicit brush from bucket 1 through bucket 4.
+    dispatchPointerEvent(window, 'pointerdown', { pointerId: 21, pointerType: 'mouse', clientX: 100, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 21, pointerType: 'mouse', clientX: 400, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointerup', { pointerId: 21, pointerType: 'mouse', clientX: 400, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
+
+    dispatchPointerEvent(window, 'pointerdown', { pointerId: 22, pointerType: 'touch', clientX: 250, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 22, pointerType: 'touch', clientX: 350, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointerup', { pointerId: 22, pointerType: 'touch', clientX: 350, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+
+    dispatchPointerEvent(start, 'pointerdown', { pointerId: 23, pointerType: 'mouse', clientX: 200, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 23, pointerType: 'mouse', clientX: 100, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointerup', { pointerId: 23, pointerType: 'mouse', clientX: 100, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:5')
+
+    dispatchPointerEvent(end, 'pointerdown', { pointerId: 24, pointerType: 'mouse', clientX: 400, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 24, pointerType: 'mouse', clientX: 0, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointerup', { pointerId: 24, pointerType: 'mouse', clientX: 0, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:2')
+
+    dispatchPointerEvent(window, 'pointerdown', { pointerId: 25, pointerType: 'mouse', clientX: 200, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 25, pointerType: 'mouse', clientX: 300, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:3')
+    dispatchPointerEvent(navigator, 'pointercancel', { pointerId: 25, pointerType: 'mouse', clientX: 300, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:2')
+  })
+
+  it('zooms around the pointer with the wheel and pans with Shift+wheel', () => {
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLDivElement
+    Object.defineProperty(track, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 0, right: 500, top: 0, bottom: 20, width: 500, height: 20, x: 0, y: 0, toJSON: () => ({}) }),
+    })
+
+    fireEvent.wheel(track, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
+
+    fireEvent.wheel(track, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+
+    fireEvent.wheel(track, { deltaY: -120, deltaX: 0, deltaMode: 0, ctrlKey: true, clientX: 250 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
   })
 })

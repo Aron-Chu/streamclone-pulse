@@ -3600,6 +3600,14 @@
   margin: 0.3rem 0 0.15rem;
 }
 
+.hub-live-wire__rail-tier-note {
+  color: var(--fma-muted);
+  font-family: var(--fma-mono);
+  font-size: 0.56rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
 .hub-live-wire__rail-tier--live::before {
   content: "";
   width: 0.5rem;

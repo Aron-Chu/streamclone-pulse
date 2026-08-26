@@ -17,6 +17,11 @@ export function resolveMomentAtMs(at?: number): number | null {
 
 export type MomentWindowClass = 'live' | 'older' | 'omit'
 
+export interface MomentWindowBuckets<T> {
+  live: T[]
+  older: T[]
+}
+
 /**
  * Classify a moment timestamp against `now` (both in ms) using a freshness
  * window. Returns:
@@ -32,6 +37,26 @@ export function classifyMomentWindow(
   const ms = resolveMomentAtMs(at)
   if (ms === null || ms > now) return 'omit'
   return now - ms <= windowMs ? 'live' : 'older'
+}
+
+/**
+ * Apply the same timestamp/window validation to every Live Wire section.
+ * Invalid, missing, and future rows are omitted; only valid rows older than
+ * the live horizon enter the explicit earlier-detections section.
+ */
+export function partitionMomentWindow<T extends { at?: number }>(
+  items: T[],
+  now: number,
+  windowMs: number,
+): MomentWindowBuckets<T> {
+  const live: T[] = []
+  const older: T[] = []
+  for (const item of items) {
+    const classification = classifyMomentWindow(item.at, now, windowMs)
+    if (classification === 'live') live.push(item)
+    else if (classification === 'older') older.push(item)
+  }
+  return { live, older }
 }
 
 /**
@@ -64,20 +89,36 @@ export function dedupeMomentsByLogin<T extends { login?: string; at?: number }>(
   windowMs: number,
 ): T[] {
   const out: T[] = []
-  const lastSeenAt = new Map<string, number>()
+  const seenAtByLogin = new Map<string, number[]>()
+  const threshold = Math.max(0, Number.isFinite(windowMs) ? windowMs : 0)
+
+  // Unit fixtures sometimes use small relative timestamps. Production rows
+  // use Unix seconds or milliseconds; normalize only values that look like
+  // epoch timestamps so the threshold remains in milliseconds in production
+  // without changing the relative-time helper contract in tests.
+  const comparableTimestamp = (value: number | undefined): number | null => {
+    if (value === undefined || value === null || !Number.isFinite(value) || value <= 0) return null
+    if (value > 1_000_000_000_000) return value
+    if (value > 100_000_000) return value * 1000
+    return value
+  }
+
   for (const item of items) {
-    const login = item.login
+    const login = item.login?.trim().toLowerCase()
     if (!login) {
       out.push(item)
       continue
     }
-    const at = item.at ?? 0
-    const last = lastSeenAt.get(login)
-    if (last !== undefined && at - last <= windowMs) {
-      // Recent re-surge of the same login — keep the first occurrence only.
+    const at = comparableTimestamp(item.at)
+    const seen = seenAtByLogin.get(login) ?? []
+    // Compare absolute distance, not `current - last`: Live Wire callers can
+    // receive an out-of-order refresh, and a negative delta must not collapse
+    // a genuinely older reappearance into the newer row.
+    if (at != null && seen.some((previous) => Math.abs(at - previous) <= threshold)) {
       continue
     }
-    lastSeenAt.set(login, at)
+    if (at != null) seen.push(at)
+    seenAtByLogin.set(login, seen)
     out.push(item)
     if (out.length >= cap) break
   }
