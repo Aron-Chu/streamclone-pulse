@@ -166,6 +166,10 @@ function normalizeState(value: unknown): ScreenerMetricState | null {
     : null
 }
 
+function roundMetric(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
 function normalizeWindow(
   raw: unknown,
   requireCoverage: boolean,
@@ -268,7 +272,7 @@ function normalizeV1(row: Record<string, unknown>): HubChannelScreenerV1 | null 
   const state = normalizeState(row.state)
   const reason = normalizeReason(row.reason)
   const allowEmptyBaseline = state === 'warming' || state === 'unavailable'
-  const currentWindow = normalizeWindow(row.currentWindow, false)
+  const currentWindow = normalizeWindow(row.currentWindow, true)
   const baselineWindow = normalizeWindow(row.baselineWindow, true, allowEmptyBaseline)
   const evidence = normalizeScreenerEvidence(row.evidence)
   const chat = normalizeScreenerMetricComparison(row.chat)
@@ -279,11 +283,110 @@ function normalizeV1(row: Record<string, unknown>): HubChannelScreenerV1 | null 
     !state || reason === null || !currentWindow || !baselineWindow ||
     !evidence || !chat || !emotes
   ) return null
-  return {
+  const screener: HubChannelScreenerV1 = {
     version: 1, streamId, measuredAt, baselineKind: 'current_stream_measured_average',
     state, reason, currentWindow, baselineWindow,
     evidence, chat, emotes,
   }
+  return screenerEvidenceIsCoherent(screener) ? screener : null
+}
+
+function coherentWindow(window: ScreenerWindow, allowEmpty: boolean): boolean {
+  if (!Number.isInteger(window.start) || !Number.isInteger(window.end) ||
+      !Number.isInteger(window.expectedMinutes) || !Number.isInteger(window.measuredMinutes) ||
+      window.start % 60_000 !== 0 || window.end % 60_000 !== 0 ||
+      window.end < window.start || window.measuredMinutes < 0 ||
+      window.measuredMinutes > window.expectedMinutes) return false
+  const empty = window.expectedMinutes === 0 && window.measuredMinutes === 0 && window.start === window.end
+  if (empty) return allowEmpty && (window.coveragePct == null || window.coveragePct === 0)
+  if (window.expectedMinutes <= 0 || window.coveragePct == null) return false
+  return (
+    window.end - window.start === window.expectedMinutes * 60_000 &&
+    window.coveragePct === roundMetric(window.measuredMinutes / window.expectedMinutes * 100)
+  )
+}
+
+function coherentMetric(
+  metric: ScreenerMetricComparison,
+  state: ScreenerMetricState,
+  currentWindow: ScreenerWindow,
+  baselineWindow: ScreenerWindow,
+): boolean {
+  if (
+    metric.currentMeasuredMinutes !== currentWindow.measuredMinutes ||
+    metric.currentExpectedMinutes !== currentWindow.expectedMinutes ||
+    metric.baselineMeasuredMinutes !== baselineWindow.measuredMinutes ||
+    metric.baselineExpectedMinutes !== baselineWindow.expectedMinutes ||
+    metric.baselineCoveragePct !== (baselineWindow.coveragePct ?? 0)
+  ) return false
+  if (state !== 'ready' && state !== 'new_activity') return true
+  if (metric.currentPerMin == null || metric.baselinePerMin == null || metric.absoluteDeltaPerMin == null) return false
+  if (metric.currentPerMin < 0 || metric.baselinePerMin < 0) return false
+  if (metric.absoluteDeltaPerMin !== roundMetric(metric.currentPerMin - metric.baselinePerMin)) return false
+  if (metric.baselinePerMin > 0) {
+    return (
+      metric.changePct != null && metric.multiplier != null &&
+      metric.changePct === roundMetric(metric.absoluteDeltaPerMin / metric.baselinePerMin * 100) &&
+      metric.multiplier === roundMetric(metric.currentPerMin / metric.baselinePerMin)
+    )
+  }
+  if (metric.changePct != null || metric.multiplier != null) return false
+  return metric.currentPerMin === 0 || (state === 'new_activity' && metric.currentPerMin > 0)
+}
+
+/**
+ * Reject internally contradictory v1 rows before the advanced views consume
+ * them. This mirrors the backend qualification thresholds and prevents a
+ * malformed payload from relabelling partial evidence as ready.
+ */
+export function screenerEvidenceIsCoherent(screener: HubChannelScreenerV1): boolean {
+  const { state, reason, currentWindow, baselineWindow, evidence, chat, emotes } = screener
+  const currentEnd = currentWindow.end
+  const baselineIsEmpty = baselineWindow.expectedMinutes === 0 && baselineWindow.measuredMinutes === 0
+  if (
+    screener.measuredAt < currentEnd || screener.measuredAt >= currentEnd + 60_000 ||
+    currentWindow.expectedMinutes !== 5 ||
+    !coherentWindow(currentWindow, false) ||
+    !coherentWindow(baselineWindow, state === 'warming' || state === 'unavailable') ||
+    (!baselineIsEmpty && baselineWindow.end !== currentWindow.start) ||
+    (baselineIsEmpty && state !== 'warming' && state !== 'unavailable')
+  ) return false
+
+  const observedMinutes = currentWindow.measuredMinutes + baselineWindow.measuredMinutes
+  if (evidence.rollupAvailable !== (observedMinutes > 0)) return false
+  const chatObserved = chat.currentMeasuredMinutes > 0 && (chat.currentPerMin ?? 0) > 0
+  if (evidence.chatObservedLast5m !== chatObserved) return false
+
+  const countsAreQualified = (
+    currentWindow.measuredMinutes === currentWindow.expectedMinutes &&
+    baselineWindow.measuredMinutes >= 20 &&
+    baselineWindow.expectedMinutes >= 20 &&
+    (baselineWindow.coveragePct ?? 0) >= 80
+  )
+  const metricsMatch = coherentMetric(chat, chat.state, currentWindow, baselineWindow) &&
+    coherentMetric(emotes, emotes.state, currentWindow, baselineWindow)
+
+  if (state === 'ready' || state === 'new_activity') {
+    if (!evidence.ircBound || !evidence.rollupAvailable || !countsAreQualified || !metricsMatch) return false
+    if (reason) return false
+    const qualifiedStates = (metric: ScreenerMetricComparison) =>
+      metric.state === 'ready' || metric.state === 'new_activity'
+    if (!qualifiedStates(chat) || !qualifiedStates(emotes)) return false
+    if (state === 'ready') {
+      return chat.state === 'ready' && emotes.state === 'ready' && !chat.reason && !emotes.reason
+    }
+    const newMetrics = [chat, emotes].filter((metric) => metric.state === 'new_activity')
+    return newMetrics.length > 0 && newMetrics.every((metric) =>
+      metric.reason === 'baseline_zero' && metric.baselinePerMin === 0 && (metric.currentPerMin ?? 0) > 0,
+    ) && [chat, emotes].filter((metric) => metric.state === 'ready').every((metric) => !metric.reason)
+  }
+
+  if (!reason || chat.state !== state || emotes.state !== state || !metricsMatch) return false
+  if (state === 'unavailable') return !evidence.ircBound || !evidence.rollupAvailable
+  if (!evidence.ircBound || !evidence.rollupAvailable) return false
+  if (state === 'warming') return baselineWindow.expectedMinutes < 20 || currentWindow.measuredMinutes < 5
+  if (state === 'partial') return !countsAreQualified
+  return false
 }
 
 function normalizeLegacy(row: Record<string, unknown>): HubChannelScreenerLegacy | null {
