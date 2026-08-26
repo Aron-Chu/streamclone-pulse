@@ -58,6 +58,7 @@ export function HubCommandHeader({
     () => deriveHubChartActivityModel(chartInputs),
     [chartInputs.points, chartInputs.windowMinutes, chartInputs.livePoolViewerSum],
   )
+  const viewerPeakQualified = chartModel.viewerQualifiedCount > 0
   const peakViewers = chartModel.peakViewers
   const peakChat = chartModel.peakChatPerMin
   const peakEmotes = chartModel.peakEmotesPerMin
@@ -142,9 +143,15 @@ export function HubCommandHeader({
             <div className="hub-command-header__peaks-row">
               <div
                 className="hub-command-header__peak"
-                title="Highest network viewer total in the activity window from minute rollups. Not Twitch-wide."
+                title={
+                  viewerPeakQualified
+                    ? 'Highest coverage-qualified network viewer total in the activity window. Not Twitch-wide.'
+                    : 'Viewer peak unavailable — no coverage-qualified global viewer rollup exists for this window.'
+                }
               >
-                <span className="hub-command-header__peak-label">Viewers</span>
+                <span className="hub-command-header__peak-label">
+                  {viewerPeakQualified ? 'Viewers' : 'Viewers unavailable'}
+                </span>
                 <strong className="hub-command-header__peak-value hub-command-header__peak-value--viewers">
                   {loading ? '…' : peakViewers > 0 ? compact(peakViewers) : '—'}
                 </strong>

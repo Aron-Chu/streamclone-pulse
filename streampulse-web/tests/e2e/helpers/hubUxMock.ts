@@ -10,6 +10,10 @@ function build24hActivityPoints(now: number): Array<{
   viewers: number
   emotes: number
   bucketComplete: boolean
+  hasViewerRollup: boolean
+  viewerCoverage: string
+  viewerContributors: number
+  viewerExpectedContributors: number
 }> {
   const bucketMs = 6 * 60_000
   const alignedEnd = Math.floor(now / bucketMs) * bucketMs
@@ -23,6 +27,10 @@ function build24hActivityPoints(now: number): Array<{
     viewers: number
     emotes: number
     bucketComplete: boolean
+    hasViewerRollup: boolean
+    viewerCoverage: string
+    viewerContributors: number
+    viewerExpectedContributors: number
   }> = []
   for (let i = 0; i < 48; i += 1) {
     const t = alignedEnd - i * bucketMs
@@ -33,9 +41,13 @@ function build24hActivityPoints(now: number): Array<{
       twitch: 4,
       bttv: 2,
       ffz: 1,
-    viewers: 500_000 + i * 2_000,
-    emotes: 40 + i,
-    bucketComplete: true,
+      viewers: 500_000 + i * 2_000,
+      emotes: 40 + i,
+      bucketComplete: true,
+      hasViewerRollup: true,
+      viewerCoverage: 'complete',
+      viewerContributors: 96,
+      viewerExpectedContributors: 96,
     })
   }
   const historicalT = alignedEnd - 8 * 60 * 60 * 1000
@@ -49,6 +61,10 @@ function build24hActivityPoints(now: number): Array<{
     viewers: 920_000,
     emotes: 88,
     bucketComplete: true,
+    hasViewerRollup: true,
+    viewerCoverage: 'complete',
+    viewerContributors: 96,
+    viewerExpectedContributors: 96,
   })
   return points.sort((a, b) => a.t - b.t)
 }

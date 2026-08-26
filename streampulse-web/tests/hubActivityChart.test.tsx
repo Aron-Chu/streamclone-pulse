@@ -75,8 +75,8 @@ describe('HubActivityChart chat measurement honesty', () => {
     const { container } = render(
       <HubActivityChart
         points={[
-          { t: end - 60_000, chat: 10, seventv: 2, emotes: 2, viewers: 100, hasChatRollup: true, bucketComplete: true },
-          { t: end, chat: 20, seventv: 4, emotes: 4, viewers: 200, hasChatRollup: true, bucketComplete: true },
+          { t: end - 60_000, chat: 10, seventv: 2, emotes: 2, viewers: 100, hasViewerRollup: true, viewerCoverage: 'complete', hasChatRollup: true, bucketComplete: true },
+          { t: end, chat: 20, seventv: 4, emotes: 4, viewers: 200, hasViewerRollup: true, viewerCoverage: 'complete', hasChatRollup: true, bucketComplete: true },
         ]}
         windowMinutes={2}
         channelCount={1}
@@ -96,7 +96,7 @@ describe('HubActivityChart chat measurement honesty', () => {
         points={[
           { t: end - 2 * 60_000, chat: 10, seventv: 2, emotes: 2, viewers: 0, hasChatRollup: true, bucketComplete: true },
           { t: end - 60_000, chat: 12, seventv: 3, emotes: 3, viewers: 0, hasChatRollup: true, bucketComplete: true },
-          { t: end, chat: 14, seventv: 4, emotes: 4, viewers: 500, hasViewerRollup: true, hasChatRollup: true, bucketComplete: true },
+          { t: end, chat: 14, seventv: 4, emotes: 4, viewers: 500, hasViewerRollup: true, viewerCoverage: 'complete', hasChatRollup: true, bucketComplete: true },
         ]}
         windowMinutes={3}
         channelCount={1}
@@ -104,8 +104,69 @@ describe('HubActivityChart chat measurement honesty', () => {
     )
 
     expect(container.querySelector('.hx-chart2--viewer-partial')).toBeTruthy()
-    expect(container.textContent).toContain('Viewer samples partial — 1/3 buckets sampled; unsampled buckets are not zero viewers')
-    expect(container.textContent).toContain('500 peak viewers · 1/3 sampled')
+    expect(container.textContent).toContain('Viewer samples partial — 1/3 buckets sampled; 1 buckets are coverage-qualified and 0 remain partial or unknown; unsampled buckets are not zero viewers')
+    expect(container.textContent).toContain('500 peak viewers · 1/3 coverage-qualified')
+  })
+
+  it('connects only complete viewer generations and isolates partial or unknown observations', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const { container } = render(
+      <HubActivityChart
+        points={[
+          {
+            t: end - 3 * 60_000,
+            chat: 10,
+            seventv: 2,
+            emotes: 2,
+            viewers: 100,
+            hasViewerRollup: true,
+            viewerCoverage: 'complete',
+            hasChatRollup: true,
+            bucketComplete: true,
+          },
+          {
+            t: end - 2 * 60_000,
+            chat: 12,
+            seventv: 3,
+            emotes: 3,
+            viewers: 200,
+            hasViewerRollup: true,
+            viewerCoverage: 'partial',
+            hasChatRollup: true,
+            bucketComplete: true,
+          },
+          {
+            t: end - 60_000,
+            chat: 14,
+            seventv: 4,
+            emotes: 4,
+            viewers: 300,
+            hasChatRollup: true,
+            bucketComplete: true,
+          },
+          {
+            t: end,
+            chat: 16,
+            seventv: 5,
+            emotes: 5,
+            viewers: 400,
+            hasViewerRollup: true,
+            viewerCoverage: 'complete',
+            hasChatRollup: true,
+            bucketComplete: true,
+          },
+        ]}
+        windowMinutes={4}
+        channelCount={1}
+      />,
+    )
+
+    // The complete observations are separated by two non-qualified buckets,
+    // so neither a smooth trend nor an interpolated bridge may be drawn.
+    expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(2)
+    expect(container.querySelectorAll('.hx-chart-point--viewers-partial')).toHaveLength(2)
+    expect(container.textContent).toContain('2 buckets are coverage-qualified and 2 remain partial or unknown')
+    expect(container.textContent).toContain('unsampled buckets are not zero viewers')
   })
 
   it('withholds a malformed fallback payload instead of plotting misleading geometry', () => {

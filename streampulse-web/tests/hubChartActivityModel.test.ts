@@ -33,6 +33,8 @@ describe('hubChartActivityModel', () => {
       seventv: 10,
       viewers: 2500,
       hasChatRollup: true,
+      hasViewerRollup: true,
+      viewerCoverage: 'complete',
       bucketComplete: true,
     },
     {
@@ -41,6 +43,8 @@ describe('hubChartActivityModel', () => {
       seventv: 12,
       viewers: 2600,
       hasChatRollup: true,
+      hasViewerRollup: true,
+      viewerCoverage: 'complete',
       bucketComplete: true,
     },
   ]

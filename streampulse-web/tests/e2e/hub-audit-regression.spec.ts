@@ -50,8 +50,8 @@ async function installHubAuditMock(page: import('@playwright/test').Page): Promi
         },
         activity: {
           points: [
-            { t: now - 10 * 60_000, chat: 120, seventv: 40, twitch: 12, bttv: 8, ffz: 5, viewers: 42000, emotes: 65 },
-            { t: now, chat: 180, seventv: 55, twitch: 18, bttv: 11, ffz: 7, viewers: 48000, emotes: 91 },
+            { t: now - 10 * 60_000, chat: 120, seventv: 40, twitch: 12, bttv: 8, ffz: 5, viewers: 42000, emotes: 65, hasViewerRollup: true, viewerCoverage: 'complete', viewerContributors: 2, viewerExpectedContributors: 2 },
+            { t: now, chat: 180, seventv: 55, twitch: 18, bttv: 11, ffz: 7, viewers: 48000, emotes: 91, hasViewerRollup: true, viewerCoverage: 'complete', viewerContributors: 2, viewerExpectedContributors: 2 },
           ],
           windowMinutes: 30,
           channelCount: 2,

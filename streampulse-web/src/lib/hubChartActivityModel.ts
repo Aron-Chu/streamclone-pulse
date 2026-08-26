@@ -2,7 +2,10 @@ import type { HubActivityPoint, PublicHub } from './publicHub'
 import {
   chartActivityPoints,
   hasMeasuredActivitySignal,
+  hasViewerSample,
   hubActivityEmoteCount,
+  isViewerCoveragePartial,
+  isViewerCoverageQualified,
   isMeasuredActivityPoint,
   resolveHubActivityChartState,
   type HubActivityChartState,
@@ -36,6 +39,9 @@ export interface HubChartActivityModel {
   chartState: HubActivityChartState
   measuredPointCount: number
   signalPointCount: number
+  viewerSampleCount: number
+  viewerQualifiedCount: number
+  viewerPartialCount: number
   peakViewers: number
   peakViewersAt: number | null
   peakChatPerMin: number
@@ -81,8 +87,11 @@ export function deriveHubChartActivityModel(
   let peakEmotesAt: number | null = null
   const measuredPointCount = chartPoints.filter(isMeasuredActivityPoint).length
   const signalPointCount = chartPoints.filter(hasMeasuredActivitySignal).length
+  const viewerSampleCount = chartPoints.filter(hasViewerSample).length
+  const viewerQualifiedCount = chartPoints.filter(isViewerCoverageQualified).length
+  const viewerPartialCount = chartPoints.filter(isViewerCoveragePartial).length
   for (const point of chartPoints) {
-    if (point.viewers > peakViewers) {
+    if (isViewerCoverageQualified(point) && point.viewers > peakViewers) {
       peakViewers = point.viewers
       peakViewersAt = point.t
     }
@@ -115,6 +124,9 @@ export function deriveHubChartActivityModel(
     chartState: resolveHubActivityChartState(chartPoints),
     measuredPointCount,
     signalPointCount,
+    viewerSampleCount,
+    viewerQualifiedCount,
+    viewerPartialCount,
     peakViewers,
     peakViewersAt,
     peakChatPerMin,

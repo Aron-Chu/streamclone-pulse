@@ -1747,6 +1747,13 @@
 .hubx .hx-chart2 .hx-chart-point--viewers {
   fill: hsl(var(--sp-chart-viewers, var(--chart-2)));
 }
+.hubx .hx-chart2 .hx-chart-point--viewers-partial {
+  fill: hsl(var(--sp-chart-viewers, var(--chart-2)));
+  stroke: hsl(var(--background));
+  stroke-width: 0.8px;
+  stroke-dasharray: 1 1;
+  opacity: 0.86;
+}
 .hubx .hx-chart2 .hx-chart-point--emotes {
   fill: hsl(var(--sp-chart-emotes, var(--chart-4)));
 }
@@ -2051,6 +2058,31 @@
   height: 6px;
   border-radius: 999px;
   flex-shrink: 0;
+}
+.hubx .hx-provider-lane__coverage {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  padding: 0.05rem 0.28rem;
+  border-radius: 999px;
+  background: hsl(var(--background) / 0.78);
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hubx .hx-provider-lane:not(.is-unavailable) .hx-provider-lane__coverage {
+  color: hsl(var(--foreground) / 0.72);
+}
+.hubx .hx-provider-lanes__note {
+  margin: 0.05rem 0.35rem 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.56rem;
+  line-height: 1.25;
 }
 .hubx .hx-provider-lane__plot {
   position: relative;
@@ -2497,53 +2529,6 @@
   font-size: 0.69rem;
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
-}
-
-/* Deprecated — replaced by hx-provider-lane sparklines. */
-
-/* Compare providers toggle */
-.hubx .hx-compare-toggle {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.4rem;
-}
-.hubx .hx-compare-toggle .hx-btn.is-active {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
-}
-
-/* Small multiples — synchronized mini-charts for compare mode */
-.hubx .hx-small-multiples {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.5rem;
-  margin-top: 0.6rem;
-  padding: 0.5rem;
-  border-radius: var(--radius);
-  background: hsl(var(--card) / 0.5);
-  border: 1px solid hsl(var(--border) / 0.5);
-}
-.hubx .hx-small-multiples__chart {
-  position: relative;
-}
-.hubx .hx-small-multiples__chart svg {
-  display: block;
-  width: 100%;
-  height: 48px;
-  border-radius: 4px;
-  background: hsl(var(--background) / 0.6);
-}
-.hubx .hx-small-multiples__label {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  color: hsl(var(--muted-foreground));
-  margin-bottom: 0.2rem;
-}
-.hubx .hx-sm-grid {
-  stroke: hsl(var(--border));
-  stroke-dasharray: 2 4;
-  opacity: 0.3;
 }
 
 /* toolbar / tabs / table */

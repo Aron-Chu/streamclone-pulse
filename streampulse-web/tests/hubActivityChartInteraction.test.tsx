@@ -12,6 +12,7 @@ const points = [
     viewers: 120,
     hasChatRollup: true,
     hasViewerRollup: true,
+    viewerCoverage: 'complete',
     bucketComplete: true,
   },
   {
@@ -21,6 +22,7 @@ const points = [
     viewers: 90,
     hasChatRollup: true,
     hasViewerRollup: true,
+    viewerCoverage: 'complete',
     bucketComplete: true,
   },
 ]
