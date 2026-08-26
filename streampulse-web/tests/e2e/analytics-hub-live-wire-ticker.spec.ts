@@ -15,37 +15,38 @@ const VIEWPORTS = [
   { width: 1600, height: 900 },
 ] as const
 
-test.describe('analytics hub Live Wire right-rail layout', () => {
+test.describe('analytics hub Live Wire annotation lane', () => {
   test.beforeEach(async ({ page }) => {
     await installHubUxMock(page)
   })
 
   for (const viewport of VIEWPORTS) {
-    test(`single Live Wire rail stays usable @ ${viewport.width}px`, async ({ page }) => {
+    test(`chart-attached lane stays usable @ ${viewport.width}px`, async ({ page }, testInfo) => {
       const errors = attachConsoleErrorGuard(page)
       await page.setViewportSize(viewport)
       await page.goto('/analytics')
 
-      const rail = page.locator('.figma-analytics__right-rail')
-      await expect(rail).toBeVisible()
-      await expect(rail).toHaveAttribute('aria-label', 'Live moments')
-      await expect(rail.getByRole('region', { name: 'Live Wire' })).toBeVisible()
-      await expect(page.locator('.figma-global-activity__annotation-lane')).toHaveCount(0)
-      await expect(page.locator('.hub-live-wire__ticker-viewport')).toHaveCount(0)
-      await expect(rail.getByRole('button', { name: 'Inspect this minute' }).first()).toBeVisible()
-
-      const activityHub = page.locator('.figma-activity-hub')
-      await expect(activityHub).toBeVisible()
+      await expect(page.locator('.figma-analytics__right-rail')).toHaveCount(0)
+      await expect(page.locator('#section-live-wire')).toBeVisible()
+      await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
+      await expect(page.locator('.figma-global-activity__annotation-lane')).toBeVisible()
+      await expect(page.locator('.hub-live-wire__chip').first()).toBeVisible()
+      await expect(page.getByRole('button', { name: /Recent detections/i })).toHaveCount(0)
 
       const order = await page.evaluate(() => {
-        const wire = document.querySelector('.figma-analytics__right-rail')
+        const wire = document.getElementById('section-live-wire')
+        const rangeControls = document.querySelector('.figma-global-activity__hub-chart .hx-chart-header__window')
+        const plot = document.querySelector('.figma-global-activity__hub-chart .hx-plot-stack')
         const chart = document.querySelector('.figma-global-activity__hub-chart')
-        if (!wire || !chart) return null
-        const wireAfterChart =
-          chart.compareDocumentPosition(wire) & Node.DOCUMENT_POSITION_FOLLOWING
-        return wireAfterChart ? 'single-rail-after-center' : 'other'
+        const chartCol = document.querySelector('.figma-global-activity__chart-col')
+        if (!wire || !rangeControls || !plot || !chart || !chartCol) return null
+        const rangeBeforeWire = Boolean(rangeControls.compareDocumentPosition(wire) & Node.DOCUMENT_POSITION_FOLLOWING)
+        const wireBeforePlot = Boolean(wire.compareDocumentPosition(plot) & Node.DOCUMENT_POSITION_FOLLOWING)
+        return rangeBeforeWire && wireBeforePlot && chart.contains(wire) && chartCol.contains(wire)
+          ? 'range-lane-plot'
+          : 'other'
       })
-      expect(order).toBe('single-rail-after-center')
+      expect(order).toBe('range-lane-plot')
 
       if (viewport.width >= 1100) {
         const grid = page.locator('.pulse-moments-live--embedded .pulse-moments-live__grid')
@@ -59,10 +60,16 @@ test.describe('analytics hub Live Wire right-rail layout', () => {
 
       await assertNoPageHorizontalOverflow(page)
       await assertNoConsoleErrors(page, errors)
+
+      if (viewport.width === 390 || viewport.width === 1440) {
+        await page.locator('.figma-activity-hub').screenshot({
+          path: testInfo.outputPath(`live-wire-lane-${viewport.width}.png`),
+        })
+      }
     })
   }
 
-  test('rail survives 1440px at deviceScaleFactor 1.25', async ({ browser }) => {
+  test('lane survives 1440px at deviceScaleFactor 1.25', async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
       deviceScaleFactor: 1.25,
@@ -71,8 +78,8 @@ test.describe('analytics hub Live Wire right-rail layout', () => {
     const errors = attachConsoleErrorGuard(page)
     await installHubUxMock(page)
     await page.goto('/analytics')
-    await expect(page.locator('.figma-analytics__right-rail')).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
+    await expect(page.locator('.figma-analytics__right-rail')).toHaveCount(0)
+    await expect(page.locator('.hub-live-wire--lane')).toBeVisible()
     await assertNoPageHorizontalOverflow(page)
     await assertNoConsoleErrors(page, errors)
     await context.close()

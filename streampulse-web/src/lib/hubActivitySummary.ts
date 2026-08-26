@@ -574,6 +574,22 @@ export interface ActivitySummary {
   footnote: string
 }
 
+/**
+ * Format bucket coverage without rounding incomplete evidence up to 100%.
+ * Counts are authoritative: a complete domain is the only path to `100%`.
+ */
+export function formatActivityCoveragePercent(
+  pointCount: number,
+  expectedBuckets: number,
+): string {
+  const expected = Math.max(0, Math.floor(expectedBuckets))
+  const measured = Math.max(0, Math.floor(pointCount))
+  if (expected === 0 || measured === 0) return '0%'
+  if (measured >= expected) return '100%'
+  const rounded = Math.round((measured / expected) * 1_000) / 10
+  return `${Math.min(99.9, rounded).toFixed(1)}%`
+}
+
 export function summarizeActivity(
   points: HubActivityPoint[],
   windowMinutes: number,

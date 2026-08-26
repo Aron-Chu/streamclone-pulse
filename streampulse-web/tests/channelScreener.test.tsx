@@ -17,10 +17,22 @@ const channels: HubLiveChannel[] = [
     coverageState: 'synced',
     trendPct: 4,
     screener: {
-      chatAcceleration: 1.2,
-      emoteAcceleration: 0.8,
-      anomalyReason: 'viewer/chat divergence',
-      newlyLive: true,
+      version: 1,
+      streamId: 'stream-xqc',
+      measuredAt: 1_800_000,
+      baselineKind: 'current_stream_measured_average',
+      state: 'ready',
+      currentWindow: { start: 1_500_000, end: 1_800_000, expectedMinutes: 5, measuredMinutes: 5 },
+      baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
+      evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true, metadataAgeSeconds: 15 },
+      chat: {
+        state: 'ready', currentPerMin: 240, baselinePerMin: 120, absoluteDeltaPerMin: 120, changePct: 100,
+        currentMeasuredMinutes: 5, currentExpectedMinutes: 5, baselineMeasuredMinutes: 20, baselineExpectedMinutes: 20, baselineCoveragePct: 100,
+      },
+      emotes: {
+        state: 'ready', currentPerMin: 50, baselinePerMin: 20, absoluteDeltaPerMin: 30, multiplier: 2.5,
+        currentMeasuredMinutes: 5, currentExpectedMinutes: 5, baselineMeasuredMinutes: 20, baselineExpectedMinutes: 20, baselineCoveragePct: 100,
+      },
     },
   },
   {
@@ -46,12 +58,11 @@ describe('LiveChannelsMatrix Channel Screener', () => {
       </MemoryRouter>,
     )
     expect(screen.getByRole('heading', { name: 'Channel Screener' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: 'Anomalies' }))
-    expect(screen.getAllByText('viewer/chat divergence').length).toBeGreaterThan(0)
-    expect(screen.queryByText('caseoh_')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'Anomalies · unavailable' }))
+    expect(screen.getByText(/No backend-authored anomaly reasons/)).toBeTruthy()
   })
 
-  it('shows momentum acceleration columns when backend fields exist', () => {
+  it('shows backend-owned activity comparisons and exact evidence', () => {
     render(
       <MemoryRouter>
         <AnalyticsThemeProvider>
@@ -59,8 +70,12 @@ describe('LiveChannelsMatrix Channel Screener', () => {
         </AnalyticsThemeProvider>
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('tab', { name: 'Momentum' }))
-    expect(screen.getByText('Chat accel')).toBeTruthy()
-    expect(screen.getByText('1.2')).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity change' }))
+    expect(screen.getByText('Latest 5 min vs stream average')).toBeTruthy()
+    expect(screen.getAllByText('+100%').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('2.5×').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('tab', { name: 'Coverage evidence' }))
+    expect(screen.getByText('5/5 min')).toBeTruthy()
+    expect(screen.queryByLabelText(/62% coverage/)).toBeNull()
   })
 })

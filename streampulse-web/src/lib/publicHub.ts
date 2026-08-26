@@ -4,6 +4,13 @@ import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
   normalizeHubChannelScreenerFields,
+  normalizeHubLiveMomentComparison,
+  normalizeScreenerEvidence,
+  normalizeScreenerMetricComparison,
+  qualifiedScreenerMetricEvidenceIsCoherent,
+  type HubLiveMomentComparison,
+  type ScreenerEvidence,
+  type ScreenerMetricComparison,
   type HubChannelScreenerFields,
 } from './channelScreenerContract'
 import {
@@ -400,6 +407,18 @@ export interface HubMover {
   trendSignal?: boolean
 }
 
+/** Backend-qualified positive emote movement; never derived from browser polling. */
+export interface HubRisingChannel {
+  login: string
+  displayName?: string
+  category?: string
+  profileImageUrl?: string
+  viewers: number
+  measuredAt: number
+  comparison: ScreenerMetricComparison
+  evidence: ScreenerEvidence
+}
+
 export type HubCoverageState =
   | 'synced'
   | 'collecting'
@@ -482,6 +501,8 @@ export interface HubLivePulseMoment extends HubFeaturedMoment {
   category?: string
   streamStartedAt?: number
   activityTag?: string
+  /** Event-time comparison against measured history strictly before the event. */
+  comparison?: HubLiveMomentComparison
 }
 
 export interface HubFeaturedChartPoint {
@@ -547,6 +568,8 @@ export interface PublicHub {
   emoteIntel: HubEmoteIntel
   topEmotes: HubEmote[]
   topMovers: HubMover[]
+  /** Qualified movement rows; legacy topMovers retains highest-rate semantics. */
+  risingChannels?: HubRisingChannel[]
   liveChannels: HubLiveChannel[]
   moments: HubMoment[]
   livePulseMoments: HubLivePulseMoment[]
@@ -818,6 +841,38 @@ function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   return movers.map((mover) => ({ ...mover, profileImageUrl: absoluteAssetUrl(mover.profileImageUrl) }))
 }
 
+function normalizeRisingChannels(raw: HubRisingChannel[] | undefined): HubRisingChannel[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const rows: HubRisingChannel[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const login = typeof item.login === 'string' ? item.login.trim() : ''
+    const viewers = Number(item.viewers)
+    const measuredAt = Number(item.measuredAt)
+    const comparison = normalizeScreenerMetricComparison(item.comparison)
+    const evidence = normalizeScreenerEvidence(item.evidence)
+    const qualified = comparison?.state === 'ready' || comparison?.state === 'new_activity'
+    if (
+      !login || !Number.isFinite(viewers) || viewers < 0 ||
+      !Number.isFinite(measuredAt) || measuredAt < 0 || !comparison || !evidence ||
+      !qualified || !qualifiedScreenerMetricEvidenceIsCoherent(comparison, evidence) ||
+      (comparison.currentPerMin ?? 0) < 5 ||
+      (comparison.absoluteDeltaPerMin ?? 0) <= 0
+    ) continue
+    rows.push({
+      login,
+      displayName: typeof item.displayName === 'string' ? item.displayName : undefined,
+      category: typeof item.category === 'string' ? item.category : undefined,
+      profileImageUrl: absoluteAssetUrl(item.profileImageUrl),
+      viewers,
+      measuredAt,
+      comparison,
+      evidence,
+    })
+  }
+  return raw.length > 0 && rows.length === 0 ? undefined : rows
+}
+
 /** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
 export function enrichTopMoversWithAvatars(
   movers: HubMover[],
@@ -980,6 +1035,7 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
     },
     topEmotes: absolutizeEmotes(raw?.topEmotes),
     topMovers: absolutizeMovers(raw?.topMovers),
+    risingChannels: normalizeRisingChannels(raw?.risingChannels),
     liveChannels: absolutizeLiveChannels(raw?.liveChannels),
     moments: absolutizeMoments(raw?.moments),
     livePulseMoments: normalizeLivePulseMoments(raw?.livePulseMoments),
@@ -1022,6 +1078,7 @@ function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLi
   return raw.map((moment) => ({
     ...moment,
     topEmotes: absolutizeEmotes(moment.topEmotes),
+    comparison: normalizeHubLiveMomentComparison(moment.comparison) ?? undefined,
   }))
 }
 

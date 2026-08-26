@@ -68,6 +68,28 @@ describe('HubActivityChart interaction contract', () => {
     expect(container.querySelectorAll('.hx-chart-header__readout')).toHaveLength(1)
   })
 
+  it('renders the annotation slot after range controls and before the plot', () => {
+    const { container } = render(
+      <HubActivityChart
+        points={points}
+        windowMinutes={2}
+        channelCount={1}
+        rangeControl={{
+          active: '24h',
+          options: [{ key: '24h', label: '24h' }],
+          onSelect: vi.fn(),
+        }}
+        annotationLane={<div data-testid="annotation-lane">Live Wire</div>}
+      />,
+    )
+    const rangeControls = container.querySelector('.hx-chart-header__window')!
+    const lane = container.querySelector('[data-testid="annotation-lane"]')!
+    const plot = container.querySelector('.hx-plot-stack')!
+
+    expect(Boolean(rangeControls.compareDocumentPosition(lane) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(Boolean(lane.compareDocumentPosition(plot) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+  })
+
   it('dims unfocused series on legend click without restoring cue nodes', () => {
     const { container } = render(
       <HubActivityChart points={points} windowMinutes={2} channelCount={1} />,
@@ -252,6 +274,47 @@ describe('HubActivityChart interaction contract', () => {
     fireEvent.click(reset)
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
     expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-end')).toBe('5')
+  })
+
+  it('keeps chart keyboard focus inside the navigator viewport after zoom', () => {
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const onBucketSelect = vi.fn()
+    const { container } = render(
+      <HubActivityChart
+        points={navigatorPoints}
+        windowMinutes={6}
+        channelCount={1}
+        onBucketSelect={onBucketSelect}
+      />,
+    )
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const start = navigator.querySelector('[role="slider"][aria-label="Chart view start"]') as HTMLButtonElement
+    const chart = container.querySelector('.hx-chart2') as HTMLDivElement
+
+    // Seed the chart's keyboard cursor at an index that will become invisible.
+    fireEvent.keyDown(chart, { key: 'Home' })
+    fireEvent.keyDown(start, { key: 'ArrowRight' })
+    fireEvent.keyDown(start, { key: 'ArrowRight' })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+
+    fireEvent.keyDown(chart, { key: 'Home' })
+    fireEvent.keyDown(chart, { key: 'Enter' })
+    expect(onBucketSelect).toHaveBeenLastCalledWith(navigatorPoints[2].t)
+
+    fireEvent.keyDown(chart, { key: 'ArrowLeft' })
+    fireEvent.keyDown(chart, { key: 'Enter' })
+    expect(onBucketSelect).toHaveBeenLastCalledWith(navigatorPoints[2].t)
+
+    fireEvent.keyDown(chart, { key: 'End' })
+    fireEvent.keyDown(chart, { key: 'ArrowRight' })
+    fireEvent.keyDown(chart, { key: 'Enter' })
+    expect(onBucketSelect).toHaveBeenLastCalledWith(navigatorPoints[5].t)
+    expect(onBucketSelect).not.toHaveBeenCalledWith(navigatorPoints[0].t)
+    expect(onBucketSelect).not.toHaveBeenCalledWith(navigatorPoints[1].t)
   })
 
   it('brushes from full range, pans the window, resizes handles, and restores on pointer cancellation', () => {

@@ -2,6 +2,7 @@ import { buildAnalyticsHref } from './analyticsLinks'
 import { apiClient } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import type { HubFeaturedCoverageRow, HubFeaturedSession, PublicHub } from './publicHub'
+import type { HubLiveMomentComparison } from './channelScreenerContract'
 import { formatStreamOffset } from './streamcloneAnalytics'
 import { PORTAL_MINUTES_TIMEOUT_MS } from './timelineDownsample'
 
@@ -33,6 +34,7 @@ export interface FigmaMomentRow {
   category?: string
   streamStartedAt?: number
   activityTag?: string
+  comparison?: HubLiveMomentComparison
 }
 
 export interface FigmaChartPoint {
@@ -214,6 +216,7 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     category: moment.category,
     streamStartedAt: moment.streamStartedAt,
     activityTag: moment.activityTag,
+    comparison: moment.comparison,
     href:
       login && streamId
         ? buildAnalyticsHref({ login, streamId, offsetSeconds: moment.offsetSeconds })

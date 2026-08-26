@@ -7,6 +7,7 @@ import {
   chartActivityPoints,
   dropTrailingOpenBucket,
   fillActivityPoints,
+  formatActivityCoveragePercent,
   hasMeasuredActivitySignal,
   hasProviderSample,
   isOpenActivityBucket,
@@ -19,6 +20,21 @@ import {
   hubActivityEmoteCount,
 } from '../src/lib/hubActivitySummary'
 import type { HubActivityPoint } from '../src/lib/publicHub'
+
+describe('formatActivityCoveragePercent', () => {
+  it.each([
+    [239, 240, '99.6%'],
+    [29, 30, '96.7%'],
+    [0, 30, '0%'],
+    [240, 240, '100%'],
+  ])('formats %i/%i as %s without overstating incomplete evidence', (measured, expected, label) => {
+    expect(formatActivityCoveragePercent(measured, expected)).toBe(label)
+  })
+
+  it('caps an incomplete ratio that would otherwise round to 100%', () => {
+    expect(formatActivityCoveragePercent(9_999, 10_000)).toBe('99.9%')
+  })
+})
 
 describe('isOpenActivityBucket / dropTrailingOpenBucket', () => {
   const bucketMs = 6 * 60_000

@@ -363,7 +363,9 @@ test.describe('hub fallback contract (mocked stale response)', () => {
     await expect(page.locator('[data-hub-served-window-minutes="30"]')).toBeVisible()
     await expect(page.locator('[data-hub-activity-repaired="true"]')).toBeVisible()
     await expect(page.getByTestId('hub-activity-served-window')).toContainText(/1 day requested · 30 minutes available/)
-    await expect(page.locator('.hx-chart-status')).toContainText(/no sampled bucket is coverage-qualified; values are points only/i)
+    await expect(page.locator('.hx-chart-status')).toContainText(
+      /no sampled bucket is coverage-qualified; adjacent samples use a dashed, gap-safe three-bucket median trend/i,
+    )
     await expect(page.locator('.hx-provider-chips')).toHaveCount(0)
     await expect(page.locator('.hx-provider-lanes .hx-provider-lane')).toHaveCount(4)
     await expect(page.locator('.hx-chart2')).toBeVisible()

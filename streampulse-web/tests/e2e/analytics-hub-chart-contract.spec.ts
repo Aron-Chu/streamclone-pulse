@@ -93,7 +93,7 @@ test('chart navigator zooms locally, stays keyboard accessible, and leaves provi
   await page.keyboard.down('Shift')
   await page.mouse.wheel(0, 120)
   await page.keyboard.up('Shift')
-  expect(Number(await start.getAttribute('aria-valuenow'))).toBeGreaterThan(wheelStart)
+  await expect.poll(async () => Number(await start.getAttribute('aria-valuenow'))).toBeGreaterThan(wheelStart)
   await navigator.getByRole('button', { name: 'Reset chart view to the full requested range' }).click()
   await expect(start).toHaveAttribute('aria-valuenow', '0')
 
@@ -156,34 +156,39 @@ test('chart, navigator, provider lanes, and Live Wire remain usable at mobile wi
   await expect(page.locator('.hx-provider-lane')).toHaveCount(4)
   await expect(page.locator('.hx-chart-header [data-provider-toggle], .hx-chart-header .hx-provider-chips')).toHaveCount(0)
 
-  const liveWire = page.getByRole('region', { name: 'Live Wire' })
+  const liveWire = page.getByRole('region', { name: 'Live Wire', exact: true })
   await expect(liveWire).toBeVisible()
-  await liveWire.getByRole('button', { name: 'Inspect this minute' }).first().click()
+  await liveWire.locator('.hub-live-wire__chip').first().click()
   await expect(chart).toHaveAttribute('data-selected', 'true')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   expect(runtimeErrors).toEqual([])
 })
 
 test('Live Wire explains the detected event and keeps chat plus emote from the same channel', async ({ page }) => {
-  await installHubUxMock(page)
+  await installHubUxMock(page, { truthV1: true })
   await page.goto('/analytics')
 
-  const liveWire = page.getByRole('region', { name: 'Live Wire' })
+  const liveWire = page.getByRole('region', { name: 'Live Wire', exact: true })
   await expect(liveWire).toBeVisible()
-  const xqc = liveWire.locator('article').filter({ hasText: 'xQc' }).first()
-  await expect(xqc).toContainText('Twitch emote spike')
-  await expect(xqc).toContainText('393/m')
-  await expect(xqc).toContainText('133/m')
-  await expect(xqc).toContainText('IRC measured')
-  await expect(xqc.getByRole('button', { name: 'Inspect this minute' })).toBeVisible()
+  const xqc = liveWire.locator('.hub-live-wire__chip').filter({ hasText: 'xQc' }).first()
+  await expect(xqc).toContainText('Emote spike')
+  await expect(xqc).toContainText('Emotes reached 133/min')
+  await expect(xqc).toContainText("this stream's earlier average")
+  await expect(xqc).toContainText('60/63 earlier minutes')
+
+  await xqc.click()
+  const inspector = page.getByRole('complementary', { name: 'Moment Inspector' })
+  await expect(inspector).toContainText('Twitch emote spike')
+  await expect(inspector.locator('.pulse-moments__inspector-stat').filter({ hasText: 'Emotes / min' })).toContainText('133')
+  await expect(inspector.locator('.pulse-moments__inspector-stat').filter({ hasText: 'Chat / min' })).toContainText('393')
 })
 
 test('Live Wire inspection selects the matching chart bucket and Escape clears it', async ({ page }) => {
   await installHubUxMock(page)
   await page.goto('/analytics')
 
-  const liveWire = page.getByRole('region', { name: 'Live Wire' })
-  await liveWire.getByRole('button', { name: 'Inspect this minute' }).first().click()
+  const liveWire = page.getByRole('region', { name: 'Live Wire', exact: true })
+  await liveWire.locator('.hub-live-wire__chip').first().click()
   const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
   await expect(chart).toHaveAttribute('data-selected', 'true')
   await chart.focus()
@@ -195,6 +200,28 @@ test('reduced motion leaves Live Wire without entrance animation class churn', a
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await installHubUxMock(page)
   await page.goto('/analytics')
-  await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
-  await expect(page.locator('.hub-live-wire__rail-new')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Live Wire', exact: true })).toBeVisible()
+  await expect(page.locator('.hub-live-wire__chip-new')).toHaveCount(0)
+})
+
+test('Moment Inspector reports clipboard denial instead of failing silently', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('clipboard denied')) },
+    })
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: () => false,
+    })
+  })
+  await installHubUxMock(page)
+  await page.goto('/analytics')
+
+  const liveWire = page.getByRole('region', { name: 'Live Wire', exact: true })
+  await liveWire.locator('.hub-live-wire__chip').first().click()
+  const inspector = page.getByRole('complementary', { name: 'Moment Inspector' })
+  await inspector.getByRole('button', { name: 'Copy link' }).click()
+  await expect(inspector.getByRole('button', { name: 'Copy failed' })).toBeVisible()
+  await expect(inspector.getByRole('status')).toContainText('Could not copy the link')
 })

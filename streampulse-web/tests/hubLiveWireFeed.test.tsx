@@ -164,9 +164,18 @@ function renderFeed(
     loadSource?: 'full' | 'stats-fallback' | 'cache'
     hubEndpointOk?: boolean
     pollSequence?: number
+    selectedMomentKey?: string | null
+    onSelectMoment?: (moment: import('../src/lib/figmaSessionAnalytics').FigmaMomentRow) => void
   } = {},
 ) {
-  const { reducedMotion = false, loadSource = 'full', hubEndpointOk = true, pollSequence = 0 } = opts
+  const {
+    reducedMotion = false,
+    loadSource = 'full',
+    hubEndpointOk = true,
+    pollSequence = 0,
+    selectedMomentKey,
+    onSelectMoment,
+  } = opts
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: reducedMotion && query.includes('prefers-reduced-motion'),
     media: query,
@@ -188,14 +197,16 @@ function renderFeed(
           loadSource={loadSource}
           hubEndpointOk={hubEndpointOk}
           pollSequence={pollSequence}
-          layout="rail"
+          layout="lane"
+          selectedMomentKey={selectedMomentKey}
+          onSelectMoment={onSelectMoment}
         />
       </AnalyticsThemeProvider>
     </MemoryRouter>,
   )
 }
 
-describe('HubLiveWireFeed (right rail)', () => {
+describe('HubLiveWireFeed (chart annotation lane)', () => {
   beforeEach(() => {
     gsapFrom.mockClear()
   })
@@ -204,28 +215,60 @@ describe('HubLiveWireFeed (right rail)', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders rail cards as articles with sibling action links (no link-in-link)', () => {
+  it('renders compact selectable chips without a duplicate card rail', () => {
     const feed = networkFeed()
-    renderFeed(feed)
-    const articles = document.querySelectorAll('article.hub-live-wire__rail-card')
-    expect(articles.length).toBeGreaterThan(0)
-    expect(document.querySelector('ul[role="list"]')).toBeTruthy()
-    expect(document.querySelectorAll('li[role="listitem"]').length).toBe(articles.length)
-
-    // First card is xQc (newest) with category + actions.
-    const first = articles[0] as HTMLElement
-    expect(first.textContent).toContain('xQc')
-    expect(first.textContent).toContain('Minecraft')
-    expect(first.textContent).toContain('Twitch emote spike')
-    // No outer Link wrapping the article.
-    expect(first.closest('a')).toBeNull()
-    // Sibling action links live inside the card.
-    const actionLinks = [...first.querySelectorAll('a')]
-    expect(actionLinks.length).toBeGreaterThan(0)
-    expect(actionLinks.some((a) => (a.textContent ?? '').includes('View moment'))).toBe(true)
+    const onSelectMoment = vi.fn()
+    renderFeed(feed, sampleHub(), { onSelectMoment })
+    expect(document.querySelector('.hub-live-wire--lane')).toBeTruthy()
+    expect(document.querySelector('.hub-live-wire__rail-card')).toBeNull()
+    const chip = screen.getAllByRole('button').find((button) => button.classList.contains('hub-live-wire__chip'))
+    expect(chip?.textContent).toContain('xQc')
+    expect(chip?.textContent).toContain('Emote spike')
+    fireEvent.click(chip!)
+    expect(onSelectMoment).toHaveBeenCalledWith(expect.objectContaining({ login: 'xqc' }))
   })
 
-  it('keeps older-than-30m rows in the Recent detections disclosure (no 30m omission)', () => {
+  it('explains an event against earlier stream evidence instead of visible-card normalization', () => {
+    const hub = sampleHub()
+    const metric = {
+      state: 'ready' as const,
+      currentPerMin: 80,
+      baselinePerMin: 40,
+      absoluteDeltaPerMin: 40,
+      changePct: 100,
+      multiplier: 2,
+      currentMeasuredMinutes: 1,
+      currentExpectedMinutes: 1,
+      baselineMeasuredMinutes: 20,
+      baselineExpectedMinutes: 20,
+      baselineCoveragePct: 100,
+    }
+    hub.livePulseMoments = [makeMoment({
+      login: 'xqc',
+      label: 'Emote surge',
+      comparison: {
+        baselineKind: 'current_stream_measured_average_before_event',
+        eventAt: Date.now() - 60_000,
+        baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
+        chat: metric,
+        emotes: metric,
+        evidence: {
+          ircBound: true,
+          eventRollupAvailable: true,
+          baselineMeasuredMinutes: 20,
+          baselineExpectedMinutes: 20,
+          baselineCoveragePct: 100,
+        },
+      },
+    })]
+    renderFeed(resolveLivePulseMoments(hub), hub)
+    expect(screen.getByText(/Emotes reached 80\/min · 2.0× this stream's earlier average/)).toBeTruthy()
+    expect(screen.getByText('Breakout strength 80/100')).toBeTruthy()
+    expect(document.querySelector('.hub-live-wire__rail-comparisons')).toBeNull()
+    expect(document.querySelector('.hub-live-wire__bar-fill')).toBeNull()
+  })
+
+  it('excludes moments older than 30m from the annotation lane', () => {
     const now = Date.now()
     const hub = sampleHub()
     hub.livePulseMoments = [
@@ -248,18 +291,12 @@ describe('HubLiveWireFeed (right rail)', () => {
 
     renderFeed(feed, hub, { pollSequence: 1 })
 
-    // Older rows are retained but hidden behind the collapsed disclosure.
+    expect(screen.getByText('xQc')).toBeTruthy()
     expect(screen.queryByText('sodapoppin')).toBeNull()
-    const disclosure = screen.getByRole('button', { name: /recent detections/i })
-    expect(disclosure.getAttribute('aria-expanded')).toBe('false')
-    expect(disclosure.textContent).toContain('1')
-
-    fireEvent.click(disclosure)
-    expect(disclosure.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByText('sodapoppin')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /recent detections/i })).toBeNull()
   })
 
-  it('badges NEW only when network + full + hubEndpointOk, with right-entry motion', async () => {
+  it('badges NEW only when network + full + hubEndpointOk, with left-entry motion', async () => {
     const now = Date.now()
     const hub = sampleHub()
     // Baseline poll (pollSequence 0) seeds the seen-set — no NEW burst.
@@ -284,7 +321,7 @@ describe('HubLiveWireFeed (right rail)', () => {
             loadSource="full"
             hubEndpointOk={true}
             pollSequence={1}
-            layout="rail"
+            layout="lane"
           />
         </AnalyticsThemeProvider>
       </MemoryRouter>,
@@ -293,10 +330,10 @@ describe('HubLiveWireFeed (right rail)', () => {
     await vi.waitFor(() => {
       expect(screen.getByText('NEW')).toBeTruthy()
     })
-    // Right-rail entry motion starts just off the right edge.
+    // New annotations enter from the lane's left edge.
     expect(gsapFrom).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ x: 24, opacity: 0 }),
+      expect.objectContaining({ x: -24, opacity: 0 }),
     )
     expect(screen.getByText('Jynxzi')).toBeTruthy()
   })
@@ -341,7 +378,7 @@ describe('HubLiveWireFeed (right rail)', () => {
             loadSource="full"
             hubEndpointOk={true}
             pollSequence={1}
-            layout="rail"
+            layout="lane"
           />
         </AnalyticsThemeProvider>
       </MemoryRouter>,
@@ -373,7 +410,7 @@ describe('HubLiveWireFeed (right rail)', () => {
     expect(screen.getByText('Jynxzi')).toBeTruthy()
   })
 
-  it('omits future timestamps and labels the two time sections explicitly', () => {
+  it('omits future and stale timestamps from the one live lane', () => {
     const now = Date.now()
     const hub = sampleHub()
     hub.livePulseMoments = [
@@ -384,9 +421,27 @@ describe('HubLiveWireFeed (right rail)', () => {
     const feed = resolveLivePulseMoments(hub)
     renderFeed(feed, hub)
 
-    expect(screen.getByText(/Live now/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Recent detections/i }).textContent).toContain('earlier than 30m')
+    expect(screen.getByText('xQc')).toBeTruthy()
+    expect(screen.queryByText('sodapoppin')).toBeNull()
     expect(screen.queryByText('Jynxzi')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Recent detections/i })).toBeNull()
+  })
+
+  it('uses the frozen quiet message when every valid detection is older than 30m', () => {
+    const hub = sampleHub()
+    hub.livePulseMoments = [
+      makeMoment({
+        login: 'sodapoppin',
+        displayName: 'sodapoppin',
+        streamId: 's2',
+        at: Date.now() - 45 * 60_000,
+      }),
+    ]
+
+    renderFeed(resolveLivePulseMoments(hub), hub)
+
+    expect(screen.queryByText('sodapoppin')).toBeNull()
+    expect(screen.getByText('No network breakouts in the last 30m')).toBeTruthy()
   })
 
   it('shows empty reason and honesty banner when feed has no moments', () => {

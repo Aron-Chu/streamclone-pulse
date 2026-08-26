@@ -42,7 +42,6 @@ import {
   ChartSourceBanner,
   FigmaGlobalActivityPanel,
 } from "../../ui/components/analytics/FigmaGlobalActivityPanel";
-import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
 import { ChromeInstallCta } from "../../ui/components/ChromeInstallCta";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
@@ -56,6 +55,7 @@ import { compact } from "../../ui/components/analytics/hubFormat";
 import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvider";
 import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
 import "../../ui/components/analytics/figma-analytics.css";
+import "../../ui/components/analytics/analytics-truth.css";
 
 const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
   { login: "xqc", displayName: "xQc", category: "Just Chatting" },
@@ -410,7 +410,7 @@ function AnalyticsLandingContent() {
       { id: "section-overview", label: labels.overview },
       { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
       { id: "section-hottest", label: "Hottest live" },
-      { id: "section-live-wire", label: "Pulse Wire" },
+      { id: "section-live-wire", label: "Live Wire" },
       { id: "section-global-activity", label: "Global Activity" },
       { id: "section-pulse-moments", label: labels.pulseMoments },
       { id: "section-emote-signal", label: labels.emoteSignal },
@@ -490,17 +490,6 @@ function AnalyticsLandingContent() {
           : backendSourceLabel(backendSource)
       }
       sidebarSections={sidebarSections}
-      rightRail={
-        <HubLiveWireFeed
-          {...liveWireFeedProps}
-          layout="rail"
-          // A bounded live-pool fallback has no historical chart bucket to
-          // inspect. Do not render a button that would silently do nothing;
-          // the Live Wire card still links to the channel/moment when that
-          // route is available.
-          onSelectMoment={chartBucketSelectEnabled ? handleSelectMoment : undefined}
-        />
-      }
     >
       <main
         className="figma-analytics__main"
@@ -638,6 +627,12 @@ function AnalyticsLandingContent() {
               accentBucketT={accentBucketT}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
+              annotationFeed={liveWireFeed}
+              annotationLoading={liveWireFeedProps.loading}
+              annotationHubEndpointOk={hub.hubEndpointOk}
+              annotationLoadSource={hub.loadSource ?? undefined}
+              annotationActivityWindow={activityWindow}
+              annotationPollSequence={hub.pollSequence}
             />
             <PulseMomentsLivePanel
               hub={data}
@@ -669,6 +664,7 @@ function AnalyticsLandingContent() {
             intel={data.emoteIntel}
             topEmotes={data.topEmotes}
             topMovers={topMovers}
+            risingChannels={data.risingChannels}
             loading={loadingInitial}
             corpusPipeline={data.corpusPipeline}
             poolSize={data.poolSize}

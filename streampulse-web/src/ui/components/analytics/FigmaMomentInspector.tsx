@@ -1,7 +1,5 @@
 import { Fragment, useId, type ReactNode } from 'react'
-import { BarChart3, Info } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { analyticsActionLabel } from '../../../lib/analyticsLinks'
+import { Info } from 'lucide-react'
 import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import type { HubEmote, HubLiveChannel } from '../../../lib/publicHub'
 import { buildVodTimestampUrl } from '../../../lib/figmaSessionAnalytics'
@@ -21,6 +19,7 @@ import { compact } from './hubFormat'
 import { formatChatRate, formatMomentViewersLabel, formatReactionScore, REACTION_SCORE_TOOLTIP } from '../../../lib/momentMetricLabels'
 import type { MomentChannelContext } from './MostReactedMinutesTable'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
+import { MomentActionRow } from './AnalyticsTruthPrimitives'
 
 export interface FigmaMomentInspectorProps {
   moment?: FigmaMomentRow | null
@@ -186,8 +185,12 @@ export function FigmaMomentInspector({
 
   const resolvedVodId = moment.vodId ?? vodId
   const vodHref = resolvedVodId ? buildVodTimestampUrl(resolvedVodId, moment.offsetSeconds) : undefined
-  const vodPartial = (moment.vodState ?? '').toLowerCase() === 'partial'
   const openMomentHref = momentHref ?? moment.href
+  const analyticsHref = sessionHref ?? openMomentHref
+  const liveHref = channelLive !== false && moment.login
+    ? `https://www.twitch.tv/${encodeURIComponent(moment.login)}`
+    : undefined
+  const watchHref = vodHref ?? liveHref
   const vodStateDisplay = vodStateLabel(moment.vodState, channelLive)
   const timeLabel = momentWallClockLabel(moment, liveChannels)
   const category = moment.category?.trim()
@@ -237,28 +240,13 @@ export function FigmaMomentInspector({
         </dl>
       ) : null}
 
-      <div className={`figma-inspector__actions${isLive ? ' pulse-moments__inspector-actions--compact' : ''}`}>
-        {openMomentHref ? (
-          <Link className="hub-openbtn" to={openMomentHref}>
-            View moment
-          </Link>
-        ) : null}
-        {vodHref ? (
-          <a className="hub-openbtn hub-openbtn--ghost" href={vodHref} target="_blank" rel="noreferrer">
-            {vodPartial ? 'Jump to partial VOD' : 'Jump to VOD'}
-          </a>
-        ) : (
-          <span className="hub-openbtn hub-openbtn--disabled" aria-disabled="true">
-            {channelLive === false ? 'No VOD indexed yet' : 'Live tracking only'}
-          </span>
-        )}
-        {sessionHref ? (
-          <Link className="hub-openbtn hub-openbtn--accent" to={sessionHref}>
-            <BarChart3 size={13} strokeWidth={2.25} aria-hidden="true" />
-            {analyticsActionLabel('recent-session')}
-          </Link>
-        ) : null}
-      </div>
+      <MomentActionRow
+        analyticsHref={analyticsHref}
+        watchHref={watchHref}
+        watchLabel={vodHref ? 'Watch VOD' : 'Watch live'}
+        copyHref={analyticsHref}
+        compact={isLive}
+      />
     </aside>
   )
 }
