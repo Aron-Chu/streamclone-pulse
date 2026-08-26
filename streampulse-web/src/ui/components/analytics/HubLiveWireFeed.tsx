@@ -342,7 +342,7 @@ export function HubLiveWireFeed({
             {moment.viewerDelta ? <span>{moment.viewerDelta}</span> : null}
             {moment.comparison ? (
               <span>
-                Event rollup {moment.comparison.evidence.rollupAvailable ? 'available' : 'unavailable'} · baseline {moment.comparison.baselineWindow.measuredMinutes}/{moment.comparison.baselineWindow.expectedMinutes} earlier min
+                Event rollup {moment.comparison.evidence.eventRollupAvailable ? 'available' : 'unavailable'} · baseline {moment.comparison.baselineWindow.measuredMinutes}/{moment.comparison.baselineWindow.expectedMinutes} earlier min
                 {moment.comparison.baselineWindow.coveragePct != null
                   ? ` · ${Math.round(moment.comparison.baselineWindow.coveragePct)}% coverage`
                   : ''}

@@ -397,9 +397,10 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
               emotes: mockMetricComparison('ready', 133, 52, 1, 1, 60, 63),
               evidence: {
                 ircBound: true,
-                chatObservedLast5m: true,
-                rollupAvailable: true,
-                metadataAgeSeconds: 24,
+                eventRollupAvailable: true,
+                baselineMeasuredMinutes: 60,
+                baselineExpectedMinutes: 63,
+                baselineCoveragePct: 95.24,
               },
             } : undefined,
             topEmotes: [

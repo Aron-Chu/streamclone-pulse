@@ -21,6 +21,7 @@ import {
   MetricComparison,
   MetricStateBadge,
 } from './AnalyticsTruthPrimitives'
+import { activateRovingTab } from './rovingTabs'
 
 export interface LiveChannelsMatrixProps {
   channels: HubLiveChannel[]
@@ -287,9 +288,9 @@ export function LiveChannelsMatrix({
             {updatedAgo ? ` · as of ${updatedAgo}` : ''}
           </p>
         </div>
-        <div className="live-channels-matrix__tabs" role="tablist" aria-label="Filter by coverage state">
+        <div className="live-channels-matrix__tabs" role="group" aria-label="Filter by coverage state">
           {tabs.map((tab) => (
-            <button key={tab.key} type="button" role="tab" aria-selected={filter === tab.key} className={`live-channels-matrix__tab${filter === tab.key ? ' is-active' : ''}`} onClick={() => setFilter(tab.key)}>
+            <button key={tab.key} type="button" aria-pressed={filter === tab.key} className={`live-channels-matrix__tab${filter === tab.key ? ' is-active' : ''}`} onClick={() => setFilter(tab.key)}>
               {tab.label} <span className="live-channels-matrix__tab-count">{counts[tab.key]}</span>
             </button>
           ))}
@@ -300,12 +301,14 @@ export function LiveChannelsMatrix({
         {SCREENER_VIEWS.map((key) => {
           const gated = (key === 'momentum' && !backendActivityAvailable) || (key === 'anomalies' && !backendAnomaliesAvailable)
           return (
-            <button key={key} type="button" role="tab" aria-selected={view === key} className={`live-channels-matrix__view-tab${view === key ? ' is-active' : ''}`} onClick={() => setView(key)} title={gated ? 'Backend evidence is not available in this payload' : undefined}>
+            <button key={key} id={`channel-screener-view-${key}`} aria-controls="channel-screener-results" type="button" role="tab" aria-selected={view === key} tabIndex={view === key ? 0 : -1} className={`live-channels-matrix__view-tab${view === key ? ' is-active' : ''}`} onClick={() => setView(key)} onKeyDown={activateRovingTab} title={gated ? 'Backend evidence is not available in this payload' : undefined}>
               {screenerViewLabel(key)}{gated ? <span className="live-channels-matrix__view-hint"> · unavailable</span> : null}
             </button>
           )
         })}
       </div>
+
+      <div id="channel-screener-results" role="tabpanel" aria-labelledby={`channel-screener-view-${view}`} className="live-channels-matrix__tabpanel">
 
       {view === 'momentum' && !backendActivityAvailable ? (
         <p className="live-channels-matrix__gated" role="status">Activity change needs the backend Screener v1 comparison. Current rates remain in Overview; StreamPulse will not estimate change from browser polling.</p>
@@ -360,6 +363,7 @@ export function LiveChannelsMatrix({
           ) : null}
         </>
       )}
+      </div>
     </section>
   )
 }

@@ -249,7 +249,13 @@ describe('HubLiveWireFeed (right rail)', () => {
         baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
         chat: metric,
         emotes: metric,
-        evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true, metadataAgeSeconds: 12 },
+        evidence: {
+          ircBound: true,
+          eventRollupAvailable: true,
+          baselineMeasuredMinutes: 20,
+          baselineExpectedMinutes: 20,
+          baselineCoveragePct: 100,
+        },
       },
     })]
     renderFeed(resolveLivePulseMoments(hub), hub)

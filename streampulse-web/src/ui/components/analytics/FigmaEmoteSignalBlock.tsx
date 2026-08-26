@@ -19,6 +19,7 @@ import { compact, displayName, formatLeadingEmoteShare } from './hubFormat'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
 import { MarketPanelFrame, PairedRateBars } from './AnalyticsTruthPrimitives'
 import { EMOTE_MARKET_PREVIEW_FIXTURE } from '../../../dev/fixtures/emoteMarketPreview'
+import { activateRovingTab } from './rovingTabs'
 
 export interface FigmaEmoteSignalBlockProps {
   intel: HubEmoteIntel
@@ -210,11 +211,15 @@ export function FigmaEmoteSignalBlock({
           return (
             <button
               key={tab.key}
+              id={`emote-market-tab-${tab.key}`}
+              aria-controls="emote-market-panel"
               type="button"
               role="tab"
               aria-selected={view === tab.key}
+              tabIndex={view === tab.key ? 0 : -1}
               className={`emote-market__view-tab${view === tab.key ? ' is-active' : ''}`}
               onClick={() => setView(tab.key)}
+              onKeyDown={activateRovingTab}
             >
               {tab.label}
             </button>
@@ -239,6 +244,8 @@ export function FigmaEmoteSignalBlock({
           </div>
         ))}
       </div>
+
+      <div id="emote-market-panel" role="tabpanel" aria-labelledby={`emote-market-tab-${view}`} className="emote-market__tabpanel">
 
       {view === 'leaders' ? (
         <div className="figma-economy-grid figma-economy-grid--padded">
@@ -450,6 +457,7 @@ export function FigmaEmoteSignalBlock({
           </table>
         </div>
       ) : null}
+      </div>
     </section>
   )
 }

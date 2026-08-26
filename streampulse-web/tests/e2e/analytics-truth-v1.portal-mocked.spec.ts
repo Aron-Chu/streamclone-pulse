@@ -43,13 +43,18 @@ test.describe('analytics truth v1 end-to-end', () => {
     const breadthTab = market.getByRole('tab', { name: 'Breadth', exact: true })
     if ((await breadthTab.count()) > 0) {
       // Vite development/test exposes the deterministic fixture for design QA.
-      await breadthTab.click()
+      await breadthTab.focus()
+      await breadthTab.press('Enter')
       await expect(market.getByRole('columnheader', { name: 'Channel share' })).toBeVisible()
-      await market.getByRole('tab', { name: 'Concentration', exact: true }).click()
+      await breadthTab.press('ArrowRight')
+      const concentrationTab = market.getByRole('tab', { name: 'Concentration', exact: true })
+      await expect(concentrationTab).toHaveAttribute('aria-selected', 'true')
       await expect(market.getByText('Reaction concentration', { exact: true })).toBeVisible()
-      await market.getByRole('tab', { name: 'Rotation', exact: true }).click()
+      await concentrationTab.press('ArrowRight')
+      const rotationTab = market.getByRole('tab', { name: 'Rotation', exact: true })
+      await expect(rotationTab).toHaveAttribute('aria-selected', 'true')
       await expect(market.getByRole('columnheader', { name: 'Rank' })).toBeVisible()
-      await market.getByRole('tab', { name: 'Provider regime', exact: true }).click()
+      await rotationTab.press('End')
       await expect(market.getByRole('heading', { name: 'Provider regime', exact: true })).toBeVisible()
     } else {
       // Production builds must ignore ?marketPreview=fixture and hide unavailable panels.
@@ -75,6 +80,11 @@ test.describe('analytics truth v1 end-to-end', () => {
     await activityTab.press('Enter')
     await expect(activityTab).toHaveAttribute('aria-selected', 'true')
     await expect(matrix.locator('.paired-rate-bars').first()).toBeVisible()
+    await activityTab.press('ArrowRight')
+    const evidenceTab = matrix.getByRole('tab', { name: 'Coverage evidence', exact: true })
+    await expect(evidenceTab).toHaveAttribute('aria-selected', 'true')
+    await evidenceTab.press('ArrowLeft')
+    await expect(activityTab).toHaveAttribute('aria-selected', 'true')
 
     const noOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
     expect(noOverflow).toBe(true)

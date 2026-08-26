@@ -65,20 +65,46 @@ describe('public analytics truth contract', () => {
           emotes: metric,
           evidence: {
             ircBound: true,
-            chatObservedLast5m: true,
-            rollupAvailable: true,
-            metadataAgeSeconds: 14,
+            eventRollupAvailable: true,
+            baselineMeasuredMinutes: 20,
+            baselineExpectedMinutes: 20,
+            baselineCoveragePct: 100,
           },
         },
       }],
     })
     expect(hub.livePulseMoments[0].comparison?.baselineKind).toBe('current_stream_measured_average_before_event')
-    expect(hub.livePulseMoments[0].comparison?.evidence.rollupAvailable).toBe(true)
+    expect(hub.livePulseMoments[0].comparison?.evidence.eventRollupAvailable).toBe(true)
     expect(hub.livePulseMoments[0].comparison?.baselineWindow.measuredMinutes).toBe(20)
     expect(hub.livePulseMoments[0].comparison?.baselineWindow.coveragePct).toBe(100)
   })
 
-  it('keeps a warming event comparison when its zero-length baseline has no percentage', () => {
+  it('rejects Live Wire evidence that disagrees with the backend baseline window', () => {
+    const hub = normalizePublicHub({
+      livePulseMoments: [{
+        offsetSeconds: 60,
+        score: 80,
+        label: 'Chat surge',
+        comparison: {
+          baselineKind: 'current_stream_measured_average_before_event',
+          eventAt: 1_800_000,
+          baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
+          chat: metric,
+          emotes: metric,
+          evidence: {
+            ircBound: true,
+            eventRollupAvailable: true,
+            baselineMeasuredMinutes: 19,
+            baselineExpectedMinutes: 20,
+            baselineCoveragePct: 95,
+          },
+        },
+      }],
+    })
+    expect(hub.livePulseMoments[0].comparison).toBeUndefined()
+  })
+
+  it('keeps a warming event comparison with explicit zero-length baseline evidence', () => {
     const warmingMetric = {
       ...metric,
       state: 'warming' as const,
@@ -99,14 +125,20 @@ describe('public analytics truth contract', () => {
         comparison: {
           baselineKind: 'current_stream_measured_average_before_event',
           eventAt: 1_800_000,
-          baselineWindow: { start: 1_800_000, end: 1_800_000, expectedMinutes: 0, measuredMinutes: 0 },
+          baselineWindow: { start: 1_800_000, end: 1_800_000, expectedMinutes: 0, measuredMinutes: 0, coveragePct: 0 },
           chat: warmingMetric,
           emotes: warmingMetric,
-          evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true },
+          evidence: {
+            ircBound: true,
+            eventRollupAvailable: true,
+            baselineMeasuredMinutes: 0,
+            baselineExpectedMinutes: 0,
+            baselineCoveragePct: 0,
+          },
         },
       }],
     })
     expect(hub.livePulseMoments[0].comparison?.chat.state).toBe('warming')
-    expect(hub.livePulseMoments[0].comparison?.baselineWindow.coveragePct).toBeUndefined()
+    expect(hub.livePulseMoments[0].comparison?.baselineWindow.coveragePct).toBe(0)
   })
 })
