@@ -87,6 +87,24 @@ describe('public analytics truth contract', () => {
     expect(hub.risingChannels).toBeUndefined()
   })
 
+  it('rejects claimed ready rising rows whose evidence and measured coverage are contradictory', () => {
+    const hub = normalizePublicHub({
+      risingChannels: [{
+        login: 'unbound-channel',
+        viewers: 1000,
+        measuredAt: 1_800_000,
+        comparison: {
+          ...metric,
+          currentMeasuredMinutes: 4,
+          baselineMeasuredMinutes: 10,
+          baselineCoveragePct: 50,
+        },
+        evidence: { ircBound: false, chatObservedLast5m: false, rollupAvailable: false },
+      }],
+    })
+    expect(hub.risingChannels).toBeUndefined()
+  })
+
   it('accepts the exact raw backend Live Wire comparison wire shape', () => {
     const comparison = normalizeRawEventComparison(rawEventComparison())
     expect(comparison?.baselineKind).toBe('current_stream_measured_average_before_event')

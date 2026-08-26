@@ -335,6 +335,52 @@ function coherentMetric(
 }
 
 /**
+ * Validate a backend-ranked Rising Channels comparison without inventing the
+ * omitted window timestamps. Qualified rows still carry the exact measured and
+ * expected minute counts, so the same v1 thresholds and arithmetic can fail
+ * closed at the public wire boundary.
+ */
+export function qualifiedScreenerMetricEvidenceIsCoherent(
+  metric: ScreenerMetricComparison,
+  evidence: ScreenerEvidence,
+): boolean {
+  const currentWindow: ScreenerWindow = {
+    start: 0,
+    end: metric.currentExpectedMinutes * 60_000,
+    expectedMinutes: metric.currentExpectedMinutes,
+    measuredMinutes: metric.currentMeasuredMinutes,
+    coveragePct: roundMetric(metric.currentMeasuredMinutes / metric.currentExpectedMinutes * 100),
+  }
+  const baselineWindow: ScreenerWindow = {
+    start: 0,
+    end: metric.baselineExpectedMinutes * 60_000,
+    expectedMinutes: metric.baselineExpectedMinutes,
+    measuredMinutes: metric.baselineMeasuredMinutes,
+    coveragePct: metric.baselineCoveragePct,
+  }
+  if (
+    !evidence.ircBound || !evidence.rollupAvailable ||
+    metric.currentExpectedMinutes !== 5 || metric.currentMeasuredMinutes !== 5 ||
+    metric.baselineExpectedMinutes < 20 || metric.baselineMeasuredMinutes < 20 ||
+    metric.baselineCoveragePct < 80 ||
+    !coherentWindow(currentWindow, false) ||
+    !coherentWindow(baselineWindow, false) ||
+    !coherentMetric(metric, metric.state, currentWindow, baselineWindow)
+  ) return false
+
+  if (metric.state === 'new_activity') {
+    return (
+      metric.reason === 'baseline_zero' && metric.baselinePerMin === 0 &&
+      (metric.currentPerMin ?? 0) > 0 && metric.changePct == null && metric.multiplier == null
+    )
+  }
+  return (
+    metric.state === 'ready' && !metric.reason &&
+    !(metric.baselinePerMin === 0 && (metric.currentPerMin ?? 0) > 0)
+  )
+}
+
+/**
  * Reject internally contradictory v1 rows before the advanced views consume
  * them. This mirrors the backend qualification thresholds and prevents a
  * malformed payload from relabelling partial evidence as ready.

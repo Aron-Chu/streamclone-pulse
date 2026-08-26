@@ -7,6 +7,7 @@ import {
   normalizeHubLiveMomentComparison,
   normalizeScreenerEvidence,
   normalizeScreenerMetricComparison,
+  qualifiedScreenerMetricEvidenceIsCoherent,
   type HubLiveMomentComparison,
   type ScreenerEvidence,
   type ScreenerMetricComparison,
@@ -854,7 +855,8 @@ function normalizeRisingChannels(raw: HubRisingChannel[] | undefined): HubRising
     if (
       !login || !Number.isFinite(viewers) || viewers < 0 ||
       !Number.isFinite(measuredAt) || measuredAt < 0 || !comparison || !evidence ||
-      !qualified || (comparison.currentPerMin ?? 0) < 5 ||
+      !qualified || !qualifiedScreenerMetricEvidenceIsCoherent(comparison, evidence) ||
+      (comparison.currentPerMin ?? 0) < 5 ||
       (comparison.absoluteDeltaPerMin ?? 0) <= 0
     ) continue
     rows.push({
