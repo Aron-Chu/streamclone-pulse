@@ -15,7 +15,6 @@ import {
   capNewKeysPerPoll,
   classifyMomentWindow,
   dedupeMomentsByLogin,
-  normalizeRatePct,
   partitionMomentWindow,
 } from '../../../lib/liveWire'
 import { resolveMomentActions } from '../../../lib/momentActions'
@@ -27,6 +26,7 @@ import { displayName, compact } from './hubFormat'
 import { EmoteImg } from './EmoteImg'
 import { Avatar } from '../hub/primitives'
 import { isLifecycleMomentKind } from '../../../lib/poolWireReducer'
+import { MetricComparison } from './AnalyticsTruthPrimitives'
 
 const LIVE_WINDOW_MS = 30 * 60 * 1000
 const VISIBLE_CAP_LIVE = 10
@@ -88,9 +88,21 @@ function relativeTime(at: number | undefined, now: number): string {
   return `${Math.round(hr / 24)}d ago`
 }
 
-function reactionScoreLabel(score: number | undefined): string | null {
+function breakoutStrengthLabel(score: number | undefined): string | null {
   if (score == null || !Number.isFinite(score) || score <= 0) return null
-  return `Reaction score ${Math.round(Math.max(0, Math.min(100, score)))}/100`
+  return `Breakout strength ${Math.round(Math.max(0, Math.min(100, score)))}/100`
+}
+
+function eventComparisonFact(moment: FigmaMomentRow): string | null {
+  const comparison = moment.comparison
+  if (!comparison) return null
+  const emotes = comparison.emotes
+  if (emotes.state === 'new_activity') return `Emotes reached ${compact(emotes.currentPerMin ?? 0)}/min from a zero earlier baseline`
+  if (emotes.state === 'ready' && emotes.multiplier != null) return `Emotes reached ${compact(emotes.currentPerMin ?? 0)}/min · ${emotes.multiplier.toFixed(emotes.multiplier >= 10 ? 0 : 1)}× this stream's earlier average`
+  const chat = comparison.chat
+  if (chat.state === 'new_activity') return `Chat reached ${compact(chat.currentPerMin ?? 0)}/min from a zero earlier baseline`
+  if (chat.state === 'ready' && chat.changePct != null) return `Chat reached ${compact(chat.currentPerMin ?? 0)}/min · ${chat.changePct > 0 ? '+' : ''}${Math.round(chat.changePct)}% versus this stream's earlier average`
+  return null
 }
 
 export function HubLiveWireFeed({
@@ -155,18 +167,6 @@ export function HubLiveWireFeed({
       olderMoments: dedupeMomentsByLogin(sortDesc(older), VISIBLE_CAP_OLDER, DEDUPE_WINDOW_MS),
     }
   }, [candidates, now])
-
-  // Normalize bar dimensions across the combined retained set (live + older).
-  const { maxChatPerMin, maxEmotesPerMin } = useMemo(() => {
-    const retained = [...liveMoments, ...olderMoments]
-    let maxChat = 0
-    let maxEmotes = 0
-    for (const m of retained) {
-      if (m.chatPerMin != null && m.chatPerMin > maxChat) maxChat = m.chatPerMin
-      if (m.emotesPerMin != null && m.emotesPerMin > maxEmotes) maxEmotes = m.emotesPerMin
-    }
-    return { maxChatPerMin: maxChat, maxEmotesPerMin: maxEmotes }
-  }, [liveMoments, olderMoments])
 
   const emoteLookup = useMemo(
     () => buildEmoteLookupFromMoments(candidates, hub.topEmotes),
@@ -256,14 +256,13 @@ export function HubLiveWireFeed({
     const name = displayName(login, moment.displayName)
     const category = moment.category?.trim() || categoryByLogin.get(login.toLowerCase())?.trim()
     const actions = resolveMomentActions(moment)
-    const chatPct = normalizeRatePct(moment.chatPerMin, maxChatPerMin)
-    const emotesPct = normalizeRatePct(moment.emotesPerMin, maxEmotesPerMin)
     const isNew =
       healthyFullNetwork &&
       newKeysRef.current.has(key) &&
       partitionMomentWindow([moment], now, LIVE_WINDOW_MS).live.length === 1
     const profileImageUrl = moment.profileImageUrl ?? profileImageByLogin.get(login.toLowerCase())
     const signalLabel = moment.label?.trim() || 'Activity moment'
+    const comparisonFact = eventComparisonFact(moment)
     const sourceLabel = moment.source === 'live_irc'
       ? 'IRC measured'
       : moment.source?.trim()
@@ -291,38 +290,33 @@ export function HubLiveWireFeed({
           </div>
 
           <div className="hub-live-wire__rail-signal" aria-label="Detected event">
-            <strong>{signalLabel}</strong>
-            {reactionScoreLabel(moment.score) ? (
+            <span>
+              <strong>{signalLabel}</strong>
+              {comparisonFact ? <small>{comparisonFact}</small> : null}
+            </span>
+            {breakoutStrengthLabel(moment.score) ? (
               <span
                 className="hub-live-wire__rail-score"
                 title="Weighted breakout strength from the available chat, emote, and viewer signals; it is not a probability or a viewer total."
-                aria-label={`${reactionScoreLabel(moment.score)}; weighted breakout strength, not a probability or viewer total`}
+                aria-label={`${breakoutStrengthLabel(moment.score)}; weighted breakout strength, not a probability or viewer total`}
               >
-                {reactionScoreLabel(moment.score)}
+                {breakoutStrengthLabel(moment.score)}
               </span>
             ) : null}
           </div>
 
-          <div className="hub-live-wire__rail-metrics">
-            <div className="hub-live-wire__bar-row">
-              <span className="hub-live-wire__bar-label">Chat</span>
-              <span className="hub-live-wire__bar">
-                <i className="hub-live-wire__bar-fill" aria-hidden="true" style={{ width: chatPct ?? '0%' }} />
-              </span>
-              <span className="hub-live-wire__bar-value">
-                {moment.chatPerMin != null && moment.chatPerMin > 0 ? `${compact(moment.chatPerMin)}/m` : '—'}
-              </span>
+          {moment.comparison ? (
+            <div className="hub-live-wire__rail-comparisons">
+              <MetricComparison label="Chat" comparison={moment.comparison.chat} tone="chat" compact presentation="percentage" currentLabel="Event minute" baselineLabel="Earlier stream avg" />
+              <MetricComparison label="Emotes" comparison={moment.comparison.emotes} tone="emotes" compact presentation="multiplier" currentLabel="Event minute" baselineLabel="Earlier stream avg" />
             </div>
-            <div className="hub-live-wire__bar-row">
-              <span className="hub-live-wire__bar-label">Emotes</span>
-              <span className="hub-live-wire__bar">
-                <i className="hub-live-wire__bar-fill" aria-hidden="true" style={{ width: emotesPct ?? '0%' }} />
-              </span>
-              <span className="hub-live-wire__bar-value">
-                {moment.emotesPerMin != null && moment.emotesPerMin > 0 ? `${compact(moment.emotesPerMin)}/m` : '—'}
-              </span>
+          ) : (
+            <div className="hub-live-wire__rail-rates" aria-label="Event rates; earlier stream comparison unavailable">
+              <span>Chat <strong>{moment.chatPerMin != null && moment.chatPerMin > 0 ? `${compact(moment.chatPerMin)}/min` : '—'}</strong></span>
+              <span>Emotes <strong>{moment.emotesPerMin != null && moment.emotesPerMin > 0 ? `${compact(moment.emotesPerMin)}/min` : '—'}</strong></span>
+              <small>Earlier stream comparison unavailable</small>
             </div>
-          </div>
+          )}
 
           {(moment.topEmotes?.length ?? 0) > 0 ? (
             <div className="hub-live-wire__rail-emotes" aria-label="Top emotes">
@@ -346,9 +340,14 @@ export function HubLiveWireFeed({
               <span>confidence {moment.confidence}%</span>
             ) : null}
             {moment.viewerDelta ? <span>{moment.viewerDelta}</span> : null}
-            {reactionScoreLabel(moment.score) ? (
+            {moment.comparison ? (
+              <span>
+                Event minute vs {moment.comparison.evidence.baselineMeasuredMinutes}/{moment.comparison.evidence.baselineExpectedMinutes} earlier min · {Math.round(moment.comparison.evidence.baselineCoveragePct)}% coverage
+              </span>
+            ) : null}
+            {breakoutStrengthLabel(moment.score) ? (
               <span title="Weighted breakout strength from available signals; a baseline comparison is shown only when supplied by the source.">
-                {moment.viewerDelta ? 'weighted score · comparison available' : 'weighted score · baseline unavailable'}
+                weighted score · {moment.comparison ? 'event comparison available' : 'baseline unavailable'}
               </span>
             ) : null}
             {(() => {

@@ -56,6 +56,7 @@ import { compact } from "../../ui/components/analytics/hubFormat";
 import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvider";
 import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
 import "../../ui/components/analytics/figma-analytics.css";
+import "../../ui/components/analytics/analytics-truth.css";
 
 const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
   { login: "xqc", displayName: "xQc", category: "Just Chatting" },
@@ -669,6 +670,7 @@ function AnalyticsLandingContent() {
             intel={data.emoteIntel}
             topEmotes={data.topEmotes}
             topMovers={topMovers}
+            risingChannels={data.risingChannels}
             loading={loadingInitial}
             corpusPipeline={data.corpusPipeline}
             poolSize={data.poolSize}

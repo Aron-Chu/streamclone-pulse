@@ -1,29 +1,26 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Radio, Search } from 'lucide-react'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import {
+  isScreenerV1,
   screenerViewLabel,
   type ChannelScreenerView,
+  type HubChannelScreenerLegacy,
+  type HubChannelScreenerV1,
 } from '../../../lib/channelScreenerContract'
 import { Skeleton } from '../../primitives'
-import {
-  LIVE_CHANNELS_MATRIX_COMPACT_QUERY,
-  useMatchMedia,
-} from '../../hooks/useMatchMedia'
-import {
-  compact,
-  coverageMeta,
-  coveragePctMeta,
-  displayName,
-  initial,
-  MOMENTUM_COLUMN_TITLE,
-} from './hubFormat'
+import { LIVE_CHANNELS_MATRIX_COMPACT_QUERY, useMatchMedia } from '../../hooks/useMatchMedia'
+import { compact, coverageMeta, displayName, initial } from './hubFormat'
 import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
-import { MomentumBadge } from './MomentumBadge'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
 import { ResilientImage } from '../ResilientImage'
+import {
+  EvidenceSummary,
+  MetricComparison,
+  MetricStateBadge,
+} from './AnalyticsTruthPrimitives'
 
 export interface LiveChannelsMatrixProps {
   channels: HubLiveChannel[]
@@ -38,39 +35,24 @@ export interface LiveChannelsMatrixProps {
 type MatrixFilterKey = 'all' | 'chat' | 'warming' | 'metadata'
 type MatrixSortKey = 'viewers' | 'chatPerMin' | 'emotesPerMin'
 
-const SCREENER_VIEWS: ChannelScreenerView[] = [
-  'overview',
-  'momentum',
-  'coverage',
-  'anomalies',
-]
+const SCREENER_VIEWS: ChannelScreenerView[] = ['overview', 'momentum', 'coverage', 'anomalies']
+
+function legacyScreener(channel: HubLiveChannel): HubChannelScreenerLegacy | null {
+  return channel.screener && !isScreenerV1(channel.screener) ? channel.screener : null
+}
+
+function v1Screener(channel: HubLiveChannel): HubChannelScreenerV1 | null {
+  return isScreenerV1(channel.screener) ? channel.screener : null
+}
 
 function channelEmotesPerMin(channel: HubLiveChannel): number {
   return Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin ?? 0)
 }
 
-function coveragePercent(state: HubLiveChannel['coverageState']): number {
-  switch (state) {
-    case 'synced':
-      return 100
-    case 'partial':
-      return 62
-    case 'chat_only':
-    case 'viewer_only':
-      return 44
-    case 'stats_only':
-      return 18
-    default:
-      return 30
-  }
-}
-
 function filterOf(state: HubLiveChannel['coverageState']): MatrixFilterKey {
   const tone = coverageMeta(state).tone
   if (tone === 'warming') return 'warming'
-  if (tone === 'synced' || tone === 'collecting' || tone === 'chat' || tone === 'partial') {
-    return 'chat'
-  }
+  if (tone === 'synced' || tone === 'collecting' || tone === 'chat' || tone === 'partial') return 'chat'
   return 'metadata'
 }
 
@@ -81,20 +63,48 @@ function rowHref(channel: HubLiveChannel): string {
 function rowAriaLabel(channel: HubLiveChannel): string {
   const name = displayName(channel.login, channel.displayName)
   const coverage = coverageMeta(channel.coverageState).label
-  return `Open analytics for ${name}, ${compact(channel.viewers)} viewers, ${coverage} coverage`
+  const truth = v1Screener(channel)
+  return `Open analytics for ${name}, ${compact(channel.viewers)} viewers, ${coverage} coverage${truth ? `, ${truth.state} activity comparison` : ''}`
 }
 
 function hasBackendAnomaly(channel: HubLiveChannel): boolean {
-  return Boolean(channel.screener?.anomalyReason?.trim())
+  const legacy = legacyScreener(channel)
+  return Boolean(legacy?.anomalyReason?.trim() || legacy?.viewerChatDivergence != null)
 }
 
-function hasBackendMomentum(channel: HubLiveChannel): boolean {
-  const s = channel.screener
+function hasBackendActivityChange(channel: HubLiveChannel): boolean {
+  return v1Screener(channel) != null
+}
+
+function legacyAnomaly(channel: HubLiveChannel): string {
+  const screener = legacyScreener(channel)
+  if (screener?.anomalyReason?.trim()) return screener.anomalyReason.trim()
+  return screener?.viewerChatDivergence != null
+    ? `Divergence ${screener.viewerChatDivergence.toFixed(1)}`
+    : '—'
+}
+
+function ActivityTruth({ screener, compact: compactMode }: { screener: HubChannelScreenerV1; compact?: boolean }) {
   return (
-    s?.chatAcceleration != null ||
-    s?.emoteAcceleration != null ||
-    s?.viewerChatDivergence != null ||
-    Boolean(s?.newlyLive)
+    <div className="live-channels-matrix__truth-grid">
+      <MetricComparison label="Chat" comparison={screener.chat} tone="chat" compact={compactMode} presentation="percentage" />
+      <MetricComparison label="Emotes" comparison={screener.emotes} tone="emotes" compact={compactMode} presentation="multiplier" />
+    </div>
+  )
+}
+
+function ExactEvidence({ screener, defaultOpen }: { screener: HubChannelScreenerV1; defaultOpen?: boolean }) {
+  return (
+    <EvidenceSummary
+      evidence={screener.evidence}
+      currentMeasuredMinutes={screener.currentWindow.measuredMinutes}
+      currentExpectedMinutes={screener.currentWindow.expectedMinutes}
+      baselineMeasuredMinutes={screener.baselineWindow.measuredMinutes}
+      baselineExpectedMinutes={screener.baselineWindow.expectedMinutes}
+      baselineCoveragePct={screener.baselineWindow.coveragePct}
+      defaultOpen={defaultOpen}
+      diagnosticReason={screener.reason}
+    />
   )
 }
 
@@ -104,107 +114,64 @@ interface ChannelMatrixRowProps {
   view: ChannelScreenerView
 }
 
-function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
-  const navigate = useNavigate()
-  const meta = coverageMeta(channel.coverageState)
-  const pct = coveragePercent(channel.coverageState)
-  const barMeta = coveragePctMeta(pct)
-  const emotesPerMin = channelEmotesPerMin(channel)
-  const label = rowAriaLabel(channel)
+function ChannelIdentity({ channel }: { channel: HubLiveChannel }) {
   const category = channelCategoryLabel(channel.category)
-  const screener = channel.screener
+  const legacy = legacyScreener(channel)
+  return (
+    <span className="live-channels-matrix__channel">
+      <span className="live-channels-matrix__avatar" aria-hidden="true">
+        <ResilientImage src={channel.profileImageUrl} alt="" loading="lazy" decoding="async" fallback={initial(channel.login)} />
+      </span>
+      <span className="live-channels-matrix__channel-text">
+        <strong>{displayName(channel.login, channel.displayName)}</strong>
+        <small title={category}>{category}</small>
+        {channel.streamingTogether ? <StreamTogetherBadge channel={channel} /> : null}
+        {legacy?.newlyLive ? <span className="live-channels-matrix__pill">Newly live</span> : null}
+      </span>
+    </span>
+  )
+}
 
-  const activate = () => navigate(href)
+function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
+  const meta = coverageMeta(channel.coverageState)
+  const emotesPerMin = channelEmotesPerMin(channel)
+  const category = channelCategoryLabel(channel.category)
+  const screener = v1Screener(channel)
 
   return (
-    <tr
-      className="live-channels-matrix__row"
-      role="link"
-      tabIndex={0}
-      aria-label={label}
-      onClick={activate}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          activate()
-        }
-      }}
-    >
-      <td className="live-channels-matrix__channel-cell">
-        <span className="live-channels-matrix__channel">
-          <span className="live-channels-matrix__avatar" aria-hidden="true">
-            <ResilientImage
-              src={channel.profileImageUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              fallback={initial(channel.login)}
-            />
-          </span>
-          <span className="live-channels-matrix__channel-text">
-            <strong>{displayName(channel.login, channel.displayName)}</strong>
-            <small title={category}>{category}</small>
-            {channel.streamingTogether ? <StreamTogetherBadge channel={channel} /> : null}
-            {screener?.newlyLive ? (
-              <span className="live-channels-matrix__pill">Newly live</span>
-            ) : null}
-          </span>
-        </span>
+    <tr className="live-channels-matrix__row">
+      <td>
+        <Link className="live-channels-matrix__row-link" to={href} aria-label={rowAriaLabel(channel)}>
+          <ChannelIdentity channel={channel} />
+        </Link>
       </td>
-      <td className="live-channels-matrix__hide-md" title={category}>
-        {category}
-      </td>
-      {view === 'overview' || view === 'momentum' ? (
+      <td className="live-channels-matrix__hide-md" title={category}>{category}</td>
+      {view === 'overview' ? (
         <>
           <td className="live-channels-matrix__num">{compact(channel.viewers)}</td>
-          <td className="live-channels-matrix__num">
-            {channel.chatPerMin > 0 ? compact(Math.round(channel.chatPerMin)) : '—'}
-          </td>
-          <td className="live-channels-matrix__num">
-            {emotesPerMin > 0 ? compact(Math.round(emotesPerMin)) : '—'}
+          <td className="live-channels-matrix__num">{channel.chatPerMin > 0 ? compact(Math.round(channel.chatPerMin)) : '—'}</td>
+          <td className="live-channels-matrix__num">{emotesPerMin > 0 ? compact(Math.round(emotesPerMin)) : '—'}</td>
+          <td>
+            {screener ? <MetricStateBadge state={screener.state} reason={screener.reason} /> : <span className="live-channels-matrix__legacy-rate">Recent rates only</span>}
           </td>
         </>
       ) : null}
       {view === 'momentum' ? (
-        <>
-          <td className="live-channels-matrix__num live-channels-matrix__hide-md">
-            {screener?.chatAcceleration != null ? screener.chatAcceleration.toFixed(1) : '—'}
-          </td>
-          <td className="live-channels-matrix__num live-channels-matrix__hide-md">
-            {screener?.emoteAcceleration != null ? screener.emoteAcceleration.toFixed(1) : '—'}
-          </td>
-        </>
-      ) : null}
-      {view === 'coverage' || view === 'overview' || view === 'anomalies' ? (
-        <td className="live-channels-matrix__coverage">
-          <span className={`live-channels-matrix__coverage-label live-channels-matrix__coverage-label--${meta.tone}`}>
-            {meta.label}
-          </span>
-          <span className="live-channels-matrix__covbar" role="img" aria-label={`${pct}% coverage`}>
-            <i style={{ width: `${pct}%`, background: barMeta.color }} />
-          </span>
-          {screener?.dataFreshnessAt ? (
-            <small className="live-channels-matrix__freshness">{screener.dataFreshnessAt}</small>
-          ) : null}
+        <td className="live-channels-matrix__truth-cell" colSpan={3}>
+          {screener ? <ActivityTruth screener={screener} compact /> : <p className="live-channels-matrix__legacy-rate">Activity comparison unavailable. Current rates remain visible in Overview; no browser-derived change is shown.</p>}
         </td>
       ) : null}
-      {view === 'overview' || view === 'momentum' ? (
-        <td className="live-channels-matrix__momentum">
-          <MomentumBadge
-            pct={channel.trendPct}
-            hasSignal={channel.trendSignal}
-            classPrefix="live-channels-matrix__momentum-badge"
-          />
+      {view === 'coverage' ? (
+        <td className="live-channels-matrix__evidence-cell" colSpan={3}>
+          {screener ? <ExactEvidence screener={screener} defaultOpen /> : (
+            <div>
+              <span className={`live-channels-matrix__coverage-label live-channels-matrix__coverage-label--${meta.tone}`}>{meta.label}</span>
+              <small className="live-channels-matrix__legacy-rate">Backend summary only · exact minute evidence unavailable</small>
+            </div>
+          )}
         </td>
       ) : null}
-      {view === 'anomalies' ? (
-        <td className="live-channels-matrix__anomaly">
-          {screener?.anomalyReason?.trim() ||
-            (screener?.viewerChatDivergence != null
-              ? `Divergence ${screener.viewerChatDivergence.toFixed(1)}`
-              : '—')}
-        </td>
-      ) : null}
+      {view === 'anomalies' ? <td className="live-channels-matrix__anomaly" colSpan={3}>{legacyAnomaly(channel)}</td> : null}
     </tr>
   )
 }
@@ -212,49 +179,35 @@ function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
 function ChannelMatrixCard({ channel, href, view }: ChannelMatrixRowProps) {
   const meta = coverageMeta(channel.coverageState)
   const emotesPerMin = channelEmotesPerMin(channel)
-  const category = channelCategoryLabel(channel.category)
-  const screener = channel.screener
-  const label = rowAriaLabel(channel)
-
+  const screener = v1Screener(channel)
   return (
-    <Link to={href} className="live-channels-matrix__card" aria-label={label}>
-      <span className="live-channels-matrix__avatar" aria-hidden="true">
-        <ResilientImage
-          src={channel.profileImageUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          fallback={initial(channel.login)}
-        />
-      </span>
-      <span className="live-channels-matrix__card-main">
-        <strong>{displayName(channel.login, channel.displayName)}</strong>
-        <small title={category}>{category}</small>
-        {channel.streamingTogether ? <StreamTogetherBadge channel={channel} /> : null}
+    <article className="live-channels-matrix__card">
+      <Link to={href} className="live-channels-matrix__card-main-link" aria-label={rowAriaLabel(channel)}>
+        <ChannelIdentity channel={channel} />
         <span className="live-channels-matrix__card-stats">
           <span>{compact(channel.viewers)} viewers</span>
-          <span>
-            {channel.chatPerMin > 0 ? `${compact(Math.round(channel.chatPerMin))}/m chat` : '— chat'}
-          </span>
-          <span>
-            {emotesPerMin > 0 ? `${compact(Math.round(emotesPerMin))}/m emotes` : '— emotes'}
-          </span>
+          <span>{channel.chatPerMin > 0 ? `${compact(Math.round(channel.chatPerMin))}/m chat` : '— chat'}</span>
+          <span>{emotesPerMin > 0 ? `${compact(Math.round(emotesPerMin))}/m emotes` : '— emotes'}</span>
         </span>
-        {view === 'anomalies' && screener?.anomalyReason ? (
-          <span className="live-channels-matrix__card-anomaly">{screener.anomalyReason}</span>
-        ) : null}
-      </span>
-      <span className="live-channels-matrix__card-side">
-        <span className={`live-channels-matrix__coverage-label live-channels-matrix__coverage-label--${meta.tone}`}>
-          {meta.label}
-        </span>
-        <MomentumBadge
-          pct={channel.trendPct}
-          hasSignal={channel.trendSignal}
-          classPrefix="live-channels-matrix__momentum-badge"
-        />
-      </span>
-    </Link>
+      </Link>
+      {view === 'overview' ? (
+        <div className="live-channels-matrix__card-side">
+          <span className={`live-channels-matrix__coverage-label live-channels-matrix__coverage-label--${meta.tone}`}>{meta.label}</span>
+          {screener ? <MetricStateBadge state={screener.state} reason={screener.reason} /> : <span className="live-channels-matrix__legacy-rate">Recent rates only</span>}
+        </div>
+      ) : null}
+      {view === 'momentum' ? (
+        <div className="live-channels-matrix__card-truth">
+          {screener ? <ActivityTruth screener={screener} compact /> : <p className="live-channels-matrix__legacy-rate">Activity comparison unavailable; no browser-derived value is shown.</p>}
+        </div>
+      ) : null}
+      {view === 'coverage' ? (
+        <div className="live-channels-matrix__card-evidence">
+          {screener ? <ExactEvidence screener={screener} /> : <span className="live-channels-matrix__legacy-rate">{meta.label} summary · exact minute evidence unavailable</span>}
+        </div>
+      ) : null}
+      {view === 'anomalies' ? <p className="live-channels-matrix__card-anomaly">{legacyAnomaly(channel)}</p> : null}
+    </article>
   )
 }
 
@@ -267,7 +220,6 @@ export function LiveChannelsMatrix({
   ircActive,
   rosterLive,
 }: LiveChannelsMatrixProps) {
-  // One semantic tree per viewport — do not mount desktop table + mobile cards together.
   const compactLayout = useMatchMedia(LIVE_CHANNELS_MATRIX_COMPACT_QUERY)
   const labels = useCommandCenterLabels()
   const [view, setView] = useState<ChannelScreenerView>('overview')
@@ -278,70 +230,35 @@ export function LiveChannelsMatrix({
   const [expanded, setExpanded] = useState(false)
 
   const toggleSort = (key: MatrixSortKey) => {
-    if (key === sortKey) {
-      setSortDir((dir) => (dir === 'desc' ? 'asc' : 'desc'))
-    } else {
-      setSortKey(key)
-      setSortDir('desc')
-    }
+    if (key === sortKey) setSortDir((dir) => dir === 'desc' ? 'asc' : 'desc')
+    else { setSortKey(key); setSortDir('desc') }
   }
 
   const counts = useMemo(() => {
-    const c: Record<MatrixFilterKey, number> = {
-      all: channels.length,
-      chat: 0,
-      warming: 0,
-      metadata: 0,
-    }
-    for (const channel of channels) c[filterOf(channel.coverageState)] += 1
-    return c
+    const result: Record<MatrixFilterKey, number> = { all: channels.length, chat: 0, warming: 0, metadata: 0 }
+    for (const channel of channels) result[filterOf(channel.coverageState)] += 1
+    return result
   }, [channels])
 
-  const backendMomentumAvailable = useMemo(
-    () => channels.some(hasBackendMomentum),
-    [channels],
-  )
-  const backendAnomaliesAvailable = useMemo(
-    () => channels.some(hasBackendAnomaly),
-    [channels],
-  )
+  const backendActivityAvailable = useMemo(() => channels.some(hasBackendActivityChange), [channels])
+  const backendAnomaliesAvailable = useMemo(() => channels.some(hasBackendAnomaly), [channels])
 
   const sorted = useMemo(() => {
     const q = query.trim().toLowerCase()
     const filtered = channels.filter((channel) => {
-      if (view === 'anomalies' && backendAnomaliesAvailable && !hasBackendAnomaly(channel)) {
-        return false
-      }
-      if (view === 'momentum' && backendMomentumAvailable && !hasBackendMomentum(channel)) {
-        // Still show all when filtering by coverage tabs; acceleration columns may be empty.
-      }
+      if (view === 'anomalies' && backendAnomaliesAvailable && !hasBackendAnomaly(channel)) return false
       if (filter !== 'all' && filterOf(channel.coverageState) !== filter) return false
       if (!q) return true
       const name = displayName(channel.login, channel.displayName).toLowerCase()
-      return (
-        channel.login.toLowerCase().includes(q) ||
-        name.includes(q) ||
-        (channel.category ?? '').toLowerCase().includes(q)
-      )
+      return channel.login.toLowerCase().includes(q) || name.includes(q) || (channel.category ?? '').toLowerCase().includes(q)
     })
-    const value = (channel: HubLiveChannel) =>
-      sortKey === 'emotesPerMin' ? channelEmotesPerMin(channel) : channel[sortKey]
+    const value = (channel: HubLiveChannel) => sortKey === 'emotesPerMin' ? channelEmotesPerMin(channel) : channel[sortKey]
     const dir = sortDir === 'desc' ? 1 : -1
     return [...filtered].sort((a, b) => (value(b) - value(a)) * dir)
-  }, [
-    backendAnomaliesAvailable,
-    backendMomentumAvailable,
-    channels,
-    filter,
-    query,
-    sortKey,
-    sortDir,
-    view,
-  ])
+  }, [backendAnomaliesAvailable, channels, filter, query, sortKey, sortDir, view])
 
   const rows = expanded ? sorted : sorted.slice(0, maxRows)
   const hiddenCount = sorted.length - rows.length
-
   const tabs: Array<{ key: MatrixFilterKey; label: string }> = [
     { key: 'all', label: 'All' },
     { key: 'chat', label: 'Chat tracked (IRC)' },
@@ -350,36 +267,20 @@ export function LiveChannelsMatrix({
   ]
 
   const sortHeader = (key: MatrixSortKey, label: string) => (
-    <th
-      scope="col"
-      className="live-channels-matrix__sortable live-channels-matrix__num"
-      aria-sort={sortKey === key ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
-    >
+    <th scope="col" className="live-channels-matrix__sortable live-channels-matrix__num" aria-sort={sortKey === key ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}>
       <button type="button" className="live-channels-matrix__sort-btn" onClick={() => toggleSort(key)}>
-        {label}
-        {sortKey === key ? (
-          <span aria-hidden="true"> {sortDir === 'desc' ? '\u25BC' : '\u25B2'}</span>
-        ) : null}
+        {label}{sortKey === key ? <span aria-hidden="true"> {sortDir === 'desc' ? '▼' : '▲'}</span> : null}
       </button>
     </th>
   )
 
   return (
-    <section
-      id="section-tracked"
-      className="figma-block live-channels-matrix"
-      aria-labelledby="live-channels-matrix-title"
-    >
+    <section id="section-tracked" className="figma-block live-channels-matrix" aria-labelledby="live-channels-matrix-title">
       <div className="figma-block__head live-channels-matrix__head">
         <div>
-          <h2 id="live-channels-matrix-title" className="figma-block__title">
-            {labels.trackedChannels}
-          </h2>
+          <h2 id="live-channels-matrix-title" className="figma-block__title">{labels.trackedChannels}</h2>
           <p className="figma-block__sub">
-            Which tracked channels match activity, coverage, or anomaly conditions — not a second
-            moments list. Overview uses live hub rows now. Momentum acceleration and anomaly
-            reasons appear only when the backend ships `screener` fields (never invented from
-            browser poll history).
+            Current rates, measured activity change, and exact collection evidence. Activity change compares the latest five closed minutes with this broadcast’s earlier measured average; missing evidence stays unavailable.
             {poolSize != null && poolSize > 0 ? ` · ${compact(poolSize)} tracked in pool` : ''}
             {ircActive != null && ircActive > 0 ? ` · ${compact(ircActive)} IRC collecting` : ''}
             {rosterLive != null && rosterLive > 0 ? ` · ${compact(rosterLive)} roster live` : ''}
@@ -388,14 +289,7 @@ export function LiveChannelsMatrix({
         </div>
         <div className="live-channels-matrix__tabs" role="tablist" aria-label="Filter by coverage state">
           {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={filter === tab.key}
-              className={`live-channels-matrix__tab${filter === tab.key ? ' is-active' : ''}`}
-              onClick={() => setFilter(tab.key)}
-            >
+            <button key={tab.key} type="button" role="tab" aria-selected={filter === tab.key} className={`live-channels-matrix__tab${filter === tab.key ? ' is-active' : ''}`} onClick={() => setFilter(tab.key)}>
               {tab.label} <span className="live-channels-matrix__tab-count">{counts[tab.key]}</span>
             </button>
           ))}
@@ -404,146 +298,63 @@ export function LiveChannelsMatrix({
 
       <div className="live-channels-matrix__views" role="tablist" aria-label="Channel Screener views">
         {SCREENER_VIEWS.map((key) => {
-          const gated =
-            (key === 'momentum' && !backendMomentumAvailable) ||
-            (key === 'anomalies' && !backendAnomaliesAvailable)
+          const gated = (key === 'momentum' && !backendActivityAvailable) || (key === 'anomalies' && !backendAnomaliesAvailable)
           return (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={view === key}
-              className={`live-channels-matrix__view-tab${view === key ? ' is-active' : ''}`}
-              onClick={() => setView(key)}
-              title={
-                gated
-                  ? 'Extra columns appear when the hub ships screener fields'
-                  : undefined
-              }
-            >
-              {screenerViewLabel(key)}
-              {gated ? <span className="live-channels-matrix__view-hint"> · basic</span> : null}
+            <button key={key} type="button" role="tab" aria-selected={view === key} className={`live-channels-matrix__view-tab${view === key ? ' is-active' : ''}`} onClick={() => setView(key)} title={gated ? 'Backend evidence is not available in this payload' : undefined}>
+              {screenerViewLabel(key)}{gated ? <span className="live-channels-matrix__view-hint"> · unavailable</span> : null}
             </button>
           )
         })}
       </div>
 
-      {(view === 'momentum' && !backendMomentumAvailable) ||
-      (view === 'anomalies' && !backendAnomaliesAvailable) ? (
-        <p className="live-channels-matrix__gated" role="status">
-          {view === 'momentum'
-            ? 'Showing overview rates. Chat/emote acceleration and newly-live flags need backend screener fields.'
-            : 'No backend anomaly reasons yet. Coverage state remains available for triage.'}
-        </p>
+      {view === 'momentum' && !backendActivityAvailable ? (
+        <p className="live-channels-matrix__gated" role="status">Activity change needs the backend Screener v1 comparison. Current rates remain in Overview; StreamPulse will not estimate change from browser polling.</p>
+      ) : view === 'anomalies' && !backendAnomaliesAvailable ? (
+        <p className="live-channels-matrix__gated" role="status">No backend-authored anomaly reasons are available. Coverage evidence remains available for diagnosis.</p>
       ) : null}
 
       <div className="live-channels-matrix__controls">
         <label className="live-channels-matrix__search">
           <Search aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              setExpanded(false)
-            }}
-            placeholder="Search channel or category…"
-            aria-label="Search tracked channels"
-          />
+          <input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setExpanded(false) }} placeholder="Search channel or category…" aria-label="Search tracked channels" />
         </label>
-        <span className="live-channels-matrix__result-count">
-          {query.trim() || filter !== 'all' || view === 'anomalies'
-            ? `${compact(sorted.length)} of ${compact(channels.length)} channels`
-            : `${compact(channels.length)} channels tracked`}
+        <span className="live-channels-matrix__result-count" aria-live="polite">
+          {query.trim() || filter !== 'all' || view === 'anomalies' ? `${compact(sorted.length)} of ${compact(channels.length)} channels` : `${compact(channels.length)} channels tracked`}
         </span>
       </div>
 
       {loading && channels.length === 0 ? (
-        <div className="live-channels-matrix__loading" aria-busy="true">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} height={52} radius="var(--sc-radius)" />
-          ))}
+        <div className="live-channels-matrix__loading" aria-busy="true" aria-label="Loading channel evidence">
+          {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} height={52} radius="var(--sc-radius)" />)}
         </div>
       ) : rows.length === 0 ? (
-        <div className="live-channels-matrix__empty">
-          <Radio aria-hidden="true" />
-          <span>No live channels match this filter right now.</span>
-        </div>
+        <div className="live-channels-matrix__empty" role="status"><Radio aria-hidden="true" /><span>No live channels match this filter right now.</span></div>
       ) : (
         <>
           {compactLayout ? (
             <div className="live-channels-matrix__cards" aria-label={labels.trackedChannels}>
-              {rows.map((channel) => (
-                <ChannelMatrixCard
-                  key={channel.login}
-                  channel={channel}
-                  href={rowHref(channel)}
-                  view={view}
-                />
-              ))}
+              {rows.map((channel) => <ChannelMatrixCard key={channel.login} channel={channel} href={rowHref(channel)} view={view} />)}
             </div>
           ) : (
             <div className="live-channels-matrix__table-wrap">
               <table className="live-channels-matrix__table">
-                <thead>
-                  <tr>
-                    <th scope="col">Channel</th>
-                    <th scope="col" className="live-channels-matrix__hide-md">
-                      Category
-                    </th>
-                    {view === 'overview' || view === 'momentum' ? (
-                      <>
-                        {sortHeader('viewers', 'Viewers')}
-                        {sortHeader('chatPerMin', 'Chat/min')}
-                        {sortHeader('emotesPerMin', 'Emotes/min')}
-                      </>
-                    ) : null}
-                    {view === 'momentum' ? (
-                      <>
-                        <th scope="col" className="live-channels-matrix__hide-md">
-                          Chat accel
-                        </th>
-                        <th scope="col" className="live-channels-matrix__hide-md">
-                          Emote accel
-                        </th>
-                      </>
-                    ) : null}
-                    {view === 'coverage' || view === 'overview' || view === 'anomalies' ? (
-                      <th scope="col">Coverage</th>
-                    ) : null}
-                    {view === 'overview' || view === 'momentum' ? (
-                      <th scope="col" title={MOMENTUM_COLUMN_TITLE}>
-                        Momentum
-                      </th>
-                    ) : null}
-                    {view === 'anomalies' ? <th scope="col">Anomaly</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((channel) => (
-                    <ChannelMatrixRow
-                      key={channel.login}
-                      channel={channel}
-                      href={rowHref(channel)}
-                      view={view}
-                    />
-                  ))}
-                </tbody>
+                <thead><tr>
+                  <th scope="col">Channel</th>
+                  <th scope="col" className="live-channels-matrix__hide-md">Category</th>
+                  {view === 'overview' ? <>{sortHeader('viewers', 'Viewers')}{sortHeader('chatPerMin', 'Chat/min')}{sortHeader('emotesPerMin', 'Emotes/min')}<th scope="col">Evidence state</th></> : null}
+                  {view === 'momentum' ? <th scope="col" colSpan={3}>Latest 5 min vs stream average</th> : null}
+                  {view === 'coverage' ? <th scope="col" colSpan={3}>Exact evidence</th> : null}
+                  {view === 'anomalies' ? <th scope="col" colSpan={3}>Backend anomaly</th> : null}
+                </tr></thead>
+                <tbody>{rows.map((channel) => <ChannelMatrixRow key={channel.login} channel={channel} href={rowHref(channel)} view={view} />)}</tbody>
               </table>
             </div>
           )}
           {sorted.length > maxRows ? (
             <div className="live-channels-matrix__footer">
-              <button
-                type="button"
-                className="live-channels-matrix__expand"
-                onClick={() => setExpanded((value) => !value)}
-                aria-expanded={expanded}
-              >
+              <button type="button" className="live-channels-matrix__expand" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
                 {expanded ? 'Show less' : `Show all ${compact(sorted.length)} channels`}
-                {!expanded && hiddenCount > 0 ? (
-                  <span className="live-channels-matrix__expand-count">+{compact(hiddenCount)}</span>
-                ) : null}
+                {!expanded && hiddenCount > 0 ? <span className="live-channels-matrix__expand-count">+{compact(hiddenCount)}</span> : null}
               </button>
             </div>
           ) : null}

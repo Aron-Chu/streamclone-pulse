@@ -6,8 +6,8 @@ import { momentRowKey, type FigmaMomentRow } from '../src/lib/figmaSessionAnalyt
 describe('channelScreenerContract', () => {
   it('labels screener views', () => {
     expect(screenerViewLabel('overview')).toBe('Overview')
-    expect(screenerViewLabel('momentum')).toBe('Momentum')
-    expect(screenerViewLabel('coverage')).toBe('Coverage')
+    expect(screenerViewLabel('momentum')).toBe('Activity change')
+    expect(screenerViewLabel('coverage')).toBe('Coverage evidence')
     expect(screenerViewLabel('anomalies')).toBe('Anomalies')
   })
 })

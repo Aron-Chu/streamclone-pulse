@@ -225,6 +225,41 @@ describe('HubLiveWireFeed (right rail)', () => {
     expect(actionLinks.some((a) => (a.textContent ?? '').includes('View moment'))).toBe(true)
   })
 
+  it('explains an event against earlier stream evidence instead of visible-card normalization', () => {
+    const hub = sampleHub()
+    const metric = {
+      state: 'ready' as const,
+      currentPerMin: 80,
+      baselinePerMin: 40,
+      absoluteDeltaPerMin: 40,
+      changePct: 100,
+      multiplier: 2,
+      currentMeasuredMinutes: 1,
+      currentExpectedMinutes: 1,
+      baselineMeasuredMinutes: 20,
+      baselineExpectedMinutes: 20,
+      baselineCoveragePct: 100,
+    }
+    hub.livePulseMoments = [makeMoment({
+      login: 'xqc',
+      label: 'Emote surge',
+      comparison: {
+        baselineKind: 'current_stream_measured_average_before_event',
+        eventAt: Date.now() - 60_000,
+        baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
+        chat: metric,
+        emotes: metric,
+        evidence: { ircBound: true, eventRollupAvailable: true, baselineMeasuredMinutes: 20, baselineExpectedMinutes: 20, baselineCoveragePct: 100 },
+      },
+    })]
+    renderFeed(resolveLivePulseMoments(hub), hub)
+    expect(screen.getByText(/Emotes reached 80\/min · 2.0× this stream's earlier average/)).toBeTruthy()
+    expect(screen.getAllByText('Event minute').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Earlier stream avg').length).toBeGreaterThan(0)
+    expect(screen.getByText('Breakout strength 80/100')).toBeTruthy()
+    expect(document.querySelector('.hub-live-wire__bar-fill')).toBeNull()
+  })
+
   it('keeps older-than-30m rows in the Recent detections disclosure (no 30m omission)', () => {
     const now = Date.now()
     const hub = sampleHub()
