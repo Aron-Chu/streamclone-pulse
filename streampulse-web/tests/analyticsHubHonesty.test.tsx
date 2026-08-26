@@ -90,6 +90,27 @@ describe('hub empty / honesty (ported from excluded landing tests)', () => {
     expect(screen.queryByText(/Reading Hosted API/i)).toBeNull()
     expect(screen.queryByText(/api\.streampulse\.stream/i)).toBeNull()
   })
+
+  it('announces incomplete activity coverage without rounding it to 100%', () => {
+    render(
+      <HubDataHealthBanner
+        hubEndpointOk
+        activitySummary={{
+          ...quietActivity,
+          pointCount: 239,
+          expectedBuckets: 240,
+          missingBuckets: 1,
+          coveragePct: (239 / 240) * 100,
+        }}
+        liveRosterCount={0}
+      />,
+    )
+
+    const status = screen.getByRole('status')
+    expect(status.textContent).toContain('Activity coverage 99.6% for this window (239/240 buckets).')
+    expect(status.textContent).toContain('1 bucket missing from stored rollups.')
+    expect(status.textContent).not.toContain('Activity coverage 100%')
+  })
 })
 
 describe('/dashboard quarantine (ported)', () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
-import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState, assessViewerCoverage, hasViewerSample, isViewerCoverageQualified, isViewerCoveragePartial, hasProviderSample, type HubProviderLaneKey } from '../../../lib/hubActivitySummary'
+import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, formatActivityCoveragePercent, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState, assessViewerCoverage, hasViewerSample, isViewerCoverageQualified, isViewerCoveragePartial, hasProviderSample, type HubProviderLaneKey } from '../../../lib/hubActivitySummary'
 import { isActivityGapMarker, isAttestedActivityGap } from '../../../lib/hubActivityHonesty'
 import { hubBucketBarRect, hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
@@ -313,17 +313,7 @@ function activePoint(point: HubActivityPoint): boolean {
   )
 }
 
-export function formatIncompleteCoveragePercent(
-  pointCount: number,
-  expectedBuckets: number,
-): string {
-  const expected = Math.max(0, Math.floor(expectedBuckets))
-  const measured = Math.max(0, Math.floor(pointCount))
-  if (expected === 0) return '0%'
-  if (measured >= expected) return '100%'
-  const pct = Math.floor(((measured / expected) * 100) * 10) / 10
-  return `${pct.toFixed(1)}%`
-}
+export const formatIncompleteCoveragePercent = formatActivityCoveragePercent
 
 function buildLine(pts: Pt[]): string {
   return monotoneCubicPath(pts)
