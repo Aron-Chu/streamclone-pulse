@@ -51,7 +51,7 @@ describe('public analytics truth contract', () => {
     expect(hub.risingChannels).toBeUndefined()
   })
 
-  it('keeps optional event-time comparisons distinct from latest-five-minute screeners', () => {
+  it('accepts the exact raw backend Live Wire comparison wire shape', () => {
     const hub = normalizePublicHub({
       livePulseMoments: [{
         offsetSeconds: 60,
@@ -63,12 +63,19 @@ describe('public analytics truth contract', () => {
           baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
           chat: metric,
           emotes: metric,
-          evidence: { ircBound: true, eventRollupAvailable: true, baselineMeasuredMinutes: 20, baselineExpectedMinutes: 20, baselineCoveragePct: 100 },
+          evidence: {
+            ircBound: true,
+            chatObservedLast5m: true,
+            rollupAvailable: true,
+            metadataAgeSeconds: 14,
+          },
         },
       }],
     })
     expect(hub.livePulseMoments[0].comparison?.baselineKind).toBe('current_stream_measured_average_before_event')
-    expect(hub.livePulseMoments[0].comparison?.evidence.eventRollupAvailable).toBe(true)
+    expect(hub.livePulseMoments[0].comparison?.evidence.rollupAvailable).toBe(true)
+    expect(hub.livePulseMoments[0].comparison?.baselineWindow.measuredMinutes).toBe(20)
+    expect(hub.livePulseMoments[0].comparison?.baselineWindow.coveragePct).toBe(100)
   })
 
   it('keeps a warming event comparison when its zero-length baseline has no percentage', () => {
@@ -95,7 +102,7 @@ describe('public analytics truth contract', () => {
           baselineWindow: { start: 1_800_000, end: 1_800_000, expectedMinutes: 0, measuredMinutes: 0 },
           chat: warmingMetric,
           emotes: warmingMetric,
-          evidence: { ircBound: true, eventRollupAvailable: true, baselineMeasuredMinutes: 0, baselineExpectedMinutes: 0, baselineCoveragePct: 0 },
+          evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true },
         },
       }],
     })

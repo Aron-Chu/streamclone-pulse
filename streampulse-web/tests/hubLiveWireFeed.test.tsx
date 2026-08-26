@@ -249,7 +249,7 @@ describe('HubLiveWireFeed (right rail)', () => {
         baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
         chat: metric,
         emotes: metric,
-        evidence: { ircBound: true, eventRollupAvailable: true, baselineMeasuredMinutes: 20, baselineExpectedMinutes: 20, baselineCoveragePct: 100 },
+        evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true, metadataAgeSeconds: 12 },
       },
     })]
     renderFeed(resolveLivePulseMoments(hub), hub)
@@ -257,6 +257,7 @@ describe('HubLiveWireFeed (right rail)', () => {
     expect(screen.getAllByText('Event minute').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Earlier stream avg').length).toBeGreaterThan(0)
     expect(screen.getByText('Breakout strength 80/100')).toBeTruthy()
+    expect(screen.getByText(/Event rollup available · baseline 20\/20 earlier min · 100% coverage/)).toBeTruthy()
     expect(document.querySelector('.hub-live-wire__bar-fill')).toBeNull()
   })
 

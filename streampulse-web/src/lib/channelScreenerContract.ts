@@ -92,15 +92,7 @@ export interface HubLiveMomentComparison {
   baselineWindow: ScreenerWindow
   chat: ScreenerMetricComparison
   emotes: ScreenerMetricComparison
-  evidence: HubLiveMomentEvidence
-}
-
-export interface HubLiveMomentEvidence {
-  ircBound: boolean
-  eventRollupAvailable: boolean
-  baselineMeasuredMinutes: number
-  baselineExpectedMinutes: number
-  baselineCoveragePct: number
+  evidence: ScreenerEvidence
 }
 
 const REJECT_CLIENT_INVENTED_KEYS = [
@@ -310,31 +302,17 @@ export function normalizeHubLiveMomentComparison(raw: unknown): HubLiveMomentCom
     (state) => state === 'warming' || state === 'unavailable',
   )
   const baselineWindow = normalizeWindow(row.baselineWindow, true, allowEmptyBaseline)
-  const evidenceRow = record(row.evidence)
-  const evidence = evidenceRow && typeof evidenceRow.ircBound === 'boolean' &&
-    typeof evidenceRow.eventRollupAvailable === 'boolean'
-    ? {
-        ircBound: evidenceRow.ircBound,
-        eventRollupAvailable: evidenceRow.eventRollupAvailable,
-        baselineMeasuredMinutes: finiteNonNegative(evidenceRow.baselineMeasuredMinutes),
-        baselineExpectedMinutes: finiteNonNegative(evidenceRow.baselineExpectedMinutes),
-        baselineCoveragePct: finiteNonNegative(evidenceRow.baselineCoveragePct),
-      }
-    : null
+  const evidence = normalizeScreenerEvidence(row.evidence)
   if (
     eventAt == null || !baselineWindow ||
-    !chat || !emotes || !evidence ||
-    evidence.baselineMeasuredMinutes == null || evidence.baselineExpectedMinutes == null ||
-    evidence.baselineCoveragePct == null ||
-    evidence.baselineMeasuredMinutes > evidence.baselineExpectedMinutes ||
-    evidence.baselineCoveragePct > 100
+    !chat || !emotes || !evidence
   ) return null
   return {
     baselineKind: 'current_stream_measured_average_before_event', eventAt,
     baselineWindow,
     chat,
     emotes,
-    evidence: evidence as HubLiveMomentEvidence,
+    evidence,
   }
 }
 
