@@ -62,6 +62,25 @@ test.describe('analytics truth v1 end-to-end', () => {
       await expect(market.getByRole('tab', { name: 'Rotation', exact: true })).toHaveCount(0)
     }
 
+    const interactiveTargets = page.locator([
+      '.live-channels-matrix__tab',
+      '.live-channels-matrix__view-tab',
+      '.live-channels-matrix__sort-btn',
+      '.live-channels-matrix__expand',
+      '.emote-market__view-tab',
+    ].join(', '))
+    const targetSizes = await interactiveTargets.evaluateAll((elements) => elements
+      .filter((element) => {
+        const rect = element.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0
+      })
+      .map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { className: element.className, width: rect.width, height: rect.height }
+      }))
+    expect(targetSizes.length).toBeGreaterThan(0)
+    expect(targetSizes.filter(({ width, height }) => width < 44 || height < 44)).toEqual([])
+
     const noOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
     expect(noOverflow).toBe(true)
     await assertNoConsoleErrors(page, errors)

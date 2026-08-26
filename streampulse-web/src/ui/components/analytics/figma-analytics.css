@@ -7817,7 +7817,10 @@ button.hub-live-wire__chip {
 .live-channels-matrix__tab {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
+  min-width: 44px;
+  min-height: 44px;
   border: 1px solid var(--fma-border);
   background: transparent;
   color: var(--fma-muted);
@@ -7902,7 +7905,10 @@ button.hub-live-wire__chip {
 .live-channels-matrix__expand {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
+  min-width: 44px;
+  min-height: 44px;
   border: 1px solid var(--fma-border);
   background: var(--fma-panel);
   color: var(--fma-text);
@@ -7958,6 +7964,11 @@ button.hub-live-wire__chip {
 }
 
 .live-channels-matrix__sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   border: none;
   background: transparent;
   color: inherit;
@@ -8168,7 +8179,10 @@ button.hub-live-wire__chip {
 .live-channels-matrix__view-tab {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.2rem;
+  min-width: 44px;
+  min-height: 44px;
   font: inherit;
   font-size: 0.72rem;
   line-height: 1;
