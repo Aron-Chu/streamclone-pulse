@@ -272,6 +272,46 @@ export interface MomentActionRowProps {
   compact?: boolean
 }
 
+type CopyState = 'idle' | 'success' | 'error'
+
+function copyWithSelectionFallback(text: string): boolean {
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.readOnly = true
+  textarea.setAttribute('aria-hidden', 'true')
+  Object.assign(textarea.style, {
+    position: 'fixed',
+    inset: '0 auto auto -9999px',
+    opacity: '0',
+    pointerEvents: 'none',
+  })
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  textarea.setSelectionRange(0, text.length)
+  try {
+    return typeof document.execCommand === 'function' && document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    textarea.remove()
+    activeElement?.focus()
+  }
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator.clipboard?.writeText === 'function') {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Permission and embedded-browser failures fall through to a selection copy.
+  }
+  return copyWithSelectionFallback(text)
+}
+
 export function MomentActionRow({
   analyticsHref,
   watchHref,
@@ -279,20 +319,20 @@ export function MomentActionRow({
   copyHref,
   compact: compactMode,
 }: MomentActionRowProps) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<CopyState>('idle')
+  const copyStatusId = useId()
   useEffect(() => {
-    if (!copied) return
-    const id = window.setTimeout(() => setCopied(false), 1800)
+    if (copyState === 'idle') return
+    const id = window.setTimeout(
+      () => setCopyState('idle'),
+      copyState === 'success' ? 1800 : 4000,
+    )
     return () => window.clearTimeout(id)
-  }, [copied])
+  }, [copyState])
   const copy = async () => {
     if (!copyHref) return
-    try {
-      await navigator.clipboard.writeText(new URL(copyHref, window.location.href).toString())
-      setCopied(true)
-    } catch {
-      setCopied(false)
-    }
+    const copied = await copyText(new URL(copyHref, window.location.href).toString())
+    setCopyState(copied ? 'success' : 'error')
   }
   return (
     <div className={`moment-action-row${compactMode ? ' moment-action-row--compact' : ''}`} aria-label="Moment actions">
@@ -313,11 +353,18 @@ export function MomentActionRow({
         className="moment-action-row__action"
         disabled={!copyHref}
         onClick={copy}
-        aria-live="polite"
+        aria-describedby={copyState === 'idle' ? undefined : copyStatusId}
       >
-        {copied ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
-        {copied ? 'Copied' : 'Copy link'}
+        {copyState === 'success' ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
+        {copyState === 'success' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy link'}
       </button>
+      {copyState !== 'idle' ? (
+        <span id={copyStatusId} className="visually-hidden" role="status" aria-live="polite">
+          {copyState === 'success'
+            ? 'Link copied to clipboard.'
+            : 'Could not copy the link. Open Analytics and copy the address from the browser.'}
+        </span>
+      ) : null}
     </div>
   )
 }

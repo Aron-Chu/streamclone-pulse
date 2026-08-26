@@ -625,22 +625,6 @@ export function FigmaGlobalActivityPanel({
           ref={chartAreaRef}
           data-refreshing={activityRefreshing ? "true" : undefined}
         >
-          {annotationFeed ? (
-            <div className="figma-global-activity__annotation-lane" id="section-live-wire">
-              <HubLiveWireFeed
-                hub={hub}
-                feed={annotationFeed}
-                activityWindow={annotationActivityWindow}
-                loading={annotationLoading}
-                hubEndpointOk={annotationHubEndpointOk}
-                loadSource={annotationLoadSource}
-                pollSequence={annotationPollSequence}
-                layout="lane"
-                selectedMomentKey={selectedMomentKey}
-                onSelectMoment={onSelectMoment}
-              />
-            </div>
-          ) : null}
           <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
             <HubActivityChart
               points={chartInputs.points}
@@ -659,6 +643,22 @@ export function FigmaGlobalActivityPanel({
                   : activitySummary.footnote
               }
               rangeControl={rangeControl}
+              annotationLane={annotationFeed ? (
+                <div className="figma-global-activity__annotation-lane" id="section-live-wire">
+                  <HubLiveWireFeed
+                    hub={hub}
+                    feed={annotationFeed}
+                    activityWindow={annotationActivityWindow}
+                    loading={annotationLoading}
+                    hubEndpointOk={annotationHubEndpointOk}
+                    loadSource={annotationLoadSource}
+                    pollSequence={annotationPollSequence}
+                    layout="lane"
+                    selectedMomentKey={selectedMomentKey}
+                    onSelectMoment={onSelectMoment}
+                  />
+                </div>
+              ) : null}
               emptyTitle={honestyEmpty?.title}
               emptyDescription={honestyEmpty?.description}
               selectedBucketT={selectedBucketT}

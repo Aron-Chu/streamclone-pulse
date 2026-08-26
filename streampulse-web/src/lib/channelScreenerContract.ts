@@ -120,6 +120,9 @@ const STATES = new Set<ScreenerMetricState>([
   'unavailable',
 ])
 
+const LIVE_MOMENT_MINIMUM_BASELINE_MINUTES = 20
+const LIVE_MOMENT_MINIMUM_BASELINE_COVERAGE_PCT = 80
+
 function record(value: unknown): Record<string, unknown> | null {
   return value != null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -321,27 +324,78 @@ export function normalizeHubChannelScreenerFields(raw: unknown): HubChannelScree
 }
 
 function liveMomentEvidenceIsCoherent(
+  eventAt: number,
   baselineWindow: ScreenerWindow,
   chat: ScreenerMetricComparison,
   emotes: ScreenerMetricComparison,
   evidence: HubLiveMomentEvidence,
 ): boolean {
   const expectedCurrentMeasured = evidence.eventRollupAvailable ? 1 : 0
+  const expectedCoveragePct = evidence.baselineExpectedMinutes > 0
+    ? Math.round((evidence.baselineMeasuredMinutes / evidence.baselineExpectedMinutes) * 10_000) / 100
+    : 0
+  const baselineRollupAvailable = evidence.baselineMeasuredMinutes > 0
+  const anyRollupAvailable = evidence.eventRollupAvailable || baselineRollupAvailable
   const baselineMatches = (comparison: ScreenerMetricComparison) =>
     comparison.baselineMeasuredMinutes === evidence.baselineMeasuredMinutes &&
     comparison.baselineExpectedMinutes === evidence.baselineExpectedMinutes &&
     comparison.baselineCoveragePct === evidence.baselineCoveragePct
+  const measuredCountsAreIntegers = (comparison: ScreenerMetricComparison) =>
+    Number.isInteger(comparison.currentMeasuredMinutes) &&
+    Number.isInteger(comparison.currentExpectedMinutes) &&
+    Number.isInteger(comparison.baselineMeasuredMinutes) &&
+    Number.isInteger(comparison.baselineExpectedMinutes)
+  const evidenceState = (() => {
+    if (!evidence.ircBound || !anyRollupAvailable) return 'unavailable' as const
+    if (evidence.baselineExpectedMinutes < LIVE_MOMENT_MINIMUM_BASELINE_MINUTES) {
+      return 'warming' as const
+    }
+    if (!evidence.eventRollupAvailable) return 'partial' as const
+    if (
+      evidence.baselineMeasuredMinutes < LIVE_MOMENT_MINIMUM_BASELINE_MINUTES ||
+      evidence.baselineCoveragePct < LIVE_MOMENT_MINIMUM_BASELINE_COVERAGE_PCT
+    ) return 'partial' as const
+    return 'qualified' as const
+  })()
+  const metricStateMatches = (comparison: ScreenerMetricComparison) => {
+    if (evidenceState === 'qualified') {
+      if (comparison.state !== 'ready' && comparison.state !== 'new_activity') return false
+      if (
+        comparison.currentPerMin == null || comparison.baselinePerMin == null ||
+        comparison.absoluteDeltaPerMin == null
+      ) return false
+      if (comparison.state === 'new_activity') {
+        return Boolean(comparison.reason) && comparison.baselinePerMin === 0 && comparison.currentPerMin > 0
+      }
+      return !comparison.reason && !(comparison.baselinePerMin === 0 && comparison.currentPerMin > 0)
+    }
+    return comparison.state === evidenceState && Boolean(comparison.reason)
+  }
   return (
     baselineWindow.coveragePct != null &&
+    Number.isInteger(baselineWindow.expectedMinutes) &&
+    Number.isInteger(baselineWindow.measuredMinutes) &&
+    Number.isInteger(evidence.baselineExpectedMinutes) &&
+    Number.isInteger(evidence.baselineMeasuredMinutes) &&
+    baselineWindow.end - baselineWindow.start === baselineWindow.expectedMinutes * 60_000 &&
+    Math.floor(eventAt / 60_000) * 60_000 === baselineWindow.end &&
     baselineWindow.measuredMinutes === evidence.baselineMeasuredMinutes &&
     baselineWindow.expectedMinutes === evidence.baselineExpectedMinutes &&
     baselineWindow.coveragePct === evidence.baselineCoveragePct &&
+    evidence.baselineCoveragePct === expectedCoveragePct &&
     baselineMatches(chat) &&
     baselineMatches(emotes) &&
+    measuredCountsAreIntegers(chat) &&
+    measuredCountsAreIntegers(emotes) &&
     chat.currentExpectedMinutes === 1 &&
     emotes.currentExpectedMinutes === 1 &&
     chat.currentMeasuredMinutes === expectedCurrentMeasured &&
-    emotes.currentMeasuredMinutes === expectedCurrentMeasured
+    emotes.currentMeasuredMinutes === expectedCurrentMeasured &&
+    (!evidence.ircBound
+      ? !evidence.eventRollupAvailable && evidence.baselineMeasuredMinutes === 0
+      : true) &&
+    metricStateMatches(chat) &&
+    metricStateMatches(emotes)
   )
 }
 
@@ -359,7 +413,7 @@ export function normalizeHubLiveMomentComparison(raw: unknown): HubLiveMomentCom
   if (
     eventAt == null || !baselineWindow ||
     !chat || !emotes || !evidence ||
-    !liveMomentEvidenceIsCoherent(baselineWindow, chat, emotes, evidence)
+    !liveMomentEvidenceIsCoherent(eventAt, baselineWindow, chat, emotes, evidence)
   ) return null
   return {
     baselineKind: 'current_stream_measured_average_before_event', eventAt,

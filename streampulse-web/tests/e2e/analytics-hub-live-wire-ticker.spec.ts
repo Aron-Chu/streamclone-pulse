@@ -35,14 +35,18 @@ test.describe('analytics hub Live Wire annotation lane', () => {
 
       const order = await page.evaluate(() => {
         const wire = document.getElementById('section-live-wire')
+        const rangeControls = document.querySelector('.figma-global-activity__hub-chart .hx-chart-header__window')
+        const plot = document.querySelector('.figma-global-activity__hub-chart .hx-plot-stack')
         const chart = document.querySelector('.figma-global-activity__hub-chart')
         const chartCol = document.querySelector('.figma-global-activity__chart-col')
-        if (!wire || !chart || !chartCol) return null
-        const wireBeforeChart =
-          Boolean(wire.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING)
-        return wireBeforeChart && chartCol.contains(wire) ? 'lane-above-chart-in-col' : 'other'
+        if (!wire || !rangeControls || !plot || !chart || !chartCol) return null
+        const rangeBeforeWire = Boolean(rangeControls.compareDocumentPosition(wire) & Node.DOCUMENT_POSITION_FOLLOWING)
+        const wireBeforePlot = Boolean(wire.compareDocumentPosition(plot) & Node.DOCUMENT_POSITION_FOLLOWING)
+        return rangeBeforeWire && wireBeforePlot && chart.contains(wire) && chartCol.contains(wire)
+          ? 'range-lane-plot'
+          : 'other'
       })
-      expect(order).toBe('lane-above-chart-in-col')
+      expect(order).toBe('range-lane-plot')
 
       if (viewport.width >= 1100) {
         const grid = page.locator('.pulse-moments-live--embedded .pulse-moments-live__grid')

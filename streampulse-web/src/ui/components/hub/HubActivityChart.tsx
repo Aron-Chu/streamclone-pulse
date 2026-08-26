@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
 import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState, assessViewerCoverage, hasViewerSample, isViewerCoverageQualified, isViewerCoveragePartial, hasProviderSample, type HubProviderLaneKey } from '../../../lib/hubActivitySummary'
@@ -62,6 +62,8 @@ export interface HubActivityChartProps {
   footnote?: string
   /** Optional time-window selector rendered above the chart (24h/7d/1mo/…). */
   rangeControl?: HubActivityRangeControl
+  /** Chart-attached annotation lane rendered after controls and before the plot. */
+  annotationLane?: ReactNode
   /** Unix ms for the selected activity bucket (network moments filtering). */
   selectedBucketT?: number | null
   /** Soft highlight for a bucket tied to a moment row (no table filter). */
@@ -555,6 +557,7 @@ export function HubActivityChart({
   loading,
   footnote,
   rangeControl,
+  annotationLane,
   selectedBucketT = null,
   accentBucketT = null,
   onBucketSelect,
@@ -1067,6 +1070,7 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        {annotationLane}
         <div className="hx-chart-state hx-chart-state--loading" data-hub-chart-state="loading" role="status" aria-live="polite">
           Loading measured activity…
         </div>
@@ -1083,6 +1087,7 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        {annotationLane}
         <div className="hx-chart-state" data-hub-chart-state="unmeasured" role="status" aria-live="polite">
           <EmptyState icon={<Activity aria-hidden="true" />}>
           {emptyTitle ? (
@@ -1103,6 +1108,7 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        {annotationLane}
         <div className="hx-chart-state" data-hub-chart-state="unavailable" role="status" aria-live="polite">
           <EmptyState icon={<Activity aria-hidden="true" />}>
             <strong>Activity payload unavailable</strong> — {dataIssue} The chart is withheld until the served window and timestamps agree.
@@ -1124,6 +1130,7 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
+        {annotationLane}
         <div className="hx-chart-state" data-hub-chart-state={chartDataState} role="status" aria-live="polite">
           <EmptyState icon={<Activity aria-hidden="true" />}>
             <strong>{title}</strong> — {description}
@@ -1297,7 +1304,7 @@ export function HubActivityChart({
   }
 
   function selectKeyboardIndex(index: number) {
-    const bounded = Math.max(0, Math.min(chartPoints.length - 1, index))
+    const bounded = Math.max(viewportStartIndex, Math.min(viewportEndIndex, index))
     keyboardIndexRef.current = bounded
     commitHoverIndex(bounded)
     const point = chartPoints[bounded]
@@ -1308,13 +1315,14 @@ export function HubActivityChart({
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!bucketSelectEnabled || chartPoints.length === 0) return
     const selectedIndex = selectedBucketT == null ? -1 : chartPoints.findIndex((point) => point.t === selectedBucketT)
-    const current = keyboardIndexRef.current ?? (hover ?? (selectedIndex >= 0 ? selectedIndex : 0))
+    const requestedCurrent = keyboardIndexRef.current ?? (hover ?? (selectedIndex >= 0 ? selectedIndex : viewportStartIndex))
+    const current = Math.max(viewportStartIndex, Math.min(viewportEndIndex, requestedCurrent))
     if (event.key === 'Home') {
       event.preventDefault()
-      selectKeyboardIndex(0)
+      selectKeyboardIndex(viewportStartIndex)
     } else if (event.key === 'End') {
       event.preventDefault()
-      selectKeyboardIndex(chartPoints.length - 1)
+      selectKeyboardIndex(viewportEndIndex)
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault()
       const step = event.shiftKey ? 5 : 1
@@ -1413,6 +1421,7 @@ export function HubActivityChart({
           ) : hover != null ? 'No recorded activity in this bucket · Viewers — · Chat — · Emotes —' : ''}
         </div>
       </div>
+      {annotationLane}
       {chartSummary ? (
         <p className="hx-chart-summary muted" role="status">
           {chartSummary}

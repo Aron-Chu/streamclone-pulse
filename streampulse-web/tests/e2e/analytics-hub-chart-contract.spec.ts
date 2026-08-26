@@ -203,3 +203,25 @@ test('reduced motion leaves Live Wire without entrance animation class churn', a
   await expect(page.getByRole('region', { name: 'Live Wire', exact: true })).toBeVisible()
   await expect(page.locator('.hub-live-wire__chip-new')).toHaveCount(0)
 })
+
+test('Moment Inspector reports clipboard denial instead of failing silently', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('clipboard denied')) },
+    })
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: () => false,
+    })
+  })
+  await installHubUxMock(page)
+  await page.goto('/analytics')
+
+  const liveWire = page.getByRole('region', { name: 'Live Wire', exact: true })
+  await liveWire.locator('.hub-live-wire__chip').first().click()
+  const inspector = page.getByRole('complementary', { name: 'Moment Inspector' })
+  await inspector.getByRole('button', { name: 'Copy link' }).click()
+  await expect(inspector.getByRole('button', { name: 'Copy failed' })).toBeVisible()
+  await expect(inspector.getByRole('status')).toContainText('Could not copy the link')
+})
