@@ -373,6 +373,22 @@ describe('HubLiveWireFeed (right rail)', () => {
     expect(screen.getByText('Jynxzi')).toBeTruthy()
   })
 
+  it('omits future timestamps and labels the two time sections explicitly', () => {
+    const now = Date.now()
+    const hub = sampleHub()
+    hub.livePulseMoments = [
+      makeMoment({ login: 'xqc', displayName: 'xQc', streamId: 's1', at: now - 2 * 60_000 }),
+      makeMoment({ login: 'sodapoppin', displayName: 'sodapoppin', streamId: 's2', at: now - 45 * 60_000 }),
+      makeMoment({ login: 'jynxzi', displayName: 'Jynxzi', streamId: 's3', at: now + 60 * 60_000 }),
+    ]
+    const feed = resolveLivePulseMoments(hub)
+    renderFeed(feed, hub)
+
+    expect(screen.getByText(/Live now/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Recent detections/i }).textContent).toContain('earlier than 30m')
+    expect(screen.queryByText('Jynxzi')).toBeNull()
+  })
+
   it('shows empty reason and honesty banner when feed has no moments', () => {
     const hub = sampleHub()
     hub.livePulseMomentsReason = 'insufficient_peaks'

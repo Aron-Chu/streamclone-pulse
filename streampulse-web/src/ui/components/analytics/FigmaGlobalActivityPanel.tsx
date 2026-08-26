@@ -126,17 +126,20 @@ function ircCoverageLabels(hub: PublicHub): { transport: string; metadata?: stri
 export function ChartSourceBanner({
   hub,
   activitySummary,
+  requestedWindowMinutes,
   className,
 }: {
   hub: PublicHub;
   activitySummary: ActivitySummary;
+  /** Requested range from the control, even while stale data is displayed during revalidation. */
+  requestedWindowMinutes?: number;
   className?: string;
 }) {
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
   const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
   const windowLabel = formatHubActivityServedLabel(hub.activity);
   const requestedWindowLabel = formatActivityWindowLabel(
-    Math.max(1, hub.activity.windowMinutes || 30),
+    Math.max(1, requestedWindowMinutes ?? (hub.activity.windowMinutes || 30)),
   );
   const availableWindowLabel = formatActivityWindowLabel(
     resolveHubActivityChartWindowMinutes(hub.activity),
@@ -163,8 +166,8 @@ export function ChartSourceBanner({
         {livePoolFallback
           ? `${requestedWindowLabel} requested · ${availableWindowLabel} available`
           : historicalProjection
-            ? `last ${windowLabel}`
-            : `served ${windowLabel}`}
+            ? `${requestedWindowLabel} requested · last ${windowLabel}`
+            : `served ${windowLabel} · ${requestedWindowLabel} requested`}
       </span>
       <span>
         <strong>Buckets:</strong> ~{bucket} min - {activitySummary.pointCount}/
@@ -229,6 +232,8 @@ export interface FigmaGlobalActivityPanelProps {
   activityRefreshing?: boolean;
   /** Changes when the activity time window changes (24h/7d/…) — triggers crossfade. */
   activityWindowKey?: string;
+  /** Requested range selected in the menu; independent from stale loaded payload identity. */
+  requestedWindowMinutes?: number;
   /** Emotes aggregated from bucket-filtered Pulse Moments (inspector fallback). */
   bucketMomentEmotes?: HubEmote[];
   /** Pulse Moments rows in the active chart bucket (selected or hover preview). */
@@ -275,6 +280,7 @@ export function FigmaGlobalActivityPanel({
   updatedAgo,
   activityRefreshing = false,
   activityWindowKey,
+  requestedWindowMinutes,
   bucketMomentEmotes = [],
   bucketMoments = [],
   bucketMomentsLoading = false,
@@ -300,7 +306,7 @@ export function FigmaGlobalActivityPanel({
   const activityContractIssue = activityContractIssues[0] ?? null;
   const windowLabel = servedLabel;
   const requestedWindowLabel = formatActivityWindowLabel(
-    Math.max(1, hub.activity.windowMinutes || 30),
+    Math.max(1, requestedWindowMinutes ?? (hub.activity.windowMinutes || 30)),
   );
   const availableWindowLabel = formatActivityWindowLabel(
     resolveHubActivityChartWindowMinutes(hub.activity),
@@ -490,7 +496,7 @@ export function FigmaGlobalActivityPanel({
       className="figma-global-activity"
       aria-label={labels.liveActivity}
       data-hub-activity-state={chartState}
-      data-hub-requested-window-minutes={hub.activity.windowMinutes}
+      data-hub-requested-window-minutes={requestedWindowMinutes ?? hub.activity.windowMinutes}
       data-hub-served-window-minutes={chartInputs.windowMinutes}
       data-hub-activity-source={hub.activity.source ?? "unspecified"}
       data-hub-activity-repaired={fallbackPayloadRepaired ? "true" : undefined}
@@ -591,7 +597,7 @@ export function FigmaGlobalActivityPanel({
           ? `Activity payload withheld: ${blockingActivityContractIssue}.`
           : livePoolFallback
           ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
-          : `Showing served ${servedLabel}.`}
+          : `Showing served ${servedLabel} · ${requestedWindowLabel} requested.`}
       </p>
       <div className="figma-global-activity__body" ref={bodyRef}>
         <div

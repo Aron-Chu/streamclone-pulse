@@ -3,7 +3,7 @@ import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
 import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState, assessViewerCoverage, hasViewerSample, isViewerCoverageQualified, isViewerCoveragePartial, hasProviderSample, type HubProviderLaneKey } from '../../../lib/hubActivitySummary'
 import { isActivityGapMarker, isAttestedActivityGap } from '../../../lib/hubActivityHonesty'
-import { hubBucketBarRect, hubBucketCenterX, hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
+import { hubBucketBarRect, hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
 import { CHART_MOTION } from '../../../lib/chartMotion'
 import { useSmoothedScalar } from '../../motion/useSmoothedScalar'
@@ -15,6 +15,7 @@ import { HubActivityBarSeries } from '../analytics/HubActivityBarSeries'
 import { HubActivityRhythmLines } from '../analytics/HubActivityRhythmLines'
 import { HubActivityMomentAnnotations } from '../analytics/HubActivityMomentAnnotations'
 import { classifyMomentMarker, resolveAnnotationCollisions, type HubChartAnnotation } from '../../../lib/hubChartMarkers'
+import { HubChartNavigator, type HubChartNavigatorRange } from './HubChartNavigator'
 
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
 import type { HubActivityRangeControl } from './HubRangeMenu'
@@ -126,6 +127,31 @@ function seriesFocusClass(
 interface Pt {
   x: number
   y: number
+}
+
+interface ChartMarkerDotProps {
+  point: Pt
+  kind: 'viewers' | 'viewers-partial' | 'emotes'
+  index: number
+}
+
+/**
+ * Screen-space activity marker. The chart SVG intentionally uses
+ * preserveAspectRatio="none" so its time/value scales can fill a responsive
+ * rectangle; SVG circles in that coordinate system therefore become stretched
+ * ellipses. Keep observations as HTML dots so their size and circular shape do
+ * not change with the chart's aspect ratio.
+ */
+function ChartMarkerDot({ point, kind, index }: ChartMarkerDotProps) {
+  return (
+    <span
+      className={`hx-chart-marker-dot hx-chart-marker-dot--${kind} hx-chart-point hx-chart-point--${kind}`}
+      data-hub-chart-marker={kind}
+      data-marker-index={index}
+      style={{ left: `${point.x}%`, top: `${point.y}%` }}
+      aria-hidden="true"
+    />
+  )
 }
 
 interface BucketSelectionCueProps {
@@ -252,6 +278,29 @@ function windowLabel(minutes: number): string {
   return `${minutes} minute`
 }
 
+/**
+ * Navigator labels need a calendar qualifier when a sparse 24h/7d domain
+ * crosses midnight. A clock-only pair such as "9:24 PM – 9:18 PM" looks
+ * reversed even though the latter is the next day's endpoint.
+ */
+function formatNavigatorTick(ts: number, otherTs: number, windowMinutes: number): string {
+  const base = formatActivityAxisTick(ts, windowMinutes)
+  if (base === '—' || !Number.isFinite(otherTs) || otherTs <= 0) return base
+  const date = new Date(ts)
+  const otherDate = new Date(otherTs)
+  if (date.toDateString() === otherDate.toDateString()) return base
+  const dateLabel = date.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() === otherDate.getFullYear() ? {} : { year: 'numeric' }),
+  })
+  const timeLabel = date.toLocaleTimeString([], {
+    hour: 'numeric',
+    ...(windowMinutes <= 60 * 24 ? { minute: '2-digit' } : {}),
+  })
+  return `${dateLabel} ${timeLabel}`
+}
+
 function activePoint(point: HubActivityPoint): boolean {
   return (
     point.hasChatRollup ||
@@ -342,6 +391,8 @@ function splitLinePaths(
   windowMinutes: number,
   sampleValues?: number[],
   hasSample?: boolean[],
+  visibleStartIndex = 0,
+  visibleEndIndex = source.length - 1,
 ): string[] {
   const isolatedSegment = (point: Pt): string => {
     const left = Math.max(0, point.x - 1.2)
@@ -353,6 +404,7 @@ function splitLinePaths(
   const maxGap = maxConnectedGapMs(windowMinutes)
   const measured: Array<{ pt: Pt; t: number; index: number }> = []
   for (let i = 0; i < pts.length; i += 1) {
+    if (i < visibleStartIndex || i > visibleEndIndex) continue
     const isSample = hasSample
       ? hasSample[i]
       : !sampleValues || (sampleValues[i] ?? 0) > 0
@@ -417,10 +469,13 @@ function isolatedLinePoints(
   windowMinutes: number,
   sampleValues?: number[],
   hasSample?: boolean[],
+  visibleStartIndex = 0,
+  visibleEndIndex = source.length - 1,
 ): Pt[] {
   const maxGap = maxConnectedGapMs(windowMinutes)
   const measured: Array<{ pt: Pt; t: number; index: number }> = []
   for (let i = 0; i < pts.length; i += 1) {
+    if (i < visibleStartIndex || i > visibleEndIndex) continue
     const isSample = hasSample
       ? hasSample[i]
       : !sampleValues || (sampleValues[i] ?? 0) > 0
@@ -449,9 +504,15 @@ function isolatedLinePoints(
 
 /** Return sampled viewer observations that are visible but unsafe to join to
  * a global trend because coverage is partial or unknown. */
-function unqualifiedViewerPoints(pts: Pt[], source: HubActivityPoint[]): Pt[] {
+function unqualifiedViewerPoints(
+  pts: Pt[],
+  source: HubActivityPoint[],
+  visibleStartIndex = 0,
+  visibleEndIndex = source.length - 1,
+): Pt[] {
   const out: Pt[] = []
   for (let i = 0; i < pts.length; i += 1) {
+    if (i < visibleStartIndex || i > visibleEndIndex) continue
     const point = source[i]
     if (point && pts[i] && hasViewerSample(point) && !isViewerCoverageQualified(point)) {
       out.push(pts[i])
@@ -544,6 +605,33 @@ export function HubActivityChart({
     () => chartActivityPoints(points, windowMinutes, undefined, livePoolViewerSum),
     [points, windowMinutes, livePoolViewerSum],
   )
+  const chartPointWindowKey = `${windowMinutes}:${chartPoints.length}:${chartPoints[0]?.t ?? 0}:${chartPoints[chartPoints.length - 1]?.t ?? 0}`
+  const [navigatorRange, setNavigatorRange] = useState<HubChartNavigatorRange>({
+    startIndex: 0,
+    endIndex: 1,
+  })
+  // A range change or a newly shifted chart grid starts at the full requested
+  // domain. Value-only polls keep the user's local zoom intact.
+  useEffect(() => {
+    setNavigatorRange({
+      startIndex: 0,
+      endIndex: Math.max(0, chartPoints.length - 1),
+    })
+  }, [chartPointWindowKey])
+
+  const navigatorBounds = useMemo(() => {
+    const maxIndex = Math.max(0, chartPoints.length - 1)
+    const minimumSpan = maxIndex > 0 ? 1 : 0
+    const endIndex = Math.max(
+      minimumSpan,
+      Math.min(maxIndex, Math.round(navigatorRange.endIndex)),
+    )
+    const startIndex = Math.max(
+      0,
+      Math.min(Math.max(0, endIndex - minimumSpan), Math.round(navigatorRange.startIndex)),
+    )
+    return { startIndex, endIndex }
+  }, [chartPoints.length, navigatorRange.endIndex, navigatorRange.startIndex])
   const viewerSampleCount = chartPoints.filter(hasViewerSample).length
   const viewerQualifiedCount = chartPoints.filter(isViewerCoverageQualified).length
   const viewerPartialCount = chartPoints.filter(isViewerCoveragePartial).length
@@ -570,7 +658,11 @@ export function HubActivityChart({
       (poolSize ?? channelCount) > 0
         ? `${poolSize ?? channelCount} channels in tracked pool`
         : 'tracked streams'
-    const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel}); each signal uses its own scale and values are not stacked; ${viewerCoverageCopy}`
+    const zoomed =
+      navigatorBounds.startIndex > 0 || navigatorBounds.endIndex < Math.max(0, chartPoints.length - 1)
+        ? ' The chart view is zoomed locally; the requested server range and coverage totals are unchanged.'
+        : ''
+    const base = `Corpus-wide viewers, total emotes, and tracked IRC chat over the last ${windowLabel(windowMinutes)} (${poolLabel}); each signal uses its own scale and values are not stacked; ${viewerCoverageCopy}.${zoomed}`
     const selectedCopy =
       selectedBucketT != null
         ? ` Selected bucket: ${formatActivityAxisTick(selectedBucketT, windowMinutes)}.`
@@ -578,10 +670,24 @@ export function HubActivityChart({
     return bucketSelectEnabled
       ? `${base}.${selectedCopy} Click a bucket to filter Pulse Moments Live.`
       : `${base}.${selectedCopy}`
-  }, [poolSize, channelCount, windowMinutes, bucketSelectEnabled, selectedBucketT, viewerCoverageCopy])
+  }, [poolSize, channelCount, chartPoints.length, navigatorBounds.endIndex, navigatorBounds.startIndex, windowMinutes, bucketSelectEnabled, selectedBucketT, viewerCoverageCopy])
 
   const model = useMemo(() => {
     const n = chartPoints.length
+    // Keep the render model defensive even if a caller supplies an empty or
+    // transiently sparse point array while the navigator still holds its
+    // previous range. Never let a stale index turn into an undefined point.
+    const visibleStartIndex =
+      n === 0
+        ? 0
+        : Math.min(Math.max(0, Math.floor(navigatorBounds.startIndex)), n - 1)
+    const visibleEndIndex =
+      n === 0
+        ? -1
+        : Math.min(
+            n - 1,
+            Math.max(visibleStartIndex, Math.floor(navigatorBounds.endIndex)),
+          )
     const qualifiedViewerMax = chartPoints.reduce(
       (acc, p) => (isViewerCoverageQualified(p) ? Math.max(acc, p.viewers) : acc),
       0,
@@ -610,16 +716,28 @@ export function HubActivityChart({
     const PAD = 10
     const lastT = chartPoints[n - 1]?.t ?? 0
     const bucketDurationMs = activityBucketMs(windowMinutes)
-    const timeDomain = hubTimeDomain(chartPoints, bucketDurationMs) ?? {
+    const fullTimeDomain = hubTimeDomain(chartPoints, bucketDurationMs) ?? {
       start: lastT,
       endExclusive: lastT + bucketDurationMs,
+      bucketDurationMs,
+    }
+    const viewportStartT = chartPoints[visibleStartIndex]?.t ?? fullTimeDomain.start
+    const viewportEndT = chartPoints[visibleEndIndex]?.t ?? lastT
+    const timeDomain = {
+      start: viewportStartT,
+      endExclusive: Math.max(viewportStartT + bucketDurationMs, viewportEndT + bucketDurationMs),
       bucketDurationMs,
     }
     const startT = timeDomain.start
     const xAtIndex = (i: number): number => {
       if (n <= 1) return 50
-      if (!timeDomain) return (i / Math.max(1, n - 1)) * 100
-      return hubBucketCenterX(chartPoints[i]?.t ?? 0, timeDomain) ?? 50
+      const timestamp = chartPoints[i]?.t ?? 0
+      const span = Math.max(bucketDurationMs, timeDomain.endExclusive - timeDomain.start)
+      // Keep out-of-viewport points on their actual extrapolated x coordinate
+      // instead of collapsing them to 50% when hubTimeXPercent rejects them.
+      // The SVG is clipped by the chart frame, while paths/markers remain
+      // geometrically honest at the viewport edges.
+      return ((timestamp + bucketDurationMs / 2 - timeDomain.start) / span) * 100
     }
     const xs = chartPoints.map((_, i) => xAtIndex(i))
     const atViewerY = (value: number): number => PAD + (1 - value / viewerMax) * (100 - PAD)
@@ -638,6 +756,8 @@ export function HubActivityChart({
           windowMinutes,
           chartPoints.map((p) => providerValue(p, key)),
           chartPoints.map((p) => hasProviderSample(p, key)),
+          visibleStartIndex,
+          visibleEndIndex,
         )
         return acc
       },
@@ -655,6 +775,8 @@ export function HubActivityChart({
           windowMinutes,
           chartPoints.map((p) => providerValue(p, key)),
           chartPoints.map((p) => hasProviderSample(p, key)),
+          visibleStartIndex,
+          visibleEndIndex,
         )
         return acc
       },
@@ -662,7 +784,7 @@ export function HubActivityChart({
     )
     const internalGapBands: { left: number; width: number }[] = []
     const maxGap = maxConnectedGapMs(windowMinutes)
-    for (let i = 1; i < chartPoints.length; i += 1) {
+    for (let i = Math.max(1, visibleStartIndex + 1); i <= visibleEndIndex; i += 1) {
       const prevT = chartPoints[i - 1]?.t ?? 0
       const nextT = chartPoints[i]?.t ?? prevT
       if (nextT - prevT > maxGap) {
@@ -686,15 +808,23 @@ export function HubActivityChart({
       chatGapStart = -1
       chatGapAttested = false
     }
-    for (let i = 0; i < chartPoints.length; i += 1) {
-      if (isAttestedActivityGap(chartPoints[i]) || chartPoints[i]?.hasChatRollup === false) {
+    for (let i = visibleStartIndex; i <= visibleEndIndex; i += 1) {
+      const point = chartPoints[i]
+      // Empty/loading fixtures can expose a clamped navigator range before
+      // chart points arrive. Missing points are not a measured gap and must
+      // never be passed to the honesty helpers as if they were a row.
+      if (!point) {
+        flushChatGap(i - 1)
+        continue
+      }
+      if (isAttestedActivityGap(point) || point.hasChatRollup === false) {
         if (chatGapStart < 0) chatGapStart = i
-        chatGapAttested = chatGapAttested || isAttestedActivityGap(chartPoints[i])
+        chatGapAttested = chatGapAttested || isAttestedActivityGap(point)
       } else {
         flushChatGap(i - 1)
       }
     }
-    flushChatGap(chartPoints.length - 1)
+    flushChatGap(visibleEndIndex)
     const active = chartPoints.filter(activePoint)
     const firstActive = active[0]
     const firstActiveIndex = firstActive ? chartPoints.findIndex((p) => p.t === firstActive.t) : -1
@@ -706,6 +836,9 @@ export function HubActivityChart({
 
     return {
       n,
+      viewportStartIndex: visibleStartIndex,
+      viewportEndIndex: visibleEndIndex,
+      fullTimeDomain,
       chatMax,
       xs,
       lastT,
@@ -719,12 +852,17 @@ export function HubActivityChart({
         windowMinutes,
         undefined,
         viewerLineSamples,
+        visibleStartIndex,
+        visibleEndIndex,
       ),
       totalEmoteLines: splitLinePaths(
         totalEmotes,
         chartPoints,
         windowMinutes,
         emoteSamples,
+        undefined,
+        visibleStartIndex,
+        visibleEndIndex,
       ),
       viewerDots: isolatedLinePoints(
         viewers,
@@ -732,13 +870,23 @@ export function HubActivityChart({
         windowMinutes,
         undefined,
         viewerLineSamples,
+        visibleStartIndex,
+        visibleEndIndex,
       ),
-      viewerPartialDots: unqualifiedViewerPoints(viewers, chartPoints),
+      viewerPartialDots: unqualifiedViewerPoints(
+        viewers,
+        chartPoints,
+        visibleStartIndex,
+        visibleEndIndex,
+      ),
       emoteDots: isolatedLinePoints(
         totalEmotes,
         chartPoints,
         windowMinutes,
         emoteSamples,
+        undefined,
+        visibleStartIndex,
+        visibleEndIndex,
       ),
       providerLines,
       providerLaneLines,
@@ -769,7 +917,7 @@ export function HubActivityChart({
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
     }
-  }, [chartPoints, windowMinutes])
+  }, [chartPoints, navigatorBounds.endIndex, navigatorBounds.startIndex, windowMinutes])
 
   // Destructure before any early return so hook order stays stable across
   // loading → data transitions (React hook rules).
@@ -783,7 +931,7 @@ export function HubActivityChart({
       .map((marker) => {
         const at = marker.at ?? marker.bucketT
         const x = timeDomain ? hubTimeXPercent(at, timeDomain) : null
-        if (x == null) return null
+        if (x == null || x < 0 || x > 100) return null
         return markerToAnnotation(marker, x)
       })
       .filter((a): a is HubChartAnnotation => a != null)
@@ -793,10 +941,11 @@ export function HubActivityChart({
   }, [momentMarkers, timeDomain, selectedMomentKey])
 
   const ticks = useMemo(() => {
-    return activityAxisTickIndices(chartPoints.length).map((index) =>
-      formatActivityAxisTick(chartPoints[index]?.t ?? 0, windowMinutes),
+    const count = Math.max(0, navigatorBounds.endIndex - navigatorBounds.startIndex + 1)
+    return activityAxisTickIndices(count).map((index) =>
+      formatActivityAxisTick(chartPoints[navigatorBounds.startIndex + index]?.t ?? 0, windowMinutes),
     )
-  }, [chartPoints, windowMinutes])
+  }, [chartPoints, navigatorBounds.endIndex, navigatorBounds.startIndex, windowMinutes])
 
   // The footer always reserves one lane for each provider in a stable order.
   // Provider rows without samples render an explicit empty state instead of a
@@ -963,6 +1112,8 @@ export function HubActivityChart({
   const {
     chatMax,
     xs,
+    viewportStartIndex,
+    viewportEndIndex,
     lastT,
     viewers,
     chat,
@@ -1004,7 +1155,7 @@ export function HubActivityChart({
     const mx = Math.max(0, Math.min(100, ratio * 100))
     let best = 0
     let bestDist = Infinity
-    for (let i = 0; i < xs.length; i += 1) {
+    for (let i = viewportStartIndex; i <= viewportEndIndex; i += 1) {
       const dist = Math.abs(xs[i] - mx)
       if (dist < bestDist) {
         bestDist = dist
@@ -1241,6 +1392,8 @@ export function HubActivityChart({
         data-hub-chart-state="ready"
         data-hub-measured-points={measuredChartPointCount}
         data-hub-signal-points={signalChartPointCount}
+        data-hub-chart-viewport-start={viewportStartIndex}
+        data-hub-chart-viewport-end={viewportEndIndex}
       >
         <div
           className="hx-chart-series-labels"
@@ -1357,23 +1510,6 @@ export function HubActivityChart({
                 strokeLinejoin="round"
               />
             ))}
-            {viewerDots.map((point, i) => (
-              <g key={`view-dot-${i}`} className="hx-chart-point-group">
-                <circle className="hx-chart-point-underlay" cx={point.x} cy={point.y} r="3.6" />
-                <circle className="hx-chart-point hx-chart-point--viewers" cx={point.x} cy={point.y} r="1.8" />
-              </g>
-            ))}
-            {viewerPartialDots.map((point, i) => (
-              <g key={`view-partial-dot-${i}`} className="hx-chart-point-group hx-chart-point-group--partial">
-                <circle className="hx-chart-point-underlay" cx={point.x} cy={point.y} r="4.4" />
-                <circle
-                  className="hx-chart-point hx-chart-point--viewers hx-chart-point--viewers-partial"
-                  cx={point.x}
-                  cy={point.y}
-                  r="2.4"
-                />
-              </g>
-            ))}
           </g>
           {hasTotalEmotes && !showProviderOverlay ? (
             <g className={seriesFocusClass(focusedSeriesKey, 'emotes')} aria-label="Total emotes per minute trend">
@@ -1395,12 +1531,6 @@ export function HubActivityChart({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
-                </g>
-              ))}
-              {emoteDots.map((point, i) => (
-                <g key={`emote-dot-${i}`} className="hx-chart-point-group">
-                  <circle className="hx-chart-point-underlay" cx={point.x} cy={point.y} r="3.2" />
-                  <circle className="hx-chart-point hx-chart-point--emotes" cx={point.x} cy={point.y} r="1.5" />
                 </g>
               ))}
             </g>
@@ -1433,6 +1563,17 @@ export function HubActivityChart({
         </svg>
 
         <div className="hx-chart2__layer">
+          {viewerDots.map((point, i) => (
+            <ChartMarkerDot key={`view-dot-${i}`} point={point} kind="viewers" index={i} />
+          ))}
+          {viewerPartialDots.map((point, i) => (
+            <ChartMarkerDot key={`view-partial-dot-${i}`} point={point} kind="viewers-partial" index={i} />
+          ))}
+          {hasTotalEmotes && !showProviderOverlay
+            ? emoteDots.map((point, i) => (
+              <ChartMarkerDot key={`emote-dot-${i}`} point={point} kind="emotes" index={i} />
+            ))
+            : null}
           {selectedIndex >= 0 ? (
             <BucketSelectionCue
               key={`selected-${chartPoints[selectedIndex]?.t ?? selectedIndex}`}
@@ -1642,6 +1783,23 @@ export function HubActivityChart({
             </div>
           </div>
         </div>
+        <HubChartNavigator
+          pointCount={chartPoints.length}
+          startIndex={viewportStartIndex}
+          endIndex={viewportEndIndex}
+          startLabel={formatNavigatorTick(
+            chartPoints[viewportStartIndex]?.t ?? 0,
+            chartPoints[viewportEndIndex]?.t ?? lastT,
+            windowMinutes,
+          )}
+          endLabel={formatNavigatorTick(
+            chartPoints[viewportEndIndex]?.t ?? 0,
+            chartPoints[viewportStartIndex]?.t ?? lastT,
+            windowMinutes,
+          )}
+          onChange={setNavigatorRange}
+          onReset={() => setNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) })}
+        />
         <div className="hx-provider-lanes" role="group" aria-label="Emote provider sparklines">
           {shownProviders.map((key) => {
             const meta = providerMeta[key]

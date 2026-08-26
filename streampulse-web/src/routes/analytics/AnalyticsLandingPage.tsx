@@ -119,6 +119,8 @@ function AnalyticsLandingContent() {
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
   // Requested range drives the endpoint/range tab; served range owns all bucket
   // geometry so a bounded fallback cannot select or prefetch invented history.
+  const requestedActivityWindowMinutes =
+    ACTIVITY_WINDOW_MINUTES[activityWindow] ?? data.activity.windowMinutes;
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);
   const activityRangeOptions = useMemo(
     () =>
@@ -618,6 +620,7 @@ function AnalyticsLandingContent() {
               }}
               showSearch={false}
               activityWindowKey={activityWindow}
+              requestedWindowMinutes={requestedActivityWindowMinutes}
               bucketMomentEmotes={bucketMomentEmotes}
               bucketMoments={activeBucketMoments}
               bucketMomentsLoading={inspectorBucketMomentsLoading}
@@ -705,6 +708,7 @@ function AnalyticsLandingContent() {
         <ChartSourceBanner
           hub={data}
           activitySummary={activitySummary}
+          requestedWindowMinutes={requestedActivityWindowMinutes}
           className="figma-analytics__source-footer"
         />
       </main>

@@ -5,6 +5,7 @@ import {
   classifyMomentWindow,
   dedupeMomentsByLogin,
   normalizeRatePct,
+  partitionMomentWindow,
   resolveMomentAtMs,
 } from '../src/lib/liveWire'
 
@@ -96,6 +97,31 @@ describe('dedupeMomentsByLogin', () => {
     const items = Array.from({ length: 5 }, (_, i) => ({ login: `c${i}`, at: i * 1000 }))
     const out = dedupeMomentsByLogin(items, 3, 10_000)
     expect(out).toHaveLength(3)
+  })
+
+  it('dedupes case-insensitively and does not treat reversed timestamps as recent', () => {
+    const items = [
+      { login: 'A', at: 30_000 },
+      { login: 'a', at: 10_000 }, // 20s away: keep, even though it arrives older
+      { login: 'A', at: 25_000 }, // 5s from an accepted row: drop
+    ]
+    const out = dedupeMomentsByLogin(items, 10, 10_000)
+    expect(out.map((item) => item.at)).toEqual([30_000, 10_000])
+  })
+})
+
+describe('partitionMomentWindow', () => {
+  it('uses one validator for current, earlier, and future rows', () => {
+    const now = 1_700_000_000_000
+    const rows = [
+      { key: 'current', at: now - 1_000 },
+      { key: 'earlier', at: now - WINDOW - 1 },
+      { key: 'future', at: now + 1_000 },
+      { key: 'missing' },
+    ]
+    const result = partitionMomentWindow(rows, now, WINDOW)
+    expect(result.live.map((row) => row.key)).toEqual(['current'])
+    expect(result.older.map((row) => row.key)).toEqual(['earlier'])
   })
 })
 

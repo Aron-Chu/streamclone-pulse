@@ -220,4 +220,33 @@ describe('HubActivityChart interaction contract', () => {
     )
     expect(chart.getAttribute('data-hover')).toBeNull()
   })
+
+  it('provides a keyboard navigator that zooms the plot without changing the range contract', () => {
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    expect(navigator).not.toBeNull()
+    const start = navigator.querySelector('[role="slider"][aria-label="Chart view start"]') as HTMLButtonElement
+    const reset = navigator.querySelector('button[aria-label*="Reset chart view"]') as HTMLButtonElement
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('0')
+
+    start.focus()
+    fireEvent.keyDown(start, { key: 'ArrowRight' })
+
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:5')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('1')
+    expect(reset.disabled).toBe(false)
+
+    fireEvent.click(reset)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-end')).toBe('5')
+  })
 })

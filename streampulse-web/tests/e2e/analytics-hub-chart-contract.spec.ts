@@ -46,6 +46,40 @@ test('hub chart updates the external readout on hover and fades back to calm', a
   await expect(readout).not.toContainText('Viewers')
 })
 
+test('chart navigator zooms locally, stays keyboard accessible, and leaves provider lanes at the bottom', async ({ page }) => {
+  await installHubUxMock(page)
+  await page.goto('/analytics')
+
+  const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
+  const navigator = page.getByRole('group', { name: 'Chart navigator' })
+  await expect(chart).toBeVisible()
+  await expect(navigator).toBeVisible()
+  const start = navigator.getByRole('slider', { name: 'Chart view start' })
+  const end = navigator.getByRole('slider', { name: 'Chart view end' })
+  await expect(start).toHaveAttribute('aria-valuenow', '0')
+  const endIndex = Number(await end.getAttribute('aria-valuenow'))
+  expect(endIndex).toBeGreaterThan(1)
+  await expect(navigator).toContainText('requested server range is unchanged')
+
+  await start.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(start).toHaveAttribute('aria-valuenow', '1')
+  await expect(page.locator('.hx-plot-stack')).toHaveAttribute('data-hub-chart-viewport-start', '1')
+  await expect(navigator.getByRole('button', { name: 'Reset chart view to the full requested range' })).toBeEnabled()
+
+  const order = await page.evaluate(() => {
+    const navigator = document.querySelector('[data-hub-chart-navigator]')
+    const lanes = document.querySelector('.hx-provider-lanes')
+    if (!navigator || !lanes) return null
+    return Boolean(navigator.compareDocumentPosition(lanes) & Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+  expect(order).toBe(true)
+  await expect(page.locator('.hx-chart-header [data-provider-toggle], .hx-chart-header .hx-provider-chips')).toHaveCount(0)
+
+  await navigator.getByRole('button', { name: 'Reset chart view to the full requested range' }).click()
+  await expect(start).toHaveAttribute('aria-valuenow', '0')
+})
+
 test('Live Wire explains the detected event and keeps chat plus emote from the same channel', async ({ page }) => {
   await installHubUxMock(page)
   await page.goto('/analytics')

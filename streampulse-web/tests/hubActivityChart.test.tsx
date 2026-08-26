@@ -169,6 +169,28 @@ describe('HubActivityChart chat measurement honesty', () => {
     expect(container.textContent).toContain('unsampled buckets are not zero viewers')
   })
 
+  it('keeps sparse markers as fixed screen-space dots outside the stretched SVG', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const { container } = render(
+      <HubActivityChart
+        points={[
+          { t: end - 2 * 60_000, chat: 10, seventv: 2, emotes: 8, viewers: 100, hasViewerRollup: true, viewerCoverage: 'partial', bucketComplete: true },
+          { t: end - 60_000, chat: 12, seventv: 3, emotes: 9, viewers: 0, bucketComplete: true },
+          { t: end, chat: 14, seventv: 4, emotes: 10, viewers: 200, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
+        ]}
+        windowMinutes={3}
+        channelCount={1}
+      />,
+    )
+
+    expect(container.querySelectorAll('.hx-chart2 svg circle')).toHaveLength(0)
+    expect(container.querySelectorAll('.hx-chart-marker-dot--viewers-partial')).toHaveLength(1)
+    const dot = container.querySelector('.hx-chart-marker-dot--viewers-partial') as HTMLElement
+    expect(dot.className).toContain('hx-chart-marker-dot')
+    expect(dot.className).toContain('hx-chart-marker-dot--viewers-partial')
+    expect(dot.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('withholds a malformed fallback payload instead of plotting misleading geometry', () => {
     const start = Math.floor((Date.now() - 40 * 60_000) / 60_000) * 60_000
     const { container } = render(

@@ -219,7 +219,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
 
     const liveActivity = await screen.findByRole("region", { name: /Live Activity/i });
     expect(liveActivity.getAttribute("data-hub-activity-state")).toBe("unmeasured");
-    expect(liveActivity.getAttribute("data-hub-requested-window-minutes")).toBe("10080");
+    expect(liveActivity.getAttribute("data-hub-requested-window-minutes")).toBe("1440");
     expect(liveActivity.getAttribute("data-hub-served-window-minutes")).toBe("30");
     expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
       "Showing served 30 minutes.",
@@ -238,6 +238,24 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     expect(screen.getByText("24h · 30m available")).toBeTruthy();
     expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
       "1 day requested · 30 minutes available",
+    );
+  });
+
+  it("keeps selected long-range copy tied to the active request during stale fallback display", async () => {
+    hubMockOpts.activityFallback = true;
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("region", { name: /Live Activity/i });
+    screen.getByRole("button", { name: /Activity time window:/i }).click();
+    screen.getByRole("option", { name: /7d/ }).click();
+
+    expect(screen.getByRole("button", { name: /Activity time window: 7d requested/i })).toBeTruthy();
+    expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
+      "7 days requested · 30 minutes available",
     );
   });
 
