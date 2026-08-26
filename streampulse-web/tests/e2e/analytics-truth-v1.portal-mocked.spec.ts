@@ -34,11 +34,11 @@ test.describe('analytics truth v1 end-to-end', () => {
     await expect(market.getByText(/median lift \+57\/min/i)).toBeVisible()
 
     const wire = page.locator('.hub-live-wire')
-    const comparedWireCard = wire.locator('.hub-live-wire__rail-card').filter({ hasText: 'xQc' })
-    await expect(comparedWireCard).toContainText(/Emotes reached 133\/min/i)
-    await expect(comparedWireCard).toContainText(/this stream's earlier average/i)
-    await expect(comparedWireCard).toContainText(/Breakout strength 92\/100/i)
-    await expect(comparedWireCard).toContainText(/60\/63 earlier min/i)
+    const comparedWireChip = wire.locator('.hub-live-wire__chip').filter({ hasText: 'xQc' })
+    await expect(comparedWireChip).toContainText(/Emotes reached 133\/min/i)
+    await expect(comparedWireChip).toContainText(/this stream's earlier average/i)
+    await expect(comparedWireChip).toContainText(/Breakout strength 92\/100/i)
+    await expect(comparedWireChip).toContainText(/60\/63 earlier minutes/i)
 
     const breadthTab = market.getByRole('tab', { name: 'Breadth', exact: true })
     if ((await breadthTab.count()) > 0) {

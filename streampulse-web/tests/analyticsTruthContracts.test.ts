@@ -15,6 +15,41 @@ const metric = {
   baselineCoveragePct: 100,
 }
 
+const eventMetric = {
+  ...metric,
+  currentMeasuredMinutes: 1,
+  currentExpectedMinutes: 1,
+}
+
+function rawEventComparison() {
+  return {
+    baselineKind: 'current_stream_measured_average_before_event' as const,
+    eventAt: 1_800_000,
+    baselineWindow: {
+      start: 300_000,
+      end: 1_500_000,
+      expectedMinutes: 20,
+      measuredMinutes: 20,
+      coveragePct: 100,
+    },
+    chat: { ...eventMetric },
+    emotes: { ...eventMetric },
+    evidence: {
+      ircBound: true,
+      eventRollupAvailable: true,
+      baselineMeasuredMinutes: 20,
+      baselineExpectedMinutes: 20,
+      baselineCoveragePct: 100,
+    },
+  }
+}
+
+function normalizeRawEventComparison(comparison: ReturnType<typeof rawEventComparison>) {
+  return normalizePublicHub({
+    livePulseMoments: [{ offsetSeconds: 60, score: 80, label: 'Chat surge', comparison }],
+  }).livePulseMoments[0].comparison
+}
+
 describe('public analytics truth contract', () => {
   it('normalizes backend rising channels without ranking from live rows', () => {
     const hub = normalizePublicHub({
@@ -52,56 +87,31 @@ describe('public analytics truth contract', () => {
   })
 
   it('accepts the exact raw backend Live Wire comparison wire shape', () => {
-    const hub = normalizePublicHub({
-      livePulseMoments: [{
-        offsetSeconds: 60,
-        score: 80,
-        label: 'Chat surge',
-        comparison: {
-          baselineKind: 'current_stream_measured_average_before_event',
-          eventAt: 1_800_000,
-          baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
-          chat: metric,
-          emotes: metric,
-          evidence: {
-            ircBound: true,
-            eventRollupAvailable: true,
-            baselineMeasuredMinutes: 20,
-            baselineExpectedMinutes: 20,
-            baselineCoveragePct: 100,
-          },
-        },
-      }],
-    })
-    expect(hub.livePulseMoments[0].comparison?.baselineKind).toBe('current_stream_measured_average_before_event')
-    expect(hub.livePulseMoments[0].comparison?.evidence.eventRollupAvailable).toBe(true)
-    expect(hub.livePulseMoments[0].comparison?.baselineWindow.measuredMinutes).toBe(20)
-    expect(hub.livePulseMoments[0].comparison?.baselineWindow.coveragePct).toBe(100)
+    const comparison = normalizeRawEventComparison(rawEventComparison())
+    expect(comparison?.baselineKind).toBe('current_stream_measured_average_before_event')
+    expect(comparison?.evidence.eventRollupAvailable).toBe(true)
+    expect(comparison?.baselineWindow.measuredMinutes).toBe(20)
+    expect(comparison?.baselineWindow.coveragePct).toBe(100)
   })
 
   it('rejects Live Wire evidence that disagrees with the backend baseline window', () => {
-    const hub = normalizePublicHub({
-      livePulseMoments: [{
-        offsetSeconds: 60,
-        score: 80,
-        label: 'Chat surge',
-        comparison: {
-          baselineKind: 'current_stream_measured_average_before_event',
-          eventAt: 1_800_000,
-          baselineWindow: { start: 300_000, end: 1_500_000, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 },
-          chat: metric,
-          emotes: metric,
-          evidence: {
-            ircBound: true,
-            eventRollupAvailable: true,
-            baselineMeasuredMinutes: 19,
-            baselineExpectedMinutes: 20,
-            baselineCoveragePct: 95,
-          },
-        },
-      }],
-    })
-    expect(hub.livePulseMoments[0].comparison).toBeUndefined()
+    const comparison = rawEventComparison()
+    comparison.evidence.baselineMeasuredMinutes = 19
+    comparison.evidence.baselineCoveragePct = 95
+    expect(normalizeRawEventComparison(comparison)).toBeUndefined()
+  })
+
+  it.each([
+    ['chat baseline measured minutes', (value: ReturnType<typeof rawEventComparison>) => { value.chat.baselineMeasuredMinutes = 19 }],
+    ['emote baseline expected minutes', (value: ReturnType<typeof rawEventComparison>) => { value.emotes.baselineExpectedMinutes = 21 }],
+    ['chat baseline coverage', (value: ReturnType<typeof rawEventComparison>) => { value.chat.baselineCoveragePct = 99 }],
+    ['current measured minutes across metrics', (value: ReturnType<typeof rawEventComparison>) => { value.chat.currentMeasuredMinutes = 0 }],
+    ['event current expected minutes', (value: ReturnType<typeof rawEventComparison>) => { value.emotes.currentExpectedMinutes = 5 }],
+    ['event rollup availability', (value: ReturnType<typeof rawEventComparison>) => { value.evidence.eventRollupAvailable = false }],
+  ])('rejects incoherent Live Wire %s', (_label, mutate) => {
+    const comparison = rawEventComparison()
+    mutate(comparison)
+    expect(normalizeRawEventComparison(comparison)).toBeUndefined()
   })
 
   it('keeps a warming event comparison with explicit zero-length baseline evidence', () => {

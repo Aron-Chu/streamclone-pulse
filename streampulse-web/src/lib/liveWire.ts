@@ -1,5 +1,5 @@
 /**
- * Live Wire right-rail catch-moment radar: pure, dependency-free helpers.
+ * Live Wire chart-annotation helpers: pure, dependency-free utilities.
  *
  * These functions are deliberately free of React/IO so they can be unit-tested
  * in isolation and reused across the feed filter (in-window/older split, cap)
@@ -40,9 +40,9 @@ export function classifyMomentWindow(
 }
 
 /**
- * Apply the same timestamp/window validation to every Live Wire section.
- * Invalid, missing, and future rows are omitted; only valid rows older than
- * the live horizon enter the explicit earlier-detections section.
+ * Apply the same timestamp/window validation to every Live Wire consumer.
+ * Invalid, missing, and future rows are omitted. The chart-attached lane uses
+ * only `live`; `older` remains available to non-lane consumers and tests.
  */
 export function partitionMomentWindow<T extends { at?: number }>(
   items: T[],
@@ -72,7 +72,7 @@ export function normalizeRatePct(rate: number | undefined, maxRate: number): str
 }
 
 /** Translate an entry direction into the horizontal offset (px) for a slide-in
- *  tween. `right` (rail cards entering from the right edge) → +24, else −24. */
+ * tween. `right` → +24, `left` → −24. */
 export function buildDirectionalX(from?: 'left' | 'right'): number {
   return from === 'right' ? 24 : -24
 }

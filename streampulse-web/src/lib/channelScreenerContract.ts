@@ -320,6 +320,31 @@ export function normalizeHubChannelScreenerFields(raw: unknown): HubChannelScree
   return row.version === 1 ? normalizeV1(row) : normalizeLegacy(row)
 }
 
+function liveMomentEvidenceIsCoherent(
+  baselineWindow: ScreenerWindow,
+  chat: ScreenerMetricComparison,
+  emotes: ScreenerMetricComparison,
+  evidence: HubLiveMomentEvidence,
+): boolean {
+  const expectedCurrentMeasured = evidence.eventRollupAvailable ? 1 : 0
+  const baselineMatches = (comparison: ScreenerMetricComparison) =>
+    comparison.baselineMeasuredMinutes === evidence.baselineMeasuredMinutes &&
+    comparison.baselineExpectedMinutes === evidence.baselineExpectedMinutes &&
+    comparison.baselineCoveragePct === evidence.baselineCoveragePct
+  return (
+    baselineWindow.coveragePct != null &&
+    baselineWindow.measuredMinutes === evidence.baselineMeasuredMinutes &&
+    baselineWindow.expectedMinutes === evidence.baselineExpectedMinutes &&
+    baselineWindow.coveragePct === evidence.baselineCoveragePct &&
+    baselineMatches(chat) &&
+    baselineMatches(emotes) &&
+    chat.currentExpectedMinutes === 1 &&
+    emotes.currentExpectedMinutes === 1 &&
+    chat.currentMeasuredMinutes === expectedCurrentMeasured &&
+    emotes.currentMeasuredMinutes === expectedCurrentMeasured
+  )
+}
+
 export function normalizeHubLiveMomentComparison(raw: unknown): HubLiveMomentComparison | null {
   const row = record(raw)
   if (!row || row.baselineKind !== 'current_stream_measured_average_before_event') return null
@@ -334,9 +359,7 @@ export function normalizeHubLiveMomentComparison(raw: unknown): HubLiveMomentCom
   if (
     eventAt == null || !baselineWindow ||
     !chat || !emotes || !evidence ||
-    evidence.baselineMeasuredMinutes !== baselineWindow.measuredMinutes ||
-    evidence.baselineExpectedMinutes !== baselineWindow.expectedMinutes ||
-    evidence.baselineCoveragePct !== baselineWindow.coveragePct
+    !liveMomentEvidenceIsCoherent(baselineWindow, chat, emotes, evidence)
   ) return null
   return {
     baselineKind: 'current_stream_measured_average_before_event', eventAt,

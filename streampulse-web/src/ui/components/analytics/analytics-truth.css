@@ -138,14 +138,6 @@
 .market-panel-frame__spinner { animation: truth-spin .9s linear infinite; }
 @keyframes truth-spin { to { transform: rotate(360deg); } }
 
-.hub-live-wire__rail-signal > span:first-child { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-.hub-live-wire__rail-signal small { color: var(--fma-text); font-size: .66rem; line-height: 1.35; text-transform: none; letter-spacing: normal; }
-.hub-live-wire__rail-comparisons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
-.hub-live-wire__rail-rates { display: flex; flex-wrap: wrap; gap: .35rem .8rem; color: var(--fma-muted); font-size: .64rem; }
-.hub-live-wire__rail-rates span { display: inline-flex; gap: .3rem; }
-.hub-live-wire__rail-rates strong { color: var(--fma-text); font-family: var(--fma-mono); }
-.hub-live-wire__rail-rates small { flex: 1 1 100%; color: var(--fma-muted); }
-
 .live-channels-matrix__truth-cell { min-width: 15rem; }
 .live-channels-matrix__truth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
 .live-channels-matrix__evidence-cell { min-width: 12rem; }
@@ -195,7 +187,6 @@
   .emote-market__preview-grid { grid-template-columns: 1fr; }
   .live-channels-matrix__truth-grid { grid-template-columns: 1fr; }
   .emote-market__rising-list li { grid-template-columns: 1fr; }
-  .hub-live-wire__rail-comparisons { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {

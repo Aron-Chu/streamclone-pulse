@@ -19,14 +19,21 @@ import {
   deriveHubChartActivityModel,
   selectHubChartActivityInputs,
 } from "../../../lib/hubChartActivityModel";
-import type { FigmaMomentRow } from "../../../lib/figmaSessionAnalytics";
-import type { HubEmote, HubLiveChannel, PublicHub } from "../../../lib/publicHub";
+import type { FigmaMomentRow, LivePulseMomentsResult } from "../../../lib/figmaSessionAnalytics";
+import type {
+  HubEmote,
+  HubLiveChannel,
+  PublicHub,
+  PublicHubActivityWindow,
+  PublicHubLoadSource,
+} from "../../../lib/publicHub";
 import {
   HubActivityChart,
   type HubActivityRangeControl,
 } from "../hub/HubActivityChart";
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
 import { ActivityBucketInspector } from "./ActivityBucketInspector";
+import { HubLiveWireFeed } from "./HubLiveWireFeed";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
 import { HubFreshnessCaption } from "./HubFreshnessCaption";
 import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
@@ -252,6 +259,13 @@ export interface FigmaGlobalActivityPanelProps {
   accentBucketT?: number | null;
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
+  /** Fresh network peaks mounted as the chart-attached annotation lane. */
+  annotationFeed?: LivePulseMomentsResult | null;
+  annotationLoading?: boolean;
+  annotationHubEndpointOk?: boolean;
+  annotationLoadSource?: PublicHubLoadSource;
+  annotationActivityWindow?: PublicHubActivityWindow;
+  annotationPollSequence?: number;
 }
 
 function formatPeakTime(ts: number): string {
@@ -290,6 +304,12 @@ export function FigmaGlobalActivityPanel({
   accentBucketT = null,
   selectedMomentKey = null,
   onSelectMoment,
+  annotationFeed = null,
+  annotationLoading = false,
+  annotationHubEndpointOk,
+  annotationLoadSource,
+  annotationActivityWindow = "24h",
+  annotationPollSequence = 0,
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
   const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
@@ -605,6 +625,22 @@ export function FigmaGlobalActivityPanel({
           ref={chartAreaRef}
           data-refreshing={activityRefreshing ? "true" : undefined}
         >
+          {annotationFeed ? (
+            <div className="figma-global-activity__annotation-lane" id="section-live-wire">
+              <HubLiveWireFeed
+                hub={hub}
+                feed={annotationFeed}
+                activityWindow={annotationActivityWindow}
+                loading={annotationLoading}
+                hubEndpointOk={annotationHubEndpointOk}
+                loadSource={annotationLoadSource}
+                pollSequence={annotationPollSequence}
+                layout="lane"
+                selectedMomentKey={selectedMomentKey}
+                onSelectMoment={onSelectMoment}
+              />
+            </div>
+          ) : null}
           <div className="hubx figma-global-activity__chart figma-global-activity__hub-chart">
             <HubActivityChart
               points={chartInputs.points}
