@@ -209,16 +209,23 @@ export function hasProviderSample(point: HubActivityPoint, key: HubProviderLaneK
   if (typeof explicit === 'string') {
     const state = explicit.trim().toLowerCase()
     if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
-    if (state === 'complete' || state === 'partial' || state === 'measured' || state === 'available') return hasValue
+    // Go omits integer zero fields from JSON. An explicit complete coverage
+    // assertion is sufficient evidence that an absent provider value is a
+    // measured zero; partial/lower-bound states still require a numeric value.
+    if (state === 'complete') return true
+    if (state === 'partial' || state === 'measured' || state === 'available') return hasValue
   }
   if (explicit && typeof explicit === 'object') {
-    const detail = explicit as { measured?: unknown; state?: unknown }
-    if (typeof detail.measured === 'boolean') return detail.measured && hasValue
+    const detail = explicit as { measured?: unknown; complete?: unknown; lowerBound?: unknown; state?: unknown }
+    if (detail.measured === false) return false
     if (typeof detail.state === 'string') {
       const state = detail.state.trim().toLowerCase()
       if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
-      if (state === 'complete' || state === 'partial' || state === 'measured' || state === 'available') return hasValue
+      if (state === 'complete' && detail.measured === true && detail.lowerBound !== true) return true
+      if (state === 'partial' || state === 'measured' || state === 'available') return detail.measured === true && hasValue
     }
+    if (detail.measured === true && detail.complete === true && detail.lowerBound !== true) return true
+    if (typeof detail.measured === 'boolean') return detail.measured && hasValue
   }
   return hasValue
 }

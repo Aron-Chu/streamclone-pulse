@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { HubActivityChart } from '../src/ui/components/hub/HubActivityChart'
+import { HubActivityChart, viewerTrendDisplayValues } from '../src/ui/components/hub/HubActivityChart'
+import type { HubActivityPoint } from '../src/lib/publicHub'
 
 describe('HubActivityChart chat measurement honesty', () => {
   it('keeps all provider lanes fixed at the chart footer without toggle buttons', () => {
@@ -104,11 +105,12 @@ describe('HubActivityChart chat measurement honesty', () => {
     )
 
     expect(container.querySelector('.hx-chart2--viewer-partial')).toBeTruthy()
-    expect(container.textContent).toContain('Viewer samples partial — 1/3 buckets sampled; 1 buckets are coverage-qualified and 0 remain partial or unknown; unsampled buckets are not zero viewers')
+    expect(container.textContent).toContain('Viewer samples partial — 1/3 buckets sampled; 1 buckets are coverage-qualified (solid) and 0 remain partial or unknown (dashed median trend)')
+    expect(container.textContent).toContain('hover values remain raw and unsampled buckets remain unknown, not zero viewers')
     expect(container.textContent).toContain('500 peak viewers · 1/3 coverage-qualified')
   })
 
-  it('connects only complete viewer generations and isolates partial or unknown observations', () => {
+  it('draws a sampled dashed base and overlays only contiguous complete viewer generations', () => {
     const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
     const { container } = render(
       <HubActivityChart
@@ -161,12 +163,14 @@ describe('HubActivityChart chat measurement honesty', () => {
       />,
     )
 
-    // The complete observations are separated by two non-qualified buckets,
-    // so neither a smooth trend nor an interpolated bridge may be drawn.
-    expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(2)
-    expect(container.querySelectorAll('.hx-chart-point--viewers-partial')).toHaveLength(2)
-    expect(container.textContent).toContain('2 buckets are coverage-qualified and 2 remain partial or unknown')
-    expect(container.textContent).toContain('unsampled buckets are not zero viewers')
+    // All observations are adjacent, so the lower-confidence base is one
+    // dashed trace. The two complete samples are not adjacent, so they cannot
+    // be promoted into a solid segment or a qualified bridge.
+    expect(container.querySelectorAll('.hx-chart-line--viewers-sampled')).toHaveLength(1)
+    expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(0)
+    expect(container.querySelectorAll('.hx-chart-marker-dot--viewers-partial')).toHaveLength(0)
+    expect(container.textContent).toContain('2 buckets are coverage-qualified (solid) and 2 remain partial or unknown (dashed median trend)')
+    expect(container.textContent).toContain('unsampled buckets remain unknown, not zero viewers')
   })
 
   it('keeps sparse markers as fixed screen-space dots outside the stretched SVG', () => {
@@ -184,11 +188,99 @@ describe('HubActivityChart chat measurement honesty', () => {
     )
 
     expect(container.querySelectorAll('.hx-chart2 svg circle')).toHaveLength(0)
-    expect(container.querySelectorAll('.hx-chart-marker-dot--viewers-partial')).toHaveLength(1)
+    expect(container.querySelectorAll('.hx-chart-line--viewers-sampled')).toHaveLength(0)
+    expect(container.querySelectorAll('.hx-chart-marker-dot--viewers-partial')).toHaveLength(2)
     const dot = container.querySelector('.hx-chart-marker-dot--viewers-partial') as HTMLElement
     expect(dot.className).toContain('hx-chart-marker-dot')
     expect(dot.className).toContain('hx-chart-marker-dot--viewers-partial')
     expect(dot.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('breaks the sampled viewer trace across an unsampled bucket without inventing zero', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const { container } = render(
+      <HubActivityChart
+        points={[
+          { t: end - 3 * 60_000, chat: 10, seventv: 2, viewers: 100, hasViewerRollup: true, viewerCoverage: 'unknown', bucketComplete: true },
+          { t: end - 2 * 60_000, chat: 11, seventv: 2, viewers: 125, hasViewerRollup: true, viewerCoverage: 'partial', bucketComplete: true },
+          { t: end - 60_000, chat: 12, seventv: 2, viewers: 0, hasViewerRollup: false, bucketComplete: true },
+          { t: end, chat: 13, seventv: 2, viewers: 150, hasViewerRollup: true, viewerCoverage: 'unknown', bucketComplete: true },
+        ]}
+        windowMinutes={4}
+        channelCount={1}
+      />,
+    )
+
+    expect(container.querySelectorAll('.hx-chart-line--viewers-sampled')).toHaveLength(1)
+    expect(container.querySelectorAll('.hx-chart-marker-dot--viewers-partial')).toHaveLength(1)
+    expect(container.textContent).toContain('unsampled buckets remain unknown, not zero viewers')
+  })
+
+  it('does not extend a sampled viewer segment across leading or trailing unknown buckets', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const points: HubActivityPoint[] = Array.from({ length: 8 }, (_, index) => ({
+      t: end - (7 - index) * 60_000,
+      chat: 10,
+      seventv: 2,
+      viewers: index === 0 || index === 7 ? 0 : 100 + index * 10,
+      hasViewerRollup: index === 0 || index === 7 ? false : true,
+      viewerCoverage: index === 0 || index === 7 ? undefined : 'unknown',
+      hasChatRollup: true,
+      bucketComplete: true,
+    }))
+    const { container } = render(
+      <HubActivityChart points={points} windowMinutes={8} channelCount={1} />,
+    )
+
+    const path = container.querySelector('.hx-chart-line--viewers-sampled')?.getAttribute('d') ?? ''
+    expect(path).toMatch(/^M18\.75 /)
+    expect(path).toMatch(/81\.25 \d+\.\d+$/)
+    expect(path).not.toContain('M0.00 ')
+    expect(path).not.toMatch(/100\.00 \d+\.\d+$/)
+  })
+
+  it('keeps partial viewer spikes out of the coverage-qualified peak', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const { container } = render(
+      <HubActivityChart
+        points={[
+          { t: end - 2 * 60_000, chat: 10, seventv: 2, viewers: 100, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
+          { t: end - 60_000, chat: 11, seventv: 2, viewers: 120, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
+          { t: end, chat: 12, seventv: 2, viewers: 999_999, hasViewerRollup: true, viewerCoverage: 'partial', bucketComplete: true },
+        ]}
+        windowMinutes={3}
+        channelCount={1}
+      />,
+    )
+
+    expect(container.querySelectorAll('.hx-chart-line--viewers')).toHaveLength(1)
+    expect(container.querySelectorAll('.hx-chart-line--viewers-sampled')).toHaveLength(1)
+    expect(container.textContent).toContain('120 peak viewers')
+    expect(container.textContent).not.toContain('999K peak viewers')
+  })
+
+  it('calms an isolated legacy viewer spike without smoothing across gaps', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const values = viewerTrendDisplayValues([
+      { t: end - 4 * 60_000, chat: 10, seventv: 2, viewers: 100, hasViewerRollup: true, viewerCoverage: 'unknown', bucketComplete: true },
+      { t: end - 3 * 60_000, chat: 10, seventv: 2, viewers: 10_000, hasViewerRollup: true, viewerCoverage: 'partial', bucketComplete: true },
+      { t: end - 2 * 60_000, chat: 10, seventv: 2, viewers: 120, hasViewerRollup: true, viewerCoverage: 'unknown', bucketComplete: true },
+      { t: end - 60_000, chat: 10, seventv: 2, viewers: 0, hasViewerRollup: false, gapKind: 'unmeasured', bucketComplete: true },
+      { t: end, chat: 10, seventv: 2, viewers: 8_000, hasViewerRollup: true, viewerCoverage: 'unknown', bucketComplete: true },
+    ], 5)
+
+    expect(values).toEqual([100, 120, 120, 0, 8_000])
+  })
+
+  it('does not move a qualified viewer observation with a partial neighbour', () => {
+    const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
+    const values = viewerTrendDisplayValues([
+      { t: end - 2 * 60_000, chat: 10, seventv: 2, viewers: 100, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
+      { t: end - 60_000, chat: 10, seventv: 2, viewers: 120, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
+      { t: end, chat: 10, seventv: 2, viewers: 10_000, hasViewerRollup: true, viewerCoverage: 'partial', bucketComplete: true },
+    ], 3)
+
+    expect(values).toEqual([100, 120, 10_000])
   })
 
   it('withholds a malformed fallback payload instead of plotting misleading geometry', () => {

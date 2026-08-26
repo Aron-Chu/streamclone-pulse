@@ -16,7 +16,9 @@ function build24hActivityPoints(now: number): Array<{
   viewerExpectedContributors: number
 }> {
   const bucketMs = 6 * 60_000
-  const alignedEnd = Math.floor(now / bucketMs) * bucketMs
+  // Historical projections contain closed buckets only. The bucket aligned to
+  // `now` is still open and must not be marked complete in a contract fixture.
+  const alignedEnd = Math.floor(now / bucketMs) * bucketMs - bucketMs
   const points: Array<{
     t: number
     chat: number
@@ -32,7 +34,7 @@ function build24hActivityPoints(now: number): Array<{
     viewerContributors: number
     viewerExpectedContributors: number
   }> = []
-  for (let i = 0; i < 48; i += 1) {
+  for (let i = 0; i < 240; i += 1) {
     const t = alignedEnd - i * bucketMs
     points.push({
       t,
@@ -50,22 +52,6 @@ function build24hActivityPoints(now: number): Array<{
       viewerExpectedContributors: 96,
     })
   }
-  const historicalT = alignedEnd - 8 * 60 * 60 * 1000
-  points.push({
-    t: historicalT,
-    chat: 42,
-    seventv: 10,
-    twitch: 6,
-    bttv: 3,
-    ffz: 2,
-    viewers: 920_000,
-    emotes: 88,
-    bucketComplete: true,
-    hasViewerRollup: true,
-    viewerCoverage: 'complete',
-    viewerContributors: 96,
-    viewerExpectedContributors: 96,
-  })
   return points.sort((a, b) => a.t - b.t)
 }
 
@@ -98,6 +84,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   const hubDelayMs = options.hubDelayMs ?? 0
   const noLiveData = mode === 'empty' || mode === 'zero-live'
   const now = Date.now()
+  const lastClosedActivityBucket = Math.floor(now / (6 * 60_000)) * (6 * 60_000) - 6 * 60_000
   const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14)
   const activityPoints = noLiveData || mode === 'error' ? [] : build24hActivityPoints(now)
 
@@ -206,6 +193,15 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
         activity: {
           points: activityPoints,
           windowMinutes: 24 * 60,
+          requestedWindowMinutes: 24 * 60,
+          availableWindowMinutes: 24 * 60,
+          servedWindowMinutes: 24 * 60,
+          measuredWindowMinutes: 24 * 60,
+          accountedWindowMinutes: 24 * 60,
+          registeredGapCount: 0,
+          bucketMinutes: 6,
+          source: 'historical_projection',
+          state: 'healthy',
           channelCount: liveChannels.length,
           livePoolViewerSum: liveChannels.reduce((sum, ch) => sum + ch.viewers, 0),
           peakViewersAt: activityPoints.reduce(
@@ -258,7 +254,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             viewers: 12_000,
             viewerDelta: 'no change',
             category: 'Minecraft',
-            at: now - 5 * 60_000,
+            at: lastClosedActivityBucket + 3 * 60_000,
             topEmotes: [
               { name: 'DinoDance', provider: 'twitch', count: 123, sharePct: 39.2 },
               { name: 'KEKW', provider: '7tv', count: 10, sharePct: 28.5 },

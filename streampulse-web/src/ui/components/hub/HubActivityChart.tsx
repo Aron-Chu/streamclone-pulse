@@ -393,6 +393,7 @@ function splitLinePaths(
   hasSample?: boolean[],
   visibleStartIndex = 0,
   visibleEndIndex = source.length - 1,
+  includeIsolated = true,
 ): string[] {
   const isolatedSegment = (point: Pt): string => {
     const left = Math.max(0, point.x - 1.2)
@@ -414,6 +415,7 @@ function splitLinePaths(
   }
   if (measured.length === 0) return []
   if (measured.length === 1) {
+    if (!includeIsolated) return []
     // A single verified sample cannot describe a trend, but a tiny local
     // segment keeps the observation visible without stretching it across the
     // whole chart as a fabricated flat line.
@@ -434,19 +436,10 @@ function splitLinePaths(
   }
   if (current.length > 0) rawSegments.push(current)
 
-  const segments = rawSegments.map((seg) => {
-    if (seg.length === 0) return seg
-    const first = seg[0]
-    const last = seg[seg.length - 1]
-    const out = [...seg]
-    if (first.x > 0 && first.x <= 25) {
-      out.unshift({ x: 0, y: first.y })
-    }
-    if (last.x < 100 && last.x >= 75) {
-      out.push({ x: 100, y: last.y })
-    }
-    return out
-  })
+  // Keep measured segments on their actual bucket centres. Extending a nearby
+  // segment to x=0/100 would paint leading or trailing unknown buckets as a
+  // flat measured signal.
+  const segments = rawSegments.filter((seg) => includeIsolated || seg.length > 1)
 
   return segments
     .map((segment) => {
@@ -502,23 +495,40 @@ function isolatedLinePoints(
   return isolated
 }
 
-/** Return sampled viewer observations that are visible but unsafe to join to
- * a global trend because coverage is partial or unknown. */
-function unqualifiedViewerPoints(
-  pts: Pt[],
+/**
+ * Display-only median filter for the lower-confidence viewer trend. Raw
+ * observations remain authoritative for hover copy and qualified peaks. A
+ * value is smoothed only when both neighbouring buckets are sampled and close
+ * enough to be in the same contiguous run, so gaps can never be bridged.
+ */
+export function viewerTrendDisplayValues(
   source: HubActivityPoint[],
-  visibleStartIndex = 0,
-  visibleEndIndex = source.length - 1,
-): Pt[] {
-  const out: Pt[] = []
-  for (let i = 0; i < pts.length; i += 1) {
-    if (i < visibleStartIndex || i > visibleEndIndex) continue
-    const point = source[i]
-    if (point && pts[i] && hasViewerSample(point) && !isViewerCoverageQualified(point)) {
-      out.push(pts[i])
+  windowMinutes: number,
+): number[] {
+  const maxGap = maxConnectedGapMs(windowMinutes)
+  const sampled = source.map(
+    (point) => hasViewerSample(point) && !isAttestedActivityGap(point),
+  )
+  const qualified = source.map(isViewerCoverageQualified)
+  return source.map((point, index) => {
+    if (!sampled[index]) return point.viewers
+    const previous = source[index - 1]
+    const next = source[index + 1]
+    if (
+      !previous
+      || !next
+      || !sampled[index - 1]
+      || !sampled[index + 1]
+      || qualified[index - 1] !== qualified[index]
+      || qualified[index + 1] !== qualified[index]
+      || point.t - previous.t > maxGap
+      || next.t - point.t > maxGap
+    ) {
+      return point.viewers
     }
-  }
-  return out
+    const values = [previous.viewers, point.viewers, next.viewers].sort((a, b) => a - b)
+    return values[1] ?? point.viewers
+  })
 }
 
 /** Close a lane line path to the baseline for a semi-transparent area fill. */
@@ -647,11 +657,11 @@ export function HubActivityChart({
 
   const viewerCoverageCopy =
     viewerQualifiedCount === chartPoints.length && viewerPartialCount === 0
-      ? 'viewer buckets are coverage-qualified'
+      ? 'the solid viewer trace has complete configured-roster coverage'
       : viewerQualifiedCount > 0
-        ? `${viewerQualifiedCount} of ${chartPoints.length} viewer buckets are coverage-qualified; partial or unknown viewer samples are points only`
+        ? `${viewerQualifiedCount} of ${chartPoints.length} viewer buckets are coverage-qualified in the solid trace; adjacent partial or coverage-unknown samples use a muted dashed three-bucket median trend`
         : viewerSampleCount > 0
-          ? `${viewerSampleCount} of ${chartPoints.length} viewer buckets are sampled, but none are coverage-qualified; viewer values are points only`
+          ? `${viewerSampleCount} of ${chartPoints.length} viewer buckets are sampled; adjacent samples use a muted dashed three-bucket median trend because coverage is unknown or partial`
           : 'viewer samples are unavailable in this window'
   const chartAriaLabel = useMemo(() => {
     const poolLabel =
@@ -688,15 +698,24 @@ export function HubActivityChart({
             n - 1,
             Math.max(visibleStartIndex, Math.floor(navigatorBounds.endIndex)),
           )
+    const viewerSampleMask = chartPoints.map(
+      (point) => hasViewerSample(point) && !isAttestedActivityGap(point),
+    )
+    const qualifiedViewerSampleMask = chartPoints.map(
+      (point) => isViewerCoverageQualified(point) && !isAttestedActivityGap(point),
+    )
+    const viewerDisplayValues = viewerSeriesPartial
+      ? viewerTrendDisplayValues(chartPoints, windowMinutes)
+      : chartPoints.map((point) => point.viewers)
     const qualifiedViewerMax = chartPoints.reduce(
-      (acc, p) => (isViewerCoverageQualified(p) ? Math.max(acc, p.viewers) : acc),
+      (acc, p, index) => (qualifiedViewerSampleMask[index] ? Math.max(acc, p.viewers) : acc),
       0,
     )
     const sampledViewerMax = chartPoints.reduce(
-      (acc, p) => (hasViewerSample(p) ? Math.max(acc, p.viewers) : acc),
+      (acc, p, index) => (viewerSampleMask[index] ? Math.max(acc, p.viewers) : acc),
       0,
     )
-    const viewerMax = qualifiedViewerMax || sampledViewerMax || 1
+    const viewerMax = Math.max(qualifiedViewerMax, sampledViewerMax, 1)
     const measuredChatValue = (point: HubActivityPoint): number =>
       point.hasChatRollup === false ? 0 : point.chat
     const chatMax = chartPoints.reduce((acc, p) => Math.max(acc, measuredChatValue(p)), 0) || 1
@@ -744,9 +763,9 @@ export function HubActivityChart({
     const atChatY = (value: number): number => PAD + (1 - value / chatMax) * (100 - PAD)
     const atEmoteY = (value: number): number => PAD + (1 - value / emoteMax) * (100 - PAD)
     const viewers = chartPoints.map((p, i) => ({ x: xs[i], y: atViewerY(p.viewers) }))
+    const viewerDisplayPoints = viewerDisplayValues.map((value, i) => ({ x: xs[i], y: atViewerY(value) }))
     const chat = chartPoints.map((p, i) => ({ x: xs[i], y: atChatY(measuredChatValue(p)) }))
     const totalEmotes = chartPoints.map((p, i) => ({ x: xs[i], y: atEmoteY(emoteCount(p)) }))
-    const viewerLineSamples = chartPoints.map(isViewerCoverageQualified)
     const emoteSamples = chartPoints.map((p) => emoteCount(p))
     const providerLines = PROVIDER_KEYS.reduce(
       (acc, key) => {
@@ -846,14 +865,25 @@ export function HubActivityChart({
       viewers,
       chat,
       totalEmotes,
-      viewerLines: splitLinePaths(
-        viewers,
+      viewerSampleLines: splitLinePaths(
+        viewerDisplayPoints,
         chartPoints,
         windowMinutes,
         undefined,
-        viewerLineSamples,
+        viewerSampleMask,
         visibleStartIndex,
         visibleEndIndex,
+        false,
+      ),
+      viewerLines: splitLinePaths(
+        viewerDisplayPoints,
+        chartPoints,
+        windowMinutes,
+        undefined,
+        qualifiedViewerSampleMask,
+        visibleStartIndex,
+        visibleEndIndex,
+        false,
       ),
       totalEmoteLines: splitLinePaths(
         totalEmotes,
@@ -864,18 +894,12 @@ export function HubActivityChart({
         visibleStartIndex,
         visibleEndIndex,
       ),
-      viewerDots: isolatedLinePoints(
+      viewerIsolatedDots: isolatedLinePoints(
         viewers,
         chartPoints,
         windowMinutes,
         undefined,
-        viewerLineSamples,
-        visibleStartIndex,
-        visibleEndIndex,
-      ),
-      viewerPartialDots: unqualifiedViewerPoints(
-        viewers,
-        chartPoints,
+        viewerSampleMask,
         visibleStartIndex,
         visibleEndIndex,
       ),
@@ -917,7 +941,7 @@ export function HubActivityChart({
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
     }
-  }, [chartPoints, navigatorBounds.endIndex, navigatorBounds.startIndex, windowMinutes])
+  }, [chartPoints, navigatorBounds.endIndex, navigatorBounds.startIndex, viewerSeriesPartial, windowMinutes])
 
   // Destructure before any early return so hook order stays stable across
   // loading → data transitions (React hook rules).
@@ -1117,9 +1141,9 @@ export function HubActivityChart({
     lastT,
     viewers,
     chat,
+    viewerSampleLines,
     viewerLines,
-    viewerDots,
-    viewerPartialDots,
+    viewerIsolatedDots,
     totalEmoteLines,
     emoteDots,
     providerLines,
@@ -1343,11 +1367,19 @@ export function HubActivityChart({
               type="button"
               className={`hx-legend-chip${focusedSeriesKey === 'viewers' ? ' is-focused' : ''}${focusedSeriesKey != null && focusedSeriesKey !== 'viewers' ? ' is-dimmed' : ''}`}
               aria-pressed={focusedSeriesKey === 'viewers'}
-              title={focusedSeriesKey === 'viewers' ? 'Click to show all series' : 'Highlight Viewers'}
+              title={focusedSeriesKey === 'viewers'
+                ? 'Click to show all series'
+                : viewerSeriesPartial
+                  ? 'Dashed viewer history is a gap-safe three-bucket median of sampled, partial, or coverage-unknown observations; solid segments have complete configured-roster coverage; hover values stay raw'
+                  : 'Solid viewer history has complete configured-roster coverage'}
               onClick={() => toggleSeriesFocus('viewers')}
             >
-              <span className="sw" style={{ background: 'hsl(var(--sp-chart-viewers))' }} aria-hidden="true" />
-              Viewers
+              <span className={`sw${viewerSeriesPartial ? ' sw--viewers-sampled' : ''}`} style={viewerSeriesPartial ? undefined : { background: 'hsl(var(--sp-chart-viewers))' }} aria-hidden="true" />
+              {viewerSeriesPartial
+                ? viewerQualifiedCount > 0
+                  ? 'Viewer coverage'
+                  : 'Sampled viewer trend'
+                : 'Viewers'}
             </button>
             <button
               type="button"
@@ -1404,7 +1436,7 @@ export function HubActivityChart({
             {peakViewers > 0
               ? `${compact(peakViewers)} coverage-qualified peak viewers`
               : viewerSampleCount > 0
-                ? 'Viewer peak unavailable · sampled points only'
+                ? 'Viewer peak unavailable · sampled coverage unknown'
                 : 'Viewer peak unavailable'}
           </span>
           {hasTotalEmotes && !showProviderOverlay ? (
@@ -1487,7 +1519,22 @@ export function HubActivityChart({
               commitHoverIndex(index != null && index >= 0 ? index : null)
             }}
           />
-          <g className={seriesFocusClass(focusedSeriesKey, 'viewers')} aria-label="Viewers trend">
+          <g
+            className={seriesFocusClass(focusedSeriesKey, 'viewers')}
+            aria-label="Viewers trend"
+            data-viewer-trend-smoothing={viewerSeriesPartial ? 'median-3-gap-safe' : undefined}
+          >
+            {viewerSampleLines.map((line, i) => (
+              <path
+                key={`view-sampled-${i}`}
+                className="hx-chart-line hx-chart-line--viewers-sampled"
+                d={line}
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
             {viewerLines.map((line, i) => (
               <path
                 key={`view-underlay-${i}`}
@@ -1563,11 +1610,8 @@ export function HubActivityChart({
         </svg>
 
         <div className="hx-chart2__layer">
-          {viewerDots.map((point, i) => (
-            <ChartMarkerDot key={`view-dot-${i}`} point={point} kind="viewers" index={i} />
-          ))}
-          {viewerPartialDots.map((point, i) => (
-            <ChartMarkerDot key={`view-partial-dot-${i}`} point={point} kind="viewers-partial" index={i} />
+          {viewerIsolatedDots.map((point, i) => (
+            <ChartMarkerDot key={`view-isolated-dot-${i}`} point={point} kind="viewers-partial" index={i} />
           ))}
           {hasTotalEmotes && !showProviderOverlay
             ? emoteDots.map((point, i) => (
@@ -1618,7 +1662,7 @@ export function HubActivityChart({
             {peakViewers > 0
               ? `${compact(peakViewers)} peak viewers · ${viewerQualifiedCount}/${chartPoints.length} coverage-qualified`
               : viewerSampleCount > 0
-                ? `Viewer peak unavailable · ${viewerSampleCount}/${chartPoints.length} sampled; points only`
+                ? `Viewer peak unavailable · ${viewerSampleCount}/${chartPoints.length} sampled; coverage unknown`
                 : 'Viewer peak unavailable · no samples'}
           </span>
           <span className="ylab ylab--chat">{compact(chatMax)}/m peak chat</span>
@@ -1901,8 +1945,8 @@ export function HubActivityChart({
           {viewerSeriesPartial ? (
             <span className="hx-chart-status__note hx-chart-status__note--viewers">
               Viewer samples partial — {viewerSampleCount}/{chartPoints.length} buckets sampled; {viewerQualifiedCount > 0
-                ? `${viewerQualifiedCount} buckets are coverage-qualified and ${viewerPartialCount} remain partial or unknown`
-                : 'no sampled bucket is coverage-qualified; values are points only'}; unsampled buckets are not zero viewers
+                ? `${viewerQualifiedCount} buckets are coverage-qualified (solid) and ${viewerPartialCount} remain partial or unknown (dashed median trend)`
+                : 'no sampled bucket is coverage-qualified; adjacent samples use a dashed, gap-safe three-bucket median trend'}; hover values remain raw and unsampled buckets remain unknown, not zero viewers
             </span>
           ) : null}
           {hasExactProviderEvidence ? (

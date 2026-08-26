@@ -514,7 +514,7 @@ export function FigmaGlobalActivityPanel({
             : historicalProjection
               ? peakViewers > 0
                 ? `Coverage-qualified network viewer peak from tracked channels — last ${windowLabel}. Historical projection is active; sparse buckets remain visible as gaps.`
-                : `Network viewer history — last ${windowLabel}. No coverage-qualified peak is available; partial or unknown observations remain points only.`
+                : `Network viewer history — last ${windowLabel}. No coverage-qualified peak is available; adjacent partial or coverage-unknown samples use a gap-safe dashed three-bucket median trend, raw hover values stay unchanged, and unsampled buckets remain unknown.`
               : `Network viewer observations from tracked channels — served ${servedLabel}. Historical projection provenance has not been confirmed.`}
         </p>
         <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>

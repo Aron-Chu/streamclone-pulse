@@ -8,6 +8,7 @@ import {
   dropTrailingOpenBucket,
   fillActivityPoints,
   hasMeasuredActivitySignal,
+  hasProviderSample,
   isOpenActivityBucket,
   normalizeActivityPointsForChart,
   peakActivityChatPerMin,
@@ -138,6 +139,32 @@ describe('hubActivityEmoteCount', () => {
     }
     expect(hubActivityEmoteCount(point)).toBe(17)
     expect(hubActivityEmoteCount({ ...point, emotes: 12 })).toBe(12)
+  })
+})
+
+describe('hasProviderSample', () => {
+  it('treats an omitted exact provider zero as measured when coverage says complete', () => {
+    expect(hasProviderSample({
+      t: Date.now(),
+      chat: 20,
+      seventv: 2,
+      viewers: 100,
+      providerCoverage: {
+        twitch: { measured: true, complete: true, state: 'complete' },
+      },
+    }, 'twitch')).toBe(true)
+  })
+
+  it('does not invent a zero for partial lower-bound provider coverage', () => {
+    expect(hasProviderSample({
+      t: Date.now(),
+      chat: 20,
+      seventv: 2,
+      viewers: 100,
+      providerCoverage: {
+        bttv: { measured: true, lowerBound: true, state: 'partial' },
+      },
+    }, 'bttv')).toBe(false)
   })
 })
 
