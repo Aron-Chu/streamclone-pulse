@@ -1462,6 +1462,7 @@ export function HubActivityChart({
           <div className="hx-plot-stack__plot hx-plot-stack__plot--chart">
             <div
               ref={wrapRef}
+              data-hub-chart-wheel-surface
               data-hover={hover != null ? 'true' : undefined}
               data-selected={selectedIndex >= 0 ? 'true' : undefined}
               className={`hx-chart2${bucketSelectEnabled ? ' hx-chart2--selectable' : ''}${pressDragging ? ' hx-chart2--dragging' : ''}${viewerSeriesPartial ? ' hx-chart2--viewer-partial' : ''}`}
@@ -1840,6 +1841,7 @@ export function HubActivityChart({
             chartPoints[viewportStartIndex]?.t ?? lastT,
             windowMinutes,
           )}
+          wheelSurfaceRef={wrapRef}
           onChange={setNavigatorRange}
           onReset={() => setNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) })}
         />

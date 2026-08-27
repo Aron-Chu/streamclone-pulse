@@ -45,6 +45,19 @@ function dispatchPointerEvent(
   fireEvent(target, event)
 }
 
+function dispatchWheelEvent(
+  target: HTMLElement,
+  init: WheelEventInit,
+): WheelEvent {
+  const event = new WheelEvent('wheel', {
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  })
+  fireEvent(target, event)
+  return event
+}
+
 describe('HubActivityChart interaction contract', () => {
   it('keeps one viewer foreground and keeps hover detail out of the plot', () => {
     const { container } = render(
@@ -390,6 +403,143 @@ describe('HubActivityChart interaction contract', () => {
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
 
     fireEvent.wheel(track, { deltaY: -120, deltaX: 0, deltaMode: 0, ctrlKey: true, clientX: 250 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+  })
+
+  it('preserves a 75% wheel anchor in a left-side viewport', () => {
+    const navigatorPoints = Array.from({ length: 20 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={20} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLDivElement
+    const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    const rect = { left: 0, right: 1000, top: 0, bottom: 200, width: 1000, height: 200, x: 0, y: 0, toJSON: () => ({}) }
+    Object.defineProperty(track, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+
+    dispatchPointerEvent(window, 'pointerdown', { pointerId: 31, pointerType: 'mouse', clientX: 105, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 31, pointerType: 'mouse', clientX: 474, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointerup', { pointerId: 31, pointerType: 'mouse', clientX: 474, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:9')
+
+    dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 750 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:9')
+  })
+
+  it('preserves a 25% wheel anchor in a right-side viewport', () => {
+    const navigatorPoints = Array.from({ length: 20 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={20} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLDivElement
+    const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    const rect = { left: 0, right: 1000, top: 0, bottom: 200, width: 1000, height: 200, x: 0, y: 0, toJSON: () => ({}) }
+    Object.defineProperty(track, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+
+    dispatchPointerEvent(window, 'pointerdown', { pointerId: 32, pointerType: 'mouse', clientX: 526, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 32, pointerType: 'mouse', clientX: 895, clientY: 10 })
+    dispatchPointerEvent(navigator, 'pointerup', { pointerId: 32, pointerType: 'mouse', clientX: 895, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('10:17')
+
+    dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('11:16')
+  })
+
+  it('zooms from the chart surface without changing the requested server range', () => {
+    const onRangeSelect = vi.fn()
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart
+        points={navigatorPoints}
+        windowMinutes={6}
+        channelCount={1}
+        rangeControl={{
+          active: '24h',
+          options: [
+            { key: '30m', label: '30m' },
+            { key: '24h', label: '24h' },
+            { key: '7d', label: '7d' },
+          ],
+          onSelect: onRangeSelect,
+        }}
+        annotationLane={<div data-testid="wheel-live-wire">Live Wire</div>}
+      />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 0, right: 500, top: 0, bottom: 200, width: 500, height: 200, x: 0, y: 0, toJSON: () => ({}) }),
+    })
+
+    const zoom = dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250 })
+    expect(zoom.defaultPrevented).toBe(true)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
+    expect(onRangeSelect).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="wheel-live-wire"]')).not.toBeNull()
+    expect(container.querySelector('[data-provider="sevenTv"]')).not.toBeNull()
+
+    const pan = dispatchWheelEvent(chart, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
+    expect(pan.defaultPrevented).toBe(true)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+    expect(onRangeSelect).not.toHaveBeenCalled()
+  })
+
+  it('does not trap wheel scrolling when zoom or pan cannot change the viewport', () => {
+    const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
+      ...points[0],
+      t: firstBucketT + index * 60_000,
+      viewers: 120 + index * 10,
+    }))
+    const { container } = render(
+      <HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />,
+    )
+
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 0, right: 500, top: 0, bottom: 200, width: 500, height: 200, x: 0, y: 0, toJSON: () => ({}) }),
+    })
+
+    const fullRangeZoomOut = dispatchWheelEvent(chart, { deltaY: 120, deltaX: 0, deltaMode: 0, clientX: 250 })
+    expect(fullRangeZoomOut.defaultPrevented).toBe(false)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+
+    const fullRangePan = dispatchWheelEvent(chart, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
+    expect(fullRangePan.defaultPrevented).toBe(false)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+
+    const browserZoom = dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, ctrlKey: true, clientX: 250 })
+    expect(browserZoom.defaultPrevented).toBe(false)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+
+    dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250 })
+    dispatchWheelEvent(chart, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+
+    const boundaryPan = dispatchWheelEvent(chart, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
+    expect(boundaryPan.defaultPrevented).toBe(false)
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
   })
 })
