@@ -77,12 +77,50 @@ test('chart navigator zooms locally, stays keyboard accessible, and leaves provi
   await track.scrollIntoViewIfNeeded()
   const trackBox = await track.boundingBox()
   expect(trackBox).toBeTruthy()
+  const trackChrome = await track.evaluate((element) => {
+    const style = getComputedStyle(element)
+    const rail = getComputedStyle(element, '::before')
+    return {
+      border: style.borderStyle,
+      background: style.backgroundColor,
+      height: element.getBoundingClientRect().height,
+      railHeight: Number.parseFloat(rail.height),
+    }
+  })
+  expect(trackChrome.border).toBe('none')
+  expect(trackChrome.background).toBe('rgba(0, 0, 0, 0)')
+  expect(trackChrome.height).toBeGreaterThanOrEqual(44)
+  expect(trackChrome.railHeight).toBeGreaterThanOrEqual(18)
+  expect(trackChrome.railHeight).toBeLessThanOrEqual(20)
   const handleChrome = await start.evaluate((element) => {
     const style = getComputedStyle(element)
-    return { border: style.borderStyle, background: style.backgroundColor }
+    return {
+      border: style.borderStyle,
+      background: style.backgroundColor,
+      boxShadow: style.boxShadow,
+      width: element.getBoundingClientRect().width,
+      height: element.getBoundingClientRect().height,
+    }
   })
   expect(handleChrome.border).toBe('none')
   expect(handleChrome.background).toBe('rgba(0, 0, 0, 0)')
+  expect(handleChrome.boxShadow).toBe('none')
+  expect(handleChrome.width).toBeGreaterThanOrEqual(44)
+  expect(handleChrome.height).toBeGreaterThanOrEqual(44)
+  const reset = navigator.getByRole('button', { name: 'Reset chart view to the full requested range' })
+  const resetChrome = await reset.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      border: style.borderStyle,
+      background: style.backgroundColor,
+      width: element.getBoundingClientRect().width,
+      height: element.getBoundingClientRect().height,
+    }
+  })
+  expect(resetChrome.border).toBe('none')
+  expect(resetChrome.background).toBe('rgba(0, 0, 0, 0)')
+  expect(resetChrome.width).toBeGreaterThanOrEqual(44)
+  expect(resetChrome.height).toBeGreaterThanOrEqual(44)
 
   // The navigator owns wheel gestures only when they can change its local
   // viewport. A vertical wheel zoom is anchored at the pointer.
@@ -94,7 +132,7 @@ test('chart navigator zooms locally, stays keyboard accessible, and leaves provi
   await page.mouse.wheel(0, 120)
   await page.keyboard.up('Shift')
   await expect.poll(async () => Number(await start.getAttribute('aria-valuenow'))).toBeGreaterThan(wheelStart)
-  await navigator.getByRole('button', { name: 'Reset chart view to the full requested range' }).click()
+  await reset.click()
   await expect(start).toHaveAttribute('aria-valuenow', '0')
 
   await page.mouse.move(trackBox!.x + trackBox!.width * 0.2, trackBox!.y + trackBox!.height / 2)
@@ -109,6 +147,7 @@ test('chart navigator zooms locally, stays keyboard accessible, and leaves provi
   const brushedEnd = Number(await end.getAttribute('aria-valuenow'))
   const windowBox = await navigator.locator('.hx-chart-navigator__window').boundingBox()
   expect(windowBox).toBeTruthy()
+  expect(windowBox!.height).toBeGreaterThanOrEqual(44)
   await page.mouse.move(windowBox!.x + windowBox!.width / 2, windowBox!.y + windowBox!.height / 2)
   await page.mouse.down()
   await page.mouse.move(windowBox!.x + windowBox!.width / 2 + trackBox!.width * 0.08, windowBox!.y + windowBox!.height / 2)
@@ -121,7 +160,7 @@ test('chart navigator zooms locally, stays keyboard accessible, and leaves provi
   const keyboardStart = Number(await start.getAttribute('aria-valuenow'))
   expect(keyboardStart).toBeGreaterThan(brushedStart)
   await expect(page.locator('.hx-plot-stack')).toHaveAttribute('data-hub-chart-viewport-start', String(keyboardStart))
-  await expect(navigator.getByRole('button', { name: 'Reset chart view to the full requested range' })).toBeEnabled()
+  await expect(reset).toBeEnabled()
 
   const order = await page.evaluate(() => {
     const navigator = document.querySelector('[data-hub-chart-navigator]')

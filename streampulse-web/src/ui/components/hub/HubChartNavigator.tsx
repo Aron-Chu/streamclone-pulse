@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react'
 
 export interface HubChartNavigatorRange {
   startIndex: number
@@ -11,6 +18,7 @@ export interface HubChartNavigatorProps {
   endIndex: number
   startLabel: string
   endLabel: string
+  wheelSurfaceRef?: RefObject<HTMLElement | null>
   onChange: (range: HubChartNavigatorRange) => void
   onReset: () => void
 }
@@ -50,6 +58,7 @@ export function HubChartNavigator({
   endIndex,
   startLabel,
   endLabel,
+  wheelSurfaceRef,
   onChange,
   onReset,
 }: HubChartNavigatorProps) {
@@ -64,7 +73,7 @@ export function HubChartNavigator({
   const dragRef = useRef<DragState | null>(null)
   const [draggingMode, setDraggingMode] = useState<DragState['mode'] | null>(null)
 
-  const pointerIndex = (clientX: number, trackLeft: number, trackWidth: number): number =>
+  const globalPointerIndex = (clientX: number, trackLeft: number, trackWidth: number): number =>
     clamp(Math.round(((clientX - trackLeft) / Math.max(1, trackWidth)) * maxIndex), 0, maxIndex)
 
   const brushRange = (anchorIndex: number, currentIndex: number): HubChartNavigatorRange => {
@@ -89,7 +98,7 @@ export function HubChartNavigator({
     if (drag.mode === 'brush') {
       next = brushRange(
         drag.anchorIndex,
-        pointerIndex(event.clientX, drag.trackLeft, drag.trackWidth),
+        globalPointerIndex(event.clientX, drag.trackLeft, drag.trackWidth),
       )
     } else if (drag.mode === 'start') {
       next = {
@@ -139,7 +148,7 @@ export function HubChartNavigator({
       pointerId: event.pointerId,
       mode,
       startClientX: event.clientX,
-      anchorIndex: pointerIndex(event.clientX, rect.left, rect.width),
+      anchorIndex: globalPointerIndex(event.clientX, rect.left, rect.width),
       startIndex: range.startIndex,
       endIndex: range.endIndex,
       trackLeft: rect.left,
@@ -195,9 +204,9 @@ export function HubChartNavigator({
     beginPointerDrag(event, 'brush')
   }
 
-  const handleWheel = (event: WheelEvent) => {
+  const handleWheel = (event: WheelEvent, surface: HTMLElement) => {
     if (maxIndex <= 1 || event.ctrlKey || event.metaKey) return
-    const rect = trackRef.current?.getBoundingClientRect()
+    const rect = surface.getBoundingClientRect()
     if (!rect || rect.width <= 0) return
 
     const deltaUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(240, rect.width) : 1
@@ -228,10 +237,8 @@ export function HubChartNavigator({
       if (nextBucketCount === bucketCount) {
         nextBucketCount = clamp(bucketCount + Math.sign(deltaY), 2, pointCount)
       }
-      const anchorIndex = pointerIndex(event.clientX, rect.left, rect.width)
-      const anchorRatio = bucketCount <= 1
-        ? 0.5
-        : clamp((anchorIndex - range.startIndex) / (bucketCount - 1), 0, 1)
+      const anchorRatio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1)
+      const anchorIndex = range.startIndex + anchorRatio * Math.max(0, bucketCount - 1)
       let nextStart = Math.round(anchorIndex - anchorRatio * (nextBucketCount - 1))
       nextStart = clamp(nextStart, 0, Math.max(0, pointCount - nextBucketCount))
       next = { startIndex: nextStart, endIndex: nextStart + nextBucketCount - 1 }
@@ -243,15 +250,23 @@ export function HubChartNavigator({
   }
 
   // React delegates wheel listeners at the document boundary, where browsers
-  // may treat them as passive. Bind directly to the narrow navigator track so
-  // a real mouse wheel/trackpad gesture can suppress page scroll only when the
-  // local viewport actually changes.
+  // may treat them as passive. Bind non-passive listeners to both the chart and
+  // navigator surfaces. Page scroll is suppressed only when the local viewport
+  // actually changes, so a boundary/no-op gesture still scrolls normally.
   useEffect(() => {
     const track = trackRef.current
     if (!track) return
-    const onWheel = (event: WheelEvent) => handleWheel(event)
-    track.addEventListener('wheel', onWheel, { passive: false })
-    return () => track.removeEventListener('wheel', onWheel)
+    const surfaces = [track, wheelSurfaceRef?.current]
+      .filter((surface): surface is HTMLElement => surface != null)
+      .filter((surface, index, all) => all.indexOf(surface) === index)
+    const listeners = surfaces.map((surface) => {
+      const onWheel = (event: WheelEvent) => handleWheel(event, surface)
+      surface.addEventListener('wheel', onWheel, { passive: false })
+      return { surface, onWheel }
+    })
+    return () => {
+      listeners.forEach(({ surface, onWheel }) => surface.removeEventListener('wheel', onWheel))
+    }
   })
 
   return (
@@ -279,63 +294,65 @@ export function HubChartNavigator({
           disabled={isFullRange}
           aria-label="Reset chart view to the full requested range"
         >
-          Reset
+          <span>Reset</span>
         </button>
       </div>
-      <div
-        ref={trackRef}
-        className="hx-chart-navigator__track"
-        onPointerDown={handleTrackPointerDown}
-        onDoubleClick={(event) => {
-          event.preventDefault()
-          onReset()
-        }}
-        aria-hidden="true"
-      >
-        <span className="hx-chart-navigator__track-fill" />
-        <span
-          className="hx-chart-navigator__window"
-          style={{ left: `${left}%`, width: `${width}%` }}
-          onPointerDown={(event) => beginPointerDrag(event, isFullRange ? 'brush' : 'window')}
-        />
-      </div>
-      <div className="hx-chart-navigator__handles">
-        <button
-          type="button"
-          role="slider"
-          className="hx-chart-navigator__handle hx-chart-navigator__handle--start"
-          style={{ left: `${left}%` }}
-          aria-label="Chart view start"
-          aria-orientation="horizontal"
-          aria-valuemin={0}
-          aria-valuemax={Math.max(0, range.endIndex - 1)}
-          aria-valuenow={range.startIndex}
-          aria-valuetext={`Start ${startLabel}; showing ${startLabel} to ${endLabel}`}
-          onKeyDown={(event) => handleKeyDown(event, 'start')}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            beginPointerDrag(event, 'start')
+      <div className="hx-chart-navigator__track-shell">
+        <div
+          ref={trackRef}
+          className="hx-chart-navigator__track"
+          onPointerDown={handleTrackPointerDown}
+          onDoubleClick={(event) => {
+            event.preventDefault()
+            onReset()
           }}
-        />
-        <button
-          type="button"
-          role="slider"
-          className="hx-chart-navigator__handle hx-chart-navigator__handle--end"
-          style={{ left: `${right}%` }}
-          aria-label="Chart view end"
-          aria-orientation="horizontal"
-          aria-valuemin={Math.min(maxIndex, range.startIndex + 1)}
-          aria-valuemax={maxIndex}
-          aria-valuenow={range.endIndex}
-          aria-valuetext={`End ${endLabel}; showing ${startLabel} to ${endLabel}`}
-          onKeyDown={(event) => handleKeyDown(event, 'end')}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            beginPointerDrag(event, 'end')
-          }}
-        />
+          aria-hidden="true"
+        >
+          <span className="hx-chart-navigator__track-fill" />
+          <span
+            className="hx-chart-navigator__window"
+            style={{ left: `${left}%`, width: `${width}%` }}
+            onPointerDown={(event) => beginPointerDrag(event, isFullRange ? 'brush' : 'window')}
+          />
+        </div>
+        <div className="hx-chart-navigator__handles">
+          <button
+            type="button"
+            role="slider"
+            className="hx-chart-navigator__handle hx-chart-navigator__handle--start"
+            style={{ left: `clamp(22px, ${left}%, calc(100% - 22px))` }}
+            aria-label="Chart view start"
+            aria-orientation="horizontal"
+            aria-valuemin={0}
+            aria-valuemax={Math.max(0, range.endIndex - 1)}
+            aria-valuenow={range.startIndex}
+            aria-valuetext={`Start ${startLabel}; showing ${startLabel} to ${endLabel}`}
+            onKeyDown={(event) => handleKeyDown(event, 'start')}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              beginPointerDrag(event, 'start')
+            }}
+          />
+          <button
+            type="button"
+            role="slider"
+            className="hx-chart-navigator__handle hx-chart-navigator__handle--end"
+            style={{ left: `clamp(22px, ${right}%, calc(100% - 22px))` }}
+            aria-label="Chart view end"
+            aria-orientation="horizontal"
+            aria-valuemin={Math.min(maxIndex, range.startIndex + 1)}
+            aria-valuemax={maxIndex}
+            aria-valuenow={range.endIndex}
+            aria-valuetext={`End ${endLabel}; showing ${startLabel} to ${endLabel}`}
+            onKeyDown={(event) => handleKeyDown(event, 'end')}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              beginPointerDrag(event, 'end')
+            }}
+          />
+        </div>
       </div>
-      <p className="hx-chart-navigator__hint">Drag to zoom · drag the purple window to pan · scroll to zoom · Shift+scroll to pan · double-click to reset. The requested server range is unchanged.</p>
+      <p className="hx-chart-navigator__hint">Drag to zoom · drag the purple window to pan · scroll over the chart or navigator to zoom · Shift+scroll to pan · double-click to reset. The requested server range is unchanged.</p>
     </div>
   )
 }
