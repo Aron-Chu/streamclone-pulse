@@ -50,9 +50,11 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(redirects).toMatch(/\/analytics\/streams\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/analytics\/hub\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/atlas\s+\/analytics\s+301/)
-    expect(redirects).toMatch(/\/analytics\/:login\/:streamId\s+\/index\.html\s+200/)
-    expect(redirects).toMatch(/\/s\/:login\s+\/index\.html\s+200/)
-    expect(redirects).toMatch(/\/s\/:login\/:streamId\s+\/index\.html\s+200/)
+    expect(redirects).toMatch(/\/analytics\/newsroom\s+\/analytics\/\s+200/)
+    expect(redirects).toMatch(/\/analytics\/\*\s+\/analytics\/\s+200/)
+    expect(redirects).toMatch(/\/analytics\/:login\/:streamId\s+\/analytics\/\s+200/)
+    expect(redirects).toMatch(/\/s\/:login\s+\/analytics\/\s+200/)
+    expect(redirects).toMatch(/\/s\/:login\/:streamId\s+\/analytics\/\s+200/)
   })
 
   it('ships Pages security and cache headers', () => {
