@@ -15,6 +15,13 @@
 
 # Channel/session deep links must SPA-fallback — prerender only covers /analytics/.
 # Without these, Cloudflare Pages serves 404.html for /analytics/:login/:streamId.
+# Newsroom routes are explicit because `newsroom` is a reserved analytics
+# segment, not a channel login. Keep both slash forms so direct links and
+# Pages' directory normalization reach the SPA shell.
+/analytics/newsroom /index.html 200
+/analytics/newsroom/ /index.html 200
+/analytics/newsroom/:storyId /index.html 200
+/analytics/newsroom/:storyId/ /index.html 200
 /analytics/:login /index.html 200
 /analytics/:login/ /index.html 200
 /analytics/:login/:streamId /index.html 200
