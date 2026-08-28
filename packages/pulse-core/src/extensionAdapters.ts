@@ -9,7 +9,12 @@ import type {
 import { LIVE_HEAT_MAX_EMOTES } from './liveHeat.ts'
 import { displayMomentReasonLabel } from './momentScore.ts'
 import { resolveEmoteImageUrl } from './emoteImageUrl.ts'
-import type { LiveStatsInput, LiveStatsRollup, LiveTopEmote } from './liveStats.ts'
+import type {
+  LiveStatsInput,
+  LiveStatsRollup,
+  LiveTopEmote,
+  LiveViewerMetadata,
+} from './liveStats.ts'
 
 export interface ExtensionEmoteLike {
   id?: string
@@ -21,10 +26,12 @@ export interface ExtensionEmoteLike {
 
 export interface ExtensionRollupLike {
   offsetSeconds: number
+  finalized?: boolean
   chatCount?: number
   sevenTvEmoteCount?: number
   totalEmoteCount?: number
-  viewerCount?: number
+  viewerCount?: number | null
+  viewerSamples?: number
   topEmotes?: ExtensionEmoteLike[]
   missing?: boolean
 }
@@ -32,17 +39,28 @@ export interface ExtensionRollupLike {
 export interface ExtensionPeakLike {
   offsetSeconds: number
   score: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
   reasons: string[]
   reasonLabel?: string
   dominantSignal?: string
   chatCount?: number
   emoteCount?: number
   topEmotes?: ExtensionEmoteLike[]
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
 }
 
 export interface ExtensionPulseLike {
   isLive: boolean
   startedAt?: string
+  liveMetadata?: LiveViewerMetadata | null
   topEmotes?: ExtensionEmoteLike[]
   rollups: ExtensionRollupLike[]
   fullRollups?: ExtensionRollupLike[]
@@ -123,6 +141,9 @@ export function peaksToLiveHeatPoints(
       minuteTs: minuteTsFromOffset(startedAt, peak.offsetSeconds) ?? '',
       offsetSeconds: Math.max(0, peak.offsetSeconds),
       score: Math.round(peak.score),
+      compositeScore: peak.compositeScore,
+      reactionScore: peak.reactionScore,
+      viewerMomentumScore: peak.viewerMomentumScore,
       estimated: false,
       reason,
       reasonLabel,
@@ -130,6 +151,13 @@ export function peaksToLiveHeatPoints(
       emoteCount: Math.max(0, Math.round(peak.emoteCount ?? 0)),
       topEmotes: peakTopEmotesToLiveHeatEmotes(peak, catalog, byName),
       collecting: false,
+      reactionOnsetOffsetSeconds: peak.reactionOnsetOffsetSeconds,
+      reactionApexOffsetSeconds: peak.reactionApexOffsetSeconds,
+      seekOffsetSeconds: peak.seekOffsetSeconds,
+      precisionSeconds: peak.precisionSeconds,
+      refinementStatus: peak.refinementStatus,
+      refinementConfidence: peak.refinementConfidence,
+      reactionScoringVersion: peak.reactionScoringVersion,
     }
   })
 }
@@ -187,7 +215,14 @@ function isSevenTvProvider(provider?: string): boolean {
 }
 
 function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string): LiveStatsRollup {
-  const viewerCount = r.viewerCount ?? 0
+  const viewerCount = r.viewerCount
+  const hasViewerSample =
+    !r.missing
+    && ((r.viewerSamples ?? 0) > 0 || (
+      typeof viewerCount === 'number'
+      && Number.isFinite(viewerCount)
+      && viewerCount >= 0
+    ))
   let totalEmoteCount = r.totalEmoteCount
   let seventvEmoteCount = r.sevenTvEmoteCount
 
@@ -203,24 +238,32 @@ function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string
 
   return {
     minuteTs: minuteTsFromOffset(startedAt, r.offsetSeconds),
+    finalized: r.finalized,
     chatCount: r.chatCount,
     totalEmoteCount,
     seventvEmoteCount,
-    viewerLatest: viewerCount > 0 ? viewerCount : undefined,
-    viewerSamples: viewerCount > 0 ? 1 : undefined,
+    viewerLatest: hasViewerSample ? (typeof viewerCount === 'number' ? viewerCount : 0) : undefined,
+    viewerSamples: hasViewerSample ? Math.max(1, r.viewerSamples ?? 0) : undefined,
     missing: r.missing,
   }
 }
 
 function extensionRollupToHeatRollup(r: ExtensionRollupLike, startedAt?: string): LiveHeatRollup {
-  const viewerCount = r.viewerCount ?? 0
+  const viewerCount = r.viewerCount
+  const hasViewerSample =
+    !r.missing
+    && ((r.viewerSamples ?? 0) > 0 || (
+      typeof viewerCount === 'number'
+      && Number.isFinite(viewerCount)
+      && viewerCount >= 0
+    ))
   return {
     minuteTs: minuteTsFromOffset(startedAt, r.offsetSeconds),
     chatCount: r.chatCount,
     totalEmoteCount: r.totalEmoteCount,
     seventvEmoteCount: r.sevenTvEmoteCount,
     emotes: rollupTopEmotesToEmotesMap(r.topEmotes),
-    viewerSamples: viewerCount > 0 ? 1 : 0,
+    viewerSamples: hasViewerSample ? Math.max(1, r.viewerSamples ?? 0) : 0,
     missing: r.missing,
   }
 }
@@ -281,7 +324,11 @@ function extensionEmoteToCatalogEmote(emote: ExtensionEmoteLike): LiveHeatCatalo
 export function toLiveStatsInputFromExtension(payload: ExtensionPulseLike | null): LiveStatsInput {
   const rollupsSource = extensionRollupsForDerivation(payload)
   if (!payload || rollupsSource.length === 0) {
-    return { state: payload?.isLive ? 'live' : 'historical', rollups: [] }
+    return {
+      state: payload?.isLive ? 'live' : 'historical',
+      rollups: [],
+      liveMetadata: payload?.liveMetadata ?? null,
+    }
   }
 
   const rollups = rollupsSource.map(r => extensionRollupToStatsRollup(r, payload.startedAt))
@@ -296,6 +343,7 @@ export function toLiveStatsInputFromExtension(payload: ExtensionPulseLike | null
     state: payload.isLive ? 'live' : 'historical',
     rollups,
     topEmotes: topEmotesSource,
+    liveMetadata: payload.liveMetadata ?? null,
   }
 }
 

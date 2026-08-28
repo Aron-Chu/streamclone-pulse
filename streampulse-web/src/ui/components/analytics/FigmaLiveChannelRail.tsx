@@ -105,7 +105,9 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
                   }}
                 />
                 <span className="figma-live-rail__badge">#{index + 1}</span>
-                <span className="figma-live-rail__viewers">{compact(channel.viewers)}</span>
+                <span className="figma-live-rail__viewers">
+                  {(channel.viewers ?? 0) > 0 ? compact(channel.viewers) : '–'}
+                </span>
               </div>
               <div className="figma-live-rail__body">
                 <span className="figma-live-rail__identity">

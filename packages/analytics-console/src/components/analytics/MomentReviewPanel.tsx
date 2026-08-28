@@ -10,9 +10,10 @@ import {
   topEmotesFromRollup,
   type RollupEmoteHit,
 } from '@streampulse/pulse-core'
+import { viewerReadoutValue } from '@streampulse/pulse-charts'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote } from '../../apiTypes.ts'
 import type { ReplayHeatmapPoint } from '../../types/heatmap.ts'
-import { minuteEmoteTotal, rollupHasMinuteData, viewerValue } from './chartRollupUtils.ts'
+import { minuteEmoteTotal, rollupHasMinuteData } from './chartRollupUtils.ts'
 import { count, getEmoteImageUrl, rollupOffsetSeconds } from '../../utils/consoleFormat.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
@@ -130,14 +131,14 @@ export function MomentReviewPanel({
         <p className="text-[10px] font-semibold text-zinc-600">{LIVE_HEAT_RANKED_SUBTITLE}</p>
       </div>
       <div ref={scrollRef} className="sc-console-scroll flex max-h-72 flex-col gap-1 overflow-y-auto">
-        {candidates.map(({ rollup, scoreLabel, reasonLabel, estimated }) => {
+        {candidates.map(({ rollup, scoreLabel, reasonLabel, estimated }, index) => {
           const offsetLabel = streamStartedAt
             ? formatHeatOffset(rollupOffsetSeconds(rollup, streamStartedAt))
             : new Date(rollup.minuteTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
           const isSelected = selectedRollup?.minuteTs === rollup.minuteTs
           const isPreviewed = !isSelected && previewRollup?.minuteTs === rollup.minuteTs
           const rowEmotes = momentRowEmotes(rollup, topEmotesCatalog, heatmapPoints)
-          const viewers = viewerValue(rollup)
+          const viewers = viewerReadoutValue(rollup)
           const chatPerMin = rollup.chatCount ?? 0
           const emotesPerMin = minuteEmoteTotal(rollup)
           const scoreTitle = estimated
@@ -146,7 +147,7 @@ export function MomentReviewPanel({
 
           return (
             <button
-              key={rollup.minuteTs}
+              key={`${rollup.minuteTs}-${index}-${scoreLabel}`}
               type="button"
               data-moment-row
               data-minute-ts={rollup.minuteTs}
@@ -161,7 +162,7 @@ export function MomentReviewPanel({
                   {offsetLabel}
                 </span>
                 <span className="min-w-0 truncate text-[10px] font-semibold tabular-nums text-zinc-400">
-                  {count(viewers)} viewers · {count(chatPerMin)}/min chat · {count(emotesPerMin)}/min emotes
+                  {viewers == null ? 'viewer sample unavailable' : `${count(viewers)} viewers`} · {count(chatPerMin)}/min chat · {count(emotesPerMin)}/min emotes
                 </span>
                 <span
                   className="shrink-0 text-[10px] font-bold tabular-nums text-zinc-600"

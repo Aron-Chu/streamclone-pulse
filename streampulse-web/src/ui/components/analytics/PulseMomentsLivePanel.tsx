@@ -265,16 +265,8 @@ export function PulseMomentsLivePanel({
 
   const allMoments = useMemo(() => {
     const base = bucketSelected ? bucketMoments : feed.moments;
-    const enriched = enrichPulseMomentRows(base, enrichCtx);
-    if (!bucketSelected || !selectedMomentKeyProp) return enriched;
-    if (enriched.some((moment) => momentRowKey(moment) === selectedMomentKeyProp)) {
-      return enriched;
-    }
-    const pinnedLiveMoment = poolMoments.find(
-      (moment) => momentRowKey(moment) === selectedMomentKeyProp,
-    );
-    return pinnedLiveMoment ? [pinnedLiveMoment, ...enriched] : enriched;
-  }, [bucketMoments, bucketSelected, enrichCtx, feed.moments, poolMoments, selectedMomentKeyProp]);
+    return enrichPulseMomentRows(base, enrichCtx);
+  }, [bucketMoments, bucketSelected, enrichCtx, feed.moments]);
 
   useEffect(() => {
     onPoolMomentsChange?.(poolMoments);
@@ -341,18 +333,14 @@ export function PulseMomentsLivePanel({
   };
 
   const selectedMoment = useMemo(() => {
-    // A Live Wire chip locks the chart bucket and the shared moment in the same
-    // update. Historical bucket results may not repeat that fresh live row, so
-    // resolve the explicit key across both the bucket view and the original
-    // live feed before allowing the ordinary first-row fallback.
     if (selectedKey) {
-      for (const moments of [filteredMoments, allMoments, poolMoments]) {
-        const exact = moments.find((moment) => momentRowKey(moment) === selectedKey);
-        if (exact) return exact;
-      }
+      const exact = [...filteredMoments, ...allMoments, ...poolMoments].find(
+        (moment) => momentRowKey(moment) === selectedKey,
+      );
+      if (exact) return exact;
     }
-    return resolveSelectedPulseMoment(filteredMoments, undefined)
-      ?? resolveSelectedPulseMoment(allMoments, undefined);
+    return resolveSelectedPulseMoment(filteredMoments, null)
+      ?? resolveSelectedPulseMoment(allMoments, null);
   }, [allMoments, filteredMoments, poolMoments, selectedKey]);
 
   const selectedSessionHref = useMemo(() => {

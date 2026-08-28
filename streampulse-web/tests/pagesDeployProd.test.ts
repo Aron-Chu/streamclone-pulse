@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const webRoot = resolve(import.meta.dirname, '..')
 const deploymentScript = readFileSync(resolve(webRoot, 'scripts/pages-deploy-prod.mjs'), 'utf8')
+const hostedRouteSmokeScript = readFileSync(resolve(webRoot, 'scripts/hosted-analytics-route-smoke.mjs'), 'utf8')
 const viteConfig = readFileSync(resolve(webRoot, 'vite.config.ts'), 'utf8')
 
 describe('Cloudflare Pages production deployment hygiene', () => {
@@ -25,6 +26,14 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(deploymentScript).toContain('scripts/prerender.mjs')
     expect(deploymentScript).toContain('scripts/check-public-pages.mjs')
     expect(deploymentScript).toContain('scripts/check-backend-url.mjs')
+  })
+
+  it('verifies a hosted analytics deep route after Pages deploy', () => {
+    expect(deploymentScript).toContain("from './hosted-analytics-route-smoke.mjs'")
+    expect(deploymentScript).toContain('verifyHostedAnalyticsRoutes')
+    expect(deploymentScript).toContain('SKIP_HOSTED_ROUTE_SMOKE')
+    expect(hostedRouteSmokeScript).toContain("redirect: 'manual'")
+    expect(hostedRouteSmokeScript).toContain('hosted analytics route did not return the StreamPulse SPA document')
   })
 
   it('ships crawl discovery files for every indexable public route', () => {

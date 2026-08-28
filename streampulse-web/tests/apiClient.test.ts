@@ -23,6 +23,28 @@ describe('apiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('bypasses the browser cache for dynamic portal reads', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo, init?: RequestInit) => {
+      expect(init?.cache).toBe('no-store')
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiClient('/v1/public/hub?activityWindow=24h')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves an explicit request cache mode', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo, init?: RequestInit) => {
+      expect(init?.cache).toBe('reload')
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiClient('/v1/public/hub?activityWindow=24h', { cache: 'reload' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('normalizes 401 errors and dispatches auth:rejected', async () => {
     const rejected = vi.fn()
     window.addEventListener('auth:rejected', rejected)

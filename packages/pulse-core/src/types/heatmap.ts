@@ -12,10 +12,12 @@ export interface HeatmapEmote {
   provider: string
 }
 
-export interface ReplayHeatmapPoint {
+export interface ReplayHeatmapPoint extends ReactionMoment {
   offsetSeconds: number
   durationSeconds: number
   score: number
+  reactionScore?: number
+  viewerMomentumScore?: number
   confidence: number
   reason: string
   topEmotes: HeatmapEmote[]
@@ -27,3 +29,4 @@ export interface ReplayHeatmapPoint {
 export interface ReplayHeatmapDetailPoint extends ReplayHeatmapPoint {
   components: Record<string, SignalComponent>
 }
+import type { ReactionMoment } from '../reactionMoments.ts'

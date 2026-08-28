@@ -55,7 +55,9 @@ test.describe('portal emote plotting (mocked)', () => {
     expect(await images.count()).toBeGreaterThan(0)
     const proxyOnly = page.locator('img[src*="/emotes/proxy/bt1"]')
     const bttvCdn = page.locator('img[src*="frankerfacez.com/emote/bt1"], img[src*="cdn.frankerfacez.com"]')
-    expect((await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
+    // The channel catalog is staged after first chart paint. Wait for that
+    // enrichment instead of racing the initial summary-only render in CI.
+    await expect.poll(async () => (await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
 
     // Chart emotes view auto-selects up to six session leaders — assert real traces.
     await setChartViewEmotes(page)

@@ -1,16 +1,14 @@
-import { useMemo } from 'react'
+import { useId, useMemo, useState } from 'react'
 import {
+  MAX_PLOTTED_EMOTES,
   count,
   emoteChartColorForKey,
   emoteLegendSwatchStyle,
 } from '@streampulse/pulse-charts'
 import type { AnalyticsTopEmote } from '../../apiTypes.ts'
-import { MAX_PLOTTED_EMOTES } from '../../utils/emotePlotSelection.ts'
 import { getEmoteImageUrl } from '../../utils/consoleFormat.ts'
 import { emoteChipSelectionStyle } from './chartTheme.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
-
-const VISIBLE_CHIP_LIMIT = 16
 
 export interface PlotOnChartStripProps {
   topEmotes: AnalyticsTopEmote[]
@@ -29,46 +27,99 @@ export function PlotOnChartStrip({
   onReset,
   maxPlotted = MAX_PLOTTED_EMOTES,
 }: PlotOnChartStripProps) {
+  const [expanded, setExpanded] = useState(false)
+  const selectorId = useId()
   const plottedSet = useMemo(() => new Set(plottedKeys), [plottedKeys])
-  if (topEmotes.length === 0) return null
+  const topEmoteByKey = useMemo(
+    () => new Map(topEmotes.map(emote => [emote.key, emote])),
+    [topEmotes],
+  )
+  const hasControls = Boolean(onClear || onReset)
+  if (topEmotes.length === 0 && !hasControls) return null
 
-  const visibleEmotes = topEmotes.slice(0, VISIBLE_CHIP_LIMIT)
-  const hiddenCount = Math.max(0, topEmotes.length - VISIBLE_CHIP_LIMIT)
   const plottedCount = plottedKeys.length
 
   return (
-    <div className="mt-3 overflow-hidden rounded border border-white/10 bg-white/[0.02]">
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-2.5 py-2">
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-zinc-500">
-          Plot emotes
+    <div className="relative" data-chart-overlay-selector>
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        aria-expanded={expanded}
+        aria-controls={selectorId}
+        aria-label={`Emote overlays, ${plottedCount} active, ${Math.max(0, maxPlotted - plottedCount)} slots left, ${expanded ? 'collapse' : 'manage'}`}
+        className="flex min-h-9 w-full items-center gap-2 rounded border border-slate-400/15 bg-slate-400/[0.04] px-2.5 py-1.5 text-left transition hover:border-slate-300/25 hover:bg-slate-400/[0.07]"
+      >
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-slate-300">
+          Emote overlays
         </span>
-        {plottedCount > 0 ? (
-          <span className="text-[9px] font-bold uppercase tracking-wide text-zinc-600">
-            {plottedCount}/{maxPlotted} on chart
-          </span>
-        ) : null}
-        <span className="min-w-0 flex-1" />
-        {onClear ? (
-          <button
-            type="button"
-            onClick={onClear}
-            className="rounded border border-white/10 px-2 py-0.5 text-[10px] font-black uppercase text-zinc-500 transition hover:border-white/20 hover:text-zinc-300"
-          >
-            Clear plots
-          </button>
-        ) : null}
-        {onReset ? (
-          <button
-            type="button"
-            onClick={onReset}
-            className="rounded border border-white/10 px-2 py-0.5 text-[10px] font-black uppercase text-zinc-500 transition hover:border-white/20 hover:text-zinc-300"
-          >
-            Reset
-          </button>
-        ) : null}
-      </div>
-      <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto px-2 py-2 pr-1 sm:max-h-none">
-        {visibleEmotes.map(emote => {
+        <span className="shrink-0 rounded bg-slate-300/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-400">
+          {plottedCount} active
+        </span>
+        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+          {plottedKeys.slice(0, maxPlotted).map(key => {
+            const emote = topEmoteByKey.get(key)
+            if (!emote) return null
+            const color = emoteChartColorForKey(key, plottedKeys)
+            return (
+              <span
+                key={key}
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border bg-slate-950/40"
+                style={{ borderColor: `${color}80` }}
+                title={emote.name}
+              >
+                <ConsoleEmoteImg
+                  src={getEmoteImageUrl(emote)}
+                  name={emote.name}
+                  className="h-4 w-4 object-contain"
+                  fallbackClassName="inline-flex h-4 w-4 items-center justify-center text-[8px] font-black text-slate-400"
+                />
+              </span>
+            )
+          })}
+          {plottedCount === 0 ? (
+            <span className="truncate text-[10px] font-semibold text-slate-500">Aggregate Emotes/min only</span>
+          ) : null}
+        </span>
+        <span className="shrink-0 text-[9px] font-black uppercase text-slate-300">
+          {expanded ? 'Collapse' : 'Manage'}
+        </span>
+        <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-500">{expanded ? '−' : '+'}</span>
+      </button>
+      {expanded ? (
+        <div
+          id={selectorId}
+          className="mt-1 rounded border border-slate-400/15 bg-slate-950/75 p-2.5 shadow-lg"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-slate-400">
+              Individual traces use the compact lane · up to {maxPlotted}
+            </span>
+            <div className="flex items-center gap-1">
+              {onClear ? (
+                <button
+                  type="button"
+                  onClick={onClear}
+                  aria-label="Clear emote lanes"
+                  disabled={plottedCount === 0}
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              ) : null}
+              {onReset ? (
+                <button
+                  type="button"
+                  onClick={onReset}
+                  aria-label="Restore default emote lanes"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300"
+                >
+                  Restore defaults
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex max-h-36 flex-wrap content-start gap-1.5 overflow-y-auto pr-1">
+        {topEmotes.length > 0 ? topEmotes.map(emote => {
           const imageUrl = getEmoteImageUrl(emote)
           const isPlotted = plottedSet.has(emote.key)
           const plotColor = isPlotted ? emoteChartColorForKey(emote.key, plottedKeys) : undefined
@@ -85,7 +136,7 @@ export function PlotOnChartStrip({
                   ? `Max ${maxPlotted} emotes on chart`
                   : `${emote.name}: ${count(emote.count)} total uses — click to ${isPlotted ? 'hide' : 'show'} on chart`
               }
-              className="inline-flex min-w-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-w-0 max-w-40 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-45"
               style={{
                 borderColor: chipStyle.borderColor,
                 backgroundColor: chipStyle.backgroundColor,
@@ -93,6 +144,7 @@ export function PlotOnChartStrip({
                 boxShadow: isPlotted && plotColor ? `inset 2px 0 0 ${plotColor}` : undefined,
               }}
               aria-pressed={isPlotted}
+              aria-label={`${isPlotted ? 'Unplot' : 'Plot'} ${emote.name} on chart`}
             >
               {isPlotted && plotColor ? (
                 <span style={emoteLegendSwatchStyle(plotColor)} aria-hidden="true" />
@@ -104,15 +156,21 @@ export function PlotOnChartStrip({
                 fallbackClassName="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-white/10 text-[8px] font-black text-zinc-400"
               />
               <span className="truncate">{emote.name}</span>
-              <span className="shrink-0 font-bold tabular-nums text-zinc-500">{count(emote.count)}</span>
+              <span
+                className="shrink-0 font-bold tabular-nums"
+                style={{ color: isPlotted ? plotColor : undefined }}
+              >
+                {count(emote.count)}
+              </span>
             </button>
           )
-        })}
-      </div>
-      {hiddenCount > 0 ? (
-        <p className="border-t border-white/5 px-2.5 py-1.5 text-[10px] font-semibold text-zinc-600">
-          {hiddenCount} more emotes — use the Emotes tab for the full ranked list
-        </p>
+        }) : (
+          <span className="px-0.5 py-1 text-[10px] font-semibold text-slate-500">
+            No individual emotes are available for this stream.
+          </span>
+        )}
+          </div>
+        </div>
       ) : null}
     </div>
   )

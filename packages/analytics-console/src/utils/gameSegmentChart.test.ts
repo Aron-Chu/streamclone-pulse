@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   clampGamesDurationSeconds,
   minuteRollupSpanSeconds,
+  resolveGamesTimelineDurationSeconds,
   streamWallDurationSeconds,
   trimRollupsToWallDuration,
 } from './gameSegmentChart.ts'
@@ -31,6 +32,35 @@ describe('streamWallDurationSeconds', () => {
 describe('clampGamesDurationSeconds', () => {
   it('caps overlong rollup spans to wall duration', () => {
     expect(clampGamesDurationSeconds(26 * 3600, 2 * 3600 + 120)).toBe(2 * 3600 + 120)
+  })
+})
+
+describe('resolveGamesTimelineDurationSeconds', () => {
+  it('keeps live games bounded to the loaded chart window', () => {
+    expect(resolveGamesTimelineDurationSeconds(
+      [{ offsetSeconds: 0, durationSeconds: 9_000 }],
+      3_600,
+      9_120,
+      true,
+    )).toBe(3_600)
+  })
+
+  it('preserves the full ended game timeline across sparse rollup coverage', () => {
+    expect(resolveGamesTimelineDurationSeconds(
+      [{ offsetSeconds: 0, durationSeconds: 91_403 }],
+      15_540,
+      91_523,
+      false,
+    )).toBe(91_403)
+  })
+
+  it('caps impossible ended game durations to the stream wall time', () => {
+    expect(resolveGamesTimelineDurationSeconds(
+      [{ offsetSeconds: 0, durationSeconds: 100_000 }],
+      15_540,
+      91_523,
+      false,
+    )).toBe(91_523)
   })
 })
 

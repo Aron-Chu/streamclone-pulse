@@ -395,17 +395,17 @@ function PulseLiveMomentList({
                   onKeyDown={(event) => handlePulseRowKeyDown(event, index, moments, onSelect, setFocusIndex, rowRefs)}
                   onFocus={() => setFocusIndex(index)}
                 >
-                  <td className="pulse-moments__peak-rank">#{index + 1}</td>
-                  <td>
+                  <td className="pulse-moments__peak-rank" data-label="Rank">#{index + 1}</td>
+                  <td data-label="Channel">
                     <ChannelCell moment={moment} fallback={channel} liveLogins={liveLogins} compact showGame={false} />
                   </td>
-                  <td className="pulse-moments__peak-category" title={categoryLabel}>
+                  <td className="pulse-moments__peak-category" title={categoryLabel} data-label="Category">
                     {categoryLabel}
                   </td>
-                  <td>
+                  <td data-label="Time">
                     <VodTimeCell moment={moment} vodId={moment.vodId} onSelect={onSelect} compact timeLabel={timeLabel} />
                   </td>
-                  <td>
+                  <td data-label="Moment">
                     <div className="pulse-moments__peak-moment">
                       <span className="pulse-moments__peak-label" title={moment.label}>
                         {moment.label}
@@ -416,22 +416,25 @@ function PulseLiveMomentList({
                   <td
                     className={`pulse-moments__peak-chat pulse-moments__num${chatLabel === '—' ? ' pulse-moments__peak-chat--flat' : ''}`}
                     title={formatChatRate(moment.chatPerMin)}
+                    data-label="Chat/min"
                   >
                     {chatLabel}
                   </td>
                   <td
                     className={`pulse-moments__peak-emotes-rate pulse-moments__num${emotesLabel === '—' ? ' pulse-moments__peak-emotes-rate--flat' : ''}`}
                     title={emotesPerMin != null ? formatEmoteRateCompact(emotesPerMin).replace('/m', '/min emote uses') : 'Emote rate unavailable for this minute'}
+                    data-label="Emotes/min"
                   >
                     {emotesLabel}
                   </td>
                   <td
                     className={`pulse-moments__peak-viewers pulse-moments__num${viewerCell.muted ? ' pulse-moments__peak-viewers--flat' : ''}`}
                     title={viewerCell.title}
+                    data-label="Viewers"
                   >
                     {viewerCell.text}
                   </td>
-                  <td>
+                  <td data-label="Top emotes">
                     <MomentEmotesCell moment={moment} lookup={emoteLookup} />
                   </td>
                 </tr>

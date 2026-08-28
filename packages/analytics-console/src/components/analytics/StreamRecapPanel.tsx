@@ -1,12 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, type MouseEvent, type ReactNode } from 'react'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapEmote, PulseStreamRecap } from '../../apiTypes.ts'
 import {
-  enrichRecapEmotesFromCatalog,
   resolveRecapBurstHighlight,
   resolveRecapDisplayEmotes,
 } from '../../utils/recapEmoteEnrich.ts'
 import { count, getEmoteImageUrl } from '../../utils/consoleFormat.ts'
+import { buildTwitchVodUrl } from '../../utils/twitchVodUrl.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
 import { EmoteProviderBadge } from './ConsoleBits.tsx'
 
@@ -15,7 +15,8 @@ export function StreamRecapPanel({
   topEmotesCatalog,
   rollups,
   streamStartedAt,
-  vodId: _vodId,
+  vodId,
+  vodAlignSeconds,
   onJumpToOffset,
   onPreviewOffset,
 }: {
@@ -23,12 +24,13 @@ export function StreamRecapPanel({
   topEmotesCatalog?: AnalyticsTopEmote[]
   rollups?: AnalyticsMinuteRollup[]
   streamStartedAt?: string
-  /** Accepted for AnalyticsConsole call-site parity; VOD deep-link UI lands separately. */
+  /** When set, cyan timestamps link to Twitch VOD at that offset. */
   vodId?: string
+  /** Verified Twitch VOD alignment. Without it, offsets remain chart actions only. */
+  vodAlignSeconds?: number | null
   onJumpToOffset?: (offsetSeconds: number) => void
   onPreviewOffset?: (offsetSeconds: number | null) => void
 }) {
-  void _vodId
   const topMoments = recap.topMoments ?? []
   const topEmotes = useMemo(
     () => resolveRecapDisplayEmotes(recap.topEmotes ?? [], topEmotesCatalog, 10),
@@ -48,6 +50,9 @@ export function StreamRecapPanel({
     })
   }, [recap.funniestEmoteBurst, rollups, streamStartedAt, topEmotesCatalog])
   const burstEmote = burstHighlight?.emote
+  const burstOffsetSeconds =
+    burstHighlight?.offsetSeconds ?? recap.funniestEmoteBurst?.offsetSeconds ?? 0
+  const canJump = Boolean(onJumpToOffset)
 
   if (
     !hasHeadlineMetric
@@ -59,11 +64,14 @@ export function StreamRecapPanel({
   }
 
   return (
-    <section className="w-full rounded border border-white/[0.07] bg-white/[0.025] p-3">
-      <div className="mb-2 flex items-start justify-between gap-3">
+    <section
+      className="w-full rounded border border-white/[0.07] bg-white/[0.025] p-4"
+      data-stream-recap-panel
+    >
+      <div className="mb-3 flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xs font-black uppercase text-zinc-400">Stream Recap</h3>
-          <p className="text-[10px] font-semibold leading-snug text-zinc-500">
+          <p className="mt-1 text-[10px] font-semibold leading-relaxed text-zinc-500">
             Session highlights from Pulse rollups
           </p>
         </div>
@@ -74,45 +82,65 @@ export function StreamRecapPanel({
         ) : null}
       </div>
       {hasHeadlineMetric ? (
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="min-h-[3.25rem] rounded border border-white/5 bg-white/[0.022] p-2 leading-snug">
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="min-h-[3.5rem] rounded border border-white/5 bg-white/[0.022] p-2.5 leading-snug">
             <div className="text-[10px] font-black uppercase text-zinc-500">Messages</div>
             <div className="mt-1 font-black text-zinc-200">{count(recap.totalMessages)}</div>
           </div>
-          <div className="min-h-[3.25rem] rounded border border-white/5 bg-white/[0.022] p-2 leading-snug">
+          <div className="min-h-[3.5rem] rounded border border-white/5 bg-white/[0.022] p-2.5 leading-snug">
             <div className="text-[10px] font-black uppercase text-zinc-500">Peak Chat</div>
             <div className="mt-1 font-black text-zinc-200">{count(recap.peakChatPerMin)}/min</div>
           </div>
         </div>
       ) : null}
       {recap.biggestChatSpike || recap.funniestEmoteBurst ? (
-        <div className="mt-2 grid gap-1.5 text-xs leading-snug">
+        <div
+          className="mt-3 grid gap-2 text-xs leading-relaxed"
+          onMouseLeave={() => onPreviewOffset?.(null)}
+        >
           {recap.biggestChatSpike ? (
-            <div className="rounded border border-white/5 bg-white/[0.022] px-2 py-1.5 font-semibold text-zinc-400">
+            <RecapHighlightButton
+              canJump={canJump}
+              offsetSeconds={recap.biggestChatSpike.offsetSeconds}
+              onJumpToOffset={onJumpToOffset}
+              onPreviewOffset={onPreviewOffset}
+              ariaLabel={`Biggest spike at ${formatHeatOffset(recap.biggestChatSpike.offsetSeconds)}`}
+            >
               Biggest spike at{' '}
-              <strong className="text-cyan-200">
-                {formatHeatOffset(recap.biggestChatSpike.offsetSeconds)}
-              </strong>{' '}
+              <RecapOffsetTimestamp
+                offsetSeconds={recap.biggestChatSpike.offsetSeconds}
+                vodId={vodId}
+                vodAlignSeconds={vodAlignSeconds}
+              />{' '}
               ({count(recap.biggestChatSpike.chatPerMin)}/min)
-            </div>
+            </RecapHighlightButton>
           ) : null}
           {recap.funniestEmoteBurst ? (
-            <div className="flex flex-wrap items-center gap-2 rounded border border-white/5 bg-white/[0.022] px-2 py-1.5 font-semibold text-zinc-400">
+            <RecapHighlightButton
+              canJump={canJump}
+              offsetSeconds={burstOffsetSeconds}
+              onJumpToOffset={onJumpToOffset}
+              onPreviewOffset={onPreviewOffset}
+              ariaLabel={`Emote burst at ${formatHeatOffset(burstOffsetSeconds)}`}
+              className="flex flex-wrap items-center gap-2"
+            >
               {burstEmote ? <RecapEmoteChip emote={burstEmote} /> : null}
               <span className="min-w-0">
                 Emote burst at{' '}
-                <strong className="text-cyan-200">
-                  {formatHeatOffset(burstHighlight?.offsetSeconds ?? recap.funniestEmoteBurst.offsetSeconds)}
-                </strong>
+                <RecapOffsetTimestamp
+                  offsetSeconds={burstOffsetSeconds}
+                  vodId={vodId}
+                  vodAlignSeconds={vodAlignSeconds}
+                />
                 {recap.funniestEmoteBurst.code ? ` · ${recap.funniestEmoteBurst.code}` : ''} (
                 {count(recap.funniestEmoteBurst.count)})
               </span>
-            </div>
+            </RecapHighlightButton>
           ) : null}
         </div>
       ) : null}
       {topEmotes.length > 0 ? (
-        <div className="mt-3 overflow-hidden rounded border border-white/[0.07]">
+        <div className="mt-4 overflow-hidden rounded border border-white/[0.07]">
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-white/[0.07] bg-white/[0.015] px-2 py-1.5 text-[10px] font-black uppercase text-zinc-500">
             <span>Top 7TV</span>
             <span>Provider</span>
@@ -133,7 +161,7 @@ export function StreamRecapPanel({
           onClick={() => onJumpToOffset(topMoment.offsetSeconds)}
           onMouseEnter={() => onPreviewOffset?.(topMoment.offsetSeconds)}
           onMouseLeave={() => onPreviewOffset?.(null)}
-          className="mt-3 w-full rounded border border-white/[0.07] bg-white/[0.022] px-2 py-1.5 text-left text-[10px] font-semibold leading-snug text-zinc-400 transition hover:bg-white/[0.04]"
+          className="mt-4 w-full rounded border border-white/[0.07] bg-white/[0.022] px-3 py-2 text-left text-[10px] font-semibold leading-relaxed text-zinc-400 transition hover:bg-white/[0.04]"
         >
           Top moment at{' '}
           <strong className="font-black text-amber-200">{formatHeatOffset(topMoment.offsetSeconds)}</strong>
@@ -143,13 +171,81 @@ export function StreamRecapPanel({
         </button>
       ) : null}
       {clipCandidates.length > 0 ? (
-        <p className="mt-2 text-[10px] font-semibold leading-snug text-zinc-500">
+        <p className="mt-3 text-[10px] font-semibold leading-relaxed text-zinc-500">
           {clipCandidates.length} clip candidate{clipCandidates.length === 1 ? '' : 's'} from Pulse scores
           {' · '}
           see Moments tab for the full ranked list
         </p>
       ) : null}
     </section>
+  )
+}
+
+function RecapHighlightButton({
+  canJump,
+  offsetSeconds,
+  onJumpToOffset,
+  onPreviewOffset,
+  ariaLabel,
+  className = '',
+  children,
+}: {
+  canJump: boolean
+  offsetSeconds: number
+  onJumpToOffset?: (offsetSeconds: number) => void
+  onPreviewOffset?: (offsetSeconds: number | null) => void
+  ariaLabel: string
+  className?: string
+  children: ReactNode
+}) {
+  const baseClass =
+    `w-full rounded border border-white/5 bg-white/[0.022] px-3 py-2 text-left font-semibold text-zinc-400 transition ${className}`.trim()
+  if (!canJump) {
+    return <div className={baseClass}>{children}</div>
+  }
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      onClick={() => onJumpToOffset?.(offsetSeconds)}
+      onMouseEnter={() => onPreviewOffset?.(offsetSeconds)}
+      onFocus={() => onPreviewOffset?.(offsetSeconds)}
+      onBlur={() => onPreviewOffset?.(null)}
+      className={`${baseClass} cursor-pointer hover:border-white/10 hover:bg-white/[0.04]`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** Cyan offset — Twitch VOD deep link when vodId is known. */
+export function RecapOffsetTimestamp({
+  offsetSeconds,
+  vodId,
+  vodAlignSeconds,
+}: {
+  offsetSeconds: number
+  vodId?: string
+  vodAlignSeconds?: number | null
+}) {
+  const label = formatHeatOffset(offsetSeconds)
+  const id = vodId?.trim()
+  const hasVerifiedAlignment = typeof vodAlignSeconds === 'number' && Number.isFinite(vodAlignSeconds)
+  if (!id || !hasVerifiedAlignment) {
+    return <strong className="text-cyan-200">{label}</strong>
+  }
+  return (
+    <a
+      href={buildTwitchVodUrl(id, Math.max(0, vodAlignSeconds + offsetSeconds))}
+      target="_blank"
+      rel="noreferrer"
+      className="font-black text-cyan-200 underline decoration-cyan-200/40 underline-offset-2 hover:text-cyan-100"
+      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+        event.stopPropagation()
+      }}
+    >
+      {label}
+    </a>
   )
 }
 

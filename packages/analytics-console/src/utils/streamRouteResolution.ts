@@ -7,6 +7,14 @@ export interface HistoryStreamItem {
   startedAt?: string
 }
 
+function matchesDateSlug(startedAt: string | undefined, dateSlug: string): boolean {
+  if (!startedAt) return false
+  if (startedAt.slice(0, 10) === dateSlug) return true
+  const date = new Date(startedAt)
+  if (Number.isNaN(date.getTime())) return false
+  return date.toISOString().slice(0, 10) === dateSlug || getLocalDateString(startedAt) === dateSlug
+}
+
 export function resolveMatchedStream(
   streamIdParam: string,
   combinedStreams: AnalyticsStream[],
@@ -19,20 +27,13 @@ export function resolveMatchedStream(
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(streamIdParam)) {
     const pool = routableStreams ?? combinedStreams
-    return pool.find((s) => {
-      if (!s.startedAt) return false
-      const date = new Date(s.startedAt)
-      if (Number.isNaN(date.getTime())) return false
-
-      const utcDateStr = date.toISOString().slice(0, 10)
-      if (utcDateStr === streamIdParam) return true
-
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      const localDateStr = `${year}-${month}-${day}`
-      return localDateStr === streamIdParam
-    })
+    const matches = new Map<string, AnalyticsStream>()
+    for (const stream of pool) {
+      if (matchesDateSlug(stream.startedAt, streamIdParam) && stream.streamId && !matches.has(stream.streamId)) {
+        matches.set(stream.streamId, stream)
+      }
+    }
+    return matches.size === 1 ? [...matches.values()][0] : undefined
   }
 
   return undefined
@@ -50,13 +51,13 @@ export function resolveTargetQueryStreamId(
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(streamIdParam)) {
     if (historyItems?.length) {
-      const fromHistory = historyItems.find((s) => {
-        if (!s.startedAt) return false
-        if (s.startedAt.slice(0, 10) === streamIdParam) return true
-        return getLocalDateString(s.startedAt) === streamIdParam
-      })
-      const id = fromHistory?.streamId ?? fromHistory?.id
-      if (id) return id
+      const matchingIDs = new Set<string>()
+      for (const item of historyItems) {
+        if (!matchesDateSlug(item.startedAt, streamIdParam)) continue
+        const id = item.streamId?.trim() || item.id?.trim()
+        if (id) matchingIDs.add(id)
+      }
+      if (matchingIDs.size === 1) return [...matchingIDs][0]
     }
     if (listsLoading) return undefined
     return undefined

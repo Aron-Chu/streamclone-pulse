@@ -5,32 +5,7 @@ import { AnalyticsThemeProvider } from '../src/ui/providers/AnalyticsThemeProvid
 import { hubCorpusPipelineFixture } from '../src/lib/publicHub'
 
 describe('FigmaEmoteSignalBlock Emote Market', () => {
-  it('shows qualified rising channels as paired comparisons', () => {
-    render(
-      <AnalyticsThemeProvider>
-        <FigmaEmoteSignalBlock
-          intel={{ emotesPerMin: 10, topEmoteSharePct: 20, uniqueEmotes: 5, biggestPeakPerMin: 40, seventvSharePct: 50, providerShares: [] }}
-          risingChannels={[{
-            login: 'xqc',
-            displayName: 'xQc',
-            viewers: 1_000,
-            measuredAt: 1_800_000,
-            evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true },
-            comparison: {
-              state: 'ready', currentPerMin: 25, baselinePerMin: 10, absoluteDeltaPerMin: 15, multiplier: 2.5,
-              currentMeasuredMinutes: 5, currentExpectedMinutes: 5, baselineMeasuredMinutes: 20, baselineExpectedMinutes: 20, baselineCoveragePct: 100,
-            },
-          }]}
-        />
-      </AnalyticsThemeProvider>,
-    )
-    expect(screen.getByRole('region', { name: 'Rising channels' })).toBeTruthy()
-    expect(screen.getByText('1 qualifying channel')).toBeTruthy()
-    expect(screen.getByText('Median lift +15/min')).toBeTruthy()
-    expect(screen.queryByText('Highest emote rate')).toBeNull()
-  })
-
-  it('hides backend-unavailable production market tabs', () => {
+  it('lets breadth open with an honest gated empty state', () => {
     render(
       <AnalyticsThemeProvider>
         <FigmaEmoteSignalBlock
@@ -48,9 +23,10 @@ describe('FigmaEmoteSignalBlock Emote Market', () => {
       </AnalyticsThemeProvider>,
     )
     expect(screen.getByRole('heading', { name: 'Emote Market' })).toBeTruthy()
-    expect(screen.queryByRole('tab', { name: 'Breadth' })).toBeNull()
-    expect(screen.queryByRole('tab', { name: 'Rotation' })).toBeNull()
-    expect(screen.queryByRole('tab', { name: 'Provider regime' })).toBeNull()
+    const breadth = screen.getByRole('tab', { name: /Breadth/ })
+    expect((breadth as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(breadth)
+    expect(screen.getByText(/Cross-channel breadth needs a sanitized backend/)).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: 'Concentration' }))
     expect(screen.getByText('Top 1 share')).toBeTruthy()
   })
@@ -92,7 +68,7 @@ describe('FigmaEmoteSignalBlock Emote Market', () => {
     expect(screen.getByText('25%')).toBeTruthy()
   })
 
-  it('does not expose an empty provider regime tab', () => {
+  it('explains missing provider rollups on Provider regime', () => {
     render(
       <AnalyticsThemeProvider>
         <FigmaEmoteSignalBlock
@@ -108,30 +84,7 @@ describe('FigmaEmoteSignalBlock Emote Market', () => {
         />
       </AnalyticsThemeProvider>,
     )
-    expect(screen.queryByRole('tab', { name: 'Provider regime' })).toBeNull()
-  })
-
-  it('enables all deterministic internal preview panels without calling them live data', () => {
-    window.history.pushState({}, '', '/analytics?marketPreview=fixture')
-    render(
-      <AnalyticsThemeProvider>
-        <FigmaEmoteSignalBlock
-          intel={{
-            emotesPerMin: 10,
-            topEmoteSharePct: 20,
-            uniqueEmotes: 5,
-            biggestPeakPerMin: 40,
-            seventvSharePct: 50,
-            providerShares: [],
-          }}
-        />
-      </AnalyticsThemeProvider>,
-    )
-    expect(screen.getByText(/Internal deterministic design preview · not live analytics/)).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: 'Provider regime' }))
-    expect(screen.getByRole('region', { name: 'Provider regime' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: 'Rotation' }))
-    expect(screen.getByText('6 → 2')).toBeTruthy()
-    window.history.pushState({}, '', '/')
+    expect(screen.getByText(/Provider hourly rollups are not in this hub snapshot/)).toBeTruthy()
   })
 })

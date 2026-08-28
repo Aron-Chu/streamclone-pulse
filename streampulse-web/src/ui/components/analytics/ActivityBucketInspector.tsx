@@ -1,7 +1,7 @@
 import { memo, useMemo, type ReactNode } from 'react'
 import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import type { HubActivityPoint, HubEmote, HubEmoteIntel, HubLiveChannel } from '../../../lib/publicHub'
-import { assessViewerCoverage, bucketMinutes, hubActivityEmoteCount } from '../../../lib/hubActivitySummary'
+import { bucketMinutes, hubActivityEmoteCount } from '../../../lib/hubActivitySummary'
 import type { HubEmoteWithShare } from '../../../lib/emoteShare'
 import { compact, displayName, initial } from './hubFormat'
 import { HubTopEmotesTable } from './HubTopEmotesTable'
@@ -71,20 +71,10 @@ function dominantProvider(point: HubActivityPoint): string | null {
     { key: 'twitch', label: 'Twitch', value: point.twitch ?? 0 },
     { key: 'bttv', label: 'BTTV', value: point.bttv ?? 0 },
     { key: 'ffz', label: 'FFZ', value: point.ffz ?? 0 },
+    { key: 'other', label: 'Other', value: point.other ?? 0 },
   ]
   const best = entries.reduce((a, b) => (b.value > a.value ? b : a), entries[0])
   return best.value > 0 ? best.label : null
-}
-
-function viewerMetricLabel(point: HubActivityPoint): string {
-  const coverage = assessViewerCoverage(point)
-  if (!coverage.sampled) return '—'
-  const value = compact(point.viewers)
-  if (coverage.qualified) return value
-  if (coverage.contributors != null && coverage.expectedContributors != null) {
-    return `${value} · partial ${coverage.contributors}/${coverage.expectedContributors}`
-  }
-  return coverage.quality === 'partial' ? `${value} · partial` : `${value} · coverage unknown`
 }
 
 function bucketHeadMeta(
@@ -380,7 +370,7 @@ export function ActivityBucketInspector({
           { label: rangeStats.stat3Label, value: rangeStats.stat3Value },
         ]
       : [
-          { label: 'Viewers then', value: displayPoint ? viewerMetricLabel(displayPoint) : '—' },
+          { label: 'Viewers then', value: displayPoint ? compact(displayPoint.viewers) : '—' },
           { label: statsChatLabel, value: displayPoint ? compact(displayPoint.chat) : '—' },
           {
             label: 'Emotes then',

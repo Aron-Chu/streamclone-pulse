@@ -5,6 +5,7 @@ import {
 } from '../src/lib/hubChartActivityModel'
 import { normalizePublicHub } from '../src/lib/publicHub'
 import type { HubActivityPoint } from '../src/lib/publicHub'
+import type { HubActivityMomentMarker } from '../src/ui/components/hub/HubActivityChart'
 import * as hubActivitySummary from '../src/lib/hubActivitySummary'
 
 function fixtureHub(points: HubActivityPoint[]) {
@@ -24,6 +25,11 @@ function fixtureHub(points: HubActivityPoint[]) {
   })
 }
 
+const fixtureMarkers: HubActivityMomentMarker[] = [
+  { key: 'a', bucketT: 0, kind: 'chat_spike' },
+  { key: 'b', bucketT: 60_000, kind: 'lifecycle' },
+]
+
 describe('hubChartActivityModel', () => {
   const nowMs = Date.parse('2026-07-11T18:00:00Z')
   const points: HubActivityPoint[] = [
@@ -33,8 +39,6 @@ describe('hubChartActivityModel', () => {
       seventv: 10,
       viewers: 2500,
       hasChatRollup: true,
-      hasViewerRollup: true,
-      viewerCoverage: 'complete',
       bucketComplete: true,
     },
     {
@@ -43,8 +47,6 @@ describe('hubChartActivityModel', () => {
       seventv: 12,
       viewers: 2600,
       hasChatRollup: true,
-      hasViewerRollup: true,
-      viewerCoverage: 'complete',
       bucketComplete: true,
     },
   ]
@@ -133,6 +135,56 @@ describe('hubChartActivityModel', () => {
     const model = deriveHubChartActivityModel(inputs, nowMs)
     // Peaks must come from the single derived series — not three extra chartActivityPoints calls.
     expect(spy).toHaveBeenCalledTimes(1)
+    expect(model.peakViewers).toBe(Math.max(...model.chartPoints.map((p) => p.viewers)))
+    spy.mockRestore()
+  })
+
+  it('returns rhythmLines when points are present', () => {
+    const pts: HubActivityPoint[] = Array.from({ length: 10 }, (_, i) => ({
+      t: i * 60_000,
+      chat: i,
+      seventv: i,
+      viewers: 100 + i * 10,
+    }))
+    const out = deriveHubChartActivityModel(
+      { points: pts, windowMinutes: 60, livePoolViewerSum: 0 },
+      600_000,
+    )
+    expect(out.rhythmLines).not.toBeNull()
+    if (out.rhythmLines) {
+      expect(out.rhythmLines.avg).not.toBeNull()
+    }
+  })
+
+  it('returns annotations when markers are provided', () => {
+    const pts: HubActivityPoint[] = [
+      { t: 0, chat: 50, seventv: 0, viewers: 100 },
+      { t: 60_000, chat: 100, seventv: 0, viewers: 200 },
+    ]
+    const out = deriveHubChartActivityModel(
+      {
+        points: pts,
+        windowMinutes: 60,
+        livePoolViewerSum: 0,
+        markers: fixtureMarkers,
+      },
+      120_000,
+    )
+    expect(out.annotations).toHaveLength(2)
+    expect(out.annotations[0].kind).toBe('spike')
+    expect(out.annotations[1].kind).toBe('moment')
+  })
+
+  it('keeps prior model invariants with markers present (single derive pass, peaks from derived series)', () => {
+    const inputs = selectHubChartActivityInputs(fixtureHub(points))
+    const spy = vi.spyOn(hubActivitySummary, 'chartActivityPoints')
+    const model = deriveHubChartActivityModel(
+      { ...inputs, markers: fixtureMarkers },
+      nowMs,
+    )
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(model.annotations).toHaveLength(2)
+    expect(model.rhythmLines).not.toBeNull()
     expect(model.peakViewers).toBe(Math.max(...model.chartPoints.map((p) => p.viewers)))
     spy.mockRestore()
   })

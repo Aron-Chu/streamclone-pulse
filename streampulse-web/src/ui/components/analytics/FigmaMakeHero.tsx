@@ -1,6 +1,6 @@
 import type { PublicHub } from "../../../lib/publicHub";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
-import { formatActivityCoveragePercent, formatActivityWindowLabel } from "../../../lib/hubActivitySummary";
+import { formatActivityWindowLabel } from "../../../lib/hubActivitySummary";
 import {
   formatHubActivityServedLabel,
   isHubActivityLivePoolFallback,
@@ -45,10 +45,7 @@ export function FigmaMakeHero({
       label: "Global activity",
       value:
         activitySummary.coveragePct > 0
-          ? formatActivityCoveragePercent(
-              activitySummary.pointCount,
-              activitySummary.expectedBuckets,
-            )
+          ? `${Math.round(activitySummary.coveragePct)}%`
           : "-",
       color: "var(--fma-green)",
     },

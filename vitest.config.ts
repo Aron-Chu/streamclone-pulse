@@ -22,7 +22,9 @@ export default defineConfig({
       '**/dist/**',
       'tests/e2e/**',
       'streampulse-web/**',
-      'packages/**/tests/**',
+      // Each workspace owns its environment and runs through test:packages.
+      // Do not rediscover package-local tests under the extension's Node suite.
+      'packages/**',
       '_streamclone/**',
       '_streampulse-backend/**',
       '../twitch-7tv-clone/**',

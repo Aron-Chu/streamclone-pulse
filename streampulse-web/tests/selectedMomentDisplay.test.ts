@@ -15,7 +15,7 @@ describe('buildSelectedMomentDisplay', () => {
       rollup,
       rollups: [rollup],
       startedAt: '2026-07-04T00:00:00.000Z',
-      vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '123', detail: '' },
+      vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '123456789', detail: '' },
     })
     expect(display.activityLine).toBe('589 chat · 115 emotes')
     expect(display.offsetSeconds).toBe(14_700)
@@ -29,7 +29,7 @@ describe('buildSelectedMomentDisplay', () => {
       rollup,
       rollups: [rollup],
       startedAt: '2026-07-04T00:00:00.000Z',
-      vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '123', detail: '' },
+      vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '123456789', detail: '' },
       vodAlignSeconds: 0,
     })
     expect(display.vodUrl).toContain('t=4h5m0s')

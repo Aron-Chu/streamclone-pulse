@@ -1,7 +1,11 @@
 /** Portal minutes for long streams can be 1k+ points — cap chart render density. */
 export const PORTAL_CHART_MAX_POINTS = 240
 
-export const PORTAL_MINUTES_TIMEOUT_MS = 120_000
+// The minutes payload for a long stream can be MB-scale and slow. A 120s timeout
+// meant a slow minutes response could block the whole session detail for two
+// minutes. Lower it so a slow minutes fetch degrades gracefully (~<15s) instead
+// of freezing the header/chart load.
+export const PORTAL_MINUTES_TIMEOUT_MS = 15_000
 
 function uniformDownsample<T>(items: T[], maxPoints: number): T[] {
   const step = Math.ceil(items.length / maxPoints)

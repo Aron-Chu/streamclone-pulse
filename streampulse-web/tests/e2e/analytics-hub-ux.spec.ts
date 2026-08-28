@@ -51,12 +51,13 @@ test.describe('analytics hub UX (interaction)', () => {
     const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
     await expect(chart).toBeVisible()
     await expect(page.locator('.hx-chart2 .hx-chart-line--emotes').first()).toBeVisible()
-    const inspector = page.locator('.activity-bucket-inspector')
-    await expect(inspector).toBeVisible()
-    await expect(inspector).not.toHaveClass(/activity-bucket-inspector--active/)
+    await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
+    await expect(page.locator('.activity-bucket-inspector')).toHaveCount(0)
     const box = await chart.boundingBox()
     expect(box).toBeTruthy()
     await chart.hover({ position: { x: box!.width * 0.55, y: box!.height * 0.5 } })
+    const inspector = page.locator('.activity-bucket-inspector')
+    await expect(inspector).toBeVisible()
     await expect(inspector).toHaveClass(/activity-bucket-inspector--preview/)
     await expect(inspector).not.toHaveClass(/activity-bucket-inspector--active/)
     await expect(inspector.getByText(/^Preview ·/)).toBeVisible()
@@ -114,6 +115,127 @@ test.describe('analytics hub UX (interaction)', () => {
     })
     expect(axisGap.ok, JSON.stringify(axisGap)).toBe(true)
 
+    await assertNoConsoleErrors(page, errors)
+  })
+
+  test('provider lanes stay fixed at the chart footer without header toggles', async ({ page }) => {
+    const errors = attachConsoleErrorGuard(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/analytics')
+
+    await expect(page.locator('.hx-provider-chips')).toHaveCount(0)
+    const lanes = page.locator('.figma-global-activity__hub-chart .hx-provider-lanes')
+    await expect(lanes).toBeVisible()
+    await expect(lanes.locator('.hx-provider-lane')).toHaveCount(4)
+
+    const geometry = await page.evaluate(() => {
+      const plot = document.querySelector('.figma-global-activity__hub-chart .hx-chart2')
+      const lanes = document.querySelector('.figma-global-activity__hub-chart .hx-provider-lanes')
+      if (!plot || !lanes) return { ok: false, reason: 'missing plot or provider lanes' }
+      const plotRect = plot.getBoundingClientRect()
+      const lanesRect = lanes.getBoundingClientRect()
+      return {
+        ok: lanesRect.top >= plotRect.bottom - 1,
+        plotBottom: plotRect.bottom,
+        lanesTop: lanesRect.top,
+      }
+    })
+    expect(geometry.ok, JSON.stringify(geometry)).toBe(true)
+    await expect(lanes).toContainText('7TV')
+    await expect(lanes).toContainText('TW')
+    await expect(lanes).toContainText('BT')
+    await expect(lanes).toContainText('FFZ')
+    await expect(lanes.locator('[data-provider="sevenTv"] [data-provider-coverage]')).toHaveText(
+      /measured buckets · partial/i,
+    )
+    await expect(page.locator('.figma-global-activity__hub-chart .hx-chart2')).toHaveAttribute(
+      'aria-label',
+      /coverage-qualified/i,
+    )
+    await assertNoConsoleErrors(page, errors)
+  })
+
+  test('provider lanes remain fixed and in-frame on mobile', async ({ page }) => {
+    const errors = attachConsoleErrorGuard(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/analytics')
+
+    const chart = page.locator('.figma-global-activity__hub-chart')
+    const lanes = chart.locator('.hx-provider-lanes')
+    await expect(chart.locator('.hx-chart2')).toBeVisible()
+    await expect(chart.locator('.hx-provider-chips')).toHaveCount(0)
+    await expect(lanes.locator('.hx-provider-lane')).toHaveCount(4)
+    const geometry = await page.evaluate(() => {
+      const plot = document.querySelector('.figma-global-activity__hub-chart .hx-chart2')
+      const lanes = document.querySelector('.figma-global-activity__hub-chart .hx-provider-lanes')
+      const shell = document.querySelector('.figma-global-activity__hub-chart')
+      if (!plot || !lanes || !shell) return { ok: false, reason: 'missing chart geometry' }
+      const plotRect = plot.getBoundingClientRect()
+      const lanesRect = lanes.getBoundingClientRect()
+      const shellRect = shell.getBoundingClientRect()
+      return {
+        ok: lanesRect.top >= plotRect.bottom - 1 && lanesRect.right <= shellRect.right + 1,
+        plotBottom: plotRect.bottom,
+        lanesTop: lanesRect.top,
+        lanesRight: lanesRect.right,
+        shellRight: shellRect.right,
+      }
+    })
+    expect(geometry.ok, JSON.stringify(geometry)).toBe(true)
+    await expect(lanes).toContainText(/7TV.*TW.*BT.*FFZ/s)
+    await assertNoConsoleErrors(page, errors)
+  })
+
+  test('chart navigator supports brush, wheel zoom, shifted pan, keyboard, and reset locally', async ({ page }) => {
+    const errors = attachConsoleErrorGuard(page)
+    let hubRangeRequests = 0
+    page.on('request', (request) => {
+      if (/\/v1\/public\/hub/.test(request.url()) && request.url().includes('activityWindow=24h')) {
+        hubRangeRequests += 1
+      }
+    })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/analytics')
+
+    const navigator = page.locator('[data-hub-chart-navigator]')
+    const track = navigator.locator('.hx-chart-navigator__track')
+    const chart = page.locator('[data-hub-chart-wheel-surface]')
+    const start = navigator.getByRole('slider', { name: 'Chart view start' })
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', '0:239')
+    await expect(navigator.locator('.hx-chart-navigator__controls')).toHaveCount(0)
+    await expect(navigator.locator('[data-hub-chart-preset]')).toHaveCount(0)
+    const initialRequests = hubRangeRequests
+
+    const trackBox = await track.boundingBox()
+    expect(trackBox).toBeTruthy()
+    const brushStartX = trackBox!.x + trackBox!.width * 0.2
+    const brushEndX = trackBox!.x + trackBox!.width * 0.7
+    const brushY = trackBox!.y + trackBox!.height / 2
+    await track.dispatchEvent('pointerdown', { pointerId: 41, pointerType: 'mouse', button: 0, clientX: brushStartX, clientY: brushY })
+    await navigator.dispatchEvent('pointermove', { pointerId: 41, pointerType: 'mouse', clientX: brushEndX, clientY: brushY })
+    await navigator.dispatchEvent('pointerup', { pointerId: 41, pointerType: 'mouse', clientX: brushEndX, clientY: brushY })
+    const brushed = await navigator.getAttribute('data-hub-chart-navigator-window')
+    expect(brushed).toBe('48:167')
+
+    const chartBox = await chart.boundingBox()
+    expect(chartBox).toBeTruthy()
+    const wheelX = chartBox!.x + chartBox!.width * 0.6
+    const wheelY = chartBox!.y + chartBox!.height / 2
+    await chart.dispatchEvent('wheel', { deltaY: -360, deltaX: 0, clientX: wheelX, clientY: wheelY })
+    const wheelZoomed = await navigator.getAttribute('data-hub-chart-navigator-window')
+    expect(wheelZoomed).not.toBe(brushed)
+
+    await chart.dispatchEvent('wheel', { deltaY: 280, deltaX: 0, shiftKey: true, clientX: wheelX, clientY: wheelY })
+    const panned = await navigator.getAttribute('data-hub-chart-navigator-window')
+    expect(panned).not.toBe(wheelZoomed)
+
+    await track.dblclick()
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', '0:239')
+    await start.press('ArrowRight')
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', '1:239')
+    await start.press('Escape')
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', '0:239')
+    expect(hubRangeRequests).toBe(initialRequests)
     await assertNoConsoleErrors(page, errors)
   })
 
@@ -199,7 +321,7 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(bucketFilter).toHaveCount(0)
     await expect(page.locator('.activity-bucket-inspector--preview')).toHaveCount(0)
     await expect(page.locator('.activity-bucket-inspector--selected')).toHaveCount(0)
-    await expect(page.getByText(/Top emotes —/i).first()).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
 
     await assertNoConsoleErrors(page, errors)
   })
@@ -337,38 +459,23 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('Live Wire selection coordinates one inspector and clear remains cleared', async ({ page }) => {
+  test('Live Wire tape is chart-relative, selects its minute, and never nests navigation', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
 
-    const liveWire = page.getByRole('region', { name: 'Live Wire' })
-    const sodaCard = liveWire.locator('article').filter({ hasText: 'sodapoppin' }).first()
+    const tape = page.getByRole('region', { name: 'Live Wire' })
+    await expect(tape).toBeVisible()
+    await expect(page.locator('.figma-global-activity__annotation-lane .hub-live-wire')).toHaveCount(0)
+    await expect(tape.locator('a .hub-live-wire__event-card, .hub-live-wire__event-card a')).toHaveCount(0)
+    await expect(tape.locator('.hub-live-wire__bar, [role="progressbar"]')).toHaveCount(0)
+
+    const sodaCard = tape.getByRole('button', { name: /sodapoppin.*Show this minute on the activity chart/i })
     await expect(sodaCard).toBeVisible()
-    const sodaInspect = sodaCard.getByRole('button', { name: 'Inspect this minute' })
-
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
+    await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(0)
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
-    await expect(
-      page.locator('.pulse-moments-live__side .pulse-moments__inspector'),
-    ).toBeVisible()
-    await expect(
-      page.locator('.activity-bucket-inspector .hub-moment-rail'),
-    ).toHaveCount(0)
-    await expect(page.locator('.pulse-moments-live__banner')).toHaveCount(0)
-
-    await sodaInspect.click()
-    const chart = page.locator('.figma-global-activity__hub-chart .hx-chart2')
-    await expect(chart).toHaveAttribute('data-selected', 'true')
-    await expect(page.getByTestId('bucket-inspector-linked-moment')).toContainText(
-      'sodapoppin',
-    )
-
-    await page
-      .getByTestId('bucket-inspector-linked-moment')
-      .getByRole('button', { name: 'Clear' })
-      .click()
-    await expect(page.getByTestId('bucket-inspector-linked-moment')).toHaveCount(0)
-    await expect(chart).not.toHaveAttribute('data-selected', 'true')
+    await sodaCard.click()
+    await expect(page.locator('.figma-global-activity__hub-chart .hx-chart2')).toHaveAttribute('data-selected', 'true')
 
     await assertNoWhiteAnalyticsSurfaces(page)
     await assertNoConsoleErrors(page, errors)
@@ -378,7 +485,7 @@ test.describe('analytics hub UX (interaction)', () => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
     await expect(page.locator('.pulse-moments-live')).toBeVisible()
-    await page.locator('.pulse-moments__peak-row').first().click()
+    await page.locator('.pulse-moments__peak-row', { hasText: 'Twitch emote spike' }).click()
 
     await expect(page.locator('.activity-bucket-inspector--moment')).toHaveCount(0)
     await expect(page.getByLabel('Activity bucket inspector')).toBeVisible()
@@ -431,37 +538,13 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('default inspector shows 24h emote economy summary', async ({ page }) => {
+  test('idle shared sidecar shows Live Wire instead of the retired default inspector', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    const inspector = page.locator('.activity-bucket-inspector')
-    await expect(inspector).toBeVisible()
-    await expect(inspector).not.toHaveClass(/activity-bucket-inspector--active/)
-    await expect(inspector.getByText('Unique emotes')).toBeVisible()
-    await expect(inspector.getByText('Avg emotes/min')).toBeVisible()
-    await expect(inspector.getByText('Top emote share')).toBeVisible()
-    await expect(inspector.getByText('140')).toBeVisible()
-    await expect(inspector.getByText('88/m')).toBeVisible()
-    await expect(inspector.getByText('22.0%')).toBeVisible()
-    await expect(inspector.getByText('Leading emote')).toBeVisible()
-    await expect(inspector.locator('.pulse-moments__inspector-top-emote-name')).toHaveText('KEKW')
-
-    const topEmotesList = inspector.locator('.hub-top-emotes-inspector')
-    await expect(topEmotesList).toBeVisible()
-    await expect(inspector.locator('.hub-top-emotes-inspector__provider').first()).toBeVisible()
-
-    const rowStyle = await topEmotesList.locator('li').first().evaluate((node) => {
-      const styles = window.getComputedStyle(node)
-      const barFill = node.querySelector('.hub-top-emotes-inspector__bar i')
-      const barBg = barFill ? window.getComputedStyle(barFill).backgroundColor : ''
-      return {
-        borderWidth: styles.borderTopWidth,
-        backgroundColor: styles.backgroundColor,
-        barBackgroundColor: barBg,
-      }
-    })
-    expect(rowStyle.borderWidth).toBe('0px')
-    expect(rowStyle.barBackgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    const liveDesk = page.getByRole('region', { name: 'Live Wire' })
+    await expect(liveDesk).toBeVisible()
+    await expect(liveDesk.getByRole('heading', { name: 'Live Wire' })).toBeVisible()
+    await expect(page.locator('.activity-bucket-inspector')).toHaveCount(0)
 
     await assertNoConsoleErrors(page, errors)
   })
@@ -499,28 +582,29 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(page.locator('.pulse-moments-live__side .pulse-moments__inspector')).toBeVisible()
     await expect(page.locator('.activity-bucket-inspector--moment')).toHaveCount(0)
     await expect(page.getByTestId('bucket-inspector-linked-moment')).toBeVisible()
-    await expect(page.locator('.pulse-moments__burst-bar span').first()).toBeVisible()
+    await expect(page.locator('.pulse-moments-live__side .emote-rank-row *[class*="share"]').first()).toBeVisible()
 
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('default inspector shows top live by activity footer', async ({ page }) => {
+  test('idle Live Wire exposes verified streamer-relative detections', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    const inspector = page.locator('.activity-bucket-inspector')
-    await expect(inspector).toBeVisible()
-    await expect(inspector.getByText('Top live by activity')).toBeVisible()
-    await expect(inspector.locator('.activity-bucket-inspector__streamer-row').first()).toBeVisible()
+    const liveDesk = page.getByRole('region', { name: 'Live Wire' })
+    await expect(liveDesk).toBeVisible()
+    await expect(liveDesk.getByText(/compared with earlier in each stream/i)).toBeVisible()
+    await expect(liveDesk.getByRole('button', { name: /xQc.*Show this minute on the activity chart/i })).toBeVisible()
     await assertNoConsoleErrors(page, errors)
   })
 
   test('global activity shell visual baseline', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
+    await page.addStyleTag({ content: '.analytics-topnav { position: static !important; }' })
     await expect(page.locator('.figma-activity-hub')).toBeVisible()
     await expect(page.locator('.figma-global-activity')).toBeVisible()
     await expect(page.locator('.figma-global-activity .hx-chart2')).toBeVisible()
-    await expect(page.locator('.activity-bucket-inspector')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
     await assertNoWhiteAnalyticsSurfaces(page)
     await expect(page.locator('.figma-global-activity')).toHaveScreenshot('hub-global-activity-shell.png', {
       maxDiffPixelRatio: 0.04,

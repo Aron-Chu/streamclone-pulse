@@ -218,181 +218,281 @@ export default function Support() {
   return (
     <PublicLayout>
       <article className="panel public-document" data-testid="support-page">
-        <h1>StreamPulse Support</h1>
-        <p className="muted">
-          Troubleshooting for the Twitch extension and public analytics portal.
-        </p>
-
-        <h2>Install StreamPulse</h2>
-        <p>
-          <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
-        </p>
-
-        <h2>Extension not appearing on Twitch</h2>
-        <ol>
-          <li>
-            Open <code>chrome://extensions</code> and confirm StreamPulse is enabled.
-          </li>
-          <li>
-            Select <strong>Reload</strong> for StreamPulse.
-          </li>
-          <li>Hard-refresh the Twitch channel or VOD tab.</li>
-          <li>
-            Open Twitch chat and look for the <strong>Chat / Pulse</strong> switch above chat.
-          </li>
-        </ol>
-
-        <h2>Pulse is loading or has limited coverage</h2>
-        <p>
-          StreamPulse only displays data the backend actually collected. A newly tracked stream can show
-          collecting, stats-only, or partial coverage while minute rollups arrive. Check the{' '}
-          <Link to="/status">service status</Link> and retry after the next update.
-        </p>
-
-        <h2>Contact form</h2>
-        <p className="muted">
-          The hosted support form stays unavailable until operators enable backend acceptance and configure
-          bot protection. This page does not claim the form is live.
-        </p>
-
-        {!formVisible ? (
-          <p data-testid="support-form-unavailable" role="status" aria-live="polite">
-            The hosted form is unavailable right now. For privacy or legal questions only, email{' '}
-            <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. That address is not
-            for routine product support. Security reports are not accepted here.
+        <header className="mb-6 border-b border-white/[0.08] pb-6">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 rounded bg-violet-500/10 px-2.5 py-1 text-xs font-bold text-violet-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+              StreamPulse Help & Diagnostic Desk
+            </span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Support & Troubleshooting</h1>
+          <p className="mt-2 text-base text-zinc-400">
+            Troubleshooting for the Twitch Chrome extension, coverage states, and public analytics portal.
           </p>
-        ) : null}
+        </header>
 
-        {formVisible ? (
-          <form data-testid="support-form" onSubmit={onSubmit} className="support-form" aria-busy={state.kind === 'loading'}>
-            <label>
-              Category
-              <select
-                value={category}
-                onChange={e => setCategory(e.target.value as SupportCategory)}
-                aria-required="true"
-              >
-                {SUPPORT_CATEGORIES.map(value => (
-                  <option key={value} value={value}>
-                    {CATEGORY_LABELS[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Subject
-              <input
-                value={subject}
-                maxLength={120}
-                onChange={e => setSubject(e.target.value)}
-                required
-                aria-required="true"
-              />
-            </label>
-            <label>
-              Description
-              <textarea
-                value={description}
-                maxLength={4000}
-                rows={6}
-                onChange={e => setDescription(e.target.value)}
-                required
-                aria-required="true"
-              />
-            </label>
-            <label>
-              Twitch login (optional, typed manually)
-              <input value={twitchLogin} onChange={e => setTwitchLogin(e.target.value)} autoComplete="off" />
-            </label>
-            <label>
-              Reply email (optional)
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoComplete="email"
-              />
-            </label>
-            {email.trim() ? (
-              <label className="checkbox">
+        {/* Self-Help / Quick Diagnostics Grid */}
+        <div className="feature-grid">
+          <div className="feature-card">
+            <span className="feature-card__badge text-cyan-300">Quick Fix 01</span>
+            <h3>Extension Not Appearing?</h3>
+            <p>
+              Open <code>chrome://extensions</code>, confirm StreamPulse is enabled, select <strong>Reload</strong>, and hard-refresh your Twitch tab.
+            </p>
+          </div>
+          <div className="feature-card">
+            <span className="feature-card__badge text-amber-300">Quick Fix 02</span>
+            <h3>Limited Coverage / Warming?</h3>
+            <p>
+              New streams take 1–3 minutes to warm up IRC collectors. Check the <Link to="/status" className="text-violet-400 hover:underline">live system status</Link> for telemetry.
+            </p>
+          </div>
+          <div className="feature-card">
+            <span className="feature-card__badge text-emerald-300">Install Guide</span>
+            <h3>Official Chrome Listing</h3>
+            <p>
+              Install the verified Manifest V3 build directly from the official Chrome Web Store.
+            </p>
+          </div>
+        </div>
+
+        <section id="install" className="mt-6">
+          <h2>Install StreamPulse</h2>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
+            <span className="text-xs font-mono text-zinc-500">Official Web Store Build</span>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
+          <h2 className="!mt-0">Extension not appearing on Twitch</h2>
+          <ol className="mt-3 space-y-2 text-sm text-zinc-300">
+            <li>
+              Open <code className="font-mono text-violet-300">chrome://extensions</code> and confirm StreamPulse is enabled.
+            </li>
+            <li>
+              Select <strong>Reload</strong> for StreamPulse.
+            </li>
+            <li>Hard-refresh the Twitch channel or VOD tab (<kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-mono">Ctrl+F5</kbd> / <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-mono">Cmd+Shift+R</kbd>).</li>
+            <li>
+              Open Twitch chat and look for the <strong>Chat / Pulse</strong> switch above the chat input box.
+            </li>
+          </ol>
+        </section>
+
+        <section className="mt-8">
+          <h2>Pulse is loading or has limited coverage</h2>
+          <p>
+            StreamPulse only displays data the backend actually collected. A newly tracked stream can show
+            collecting, stats-only, or partial coverage while minute rollups arrive. Check the{' '}
+            <Link to="/status" className="text-violet-400 hover:underline font-semibold">service status</Link> and retry after the next update.
+          </p>
+        </section>
+
+        {/* Contact / Case Submission Section */}
+        <section className="mt-10 rounded-xl border border-white/[0.08] bg-black/40 p-6">
+          <h2 className="!mt-0">Contact form</h2>
+          <p className="muted text-sm">
+            The hosted support form stays unavailable until operators enable backend acceptance and configure
+            bot protection. This page does not claim the form is live.
+          </p>
+
+          {!formVisible ? (
+            <div className="alert alert-warning mt-4" data-testid="support-form-unavailable" role="status" aria-live="polite">
+              <span>
+                The hosted form is unavailable right now. For privacy or legal questions only, email{' '}
+                <a href="mailto:privacy@streampulse.stream" className="underline font-bold">privacy@streampulse.stream</a>. That address is not
+                for routine product support. Security reports are not accepted here.
+              </span>
+            </div>
+          ) : null}
+
+          {formVisible ? (
+            <form data-testid="support-form" onSubmit={onSubmit} className="support-form mt-6 space-y-4" aria-busy={state.kind === 'loading'}>
+              <div className="form-group">
+                <label className="field-label">
+                  Category
+                </label>
+                <div className="category-pills" role="radiogroup" aria-label="Support Category">
+                  {SUPPORT_CATEGORIES.map(value => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setCategory(value)}
+                      className={`category-pill${category === value ? ' is-selected' : ''}`}
+                    >
+                      {CATEGORY_LABELS[value]}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value as SupportCategory)}
+                  aria-required="true"
+                  className="field-input hidden"
+                >
+                  {SUPPORT_CATEGORIES.map(value => (
+                    <option key={value} value={value}>
+                      {CATEGORY_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="field-label">
+                  Subject
+                </label>
+                <input
+                  value={subject}
+                  maxLength={120}
+                  onChange={e => setSubject(e.target.value)}
+                  required
+                  aria-required="true"
+                  placeholder="Brief summary of the issue..."
+                  className="field-input"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="field-label">
+                  Description
+                </label>
+                <textarea
+                  value={description}
+                  maxLength={4000}
+                  rows={5}
+                  onChange={e => setDescription(e.target.value)}
+                  required
+                  aria-required="true"
+                  placeholder="Describe what happened, channel name, or steps to reproduce..."
+                  className="field-input"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="field-label">
+                    Twitch login (optional, typed manually)
+                  </label>
+                  <input
+                    value={twitchLogin}
+                    onChange={e => setTwitchLogin(e.target.value)}
+                    autoComplete="off"
+                    placeholder="e.g. xqc"
+                    className="field-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">
+                    Reply email (optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    className="field-input"
+                  />
+                </div>
+              </div>
+
+              {email.trim() ? (
+                <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={contactConsent}
+                    onChange={e => setContactConsent(e.target.checked)}
+                    className="rounded border-zinc-700 bg-zinc-900"
+                  />
+                  <span>I consent to being contacted at this email about this report.</span>
+                </label>
+              ) : null}
+
+              <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={contactConsent}
-                  onChange={e => setContactConsent(e.target.checked)}
+                  checked={consent}
+                  onChange={e => setConsent(e.target.checked)}
+                  aria-required="true"
+                  className="rounded border-zinc-700 bg-zinc-900"
                 />
-                I consent to being contacted at this email about this report.
+                <span>I consent to submitting this text to StreamPulse support.</span>
               </label>
-            ) : null}
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={e => setConsent(e.target.checked)}
-                aria-required="true"
+
+              <div
+                ref={widgetHostRef}
+                data-testid="support-turnstile"
+                aria-label="Bot protection challenge"
+                className="py-2"
               />
-              I consent to submitting this text to StreamPulse support.
-            </label>
-            <div
-              ref={widgetHostRef}
-              data-testid="support-turnstile"
-              aria-label="Bot protection challenge"
-            />
-            <button
-              type="submit"
-              className={buttonClass('default', 'sm')}
-              disabled={state.kind === 'loading'}
-              aria-disabled={state.kind === 'loading'}
-            >
-              {state.kind === 'loading' ? 'Submitting…' : 'Submit'}
-            </button>
-          </form>
-        ) : null}
 
-        {state.kind === 'loading' ? (
-          <p data-testid="support-form-loading" role="status" aria-live="polite">
-            Submitting your report…
-          </p>
-        ) : null}
-        {state.kind === 'validation' ? (
-          <p data-testid="support-form-validation" role="alert" aria-live="assertive">
-            {state.message}
-          </p>
-        ) : null}
-        {state.kind === 'rate_limit' ? (
-          <p data-testid="support-form-rate-limit" role="alert" aria-live="assertive">
-            Too many requests. Please wait and try again.
-          </p>
-        ) : null}
-        {state.kind === 'success' ? (
-          <p data-testid="support-form-success" role="status" aria-live="polite">
-            Submitted. Case ID: <code>{state.caseId}</code>
-          </p>
-        ) : null}
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={state.kind === 'loading'}
+                aria-disabled={state.kind === 'loading'}
+              >
+                {state.kind === 'loading' ? 'Submitting…' : 'Submit Support Request'}
+              </button>
+            </form>
+          ) : null}
 
-        <h2>What to include in a support request</h2>
-        <ul>
-          <li>Chrome and StreamPulse extension versions.</li>
-          <li>The Twitch channel or VOD name (typed manually is fine).</li>
-          <li>The exact error message and whether the Chat / Pulse switch appears.</li>
-        </ul>
-        <p>
-          Do not send Twitch cookies, authorization headers, raw chat exports, passwords, or access keys.
-          Do not attach screenshots that contain account secrets.
-        </p>
+          {state.kind === 'loading' ? (
+            <p data-testid="support-form-loading" role="status" aria-live="polite" className="mt-4 text-xs font-mono text-zinc-400">
+              Submitting your report…
+            </p>
+          ) : null}
+          {state.kind === 'validation' ? (
+            <div data-testid="support-form-validation" role="alert" aria-live="assertive" className="alert alert-error mt-4">
+              <span>{state.message}</span>
+            </div>
+          ) : null}
+          {state.kind === 'rate_limit' ? (
+            <div data-testid="support-form-rate-limit" role="alert" aria-live="assertive" className="alert alert-error mt-4">
+              <span>Too many requests. Please wait and try again.</span>
+            </div>
+          ) : null}
+          {state.kind === 'success' ? (
+            <div data-testid="support-form-success" role="status" aria-live="polite" className="alert alert-success mt-4">
+              <span>Submitted successfully. Case ID: <code className="font-mono font-bold text-emerald-300">{state.caseId}</code></span>
+            </div>
+          ) : null}
+        </section>
 
-        <h2>Contact</h2>
-        <p>
-          Email <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> for privacy or
-          legal questions only. It is not a routine product-support mailbox.
-        </p>
-        <p className="muted">
-          Dedicated product-support and security channels are not published yet. Do not invent or use
-          unverified addresses.
-        </p>
-        <p>
-          You can also review the <Link to="/docs#extension">extension setup guide</Link> or the{' '}
-          <Link to="/privacy">privacy policy</Link>.
-        </p>
+        {/* What to Include */}
+        <section className="mt-8">
+          <h2>What to include in a support request</h2>
+          <ul className="space-y-1.5 text-zinc-300 text-sm">
+            <li>Chrome and StreamPulse extension versions.</li>
+            <li>The Twitch channel or VOD name (typed manually is fine).</li>
+            <li>The exact error message and whether the Chat / Pulse switch appears.</li>
+          </ul>
+          <p className="alert alert-warning mt-4 text-xs">
+            <span>
+              <strong>Privacy Protection:</strong> Do not send Twitch cookies, authorization headers, raw chat exports, passwords, or access keys.
+              Do not attach screenshots that contain account secrets.
+            </span>
+          </p>
+        </section>
+
+        {/* Contact Mailbox */}
+        <section className="mt-8 border-t border-white/[0.08] pt-6">
+          <h2>Contact</h2>
+          <p>
+            Email <a href="mailto:privacy@streampulse.stream" className="text-violet-400 font-bold hover:underline">privacy@streampulse.stream</a> for privacy or
+            legal questions only. It is not a routine product-support mailbox.
+          </p>
+          <p className="muted text-xs">
+            Dedicated product-support and security channels are not published yet. Do not invent or use
+            unverified addresses.
+          </p>
+          <p className="text-xs text-zinc-400 mt-2">
+            You can also review the <Link to="/docs#extension" className="text-violet-400 hover:underline">extension setup guide</Link> or the{' '}
+            <Link to="/privacy" className="text-violet-400 hover:underline">privacy policy</Link>.
+          </p>
+        </section>
       </article>
     </PublicLayout>
   )

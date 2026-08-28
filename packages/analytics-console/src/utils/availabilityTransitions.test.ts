@@ -39,16 +39,16 @@ describe('availability React Query transitions without remount', () => {
 
     const linked = mergeSessionStatusIntoDetail(ended, {
       state: 'historical',
-      vodId: '999',
+      vodId: '999999999',
       availability: {
         ...ended.availability!,
         vodState: 'linked',
-        vodId: '999',
+        vodId: '999999999',
       },
     })
     expect(linked.rollups).toEqual(base.rollups)
     expect(resolveVodLinkState({ detail: linked }).status).toBe('linked')
-    expect(resolveVodLinkState({ detail: linked }).vodId).toBe('999')
+    expect(resolveVodLinkState({ detail: linked }).vodId).toBe('999999999')
   })
 
   it('keeps request_failed recoverable and distinct from unavailable', () => {

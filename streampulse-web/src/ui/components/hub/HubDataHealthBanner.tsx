@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react'
 import type { HubCorpusPipeline } from '../../../lib/publicHub'
 import type { PublicHubLoadSource } from '../../../lib/publicHub'
 import { backendSourceCaption, resolveBackendSource } from '../../../lib/backendSource'
-import { formatActivityCoveragePercent, type ActivitySummary } from '../../../lib/hubActivitySummary'
+import type { ActivitySummary } from '../../../lib/hubActivitySummary'
 
 export interface HubDataHealthBannerProps {
   loadSource?: PublicHubLoadSource | null
@@ -64,13 +64,10 @@ export function HubDataHealthBanner({
     }
 
     if (activitySummary.expectedBuckets > 0 && activitySummary.missingBuckets > 0) {
-      const pct = formatActivityCoveragePercent(
-        activitySummary.pointCount,
-        activitySummary.expectedBuckets,
-      )
+      const pct = Math.round(activitySummary.coveragePct)
       messages.push({
         tone: 'warn',
-        text: `Activity coverage ${pct} for this window (${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets).`,
+        text: `Activity coverage ${pct}% for this window (${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets).`,
         detail: `${activitySummary.missingBuckets} bucket${activitySummary.missingBuckets === 1 ? '' : 's'} missing from stored rollups.`,
       })
     }

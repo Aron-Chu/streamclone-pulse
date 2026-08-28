@@ -1,7 +1,7 @@
 import type { ComponentType, CSSProperties, ReactNode } from 'react'
 
-type LandingPulsePayload = import('./ui/components/landing/landingExtensionTypes.ts').LandingPulsePayload
-type LandingPastVodRow = import('./ui/components/landing/landingExtensionTypes.ts').LandingPastVodRow
+type LandingPulsePayload = import('../ui/components/landing/landingExtensionTypes.ts').LandingPulsePayload
+type LandingPastVodRow = import('../ui/components/landing/landingExtensionTypes.ts').LandingPastVodRow
 
 declare module '@pulse-ext/ui/LiveStatsBand.tsx' {
   export const LiveStatsBand: ComponentType<{

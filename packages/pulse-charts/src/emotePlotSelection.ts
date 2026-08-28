@@ -12,9 +12,6 @@ export function defaultEmotePlotKeys(
   if (viewMode === 'overview') {
     return keys[0] ? new Set([keys[0]]) : new Set()
   }
-  if (viewMode === 'emotes') {
-    return new Set(keys.slice(0, MAX_PLOTTED_EMOTES))
-  }
   return new Set(keys.slice(0, 3))
 }
 
@@ -24,7 +21,7 @@ export function resolveChartEmoteKeys(
   viewMode: EmotePlotViewMode,
 ): Set<string> {
   if (selection === 'none') return new Set()
-  if (selection instanceof Set) return selection
+  if (selection instanceof Set) return new Set(Array.from(selection).slice(0, MAX_PLOTTED_EMOTES))
   return defaultEmotePlotKeys(topEmotes, viewMode)
 }
 
@@ -50,9 +47,7 @@ export function toggleEmotePlotSelection(
 }
 
 export function activityZoneFraction(expanded: boolean): number {
-  // Chat and emotes are the creator-facing story. Keep viewers as a compact
-  // context rail instead of letting their larger absolute scale own the plot.
-  return expanded ? 0.86 : 0.74
+  return expanded ? 0.56 : 0.36
 }
 
 export function activityBandFractions(

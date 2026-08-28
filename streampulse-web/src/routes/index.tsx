@@ -10,6 +10,7 @@ import Support from './public/Support'
 import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
+const AnalyticsNewsroomPage = lazy(() => import('./analytics/AnalyticsNewsroomPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
@@ -59,6 +60,10 @@ export function AppRoutes() {
         <Route path="/analytics/emotes" element={<Navigate to="/analytics" replace />} />
         <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
         <Route path="/analytics/streams" element={<Navigate to="/analytics" replace />} />
+
+        {/* Public Pulse Newsroom routes must precede dynamic channel routes. */}
+        <Route path="/analytics/newsroom" element={<AnalyticsNewsroomPage />} />
+        <Route path="/analytics/newsroom/:storyId" element={<AnalyticsNewsroomPage />} />
 
         {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />

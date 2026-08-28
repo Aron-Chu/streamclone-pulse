@@ -13,7 +13,17 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": false
+    "verbatimModuleSyntax": false,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@streampulse/pulse-core": ["../pulse-core/dist/index.d.ts"],
+      "@streampulse/pulse-charts": ["../pulse-charts/dist/index.d.ts"],
+      "react-router-dom": ["../../streampulse-web/node_modules/react-router-dom"],
+      "@tanstack/react-query": ["../../streampulse-web/node_modules/@tanstack/react-query"],
+      "zustand": ["../../streampulse-web/node_modules/zustand"],
+      "zustand/*": ["../../streampulse-web/node_modules/zustand/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [
