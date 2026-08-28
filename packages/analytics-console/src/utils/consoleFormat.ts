@@ -43,14 +43,49 @@ export function formatDateTime(value?: string): string {
   )
 }
 
+function formatDurationMinutes(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes))
+  if (total < 60) return `${total}m`
+  return `${Math.floor(total / 60)}h ${total % 60}m`
+}
+
 export function duration(stream?: AnalyticsStream): string {
   if (!stream) return '-'
   const start = Date.parse(stream.startedAt)
   const end = stream.endedAt ? Date.parse(stream.endedAt) : Date.now()
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '-'
-  const minutes = Math.round((end - start) / 60000)
-  if (minutes < 60) return `${minutes}m`
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  return formatDurationMinutes((end - start) / 60000)
+}
+
+/**
+ * Prefer Pulse rollup / chat coverage span for the Duration KPI so late EndedAt
+ * walls (zombie-live) do not report 18h when charts only cover ~9h of chat.
+ */
+export function durationFromDetail(detail?: AnalyticsStreamDetail | null): string {
+  if (!detail) return '-'
+  const coverageMinutes = detail.chatCoverage?.chatSpanMinutes
+  if (coverageMinutes != null && coverageMinutes > 0) {
+    const wallMinutes = detail.chatCoverage?.streamSpanMinutes ?? 0
+    if (wallMinutes <= 0 || wallMinutes <= coverageMinutes + 5) {
+      return formatDurationMinutes(coverageMinutes)
+    }
+    // Partial / trailing empty wall: show measured Pulse span.
+    if (coverageMinutes < wallMinutes * 0.85) {
+      return formatDurationMinutes(coverageMinutes)
+    }
+  }
+  const rollups = detail.rollups ?? []
+  if (rollups.length >= 2) {
+    const first = Date.parse(rollups[0]!.minuteTs)
+    const last = Date.parse(rollups[rollups.length - 1]!.minuteTs)
+    if (Number.isFinite(first) && Number.isFinite(last) && last >= first) {
+      return formatDurationMinutes((last - first) / 1000 / 60 + 1)
+    }
+  }
+  if (detail.timelineMinutes != null && detail.timelineMinutes > 0) {
+    return formatDurationMinutes(detail.timelineMinutes)
+  }
+  return duration(detail.stream)
 }
 
 export function formatVodOffset(seconds: number): string {

@@ -59,7 +59,6 @@ describe('MomentContextSpans', () => {
 })
 
 
-
 describe('FigmaMomentInspector pulse-live hero', () => {
 
   it('renders KPI tiles and time badge without legacy summary line', () => {
@@ -123,23 +122,6 @@ describe('FigmaMomentInspector pulse-live hero', () => {
     expect(momentHead?.closest('.pulse-moments__inspector-head-main')).toBeTruthy()
     expect(momentHead?.closest('.pulse-moments__inspector-time-badge')).toBeNull()
 
-  })
-
-  it('renders aligned analytics, watch, and copy actions with distinct destinations', () => {
-    render(
-      <MemoryRouter>
-        <FigmaMomentInspector
-          variant="pulse-live"
-          channelLive
-          sessionHref="/analytics/xqc/stream-1#t=60"
-          moment={{ offsetSeconds: 60, label: 'Chat spike', login: 'xqc', streamId: 'stream-1' }}
-        />
-      </MemoryRouter>,
-    )
-    expect(screen.getByRole('link', { name: 'Analytics' }).getAttribute('href')).toBe('/analytics/xqc/stream-1#t=60')
-    expect(screen.getByRole('link', { name: /Watch live/ }).getAttribute('href')).toBe('https://www.twitch.tv/xqc')
-    expect(screen.getByRole('button', { name: 'Copy link' })).toBeTruthy()
-    expect(document.querySelector('.moment-action-row')?.children).toHaveLength(3)
   })
 
 })

@@ -1,3 +1,5 @@
+import type { ViewerTimestampScale } from './viewerGeometry.ts'
+
 export type GameSegmentPlotInput = {
   offsetSeconds: number
   durationSeconds: number
@@ -28,11 +30,10 @@ export function gamesNormalizeDurationSeconds(
     return explicitDurationSeconds
   }
   if (chartOffsets.length > 0) {
+    const first = chartOffsets[0]!
     const last = chartOffsets[chartOffsets.length - 1]!
-    if (Number.isFinite(last)) {
-      // Absolute offset from stream start through the last minute bucket.
-      // Do not use (last - first): late coverage starts must not shrink total duration.
-      return Math.max(last + 60, 60)
+    if (Number.isFinite(first) && Number.isFinite(last)) {
+      return Math.max(last + 60, last - first + 60, 60)
     }
   }
   return Math.max(rollupCount * 60, 60)
@@ -90,14 +91,11 @@ export function gameSegmentPlotBoundsByOffsets(
     return null
   }
 
-  // Minute buckets are starts; the last visible minute covers through chartLast+60.
-  const chartEndExclusive = chartLast + 60
-
   // Single-bucket charts (first === last) still need hover highlight geometry.
   if (chartLast <= chartFirst) {
     const segStart = Math.max(0, segment.offsetSeconds)
     const segEnd = segStart + segment.durationSeconds
-    if (segEnd <= chartFirst || segStart >= chartEndExclusive) return null
+    if (segEnd <= chartFirst || segStart > chartLast) return null
     return {
       startX: plotLeft,
       endX: plotLeft + plotWidth,
@@ -109,24 +107,20 @@ export function gameSegmentPlotBoundsByOffsets(
   const segStart = Math.max(0, segment.offsetSeconds)
   const segEnd = segStart + segment.durationSeconds
   const visibleStart = Math.max(chartFirst, segStart)
-  const visibleEnd = Math.min(chartEndExclusive, segEnd)
+  const visibleEnd = Math.min(chartLast, segEnd)
   if (visibleEnd <= visibleStart) return null
 
   const startX = plotXForOffsetSeconds(visibleStart, chartOffsets, plotLeft, plotWidth)
-  // Map the exclusive end onto the right edge when it reaches past the last bucket start.
-  const endX =
-    visibleEnd >= chartEndExclusive
-      ? plotLeft + plotWidth
-      : plotXForOffsetSeconds(visibleEnd, chartOffsets, plotLeft, plotWidth)
+  const endX = plotXForOffsetSeconds(visibleEnd, chartOffsets, plotLeft, plotWidth)
   if (startX == null || endX == null || !Number.isFinite(startX) || !Number.isFinite(endX)) {
     return null
   }
 
   return {
     startX,
-    endX: Math.max(startX, endX),
-    centerX: (startX + Math.max(startX, endX)) / 2,
-    textWidth: Math.max(0, Math.max(startX, endX) - startX),
+    endX,
+    centerX: (startX + endX) / 2,
+    textWidth: endX - startX,
   }
 }
 
@@ -151,9 +145,7 @@ export function gameSegmentPlotBounds(
   const chartFirstMs = Date.parse(rollups[0].minuteTs)
   const chartLastMs = Date.parse(rollups[rollups.length - 1].minuteTs)
   if (!Number.isFinite(chartFirstMs) || !Number.isFinite(chartLastMs)) return null
-  // Last minute bucket covers through +60s; plot span uses exclusive end for width.
-  const chartEndExclusiveMs = chartLastMs + 60_000
-  const chartSpanMs = chartEndExclusiveMs - chartFirstMs
+  const chartSpanMs = chartLastMs - chartFirstMs
   if (!Number.isFinite(chartSpanMs) || chartSpanMs <= 0) return null
 
   const streamStartMs = streamStartedAt ? Date.parse(streamStartedAt) : chartFirstMs
@@ -162,7 +154,7 @@ export function gameSegmentPlotBounds(
   const segStartMs = streamStartMs + Math.max(0, segment.offsetSeconds) * 1000
   const segEndMs = segStartMs + segment.durationSeconds * 1000
   const visibleStartMs = Math.max(chartFirstMs, segStartMs)
-  const visibleEndMs = Math.min(chartEndExclusiveMs, segEndMs)
+  const visibleEndMs = Math.min(chartLastMs, segEndMs)
   if (visibleEndMs <= visibleStartMs) return null
 
   const startPct = (visibleStartMs - chartFirstMs) / chartSpanMs
@@ -171,6 +163,53 @@ export function gameSegmentPlotBounds(
   const endX = plotLeft + endPct * plotWidth
   if (!Number.isFinite(startX) || !Number.isFinite(endX)) return null
 
+  return {
+    startX,
+    endX,
+    centerX: (startX + endX) / 2,
+    textWidth: endX - startX,
+  }
+}
+
+/** Map game segments with the exact timestamp domain used by chart layers. */
+export function gameSegmentPlotBoundsByTimestampScale(
+  segment: GameSegmentPlotInput,
+  timeScale: ViewerTimestampScale,
+  streamStartedAt?: string,
+): GameSegmentPlotBounds | null {
+  if (
+    !Number.isFinite(segment.offsetSeconds)
+    || !Number.isFinite(segment.durationSeconds)
+    || segment.durationSeconds <= 0
+    || timeScale.plotWidth <= 0
+    || !Number.isFinite(timeScale.firstTimestampMs)
+    || !Number.isFinite(timeScale.lastTimestampMs)
+  ) {
+    return null
+  }
+
+  const chartFirstMs = timeScale.firstTimestampMs
+  const chartLastMs = timeScale.lastTimestampMs
+  const streamStartMs = streamStartedAt ? Date.parse(streamStartedAt) : chartFirstMs
+  if (!Number.isFinite(streamStartMs)) return null
+
+  const segStartMs = streamStartMs + Math.max(0, segment.offsetSeconds) * 1000
+  const segEndMs = segStartMs + segment.durationSeconds * 1000
+  if (chartLastMs <= chartFirstMs) {
+    if (segEndMs <= chartFirstMs || segStartMs > chartFirstMs) return null
+    return {
+      startX: timeScale.plotStartX,
+      endX: timeScale.plotEndX,
+      centerX: (timeScale.plotStartX + timeScale.plotEndX) / 2,
+      textWidth: timeScale.plotWidth,
+    }
+  }
+  const visibleStartMs = Math.max(chartFirstMs, segStartMs)
+  const visibleEndMs = Math.min(chartLastMs, segEndMs)
+  if (visibleEndMs <= visibleStartMs) return null
+
+  const startX = timeScale.xForTimestampMs(visibleStartMs)
+  const endX = timeScale.xForTimestampMs(visibleEndMs)
   return {
     startX,
     endX,

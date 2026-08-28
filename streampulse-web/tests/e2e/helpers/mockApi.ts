@@ -35,9 +35,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
       },
       activity: {
         points: [
-          { t: Date.now() - 10 * 60_000, chat: 120, seventv: 40, twitch: 12, bttv: 8, ffz: 5, viewers: 42000, emotes: 65, hasViewerRollup: true, viewerCoverage: 'complete', viewerContributors: 2, viewerExpectedContributors: 2 },
-          { t: Date.now() - 5 * 60_000, chat: 180, seventv: 55, twitch: 18, bttv: 11, ffz: 7, viewers: 48000, emotes: 91, hasViewerRollup: true, viewerCoverage: 'complete', viewerContributors: 2, viewerExpectedContributors: 2 },
-          { t: Date.now(), chat: 150, seventv: 48, twitch: 15, bttv: 9, ffz: 6, viewers: 45000, emotes: 78, hasViewerRollup: true, viewerCoverage: 'complete', viewerContributors: 2, viewerExpectedContributors: 2 },
+          { t: Date.now() - 10 * 60_000, chat: 120, seventv: 40, twitch: 12, bttv: 8, ffz: 5, viewers: 42000, emotes: 65 },
+          { t: Date.now() - 5 * 60_000, chat: 180, seventv: 55, twitch: 18, bttv: 11, ffz: 7, viewers: 48000, emotes: 91 },
+          { t: Date.now(), chat: 150, seventv: 48, twitch: 15, bttv: 9, ffz: 6, viewers: 45000, emotes: 78 },
         ],
         windowMinutes: 30,
         channelCount: 2,

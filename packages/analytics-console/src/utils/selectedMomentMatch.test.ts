@@ -16,6 +16,26 @@ describe('findNearestRecapMoment', () => {
     expect(findNearestRecapMoment(moments, 11545)?.score).toBe(36)
     expect(findNearestRecapMoment(moments, 20000)).toBeNull()
   })
+
+  it('matches refined recap rows by analytical onset instead of playback seek', () => {
+    const moments = [
+      {
+        offsetSeconds: 600,
+        reactionOnsetOffsetSeconds: 608,
+        seekOffsetSeconds: 500,
+        precisionSeconds: 1,
+        score: 90,
+      },
+      {
+        offsetSeconds: 720,
+        reactionOnsetOffsetSeconds: 728,
+        seekOffsetSeconds: 607,
+        precisionSeconds: 1,
+        score: 80,
+      },
+    ]
+    expect(findNearestRecapMoment(moments, 608, 30)?.score).toBe(90)
+  })
 })
 
 describe('findNearestHeatmapPoint', () => {

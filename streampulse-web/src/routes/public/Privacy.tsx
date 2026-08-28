@@ -7,21 +7,55 @@ export default function Privacy() {
     <PublicLayout>
       <article className="panel public-document" data-testid="privacy-policy">
         <p className="muted public-document__back">
-          <Link to="/">← StreamPulse</Link>
+          <Link to="/" className="text-zinc-400 hover:text-white inline-flex items-center gap-1">← StreamPulse Home</Link>
         </p>
-        <h1>Privacy Policy</h1>
-        <p className="muted">
-          Last updated: August 3, 2026 · Applies to streampulse.stream and the StreamPulse Chrome
-          extension.
-        </p>
+        <header className="mb-6 border-b border-white/[0.08] pb-6">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              Privacy-First & Rollup-Only
+            </span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
+          <p className="mt-2 text-sm text-zinc-400">
+            Last updated: August 3, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+          </p>
+        </header>
 
-        <h2>Summary</h2>
-        <p>
-          StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
-           API. The extension and public site are rollup-first: they do not expose raw chat messages or
-           chatter identity to users. The extension does not use Twitch OAuth. Protect enrollment is
-           optional and uses a beta access key once to create a local device credential.
-        </p>
+        {/* Privacy at a Glance Highlights */}
+        <div className="feature-grid">
+          <div className="feature-card">
+            <span className="feature-card__badge text-emerald-300">Guaranteed</span>
+            <h3>No Raw Chat Storage</h3>
+            <p>
+              StreamPulse records only mathematical aggregates (emotes/min, chat counts, viewer sums). We never log chat messages or chatter usernames.
+            </p>
+          </div>
+          <div className="feature-card">
+            <span className="feature-card__badge text-cyan-300">Zero OAuth</span>
+            <h3>No Account Credentials</h3>
+            <p>
+              The extension requires no Twitch OAuth logins, passwords, or personal account tokens to inspect public stream activity.
+            </p>
+          </div>
+          <div className="feature-card">
+            <span className="feature-card__badge text-violet-300">Local Only</span>
+            <h3>Client-Held Tokens</h3>
+            <p>
+              Protect enrollment generates a localized, opaque device credential stored only in browser storage.
+            </p>
+          </div>
+        </div>
+
+        <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
+          <h2 className="!mt-0">Summary</h2>
+          <p className="text-zinc-300">
+            StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
+            API. The extension and public site are rollup-first: they do not expose raw chat messages or
+            chatter identity to users. The extension does not use Twitch OAuth. Protect enrollment is
+            optional and uses a beta access key once to create a local device credential.
+          </p>
+        </section>
 
         <h2>What the Chrome extension observes on Twitch</h2>
         <ul>

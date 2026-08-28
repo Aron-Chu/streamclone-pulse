@@ -2,7 +2,6 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  momentRowKey,
   type LivePulseMomentsResult,
 } from '../src/lib/figmaSessionAnalytics'
 import {
@@ -126,10 +125,9 @@ function sampleHub(): PublicHub {
 function renderPanel({
   selectedMomentKey,
   onSelectMoment,
-  selectedBucketT,
 }: Pick<
   PulseMomentsLivePanelProps,
-  'selectedMomentKey' | 'onSelectMoment' | 'selectedBucketT'
+  'selectedMomentKey' | 'onSelectMoment'
 >) {
   const hub = sampleHub()
   return render(
@@ -140,7 +138,6 @@ function renderPanel({
           feed={feed}
           topEmotes={hub.topEmotes}
           layout="embedded"
-          selectedBucketT={selectedBucketT}
           selectedMomentKey={selectedMomentKey}
           onSelectMoment={onSelectMoment}
         />
@@ -180,21 +177,5 @@ describe('PulseMomentsLivePanel controlled hub selection', () => {
         'Click an activity chart bucket to see spikes for that period.',
       ),
     ).toBeNull()
-  })
-
-  it('keeps a selected Live Wire moment in the inspector while its chart bucket loads', async () => {
-    const selected = feed.moments[0]
-    renderPanel({
-      selectedMomentKey: momentRowKey(selected),
-      selectedBucketT: Date.now(),
-      onSelectMoment: vi.fn(),
-    })
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Moment Inspector').textContent).toContain('Twitch emote spike')
-    })
-    const inspector = screen.getByLabelText('Moment Inspector')
-    expect(inspector.textContent).toContain('133')
-    expect(inspector.textContent).toContain('393/min chat')
   })
 })

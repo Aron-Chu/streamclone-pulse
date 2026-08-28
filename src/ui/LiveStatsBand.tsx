@@ -163,14 +163,14 @@ function AnimatedMetric({
   format,
   valueStyle,
 }: {
-  value: number
+  value: number | null
   format?: (value: number) => string
   valueStyle?: CSSProperties
 }) {
-  const animated = useCountUp(value)
+  const animated = useCountUp(value ?? 0)
   return (
     <span style={{ ...styles.metricValue, ...valueStyle }}>
-      {format ? format(animated) : formatNumber(animated)}
+      {value == null ? '—' : format ? format(animated) : formatNumber(animated)}
     </span>
   )
 }

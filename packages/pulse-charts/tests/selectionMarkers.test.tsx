@@ -11,18 +11,21 @@ const rollups: ChartMinuteRollup[] = [
 function markerX(markup: string, stroke: string) {
   const escapedStroke = stroke.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const line = markup.match(new RegExp(`<line[^>]*x1="([^"]+)"[^>]*stroke="${escapedStroke}"`))
-  return line ? Number(line[1]) : null
+  if (line) return Number(line[1])
+  const band = markup.match(new RegExp(`<rect[^>]*x="([^"]+)"[^>]*width="([^"]+)"[^>]*stroke="${escapedStroke}"`))
+  return band ? Number(band[1]) + Number(band[2]) / 2 : null
 }
 
 describe('external selection markers', () => {
   it.each([
-    ['selectedRollup', { selectedRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }, '#f59e0b'],
+    ['selectedRollup', { selectedRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }, 'rgba(245,158,11,0.5)'],
     ['previewRollup', { previewRollup: { minuteTs: '2026-07-12T00:01:00.000Z' } }, 'rgba(245,158,11,0.45)'],
   ] as const)('renders %s at the exact midpoint between downsampled series points', (_name, props, stroke) => {
     const markup = renderToStaticMarkup(
       <PulseMultiSignalChartInner
         rollups={rollups}
         {...props}
+        streamStartedAt="2026-07-12T00:00:00.000Z"
       />,
     )
 
@@ -48,11 +51,12 @@ describe('external selection markers', () => {
       />,
     )
 
-    expect(overview).toContain('data-chart-mode="overview"')
-    expect(overview).toContain('data-chart-layer="overview"')
-    expect(detail).toContain('data-chart-mode="detail"')
-    expect(detail).toContain('data-chart-layer="detail-past"')
-    expect(detail).toContain('data-chart-layer="detail-future"')
-    expect(detail).toContain('rgba(161, 161, 170, 0.58)')
+    expect(overview).toContain('data-chart-layout-mode="viewer-led"')
+    expect(overview).toContain('data-viewer-state="rest"')
+    expect(overview).toContain('data-viewer-layer="idle"')
+    expect(detail).toContain('data-viewer-state="locked"')
+    expect(detail).toContain('data-viewer-layer="before-cursor"')
+    expect(detail).toContain('data-viewer-layer="after-cursor"')
+    expect(detail).toContain('data-moment-selected-marker="true"')
   })
 })

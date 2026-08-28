@@ -1,6 +1,6 @@
 import type { AnalyticsStreamDetail, SessionAvailability } from '../apiTypes.ts'
 
-/** Merge lightweight /status (or sparse) poll into the first full timeline shell. */
+/** Merge a lightweight status poll into the first full timeline shell. */
 export function mergeSessionStatusIntoDetail(
   base: AnalyticsStreamDetail,
   status: {
@@ -9,6 +9,7 @@ export function mergeSessionStatusIntoDetail(
     vodId?: string
     analyticsQuality?: string
     chatCoveragePct?: number
+    dataCoveragePct?: number
     updatedAt?: number
     availability?: SessionAvailability
     stream?: AnalyticsStreamDetail['stream']
@@ -24,7 +25,11 @@ export function mergeSessionStatusIntoDetail(
     updatedAt: status.updatedAt ?? base.updatedAt,
     availability: status.availability ?? base.availability,
     stream: status.stream
-      ? { ...base.stream, ...status.stream, streamId: base.stream?.streamId ?? status.stream.streamId ?? '' }
+      ? {
+          ...base.stream,
+          ...status.stream,
+          streamId: base.stream?.streamId ?? status.stream.streamId ?? '',
+        }
       : base.stream
         ? { ...base.stream, vodId: status.vodId ?? base.stream.vodId }
         : base.stream,

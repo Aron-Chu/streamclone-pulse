@@ -7,9 +7,6 @@ import {
   chartActivityPoints,
   dropTrailingOpenBucket,
   fillActivityPoints,
-  formatActivityCoveragePercent,
-  hasMeasuredActivitySignal,
-  hasProviderSample,
   isOpenActivityBucket,
   normalizeActivityPointsForChart,
   peakActivityChatPerMin,
@@ -20,21 +17,6 @@ import {
   hubActivityEmoteCount,
 } from '../src/lib/hubActivitySummary'
 import type { HubActivityPoint } from '../src/lib/publicHub'
-
-describe('formatActivityCoveragePercent', () => {
-  it.each([
-    [239, 240, '99.6%'],
-    [29, 30, '96.7%'],
-    [0, 30, '0%'],
-    [240, 240, '100%'],
-  ])('formats %i/%i as %s without overstating incomplete evidence', (measured, expected, label) => {
-    expect(formatActivityCoveragePercent(measured, expected)).toBe(label)
-  })
-
-  it('caps an incomplete ratio that would otherwise round to 100%', () => {
-    expect(formatActivityCoveragePercent(9_999, 10_000)).toBe('99.9%')
-  })
-})
 
 describe('isOpenActivityBucket / dropTrailingOpenBucket', () => {
   const bucketMs = 6 * 60_000
@@ -141,99 +123,46 @@ describe('hubActivityEmoteCount', () => {
       }),
     ).toBe(90)
   })
-
-  it('includes an explicit Other residual only when the all-provider total is omitted', () => {
-    const point = {
-      t: Date.now(),
-      chat: 20,
-      seventv: 9,
-      twitch: 4,
-      bttv: 3,
-      ffz: 2,
-      other: 17,
-      viewers: 100,
-    }
-    expect(hubActivityEmoteCount(point)).toBe(17)
-    expect(hubActivityEmoteCount({ ...point, emotes: 12 })).toBe(12)
-  })
-})
-
-describe('hasProviderSample', () => {
-  it('treats an omitted exact provider zero as measured when coverage says complete', () => {
-    expect(hasProviderSample({
-      t: Date.now(),
-      chat: 20,
-      seventv: 2,
-      viewers: 100,
-      providerCoverage: {
-        twitch: { measured: true, complete: true, state: 'complete' },
-      },
-    }, 'twitch')).toBe(true)
-  })
-
-  it('does not invent a zero for partial lower-bound provider coverage', () => {
-    expect(hasProviderSample({
-      t: Date.now(),
-      chat: 20,
-      seventv: 2,
-      viewers: 100,
-      providerCoverage: {
-        bttv: { measured: true, lowerBound: true, state: 'partial' },
-      },
-    }, 'bttv')).toBe(false)
-  })
 })
 
 describe('assessViewerCoverage', () => {
-  it('treats historical viewer values without explicit coverage as unknown', () => {
-    const assessment = assessViewerCoverage({
-      t: Date.now(),
-      chat: 20,
-      seventv: 2,
-      viewers: 450_000,
-    })
-
-    expect(assessment).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
-  })
-
-  it('qualifies only explicitly complete viewer coverage', () => {
+  it('requires complete contributor coverage before qualifying a viewer line', () => {
     expect(
       assessViewerCoverage({
         t: Date.now(),
-        chat: 20,
-        seventv: 2,
-        viewers: 450_000,
-        viewerContributors: 3,
-        viewerExpectedContributors: 3,
-        viewerCoverage: 'complete',
-        hasViewerRollup: true,
-      }),
-    ).toMatchObject({ sampled: true, qualified: true, quality: 'complete', coveragePct: 100 })
-
-    expect(
-      assessViewerCoverage({
-        t: Date.now(),
-        chat: 20,
-        seventv: 2,
-        viewers: 450_000,
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
         viewerContributors: 2,
         viewerExpectedContributors: 3,
         viewerCoverage: 'partial',
-        hasViewerRollup: true,
       }),
-    ).toMatchObject({ sampled: true, qualified: false, quality: 'partial' })
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'partial', coveragePct: 66.66666666666666 })
+
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 3,
+        viewerExpectedContributors: 3,
+        viewerCoverage: 'complete',
+      }),
+    ).toMatchObject({ sampled: true, qualified: true, quality: 'complete' })
   })
 
-  it('treats an explicit viewer-rollup false flag as a gap even with a stale value', () => {
-    const point = {
-      t: Date.now(),
-      chat: 0,
-      seventv: 0,
-      viewers: 450_000,
-      hasViewerRollup: false,
-    }
-    expect(assessViewerCoverage(point)).toMatchObject({ sampled: false, qualified: false })
-    expect(hasMeasuredActivitySignal(point)).toBe(false)
+  it('does not let an explicit unknown state become a continuous line', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        hasViewerRollup: true,
+        viewerCoverage: 'unknown',
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
   })
 })
 
@@ -276,13 +205,31 @@ describe('chartActivityPoints', () => {
     const nowMs = Date.parse('2026-07-04T10:31:00Z')
     const recentT = Date.parse('2026-07-04T10:29:00Z')
     const top500Viewers = 454_195
-    const points30: HubActivityPoint[] = [{ t: recentT, chat: 4000, seventv: 400, viewers: top500Viewers, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true }]
+    const points30: HubActivityPoint[] = [{ t: recentT, chat: 4000, seventv: 400, viewers: top500Viewers, bucketComplete: true }]
     const points60: HubActivityPoint[] = [
-      { t: recentT - 60_000, chat: 3800, seventv: 380, viewers: top500Viewers, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
-      { t: recentT, chat: 4000, seventv: 400, viewers: top500Viewers, hasViewerRollup: true, viewerCoverage: 'complete', bucketComplete: true },
+      { t: recentT - 60_000, chat: 3800, seventv: 380, viewers: top500Viewers, bucketComplete: true },
+      { t: recentT, chat: 4000, seventv: 400, viewers: top500Viewers, bucketComplete: true },
     ]
     expect(peakActivityViewers(points30, 30)).toBe(top500Viewers)
     expect(peakActivityViewers(points60, 60)).toBe(top500Viewers)
+  })
+
+  it('never replaces a historical viewer observation with the live-pool KPI', () => {
+    const nowMs = Date.parse('2026-07-04T10:31:00Z')
+    const points: HubActivityPoint[] = [
+      {
+        t: Date.parse('2026-07-04T10:29:00Z'),
+        chat: 100,
+        seventv: 10,
+        viewers: 250,
+        hasViewerRollup: true,
+        bucketComplete: true,
+      },
+    ]
+
+    const charted = chartActivityPoints(points, 30, nowMs, 50_000)
+    expect(charted.at(-1)?.viewers).toBe(250)
+    expect(charted.at(-1)?.viewers).not.toBe(50_000)
   })
 })
 
@@ -377,9 +324,9 @@ describe('peakActivityViewers / peakActivityChatPerMin', () => {
     const bucketMs = 6 * 60_000
     const end = Math.floor(Date.now() / bucketMs) * bucketMs
     const points: HubActivityPoint[] = [
-      { t: end - bucketMs * 2, chat: 60, seventv: 6, viewers: 400_000, hasViewerRollup: true, viewerCoverage: 'complete' },
-      { t: end - bucketMs, chat: 72, seventv: 8, viewers: 1_100_000, hasViewerRollup: true, viewerCoverage: 'complete' },
-      { t: end, chat: 48, seventv: 4, viewers: 520_000, hasViewerRollup: true, viewerCoverage: 'complete' },
+      { t: end - bucketMs * 2, chat: 60, seventv: 6, viewers: 400_000 },
+      { t: end - bucketMs, chat: 72, seventv: 8, viewers: 1_100_000 },
+      { t: end, chat: 48, seventv: 4, viewers: 520_000 },
     ]
     const windowMinutes = 24 * 60
     expect(peakActivityViewers(points, windowMinutes)).toBe(1_100_000)

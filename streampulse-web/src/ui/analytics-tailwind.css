@@ -146,6 +146,7 @@
 .sc-analytics-console .sc-chart-root text.fill-emerald-300\/70 { fill: rgb(110 231 183 / 0.7); }
 .sc-analytics-console .sc-chart-root text.fill-emerald-300\/80 { fill: rgb(110 231 183 / 0.8); }
 .sc-analytics-console .sc-chart-root text.fill-emerald-400\/50 { fill: rgb(52 211 153 / 0.5); }
+.sc-analytics-console .sc-chart-root text.fill-amber-300\/80 { fill: rgb(252 211 77 / 0.8); }
 
 /* Provider pills — explicit styles so portal Tailwind scan cannot miss dynamic tones. */
 .sc-analytics-console .sc-emote-provider-badge {

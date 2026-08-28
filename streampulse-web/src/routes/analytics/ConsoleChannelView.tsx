@@ -42,6 +42,8 @@ export default function ConsoleChannelView() {
           mode="public"
           shellNested
           showGameSegments
+          enableLayoutControls
+          layer2LoadMode="staged"
           enableSyncActions={usesLocalAnalyticsBackend()}
           buildSessionPath={portalSessionPath}
         />

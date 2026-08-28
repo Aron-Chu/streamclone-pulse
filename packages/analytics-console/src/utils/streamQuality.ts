@@ -25,6 +25,8 @@ export interface StreamSummaryMetrics {
 
 export type AnalyticsQualityLabel = 'Good' | 'Partial' | 'Limited' | 'No data'
 
+const COVERAGE_START_TOLERANCE_SECONDS = 120
+
 /**
  * Prefer backend-authored analyticsQuality / availability.chartState.
  * Only fall back to rollup presence when the BFF omitted quality.
@@ -35,13 +37,26 @@ export function deriveAnalyticsQualityLabel(input: {
   rollupCount?: number
   chatMessages?: number
   vodId?: string
+  coveragePartial?: boolean
+  coverageStartOffsetSeconds?: number
   chartState?: string
   chartUsable?: boolean
 }): AnalyticsQualityLabel {
   const quality = (input.analyticsQuality ?? '').toLowerCase()
   const chartState = (input.chartState ?? '').toLowerCase()
+  const coverage = input.summaryMetrics?.data_coverage_pct
+  const syncHealth = (input.summaryMetrics?.sync_health_state ?? '').toLowerCase()
   const rollups = input.rollupCount ?? 0
   const hasChat = (input.chatMessages ?? 0) > 0
+  const coverageHasGap = input.coveragePartial === true
+    || (input.coverageStartOffsetSeconds ?? 0) > COVERAGE_START_TOLERANCE_SECONDS
+  const summaryUsesCoverage = ['', 'synced', 'partial', 'ready', 'ok'].includes(syncHealth)
+
+  if (rollups === 0 && !hasChat && (coverage == null || coverage <= 0)) return 'No data'
+  if (syncHealth === 'partial' && coverage == null) return 'Partial'
+  if (coverageHasGap || (coverage != null && coverage < 80)) return 'Partial'
+  // A stale quality label must not hide a healthy, explicitly synced summary.
+  if (summaryUsesCoverage && coverage != null && coverage >= 80) return 'Good'
 
   if (quality === 'full_pulse') return 'Good'
   if (quality === 'partial_pulse') return 'Partial'
@@ -54,7 +69,7 @@ export function deriveAnalyticsQualityLabel(input: {
   if (chartState === 'warming') return 'Limited'
   if (chartState === 'unavailable') return 'No data'
 
-  // Legacy fallback when BFF omitted quality — do not invent coverage % thresholds.
+  // Legacy fallback when BFF omitted quality.
   if (rollups === 0 && !hasChat) return 'No data'
   if (rollups > 0 || hasChat) return 'Partial'
   return 'No data'
@@ -142,7 +157,16 @@ export function diagnoseStreamQuality(input: {
   if (!detail && !summaryMetrics) return null
 
   const rollups = detail?.rollups ?? []
-  const syncHealth = summaryMetrics?.sync_health_state ?? ''
+  const syncHealth = (summaryMetrics?.sync_health_state ?? '').toLowerCase()
+  const quality = (analyticsQuality ?? '').toLowerCase()
+  const coverage = summaryMetrics?.data_coverage_pct
+  const coverageHasGap = detail?.chatCoverage?.partial === true
+    || (detail?.coverageStartOffsetSeconds ?? 0) > COVERAGE_START_TOLERANCE_SECONDS
+  const summaryOverridesStaleQuality =
+    ['synced', 'partial', 'ready', 'ok'].includes(syncHealth)
+    && coverage != null
+    && coverage >= 80
+    && !coverageHasGap
   const issues: StreamQualityIssue[] = []
 
   if (syncing || detail?.state === 'syncing' || analyticsQuality === 'syncing') {
@@ -159,8 +183,7 @@ export function diagnoseStreamQuality(input: {
 
   const statsOnly =
     syncHealth === 'stats_only'
-    || analyticsQuality === 'limited'
-    || analyticsQuality === 'warming'
+    || (!summaryOverridesStaleQuality && (quality === 'limited' || quality === 'warming'))
     || (
       !rollups.some((r) => !r.missing && ((r.viewerSamples ?? 0) > 0 || (r.chatCount ?? 0) > 0))
       && (detail?.stream?.avgViewers ?? 0) > 0
@@ -187,7 +210,10 @@ export function diagnoseStreamQuality(input: {
     }
   }
 
-  const liveViewerWarmup = diagnoseLiveViewerWarmup(rollups, isLive, detail?.stream?.startedAt)
+  const liveViewerWarmup =
+    (detail?.coverageStartOffsetSeconds ?? 0) <= COVERAGE_START_TOLERANCE_SECONDS
+      ? diagnoseLiveViewerWarmup(rollups, isLive, detail?.stream?.startedAt)
+      : null
   if (liveViewerWarmup) {
     issues.push('live_viewer_warmup')
     return {

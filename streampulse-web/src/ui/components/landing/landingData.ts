@@ -51,28 +51,6 @@ export interface TickerItem {
   image?: string
 }
 
-/** Plausible 7TV-heavy fallback when the hub has no live top-emote rollup yet. */
-const FALLBACK_EMOTES: TickerItem[] = [
-  { lead: 'widespeedlaugh', label: 'widespeedlaugh', value: '22.1K', tone: 'up', delta: '+41%', image: landingEmoteImageUrl(findLandingEmote('widespeedlaugh')!) },
-  { lead: 'degloved', label: 'degloved', value: '18.6K', tone: 'up', delta: '+34%', image: landingEmoteImageUrl(findLandingEmote('degloved')!) },
-  { lead: 'widereacting', label: 'widereacting', value: '15.4K', tone: 'up', delta: '+28%', image: landingEmoteImageUrl(findLandingEmote('widereacting')!) },
-  { lead: 'peepoHappy', label: 'peepoHappy', value: '12.1K', tone: 'up', delta: '+12%', image: landingEmoteImageUrl(findLandingEmote('peepoHappy')!) },
-  { lead: 'forsenPls', label: 'forsenPls', value: '9.8K', tone: 'up', delta: '+8%', image: landingEmoteImageUrl(findLandingEmote('forsenPls')!) },
-  { lead: 'WAYTOODANK', label: 'WAYTOODANK', value: '7.2K', tone: 'flat', image: landingEmoteImageUrl(findLandingEmote('WAYTOODANK')!) },
-  { lead: 'gachiBASS', label: 'gachiBASS', value: '5.9K', tone: 'up', delta: '+6%', image: landingEmoteImageUrl(findLandingEmote('gachiBASS')!) },
-  { lead: 'Kappa', label: 'Kappa', value: '3.3K', tone: 'up', delta: '+2%', image: landingEmoteImageUrl(findLandingEmote('Kappa')!) },
-]
-
-// Representative sample momentum (no leaderboard ranks — order is not a global #1/#2).
-const FALLBACK_MOVERS: TickerItem[] = [
-  { lead: 'C', label: 'caseoh_', value: '482/min', tone: 'up', delta: '+62%' },
-  { lead: 'J', label: 'jynxzi', value: '410/min', tone: 'up', delta: '+38%' },
-  { lead: 'K', label: 'kaicenat', value: '377/min', tone: 'up', delta: '+19%' },
-  { lead: 'X', label: 'xqc', value: '299/min', tone: 'dn', delta: '-7%' },
-  { lead: 'F', label: 'fanum', value: '241/min', tone: 'up', delta: '+11%' },
-  { lead: 'L', label: 'ludwig', value: '188/min', tone: 'flat' },
-]
-
 const EMOTE_BY_NAME = new Map<string, (typeof LANDING_EMOTES)[number]>(
   LANDING_EMOTES.map((emote) => [emote.name.toLowerCase(), emote]),
 )
@@ -90,7 +68,7 @@ function nameOf(login: string, displayName?: string): string {
 
 export function buildEmoteTicker(hub: PublicHub | null): TickerItem[] {
   const emotes = hub?.topEmotes ?? []
-  if (emotes.length === 0) return FALLBACK_EMOTES
+  if (emotes.length === 0) return []
   return emotes.slice(0, 10).map((emote) => ({
     lead: emote.name,
     label: emote.name,
@@ -103,7 +81,7 @@ export function buildEmoteTicker(hub: PublicHub | null): TickerItem[] {
 
 export function buildMoverTicker(hub: PublicHub | null): TickerItem[] {
   const movers = hub?.topMovers ?? []
-  if (movers.length === 0) return FALLBACK_MOVERS
+  if (movers.length === 0) return []
   // No rank glyphs: leads are the channel initial (or real avatar) so the strip
   // reads as "channels with rising 7TV/min", not a fabricated #1/#2 leaderboard.
   return movers.slice(0, 8).map((mover) => {

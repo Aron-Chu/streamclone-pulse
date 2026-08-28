@@ -1,68 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { resolveVodLinkState } from './twitchVodUrl.ts'
+import {
+  buildTwitchVodUrl,
+  resolveAnalyticsVodId,
+  resolveVodLinkState,
+} from './twitchVodUrl.ts'
 
-describe('resolveVodLinkState availability transitions', () => {
-  it('tracks live → ended resolving → linked without remount heuristics', () => {
-    const live = resolveVodLinkState({
-      detail: {
-        state: 'live',
-        stream: { endedAt: null },
-        availability: { vodState: 'pending_live', vodMessage: 'VOD pending while live' },
-      },
-      channelIsLive: true,
-    })
-    expect(live.status).toBe('live')
-    expect(live.label).toMatch(/Live/i)
-
-    const resolving = resolveVodLinkState({
-      detail: {
-        state: 'historical',
-        stream: { endedAt: '2026-07-25T12:00:00Z' },
-        availability: {
-          vodState: 'resolving',
-          vodMessage: 'Stream ended — waiting for Twitch VOD publication.',
-        },
-      },
-      channelIsLive: false,
-    })
-    expect(resolving.status).toBe('syncing')
-    expect(resolving.label).toMatch(/Waiting for Twitch VOD/i)
-    expect(resolving.detail).toMatch(/waiting for Twitch VOD publication/i)
-
-    const linked = resolveVodLinkState({
-      detail: {
-        state: 'historical',
-        stream: { endedAt: '2026-07-25T12:00:00Z', vodId: '123456' },
-        availability: { vodState: 'linked', vodId: '123456' },
-      },
-      channelIsLive: false,
-    })
-    expect(linked.status).toBe('linked')
-    expect(linked.vodId).toBe('123456')
+describe('Twitch VOD links', () => {
+  it('uses the validated VOD id and stream-relative offset', () => {
+    expect(buildTwitchVodUrl('2834270468', 240)).toBe(
+      'https://www.twitch.tv/videos/2834270468?t=4m0s',
+    )
   })
 
-  it('treats external offline without VOD as waiting, not unavailable', () => {
+  it('rejects arbitrary video URLs instead of embedding them in a Twitch path', () => {
+    expect(buildTwitchVodUrl('https://www.twitch.tv/videos/2834444095', 240)).toBe(
+      'https://www.twitch.tv',
+    )
+    expect(resolveAnalyticsVodId({ vodId: 'https://www.twitch.tv/videos/2834444095' })).toBeUndefined()
+    expect(resolveVodLinkState({
+      fallbackVodId: 'https://www.twitch.tv/videos/2834444095',
+      channelIsLive: false,
+    }).status).toBe('unavailable')
+  })
+
+  it('links a concrete archive even when the live availability poll is stale', () => {
     const state = resolveVodLinkState({
       detail: {
         state: 'live',
-        stream: { endedAt: null },
+        vodId: '2834444095',
+        availability: {
+          vodState: 'pending_live',
+          vodMessage: 'VOD pending while live',
+        },
       },
-      channelIsLive: false,
+      isLiveCollector: true,
     })
-    expect(state.status).toBe('syncing')
-    expect(state.detail).toMatch(/Stream ended — waiting for Twitch VOD publication/i)
-  })
-
-  it('surfaces request_failed and unavailable as distinct terminal states', () => {
-    expect(
-      resolveVodLinkState({
-        detail: { availability: { vodState: 'request_failed', vodMessage: 'Helix timeout' } },
-      }).status,
-    ).toBe('request_failed')
-    expect(
-      resolveVodLinkState({
-        detail: { availability: { vodState: 'unavailable' } },
-      }).status,
-    ).toBe('unavailable')
+    expect(state.status).toBe('linked')
+    expect(state.vodId).toBe('2834444095')
+    expect(state.label).toBe('Jump to VOD (live archive)')
   })
 })

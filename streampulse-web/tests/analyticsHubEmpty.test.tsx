@@ -7,6 +7,20 @@ vi.mock('../src/hooks/useHubRecentLogins', () => ({
   useHubRecentLogins: () => [],
 }))
 
+vi.mock('../src/hooks/useNewsroomData', () => ({
+  useNewsroomData: () => ({
+    data: null,
+    loading: false,
+    refreshing: false,
+    loadingMore: false,
+    error: 'Newsroom unavailable',
+    unavailable: true,
+    announcement: '',
+    refresh: vi.fn(),
+    loadMore: vi.fn(),
+  }),
+}))
+
 vi.mock('../src/hooks/usePublicHubData', () => ({
   usePublicHubData: () => ({
     data: {

@@ -1,0 +1,1 @@
+export const PORTAL_MINUTES_TIMEOUT_MS = 120_000

@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { verifyHostedAnalyticsRoutes } from './hosted-analytics-route-smoke.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
@@ -180,3 +181,13 @@ if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)
 run(localWrangler, deployArgs)
+
+if (process.env.SKIP_HOSTED_ROUTE_SMOKE !== '1') {
+  console.log('Verifying hosted analytics deep route')
+  try {
+    await verifyHostedAnalyticsRoutes()
+  } catch (error) {
+    console.error(`pages:deploy:prod: hosted route smoke failed: ${error instanceof Error ? error.message : String(error)}`)
+    process.exit(1)
+  }
+}

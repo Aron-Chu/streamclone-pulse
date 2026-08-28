@@ -44,13 +44,11 @@ export function buildChartSeries(
   avgViewersFallback = 0,
   useViewerFallback = false,
 ): ChartSeries[] {
-  const viewerBaseline = avgViewersFallback > 0 ? avgViewersFallback : peakViewersFallback
-  const viewers = rollups.map(point => {
-    if (point.missing) return null
-    const value = chartViewerValue(point)
-    if (value > 0) return value
-    return useViewerFallback && viewerBaseline > 0 ? viewerBaseline : 0
-  })
+  // Retain the compatibility parameters in the public signature, but never
+  // synthesize plot samples from stream-level KPI values.
+  void avgViewersFallback
+  void useViewerFallback
+  const viewers = rollups.map(point => chartViewerValue(point))
   const chat = rollups.map(point => (point.missing ? null : (point.chatCount ?? null)))
   const emotesRaw = rollups.map(point => (point.missing ? null : minuteEmoteTotal(point)))
   const emotesMax = seriesMax(emotesRaw)

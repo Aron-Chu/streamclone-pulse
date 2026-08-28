@@ -9,7 +9,7 @@ import {
   streamSyncBadgeTitle,
   type StreamSyncEvidence,
 } from '../../utils/syncedLiveStream.ts'
-import { count, duration, formatDateTime } from '../../utils/consoleFormat.ts'
+import { count, displayStreamTitle, duration, formatDateTime, getLocalDateString } from '../../utils/consoleFormat.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 
 export function StreamSidebar({
@@ -18,6 +18,7 @@ export function StreamSidebar({
   activeID,
   isLiveView,
   liveState,
+  liveStreamId,
   syncing,
   syncedOnly,
   onSyncedOnlyChange,
@@ -34,6 +35,7 @@ export function StreamSidebar({
   activeID?: string
   isLiveView: boolean
   liveState?: string
+  liveStreamId?: string
   liveSessionPath?: string
   syncing?: boolean
   syncedOnly?: boolean
@@ -52,6 +54,9 @@ export function StreamSidebar({
   const [archiveExpanded, setArchiveExpanded] = useState(false)
   const MOBILE_COLLAPSED_ROWS = 2
   const hasCollapsibleRows = visibleStreams.length > MOBILE_COLLAPSED_ROWS
+  const hasListedLiveSession = Boolean(
+    liveStreamId && visibleStreams.some((stream) => stream.streamId === liveStreamId),
+  )
 
   return (
     <div className="flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035] xl:max-h-[calc(100vh-12rem)]">
@@ -74,20 +79,23 @@ export function StreamSidebar({
         </label>
       ) : null}
       <div className="sc-console-scroll min-h-0 flex-1 overflow-y-auto">
-        <Link
-          to={liveSessionPath ?? buildChannelPath(login)}
-          className={`sc-stream-row block border-b border-white/5 px-3 py-2.5 transition hover:bg-white/[0.05] ${
-            isLiveView ? 'border-l-2 border-l-red-400 bg-red-500/10' : 'border-l-2 border-l-transparent'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${liveState === 'live' ? 'bg-red-400 animate-pulse' : 'bg-zinc-600'}`} />
-            <span className="text-sm font-black text-white">Live / Current</span>
-          </div>
-          <div className="mt-1 text-[10px] font-semibold text-zinc-500">
-            {liveState === 'live' ? 'Live tracking' : 'Most recent session'}
-          </div>
-        </Link>
+        {!hasListedLiveSession ? (
+          <Link
+            to={liveSessionPath ?? buildChannelPath(login)}
+            data-live-current-row
+            className={`sc-stream-row block border-b border-white/5 px-3 py-2.5 transition hover:bg-white/[0.05] ${
+              isLiveView ? 'border-l-2 border-l-red-400 bg-red-500/10' : 'border-l-2 border-l-transparent'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${liveState === 'live' ? 'bg-red-400 animate-pulse' : 'bg-zinc-600'}`} />
+              <span className="text-sm font-black text-white">Live / Current</span>
+            </div>
+            <div className="mt-1 text-[10px] font-semibold text-zinc-500">
+              {liveState === 'live' ? 'Live tracking' : 'Most recent session'}
+            </div>
+          </Link>
+        ) : null}
         {streams.length === 0 ? (
           <div className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-500">
             No past streams indexed yet.
@@ -99,6 +107,7 @@ export function StreamSidebar({
         ) : (
           <div className="divide-y divide-white/5">
             {visibleStreams.map((stream, rowIndex) => {
+              const streamTitle = displayStreamTitle(stream, login, [`${login} / ${getLocalDateString(stream.startedAt) || 'session'}`])
               const targetSlug = analyticsStreamPathSlug(stream, streams)
               const dateSlug = targetSlug !== stream.streamId ? targetSlug : ''
               const isActive = !isLiveView && (activeID === stream.streamId || activeID === dateSlug || activeID === targetSlug)
@@ -117,9 +126,9 @@ export function StreamSidebar({
                     ? 'bg-emerald-500/10 text-emerald-300'
                     : syncBadge === 'partial'
                       ? 'bg-amber-500/10 text-amber-300'
-                      : syncBadge === 'unknown'
-                        ? 'bg-white/[0.06] text-zinc-400'
-                      : 'bg-amber-500/10 text-amber-300'
+                  : syncBadge === 'unknown'
+                    ? 'bg-white/[0.06] text-zinc-400'
+                    : 'bg-amber-500/10 text-amber-300'
 
               return (
                 <Link
@@ -132,13 +141,20 @@ export function StreamSidebar({
                   <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">
                     {formatDateTime(stream.startedAt)}
                   </div>
-                  <div className="mt-0.5 line-clamp-2 text-[13px] font-bold leading-snug text-white">
-                    {stream.title || 'Untitled stream'}
+                  <div
+                    className="sc-stream-row__title mt-0.5 text-[13px] font-bold leading-snug text-white"
+                    title={streamTitle}
+                  >
+                    {streamTitle}
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {(stream.gamesSummary || stream.category) ? (
-                      <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-violet-200">
-                        {stream.gamesSummary || stream.category}
+                      <span
+                        className="min-w-0 max-w-full rounded bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-violet-200"
+                        title={`Games played: ${stream.gamesSummary || stream.category}`}
+                      >
+                        <span className="mr-1 text-violet-300/70">Games played:</span>
+                        <span className="whitespace-normal break-words">{stream.gamesSummary || stream.category}</span>
                       </span>
                     ) : null}
                     <span

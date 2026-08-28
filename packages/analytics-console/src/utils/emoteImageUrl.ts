@@ -1,37 +1,72 @@
 const TWITCH_CDN_TEMPLATE = 'https://static-cdn.jtvnw.net/emoticons/v2/%s/default/dark/2.0'
-const SEVEN_TV_CDN_TEMPLATE = 'https://cdn.7tv.app/emote/%s/4x.webp'
+const SEVEN_TV_CDN_TEMPLATE = 'https://cdn.7tv.app/emote/%s/2x.webp'
 const FFZ_CDN_TEMPLATE = 'https://cdn.frankerfacez.com/emoticon/%s/4'
 const BTTV_CDN_TEMPLATE = 'https://cdn.betterttv.net/emote/%s/3x'
 
 const LOCAL_EMOTE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const SEVEN_TV_EMOTE_ID = /^[0-9A-HJKMNP-TV-Z]{20,32}$/i
+const PROVIDER_ASSET_ID = /^[A-Za-z0-9_-]{1,128}$/
 
-export const ALLOWED_EMOTE_IMAGE_HOSTS = Object.freeze([
-  'cdn.7tv.app',
-  'static-cdn.jtvnw.net',
-  'cdn.frankerfacez.com',
-  'cdn.betterttv.net',
-  'api.streampulse.stream',
-])
-
-/** Allow only https emote CDN / hosted proxy URLs (or relative /emotes/ paths). */
-export function isAllowedEmoteImageUrl(url: string | undefined, assetBase = ''): boolean {
-  return sanitizeEmoteImageUrl(url, assetBase) !== undefined
+export function preferSmallerSevenTVAsset(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname.toLowerCase() !== 'cdn.7tv.app') return url
+    parsed.pathname = parsed.pathname.replace(/\/(?:1x|3x|4x)\.(webp|avif)$/i, '/2x.$1')
+    return parsed.toString()
+  } catch {
+    return url
+  }
 }
 
 /**
- * Return URL.href only after https + host allowlist validation for img src binding.
+ * Return an image source only after validating its scheme, host, and path.
+ * Backend-relative emote paths remain relative so local consumers keep their
+ * configured API origin; arbitrary protocols and third-party hosts are denied.
  */
-export function sanitizeEmoteImageUrl(url: string | undefined, assetBase = ''): string | undefined {
-  if (!url?.trim()) return undefined
-  const trimmed = url.trim()
+export function safeConsoleEmoteImageUrl(url: string | undefined): string {
+  const trimmed = url?.trim() ?? ''
+  if (!trimmed) return ''
+
   try {
-    const parsed = new URL(trimmed, assetBase || 'https://api.streampulse.stream')
-    if (parsed.protocol !== 'https:') return undefined
-    if (!ALLOWED_EMOTE_IMAGE_HOSTS.includes(parsed.hostname.toLowerCase())) return undefined
-    return parsed.href
+    const relative = trimmed.startsWith('/emotes/') && !trimmed.startsWith('//')
+    const parsed = new URL(trimmed, 'https://api.streampulse.stream')
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return ''
+
+    const host = parsed.hostname.toLowerCase()
+    if (host === 'api.streampulse.stream') {
+      const match = parsed.pathname.match(/^\/emotes\/([0-9a-fA-F-]{36})\/([124]x)\.webp$/)
+      if (!match || !LOCAL_EMOTE_ID.test(match[1])) return ''
+      const safePath = `/emotes/${encodeURIComponent(match[1])}/${match[2]}.webp`
+      return relative ? safePath : `https://api.streampulse.stream${safePath}`
+    }
+
+    if (host === 'cdn.7tv.app') {
+      const match = parsed.pathname.match(/^\/emote\/([A-Za-z0-9_-]{1,128})\/([124]x)\.(webp|avif)$/)
+      if (!match || !PROVIDER_ASSET_ID.test(match[1])) return ''
+      return `https://cdn.7tv.app/emote/${encodeURIComponent(match[1])}/${match[2]}.${match[3]}`
+    }
+
+    if (host === 'static-cdn.jtvnw.net') {
+      const match = parsed.pathname.match(/^\/emoticons\/v2\/([A-Za-z0-9_-]{1,128})\/default\/dark\/(1\.0|2\.0|3\.0)$/)
+      if (!match || !PROVIDER_ASSET_ID.test(match[1])) return ''
+      return `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(match[1])}/default/dark/${match[2]}`
+    }
+
+    if (host === 'cdn.frankerfacez.com') {
+      const match = parsed.pathname.match(/^\/(emote|emoticon)\/([A-Za-z0-9_-]{1,128})\/([124])$/)
+      if (!match || !PROVIDER_ASSET_ID.test(match[2])) return ''
+      return `https://cdn.frankerfacez.com/${match[1]}/${encodeURIComponent(match[2])}/${match[3]}`
+    }
+
+    if (host === 'cdn.betterttv.net') {
+      const match = parsed.pathname.match(/^\/emote\/([A-Za-z0-9_-]{1,128})\/([123]x)$/)
+      if (!match || !PROVIDER_ASSET_ID.test(match[1])) return ''
+      return `https://cdn.betterttv.net/emote/${encodeURIComponent(match[1])}/${match[2]}`
+    }
+
+    return ''
   } catch {
-    return undefined
+    return ''
   }
 }
 
@@ -70,18 +105,10 @@ export function preferResolvableEmoteUrl(
   assetBase = '',
 ): string | undefined {
   const absDirect = direct?.trim() || undefined
-  if (absDirect && !isBackendEmoteProxyUrl(absDirect, assetBase)) {
-    const safe = sanitizeEmoteImageUrl(absDirect, assetBase)
-    if (safe) return safe
-  }
+  if (absDirect && !isBackendEmoteProxyUrl(absDirect, assetBase)) return absDirect
   const absFallback = fallback?.trim() || undefined
-  if (absFallback && !isBackendEmoteProxyUrl(absFallback, assetBase)) {
-    const safe = sanitizeEmoteImageUrl(absFallback, assetBase)
-    if (safe) return safe
-  }
-  return (
-    sanitizeEmoteImageUrl(absDirect, assetBase) ?? sanitizeEmoteImageUrl(absFallback, assetBase)
-  )
+  if (absFallback && !isBackendEmoteProxyUrl(absFallback, assetBase)) return absFallback
+  return absDirect ?? absFallback
 }
 
 export interface ResolveEmoteImageUrlOptions {
@@ -119,6 +146,8 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
     case 'betterttv':
       return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : BTTV_CDN_TEMPLATE.replace('%s', id)
     default:
-      return localEmotePath(id, scale)
+      // Unknown legacy keys often carry the display name in the ID slot.
+      // Never turn that into a fabricated backend UUID request.
+      return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : imageUrl ?? ''
   }
 }

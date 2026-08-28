@@ -41,7 +41,7 @@ describe('public release routes', () => {
 
   it('publishes actionable extension and analytics support guidance', () => {
     renderRoute(<Support />)
-    expect(screen.getByRole('heading', { name: /streampulse support/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /support & troubleshooting/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /service status/i }).getAttribute('href')).toBe('/status')
     expect(screen.getByRole('link', { name: /extension setup guide/i }).getAttribute('href')).toBe('/docs#extension')
     expect(

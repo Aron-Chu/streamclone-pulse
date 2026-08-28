@@ -52,31 +52,6 @@ export function chartViewerValue(point: AnalyticsMinuteRollup) {
   return viewerValue(point)
 }
 
-/** Pixel-bucket decimation for chart render paths (keeps peak per bucket). */
-export function decimateSeriesForRender(
-  values: Array<number | null>,
-  maxPoints: number,
-): Array<number | null> {
-  const n = values.length
-  if (n === 0 || maxPoints <= 0 || n <= maxPoints) return values
-  const bucketSize = n / maxPoints
-  const out: Array<number | null> = []
-  for (let bucket = 0; bucket < maxPoints; bucket++) {
-    const start = Math.floor(bucket * bucketSize)
-    const end = Math.min(n, Math.floor((bucket + 1) * bucketSize))
-    if (end <= start) continue
-    let peak: number | null = null
-    for (let i = start; i < end; i++) {
-      const value = values[i]
-      if (value !== null && value > 0 && (peak === null || value > peak)) {
-        peak = value
-      }
-    }
-    out.push(peak)
-  }
-  return out
-}
-
 /** Light rolling median for display smoothing (viewers only). */
 export function rollingMedianWindow(values: Array<number | null>, window: number): Array<number | null> {
   if (window <= 1) return values

@@ -57,6 +57,21 @@ function nonNegativeFinite(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
+function viewerCoverageDetail(point: HubActivityPoint): HubViewerCoverage | undefined {
+  return point.viewerCoverageDetail
+}
+
+function explicitViewerCoverage(point: HubActivityPoint): boolean {
+  return (
+    point.viewerCoverage != null ||
+    point.viewerCoveragePct != null ||
+    point.viewerContributors != null ||
+    point.viewerExpectedContributors != null ||
+    point.viewerComplete != null ||
+    point.viewerCoverageDetail != null
+  )
+}
+
 function normalizeViewerCoverageState(value: unknown): ViewerSampleQuality | undefined {
   if (typeof value !== 'string') return undefined
   const state = value.trim().toLowerCase()
@@ -68,16 +83,11 @@ function normalizeViewerCoverageState(value: unknown): ViewerSampleQuality | und
 
 /**
  * Resolve the viewer truth contract without guessing from the magnitude of a
- * sum. Explicit backend coverage metadata wins. Rows without that metadata
- * remain observable as unknown points, but can never form a connected global
- * line or a peak. This is especially important for historical_projection
- * payloads during the projection rollout.
+ * sum. Explicit backend coverage metadata wins; legacy rows are retained as a
+ * compatibility state until the backend emits the new fields.
  */
 export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAssessment {
-  if (isGapMarker(point)) {
-    return { sampled: false, qualified: false, quality: 'unknown' }
-  }
-  const detail: HubViewerCoverage | undefined = point.viewerCoverageDetail
+  const detail = viewerCoverageDetail(point)
   const contributors = nonNegativeFinite(point.viewerContributors ?? detail?.contributors)
   const expectedContributors = nonNegativeFinite(
     point.viewerExpectedContributors ?? detail?.expectedContributors,
@@ -85,11 +95,9 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
   const coveragePct = nonNegativeFinite(point.viewerCoveragePct ?? detail?.coveragePct)
   const state = normalizeViewerCoverageState(point.viewerCoverage ?? detail?.state)
   const explicitComplete = point.viewerComplete ?? detail?.complete
-  // An explicit false rollup flag is a known gap. Do not let a stale positive
-  // value in the same legacy row turn that gap into a visible viewer sample.
-  const sampled =
-    point.hasViewerRollup !== false &&
-    (point.hasViewerRollup === true || point.viewers > 0 || contributors != null)
+  const hasValue = point.viewers > 0 || point.hasViewerRollup === true
+  const explicitMeasuredZero = point.hasViewerRollup === true
+  const sampled = explicitMeasuredZero || hasValue || contributors != null
   const derivedCoveragePct =
     contributors != null && expectedContributors != null && expectedContributors > 0
       ? Math.min(100, (contributors / expectedContributors) * 100)
@@ -103,7 +111,7 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
       quality: state ?? 'unknown',
       contributors,
       expectedContributors,
-      coveragePct: resolvedCoveragePct,
+      coveragePct,
     }
   }
 
@@ -128,14 +136,7 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
     }
   }
   if (state === 'unknown') {
-    return {
-      sampled: true,
-      qualified: false,
-      quality: 'unknown',
-      contributors,
-      expectedContributors,
-      coveragePct: resolvedCoveragePct,
-    }
+    return { sampled: true, qualified: false, quality: 'unknown', contributors, expectedContributors, coveragePct }
   }
 
   if (contributors != null && expectedContributors != null && expectedContributors > 0) {
@@ -161,16 +162,14 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
     }
   }
 
-  // A positive legacy viewer number is a sample, not proof of a complete
-  // global population. Keep it visible as an unknown point only.
-  return {
-    sampled: true,
-    qualified: false,
-    quality: 'unknown',
-    contributors,
-    expectedContributors,
-    coveragePct: resolvedCoveragePct,
+  // Legacy viewer rows are known observations but have no population
+  // denominator. Older payloads often omitted `hasViewerRollup` and only
+  // carried a positive value, so keep that compatibility path plottable while
+  // exposing the legacy quality to callers so the UI can label it honestly.
+  if (!explicitViewerCoverage(point) && (point.hasViewerRollup === true || point.viewers > 0)) {
+    return { sampled: true, qualified: true, quality: 'legacy' }
   }
+  return { sampled: true, qualified: false, quality: 'unknown', contributors, expectedContributors, coveragePct }
 }
 
 export function hasViewerSample(point: HubActivityPoint): boolean {
@@ -199,34 +198,37 @@ function providerCoverageEntry(point: HubActivityPoint, key: HubProviderLaneKey)
   return undefined
 }
 
-/** Whether one provider's value is an actual measured observation. */
+/** Whether one provider's value is a measured observation in this bucket. */
 export function hasProviderSample(point: HubActivityPoint, key: HubProviderLaneKey): boolean {
+  // Client-created grid placeholders carry zero-valued fields for the shape,
+  // but they are not provider observations. Never let those placeholders turn
+  // a sparse lane into an apparently complete flat zero signal.
   if (isGapMarker(point)) return false
   const value = point[key === 'sevenTv' ? 'seventv' : key]
   const hasValue = typeof value === 'number' && Number.isFinite(value)
   const explicit = providerCoverageEntry(point, key)
+  // Coverage metadata cannot manufacture the corresponding metric. A
+  // measured-zero provider is represented by an explicit numeric zero; an
+  // omitted count remains unavailable even when an aggregate state says the
+  // provider was expected.
   if (typeof explicit === 'boolean') return explicit && hasValue
   if (typeof explicit === 'string') {
     const state = explicit.trim().toLowerCase()
     if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
-    // Go omits integer zero fields from JSON. An explicit complete coverage
-    // assertion is sufficient evidence that an absent provider value is a
-    // measured zero; partial/lower-bound states still require a numeric value.
-    if (state === 'complete') return true
-    if (state === 'partial' || state === 'measured' || state === 'available') return hasValue
+    if (state === 'complete' || state === 'partial' || state === 'measured' || state === 'available') return hasValue
   }
   if (explicit && typeof explicit === 'object') {
-    const detail = explicit as { measured?: unknown; complete?: unknown; lowerBound?: unknown; state?: unknown }
-    if (detail.measured === false) return false
+    const detail = explicit as { measured?: unknown; state?: unknown }
+    if (typeof detail.measured === 'boolean') return detail.measured && hasValue
     if (typeof detail.state === 'string') {
       const state = detail.state.trim().toLowerCase()
       if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
-      if (state === 'complete' && detail.measured === true && detail.lowerBound !== true) return true
-      if (state === 'partial' || state === 'measured' || state === 'available') return detail.measured === true && hasValue
+      if (state === 'complete' || state === 'partial' || state === 'measured' || state === 'available') return hasValue
     }
-    if (detail.measured === true && detail.complete === true && detail.lowerBound !== true) return true
-    if (typeof detail.measured === 'boolean') return detail.measured && hasValue
   }
+  // 7TV is always present in the backend point schema (including measured
+  // zero). Optional provider fields preserve omission so zero is not invented.
+  if (key === 'sevenTv') return typeof point.seventv === 'number' && Number.isFinite(point.seventv)
   return hasValue
 }
 
@@ -320,9 +322,9 @@ export function chartActivityPoints(
   livePoolViewerSum?: number,
 ): HubActivityPoint[] {
   const ordered = sortActivityPoints(points)
-  // The live-pool sum is current-state context, not a historical observation.
-  // Keep the parameter for callers from older portal builds, but never use it
-  // to replace or floor a viewer bucket.
+  // `livePoolViewerSum` is a current-state KPI, not a historical bucket
+  // observation. It is intentionally accepted for source compatibility with
+  // older callers but must never floor or replace an activity point here.
   void livePoolViewerSum
   const trimmed = dropTrailingOpenBucket(ordered, windowMinutes, nowMs ?? Date.now())
   return normalizeActivityPointsForChart(trimmed, windowMinutes)
@@ -418,7 +420,7 @@ export function normalizeActivityPointsForChart(
 /** Peak concurrent global viewers — same series as HubActivityChart tooltips. */
 export function peakActivityViewers(points: HubActivityPoint[], windowMinutes: number): number {
   return chartActivityPoints(points, windowMinutes).reduce(
-    (max, point) => Math.max(max, isGapMarker(point) || !isViewerCoverageQualified(point) ? 0 : point.viewers),
+    (max, point) => Math.max(max, isGapMarker(point) ? 0 : point.viewers),
     0,
   )
 }
@@ -446,7 +448,7 @@ function chartPointHasSignal(point: HubActivityPoint): boolean {
     point.seventv > 0 ||
     (point.emotes ?? 0) > 0 ||
     (point.twitch ?? 0) > 0 ||
-    (hasViewerSample(point) && point.viewers > 0)
+    point.viewers > 0
   )
 }
 
@@ -467,7 +469,7 @@ export function hasMeasuredActivitySignal(point: HubActivityPoint): boolean {
     (point.twitch ?? 0) > 0 ||
     (point.bttv ?? 0) > 0 ||
     (point.ffz ?? 0) > 0 ||
-    (hasViewerSample(point) && point.viewers > 0)
+    point.viewers > 0
   )
 }
 
@@ -498,7 +500,7 @@ export function resolveChartBucketSelection(
 
 /** Max gap between adjacent points before the chart breaks the line (aligned with HubActivityChart). */
 export function maxConnectedGapMs(windowMinutes: number): number {
-  return Math.max(5 * 60_000, activityBucketMs(windowMinutes) * 2.5)
+  return Math.max(10 * 60_000, activityBucketMs(windowMinutes) * 3)
 }
 
 /** Count corpus gaps where stored rollups are missing between adjacent buckets. */
@@ -572,22 +574,6 @@ export interface ActivitySummary {
   bucketMinutes: number
   windowLabel: string
   footnote: string
-}
-
-/**
- * Format bucket coverage without rounding incomplete evidence up to 100%.
- * Counts are authoritative: a complete domain is the only path to `100%`.
- */
-export function formatActivityCoveragePercent(
-  pointCount: number,
-  expectedBuckets: number,
-): string {
-  const expected = Math.max(0, Math.floor(expectedBuckets))
-  const measured = Math.max(0, Math.floor(pointCount))
-  if (expected === 0 || measured === 0) return '0%'
-  if (measured >= expected) return '100%'
-  const rounded = Math.round((measured / expected) * 1_000) / 10
-  return `${Math.min(99.9, rounded).toFixed(1)}%`
 }
 
 export function summarizeActivity(

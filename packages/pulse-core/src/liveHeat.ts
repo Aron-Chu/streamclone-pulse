@@ -33,6 +33,7 @@ export interface LiveHeatCatalogEmote {
   key?: string
   name: string
   id?: string
+  providerEmoteId?: string
   provider?: string
   imageUrl?: string
   count: number
@@ -42,6 +43,7 @@ export interface LiveHeatEmote {
   key: string
   name: string
   id?: string
+  providerEmoteId?: string
   provider?: string
   imageUrl?: string
   count: number
@@ -60,6 +62,16 @@ export interface LiveHeatPoint {
   minuteTs: string
   offsetSeconds: number
   score: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
   estimated: boolean
   reason: LiveHeatReason
   reasonLabel: string
@@ -68,6 +80,8 @@ export interface LiveHeatPoint {
   topEmotes: LiveHeatEmote[]
   collecting: boolean
   viewerCount?: number
+  /** True when the backend supplied an explicit viewer observation, including 0. */
+  viewerSampled?: boolean
   viewerDelta?: number
 }
 
@@ -153,6 +167,7 @@ function topEmotesFromRollup(
         key,
         name: match?.name ?? parsed.name,
         id,
+        providerEmoteId: match?.providerEmoteId,
         provider,
         imageUrl: imageUrl || undefined,
         count,
@@ -167,6 +182,7 @@ function liveHeatCatalogAsTopEmotes(catalog: LiveHeatCatalogEmote[]) {
       key: emote.key,
       name: emote.name,
       id: emote.id,
+      providerEmoteId: emote.providerEmoteId,
       provider: emote.provider,
       imageUrl: emote.imageUrl,
       count: emote.count,

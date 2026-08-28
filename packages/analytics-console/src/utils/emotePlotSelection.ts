@@ -1,8 +1,10 @@
+import { MAX_PLOTTED_EMOTES } from '@streampulse/pulse-charts'
+
 export type EmotePlotViewMode = 'overview' | 'emotes' | 'spikes'
 
 export type EmotePlotSelection = 'auto' | 'none' | Set<string>
 
-export const MAX_PLOTTED_EMOTES = 6
+export { MAX_PLOTTED_EMOTES }
 
 export function defaultEmotePlotKeys(
   topEmotes: Array<{ key: string }>,
@@ -24,7 +26,7 @@ export function resolveChartEmoteKeys(
   viewMode: EmotePlotViewMode,
 ): Set<string> {
   if (selection === 'none') return new Set()
-  if (selection instanceof Set) return selection
+  if (selection instanceof Set) return new Set(Array.from(selection).slice(0, MAX_PLOTTED_EMOTES))
   return defaultEmotePlotKeys(topEmotes, viewMode)
 }
 
@@ -50,8 +52,7 @@ export function toggleEmotePlotSelection(
 }
 
 export function activityZoneFraction(expanded: boolean): number {
-  // Mirror @streampulse/pulse-charts: chat and emotes own the primary plot;
-  // viewers remain a compact context rail.
+  // Chat and emotes own the primary plot; viewers remain a compact context rail.
   return expanded ? 0.86 : 0.74
 }
 

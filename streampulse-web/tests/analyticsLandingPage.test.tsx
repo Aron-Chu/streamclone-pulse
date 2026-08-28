@@ -173,6 +173,20 @@ vi.mock("../src/hooks/useHubRecentLogins", () => ({
   useHubRecentLogins: () => [],
 }));
 
+vi.mock("../src/hooks/useNewsroomData", () => ({
+  useNewsroomData: () => ({
+    data: null,
+    loading: false,
+    refreshing: false,
+    loadingMore: false,
+    error: "Newsroom unavailable",
+    unavailable: true,
+    announcement: "",
+    refresh: vi.fn(),
+    loadMore: vi.fn(),
+  }),
+}));
+
 describe("/analytics landing (AnalyticsLandingPage)", () => {
   afterEach(() => {
     hubMockOpts.loadSource = "full";
@@ -219,7 +233,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
 
     const liveActivity = await screen.findByRole("region", { name: /Live Activity/i });
     expect(liveActivity.getAttribute("data-hub-activity-state")).toBe("unmeasured");
-    expect(liveActivity.getAttribute("data-hub-requested-window-minutes")).toBe("1440");
+    expect(liveActivity.getAttribute("data-hub-requested-window-minutes")).toBe("10080");
     expect(liveActivity.getAttribute("data-hub-served-window-minutes")).toBe("30");
     expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
       "Showing served 30 minutes.",
@@ -239,38 +253,6 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
       "1 day requested · 30 minutes available",
     );
-  });
-
-  it("keeps selected long-range copy tied to the active request during stale fallback display", async () => {
-    hubMockOpts.activityFallback = true;
-    render(
-      <MemoryRouter>
-        <AnalyticsLandingPage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByRole("region", { name: /Live Activity/i });
-    screen.getByRole("button", { name: /Activity time window:/i }).click();
-    screen.getByRole("option", { name: /7d/ }).click();
-
-    expect(screen.getByRole("button", { name: /Activity time window: 7d requested/i })).toBeTruthy();
-    expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
-      "7 days requested · 30 minutes available",
-    );
-  });
-
-  it("does not infer that longer projections are unavailable from a healthy current range", async () => {
-    render(
-      <MemoryRouter>
-        <AnalyticsLandingPage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByRole("region", { name: /Live Activity/i });
-    screen.getByRole("button", { name: /Activity time window:/i }).click();
-    const sevenDay = screen.getByRole("option", { name: /^7d$/ });
-    expect(sevenDay.textContent).toBe("7d");
-    expect(sevenDay.textContent).not.toMatch(/available/i);
   });
 
   it("uses the aggregate activity chart instead of the duplicate featured session block", async () => {

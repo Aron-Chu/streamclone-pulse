@@ -59,13 +59,14 @@ export function hasMeaningfulGameSegments(
   if (!segments.length || durationSeconds <= 0) return false
   if (segments.length > 1) return true
   const only = segments[0]!
-  return only.gameName.trim().length > 0
+  return (only.gameName ?? '').trim().length > 0
 }
 
 export function gameSegmentKey(
   segment: Pick<ChartGameSegment, 'gameName' | 'offsetSeconds'>,
 ): string {
-  return `${segment.gameName.trim().toLowerCase()}:${segment.offsetSeconds}`
+  const name = (segment.gameName ?? '').trim().toLowerCase()
+  return `${name}:${segment.offsetSeconds}`
 }
 
 function gameSegmentEndOffset(

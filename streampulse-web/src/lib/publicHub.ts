@@ -4,13 +4,6 @@ import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
   normalizeHubChannelScreenerFields,
-  normalizeHubLiveMomentComparison,
-  normalizeScreenerEvidence,
-  normalizeScreenerMetricComparison,
-  qualifiedScreenerMetricEvidenceIsCoherent,
-  type HubLiveMomentComparison,
-  type ScreenerEvidence,
-  type ScreenerMetricComparison,
   type HubChannelScreenerFields,
 } from './channelScreenerContract'
 import {
@@ -21,6 +14,10 @@ import {
   normalizeHubPublicClips,
   type HubPublicClip,
 } from './publicClipsContract'
+import {
+  normalizeLiveWireMomentComparison,
+  type LiveWireMomentComparison,
+} from './liveWire'
 
 /**
  * Mirrors PublicHubResponse from streampulse-backend/internal/analytics/hub_overview.go.
@@ -249,9 +246,11 @@ export interface HubBucketEmote {
 /**
  * Coverage metadata for the viewer sum in one activity bucket.
  *
- * The backend emits the flat fields during the projection rollout. The
- * nested form is accepted as an additive compatibility shape, but missing
- * metadata is deliberately treated as unknown by the chart.
+ * The backend emits the flat `viewerContributors`,
+ * `viewerExpectedContributors`, and `viewerCoverage` fields on activity
+ * points.  The nested shape is accepted as an additive compatibility shape so
+ * the portal can consume an intermediary deployment without treating missing
+ * metadata as a complete global total.
  */
 export type HubViewerCoverageState = 'complete' | 'partial' | 'unknown' | string
 
@@ -263,8 +262,9 @@ export interface HubViewerCoverage {
   complete?: boolean
 }
 
-/** Provider coverage is separate from the provider count. An omitted count
- * is unavailable; an explicit zero can be a measured zero. */
+/** Provider coverage is intentionally separate from the provider count. A
+ * provider row can be a measured zero, an absent row, or a lower-bound value
+ * from an older payload. */
 export interface HubProviderCoverage {
   measured?: boolean
   measuredBuckets?: number
@@ -288,7 +288,7 @@ export interface HubActivityPoint {
   twitch?: number
   bttv?: number
   ffz?: number
-  /** Exact count for provider IDs not represented by the four fixed lanes. */
+  /** Exact count for provider IDs that are not 7TV/Twitch/BTTV/FFZ. */
   other?: number
   viewers: number
   /** Number of distinct channels contributing the viewer sum in this bucket. */
@@ -307,7 +307,7 @@ export interface HubActivityPoint {
   providerCoverage?: HubProviderCoverageMap
   /** Exact provider-counter provenance for this bucket. */
   providerCountsComplete?: boolean
-  /** True when provider counters are lower bounds from a truncated map. */
+  /** True when one or more legacy top-N emote maps only provide a lower bound. */
   providerCountsLowerBound?: boolean
   /**
    * Three-valued chat measurement contract:
@@ -363,7 +363,8 @@ export interface HubActivity {
   registeredGapCount?: number
   /** Optional aggregate provider lane coverage for the requested window. */
   providerCoverage?: HubProviderCoverageMap
-  /** True only when provider lanes fully decompose the authoritative total. */
+  /** False/omitted means provider lanes are not a complete decomposition of
+   * the authoritative all-provider `point.emotes` total. */
   providerTotalsComplete?: boolean
 }
 
@@ -405,18 +406,6 @@ export interface HubMover {
   chatPerMin: number
   trendPct: number
   trendSignal?: boolean
-}
-
-/** Backend-qualified positive emote movement; never derived from browser polling. */
-export interface HubRisingChannel {
-  login: string
-  displayName?: string
-  category?: string
-  profileImageUrl?: string
-  viewers: number
-  measuredAt: number
-  comparison: ScreenerMetricComparison
-  evidence: ScreenerEvidence
 }
 
 export type HubCoverageState =
@@ -491,6 +480,8 @@ export interface HubFeaturedMoment {
 
 /** Network-wide live IRC peak row for Pulse Moments Live (multi-channel). */
 export interface HubLivePulseMoment extends HubFeaturedMoment {
+  /** Stable public detector-event identity used by Newsroom story references. */
+  publicMomentId?: string
   login?: string
   displayName?: string
   profileImageUrl?: string
@@ -501,8 +492,8 @@ export interface HubLivePulseMoment extends HubFeaturedMoment {
   category?: string
   streamStartedAt?: number
   activityTag?: string
-  /** Event-time comparison against measured history strictly before the event. */
-  comparison?: HubLiveMomentComparison
+  /** Same-stream history strictly before this event; absent until qualified. */
+  comparison?: LiveWireMomentComparison
 }
 
 export interface HubFeaturedChartPoint {
@@ -568,8 +559,6 @@ export interface PublicHub {
   emoteIntel: HubEmoteIntel
   topEmotes: HubEmote[]
   topMovers: HubMover[]
-  /** Qualified movement rows; legacy topMovers retains highest-rate semantics. */
-  risingChannels?: HubRisingChannel[]
   liveChannels: HubLiveChannel[]
   moments: HubMoment[]
   livePulseMoments: HubLivePulseMoment[]
@@ -841,38 +830,6 @@ function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   return movers.map((mover) => ({ ...mover, profileImageUrl: absoluteAssetUrl(mover.profileImageUrl) }))
 }
 
-function normalizeRisingChannels(raw: HubRisingChannel[] | undefined): HubRisingChannel[] | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const rows: HubRisingChannel[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue
-    const login = typeof item.login === 'string' ? item.login.trim() : ''
-    const viewers = Number(item.viewers)
-    const measuredAt = Number(item.measuredAt)
-    const comparison = normalizeScreenerMetricComparison(item.comparison)
-    const evidence = normalizeScreenerEvidence(item.evidence)
-    const qualified = comparison?.state === 'ready' || comparison?.state === 'new_activity'
-    if (
-      !login || !Number.isFinite(viewers) || viewers < 0 ||
-      !Number.isFinite(measuredAt) || measuredAt < 0 || !comparison || !evidence ||
-      !qualified || !qualifiedScreenerMetricEvidenceIsCoherent(comparison, evidence) ||
-      (comparison.currentPerMin ?? 0) < 5 ||
-      (comparison.absoluteDeltaPerMin ?? 0) <= 0
-    ) continue
-    rows.push({
-      login,
-      displayName: typeof item.displayName === 'string' ? item.displayName : undefined,
-      category: typeof item.category === 'string' ? item.category : undefined,
-      profileImageUrl: absoluteAssetUrl(item.profileImageUrl),
-      viewers,
-      measuredAt,
-      comparison,
-      evidence,
-    })
-  }
-  return raw.length > 0 && rows.length === 0 ? undefined : rows
-}
-
 /** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
 export function enrichTopMoversWithAvatars(
   movers: HubMover[],
@@ -1035,7 +992,6 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
     },
     topEmotes: absolutizeEmotes(raw?.topEmotes),
     topMovers: absolutizeMovers(raw?.topMovers),
-    risingChannels: normalizeRisingChannels(raw?.risingChannels),
     liveChannels: absolutizeLiveChannels(raw?.liveChannels),
     moments: absolutizeMoments(raw?.moments),
     livePulseMoments: normalizeLivePulseMoments(raw?.livePulseMoments),
@@ -1078,7 +1034,7 @@ function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLi
   return raw.map((moment) => ({
     ...moment,
     topEmotes: absolutizeEmotes(moment.topEmotes),
-    comparison: normalizeHubLiveMomentComparison(moment.comparison) ?? undefined,
+    comparison: normalizeLiveWireMomentComparison(moment.comparison) ?? undefined,
   }))
 }
 
@@ -1127,13 +1083,7 @@ function normalizeNonNegativeInt(value: unknown): number | undefined {
 function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubActivityPoint[] {
   if (!points) return []
   return points.map((point) => {
-    const providerFallback = Math.max(
-      point.seventv ?? 0,
-      point.twitch ?? 0,
-      point.bttv ?? 0,
-      point.ffz ?? 0,
-      point.other ?? 0,
-    )
+    const providerFallback = Math.max(point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
     const emotes =
       typeof point.emotes === 'number' && Number.isFinite(point.emotes)
         ? Math.max(0, point.emotes)
@@ -1147,7 +1097,8 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
       emotes,
       // Do not coerce omitted provider fields to zero. An omitted field means
       // that provider was not measured for this bucket, while an explicit
-      // zero is a legitimate measured value in newer payloads.
+      // zero is a legitimate measured value in newer payloads. The chart uses
+      // `providerCoverage`/field presence to keep those states distinct.
       twitch: normalizeActivityMetric(point.twitch),
       bttv: normalizeActivityMetric(point.bttv),
       ffz: normalizeActivityMetric(point.ffz),

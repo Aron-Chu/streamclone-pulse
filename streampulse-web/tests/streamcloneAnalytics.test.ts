@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureAnalyticsApi } from '@streampulse/analytics-console'
-import type { AnalyticsStreamDetail, PulseStreamRecap } from '@streampulse/analytics-console'
+import type { AnalyticsStreamDetail, GameSegment, PulseStreamRecap } from '@streampulse/analytics-console'
 
 const apiClientMock = vi.fn()
 const getBackendUrlMock = vi.fn(() => 'http://127.0.0.1:8081')
@@ -155,6 +155,83 @@ describe('streamcloneAnalytics adapter', () => {
     expect(detail.stream?.streamId).not.toBe(requestId)
     expect(recap?.streamId).toBe(remappedId)
     expect(recap?.streamId).not.toBe(requestId)
+  })
+
+  it('uses the live payload when a current stream detail is incorrectly canonicalized', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const requestedId = '319980544860'
+    const staleCanonicalId = '317250898295'
+    const currentStartedAt = '2026-08-20T02:02:49Z'
+    const staleStartedAt = '2026-08-17T02:03:38Z'
+
+    apiClientMock.mockImplementation((path: string) => {
+      if (path === '/v1/portal/analytics/channels/caseoh_/live') {
+        return Promise.resolve({
+          data: {
+            channel: 'caseoh_',
+            state: 'live',
+            stream: {
+              streamId: requestedId,
+              login: 'caseoh_',
+              startedAt: currentStartedAt,
+              category: 'Mile 27',
+              currentViewers: 58_000,
+            },
+            rollups: [],
+            topEmotes: [],
+            sources: [],
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      if (path.includes('/channels/caseoh_/emotes')) {
+        return Promise.resolve({ data: { topEmotes: [] } })
+      }
+      if (path.endsWith('/minutes')) {
+        return Promise.resolve({
+          data: {
+            streamId: staleCanonicalId,
+            channel: 'caseoh_',
+            startedAt: staleStartedAt,
+            minutes: [{ offsetSeconds: 0, chatCount: 1 }],
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      if (path.endsWith('/summary')) {
+        return Promise.resolve({
+          data: {
+            channel: 'caseoh_',
+            stream: { streamId: staleCanonicalId, login: 'caseoh_', startedAt: staleStartedAt },
+            topEmotes: [],
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      if (path === `/v1/portal/analytics/streams/${requestedId}`) {
+        return Promise.resolve({
+          data: {
+            channel: 'caseoh_',
+            state: 'live',
+            stream: { streamId: staleCanonicalId, login: 'caseoh_', startedAt: staleStartedAt },
+            sources: [],
+            updatedAt: Date.now(),
+          },
+        })
+      }
+      return Promise.reject(new Error(`unexpected path ${path}`))
+    })
+
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const detail = (await portalAnalyticsApi.getAnalyticsStream(requestedId, {
+      sparse: false,
+      channel: 'caseoh_',
+    })) as AnalyticsStreamDetail
+
+    expect(detail.stream?.streamId).toBe(requestedId)
+    expect(detail.stream?.startedAt).toBe(currentStartedAt)
+    expect(detail.stream?.category).toBe('Mile 27')
+    expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/caseoh_/live')
   })
 
   it('getAnalyticsLive maps viewerSamples and chatMessages from portal stream record', async () => {
@@ -345,7 +422,7 @@ describe('streamcloneAnalytics adapter', () => {
     expect(catalogEntry?.id).not.toBe('425618')
   })
 
-  it('getAnalyticsStream prefers stream summary topEmote totals over minute bucket sums', async () => {
+  it('getAnalyticsStream leaves summary totals to the staged layer-2 query', async () => {
     getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
     apiClientMock.mockImplementation((path: string) => {
       if (path.endsWith('/minutes')) {
@@ -390,7 +467,8 @@ describe('streamcloneAnalytics adapter', () => {
     const detail = (await portalAnalyticsApi.getAnalyticsStream('317839735654')) as AnalyticsStreamDetail
 
     expect(detail.topEmotes[0]?.name).toBe('Sapo')
-    expect(detail.topEmotes[0]?.count).toBe(10400)
+    expect(detail.topEmotes[0]?.count).toBe(115)
+    expect(apiClientMock).not.toHaveBeenCalledWith('/v1/portal/analytics/streams/317839735654/summary')
   })
 
   it('getAnalyticsStream uses portal totalEmoteCount when topEmotes only expose top three', async () => {
@@ -548,6 +626,38 @@ describe('streamcloneAnalytics adapter', () => {
     expect(apiClientMock.mock.calls[0]?.[0]).toBe('/v1/analytics/streams/317839735654/games')
     expect(segments).toEqual([])
     expect(apiClientMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('getStreamGameSegments preserves hydrated category art fields', async () => {
+    apiClientMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: 1,
+          streamId: '317250898295',
+          gameName: 'Just Chatting',
+          categoryId: '509658',
+          boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/509658-210x280.jpg',
+          offsetSeconds: 0,
+          durationSeconds: 600,
+          source: 'snapshot',
+          createdAt: new Date(0).toISOString(),
+        },
+      ],
+    })
+
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    configureAnalyticsApi(portalAnalyticsApi)
+    const segments = await portalAnalyticsApi.getStreamGameSegments('317250898295')
+
+    expect(segments).toHaveLength(1)
+    if (!Array.isArray(segments) || segments.length !== 1) {
+      throw new Error('expected one game segment')
+    }
+    const [segment] = segments as GameSegment[]
+    expect(segment).toMatchObject({
+      categoryId: '509658',
+      boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/509658-210x280.jpg',
+    })
   })
 
   describe('mergePortalTopEmotes', () => {
@@ -759,6 +869,31 @@ describe('streamcloneAnalytics adapter', () => {
       expect(edm).toBeTruthy()
       expect(edm!.max).toBeGreaterThan(0)
     })
+
+    it('dedupes corrupted duplicate offset-0 minutes (does not stack a fake spike at minute 0)', async () => {
+      const { portalMinutesToRollups } = await import('../src/lib/streamcloneAnalytics')
+      const startedAt = '2026-08-20T21:12:29Z'
+      // Reproduces the real stableronaldo /minutes corruption: a block of rows
+      // whose offsetSeconds were all collapsed to 0, plus a few real minutes.
+      const minutes = [
+        ...Array.from({ length: 1122 }, (_, index) => ({
+          offsetSeconds: 0,
+          chatCount: 500 + index,
+          totalEmoteCount: 200 + index,
+        })),
+        { offsetSeconds: 60, chatCount: 767, totalEmoteCount: 222 },
+        { offsetSeconds: 120, chatCount: 810, totalEmoteCount: 240 },
+      ]
+      const { rollups } = portalMinutesToRollups(startedAt, minutes)
+      expect(rollups).toHaveLength(3)
+      // The single surviving offset-0 row keeps the values of the LAST duplicate
+      // (backend consolidate-by-minute last-wins semantics).
+      expect(rollups[0]!.chatCount).toBe(500 + 1121)
+      expect(rollups[0]!.totalEmoteCount).toBe(200 + 1121)
+      // Real minutes land on their true wall-clock timestamps.
+      expect(rollups[1]!.minuteTs).toBe('2026-08-20T21:13:29.000Z')
+      expect(rollups[2]!.minuteTs).toBe('2026-08-20T21:14:29.000Z')
+    })
   })
 
   describe('portal history + live honesty', () => {
@@ -811,9 +946,18 @@ describe('streamcloneAnalytics adapter', () => {
           rollups: [{ offsetSeconds: 180, chatCount: 5, viewerAvg: 1000 }],
           topEmotes: [],
           sources: [],
-          updatedAt: Date.now(),
-          coverageStartOffsetSeconds: 180,
-          viewerSource: 'live',
+           updatedAt: Date.now(),
+           coverageStartOffsetSeconds: 180,
+           viewerSource: 'live',
+           chatCoverage: {
+             chatSpanMinutes: 45,
+             streamSpanMinutes: 120,
+             coveragePct: 37.5,
+             partial: true,
+           },
+           availability: {
+             missingRanges: [{ fromOffsetSeconds: 900, toOffsetSeconds: 1800 }],
+           },
         },
       })
 
@@ -821,9 +965,16 @@ describe('streamcloneAnalytics adapter', () => {
       configureAnalyticsApi(portalAnalyticsApi)
       const detail = (await portalAnalyticsApi.getAnalyticsLive('xqc')) as AnalyticsStreamDetail
 
-      expect(detail.coverageStartOffsetSeconds).toBe(180)
-      expect(detail.viewerSource).toBe('live')
-    })
+       expect(detail.coverageStartOffsetSeconds).toBe(180)
+       expect(detail.viewerSource).toBe('live')
+       expect(detail.chatCoverage).toEqual({
+         chatSpanMinutes: 45,
+         streamSpanMinutes: 120,
+         coveragePct: 37.5,
+         partial: true,
+         vodDurationSec: undefined,
+       })
+     })
 
     it('rejects operator historical sync on hosted portal routes', async () => {
       getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
@@ -833,7 +984,7 @@ describe('streamcloneAnalytics adapter', () => {
       )
     })
 
-    it('getAnalyticsStream merges channel emotes catalog on hosted portal routes', async () => {
+    it('getAnalyticsStream does not block the first frame on the channel emote catalog', async () => {
       getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
       apiClientMock.mockImplementation((path: string) => {
         if (path.includes('/streams/s1') && !path.includes('/minutes') && !path.includes('/summary')) {
@@ -882,10 +1033,8 @@ describe('streamcloneAnalytics adapter', () => {
         channel: 'jynxzi',
       })) as AnalyticsStreamDetail
 
-      expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/jynxzi/emotes?range=30d')
-      expect(detail.topEmotes?.find((emote) => emote.name === '67')).toMatchObject({
-        imageUrl: 'https://cdn.7tv.app/emote/01ABC/4x.webp',
-      })
+      expect(apiClientMock).not.toHaveBeenCalledWith('/v1/portal/analytics/channels/jynxzi/emotes?range=30d')
+      expect(detail.topEmotes).toEqual([])
     })
   })
 })

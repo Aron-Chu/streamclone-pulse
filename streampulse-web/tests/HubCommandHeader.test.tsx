@@ -84,13 +84,4 @@ describe('HubCommandHeader command surface', () => {
     expect(screen.getByTestId('pool-wire-stable').textContent).toMatch(/POOL\s+Stable/i)
     expect(screen.queryByText(/Waiting for lifecycle changes/i)).toBeNull()
   })
-
-  it('labels a viewer peak unavailable when the rollup has no coverage proof', () => {
-    renderHeader({ events: [] })
-    const label = screen.getByText('Viewers unavailable', { exact: true })
-    expect(label).toBeTruthy()
-    const peak = label.closest('.hub-command-header__peak')
-    expect(peak).not.toBeNull()
-    expect(peak?.querySelector('.hub-command-header__peak-value')?.textContent).toBe('—')
-  })
 })

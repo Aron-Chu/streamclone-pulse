@@ -16,10 +16,12 @@ export interface HeatmapEmote {
 }
 
 // Compact point (default response, fits the 50 KB budget).
-export interface ReplayHeatmapPoint {
+export interface ReplayHeatmapPoint extends ReactionMoment {
   offsetSeconds: number
   durationSeconds: number
   score: number
+  reactionScore?: number
+  viewerMomentumScore?: number
   confidence: number
   reason: string
   topEmotes: HeatmapEmote[]
@@ -38,6 +40,7 @@ export interface HeatmapResponse {
   windowSeconds: number
   confidence: number
   scoringVersion: string
+  reactionScoringVersion?: string
   updatedAt: number
   points: ReplayHeatmapPoint[]
 }
@@ -47,6 +50,8 @@ export interface HeatmapDetailResponse {
   windowSeconds: number
   confidence: number
   scoringVersion: string
+  reactionScoringVersion?: string
   updatedAt: number
   points: ReplayHeatmapDetailPoint[]
 }
+import type { ReactionMoment } from '@streampulse/pulse-core'

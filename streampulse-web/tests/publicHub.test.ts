@@ -102,16 +102,59 @@ describe('normalizePublicHub', () => {
     expect(hub.activity.points[0].emotes).toBe(37)
   })
 
-  it('retains the Other residual when deriving a legacy total', () => {
+  it('preserves provider-field absence and explicit measured zero separately', () => {
     const hub = normalizePublicHub({
       activity: {
         windowMinutes: 30,
         channelCount: 1,
-        points: [{ t: 1, chat: 100, seventv: 3, other: 11, viewers: 1000 }],
+        providerTotalsComplete: true,
+        points: [
+          { t: 1, chat: 1, seventv: 1, viewers: 1 },
+          { t: 2, chat: 1, seventv: 1, twitch: 0, bttv: 0, ffz: 0, viewers: 1 },
+        ],
       },
     })
 
-    expect(hub.activity.points[0]?.emotes).toBe(11)
+    expect(hub.activity.providerTotalsComplete).toBe(true)
+    expect(hub.activity.points[0]?.twitch).toBeUndefined()
+    expect(hub.activity.points[0]?.bttv).toBeUndefined()
+    expect(hub.activity.points[1]?.twitch).toBe(0)
+    expect(hub.activity.points[1]?.bttv).toBe(0)
+    expect(hub.activity.points[1]?.ffz).toBe(0)
+  })
+
+  it('normalizes viewer completeness metadata without turning unknown rows into complete rows', () => {
+    const hub = normalizePublicHub({
+      activity: {
+        windowMinutes: 30,
+        channelCount: 3,
+        points: [
+          {
+            t: 1,
+            chat: 1,
+            seventv: 1,
+            viewers: 100,
+            viewerContributors: 2.9,
+            viewerExpectedContributors: 3.9,
+            viewerCoverage: ' PARTIAL ',
+          },
+          {
+            t: 2,
+            chat: 1,
+            seventv: 1,
+            viewers: 100,
+            viewerCoverage: ' unknown ',
+          },
+        ],
+      },
+    })
+
+    expect(hub.activity.points[0]).toMatchObject({
+      viewerContributors: 2,
+      viewerExpectedContributors: 3,
+      viewerCoverage: 'partial',
+    })
+    expect(hub.activity.points[1]?.viewerCoverage).toBe('unknown')
   })
 
   it('enrichTopMoversWithAvatars joins avatars from live channels', () => {

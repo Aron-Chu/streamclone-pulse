@@ -1,0 +1,203 @@
+.sc-chart-root .sc-chart-plot {
+  transition: opacity 0.2s ease;
+}
+
+.sc-chart-root[data-view-mode='overview'] .sc-chart-plot,
+.sc-chart-root[data-view-mode='spikes'] .sc-chart-plot {
+  opacity: 1;
+}
+
+.sc-emote-plot-line {
+  transition: opacity 0.2s ease, stroke-opacity 0.2s ease;
+}
+
+.sc-hover-line,
+.sc-playhead-line {
+  will-change: transform;
+}
+
+.sc-moment-row-selected {
+  animation: sc-moment-row-pop 0.34s cubic-bezier(0.2, 1.35, 0.35, 1);
+}
+
+@keyframes sc-moment-row-pop {
+  0% {
+    transform: translateY(2px) scale(0.992);
+    box-shadow: 0 0 0 rgb(245 158 11 / 0);
+  }
+  58% {
+    transform: translateY(-1px) scale(1.006);
+    box-shadow: 0 0 24px rgb(245 158 11 / 0.16);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 rgb(245 158 11 / 0);
+  }
+}
+
+.sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
+  animation: sc-stat-pulse 0.22s ease;
+}
+
+@keyframes sc-stat-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.sc-stream-row {
+  min-width: 0;
+  overflow: hidden;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.sc-stream-row__title {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* The focus surface responds to the chart column, not the browser viewport.
+   This keeps the same session route usable beside either inspector width. */
+[data-chart-focus-bar] {
+  container-type: inline-size;
+}
+
+[data-analytics-console-shell] {
+  container-type: inline-size;
+}
+
+[data-session-chart-stack] {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+[data-session-chart-rail] {
+  /* The last x-axis label ends about 14px above the SVG edge. Pulling the
+     footer into that invisible gutter leaves a deliberate 4–8px breathing
+     space without covering labels or changing the extension chart. */
+  position: relative;
+  z-index: 2;
+  margin-top: -0.5rem;
+}
+
+[data-session-details-tabs] {
+  min-height: 22.5rem;
+  flex: 0 0 auto;
+}
+
+@container (min-width: 1200px) {
+  [data-analytics-console-shell][data-chart-focused='false'] [data-analytics-console-grid] {
+    grid-template-columns: minmax(0, 1fr) clamp(21.25rem, 26cqi, 25rem);
+  }
+
+  [data-analytics-console-shell][data-chart-focused='false'] [data-analytics-center-column] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  [data-analytics-console-shell][data-chart-focused='false'] [data-analytics-right-column] {
+    position: sticky;
+    top: 1rem;
+    grid-column: 2;
+    grid-row: 1;
+    max-height: calc(100vh - 12rem);
+    align-self: start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  [data-analytics-console-shell][data-chart-focused='false'][data-streams-visible='true'] [data-analytics-stream-column] {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+[data-analytics-right-column]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* The portal frame tops out at 1520px including its own padding, leaving a
+   roughly 1480px console. Enter the full streams/chart/details composition
+   before that ceiling so wide screens do not get a sparse two-column shell. */
+@container (min-width: 1380px) {
+  [data-analytics-console-shell][data-chart-focused='false'][data-streams-visible='true'] [data-analytics-console-grid] {
+    grid-template-columns: minmax(16.25rem, 17.5rem) minmax(0, 1fr) clamp(21.25rem, 24cqi, 25rem);
+  }
+
+  [data-analytics-console-shell][data-chart-focused='false'][data-streams-visible='true'] [data-analytics-stream-column] {
+    position: sticky;
+    top: 1rem;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+  }
+
+  [data-analytics-console-shell][data-chart-focused='false'][data-streams-visible='true'] [data-analytics-center-column] {
+    grid-column: 2;
+  }
+
+  [data-analytics-console-shell][data-chart-focused='false'][data-streams-visible='true'] [data-analytics-right-column] {
+    grid-column: 3;
+  }
+}
+
+@container (max-width: 640px) {
+  [data-chart-focus-top-row] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.375rem;
+  }
+
+  [data-chart-primary-focus-row] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  [data-chart-primary-focus-row] > button,
+  [data-chart-focus-utilities] > button {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  [data-chart-focus-utilities] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-left: 0;
+    border-top: 1px solid rgb(255 255 255 / 0.1);
+    padding-top: 0.375rem;
+    padding-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-chart-root .sc-chart-plot,
+  .sc-emote-plot-line,
+  .sc-stream-row {
+    transition: none !important;
+  }
+
+  .sc-moment-row-selected,
+  .sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
+    animation: none !important;
+  }
+}

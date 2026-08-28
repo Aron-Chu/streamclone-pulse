@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Activity, Database, TrendingUp } from 'lucide-react'
 import {
   HUB_TOP_MOVERS_CAP,
@@ -6,7 +6,6 @@ import {
   type HubEmote,
   type HubEmoteIntel,
   type HubMover,
-  type HubRisingChannel,
 } from '../../../lib/publicHub'
 import {
   emoteMarketModuleAvailable,
@@ -15,17 +14,14 @@ import {
 } from '../../../lib/emoteMarketContract'
 import { EmoteEconomyPanel, TopMoversList } from '../hub'
 import '../hub/hub.css'
-import { compact, displayName, formatLeadingEmoteShare } from './hubFormat'
+import { compact, formatLeadingEmoteShare } from './hubFormat'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
-import { MarketPanelFrame, PairedRateBars } from './AnalyticsTruthPrimitives'
-import { EMOTE_MARKET_PREVIEW_FIXTURE } from '../../../dev/fixtures/emoteMarketPreview'
-import { activateRovingTab } from './rovingTabs'
+import { Skeleton } from '../../primitives'
 
 export interface FigmaEmoteSignalBlockProps {
   intel: HubEmoteIntel
   topEmotes?: HubEmote[]
   topMovers?: HubMover[]
-  risingChannels?: HubRisingChannel[]
   loading?: boolean
   corpusPipeline?: HubCorpusPipeline
   poolSize?: number
@@ -42,55 +38,10 @@ const MARKET_VIEWS: Array<{ key: EmoteMarketView; label: string }> = [
   { key: 'provider', label: 'Provider regime' },
 ]
 
-function median(values: number[]): number | null {
-  if (values.length === 0) return null
-  const sorted = [...values].sort((a, b) => a - b)
-  const midpoint = Math.floor(sorted.length / 2)
-  return sorted.length % 2 ? sorted[midpoint] : (sorted[midpoint - 1] + sorted[midpoint]) / 2
-}
-
-function RisingChannelsPanel({ rows, loading }: { rows?: HubRisingChannel[]; loading?: boolean }) {
-  if (loading && rows == null) return <MarketPanelFrame title="Rising channels" state="loading" />
-  if (rows == null) return null
-  const visible = rows.slice(0, HUB_TOP_MOVERS_CAP)
-  const medianLift = median(visible.map((row) => row.comparison.absoluteDeltaPerMin ?? 0))
-  return (
-    <MarketPanelFrame
-      title="Rising channels"
-      state={visible.length > 0 ? 'ready' : 'empty'}
-      description="No channels have a qualified positive emote lift in this window."
-    >
-      <div className="emote-market__rising-head">
-        <span>{visible.length} qualifying channel{visible.length === 1 ? '' : 's'}</span>
-        {medianLift != null ? <strong>Median lift +{compact(medianLift)}/min</strong> : null}
-      </div>
-      <ol className="emote-market__rising-list">
-        {visible.map((row) => (
-          <li key={`${row.login}-${row.measuredAt}`}>
-            <div className="emote-market__rising-name">
-              <strong>{displayName(row.login, row.displayName)}</strong>
-              <span>{row.category || `${compact(row.viewers)} viewers`}</span>
-            </div>
-            <PairedRateBars
-              current={row.comparison.currentPerMin}
-              baseline={row.comparison.baselinePerMin}
-              currentLabel="Latest 5 min"
-              baselineLabel="Stream average"
-              tone="emotes"
-              compact
-            />
-          </li>
-        ))}
-      </ol>
-    </MarketPanelFrame>
-  )
-}
-
 export function FigmaEmoteSignalBlock({
   intel,
   topEmotes = [],
   topMovers = [],
-  risingChannels,
   loading,
   corpusPipeline,
   poolSize,
@@ -99,11 +50,6 @@ export function FigmaEmoteSignalBlock({
 }: FigmaEmoteSignalBlockProps) {
   const labels = useCommandCenterLabels()
   const [view, setView] = useState<EmoteMarketView>('leaders')
-  const fixtureEnabled =
-    (import.meta.env.DEV || import.meta.env.MODE === 'test') &&
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('marketPreview') === 'fixture'
-  const preview = fixtureEnabled ? EMOTE_MARKET_PREVIEW_FIXTURE : null
 
   const seventvProvider = intel.providerShares.find(
     (row) =>
@@ -168,19 +114,7 @@ export function FigmaEmoteSignalBlock({
     },
   ]
 
-  const availableViews = useMemo(
-    () => MARKET_VIEWS.filter((tab) => {
-      if (preview) return true
-      if (tab.key === 'leaders' || tab.key === 'concentration') return true
-      if (tab.key === 'provider') return intel.providerShares.length > 0
-      return emoteMarketModuleAvailable(emoteMarket, tab.key)
-    }),
-    [emoteMarket, intel.providerShares.length, preview],
-  )
-
-  useEffect(() => {
-    if (!availableViews.some((tab) => tab.key === view)) setView('leaders')
-  }, [availableViews, view])
+  const viewAvailable = emoteMarketModuleAvailable(emoteMarket, view)
 
   return (
     <section className="figma-block emote-market" aria-labelledby="figma-emote-signal-title">
@@ -207,78 +141,68 @@ export function FigmaEmoteSignalBlock({
       </div>
 
       <div className="emote-market__views" role="tablist" aria-label="Emote Market views">
-        {availableViews.map((tab) => {
+        {MARKET_VIEWS.map((tab) => {
+          const available = emoteMarketModuleAvailable(emoteMarket, tab.key)
+          const pending = !available && (tab.key === 'breadth' || tab.key === 'rotation')
           return (
             <button
               key={tab.key}
-              id={`emote-market-tab-${tab.key}`}
-              aria-controls="emote-market-panel"
               type="button"
               role="tab"
               aria-selected={view === tab.key}
-              tabIndex={view === tab.key ? 0 : -1}
-              className={`emote-market__view-tab${view === tab.key ? ' is-active' : ''}`}
+              className={`emote-market__view-tab${view === tab.key ? ' is-active' : ''}${
+                pending ? ' emote-market__view-tab--pending' : ''
+              }`}
               onClick={() => setView(tab.key)}
-              onKeyDown={activateRovingTab}
             >
               {tab.label}
+              {pending ? <span className="emote-market__view-hint"> · soon</span> : null}
             </button>
           )
         })}
       </div>
-
-      {preview ? (
-        <p className="emote-market__fixture-note" role="status">
-          Internal deterministic design preview · not live analytics · generated {preview.generatedAt}
-        </p>
-      ) : null}
 
       <div className="figma-kpi-grid figma-kpi-grid--5">
         {kpis.map(({ label, value, sub, color, title }) => (
           <div key={label} className="figma-kpi" title={title}>
             <div className="figma-kpi__lbl">{label}</div>
             <div className="figma-kpi__val" style={{ color }}>
-              {loading ? '...' : value}
+              {loading ? <Skeleton width="3.5rem" height="1.25rem" /> : value}
             </div>
             <div className="figma-kpi__sub">{sub}</div>
           </div>
         ))}
       </div>
 
-      <div id="emote-market-panel" role="tabpanel" aria-labelledby={`emote-market-tab-${view}`} className="emote-market__tabpanel">
-
       {view === 'leaders' ? (
         <div className="figma-economy-grid figma-economy-grid--padded">
-          {risingChannels !== undefined ? (
-            <RisingChannelsPanel rows={risingChannels} loading={loading} />
-          ) : (
-            <div className="figma-panel">
-              <div className="figma-panel__head">
-                <span className="figma-panel__head-label">
-                  <TrendingUp size={11} /> Highest emote rate
-                </span>
-                <span className="figma-panel__head-meta figma-panel__head-meta--scope">
-                  current rate · not movement
-                </span>
-              </div>
-              <p className="emote-market__legacy-note">
-                Qualified rising-channel comparisons are not in this payload. These rows are the highest current emote rates, not change over time.
-              </p>
-              <div className="hubx figma-economy-embed">
-                <TopMoversList
-                  movers={topMovers}
-                  maxRows={HUB_TOP_MOVERS_CAP}
-                  loading={loading}
-                  honesty={corpusPipeline ? {
-                    rosterLive: corpusPipeline.roster.live,
-                    collectorTracking: corpusPipeline.roster.collectorTracking,
-                    poolSize,
-                    windowMinutes,
-                  } : undefined}
-                />
-              </div>
+          <div className="figma-panel">
+            <div className="figma-panel__head">
+              <span className="figma-panel__head-label">
+                <TrendingUp size={11} /> Top movers
+              </span>
+              <span className="figma-panel__head-meta figma-panel__head-meta--scope">
+                emote velocity · within IRC-tracked live channels
+              </span>
             </div>
-          )}
+            <div className="hubx figma-economy-embed">
+              <TopMoversList
+                movers={topMovers}
+                maxRows={HUB_TOP_MOVERS_CAP}
+                loading={loading}
+                honesty={
+                  corpusPipeline
+                    ? {
+                        rosterLive: corpusPipeline.roster.live,
+                        collectorTracking: corpusPipeline.roster.collectorTracking,
+                        poolSize,
+                        windowMinutes,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
           <div className="figma-panel">
             <div className="figma-panel__head">
               <span className="figma-panel__head-label">
@@ -296,29 +220,8 @@ export function FigmaEmoteSignalBlock({
       ) : null}
 
       {view === 'provider' ? (
-        preview ? (
-          <div className="emote-market__preview-grid">
-            <MarketPanelFrame title="Provider regime" state="ready">
-              <div className="emote-market__provider-compare">
-                {preview.providers.map((provider) => (
-                  <div key={provider.provider}>
-                    <strong>{provider.provider}</strong>
-                    <PairedRateBars
-                      current={provider.currentSharePct}
-                      baseline={provider.previousSharePct}
-                      currentLabel={preview.currentWindow.label}
-                      baselineLabel={preview.comparisonWindow.label}
-                      unit="%"
-                      compact
-                    />
-                  </div>
-                ))}
-              </div>
-            </MarketPanelFrame>
-          </div>
-        ) : (
-          <div className="figma-economy-grid figma-economy-grid--padded">
-            <div className="figma-panel figma-panel--scope-provider emote-market__panel">
+        <div className="figma-economy-grid figma-economy-grid--padded">
+          <div className="figma-panel figma-panel--scope-provider emote-market__panel">
             <div className="figma-panel__head">
               <span className="figma-panel__head-label">
                 <Activity size={11} /> Provider regime
@@ -339,25 +242,12 @@ export function FigmaEmoteSignalBlock({
             <div className="hubx figma-economy-embed">
               <EmoteEconomyPanel intel={intel} topEmotes={topEmotes} loading={loading} />
             </div>
-            </div>
           </div>
-        )
+        </div>
       ) : null}
 
       {view === 'concentration' ? (
-        preview ? (
-          <div className="emote-market__preview-grid">
-            <MarketPanelFrame title="Reaction concentration" state="ready">
-              <div className="emote-market__stack" role="img" aria-label={preview.concentration.map((segment) => `${segment.label} ${segment.sharePct}%`).join(', ')}>
-                {preview.concentration.map((segment) => <i key={segment.label} style={{ width: `${segment.sharePct}%`, background: segment.color }} />)}
-              </div>
-              <div className="emote-market__legend">
-                {preview.concentration.map((segment) => <span key={segment.label}>{segment.label} {segment.sharePct}%</span>)}
-              </div>
-            </MarketPanelFrame>
-          </div>
-        ) : (
-          <div className="emote-market__panel emote-market__concentration" role="status">
+        <div className="emote-market__panel emote-market__concentration" role="status">
           <div className="emote-market__stat">
             <span className="emote-market__stat-lbl">Top 1 share</span>
             <strong>
@@ -394,11 +284,21 @@ export function FigmaEmoteSignalBlock({
               Concentration from current hub top-emote shares (bounded payload).
             </p>
           )}
-          </div>
-        )
+        </div>
       ) : null}
 
-      {view === 'breadth' && (preview?.breadth || emoteMarket?.breadth) ? (
+      {(view === 'breadth' || view === 'rotation') && !viewAvailable ? (
+        <div className="emote-market__gated" role="status">
+          <Database size={14} aria-hidden="true" />
+          <span>
+            {view === 'breadth'
+              ? 'Cross-channel breadth needs a sanitized backend aggregation with range watermark.'
+              : 'Equal-window rotation needs backend rank deltas — not client poll history.'}
+          </span>
+        </div>
+      ) : null}
+
+      {view === 'breadth' && viewAvailable && emoteMarket?.breadth ? (
         <div className="emote-market__table-wrap">
           <table className="emote-market__table">
             <thead>
@@ -410,7 +310,7 @@ export function FigmaEmoteSignalBlock({
               </tr>
             </thead>
             <tbody>
-              {(preview?.breadth ?? emoteMarket?.breadth ?? []).map((row) => (
+              {emoteMarket.breadth.map((row) => (
                 <tr key={`${row.name}-${row.provider ?? ''}`}>
                   <td>{row.name}</td>
                   <td>{row.provider ?? '—'}</td>
@@ -425,7 +325,7 @@ export function FigmaEmoteSignalBlock({
         </div>
       ) : null}
 
-      {view === 'rotation' && (preview?.rotation || emoteMarket?.rotation) ? (
+      {view === 'rotation' && viewAvailable && emoteMarket?.rotation ? (
         <div className="emote-market__table-wrap">
           <table className="emote-market__table">
             <thead>
@@ -437,18 +337,16 @@ export function FigmaEmoteSignalBlock({
               </tr>
             </thead>
             <tbody>
-              {(preview?.rotation ?? emoteMarket?.rotation ?? []).map((row) => (
-                <tr key={`${row.name}-${row.provider ?? ''}-${'currentRank' in row ? row.currentRank : row.rank}`}>
+              {emoteMarket.rotation.map((row) => (
+                <tr key={`${row.name}-${row.provider ?? ''}-${row.rank}`}>
                   <td>{row.name}</td>
-                  <td>{'currentRank' in row ? row.currentRank : row.rank}</td>
+                  <td>{row.rank}</td>
                   <td>
-                    {'currentRank' in row
-                      ? row.previousRank != null
-                        ? `${row.previousRank} → ${row.currentRank}`
-                        : 'New'
-                      : row.rankDelta != null
-                        ? row.rankDelta > 0 ? `+${row.rankDelta}` : String(row.rankDelta)
-                        : '—'}
+                    {row.rankDelta != null
+                      ? row.rankDelta > 0
+                        ? `+${row.rankDelta}`
+                        : String(row.rankDelta)
+                      : '—'}
                   </td>
                   <td>{row.status}</td>
                 </tr>
@@ -457,7 +355,6 @@ export function FigmaEmoteSignalBlock({
           </table>
         </div>
       ) : null}
-      </div>
     </section>
   )
 }

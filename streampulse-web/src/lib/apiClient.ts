@@ -156,6 +156,11 @@ export async function apiClient<T = unknown>(
         ...rest,
         headers: requestHeaders,
         body: requestBody,
+        // Dynamic portal/API responses must not be replayed by the browser
+        // cache. The public-hub hook has its own bounded cache and always
+        // revalidates in the background, so HTTP cache hits can otherwise make
+        // a fresh build appear to show an old analytics snapshot.
+        cache: rest.cache ?? 'no-store',
         signal: controller.signal,
       })
       window.clearTimeout(timer)

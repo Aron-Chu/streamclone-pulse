@@ -10,14 +10,14 @@ import type {
   PulseRecapEmote,
   PulseRecapMoment,
 } from '../apiTypes.ts'
+import { viewerReadoutValue } from '@streampulse/pulse-charts'
 import type { ReplayHeatmapPoint } from '../types/heatmap.ts'
 import { minuteEmoteTotal } from '../components/analytics/chartRollupUtils.ts'
-import { viewerValue } from '../components/analytics/chartRollupUtils.ts'
 import { findNearestRollupByOffset } from './momentSelection.ts'
 import { enrichRecapEmotesFromCatalog, resolveMomentEmotesForOffset } from './recapEmoteEnrich.ts'
 
 export interface MomentRowStats {
-  viewers: number
+  viewers: number | null
   chatPerMin: number
   emotesPerMin: number
 }
@@ -59,8 +59,8 @@ export function resolveMomentRowStats(args: {
     (moment?.viewerCount ?? 0) > 0
       ? moment!.viewerCount!
       : rollup
-        ? viewerValue(rollup) ?? 0
-        : 0
+        ? viewerReadoutValue(rollup)
+        : null
   const chatPerMin =
     (moment?.chatCount ?? 0) > 0
       ? moment!.chatCount!

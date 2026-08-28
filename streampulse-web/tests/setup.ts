@@ -53,6 +53,10 @@ if (typeof window.matchMedia !== 'function') {
   })
 }
 
+if (typeof HTMLElement.prototype.scrollTo !== 'function') {
+  HTMLElement.prototype.scrollTo = () => {}
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()

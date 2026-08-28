@@ -2,13 +2,15 @@ import { buildAnalyticsHref } from './analyticsLinks'
 import { apiClient } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import type { HubFeaturedCoverageRow, HubFeaturedSession, PublicHub } from './publicHub'
-import type { HubLiveMomentComparison } from './channelScreenerContract'
 import { formatStreamOffset } from './streamcloneAnalytics'
 import { PORTAL_MINUTES_TIMEOUT_MS } from './timelineDownsample'
+import type { LiveWireMomentComparison } from './liveWire'
 
 export type FigmaSessionState = 'loading' | 'empty' | 'ready'
 
 export interface FigmaMomentRow {
+  /** Stable public detector-event identity; absent on legacy/fallback rows. */
+  publicMomentId?: string
   offsetSeconds: number
   /** Wall-clock peak time (unix ms) when known — used for cross-channel feed sort. */
   at?: number
@@ -34,7 +36,8 @@ export interface FigmaMomentRow {
   category?: string
   streamStartedAt?: number
   activityTag?: string
-  comparison?: HubLiveMomentComparison
+  /** Qualified event-minute comparison against earlier history in this stream. */
+  comparison?: LiveWireMomentComparison
 }
 
 export interface FigmaChartPoint {
@@ -188,6 +191,7 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
         ? buildAnalyticsHref({ login, offsetSeconds: moment.offsetSeconds })
         : undefined
   return {
+    publicMomentId: moment.publicMomentId,
     offsetSeconds: moment.offsetSeconds,
     score: moment.score,
     label: moment.label,

@@ -101,8 +101,6 @@ describe('hubMetricHelpers', () => {
         chat: 100,
         emotes: 50,
         seventv: 20,
-        hasViewerRollup: true,
-        viewerCoverage: 'complete',
         bucketComplete: true,
       },
     ]

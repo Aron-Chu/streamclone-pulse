@@ -73,6 +73,8 @@ test.describe('portal VOD correctness (mocked)', () => {
     expect(hrefNoAlign).toBeTruthy()
     expect(hrefNoAlign!).not.toContain('?t=')
     expect(hrefNoAlign!).not.toContain(NEIGHBOR_VOD_ID)
+    await expect(page.locator(`a[href*="/videos/${PORTAL_VOD_ID}"][href*="t="]`)).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /Jump to VOD ·/ })).toHaveCount(0)
 
     // Missing stream-ID VOD hint: empty vodId in availability with neighbor only in recap — still exact stream id.
     expect(hrefNoAlign!).toContain(PORTAL_VOD_ID)

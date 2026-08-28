@@ -41,6 +41,36 @@ export function clampGamesDurationSeconds(rollupSpan: number, wallDuration: numb
   return Math.max(0, rollupSpan)
 }
 
+/**
+ * Duration used by the Games Played rail.
+ *
+ * Live sessions remain bounded to the loaded chart window. For ended sessions,
+ * retain the complete backend-authored game timeline even when rollup coverage
+ * is sparse, while still capping impossible overlong segments to wall time.
+ */
+export function resolveGamesTimelineDurationSeconds(
+  games: GameSegmentPlotInput[] | null | undefined,
+  chartDurationSeconds: number,
+  wallDurationSeconds: number,
+  isLive: boolean | undefined,
+): number {
+  const chartDuration = Number.isFinite(chartDurationSeconds)
+    ? Math.max(0, chartDurationSeconds)
+    : 0
+  if (isLive) return chartDuration
+
+  const gameTimelineEnd = (games ?? []).reduce((latest, game) => {
+    if (!Number.isFinite(game.offsetSeconds) || !Number.isFinite(game.durationSeconds)) return latest
+    return Math.max(latest, Math.max(0, game.offsetSeconds) + Math.max(0, game.durationSeconds))
+  }, 0)
+  const knownDuration = Math.max(chartDuration, gameTimelineEnd)
+  if (wallDurationSeconds > 0 && knownDuration > 0) {
+    return Math.min(knownDuration, wallDurationSeconds)
+  }
+  if (knownDuration > 0) return knownDuration
+  return Math.max(0, wallDurationSeconds)
+}
+
 /** Drop reconstructed rollups that sit past wall duration (defense in depth). */
 export function trimRollupsToWallDuration<T extends { minuteTs: string }>(
   rollups: T[],
@@ -99,13 +129,27 @@ export function gameNameAtOffset(
 /** Synthesize one chart segment when the games API is empty but stream category is known. */
 export function deriveChartGameSegments(
   streamId: string,
-  detail: { stream?: { category?: string }; rollups?: Array<{ minuteTs: string }> } | null | undefined,
+  detail: { stream?: { category?: string; categoryId?: string }; rollups?: Array<{ minuteTs: string }> } | null | undefined,
   apiSegments: ChartGameSegment[] | null | undefined,
   options?: { allowCategoryFallback?: boolean },
 ): ChartGameSegment[] {
-  if (apiSegments?.length) return apiSegments
-  if (options?.allowCategoryFallback === false) return []
   const category = detail?.stream?.category?.trim() ?? ''
+  const categoryId = detail?.stream?.categoryId?.trim() || undefined
+  if (apiSegments?.length) {
+    // A segment can be valid but still lack identity when the portal stream
+    // record was synthesized from the current category. Only repair a segment
+    // whose name matches that category; never apply one game's id to another
+    // historical segment.
+    if (!categoryId || !category) return apiSegments
+    const normalizedCategory = category.toLowerCase()
+    return apiSegments.map(segment => {
+      if (segment.categoryId?.trim() || segment.gameName.trim().toLowerCase() !== normalizedCategory) {
+        return segment
+      }
+      return { ...segment, categoryId }
+    })
+  }
+  if (options?.allowCategoryFallback === false) return []
   if (!category || PLACEHOLDER_CATEGORIES.test(category)) return []
   const rollups = detail?.rollups ?? []
   const durationSeconds = minuteRollupSpanSeconds(rollups)
@@ -116,6 +160,7 @@ export function deriveChartGameSegments(
       streamId,
       gameName: category,
       boxArtUrl: '',
+      categoryId,
       offsetSeconds: 0,
       durationSeconds,
       createdAt: new Date(0).toISOString(),

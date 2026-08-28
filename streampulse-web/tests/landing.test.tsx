@@ -7,22 +7,34 @@ import Landing from '../src/routes/public/Landing'
 // tests/setup.ts cannot wipe their implementations between cases.
 vi.mock('../src/lib/publicHub', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/lib/publicHub')>()
+  const hub = {
+    generatedAt: new Date().toISOString(),
+    poolSize: 0,
+    corpus: {},
+    coverage: {},
+    activity: { points: [], windowMinutes: 30, channelCount: 0 },
+    emoteIntel: {},
+    topEmotes: [{ name: 'KEKW', provider: '7tv', count: 900, sharePct: 22 }],
+    topMovers: [
+      {
+        login: 'xqc',
+        displayName: 'xQc',
+        viewers: 12_000,
+        chatPerMin: 400,
+        seventvPerMin: 120,
+        trendPct: 8,
+      },
+    ],
+    liveChannels: [],
+    moments: [],
+  }
   return {
     ...actual,
-    fetchPublicHub: () =>
+    fetchPublicHubBase: () =>
       Promise.resolve({
-        data: {
-          generatedAt: new Date().toISOString(),
-          poolSize: 0,
-          corpus: {},
-          coverage: {},
-          activity: { points: [], windowMinutes: 30, channelCount: 0 },
-          emoteIntel: {},
-          topEmotes: [],
-          topMovers: [],
-          liveChannels: [],
-          moments: [],
-        },
+        data: hub,
+        loadSource: 'full' as const,
+        hubEndpointOk: true,
       }),
   }
 })

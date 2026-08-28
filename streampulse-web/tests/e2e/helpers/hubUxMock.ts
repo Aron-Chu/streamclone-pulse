@@ -9,16 +9,13 @@ function build24hActivityPoints(now: number): Array<{
   ffz: number
   viewers: number
   emotes: number
-  bucketComplete: boolean
-  hasViewerRollup: boolean
-  viewerCoverage: string
   viewerContributors: number
   viewerExpectedContributors: number
+  viewerCoverage: 'complete'
+  bucketComplete: boolean
 }> {
   const bucketMs = 6 * 60_000
-  // Historical projections contain closed buckets only. The bucket aligned to
-  // `now` is still open and must not be marked complete in a contract fixture.
-  const alignedEnd = Math.floor(now / bucketMs) * bucketMs - bucketMs
+  const alignedEnd = Math.floor(now / bucketMs) * bucketMs
   const points: Array<{
     t: number
     chat: number
@@ -28,13 +25,12 @@ function build24hActivityPoints(now: number): Array<{
     ffz: number
     viewers: number
     emotes: number
-    bucketComplete: boolean
-    hasViewerRollup: boolean
-    viewerCoverage: string
     viewerContributors: number
     viewerExpectedContributors: number
+    viewerCoverage: 'complete'
+    bucketComplete: boolean
   }> = []
-  for (let i = 0; i < 240; i += 1) {
+  for (let i = 0; i < 48; i += 1) {
     const t = alignedEnd - i * bucketMs
     points.push({
       t,
@@ -45,142 +41,43 @@ function build24hActivityPoints(now: number): Array<{
       ffz: 1,
       viewers: 500_000 + i * 2_000,
       emotes: 40 + i,
-      bucketComplete: true,
-      hasViewerRollup: true,
+      viewerContributors: 14,
+      viewerExpectedContributors: 14,
       viewerCoverage: 'complete',
-      viewerContributors: 96,
-      viewerExpectedContributors: 96,
+      bucketComplete: true,
     })
   }
+  const historicalT = alignedEnd - 8 * 60 * 60 * 1000
+  points.push({
+    t: historicalT,
+    chat: 42,
+    seventv: 10,
+    twitch: 6,
+    bttv: 3,
+    ffz: 2,
+    viewers: 920_000,
+    emotes: 88,
+    viewerContributors: 14,
+    viewerExpectedContributors: 14,
+    viewerCoverage: 'complete',
+    bucketComplete: true,
+  })
   return points.sort((a, b) => a.t - b.t)
 }
 
-type MockMetricState = 'ready' | 'new_activity' | 'warming' | 'partial' | 'unavailable'
-
-function mockMetricComparison(
-  state: MockMetricState,
-  currentPerMin: number,
-  baselinePerMin: number,
-  currentMeasuredMinutes: number,
-  currentExpectedMinutes: number,
-  baselineMeasuredMinutes: number,
-  baselineExpectedMinutes: number,
-) {
-  const absoluteDeltaPerMin = currentPerMin - baselinePerMin
-  return {
-    state,
-    ...(state === 'warming' ? { reason: 'baseline_warming' } : {}),
-    ...(state === 'partial' ? { reason: 'current_window_partial' } : {}),
-    ...(state === 'unavailable' ? { reason: 'irc_unbound' } : {}),
-    ...(state === 'new_activity' ? { reason: 'baseline_zero' } : {}),
-    currentPerMin,
-    baselinePerMin,
-    absoluteDeltaPerMin,
-    ...(state === 'ready' && baselinePerMin > 0
-      ? {
-          changePct: Number(((absoluteDeltaPerMin / baselinePerMin) * 100).toFixed(2)),
-          multiplier: Number((currentPerMin / baselinePerMin).toFixed(2)),
-        }
-      : {}),
-    currentMeasuredMinutes,
-    currentExpectedMinutes,
-    baselineMeasuredMinutes,
-    baselineExpectedMinutes,
-    baselineCoveragePct:
-      baselineExpectedMinutes > 0
-        ? Number(((baselineMeasuredMinutes / baselineExpectedMinutes) * 100).toFixed(2))
-        : 0,
-  }
-}
-
-function buildMockScreener(index: number, now: number, chatPerMin: number, emotesPerMin: number) {
-  const closedEnd = Math.floor(now / 60_000) * 60_000
-  const currentStart = closedEnd - 5 * 60_000
-  const state: MockMetricState =
-    index === 1 ? 'new_activity' :
-    index === 2 ? 'warming' :
-    index === 3 ? 'partial' :
-    index === 4 ? 'unavailable' : 'ready'
-  const currentMeasured = state === 'warming' ? 3 : state === 'partial' ? 4 : state === 'unavailable' ? 0 : 5
-  const baselineExpected = state === 'unavailable' ? 0 : state === 'warming' ? 15 : 60
-  const baselineMeasured = state === 'unavailable' ? 0 : state === 'warming' ? 10 : state === 'partial' ? 40 : 60
-  const baselineStart = currentStart - baselineExpected * 60_000
-  const chatBaseline = state === 'unavailable' ? 0 : Math.max(1, chatPerMin - 70)
-  const emoteBaseline = state === 'new_activity' || state === 'unavailable' ? 0 : Math.max(1, emotesPerMin - 35)
-  const metricState = state === 'new_activity' ? 'ready' : state
-  const chat = mockMetricComparison(
-    metricState,
-    state === 'unavailable' ? 0 : chatPerMin,
-    chatBaseline,
-    currentMeasured,
-    5,
-    baselineMeasured,
-    baselineExpected,
-  )
-  const emotes = mockMetricComparison(
-    state,
-    state === 'unavailable' ? 0 : emotesPerMin,
-    emoteBaseline,
-    currentMeasured,
-    5,
-    baselineMeasured,
-    baselineExpected,
-  )
-  return {
-    version: 1,
-    streamId: `s${index + 1}`,
-    measuredAt: now,
-    baselineKind: 'current_stream_measured_average',
-    state,
-    ...(state === 'warming' ? { reason: 'baseline_warming' } : {}),
-    ...(state === 'partial' ? { reason: 'current_window_partial' } : {}),
-    ...(state === 'unavailable' ? { reason: 'irc_unbound' } : {}),
-    currentWindow: {
-      start: currentStart,
-      end: closedEnd,
-      expectedMinutes: 5,
-      measuredMinutes: currentMeasured,
-      coveragePct: currentMeasured * 20,
-    },
-    baselineWindow: {
-      start: baselineStart,
-      end: currentStart,
-      expectedMinutes: baselineExpected,
-      measuredMinutes: baselineMeasured,
-      coveragePct: baselineExpected > 0 ? Number(((baselineMeasured / baselineExpected) * 100).toFixed(2)) : 0,
-    },
-    evidence: {
-      ircBound: state !== 'unavailable',
-      chatObservedLast5m: state !== 'unavailable',
-      rollupAvailable: state !== 'unavailable',
-      metadataAgeSeconds: 30 + index,
-    },
-    chat,
-    emotes,
-  }
-}
-
-function buildLiveChannels(count: number, now: number, truthV1: boolean) {
+function buildLiveChannels(count: number) {
   return Array.from({ length: count }, (_, index) => {
     const login = index === 0 ? 'xqc' : index === 1 ? 'sodapoppin' : `channel${index}`
-    const chatPerMin = 200 - index * 3
-    const emotesPerMin = 80 - index
     return {
       login,
       displayName: index === 0 ? 'xQc' : login,
       category: 'Just Chatting',
       viewers: 12_000 - index * 200,
-      chatPerMin,
-      emotesPerMin,
+      chatPerMin: 200 - index * 3,
+      emotesPerMin: 80 - index,
       seventvPerMin: 60 - index,
       coverageState: 'synced',
       trendPct: index % 2 === 0 ? 12 : -4,
-      ...(truthV1
-        ? {
-            streamId: `s${index + 1}`,
-            screener: buildMockScreener(index, now, chatPerMin, emotesPerMin),
-          }
-        : {}),
     }
   })
 }
@@ -190,18 +87,18 @@ export type HubUxMockMode = 'ready' | 'empty' | 'error' | 'zero-live'
 export type HubUxMockOptions = {
   mode?: HubUxMockMode
   hubDelayMs?: number
-  truthV1?: boolean
 }
 
 export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<void> {
   const mode = options.mode ?? 'ready'
   const hubDelayMs = options.hubDelayMs ?? 0
-  const truthV1 = options.truthV1 ?? false
   const noLiveData = mode === 'empty' || mode === 'zero-live'
   const now = Date.now()
-  const lastClosedActivityBucket = Math.floor(now / (6 * 60_000)) * (6 * 60_000) - 6 * 60_000
-  const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14, now, truthV1)
+  const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14)
   const activityPoints = noLiveData || mode === 'error' ? [] : build24hActivityPoints(now)
+  const newsroomMomentAt = activityPoints.length >= 2
+    ? activityPoints[activityPoints.length - 2].t
+    : now - 6 * 60_000
 
   await page.addInitScript(() => {
     const clearStoragePrefix = (storage: Storage, prefix: string) => {
@@ -231,6 +128,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
           ? []
           : [
           {
+            publicMomentId: 'public-xqc-1',
             login: 'xqc',
             displayName: 'xQc',
             streamId: 'hist-1',
@@ -308,21 +206,20 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
         activity: {
           points: activityPoints,
           windowMinutes: 24 * 60,
-          requestedWindowMinutes: 24 * 60,
-          availableWindowMinutes: 24 * 60,
-          servedWindowMinutes: 24 * 60,
-          measuredWindowMinutes: 24 * 60,
-          accountedWindowMinutes: 24 * 60,
-          registeredGapCount: 0,
-          bucketMinutes: 6,
-          source: 'historical_projection',
-          state: 'healthy',
           channelCount: liveChannels.length,
           livePoolViewerSum: liveChannels.reduce((sum, ch) => sum + ch.viewers, 0),
           peakViewersAt: activityPoints.reduce(
             (best, p) => (p.viewers > (best?.viewers ?? 0) ? p : best),
             activityPoints[0],
           )?.t,
+          // Healthy historical projection contract — without these, the honest
+          // chart window resolver clamps the 24h series to 30m (legacy path),
+          // leaving every point an unmeasured placeholder and the chart empty.
+          source: 'historical_projection',
+          state: 'healthy',
+          availableWindowMinutes: 24 * 60,
+          accountedWindowMinutes: 24 * 60,
+          measuredWindowMinutes: 24 * 60,
         },
         emoteIntel: noLiveData
           ? {
@@ -350,23 +247,11 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
           { login: 'sodapoppin', displayName: 'sodapoppin', emotesPerMin: 35, seventvPerMin: 28 },
           { login: 'channel2', displayName: 'channel2', emotesPerMin: 30, seventvPerMin: 22 },
         ],
-        risingChannels: truthV1 && !noLiveData ? [0, 1].map((index) => {
-          const channel = liveChannels[index]
-          const screener = buildMockScreener(index, now, channel.chatPerMin, channel.emotesPerMin)
-          return {
-            login: channel.login,
-            displayName: channel.displayName,
-            category: channel.category,
-            viewers: channel.viewers,
-            measuredAt: now,
-            comparison: screener.emotes,
-            evidence: screener.evidence,
-          }
-        }) : undefined,
         liveChannels,
         moments: [],
         livePulseMoments: noLiveData ? [] : [
           {
+            publicMomentId: 'public-xqc-1',
             login: 'xqc',
             displayName: 'xQc',
             streamId: 's1',
@@ -382,33 +267,14 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             viewers: 12_000,
             viewerDelta: 'no change',
             category: 'Minecraft',
-            at: lastClosedActivityBucket + 3 * 60_000,
-            comparison: truthV1 ? {
-              baselineKind: 'current_stream_measured_average_before_event',
-              eventAt: lastClosedActivityBucket + 3 * 60_000,
-              baselineWindow: {
-                start: lastClosedActivityBucket - 60 * 60_000,
-                end: lastClosedActivityBucket + 3 * 60_000,
-                expectedMinutes: 63,
-                measuredMinutes: 60,
-                coveragePct: 95.24,
-              },
-              chat: mockMetricComparison('ready', 393, 180, 1, 1, 60, 63),
-              emotes: mockMetricComparison('ready', 133, 52, 1, 1, 60, 63),
-              evidence: {
-                ircBound: true,
-                eventRollupAvailable: true,
-                baselineMeasuredMinutes: 60,
-                baselineExpectedMinutes: 63,
-                baselineCoveragePct: 95.24,
-              },
-            } : undefined,
+            at: newsroomMomentAt,
             topEmotes: [
               { name: 'DinoDance', provider: 'twitch', count: 123, sharePct: 39.2 },
               { name: 'KEKW', provider: '7tv', count: 10, sharePct: 28.5 },
             ],
           },
           {
+            publicMomentId: 'public-soda-1',
             login: 'sodapoppin',
             displayName: 'sodapoppin',
             streamId: 's2',
@@ -424,7 +290,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             viewers: 9800,
             viewerDelta: '+120',
             category: 'Just Chatting',
-            at: now - 8 * 60_000,
+            at: newsroomMomentAt - 6 * 60_000,
             topEmotes: [
               { name: 'OMEGALUL', provider: 'bttv', count: 88, sharePct: 31 },
             ],
@@ -451,5 +317,10 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
         updatedAt: new Date().toISOString(),
       }),
     }),
+  )
+  // Newsroom is additive and production must fail closed on an unsupported
+  // contract. Tests that need stories install a later route override.
+  await page.route(/\/v1\/public\/newsroom(\/[^?]+)?(\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schemaVersion: 0 }) }),
   )
 }

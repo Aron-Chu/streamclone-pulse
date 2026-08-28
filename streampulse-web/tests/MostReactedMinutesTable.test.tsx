@@ -43,6 +43,8 @@ describe('MostReactedMinutesTable pulse-live rows', () => {
     expect(within(row).getByRole('link', { name: /xQc/i })).toBeTruthy()
     expect(within(row).getByRole('link', { name: /KEKW on 7TV/i })).toBeTruthy()
     expect(within(row).getByRole('link', { name: '2:00' })).toBeTruthy()
+    expect(within(row).getByText('Chat spike').closest('td')?.getAttribute('data-label')).toBe('Moment')
+    expect(within(row).getByText('—', { selector: '[data-label="Chat/min"]' })).toBeTruthy()
   })
 
   it('selects row on container click and keyboard', () => {
