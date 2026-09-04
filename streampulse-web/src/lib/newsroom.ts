@@ -81,6 +81,8 @@ export interface NewsroomUpdate {
   resolvedAt?: string
   headline: string
   summary: string
+  /** Backend-owned reaction score for Explorer projections. */
+  score?: number
   comparison: NewsroomMomentComparison
   /** Immutable copy of comparison evidence published with this update. */
   evidence: NewsroomEvidence
@@ -334,6 +336,7 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
   const resolvedAt = row.resolvedAt == null ? undefined : timestamp(row.resolvedAt)
   const headline = text(row.headline)
   const summary = text(row.summary)
+  const score = row.score == null ? undefined : integer(row.score)
   const comparison = normalizeNewsroomComparison(row.comparison)
   const evidence = normalizeNewsroomEvidence(row.evidence)
   const momentRef = normalizeMomentRef(row.momentRef)
@@ -341,7 +344,7 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
   const vodId = optionalText(row.vodId)
   if (
     !id || revision == null || revision < 1 || !detectorEventKey || !updateKind || !occurredAt || !publishedAt || !signal || !lifecycle ||
-    resolvedReason === null || resolvedAt === null || !headline || !summary ||
+    resolvedReason === null || resolvedAt === null || !headline || !summary || score === null || (score !== undefined && score > 100) ||
     !comparison || !evidence || !sameNewsroomEvidence(comparison.evidence, evidence) || !momentRef ||
     typeof row.notificationEligible !== 'boolean' || typeof row.isLate !== 'boolean' ||
     sparkline === null || vodId === null || (vodId !== undefined && !/^\d+$/.test(vodId)) ||
@@ -365,6 +368,7 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
     resolvedAt,
     headline,
     summary,
+    score,
     comparison,
     evidence,
     topEmotes: topEmotes as HubEmote[],
@@ -490,7 +494,7 @@ export function normalizeNewsroomStory(value: unknown): NewsroomStory | null {
   }
 }
 
-function normalizeNetworkBrief(value: unknown): NewsroomNetworkBrief | undefined | null {
+export function normalizeNewsroomNetworkBrief(value: unknown): NewsroomNetworkBrief | undefined | null {
   if (value == null) return undefined
   const row = record(value)
   if (!row) return null
@@ -532,7 +536,7 @@ export function normalizeNewsroomEnvelope(value: unknown): NewsroomEnvelope | nu
   const leadStoryId = optionalText(row.leadStoryId)
   const nextCursor = optionalText(row.nextCursor)
   const reason = optionalText(row.reason)
-  const networkBrief = normalizeNetworkBrief(row.networkBrief)
+  const networkBrief = normalizeNewsroomNetworkBrief(row.networkBrief)
   if (
     !status || !generatedAt || dataThrough === null || !snapshotAt || !window || leadStoryId === null || nextCursor === null ||
     reason === null || networkBrief === null || !Array.isArray(row.stories)

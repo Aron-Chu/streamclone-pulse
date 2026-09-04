@@ -15,7 +15,7 @@ import { AnalyticsTopNav } from './AnalyticsTopNav'
 const NAV_ITEMS = [
   { label: 'Home', to: '/', end: true },
   { label: 'Analytics', to: '/analytics', end: true },
-  { label: 'Newsroom', to: '/analytics/newsroom' },
+  { label: 'Pulse Explorer', to: '/analytics/explore' },
 ]
 
 export interface AnalyticsFigmaShellProps {

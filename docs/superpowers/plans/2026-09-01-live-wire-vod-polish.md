@@ -1,5 +1,13 @@
 # Live Wire and Portal VOD Resolution Implementation Plan
 
+> **Superseded UI direction (2026-09-03):** Keep any independently valid VOD
+> resolution work, but do not reintroduce the violet Editorial Wire, three-card
+> rail, left accent, or Newsroom framing from this plan. Current Live Wire and
+> Pulse Explorer behavior is canonical in
+> [`../../website-portal/live-wire-moment-system.md`](../../website-portal/live-wire-moment-system.md)
+> and
+> [`../../website-portal/analytics-command-center-layout.md`](../../website-portal/analytics-command-center-layout.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the under-designed Live Wire cards with a polished Editorial Wire rail while making portal analytics resolve live VOD identifiers from the same truthful availability contract used by the extension.

@@ -15,6 +15,9 @@
 > [`../../website-portal/live-wire-moment-system.md`](../../website-portal/live-wire-moment-system.md)
 > and
 > [`../../website-portal/analytics-command-center-layout.md`](../../website-portal/analytics-command-center-layout.md).
+> The same canonical documents replace the separate editorial “Newsroom” idea
+> with **Pulse Explorer**, an exact-broadcast telemetry workspace. Do not reuse
+> this document's newspaper framing for `/analytics/explore`.
 
 ## Context
 
