@@ -30,32 +30,48 @@ Moments. Live Wire expands with the page at narrow widths, so a locked bucket
 always replaces the wire immediately below the chart instead of appearing
 after a long moment list.
 
-### Newsroom contract and routes
+### Pulse Explorer contract and routes
 
-- `/analytics/newsroom` is the canonical live/24h/7d editorial index. `/analytics/newsroom/:storyId` is canonical detail. Both routes precede dynamic channel routes and use the analytics shell with `hideSidebar`.
-- The portal accepts only `schemaVersion: 1` envelopes and strict server-owned comparisons. Every versioned envelope must carry a real writer `dataThrough` watermark, including `unavailable`; a response without that watermark fails closed to the existing Live Wire fallback.
-- Story sparkline samples are backend-owned, chronological, and capped at twelve. Omitted minute timestamps break the line; the browser never fills gaps or calculates baselines.
-- The `/analytics` overview does not request Newsroom data. A single **Pulse Newsroom** link in the Live Wire header is its only Newsroom content.
-- `ready` renders the standalone editorial index, `empty` renders **Quiet now**, and `stale` preserves the last valid stories with their data-through age. `unavailable`, an absent endpoint, or malformed data renders an honest route-level unavailable state.
-- Initial loading may use a skeleton. Refresh preserves current content. The first healthy response silently establishes a baseline; only a new notification-eligible story or a lifecycle transition with a higher revision is announced. Polls, late corrections, ordinary signal updates, relative-time changes, and stale recovery are silent.
-- Story actions are three distinct, aligned destinations: Analytics, Watch live/VOD (or disabled Replay unavailable), and Copy link. Numeric breakout scores are absent from Newsroom.
-- A Newsroom story is one broadcast-specific cluster with ordered revisions,
-  not one story card per detector minute. The live index uses the current hub
-  moment pipeline; 24h and 7d are rebuilt from persisted verified IRC rollups.
-- Matched Twitch clips and approved LSF/Reddit posts may appear as
-  corroborating public sources. They never alter the StreamPulse reaction
-  score, lifecycle, or lead ordering. X remains a later adapter phase; the
-  public contract can render a matched X item once that ingestion path is
-  enabled, but the current release does not discover X posts.
-- The Network Brief compares the latest two closed 30-minute windows only
-  across stream sessions with at least 80% verified IRC-rollup coverage in both
-  windows. If that comparison cannot be established, the lead story expands to
-  one column; the portal never leaves a blank sidecar or fabricates a zero.
+- `/analytics/explore` is the canonical broadcast index and
+  `/analytics/explore/:broadcastId` is canonical detail. Retired
+  `/analytics/newsroom` routes redirect while preserving identifier, query, and
+  hash. All reserved routes precede dynamic channel routes.
+- Explorer is the deeper companion to Live Wire, not an editorial news feed.
+  Its default query is **24h**, **Strongest**, all signals, all categories, and
+  all stream states. Every result is one exact stream session.
+- The portal accepts only the strict `schemaVersion: 1` Explorer envelope and
+  server-owned scores, comparisons, facets, and cursors. It never rebuilds
+  qualification or rank in the browser.
+- At 960px or wider, results and a sticky inspector form an independently
+  scrollable two-pane workspace using
+  `clamp(320px, 34cqw, 420px) minmax(0, 1fr)`. Narrow index routes show results;
+  nested routes show detail with a Back action.
+- Range, search, signal, category, stream state, and sort are URL-backed.
+  Opening and closing the inspector preserves the list, loaded pages, filters,
+  sort, and scroll position. Back/Forward, direct refresh, and Escape restore
+  the same query.
+- Detail renders every qualified moment chronologically. A trend appears only
+  for at least two valid scored points; a single moment uses one concise
+  evidence block. Every moment displays at most three backend-provided emotes.
+- List and inspector requests fail independently. Loading, refreshing, stale,
+  empty, unavailable, and malformed-contract states are explicit; a failed
+  detail request never erases a valid list and a failed refresh retains valid
+  content.
+- Analytics, Watch live/VOD, and Copy link are separate actions. Matched Twitch
+  clips and approved LSF/Reddit, YouTube, or news links are labeled context and
+  never affect qualification, scores, ordering, or lifecycle. X is hidden until
+  its approved ingestion adapter is enabled. Empty context appears only in
+  detail.
+- A compact network strip appears only when the latest two closed 30-minute
+  windows have a valid comparison. The portal never fills missing comparison
+  state with zeroes.
+- `/analytics` does not request Explorer or deprecated Newsroom data. Its sole
+  cross-link is the understated **Pulse Explorer** link in Live Wire.
 
 **Section roles (avoid duplication):**
 - **Hottest live** — activity-ranked live pool cards (shared `rankLiveChannelsByActivity` with chart inspector “Top live by activity”); viewers are secondary context
 - **Live Wire** — filterable, sortable chart-side browse-and-focus view of backend-qualified moments from current streams; never a second scoring model
-- **Pulse Newsroom** — separate clustered broadcast stories with a canonical timeline; never embedded in the overview rail
+- **Pulse Explorer** — separate exact-broadcast search and evidence workspace over live/24h/7d qualified moments; never embedded in the overview rail
 - **Pool Wire** — compact lifecycle heartbeat in the command header (`POOL Stable` when quiet)
 - **Emote Market** — leaders / concentration / provider; breadth & rotation gated on backend market fields
 - **Channel Screener** — multi-view tracked table (Overview / Momentum / Coverage / Anomalies)
@@ -147,14 +163,14 @@ Shared activity rail of the network chart (288–340px from an 820px query-conta
 
 ### Do not regress
 
-- Do not embed Live Desk or Newsroom stories in the `/analytics` overview.
+- Do not embed Live Desk, deprecated Newsroom stories, or Explorer results in the `/analytics` overview.
 - Do not move Live Wire below the chart or back into an annotation lane.
 - Do not synthesize or fetch a bucket solely to make a Live Wire selection appear to resolve.
 - Do not reintroduce `.activity-bucket-inspector--moment` as a full moment body.
 
 ## Global Activity navigator (2026-08)
 
-The chart owns a client-side `HubChartNavigator` between the time axis and the fixed provider lanes. It changes only the visible subset of the already-loaded 30m / 24h / 7d response; it never changes the requested server range, coverage totals, Newsroom/Live Wire selection, or provider ordering.
+The chart owns a client-side `HubChartNavigator` between the time axis and the fixed provider lanes. It changes only the visible subset of the already-loaded 30m / 24h / 7d response; it never changes the requested server range, coverage totals, Explorer/Live Wire selection, or provider ordering.
 
 - Purple capsule selection with no boxed end handles; invisible 44px handle targets expose visible focus indicators.
 - Drag the full-range track or outside a zoomed selection to create a brush. Drag the selected window to pan. Drag either handle to resize with a minimum two-bucket span.
@@ -169,11 +185,11 @@ The chart owns a client-side `HubChartNavigator` between the time axis and the f
 cd streampulse-web
 npm run check:analytics-overlap
 npm run dev:hosted
-PORTAL_E2E_MOCKED=1 npx playwright test tests/e2e/analytics-newsroom.portal-mocked.spec.ts --workers=1
+PORTAL_E2E_MOCKED=1 npx playwright test tests/e2e/analytics-explorer.portal-mocked.spec.ts --workers=1
 npx playwright test tests/e2e/analytics-hub-chart-contract.spec.ts tests/e2e/analytics-hub-live-wire-ticker.spec.ts --workers=1
 ```
 
-Manual: confirm one shared Live Wire / bucket-inspector rail at 390, 768, 1119, 1280, 1440, and 1600px. The rail must be beside a chart at least 520px wide at 1119px and stacked immediately after it at narrow widths. Exercise scope/signal/category/order controls, Live Wire hover/focus preview, click lock, Back/Escape, retained filter/scroll state, canonical Newsroom detail refresh and browser history, all Newsroom fallback states, keyboard/focus behavior, and reduced motion. Verify `/analytics` makes no Newsroom request and no Live Wire or Newsroom surface uses decorative gradients, glow, or unequal selection borders.
+Manual: confirm one shared Live Wire / bucket-inspector rail and Pulse Explorer at 390, 768, 1119, 1280, 1440, and 1600px. The Live Wire rail must be beside a chart at least 520px wide at 1119px and stacked immediately after it at narrow widths. Exercise Live Wire preview/lock/Back/Escape and retained state. In Explorer, exercise every URL-backed control, desktop two-pane and mobile index/detail navigation, direct detail refresh, browser history, single- and multi-moment broadcasts, matched and empty context, and every fallback state. Verify `/analytics` makes no Explorer or Newsroom request and neither surface uses decorative gradients, glow, oversized avatars, or unequal selection borders.
 
 ## Related
 

@@ -9,22 +9,23 @@
 ## Product role
 
 Live Wire is the command center's browse-and-focus layer for verified moments in
-currently live broadcasts. It is not a one-card alert, a Newsroom replacement,
+currently live broadcasts. It is not a one-card alert, a Pulse Explorer replacement,
 or an independent client-side ranking model.
 
 - **Live Wire** answers: _what measured audience reactions are happening across
   current streams, and where are they on the activity chart?_
-- **Pulse Newsroom** answers: _how did one broadcast story develop across
-  multiple verified moments over live, 24h, or 7d, and what public coverage
-  corroborates it?_
+- **Pulse Explorer** answers: _which exact broadcasts had meaningful activity,
+  how did their qualified moments develop over live, 24h, or 7d, and what
+  approved outside context was matched?_
 - **Pulse Moments** answers: _what are the detailed minute facts and evidence for
   the selected moment?_
 
 Live Wire therefore owns the Global Activity right rail while idle, where its
 cards can directly preview or select chart buckets. A chart preview or locked
 selection replaces the visible rail pane with the bucket inspector. Pulse
-Newsroom remains a separate route and is represented on the overview only by a
-navigation link.
+Pulse Explorer remains a separate route and is represented on the overview only
+by a navigation link. It groups the qualified pipeline by exact stream session;
+it does not turn Live Wire into a general news or social feed.
 
 ## Authoritative moment pipeline
 
@@ -141,7 +142,7 @@ The redesigned surface displays the complete current bounded response (up to
 10 network moments) in one dense, vertically scrollable editorial rail. Increasing
 that cap is not a CSS change: the backend would need cursor pagination or a
 category-aware retrieval contract so low-volume categories are not starved by
-the top-12 channel scan. That work belongs with Newsroom range persistence and
+the top-12 channel scan. That work belongs with Explorer cursor pagination and
 relevance evaluation, not an unbounded portal fetch.
 
 ## Acceptance checks
@@ -158,6 +159,6 @@ relevance evaluation, not an unbounded portal fetch.
 - No horizontal overflow at 390, 768, 1119, 1280, 1440, and 1600px.
 - The activity rail sits beside the chart at the ordinary 1119px app viewport
   and directly after it at narrow widths.
-- Newsroom is a separate route; `/analytics` does not request or render its story feed.
-- Live Wire and Newsroom surfaces use neutral backgrounds, equal perimeter
+- Pulse Explorer is a separate route; `/analytics` does not request or render its broadcast feed.
+- Live Wire and Pulse Explorer surfaces use neutral backgrounds, equal perimeter
   borders, and semantic color only—no decorative gradients, glow, or left stripe.

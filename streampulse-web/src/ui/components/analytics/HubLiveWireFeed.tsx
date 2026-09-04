@@ -749,8 +749,8 @@ export function HubLiveWireFeed({
         <h2 id={titleId} className="hub-live-wire__title"><Radio aria-hidden="true" />Live Wire</h2>
         <span className="hub-live-wire__head-actions">
           <span className="hub-live-wire__meta">{metaLabel}</span>
-          <Link className="hub-live-wire__newsroom-link" to="/analytics/newsroom">
-            Pulse Newsroom <span aria-hidden="true">→</span>
+          <Link className="hub-live-wire__newsroom-link" to="/analytics/explore">
+            Pulse Explorer <span aria-hidden="true">→</span>
           </Link>
         </span>
       </header>
