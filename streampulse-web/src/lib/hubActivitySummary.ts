@@ -255,6 +255,52 @@ export function activityBucketKey(t: number, windowMinutes: number): number {
   return Math.floor(t / bucketMs) * bucketMs
 }
 
+export type MomentActivityBucketRelation = 'exact' | 'nearest_completed'
+
+export interface MomentActivityBucketResolution {
+  bucketT: number
+  relation: MomentActivityBucketRelation
+}
+
+/**
+ * Match a detected moment to a chart bucket without inventing activity.
+ *
+ * A moment in the chart's trailing open interval cannot have an exact rendered
+ * bucket because that incomplete point is intentionally omitted. In that one
+ * case we let the activity rail inspect the immediately preceding completed
+ * bucket and disclose the relationship in the inspector. Older gaps and
+ * out-of-range moments fail closed instead of jumping to channel analytics.
+ */
+export function resolveMomentActivityBucket(
+  momentAt: number | null | undefined,
+  selectableBucketTs: ReadonlySet<number>,
+  windowMinutes: number,
+): MomentActivityBucketResolution | null {
+  if (momentAt == null || !Number.isFinite(momentAt) || selectableBucketTs.size === 0) {
+    return null
+  }
+
+  const exactBucketT = activityBucketKey(momentAt, windowMinutes)
+  if (selectableBucketTs.has(exactBucketT)) {
+    return { bucketT: exactBucketT, relation: 'exact' }
+  }
+
+  let previousBucketT: number | null = null
+  for (const candidate of selectableBucketTs) {
+    if (!Number.isFinite(candidate) || candidate > exactBucketT) continue
+    if (previousBucketT == null || candidate > previousBucketT) previousBucketT = candidate
+  }
+
+  if (
+    previousBucketT != null &&
+    exactBucketT - previousBucketT <= activityBucketMs(windowMinutes)
+  ) {
+    return { bucketT: previousBucketT, relation: 'nearest_completed' }
+  }
+
+  return null
+}
+
 /** True when the bucket is incomplete for charting (API flag or unconfirmed tip). */
 export function isOpenActivityBucket(
   point: HubActivityPoint,

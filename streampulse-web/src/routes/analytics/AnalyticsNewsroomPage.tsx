@@ -9,6 +9,7 @@ import { NetworkBrief } from '../../ui/components/newsroom/NetworkBrief'
 import { NewsroomState } from '../../ui/components/newsroom/NewsroomState'
 import { StoryComparisonTimeline } from '../../ui/components/newsroom/StoryComparison'
 import { StoryTimeline } from '../../ui/components/newsroom/StoryTimeline'
+import { StorySources } from '../../ui/components/newsroom/StorySources'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/newsroom/newsroom.css'
 
@@ -108,7 +109,7 @@ export default function AnalyticsNewsroomPage() {
 
         {!storyId && lead ? (
           <>
-            <div className="newsroom-page__lead-grid">
+            <div className={`newsroom-page__lead-grid${newsroom.data?.networkBrief ? '' : ' newsroom-page__lead-grid--solo'}`}>
               <LeadStoryCard story={lead} headingLevel={2} />
               {newsroom.data?.networkBrief ? <NetworkBrief brief={newsroom.data.networkBrief} /> : null}
             </div>
@@ -127,6 +128,7 @@ export default function AnalyticsNewsroomPage() {
           <article className="newsroom-detail">
             <LeadStoryCard story={detailStory} headingLevel={2} showDetailLink={false} />
             <StoryActions story={detailStory} />
+            <StorySources sources={detailStory.sources} />
             <StoryComparisonTimeline updates={newsroom.data?.updates ?? [detailStory.leadUpdate]} />
             <StoryTimeline updates={newsroom.data?.updates ?? [detailStory.leadUpdate]} primarySignal={detailStory.primarySignal} />
             {newsroom.data?.nextCursor ? (

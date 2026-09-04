@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
 import { usePublicHubData } from "../../hooks/usePublicHubData";
 import { usePoolWireEvents } from "../../hooks/usePoolWireEvents";
-import { useNewsroomData } from "../../hooks/useNewsroomData";
 import { getBackendUrl } from "../../lib/apiClient";
 import {
   resolveBackendSource,
@@ -14,8 +12,9 @@ import { HubDataHealthBanner } from "../../ui/components/hub/HubDataHealthBanner
 import { resolveLivePulseMoments, mapHubPulseMoment, momentRowKey } from "../../lib/figmaSessionAnalytics";
 import {
   summarizeActivity,
-  activityBucketKey,
   formatActivityWindowLabel,
+  hasMeasuredActivitySignal,
+  resolveMomentActivityBucket,
 } from "../../lib/hubActivitySummary";
 import {
   isHubActivityLivePoolFallback,
@@ -61,10 +60,7 @@ import type { HubSidebarSection } from "../../ui/components/analytics/AnalyticsH
 import { compact } from "../../ui/components/analytics/hubFormat";
 import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvider";
 import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
-import { LiveDeskRail } from "../../ui/components/newsroom/LiveDeskRail";
-import type { NewsroomStory } from "../../lib/newsroom";
 import "../../ui/components/analytics/figma-analytics.css";
-import "../../ui/components/newsroom/newsroom.css";
 
 const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
   { login: "xqc", displayName: "xQc", category: "Just Chatting" },
@@ -112,33 +108,35 @@ function formatUpdatedAgo(ts: number | null): string | undefined {
 
 /** Public `/analytics` command-center landing. */
 function AnalyticsLandingContent() {
-  const navigate = useNavigate();
   const labels = useCommandCenterLabels();
   const [activityWindow, setActivityWindow] =
     useState<PublicHubActivityWindow>("24h");
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const [selectedMomentKey, setSelectedMomentKey] = useState<string | null>(null);
+  const [liveWirePreviewBucketT, setLiveWirePreviewBucketT] = useState<number | null>(null);
   const [bucketMoments, setBucketMoments] = useState<FigmaMomentRow[]>([]);
   const [bucketMomentsLoading, setBucketMomentsLoading] = useState(false);
   const [hoverBucketMoments, setHoverBucketMoments] = useState<FigmaMomentRow[]>([]);
   const [hoverBucketMomentsLoading, setHoverBucketMomentsLoading] = useState(false);
   const [poolMoments, setPoolMoments] = useState<FigmaMomentRow[]>([]);
-  const [newsroomFocused, setNewsroomFocused] = useState(false);
   const hub = usePublicHubData({ enabled: true, activityWindow });
-  const newsroom = useNewsroomData({ enabled: true, window: "live" });
   const recentLogins = useHubRecentLogins();
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
   // Requested range drives the endpoint/range tab; served range owns all bucket
   // geometry so a bounded fallback cannot select or prefetch invented history.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);
-  // Live Wire and Newsroom may only claim an in-place chart selection when the
-  // exact bucket survived the same bounding, alignment, and open-tip filtering
-  // used by FigmaGlobalActivityPanel. Raw activity rows are not sufficient:
+  // Live Wire may only claim an in-place chart selection when the bucket
+  // survived the same bounding, alignment, open-tip filtering, and signal
+  // checks used by FigmaGlobalActivityPanel. Raw activity rows are not enough:
   // legacy payloads can contain rows that the truthful chart model omits.
   const selectableActivityBucketTs = useMemo(() => {
     const model = deriveHubChartActivityModel(selectHubChartActivityInputs(data));
-    return new Set(model.chartPoints.map((point) => point.t));
+    return new Set(
+      model.chartPoints
+        .filter(hasMeasuredActivitySignal)
+        .map((point) => point.t),
+    );
   }, [data]);
   const activityRangeOptions = useMemo(
     () =>
@@ -322,14 +320,14 @@ function AnalyticsLandingContent() {
     setSelectedBucketT(null);
     setHoverBucketT(null);
     setSelectedMomentKey(null);
-    setNewsroomFocused(false);
+    setLiveWirePreviewBucketT(null);
   }, []);
 
   const handleBucketSelect = useCallback((bucketT: number | null) => {
-    setNewsroomFocused(false);
     setSelectedBucketT(bucketT);
     setHoverBucketT(null);
     setSelectedMomentKey(null);
+    setLiveWirePreviewBucketT(null);
     if (bucketT == null) {
       setBucketMoments([]);
       setBucketMomentsLoading(false);
@@ -430,7 +428,7 @@ function AnalyticsLandingContent() {
       { id: "section-overview", label: labels.overview },
       { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
       { id: "section-network", label: "Global Activity" },
-      { id: "section-live-wire", label: "Live Desk" },
+      { id: "section-live-wire", label: "Live Wire" },
       { id: "section-pulse-moments", label: labels.pulseMoments },
       { id: "section-emote-signal", label: labels.emoteSignal },
       { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },
@@ -463,37 +461,40 @@ function AnalyticsLandingContent() {
     return byKey;
   }, [bucketMoments, liveWireFeed.moments, poolMoments]);
 
-  const momentLookupByPublicId = useMemo(() => {
-    const byId = new Map<string, FigmaMomentRow>();
-    for (const moment of momentLookupPool.values()) {
-      if (moment.publicMomentId) byId.set(moment.publicMomentId, moment);
-    }
-    return byId;
-  }, [momentLookupPool]);
-
   const selectedMoment = useMemo(() => {
     if (!selectedMomentKey) return null;
     return momentLookupPool.get(selectedMomentKey) ?? null;
   }, [momentLookupPool, selectedMomentKey]);
 
-  const accentBucketT = useMemo(() => {
-    if (!selectedMoment?.at) return null;
-    return activityBucketKey(selectedMoment.at, servedActivityWindowMinutes);
-  }, [selectedMoment, servedActivityWindowMinutes]);
+  const selectedMomentBucket = useMemo(
+    () => resolveMomentActivityBucket(
+      selectedMoment?.at,
+      selectableActivityBucketTs,
+      servedActivityWindowMinutes,
+    ),
+    [selectedMoment?.at, selectableActivityBucketTs, servedActivityWindowMinutes],
+  );
+  const selectedMomentBucketT = selectedMomentBucket?.bucketT ?? null;
+  const accentBucketT = selectedMomentBucketT ?? liveWirePreviewBucketT;
 
   const handleSelectMoment = useCallback((moment: FigmaMomentRow) => {
-    setNewsroomFocused(false);
+    setLiveWirePreviewBucketT(null);
     const key = momentRowKey(moment);
     setSelectedMomentKey(key);
-    if (moment.at != null && Number.isFinite(moment.at)) {
-      setSelectedBucketT(
-        chartBucketSelectEnabled
-          ? activityBucketKey(moment.at, servedActivityWindowMinutes)
-          : null,
-      );
-      setHoverBucketT(null);
-    }
-  }, [chartBucketSelectEnabled, servedActivityWindowMinutes]);
+    const resolvedBucket = chartBucketSelectEnabled
+      ? resolveMomentActivityBucket(
+          moment.at,
+          selectableActivityBucketTs,
+          servedActivityWindowMinutes,
+        )
+      : null;
+    setSelectedBucketT(resolvedBucket?.bucketT ?? null);
+    setHoverBucketT(null);
+  }, [
+    chartBucketSelectEnabled,
+    selectableActivityBucketTs,
+    servedActivityWindowMinutes,
+  ]);
 
   const canSelectLiveWireMoment = useCallback((moment: FigmaMomentRow) => {
     if (!chartBucketSelectEnabled || !moment.streamId || moment.at == null || !Number.isFinite(moment.at)) {
@@ -501,8 +502,11 @@ function AnalyticsLandingContent() {
     }
     const loadedMoment = momentLookupPool.get(momentRowKey(moment));
     if (!loadedMoment || loadedMoment.streamId !== moment.streamId) return false;
-    const bucketT = activityBucketKey(moment.at, servedActivityWindowMinutes);
-    return selectableActivityBucketTs.has(bucketT);
+    return resolveMomentActivityBucket(
+      moment.at,
+      selectableActivityBucketTs,
+      servedActivityWindowMinutes,
+    ) != null;
   }, [
     chartBucketSelectEnabled,
     momentLookupPool,
@@ -510,31 +514,20 @@ function AnalyticsLandingContent() {
     servedActivityWindowMinutes,
   ]);
 
-  const handleNewsroomStorySelect = useCallback((story: NewsroomStory) => {
-    const ref = story.leadUpdate.momentRef;
-    const moment = momentLookupByPublicId.get(ref.publicMomentId);
-    const bucketT = activityBucketKey(ref.occurrenceAt, servedActivityWindowMinutes);
-    const bucketLoaded = selectableActivityBucketTs.has(bucketT);
-    const exactMoment = Boolean(
-      moment && moment.streamId === ref.streamId && moment.at != null &&
-      activityBucketKey(moment.at, servedActivityWindowMinutes) === bucketT,
-    );
-    if (!chartBucketSelectEnabled || !moment || !bucketLoaded || !exactMoment) {
-      navigate(`/analytics/newsroom/${encodeURIComponent(story.id)}`);
+  const handlePreviewLiveWireMoment = useCallback((moment: FigmaMomentRow | null) => {
+    if (!moment || !canSelectLiveWireMoment(moment) || moment.at == null) {
+      setLiveWirePreviewBucketT(null);
       return;
     }
-    setNewsroomFocused(true);
-    setSelectedMomentKey(momentRowKey(moment));
-    setSelectedBucketT(bucketT);
-    setHoverBucketT(null);
-    // Reuse the already loaded, identity-verified moment. Do not ask the
-    // historical bucket endpoint to manufacture a second selection path.
-    setBucketMoments([moment]);
-    setBucketMomentsLoading(false);
+    setLiveWirePreviewBucketT(
+      resolveMomentActivityBucket(
+        moment.at,
+        selectableActivityBucketTs,
+        servedActivityWindowMinutes,
+      )?.bucketT ?? null,
+    );
   }, [
-    chartBucketSelectEnabled,
-    momentLookupByPublicId,
-    navigate,
+    canSelectLiveWireMoment,
     selectableActivityBucketTs,
     servedActivityWindowMinutes,
   ]);
@@ -677,7 +670,7 @@ function AnalyticsLandingContent() {
                   setSelectedBucketT(null);
                   setHoverBucketT(null);
                   setSelectedMomentKey(null);
-                  setNewsroomFocused(false);
+                  setLiveWirePreviewBucketT(null);
                 },
               }}
               showSearch={false}
@@ -692,36 +685,25 @@ function AnalyticsLandingContent() {
                       login: selectedMoment.login,
                       displayName: selectedMoment.displayName,
                       label: selectedMoment.label,
+                      bucketRelation: selectedMomentBucket?.relation ?? "exact",
                     }
                   : null
               }
               onClearLinkedMoment={() => setSelectedMomentKey(null)}
               accentBucketT={accentBucketT}
-              selectedMomentKey={selectedMomentKey}
-              onSelectMoment={handleSelectMoment}
-              liveDesk={
-                <div id="section-live-wire">
-                  <LiveDeskRail
-                    data={newsroom.data}
-                    loading={newsroom.loading}
-                    error={newsroom.error}
-                    onRetry={newsroom.refresh}
-                    onSelectStory={handleNewsroomStorySelect}
-                    fallback={
+              liveWireRail={
+                <div id="section-live-wire" className="figma-global-activity__live-wire-rail">
                   <HubLiveWireFeed
                     {...liveWireFeedProps}
-                        layout="rail"
+                    layout="rail"
                     selectedMomentKey={selectedMomentKey}
                     onSelectMoment={chartBucketSelectEnabled ? handleSelectMoment : undefined}
                     canSelectMoment={canSelectLiveWireMoment}
-                  />
-                    }
+                    onPreviewMoment={chartBucketSelectEnabled ? handlePreviewLiveWireMoment : undefined}
                   />
                 </div>
               }
-              sidecarAnnouncement={newsroom.announcement}
-              storyFocused={newsroomFocused}
-              onBackToLiveDesk={handleClearBucketFilter}
+              onBackToLiveWire={handleClearBucketFilter}
             />
             <PulseMomentsLivePanel
               hub={data}
@@ -729,14 +711,14 @@ function AnalyticsLandingContent() {
               topEmotes={data.topEmotes}
               loading={loadingInitial}
               layout="embedded"
-              selectedBucketT={chartBucketSelectEnabled && !newsroomFocused ? selectedBucketT : null}
-              hoverBucketT={chartBucketSelectEnabled && !newsroomFocused ? hoverBucketT : null}
+              selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
+              hoverBucketT={chartBucketSelectEnabled ? hoverBucketT : null}
               onClearBucketFilter={
                 chartBucketSelectEnabled ? handleClearBucketFilter : undefined
               }
-              onBucketMomentsChange={chartBucketSelectEnabled && !newsroomFocused ? setBucketMoments : undefined}
+              onBucketMomentsChange={chartBucketSelectEnabled ? setBucketMoments : undefined}
               onBucketLoadingChange={
-                chartBucketSelectEnabled && !newsroomFocused ? setBucketMomentsLoading : undefined
+                chartBucketSelectEnabled ? setBucketMomentsLoading : undefined
               }
               onPoolMomentsChange={chartBucketSelectEnabled ? setPoolMoments : undefined}
               activityWindow={activityWindow}

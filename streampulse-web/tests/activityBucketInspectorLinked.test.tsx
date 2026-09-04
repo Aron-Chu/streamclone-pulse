@@ -29,8 +29,9 @@ describe('ActivityBucketInspector linked moment', () => {
     expect(screen.getByLabelText('Activity bucket inspector')).toBeTruthy()
     expect(screen.queryByLabelText('Moment inspector')).toBeNull()
     expect(screen.getByTestId('bucket-inspector-linked-moment').textContent).toContain(
-      'Linked to selected moment',
+      'Selected Live Wire moment',
     )
+    expect(screen.getByText('Matched to this completed activity bucket.')).toBeTruthy()
     expect(screen.getByText('Squeeex')).toBeTruthy()
     expect(screen.getByText('Emote spike')).toBeTruthy()
     expect(screen.getByText('Linked')).toBeTruthy()
@@ -39,7 +40,7 @@ describe('ActivityBucketInspector linked moment', () => {
     expect(onClear).toHaveBeenCalledTimes(1)
   })
 
-  it('uses Selected badge when the bucket is explicitly locked', () => {
+  it('uses a single Locked action state when the bucket is explicitly locked', () => {
     render(
       <ActivityBucketInspector
         rangeEmotes={[]}
@@ -47,11 +48,19 @@ describe('ActivityBucketInspector linked moment', () => {
         windowMinutes={24 * 60}
         selectedPoint={point}
         hoverPoint={null}
-        linkedMoment={{ login: 'squeeex', label: 'Emote spike' }}
+        linkedMoment={{
+          login: 'squeeex',
+          label: 'Emote spike',
+          bucketRelation: 'nearest_completed',
+        }}
         bucketLocked
       />,
     )
-    expect(screen.getByText('Selected')).toBeTruthy()
+    expect(screen.getByText('Locked')).toBeTruthy()
     expect(screen.queryByText('Linked')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+    expect(screen.getByText(/showing the nearest completed bucket/i)).toBeTruthy()
+    expect(screen.getByTestId('bucket-inspector-linked-moment').getAttribute('data-bucket-relation'))
+      .toBe('nearest_completed')
   })
 })

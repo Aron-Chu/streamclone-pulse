@@ -476,6 +476,8 @@ export interface HubFeaturedMoment {
   topEmotes?: HubEmote[]
   confidence?: number
   vodState?: string
+  /** Qualified event-minute comparison against earlier history in this stream. */
+  comparison?: LiveWireMomentComparison
 }
 
 /** Network-wide live IRC peak row for Pulse Moments Live (multi-channel). */
@@ -1057,6 +1059,7 @@ function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined):
     topMoments: (raw.topMoments ?? []).map((moment) => ({
       ...moment,
       topEmotes: absolutizeEmotes(moment.topEmotes),
+      comparison: normalizeLiveWireMomentComparison(moment.comparison) ?? undefined,
     })),
     chartPoints: raw.chartPoints ?? [],
     topEmoteBursts: (raw.topEmoteBursts ?? []).map((burst) => ({

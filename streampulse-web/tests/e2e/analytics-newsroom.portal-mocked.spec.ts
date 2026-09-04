@@ -12,46 +12,35 @@ async function install(page: Parameters<typeof installHubUxMock>[0], mode: Newsr
   await installNewsroomMock(page, mode)
 }
 
-test.describe('Pulse Newsroom shared sidecar', () => {
-  test('resolves a loaded story without a synthetic moment or historical bucket request', async ({ page }) => {
+test.describe('Pulse Newsroom editorial routes', () => {
+  test('keeps Newsroom separate from the overview and reachable from the Live Wire rail', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
-    let bucketRequests = 0
+    let newsroomRequests = 0
     page.on('request', (request) => {
-      if (/\/v1\/public\/hub\/moments(?:\?|$)/.test(request.url())) bucketRequests += 1
+      if (/\/v1\/public\/newsroom(?:\?|$)/.test(request.url())) newsroomRequests += 1
     })
     await install(page)
     await page.goto('/analytics')
 
     const activity = page.getByRole('region', { name: 'Global activity' })
-    const sidecar = activity.locator('.activity-newsroom-sidecar')
-    await expect(activity.locator('.figma-global-activity__annotation-lane')).toHaveCount(0)
-    await expect(sidecar).toHaveCount(1)
-    await expect(sidecar).toHaveAttribute('data-sidecar-view', 'live-desk')
-    await expect(sidecar.getByText('Live Desk', { exact: true })).toBeVisible()
-    await expect(sidecar.locator('.hub-live-wire')).toHaveCount(0)
-    await expect(sidecar).not.toContainText('/100')
+    const rail = activity.locator('.activity-context-rail')
+    await expect(rail).toHaveAttribute('data-activity-rail-view', 'idle')
+    await expect(rail.locator('.hub-live-wire--rail')).toBeVisible()
+    await expect(activity.getByText('Live Desk', { exact: true })).toHaveCount(0)
+    expect(newsroomRequests).toBe(0)
 
-    const routeBefore = page.url()
-    await sidecar.locator('[data-story-id="story-xqc"]').getByRole('button', { name: 'Inspect activity' }).click()
-    await expect(sidecar).toHaveAttribute('data-sidecar-view', 'inspector')
-    await expect(sidecar.getByRole('button', { name: 'Back to Live Desk' })).toBeFocused()
-    await expect(page.locator('.figma-global-activity__hub-chart .hx-chart2')).toHaveAttribute('data-selected', 'true')
-    await expect.poll(() => bucketRequests).toBe(0)
-    expect(page.url()).toBe(routeBefore)
-
-    await sidecar.getByRole('button', { name: 'Back to Live Desk' }).click()
-    await expect(sidecar).toHaveAttribute('data-sidecar-view', 'live-desk')
-    await expect(sidecar.getByText('Live Desk', { exact: true })).toBeVisible()
-    await expect.poll(() => bucketRequests).toBe(0)
+    await rail.getByRole('link', { name: /Pulse Newsroom/i }).click()
+    await expect(page).toHaveURL(/\/analytics\/newsroom$/)
+    await expect(page.getByRole('heading', { name: 'Pulse Newsroom' })).toBeVisible()
+    await expect.poll(() => newsroomRequests).toBeGreaterThan(0)
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('unresolved secondary story opens its canonical detail route', async ({ page }) => {
+  test('secondary story opens its canonical detail route', async ({ page }) => {
     await install(page)
-    await page.goto('/analytics')
-    await page.locator('.activity-newsroom-sidecar')
-      .getByRole('button', { name: /lirik chat activity is developing/i })
-      .click()
+    await page.goto('/analytics/newsroom')
+    const story = page.locator('[data-story-id="story-lirik"]')
+    await story.getByRole('link', { name: 'Open story' }).click()
     await expect(page).toHaveURL(/\/analytics\/newsroom\/story-lirik$/)
     await expect(page.getByRole('heading', { name: 'Pulse story' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: /lirik chat activity is developing/i })).toBeVisible()
@@ -69,6 +58,13 @@ test.describe('Pulse Newsroom shared sidecar', () => {
     await expect(watch).toHaveAttribute('href', 'https://www.twitch.tv/xqc')
     await expect(actions.getByRole('button', { name: 'Copy link' })).toBeVisible()
     await expect(page.locator('.newsroom-page')).not.toContainText('/100')
+    const sources = page.getByRole('region', { name: 'Sources & spread' })
+    await expect(sources).toContainText('2 matched sources')
+    await expect(sources.getByRole('link', { name: /The reaction that set chat off/i })).toHaveAttribute('href', /^https:\/\/clips\.twitch\.tv\//)
+    await expect(sources.getByRole('link', { name: /LSF discussion follows/i })).toHaveAttribute('href', /^https:\/\/www\.reddit\.com\//)
+    await expect(sources).toContainText('does not change its StreamPulse reaction score')
+    await expect(page.locator('.newsroom-timeline__item')).toHaveCount(2)
+    await expect(page.locator('.newsroom-ratio-timeline__point')).toHaveCount(4)
 
     await page.reload()
     await expect(page).toHaveURL(/\/analytics\/newsroom\/story-xqc$/)
@@ -81,19 +77,16 @@ test.describe('Pulse Newsroom shared sidecar', () => {
   })
 
   for (const mode of ['empty', 'unavailable', 'malformed'] as const) {
-    test(`${mode} state is explicit and never creates a second rail`, async ({ page }) => {
+    test(`${mode} state is explicit on the standalone route`, async ({ page }) => {
       await install(page, mode)
-      await page.goto('/analytics')
-      const activity = page.getByRole('region', { name: 'Global activity' })
-      const sidecar = activity.locator('.activity-newsroom-sidecar')
-      await expect(sidecar).toHaveCount(1)
-      await expect(activity.locator('.figma-global-activity__annotation-lane, .figma-analytics__right-rail')).toHaveCount(0)
+      await page.goto('/analytics/newsroom')
+      await expect(page.getByRole('heading', { name: 'Pulse Newsroom' })).toBeVisible()
       if (mode === 'empty') {
-        await expect(sidecar.getByText('Quiet now')).toBeVisible()
-        await expect(sidecar.locator('.hub-live-wire')).toHaveCount(0)
+        await expect(page.getByText('Quiet now')).toBeVisible()
       } else {
-        await expect(sidecar.locator('.hub-live-wire--rail')).toBeVisible()
+        await expect(page.getByText('Pulse Newsroom unavailable')).toBeVisible()
       }
+      await expect(page.locator('.activity-context-rail, .hub-live-wire')).toHaveCount(0)
     })
   }
 
@@ -106,34 +99,30 @@ test.describe('Pulse Newsroom shared sidecar', () => {
     await expect(page.getByLabel('Newsroom: Live')).toHaveCount(0)
   })
 
-  for (const width of [390, 768, 1280, 1440, 1600]) {
-    test(`keeps chart usable and the shared sidecar responsive at ${width}px`, async ({ page }) => {
+  for (const width of [390, 768, 1119, 1280, 1440, 1600]) {
+    test(`keeps the flat editorial index responsive at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: width < 800 ? 1000 : 900 })
       await install(page)
-      await page.goto('/analytics')
-      await expect(page.getByRole('region', { name: 'Global activity' })).toBeVisible()
-      await expect(page.locator('.figma-global-activity__chart-col')).toBeVisible()
-      await expect(page.locator('.figma-global-activity__inspector')).toBeVisible()
-      const geometry = await page.evaluate(() => {
-        const chart = document.querySelector<HTMLElement>('.figma-global-activity__chart-col')
-        const sidecar = document.querySelector<HTMLElement>('.figma-global-activity__inspector')
-        if (!chart || !sidecar) return null
-        const chartRect = chart.getBoundingClientRect()
-        const sidecarRect = sidecar.getBoundingClientRect()
-        const beside = Math.abs(chartRect.top - sidecarRect.top) < 2
+      await page.goto('/analytics/newsroom')
+      await expect(page.getByRole('heading', { name: 'Pulse Newsroom' })).toBeVisible()
+      await expect(page.locator('.newsroom-page__lead-grid')).toBeVisible()
+      await expect(page.locator('.newsroom-lead').first()).toBeVisible()
+      await expect(page.locator('.newsroom-index__grid')).toBeVisible()
+      const presentation = await page.evaluate(() => {
+        const lead = document.querySelector<HTMLElement>('.newsroom-lead')
+        const index = document.querySelector<HTMLElement>('.newsroom-index__grid')
+        const leadGrid = document.querySelector<HTMLElement>('.newsroom-page__lead-grid')
+        if (!lead || !index || !leadGrid) return null
         return {
-          beside,
-          chartWidth: chartRect.width,
-          sidecarTop: sidecarRect.top,
-          chartBottom: chartRect.bottom,
-          sidecarOverflowY: getComputedStyle(sidecar).overflowY,
+          leadBackgroundImage: getComputedStyle(lead).backgroundImage,
+          indexColumns: getComputedStyle(index).gridTemplateColumns.split(' ').length,
+          leadColumns: getComputedStyle(leadGrid).gridTemplateColumns.split(' ').length,
         }
       })
-      expect(geometry).not.toBeNull()
-      if (geometry?.beside) expect(geometry.chartWidth).toBeGreaterThanOrEqual(719)
-      else expect(geometry!.sidecarTop).toBeGreaterThanOrEqual(geometry!.chartBottom - 2)
-      expect(geometry?.sidecarOverflowY).not.toBe('auto')
-      expect(geometry?.sidecarOverflowY).not.toBe('scroll')
+      expect(presentation).not.toBeNull()
+      expect(presentation?.leadBackgroundImage).toBe('none')
+      expect(presentation?.indexColumns).toBe(width <= 640 ? 1 : 2)
+      expect(presentation?.leadColumns).toBe(width <= 900 ? 1 : 2)
       await assertNoPageHorizontalOverflow(page)
     })
   }

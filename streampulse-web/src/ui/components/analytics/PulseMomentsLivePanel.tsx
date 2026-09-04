@@ -14,13 +14,16 @@ import {
   enrichPulseMomentRows,
 } from "../../../lib/pulseMomentRow";
 import {
+  buildChannelFilterOptions,
   countIrcRollupChannels,
   filterMomentsByBucket,
   filterPulseMoments,
   momentEmoteRollupsEmptyHint,
   PULSE_MOMENT_FILTER_HINT,
   SCORE_EXPLANATION,
+  sortPulseMoments,
   type PulseMomentFilter,
+  type PulseMomentSortKey,
 } from "../../../lib/pulseMomentsUtils";
 import { buildPulseMomentsBucketDiagnostics } from "../../../lib/pulseMomentsBucketDiagnostics";
 import {
@@ -293,6 +296,41 @@ export function PulseMomentsLivePanel({
     () => filterPulseMoments(allMoments, effectiveFilter),
     [allMoments, effectiveFilter],
   );
+
+  /* ── Channel filter + sort ──────────────────────────────────────────────── */
+  const channelOptions = useMemo(
+    () => buildChannelFilterOptions(allMoments),
+    [allMoments],
+  );
+  const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<PulseMomentSortKey>("newest");
+
+  // Reset channel filter when snapshot identity changes (new bucket or fresh fetch).
+  const prevAllMomentsRef = useRef(allMoments);
+  useEffect(() => {
+    if (prevAllMomentsRef.current !== allMoments) {
+      setChannelFilter("all");
+      prevAllMomentsRef.current = allMoments;
+    }
+  }, [allMoments]);
+
+  /**
+   * Spike-type filter → channel filter → display.
+   *
+   * Live snapshot scores share one backend ranking contract, so users may
+   * reorder that bounded set. Historical bucket rows can mix evidence from
+   * different sessions and retain the backend's canonical order.
+   */
+  const displayMoments = useMemo(() => {
+    let result = filteredMoments;
+    if (channelFilter !== "all") {
+      result = result.filter(
+        (m) => (m.login ?? "").trim().toLowerCase() === channelFilter,
+      );
+    }
+    if (bucketSelected) return result;
+    return sortPulseMoments(result, sortBy);
+  }, [bucketSelected, filteredMoments, channelFilter, sortBy]);
   const channelCount = useMemo(
     () =>
       new Set(
@@ -305,7 +343,7 @@ export function PulseMomentsLivePanel({
     [hub.liveChannels],
   );
   const [internalSelectedKey, setInternalSelectedKey] = useState<string | undefined>(
-    filteredMoments[0] ? momentRowKey(filteredMoments[0]) : undefined,
+    displayMoments[0] ? momentRowKey(displayMoments[0]) : undefined,
   );
 
   const selectedKey = isHubControlled
@@ -314,15 +352,15 @@ export function PulseMomentsLivePanel({
 
   useEffect(() => {
     if (isHubControlled) return;
-    const next = filteredMoments[0]
-      ? momentRowKey(filteredMoments[0])
+    const next = displayMoments[0]
+      ? momentRowKey(displayMoments[0])
       : undefined;
     setInternalSelectedKey((current) => {
-      if (current && filteredMoments.some((m) => momentRowKey(m) === current))
+      if (current && displayMoments.some((m) => momentRowKey(m) === current))
         return current;
       return next;
     });
-  }, [filteredMoments, isHubControlled]);
+  }, [displayMoments, isHubControlled]);
 
   const handleSelectMoment = (moment: FigmaMomentRow) => {
     if (isHubControlled) {
@@ -339,9 +377,9 @@ export function PulseMomentsLivePanel({
       );
       if (exact) return exact;
     }
-    return resolveSelectedPulseMoment(filteredMoments, null)
+    return resolveSelectedPulseMoment(displayMoments, null)
       ?? resolveSelectedPulseMoment(allMoments, null);
-  }, [allMoments, filteredMoments, poolMoments, selectedKey]);
+  }, [allMoments, displayMoments, filteredMoments, poolMoments, selectedKey]);
 
   const selectedSessionHref = useMemo(() => {
     if (!selectedMoment?.login) return undefined;
@@ -466,7 +504,7 @@ export function PulseMomentsLivePanel({
           : undefined;
 
   const sectionClass = `pulse-moments-live${isFallback ? " pulse-moments-live--fallback" : ""}${isEmbedded ? " pulse-moments-live--embedded" : ""}`;
-  const filterStaggerKey = effectiveFilter;
+  const filterStaggerKey = `${effectiveFilter}::${channelFilter}::${bucketSelected ? "backend-order" : sortBy}`;
   const momentsListRef = useRef<HTMLDivElement>(null);
   const { revealStagger, motionEnabled } = useAnalyticsMotion();
 
@@ -483,16 +521,25 @@ export function PulseMomentsLivePanel({
 
   const tableHeaderMeta = useMemo(() => {
     if (!ready) return undefined;
-    const parts: string[] = [
-      `${compact(filteredMoments.length)} moment${filteredMoments.length === 1 ? "" : "s"}`,
-    ];
+    const parts: string[] = [];
+    if (channelFilter !== "all" && displayMoments.length !== filteredMoments.length) {
+      parts.push(
+        `Showing ${displayMoments.length} of ${filteredMoments.length}`,
+      );
+    } else {
+      parts.push(
+        `${compact(filteredMoments.length)} moment${filteredMoments.length === 1 ? "" : "s"}`,
+      );
+    }
     if (channelLabel) parts.push(channelLabel);
     if (!isFallback) {
       parts.push(`${compact(hub.coverage.liveChannels)} live`);
     }
     return parts.join(" · ");
   }, [
+    channelFilter,
     channelLabel,
+    displayMoments.length,
     filteredMoments.length,
     hub.coverage.liveChannels,
     ircChannelCount,
@@ -511,7 +558,9 @@ export function PulseMomentsLivePanel({
         <div>
           <p className="pulse-moments-live__eyebrow">
             <span className="pulse-moments-live__live-dot" aria-hidden="true" />
-            {bucketSourceActive ? "Moments from selected time" : "Live moments"}
+            {bucketSourceActive
+              ? "Moments from selected time"
+              : "Top 10 snapshot"}
           </p>
           <h2
             id="pulse-moments-live-title"
@@ -536,6 +585,9 @@ export function PulseMomentsLivePanel({
             <span className="pulse-moments-live__meta-pill">
               {compact(filteredMoments.length)} moment
               {filteredMoments.length === 1 ? "" : "s"}
+              {channelFilter !== "all"
+                ? ` shown (${filteredMoments.length} loaded)`
+                : ""}
               {channelLabel ? ` - ${channelLabel}` : ""}
             </span>
             {!isFallback ? (
@@ -643,8 +695,42 @@ export function PulseMomentsLivePanel({
           <span className="pulse-moments-live__filter-hint">
             {PULSE_MOMENT_FILTER_HINT}
           </span>
+
+          {channelOptions.length > 1 ? (
+            <select
+              className="pulse-moments-live__filter pulse-moments-live__channel-select"
+              value={channelFilter}
+              aria-label="Channel filter"
+              onChange={(e) => setChannelFilter(e.target.value)}
+            >
+              <option value="all">All channels</option>
+              {channelOptions.map(({ login, displayName }) => (
+                <option key={login} value={login}>
+                  {displayName}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
+          {!bucketSelected ? (
+            <select
+              className="pulse-moments-live__filter pulse-moments-live__sort-select"
+              value={sortBy}
+              aria-label="Sort order"
+              onChange={(e) => setSortBy(e.target.value as PulseMomentSortKey)}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="strongest">Strongest first</option>
+            </select>
+          ) : null}
+
           <span className="pulse-moments-live__count">
-            {loading ? "..." : `${filteredMoments.length} shown`}
+            {loading
+              ? "..."
+              : displayMoments.length === filteredMoments.length
+                ? `${displayMoments.length} shown`
+                : `Showing ${displayMoments.length} of ${filteredMoments.length}`}
           </span>
         </div>
       ) : null}
@@ -695,7 +781,7 @@ export function PulseMomentsLivePanel({
           ref={momentsListRef}
         >
           <MostReactedMinutesTable
-            moments={filteredMoments}
+            moments={displayMoments}
             selectedKey={selectedKey}
             emoteLookup={emoteLookup}
             variant="pulse-live"

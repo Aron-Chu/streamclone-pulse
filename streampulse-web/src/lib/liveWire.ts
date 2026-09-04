@@ -262,7 +262,7 @@ export function dedupeMomentsByLogin<T extends { login?: string; at?: number }>(
     }
     const at = item.at ?? 0
     const last = lastSeenAt.get(login)
-    if (last !== undefined && at - last <= windowMs) {
+    if (last !== undefined && Math.abs(at - last) <= windowMs) {
       // Recent re-surge of the same login — keep the first occurrence only.
       continue
     }

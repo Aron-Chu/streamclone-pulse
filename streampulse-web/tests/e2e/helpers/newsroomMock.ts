@@ -69,6 +69,32 @@ function story(id: string, login: string, publicMomentId: string, at: number) {
     revision: 2,
     createdAt: new Date(at - 5 * 60_000).toISOString(),
     lastPublishedAt: new Date(at).toISOString(),
+    sources: login === 'xqc' ? [
+      {
+        id: 'twitch-clip-xqc-1',
+        source: 'twitch_clip',
+        kind: 'clip',
+        url: 'https://clips.twitch.tv/MockReactionClip',
+        title: 'The reaction that set chat off',
+        author: 'clip_editor',
+        occurredAt: new Date(at - 30_000).toISOString(),
+        metrics: { views: 18400 },
+        matchConfidence: 0.94,
+        reliabilityWeight: 1,
+      },
+      {
+        id: 'reddit-lsf-xqc-1',
+        source: 'reddit',
+        kind: 'post',
+        url: 'https://www.reddit.com/r/LivestreamFail/comments/mock/story/',
+        title: 'LSF discussion follows the same stream moment',
+        author: 'mock_redditor',
+        occurredAt: new Date(at + 60_000).toISOString(),
+        metrics: { score: 1260, comments: 184 },
+        matchConfidence: 0.83,
+        reliabilityWeight: 0.75,
+      },
+    ] : [],
     leadUpdate: {
       id: `update-${id}`,
       revision: 2,
@@ -95,6 +121,41 @@ function story(id: string, login: string, publicMomentId: string, at: number) {
   }
 }
 
+function storyUpdates(detail: ReturnType<typeof story>) {
+  const leadAt = Date.parse(detail.leadUpdate.occurredAt)
+  const priorAt = leadAt - 5 * 60_000
+  const priorComparison = comparison(priorAt)
+  priorComparison.chat = { ...priorComparison.chat, currentPerMin: 72, absoluteDeltaPerMin: 32, changePct: 80, multiplier: 1.8 }
+  priorComparison.emotes = { ...priorComparison.emotes, currentPerMin: 64, absoluteDeltaPerMin: 32, changePct: 100, multiplier: 2 }
+  const previous = {
+    ...detail.leadUpdate,
+    id: `update-${detail.id}-1`,
+    revision: 1,
+    detectorEventKey: `episode-${detail.id}-1`,
+    updateKind: 'signal',
+    occurredAt: new Date(priorAt).toISOString(),
+    publishedAt: new Date(priorAt + 1_000).toISOString(),
+    lifecycle: 'developing',
+    headline: `${detail.displayName || detail.login}: first measured reaction`,
+    summary: 'The first verified activity peak opened this broadcast-specific story.',
+    comparison: priorComparison,
+    evidence: priorComparison.evidence,
+    momentRef: {
+      ...detail.leadUpdate.momentRef,
+      publicMomentId: `${detail.leadUpdate.momentRef.publicMomentId}-earlier`,
+      occurrenceAt: priorAt,
+      offsetSeconds: Math.max(0, detail.leadUpdate.momentRef.offsetSeconds - 300),
+    },
+    notificationEligible: false,
+    sparkline: Array.from({ length: 6 }, (_, index) => ({
+      at: priorAt - (5 - index) * 60_000,
+      currentPerMin: 22 + index * 8,
+      baselinePerMin: 32,
+    })),
+  }
+  return [previous, detail.leadUpdate]
+}
+
 function envelope(mode: NewsroomMockMode, detailId?: string, window: NewsroomWindow = 'live') {
   const at = eventAt()
   const stories = [
@@ -113,7 +174,7 @@ function envelope(mode: NewsroomMockMode, detailId?: string, window: NewsroomWin
     leadStoryId: mode === 'empty' ? undefined : detail?.id ?? 'story-xqc',
     stories: mode === 'empty' || detailId ? [] : stories,
     story: detail,
-    updates: detail ? [detail.leadUpdate] : undefined,
+    updates: detail ? storyUpdates(detail) : undefined,
     networkBrief: mode === 'empty' || detailId ? undefined : {
       currentStart: new Date(at - 30 * 60_000).toISOString(),
       currentEnd: new Date(at).toISOString(),

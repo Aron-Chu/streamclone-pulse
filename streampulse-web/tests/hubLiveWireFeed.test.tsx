@@ -96,7 +96,12 @@ function networkFeed(now = Date.now()): { hub: PublicHub; feed: LivePulseMoments
   const hub = sampleHub()
   const eventAt = now - 5 * 60_000
   hub.livePulseMoments = [
-    makeMoment({ login: 'xqc', displayName: 'xQc', streamId: 's1', kind: 'emote_spike', label: 'Twitch emote spike', chatPerMin: 393, emotesPerMin: 133, viewers: 12_000, category: 'Minecraft', at: eventAt, comparison: comparison(eventAt), topEmotes: [{ name: 'DinoDance', provider: 'twitch', count: 123, sharePct: 39 }] }),
+    makeMoment({ login: 'xqc', displayName: 'xQc', streamId: 's1', kind: 'emote_spike', label: 'Twitch emote spike', chatPerMin: 393, emotesPerMin: 133, viewers: 12_000, category: 'Minecraft', at: eventAt, comparison: comparison(eventAt), topEmotes: [
+      { name: 'DinoDance', provider: 'twitch', count: 123, sharePct: 39 },
+      { name: 'KEKW', provider: '7tv', count: 81, sharePct: 26 },
+      { name: 'OMEGALUL', provider: '7tv', count: 44, sharePct: 14 },
+      { name: 'fourth-place', provider: '7tv', count: 12, sharePct: 4 },
+    ] }),
     makeMoment({ login: 'sodapoppin', displayName: 'sodapoppin', streamId: 's2', chatPerMin: 280, emotesPerMin: 95, viewers: 9800, category: 'Just Chatting', at: now - 8 * 60_000 }),
   ]
   return { hub, feed: resolveLivePulseMoments(hub) }
@@ -113,9 +118,11 @@ function renderFeed(
     selectedMomentKey?: string | null
     onSelectMoment?: (moment: FigmaMomentRow) => void
     canSelectMoment?: (moment: FigmaMomentRow) => boolean
+    onPreviewMoment?: (moment: FigmaMomentRow | null) => void
+    layout?: 'lane' | 'rail'
   } = {},
 ) {
-  const { reducedMotion = false, loadSource = 'full', hubEndpointOk = true, pollSequence = 0, selectedMomentKey, onSelectMoment, canSelectMoment } = opts
+  const { reducedMotion = false, loadSource = 'full', hubEndpointOk = true, pollSequence = 0, selectedMomentKey, onSelectMoment, canSelectMoment, onPreviewMoment, layout = 'lane' } = opts
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: reducedMotion && query.includes('prefers-reduced-motion'), media: query, onchange: null,
     addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
@@ -123,9 +130,9 @@ function renderFeed(
   return render(
     <MemoryRouter><AnalyticsThemeProvider><HubLiveWireFeed
       hub={hub} feed={feed} activityWindow="24h" loadSource={loadSource}
-      hubEndpointOk={hubEndpointOk} pollSequence={pollSequence} layout="lane"
+      hubEndpointOk={hubEndpointOk} pollSequence={pollSequence} layout={layout}
       selectedMomentKey={selectedMomentKey} onSelectMoment={onSelectMoment}
-      canSelectMoment={canSelectMoment}
+      canSelectMoment={canSelectMoment} onPreviewMoment={onPreviewMoment}
     /></AnalyticsThemeProvider></MemoryRouter>,
   )
 }
@@ -137,20 +144,44 @@ describe('HubLiveWireFeed (chart event tape)', () => {
   it('shows streamer-relative facts and evidence instead of feed-relative progress bars', () => {
     const { hub, feed } = networkFeed()
     renderFeed(feed, hub)
-    expect(screen.getByText(/3\.3× this stream's earlier average/i)).toBeTruthy()
-    expect(screen.getByText(/2\.5× this stream's earlier average/i)).toBeTruthy()
-    expect(screen.getByText(/Earlier baseline 24\/30 min · 80% coverage/i)).toBeTruthy()
-    expect(screen.getAllByText('Strong · 80/100').length).toBeGreaterThan(0)
+    const xqcCard = screen.getByRole('link', { name: /3\.3× this stream's earlier average/i })
+    expect(xqcCard).toBeTruthy()
+    expect(xqcCard.querySelector('.hub-live-wire__event-strength-label')).toBeTruthy()
     expect(document.querySelector('.hub-live-wire__bar')).toBeNull()
     expect(document.querySelectorAll('.hub-live-wire__event-card').length).toBe(2)
+    expect(xqcCard.querySelectorAll('.hub-live-wire__event-emote')).toHaveLength(3)
+    expect(xqcCard.textContent).toContain('DinoDance')
+    expect(xqcCard.textContent).toContain('KEKW')
+    expect(xqcCard.textContent).toContain('OMEGALUL')
+    expect(xqcCard.textContent).not.toContain('fourth-place')
   })
 
   it('labels raw event measurements when earlier-stream comparison evidence is absent', () => {
     const { hub, feed } = networkFeed()
     renderFeed(feed, hub)
-    expect(screen.getByText(/Chat 280\/min · earlier comparison unavailable/i)).toBeTruthy()
-    expect(screen.getByText(/Emotes 95\/min · earlier comparison unavailable/i)).toBeTruthy()
-    expect(screen.getByText(/^Comparison unavailable$/i)).toBeTruthy()
+    const sodapoppinCard = screen.getByRole('link', { name: /Chat 280\/min.*Emotes 95\/min/i })
+    expect(sodapoppinCard).toBeTruthy()
+    expect(screen.getByText('133')).toBeTruthy()
+    expect(sodapoppinCard.querySelector('.hub-live-wire__event-metric-comparison--no-baseline')).toBeTruthy()
+  })
+
+  it('keeps every loaded moment in the full working rail', () => {
+    const hub = sampleHub()
+    const now = Date.now()
+    hub.livePulseMoments = Array.from({ length: 5 }, (_, index) => makeMoment({
+      login: `channel-${index}`,
+      displayName: `Channel ${index}`,
+      streamId: `s-${index}`,
+      at: now - index * 30_000,
+      score: 80 - index,
+    }))
+    renderFeed(resolveLivePulseMoments(hub), hub, { layout: 'rail' })
+
+    expect(document.querySelectorAll('.hub-live-wire__event-card:not(.is-skeleton)').length).toBe(5)
+    expect(screen.getByText('Channel 0')).toBeTruthy()
+    expect(screen.getByText('Channel 4')).toBeTruthy()
+    expect(screen.getByLabelText('Live Wire category')).toBeTruthy()
+    expect(screen.getByLabelText('Live Wire order')).toBeTruthy()
   })
 
   it('keeps Live Wire honest by omitting detections older than 30 minutes', () => {
@@ -164,6 +195,47 @@ describe('HubLiveWireFeed (chart event tape)', () => {
     expect(screen.getByText('xQc')).toBeTruthy()
     expect(screen.queryByText('sodapoppin')).toBeNull()
     expect(screen.queryByRole('button', { name: /recent detections/i })).toBeNull()
+  })
+
+  it('turns the rail into a complete current-stream workspace with category filtering', () => {
+    const now = Date.now()
+    const hub = sampleHub()
+    hub.livePulseMoments = [
+      makeMoment({ login: 'alpha', displayName: 'Alpha', streamId: 's1', category: 'Minecraft', at: now - 2 * 60_000, score: 72 }),
+      makeMoment({ login: 'beta', displayName: 'Beta', streamId: 's2', category: 'Just Chatting', at: now - 48 * 60_000, score: 91 }),
+      makeMoment({ login: 'gamma', displayName: 'Gamma', streamId: 's3', category: 'Minecraft', at: now - 65 * 60_000, score: 63 }),
+    ]
+    renderFeed(resolveLivePulseMoments(hub), hub, { layout: 'rail' })
+
+    expect(screen.getByText('Alpha')).toBeTruthy()
+    expect(screen.getByText('Beta')).toBeTruthy()
+    expect(screen.getByText('Gamma')).toBeTruthy()
+    expect(document.querySelector('.hub-live-wire__explorer-summary')?.textContent).toContain('3 moments')
+
+    fireEvent.change(screen.getByLabelText('Live Wire category'), { target: { value: 'minecraft' } })
+    expect(screen.getByText('Alpha')).toBeTruthy()
+    expect(screen.getByText('Gamma')).toBeTruthy()
+    expect(screen.queryByText('Beta')).toBeNull()
+  })
+
+  it('previews a selectable rail card bucket on hover and keyboard focus', () => {
+    const { hub, feed } = networkFeed()
+    const onPreviewMoment = vi.fn()
+    renderFeed(feed, hub, {
+      layout: 'rail',
+      onSelectMoment: vi.fn(),
+      canSelectMoment: () => true,
+      onPreviewMoment,
+    })
+    const card = screen.getByRole('button', { name: /xQc.*inspect this activity bucket/i })
+    fireEvent.mouseEnter(card)
+    expect(onPreviewMoment).toHaveBeenLastCalledWith(expect.objectContaining({ login: 'xqc' }))
+    fireEvent.mouseLeave(card)
+    expect(onPreviewMoment).toHaveBeenLastCalledWith(null)
+    fireEvent.focus(card)
+    expect(onPreviewMoment).toHaveBeenLastCalledWith(expect.objectContaining({ login: 'xqc' }))
+    fireEvent.blur(card)
+    expect(onPreviewMoment).toHaveBeenLastCalledWith(null)
   })
 
   it('shows one clearly historical latest-verified detection when the live window is quiet', () => {
@@ -211,12 +283,20 @@ describe('HubLiveWireFeed (chart event tape)', () => {
     expect(card.querySelector('a')).toBeNull()
   })
 
-  it('uses canonical navigation when a live detection has no rendered chart bucket', () => {
+  it('never turns an unavailable activity-rail story into analytics navigation', () => {
     const { hub, feed } = networkFeed()
-    renderFeed(feed, hub, { onSelectMoment: vi.fn(), canSelectMoment: () => false })
-    expect(screen.queryByRole('button', { name: /xQc.*show this minute/i })).toBeNull()
-    expect(screen.getByRole('link', { name: /xQc.*Open analytics/i }).getAttribute('href'))
-      .toBe('/analytics/xqc/s1#t=60')
+    const onSelectMoment = vi.fn()
+    renderFeed(feed, hub, {
+      layout: 'rail',
+      onSelectMoment,
+      canSelectMoment: () => false,
+    })
+    const story = screen.getByRole('button', { name: /xQc.*Activity bucket is not available yet/i })
+    expect(story).toHaveProperty('disabled', true)
+    expect(story.querySelector('a')).toBeNull()
+    expect(screen.queryByRole('link', { name: /xQc.*Open analytics/i })).toBeNull()
+    fireEvent.click(story)
+    expect(onSelectMoment).not.toHaveBeenCalled()
   })
 
   it('badges a new healthy-network event and enters it from the chart-reading direction', async () => {

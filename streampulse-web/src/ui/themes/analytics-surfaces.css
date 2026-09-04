@@ -27,11 +27,13 @@
 
   --sp-type-label: 0.6875rem;
   --sp-type-meta: 0.72rem;
-  --sp-type-body: 0.8125rem;
-  --sp-type-title-sm: 0.875rem;
-  --sp-type-title: 1.0625rem;
-  --sp-type-display: clamp(1.35rem, 2.2vw, 1.7rem);
-  --sp-leading-body: 1.4;
+  --sp-type-body: 0.875rem;
+  --sp-type-title-sm: 0.925rem;
+  --sp-type-title: 1.125rem;
+  --sp-type-display: clamp(1.5rem, 2.2vw, 1.85rem);
+  --sp-leading-body: 1.5;
+  --sp-section-gap: 1.5rem;
+  --sp-card-padding: 1rem 1.125rem;
   --sp-tracking-label: 0.06em;
 
   --sp-radius-sm: 4px;

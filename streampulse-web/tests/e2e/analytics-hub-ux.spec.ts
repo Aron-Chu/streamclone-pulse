@@ -52,12 +52,15 @@ test.describe('analytics hub UX (interaction)', () => {
     await expect(chart).toBeVisible()
     await expect(page.locator('.hx-chart2 .hx-chart-line--emotes').first()).toBeVisible()
     await expect(page.getByRole('region', { name: 'Live Wire' })).toBeVisible()
-    await expect(page.locator('.activity-bucket-inspector')).toHaveCount(0)
+    const inspector = page.locator('.activity-bucket-inspector')
+    await expect(inspector).toHaveCount(1)
+    await expect(inspector).toBeHidden()
+    await expect(page.locator('.activity-context-rail')).toHaveAttribute('data-activity-rail-view', 'idle')
     const box = await chart.boundingBox()
     expect(box).toBeTruthy()
     await chart.hover({ position: { x: box!.width * 0.55, y: box!.height * 0.5 } })
-    const inspector = page.locator('.activity-bucket-inspector')
     await expect(inspector).toBeVisible()
+    await expect(page.locator('.activity-context-rail')).toHaveAttribute('data-activity-rail-view', 'preview')
     await expect(inspector).toHaveClass(/activity-bucket-inspector--preview/)
     await expect(inspector).not.toHaveClass(/activity-bucket-inspector--active/)
     await expect(inspector.getByText(/^Preview ·/)).toBeVisible()
@@ -459,17 +462,17 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('Live Wire tape is chart-relative, selects its minute, and never nests navigation', async ({ page }) => {
+  test('Live Wire rail is chart-relative, selects its minute, and never nests navigation', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
 
     const tape = page.getByRole('region', { name: 'Live Wire' })
     await expect(tape).toBeVisible()
-    await expect(page.locator('.figma-global-activity__annotation-lane .hub-live-wire')).toHaveCount(0)
+    await expect(page.locator('.activity-context-rail .hub-live-wire--rail')).toHaveCount(1)
     await expect(tape.locator('a .hub-live-wire__event-card, .hub-live-wire__event-card a')).toHaveCount(0)
     await expect(tape.locator('.hub-live-wire__bar, [role="progressbar"]')).toHaveCount(0)
 
-    const sodaCard = tape.getByRole('button', { name: /sodapoppin.*Show this minute on the activity chart/i })
+    const sodaCard = tape.getByRole('button', { name: /sodapoppin.*Inspect this activity bucket/i })
     await expect(sodaCard).toBeVisible()
     await expect(page.locator('.pulse-moments__peak-row.is-active')).toHaveCount(0)
     await expect(page.locator('.hx-bucket-cue--accent')).toHaveCount(0)
@@ -538,13 +541,16 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('idle shared sidecar shows Live Wire instead of the retired default inspector', async ({ page }) => {
+  test('idle activity rail shows Live Wire and keeps the inspector inactive', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    const liveDesk = page.getByRole('region', { name: 'Live Wire' })
-    await expect(liveDesk).toBeVisible()
-    await expect(liveDesk.getByRole('heading', { name: 'Live Wire' })).toBeVisible()
-    await expect(page.locator('.activity-bucket-inspector')).toHaveCount(0)
+    const rail = page.locator('.activity-context-rail')
+    const liveWire = rail.getByRole('region', { name: 'Live Wire' })
+    await expect(liveWire).toBeVisible()
+    await expect(liveWire.getByRole('heading', { name: 'Live Wire' })).toBeVisible()
+    await expect(rail).toHaveAttribute('data-activity-rail-view', 'idle')
+    await expect(rail.locator('.activity-context-rail__pane--inspector')).toHaveAttribute('aria-hidden', 'true')
+    await expect(page.locator('.figma-global-activity__annotation-lane')).toHaveCount(0)
 
     await assertNoConsoleErrors(page, errors)
   })
@@ -587,13 +593,16 @@ test.describe('analytics hub UX (interaction)', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('idle Live Wire exposes verified streamer-relative detections', async ({ page }) => {
+  test('Live Wire exposes verified streamer-relative detections and browse controls', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     await page.goto('/analytics')
-    const liveDesk = page.getByRole('region', { name: 'Live Wire' })
-    await expect(liveDesk).toBeVisible()
-    await expect(liveDesk.getByText(/compared with earlier in each stream/i)).toBeVisible()
-    await expect(liveDesk.getByRole('button', { name: /xQc.*Show this minute on the activity chart/i })).toBeVisible()
+    const liveWire = page.getByRole('region', { name: 'Live Wire' })
+    await expect(liveWire).toBeVisible()
+    await expect(liveWire.getByText(/current streams · top detected moments/i)).toBeVisible()
+    await expect(liveWire.getByRole('button', { name: 'Current streams' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(liveWire.getByLabel('Live Wire category')).toBeVisible()
+    await expect(liveWire.getByLabel('Live Wire order')).toBeVisible()
+    await expect(liveWire.getByRole('button', { name: /xQc.*Inspect this activity bucket/i })).toBeVisible()
     await assertNoConsoleErrors(page, errors)
   })
 

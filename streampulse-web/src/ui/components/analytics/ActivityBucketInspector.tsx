@@ -3,9 +3,10 @@ import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import type { HubActivityPoint, HubEmote, HubEmoteIntel, HubLiveChannel } from '../../../lib/publicHub'
 import { bucketMinutes, hubActivityEmoteCount } from '../../../lib/hubActivitySummary'
 import type { HubEmoteWithShare } from '../../../lib/emoteShare'
-import { compact, displayName, initial } from './hubFormat'
-import { HubTopEmotesTable } from './HubTopEmotesTable'
+import { compact, displayName, initial, providerLabel } from './hubFormat'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
+import { EmoteImg } from './EmoteImg'
+import { SharePctDisplay } from './SharePctDisplay'
 import { ResilientImage } from '../ResilientImage'
 import {
   type InspectorMode,
@@ -23,6 +24,7 @@ export interface LinkedMomentSummary {
   login: string
   displayName?: string
   label: string
+  bucketRelation?: 'exact' | 'nearest_completed'
 }
 
 export interface ActivityBucketInspectorProps {
@@ -182,14 +184,24 @@ const LinkedMomentStrip = memo(function LinkedMomentStrip({
   onClear?: () => void
 }) {
   const name = displayName(linked.login, linked.displayName)
+  const usesNearestBucket = linked.bucketRelation === 'nearest_completed'
   return (
-    <div className="activity-bucket-inspector__linked" data-testid="bucket-inspector-linked-moment">
+    <div
+      className="activity-bucket-inspector__linked"
+      data-bucket-relation={linked.bucketRelation ?? 'exact'}
+      data-testid="bucket-inspector-linked-moment"
+    >
       <div className="activity-bucket-inspector__linked-copy">
-        <span className="activity-bucket-inspector__linked-eyebrow">Linked to selected moment</span>
+        <span className="activity-bucket-inspector__linked-eyebrow">Selected Live Wire moment</span>
         <span className="activity-bucket-inspector__linked-line">
           <strong>{name}</strong>
           <span aria-hidden="true"> · </span>
           <span>{linked.label}</span>
+        </span>
+        <span className="activity-bucket-inspector__linked-note">
+          {usesNearestBucket
+            ? 'Fresh detection · showing the nearest completed bucket while its rollup closes.'
+            : 'Matched to this completed activity bucket.'}
         </span>
       </div>
       {onClear ? (
@@ -258,17 +270,58 @@ const InspectorEmoteList = memo(
   }) {
     if (emotes.length === 0) {
       return (
-        <div className="activity-bucket-inspector__empty muted">
-          {mode === 'range'
-            ? 'Top emotes appear when the public hub has provider rollups for this window.'
-            : 'No per-bucket emote breakdown for this interval yet.'}
-        </div>
+        <section className="activity-bucket-inspector__breakdown" aria-labelledby="activity-bucket-emotes-heading">
+          <div className="activity-bucket-inspector__section-head">
+            <h3 id="activity-bucket-emotes-heading">Emote breakdown</h3>
+            <span>Uses · share</span>
+          </div>
+          <div className="activity-bucket-inspector__empty muted">
+            {mode === 'range'
+              ? 'Top emotes appear when the public hub has provider rollups for this window.'
+              : 'No per-bucket emote breakdown for this interval yet.'}
+          </div>
+        </section>
       )
     }
+    const top = emotes.slice(0, 10)
     return (
-      <div className="activity-bucket-inspector__table-slot">
-        <HubTopEmotesTable emotes={emotes} maxRows={10} layout="inspector" fill={fill} />
-      </div>
+      <section className="activity-bucket-inspector__breakdown" aria-labelledby="activity-bucket-emotes-heading">
+        <div className="activity-bucket-inspector__section-head">
+          <h3 id="activity-bucket-emotes-heading">Emote breakdown</h3>
+          <span>Uses · share</span>
+        </div>
+        <div className="activity-bucket-inspector__table-slot">
+          <ol
+            className={`activity-bucket-inspector__emote-list${fill ? ' activity-bucket-inspector__emote-list--fill' : ''}`}
+            aria-label="Top emotes ranked by use count"
+          >
+            {top.map((emote, index) => (
+              <li key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}>
+                <span className="activity-bucket-inspector__emote-rank tnum" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span className="activity-bucket-inspector__emote-identity">
+                  <span className="activity-bucket-inspector__emote-image" aria-hidden="true">
+                    <EmoteImg src={emote.imageUrl} name={emote.name} width={24} height={24} />
+                  </span>
+                  <span className="activity-bucket-inspector__emote-copy">
+                    <strong title={emote.name}>{emote.name}</strong>
+                    <small>{providerLabel(emote.provider)}</small>
+                  </span>
+                </span>
+                <span className="activity-bucket-inspector__emote-metrics">
+                  <strong className="tnum">{compact(emote.count)}</strong>
+                  <SharePctDisplay
+                    sharePct={emote.sharePct}
+                    shareEstimated={emote.shareEstimated}
+                    className="activity-bucket-inspector__emote-share"
+                  />
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
     )
   },
   (prev, next) =>
@@ -318,7 +371,7 @@ export function ActivityBucketInspector({
 
   const headLabel =
     bucketMode === 'selected'
-      ? `Selected bucket · ${formatBucketTime(activePoint!.t)}`
+      ? `Moment bucket · ${formatBucketTime(activePoint!.t)}`
       : bucketMode === 'preview'
         ? `Preview · ${formatBucketTime(activePoint!.t)}`
         : `Top emotes — ${windowLabel}`
@@ -327,7 +380,7 @@ export function ActivityBucketInspector({
     linkedActive
       ? 'Linked'
       : bucketMode === 'selected'
-        ? 'Selected'
+        ? 'Locked'
         : bucketMode === 'preview'
           ? 'Preview'
           : null
@@ -406,7 +459,10 @@ export function ActivityBucketInspector({
       aria-label="Activity bucket inspector"
     >
       {linkedMoment ? (
-        <LinkedMomentStrip linked={linkedMoment} onClear={onClearLinkedMoment} />
+        <LinkedMomentStrip
+          linked={linkedMoment}
+          onClear={bucketLocked ? undefined : onClearLinkedMoment}
+        />
       ) : null}
       <InspectorChrome
         headLabel={headLabel}

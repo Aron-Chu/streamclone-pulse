@@ -27,7 +27,7 @@ import {
 } from "../hub/HubActivityChart";
 import { HubSearch, type HubSuggestion } from "../hub/HubSearch";
 import { ActivityBucketInspector } from "./ActivityBucketInspector";
-import { ActivityNewsroomSidecar } from "../newsroom/ActivityNewsroomSidecar";
+import { ActivityContextRail, type ActivityContextRailMode } from "./ActivityContextRail";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
 import { HubFreshnessCaption } from "./HubFreshnessCaption";
 import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
@@ -207,20 +207,15 @@ export interface FigmaGlobalActivityPanelProps {
     login: string;
     displayName?: string;
     label: string;
+    bucketRelation?: "exact" | "nearest_completed";
   } | null;
   onClearLinkedMoment?: () => void;
   liveChannels?: HubLiveChannel[];
   /** Visual-only bucket highlight when a moment is selected without a locked bucket. */
   accentBucketT?: number | null;
-  selectedMomentKey?: string | null;
-  onSelectMoment?: (moment: FigmaMomentRow) => void;
-  /** Fresh Live Wire breakouts mounted directly above the chart they control. */
-  annotationLane?: ReactNode;
-  /** Idle content for the existing inspector slot. Supplying this enables the shared sidecar. */
-  liveDesk?: ReactNode;
-  sidecarAnnouncement?: string;
-  storyFocused?: boolean;
-  onBackToLiveDesk?: () => void;
+  /** Full working Live Wire mounted in the chart-side activity rail. */
+  liveWireRail: ReactNode;
+  onBackToLiveWire?: () => void;
 }
 
 function formatPeakTime(ts: number): string {
@@ -256,13 +251,8 @@ export function FigmaGlobalActivityPanel({
   onClearLinkedMoment,
   liveChannels = [],
   accentBucketT = null,
-  selectedMomentKey = null,
-  onSelectMoment,
-  annotationLane,
-  liveDesk,
-  sidecarAnnouncement,
-  storyFocused = false,
-  onBackToLiveDesk,
+  liveWireRail,
+  onBackToLiveWire,
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
   const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
@@ -356,11 +346,11 @@ export function FigmaGlobalActivityPanel({
     if (!bucketFocused) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      const chartArea = chartAreaRef.current;
-      if (!chartArea) return;
+      const activityBody = bodyRef.current;
+      if (!activityBody) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (chartArea.contains(target)) return;
+      if (activityBody.contains(target)) return;
       clearBucketFocus();
     };
 
@@ -409,20 +399,20 @@ export function FigmaGlobalActivityPanel({
   const ircActive = hub.corpusPipeline.collectorActive;
 
   const selectedPoint = useMemo(() => {
-    if (selectedBucketT != null) {
-      return chartPoints.find((p) => p.t === selectedBucketT) ?? null;
-    }
-    // Moment selection: show that bucket's preview in the rail (not a second inspector).
-    if (accentBucketT != null) {
-      return chartPoints.find((p) => p.t === accentBucketT) ?? null;
-    }
-    return null;
-  }, [accentBucketT, chartPoints, selectedBucketT]);
+    if (selectedBucketT == null) return null;
+    return chartPoints.find((p) => p.t === selectedBucketT) ?? null;
+  }, [chartPoints, selectedBucketT]);
 
   const hoverPoint = useMemo(() => {
     if (hasLinkedMoment || selectedBucketT != null || hoverBucketT == null) return null;
     return chartPoints.find((p) => p.t === hoverBucketT) ?? null;
   }, [chartPoints, hasLinkedMoment, hoverBucketT, selectedBucketT]);
+
+  const railMode: ActivityContextRailMode = selectedPoint
+    ? "locked"
+    : hoverPoint
+      ? "preview"
+      : "idle";
 
   useEffect(() => {
     if (selectedPoint) {
@@ -576,7 +566,6 @@ export function FigmaGlobalActivityPanel({
                   : activitySummary.footnote
               }
               rangeControl={rangeControl}
-              annotationLane={annotationLane}
               emptyTitle={honestyEmpty?.title}
               emptyDescription={honestyEmpty?.description}
               selectedBucketT={selectedBucketT}
@@ -595,39 +584,15 @@ export function FigmaGlobalActivityPanel({
           </div>
         </div>
         <div className="figma-global-activity__inspector" ref={inspectorRef}>
-          {liveDesk ? (
-            <ActivityNewsroomSidecar
-              focused={Boolean(selectedPoint || hoverPoint)}
-              storyFocused={storyFocused}
-              announcement={sidecarAnnouncement}
-              onBackToDesk={onBackToLiveDesk ?? clearBucketFocus}
-              liveDesk={liveDesk}
-              inspector={
-                <ActivityBucketInspector
-                  rangeEmotes={topEmotes}
-                  bucketMomentEmotes={bucketMomentEmotes}
-                  bucketMoments={bucketMoments}
-                  bucketMomentsLoading={bucketMomentsLoading}
-                  windowLabel={windowLabel}
-                  windowMinutes={chartInputs.windowMinutes}
-                  updatedAgo={updatedAgo}
-                  emoteIntel={hub.emoteIntel}
-                  topEmoteName={topEmotes[0]?.name}
-                  selectedPoint={selectedPoint}
-                  hoverPoint={hoverPoint}
-                  linkedMoment={linkedMoment}
-                  onClearLinkedMoment={onClearLinkedMoment}
-                  bucketLocked={selectedBucketT != null}
-                  liveChannels={liveChannels}
-                  className="figma-global-activity__inspector-panel"
-                />
-              }
-            />
-          ) : (
-            <ActivityBucketInspector
-            rangeEmotes={topEmotes}
-            bucketMomentEmotes={bucketMomentEmotes}
-            bucketMoments={bucketMoments}
+          <ActivityContextRail
+            mode={railMode}
+            idle={liveWireRail}
+            onClear={onBackToLiveWire ?? clearBucketFocus}
+            inspector={
+              <ActivityBucketInspector
+              rangeEmotes={topEmotes}
+              bucketMomentEmotes={bucketMomentEmotes}
+              bucketMoments={bucketMoments}
             bucketMomentsLoading={bucketMomentsLoading}
             windowLabel={windowLabel}
             windowMinutes={chartInputs.windowMinutes}
@@ -639,10 +604,11 @@ export function FigmaGlobalActivityPanel({
             linkedMoment={linkedMoment}
             onClearLinkedMoment={onClearLinkedMoment}
             bucketLocked={selectedBucketT != null}
-            liveChannels={liveChannels}
-            className="figma-global-activity__inspector-panel"
+              liveChannels={liveChannels}
+              className="figma-global-activity__inspector-panel"
+              />
+            }
           />
-          )}
         </div>
       </div>
     </section>
