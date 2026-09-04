@@ -5,6 +5,7 @@ import { Avatar } from '../hub/primitives'
 import { StoryComparison } from './StoryComparison'
 import { EvidenceSummary } from './EvidenceSummary'
 import { StorySparkline } from './StorySparkline'
+import { StorySourceBadges } from './StorySources'
 
 export interface LeadStoryCardProps {
   story: NewsroomStory
@@ -58,6 +59,7 @@ export function LeadStoryCard({ story, compact = false, onSelect, headingLevel =
       </div>
       <Heading className="newsroom-lead__headline">{story.headline}</Heading>
       <p className="newsroom-lead__summary">{story.summary}</p>
+      <StorySourceBadges sources={story.sources} />
       <StorySparkline
         points={story.leadUpdate.sparkline}
         signal={story.primarySignal}

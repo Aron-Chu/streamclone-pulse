@@ -143,6 +143,15 @@ describe('dedupeMomentsByLogin', () => {
     expect(out).toHaveLength(2)
   })
 
+  it('keeps an older re-surge outside the window when moments are newest-first', () => {
+    const items = [
+      { login: 'a', at: 30_000 },
+      { login: 'a', at: 1_000 },
+    ]
+    const out = dedupeMomentsByLogin(items, 10, 10_000)
+    expect(out).toHaveLength(2)
+  })
+
   it('honors the cap on returned length', () => {
     const items = Array.from({ length: 5 }, (_, i) => ({ login: `c${i}`, at: i * 1000 }))
     const out = dedupeMomentsByLogin(items, 3, 10_000)

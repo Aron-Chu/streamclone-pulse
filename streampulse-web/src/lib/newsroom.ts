@@ -18,6 +18,20 @@ export type NewsroomSignal = 'chat' | 'emotes' | 'mixed'
 export type NewsroomUpdateKind = 'signal' | 'lifecycle' | 'correction'
 export type NewsroomRollupChatSource = 'live' | 'irc'
 export type NewsroomRollupSourceConfidence = 'verified' | 'live'
+export type NewsroomExternalSourceName = 'twitch_clip' | 'reddit' | 'x' | 'youtube' | 'news'
+
+export interface NewsroomExternalSource {
+  id: string
+  source: NewsroomExternalSourceName
+  kind: string
+  url: string
+  title?: string
+  author?: string
+  occurredAt?: string
+  metrics: Record<string, number>
+  matchConfidence?: number
+  reliabilityWeight?: number
+}
 
 export interface NewsroomEvidence {
   ircBound: boolean
@@ -96,6 +110,8 @@ export interface NewsroomStory {
   lastPublishedAt: string
   resolvedAt?: string
   leadUpdate: NewsroomUpdate
+  /** Corroborating public coverage; never part of the StreamPulse reaction score. */
+  sources: NewsroomExternalSource[]
 }
 
 export interface NewsroomNetworkBrief {
@@ -360,6 +376,67 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
   }
 }
 
+const NEWSROOM_SOURCE_NAMES = ['twitch_clip', 'reddit', 'x', 'youtube', 'news'] as const
+const NEWSROOM_SOURCE_METRICS = new Set(['views', 'score', 'likes', 'comments', 'reposts'])
+
+function newsroomSourceUrl(source: NewsroomExternalSourceName, value: unknown): string | null {
+  const raw = text(value)
+  if (!raw) return null
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
+    const hostIs = (...domains: string[]) => domains.some((domain) => host === domain || host.endsWith(`.${domain}`))
+    const allowed = source === 'twitch_clip'
+      ? hostIs('clips.twitch.tv', 'twitch.tv')
+      : source === 'reddit'
+        ? hostIs('reddit.com', 'redd.it')
+        : source === 'x'
+          ? hostIs('x.com', 'twitter.com')
+          : source === 'youtube'
+            ? hostIs('youtube.com', 'youtu.be')
+            : host.length > 0
+    return allowed ? parsed.toString() : null
+  } catch {
+    return null
+  }
+}
+
+function normalizeNewsroomSourceMetrics(value: unknown): Record<string, number> | null {
+  if (value == null) return {}
+  const row = record(value)
+  if (!row) return null
+  const metrics: Record<string, number> = {}
+  for (const [key, candidate] of Object.entries(row)) {
+    const normalizedKey = key.trim().toLowerCase()
+    if (!NEWSROOM_SOURCE_METRICS.has(normalizedKey) || typeof candidate !== 'number' || !Number.isFinite(candidate) || candidate < 0) continue
+    metrics[normalizedKey] = candidate
+  }
+  return metrics
+}
+
+export function normalizeNewsroomExternalSource(value: unknown): NewsroomExternalSource | null {
+  const row = record(value)
+  if (!row) return null
+  const id = text(row.id)
+  const source = enumValue(row.source, NEWSROOM_SOURCE_NAMES)
+  const kind = text(row.kind)
+  const url = source ? newsroomSourceUrl(source, row.url) : null
+  const title = optionalText(row.title)
+  const author = optionalText(row.author)
+  const occurredAt = row.occurredAt == null ? undefined : timestamp(row.occurredAt)
+  const metrics = normalizeNewsroomSourceMetrics(row.metrics)
+  const matchConfidence = row.matchConfidence == null ? undefined : nonNegative(row.matchConfidence)
+  const reliabilityWeight = row.reliabilityWeight == null ? undefined : nonNegative(row.reliabilityWeight)
+  if (
+    !id || !source || !kind || !url || title === null || author === null || occurredAt === null || !metrics ||
+    matchConfidence === null || reliabilityWeight === null ||
+    (matchConfidence !== undefined && matchConfidence > 1) ||
+    (reliabilityWeight !== undefined && reliabilityWeight > 1)
+  ) return null
+  return { id, source, kind, url, title, author, occurredAt, metrics, matchConfidence, reliabilityWeight }
+}
+
 export function normalizeNewsroomStory(value: unknown): NewsroomStory | null {
   const row = record(value)
   if (!row) return null
@@ -381,10 +458,13 @@ export function normalizeNewsroomStory(value: unknown): NewsroomStory | null {
   const lastPublishedAt = timestamp(row.lastPublishedAt)
   const resolvedAt = row.resolvedAt == null ? undefined : timestamp(row.resolvedAt)
   const leadUpdate = normalizeNewsroomUpdate(row.leadUpdate)
+  const rawSources = row.sources == null ? [] : row.sources
+  if (!Array.isArray(rawSources) || rawSources.length > 4) return null
+  const sources = rawSources.map(normalizeNewsroomExternalSource)
   if (
     !id || !login || displayName === null || profileImageUrl === null || category === null || !streamId || !lifecycle ||
     resolvedReason === null || !primarySignal || !headline || !summary || revision == null || !createdAt ||
-    !lastPublishedAt || resolvedAt === null || !leadUpdate || leadUpdate.momentRef.streamId !== streamId ||
+    !lastPublishedAt || resolvedAt === null || !leadUpdate || sources.some((source) => source == null) || leadUpdate.momentRef.streamId !== streamId ||
     leadUpdate.lifecycle !== lifecycle || leadUpdate.revision > revision
   ) return null
   if (lifecycle === 'resolved' && !resolvedReason) return null
@@ -406,6 +486,7 @@ export function normalizeNewsroomStory(value: unknown): NewsroomStory | null {
     lastPublishedAt,
     resolvedAt,
     leadUpdate,
+    sources: sources as NewsroomExternalSource[],
   }
 }
 

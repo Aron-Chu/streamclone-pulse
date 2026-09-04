@@ -2,7 +2,7 @@ import { buildAnalyticsHref } from './analyticsLinks'
 import { apiClient } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import type { HubFeaturedCoverageRow, HubFeaturedSession, PublicHub } from './publicHub'
-import { formatStreamOffset } from './streamcloneAnalytics'
+import { formatStreamOffset, normalizePortalVodId } from './streamcloneAnalytics'
 import { PORTAL_MINUTES_TIMEOUT_MS } from './timelineDownsample'
 import type { LiveWireMomentComparison } from './liveWire'
 
@@ -284,6 +284,7 @@ function featuredFallbackMoments(hub: PublicHub): FigmaMomentRow[] {
     })),
     confidence: moment.confidence,
     vodState: moment.vodState,
+    comparison: moment.comparison,
     login: featured.login,
     displayName: featured.displayName ?? live?.displayName,
     profileImageUrl: live?.profileImageUrl,
@@ -617,6 +618,7 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
         peakViewers?: number
         vodId?: string
       }
+      availability?: { vodId?: string | null }
       sources?: Array<{ source: string; state: string; label?: string }>
       dataSourceBadges?: Array<{ source: string; state: string; label?: string }>
     }>(portalPath(`/streams/${encodeURIComponent(streamId)}`)).catch(() => null),
@@ -626,7 +628,9 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
   }
   const detail = detailRes?.data
   const resolvedLogin = login ?? peaksRes?.login ?? coverageRes?.login ?? detail?.stream?.login ?? detail?.channel ?? ''
-  const vodId = coverageRes?.vodId ?? detail?.stream?.vodId
+  const vodId = normalizePortalVodId(detail?.availability?.vodId)
+    ?? normalizePortalVodId(coverageRes?.vodId)
+    ?? normalizePortalVodId(detail?.stream?.vodId)
   const sessionHref = resolvedLogin ? buildAnalyticsHref({ login: resolvedLogin, streamId }) : undefined
   const peaks = peaksRes?.peaks ?? []
   const chartFromMinutes = minutesRes?.minutes?.length ? chartPointsFromMinutes(minutesRes.minutes) : []

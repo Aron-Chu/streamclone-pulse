@@ -99,6 +99,7 @@ function envelope(overrides: {
     createdAt: new Date(at).toISOString(),
     lastPublishedAt: update.publishedAt,
     leadUpdate: update,
+    sources: [],
   }
   return {
     schemaVersion: 1,

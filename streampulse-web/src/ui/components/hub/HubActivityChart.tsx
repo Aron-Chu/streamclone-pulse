@@ -167,6 +167,9 @@ function BucketSelectionCue({ x, label, tone, motionEnabled }: BucketSelectionCu
       aria-hidden="true"
     >
       <span className="hx-bucket-cue__line" />
+      <span className="hx-bucket-cue__node">
+        <span className="hx-bucket-cue__ring" />
+      </span>
       {label ? <span className="hx-bucket-cue__label">{label}</span> : null}
     </span>
   )
@@ -1089,7 +1092,6 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
-        {annotationLane}
         <div className="hx-chart-state hx-chart-state--loading" data-hub-chart-state="loading" role="status" aria-live="polite">
           Loading measured activity…
         </div>
@@ -1098,6 +1100,7 @@ export function HubActivityChart({
             <Skeleton key={i} width={10} height={`${30 + ((i * 37) % 60)}%`} radius="3px" style={{ flex: 1 }} />
           ))}
         </div>
+        {annotationLane}
       </>
     )
   }
@@ -1106,7 +1109,6 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
-        {annotationLane}
         <div className="hx-chart-state" data-hub-chart-state="unmeasured" role="status" aria-live="polite">
           <EmptyState icon={<Activity aria-hidden="true" />}>
           {emptyTitle ? (
@@ -1119,6 +1121,7 @@ export function HubActivityChart({
           )}
           </EmptyState>
         </div>
+        {annotationLane}
       </>
     )
   }
@@ -1127,12 +1130,12 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
-        {annotationLane}
         <div className="hx-chart-state" data-hub-chart-state="unavailable" role="status" aria-live="polite">
           <EmptyState icon={<Activity aria-hidden="true" />}>
             <strong>Activity payload unavailable</strong> — {dataIssue} The chart is withheld until the served window and timestamps agree.
           </EmptyState>
         </div>
+        {annotationLane}
       </>
     )
   }
@@ -1149,12 +1152,12 @@ export function HubActivityChart({
     return (
       <>
         {rangeControl ? <div className="hx-chart-actions">{rangeTabs}</div> : null}
-        {annotationLane}
         <div className="hx-chart-state" data-hub-chart-state={chartDataState} role="status" aria-live="polite">
           <EmptyState icon={<Activity aria-hidden="true" />}>
             <strong>{title}</strong> — {description}
           </EmptyState>
         </div>
+        {annotationLane}
       </>
     )
   }
@@ -1510,7 +1513,6 @@ export function HubActivityChart({
           ) : hover != null ? 'No recorded activity in this bucket · Viewers — · Chat — · Emotes —' : ''}
         </div>
       </div>
-      {annotationLane}
       {chartSummary ? (
         <p className="hx-chart-summary muted" role="status">
           {chartSummary}
@@ -2060,6 +2062,7 @@ export function HubActivityChart({
           ) : null}
         </div>
       </div>
+      {annotationLane}
       <p className="hx-chart-footnote muted">
         {footnote ?? 'Viewers, tracked IRC chat, and total emotes use separate scales.'}
       </p>

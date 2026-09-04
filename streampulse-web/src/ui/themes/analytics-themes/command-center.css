@@ -20,10 +20,17 @@
   --sp-accent-bg: rgba(94, 234, 212, 0.1);
   --sp-accent-dim: rgba(94, 234, 212, 0.05);
 
-  --sp-radius-sm: 4px;
-  --sp-radius-md: 8px;
-  --sp-radius-lg: 10px;
-  --sp-radius-xl: 12px;
+  /* Spacious settings-style rhythm: grouped, calm, and still data-dense. */
+  --sp-radius-sm: 6px;
+  --sp-radius-md: 10px;
+  --sp-radius-lg: 12px;
+  --sp-radius-xl: 14px;
+  --sp-space-1: 0.35rem;
+  --sp-space-2: 0.55rem;
+  --sp-space-3: 0.75rem;
+  --sp-space-4: 1rem;
+  --sp-space-5: 1.25rem;
+  --sp-space-6: 1.5rem;
 
   --sp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 

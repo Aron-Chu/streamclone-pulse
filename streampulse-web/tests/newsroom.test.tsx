@@ -9,10 +9,11 @@ import {
   type NewsroomEnvelope,
   type NewsroomStory,
 } from '../src/lib/newsroom'
-import { ActivityNewsroomSidecar } from '../src/ui/components/newsroom/ActivityNewsroomSidecar'
+import { ActivityContextRail } from '../src/ui/components/analytics/ActivityContextRail'
 import { LiveDeskRail } from '../src/ui/components/newsroom/LiveDeskRail'
 import { StoryComparison, StoryComparisonTimeline } from '../src/ui/components/newsroom/StoryComparison'
 import { StorySparkline } from '../src/ui/components/newsroom/StorySparkline'
+import { StorySourceBadges, StorySources } from '../src/ui/components/newsroom/StorySources'
 import { StoryTimeline } from '../src/ui/components/newsroom/StoryTimeline'
 
 const eventAt = Date.UTC(2026, 7, 27, 12, 40, 30)
@@ -136,6 +137,60 @@ describe('Pulse Newsroom contract', () => {
     expect(envelope?.schemaVersion).toBe(1)
     expect(envelope?.stories[0].leadUpdate.momentRef.publicMomentId).toBe('moment-story-1')
     expect(envelope?.stories[0].leadUpdate.sparkline).toHaveLength(4)
+    expect(envelope?.stories[0].sources).toEqual([])
+  })
+
+  it('accepts allowlisted external corroboration without folding it into reaction evidence', () => {
+    const raw = rawEnvelope() as any
+    raw.stories[0].sources = [
+      {
+        id: 'clip-1',
+        source: 'twitch_clip',
+        kind: 'clip',
+        url: 'https://clips.twitch.tv/VerifiedClip',
+        title: 'Public Twitch clip',
+        author: 'clipper',
+        occurredAt: new Date(eventAt).toISOString(),
+        metrics: { views: 1200, unsupported: 99 },
+        matchConfidence: 0.91,
+        reliabilityWeight: 1,
+      },
+      {
+        id: 'reddit-1',
+        source: 'reddit',
+        kind: 'post',
+        url: 'https://www.reddit.com/r/LivestreamFail/comments/abc/story/',
+        metrics: { score: 420, comments: 38 },
+      },
+    ]
+    const story = normalizeNewsroomEnvelope(raw)?.stories[0]
+    expect(story?.sources).toHaveLength(2)
+    expect(story?.sources[0].metrics).toEqual({ views: 1200 })
+    expect(story?.leadUpdate.comparison.emotes.multiplier).toBe(4)
+  })
+
+  it('fails closed for unsafe or source-spoofed external links', () => {
+    for (const url of [
+      'javascript:alert(1)',
+      'https://clips.twitch.tv.example.com/spoof',
+      'https://example.com/r/LivestreamFail/comments/abc/story/',
+    ]) {
+      const raw = rawEnvelope() as any
+      raw.stories[0].sources = [{ id: 'unsafe', source: url.includes('reddit') ? 'reddit' : 'twitch_clip', kind: 'post', url, metrics: {} }]
+      expect(normalizeNewsroomEnvelope(raw)).toBeNull()
+    }
+  })
+
+  it('rejects an unbounded external-source list', () => {
+    const raw = rawEnvelope() as any
+    raw.stories[0].sources = Array.from({ length: 5 }, (_, index) => ({
+      id: `clip-${index}`,
+      source: 'twitch_clip',
+      kind: 'clip',
+      url: `https://clips.twitch.tv/VerifiedClip${index}`,
+      metrics: {},
+    }))
+    expect(normalizeNewsroomEnvelope(raw)).toBeNull()
   })
 
   it('fails the entire response closed when comparison evidence or moment identity is malformed', () => {
@@ -293,17 +348,59 @@ describe('Pulse Newsroom contract', () => {
 })
 
 describe('Pulse Newsroom components', () => {
-  it('renders only one shared-sidecar view and returns to Live Desk', () => {
-    const onBack = vi.fn()
-    const { rerender } = render(
-      <ActivityNewsroomSidecar focused={false} liveDesk={<div>Live Desk content</div>} inspector={<div>Bucket inspector</div>} onBackToDesk={onBack} />,
+  it('presents external coverage as labeled corroboration with safe public links', () => {
+    const story = rawStory() as any
+    story.sources = [
+      {
+        id: 'clip-1',
+        source: 'twitch_clip',
+        kind: 'clip',
+        url: 'https://clips.twitch.tv/VerifiedClip',
+        title: 'The reaction that set chat off',
+        author: 'clipper',
+        occurredAt: new Date(eventAt).toISOString(),
+        metrics: { views: 18000 },
+      },
+      {
+        id: 'reddit-1',
+        source: 'reddit',
+        kind: 'post',
+        url: 'https://www.reddit.com/r/LivestreamFail/comments/abc/story/',
+        title: 'LSF discussion follows the same moment',
+        metrics: { score: 420, comments: 38 },
+      },
+    ]
+    const normalized = normalizeNewsroomEnvelope({ ...rawEnvelope(), stories: [story] })!.stories[0]
+    const { rerender } = render(<StorySourceBadges sources={normalized.sources} />)
+    expect(screen.getByLabelText('External coverage sources').textContent).toContain('Twitch clip')
+    expect(screen.getByLabelText('External coverage sources').textContent).toContain('LSF / Reddit')
+
+    rerender(<StorySources sources={normalized.sources} />)
+    expect(screen.getByText(/does not change its StreamPulse reaction score/i)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /The reaction that set chat off/i }).getAttribute('href')).toBe('https://clips.twitch.tv/VerifiedClip')
+    expect(screen.getByText('18K views')).toBeTruthy()
+  })
+
+  it('switches the shared activity rail from Live Wire to preview and locked inspector states', () => {
+    const onClear = vi.fn()
+    const { container, rerender } = render(
+      <ActivityContextRail mode="idle" idle={<div>Live Wire content</div>} inspector={<div>Bucket inspector</div>} onClear={onClear} />,
     )
-    expect(screen.getByText('Live Desk content')).toBeTruthy()
-    expect(screen.queryByText('Bucket inspector')).toBeNull()
-    rerender(<ActivityNewsroomSidecar focused liveDesk={<div>Live Desk content</div>} inspector={<div>Bucket inspector</div>} onBackToDesk={onBack} />)
-    expect(screen.queryByText('Live Desk content')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Back to Live Desk' }))
-    expect(onBack).toHaveBeenCalledOnce()
+    expect(container.querySelector('.activity-context-rail')?.getAttribute('data-activity-rail-view')).toBe('idle')
+    expect(container.querySelector('.activity-context-rail__pane--wire')?.hasAttribute('aria-hidden')).toBe(false)
+    expect(container.querySelector('.activity-context-rail__pane--inspector')?.getAttribute('aria-hidden')).toBe('true')
+
+    rerender(<ActivityContextRail mode="preview" idle={<div>Live Wire content</div>} inspector={<div>Bucket inspector</div>} onClear={onClear} />)
+    expect(container.querySelector('.activity-context-rail')?.getAttribute('data-activity-rail-view')).toBe('preview')
+    expect(screen.queryByRole('button', { name: 'Back to Live Wire' })).toBeNull()
+
+    rerender(<ActivityContextRail mode="locked" idle={<div>Live Wire content</div>} inspector={<div>Bucket inspector</div>} onClear={onClear} />)
+    const back = screen.getByRole('button', { name: 'Back to Live Wire' })
+    expect(document.activeElement).toBe(back)
+    fireEvent.click(back)
+    expect(onClear).toHaveBeenCalledOnce()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClear).toHaveBeenCalledTimes(2)
   })
 
   it('caps the compact desk at one lead and two secondary headlines with no score', () => {

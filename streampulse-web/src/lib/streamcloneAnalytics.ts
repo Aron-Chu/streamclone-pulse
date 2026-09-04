@@ -62,7 +62,7 @@ interface PortalStreamRecord {
   peakViewers?: number
   viewerSamples?: number
   chatMessages?: number
-  vodId?: string
+  vodId?: string | null
 }
 
 interface PortalSignalObservation {
@@ -105,7 +105,7 @@ interface PortalSessionAvailability {
   coverageMessage?: string
   liveDvrState?: string
   vodState?: string
-  vodId?: string
+  vodId?: string | null
   vodMessage?: string
   backfillState?: string
   corpusState?: string
@@ -452,6 +452,14 @@ async function fetchPortalChannelEmotesCatalog(login: string): Promise<Analytics
   return pending
 }
 
+/** @internal exported for unit tests — accepts only non-empty numeric IDs (5–20 digits). */
+export function normalizePortalVodId(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  if (trimmed === '') return undefined
+  return /^\d{5,20}$/.test(trimmed) ? trimmed : undefined
+}
+
 function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {
   return {
     ...emote,
@@ -723,7 +731,8 @@ function mergePortalSourceRows(
   return Array.from(bySource.values())
 }
 
-function portalLiveResponseToAnalytics(
+/** @internal exported for unit tests — maps a live portal response without inventing VOD data. */
+export function portalLiveResponseToAnalytics(
   data: PortalChannelLiveResponse,
   channelEmotes?: AnalyticsTopEmote[],
 ): AnalyticsStreamDetail {
@@ -757,7 +766,7 @@ function portalLiveResponseToAnalytics(
           peakViewers: stream.peakViewers,
           viewerSamples: stream.viewerSamples,
           chatMessages: stream.chatMessages,
-          vodId: stream.vodId ?? data.vodId,
+          vodId: normalizePortalVodId(stream.vodId) ?? normalizePortalVodId(data.vodId),
         }
       : undefined,
     rollups: chartRollups,
@@ -769,7 +778,10 @@ function portalLiveResponseToAnalytics(
       label: source.label,
     })),
     updatedAt: data.updatedAt,
-    vodId: data.vodId ?? stream?.vodId,
+    vodId:
+      normalizePortalVodId(data.availability?.vodId) ??
+      normalizePortalVodId(data.vodId) ??
+      normalizePortalVodId(stream?.vodId),
     syncPhase: data.syncPhase,
     viewerSource: data.viewerSource,
     coverageStartOffsetSeconds: data.coverageStartOffsetSeconds,
@@ -794,7 +806,7 @@ function portalLiveResponseToAnalytics(
           coverageMessage: data.availability.coverageMessage,
           liveDvrState: data.availability.liveDvrState,
           vodState: data.availability.vodState,
-          vodId: data.availability.vodId ?? data.vodId ?? stream?.vodId,
+          vodId: normalizePortalVodId(data.availability.vodId) ?? normalizePortalVodId(data.vodId) ?? normalizePortalVodId(stream?.vodId),
           vodMessage: data.availability.vodMessage,
           backfillState: data.availability.backfillState,
           corpusState: data.availability.corpusState,
@@ -806,7 +818,8 @@ function portalLiveResponseToAnalytics(
       : {}),
   } as AnalyticsStreamDetail
 }
-function portalDetailToAnalytics(
+/** @internal exported for unit tests — maps a stream detail without inventing VOD data. */
+export function portalDetailToAnalytics(
   detail: PortalStreamDetail,
   minutes: PortalStreamMinutesResponse | null,
   summary: PortalStreamSummary | null,
@@ -846,7 +859,7 @@ function portalDetailToAnalytics(
           peakViewers: stream.peakViewers,
           viewerSamples: stream.viewerSamples,
           chatMessages: stream.chatMessages,
-          vodId: stream.vodId ?? detail.vodId,
+          vodId: normalizePortalVodId(stream.vodId) ?? normalizePortalVodId(detail.vodId),
         }
       : undefined,
     rollups,
@@ -858,7 +871,10 @@ function portalDetailToAnalytics(
       label: source.label,
     })),
     updatedAt: detail.updatedAt,
-    vodId: detail.vodId ?? stream?.vodId,
+    vodId:
+      normalizePortalVodId(detail.availability?.vodId) ??
+      normalizePortalVodId(detail.vodId) ??
+      normalizePortalVodId(stream?.vodId),
     vodAlignSeconds: typeof detail.vodAlignSeconds === 'number' && Number.isFinite(detail.vodAlignSeconds)
       ? detail.vodAlignSeconds
       : undefined,
@@ -888,7 +904,7 @@ function portalDetailToAnalytics(
           coverageMessage: detail.availability.coverageMessage,
           liveDvrState: detail.availability.liveDvrState,
           vodState: detail.availability.vodState,
-          vodId: detail.availability.vodId ?? detail.vodId ?? stream?.vodId,
+          vodId: normalizePortalVodId(detail.availability.vodId) ?? normalizePortalVodId(detail.vodId) ?? normalizePortalVodId(stream?.vodId),
           vodMessage: detail.availability.vodMessage,
           backfillState: detail.availability.backfillState,
           corpusState: detail.availability.corpusState,

@@ -87,16 +87,25 @@ export type HubUxMockMode = 'ready' | 'empty' | 'error' | 'zero-live'
 export type HubUxMockOptions = {
   mode?: HubUxMockMode
   hubDelayMs?: number
+  /** Put the newest Live Wire story in the intentionally omitted open chart bucket. */
+  freshMomentNeedsRollup?: boolean
 }
 
 export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<void> {
   const mode = options.mode ?? 'ready'
   const hubDelayMs = options.hubDelayMs ?? 0
+  const freshMomentNeedsRollup = options.freshMomentNeedsRollup ?? false
   const noLiveData = mode === 'empty' || mode === 'zero-live'
   const now = Date.now()
   const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14)
   const activityPoints = noLiveData || mode === 'error' ? [] : build24hActivityPoints(now)
-  const newsroomMomentAt = activityPoints.length >= 2
+  if (freshMomentNeedsRollup) {
+    const newestPoint = activityPoints[activityPoints.length - 1]
+    if (newestPoint) newestPoint.bucketComplete = false
+  }
+  const newsroomMomentAt = freshMomentNeedsRollup
+    ? now
+    : activityPoints.length >= 2
     ? activityPoints[activityPoints.length - 2].t
     : now - 6 * 60_000
 

@@ -11,6 +11,79 @@ import {
 
 export type PulseMomentFilter = 'all' | 'chat' | 'emotes' | 'mixed' | 'synced' | 'stream_opening'
 
+export type PulseMomentSortKey = 'newest' | 'oldest' | 'strongest'
+
+/**
+ * Sort moments by the chosen key.
+ * - newest: wall-clock `at` descending, score descending, offset descending, stable backend order
+ * - oldest: wall-clock `at` ascending, score descending, offset ascending, stable backend order
+ * - strongest: backend score descending, wall-clock descending, offset descending, stable backend order
+ * Undated moments go after timestamped moments in both newest and oldest modes,
+ * preserving backend order among ties. Does not fabricate timestamps.
+ */
+export function sortPulseMoments(moments: FigmaMomentRow[], sortKey: PulseMomentSortKey): FigmaMomentRow[] {
+  const withIndex = moments.map((m, i) => ({ m, i }))
+  withIndex.sort((a, b) => {
+    const aAt = a.m.at != null && Number.isFinite(a.m.at) && a.m.at > 0 ? a.m.at : null
+    const bAt = b.m.at != null && Number.isFinite(b.m.at) && b.m.at > 0 ? b.m.at : null
+    const aScore = a.m.score != null && Number.isFinite(a.m.score) ? a.m.score : null
+    const bScore = b.m.score != null && Number.isFinite(b.m.score) ? b.m.score : null
+    const aOffset = a.m.offsetSeconds != null && Number.isFinite(a.m.offsetSeconds) ? a.m.offsetSeconds : null
+    const bOffset = b.m.offsetSeconds != null && Number.isFinite(b.m.offsetSeconds) ? b.m.offsetSeconds : null
+
+    switch (sortKey) {
+      case 'newest': {
+        if (aAt !== bAt) {
+          if (aAt === null) return 1
+          if (bAt === null) return -1
+          return bAt - aAt
+        }
+        if (aScore !== bScore) return (bScore ?? 0) - (aScore ?? 0)
+        if (aOffset !== bOffset) return (bOffset ?? 0) - (aOffset ?? 0)
+        return a.i - b.i
+      }
+      case 'oldest': {
+        if (aAt !== bAt) {
+          if (aAt === null) return 1
+          if (bAt === null) return -1
+          return aAt - bAt
+        }
+        if (aScore !== bScore) return (bScore ?? 0) - (aScore ?? 0)
+        if (aOffset !== bOffset) return (aOffset ?? 0) - (bOffset ?? 0)
+        return a.i - b.i
+      }
+      case 'strongest': {
+        if (aScore !== bScore) return (bScore ?? 0) - (aScore ?? 0)
+        if (aAt !== bAt) {
+          if (aAt === null) return 1
+          if (bAt === null) return -1
+          return bAt - aAt
+        }
+        if (aOffset !== bOffset) return (bOffset ?? 0) - (aOffset ?? 0)
+        return a.i - b.i
+      }
+    }
+  })
+  return withIndex.map(({ m }) => m)
+}
+
+/** Build channel filter options from the complete loaded snapshot. */
+export function buildChannelFilterOptions(
+  moments: FigmaMomentRow[],
+): Array<{ login: string; displayName: string }> {
+  const seen = new Map<string, { login: string; displayName: string }>()
+  for (const m of moments) {
+    const key = m.login?.trim().toLowerCase()
+    if (!key) continue
+    if (seen.has(key)) continue
+    seen.set(key, {
+      login: key,
+      displayName: m.displayName ?? m.login ?? key,
+    })
+  }
+  return [...seen.values()]
+}
+
 export const PULSE_MOMENT_FILTER_HINT = 'Filters narrow spike type, not data source.'
 
 export const ROLLUP_CONFIDENCE_LABEL = 'Data conf.'
