@@ -35,7 +35,7 @@ test.describe('analytics hub Live Wire activity rail', () => {
       await expect(liveWire).toBeVisible()
       await expect(globalActivity.locator('.hub-live-wire--rail')).toHaveCount(1)
       await expect(globalActivity.locator('.hub-live-wire--lane, .hub-live-wire--explorer, .figma-analytics__right-rail')).toHaveCount(0)
-      await expect(liveWire.getByRole('link', { name: /Pulse Newsroom/i })).toHaveAttribute('href', '/analytics/newsroom')
+      await expect(liveWire.getByRole('link', { name: /Pulse Explorer/i })).toHaveAttribute('href', '/analytics/explore')
 
       const cards = liveWire.locator('.hub-live-wire__event-card')
       await expect(cards).toHaveCount(2)

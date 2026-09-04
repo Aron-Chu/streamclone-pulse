@@ -10,7 +10,7 @@ import Support from './public/Support'
 import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
-const AnalyticsNewsroomPage = lazy(() => import('./analytics/AnalyticsNewsroomPage'))
+const AnalyticsExplorerPage = lazy(() => import('./analytics/AnalyticsExplorerPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
@@ -37,6 +37,14 @@ function ShortSessionRedirect() {
   return <Navigate to={target} replace />
 }
 
+/** Retired Newsroom URLs keep their identifier and query/hash on Pulse Explorer. */
+function NewsroomAliasRedirect() {
+  const { storyId } = useParams<{ storyId?: string }>()
+  const { search, hash } = useLocation()
+  const path = storyId ? `/analytics/explore/${encodeURIComponent(storyId)}` : '/analytics/explore'
+  return <Navigate to={`${path}${search}${hash}`} replace />
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<AnalyticsRouteFallback />}>
@@ -61,9 +69,11 @@ export function AppRoutes() {
         <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
         <Route path="/analytics/streams" element={<Navigate to="/analytics" replace />} />
 
-        {/* Public Pulse Newsroom routes must precede dynamic channel routes. */}
-        <Route path="/analytics/newsroom" element={<AnalyticsNewsroomPage />} />
-        <Route path="/analytics/newsroom/:storyId" element={<AnalyticsNewsroomPage />} />
+        {/* Pulse Explorer and its retired Newsroom aliases must precede dynamic channel routes. */}
+        <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+        <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        <Route path="/analytics/newsroom" element={<NewsroomAliasRedirect />} />
+        <Route path="/analytics/newsroom/:storyId" element={<NewsroomAliasRedirect />} />
 
         {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
