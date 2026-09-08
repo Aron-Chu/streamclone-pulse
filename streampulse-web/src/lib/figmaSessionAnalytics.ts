@@ -9,8 +9,12 @@ import type { LiveWireMomentComparison } from './liveWire'
 export type FigmaSessionState = 'loading' | 'empty' | 'ready'
 
 export interface FigmaMomentRow {
-  /** Stable public detector-event identity; absent on legacy/fallback rows. */
+  /** Stable public identity, distinct from the source stream or a private clip candidate. */
   publicMomentId?: string
+  /** Server-issued eligible candidate reference; never derive it from publicMomentId. */
+  handoffRef?: string
+  /** Validated, backend-owned evidence; the presenter must not recompute a baseline. */
+  comparison?: LiveWireMomentComparison
   offsetSeconds: number
   /** Wall-clock peak time (unix ms) when known — used for cross-channel feed sort. */
   at?: number
@@ -24,7 +28,7 @@ export interface FigmaMomentRow {
   viewers?: number
   viewerDelta?: string
   topEmoteCode?: string
-  topEmotes?: Array<{ name: string; provider?: string; count?: number; imageUrl?: string; sharePct?: number }>
+  topEmotes?: Array<{ id?: string; name: string; provider?: string; count?: number; imageUrl?: string; sharePct?: number }>
   confidence?: number
   vodState?: string
   href?: string
@@ -34,10 +38,11 @@ export interface FigmaMomentRow {
   streamId?: string
   vodId?: string
   category?: string
+  categoryId?: string
+  boxArtUrl?: string
+  categoryMetadataRejected?: true
   streamStartedAt?: number
   activityTag?: string
-  /** Qualified event-minute comparison against earlier history in this stream. */
-  comparison?: LiveWireMomentComparison
 }
 
 export interface FigmaChartPoint {
@@ -192,6 +197,8 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
         : undefined
   return {
     publicMomentId: moment.publicMomentId,
+    handoffRef: moment.handoffRef,
+    comparison: moment.comparison,
     offsetSeconds: moment.offsetSeconds,
     score: moment.score,
     label: moment.label,
@@ -203,6 +210,7 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     viewerDelta: moment.viewerDelta,
     topEmoteCode: moment.topEmoteCode,
     topEmotes: moment.topEmotes?.map((emote) => ({
+      id: emote.id,
       name: emote.name,
       provider: emote.provider,
       count: emote.count,
@@ -218,9 +226,11 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     vodId: moment.vodId,
     at: moment.at,
     category: moment.category,
+    categoryId: moment.categoryId,
+    boxArtUrl: moment.boxArtUrl,
+    categoryMetadataRejected: moment.categoryMetadataRejected,
     streamStartedAt: moment.streamStartedAt,
     activityTag: moment.activityTag,
-    comparison: moment.comparison,
     href:
       login && streamId
         ? buildAnalyticsHref({ login, streamId, offsetSeconds: moment.offsetSeconds })

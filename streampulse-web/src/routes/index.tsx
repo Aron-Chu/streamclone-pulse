@@ -10,6 +10,7 @@ import Support from './public/Support'
 import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
+const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
 const AnalyticsExplorerPage = lazy(() => import('./analytics/AnalyticsExplorerPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
@@ -63,6 +64,7 @@ export function AppRoutes() {
 
         {/* Public aggregate analytics — single landing. /hub kept as a permanent
             redirect so old links/bookmarks resolve to the one analytics page. */}
+        <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
         <Route path="/analytics" element={<AnalyticsLandingPage />} />
         <Route path="/analytics/hub" element={<Navigate to="/analytics" replace />} />
         <Route path="/analytics/emotes" element={<Navigate to="/analytics" replace />} />

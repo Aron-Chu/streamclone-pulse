@@ -1,3 +1,5 @@
+import { verifiedArchiveArtwork, type ArchiveArtwork } from './archiveArtwork'
+import { apiClient as momentsApiClient } from './momentsApiClient'
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
 import { apiClient, getBackendUrl, isApiError } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
@@ -384,6 +386,7 @@ export interface HubProviderShare {
 }
 
 export interface HubEmote {
+  id?: string
   name: string
   provider?: string
   imageUrl?: string
@@ -482,6 +485,11 @@ export interface HubFeaturedMoment {
 
 /** Network-wide live IRC peak row for Pulse Moments Live (multi-channel). */
 export interface HubLivePulseMoment extends HubFeaturedMoment {
+  handoffRef?: string
+  categoryId?: string
+  boxArtUrl?: string
+  categoryMetadataRejected?: true
+  archiveArtwork?: ArchiveArtwork
   /** Stable public detector-event identity used by Newsroom story references. */
   publicMomentId?: string
   login?: string
@@ -1031,13 +1039,23 @@ function normalizeIngest(raw: Partial<HubIngest> | undefined): HubIngest | undef
   }
 }
 
-function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLivePulseMoment[] {
+export function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLivePulseMoment[] {
   if (!raw?.length) return []
-  return raw.map((moment) => ({
-    ...moment,
-    topEmotes: absolutizeEmotes(moment.topEmotes),
-    comparison: normalizeLiveWireMomentComparison(moment.comparison) ?? undefined,
-  }))
+  return raw.map((moment) => {
+    const categoryId = normalizeCategoryId(moment.categoryId)
+    const boxArtUrl = normalizeCategoryBoxArt(moment.boxArtUrl, categoryId)
+    const categoryMetadataRejected = moment.categoryMetadataRejected === true
+      || rejectedCategoryMetadata(moment.categoryId, moment.boxArtUrl, categoryId, boxArtUrl)
+    return {
+      ...moment,
+      categoryId,
+      boxArtUrl,
+      categoryMetadataRejected: categoryMetadataRejected || undefined,
+      archiveArtwork: normalizeHubArchiveArtwork(moment.archiveArtwork, moment.vodId),
+      topEmotes: absolutizeEmotes(moment.topEmotes),
+      comparison: normalizeLiveWireMomentComparison(moment.comparison) ?? undefined,
+    }
+  })
 }
 
 function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined): HubFeaturedSession {
@@ -1397,4 +1415,107 @@ export function validatePublicHubInvariants(hub: PublicHub): HubValidationIssue[
   }
 
   return issues
+}
+
+export interface PublicHubRecentMomentsResponse {
+  hubGeneratedAt: string
+  source: string
+  status: 'ready' | 'fallback' | 'no_peaks' | 'unknown' | string
+  reason?: string
+  limit: number
+  hasMore: boolean
+  moments: HubLivePulseMoment[]
+}
+
+export interface FetchPublicHubRecentMomentsResult {
+  data: PublicHubRecentMomentsResponse
+  loadSource: 'bounded' | 'legacy_full_hub'
+  cache?: 'HIT' | 'MISS' | 'BYPASS'
+  status: number
+}
+
+function publicHubRecentMomentsPath(limit = 10): string {
+  const params = new URLSearchParams({ limit: String(Math.min(10, Math.max(1, Math.floor(limit)))) })
+  return `/v1/public/hub/moments/recent?${params.toString()}`
+}
+
+export function normalizePublicHubRecentMoments(
+  input: Partial<PublicHubRecentMomentsResponse> | null | undefined,
+): PublicHubRecentMomentsResponse {
+  const limit = Math.min(10, Math.max(1, normalizePositiveInt(input?.limit) ?? 10))
+  const supplied = Array.isArray(input?.moments) ? input.moments : []
+  return {
+    hubGeneratedAt: typeof input?.hubGeneratedAt === 'string' ? input.hubGeneratedAt : '',
+    source: typeof input?.source === 'string' && input.source.trim() ? input.source.trim() : 'public_hub_live_pulse_moments',
+    status: typeof input?.status === 'string' && input.status.trim() ? input.status.trim() : 'unknown',
+    reason: typeof input?.reason === 'string' && input.reason.trim() ? input.reason.trim() : undefined,
+    limit,
+    hasMore: input?.hasMore === true || supplied.length > limit,
+    moments: normalizeLivePulseMoments(supplied).slice(0, limit),
+  }
+}
+
+export async function fetchPublicHubRecentMoments(
+  signal?: AbortSignal,
+  limit = 10,
+): Promise<FetchPublicHubRecentMomentsResult> {
+  try {
+    const response = await momentsApiClient<PublicHubRecentMomentsResponse>(
+      publicHubRecentMomentsPath(limit),
+      { signal, maxResponseBytes: 512 * 1024 },
+    )
+    return {
+      data: normalizePublicHubRecentMoments(response.data),
+      loadSource: 'bounded',
+      cache: response.cache,
+      status: response.status,
+    }
+  } catch (error) {
+    if (!isApiError(error) || error.status !== 404) throw error
+    const legacy = await fetchPublicHubBase(signal, '30m')
+    const moments = legacy.data.livePulseMoments.slice(0, Math.min(10, Math.max(1, Math.floor(limit))))
+    return {
+      data: normalizePublicHubRecentMoments({
+        hubGeneratedAt: legacy.data.generatedAt,
+        source: 'legacy_full_hub',
+        status: legacy.data.livePulseMomentsStatus ?? (moments.length ? 'ready' : 'unknown'),
+        reason: legacy.data.livePulseMomentsReason,
+        limit,
+        hasMore: legacy.data.livePulseMoments.length > moments.length,
+        moments,
+      }),
+      loadSource: 'legacy_full_hub',
+      cache: legacy.cache,
+      status: legacy.status,
+    }
+  }
+}
+
+export function normalizeCategoryId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^\d{1,20}$/.test(value) ? value : undefined
+}
+
+export function normalizeCategoryBoxArt(value: unknown, categoryId: string | undefined): string | undefined {
+  if (typeof value !== 'string' || !categoryId || value.length > 2048) return undefined
+  try {
+    const url = new URL(value)
+    if (url.origin !== 'https://static-cdn.jtvnw.net' || url.username || url.password || url.search || url.hash) return undefined
+    if (!new RegExp(`^/ttv-boxart/${categoryId}(?:_IGDB)?-\\d+x\\d+\\.(?:jpe?g|png|webp)$`, 'i').test(url.pathname)) return undefined
+    if (/\/404|livechannel/i.test(url.pathname)) return undefined
+    return url.href
+  } catch { return undefined }
+}
+
+export function rejectedCategoryMetadata(rawId: unknown, rawUrl: unknown, id: string | undefined, url: string | undefined): boolean {
+  const suppliedId = rawId !== undefined && rawId !== null && rawId !== ''
+  const suppliedUrl = rawUrl !== undefined && rawUrl !== null && rawUrl !== ''
+  return (suppliedId && !id) || (suppliedUrl && !url)
+}
+
+function normalizeHubArchiveArtwork(value: unknown, expectedVodId?: string): ArchiveArtwork | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const vodId = (value as Record<string, unknown>).vodId
+  if (typeof vodId !== 'string' || !/^\d{6,20}$/.test(vodId)) return undefined
+  if (typeof expectedVodId === 'string' && expectedVodId !== '' && expectedVodId !== vodId) return undefined
+  return verifiedArchiveArtwork(value, vodId)
 }

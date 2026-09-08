@@ -1,3 +1,4 @@
+import { normalizeCategoryId, normalizeCategoryBoxArt, rejectedCategoryMetadata } from './publicHub'
 import { apiClient } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import {
@@ -69,6 +70,11 @@ export interface NewsroomSparkPoint {
 }
 
 export interface NewsroomUpdate {
+  category?: string
+  categoryId?: string
+  boxArtUrl?: string
+  categorySource?: 'measured_segment'
+  categoryMetadataRejected?: true
   id: string
   revision: number
   detectorEventKey: string
@@ -342,6 +348,15 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
   const momentRef = normalizeMomentRef(row.momentRef)
   const sparkline = normalizeSparkline(row.sparkline)
   const vodId = optionalText(row.vodId)
+  const categorySource = row.categorySource === 'measured_segment' ? 'measured_segment' : undefined
+  const rawCategory = optionalText(row.category)
+  const category = categorySource && typeof rawCategory === 'string' && rawCategory.length <= 150 ? rawCategory : undefined
+  const categoryId = categorySource ? normalizeCategoryId(row.categoryId) : undefined
+  const boxArtUrl = categorySource ? normalizeCategoryBoxArt(row.boxArtUrl, categoryId) : undefined
+  const categorySupplied = row.category != null || row.categoryId != null || row.boxArtUrl != null || row.categorySource != null
+  const categoryMetadataRejected = categorySupplied && (
+    !categorySource || !category || rejectedCategoryMetadata(row.categoryId, row.boxArtUrl, categoryId, boxArtUrl)
+  )
   if (
     !id || revision == null || revision < 1 || !detectorEventKey || !updateKind || !occurredAt || !publishedAt || !signal || !lifecycle ||
     resolvedReason === null || resolvedAt === null || !headline || !summary || score === null || (score !== undefined && score > 100) ||
@@ -377,6 +392,7 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
     isLate: row.isLate,
     sparkline,
     vodId,
+    category, categoryId, boxArtUrl, categorySource, categoryMetadataRejected: categoryMetadataRejected || undefined,
   }
 }
 
@@ -684,4 +700,15 @@ export function newsroomWatchAction(story: NewsroomStory): NewsroomWatchAction |
     }
   }
   return null
+}
+
+export function configuredNewsroomWindows(
+  configured = import.meta.env.VITE_PUBLIC_NEWSROOM_WINDOWS,
+): ReadonlySet<NewsroomWindow> {
+  const enabled = new Set<NewsroomWindow>(['live'])
+  if (typeof configured !== 'string') return enabled
+  for (const token of configured.split(',').map((value) => value.trim())) {
+    if ((['live', '24h', '7d'] as const).includes(token as NewsroomWindow)) enabled.add(token as NewsroomWindow)
+  }
+  return enabled
 }
