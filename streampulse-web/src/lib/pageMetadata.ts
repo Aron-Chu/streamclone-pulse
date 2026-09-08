@@ -42,6 +42,13 @@ export function resolvePageMetadata(pathname: string, search = ''): PageMetadata
         canonicalPath: '/analytics',
         robots: 'index,follow',
       }
+    case '/analytics/moments':
+      return {
+        title: 'Moments — StreamPulse',
+        description: 'Browse loaded Twitch detections, review exact sources, and revisit saved moments.',
+        canonicalPath: '/analytics/moments',
+        robots: 'noindex,nofollow',
+      }
     case '/docs':
       return {
         title: 'Documentation — StreamPulse',

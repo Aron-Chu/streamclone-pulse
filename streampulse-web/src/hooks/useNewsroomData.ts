@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isApiError } from '../lib/apiClient'
+import { loadNewsroomProfiles, newsroomProfileUrl } from '../lib/newsroomProfiles'
 import {
   fetchNewsroom,
   normalizeNewsroomEnvelope,
@@ -14,6 +15,8 @@ export interface UseNewsroomDataOptions {
   enabled?: boolean
   pollMs?: number
   limit?: number
+  /** Standalone discovery board only; compact Live Desk does not add profile reads. */
+  enrichProfiles?: boolean
 }
 
 export interface UseNewsroomDataResult {
@@ -89,6 +92,7 @@ export function useNewsroomData(options: UseNewsroomDataOptions = {}): UseNewsro
     enabled = true,
     pollMs = storyId ? 0 : DEFAULT_POLL_MS,
     limit = storyId ? 25 : 20,
+    enrichProfiles = false,
   } = options
   const queryKey = storyId?.trim() ? `story:${storyId.trim()}` : `window:${newsroomWindow}`
   const cacheRef = useRef(new Map<string, NewsroomEnvelope>())
@@ -107,7 +111,41 @@ export function useNewsroomData(options: UseNewsroomDataOptions = {}): UseNewsro
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
+  const [profiles, setProfiles] = useState<Record<string, string>>({})
   const requestSequenceRef = useRef(0)
+
+  const missingProfileKey = enrichProfiles && data
+    ? [...new Set([...(data.story ? [data.story] : []), ...data.stories]
+        .filter(story => !newsroomProfileUrl(story.profileImageUrl))
+        .map(story => story.login.toLowerCase()))].join('|')
+    : ''
+  useEffect(() => {
+    if (!missingProfileKey) { setProfiles({}); return }
+    const controller = new AbortController()
+    const logins = missingProfileKey.split('|')
+    // Keep view state only for the currently loaded stories; the shared request
+    // cache has its own 120-entry bound. Explicitly loaded later pages also get
+    // identities, without increasing the three-request concurrency budget.
+    const wanted = new Set(logins)
+    setProfiles(current => Object.fromEntries(Object.entries(current).filter(([login]) => wanted.has(login))))
+    void (async () => {
+      for (let start = 0; start < logins.length && !controller.signal.aborted; start += 20) {
+        await loadNewsroomProfiles(logins.slice(start, start + 20), controller.signal, (login, url) => {
+          if (!controller.signal.aborted) setProfiles(current => current[login] === url ? current : { ...current, [login]: url })
+        })
+      }
+    })()
+    return () => controller.abort()
+  }, [missingProfileKey])
+
+  const visibleData = useMemo(() => {
+    if (!enrichProfiles || !data) return data
+    const enrich = (story: NewsroomStory): NewsroomStory => {
+      const profileImageUrl = newsroomProfileUrl(story.profileImageUrl) ?? profiles[story.login.toLowerCase()]
+      return profileImageUrl === story.profileImageUrl ? story : { ...story, profileImageUrl }
+    }
+    return { ...data, stories: data.stories.map(enrich), story: data.story ? enrich(data.story) : undefined }
+  }, [data, enrichProfiles, profiles])
 
   const applyEnvelope = useCallback((envelope: NewsroomEnvelope, key: string) => {
     const stories = envelope.story ? [envelope.story] : envelope.stories
@@ -207,6 +245,7 @@ export function useNewsroomData(options: UseNewsroomDataOptions = {}): UseNewsro
         }
         cacheRef.current.set(queryKey, merged)
         setData(merged)
+        setError(null)
       })
       .catch((caught) => {
         if (
@@ -252,5 +291,5 @@ export function useNewsroomData(options: UseNewsroomDataOptions = {}): UseNewsro
     [data, loading],
   )
 
-  return { data, loading, refreshing, loadingMore, error, unavailable, announcement, refresh, loadMore }
+  return { data: visibleData, loading, refreshing, loadingMore, error, unavailable, announcement, refresh, loadMore }
 }
