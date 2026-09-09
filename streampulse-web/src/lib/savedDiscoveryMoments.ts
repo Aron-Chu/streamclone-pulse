@@ -13,6 +13,11 @@ let sessionOnly = false
 const listeners = new Set<() => void>()
 const publish = () => listeners.forEach(listener => listener())
 const cleanText = (value: unknown, limit: number): string | undefined => typeof value === 'string' && value.length <= limit && !/[\u0000-\u001f]/.test(value) ? value : undefined
+const cleanEvidenceTime = (value: unknown): string | undefined => {
+  const text = cleanText(value, 40)
+  const time = text ? Date.parse(text) : NaN
+  return Number.isFinite(time) && time > 0 && time <= 4_102_444_800_000 ? new Date(time).toISOString() : undefined
+}
 const finite = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number | undefined => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : undefined
 const integer = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number | undefined => {
   const parsed = finite(value, min, max)
@@ -91,11 +96,14 @@ export function savedMomentRecord(moment: DiscoveryMoment, savedAt = Date.now())
   const comparison = cleanComparison(moment.comparison)
   const topEmotes = cleanTopEmotes(moment.topEmotes)
   const revision = integer(moment.revision, 1)
+  const evidenceAsOf = cleanEvidenceTime(moment.evidenceAsOf)
+  const measurementScope = ['verified_minute', 'detector_snapshot'].includes(moment.measurementScope ?? '') ? moment.measurementScope : undefined
   return { key: moment.key, login: moment.login, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds,
     label: moment.label.slice(0, 300), provenance: 'saved', savedAt,
     ...(moment.publicMomentId ? { publicMomentId: moment.publicMomentId } : {}), ...(moment.at == null ? {} : { at: moment.at }),
     ...(moment.displayName ? { displayName: moment.displayName.slice(0, 100) } : {}), ...(moment.category ? { category: moment.category.slice(0, 150) } : {}),
     ...(chatPerMin == null ? {} : { chatPerMin }), ...(emotesPerMin == null ? {} : { emotesPerMin }),
+    ...(evidenceAsOf ? { evidenceAsOf } : {}), ...(measurementScope ? { measurementScope } : {}),
     ...(comparison ? { comparison } : {}), ...(moment.reactionSignal === 'chat' || moment.reactionSignal === 'emotes' ? { reactionSignal: moment.reactionSignal } : {}),
     ...(topEmotes ? { topEmotes } : {}), ...(revision == null ? {} : { revision }), ...(moment.storyId ? { storyId: moment.storyId } : {}) }
 }
@@ -115,6 +123,16 @@ export function parseSavedMoments(raw: string | null): SavedMoment[] {
       kind: envelope.version === 2 ? row.reactionSignal : undefined,
       topEmotes: envelope.version === 2 ? cleanTopEmotes(row.topEmotes) : undefined })
     if (!moment) throw new Error('Invalid saved identity')
+    // Loading historical metadata must not replace its rates with a newer adapter's
+    // preferred comparison values. Retain the saved scope only when supported.
+    const verifiedRates = moment.measurementScope === 'verified_minute'
+      && moment.chatPerMin === row.chatPerMin && moment.emotesPerMin === row.emotesPerMin
+    moment.chatPerMin = envelope.version === 2 ? finite(row.chatPerMin) : undefined
+    moment.emotesPerMin = envelope.version === 2 ? finite(row.emotesPerMin) : undefined
+    moment.measurementScope = envelope.version !== 2 ? undefined
+      : row.measurementScope === 'detector_snapshot' ? 'detector_snapshot'
+        : row.measurementScope === 'verified_minute' && verifiedRates ? 'verified_minute' : undefined
+    moment.evidenceAsOf = envelope.version === 2 ? cleanEvidenceTime(row.evidenceAsOf) : undefined
     moment.revision = envelope.version === 2 ? integer(row.revision, 1) : undefined
     moment.storyId = typeof row.storyId === 'string' && row.storyId.length <= 220 ? row.storyId : undefined
     unique.set(moment.key, savedMomentRecord(moment, row.savedAt))
