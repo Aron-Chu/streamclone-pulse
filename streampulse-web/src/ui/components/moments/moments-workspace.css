@@ -161,8 +161,9 @@
 .moments-empty-saved p { color: var(--fma-muted); }
 .moments-empty-saved button { min-height: 44px; margin-top: 4px; }
 
-@media (max-width: 520px) {
+@media (max-width: 600px) {
   .moments-workspace .moments-history-filter-toggle { display: block; width: 100%; min-height: 44px; text-align: left; margin-block: 8px; }
+  .moments-workspace .moments-toolbar--history-day { grid-template-columns: minmax(0, 1fr); }
   .moments-workspace .moments-toolbar--history-day:not(.is-open) { display: none; }
 }
 
@@ -590,6 +591,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-history-entry,
   .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-feed-scope,
   .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-filter-note,
+  .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-date-range,
   .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-category-browser { display: none; }
   .moments-workspace--saved-empty .moments-filter-toggle,
   .moments-workspace--saved-empty .moments-toolbar,

@@ -427,6 +427,10 @@ for (const width of [390, 1440]) for (const transition of ['unavailable-to-ready
     const host = page.locator('#category-geometry-test')
     const artwork = host.locator('.moments-category-art').first()
     await expect(artwork).toHaveAttribute('data-artwork-state', 'unavailable')
+    // The route stylesheet loads asynchronously; measure only after its cover
+    // dimensions apply, rather than comparing unstyled markup with styled art.
+    await expect(artwork).toHaveCSS('width', width < 768 ? '96px' : '120px')
+    await expect(artwork).toHaveCSS('height', width < 768 ? '128px' : '160px')
     await artwork.scrollIntoViewIfNeeded()
     const bounds = () => host.evaluate(element => [element, ...element.querySelectorAll('.moments-category-track, .moments-category-track > button, .moments-category-art')].map(node => {
       const r = node.getBoundingClientRect()
@@ -756,6 +760,12 @@ test('mobile Recent leads with a result, reveals animated filters on demand, and
   await expect(listbox).toHaveCSS('animation-name', 'pulse-select-appear')
   await listbox.getByRole('option', { name: 'Highest chat/min', exact: true }).click()
   await expect(sort).toContainText('Highest chat/min')
+  await selectPulseOption(page, 'Occurrence time window', 'Custom dates (UTC)')
+  await page.getByLabel('From date UTC').fill('2026-01-01')
+  await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+  await expect(page.getByLabel('From date UTC')).toBeHidden()
+  await page.getByRole('button', { name: 'Filters · active', exact: true }).click()
+  await expect(page.getByLabel('From date UTC')).toHaveValue('2026-01-01')
   await page.getByRole('button', { name: 'Saved (0)', exact: true }).click()
   await expect(page.locator('.moments-empty-saved')).toBeVisible()
   await expect(page.locator('.moments-toolbar')).toBeHidden()
@@ -1273,7 +1283,7 @@ test('selected verified preview loads automatically without autoplay and retains
   }
 })
 
-for (const width of [320, 390, 768, 1024, 1440]) {
+for (const width of [320, 390, 560, 768, 1024, 1440]) {
   test(`creator activity overview fits ${width}px and opens an exact UTC day`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 960 })
     await page.addInitScript(() => {
@@ -1365,7 +1375,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         expect.soft(box.height, `${selector} must not be clipped on focus`).toBeGreaterThanOrEqual(24)
       }
     }
-    if (width <= 520) {
+    if (width <= 600) {
       const filters = page.getByRole('button', { name: 'Filter loaded detections', exact: true })
       if (await filters.getAttribute('aria-expanded') === 'false') await filters.click()
     }
@@ -1414,7 +1424,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
     expect(yearReads, 'day selection, review and Back reuse the mounted year').toBe(1)
     await expect(page.locator('[data-discovery-key]').nth(1)).toBeFocused()
     await expect(page).toHaveURL(/day=2025-09-02/)
-    if (width <= 520) {
+    if (width <= 600) {
       const filters = page.getByRole('button', { name: 'Filter loaded detections', exact: true })
       await expect(filters).toHaveAttribute('aria-expanded', 'true')
       const field = await page.getByLabel('Find loaded moments').boundingBox()
