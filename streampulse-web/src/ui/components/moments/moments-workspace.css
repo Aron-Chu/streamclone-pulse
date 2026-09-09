@@ -141,6 +141,31 @@
 .moments-tabs > button:hover:not(:disabled) { background: color-mix(in srgb, var(--sp-surface-3, var(--fma-dim)) 70%, transparent); }
 .moments-tabs > button[aria-pressed="true"] { border-color: transparent; color: var(--fma-accent-text, hsl(var(--sc-chart-3))); }
 
+.moments-workspace .moments-history-filter-toggle { display: none; }
+.moments-workspace .moments-filter-toggle { display: none; }
+.moments-review-scope-notice { margin-left: auto; font-size: 12px; }
+
+.moments-empty-saved {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  max-width: 34rem;
+  margin: 28px auto;
+  padding: 24px;
+  border: 1px solid var(--fma-border);
+  border-radius: 8px;
+  background: var(--sp-surface-1, var(--fma-bg));
+}
+.moments-empty-saved h3,
+.moments-empty-saved p { margin: 0; }
+.moments-empty-saved p { color: var(--fma-muted); }
+.moments-empty-saved button { min-height: 44px; margin-top: 4px; }
+
+@media (max-width: 520px) {
+  .moments-workspace .moments-history-filter-toggle { display: block; width: 100%; min-height: 44px; text-align: left; margin-block: 8px; }
+  .moments-workspace .moments-toolbar--history-day:not(.is-open) { display: none; }
+}
+
 .moments-toolbar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
@@ -465,6 +490,9 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-capability-notice { max-width: 680px; margin: 28px auto; padding: 24px; border: 1px solid var(--fma-border); border-radius: 7px; background: var(--sp-surface-1); }
 .moments-capability-notice h2 { margin-bottom: 8px; }
 .moments-capability-notice p { color: var(--fma-sub); }
+.moments-workspace--saved-empty .moments-toolbar,
+.moments-workspace--saved-empty .moments-category-browser,
+.moments-workspace--saved-empty .moments-filter-note { display: none; }
 .moment-save-control { position: relative; display: inline-flex; min-width: 0; align-items: center; }
 .moment-save-label { display: grid; }
 .moment-save-label > span { grid-area: 1 / 1; }
@@ -480,6 +508,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moment-vod-preview__footnote { position: absolute; bottom: 12px; }
 .moment-vod-preview__fallback { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; }
 .moment-vod-preview__fallback .moments-watch-action { display: flex; justify-content: space-between; width: 100%; padding: 8px 12px; border-radius: 4px; background: #a1e8d6; color: #102a23; font-weight: 600; text-decoration: none; }
+.moment-vod-preview__fallback--primary .moments-watch-action { min-height: 48px; align-items: center; padding-inline: 16px; font-size: 14px; }
 .moment-vod-preview__desktop > button { margin-top: 6px; }
 .moment-vod-preview__fallback a { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; }
 .moment-vod-preview span,
@@ -529,7 +558,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   .moments-layout:not(.has-selection) .moments-result-list { grid-template-columns: minmax(0, 1fr); }
   .moments-tabs { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .moments-tabs > button { padding-inline: 7px; }
-  .moments-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .moments-toolbar { grid-template-columns: minmax(0, 1fr); }
   .moments-date-range { grid-template-columns: minmax(0, 1fr); grid-column: auto; }
   .moments-workspace .moments-session { grid-template-columns: minmax(0, 1fr); }
   .moments-result .moments-actions button { min-height: 44px; }
@@ -550,6 +579,27 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   .moments-reaction-visual__emote-list { gap: 5px; }
   .moments-reaction-visual__emote { min-width: 0; }
   .moments-reaction-visual__metric dl { gap: 8px; }
+}
+
+@media (max-width: 600px) {
+  .figma-analytics:has(.moments-workspace) .analytics-topnav__install { display: none; }
+  .moments-workspace .moments-filter-toggle { display: block; width: 100%; min-height: 44px; margin-block: 8px; text-align: left; }
+  .moments-workspace .moments-toolbar--mobile-collapsible.is-open { animation: moments-filter-panel-enter 180ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top center; }
+  .moments-workspace .moments-toolbar--mobile-collapsible:not(.is-open) { display: none; }
+  .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-collection-scope,
+  .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-history-entry,
+  .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-feed-scope,
+  .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-filter-note,
+  .moments-workspace:not(.is-reviewing)[data-filters-expanded="false"] .moments-category-browser { display: none; }
+  .moments-workspace--saved-empty .moments-filter-toggle,
+  .moments-workspace--saved-empty .moments-toolbar,
+  .moments-workspace--saved-empty .moments-category-browser,
+  .moments-workspace--saved-empty .moments-filter-note { display: none; }
+}
+
+@keyframes moments-filter-panel-enter {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.98); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2397,6 +2447,22 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
     width: 44px;
     min-width: 44px;
     min-height: 44px;
+  }
+}
+
+/* Keep the compact Recent header readable on the narrowest supported phones.
+   The creator and category fields need the full card width; only Save stays in
+   the side rail so long names never collapse into one-character columns. */
+@media (max-width: 350px) {
+  .moments-workspace .moments-recent-feed .moments-review-table tbody tr.moments-result {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-areas:
+      "creator save"
+      "category save"
+      "event event"
+      "moment moment"
+      "emotes emotes"
+      "source source";
   }
 }
 

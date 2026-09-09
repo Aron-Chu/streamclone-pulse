@@ -28,7 +28,7 @@
 .discovery-year__row-heading h3, .discovery-year__row-heading p { margin: 0 0 8px; }
 .discovery-year__row-heading h3 { font-size: 18px; }
 .discovery-year__row-heading p { font-size: 12px; color: var(--fma-sub); }
-.moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select) { min-height: 44px; }
+.moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select, .pulse-select__trigger) { min-height: 44px; }
 .discovery-year .discovery-calendar__controls form { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
 .discovery-year__scroll { overflow-x: auto; padding: 5px 3px; scrollbar-width: thin; }
 .discovery-year__labels { display: grid; gap: 2px; margin: 0 0 10px 38px; font-size: 12px; color: var(--fma-muted); }
@@ -99,9 +99,8 @@
   .discovery-year > .discovery-calendar__controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
   .discovery-year > .discovery-calendar__controls > label:nth-child(3), .discovery-year > .discovery-calendar__controls > form { grid-column: 1 / -1; }
   .discovery-year > .discovery-calendar__controls > form { margin-left: 0; }
-  .discovery-year .discovery-calendar__controls select { width: 100%; min-width: 0; }
+  .discovery-year .discovery-calendar__controls :is(select, .pulse-select) { width: 100%; min-width: 0; }
 }
-
 /* Compact year and day context keep the creator surface in the same work area. */
 .discovery-calendar {
   margin-block: 10px 12px;
@@ -187,7 +186,7 @@
   padding-block: 6px;
 }
 
-.moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select) {
+.moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select, .pulse-select__trigger) {
   min-height: 34px;
   padding-block: 6px;
 }
@@ -365,7 +364,7 @@
 
   .moments-workspace .discovery-calendar__modes button,
   .discovery-calendar__heading > button,
-  .moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select) {
+  .moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select, .pulse-select__trigger) {
     min-height: 44px;
   }
 }
@@ -548,7 +547,7 @@
 @media (max-width: 850px) {
   .moments-workspace.is-history .discovery-calendar:has(.discovery-year) .discovery-calendar__heading > button,
   .moments-workspace.is-history .discovery-calendar:has(.discovery-year) .discovery-calendar__modes button,
-  .moments-workspace.is-history .discovery-calendar:has(.discovery-year) .discovery-year > .discovery-calendar__controls :is(button, input, select) {
+  .moments-workspace.is-history .discovery-calendar:has(.discovery-year) .discovery-year > .discovery-calendar__controls :is(button, input, select, .pulse-select__trigger) {
     min-height: 44px;
   }
 
@@ -695,16 +694,15 @@
     padding-top: 0;
   }
 
-  /* Four compact filter controls fit the 390px review handoff without
-     reducing their 44px touch height; labels use the existing ellipsis rule. */
+  /* Phone filters need enough width to read the selected scope and ordering. */
   .moments-workspace.is-history:has(.discovery-calendar__selection) > .moments-toolbar {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .moments-workspace.is-history:has(.discovery-calendar__selection) > .moments-toolbar :is(input, .pulse-select__trigger) {
     min-width: 0;
     padding-inline: 6px;
-    font-size: 12px;
+    font-size: 16px;
   }
 
   /* Keep the loaded-result and broadcast scope disclosures in the layout. They

@@ -4,6 +4,7 @@ import { currentDiscoveryMonth, type DiscoveryCatalogue, type DiscoveryScope } f
 import { discoveryDayLabel } from '../../../lib/discoveryDayLabel'
 import { DiscoveryYearOverview } from './DiscoveryYearOverview'
 import type { DiscoveryPresentation } from '../../../lib/discoveryPresentation'
+import { PulseSelect } from '../common/PulseSelect'
 export { discoveryDayLabel } from '../../../lib/discoveryDayLabel'
 import './discovery-calendar.css'
 
@@ -49,7 +50,7 @@ export function DiscoveryCalendar({ scope, data, loading, presentation, onPresen
     </form></details>
     {mode === 'month' ? <label className="discovery-calendar__month-input">Month (UTC) <input type="month" aria-label="Browse month UTC" value={scope.month} min="2011-01" max={currentDiscoveryMonth()} onChange={event => onChange({ month: event.target.value, day: null })} /></label> : null}
     {mode === 'month' && data && data.state !== 'unavailable' ? <div className="discovery-calendar__summary">
-      <label>Calendar measure <select aria-label="Calendar measure" value={metric} onChange={event => onPresentationChange({ measure: event.target.value })}><option value="detections">Detected moments</option><option value="chatMessages">Chat messages</option><option value="emoteUses">Emote uses</option></select></label>
+      <label>Calendar measure <PulseSelect ariaLabel="Calendar measure" triggerAriaLabel="Calendar measure" value={metric} onChange={value => onPresentationChange({ measure: value })} options={[{ value: 'detections', label: 'Detected moments' }, { value: 'chatMessages', label: 'Chat messages' }, { value: 'emoteUses', label: 'Emote uses' }]} /></label>
       <p><strong>{total.toLocaleString()}</strong> {metricLabel.toLowerCase()} · whole month<br />{measuredDays.length} days with indexed measurements</p>
       <p className="moments-muted">Counts and shading use the same measure. Darker means less activity, not worse clips. A dash means no measurement or a future day—not zero.</p>
       <details><summary>About this collection</summary><p className="moments-muted">Indexed broadcasts only; coverage can be partial. Category, search and sort narrow loaded results, not calendar totals. Reaction counts are not a watchability rating.</p></details>

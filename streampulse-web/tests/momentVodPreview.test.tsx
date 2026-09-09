@@ -19,7 +19,8 @@ describe('selected verified preview lifecycle', () => {
     width = boundary
     const view = render(<MomentVodPreview href={first} />)
     expect(view.container.querySelectorAll('iframe')).toHaveLength(boundary === 400 ? 1 : 0)
-    expect(screen.getByRole('link', { name: 'Watch at 2:00 on Twitch' }).getAttribute('href')).toBe(first)
+    const linkName = boundary === 400 ? 'Watch at 2:00 on Twitch' : 'Watch on Twitch at 2:00'
+    expect(screen.getByRole('link', { name: linkName }).getAttribute('href')).toBe(first)
     if (boundary === 400) expect(view.container.querySelector('iframe')!.src).toContain('autoplay=false')
   })
   it('loads immediately without autoplay and exposes one exact external action', () => {
@@ -44,7 +45,7 @@ describe('selected verified preview lifecycle', () => {
     width = 390
     const view = render(<MomentVodPreview href={first} />)
     expect(view.container.querySelector('iframe')).toBeNull()
-    expect(screen.getByRole('link', { name: 'Watch at 2:00 on Twitch' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Watch on Twitch at 2:00' })).toBeTruthy()
   })
   it('shows bound broadcast artwork on mobile and survives image failure', () => {
     width = 390
@@ -54,7 +55,7 @@ describe('selected verified preview lifecycle', () => {
     expect(view.container.querySelector('iframe')).toBeNull()
     fireEvent.error(view.container.querySelector('img')!)
     expect(view.container.querySelector('img')).toBeNull()
-    expect(screen.getByRole('link', { name: 'Watch at 2:00 on Twitch' }).getAttribute('href')).toBe(first)
+    expect(screen.getByRole('link', { name: 'Watch on Twitch at 2:00' }).getAttribute('href')).toBe(first)
   })
   it.each(['https://evil.example/videos/123456?t=1s', 'https://www.twitch.tv/videos/abc?t=1s', 'https://www.twitch.tv/videos/123456'])('rejects malformed/untrusted playback URL %s', href => {
     const view = render(<MomentVodPreview href={href} />)

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchDiscoveryYear, type DiscoveryYear } from '../../../lib/discoveryYear'
 import { discoveryDayLabel } from '../../../lib/discoveryDayLabel'
 import { discoveryOverviewYears, type DiscoveryMeasure, type DiscoveryPresentation } from '../../../lib/discoveryPresentation'
+import { PulseSelect } from '../common/PulseSelect'
 
 const measureLabels = { detections: 'detected moments', chatMessages: 'chat messages', emoteUses: 'emote uses' }
 interface YearResult { year: string; data?: DiscoveryYear; error?: string }
@@ -88,10 +89,10 @@ export function DiscoveryYearOverview({ presentation, creator, onChange, onDay, 
   const canOpenDate = days.some(day => day.day === date && day.state !== 'future')
   return <section className="discovery-year" aria-label="Year activity overview">
     <div className="discovery-calendar__controls">
-      <label>{count === 3 ? 'Through year (UTC)' : 'Year (UTC)'}<select aria-label="Activity year" value={year} onChange={event => onChange({ year: event.target.value })}>{Array.from({ length: new Date().getUTCFullYear() - 2010 }, (_, i) => String(new Date().getUTCFullYear() - i)).map(y => <option key={y}>{y}</option>)}</select></label>
-      <label>Measure<select aria-label="Year activity measure" value={metric} onChange={event => onChange({ measure: event.target.value })}><option value="detections">Detected moments</option><option value="chatMessages">Chat messages</option><option value="emoteUses">Emote uses</option></select></label>
+      <label>{count === 3 ? 'Through year (UTC)' : 'Year (UTC)'}<PulseSelect ariaLabel="Activity year" triggerAriaLabel="Activity year" value={year} onChange={value => onChange({ year: value })} options={Array.from({ length: new Date().getUTCFullYear() - 2010 }, (_, i) => { const value = String(new Date().getUTCFullYear() - i); return { value, label: value } })} /></label>
+      <label>Measure<PulseSelect ariaLabel="Year activity measure" triggerAriaLabel="Year activity measure" value={metric} onChange={value => onChange({ measure: value })} options={[{ value: 'detections', label: 'Detected moments' }, { value: 'chatMessages', label: 'Chat messages' }, { value: 'emoteUses', label: 'Emote uses' }]} /></label>
       <details className="discovery-year__options"><summary>More calendar options</summary><div className="discovery-year__options-body">
-      <label>Years shown<select aria-label="Years shown" value={count} onChange={event => onChange({ years: event.target.value })}><option value="1">One year</option><option value="3">Up to three years</option></select></label>
+      <label>Years shown<PulseSelect ariaLabel="Years shown" triggerAriaLabel="Years shown" value={String(count)} onChange={value => onChange({ years: value })} options={[{ value: '1', label: 'One year' }, { value: '3', label: 'Up to three years' }]} /></label>
       <form onSubmit={event => { event.preventDefault(); if (canOpenDate) onDay(date) }}>
         <label>Jump to day<input type="date" aria-label="Year overview day" required min={years[0] + '-01-01'} max={year === today.slice(0, 4) ? today : year + '-12-31'} value={date} onChange={event => setDate(event.target.value)} /></label><button type="submit" disabled={!canOpenDate}>Open day</button>
       </form>

@@ -77,9 +77,11 @@ describe('Stored history navigation', () => {
   })
   it('retains the selected day for measure changes but clears it for explicit year navigation', () => {
     mount('?collection=history&month=2025-09&creator=creator&day=2025-09-01&calendar=year&year=2025')
-    fireEvent.change(screen.getByRole('combobox', { name: 'Year activity measure' }), { target: { value: 'emoteUses' } })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Year activity measure' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Emote uses' }))
     expect(screen.getByTestId('url').textContent).toContain('day=2025-09-01')
-    fireEvent.change(screen.getByRole('combobox', { name: 'Activity year' }), { target: { value: '2024' } })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Activity year' }))
+    fireEvent.click(screen.getByRole('option', { name: '2024' }))
     expect(screen.getByTestId('url').textContent).toContain('year=2024')
     expect(screen.getByTestId('url').textContent).not.toContain('day=')
     expect(mocks.catalogue.mock.lastCall?.[0]).toBe(false)
@@ -282,7 +284,7 @@ describe('Stored history navigation', () => {
     expect(screen.getByTestId('url').textContent).toContain('stream=123&offset=90000')
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Other broadcast' } })
     expect(screen.getByText('Selection outside loaded matches')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Next moment' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Next moment' })).toBeNull()
     // Closing restores the originating browse scope and the last reviewed card.
     fireEvent.click(screen.getByRole('button', { name: 'Back to results' }))
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /Long broadcast.*Open moment/ })))

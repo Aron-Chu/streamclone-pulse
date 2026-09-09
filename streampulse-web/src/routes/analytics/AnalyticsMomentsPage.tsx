@@ -201,11 +201,11 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
   return <section className="moments-detail" aria-label="Selected moment" onKeyDown={event => { if (event.key === 'Escape') onClose() }}>
     <div className="moments-review-topbar">
     <button type="button" className="moments-back" onClick={onClose}><ArrowLeft size={16} aria-hidden="true" /> Back to results</button>
-    <nav className="moments-review-navigation" aria-label="Review loaded moments">
+    {navigation.total > 1 ? <nav className="moments-review-navigation" aria-label="Review loaded moments">
       <span>{navigation.position == null ? 'Selection outside loaded matches' : `${navigation.position} of ${navigation.total} loaded matches`}</span>
       <div><button type="button" aria-label="Previous moment" title="Previous moment" disabled={!navigation.previous} onClick={() => { if (navigation.previous) onNavigate(navigation.previous) }}><ChevronLeft size={18} aria-hidden="true" /></button>
       <button type="button" aria-label="Next moment" title="Next moment" disabled={!navigation.next} onClick={() => { if (navigation.next) onNavigate(navigation.next) }}><ChevronRight size={18} aria-hidden="true" /></button></div>
-    </nav>
+    </nav> : navigation.position == null ? <span className="moments-muted moments-review-scope-notice">Selection outside loaded matches</span> : null}
     </div>
     <header className="moments-review-heading">
       <h2 ref={heading} tabIndex={-1}>{moment.label}</h2>
@@ -241,12 +241,14 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
     {handoff ? <p className="moments-muted">ReplayForge requires sign-in and source permission. Opening it does not create a job.</p> : null}
     <details className="moments-evidence"><summary>Measured evidence</summary>
       {saved ? <p>Saved metadata is historical. Source links are checked again when opened here.</p> : null}
+      {moment.measurementScope === 'verified_minute' ? <p>Counts and comparison use the same verified minute. Measurements can change between published snapshots.</p> : null}
       <dl><dt>Chat</dt><dd>{moment.chatPerMin != null ? `${present(moment.chatPerMin)} /min` : 'Unavailable'}</dd><dt>Emotes</dt><dd>{moment.emotesPerMin != null ? `${present(moment.emotesPerMin)} /min` : 'Unavailable'}</dd>
         <dt>Baseline measured</dt><dd>{comparison ? `${comparison.evidence.baselineMeasuredMinutes}/${comparison.evidence.baselineExpectedMinutes} minutes` : 'Unavailable'}</dd>
-        <dt>Source stream</dt><dd>{moment.streamId}</dd><dt>Public moment</dt><dd>{moment.publicMomentId || 'Not supplied'}</dd></dl>
+        <dt>Source stream</dt><dd>{moment.streamId}</dd><dt>Public moment</dt><dd>{moment.publicMomentId || 'Not supplied'}</dd>
+        <dt>Evidence snapshot</dt><dd>{moment.evidenceAsOf && Number.isFinite(Date.parse(moment.evidenceAsOf)) ? new Date(moment.evidenceAsOf).toLocaleString() : 'Not supplied'}</dd></dl>
       <p>Reaction measurements are not editorial quality ratings.</p>
     </details>
-    {continuation ? <section className="moments-review-continuation" aria-label="Continue reviewing collection">
+    {continuation && (continuation.loading || continuation.error || continuation.canLoad || continuation.limited) ? <section className="moments-review-continuation" aria-label="Continue reviewing collection">
       <button type="button" disabled={continuation.loading || !continuation.canLoad || continuation.limited} onClick={continuation.load}>{continuation.loading ? 'Loading more moments…' : continuation.limited ? 'Page limit reached' : continuation.canLoad ? 'Load more moments into review' : 'All supplied moments loaded'}</button>
       <p className="moments-muted">{continuation.limited ? '1,000 results loaded. Return to results and choose a day or creator to narrow this collection.' : continuation.canLoad ? 'Adds results in your current sort order. Your selection stays; filters still apply.' : 'This is the supplied collection, not proof that every reaction was detected.'}</p>
       {continuation.error ? <p role="status">{continuation.error}</p> : null}
@@ -277,6 +279,8 @@ export default function AnalyticsMomentsPage() {
   const requested = params.has('offset') && params.has('stream') && params.has('login')
   const saved = useSavedMoments()
   const [sourceStates, setSourceStates] = useState<Record<string, string>>({})
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const [historyFiltersOpen, setHistoryFiltersOpen] = useState(false)
   const [checkedArtwork, setCheckedArtwork] = useState<Record<string, ArchiveArtwork>>({})
   const onSourceState = useCallback((key: string, state: string, artwork?: ArchiveArtwork) => {
     setSourceStates(previous => Object.fromEntries([...Object.entries(previous).filter(([id]) => id !== key).slice(-199), [key, state]]))
@@ -292,7 +296,8 @@ export default function AnalyticsMomentsPage() {
     const adapted = fromHubMoment(moment)
     return adapted?.archiveArtwork ? [[adapted.key, adapted.archiveArtwork] as const] : []
   })), [recentHub.data?.moments])
-  const recent = useMemo(() => uniqueDiscoveryMoments(feed.map(fromHubMoment).filter(valid)), [feed])
+  const recent = useMemo(() => uniqueDiscoveryMoments(feed.map(fromHubMoment).filter(valid).map(moment =>
+    recentHub.data?.hubGeneratedAt ? { ...moment, evidenceAsOf: recentHub.data.hubGeneratedAt } : moment)), [feed, recentHub.data?.hubGeneratedAt])
   const [visibleRecent, setVisibleRecent] = useState<DiscoveryMoment[]>([])
   const [pendingRecent, setPendingRecent] = useState<DiscoveryMoment[]>([])
   // Cache hydration can supply a complete feed one render before the effect
@@ -422,7 +427,10 @@ export default function AnalyticsMomentsPage() {
       category: null, q: null, occurred: null, from: null, to: null, sort: null }, false)
   }
   const hasBrowseFilters = Boolean(category || browse.query || browse.period !== 'all' || browse.order !== 'newest' || browse.from || browse.to)
-  return <AnalyticsFigmaShell hideSidebar><main id="analytics-main" className={`moments-workspace moments-workspace--dense${chosen ? ' is-reviewing' : ''}${historyMode ? ' is-history' : ''}`} tabIndex={-1}>
+  const savedEmpty = view === 'saved' && saved.items.length === 0
+  const filterToggleVisible = !chosen && !savedEmpty && !(historyMode && historyScope.day)
+  const filterPanelOpen = historyMode && historyScope.day ? historyFiltersOpen : filtersExpanded
+  return <AnalyticsFigmaShell hideSidebar><main id="analytics-main" className={`moments-workspace moments-workspace--dense${chosen ? ' is-reviewing' : ''}${historyMode ? ' is-history' : ''}${savedEmpty ? ' moments-workspace--saved-empty' : ''}`} data-filters-expanded={filterPanelOpen} tabIndex={-1}>
     <header className="moments-heading"><h1>{chosen ? 'Review workspace' : 'Moments'}</h1><Link to="/analytics">← Analytics</Link></header>
     <div className="moments-browse-heading"><nav className="moments-tabs" data-view={historyMode ? 'history' : view} aria-label="Moment views">{!historyMode ? <span className="moments-tab-indicator" aria-hidden="true" /> : null}{(['recent', 'sessions', 'saved'] as const).map(tab => <button type="button" key={tab} aria-pressed={!historyMode && view === tab} onClick={() => switchCollection(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Recent' : 'Sessions'}</button>)}</nav>
     <button type="button" aria-pressed={historyMode} onClick={() => switchCollection('history')}>Stored history</button></div>
@@ -435,7 +443,13 @@ export default function AnalyticsMomentsPage() {
       onPresentationChange={values => update({ ...('calendar' in values || 'year' in values ? resetSelection : {}), ...('year' in values ? { day: null } : {}), ...values })}
       onChange={values => update({ ...resetSelection, ...values, occurred: null, q: null, sort: null })}
       onRecent={() => switchCollection('recent')} /></div> : null}
-    <div className="moments-toolbar" hidden={historyMode && !catalogueReady}>
+    {filterToggleVisible ? <button type="button" className="moments-filter-toggle" aria-expanded={filtersExpanded} aria-controls="moments-loaded-filters" onClick={() => setFiltersExpanded(open => !open)}>
+      {filtersExpanded ? 'Hide filters' : hasBrowseFilters ? 'Filters · active' : 'Filters'}
+    </button> : null}
+    {historyMode && historyScope.day && catalogueReady && !chosen ? <button type="button" className="moments-history-filter-toggle" aria-expanded={historyFiltersOpen} aria-controls="moments-loaded-filters" onClick={() => setHistoryFiltersOpen(open => !open)}>
+      Filter loaded detections{browse.query || browse.period !== 'all' || browse.order !== 'newest' ? ' · active' : ''}
+    </button> : null}
+    <div id="moments-loaded-filters" className={`moments-toolbar${historyMode && historyScope.day ? ' moments-toolbar--history-day' : ' moments-toolbar--mobile-collapsible'}${filterPanelOpen ? ' is-open' : ''}`} hidden={historyMode && !catalogueReady}>
       {view === 'sessions' ? <label>Range
         <PulseSelect
           ariaLabel="Range"
@@ -530,7 +544,8 @@ export default function AnalyticsMomentsPage() {
 {view === 'sessions' && !unsupported ? <div className="moments-session-index">{storyId ? <button type="button" className="moments-session-back" onClick={() => update(resetSelection)}><ArrowLeft size={16} aria-hidden="true" /> All sessions</button> : filteredStories.map(story => <button className="moments-session" type="button" key={story.id} data-story-id={story.id} onClick={() => update({ ...resetSelection, story: story.id })}><span className="moments-identity"><MomentAvatar moment={story} /><span><strong>{story.displayName || story.login}</strong><small>{story.category || 'Category unavailable'}</small></span></span><span className="moments-session-broadcast"><Radio size={16} aria-hidden="true" /><span>Broadcast <strong>{story.streamId}</strong></span></span><span><small>Summary detection</small><time>{new Date(story.leadUpdate.momentRef.occurrenceAt).toLocaleString()}</time></span><span className="moments-session-open">Open session detections <ArrowRight size={16} aria-hidden="true" /></span></button>)}
           {!storyId && index.data?.nextCursor ? <button type="button" disabled={index.loadingMore} onClick={index.loadMore}>{index.loadingMore ? 'Loading…' : 'Load more sessions'}</button> : null}
         </div> : null}
-        {!busy && !failure && !unsupported && (!historyMode || catalogueReady) && !filtered.length && (view !== 'sessions' || storyId) ? <p>{historyMode ? 'No indexed detections match this selection. Missing measurements are not proof of a quiet stream.' : `No ${category ? 'matching loaded' : 'available'} moments.`}{view === 'saved' ? ' Save a moment from Recent or Sessions to start your shortlist.' : ''}</p> : null}
+        {!busy && !failure && !unsupported && (!historyMode || catalogueReady) && savedEmpty ? <div className="moments-empty-saved"><h3>Keep reactions worth returning to</h3><p>Save a moment to build your shortlist here.</p><button type="button" onClick={() => update({ ...resetSelection, view: 'recent', collection: null, category: null, q: null, occurred: null, sort: null })}>Find moments to save</button></div> : null}
+        {!busy && !failure && !unsupported && (!historyMode || catalogueReady) && !savedEmpty && !filtered.length && (view !== 'sessions' || storyId) ? <p>{historyMode ? 'No indexed detections match this selection. Missing measurements are not proof of a quiet stream.' : `No ${category ? 'matching loaded' : 'available'} moments.`}</p> : null}
         {!busy && sessionIndex && !unsupported && !filteredStories.length ? <p>{stories.length ? 'No session summaries match these loaded-result filters.' : 'No session summaries available.'}</p> : null}
         {broadcastGroups ? <details className="moments-broadcast-scope"><summary>{broadcastGroups.length} loaded broadcasts · matching detections only</summary><p>Groups follow the first match in the selected sort; detections within each broadcast use the same sort. Reaction sorts order broadcasts by their highest matching loaded detection, not an aggregate broadcast score. Counts include loaded matches only.</p></details> : null}
         <div
