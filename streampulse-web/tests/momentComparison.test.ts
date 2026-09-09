@@ -11,11 +11,41 @@ const comparison = {
 const row = { login: 'creator', streamId: 'stream1', offsetSeconds: 90, label: 'Emote spike', kind: 'seventv_spike', comparison }
 
 describe('shared moment reaction presentation', () => {
+  const eventAt = Date.parse('2026-09-08T17:00:23Z')
+  const verified = { ...comparison, eventAt, evidence: { ircBound: true, eventRollupAvailable: true } } as LiveWireMomentComparison
+  it('uses the verified minute for Recent when detector and comparison snapshots differ', () => {
+    const recent = fromHubMoment({ ...row, at: eventAt, chatPerMin: 355, emotesPerMin: 2570, comparison: verified })!
+    const session = fromNewsroomUpdate({ id: 'story1', login: 'creator', streamId: 'stream1' } as NewsroomStory,
+      { headline: row.label, signal: 'emotes', publishedAt: '2026-09-08T17:01:00Z', comparison: verified,
+        momentRef: { streamId: 'stream1', offsetSeconds: 90, occurrenceAt: eventAt } } as NewsroomUpdate)!
+    expect([recent.chatPerMin, recent.emotesPerMin]).toEqual([279, 34])
+    expect([recent.chatPerMin, recent.emotesPerMin]).toEqual([session.chatPerMin, session.emotesPerMin])
+    expect(recent.measurementScope).toBe('verified_minute')
+    expect(session.evidenceAsOf).toBe('2026-09-08T17:01:00Z')
+  })
+  it('preserves detector rates when verification is missing or points at another minute', () => {
+    for (const comparison of [
+      { ...verified, eventAt: eventAt + 60_000 },
+      { ...verified, evidence: { ...verified.evidence, eventRollupAvailable: false } },
+      { ...verified, chat: { ...verified.chat, currentPerMin: NaN } },
+    ]) {
+      const result = fromHubMoment({ ...row, at: eventAt, chatPerMin: 355, comparison })!
+      expect(result.chatPerMin).toBe(355)
+      expect(result.measurementScope).toBe('detector_snapshot')
+    }
+  })
   it('keeps the same detected signal through the hub adapter and review', () => {
     const moment = fromHubMoment(row)!
     expect(moment.reactionSignal).toBe('emotes')
     expect(momentComparisonSummary(moment.comparison, moment.reactionSignal)).toBe("Emotes 7.1× this stream's earlier average")
     expect(momentComparisonSummary(comparison, momentReactionSignal(row.kind))).toBe(momentComparisonSummary(moment.comparison, moment.reactionSignal))
+  })
+  it('does not give a detection the comparison headline from another minute', () => {
+    const moment = fromHubMoment({ ...row, at: eventAt, chatPerMin: 355,
+      comparison: { ...verified, eventAt: eventAt + 60_000 } })!
+    expect(moment.chatPerMin).toBe(355)
+    expect(moment.comparison).toBeUndefined()
+    expect(momentComparisonSummary(moment.comparison, moment.reactionSignal)).toBeNull()
   })
   it('uses the selected session update signal, never the lead or larger multiplier', () => {
     const story = { id: 'story1', login: 'creator', streamId: 'stream1', primarySignal: 'emotes' } as NewsroomStory
@@ -24,7 +54,7 @@ describe('shared moment reaction presentation', () => {
     expect(moment.reactionSignal).toBe('chat')
     expect(momentComparisonSummary(moment.comparison, moment.reactionSignal)).toBe("Chat 2.1× this stream's earlier average")
   })
-  it.each(['emote_spike', 'twitch_emote_spike', 'seventv_spike', '7tv'])('recognizes the emote detector kind %s', kind => {
+  it.each(['emote_spike', 'twitch_emote_spike', 'seventv_spike', '7tv', 'twitch', 'bttv', 'ffz'])('recognizes the emote detector kind %s', kind => {
     expect(momentReactionSignal(kind)).toBe('emotes')
   })
   it('shows available fallback evidence without relabeling it as the primary signal', () => {

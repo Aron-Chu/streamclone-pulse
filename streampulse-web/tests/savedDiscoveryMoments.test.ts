@@ -14,6 +14,26 @@ const moment = fromHubMoment({ login: 'creator', streamId: 'stream-a', offsetSec
   topEmotes: [{ name: 'LOL', provider: 'seventv', count: 70, imageUrl: 'https://cdn.7tv.app/emote/private/4x.webp' }] })!
 describe('device shortlist', () => {
   beforeEach(() => { localStorage.clear(); vi.restoreAllMocks() })
+  it('retains the measurement scope and publication time through a saved reload', () => {
+    const saved = savedMomentRecord({ ...moment, evidenceAsOf: '2026-09-08T17:01:00Z' })
+    const parsed = parseSavedMoments(JSON.stringify({ version: 2, items: [saved] }))[0]!
+    expect(parsed).toMatchObject({ measurementScope: 'verified_minute', evidenceAsOf: '2026-09-08T17:01:00.000Z', chatPerMin: 220, emotesPerMin: 80 })
+  })
+  it('does not silently replace saved detector rates with comparison rates on reload', () => {
+    const saved = savedMomentRecord({ ...moment, chatPerMin: 355, emotesPerMin: 2570, measurementScope: 'detector_snapshot' })
+    const parsed = parseSavedMoments(JSON.stringify({ version: 2, items: [saved] }))[0]!
+    expect(parsed).toMatchObject({ chatPerMin: 355, emotesPerMin: 2570, measurementScope: 'detector_snapshot' })
+  })
+  it('does not infer missing scope or retain unsupported verification and snapshot claims', () => {
+    const saved = savedMomentRecord(moment)
+    for (const measurementScope of [undefined, 'unknown', 'verified_minute']) {
+      const parsed = parseSavedMoments(JSON.stringify({ version: 2, items: [{ ...saved, chatPerMin: 355,
+        measurementScope, evidenceAsOf: 'invalid-date' }] }))[0]!
+      expect(parsed.chatPerMin).toBe(355)
+      expect(parsed).not.toHaveProperty('measurementScope')
+      expect(parsed).not.toHaveProperty('evidenceAsOf')
+    }
+  })
   it('persists bounded public evidence and strips source, media and authorization data on read', () => {
     const saved = savedMomentRecord(moment)
     expect(saved).not.toHaveProperty('vodId'); expect(saved).not.toHaveProperty('handoffRef'); expect(saved).not.toHaveProperty('profileImageUrl')

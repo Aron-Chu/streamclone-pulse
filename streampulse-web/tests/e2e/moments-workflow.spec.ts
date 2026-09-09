@@ -12,10 +12,9 @@ async function selectPulseOption(page: Page, triggerName: string, optionName: st
   await expect(page.getByRole('listbox')).toHaveCount(0)
   return trigger
 }
-
 async function captureSyntheticWorkflow(page: Page, path: string) {
   await expect(page.locator('.moments-workspace')).toBeVisible()
-  for (const artwork of await page.locator('.moments-category-art').all()) {
+  for (const artwork of await page.locator('.moments-category-art:visible').all()) {
     await artwork.scrollIntoViewIfNeeded()
     await expect(artwork).not.toHaveAttribute('data-artwork-state', 'loading')
   }
@@ -154,6 +153,7 @@ for (const width of [390, 1440]) {
     await installDenseCompositionFixture(page)
     await page.goto('/analytics/moments')
     await expect(page.locator('.moments-result')).toHaveCount(6)
+    if (width <= 600) await page.getByRole('button', { name: 'Filters', exact: true }).click()
     for (const collection of ['recent', 'saved']) {
       if (collection === 'saved') {
         for (const button of await page.locator('.moments-result .moment-save-control button').all()) await button.click()
@@ -217,7 +217,7 @@ for (const width of [390, 1440]) {
       await page.goto('/analytics/moments')
       await expect(page.locator('.moments-result')).toHaveCount(6)
       await page.locator('[data-discovery-key]').first().click()
-      if (sourceState === 'mapped') await expect(page.getByRole('link', { name: /^Watch at/ })).toBeVisible()
+      if (sourceState === 'mapped') await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toBeVisible()
       else await expect(page.locator('.moments-source-state')).toHaveAttribute('data-source-state', sourceState)
       await expect(page.locator('.moments-reactions li')).toHaveCount(3)
        await page.locator('.moments-detail').scrollIntoViewIfNeeded()
@@ -249,7 +249,7 @@ for (const width of [390, 1440]) {
       }
       if (sourceState !== 'mapped') {
         await expect(page.locator('.moments-detail iframe')).toHaveCount(0)
-        await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveCount(0)
+        await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveCount(0)
         await expect(page.getByRole('button', { name: 'Recheck source' })).toHaveCount(1)
       }
     })
@@ -296,6 +296,7 @@ for (const width of [320, 390, 1440]) {
     await expect(page.locator('.moments-detail')).toHaveCount(0)
     await page.getByRole('button', { name: 'Sessions', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Sessions', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    if (width <= 600) await page.getByRole('button', { name: 'Filters', exact: true }).click()
     await page.getByRole('searchbox').fill('xqc')
     const session = page.locator('[data-story-id="story-xqc"]')
     await session.click()
@@ -426,6 +427,10 @@ for (const width of [390, 1440]) for (const transition of ['unavailable-to-ready
     const host = page.locator('#category-geometry-test')
     const artwork = host.locator('.moments-category-art').first()
     await expect(artwork).toHaveAttribute('data-artwork-state', 'unavailable')
+    // The route stylesheet loads asynchronously; measure only after its cover
+    // dimensions apply, rather than comparing unstyled markup with styled art.
+    await expect(artwork).toHaveCSS('width', width < 768 ? '96px' : '120px')
+    await expect(artwork).toHaveCSS('height', width < 768 ? '128px' : '160px')
     await artwork.scrollIntoViewIfNeeded()
     const bounds = () => host.evaluate(element => [element, ...element.querySelectorAll('.moments-category-track, .moments-category-track > button, .moments-category-art')].map(node => {
       const r = node.getBoundingClientRect()
@@ -460,15 +465,15 @@ test('live archive recovery keeps the selected broadcast and enables only its ex
   await page.goto('/analytics/moments?login=xqc&stream=321192454233&offset=5183')
   const detail = page.getByRole('region', { name: 'Selected moment', exact: true })
   await expect(detail.getByRole('button', { name: 'Recheck source', exact: true })).toBeVisible()
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveCount(0)
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveCount(0)
   await expect(detail.locator('iframe')).toHaveCount(0)
   linked = true
   await detail.getByRole('button', { name: 'Recheck source', exact: true }).click()
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=5107s')
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=5107s')
   await expect(page).toHaveURL(/stream=321192454233&offset=5183/)
   await expect(detail.locator('iframe')).toHaveAttribute('src', /video=v2864434763&time=5107s&parent=127.0.0.1&autoplay=false/)
   await page.reload()
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=5107s')
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=5107s')
 })
 
 test('archive-origin contract maps the selected replay and preserves Save outside the playable range', async ({ page }) => {
@@ -478,10 +483,10 @@ test('archive-origin contract maps the selected replay and preserves Save outsid
   } }))
   await page.goto('/analytics/moments?login=xqc&stream=321192454233&offset=5183')
   const detail = page.getByRole('region', { name: 'Selected moment', exact: true })
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=5107s')
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=5107s')
   await page.goto('/analytics/moments?login=xqc&stream=321192454233&offset=18100')
   await expect(detail.getByText('This detection is outside the archive', { exact: false })).toBeVisible()
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveCount(0)
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveCount(0)
   await expect(detail.locator('iframe')).toHaveCount(0)
   await detail.getByRole('button', { name: 'Save on this device', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Saved (1)', exact: true })).toBeVisible()
@@ -489,7 +494,7 @@ test('archive-origin contract maps the selected replay and preserves Save outsid
   // changing the selected identity or navigating to a different broadcast.
   await page.route(/\/v1\/portal\/analytics\/streams\/321192454233(?:\?.*)?$/, route => route.fulfill({ json: { ...portalTimingFixture, vodDurationSeconds: 19000 } }))
   await detail.getByRole('button', { name: 'Recheck source', exact: true }).click()
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=18024s')
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/2864434763?t=18024s')
 })
 
 test('a deep-linked detection outside recent results restores exact recap reactions on refresh', async ({ page }) => {
@@ -511,12 +516,13 @@ test('a deep-linked detection outside recent results restores exact recap reacti
   await expect(detail.getByText('Exact per-emote counts are shown below.', { exact: false })).toBeVisible()
   await expect(detail.getByText('Wrong lead', { exact: true })).toHaveCount(0)
   await expect(detail.getByText('Occurrence time unavailable', { exact: false })).toHaveCount(0)
-  await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveCount(0)
+  await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveCount(0)
   await page.reload()
   await expect(detail.getByText('GTAB', { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.locator('.moments-toolbar')).toBeHidden()
   await detail.getByRole('button', { name: 'Back to results' }).click()
+  await page.getByRole('button', { name: 'Filters', exact: true }).click()
   await expect(page.locator('.moments-toolbar')).toBeVisible()
 })
 
@@ -621,6 +627,7 @@ for (const [width, height] of [[1440, 960], [1280, 800], [768, 1024], [390, 844]
     await installDenseCompositionFixture(page)
     await page.goto('/analytics/moments')
     await expect(page.locator('.moments-result--compact')).toHaveCount(6)
+    if (width <= 600) await page.getByRole('button', { name: 'Filters', exact: true }).click()
     const rail = page.locator('.moments-category-browser')
     const cover = rail.locator('.moments-category-art').first()
     expect.soft(await cover.boundingBox()).toMatchObject(width < 768 ? { width: 96, height: 128 } : { width: 120, height: 160 })
@@ -732,6 +739,41 @@ test('category changes animate the result collection only and respect reduced mo
   await expect.poll(() => page.evaluate(() => (window as unknown as { __momentCollectionAnimationStarts?: number }).__momentCollectionAnimationStarts ?? 0)).toBe(0)
 })
 
+test('mobile Recent leads with a result, reveals animated filters on demand, and gives Saved an exit path', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installHubUxMock(page)
+  await page.goto('/analytics/moments?view=recent')
+  await expect(page.locator('.moments-result')).toHaveCount(2)
+  await expect(page.getByRole('heading', { name: 'Recent detections' })).toBeVisible()
+  await expectInFirstViewport(page, '.moments-results-heading')
+  await expect(page.locator('.moments-result').first()).toBeInViewport()
+  const filters = page.getByRole('button', { name: 'Filters', exact: true })
+  await expect(filters).toBeVisible()
+  await expect(page.locator('.moments-toolbar')).toBeHidden()
+  await filters.click()
+  await expect(page.getByRole('button', { name: 'Hide filters', exact: true })).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('.moments-toolbar')).toBeVisible()
+  const sort = page.getByRole('combobox', { name: 'Result sort order' })
+  await sort.click()
+  const listbox = page.getByRole('listbox', { name: 'Sort loaded results' })
+  await expect(listbox).toBeVisible()
+  await expect(listbox).toHaveCSS('animation-name', 'pulse-select-appear')
+  await listbox.getByRole('option', { name: 'Highest chat/min', exact: true }).click()
+  await expect(sort).toContainText('Highest chat/min')
+  await selectPulseOption(page, 'Occurrence time window', 'Custom dates (UTC)')
+  await page.getByLabel('From date UTC').fill('2026-01-01')
+  await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+  await expect(page.getByLabel('From date UTC')).toBeHidden()
+  await page.getByRole('button', { name: 'Filters · active', exact: true }).click()
+  await expect(page.getByLabel('From date UTC')).toHaveValue('2026-01-01')
+  await page.getByRole('button', { name: 'Saved (0)', exact: true }).click()
+  await expect(page.locator('.moments-empty-saved')).toBeVisible()
+  await expect(page.locator('.moments-toolbar')).toBeHidden()
+  await page.getByRole('button', { name: 'Find moments to save', exact: true }).click()
+  await expect(page).toHaveURL(/view=recent/)
+  await expect(page.locator('.moments-result')).toHaveCount(2)
+})
+
 test('exact moment source, device save, reload and legacy session link', async ({ page }) => {
   const exactRefreshes: string[] = []
   page.on('request', request => { if (request.url().includes('momentOffsetSeconds=')) exactRefreshes.push(request.url()) })
@@ -740,7 +782,7 @@ test('exact moment source, device save, reload and legacy session link', async (
   await page.goto('/analytics/moments')
   await expect(page.locator('.moments-result')).toHaveCount(2)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
   const prepare = page.getByRole('link', { name: /Prepare clip in ReplayForge/ })
   if (process.env.VITE_REPLAYFORGE_UI_ORIGIN) {
     await expect(prepare).toHaveAttribute('href', `${process.env.VITE_REPLAYFORGE_UI_ORIGIN}/handoff/streampulse/cr_Y2NfYWJj`)
@@ -770,7 +812,7 @@ test('exact moment source, device save, reload and legacy session link', async (
     /cdn\.7tv\.app\/emote\/01GAM8EFQ00004MXFXAJYKA860/,
   )
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Selected moment reactions' }).locator('img')).toHaveAttribute(
     'src',
     /cdn\.7tv\.app\/emote\/01GAM8EFQ00004MXFXAJYKA860/,
@@ -926,7 +968,7 @@ test('in-page Back does not leave a detail entry that browser Back reopens', asy
 test('archive start keeps automatic preview and exact zero timestamp', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/analytics/moments?login=xqc&stream=s1&offset=0')
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=0s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=0s')
   await expect(page.locator('.moments-detail iframe')).toHaveAttribute('src', /time=0s&/)
 })
 
@@ -979,7 +1021,7 @@ test('reviewed archive artwork returns only to its exact card without background
   expect(checks).toBe(0)
   await expect(page.locator('.moments-card-artwork')).toHaveCount(0)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toBeVisible()
   // Dev StrictMode may abort/re-run selection effects. Gallery navigation must
   // issue zero additional requests relative to the completed selected review.
   const selectedChecks = checks
@@ -990,7 +1032,7 @@ test('reviewed archive artwork returns only to its exact card without background
   await expect(page.locator('.moments-result').nth(1).locator('.moments-card-artwork')).toHaveCount(0)
   expect(checks).toBe(selectedChecks)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Twitch emote spike — Open moment for xQc at 2:00', exact: true }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
   expect(checks).toBeGreaterThan(selectedChecks)
 })
 
@@ -1107,7 +1149,7 @@ test('mobile session review loads earlier detections without replacing its selec
   await expect(nav).toContainText('1 of 2 loaded matches')
   await expect(page).toHaveURL(selectedUrl)
   await nav.getByRole('button',{name:'Next moment',exact:true}).click()
-  await expect(page.getByRole('link',{name:/^Watch at/})).toHaveAttribute('href','https://www.twitch.tv/videos/123456?t=180s')
+  await expect(page.getByRole('link',{name:/^(?:Watch at|Watch on Twitch at)/})).toHaveAttribute('href','https://www.twitch.tv/videos/123456?t=180s')
   await expect(page.locator('.moments-detail h2')).toHaveText('Earlier reaction')
 })
 
@@ -1123,10 +1165,10 @@ test('second and third session detections keep their own source offsets without 
   await page.goto('/analytics/moments?view=sessions&story=story-xqc')
   await expect(page.locator('.moments-result')).toHaveCount(3)
   await page.locator('.moments-result').filter({ hasText: 'Second reaction' }).getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=360s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=360s')
   await page.locator('.moments-detail').getByRole('button', { name: 'Back to results' }).click()
   await page.locator('.moments-result').filter({ hasText: 'Third reaction' }).getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=540s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=540s')
   expect(indexReads).toBe(0)
 })
 
@@ -1136,14 +1178,14 @@ test('unavailable exact source remains saveable and recovery does not substitute
   await page.goto('/analytics/moments?login=xqc&stream=s1&offset=9999')
   await expect(page.getByText('Saved metadata is historical.', { exact: false })).toHaveCount(0)
   await expect(page.getByText('Source identity could not be confirmed. No substitute stream was selected.')).toBeVisible()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveCount(0)
   await page.locator('.moments-detail').getByRole('button', { name: 'Save on this device', exact: true }).click()
   available = true
   await page.locator('.moments-detail').getByRole('button', { name: 'Recheck source' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=9999s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=9999s')
   await page.getByRole('button', { name: 'Saved (1)', exact: true }).click()
   await page.locator('.moments-result').getByRole('button', { name: 'Saved', exact: true }).click()
-  await expect(page.getByText('No available moments.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Keep reactions worth returning to', exact: true })).toBeVisible()
 })
 
 test('session Back restores originating session focus', async ({ page }) => {
@@ -1163,7 +1205,7 @@ test('loaded search, occurrence and ordering survive exact-detail Back and refre
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await expect(page.locator('.moments-feed-scope')).toContainText('Sorting and filters apply only to this loaded snapshot, not missing history.')
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Watch at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
   await page.goBack()
   await expect(page.getByLabel('Find loaded moments')).toHaveValue('xqc')
   await expect(page.locator('.moments-result').getByRole('button', { name: 'Open moment' })).toBeFocused()
@@ -1232,8 +1274,8 @@ test('selected verified preview loads automatically without autoplay and retains
   await expect(page.getByRole('button', { name: 'Close preview', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(frame).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Watch at 2:00 on Twitch' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Watch at 2:00 on Twitch' })).toBeFocused()
+  await expect(page.getByRole('link', { name: 'Watch on Twitch at 2:00' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Watch on Twitch at 2:00' })).toBeFocused()
   const mobileTargets = page.locator('.moment-vod-preview__fallback a, .moments-detail summary')
   expect(await mobileTargets.count()).toBeGreaterThan(1)
   for (const target of await mobileTargets.all()) {
@@ -1241,7 +1283,7 @@ test('selected verified preview loads automatically without autoplay and retains
   }
 })
 
-for (const width of [320, 390, 768, 1024, 1440]) {
+for (const width of [320, 390, 560, 768, 1024, 1440]) {
   test(`creator activity overview fits ${width}px and opens an exact UTC day`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 960 })
     await page.addInitScript(() => {
@@ -1323,6 +1365,8 @@ for (const width of [320, 390, 768, 1024, 1440]) {
       const broadcastHeading = (await groups.first().locator('.moments-broadcast-heading h3').boundingBox())!
       expect.soft(broadcastHeading.y + broadcastHeading.height,
         'visible first broadcast identity, not just its empty container edge').toBeLessThanOrEqual(960)
+      const filters = page.getByRole('button', { name: 'Filter loaded detections', exact: true })
+      if (await filters.getAttribute('aria-expanded') === 'false') await filters.click()
       for (const selector of ['.moments-filter-note', '.moments-broadcast-scope']) {
         const disclosure = page.locator(selector)
         await disclosure.locator('summary').focus()
@@ -1330,6 +1374,10 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         expect.soft(box.width, `${selector} must not be an invisible keyboard stop`).toBeGreaterThanOrEqual(24)
         expect.soft(box.height, `${selector} must not be clipped on focus`).toBeGreaterThanOrEqual(24)
       }
+    }
+    if (width <= 600) {
+      const filters = page.getByRole('button', { name: 'Filter loaded detections', exact: true })
+      if (await filters.getAttribute('aria-expanded') === 'false') await filters.click()
     }
     await page.locator('[data-discovery-key]').first().click()
     await expect(page.locator('.moments-calendar-context')).toBeHidden()
@@ -1360,7 +1408,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
     // One failed GET plus its bounded automatic retry, then explicit continuation.
     expect(cursors).toEqual(['synthetic-page2', 'synthetic-page2', 'synthetic-page2'])
     await expect(detail.getByRole('button', { name: 'Recheck source' })).toBeVisible()
-    await expect(detail.getByRole('link', { name: /^Watch at/ })).toHaveCount(0)
+    await expect(detail.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toHaveCount(0)
     await expect(detail.locator('iframe')).toHaveCount(0)
     await detail.getByRole('button', { name: 'Save on this device', exact: true }).click()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
@@ -1376,6 +1424,14 @@ for (const width of [320, 390, 768, 1024, 1440]) {
     expect(yearReads, 'day selection, review and Back reuse the mounted year').toBe(1)
     await expect(page.locator('[data-discovery-key]').nth(1)).toBeFocused()
     await expect(page).toHaveURL(/day=2025-09-02/)
+    if (width <= 600) {
+      const filters = page.getByRole('button', { name: 'Filter loaded detections', exact: true })
+      await expect(filters).toHaveAttribute('aria-expanded', 'true')
+      const field = await page.getByLabel('Find loaded moments').boundingBox()
+      expect(field!.width).toBeGreaterThanOrEqual(width - 60)
+      await filters.scrollIntoViewIfNeeded()
+      await page.screenshot({ path: info.outputPath(`creator-filters-${width}.png`) })
+    } else await expect(page.getByRole('button', { name: 'Filter loaded detections', exact: true })).toBeHidden()
     await selectPulseOption(page, 'Result sort order', 'Highest chat/min')
     expect(await keys()).toEqual([['ohnepixel', 'synthetic-a', 79200], ['ohnepixel', 'synthetic-a', 90000], ['ohnepixel', 'synthetic-a', 82800], ['ohnepixel', 'synthetic-b', 0]])
     await expect(page.locator('.moments-broadcast-scope')).toContainText('not an aggregate broadcast score')
@@ -1436,12 +1492,12 @@ for (const width of [390, 1440]) {
     await page.locator('.moments-detail').getByRole('button', { name: 'Saved on this device', exact: true }).click()
     await expect(page).toHaveURL(savedUrl)
     await expect(page.getByText('Selection outside loaded matches')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Next moment' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Next moment' })).toHaveCount(0)
     await page.keyboard.press('Escape')
     await expect(page.locator('.moments-results h2')).toBeFocused()
-    await expect(page.getByText('No available moments.', { exact: false })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Keep reactions worth returning to', exact: true })).toBeVisible()
     await page.reload()
-    await expect(page.getByText('No available moments.', { exact: false })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Keep reactions worth returning to', exact: true })).toBeVisible()
     await expect(page.locator('.moments-result')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await captureSyntheticWorkflow(page, info.outputPath(`saved-empty-${width}.png`))
@@ -1459,6 +1515,10 @@ for (const width of [390, 768, 1024, 1440]) {
     await expect(page.locator('.moments-result')).toHaveCount(2)
     await expect(page.locator('.moments-gallery-media')).toHaveCount(0)
     await expect(page.locator('.moments-result--compact')).toHaveCount(2)
+    if (width <= 600) {
+      await page.getByRole('button', { name: 'Filters', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Hide filters', exact: true })).toHaveAttribute('aria-expanded', 'true')
+    }
     await expect(page.locator('.moments-category-track')).toBeVisible()
     await expect(page.locator('.moments-category-disclosure')).toHaveCount(0)
     await expect(page.locator('[data-column="Event time"] small').first()).toContainText('into broadcast')
@@ -1466,7 +1526,7 @@ for (const width of [390, 768, 1024, 1440]) {
     await expectStableSave(page, '.moments-result')
     await captureSyntheticWorkflow(page, info.outputPath(`moments-${width}.png`))
     await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
-    await expect(page.getByRole('link', { name: /^Watch at/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /^(?:Watch at|Watch on Twitch at)/ })).toBeVisible()
     await expect(page.locator('.moments-gallery-media')).toHaveCount(0)
     await expectStableSave(page, '.moments-detail')
     if (width > 850) {

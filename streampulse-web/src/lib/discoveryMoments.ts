@@ -33,6 +33,10 @@ export interface DiscoveryMoment {
   handoffRef?: string
   storyId?: string
   revision?: number
+  /** Publication time of the supplying feed/update, separate from event time. */
+  evidenceAsOf?: string
+  /** Which server measurement supplied the displayed rates. */
+  measurementScope?: 'verified_minute' | 'detector_snapshot'
   /** Allowlisted broadcast thumbnail for display only; never source authority. */
   archiveArtwork?: ArchiveArtwork
   provenance: 'hub' | 'session' | 'saved'
@@ -60,12 +64,30 @@ export function fromHubMoment(moment: FigmaMomentRow & { archiveArtwork?: Archiv
   const archiveArtwork = typeof artworkVodId === 'string' && /^\d{6,20}$/.test(artworkVodId)
     && (!suppliedVodId || suppliedVodId === artworkVodId)
     ? verifiedArchiveArtwork(moment.archiveArtwork, artworkVodId) : undefined
+  const at = resolveMomentAtMs(moment.at)
+  const comparisonAt = resolveMomentAtMs(moment.comparison?.eventAt)
+  const differentMinute = at != null && comparisonAt != null
+    && Math.floor(at / 60_000) !== Math.floor(comparisonAt / 60_000)
+  // A comparison explicitly attributed to another minute cannot describe this detection.
+  const comparison = differentMinute ? undefined : moment.comparison
+  // Recent can carry a retained detector peak while Sessions carries a
+  // verified minute comparison for the same offset. Once the server proves
+  // both refer to the same minute, keep the displayed rates on that one
+  // measurement so the headline and numbers cannot describe different data.
+  const verifiedMinute = at != null && comparisonAt != null
+    && Math.floor(at / 60_000) === Math.floor(comparisonAt / 60_000)
+    && comparison?.evidence?.ircBound === true && comparison.evidence.eventRollupAvailable === true
+    && [comparison.chat.currentPerMin, comparison.emotes.currentPerMin]
+      .every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)
   return { key, publicMomentId, login, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds,
     at: resolveMomentAtMs(moment.at) ?? undefined, label: moment.label || 'Measured reaction', displayName: moment.displayName,
     category: moment.category, categoryId: moment.categoryId, boxArtUrl: moment.boxArtUrl,
     categoryMetadataRejected: moment.categoryMetadataRejected,
-    profileImageUrl: moment.profileImageUrl, chatPerMin: moment.chatPerMin,
-    emotesPerMin: moment.emotesPerMin, comparison: moment.comparison, reactionSignal: momentReactionSignal(moment.kind),
+    profileImageUrl: moment.profileImageUrl,
+    chatPerMin: verifiedMinute ? comparison!.chat.currentPerMin : moment.chatPerMin,
+    emotesPerMin: verifiedMinute ? comparison!.emotes.currentPerMin : moment.emotesPerMin,
+    measurementScope: verifiedMinute ? 'verified_minute' : 'detector_snapshot',
+    comparison, reactionSignal: momentReactionSignal(moment.kind),
     topEmotes: resolveTopEmotes(moment.topEmotes),
     vodId: validVodId(moment.vodId) ? moment.vodId : undefined, handoffRef: moment.handoffRef, archiveArtwork, provenance: 'hub' }
 }
@@ -80,7 +102,7 @@ export function fromNewsroomUpdate(story: NewsroomStory, update: NewsroomUpdate)
     comparison: update.comparison,
     chatPerMin: update.comparison.chat.currentPerMin, emotesPerMin: update.comparison.emotes.currentPerMin,
     topEmotes: update.topEmotes, vodId: update.vodId })
-  return moment ? { ...moment, storyId: story.id, revision: update.revision, provenance: 'session' } : null
+  return moment ? { ...moment, storyId: story.id, revision: update.revision, evidenceAsOf: update.publishedAt, provenance: 'session' } : null
 }
 
 export function discoveryMomentHref(moment: DiscoveryMoment): string {

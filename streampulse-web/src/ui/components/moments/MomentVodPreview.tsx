@@ -62,7 +62,7 @@ export function MomentVodPreview({ href, artwork }: { href: string; artwork?: Ar
         </button>
         : <><iframe key={href} title="Selected moment Twitch VOD preview" src={`https://player.twitch.tv/?${query}`} allow="fullscreen" allowFullScreen onError={() => setFailedHref(href)} />
           <button ref={closeButton} type="button" onClick={() => { pendingFocus.current = 'load'; setClosedHref(href) }}>Close preview</button></>}
-    </div> : <p>Open on Twitch to watch at this screen size.</p>}
-    <div className="moment-vod-preview__fallback"><a ref={externalLink} className="moments-watch-action" href={href} target="_blank" rel="noopener noreferrer">Watch at {formatStreamOffset(Number(seconds))} on Twitch <ExternalLink size={13} aria-hidden="true" /></a>{failed ? <span role="status">Preview could not load. Playback depends on Twitch availability.</span> : null}</div>
+    </div> : null}
+    <div className={`moment-vod-preview__fallback${!wideEnough ? ' moment-vod-preview__fallback--primary' : ''}`}><a ref={externalLink} className="moments-watch-action" href={href} target="_blank" rel="noopener noreferrer">{wideEnough ? `Watch at ${formatStreamOffset(Number(seconds))} on Twitch` : `Watch on Twitch at ${formatStreamOffset(Number(seconds))}`} <ExternalLink size={13} aria-hidden="true" /></a>{failed ? <span role="status">Preview could not load. Playback depends on Twitch availability.</span> : null}</div>
   </div>
 }

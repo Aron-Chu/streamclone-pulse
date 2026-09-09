@@ -5,7 +5,7 @@ export type MomentReactionSignal = 'chat' | 'emotes'
 /** Preserve the detector's stated signal; never infer a quality score from rates. */
 export function momentReactionSignal(kind?: string): MomentReactionSignal | undefined {
   const value = kind?.trim().toLowerCase() ?? ''
-  if (value.includes('emote') || value.includes('seventv') || value === '7tv') return 'emotes'
+  if (value.includes('emote') || value.includes('seventv') || ['7tv', 'twitch', 'bttv', 'ffz'].includes(value)) return 'emotes'
   if (value.includes('chat')) return 'chat'
   return undefined
 }
