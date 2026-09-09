@@ -124,6 +124,15 @@ describe('Stored history navigation', () => {
     expect(screen.getByRole('link', { name: /Inspect .* in Analytics/ })).toBeTruthy()
   })
 
+  it('explains detector snapshot rates without claiming verified-minute evidence', async () => {
+    mocks.savedItems = [{ ...moment, provenance: 'saved', measurementScope: 'detector_snapshot' }]
+    mount('?view=saved&login=creator&stream=123&offset=60')
+    await waitFor(() => expect(mocks.source).toHaveBeenCalled())
+    fireEvent.click(screen.getByText('Measured evidence'))
+    expect(screen.getByText(/Rates come from the detector snapshot/)).toBeTruthy()
+    expect(screen.queryByText(/Counts and comparison use the same verified minute/)).toBeNull()
+  })
+
   it.each(['compatible', 'revision', 'publicId', 'key'])('reuses Saved gallery evidence only for compatible selected identity: %s', async mismatch => {
     const saved = { ...moment, provenance: 'saved' as const, publicMomentId: 'public-a' }
     mocks.savedItems = [saved]

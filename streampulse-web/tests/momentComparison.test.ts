@@ -40,6 +40,13 @@ describe('shared moment reaction presentation', () => {
     expect(momentComparisonSummary(moment.comparison, moment.reactionSignal)).toBe("Emotes 7.1× this stream's earlier average")
     expect(momentComparisonSummary(comparison, momentReactionSignal(row.kind))).toBe(momentComparisonSummary(moment.comparison, moment.reactionSignal))
   })
+  it('does not give a detection the comparison headline from another minute', () => {
+    const moment = fromHubMoment({ ...row, at: eventAt, chatPerMin: 355,
+      comparison: { ...verified, eventAt: eventAt + 60_000 } })!
+    expect(moment.chatPerMin).toBe(355)
+    expect(moment.comparison).toBeUndefined()
+    expect(momentComparisonSummary(moment.comparison, moment.reactionSignal)).toBeNull()
+  })
   it('uses the selected session update signal, never the lead or larger multiplier', () => {
     const story = { id: 'story1', login: 'creator', streamId: 'stream1', primarySignal: 'emotes' } as NewsroomStory
     const update = { headline: 'Selected chat reaction', signal: 'chat', comparison, momentRef: { streamId: 'stream1', offsetSeconds: 90 } } as NewsroomUpdate

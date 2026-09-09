@@ -9,6 +9,7 @@ Reviewed candidate: `31465c9`. This is a follow-up to the Moments phone filters 
 - Custom UTC date fields remained visible after mobile Filters collapsed. Include them in the collapsed surface. The browser test verifies hiding and restoration of the entered date.
 - The empty Saved action manually cleared only some query parameters. Reuse the collection-switch operation so stale dates and calendar scope cannot leak into Recent.
 - The category geometry test could capture dimensions before route CSS loaded. Wait for the expected cover dimensions before comparing artwork states.
+- A comparison explicitly dated to another minute still supplied the reaction headline after falling back to detector rates. Discard that mismatched comparison and explain the detector snapshot scope in Measured evidence. Legacy comparisons without timestamps remain available without a verified-minute claim.
 
 ## Scope and evidence limits
 

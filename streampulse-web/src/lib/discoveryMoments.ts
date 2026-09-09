@@ -66,7 +66,10 @@ export function fromHubMoment(moment: FigmaMomentRow & { archiveArtwork?: Archiv
     ? verifiedArchiveArtwork(moment.archiveArtwork, artworkVodId) : undefined
   const at = resolveMomentAtMs(moment.at)
   const comparisonAt = resolveMomentAtMs(moment.comparison?.eventAt)
-  const comparison = moment.comparison
+  const differentMinute = at != null && comparisonAt != null
+    && Math.floor(at / 60_000) !== Math.floor(comparisonAt / 60_000)
+  // A comparison explicitly attributed to another minute cannot describe this detection.
+  const comparison = differentMinute ? undefined : moment.comparison
   // Recent can carry a retained detector peak while Sessions carries a
   // verified minute comparison for the same offset. Once the server proves
   // both refer to the same minute, keep the displayed rates on that one
@@ -84,7 +87,7 @@ export function fromHubMoment(moment: FigmaMomentRow & { archiveArtwork?: Archiv
     chatPerMin: verifiedMinute ? comparison!.chat.currentPerMin : moment.chatPerMin,
     emotesPerMin: verifiedMinute ? comparison!.emotes.currentPerMin : moment.emotesPerMin,
     measurementScope: verifiedMinute ? 'verified_minute' : 'detector_snapshot',
-    comparison: moment.comparison, reactionSignal: momentReactionSignal(moment.kind),
+    comparison, reactionSignal: momentReactionSignal(moment.kind),
     topEmotes: resolveTopEmotes(moment.topEmotes),
     vodId: validVodId(moment.vodId) ? moment.vodId : undefined, handoffRef: moment.handoffRef, archiveArtwork, provenance: 'hub' }
 }

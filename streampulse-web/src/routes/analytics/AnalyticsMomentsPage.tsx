@@ -242,6 +242,7 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
     <details className="moments-evidence"><summary>Measured evidence</summary>
       {saved ? <p>Saved metadata is historical. Source links are checked again when opened here.</p> : null}
       {moment.measurementScope === 'verified_minute' ? <p>Counts and comparison use the same verified minute. Measurements can change between published snapshots.</p> : null}
+      {moment.measurementScope === 'detector_snapshot' ? <p>Rates come from the detector snapshot. A shared verified-minute measurement has not been confirmed.</p> : null}
       <dl><dt>Chat</dt><dd>{moment.chatPerMin != null ? `${present(moment.chatPerMin)} /min` : 'Unavailable'}</dd><dt>Emotes</dt><dd>{moment.emotesPerMin != null ? `${present(moment.emotesPerMin)} /min` : 'Unavailable'}</dd>
         <dt>Baseline measured</dt><dd>{comparison ? `${comparison.evidence.baselineMeasuredMinutes}/${comparison.evidence.baselineExpectedMinutes} minutes` : 'Unavailable'}</dd>
         <dt>Source stream</dt><dd>{moment.streamId}</dd><dt>Public moment</dt><dd>{moment.publicMomentId || 'Not supplied'}</dd>
