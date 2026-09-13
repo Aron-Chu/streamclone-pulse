@@ -14,6 +14,7 @@ import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
+const AnalyticsExplorerPage = lazy(() => import('./analytics/AnalyticsExplorerPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
@@ -49,57 +50,12 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
-/**
- * Explorer compatibility. `/analytics/explore` shipped hosted (PR #39) as a
- * Newsroom replacement; Moments is the canonical discovery workflow, so the
- * route resolves here instead of remaining a hosted-only ghost product or a
- * local 404.
- *
- * Only meaning that Moments actually implements is carried across. Verified
- * against the live hosted Explorer controls (window / signal / category /
- * state / sort):
- *   - `:broadcastId` → `story`, the same session identity the Newsroom alias
- *     uses. If the id does not resolve, the Moments session view reports that
- *     honestly rather than this redirect guessing a substitute.
- *   - `window` → `window`. Explorer offers Live / 24 hours / 7 days, which is
- *     exactly the set Moments accepts; anything else is dropped.
- *   - `category` → `category`. Both are the Twitch stream category, and
- *     `readMomentBrowse` treats it as a free-string equality filter, so an
- *     unmatched value narrows to an honestly empty result rather than lying.
- *
- * `signal` and `state` have no Moments equivalent and are dropped.
- *
- * `sort` is dropped **deliberately despite both surfaces using that key**:
- * Explorer sorts by Strongest / Most recent / Most moments, while Moments'
- * `readMomentBrowse` accepts only 'oldest' | 'category'. Forwarding it would
- * silently reinterpret the value, which is worse than losing it.
- *
- * The hash is preserved as-is.
- */
-const MOMENTS_WINDOWS = new Set(['live', '24h', '7d'])
-
-function ExplorerCompatibilityRedirect() {
-  const { broadcastId } = useParams<{ broadcastId?: string }>()
-  const { search, hash } = useLocation()
-  const incoming = new URLSearchParams(search)
-  const query = new URLSearchParams()
-  query.set('view', 'sessions')
-  if (broadcastId) query.set('story', broadcastId)
-  const window = incoming.get('window')
-  if (window && MOMENTS_WINDOWS.has(window)) query.set('window', window)
-  const category = incoming.get('category')
-  if (category) query.set('category', category)
-  return <Navigate to={`/analytics/moments?${query}${hash}`} replace />
-}
-
-/** Preserve legacy story identity. The Moments session view resolves it through the original endpoint. */
-function NewsroomCompatibilityRedirect() {
+/** Retired Newsroom URLs keep their identifier and query/hash on Pulse Explorer. */
+function NewsroomAliasRedirect() {
   const { storyId } = useParams<{ storyId?: string }>()
   const { search, hash } = useLocation()
-  const query = new URLSearchParams(search)
-  query.set('view', 'sessions')
-  if (storyId) query.set('story', storyId)
-  return <Navigate to={`/analytics/moments?${query}${hash}`} replace />
+  const path = storyId ? `/analytics/explore/${encodeURIComponent(storyId)}` : '/analytics/explore'
+  return <Navigate to={`${path}${search}${hash}`} replace />
 }
 
 export function AppRoutes() {
@@ -142,12 +98,11 @@ export function AppRoutes() {
 
         {/* Fixed discovery routes must precede dynamic channel routes. */}
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
-        <Route path="/analytics/newsroom" element={<NewsroomCompatibilityRedirect />} />
-        <Route path="/analytics/newsroom/:storyId" element={<NewsroomCompatibilityRedirect />} />
-        {/* Hosted-only Explorer resolves into Moments; must stay above /analytics/:login
-            so "explore" is never mistaken for a channel handle. */}
-        <Route path="/analytics/explore" element={<ExplorerCompatibilityRedirect />} />
-        <Route path="/analytics/explore/:broadcastId" element={<ExplorerCompatibilityRedirect />} />
+        {/* Pulse Explorer and its retired Newsroom aliases must precede dynamic channel routes. */}
+        <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+        <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        <Route path="/analytics/newsroom" element={<NewsroomAliasRedirect />} />
+        <Route path="/analytics/newsroom/:storyId" element={<NewsroomAliasRedirect />} />
 
         {/* Public read-only channel analytics — one console; legacy ?figma flags do not select another product. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
