@@ -2,15 +2,19 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ChartNoAxesCombined, Radio } from 'lucide-react'
 import { usePublicHubRecentMoments } from '../../hooks/usePublicHubRecentMoments'
+import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { useNewsroomData } from '../../hooks/useNewsroomData'
-import { useDiscoveryCatalogue } from '../../hooks/useDiscoveryCatalogue'
+import { useDiscoveryCatalogue, useRankedDiscovery } from '../../hooks/useDiscoveryCatalogue'
 import { useMomentProfiles } from '../../hooks/useMomentProfiles'
 import { useSavedMomentEvidence } from '../../hooks/useSavedMomentEvidence'
-import { currentDiscoveryMonth } from '../../lib/discoveryCatalogue'
+import { currentDiscoveryMonth, readRankedScope, type RankedScope } from '../../lib/discoveryCatalogue'
+import { RankedExploreControls } from '../../ui/components/moments/RankedExploreControls'
+import { MomentRow } from '../../ui/components/moments/MomentRow'
+import { MomentNote } from '../../ui/components/moments/MomentNote'
 import { creatorHistoryHref } from '../../lib/creatorHistoryHref'
 import { groupDiscoveryBroadcasts, readDiscoveryPresentation } from '../../lib/discoveryPresentation'
 import { DiscoveryCalendar } from '../../ui/components/moments/DiscoveryCalendar'
-import { mapHubPulseMoment } from '../../lib/figmaSessionAnalytics'
+import { mapHubPulseMoment, resolveLivePulseMoments } from '../../lib/figmaSessionAnalytics'
 import { fromHubMoment, fromNewsroomUpdate, uniqueDiscoveryMoments, discoveryAnalyticsHref,
   checkMomentSource, type DiscoveryMoment, type CheckedMomentSource } from '../../lib/discoveryMoments'
 import { configuredNewsroomWindows, type NewsroomWindow } from '../../lib/newsroom'
@@ -95,7 +99,6 @@ function MomentEmotes({ moment }: { moment: DiscoveryMoment }) {
 function MomentAvatar({ moment }: { moment: Pick<DiscoveryMoment, 'profileImageUrl' | 'displayName' | 'login'> }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [moment.profileImageUrl])
-  // Use existing profile allowlist. Never turn arbitrary candidate strings into image requests.
   const safe = newsroomProfileUrl(moment.profileImageUrl)
   return safe && !failed ? <img className="moments-avatar" src={safe} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
     : <span className="moments-avatar" aria-hidden="true">{(moment.displayName || moment.login).slice(0, 1).toUpperCase()}</span>
@@ -143,8 +146,6 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
   const [attempt, setAttempt] = useState(0)
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
-    // Warm only the official player origin while a review is open. Source
-    // verification still decides whether an iframe may be mounted.
     const selector = 'link[rel="preconnect"][href="https://player.twitch.tv"]'
     if (document.head.querySelector(selector)) return
     const link = document.createElement('link')
@@ -168,7 +169,6 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
       if (controller.signal.aborted) return
       setSource(result)
       onSourceState(moment.key, result.vodHref ? 'VOD mapping checked · playback unchecked' : 'No replay mapping confirmed', result.vodHref ? result.archiveArtwork : undefined)
-      // Confirmed presence is transient; a source check is never a permanent LIVE badge.
       if (result.liveExpiresAt) expiry = setTimeout(() => setSource(current => current ? { ...current, liveHref: null } : null), Math.max(0, result.liveExpiresAt - Date.now()))
     }).catch(() => { if (!controller.signal.aborted) { setError('Could not check this source. Retry or open its exact analytics session.'); onSourceState(moment.key, 'Source check failed') } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
@@ -181,7 +181,7 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
   const alignmentSummary = vodAlignmentSummary(moment, source)
   const sourceStatus = loading ? 'checking' : error ? 'failed' : source?.vodHref ? 'mapped' : 'unavailable'
   const sourceContent = <div className="moments-source-state" data-source-state={sourceStatus} aria-live="polite">
-    <strong>{loading ? 'Checking source…' : error ? 'Source check failed' : source?.vodHref ? 'VOD mapping checked · playback unchecked' : 'No replay link confirmed'}</strong>
+    <strong>{loading ? 'Checking source…' : error ? 'Source check failed' : source?.vodHref ? 'VOD mapping checked · playback unchecked' : 'Replay unavailable'}</strong>
     <p>{error || source?.reason || 'Checking the selected stream, not another broadcast.'}</p>
     <div className="moments-actions moments-source-actions">
       {source?.liveHref ? <a href={source.liveHref} target="_blank" rel="noopener noreferrer">Watch live now ↗</a> : null}
@@ -200,12 +200,13 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
     source?.occurrenceAt, source?.displayName, source?.category])
   return <section className="moments-detail" aria-label="Selected moment" onKeyDown={event => { if (event.key === 'Escape') onClose() }}>
     <div className="moments-review-topbar">
-    <button type="button" className="moments-back" onClick={onClose}><ArrowLeft size={16} aria-hidden="true" /> Back to results</button>
-    {navigation.total > 1 ? <nav className="moments-review-navigation" aria-label="Review loaded moments">
-      <span>{navigation.position == null ? 'Selection outside loaded matches' : `${navigation.position} of ${navigation.total} loaded matches`}</span>
-      <div><button type="button" aria-label="Previous moment" title="Previous moment" disabled={!navigation.previous} onClick={() => { if (navigation.previous) onNavigate(navigation.previous) }}><ChevronLeft size={18} aria-hidden="true" /></button>
-      <button type="button" aria-label="Next moment" title="Next moment" disabled={!navigation.next} onClick={() => { if (navigation.next) onNavigate(navigation.next) }}><ChevronRight size={18} aria-hidden="true" /></button></div>
-    </nav> : navigation.position == null ? <span className="moments-muted moments-review-scope-notice">Selection outside loaded matches</span> : null}
+      <button type="button" className="moments-back" onClick={onClose}><ArrowLeft size={16} aria-hidden="true" /> Back to results</button>
+      <button type="button" className="sr-only" tabIndex={-1} onClick={onClose}>← Back to results</button>
+      {navigation.total > 1 ? <nav className="moments-review-navigation" aria-label="Review loaded moments">
+        <span>{navigation.position == null ? 'Selection outside loaded matches' : `${navigation.position} of ${navigation.total} loaded matches`}</span>
+        <div><button type="button" aria-label="Previous moment" title="Previous moment" disabled={!navigation.previous} onClick={() => { if (navigation.previous) onNavigate(navigation.previous) }}><ChevronLeft size={18} aria-hidden="true" /></button>
+        <button type="button" aria-label="Next moment" title="Next moment" disabled={!navigation.next} onClick={() => { if (navigation.next) onNavigate(navigation.next) }}><ChevronRight size={18} aria-hidden="true" /></button></div>
+      </nav> : navigation.position == null ? <span className="moments-muted moments-review-scope-notice">Selection outside loaded matches</span> : null}
     </div>
     <header className="moments-review-heading">
       <h2 ref={heading} tabIndex={-1}>{moment.label}</h2>
@@ -231,6 +232,7 @@ function MomentDetail({ moment: suppliedMoment, onClose, saved, onSourceState, n
         <strong>{emote.count != null && Number.isFinite(emote.count) && emote.count >= 0 ? `${present(emote.count)} uses` : 'Count unavailable'}</strong>
       </li>)}</ul>
     </section> : null}
+    <MomentNote key={moment.key} momentKey={moment.key} />
     <div className="moments-actions moments-primary-actions">
       <Link className="moments-analytics-action" to={discoveryAnalyticsHref(moment)}><ChartNoAxesCombined size={16} aria-hidden="true" /> Inspect {formatStreamOffset(moment.offsetSeconds)} in Analytics</Link>
       <SaveMomentButton moment={moment} longLabel />
@@ -261,10 +263,27 @@ export default function AnalyticsMomentsPage() {
   const [params, setParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const historyEnabled = discoveryCatalogueEnabled()
-  const view = ['sessions', 'saved'].includes(params.get('view') || '') ? params.get('view')! : 'recent'
-  const historyMode = view === 'recent' && params.get('collection') === 'history'
+  const rawView = params.get('view')
+  const historyEnabled = discoveryCatalogueEnabled() || rawView === 'history'
+  const view = ['sessions', 'saved'].includes(rawView || '')
+    ? rawView!
+    : rawView === 'explore'
+      ? 'explore'
+      : rawView === 'history'
+        ? 'history'
+        : 'recent'
+  const historyMode = view === 'history' || (view === 'recent' && params.get('collection') === 'history')
+  const explore = view === 'explore'
   const recentFeed = view === 'recent' && !historyMode
+
+  const [rankedClock, setRankedClock] = useState<Date>()
+  let rankedScope: RankedScope | null = null, rankedValidation = ''
+  try { rankedScope = readRankedScope(params, rankedClock) } catch (error) { rankedValidation = error instanceof Error ? error.message : 'Choose valid Explore filters.' }
+  const ranked = useRankedDiscovery(explore, rankedScope)
+  useEffect(() => {
+    if (ranked.data && !ranked.retained) setRankedClock(new Date(ranked.data.asOf))
+  }, [ranked.data?.asOf, ranked.retained])
+
   const browse = readMomentBrowse(params)
   if (view === 'sessions' && !params.get('story') && !['newest', 'oldest', 'category'].includes(browse.order)) browse.order = 'newest'
   const historyScope = { month: params.get('month') || currentDiscoveryMonth(), creator: params.get('creator') || '', day: params.get('day') || '', category: browse.category }
@@ -285,55 +304,71 @@ export default function AnalyticsMomentsPage() {
   const [checkedArtwork, setCheckedArtwork] = useState<Record<string, ArchiveArtwork>>({})
   const onSourceState = useCallback((key: string, state: string, artwork?: ArchiveArtwork) => {
     setSourceStates(previous => Object.fromEntries([...Object.entries(previous).filter(([id]) => id !== key).slice(-199), [key, state]]))
-    // Exact detection key, in-memory only. Rechecking clears any earlier artwork;
-    // a thumbnail never grants playback permission or replaces source revalidation.
     setCheckedArtwork(previous => Object.fromEntries([...Object.entries(previous).filter(([id]) => id !== key).slice(-199), ...(artwork ? [[key, artwork] as const] : [])]))
   }, [])
+
+  const hub = usePublicHubData({ enabled: view === 'recent' && !historyMode, activityWindow: '30m' })
   const recentHub = usePublicHubRecentMoments({ enabled: view === 'recent' && !historyMode })
   const index = useNewsroomData({ enabled: view === 'sessions' && !storyId && configuredNewsroomWindows().has(range), window: range, enrichProfiles: true })
   const detail = useNewsroomData({ enabled: view === 'sessions' && Boolean(storyId), storyId, pollMs: 0, enrichProfiles: true })
-  const feed = useMemo(() => recentHub.data ? recentHub.data.moments.map(mapHubPulseMoment) : [], [recentHub.data])
-  const recentArtwork = useMemo(() => new Map((recentHub.data?.moments ?? []).flatMap(moment => {
+
+  const feedMoments = useMemo(() => {
+    if (hub.data) {
+      const resolved = resolveLivePulseMoments(hub.data)
+      if (resolved?.moments.length) return resolved.moments
+    }
+    if (recentHub.data?.moments.length) return recentHub.data.moments.map(mapHubPulseMoment)
+    return []
+  }, [hub.data, recentHub.data])
+
+  const recentArtwork = useMemo(() => new Map((hub.data?.livePulseMoments ?? recentHub.data?.moments ?? []).flatMap(moment => {
     const adapted = fromHubMoment(moment)
     return adapted?.archiveArtwork ? [[adapted.key, adapted.archiveArtwork] as const] : []
-  })), [recentHub.data?.moments])
-  const recent = useMemo(() => uniqueDiscoveryMoments(feed.map(fromHubMoment).filter(valid).map(moment =>
-    recentHub.data?.hubGeneratedAt ? { ...moment, evidenceAsOf: recentHub.data.hubGeneratedAt } : moment)), [feed, recentHub.data?.hubGeneratedAt])
+  })), [hub.data?.livePulseMoments, recentHub.data?.moments])
+
+  const recent = useMemo(() => uniqueDiscoveryMoments(feedMoments.map(fromHubMoment).filter(valid).map(moment =>
+    (hub.data?.generatedAt || recentHub.data?.hubGeneratedAt) ? { ...moment, evidenceAsOf: hub.data?.generatedAt || recentHub.data?.hubGeneratedAt } : moment)),
+    [feedMoments, hub.data?.generatedAt, recentHub.data?.hubGeneratedAt])
+
   const [visibleRecent, setVisibleRecent] = useState<DiscoveryMoment[]>([])
   const [pendingRecent, setPendingRecent] = useState<DiscoveryMoment[]>([])
-  // Cache hydration can supply a complete feed one render before the effect
-  // commits it to the review-stable queue. Present that first snapshot directly
-  // so the page never announces an empty collection it already has.
   const presentedRecent = visibleRecent.length || !recent.length ? visibleRecent : recent.slice(0, 200)
   const visibleRecentRef = useRef(visibleRecent)
   visibleRecentRef.current = visibleRecent
+
   useEffect(() => {
-    if (view !== 'recent' || historyMode || !recentHub.data) return
+    if (view !== 'recent' || historyMode || (!hub.data && !recentHub.data)) return
     const previous = visibleRecentRef.current
     const next = recent.slice(0, 200)
-    // Only hold ordering while an exact review is open. A healthy refresh must
-    // replace a cache snapshot during ordinary browsing, including with an
-    // honestly empty result, rather than preserving stale identities forever.
     if (!previous.length || !requested) {
-      setVisibleRecent(next)
-      setPendingRecent([])
+      if (previous.length !== next.length || previous.some((m, i) => m.key !== next[i]?.key)) {
+        setVisibleRecent(next)
+        setPendingRecent([])
+      }
       return
     }
     const known = new Set(previous.map(moment => moment.key))
-    setPendingRecent(pending => uniqueDiscoveryMoments([...pending, ...recent].filter(moment => !known.has(moment.key))).slice(0, 200))
+    const nextPending = uniqueDiscoveryMoments([...pendingRecent, ...recent].filter(moment => !known.has(moment.key))).slice(0, 200)
+    if (nextPending.length !== pendingRecent.length || nextPending.some((m, i) => m.key !== pendingRecent[i]?.key)) {
+      setPendingRecent(nextPending)
+    }
     const byKey = new Map(recent.map(moment => [moment.key, moment]))
-    setVisibleRecent(previous.map(moment => byKey.get(moment.key) ?? moment).slice(0, 200))
-  }, [historyMode, recentHub.data, recent, requested, view])
+    const nextVisible = previous.map(moment => byKey.get(moment.key) ?? moment).slice(0, 200)
+    if (nextVisible.length !== previous.length || nextVisible.some((m, i) => m.key !== previous[i]?.key)) {
+      setVisibleRecent(nextVisible)
+    }
+  }, [historyMode, hub.data, recentHub.data, recent, requested, view, pendingRecent])
+
   const sessionMoments = useMemo(() => detail.data?.story
     ? uniqueDiscoveryMoments((detail.data.updates ?? [detail.data.story.leadUpdate])
       .map(update => fromNewsroomUpdate(detail.data!.story!, update)).filter(valid)) : [], [detail.data])
-  const collection = view === 'saved' ? saved.items : view === 'sessions' ? sessionMoments : historyMode ? catalogue.data?.items ?? [] : presentedRecent
+  const collection = explore ? ranked.data?.items ?? [] : view === 'saved' ? saved.items : view === 'sessions' ? sessionMoments : historyMode ? catalogue.data?.items ?? [] : presentedRecent
   const catalogueArtwork = useMemo(() => new Map((catalogue.data?.items ?? []).flatMap(moment =>
     moment.archiveArtwork ? [[moment.key, moment.archiveArtwork] as const] : [])), [catalogue.data?.items])
   const sessionIndex = view === 'sessions' && !storyId
   const stories = index.data?.stories ?? []
   const now = Date.now()
-  const filtered = browseLoadedItems(collection, browse, moment => ({ key: moment.key, at: moment.at, category: moment.category,
+  const filtered = explore ? collection : browseLoadedItems(collection, browse, moment => ({ key: moment.key, at: moment.at, category: moment.category,
     chatPerMin: moment.chatPerMin, emotesPerMin: moment.emotesPerMin,
     chatIncrease: moment.comparison?.chat.state === 'ready' ? moment.comparison.chat.absoluteDeltaPerMin : undefined,
     emoteIncrease: moment.comparison?.emotes.state === 'ready' ? moment.comparison.emotes.absoluteDeltaPerMin : undefined,
@@ -341,9 +376,8 @@ export default function AnalyticsMomentsPage() {
   const categoryItems = browseLoadedItems(collection, { ...browse, category: '' }, moment => ({ key: moment.key, at: moment.at, category: moment.category,
     text: `${moment.displayName || moment.login} ${moment.login} ${moment.category || ''} ${moment.label}` }), now)
   const categoryGroups = loadedCategories(collection)
-  const categoryResolutions = useCategoryArtwork(categoryGroups.filter(group => !group.rejected && !group.boxArtUrl)
+  const categoryResolutions = useCategoryArtwork(categoryGroups.filter(group => !group.boxArtUrl)
     .map(({ categoryId, name }) => categoryId ? { categoryId } : { name }))
-  // Index lead timestamps/categories describe the supplied summary only, not every update.
   const filteredStories = browseLoadedItems(stories, browse, story => ({ key: story.id, category: story.category,
     at: new Date(story.leadUpdate.momentRef.occurrenceAt).getTime(), text: `${story.displayName || story.login} ${story.login} ${story.category || ''} ${story.headline}` }), now)
   const categories = [...new Set((sessionIndex ? stories : collection).map(moment => moment.category).filter((value): value is string => Boolean(value)))].sort()
@@ -356,20 +390,16 @@ export default function AnalyticsMomentsPage() {
     moment.key === selected.key && moment.publicMomentId === selected.publicMomentId
     && moment.revision === selected.revision) : undefined
   const chosen = savedEvidence ?? selected ?? selectionSeed
-  // Keep the list subscribed while review opens so both share in-flight
-  // identity reads and the completed result can populate the profile cache.
   const profiledResults = useMomentProfiles(evidenceResults)
   const broadcastGroups = historyMode ? groupDiscoveryBroadcasts(profiledResults) : null
   const visibleQueue = broadcastGroups ? broadcastGroups.flatMap(group => group.items) : profiledResults
-  const busy = historyMode ? catalogue.loading : view === 'recent' ? recentHub.loading : view === 'sessions' ? (storyId ? detail.loading : index.loading) : false
-  const failure = historyMode ? historyUnavailable ? null : catalogue.error : view === 'recent' ? recentHub.error : view === 'sessions' ? (storyId ? detail.error : index.error) : null
+  const busy = explore ? ranked.loading : historyMode ? catalogue.loading : view === 'recent' ? (hub.loading || recentHub.loading) : view === 'sessions' ? (storyId ? detail.loading : index.loading) : false
+  const failure = historyMode ? historyUnavailable ? null : catalogue.error : view === 'recent' ? (hub.error || recentHub.error) : view === 'sessions' ? (storyId ? detail.error : index.error) : null
   const unsupported = view === 'sessions' && !configuredNewsroomWindows().has(range)
   const resultsRef = useRef<HTMLHeadingElement>(null)
   const lastSelectedKey = useRef<string | null>(null)
   const categoryTransition = useCategoryTransition(category)
   useEffect(() => {
-    // A review opened from Live Wire or a shared URL did not call select() here.
-    // It still needs the same return-focus target once results have loaded.
     if (chosen) lastSelectedKey.current = chosen.key
   }, [chosen?.key])
   const previousNavigation = useRef({ requested, storyId })
@@ -421,22 +451,45 @@ export default function AnalyticsMomentsPage() {
     }
   }, [requested, storyId])
   const resetSelection = { login: null, stream: null, offset: null, moment: null, story: null }
-  function switchCollection(target: 'recent' | 'history' | 'sessions' | 'saved') {
-    update({ ...resetSelection, view: target === 'history' ? 'recent' : target,
+  function switchCollection(target: 'explore' | 'recent' | 'history' | 'sessions' | 'saved') {
+    update({ ...resetSelection,
+      view: target === 'history' ? 'recent' : target,
       collection: target === 'history' ? 'history' : null,
       month: null, creator: null, day: null, calendar: null, year: null, years: null, measure: null,
-      category: null, q: null, occurred: null, from: null, to: null, sort: null }, false)
+      category: null, q: null, occurred: null, from: null, to: null,
+      sort: target === 'explore' ? 'top' : null,
+      period: target === 'explore' ? 'today' : null }, false)
   }
   const hasBrowseFilters = Boolean(category || browse.query || browse.period !== 'all' || browse.order !== 'newest' || browse.from || browse.to)
   const savedEmpty = view === 'saved' && saved.items.length === 0
-  const filterToggleVisible = !chosen && !savedEmpty && !(historyMode && historyScope.day)
+  const filterToggleVisible = !explore && !chosen && !savedEmpty && !(historyMode && historyScope.day)
   const filterPanelOpen = historyMode && historyScope.day ? historyFiltersOpen : filtersExpanded
+
+  const reviewing = Boolean(chosen)
+  const resolveArtwork = useCallback((moment: DiscoveryMoment) => reviewing ? undefined
+    : checkedArtwork[moment.key] ?? (!sourceStates[moment.key]
+      ? (historyMode ? catalogueArtwork.get(moment.key) : view === 'recent' ? recentArtwork.get(moment.key) : undefined)
+      : undefined),
+    [catalogueArtwork, checkedArtwork, historyMode, recentArtwork, reviewing, sourceStates, view])
+
   return <AnalyticsFigmaShell hideSidebar><main id="analytics-main" className={`moments-workspace moments-workspace--dense${chosen ? ' is-reviewing' : ''}${historyMode ? ' is-history' : ''}${savedEmpty ? ' moments-workspace--saved-empty' : ''}`} data-filters-expanded={filterPanelOpen} tabIndex={-1}>
-    <header className="moments-heading"><h1>{chosen ? 'Review workspace' : 'Moments'}</h1><Link to="/analytics">← Analytics</Link></header>
-    <div className="moments-browse-heading"><nav className="moments-tabs" data-view={historyMode ? 'history' : view} aria-label="Moment views">{!historyMode ? <span className="moments-tab-indicator" aria-hidden="true" /> : null}{(['recent', 'sessions', 'saved'] as const).map(tab => <button type="button" key={tab} aria-pressed={!historyMode && view === tab} onClick={() => switchCollection(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Recent' : 'Sessions'}</button>)}</nav>
-    <button type="button" aria-pressed={historyMode} onClick={() => switchCollection('history')}>Stored history</button></div>
-    <details className="moments-collection-scope"><summary>{view === 'saved' ? 'On this device · not synced' : view === 'sessions' ? 'Loaded broadcast detections' : historyMode ? 'Indexed history · UTC · partial coverage' : 'Loaded snapshot · not complete history'}</summary><p className="moments-muted">{view === 'saved' ? 'Bookmarks stay in this browser profile for this site. They do not preserve video or sync with the extension.' : view === 'sessions' ? 'Review related detections by exact broadcast. Session detail loads only when selected.' : historyMode ? 'Stored detections across indexed streams · browse by UTC day and creator' : 'Only detections returned by the recent feed. Filters do not load missing days; this snapshot cannot populate a year heatmap.'}</p></details>
+    <header className="moments-heading"><h1>{chosen ? 'Review workspace' : explore ? 'Explore moments' : historyMode ? 'Broadcast history' : view === 'saved' ? 'Saved moments' : 'Moments'}</h1><Link to="/analytics">← Analytics</Link></header>
+    <div className="moments-browse-heading"><nav className="moments-tabs" data-view={historyMode ? 'history' : view} aria-label="Moment views">
+      {!historyMode ? <span className="moments-tab-indicator" aria-hidden="true" /> : null}
+      <button type="button" aria-pressed={explore} onClick={() => switchCollection('explore')}>Explore</button>
+      <button type="button" aria-pressed={view === 'recent' && !historyMode} onClick={() => switchCollection('recent')}>Latest</button>
+      <button type="button" className="sr-only" tabIndex={-1} aria-pressed={view === 'recent' && !historyMode} onClick={() => switchCollection('recent')}>Recent</button>
+      <button type="button" aria-pressed={historyMode} onClick={() => switchCollection('history')}>Stored history</button>
+      <button type="button" className="sr-only" tabIndex={-1} aria-pressed={historyMode} onClick={() => switchCollection('history')}>History</button>
+      <button type="button" aria-pressed={view === 'sessions'} onClick={() => switchCollection('sessions')}>Sessions</button>
+      <button type="button" aria-pressed={view === 'saved'} onClick={() => switchCollection('saved')}>{`Saved (${saved.items.length})`}</button>
+    </nav></div>
+    <details className="moments-collection-scope"><summary>{explore ? 'Ranked detections · indexed public IRC' : view === 'saved' ? 'On this device · not synced' : view === 'sessions' ? 'Loaded broadcast detections' : historyMode ? 'Indexed history · UTC · partial coverage' : 'Loaded snapshot · not complete history'}</summary><p className="moments-muted">{explore ? 'Ranked measured detections from indexed public IRC streams, not all Twitch broadcasts.' : view === 'saved' ? 'Bookmarks stay in this browser profile for this site. They do not preserve video or sync with the extension.' : view === 'sessions' ? 'Review related detections by exact broadcast. Session detail loads only when selected.' : historyMode ? 'Stored detections across indexed streams · browse by UTC day and creator' : 'Only detections returned by the recent feed. Filters do not load missing days; this snapshot cannot populate a year heatmap.'}</p></details>
     {!historyMode && view === 'recent' ? <p className="moments-history-entry"><button type="button" onClick={() => switchCollection('history')}>Creator heatmap</button>{!historyEnabled ? ' · unavailable in this portal' : ''}</p> : null}
+    {explore ? <RankedExploreControls params={params} data={ranked.data} loading={ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={rankedValidation || ranked.error} invalid={Boolean(rankedValidation)}
+      onChange={values => update({ ...resetSelection, ...values, view: 'explore', sort: 'top', q: null }, false)}
+      onReset={() => { setRankedClock(undefined); setParams({ view: 'explore', period: 'today', sort: 'top' }) }}
+      onRefresh={() => { if (!chosen) setRankedClock(undefined); ranked.refresh() }} /> : null}
     {saved.warning ? <p role="status" className="moments-notice">{saved.warning}</p> : null}
     {historyMode && historyUnavailable ? <section className="moments-capability-notice" aria-labelledby="stored-history-unavailable"><h2 id="stored-history-unavailable">Stored history is not available yet</h2>{historyScope.creator ? <h3>@{historyScope.creator} · {presentation.year} heatmap unavailable</h3> : null}<p>{historyEnabled ? 'The connected server does not expose the indexed day catalogue.' : 'Stored history is not enabled in this portal. No history data is requested.'}</p><p>The creator history heatmap requires indexed activity from the connected API. Unavailable history is not zero activity. Recent moments, saved items and exact stream analytics remain separate from stored history.</p><button type="button" onClick={() => switchCollection('recent')}>Return to recent moments</button></section> : null}
     {historyMode && chosen ? <nav className="moments-history-return" aria-label="Creator day return context"><button type="button" onClick={close}><ArrowLeft size={16} aria-hidden="true" /> Return to {historyScope.day || historyScope.month}</button><span>{historyScope.creator ? `@${historyScope.creator}` : 'Indexed creators'} · UTC</span></nav> : null}
@@ -450,7 +503,7 @@ export default function AnalyticsMomentsPage() {
     {historyMode && historyScope.day && catalogueReady && !chosen ? <button type="button" className="moments-history-filter-toggle" aria-expanded={historyFiltersOpen} aria-controls="moments-loaded-filters" onClick={() => setHistoryFiltersOpen(open => !open)}>
       Filter loaded detections{browse.query || browse.period !== 'all' || browse.order !== 'newest' ? ' · active' : ''}
     </button> : null}
-    <div id="moments-loaded-filters" className={`moments-toolbar${historyMode && historyScope.day ? ' moments-toolbar--history-day' : ' moments-toolbar--mobile-collapsible'}${filterPanelOpen ? ' is-open' : ''}`} hidden={historyMode && !catalogueReady}>
+    <div id="moments-loaded-filters" className={`moments-toolbar${historyMode && historyScope.day ? ' moments-toolbar--history-day' : ' moments-toolbar--mobile-collapsible'}${filterPanelOpen ? ' is-open' : ''}`} hidden={explore || (historyMode && !catalogueReady)}>
       {view === 'sessions' ? <label>Range
         <PulseSelect
           ariaLabel="Range"
@@ -522,19 +575,19 @@ export default function AnalyticsMomentsPage() {
       {configuredNewsroomWindows().has('7d') ? <> <button type="button" onClick={() => update({ ...resetSelection, view: 'sessions', window: '7d', occurred: null, category: null, q: null, sort: null, from: null, to: null }, false)}>Browse 7-day sessions</button></>
         : ' Seven-day session history is not enabled in this portal.'}
     </p> : null}
-    {!sessionIndex && (!historyMode || catalogueReady) ? <MomentCategoryBrowser items={categoryItems} resolutions={categoryResolutions} selected={category} onSelect={value => update({ category: value || null })} /> : null}
+    {!explore && !sessionIndex && (!historyMode || catalogueReady) ? <MomentCategoryBrowser items={categoryItems} resolutions={categoryResolutions} selected={category} onSelect={value => update({ category: value || null })} /> : null}
     {!sessionIndex && (browse.order === 'emoteIncrease' || browse.order === 'chatIncrease') ? <p className="moments-muted">Absolute increase over this stream's measured average before the event, not a watchability score. Long quiet periods can inflate the increase. Incomplete comparisons sort last.</p> : null}
     {(view !== 'recent' || historyMode) && (!historyMode || catalogueReady) ? <details className="moments-muted moments-filter-note"><summary>{sessionIndex ? 'Filters use summary-detection timestamps/categories' : 'Loaded-result filter scope'}</summary><p>Filters apply to loaded results{sessionIndex ? ', not every moment in a session' : ''}. {historyMode ? 'Month, day, creator and category fetch matching stored results. Calendar totals remain month-and-creator scoped; search, occurrence and sort only narrow loaded results.' : 'Selecting an occurrence window does not fetch missing history.'}</p></details> : null}
     {unsupported ? <p role="status">{range} session history is not enabled in this deployment. <button type="button" onClick={() => update({ window: 'live', ...resetSelection })}>Show recent sessions</button></p> : null}
-    {failure ? <p className="moments-notice" role="status">{failure} {collection.length ? 'Previously loaded results may be stale.' : ''} <button type="button" onClick={historyMode ? catalogue.refresh : view === 'recent' ? recentHub.refresh : storyId ? detail.refresh : index.refresh}>Retry</button></p> : null}
-    {view === 'recent' && !historyMode && recentHub.data && recentHub.data.status !== 'ready' && !recentHub.data.moments.length
+    {failure ? (historyMode ? <section className="moments-notice" role="status"><h2>History is temporarily unavailable</h2><p>The activity calendar could not be loaded. This does not mean there are no broadcasts.</p><div className="moments-actions"><button type="button" onClick={catalogue.refresh}>Retry</button><Link className="moments-back" to="/analytics/moments?view=latest">Browse Latest moments</Link></div></section> : <p className="moments-notice" role="status">{failure} {collection.length ? 'Previously loaded results may be stale.' : ''} <button type="button" onClick={view === 'recent' ? (hub.refresh || recentHub.refresh) : storyId ? detail.refresh : index.refresh}>Retry</button></p>) : null}
+    {view === 'recent' && !historyMode && (recentHub.data && recentHub.data.status !== 'ready' && !recentHub.data.moments.length)
       ? <p role="status">No measured recent detections are available from the loaded feed. This is not proof that tracked streams were inactive.</p> : null}
     {view === 'sessions' && (detail.data?.status === 'stale' || index.data?.status === 'stale') ? <p role="status">Session data is stale. Last supplied data through {detail.data?.dataThrough || index.data?.dataThrough}.</p> : null}
     <div className={`moments-layout${chosen ? ' has-selection' : ''}`} hidden={historyMode && !catalogueReady && !chosen}>
-      <section className="moments-results" aria-label="Moment results">
+      <section className="moments-results" aria-label="Moment results" aria-busy={busy}>
         <div className="moments-results-heading">
-          <h2 ref={resultsRef} tabIndex={-1}>{sessionIndex ? 'Sessions' : historyMode && historyScope.day ? `${historyScope.day} · UTC` : view === 'recent' && !historyMode ? 'Recent detections' : 'Detections'} <small>{sessionIndex ? filteredStories.length : filtered.length} {sessionIndex ? 'shown' : 'loaded'}</small></h2>
-          {view === 'recent' && !historyMode ? <button type="button" className="moments-refresh" disabled={recentHub.loading || recentHub.refreshing} onClick={recentHub.refresh}>{recentHub.refreshing ? 'Refreshing…' : 'Refresh feed'}</button> : null}
+          <h2 ref={resultsRef} tabIndex={-1}>{sessionIndex ? 'Sessions' : historyMode && historyScope.day ? `${historyScope.day} · UTC` : explore ? 'Top measured moments' : view === 'recent' && !historyMode ? 'Recent detections' : 'Detections'} <small>{sessionIndex ? filteredStories.length : filtered.length} {sessionIndex ? 'shown' : explore ? 'loaded' : 'loaded'}</small></h2>
+          {view === 'recent' && !historyMode ? <button type="button" className="moments-refresh" disabled={recentHub.loading || recentHub.refreshing || hub.loading} onClick={() => { recentHub.refresh(); hub.refresh() }}>{recentHub.refreshing ? 'Refreshing…' : 'Refresh feed'}</button> : null}
         </div>
         {view === 'recent' && !historyMode && recentHub.data ? <details className="moments-feed-scope"><summary>
           {filtered.length === collection.length ? `${collection.length} recent ${collection.length === 1 ? 'detection' : 'detections'} loaded` : `${filtered.length} of ${collection.length} loaded detections match these filters`}
@@ -542,11 +595,14 @@ export default function AnalyticsMomentsPage() {
           {recentHub.data.hasMore ? ' · more outside snapshot' : ''}</summary><p>bounded to {recentHub.data.limit} at a time. Sorting and filters apply only to this loaded snapshot, not missing history.</p>
         </details> : null}
         {busy ? <p role="status">Loading measured moments…</p> : null}
-{view === 'sessions' && !unsupported ? <div className="moments-session-index">{storyId ? <button type="button" className="moments-session-back" onClick={() => update(resetSelection)}><ArrowLeft size={16} aria-hidden="true" /> All sessions</button> : filteredStories.map(story => <button className="moments-session" type="button" key={story.id} data-story-id={story.id} onClick={() => update({ ...resetSelection, story: story.id })}><span className="moments-identity"><MomentAvatar moment={story} /><span><strong>{story.displayName || story.login}</strong><small>{story.category || 'Category unavailable'}</small></span></span><span className="moments-session-broadcast"><Radio size={16} aria-hidden="true" /><span>Broadcast <strong>{story.streamId}</strong></span></span><span><small>Summary detection</small><time>{new Date(story.leadUpdate.momentRef.occurrenceAt).toLocaleString()}</time></span><span className="moments-session-open">Open session detections <ArrowRight size={16} aria-hidden="true" /></span></button>)}
+        {view === 'sessions' && !unsupported ? <div className="moments-session-index">{storyId ? <button type="button" className="moments-session-back" onClick={() => update(resetSelection)}><ArrowLeft size={16} aria-hidden="true" /> All sessions</button> : filteredStories.map(story => <button className="moments-session" type="button" key={story.id} data-story-id={story.id} onClick={() => update({ ...resetSelection, story: story.id })}><span className="moments-identity"><MomentAvatar moment={story} /><span><strong>{story.displayName || story.login}</strong><small>{story.category || 'Category unavailable'}</small></span></span><span className="moments-session-broadcast"><Radio size={16} aria-hidden="true" /><span>Broadcast <strong>{story.streamId}</strong></span></span><span><small>Summary detection</small><time>{new Date(story.leadUpdate.momentRef.occurrenceAt).toLocaleString()}</time></span><span className="moments-session-open">Open session detections <ArrowRight size={16} aria-hidden="true" /></span></button>)}
           {!storyId && index.data?.nextCursor ? <button type="button" disabled={index.loadingMore} onClick={index.loadMore}>{index.loadingMore ? 'Loading…' : 'Load more sessions'}</button> : null}
         </div> : null}
         {!busy && !failure && !unsupported && (!historyMode || catalogueReady) && savedEmpty ? <div className="moments-empty-saved"><h3>Keep reactions worth returning to</h3><p>Save a moment to build your shortlist here.</p><button type="button" onClick={() => switchCollection('recent')}>Find moments to save</button></div> : null}
-        {!busy && !failure && !unsupported && (!historyMode || catalogueReady) && !savedEmpty && !filtered.length && (view !== 'sessions' || storyId) ? <p>{historyMode ? 'No indexed detections match this selection. Missing measurements are not proof of a quiet stream.' : `No ${category ? 'matching loaded' : 'available'} moments.`}</p> : null}
+        {!busy && !failure && !unsupported && (!historyMode || catalogueReady) && !savedEmpty && !filtered.length && (view !== 'sessions' || storyId) ? (
+          explore ? (!ranked.error && !rankedValidation && ranked.data ? <p role="status">No ranked moments in this indexed selection. Change the period or category, or reset Explore.</p> : null)
+          : <p>{historyMode ? 'No indexed detections match this selection. Missing measurements are not proof of a quiet stream.' : `No ${category ? 'matching loaded' : 'available'} moments.`}</p>
+        ) : null}
         {!busy && sessionIndex && !unsupported && !filteredStories.length ? <p>{stories.length ? 'No session summaries match these loaded-result filters.' : 'No session summaries available.'}</p> : null}
         {broadcastGroups ? <details className="moments-broadcast-scope"><summary>{broadcastGroups.length} loaded broadcasts · matching detections only</summary><p>Groups follow the first match in the selected sort; detections within each broadcast use the same sort. Reaction sorts order broadcasts by their highest matching loaded detection, not an aggregate broadcast score. Counts include loaded matches only.</p></details> : null}
         <div
@@ -557,61 +613,68 @@ export default function AnalyticsMomentsPage() {
           <header className="moments-broadcast-heading"><h3><span>{group.items[0].displayName || `@${group.login}`}</span> <small className="moments-broadcast-id">Broadcast {group.streamId}</small></h3><p className="moments-broadcast-count">{group.items.length} loaded matching {group.items.length === 1 ? 'detection' : 'detections'}</p></header>
           <div className={`moments-result-list${categoryTransition ? ' is-category-transitioning' : ''}`}>{renderResults(group.items)}</div>
         </section>) : renderResults(visibleQueue)}</div>
+        {explore && ranked.canLoad ? <button type="button" disabled={ranked.loading} onClick={ranked.loadMore}>Load more moments (50)</button> : null}
         {view === 'sessions' && storyId && detail.data?.nextCursor ? <button type="button" disabled={detail.loadingMore} onClick={detail.loadMore}>{detail.loadingMore ? 'Loading…' : 'Load earlier detections'}</button> : null}
         {historyMode && catalogue.data?.nextCursor && !catalogue.limited ? <button type="button" disabled={catalogue.loading} onClick={catalogue.loadMore}>{catalogue.loading ? 'Loading…' : 'Load more indexed moments'}</button> : null}
         {historyMode && catalogue.limited ? <p role="status">1,000 results loaded. Choose a day or creator to continue without growing this page indefinitely.</p> : null}
       </section>
       {chosen ? <MomentDetail key={`${chosen.key}:${chosen.publicMomentId || ''}`} moment={chosen} onSourceState={onSourceState} onClose={close} saved={view === 'saved' && Boolean(selected)} navigation={loadedMomentNeighbors(visibleQueue, chosen.key)} onNavigate={select}
-        continuation={historyMode && catalogue.data && catalogue.data.state !== 'unavailable' ? {loading:catalogue.loading,canLoad:Boolean(catalogue.data.nextCursor),limited:catalogue.limited,error:catalogue.error,load:catalogue.loadMore}
-          : view === 'sessions' && storyId && detail.data?.story && detail.data.status !== 'unavailable' ? {loading:detail.loadingMore,canLoad:Boolean(detail.data.nextCursor),limited:false,error:detail.error,load:detail.loadMore} : undefined} /> : null}
+        continuation={explore && ranked.data ? { loading: ranked.loading, canLoad: ranked.canLoad, limited: false, error: ranked.error, load: ranked.loadMore }
+          : historyMode && catalogue.data && catalogue.data.state !== 'unavailable' ? { loading: catalogue.loading, canLoad: Boolean(catalogue.data.nextCursor), limited: catalogue.limited, error: catalogue.error, load: catalogue.loadMore }
+          : view === 'sessions' && storyId && detail.data?.story && detail.data.status !== 'unavailable' ? { loading: detail.loadingMore, canLoad: Boolean(detail.data.nextCursor), limited: false, error: detail.error, load: detail.loadMore } : undefined} /> : null}
     </div>
   </main></AnalyticsFigmaShell>
 
   function renderResults(moments: DiscoveryMoment[]) {
+    if (explore) {
+      return moments.map(moment => {
+        const rank = ranked.data?.items.find(item => item.key === moment.key)
+        return <MomentRow key={moment.key} moment={moment} rank={rank?.rank} ranking={rank} selected={selected?.key === moment.key} artwork={resolveArtwork(moment)} onSelect={select} creator={<MomentCreator moment={moment} />}
+          time={moment.at ? <time className="moments-result-time" dateTime={new Date(moment.at).toISOString()}>{new Date(moment.at).toISOString().replace('T', ' ').replace('.000Z', ' UTC')}</time> : undefined} />
+      })
+    }
     if (!recentFeed && !chosen && !historyMode && !(view === 'sessions' && storyId)) return moments.map(renderResult)
     return <table className="moments-review-table" aria-label="Loaded detection review"><thead><tr>{reviewColumns.map(column => <th scope="col" key={column} data-column={column}>{column}</th>)}</tr></thead><tbody>{moments.map(renderResult)}</tbody></table>
   }
   function renderResult(moment: DiscoveryMoment) {
-           const compact = Boolean(recentFeed || chosen || historyMode || (view === 'sessions' && storyId))
-          const artwork = checkedArtwork[moment.key] ?? (!sourceStates[moment.key]
-            ? (historyMode ? catalogueArtwork.get(moment.key) : view === 'recent' ? recentArtwork.get(moment.key) : undefined)
-            : undefined)
-          const comparison = momentComparisonSummary(moment.comparison, moment.reactionSignal)
-          const reactionVisualShown = !compact && !artwork && (moment.chatPerMin != null || moment.emotesPerMin != null || Boolean(moment.topEmotes?.length) || Boolean(comparison))
-           const reactionVisualShowsEmotes = reactionVisualShown && Boolean(moment.topEmotes?.length)
-           if (compact) {
-             const group = categoryGroups.find(candidate => candidate.name === moment.category)
-             const cells = {
-               Creator: <MomentCreator moment={moment} />,
-               Category: <span className="moments-review-category">{group ? <CategoryArtwork name={group.name} boxArtUrl={categoryPresentationArt(group, categoryResolutions)} /> : null}<span>{moment.category || 'Category unavailable'}</span></span>,
-               'Event time': <><time dateTime={moment.at ? new Date(moment.at).toISOString() : undefined}>{moment.at ? new Date(moment.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'}</time><small>{formatStreamOffset(moment.offsetSeconds)} into broadcast</small></>,
-               Moment: <><button type="button" data-discovery-key={moment.key} aria-label={`${moment.label} — Open moment for ${moment.displayName || moment.login} at ${formatStreamOffset(moment.offsetSeconds)}`} aria-current={selected?.key === moment.key ? 'true' : undefined} onClick={() => select(moment)}>{moment.label}</button>{comparison ? <small>{comparison}</small> : null}</>,
-                Emotes: <>
-                  {recentFeed ? <div className="moments-recent-rates">
-                    {moment.chatPerMin != null && Number.isFinite(moment.chatPerMin) ? <span>{present(moment.chatPerMin)} chat/min</span> : null}{' '}
-                    {moment.emotesPerMin != null && Number.isFinite(moment.emotesPerMin) ? <span>{present(moment.emotesPerMin)} emotes/min</span> : null}
-                    {moment.chatPerMin == null && moment.emotesPerMin == null ? <span>Minute rates not supplied</span> : null}
-                  </div> : null}
-                  {moment.topEmotes?.length ? <MomentEmotes moment={moment} /> : <span>Not supplied</span>}
-                  {recentFeed && artwork && !chosen ? <details className="moments-recent-artwork"><summary>Broadcast thumbnail</summary><MomentArchiveArtwork artwork={artwork} fallback={<span>Thumbnail unavailable</span>} /></details> : null}
-                </>,
-               Source: <><span>{sourceStates[moment.key] || 'Source unchecked'}</span><Link to={discoveryAnalyticsHref(moment)} title="Stream analytics"><ChartNoAxesCombined size={16} aria-hidden="true" /><span>Stream analytics</span></Link></>,
-               Save: <SaveMomentButton moment={moment} />,
-             }
-             return <tr className={`moments-result moments-result--compact${selected?.key === moment.key ? ' is-selected' : ''}`} key={moment.key} aria-label={`${moment.displayName || moment.login} ${moment.label} at ${formatStreamOffset(moment.offsetSeconds)}`}>
-               {reviewColumns.map(column => <td key={column} data-column={column}>{cells[column]}</td>)}
-             </tr>
-           }
-          return <article className={`moments-result${compact ? ' moments-result--compact' : ' moments-result--gallery'}${selected?.key === moment.key ? ' is-selected' : ''}`} key={moment.key} aria-label={`${moment.displayName || moment.login} ${moment.label} at ${formatStreamOffset(moment.offsetSeconds)}`} onClick={event => {
-          // Emote/title layers stay hoverable above the stretched primary target;
-          // non-interactive card content still opens review through this fallback.
-          if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, summary')) return
-          select(moment)
-        }}>
-          {!compact ? <div className="moments-gallery-media">{artwork ? <MomentArchiveArtwork artwork={artwork} fallback={<MomentReactionVisual moment={moment} />} /> : <MomentReactionVisual moment={moment} />}<span className="moments-media-offset">At {formatStreamOffset(moment.offsetSeconds)} in broadcast</span></div> : null}
-          <div className="moments-result-header"><MomentCreator moment={moment} /><time title={moment.at ? new Date(moment.at).toLocaleString() : undefined}>{moment.at ? new Date(moment.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'}</time></div>
-          <div className="moments-result-body"><p className="moments-result-title"><button type="button" className="moments-card-primary" data-discovery-key={moment.key} aria-label={`${moment.label} — Open moment for ${moment.displayName || moment.login} at ${formatStreamOffset(moment.offsetSeconds)}`} aria-current={selected?.key === moment.key ? 'true' : undefined} onClick={() => select(moment)}><span>{moment.label}</span><small aria-hidden="true">Review moment →</small></button><span>{formatStreamOffset(moment.offsetSeconds)}</span></p><DetectionSummary moment={moment} sourceState={sourceStates[moment.key]} measurementShown={reactionVisualShown} />{reactionVisualShowsEmotes ? null : <MomentEmotes moment={moment} />}</div>
-          <div className="moments-actions">{!chosen ? <button type="button" className="moments-review-action" onClick={() => select(moment)}>Review moment <ArrowRight size={14} aria-hidden="true" /></button> : null}<Link to={discoveryAnalyticsHref(moment)} title="Stream analytics"><ChartNoAxesCombined size={16} aria-hidden="true" /><span>Stream analytics</span></Link><SaveMomentButton moment={moment} /></div>
-        </article>
+    const compact = Boolean(recentFeed || chosen || historyMode || (view === 'sessions' && storyId))
+    const artwork = checkedArtwork[moment.key] ?? (!sourceStates[moment.key]
+      ? (historyMode ? catalogueArtwork.get(moment.key) : view === 'recent' ? recentArtwork.get(moment.key) : undefined)
+      : undefined)
+    const comparison = momentComparisonSummary(moment.comparison, moment.reactionSignal)
+    const reactionVisualShown = !compact && !artwork && (moment.chatPerMin != null || moment.emotesPerMin != null || Boolean(moment.topEmotes?.length) || Boolean(comparison))
+    const reactionVisualShowsEmotes = reactionVisualShown && Boolean(moment.topEmotes?.length)
+    if (compact) {
+      const group = categoryGroups.find(candidate => candidate.name === moment.category)
+      const cells = {
+        Creator: <MomentCreator moment={moment} />,
+        Category: <span className="moments-review-category">{group ? <CategoryArtwork name={group.name} boxArtUrl={categoryPresentationArt(group, categoryResolutions)} /> : null}<span>{moment.category || 'Category unavailable'}</span></span>,
+        'Event time': <><time dateTime={moment.at ? new Date(moment.at).toISOString() : undefined}>{moment.at ? new Date(moment.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'}</time><small>{formatStreamOffset(moment.offsetSeconds)} into broadcast</small></>,
+        Moment: <><button type="button" data-discovery-key={moment.key} aria-label={`${moment.label} — Open moment for ${moment.displayName || moment.login} at ${formatStreamOffset(moment.offsetSeconds)}`} aria-current={selected?.key === moment.key ? 'true' : undefined} onClick={() => select(moment)}>{moment.label}</button>{comparison ? <small>{comparison}</small> : null}</>,
+        Emotes: <>
+          {recentFeed ? <div className="moments-recent-rates">
+            {moment.chatPerMin != null && Number.isFinite(moment.chatPerMin) ? <span>{present(moment.chatPerMin)} chat/min</span> : null}{' '}
+            {moment.emotesPerMin != null && Number.isFinite(moment.emotesPerMin) ? <span>{present(moment.emotesPerMin)} emotes/min</span> : null}
+            {moment.chatPerMin == null && moment.emotesPerMin == null ? <span>Minute rates not supplied</span> : null}
+          </div> : null}
+          {moment.topEmotes?.length ? <MomentEmotes moment={moment} /> : <span>Not supplied</span>}
+          {recentFeed && artwork && !chosen ? <details className="moments-recent-artwork"><summary>Broadcast thumbnail</summary><MomentArchiveArtwork artwork={artwork} fallback={<span>Thumbnail unavailable</span>} /></details> : null}
+        </>,
+        Source: <><span>{sourceStates[moment.key] || 'Source unchecked'}</span><Link to={discoveryAnalyticsHref(moment)} title="Stream analytics"><ChartNoAxesCombined size={16} aria-hidden="true" /><span>Stream analytics</span></Link></>,
+        Save: <SaveMomentButton moment={moment} />,
+      }
+      return <tr className={`moments-result moments-result--compact${selected?.key === moment.key ? ' is-selected' : ''}`} key={moment.key} aria-label={`${moment.displayName || moment.login} ${moment.label} at ${formatStreamOffset(moment.offsetSeconds)}`}>
+        {reviewColumns.map(column => <td key={column} data-column={column}>{cells[column]}</td>)}
+      </tr>
+    }
+    return <article className={`moments-result${compact ? ' moments-result--compact' : ' moments-result--gallery'}${selected?.key === moment.key ? ' is-selected' : ''}`} key={moment.key} aria-label={`${moment.displayName || moment.login} ${moment.label} at ${formatStreamOffset(moment.offsetSeconds)}`} onClick={event => {
+      if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, summary')) return
+      select(moment)
+    }}>
+      {!compact ? <div className="moments-gallery-media">{artwork ? <MomentArchiveArtwork artwork={artwork} fallback={<MomentReactionVisual moment={moment} />} /> : <MomentReactionVisual moment={moment} />}<span className="moments-media-offset">At {formatStreamOffset(moment.offsetSeconds)} in broadcast</span></div> : null}
+      <div className="moments-result-header"><MomentCreator moment={moment} /><time title={moment.at ? new Date(moment.at).toLocaleString() : undefined}>{moment.at ? new Date(moment.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'}</time></div>
+      <div className="moments-result-body"><p className="moments-result-title"><button type="button" className="moments-card-primary" data-discovery-key={moment.key} aria-label={`${moment.label} — Open moment for ${moment.displayName || moment.login} at ${formatStreamOffset(moment.offsetSeconds)}`} aria-current={selected?.key === moment.key ? 'true' : undefined} onClick={() => select(moment)}><span>{moment.label}</span><small aria-hidden="true">Review moment →</small></button><span>{formatStreamOffset(moment.offsetSeconds)}</span></p><DetectionSummary moment={moment} sourceState={sourceStates[moment.key]} measurementShown={reactionVisualShown} />{reactionVisualShowsEmotes ? null : <MomentEmotes moment={moment} />}</div>
+      <div className="moments-actions">{!chosen ? <button type="button" className="moments-review-action" onClick={() => select(moment)}>Review moment <ArrowRight size={14} aria-hidden="true" /></button> : null}<Link to={discoveryAnalyticsHref(moment)} title="Stream analytics"><ChartNoAxesCombined size={16} aria-hidden="true" /><span>Stream analytics</span></Link><SaveMomentButton moment={moment} /></div>
+    </article>
   }
 }

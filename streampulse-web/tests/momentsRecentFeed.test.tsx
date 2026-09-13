@@ -9,8 +9,11 @@ const state = vi.hoisted(() => ({ moments: [] as PublicHub['livePulseMoments'], 
 vi.mock('../src/hooks/usePublicHubRecentMoments', () => ({ usePublicHubRecentMoments: () => ({
   loading: false, data: React.useMemo(() => ({ moments: state.moments, status: 'ready', limit: 200, hasMore: false }), [state.moments]),
 }) }))
+vi.mock('../src/hooks/usePublicHubData', () => ({ usePublicHubData: () => ({
+  loading: false, data: { livePulseMoments: state.moments, channelActivity: [], window: '30m', generatedAt: '2026-09-07T12:00:00Z' },
+}) }))
 vi.mock('../src/hooks/useNewsroomData', () => ({ useNewsroomData: () => ({ loading: false, data: null }) }))
-vi.mock('../src/hooks/useDiscoveryCatalogue', () => ({ useDiscoveryCatalogue: () => ({ loading: false }) }))
+vi.mock('../src/hooks/useDiscoveryCatalogue', () => ({ useDiscoveryCatalogue: () => ({ loading: false }), useRankedDiscovery: () => ({ data: null, loading: false, error: null, canLoad: false, loadMore: () => {} }) }))
 vi.mock('../src/lib/discoveryCapability', () => ({ discoveryCatalogueEnabled: () => false }))
 vi.mock('../src/hooks/useMomentProfiles', () => ({ useMomentProfiles: (items: unknown) => items }))
 vi.mock('../src/hooks/useSavedMomentEvidence', () => ({ useSavedMomentEvidence: (items: unknown) => items }))

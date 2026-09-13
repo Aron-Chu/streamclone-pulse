@@ -1,6 +1,7 @@
 import { apiClient } from './momentsApiClient'
 import { fromHubMoment, type DiscoveryMoment } from './discoveryMoments'
 import { verifiedArchiveArtwork } from './archiveArtwork'
+export * from './discoveryRanked'
 
 export interface DiscoveryScope { month: string; creator: string; day: string; category?: string }
 export interface DiscoveryDay {
