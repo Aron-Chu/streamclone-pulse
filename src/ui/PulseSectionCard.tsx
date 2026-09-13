@@ -43,12 +43,13 @@ export function PulseSectionCard({
             {subtitle ? <p style={styles.subtitle}>{subtitle}</p> : null}
           </div>
           {meta ? (
-            <div
-              style={stackMeta ? { ...styles.meta, ...styles.metaStacked } : styles.meta}
-              data-pulse-section-meta="true"
-            >
-              {meta}
-            </div>
+            stackMeta ? (
+              <div style={{ ...styles.meta, ...styles.metaStacked }} data-pulse-section-meta="true">
+                {meta}
+              </div>
+            ) : (
+              <span style={styles.meta}>{meta}</span>
+            )
           ) : null}
         </div>
       ) : null}
@@ -107,18 +108,15 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
   },
   meta: {
-    alignItems: 'center',
     color: theme.textMuted,
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
     fontSize: 11,
     fontWeight: 700,
-    justifyContent: 'flex-end',
-    maxWidth: '48%',
     whiteSpace: 'nowrap',
   },
   metaStacked: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
     justifyContent: 'flex-start',
     maxWidth: '100%',
   },
