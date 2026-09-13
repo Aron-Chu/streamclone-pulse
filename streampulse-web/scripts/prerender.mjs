@@ -2,15 +2,43 @@
  * Post-build prerender: emit static HTML shells for public routes (WEB-002).
  * Dashboard/admin remain SPA-only chunks.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createServer, loadConfigFromFile } from 'vite'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
 const indexPath = join(dist, 'index.html')
 const indexHtml = readFileSync(indexPath, 'utf8')
 const origin = 'https://streampulse.stream'
+const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
+  .filter(name => /^(AnalyticsLandingPage|figma-analytics)-.+\.css$/.test(name))
+  .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
+  .join('\n    ')
+// Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
+const loaded = await loadConfigFromFile({ command: 'serve', mode: 'production' }, undefined, root)
+if (!loaded) throw new Error('Missing Vite configuration for public prerender')
+const nativePackages = ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', 'zustand']
+const aliases = Object.fromEntries(Object.entries(loaded.config.resolve?.alias ?? {})
+  .filter(([name]) => !nativePackages.includes(name)))
+const server = await createServer({
+  ...loaded.config, configFile: false, root, mode: 'production',
+  // This middleware server must not rewrite a running dev server's optimizer
+  // metadata. Concurrent builds otherwise invalidate already-served imports.
+  cacheDir: join(root, 'node_modules/.cache/streampulse-prerender'),
+  resolve: { ...loaded.config.resolve, alias: aliases },
+  ssr: { external: nativePackages },
+  optimizeDeps: { noDiscovery: true, include: [] },
+  server: { middlewareMode: true, watch: null }, appType: 'custom',
+})
+let prerenderPublicPage
+try {
+  ;({ prerenderPublicPage } = await server.ssrLoadModule('/src/prerender.tsx'))
+} catch (error) {
+  await server.close()
+  throw error
+}
 
 const routes = [
   {
@@ -46,6 +74,29 @@ const routes = [
     title: 'Privacy Policy — StreamPulse',
     description: 'How the StreamPulse Chrome extension and website observe, send, and store data.',
     canonicalPath: '/privacy',
+    robots: 'index,follow',
+  },
+  {
+    path: 'terms',
+    title: 'Terms of Use — StreamPulse',
+    description: 'Terms for the StreamPulse website, Chrome extension, and the Pulse Supporter subscription.',
+    canonicalPath: '/terms',
+    robots: 'index,follow',
+  },
+  {
+    path: 'refunds',
+    // "and", not "&": renderShell splices the title in raw, and the same string
+    // is reused inside og:/twitter: content attributes.
+    title: 'Cancellation and Refunds — StreamPulse',
+    description: 'How to cancel Pulse Supporter and when a charge is refunded.',
+    canonicalPath: '/refunds',
+    robots: 'index,follow',
+  },
+  {
+    path: 'supporter',
+    title: 'Pulse Supporter — StreamPulse',
+    description: 'The optional Pulse Supporter membership: price, renewal, cancellation, and what it includes.',
+    canonicalPath: '/supporter',
     robots: 'index,follow',
   },
   {
@@ -88,6 +139,9 @@ function upsertMeta(html, attribute, key, content) {
 function renderShell(metadata) {
   const canonical = new URL(metadata.canonicalPath, origin).toString()
   let html = indexHtml.replace(/<title>[\s\S]*?<\/title>/i, `<title>${metadata.title}</title>`)
+  if (metadata.path === 'analytics' && analyticsCriticalStyles) {
+    html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
+  }
   html = upsertMeta(html, 'name', 'description', metadata.description)
   html = upsertMeta(html, 'name', 'robots', metadata.robots)
   html = upsertMeta(html, 'property', 'og:title', metadata.title)
@@ -99,7 +153,11 @@ function renderShell(metadata) {
   html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)
     : html.replace('</head>', `    ${canonicalTag}\n  </head>`)
-  return html
+  const path = metadata.path == null ? '/404' : `/${metadata.path}`
+  const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
+  const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/
+  if (!boundary.test(html)) throw new Error('Missing public root markers: run Vite build before prerender')
+  return html.replace(boundary, () => `<!--public-root:start-->${markup}<!--public-root:end-->`)
 }
 
 for (const route of routes) {
@@ -111,6 +169,10 @@ for (const route of routes) {
   const dir = join(dist, route.path)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'index.html'), html)
+  // Vite preview's HTML fallback resolves clean `/route` requests as
+  // `/route.html`, while static hosts generally resolve `/route/index.html`.
+  // Emit both so cold documents receive the same route-specific prerender.
+  writeFileSync(join(dist, `${route.path}.html`), html)
 }
 
 mkdirSync(join(dist, 'docs', 'getting-started'), { recursive: true })
@@ -125,4 +187,5 @@ writeFileSync(
   }),
 )
 
-console.log('prerender: wrote metadata-specific public route shells and 404 fallback')
+await server.close()
+console.log('prerender: wrote rendered public pages, analytics loading content, and 404 fallback')

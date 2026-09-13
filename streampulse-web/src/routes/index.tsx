@@ -6,15 +6,20 @@ import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
 import Privacy from './public/Privacy'
+import Terms from './public/Terms'
+import Refunds from './public/Refunds'
+import Supporter from './public/Supporter'
 import Support from './public/Support'
 import NotFound from './public/NotFound'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
-const AnalyticsExplorerPage = lazy(() => import('./analytics/AnalyticsExplorerPage'))
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
+const AccountPage = lazy(() => import('./account/AccountPage'))
+const AccountSettings = lazy(() => import('./account/AccountSettings'))
+const BillingPage = lazy(() => import('./account/BillingPage'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 
 /**
@@ -38,12 +43,63 @@ function ShortSessionRedirect() {
   return <Navigate to={target} replace />
 }
 
-/** Retired Newsroom URLs keep their identifier and query/hash on Pulse Explorer. */
-function NewsroomAliasRedirect() {
+/** Fixed compatibility aliases preserve useful selection/search fragments too. */
+function AnalyticsAliasRedirect() {
+  const { search, hash } = useLocation()
+  return <Navigate to={`/analytics${search}${hash}`} replace />
+}
+
+/**
+ * Explorer compatibility. `/analytics/explore` shipped hosted (PR #39) as a
+ * Newsroom replacement; Moments is the canonical discovery workflow, so the
+ * route resolves here instead of remaining a hosted-only ghost product or a
+ * local 404.
+ *
+ * Only meaning that Moments actually implements is carried across. Verified
+ * against the live hosted Explorer controls (window / signal / category /
+ * state / sort):
+ *   - `:broadcastId` → `story`, the same session identity the Newsroom alias
+ *     uses. If the id does not resolve, the Moments session view reports that
+ *     honestly rather than this redirect guessing a substitute.
+ *   - `window` → `window`. Explorer offers Live / 24 hours / 7 days, which is
+ *     exactly the set Moments accepts; anything else is dropped.
+ *   - `category` → `category`. Both are the Twitch stream category, and
+ *     `readMomentBrowse` treats it as a free-string equality filter, so an
+ *     unmatched value narrows to an honestly empty result rather than lying.
+ *
+ * `signal` and `state` have no Moments equivalent and are dropped.
+ *
+ * `sort` is dropped **deliberately despite both surfaces using that key**:
+ * Explorer sorts by Strongest / Most recent / Most moments, while Moments'
+ * `readMomentBrowse` accepts only 'oldest' | 'category'. Forwarding it would
+ * silently reinterpret the value, which is worse than losing it.
+ *
+ * The hash is preserved as-is.
+ */
+const MOMENTS_WINDOWS = new Set(['live', '24h', '7d'])
+
+function ExplorerCompatibilityRedirect() {
+  const { broadcastId } = useParams<{ broadcastId?: string }>()
+  const { search, hash } = useLocation()
+  const incoming = new URLSearchParams(search)
+  const query = new URLSearchParams()
+  query.set('view', 'sessions')
+  if (broadcastId) query.set('story', broadcastId)
+  const window = incoming.get('window')
+  if (window && MOMENTS_WINDOWS.has(window)) query.set('window', window)
+  const category = incoming.get('category')
+  if (category) query.set('category', category)
+  return <Navigate to={`/analytics/moments?${query}${hash}`} replace />
+}
+
+/** Preserve legacy story identity. The Moments session view resolves it through the original endpoint. */
+function NewsroomCompatibilityRedirect() {
   const { storyId } = useParams<{ storyId?: string }>()
   const { search, hash } = useLocation()
-  const path = storyId ? `/analytics/explore/${encodeURIComponent(storyId)}` : '/analytics/explore'
-  return <Navigate to={`${path}${search}${hash}`} replace />
+  const query = new URLSearchParams(search)
+  query.set('view', 'sessions')
+  if (storyId) query.set('story', storyId)
+  return <Navigate to={`/analytics/moments?${query}${hash}`} replace />
 }
 
 export function AppRoutes() {
@@ -51,33 +107,49 @@ export function AppRoutes() {
     <Suspense fallback={<AnalyticsRouteFallback />}>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/setup" element={<Navigate to="/analytics" replace />} />
+        <Route path="/setup" element={<AnalyticsAliasRedirect />} />
         <Route path="/docs" element={<Docs />} />
-        <Route path="/docs/*" element={<Docs />} />
+        <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />
+        <Route path="/docs/coverage" element={<Navigate to="/docs#coverage" replace />} />
+        <Route path="/docs/api" element={<Navigate to="/docs#api" replace />} />
+        <Route path="/docs/*" element={<NotFound />} />
         <Route path="/status" element={<Status />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/refunds" element={<Refunds />} />
+        {/* Public offer page. The extension's Supporter card links here, so it
+            must stay a real route — never a redirect into a gated surface. */}
+        <Route path="/supporter" element={<Supporter />} />
         <Route path="/support" element={<Support />} />
+        <Route path="/account/sign-in" element={<AccountPage />} />
+        <Route path="/account/settings" element={<AccountSettings />} />
+        <Route path="/account/confirm" element={<AccountPage />} />
+        <Route path="/account/link-device" element={<AccountPage />} />
+        <Route path="/account/billing" element={<BillingPage />} />
+        <Route path="/account/billing/return" element={<BillingPage />} />
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
-        <Route path="/login" element={<Navigate to="/analytics" replace />} />
+        <Route path="/login" element={<AnalyticsAliasRedirect />} />
 
         {/* Public aggregate analytics — single landing. /hub kept as a permanent
             redirect so old links/bookmarks resolve to the one analytics page. */}
-        <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
         <Route path="/analytics" element={<AnalyticsLandingPage />} />
-        <Route path="/analytics/hub" element={<Navigate to="/analytics" replace />} />
-        <Route path="/analytics/emotes" element={<Navigate to="/analytics" replace />} />
-        <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
-        <Route path="/analytics/streams" element={<Navigate to="/analytics" replace />} />
+        <Route path="/analytics/hub" element={<AnalyticsAliasRedirect />} />
+        <Route path="/analytics/emotes" element={<AnalyticsAliasRedirect />} />
+        <Route path="/atlas" element={<AnalyticsAliasRedirect />} />
+        <Route path="/analytics/streams" element={<AnalyticsAliasRedirect />} />
 
-        {/* Pulse Explorer and its retired Newsroom aliases must precede dynamic channel routes. */}
-        <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
-        <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
-        <Route path="/analytics/newsroom" element={<NewsroomAliasRedirect />} />
-        <Route path="/analytics/newsroom/:storyId" element={<NewsroomAliasRedirect />} />
+        {/* Fixed discovery routes must precede dynamic channel routes. */}
+        <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
+        <Route path="/analytics/newsroom" element={<NewsroomCompatibilityRedirect />} />
+        <Route path="/analytics/newsroom/:storyId" element={<NewsroomCompatibilityRedirect />} />
+        {/* Hosted-only Explorer resolves into Moments; must stay above /analytics/:login
+            so "explore" is never mistaken for a channel handle. */}
+        <Route path="/analytics/explore" element={<ExplorerCompatibilityRedirect />} />
+        <Route path="/analytics/explore/:broadcastId" element={<ExplorerCompatibilityRedirect />} />
 
-        {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
+        {/* Public read-only channel analytics — one console; legacy ?figma flags do not select another product. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
         <Route path="/analytics/:login/:streamId" element={<ChannelAnalyticsPage />} />
         {/* Backcompat: redirect the old /s/ session form to the canonical route. */}

@@ -9,7 +9,11 @@ export type ExtensionConfig = {
 const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
 const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
 
-function safeWebAnalyticsOrigin(raw: string): string | null {
+/**
+ * Exported so `portalLinks.ts` validates product-link origins with exactly this
+ * allowlist rather than a second, drifting copy of it.
+ */
+export function safeWebAnalyticsOrigin(raw: string): string | null {
   try {
     const parsed = new URL(raw.trim().replace(/\/+$/, ''))
     if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return null

@@ -2,6 +2,10 @@ import { normalizeLogin } from './login.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
+  'SUPPORTER_ACCOUNT',
+  'SUPPORTER_ENTITLEMENT',
+  'SUPPORTER_COSMETICS',
+  'SUPPORTER_APPEARANCE',
   'TRACK',
   'UNTRACK',
   'GET_PULSE',
@@ -214,6 +218,19 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       if (typeof raw.enabled !== 'boolean') return null
       return { type, enabled: raw.enabled }
     }
+    case 'SUPPORTER_ACCOUNT': {
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
+      const action = raw.action
+      return action === 'status' || action === 'start' || action === 'poll' || action === 'cancel' || action === 'disconnect'
+        ? { type, action } : null
+    }
+    case 'SUPPORTER_ENTITLEMENT':
+      return Object.keys(raw).length === 1 ? { type } : null
+    case 'SUPPORTER_COSMETICS':
+      if (Object.keys(raw).some(key => !['type', 'enabled', 'finish'].includes(key))) return null
+      return typeof raw.enabled === 'boolean' && (raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo') ? { type, enabled: raw.enabled, finish: raw.finish } : null
+    case 'SUPPORTER_APPEARANCE':
+      return Object.keys(raw).length === 1 ? { type } : null
     case 'HEALTH':
     case 'GET_DEVICE_AUTH_STATUS':
     case 'ROTATE_DEVICE':

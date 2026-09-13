@@ -5,7 +5,11 @@ export interface PulseSectionCardProps {
   title?: string
   subtitle?: string
   titleTone?: 'default' | 'muted'
+  /** Heading level for callers that provide a higher-level page heading. */
+  headingLevel?: 2 | 3
   meta?: ReactNode
+  /** Stack controls below the heading for narrow sidebar cards. */
+  stackMeta?: boolean
   children: ReactNode
   style?: CSSProperties
   className?: string
@@ -15,20 +19,37 @@ export function PulseSectionCard({
   title,
   subtitle,
   titleTone = 'default',
+  headingLevel = 3,
   meta,
+  stackMeta = false,
   children,
   style,
   className,
 }: PulseSectionCardProps) {
+  const classes = ['pulse-section-card', className].filter(Boolean).join(' ')
   return (
-    <section className={className} style={{ ...styles.card, ...style }}>
+    <section className={classes} style={{ ...styles.card, ...style }}>
       {title ? (
-        <div style={styles.heading}>
+        <div
+          style={stackMeta ? { ...styles.heading, ...styles.headingStacked } : styles.heading}
+          data-pulse-section-heading={stackMeta ? 'stacked' : 'inline'}
+        >
           <div style={styles.headingMain}>
-            <h3 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h3>
+            {headingLevel === 2 ? (
+              <h2 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h2>
+            ) : (
+              <h3 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h3>
+            )}
             {subtitle ? <p style={styles.subtitle}>{subtitle}</p> : null}
           </div>
-          {meta ? <span style={styles.meta}>{meta}</span> : null}
+          {meta ? (
+            <div
+              style={stackMeta ? { ...styles.meta, ...styles.metaStacked } : styles.meta}
+              data-pulse-section-meta="true"
+            >
+              {meta}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {children}
@@ -51,6 +72,11 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     gap: 8,
     justifyContent: 'space-between',
+  },
+  headingStacked: {
+    display: 'grid',
+    gap: 6,
+    gridTemplateColumns: 'minmax(0, 1fr)',
   },
   headingMain: {
     display: 'grid',
@@ -81,9 +107,19 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
   },
   meta: {
+    alignItems: 'center',
     color: theme.textMuted,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
     fontSize: 11,
     fontWeight: 700,
+    justifyContent: 'flex-end',
+    maxWidth: '48%',
     whiteSpace: 'nowrap',
+  },
+  metaStacked: {
+    justifyContent: 'flex-start',
+    maxWidth: '100%',
   },
 }
