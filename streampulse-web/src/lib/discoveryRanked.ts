@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient'
+import { apiClient } from './momentsApiClient'
 import { fromHubMoment, type DiscoveryMoment } from './discoveryMoments'
 
 export interface RankedScope { from: string; to: string; creator: string; category: string; categoryMissing: boolean }

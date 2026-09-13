@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient'
+import { apiClient } from './momentsApiClient'
 import { fromHubMoment, type DiscoveryMoment } from './discoveryMoments'
 import { verifiedArchiveArtwork } from './archiveArtwork'
 export * from './discoveryRanked'

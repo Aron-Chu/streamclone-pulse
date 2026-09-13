@@ -1,4 +1,4 @@
-import { isApiError } from './apiClient'
+import { isApiError } from './momentsApiClient'
 
 export function discoveryErrorMessage(error: unknown): string {
   if (isApiError(error)) {

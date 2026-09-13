@@ -41,7 +41,11 @@ export function loadedCategories(items: ReadonlyArray<CategoryItem>) {
   })
 }
 
-function CategoryArtwork({ name, boxArtUrl }: { name: string; boxArtUrl?: string }) {
+export function categoryPresentationArt(group: ReturnType<typeof loadedCategories>[number], resolutions?: ReadonlyMap<string, { boxArtUrl?: string }>): string | undefined {
+  return group.boxArtUrl ?? (resolutions && typeof resolutions.get === 'function' ? resolutions.get(group.categoryId ? `id:${group.categoryId}` : `name:${group.name}`)?.boxArtUrl : undefined)
+}
+
+export function CategoryArtwork({ name, boxArtUrl }: { name: string; boxArtUrl?: string }) {
   const [failedUrl, setFailedUrl] = useState<string>()
   return <span className="moments-category-art" aria-hidden="true">
     {boxArtUrl && boxArtUrl !== failedUrl ? <img src={boxArtUrl} alt="" loading="lazy" onError={() => setFailedUrl(boxArtUrl)} /> : <span>{name.slice(0, 2)}</span>}
@@ -49,7 +53,7 @@ function CategoryArtwork({ name, boxArtUrl }: { name: string; boxArtUrl?: string
 }
 
 export function MomentCategoryBrowser(props: {
-  items?: ReadonlyArray<CategoryItem>; facets?: ReadonlyArray<RankedFacet>; selected: string; onSelect: (category: string) => void
+  items?: ReadonlyArray<CategoryItem>; facets?: ReadonlyArray<RankedFacet>; resolutions?: ReadonlyMap<string, { boxArtUrl?: string }>; selected: string; onSelect: (category: string) => void
 }) {
   if (!props.facets) return <LoadedCategoryBrowser items={props.items ?? []} selected={props.selected} onSelect={props.onSelect} />
   return <section className="moments-category-browser moments-ranked-categories" aria-label="Browse measured categories">
@@ -96,11 +100,13 @@ function LoadedCategoryBrowser({ items, selected, onSelect }: {
     return art ? { ...item, ...art } : item
   }))
   if (!categories.length) return null
-  return <section className="moments-category-browser" aria-label="Browse loaded categories">
-    <div className="moments-category-heading"><h2>Browse categories</h2><button type="button" aria-pressed={!selected} onClick={() => onSelect('')}>All categories <span>{items.length}</span></button></div>
-    <p>Counts reflect loaded detections matching your search and time filters, not all of Twitch.</p>
-    <div className="moments-category-track">{categories.map(({ name, count, boxArtUrl }) => <button type="button" key={name} aria-pressed={selected === name} onClick={() => onSelect(selected === name ? '' : name)}>
-      <CategoryArtwork name={name} boxArtUrl={boxArtUrl} /><span><strong>{name}</strong><small>{count} loaded {count === 1 ? 'moment' : 'moments'}</small></span>
-    </button>)}</div>
+  return <section className="moments-category-browser moments-category-browser--covers" aria-label="Browse loaded categories" aria-description="Counts reflect loaded detections matching your search and time filters, not all of Twitch.">
+    <div className="moments-category-heading"><h2>Browse categories</h2></div>
+    <div className="moments-category-track">
+      <button type="button" aria-pressed={!selected} onClick={() => onSelect('')}>All categories <span>{items.length}</span></button>
+      {categories.map(({ name, count, boxArtUrl }) => <button type="button" key={name} aria-pressed={selected === name} onClick={() => onSelect(selected === name ? '' : name)}>
+        <CategoryArtwork name={name} boxArtUrl={boxArtUrl} /><span><strong>{name}</strong><small>{count} loaded {count === 1 ? 'moment' : 'moments'}</small></span>
+      </button>)}
+    </div>
   </section>
 }

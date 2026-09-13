@@ -4,20 +4,14 @@ import { formatStreamOffset } from '../../../lib/formatStreamOffset'
 import { verifiedArchiveArtwork, type ArchiveArtwork } from '../../../lib/archiveArtwork'
 
 /** Only receives a freshly verified exact VOD link, never creator/current-stream guesses. */
-export function MomentVodPreview({ href, artwork, autoLoad = false }: { href: string; artwork?: ArchiveArtwork; autoLoad?: boolean }) {
+export function MomentVodPreview({ href, artwork }: { href: string; artwork?: ArchiveArtwork }) {
   const [failedImage, setFailedImage] = useState<string | null>(null)
-  // Playback is opt-in and scoped to one exact verified source. Tracking the
-  // *opened* href (rather than the closed one) means the default is unloaded:
-  // browsing cards or selecting another result issues zero Twitch requests and
-  // cannot inherit a previous moment's opened/error state. At most one player
-  // is ever mounted — this component renders only for the selected moment.
-  const [openedHref, setOpenedHref] = useState<string | null>(null)
+  // Load only the selected, verified source. Closing is scoped to that source;
+  // changing moments must not inherit a previous moment's closed/error state.
+  const [closedHref, setClosedHref] = useState<string | null>(null)
   const [failedHref, setFailedHref] = useState<string | null>(null)
-  const opened = openedHref === href
+  const opened = closedHref !== href
   const failed = failedHref === href
-  useEffect(() => {
-    if (autoLoad) setOpenedHref(href)
-  }, [autoLoad, href])
   const [wideEnough, setWideEnough] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const loadButton = useRef<HTMLButtonElement>(null)
@@ -60,15 +54,15 @@ export function MomentVodPreview({ href, artwork, autoLoad = false }: { href: st
     </figure> : null}
     {wideEnough ? <div className="moment-vod-preview__desktop" onFocusCapture={() => { desktopHadFocus.current = true }}
       onBlurCapture={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) desktopHadFocus.current = false }}>
-      {!opened ? <button ref={loadButton} type="button" className="moment-vod-preview__load" data-vod-player-mounted="false" onClick={() => { pendingFocus.current = 'close'; setFailedHref(null); setOpenedHref(href) }}>
+      {!opened ? <button ref={loadButton} type="button" className="moment-vod-preview__load" onClick={() => { pendingFocus.current = 'close'; setFailedHref(null); setClosedHref(null) }}>
           <span className="moment-vod-preview__eyebrow">TWITCH VOD · {formatStreamOffset(Number(seconds))}</span>
           <Play className="moment-vod-preview__play" size={28} aria-hidden="true" />
           <strong>Load Twitch preview</strong><span>Review the source at this moment</span>
-          <span className="moment-vod-preview__footnote">Nothing is requested from Twitch until you load it · no autoplay</span>
+          <span className="moment-vod-preview__footnote">Preview closed · reopen without autoplay</span>
         </button>
-        : <><iframe key={href} title="Selected moment Twitch VOD preview" data-vod-player-mounted="true" src={`https://player.twitch.tv/?${query}`} allow="fullscreen" allowFullScreen onError={() => setFailedHref(href)} />
-          <button ref={closeButton} type="button" onClick={() => { pendingFocus.current = 'load'; setOpenedHref(null) }}>Close preview</button></>}
+        : <><iframe key={href} title="Selected moment Twitch VOD preview" src={`https://player.twitch.tv/?${query}`} allow="fullscreen" allowFullScreen onError={() => setFailedHref(href)} />
+          <button ref={closeButton} type="button" onClick={() => { pendingFocus.current = 'load'; setClosedHref(href) }}>Close preview</button></>}
     </div> : null}
-    <p className={`moment-vod-preview__fallback${!wideEnough ? ' moment-vod-preview__fallback--primary' : ''}`}><a ref={externalLink} href={href} target="_blank" rel="noopener noreferrer">{wideEnough ? 'Open on Twitch' : `Watch on Twitch at ${formatStreamOffset(Number(seconds))}`} <ExternalLink size={16} aria-hidden="true" /></a><span>{failed ? 'Preview could not load. ' : ''}{wideEnough ? 'The preview loads only when you ask for it · no autoplay. ' : ''}Playback depends on Twitch availability.</span></p>
+    <div className={`moment-vod-preview__fallback${!wideEnough ? ' moment-vod-preview__fallback--primary' : ''}`}><a ref={externalLink} className="moments-watch-action" href={href} target="_blank" rel="noopener noreferrer">{wideEnough ? `Watch at ${formatStreamOffset(Number(seconds))} on Twitch` : `Watch on Twitch at ${formatStreamOffset(Number(seconds))}`} <ExternalLink size={13} aria-hidden="true" /></a>{failed ? <span role="status">Preview could not load. Playback depends on Twitch availability.</span> : null}</div>
   </div>
 }

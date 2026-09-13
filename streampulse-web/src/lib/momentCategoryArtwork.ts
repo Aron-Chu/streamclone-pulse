@@ -1,4 +1,4 @@
-import { apiClient, getBackendUrl } from './apiClient'
+import { apiClient, getBackendUrl } from './momentsApiClient'
 
 export type CategoryArtworkItem = { category?: string; categoryId?: string; boxArtUrl?: string; categoryMetadataRejected?: true; streamId?: string }
 type CategoryArt = { categoryId: string; boxArtUrl: string }
