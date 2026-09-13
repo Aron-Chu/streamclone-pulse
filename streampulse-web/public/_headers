@@ -1,14 +1,21 @@
 # Do not enable HSTS until every streampulse.stream subdomain is confirmed HTTPS-only.
 /*
   X-Content-Type-Options: nosniff
+  Content-Signal: search=yes, ai-input=no, ai-train=no, use=reference
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.streampulse.stream https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com https://player.twitch.tv; child-src 'self' blob: https://challenges.cloudflare.com; worker-src 'self' blob:
   Content-Security-Policy-Report-Only: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.streampulse.stream https://*.ingest.sentry.io https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com https://player.twitch.tv; child-src https://challenges.cloudflare.com
   Cache-Control: public, max-age=0, must-revalidate
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+/account/*
+  Cache-Control: private, no-store
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow
 
 /static/*
   Cache-Control: public, max-age=31536000, immutable

@@ -1,3 +1,13 @@
+.public-api-reference {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.public-api-reference code { white-space: normal; }
+.pulse-account { min-width: 0; overflow-wrap: anywhere; }
+.pulse-account button { max-width: 100%; gap: 8px; white-space: normal; }
+.pulse-account li { padding-block: 12px; border-bottom: 1px solid #3f3f50; }
+
 :root {
   --bg-base: #09090b;
   --bg-surface: #0e0e14;
@@ -629,6 +639,12 @@ select {
   gap: 1.5rem;
 }
 
+.app-footer__nav {
+  display: grid;
+  gap: 0.7rem;
+  justify-items: start;
+}
+
 .app-footer__links {
   display: flex;
   gap: 1.25rem;
@@ -642,4 +658,47 @@ select {
 
 .app-footer__links a:hover {
   color: #fff;
+}
+
+/* Shared public foundation: usable on a cold route and at narrow/zoomed widths. */
+.app-shell { min-width: 0; overflow-wrap: anywhere; }
+.app-main, .app-main > *, .app-nav__links { min-width: 0; }
+.app-shell pre { max-width: 100%; overflow-x: auto; }
+.app-shell code { overflow-wrap: anywhere; }
+.app-shell input, .app-shell textarea, .app-shell select { max-width: 100%; }
+.app-shell :is(a, button, input, textarea, select):focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 3px;
+}
+.app-shell section[id] { scroll-margin-top: 6rem; }
+.public-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; min-height: 44px; color: #fff; background: #352447; border: 2px solid #c4b5fd; transform: translateY(-200%); }
+.public-skip-link:focus { transform: translateY(0); }
+.app-nav__menu { display: none; }
+.public-toc { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; }
+.public-toc a { padding-block: .5rem; }
+.moment-handoff-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding-top: .5rem; }
+.moment-handoff-actions :is(small, [role="status"]) { flex-basis: 100%; overflow-wrap: anywhere; color: #b5adbf; }
+
+@media (max-width: 960px) {
+  .app-nav { flex-wrap: wrap; gap: .75rem; padding: .75rem 1rem; }
+  .app-nav__menu {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: .5rem .8rem; border: 1px solid var(--border);
+    border-radius: .5rem; background: transparent; color: var(--text-primary, #fafafa);
+    font: inherit; cursor: pointer;
+  }
+  .app-nav__links { display: none; flex-basis: 100%; }
+  .app-nav__links.is-open { display: flex; }
+  .app-nav__links :is(a, button) { min-height: 44px; align-content: center; }
+}
+@media (max-width: 560px) {
+  .app-main { padding: 1.5rem .75rem 3rem; }
+  .app-shell .panel { padding: 1.1rem; }
+  .app-footer { padding-inline: 1rem; }
+  .app-footer__inner > div { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *, .app-shell *::before, .app-shell *::after {
+    animation: none !important; scroll-behavior: auto !important;
+  }
 }

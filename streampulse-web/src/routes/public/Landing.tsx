@@ -1,21 +1,40 @@
 ﻿import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { ArrowRight, BookOpen, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
 import '../../ui/tokens.css'
 import '../../ui/components/landing/landing.css'
 import { buttonClass } from '../../ui/primitives'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
+import { LandingMobileNav } from '../../ui/components/landing/LandingMobileNav'
 import { EmoteRain } from '../../ui/components/landing/EmoteRain'
 import { TwitchChatBackdrop } from '../../ui/components/landing/TwitchChatBackdrop'
-import { EmoteTicker } from '../../ui/components/landing/EmoteTicker'
-import { ExtensionShowcase } from '../../ui/components/landing/ExtensionShowcase'
 import { LiveSignalScrollGraph } from '../../ui/components/landing/LiveSignalScrollGraph'
+import { EmoteTicker } from '../../ui/components/landing/EmoteTicker'
 import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { GITHUB_REPO_URL } from '../../lib/externalLinks'
+
+const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
+
+/** Heavy illustrative UI loads near its section, not on every public route. */
+function DeferredDemo({ children }: { children: ReactNode }) {
+  const host = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    if (!host.current || typeof IntersectionObserver === 'undefined') { setVisible(true); return }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
+    }, { rootMargin: '200px' })
+    observer.observe(host.current)
+    return () => observer.disconnect()
+  }, [])
+  const fallback = <p className="sl-demo-placeholder">Interactive sample: compare chat and emote reactions, inspect a moment, and check its coverage. The demonstration loads when this section is in view and JavaScript is available.</p>
+  return <div ref={host}><Suspense fallback={fallback}>{visible ? children : fallback}</Suspense></div>
+}
 
 function TopNav() {
   return (
@@ -27,7 +46,7 @@ function TopNav() {
         </Link>
         <div className="sl-menu">
           <a href="#demo">Pulse tab</a>
-          <a href="#analysis">Signals</a>
+          <a href="#analysis">Signal replay</a>
           <a href="#roadmap">Roadmap</a>
           <Link to="/docs">Docs</Link>
         </div>
@@ -37,6 +56,7 @@ function TopNav() {
             Open Analytics
           </Link>
         </div>
+        <LandingMobileNav />
       </nav>
     </header>
   )
@@ -53,12 +73,12 @@ function Hero({
     <section className="sl-hero sl-hero--stage" aria-labelledby="hero-headline">
       <div className="sl-stage">
         <Link to="/analytics" className="sl-announce">
-          <span className="sl-announce__new">Live</span>
-          Hosted analytics console is online
+          <span className="sl-announce__new">Explore</span>
+          Public analytics — no account needed
           <ArrowRight size={13} aria-hidden="true" />
         </Link>
         <h1 id="hero-headline">
-          Find the Twitch moments people <span className="sl-grad">actually reacted to</span>.
+          Find the Twitch moments people <span className="sl-grad">actually reacted to.</span>
         </h1>
         <p>
           StreamPulse tracks chat velocity, emote spikes, viewer movement, and jumpable moments across live streams and
@@ -76,10 +96,10 @@ function Hero({
           </Link>
         </div>
         <a href="#demo" className="sl-stage__cue">
-          Scroll to open a live stream
+          See an example of the Pulse tab
           <span className="sl-stage__cuedot" aria-hidden="true" />
         </a>
-        <div className="sl-tickwrap" aria-label="Live emote and channel momentum">
+        <div className="sl-tickwrap" aria-label="Latest available emote and channel snapshot">
           <EmoteTicker variant="a" label="Trending emotes" items={emoteItems} />
           <EmoteTicker variant="b" label="Trending channels" items={moverItems} />
         </div>
@@ -93,17 +113,17 @@ function HowItWorks() {
     {
       icon: PanelTopOpen,
       title: 'Open Twitch with Pulse',
-      copy: 'The extension docks beside chat and shows honest live coverage without pretending it saw earlier minutes.',
+      copy: 'Switch from Chat to Pulse beside a Twitch stream. See which parts of the broadcast have measurements.',
     },
     {
       icon: Radio,
       title: 'Watch the signal build',
-      copy: 'Chat, viewers, 7TV velocity, and detected peaks roll up minute by minute through the backend.',
+      copy: 'Compare chat, viewers, and emote reactions minute by minute. Missing measurements stay visible as gaps.',
     },
     {
       icon: Sparkles,
       title: 'Jump to the loudest moments',
-      copy: 'Open StreamPulse Analytics for channel pages, moment feeds, top emotes, and replay-ready stream ledgers.',
+      copy: 'Open a moment in Analytics, then jump to its replay when video is available.',
     },
   ]
 
@@ -179,10 +199,28 @@ function Footer() {
 }
 
 export default function Landing() {
-  const { data } = usePublicHubData({ pollMs: 45_000 })
+  // Marketing needs one bounded snapshot, not a full analytics poll loop.
+  const { data } = usePublicHubData({ pollMs: 0, activityWindow: '30m' })
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const mainRef = useRef<HTMLElement | null>(null)
+
+  // A hash in the entry URL cannot scroll on its own: the browser looks for the
+  // target while React is still rendering, finds nothing, and gives up. Without
+  // this, a shared or reloaded /#demo link lands at the top of the page.
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.slice(1))
+    if (!id) return
+    let cancelled = false
+    const jump = () => {
+      if (!cancelled) document.getElementById(id)?.scrollIntoView()
+    }
+    // Land immediately (this also works in a background tab, where rAF is
+    // parked), then correct once webfonts have resized the hero above us.
+    jump()
+    void document.fonts?.ready.then(jump)
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const root = mainRef.current
@@ -211,35 +249,32 @@ export default function Landing() {
     <div className="sp-landing">
       <EmoteRain />
       <TwitchChatBackdrop />
+      <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
       <TopNav />
-      <main className="sl-main" ref={mainRef}>
+      <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
         <Hero emoteItems={emoteItems} moverItems={moverItems} />
 
         <section id="demo" className="sl-section" aria-labelledby="demo-title">
           <div className="sl-container">
             <div className="sl-section-head" data-reveal>
               <h2 id="demo-title">The Pulse tab, feature by feature</h2>
+              <span className="sl-sample-label">Sample data · interactive demonstration</span>
               <p>
-                This is the StreamPulse panel as it docks in your Twitch sidebar: live KPIs, chat velocity, coverage, the
-                loudest moments, and past VODs.
+                Explore an example of the panel beside Twitch chat. These numbers illustrate the interface; they are not a live broadcast.
               </p>
             </div>
-            <ExtensionShowcase />
+            <DeferredDemo><ExtensionShowcase /></DeferredDemo>
           </div>
         </section>
 
         <section id="analysis" className="sl-section" aria-labelledby="analysis-title">
           <div className="sl-container">
             <div className="sl-section-head" data-reveal>
-              <h2 id="analysis-title">Every channel we track, live by the numbers</h2>
-              <p>
-                Scroll through a live stream replay and watch StreamPulse turn viewers, chat velocity, and emote rate into
-                a ranked moment ledger.
-              </p>
+              <h2 id="analysis-title">See a stream become a signal</h2>
+              <span className="sl-sample-label">Illustrative product demo · not live measurements</span>
+              <p>Scroll through a sample broadcast: chat, emotes, viewers, and the moments worth revisiting.</p>
             </div>
-            <div data-reveal>
-              <LiveSignalScrollGraph />
-            </div>
+            <LiveSignalScrollGraph />
           </div>
         </section>
 
@@ -260,8 +295,7 @@ export default function Landing() {
             <div className="sl-section-head" data-reveal>
               <h2 id="roadmap-title">Roadmap</h2>
               <p>
-                What is live today and what is on the roadmap. ReplayForge clip tooling remains a
-                planned private operator workflow — not publicly linked from the hub or analytics console.
+                Available today and the next focused step. ReplayForge access remains gated while the authorized moment-to-clip journey is verified.
               </p>
             </div>
             <div data-reveal>
@@ -276,9 +310,7 @@ export default function Landing() {
               <h2 id="how-title">How it works</h2>
               <p>Three steps from opening Twitch to catching up on the loudest minutes.</p>
             </div>
-            <div data-reveal>
-              <HowItWorks />
-            </div>
+            <HowItWorks />
           </div>
         </section>
 

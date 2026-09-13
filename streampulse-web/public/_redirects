@@ -13,27 +13,41 @@
 /login /analytics 301
 /login/ /analytics/ 301
 
+# Account pages are private SPA surfaces, not prerendered marketing pages.
+/account/sign-in/ /account/sign-in 301
+/account/confirm/ /account/confirm 301
+/account/link-device/ /account/link-device 301
+/account/billing/ /account/billing 301
+/account/billing/return/ /account/billing/return 301
+/account/sign-in /index.html 200
+/account/confirm /index.html 200
+/account/link-device /index.html 200
+/account/billing /index.html 200
+/account/billing/return /index.html 200
+
+# Known documentation aliases resolve at the edge even without JavaScript.
+/docs/getting-started /docs#extension 301
+/docs/getting-started/ /docs#extension 301
+/docs/coverage /docs#coverage 301
+/docs/coverage/ /docs#coverage 301
+/docs/api /docs#api 301
+/docs/api/ /docs#api 301
+
+# Hosted Explorer links must reach the SPA so the client can map broadcastId and
+# window onto the canonical Moments session view. A static 301 cannot carry that
+# mapping, so this is a rewrite, not a redirect.
+/analytics/explore /analytics/index.html 200
+/analytics/explore/ /analytics/index.html 200
+/analytics/explore/:broadcastId /analytics/index.html 200
+/analytics/explore/:broadcastId/ /analytics/index.html 200
+
 # Channel/session deep links must SPA-fallback — prerender only covers /analytics/.
 # Without these, Cloudflare Pages serves 404.html for /analytics/:login/:streamId.
-# Explorer and retired Newsroom routes are explicit reserved analytics
-# segments, not channel logins. Keep both slash forms so direct links and
-# Pages' directory normalization reach the SPA shell.
-/analytics/explore /analytics/ 200
-/analytics/explore/ /analytics/ 200
-/analytics/explore/:broadcastId /analytics/ 200
-/analytics/explore/:broadcastId/ /analytics/ 200
-/analytics/newsroom /analytics/ 200
-/analytics/newsroom/ /analytics/ 200
-/analytics/newsroom/:storyId /analytics/ 200
-/analytics/newsroom/:storyId/ /analytics/ 200
-# Pages supports a trailing splat for nested paths; the colon forms above are
-# retained for readability/backward compatibility with older deploy tooling.
-/analytics/* /analytics/ 200
-/analytics/:login /analytics/ 200
-/analytics/:login/ /analytics/ 200
-/analytics/:login/:streamId /analytics/ 200
-/analytics/:login/:streamId/ /analytics/ 200
-/analytics/:login/s/:streamId /analytics/ 200
-/analytics/:login/s/:streamId/ /analytics/ 200
-/s/:login /analytics/ 200
-/s/:login/:streamId /analytics/ 200
+/analytics/:login /analytics/index.html 200
+/analytics/:login/ /analytics/index.html 200
+/analytics/:login/:streamId /analytics/index.html 200
+/analytics/:login/:streamId/ /analytics/index.html 200
+/analytics/:login/s/:streamId /analytics/index.html 200
+/analytics/:login/s/:streamId/ /analytics/index.html 200
+/s/:login /analytics/index.html 200
+/s/:login/:streamId /analytics/index.html 200

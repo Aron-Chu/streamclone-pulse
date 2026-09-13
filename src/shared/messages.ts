@@ -1,4 +1,10 @@
+import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement } from './supporterAccount.ts'
+
 export type MessageType =
+  | 'SUPPORTER_ACCOUNT'
+  | 'SUPPORTER_ENTITLEMENT'
+  | 'SUPPORTER_COSMETICS'
+  | 'SUPPORTER_APPEARANCE'
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
@@ -201,6 +207,10 @@ export interface DeleteBookmarkMessage {
 }
 
 export type BackgroundRequest =
+  | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
+  | { type: 'SUPPORTER_ENTITLEMENT' }
+  | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
+  | { type: 'SUPPORTER_APPEARANCE' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -611,6 +621,10 @@ export interface VodPulseUpdateMessage {
 }
 
 export type BackgroundResponse =
+  | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
+  | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
+  | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
+  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
   | PulseUpdateMessage
   | VodPulseUpdateMessage
   | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }

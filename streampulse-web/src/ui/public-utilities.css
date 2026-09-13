@@ -1,0 +1,9 @@
+@config "../../tailwind.public.config.js";
+
+/* No global preflight, console theme, or second font stack. */
+.app-shell :where(*, *::before, *::after) {
+  border-width: 0;
+  border-style: solid;
+}
+
+@tailwind utilities;

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import { Menu, X } from 'lucide-react'
 import { buttonClass } from '../../primitives'
 
@@ -74,12 +75,13 @@ export function LandingMobileNav({
         <span className="sl-mobile-nav__toggle-label">{open ? 'Close' : 'Menu'}</span>
       </button>
 
-      {open ? (
-        <div className="sl-mobile-nav__layer">
+      {open ? createPortal(
+        <div className="sp-landing sl-mobile-nav__layer">
           <button
             type="button"
             className="sl-mobile-nav__backdrop"
             aria-label="Close menu"
+            tabIndex={-1}
             onClick={() => setOpen(false)}
           />
           <div
@@ -93,12 +95,15 @@ export function LandingMobileNav({
             <p id={titleId} className="sl-mobile-nav__title">
               StreamPulse
             </p>
+            <button type="button" className="sl-mobile-nav__toggle" onClick={() => setOpen(false)}>
+              <X size={18} aria-hidden="true" /> Close menu
+            </button>
             <nav className="sl-mobile-nav__links" aria-label="Mobile">
               <a href="#demo" onClick={() => setOpen(false)}>
                 Pulse tab
               </a>
               <a href="#analysis" onClick={() => setOpen(false)}>
-                Signals
+                Signal replay
               </a>
               <a href="#roadmap" onClick={() => setOpen(false)}>
                 Roadmap
@@ -106,6 +111,9 @@ export function LandingMobileNav({
               <Link to={docsHref} onClick={() => setOpen(false)}>
                 Docs
               </Link>
+              <Link to="/status" onClick={() => setOpen(false)}>Status</Link>
+              <Link to="/support" onClick={() => setOpen(false)}>Support</Link>
+              <Link to="/privacy" onClick={() => setOpen(false)}>Privacy</Link>
               <Link
                 to={analyticsHref}
                 className={buttonClass('default', 'sm')}
@@ -115,7 +123,7 @@ export function LandingMobileNav({
               </Link>
             </nav>
           </div>
-        </div>
+        </div>, document.body
       ) : null}
     </div>
   )
