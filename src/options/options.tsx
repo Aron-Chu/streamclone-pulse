@@ -54,6 +54,10 @@ import {
   isAnalyticsConsentGranted,
   setAnalyticsConsentGranted,
 } from '../shared/analyticsConsent.ts'
+import { AccountConnection } from './AccountConnection.tsx'
+import { injectHostStyles } from './hostStyles.ts'
+
+injectHostStyles()
 
 function OptionsApp() {
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
@@ -325,6 +329,11 @@ function OptionsApp() {
         </div>
         <button type="button" style={styles.secondaryButton} onClick={() => void probeHealth()}>Probe backend</button>
       </header>
+
+      <section id="supporter" style={styles.section}>
+        <span style={styles.groupLabel}>Account</span>
+        <AccountConnection />
+      </section>
 
       {!(typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) ? (
       <section style={styles.section}>

@@ -27,6 +27,8 @@ export const theme = {
   border: '#3f3f50',
   borderAccent: accentTokens.borderAccent,
   error: '#f87171',
+  /** Channels of `error`, for token-derived rgba() tints. */
+  errorRgb: '248, 113, 113',
   warning: '#fdba74',
   radiusPanel: 14,
   radiusButton: 9,

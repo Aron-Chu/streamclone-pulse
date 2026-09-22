@@ -6,6 +6,9 @@ import Landing from './public/Landing'
 import Docs from './public/Docs'
 import Status from './public/Status'
 import Privacy from './public/Privacy'
+import Terms from './public/Terms'
+import Refunds from './public/Refunds'
+import Supporter from './public/Supporter'
 import Support from './public/Support'
 import NotFound from './public/NotFound'
 
@@ -15,6 +18,9 @@ const AnalyticsExplorerPage = lazy(() => import('./analytics/AnalyticsExplorerPa
 const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
 const DashboardHome = lazy(() => import('./dashboard/Home'))
 const ClipsPage = lazy(() => import('./dashboard/Clips'))
+const AccountPage = lazy(() => import('./account/AccountPage'))
+const AccountSettings = lazy(() => import('./account/AccountSettings'))
+const BillingPage = lazy(() => import('./account/BillingPage'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 
 /**
@@ -38,6 +44,12 @@ function ShortSessionRedirect() {
   return <Navigate to={target} replace />
 }
 
+/** Fixed compatibility aliases preserve useful selection/search fragments too. */
+function AnalyticsAliasRedirect() {
+  const { search, hash } = useLocation()
+  return <Navigate to={`/analytics${search}${hash}`} replace />
+}
+
 /** Retired Newsroom URLs keep their identifier and query/hash on Pulse Explorer. */
 function NewsroomAliasRedirect() {
   const { storyId } = useParams<{ storyId?: string }>()
@@ -51,33 +63,48 @@ export function AppRoutes() {
     <Suspense fallback={<AnalyticsRouteFallback />}>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/setup" element={<Navigate to="/analytics" replace />} />
+        <Route path="/setup" element={<AnalyticsAliasRedirect />} />
         <Route path="/docs" element={<Docs />} />
-        <Route path="/docs/*" element={<Docs />} />
+        <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />
+        <Route path="/docs/coverage" element={<Navigate to="/docs#coverage" replace />} />
+        <Route path="/docs/api" element={<Navigate to="/docs#api" replace />} />
+        <Route path="/docs/*" element={<NotFound />} />
         <Route path="/status" element={<Status />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/refunds" element={<Refunds />} />
+        {/* Public offer page. The extension's Supporter card links here, so it
+            must stay a real route — never a redirect into a gated surface. */}
+        <Route path="/supporter" element={<Supporter />} />
         <Route path="/support" element={<Support />} />
+        <Route path="/account/sign-in" element={<AccountPage />} />
+        <Route path="/account/settings" element={<AccountSettings />} />
+        <Route path="/account/confirm" element={<AccountPage />} />
+        <Route path="/account/link-device" element={<AccountPage />} />
+        <Route path="/account/billing" element={<BillingPage />} />
+        <Route path="/account/billing/return" element={<BillingPage />} />
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
-        <Route path="/login" element={<Navigate to="/analytics" replace />} />
+        <Route path="/login" element={<AnalyticsAliasRedirect />} />
 
         {/* Public aggregate analytics — single landing. /hub kept as a permanent
             redirect so old links/bookmarks resolve to the one analytics page. */}
-        <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
         <Route path="/analytics" element={<AnalyticsLandingPage />} />
-        <Route path="/analytics/hub" element={<Navigate to="/analytics" replace />} />
-        <Route path="/analytics/emotes" element={<Navigate to="/analytics" replace />} />
-        <Route path="/atlas" element={<Navigate to="/analytics" replace />} />
-        <Route path="/analytics/streams" element={<Navigate to="/analytics" replace />} />
+        <Route path="/analytics/hub" element={<AnalyticsAliasRedirect />} />
+        <Route path="/analytics/emotes" element={<AnalyticsAliasRedirect />} />
+        <Route path="/atlas" element={<AnalyticsAliasRedirect />} />
+        <Route path="/analytics/streams" element={<AnalyticsAliasRedirect />} />
 
+        {/* Fixed discovery routes must precede dynamic channel routes. */}
+        <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
         {/* Pulse Explorer and its retired Newsroom aliases must precede dynamic channel routes. */}
         <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
         <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
         <Route path="/analytics/newsroom" element={<NewsroomAliasRedirect />} />
         <Route path="/analytics/newsroom/:storyId" element={<NewsroomAliasRedirect />} />
 
-        {/* Public read-only channel analytics — analytics console; ?figma=1 for the Figma session dashboard. */}
+        {/* Public read-only channel analytics — one console; legacy ?figma flags do not select another product. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />
         <Route path="/analytics/:login/:streamId" element={<ChannelAnalyticsPage />} />
         {/* Backcompat: redirect the old /s/ session form to the canonical route. */}

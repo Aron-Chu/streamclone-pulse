@@ -3,15 +3,18 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AppRoutes } from './routes/index'
-import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal } from './lib/auth'
+import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal, setBackendUrlOverride } from './lib/auth'
 import { initPortalSentry } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
 import { PageMetadata } from './ui/PageMetadata'
 import { shadowStyles } from './ui/theme'
 import './ui/portal-fonts.css'
+import './ui/public-utilities.css'
 import './ui/global.css'
+import { captureAccountConfirmation } from './lib/accountConfirmation'
 
-initPortalSentry()
+captureAccountConfirmation()
+if (!window.location.pathname.startsWith('/account/')) initPortalSentry()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,7 +43,7 @@ function AuthRejectedListener() {
 
   useEffect(() => {
     function onRejected() {
-      if (isPublicAnalyticsPath(location.pathname)) {
+      if (isPublicAnalyticsPath(location.pathname) || location.pathname.startsWith('/account/')) {
         return
       }
       clearBetaKey()
@@ -54,15 +57,35 @@ function AuthRejectedListener() {
   return null
 }
 
+/**
+ * Dev-only: `?spBackend=<origin>` sets the session backend override so a local
+ * shim (e.g. scripts/dev-discovery-fixture.mjs) is reachable from a single
+ * shareable URL instead of a console incantation. `setBackendUrlOverride`
+ * itself refuses a localhost origin unless VITE_ALLOW_LOCAL_BACKEND=1, and this
+ * whole branch is compiled out of production by `import.meta.env.DEV`.
+ */
+function applyDevBackendQueryOverride(): void {
+  if (!import.meta.env.DEV) return
+  const requested = new URLSearchParams(window.location.search).get('spBackend')
+  if (requested == null) return
+  setBackendUrlOverride(requested || null)
+  // Drop the parameter so it does not ride along on shared links or reloads.
+  const url = new URL(window.location.href)
+  url.searchParams.delete('spBackend')
+  window.history.replaceState(window.history.state, '', url.toString())
+}
+
 async function bootstrap() {
+  applyDevBackendQueryOverride()
   clearStaleLocalBackendOverride()
-  await refreshPrincipal()
+  if (!window.location.pathname.startsWith('/account/')) await refreshPrincipal()
   const style = document.createElement('style')
   style.textContent = shadowStyles
   document.head.appendChild(style)
 
   const root = document.getElementById('root')
   if (!root) throw new Error('Missing #root')
+  root.removeAttribute('data-prerendered')
 
   createRoot(root).render(
     <StrictMode>

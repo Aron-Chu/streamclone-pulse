@@ -65,7 +65,8 @@ import {
   initPulseDebug,
   pulseDebug,
 } from '../shared/pulseDebug.ts'
-import { isExtensionPageSender, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
+import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
+import { supporterAccount } from './supporterAccountRuntime.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
@@ -530,15 +531,7 @@ const CHANNEL_BOUND_MESSAGES = new Set<BackgroundRequest['type']>([
 ])
 
 function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
-  if (sender.id !== chrome.runtime.id) return false
-  if (EXTENSION_PAGE_ONLY_MESSAGES.has(message.type)) {
-    return senderIsExtensionPage(sender)
-  }
-  if (senderIsExtensionPage(sender)) return true
-  if (!senderIsTwitchPage(sender)) return false
-  if (!CHANNEL_BOUND_MESSAGES.has(message.type)) return true
-  const login = messageLogin(message)
-  return Boolean(login && tabUrlMatchesPulseLogin(sender.tab?.url, login))
+  return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id)
 }
 
 function broadcastPulse(
@@ -929,6 +922,24 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
             version: health.version,
             helixEnabled: health.helixEnabled,
           } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_ENTITLEMENT': {
+          sendResponse({ type: 'SUPPORTER_ENTITLEMENT', entitlement: await supporterAccount.entitlement() } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_COSMETICS': {
+          sendResponse({ type: 'SUPPORTER_COSMETICS', ok: await supporterAccount.saveCosmetics({ enabled: message.enabled, finish: message.finish }) } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_APPEARANCE': {
+          const entitlement = await supporterAccount.entitlement()
+          const finish = entitlement.state === 'ready' && entitlement.features.includes('supporter.banner.v1') && entitlement.features.includes('supporter.finish.v1') && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
+          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0 } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_ACCOUNT': {
+          sendResponse({ type: 'SUPPORTER_ACCOUNT', account: await supporterAccount.run(message.action) } satisfies BackgroundResponse)
           return
         }
         case 'GET_DEVICE_AUTH_STATUS': {

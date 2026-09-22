@@ -45,24 +45,47 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     }
   })
 
+  it('preserves search discovery while opting out of AI model use', () => {
+    const robots = readFileSync(resolve(webRoot, 'public/robots.txt'), 'utf8')
+    const headers = readFileSync(resolve(webRoot, 'public/_headers'), 'utf8')
+    expect(robots).toContain('Content-signal: search=yes, ai-input=no, ai-train=no, use=reference')
+    for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'Google-Extended', 'meta-externalagent']) {
+      expect(robots).toMatch(new RegExp(`User-agent: ${agent}\\s+Disallow: /`, 'i'))
+    }
+    expect(headers).toContain('Content-Signal: search=yes, ai-input=no, ai-train=no, use=reference')
+  })
+
   it('ships static redirects for legacy analytics entrypoints and SPA deep links', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
     expect(redirects).toMatch(/\/analytics\/streams\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/analytics\/hub\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/atlas\s+\/analytics\s+301/)
-    expect(redirects).toMatch(/\/analytics\/explore\s+\/analytics\/\s+200/)
-    expect(redirects).toMatch(/\/analytics\/explore\/:broadcastId\s+\/analytics\/\s+200/)
-    expect(redirects).toMatch(/\/analytics\/newsroom\s+\/analytics\/\s+200/)
-    expect(redirects).toMatch(/\/analytics\/\*\s+\/analytics\/\s+200/)
-    expect(redirects).toMatch(/\/analytics\/:login\/:streamId\s+\/analytics\/\s+200/)
-    expect(redirects).toMatch(/\/s\/:login\s+\/analytics\/\s+200/)
-    expect(redirects).toMatch(/\/s\/:login\/:streamId\s+\/analytics\/\s+200/)
+    expect(redirects).toMatch(/\/analytics\/:login\/:streamId\s+\/analytics\/index\.html\s+200/)
+    expect(redirects).toMatch(/\/s\/:login\s+\/analytics\/index\.html\s+200/)
+    expect(redirects).toMatch(/\/s\/:login\/:streamId\s+\/analytics\/index\.html\s+200/)
+    // Explorer must reach the SPA (rewrite, not 301) so the client can map
+    // broadcastId/window onto Moments instead of dropping them at the edge.
+    expect(redirects).toMatch(/\/analytics\/explore\s+\/analytics\/index\.html\s+200/)
+    expect(redirects).toMatch(/\/analytics\/explore\/:broadcastId\s+\/analytics\/index\.html\s+200/)
+  })
+
+  it('rewrites every account deep link to the private SPA entry', () => {
+    const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
+    for (const path of ['/account/sign-in', '/account/confirm', '/account/link-device', '/account/billing', '/account/billing/return']) {
+      expect(redirects).toContain(`${path} /index.html 200`)
+      expect(redirects).toContain(`${path}/ ${path} 301`)
+    }
   })
 
   it('ships Pages security and cache headers', () => {
     const headers = readFileSync(resolve(webRoot, 'public/_headers'), 'utf8')
     expect(headers).toContain('X-Content-Type-Options: nosniff')
     expect(headers).toContain('Content-Security-Policy-Report-Only:')
+    const enforced = headers.split(/\r?\n/).find(line => /^\s+Content-Security-Policy:/.test(line))
+    expect(enforced).toContain("object-src 'none'")
+    expect(enforced).toContain("frame-ancestors 'none'")
+    expect(enforced).toContain("script-src 'self' https://challenges.cloudflare.com")
+    expect(enforced).not.toContain("'unsafe-eval'")
     expect(headers).toContain('/assets/*')
     expect(headers).toContain('/static/*')
     expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable')

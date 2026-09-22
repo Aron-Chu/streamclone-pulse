@@ -21,10 +21,13 @@ import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes } from './hosted-analytics-route-smoke.mjs'
+import { assertEdgeFreeze } from './check-edge-freeze.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
 const repoRoot = join(webRoot, '..')
+// No environment override: an edge architecture exception needs explicit review.
+assertEdgeFreeze(webRoot)
 const localWrangler = join(
   webRoot,
   process.platform === 'win32' ? 'node_modules/.bin/wrangler.cmd' : 'node_modules/.bin/wrangler',

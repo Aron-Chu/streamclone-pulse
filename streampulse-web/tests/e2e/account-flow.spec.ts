@@ -1,0 +1,76 @@
+import { test, expect } from '@playwright/test'
+
+test('email link stays private and requires explicit confirmation', async ({ page }) => {
+  let confirmations = 0
+  await page.route('**/v1/account/auth/complete', route => {
+    confirmations++
+    expect(route.request().postDataJSON()).toEqual({ secret: 'a'.repeat(64), confirmed: true })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"signed_in"}' })
+  })
+  await page.goto('/account/confirm#' + 'a'.repeat(64))
+  await expect(page.getByRole('heading', { name: 'Confirm your sign-in' })).toBeVisible()
+  expect(new URL(page.url()).hash).toBe('')
+  expect(confirmations).toBe(0)
+  expect(await page.locator('body').innerText()).not.toContain('a'.repeat(64))
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('a'.repeat(64))
+  await page.getByRole('button', { name: 'Confirm sign-in', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'You’re signed in' })).toBeVisible()
+  expect(confirmations).toBe(1)
+})
+
+test('device connection shows the installation before a separate decision', async ({ page }, info) => {
+  let approvals = 0
+  await page.route('**/v1/account/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"accountId":"test-account"}' }))
+  await page.route('**/v1/account/device-links/inspect', route => {
+    expect(route.request().postDataJSON()).toEqual({ code: 'ABCDE12345' })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ label: 'StreamPulse · Chrome on this PC', expiresAt: new Date(Date.now() + 600000).toISOString() }) })
+  })
+  await page.route('**/v1/account/device-links/approve', route => {
+    approvals++
+    expect(route.request().postDataJSON()).toEqual({ code: 'ABCDE12345', approve: false })
+    return route.fulfill({ status: 204 })
+  })
+  await page.goto('/account/link-device')
+  await page.getByLabel('Extension code').fill('ABCDE-12345')
+  await page.getByRole('button', { name: 'Review extension' }).click()
+  await expect(page.getByRole('heading', { name: 'Allow this extension?' })).toBeFocused()
+  await expect(page.getByText('StreamPulse · Chrome on this PC')).toBeVisible()
+  expect(approvals).toBe(0)
+  await page.screenshot({ path: info.outputPath('device-review.png'), fullPage: true })
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 900 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+  }
+  await page.getByRole('button', { name: 'Decline', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Request declined' })).toBeVisible()
+  expect(approvals).toBe(1)
+})
+
+test('delivery failure does not pretend an email was sent', async ({ page }, info) => {
+  await page.route('**/v1/account/auth/start', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"delivery_unavailable"}' }))
+  await page.goto('/account/sign-in')
+  await page.getByLabel('Email address').fill('fixture@example.com')
+  await page.getByRole('button', { name: 'Send sign-in link' }).click()
+  await expect(page.getByRole('alert')).toContainText('unavailable')
+  await expect(page.getByRole('heading', { name: 'Check your email' })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('sign-in-unavailable.png'), fullPage: true })
+})
+
+test('device approval expires while the review stays open', async ({ page }) => {
+  await page.clock.install()
+  let approvals = 0
+  await page.route('**/v1/account/me', route => route.fulfill({ json: { accountId: 'test-account' } }))
+  const expiresAt = await page.evaluate(() => new Date(Date.now() + 60000).toISOString())
+  await page.route('**/v1/account/device-links/inspect', route => route.fulfill({ json: { label: 'My extension', expiresAt } }))
+  await page.route('**/v1/account/device-links/approve', route => { approvals++; return route.fulfill({ status: 204 }) })
+  await page.goto('/account/link-device')
+  await page.getByLabel('Extension code').fill('ABCDE-12345')
+  await page.getByRole('button', { name: 'Review extension' }).click()
+  await expect(page.getByRole('button', { name: 'Approve extension' })).toBeEnabled()
+  await page.clock.fastForward(61000)
+  await expect(page.getByRole('status')).toContainText('code has expired')
+  await expect(page.getByRole('button', { name: 'Approve extension' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Use another code' }).click()
+  await expect(page.getByLabel('Extension code')).toHaveValue('')
+  expect(approvals).toBe(0)
+})
