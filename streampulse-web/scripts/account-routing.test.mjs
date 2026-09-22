@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createServer, resolveConfig } from 'vite'
 
-test('account SPA and same-origin API use the actual Vite routing configuration', { timeout: 30_000 }, async () => {
+test('account SPA and same-origin API use the actual Vite routing configuration', { timeout: 30_000 }, async (t) => {
   const root = fileURLToPath(new URL('..', import.meta.url))
   const config = await resolveConfig({ root, envFile: false }, 'serve')
   assert.equal(config.server.proxy['/v1'].target, 'http://localhost:8081')
@@ -25,14 +25,30 @@ test('account SPA and same-origin API use the actual Vite routing configuration'
     response.statusCode = request.url.startsWith('/v1/account/me?') ? 401 : 503
     response.end(JSON.stringify({ error: response.statusCode === 401 ? 'unauthorized' : 'delivery_unavailable' }))
   })
-  upstream.listen(0, '127.0.0.1')
-  await once(upstream, 'listening')
   let vite
   let testServer
-  try {
+  // Cleanup also runs when node:test times out before the async body finishes.
+  t.after(async () => {
+    testServer?.closeAllConnections()
+    upstream.closeAllConnections()
+    await Promise.all([
+      testServer && new Promise(resolve => testServer.close(resolve)),
+      new Promise(resolve => upstream.close(resolve)),
+      vite?.close(),
+    ])
+  })
+  upstream.listen(0, '127.0.0.1')
+  await once(upstream, 'listening')
+  {
     vite = await createServer({
       root,
       envFile: false,
+      // This checks HTML/proxy routing, not browser dependency execution.
+      // Prevent a cold CI optimizer scan from outliving the test server.
+      plugins: [{
+        name: 'routing-test-no-optimizer', enforce: 'post',
+        config(config) { config.optimizeDeps = { noDiscovery: true, include: [], entries: [] } },
+      }],
       server: {
         host: '127.0.0.1', middlewareMode: true,
         // Only replace the destination; retain the real proxy's routing/header policy.
@@ -40,6 +56,8 @@ test('account SPA and same-origin API use the actual Vite routing configuration'
       },
     })
     assert.equal(vite.config.server.proxy['/v1'].changeOrigin, false)
+    assert.equal(vite.config.optimizeDeps.noDiscovery, true)
+    assert.deepEqual(vite.config.optimizeDeps.include, [])
     testServer = createHttpServer(vite.middlewares)
     testServer.listen(0, '127.0.0.1')
     await once(testServer, 'listening')
@@ -71,11 +89,5 @@ test('account SPA and same-origin API use the actual Vite routing configuration'
     assert.equal(requests[1].headers.cookie, 'fixture=session')
     assert.equal(requests[1].headers['x-pulse-csrf'], 'a'.repeat(64))
     assert.equal(requests[1].body, body)
-  } finally {
-    testServer?.closeAllConnections()
-    if (testServer) await new Promise(resolve => testServer.close(resolve))
-    await vite?.close()
-    upstream.closeAllConnections()
-    await new Promise(resolve => upstream.close(resolve))
   }
 })
