@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountError, billingRequest } from '../../lib/accountApi'
+import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import './account.css'
 
 export function stripeDestination(value: unknown, kind: 'checkout' | 'portal'): string | null {
@@ -19,33 +20,64 @@ export default function BillingPage() {
   const [signIn, setSignIn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [attemptState, setAttemptState] = useState('')
+  const [checkoutCancelled, setCheckoutCancelled] = useState(false)
+  const requestID = useRef(0)
+  const signInHref = accountBillingSignInHref(accountBillingReturnPath(location.pathname + location.search) ?? '/account/billing')
   const refresh = useCallback(async () => {
-    setBusy(true); setError(''); setSnapshot(null)
+    const request = ++requestID.current
+    setBusy(true); setError(''); setSnapshot(null); setAttemptState(''); setCheckoutCancelled(false); setSignIn(false)
     try {
-      const attempt = new URLSearchParams(location.search).get('attempt')
-      if (location.pathname.endsWith('/return') && attempt) {
-        if (!/^[a-f0-9-]{36}$/.test(attempt)) throw new Error('Invalid attempt')
-        const result = await billingRequest(`/checkout/${attempt}`)
-        setAttemptState(typeof result.state === 'string' ? result.state : '')
+      let checkoutState = ''
+      let checkoutError = ''
+      if (location.pathname.endsWith('/return')) {
+        const returnPath = accountBillingReturnPath(location.pathname + location.search)
+        if (!returnPath) {
+          checkoutError = 'This checkout link is invalid. Your current membership is shown below.'
+        } else {
+          setCheckoutCancelled(new URLSearchParams(returnPath.slice(returnPath.indexOf('?'))).get('cancelled') === '1')
+          const attempt = new URLSearchParams(location.search).get('attempt')
+          if (attempt) {
+            try {
+              const result = await billingRequest(`/checkout/${attempt}`)
+              checkoutState = typeof result.state === 'string' ? result.state : ''
+            } catch (error) {
+              if (!(error instanceof AccountError && error.status === 404)) throw error
+              checkoutError = 'This checkout link is no longer available. Your current membership is shown below.'
+            }
+          }
+        }
       }
+      if (request !== requestID.current) return
       const result = await billingRequest('/supporter')
+      if (request !== requestID.current) return
       if (result.schemaVersion !== 1 || !['none', 'active', 'grace', 'pending', 'expired', 'review'].includes(String(result.status))) throw new Error('Invalid membership')
-      setSnapshot(result); setSignIn(false)
+      setSnapshot(result); setSignIn(false); setAttemptState(checkoutState); setError(checkoutError)
     } catch (error) {
+      if (request !== requestID.current) return
       setSignIn(error instanceof AccountError && error.status === 401)
-      setError(error instanceof AccountError && error.status === 401 ? 'Sign in to view your membership.' : 'Billing is unavailable right now. No purchase has been started.')
-    } finally { setBusy(false) }
+      setError(error instanceof AccountError && error.status === 401 ? 'Sign in to view your membership.' : 'Billing status is unavailable right now. Refresh status before trying another checkout.')
+    } finally { if (request === requestID.current) setBusy(false) }
   }, [location.pathname, location.search])
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    void refresh()
+    return () => { requestID.current++ }
+  }, [refresh])
   async function open(kind: 'checkout' | 'portal') {
     if (busy) return
+    const request = ++requestID.current
     setBusy(true); setError('')
     try {
       const result = await billingRequest(kind === 'checkout' ? '/checkout' : '/portal', {})
+      if (request !== requestID.current) return
       const destination = stripeDestination(result.url, kind)
       if (!destination) throw new Error('Invalid destination')
       window.location.assign(destination)
     } catch (error) {
+      if (request !== requestID.current) return
+      if (error instanceof AccountError && error.status === 401) {
+        setSnapshot(null)
+        setSignIn(true)
+      }
       setError(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a subscription. Use Manage membership to make changes.'
         : error instanceof AccountError && error.code === 'checkout_pending' ? 'A checkout is awaiting confirmation. Refresh status before trying again.'
         : error instanceof AccountError && error.code === 'checkout_expired' ? 'The previous checkout expired without a purchase. You can start a new checkout.'
@@ -56,20 +88,32 @@ export default function BillingPage() {
     }
   }
   const status = String(snapshot?.status ?? '')
+  // Checkout is opt-in on the server. Older responses and disabled deployments
+  // must never expose a purchase control that will only fail after a click.
+  const checkoutEnabled = snapshot?.checkoutEnabled === true
   const labels: Record<string, string> = { none: 'No subscription', active: 'Supporter active', grace: 'Payment needs attention', pending: 'Payment pending', expired: 'Supporter ended', review: 'Membership needs review' }
   return <PublicLayout><section className="pulse-account" aria-label="Supporter billing">
     <p className="pulse-account-kicker">StreamPulse account</p><h1>Supporter membership</h1>
     <div role="status">{busy ? <p>Checking billing...</p> : null}{error ? <p>{error}</p> : null}</div>
-    {signIn ? <Link to="/account/sign-in">Sign in to Pulse</Link> : null}
+    {signIn ? <Link to={signInHref}>Sign in to Pulse</Link> : null}
     {snapshot ? <>
       <h2>{labels[status]}</h2>
       {typeof snapshot.accessUntil === 'string' && Number.isFinite(Date.parse(snapshot.accessUntil)) && ['active', 'grace'].includes(status) ? <p>Access through {new Date(snapshot.accessUntil).toLocaleDateString()}.</p> : null}
-      {attemptState && attemptState !== 'active' ? <p>Checkout status: {attemptState}. Access updates after payment confirmation.</p> : null}
-      {['none', 'expired'].includes(status) ? <><p>$4.99 per month, renewing automatically until cancellation. Taxes, if any, are shown at checkout.</p><p>Includes the Pulse banner, three finishes, and private support recognition.</p><button disabled={busy} onClick={() => void open('checkout')}>Continue to Stripe checkout</button></> : null}
-      <button disabled={busy} onClick={() => void open('portal')}>Manage membership</button>
-      <p>Manage payment details, invoices, and cancellation through Stripe. Cancellation keeps access through the paid period.</p>
+      {checkoutCancelled
+        ? <p>You left Stripe checkout before it confirmed a payment. Your current membership is shown below.</p>
+        : attemptState === 'pending'
+          ? <p>Payment confirmation is pending. Access updates after payment confirmation.</p>
+          : attemptState === 'expired'
+            ? <p>This checkout expired without a confirmed payment. Your current membership is shown below.</p>
+            : null}
+      {['none', 'expired'].includes(status) ? checkoutEnabled
+        ? <><p>$4.99 per month, renewing automatically until cancellation. Taxes, if any, are shown at checkout.</p><p>Includes a private Pulse header accent, three private finishes, and private support recognition.</p><button type="button" disabled={busy} onClick={() => void open('checkout')}>Continue to Stripe checkout</button></>
+        : <p>New Supporter sign-ups are not open yet. Existing members can still manage billing from this page.</p>
+        : null}
+      {status !== 'none' ? <><button type="button" disabled={busy} onClick={() => void open('portal')}>Manage membership</button>
+      <p>Manage payment details, invoices, and cancellation through Stripe. Cancellation keeps access through the paid period.</p></> : null}
     </> : null}
-    <button disabled={busy} onClick={() => void refresh()}>Refresh status</button>
+    <button type="button" disabled={busy} onClick={() => void refresh()}>Refresh status</button>
     <p><Link to="/account/link-device">Link your extension</Link></p>
     <p><Link to="/account/settings">Account &amp; devices</Link></p>
     <p><Link to="/terms">Supporter terms</Link> · <Link to="/refunds">Cancellation and refunds</Link> · <Link to="/support">Support</Link></p>

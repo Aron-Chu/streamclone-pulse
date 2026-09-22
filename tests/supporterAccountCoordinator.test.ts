@@ -9,8 +9,9 @@ function fixture(initial: unknown = null) {
   let value = initial
   let clock = now
   const request = vi.fn<(_: string, body?: Record<string, unknown>) => Promise<{ status: number; body: unknown }>>()
-  const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock })
-  return { coordinator, request, stored: () => value, advance: (ms: number) => { clock += ms } }
+  const identityChanged = vi.fn(async () => {})
+  const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock, identityChanged })
+  return { coordinator, request, identityChanged, stored: () => value, advance: (ms: number) => { clock += ms } }
 }
 describe('private supporter account coordinator', () => {
   it('serializes bookmark credentials with refresh and binds operations to their account', async () => {
@@ -80,6 +81,59 @@ describe('private supporter account coordinator', () => {
       f.request.mockResolvedValue({ status: 200, body: { ...body, ...change } })
       expect(await f.coordinator.entitlement()).toEqual({ state: 'error' })
     }
+  })
+  it('clears remotely revoked credentials and permits an immediate new device link', async () => {
+    const f = fixture(creds)
+    f.request.mockResolvedValueOnce({ status: 401, body: { error: 'unauthorized' } })
+    expect(await f.coordinator.entitlement()).toEqual({ state: 'not_linked' })
+    expect(f.stored()).toBeNull()
+    expect(f.identityChanged).toHaveBeenCalledTimes(1)
+    expect(await f.coordinator.run('status')).toEqual({ state: 'signed_out' })
+    expect(await fixture(f.stored()).coordinator.run('status')).toEqual({ state: 'signed_out' })
+    f.request.mockResolvedValueOnce({ status: 201, body: { pollingSecret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: iso(600) } })
+    expect(await f.coordinator.run('start')).toMatchObject({ state: 'pending', code: 'ABCDE-12345' })
+    expect(f.request).toHaveBeenCalledTimes(2)
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/device-links', { label: 'StreamPulse extension' })
+  })
+  it.each([403, 404, 429, 500, 503])('preserves the connection after entitlement status %s', async status => {
+    const f = fixture(creds)
+    f.request.mockResolvedValueOnce({ status, body: null })
+    expect(await f.coordinator.entitlement()).toEqual({ state: status === 404 || status === 503 ? 'unavailable' : 'error' })
+    expect(f.stored()).toEqual(creds)
+    expect(f.identityChanged).not.toHaveBeenCalled()
+    expect(await f.coordinator.run('status')).toMatchObject({ state: 'linked' })
+  })
+  it('preserves credentials after an entitlement transport failure', async () => {
+    const f = fixture(creds)
+    f.request.mockRejectedValueOnce(new Error('network unavailable'))
+    expect(await f.coordinator.entitlement()).toEqual({ state: 'error' })
+    expect(f.stored()).toEqual(creds)
+    expect(f.identityChanged).not.toHaveBeenCalled()
+  })
+  it('clears credentials rejected by cosmetic saving without replaying the write', async () => {
+    const f = fixture(creds)
+    f.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'halo' })).toBe(false)
+    expect(f.stored()).toBeNull()
+    expect(f.identityChanged).toHaveBeenCalledTimes(1)
+    expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'halo' })).toBe(false)
+    expect(f.request).toHaveBeenCalledTimes(1)
+  })
+  it.each(['entitlement', 'cosmetics'] as const)('keeps disconnect authority when a rejected %s request finishes late', async operation => {
+    const f = fixture(creds)
+    let finish!: (value: { status: number; body: unknown }) => void
+    f.request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = operation === 'entitlement'
+      ? f.coordinator.entitlement()
+      : f.coordinator.saveCosmetics({ enabled: true, finish: 'halo' })
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(1))
+    f.request.mockResolvedValueOnce({ status: 503, body: null })
+    const disconnect = f.coordinator.run('disconnect')
+    finish({ status: 401, body: null })
+    expect(await pending).toEqual(operation === 'entitlement' ? { state: 'not_linked' } : false)
+    expect(await disconnect).toEqual({ state: 'error', revocationPending: true })
+    expect(f.stored()).toEqual({ kind: 'revoking', token: creds.token })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/devices/disconnect', { token: creds.token })
   })
   it('redacts all secrets and coalesces start and poll attempts', async () => {
     const f = fixture()

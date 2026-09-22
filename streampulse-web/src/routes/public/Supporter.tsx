@@ -7,9 +7,8 @@ import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
  *
  * This is the destination the extension's Supporter card links to, and the page
  * whose terms that card summarizes — so the two must agree on price, cadence and
- * cancellation. There is deliberately no checkout button: billing is not
- * deployed, and an offer page that cannot take payment must say so rather than
- * present a control that fails.
+ * cancellation. Checkout availability remains server-controlled on the
+ * authenticated billing page; this public page must not guess deployment state.
  */
 const PRICE_DISPLAY = '$4.99 / month'
 
@@ -46,7 +45,9 @@ export default function Supporter() {
               Any time. Access runs to the end of the month you already paid for.
             </dd>
             <dt className="text-sm font-bold text-zinc-400">Taxes</dt>
-            <dd className="m-0 text-sm text-zinc-200">Any applicable tax is shown before you pay.</dd>
+            <dd className="m-0 text-sm text-zinc-200">
+              Stripe checkout shows the final total, including any tax it calculates, before you pay.
+            </dd>
             <dt className="text-sm font-bold text-zinc-400">Payment</dt>
             <dd className="m-0 text-sm text-zinc-200">
               Handled by Stripe. StreamPulse never sees or stores your card number.
@@ -56,8 +57,8 @@ export default function Supporter() {
 
         <h2>What Supporter includes</h2>
         <ul>
-          <li>An original Pulse profile banner.</li>
-          <li>Three decorative overlay finishes.</li>
+          <li>A private Pulse header accent.</li>
+          <li>Three private overlay finishes.</li>
           <li>Private support recognition in your account.</li>
         </ul>
 
@@ -82,23 +83,22 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Supporter is not yet open for sign-ups.</strong> Payment processing is built and
-            tested but not deployed, so there is nothing to buy today. This page is the honest
-            version of that: no checkout button that fails, and no waitlist that collects your
-            details for a product that is not selling.
+            <strong>Paid sign-ups are not open yet.</strong> Existing members can use account billing
+            to manage their membership. When new sign-ups open, account billing will show the Stripe
+            checkout option.
           </p>
           <p className="mb-0">
-            When it opens, subscribing will take a StreamPulse account and a Stripe checkout on this
-            site. <Link to="/account/sign-in">Account sign-in</Link> and extension linking depend on
-            account services being available on this site.
+            <Link className="btn btn-primary" to="/account/billing">
+              Open account billing
+            </Link>
           </p>
         </div>
 
         <h2>Managing a membership</h2>
         <p>
-          Once Supporter is live, payment method, invoice history and cancellation are handled in the
-          Stripe customer portal, reachable from your account. Cancelling takes effect at the end of
-          the period you have already paid for, and stays available after access ends. See{' '}
+          Payment method, invoice history and cancellation are handled in the Stripe customer portal,
+          reachable from account billing for existing members. Cancelling takes effect at the end of
+          the period you have already paid for, and billing history stays available after access ends. See{' '}
           <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for the details.
         </p>
 

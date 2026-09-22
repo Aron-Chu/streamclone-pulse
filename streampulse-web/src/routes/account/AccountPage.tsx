@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { clearAccountConfirmation, getAccountConfirmation } from '../../lib/accountConfirmation'
+import { accountBillingReturnFromSearch, accountBillingSignInHref, consumeAccountBillingReturn, readAccountBillingReturn, rememberAccountBillingReturn } from '../../lib/accountBillingReturn'
 import { PRIVACY_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import './account.css'
 
@@ -19,6 +20,7 @@ export default function AccountPage() {
 }
 
 function SignIn() {
+  const returnTo = accountBillingReturnFromSearch(useLocation().search)
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
@@ -26,7 +28,11 @@ function SignIn() {
   async function submit(event: FormEvent) {
     event.preventDefault(); if (busy) return
     setBusy(true); setError('')
-     try { await accountRequest('/auth/start', { email: email.trim() }); setSent(true) }
+    try {
+      await accountRequest('/auth/start', { email: email.trim() })
+      rememberAccountBillingReturn(returnTo)
+      setSent(true)
+    }
     catch (error) { setError(accountErrorText(error)) }
     finally { setBusy(false) }
   }
@@ -48,22 +54,30 @@ function SignIn() {
 
 function Confirm() {
   const [token] = useState(getAccountConfirmation)
+  const [returnTo, setReturnTo] = useState(readAccountBillingReturn)
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)
   const [error, setError] = useState('')
   async function confirm() {
     if (!token || busy) return
     setBusy(true); setError('')
-    try { await accountRequest('/auth/complete', { secret: token, confirmed: true }); clearAccountConfirmation(); setComplete(true) }
+    try {
+      await accountRequest('/auth/complete', { secret: token, confirmed: true })
+      clearAccountConfirmation()
+      setReturnTo(consumeAccountBillingReturn())
+      setComplete(true)
+    }
     catch (error) { setError(accountErrorText(error)) }
     finally { setBusy(false) }
   }
   return <><p className="pulse-account-kicker">Secure sign-in</p><h1>{complete ? 'You’re signed in' : 'Confirm your sign-in'}</h1>
-    {complete ? <><p>You can now link your StreamPulse extension.</p><Link className="pulse-account-button pulse-account-primary" to="/account/link-device">Link extension</Link></>
+    {complete ? returnTo
+      ? <><p>You can now review your Supporter membership.</p><Link className="pulse-account-button pulse-account-primary" to={returnTo}>Continue to billing</Link></>
+      : <><p>You can now link your StreamPulse extension.</p><Link className="pulse-account-button pulse-account-primary" to="/account/link-device">Link extension</Link></>
       : token ? <><p>Continue only if you requested this sign-in link.</p><button className="pulse-account-primary" onClick={() => void confirm()} disabled={busy}>{busy ? 'Confirming…' : 'Confirm sign-in'}</button></>
       : <p>This link is missing or expired. Request a new link in this browser.</p>}
     {error ? <p role="alert">{error}</p> : null}
-    {!complete ? <Link to="/account/sign-in">Request another sign-in link</Link> : null}</>
+    {!complete ? <Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link> : null}</>
 }
 
 function LinkDevice() {

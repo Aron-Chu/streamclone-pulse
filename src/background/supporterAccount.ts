@@ -87,7 +87,7 @@ export class SupporterAccountCoordinator {
   /**
    * Read the server-reconciled entitlement.
    *
-   * Runs  first so a stale access credential is rotated by the existing
+   * Runs status first so a stale access credential is rotated by the existing
    * serialized refresh path, then makes the authenticated read. The credential
    * never leaves this coordinator.
    */
@@ -96,15 +96,20 @@ export class SupporterAccountCoordinator {
     const task = this.queue
       .then(async (): Promise<SupporterEntitlement> => {
         const account = await this.perform('status', generation)
+        if (generation !== this.generation) return { state: 'not_linked' }
         if (account.state !== 'linked') {
           return account.state === 'unavailable' ? { state: 'unavailable' } : { state: 'not_linked' }
         }
         const raw = object(await this.ports.read())
         const credentials = raw.kind === 'linked' ? linked(raw) : null
-        if (!credentials) return { state: 'not_linked' }
+        if (!credentials || generation !== this.generation) return { state: 'not_linked' }
         const started = performance.now()
         const result = await this.ports.request('/v1/billing/supporter', undefined, credentials.token)
         if (generation !== this.generation) return { state: 'not_linked' }
+        if (result.status === 401) {
+          await this.clear('relink_required')
+          return { state: 'not_linked' }
+        }
         return projectEntitlement(result, { accountId: credentials.accountId, environment: this.ports.environment ?? 'live' }, performance.now() - started)
       })
       .catch((): SupporterEntitlement => ({ state: 'error' }))
@@ -141,9 +146,11 @@ export class SupporterAccountCoordinator {
       const account = await this.perform('status', generation)
       if (account.state !== 'linked' || generation !== this.generation) return false
       const credentials = linked(await this.ports.read())
-      if (!credentials) return false
+      if (!credentials || generation !== this.generation) return false
       const result = await this.ports.request('/v1/billing/cosmetics', value, credentials.token)
-      return result.status === 200 && generation === this.generation
+      if (generation !== this.generation) return false
+      if (result.status === 401) await this.clear('relink_required')
+      return result.status === 200
     }).catch(() => false)
     this.queue = task
     return task
