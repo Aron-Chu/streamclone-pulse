@@ -9,6 +9,9 @@ export async function billingRequest(path: '/supporter' | '/checkout' | '/portal
   return sessionRequest('/v1/billing' + path, body)
 }
 async function sessionRequest(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  // Validate URL-derived IDs at runtime, including calls from JavaScript.
+  const allowed = /^\/v1\/(?:account\/(?:auth\/(?:start|complete|logout)|me|devices(?:\?cursor=[0-9a-fA-F-]{36}|\/revoke)?|device-links\/(?:inspect|approve))|billing\/(?:supporter|portal|checkout(?:\/[0-9a-fA-F-]{36})?))$/
+  if (!allowed.test(path) || path.includes('\n') || path.includes('\r')) throw new AccountError(400, 'invalid_request_path')
   const csrf = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length)
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
