@@ -1,4 +1,4 @@
-import type { ExtensionRollup } from '../shared/messages.ts'
+import type { ExtensionRollup, PulseCoverageRange } from '../shared/messages.ts'
 import type { EmoteOverlaySeries } from './chatActivityEmotes.ts'
 import { CHART_THEME } from './chartTheme.ts'
 
@@ -92,19 +92,29 @@ export function zeroFillRollupsForRecap(
   rollups: ExtensionRollup[],
   fromOffset: number,
   toOffset: number,
+  missingBeforeOffset = 0,
+  missingRanges: readonly PulseCoverageRange[] = [],
 ): ExtensionRollup[] {
   if (toOffset <= fromOffset) return rollups
   const byOffset = bucketRollupsToMinutes(rollups)
   const step = 60
   const out: ExtensionRollup[] = []
   for (let off = fromOffset; off <= toOffset; off += step) {
-    out.push(
-      byOffset.get(off) ?? {
+    const explicitlyMissing = missingRanges.some(range => (
+      off >= range.fromOffsetSeconds && off <= range.toOffsetSeconds
+    ))
+    const existing = byOffset.get(off)
+    out.push(existing
+      ? {
+          ...existing,
+          missing: Boolean(existing.missing || off < missingBeforeOffset || explicitlyMissing),
+        }
+      : {
         offsetSeconds: off,
         chatCount: 0,
         sevenTvEmoteCount: 0,
-      },
-    )
+        missing: off < missingBeforeOffset || explicitlyMissing,
+      })
   }
   return out
 }

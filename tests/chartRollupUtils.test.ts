@@ -4,7 +4,6 @@ import {
   areaPathInBand,
   chartBarBucketOpacity,
   easeInOutCubic,
-  extendViewerSeriesToLeadingEdge,
   firstViewerOffsetSeconds,
   linePathInBand,
   plotY,
@@ -172,18 +171,6 @@ describe('firstViewerOffsetSeconds', () => {
   })
 })
 
-describe('extendViewerSeriesToLeadingEdge', () => {
-  it('carries the first viewer sample back across earlier chat minutes', () => {
-    const rollups = [
-      { offsetSeconds: 120, chatCount: 40, viewerCount: 0 },
-      { offsetSeconds: 180, chatCount: 55, viewerCount: 0 },
-      { offsetSeconds: 300, chatCount: 60, viewerCount: 41_000 },
-    ]
-    const values = [null, null, 41_000] as Array<number | null>
-    expect(extendViewerSeriesToLeadingEdge(rollups, values)).toEqual([41_000, 41_000, 41_000])
-  })
-})
-
 describe('rampNullableSeriesFromStreamStart', () => {
   it('ramps from 0 at stream start to the first positive sample', () => {
     const values = [null, null, 1000, 900] as Array<number | null>
@@ -198,6 +185,21 @@ describe('rampNullableSeriesFromStreamStart', () => {
   it('ease-in-out reaches the anchor at the first positive index', () => {
     expect(easeInOutCubic(0)).toBe(0)
     expect(easeInOutCubic(1)).toBe(1)
+  })
+
+  // The competing flat-backfill policy (extendViewerSeriesToLeadingEdge) was
+  // removed: two leading-edge policies must not coexist. Only the prefix before
+  // the first sample is synthesised; later unobserved minutes stay gaps.
+  it('leaves gaps after the first sample untouched', () => {
+    const values = [null, 1000, null, null, 800] as Array<number | null>
+    // Only the pre-first-sample prefix is synthesised (index 0 becomes the 0
+    // anchor). Later unobserved minutes stay gaps for buildViewerGeometry.
+    expect(rampNullableSeriesFromStreamStart(values)).toEqual([0, 1000, null, null, 800])
+  })
+
+  it('returns the series unchanged when nothing was ever sampled', () => {
+    const values = [null, null, null] as Array<number | null>
+    expect(rampNullableSeriesFromStreamStart(values)).toEqual(values)
   })
 })
 

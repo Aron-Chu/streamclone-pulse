@@ -6,12 +6,14 @@ import {
   computeSelectMenuPosition,
   findScrollportElement,
   isTriggerVisibleInScrollport,
+  listScrollableAncestors,
 } from './pulseSelectPosition.ts'
 import { theme } from './theme.ts'
 
 export interface PulseSelectOption<T extends string = string> {
   value: T
   label: string
+  disabled?: boolean
 }
 
 export interface PulseThemedSelectProps<T extends string = string> {
@@ -22,13 +24,16 @@ export interface PulseThemedSelectProps<T extends string = string> {
   label?: string
   disabled?: boolean
   fullWidth?: boolean
+  id?: string
 }
 
 function indexForValue<T extends string>(
   options: readonly PulseSelectOption<T>[],
   value: T,
 ): number {
-  return Math.max(0, options.findIndex(option => option.value === value))
+  const selectedIndex = options.findIndex(option => option.value === value && !option.disabled)
+  if (selectedIndex >= 0) return selectedIndex
+  return Math.max(0, options.findIndex(option => !option.disabled))
 }
 
 function isShadowRoot(node: unknown): node is ShadowRoot {
@@ -39,10 +44,12 @@ function resolveMenuHost(
   portalRoot: ShadowRoot | Document,
   trigger: HTMLElement | null,
 ): Element | DocumentFragment | null {
+  const dialog = trigger?.closest('dialog[open]')
+  if (dialog) return dialog
   if (isShadowRoot(portalRoot)) return portalRoot
   const rootNode = trigger?.getRootNode()
   if (isShadowRoot(rootNode)) return rootNode
-  return trigger?.parentElement ?? null
+  return trigger?.ownerDocument.body ?? null
 }
 
 export function PulseThemedSelect<T extends string>({
@@ -53,6 +60,7 @@ export function PulseThemedSelect<T extends string>({
   label,
   disabled = false,
   fullWidth = false,
+  id,
 }: PulseThemedSelectProps<T>) {
   const listId = useId()
   const optionIdPrefix = useId()
@@ -80,14 +88,14 @@ export function PulseThemedSelect<T extends string>({
       const trigger = triggerRef.current
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
-      const viewport = { width: window.innerWidth, height: window.innerHeight }
+      const viewport = { width: document.documentElement.clientWidth, height: window.innerHeight }
       const scrollport = findScrollportElement(trigger)?.getBoundingClientRect() ?? null
       if (!isTriggerVisibleInScrollport(rect, scrollport, viewport)) {
         setOpen(false)
         return
       }
       const menuHeight = menuRef.current?.getBoundingClientRect().height
-        || Math.min(220, options.length * 32 + 8)
+        || Math.min(220, options.length * 28 + 8)
       const position = computeSelectMenuPosition(rect, menuHeight, viewport)
       setMenuStyle({
         position: 'fixed',
@@ -95,31 +103,13 @@ export function PulseThemedSelect<T extends string>({
         right: position.right,
         minWidth: position.minWidth,
         zIndex: 2_147_483_640,
+        transformOrigin: position.placement === 'above' ? 'bottom right' : 'top right',
+        maxHeight: Math.max(64, Math.min(220, viewport.height - 16)),
       })
     }
     updatePosition()
     const scrollTargets = new Set<EventTarget>([document])
-    let node: HTMLElement | null = triggerRef.current
-    while (node) {
-      const style = getComputedStyle(node)
-      if (
-        node.classList.contains('pulse-panel-body')
-        || style.overflowY === 'auto'
-        || style.overflowY === 'scroll'
-        || style.overflowY === 'overlay'
-      ) {
-        scrollTargets.add(node)
-      }
-      const parent = node.parentElement
-      if (!parent && node.getRootNode) {
-        const root = node.getRootNode()
-        if (isShadowRoot(root)) {
-          node = root.host as HTMLElement
-          continue
-        }
-      }
-      node = parent as HTMLElement | null
-    }
+    for (const scrollport of listScrollableAncestors(triggerRef.current)) scrollTargets.add(scrollport)
     for (const target of scrollTargets) target.addEventListener('scroll', updatePosition, true)
     window.addEventListener('resize', updatePosition)
     window.visualViewport?.addEventListener('resize', updatePosition)
@@ -133,6 +123,10 @@ export function PulseThemedSelect<T extends string>({
   }, [open, options.length, value])
 
   useEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView?.({ block: 'nearest' })
+  }, [open, activeIndex])
+
+  useEffect(() => {
     if (!open) return
     const selectEvents = new WeakSet<Event>()
     const onPointerDown = (event: Event) => {
@@ -140,12 +134,7 @@ export function PulseThemedSelect<T extends string>({
         !eventPathIncludesNode(event, rootRef.current)
         && !eventPathIncludesNode(event, menuRef.current)
       ) {
-        if (isShadowRoot(portalRoot) && event.composedPath().includes(portalRoot.host)) {
-          queueMicrotask(() => {
-            if (!selectEvents.has(event)) setOpen(false)
-          })
-          return
-        }
+        if (selectEvents.has(event)) return
         setOpen(false)
       }
     }
@@ -157,12 +146,13 @@ export function PulseThemedSelect<T extends string>({
         selectEvents.add(event)
       }
     }
-    document.addEventListener('pointerdown', onPointerDown, true)
+    // Observe after shadow-root capture has classified a closed-root event.
+    document.addEventListener('pointerdown', onPointerDown)
     if (isShadowRoot(portalRoot)) {
       portalRoot.addEventListener('pointerdown', onPortalPointerDown, true)
     }
     return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('pointerdown', onPointerDown)
       if (isShadowRoot(portalRoot)) {
         portalRoot.removeEventListener('pointerdown', onPortalPointerDown, true)
       }
@@ -175,6 +165,7 @@ export function PulseThemedSelect<T extends string>({
   }
 
   function choose(next: T): void {
+    if (options.find(option => option.value === next)?.disabled) return
     onChange(next)
     closeMenu(true)
   }
@@ -186,7 +177,13 @@ export function PulseThemedSelect<T extends string>({
 
   function moveActive(delta: number): void {
     if (options.length === 0) return
-    setActiveIndex(current => (current + delta + options.length) % options.length)
+    setActiveIndex(current => {
+      for (let step = 1; step <= options.length; step++) {
+        const next = (current + delta * step + options.length * options.length) % options.length
+        if (!options[next].disabled) return next
+      }
+      return current
+    })
   }
 
   function handleTriggerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
@@ -205,13 +202,13 @@ export function PulseThemedSelect<T extends string>({
       case 'Home':
         if (open) {
           event.preventDefault()
-          setActiveIndex(0)
+          setActiveIndex(Math.max(0, options.findIndex(option => !option.disabled)))
         }
         break
       case 'End':
         if (open) {
           event.preventDefault()
-          setActiveIndex(Math.max(0, options.length - 1))
+          setActiveIndex(Math.max(0, options.map(option => !option.disabled).lastIndexOf(true)))
         }
         break
       case 'Enter':
@@ -243,10 +240,15 @@ export function PulseThemedSelect<T extends string>({
   const menuHost = resolveMenuHost(portalRoot, triggerRef.current)
 
   return (
-    <div ref={rootRef} style={{ ...styles.wrap, ...(fullWidth ? styles.wrapFull : null) }}>
+    <div
+      ref={rootRef}
+      style={{ ...styles.wrap, ...(fullWidth ? styles.wrapFull : null) }}
+      data-chart-action="true"
+    >
       {label ? <span style={styles.label}>{label}</span> : null}
       <button
         ref={triggerRef}
+        id={id}
         type="button"
         style={{
           ...styles.trigger,
@@ -268,12 +270,14 @@ export function PulseThemedSelect<T extends string>({
           else openMenu()
         }}
         onKeyDown={handleTriggerKeyDown}
-        onBlur={() => {
-          if (open) closeMenu(false)
-        }}
       >
         <span style={styles.triggerValue}>{selected?.label ?? value}</span>
-        <span style={styles.chevron} aria-hidden>
+        <span
+          className="pulse-themed-select-chevron"
+          data-open={open ? 'true' : 'false'}
+          style={styles.chevron}
+          aria-hidden
+        >
           ▾
         </span>
       </button>
@@ -285,6 +289,7 @@ export function PulseThemedSelect<T extends string>({
               role="listbox"
               aria-label={ariaLabel}
               className="pulse-themed-select-menu"
+              data-chart-action="true"
               style={{ ...styles.menu, ...menuStyle }}
             >
               {options.map((option, index) => {
@@ -297,17 +302,19 @@ export function PulseThemedSelect<T extends string>({
                       type="button"
                       role="option"
                       aria-selected={active}
+                      disabled={option.disabled}
                       data-active={focused ? 'true' : undefined}
                       tabIndex={-1}
                       className="pulse-themed-select-option"
                       style={{
                         ...styles.option,
                         ...(active ? styles.optionActive : null),
+                        ...(option.disabled ? styles.triggerDisabled : null),
                       }}
                       onPointerDown={handleOptionPointerDown}
                       onClick={() => choose(option.value)}
                     >
-                      {option.label}
+                      <span>{option.label}</span><span aria-hidden="true">{active ? '✓' : ''}</span>
                     </button>
                   </li>
                 )
@@ -343,19 +350,23 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
   },
   trigger: {
+    fontFamily: theme.font,
     alignItems: 'center',
     background: theme.panel,
-    border: `1px solid ${theme.border}`,
-    borderRadius: 6,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.border,
+    borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
     display: 'inline-flex',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
     gap: 6,
     lineHeight: 1.2,
     minWidth: 92,
-    padding: '4px 8px',
+    minHeight: 30,
+    padding: '5px 9px',
     textAlign: 'left',
   },
   triggerOpen: {
@@ -373,6 +384,7 @@ const styles: Record<string, CSSProperties> = {
   },
   triggerValue: {
     flex: 1,
+    fontVariantNumeric: 'tabular-nums',
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -383,10 +395,10 @@ const styles: Record<string, CSSProperties> = {
     flexShrink: 0,
     fontSize: 10,
     lineHeight: 1,
-    transform: 'translateY(-1px)',
   },
   menu: {
-    background: 'rgba(17, 17, 23, 0.98)',
+    fontFamily: theme.font,
+    background: '#111117',
     border: `1px solid ${theme.border}`,
     borderRadius: 8,
     boxShadow: '0 12px 28px rgba(0, 0, 0, 0.45)',
@@ -405,14 +417,20 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 40,
   },
   option: {
+    fontFamily: theme.font,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     background: 'transparent',
     border: 0,
     borderRadius: 6,
     color: theme.textSecondary,
     cursor: 'pointer',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
-    padding: '6px 8px',
+    minHeight: 30,
+    padding: '6px 9px',
     textAlign: 'left',
     width: '100%',
   },

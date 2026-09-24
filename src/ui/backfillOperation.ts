@@ -74,6 +74,7 @@ export function activationFromOverlay(input: {
   login: string
   streamId?: string | number | null
   vodId?: string | null
+  startedAt?: string | null
 }): FullHistoryActivation {
   return makeFullHistoryActivation(input)
 }

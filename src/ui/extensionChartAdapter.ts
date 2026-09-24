@@ -20,14 +20,18 @@ export function extensionViewerCount(value: unknown): number | undefined {
     : undefined
 }
 
-export function extensionRollupViewerCount(rollup: Pick<ExtensionRollup, 'viewerCount' | 'missing'>): number | undefined {
+export function extensionRollupViewerCount(
+  rollup: Pick<ExtensionRollup, 'viewerCount' | 'viewerSamples' | 'missing'>,
+): number | undefined {
   if (rollup.missing) return undefined
-  return extensionViewerCount(rollup.viewerCount)
+  const value = extensionViewerCount(rollup.viewerCount)
+  if (value !== undefined) return value
+  return (rollup.viewerSamples ?? 0) > 0 ? 0 : undefined
 }
 
 /** True only when at least one real, non-missing viewer sample exists. */
 export function hasExtensionViewerSamples(
-  rollups: Array<Pick<ExtensionRollup, 'viewerCount' | 'missing'>>,
+  rollups: Array<Pick<ExtensionRollup, 'viewerCount' | 'viewerSamples' | 'missing'>>,
 ): boolean {
   return rollups.some(rollup => extensionRollupViewerCount(rollup) !== undefined)
 }

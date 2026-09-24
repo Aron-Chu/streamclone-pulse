@@ -25,6 +25,17 @@ export function viewportCenterSeconds(viewport: ChartViewport): number {
   return (viewport.startSeconds + viewport.endSeconds) / 2
 }
 
+/** Chart buckets use a half-open visible interval: [start, end). */
+export function viewportContainsOffset(
+  viewport: ChartViewport,
+  offsetSeconds: number | null | undefined,
+): boolean {
+  return offsetSeconds != null
+    && Number.isFinite(offsetSeconds)
+    && offsetSeconds >= viewport.startSeconds
+    && offsetSeconds < viewport.endSeconds
+}
+
 export function isFollowingLive(
   viewport: ChartViewport,
   durationSeconds: number,
@@ -103,6 +114,38 @@ export function clampViewportToCoverage(
   const latestStart = Math.max(coverageStart, durationSeconds - span)
   const startSeconds = clamp(viewport.startSeconds, coverageStart, latestStart)
   return { startSeconds, endSeconds: startSeconds + span }
+}
+
+/**
+ * Keep manual viewport changes inside the selected range preset.
+ *
+ * Range presets are the chart's zoom-out ceiling. Without this second clamp,
+ * the rail could expand to the full timeline while the selector still showed
+ * "15 min", which made the visible range and selected range disagree.
+ */
+export function clampViewportToMaxSpan(
+  viewport: ChartViewport,
+  durationSeconds: number,
+  maxSpanSeconds: number | 'full',
+  coverageStartSeconds = 0,
+): ChartViewport {
+  const normalized = clampViewportToCoverage(viewport, durationSeconds, coverageStartSeconds)
+  if (maxSpanSeconds === 'full') return normalized
+  const availableDuration = Math.max(
+    0,
+    durationSeconds - clamp(coverageStartSeconds, 0, durationSeconds),
+  )
+  const maxSpan = Math.min(safeZoom(maxSpanSeconds), availableDuration)
+  if (maxSpan <= 0 || viewportDurationSeconds(normalized) <= maxSpan + 1) {
+    return normalized
+  }
+  return zoomViewport({
+    viewport: normalized,
+    zoomSeconds: maxSpan,
+    anchorSeconds: viewportCenterSeconds(normalized),
+    durationSeconds,
+    coverageStartSeconds,
+  })
 }
 
 /** Resize one edge while preserving the opposite edge and coverage bounds. */
@@ -324,9 +367,9 @@ export interface RailGeometry {
 }
 
 /**
- * Rail coordinates are stream-relative [0, duration]. A non-zero coverage
- * start is rendered as an unavailable prefix; pointer navigation rejects that
- * prefix, while the thumb and selected markers use the same full-stream scale.
+ * Rail coordinates are relative to the captured domain
+ * [coverageStartSeconds, duration]. Missing stream time is explained beside
+ * the rail instead of rendered as a dead-looking control segment.
  */
 export function railGeometry(
   viewport: ChartViewport,
@@ -348,9 +391,11 @@ export function railGeometry(
     ? coverageStart
     : normalizedViewport.startSeconds
   const effectiveDuration = Math.min(viewportDuration, availableDuration)
-  const rawThumbX = (effectiveStart / durationSeconds) * railWidth
-  const rawThumbWidth = (effectiveDuration / durationSeconds) * railWidth
-  const thumbWidth = Math.max(8, Math.min(railWidth, rawThumbWidth))
+  const rawThumbX = ((effectiveStart - coverageStart) / availableDuration) * railWidth
+  const rawThumbWidth = (effectiveDuration / availableDuration) * railWidth
+    // The visible range must remain proportional even at the smallest zoom.
+    // The UI moves narrow-range resize hit areas outside this exact span.
+    const thumbWidth = Math.min(railWidth, rawThumbWidth)
   const maxX = Math.max(0, railWidth - thumbWidth)
   const thumbX = Math.min(maxX, Math.max(0, rawThumbX))
   return { thumbX, thumbWidth, totalWidth: railWidth }

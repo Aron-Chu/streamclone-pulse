@@ -13,6 +13,7 @@ import {
   isChatRectInViewport,
   isUsableChatRect,
   focusNativeChatComposer,
+  scheduleNativeChatFocusHandoff,
   MIN_CHAT_HEIGHT,
   MIN_CHAT_WIDTH,
   pickChatColumn,
@@ -252,6 +253,115 @@ describe('native chat handoff', () => {
 
     expect(resolveNativeChatComposer(dom.window.document)).toBeNull()
     expect(focusNativeChatComposer(dom.window.document)).toBe(false)
+  })
+
+  function makeFocusTimerHarness() {
+    let now = 0
+    let nextId = 1
+    const timers = new Map<number, { callback: () => void; delayMs: number }>()
+
+    return {
+      now: () => now,
+      setTimeout(callback: () => void, delayMs: number): number {
+        const id = nextId++
+        timers.set(id, { callback, delayMs })
+        return id
+      },
+      clearTimeout(handle: unknown): void {
+        timers.delete(handle as number)
+      },
+      runNext(): void {
+        const [id, timer] = timers.entries().next().value ?? []
+        if (id === undefined || !timer) return
+        timers.delete(id as number)
+        now += (timer as { delayMs: number }).delayMs
+        ;(timer as { callback: () => void }).callback()
+      },
+      pending(): number {
+        return timers.size
+      },
+      advance(ms: number): void {
+        now += ms
+      },
+    }
+  }
+
+  it('retries until Twitch remounts the composer, then stops after success', () => {
+    const dom = new JSDOM('<body></body>')
+    const timers = makeFocusTimerHarness()
+    const handoff = scheduleNativeChatFocusHandoff({
+      doc: dom.window.document,
+      now: timers.now,
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+      retryIntervalMs: 25,
+      timeoutMs: 100,
+    })
+
+    timers.runNext()
+    expect(handoff.active).toBe(true)
+    expect(timers.pending()).toBe(1)
+
+    const editor = dom.window.document.createElement('div')
+    editor.setAttribute('role', 'textbox')
+    editor.setAttribute('contenteditable', 'true')
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => rect(320, 32) })
+    dom.window.document.body.appendChild(editor)
+
+    timers.runNext()
+    expect(dom.window.document.activeElement).toBe(editor)
+    expect(handoff.active).toBe(false)
+    expect(timers.pending()).toBe(0)
+  })
+
+  it('times out and does not focus an editor that appears after the retry window', () => {
+    const dom = new JSDOM('<body></body>')
+    const timers = makeFocusTimerHarness()
+    const handoff = scheduleNativeChatFocusHandoff({
+      doc: dom.window.document,
+      now: timers.now,
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+      retryIntervalMs: 25,
+      timeoutMs: 75,
+    })
+
+    while (timers.pending() > 0) timers.runNext()
+
+    expect(handoff.active).toBe(false)
+    expect(timers.pending()).toBe(0)
+    const editor = dom.window.document.createElement('div')
+    editor.setAttribute('role', 'textbox')
+    editor.setAttribute('contenteditable', 'true')
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => rect(320, 32) })
+    dom.window.document.body.appendChild(editor)
+    expect(dom.window.document.activeElement).not.toBe(editor)
+  })
+
+  it('cancels on user intent so a later remount cannot steal focus', () => {
+    const dom = new JSDOM('<body><button>Elsewhere</button></body>')
+    const timers = makeFocusTimerHarness()
+    const handoff = scheduleNativeChatFocusHandoff({
+      doc: dom.window.document,
+      now: timers.now,
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+      retryIntervalMs: 25,
+      timeoutMs: 100,
+    })
+
+    dom.window.document.querySelector('button')?.dispatchEvent(
+      new dom.window.MouseEvent('pointerdown', { bubbles: true }),
+    )
+    expect(handoff.active).toBe(false)
+    expect(timers.pending()).toBe(0)
+
+    const editor = dom.window.document.createElement('div')
+    editor.setAttribute('role', 'textbox')
+    editor.setAttribute('contenteditable', 'true')
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => rect(320, 32) })
+    dom.window.document.body.appendChild(editor)
+    expect(dom.window.document.activeElement).not.toBe(editor)
   })
 })
 

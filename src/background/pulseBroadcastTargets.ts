@@ -1,4 +1,5 @@
 import { normalizeLogin } from '../shared/login.ts'
+import type { BackgroundRequest } from '../shared/messages.ts'
 
 /** True when a Twitch tab URL is for this channel (multi-tab same login still matches). */
 export function isSupportedTwitchUrl(url: string | undefined): boolean {
@@ -40,6 +41,95 @@ export function isExtensionPageSender(sender: RuntimeSenderLike, extensionId: st
 
 export function isTrustedTwitchTopFrameSender(sender: RuntimeSenderLike, extensionId: string): boolean {
   return Boolean(sender.id === extensionId && sender.frameId === 0 && isSupportedTwitchUrl(sender.tab?.url))
+}
+
+/**
+ * Which senders may invoke each message.
+ *
+ * - `extension-page`: options/popup only. Account, device and watchlist
+ *   operations live here so a Twitch content script can never reach them.
+ * - `twitch-channel`: extension pages, or a top-frame Twitch tab whose URL
+ *   matches the requested login.
+ * - `twitch-any`: extension pages, or any top-frame Twitch tab.
+ * - `twitch-channel-or-vod`: same channel rule, or an exact requested VOD URL.
+ *
+ * Exhaustive Record, not a set with a permissive fallback. Adding a message
+ * type without classifying it is a type error, not a silent grant to the
+ * content script.
+ */
+export type MessageSenderScope = 'extension-page' | 'twitch-channel' | 'twitch-channel-or-vod' | 'twitch-any'
+
+export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSenderScope> = {
+  SUPPORTER_ACCOUNT: 'extension-page',
+  SUPPORTER_ENTITLEMENT: 'extension-page',
+  SUPPORTER_COSMETICS: 'extension-page',
+  SUPPORTER_APPEARANCE: 'twitch-any',
+  ENROLL_DEVICE: 'extension-page',
+  GET_DEVICE_AUTH_STATUS: 'extension-page',
+  ROTATE_DEVICE: 'extension-page',
+  REVOKE_DEVICE: 'extension-page',
+  LIST_WATCHLIST: 'extension-page',
+  ADD_WATCHLIST: 'extension-page',
+  REMOVE_WATCHLIST: 'extension-page',
+  SYNC_WATCHLIST: 'extension-page',
+  DELETE_BOOKMARK: 'extension-page',
+  MY_MOMENTS: 'extension-page',
+  MOMENT_CAPTURE: 'twitch-any',
+  GET_PULSE_DEBUG_LOG: 'extension-page',
+  CLEAR_PULSE_DEBUG_LOG: 'extension-page',
+  TRACK: 'twitch-channel',
+  UNTRACK: 'twitch-channel',
+  GET_PULSE: 'twitch-channel',
+  GET_COVERAGE: 'twitch-channel',
+  GET_ALWAYS_TRACKED: 'twitch-channel',
+  GET_CLIP: 'twitch-channel-or-vod',
+  HINT_VOD: 'twitch-channel',
+  DISCOVER_LIVE_VOD: 'twitch-channel',
+  LOAD_MISSED_MOMENTS: 'twitch-channel',
+  GET_PULSE_BACKFILL_STATUS: 'twitch-channel',
+  LIST_PAST_VODS: 'twitch-channel',
+  LIST_BOOKMARKS: 'twitch-channel-or-vod',
+  SAVE_BOOKMARK: 'twitch-channel-or-vod',
+  HEALTH: 'twitch-any',
+  GET_UPDATE_CHECK_CAPABILITY: 'twitch-any',
+  CHECK_FOR_UPDATE: 'twitch-any',
+  OPEN_SETTINGS_HOST: 'twitch-any',
+  REPORT_EXTENSION_DIAGNOSTIC: 'twitch-any',
+  EMIT_EXTENSION_ANALYTICS: 'twitch-any',
+  SET_AUTO_UPDATE: 'twitch-any',
+  FETCH_EMOTE_IMAGE: 'twitch-any',
+  GET_PULSE_VOD: 'twitch-any',
+  APPEND_PULSE_DEBUG: 'twitch-any',
+}
+
+/** Own entries only, so inherited object keys cannot resolve to a scope. */
+const SCOPE_BY_MESSAGE_TYPE = new Map<string, MessageSenderScope>(Object.entries(MESSAGE_SENDER_SCOPE))
+
+/**
+ * Authorizes one runtime message by sender. `login` is required only for
+ * `twitch-channel` messages; pass the message's own login.
+ */
+export function isSenderAuthorizedForMessage(
+  messageType: string,
+  login: string | undefined,
+  sender: RuntimeSenderLike,
+  extensionId: string,
+  vodId?: string,
+): boolean {
+  if (!sender.id || sender.id !== extensionId) return false
+  // Own-property lookup only. Plain indexing would resolve `__proto__` and
+  // `toString` to inherited values and authorize an unclassified type.
+  const scope = SCOPE_BY_MESSAGE_TYPE.get(messageType)
+  if (scope !== 'extension-page' && scope !== 'twitch-channel' && scope !== 'twitch-channel-or-vod' && scope !== 'twitch-any') return false
+  if (scope === 'extension-page') return isExtensionPageSender(sender, extensionId)
+  if (isExtensionPageSender(sender, extensionId)) return true
+  if (!isTrustedTwitchTopFrameSender(sender, extensionId)) return false
+  if (scope === 'twitch-any') return true
+  if (scope === 'twitch-channel-or-vod' && login && vodId && /^\d+$/.test(vodId)) {
+    const path = new URL(sender.tab!.url!).pathname
+    if (path === `/videos/${vodId}` || path === `/videos/${vodId}/`) return true
+  }
+  return Boolean(login && tabUrlMatchesPulseLogin(sender.tab?.url, login))
 }
 
 export function tabUrlMatchesPulseLogin(url: string | undefined, login: string): boolean {

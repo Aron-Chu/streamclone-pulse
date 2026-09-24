@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
   formatHeatOffset,
-  formatMomentClock,
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
-  LIVE_HEAT_SUBTITLE,
   reactionAnalyticalOffset,
   reactionLeadInOffset,
+  reactionMomentWindow,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import { CollapsedPill } from './CollapsedPill.tsx'
@@ -17,37 +16,45 @@ import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
+import { supporterFinish } from './supporterFinish.ts'
+import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
+import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
+import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
+import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
+import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
-import type { ExtensionClip, ExtensionCoverageTierResponse, PulseBackfillJob, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
+import type { ExtensionClip, ExtensionCoverageTierResponse, ExtensionRollup, PulseBackfillJob, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
 import { openStreamAnalytics } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
   getBackendUrl,
+  getDensityPreference,
+  getVodJumpChartPinEnabled,
   getOverlayDisplayPreferences,
   getSidebarTab,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
-  setAutoUpdateEnabled,
   setOverlayMode,
   setSidebarTab,
+  type DensityPreference,
   type OverlayMode,
   type OverlayPlacement,
   type SidebarTab,
   type PulseCacheWindow,
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
+import { rememberVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 import {
   pulseSurfaceStatusLabel,
   resolvePulsePanelSections,
   resolvePulsePanelSurfaceState,
   type PulsePanelSurfaceState,
 } from './pulsePanelLayout.ts'
-import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
-import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
+import { EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
 import {
   activationFromOverlay,
   createBackfillOperationController,
@@ -67,7 +74,8 @@ import {
   clickTwitchCollapseChat,
   toggleTwitchChatters,
 } from '../content/twitchChatControls.ts'
-import { getPrimaryVideo, seekPlaybackOffset, detectTwitchChannelLive, streamOffsetSecondsForLiveSeek, type TwitchPageContext } from '../content/twitch.ts'
+import { getPrimaryVideo, seekPlaybackOffset, seekPlaybackOffsetVerified, streamOffsetSecondsForLiveSeek, type TwitchPageContext } from '../content/twitch.ts'
+import { observeMomentPlayback } from '../content/momentPlayback.ts'
 import { discoverLiveVodIdFromDom } from '../content/twitchVodDiscovery.ts'
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
@@ -94,10 +102,12 @@ import { formatPulseApiError } from './pulseApiErrors.ts'
 import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
-import { resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
+import { isVodArchiveConflict, resolveVodPulseState } from '../vod/normalizeVodPulseFetch.ts'
 import { PulseStatusPill, type PulseStatusKind } from './PulseStatusPill.tsx'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
+import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
+import type { LivePollController } from '../content/livePoll.ts'
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
@@ -127,6 +137,7 @@ interface OverlayProps {
   onPulseRefresh?: () => Promise<void>
   onPulsePayloadUpdate?: (message: PulseUpdateMessage) => void
   onLivePollWindowChange?: (window: PulseCacheWindow) => void
+  livePollStore?: Pick<LivePollController, 'getSnapshot' | 'subscribe'>
   vodPulse?: ExtensionVodPulseResponse | null
   vodPulseLoading?: boolean
   /** Cached chart still shown; refresh failed softly. */
@@ -158,6 +169,7 @@ function OverlayTabsShell({
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
   const [mode, setModeState] = useState<OverlayMode>('expanded')
+  const controlledSidebarTab = sidebarTabProp != null
 
   useEffect(() => {
     let mounted = true
@@ -173,6 +185,7 @@ function OverlayTabsShell({
       })
     }
     const refreshTab = () => {
+      if (controlledSidebarTab) return
       const requestId = ++tabRequestId
       void getSidebarTab().then(tab => {
         if (!mounted || requestId !== tabRequestId) return
@@ -185,14 +198,14 @@ function OverlayTabsShell({
       const tabId = ++tabRequestId
       const [display, storedSidebarTab] = await Promise.all([
         getOverlayDisplayPreferences(),
-        getSidebarTab(),
+        controlledSidebarTab ? Promise.resolve<SidebarTab | null>(null) : getSidebarTab(),
       ])
       if (!mounted) return
       if (displayId === displayRequestId) {
         setModeState(display.mode)
         setPlacementState(display.placement)
       }
-      if (tabId === tabRequestId) {
+      if (!controlledSidebarTab && storedSidebarTab != null && tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
         onSidebarTabChange?.(storedSidebarTab, 'sync')
       }
@@ -205,16 +218,23 @@ function OverlayTabsShell({
       if (changes.overlayMode || changes.overlayPlacement) {
         refreshDisplay()
       }
-      if (changes.sidebarTab) {
+      if (changes.sidebarTab && !controlledSidebarTab) {
         refreshTab()
       }
     }
-    chrome.storage.onChanged.addListener(storageHandler)
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener(storageHandler)
+    }
     return () => {
       mounted = false
-      chrome.storage.onChanged.removeListener(storageHandler)
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.removeListener(storageHandler)
+      }
     }
-  }, [onOverlayModeChange, onSidebarTabChange])
+  // In snapped mode mount.tsx owns tab state. Keeping a second async storage
+  // reader here lets a late read win over a direct CHAT/PULSE click.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledSidebarTab])
 
   const resolvedPlacement = effectivePlacement ?? placement
   const resolvedMode = overlayModeProp ?? mode
@@ -277,26 +297,33 @@ function OverlayMain({
 }: OverlayProps) {
   const [mode, setModeState] = useState<OverlayMode>('expanded')
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
+  const [density, setDensityState] = useState<DensityPreference>('comfortable')
+  const banner = usePulseBanner()
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
+  const controlledSidebarTab = sidebarTabProp != null
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
   const [notice, setNotice] = useState<{ kind: NoticeKind; text: string } | null>(null)
   const [trackBusy, setTrackBusy] = useState(false)
   const [awaitingTrack, setAwaitingTrack] = useState(pendingTrackPrompt)
   const [autoUpdate, setAutoUpdate] = useState(true)
-  const [topClip, setTopClip] = useState<ExtensionClip | null>(null)
+  const [streamClips, setStreamClips] = useState<ExtensionClip[]>([])
+  const [streamClipsState, setStreamClipsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const topClipRequestRef = useRef(0)
   const [fullTimeline, setFullTimeline] = useState(false)
+  const [fullHistoryPayload, setFullHistoryPayload] = useState<PulsePayload | null>(null)
   const [missedBusy, setMissedBusy] = useState(false)
   const [missedRefreshed, setMissedRefreshed] = useState(false)
   const [missedJob, setMissedJob] = useState<PulseBackfillJob | null>(null)
-  const [saveBusy, setSaveBusy] = useState(false)
   const [coverageLastCheck, setCoverageLastCheck] = useState<number | null>(null)
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
   const [vodDebugDetail, setVodDebugDetail] = useState<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
+  const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
-  const [chartPreviewOffset, setChartPreviewOffset] = useState<number | null>(null)
+  const [mostReactedPreviewOffset, setMostReactedPreviewOffset] = useState<number | null>(null)
+  const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
+  const jumpBusyRef = useRef(false)
   const [alwaysTrackedLogins, setAlwaysTrackedLogins] = useState<string[]>([])
   const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
     coverageTierProp,
@@ -318,6 +345,8 @@ function OverlayMain({
     payload?.mode ?? '',
   ].join(':')
   /** Activation + generation + abort — obsolete backfill/Full ops must not mutate UI. */
+  const jumpSurfaceRef = useRef(surfaceIdentity)
+  jumpSurfaceRef.current = surfaceIdentity
   const backfillOpsRef = useRef(createBackfillOperationController())
   const mountedRef = useRef(true)
 
@@ -338,6 +367,7 @@ function OverlayMain({
     setMissedBusy(false)
     setMissedJob(null)
     setFullTimeline(false)
+    setFullHistoryPayload(null)
   }, [login, payload?.streamId, context.vodId])
 
   useEffect(() => {
@@ -355,8 +385,28 @@ function OverlayMain({
       login,
       streamId: payload?.streamId,
       vodId: payload?.vodId ?? context.vodId,
+      startedAt: payload?.startedAt,
     })
   }
+
+  // The first recent poll can replace an activation payload that arrived with
+  // fullRollups. Keep that validated source in the activation cache too; a
+  // user should not lose Full stream merely because the background poll has
+  // the intentionally smaller recent shape. Explicit Full requests still
+  // replace this cache with their newer validated response below.
+  useEffect(() => {
+    if (!payload) return
+    const activation = currentActivation()
+    if (!hasValidatedFullHistory(payload, activation)) return
+    setFullHistoryPayload(current => {
+      if (current && hasValidatedFullHistory(current, activation)) return current
+      return payload
+    })
+    setFullTimeline(true)
+    // Activation identity is the cache boundary; currentActivation is derived
+    // from the same values and intentionally not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activationIdentity, payload])
 
   function tokenIsLive(token: BackfillOperationToken | null | undefined): boolean {
     return Boolean(
@@ -410,16 +460,73 @@ function OverlayMain({
   }
 
   const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
+    setMostReactedPreviewOffset(null)
     setMostReactedPinOffset(offsetSeconds)
     setChartPinOffset(offsetSeconds)
-    setChartPreviewOffset(null)
+    setChartMinuteSelection(null)
   }, [])
 
   const handleChartPin = useCallback((offsetSeconds: number | null) => {
+    setMostReactedPreviewOffset(null)
     setChartPinOffset(offsetSeconds)
-    setMostReactedPinOffset(offsetSeconds)
-    setChartPreviewOffset(null)
+    // A chart click is a raw minute selection, not a ranked-moment selection.
+    // Clear any prior ranked pin so Most Reacted can render the minute inspector
+    // even when the clicked bucket is near a backend-ranked moment.
+    setMostReactedPinOffset(null)
+    if (offsetSeconds == null) setChartMinuteSelection(null)
   }, [])
+
+  const handleChartMinuteSelect = useCallback((rollup: ExtensionRollup | null) => {
+    setMostReactedPreviewOffset(null)
+    setChartMinuteSelection(rollup)
+  }, [])
+
+  const [clipPoint, setClipPoint] = useState<LiveHeatPoint | null>(null)
+  useEffect(() => { setClipPoint(null) }, [payload?.streamId, context.vodId])
+  const clipSelectionRef = useRef(0)
+  async function selectClip(clip: ExtensionClip) {
+    const request = ++clipSelectionRef.current
+    const surface = surfaceIdentity
+    const isCurrent = () => mountedRef.current && jumpSurfaceRef.current === surface && clipSelectionRef.current === request
+    const offset = clip.vodOffsetSeconds
+    if (typeof offset !== 'number' || !Number.isFinite(offset) || offset < 0 || !clip.videoId || !chartSourcePayload) {
+      setNotice({ kind: 'warn', text: 'Clip timestamp unavailable.' })
+      return
+    }
+    let source = chartSourcePayload
+    let vodId = source.vodId ?? context.vodId
+    try {
+      if (!vodId && source.streamId) {
+        const history = await sendBackgroundMessage({ type: 'LIST_PAST_VODS', login, liveStreamId: source.streamId, isLive: source.isLive })
+        if (!isCurrent()) return
+        if ('type' in history && history.type === 'PAST_VODS') {
+          vodId = history.items.find(item => item.streamId === source.streamId && item.videoId)?.videoId ?? null
+        }
+      }
+      if (!vodId || clip.videoId !== vodId) {
+        setNotice({ kind: 'warn', text: 'This clip could not be matched to this stream.' })
+        return
+      }
+      const findBucket = (data: PulsePayload) => (data.fullRollups?.length ? data.fullRollups : data.rollups ?? [])
+        .find(row => !row.missing && row.offsetSeconds <= offset && offset < row.offsetSeconds + 60)
+      let bucket = findBucket(source)
+      if (!bucket) {
+        const result = await requestFullTimeline()
+        if (!isCurrent()) return
+        if (result.ok) { source = result.payload; bucket = findBucket(source) }
+      }
+      if (!bucket) {
+        setNotice({ kind: 'warn', text: 'No chart data is available for this clip minute.' })
+        return
+      }
+      setNotice(null)
+      setClipPoint(rollupToRecapHeatPoint(bucket, source.startedAt, buildRecapEmoteCatalog(source)))
+      handleChartPin(bucket.offsetSeconds)
+      handleChartMinuteSelect(bucket)
+    } catch {
+      if (isCurrent()) setNotice({ kind: 'warn', text: 'Could not load this clip moment. Try again.' })
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -462,19 +569,24 @@ function OverlayMain({
       const tabId = ++tabRequestId
       const backendId = ++backendRequestId
       const autoUpdateId = ++autoUpdateRequestId
-      const [display, storedBackend, storedSidebarTab, storedAutoUpdate] = await Promise.all([
+      const [display, storedBackend, storedSidebarTab, storedAutoUpdate, storedDensity] = await Promise.all([
         getOverlayDisplayPreferences(),
         getBackendUrl(),
-        getSidebarTab(),
+        controlledSidebarTab ? Promise.resolve<SidebarTab | null>(null) : getSidebarTab(),
         getAutoUpdateEnabled(),
+        getDensityPreference(),
       ])
       if (!mounted) return
       if (displayId === displayRequestId) {
         setModeState(display.mode)
         setPlacementState(display.placement)
       }
+      setDensityState(storedDensity)
+      void getVodJumpChartPinEnabled().then(value => {
+        if (mounted) setVodJumpChartPinEnabled(value)
+      })
       if (backendId === backendRequestId) setBackendUrlState(storedBackend)
-      if (tabId === tabRequestId) {
+      if (!controlledSidebarTab && storedSidebarTab != null && tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
         onSidebarTabChange?.(storedSidebarTab, 'sync')
       }
@@ -488,7 +600,10 @@ function OverlayMain({
       if (changes.overlayMode || changes.overlayPlacement) {
         refreshDisplay()
       }
-      if (changes.sidebarTab) {
+      if (changes.density) {
+        setDensityState(changes.density.newValue === 'compact' ? 'compact' : 'comfortable')
+      }
+      if (changes.sidebarTab && !controlledSidebarTab) {
         const requestId = ++tabRequestId
         void getSidebarTab().then(tab => {
           if (!mounted || requestId !== tabRequestId) return
@@ -508,21 +623,35 @@ function OverlayMain({
           if (mounted && requestId === autoUpdateRequestId) setAutoUpdate(next)
         })
       }
+      if (changes.vodJumpChartPinEnabled) {
+        void getVodJumpChartPinEnabled().then(value => {
+          if (mounted) setVodJumpChartPinEnabled(value)
+        })
+      }
     }
-    chrome.storage.onChanged.addListener(storageHandler)
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener(storageHandler)
+    }
     return () => {
       mounted = false
-      chrome.storage.onChanged.removeListener(storageHandler)
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.removeListener(storageHandler)
+      }
     }
-  }, [])
+  // The snapped mount is the single source of truth for CHAT/PULSE. The
+  // backend/auto-update readers still hydrate once, but sidebar storage is not
+  // allowed to race a user click.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarTabProp != null])
 
   useEffect(() => {
     const requestId = ++topClipRequestRef.current
-    setTopClip(null)
+    setStreamClips([])
+    setStreamClipsState('loading')
     if (!payload) return
     void loadTopClip(requestId)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh only when the clip activation changes
-  }, [surfaceIdentity])
+  }, [surfaceIdentity, payload?.startedAt, payload?.endedAt, payload?.latestEndedAt, payload?.vodId, payload?.isLive])
 
   useEffect(() => {
     setFullTimeline(false)
@@ -533,10 +662,24 @@ function OverlayMain({
     setPanelView('pulse')
     setChartPinOffset(null)
     setMostReactedPinOffset(null)
-    setChartPreviewOffset(null)
+    setMostReactedPreviewOffset(null)
+    setChartMinuteSelection(null)
   }, [surfaceIdentity])
 
-  const displayPayload = payload ? pulsePayloadForDisplay(payload, pageIsLive, context) : null
+  useEffect(() => {
+    function clearOnEscape(event: KeyboardEvent): void {
+      if (event.key === 'Escape') handleMostReactedPin(null)
+    }
+
+    document.addEventListener('keydown', clearOnEscape)
+    return () => document.removeEventListener('keydown', clearOnEscape)
+  }, [handleMostReactedPin])
+
+  const chartSourcePayload = useMemo(() => {
+    if (!payload || !fullHistoryPayload) return payload
+    return mergePulsePayload(payload, fullHistoryPayload, { source: 'full' })
+  }, [fullHistoryPayload, payload])
+  const displayPayload = chartSourcePayload ? pulsePayloadForDisplay(chartSourcePayload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
   const pulseSupported = isPulseTop500Supported(payload)
   const hostedBackend = isHostedBackendUrl(backendUrl)
@@ -606,15 +749,21 @@ function OverlayMain({
     'pulse-shell',
     `placement-${resolvedPlacement}`,
     `mode-${resolvedMode}`,
+    `pulse-density-${density}`,
     resolvedPlacement === 'hidden' ? 'pulse-hidden' : '',
     sidebarChatOnly ? 'sidebar-chat-only' : '',
     sidebarBodyOnly ? 'pulse-sidebar-panel' : '',
   ].filter(Boolean).join(' ')
 
   async function persistAutoUpdate(next: boolean): Promise<void> {
+    const previous = autoUpdate
     setAutoUpdate(next)
-    await setAutoUpdateEnabled(next)
-    await sendBackgroundMessage({ type: 'SET_AUTO_UPDATE', enabled: next })
+    try {
+      const response = await sendBackgroundMessage({ type: 'SET_AUTO_UPDATE', enabled: next })
+      if (!('ok' in response) || !response.ok) setAutoUpdate(previous)
+    } catch {
+      setAutoUpdate(previous)
+    }
   }
 
   async function persistSidebarTab(next: SidebarTab): Promise<void> {
@@ -853,6 +1002,29 @@ function OverlayMain({
         },
         'info',
       )
+    }
+    if (op && !tokenIsLive(op)) return null
+    if (!hint) {
+      // Twitch can publish the current archive in stream history before the
+      // channel page exposes archiveVideo in DOM/GQL. Use only the row whose
+      // stream id exactly matches this Pulse activation; never use the latest
+      // channel VOD as an uncorrelated fallback.
+      const historyRes = await sendBackgroundMessage({
+        type: 'LIST_PAST_VODS',
+        login,
+        liveStreamId: payload.streamId,
+        isLive: true,
+      })
+      if (op && !tokenIsLive(op)) return null
+      if ('type' in historyRes && historyRes.type === 'PAST_VODS') {
+        hint = historyRes.items.find(item => item.streamId === payload.streamId && item.videoId)?.videoId ?? null
+      }
+      await pulseDebug('vod.discover.history', hint ? 'found archive id in stream history' : 'stream history has no matching archive yet', {
+        login,
+        streamId: payload.streamId,
+        id: hint,
+        error: 'error' in historyRes ? historyRes.error : undefined,
+      }, hint ? 'info' : 'warn')
     }
     if (op && !tokenIsLive(op)) return null
     if (!hint) {
@@ -1104,12 +1276,9 @@ function OverlayMain({
     payload?.coverage?.vodStatus,
   ])
 
-  function openSettings(): void {
-    void sendBackgroundMessage({ type: 'OPEN_OPTIONS' })
-  }
-
   function openInlineSettings(): void {
     setPanelView('settings')
+    if (resolvedMode !== 'expanded') void persistMode('expanded')
   }
 
   function openAnalytics(offsetSeconds?: number): void {
@@ -1122,15 +1291,26 @@ function OverlayMain({
   }
 
   async function loadTopClip(requestId: number): Promise<void> {
-    const res = await sendBackgroundMessage({
-      type: 'GET_CLIP',
-      login,
-      startedAt: payload?.startedAt,
-      isLive: payload?.isLive,
-    })
-    if (!mountedRef.current || !shouldApplyTopClipResponse(requestId, topClipRequestRef.current)) return
-    if ('type' in res && res.type === 'CLIP') {
-      setTopClip(res.clip)
+    setStreamClipsState('loading')
+    try {
+      const res = await sendBackgroundMessage({
+        type: 'GET_CLIP',
+        login,
+        startedAt: payload?.startedAt,
+        endedAt: payload?.endedAt ?? payload?.latestEndedAt,
+        streamId: payload?.streamId,
+        vodId: isVodPage ? context.vodId ?? payload?.vodId ?? undefined : undefined,
+        isLive: payload?.isLive,
+      })
+      if (!mountedRef.current || !shouldApplyTopClipResponse(requestId, topClipRequestRef.current)) return
+      if ('type' in res && res.type === 'CLIP') {
+        setStreamClips(res.clips ?? [])
+        setStreamClipsState(res.error ? 'error' : 'ready')
+      } else {
+        setStreamClipsState('error')
+      }
+    } catch {
+      if (mountedRef.current && shouldApplyTopClipResponse(requestId, topClipRequestRef.current)) setStreamClipsState('error')
     }
   }
 
@@ -1161,6 +1341,9 @@ function OverlayMain({
             : 'Scrub the VOD player to stream start.',
         })
         return
+      }
+      if (payload?.streamId) {
+        void rememberVodAnalyticsBridge({ vodId, login, streamId: payload.streamId })
       }
       window.open(vodUrl, '_blank', 'noopener,noreferrer')
       setNotice({
@@ -1213,38 +1396,6 @@ function OverlayMain({
     seekToStreamStart()
   }
 
-  async function saveMoment(point: LiveHeatPoint): Promise<void> {
-    if (!payload) return
-    const analyticalOffset = reactionAnalyticalOffset(point)
-    setSaveBusy(true)
-    setNotice(null)
-    try {
-      const response = await sendBackgroundMessage({
-        type: 'SAVE_BOOKMARK',
-        bookmark: {
-          login: payload.login,
-          streamId: payload.streamId,
-          vodId: payload.vodId ?? undefined,
-          offsetSeconds: analyticalOffset,
-          label: `${formatMomentClock(point)} · ${point.reasonLabel}`,
-          score: point.score,
-          source: 'extension',
-        },
-      })
-      if ('type' in response && response.type === 'BOOKMARK') {
-        setNotice({ kind: 'ok', text: `Saved moment at ${formatMomentClock(point)}.` })
-        return
-      }
-      if ('error' in response && response.error) {
-        setNotice({ kind: 'warn', text: String(response.error) })
-      }
-    } catch (err) {
-      setNotice({ kind: 'warn', text: err instanceof Error ? err.message : 'Could not save moment.' })
-    } finally {
-      setSaveBusy(false)
-    }
-  }
-
   function jumpToOffset(offsetSeconds: number): void {
     jumpMoment({
       minuteTs: '',
@@ -1278,6 +1429,11 @@ function OverlayMain({
       if (!hasValidatedFullHistory(next, activation)) {
         return { ok: false, reason: 'incomplete_history' }
       }
+      // Keep the validated source in this activation even if a tab transition
+      // temporarily hides OverlayMain or a recent poll arrives immediately
+      // after the Full request. Recent fields remain authoritative through the
+      // merge above; fullRollups/peaks remain available to the chart.
+      setFullHistoryPayload(next)
       setFullTimeline(true)
       return { ok: true, payload: next }
     } catch (err) {
@@ -1296,83 +1452,123 @@ function OverlayMain({
     openAnalytics(reactionAnalyticalOffset(point))
   }
 
-  function jumpMoment(point: LiveHeatPoint): void {
+  async function jumpMoment(point: LiveHeatPoint): Promise<void> {
+    if (jumpBusyRef.current) return
+    jumpBusyRef.current = true
+    const jumpSurface = surfaceIdentity
     setNotice(null)
-    const action = resolveJumpMomentAction({
-      context,
-      payloadVodId: payload?.vodId,
-      payloadMode: payload?.mode === 'live_dvr' ? 'live_dvr' : payload?.mode === 'vod' ? 'vod' : undefined,
-      vodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds,
-      effectiveIsLive: uiIsLive,
-      payloadIsLive: payload?.isLive,
-      liveCurrentOffset: payload?.currentOffsetSeconds,
-      offsetSeconds: reactionLeadInOffset(point, 5),
-    })
-
-    if (action.kind === 'seek-vod') {
-      const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
-      setNotice({
-        kind: result.ok ? 'ok' : 'warn',
-        text: result.ok
-          ? `Jumped to ${formatHeatOffset(action.offsetSeconds)} in the VOD player.`
-          : `Scrub the VOD player to ${formatHeatOffset(action.offsetSeconds)}.`,
+    try {
+      // A live channel's payload can arrive before the archive id is linked.
+      // Resolve that id at action time so Jump prefers the growing Twitch VOD
+      // over the much smaller in-player DVR buffer. The discovery path is
+      // stream-bound (DOM/GQL validation plus a backend hint), so it cannot
+      // silently open a previous broadcast or a sidebar VOD.
+      const jumpVodId = payload?.vodId ?? (
+        uiIsLive && context.kind === 'channel' && payload?.streamId
+          ? await submitPageVodHint().catch(() => null)
+          : null
+      )
+      if (!mountedRef.current || jumpSurfaceRef.current !== jumpSurface) return
+      const action = resolveJumpMomentAction({
+        context,
+        payloadVodId: jumpVodId,
+        payloadMode: payload?.mode === 'live_dvr' ? 'live_dvr' : payload?.mode === 'vod' ? 'vod' : undefined,
+        vodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds,
+        effectiveIsLive: uiIsLive,
+        payloadIsLive: payload?.isLive,
+        liveCurrentOffset: payload?.currentOffsetSeconds,
+        offsetSeconds: reactionLeadInOffset(point, 5),
       })
-      return
-    }
-
-    if (action.kind === 'open-vod-tab') {
-      window.open(buildTwitchVodUrl(action.vodId, action.offsetSeconds), '_blank', 'noopener,noreferrer')
-      setNotice({
-        kind: 'ok',
-        text: `Opened Twitch VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
-      })
-      return
-    }
-
-    if (action.kind === 'open-analytics') {
-      openAnalytics(action.offsetSeconds)
-      return
-    }
-
-    if (action.kind === 'seek-live-dvr') {
-      const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
-        startedAt: payload?.startedAt,
-        payloadOffsetSeconds: action.liveCurrentOffset,
-      })
-      const result = seekPlaybackOffset(getPrimaryVideo(), action.offsetSeconds, {
-        isLive: true,
-        liveCurrentOffset: liveCurrentOffset ?? action.liveCurrentOffset,
-      })
-      if (result.ok) {
-        setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
-        return
+      if (action.kind === 'seek-vod' || action.kind === 'open-vod-tab' || action.kind === 'seek-live-dvr') {
+        if (vodJumpChartPinEnabled) {
+          setChartPinOffset(action.offsetSeconds)
+        } else {
+          setChartPinOffset(null)
+          setMostReactedPinOffset(null)
+        }
       }
-      if (result.reason === 'outside_buffer') {
-        openAnalytics(action.offsetSeconds)
-        const linkedVod = payload?.vodId?.trim()
+
+      const remember = (target: number) => {
+        if (point.estimated || point.collecting) return
+        const window = reactionMomentWindow(point)
+        const start = target + window.startSeconds - reactionLeadInOffset(point, 5)
+        void observeMomentPlayback(getPrimaryVideo(), { id: 'moment', channel: login, title: point.reasonLabel,
+          vodId: jumpVodId ?? null, streamId: payload?.streamId, offsetSeconds: point.offsetSeconds, availability: 'unresolved' }, start, start + window.durationSeconds)
+      }
+      if (action.kind === 'seek-vod') {
+        const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
+        if (!mountedRef.current || jumpSurfaceRef.current !== jumpSurface) return
+        if (result.ok) remember(result.targetSeconds)
         setNotice({
-          kind: 'warn',
-          text: linkedVod
-            ? `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened StreamPulse analytics. A linked VOD is available as a secondary option.`
-            : `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window — opened the StreamPulse analytics moment.`,
+          kind: result.ok ? 'ok' : 'warn',
+          text: result.ok
+            ? `Jumped to ${formatHeatOffset(action.offsetSeconds)} in the VOD player.`
+            : `The VOD player did not hold ${formatHeatOffset(action.offsetSeconds)}. Try scrubbing there or use Analytics.`,
         })
         return
       }
+
+      if (action.kind === 'open-vod-tab') {
+        if (payload?.streamId) {
+          void rememberVodAnalyticsBridge({
+            vodId: action.vodId,
+            login,
+            streamId: payload.streamId,
+          })
+        }
+        window.open(buildTwitchVodUrl(action.vodId, action.offsetSeconds), '_blank', 'noopener,noreferrer')
+        setNotice({
+          kind: 'ok',
+          text: `Opened Twitch VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
+        })
+        return
+      }
+
+      if (action.kind === 'open-analytics') {
+        openAnalytics(action.offsetSeconds)
+        return
+      }
+
+      if (action.kind === 'seek-live-dvr') {
+        const liveCurrentOffset = streamOffsetSecondsForLiveSeek({
+          startedAt: payload?.startedAt,
+          payloadOffsetSeconds: action.liveCurrentOffset,
+        })
+        const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, {
+          isLive: true,
+          liveCurrentOffset: liveCurrentOffset ?? action.liveCurrentOffset,
+        })
+        if (!mountedRef.current || jumpSurfaceRef.current !== jumpSurface) return
+        if (result.ok) {
+          remember(result.targetSeconds)
+          setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
+          return
+        }
+        setNotice({
+          kind: 'warn',
+          text: result.reason === 'outside_buffer'
+            ? jumpVodId
+              ? `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window. Use the linked VOD or Analytics for the full moment.`
+              : `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window, and Twitch has not linked a live VOD yet. Use Analytics for the full moment.`
+            : 'Twitch did not hold the requested live-player position. Use Analytics for the full moment.',
+        })
+        return
+      }
+
+      const secondary = action.kind === 'live-outside-buffer' ? action.secondaryVodId?.trim() : undefined
       setNotice({
         kind: 'warn',
-        text: 'Could not seek the live player — open StreamPulse analytics for this moment.',
+        text: secondary
+          ? `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer. Use Analytics; a linked VOD is available separately.`
+          : `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer. Use Analytics for the full moment.`,
       })
-      return
+    } catch {
+      if (mountedRef.current && jumpSurfaceRef.current === jumpSurface) {
+        setNotice({ kind: 'warn', text: 'Could not open this moment. Retry or use Analytics.' })
+      }
+    } finally {
+      jumpBusyRef.current = false
     }
-
-    openAnalytics(action.offsetSeconds)
-    const secondary = action.kind === 'live-outside-buffer' ? action.secondaryVodId?.trim() : undefined
-    setNotice({
-      kind: 'warn',
-      text: secondary
-        ? `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer — opened StreamPulse analytics. Linked VOD remains a secondary option (not auto-opened).`
-        : `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer — opened StreamPulse analytics.`,
-    })
   }
 
   if (resolvedPlacement === 'hidden') {
@@ -1386,7 +1582,7 @@ function OverlayMain({
   // Body host visibility is owned by mount.tsx (hidden entirely on Chat tab).
   if (resolvedMode === 'collapsed') {
     return (
-      <section className={shellClass} style={styles.collapsedHost} aria-label="StreamPulse collapsed">
+      <section className={shellClass} data-pulse-density={density} style={styles.collapsedHost} aria-label="StreamPulse collapsed">
         <CollapsedPill
           tracking={payload?.tracking ?? false}
           isLive={uiIsLive}
@@ -1399,7 +1595,7 @@ function OverlayMain({
 
   if (resolvedMode === 'mini') {
     return (
-      <section className={shellClass} style={styles.miniHost} aria-label="StreamPulse mini overlay">
+      <section className={shellClass} data-pulse-density={density} style={styles.miniHost} aria-label="StreamPulse mini overlay">
         <MiniDock
           login={login}
           payload={payload}
@@ -1408,7 +1604,7 @@ function OverlayMain({
           trackBusy={trackBusy}
           sidebarFill={sidebarBodyOnly}
           onExpand={() => void persistMode('expanded')}
-          onSettings={openSettings}
+          onSettings={openInlineSettings}
           onHide={() => void hideOverlay()}
           onTrack={localStackBackend ? () => void startTracking() : undefined}
         />
@@ -1418,10 +1614,12 @@ function OverlayMain({
 
   return (
     <section
-      className={shellClass}
-      style={{ ...styles.panel, height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 20 }}
+      className={`${shellClass} pulse-personal-panel`}
+      data-pulse-density={density}
+      style={{ ...styles.panel, overflow: 'hidden', boxSizing: 'border-box', height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 12 }}
       aria-label="StreamPulse overlay"
     >
+      {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} />}
       {showSidebarTabs ? (
         <div className="pulse-sidebar-tabs-wrap" style={styles.sidebarTabsWrap}>
           <PulseSidebarTabs active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
@@ -1433,32 +1631,30 @@ function OverlayMain({
         style={{
           ...(sidebarChatOnly ? styles.panelHidden : undefined),
           padding: showSidebarTabs ? '0 10px 10px' : sidebarBodyOnly ? '10px' : 0,
-          flex: sidebarBodyOnly ? 1 : undefined,
+          flex: '1 1 auto',
           minWidth: 0,
-          minHeight: sidebarBodyOnly ? 120 : undefined,
-          overflow: sidebarBodyOnly ? 'auto' : undefined,
+          minHeight: 0,
+          height: sidebarBodyOnly ? 'auto' : undefined,
+          overflow: 'auto',
           position: sidebarBodyOnly ? 'relative' : undefined,
         }}
       >
       <PanelErrorBoundary>
-      {panelView === 'settings' && sidebarBodyOnly ? (
+      {panelView === 'settings' ? (
         <div key="settings" className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack">
-          <PulseSettingsPanel
-            onAutoUpdateChange={next => void persistAutoUpdate(next)}
-            onBack={() => setPanelView('pulse')}
-            onOpenFullSettings={openSettings}
-          />
+          <PulseSettingsPanel onBack={() => setPanelView('pulse')} />
         </div>
       ) : (
         <div
           key={sidebarBodyOnly ? 'pulse' : 'pulse-full'}
           className={
             sidebarBodyOnly
-              ? 'pulse-panel-view-enter pulse-panel-view-pulse pulse-panel-view-stack'
-              : 'pulse-panel-view-stack'
+              ? 'pulse-workspace pulse-panel-view-enter pulse-panel-view-pulse pulse-panel-view-stack'
+              : 'pulse-workspace pulse-panel-view-stack'
           }
         >
       <StreamPulseHeader
+        personalTitle={banner.value.title}
         isLive={uiIsLive}
         surfaceState={panelSurfaceState}
         pulseLiveAccess={pulseLiveAccess.state}
@@ -1471,10 +1667,13 @@ function OverlayMain({
         backendUrl={backendUrl}
         onAutoUpdateChange={next => void persistAutoUpdate(next)}
         onTrack={localStackBackend ? () => void startTracking() : undefined}
-        onSettings={() => (sidebarSnapped ? openInlineSettings() : openSettings())}
         onMini={() => void persistMode('mini')}
         onHide={() => void hideOverlay()}
       />
+
+      {panelView === 'pulse' && !sidebarChatOnly ? (
+        <AnalyticsHubCta backendUrl={backendUrl} compact />
+      ) : null}
 
       {showHostedOfflineFallback ? (
         <PulseSectionCard title="Channel offline" titleTone="muted" className="pulse-offline-state">
@@ -1491,18 +1690,18 @@ function OverlayMain({
 
       {awaitingTrack && !isVodPage && localStackBackend && pulseSupported && !payload?.tracking ? (
         <section style={styles.trackPrompt}>
-          <p style={styles.stateText}>Track <strong>{login}</strong> to collect live chat and 7TV rollups from your Streamclone stack.</p>
+          <p style={styles.stateText}>Track <strong>{login}</strong> to collect live chat and 7TV rollups from your StreamPulse stack.</p>
           <div style={styles.footerActions}>
             <button type="button" style={styles.primaryButton} disabled={trackBusy} onClick={() => void startTracking()}>
               {trackBusy ? 'Starting…' : 'Track this channel'}
             </button>
-            <button type="button" style={styles.secondaryButton} onClick={openSettings}>Manage watchlist</button>
+            <button type="button" style={styles.secondaryButton} onClick={openInlineSettings}>Manage watchlist</button>
           </div>
         </section>
       ) : null}
 
-      {error && !payload ? (
-        <BackendError backendUrl={backendUrl} onRetry={() => void refreshPulse()} onSettings={openSettings} />
+      {error && !payload && !(isVodPage && isVodArchiveConflict(vodPulse)) ? (
+        <BackendError backendUrl={backendUrl} error={error} onRetry={() => void refreshPulse()} onSettings={openInlineSettings} />
       ) : null}
 
       {error && payload && panelSurfaceState !== 'identity_mismatch' ? (
@@ -1566,6 +1765,7 @@ function OverlayMain({
                   coverageStartOffsetSeconds={coverageStart}
                   currentOffsetSeconds={payload?.currentOffsetSeconds ?? 0}
                   isLive={uiIsLive}
+                  autoUpdate={autoUpdate}
                   fullTimeline={fullTimeline}
                   showLoadFromStart={!hostedBackend && Boolean(payload && shouldShowStreamStartAction({ ...payload, tracking: payload.tracking }))}
                   loadFromStartBusy={missedBusy}
@@ -1576,10 +1776,12 @@ function OverlayMain({
                   onRequestFullTimeline={requestFullTimeline}
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}
+                  onChartMinuteSelect={handleChartMinuteSelect}
+                  chartMinuteSelection={chartMinuteSelection}
+                  onMomentSelect={peak => handleMostReactedPin(reactionAnalyticalOffset(peak))}
                   pinOffsetSeconds={chartPinOffset}
-                  onSaveMoment={point => void saveMoment(point)}
-                  saveMomentBusy={saveBusy}
-                  previewOffsetSeconds={chartPreviewOffset}
+                  previewOffsetSeconds={mostReactedPreviewOffset}
+                  selectedMomentOffsetSeconds={mostReactedPinOffset}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
                   liveMetadata={coverageTierState?.liveMetadata ?? null}
@@ -1592,12 +1794,13 @@ function OverlayMain({
                   backendUrl={backendUrl}
                   sidebarFill={sidebarSnapped}
                   pinnedOffsetSeconds={mostReactedPinOffset}
+                  chartMinuteSelection={chartMinuteSelection}
                   onJump={jumpMoment}
-                  onSave={point => void saveMoment(point)}
                   onAnalytics={openAnalyticsForMoment}
-                  onHighlightOffset={setChartPreviewOffset}
+                  onJumpToOffset={jumpToOffset}
+                  onAnalyticsAtOffset={openAnalytics}
+                  onHighlightOffset={setMostReactedPreviewOffset}
                   onPinOffset={handleMostReactedPin}
-                  saveBusy={saveBusy}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                 />
               ) : null}
@@ -1644,6 +1847,7 @@ function OverlayMain({
         <>
           {panelSections?.showRecap && payload ? (
             <StreamRecapSection
+              externalPoint={clipPoint}
               payload={payload}
               backendUrl={backendUrl}
               uiState={recapUiState === 'partial' ? 'ready' : (recapUiState ?? 'ready')}
@@ -1662,7 +1866,7 @@ function OverlayMain({
 
           {notice ? <p style={{ ...styles.notice, ...(notice.kind === 'warn' ? styles.noticeWarn : notice.kind === 'ok' ? styles.noticeOk : {}) }}>{notice.text}</p> : null}
 
-          {topClip && !isVodPage ? <ClipSpikeCard clip={topClip} backendUrl={backendUrl} /> : null}
+          <StreamClipCarousel clips={streamClips} backendUrl={backendUrl} state={streamClipsState} onSelect={selectClip} onRetry={() => void loadTopClip(++topClipRequestRef.current)} />
 
           {!isVodPage ? (
           <PastVodsSection
@@ -1675,21 +1879,6 @@ function OverlayMain({
           />
           ) : null}
 
-          {sidebarBodyOnly && panelView === 'pulse' && !sidebarChatOnly ? (
-            <button
-              type="button"
-              className="pulse-settings-bottom-bar"
-              data-pulse-settings-entry="bottom-bar"
-              style={styles.settingsBottomBar}
-              aria-label="Open settings"
-              title="Settings"
-              onClick={() => setPanelView('settings')}
-            >
-              <SettingsGearIcon size={16} />
-              <span>Settings</span>
-              <span aria-hidden="true">›</span>
-            </button>
-          ) : null}
         </>
       ) : null}
 
@@ -1711,11 +1900,29 @@ function OverlayMain({
       )}
       </PanelErrorBoundary>
       </div>
+      {panelView === 'pulse' && !sidebarChatOnly ? (
+        <div className="pulse-settings-footer" style={styles.settingsFooter}>
+          <button
+            type="button"
+            className="pulse-settings-bottom-bar"
+            data-pulse-settings-entry="bottom-bar"
+            style={styles.settingsBottomBar}
+            aria-label="Open settings"
+            title="Settings"
+            onClick={() => setPanelView('settings')}
+          >
+            <SettingsGearIcon size={16} />
+            <span>Settings</span>
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }
 
 function StreamPulseHeader({
+  personalTitle,
   isLive,
   surfaceState,
   pulseLiveAccess,
@@ -1728,10 +1935,10 @@ function StreamPulseHeader({
   backendUrl,
   onAutoUpdateChange,
   onTrack,
-  onSettings,
   onMini,
   onHide,
 }: {
+  personalTitle: string
   isLive: boolean
   surfaceState: PulsePanelSurfaceState
   pulseLiveAccess: import('./resolvePulseLiveAccess.ts').PulseLiveAccessState
@@ -1744,11 +1951,38 @@ function StreamPulseHeader({
   backendUrl: string
   onAutoUpdateChange: (next: boolean) => void
   onTrack?: () => void
-  onSettings: () => void
   onMini: () => void
   onHide: () => void
 }) {
-  const headerStyle = sidebarFill ? styles.streamPulseHeaderSidebar : styles.streamPulseHeader
+  const headerStyle = sidebarFill ? streamPulseHeaderChromeSidebar : streamPulseHeaderChrome
+  const [finish, setFinish] = useState<keyof typeof supporterFinish | null>(null)
+  useEffect(() => {
+    let alive = true
+    let running = false
+    let expiry: number | undefined
+    const refresh = async () => {
+      if (running) return
+      running = true
+      window.clearTimeout(expiry)
+      setFinish(null)
+      const started = performance.now()
+      try {
+        const result = await sendBackgroundMessage({ type: 'SUPPORTER_APPEARANCE' })
+        if (alive && result && 'type' in result && result.type === 'SUPPORTER_APPEARANCE') {
+          const remaining = Math.min(60_000, result.validForMs) - (performance.now() - started)
+          if (Number.isFinite(remaining) && remaining > 0) {
+            setFinish(result.finish)
+            expiry = window.setTimeout(() => setFinish(null), remaining)
+          }
+        }
+      } catch { /* Unverified appearance stays inactive. */ }
+      finally { running = false }
+    }
+    void refresh()
+    const timer = window.setInterval(refresh, 60_000)
+    window.addEventListener('focus', refresh)
+    return () => { alive = false; window.clearTimeout(expiry); window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [])
   const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
   const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
   const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton
@@ -1758,27 +1992,26 @@ function StreamPulseHeader({
   const statusLabel = pulseSurfaceStatusLabel(surfaceState)
 
   return (
-    <header style={headerStyle}>
-      <div style={sidebarFill ? styles.streamPulseHeaderMainSidebar : styles.streamPulseHeaderMain}>
-        <div style={styles.streamPulseTitleRow}>
-          <h2 style={styles.streamPulseTitle}>Stream Pulse</h2>
-          {isLive ? <span style={styles.liveBadge}>Live</span> : null}
-          <span style={hostedBackend ? styles.apiPillHosted : styles.apiPillLocal}>
-            {hostedBackend ? 'Hosted API' : 'Local dev API'}
-          </span>
-        </div>
-        <p style={styles.streamPulseLead}>{LIVE_HEAT_SUBTITLE}</p>
+    <header
+      className="pulse-personal-banner"
+      style={headerStyle}
+      data-supporter-finish={finish ?? undefined}
+      title={finish ? 'Pulse Supporter' : undefined}
+    >
+      <div className="pulse-banner-copy" style={sidebarFill ? styles.streamPulseHeaderMainSidebar : styles.streamPulseHeaderMain}>
+        <StreamPulseTitleBlock
+          title={personalTitle || undefined}
+          finish={finish}
+          statusLabel={hostedBackend ? statusLabel : 'Local dev API'}
+          statusTone={hostedBackend ? (isLive ? 'live' : 'idle') : 'local'}
+        />
       </div>
-      <div style={actionsStyle}>
+      <div style={{ ...actionsStyle, ...(hostedBackend && hideUtilityActions ? { display: 'none' } : {}) }}>
         {!pulseSupported && !hostedBackend ? (
           <span style={trackButtonStyle} aria-label="Limited tracked roster">
             Limited roster
           </span>
-        ) : hostedBackend ? (
-          <span style={trackButtonStyle} aria-label={statusLabel}>
-            {statusLabel}
-          </span>
-        ) : pulseLiveAccess === 'full_live' ? (
+        ) : hostedBackend ? null : pulseLiveAccess === 'full_live' ? (
           <span style={trackButtonStyle} aria-label="Tracking this streamer">
             Tracking
           </span>
@@ -1806,25 +2039,13 @@ function StreamPulseHeader({
         <div style={iconRowStyle}>
           {hideUtilityActions ? null : (
             <>
-              <button
-                type="button"
-                className="pulse-settings-header-control"
-                data-pulse-settings-entry="header"
-                style={{ ...(sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton), ...styles.settingsHeaderButton }}
-                onClick={onSettings}
-                aria-label="Open settings"
-                title="Settings"
-              >
-                <SettingsGearIcon size={14} />
-                <span>Settings</span>
-              </button>
+
               <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onMini} title="Mini mode">Mini</button>
               <button type="button" style={sidebarFill ? styles.headerIconButtonFull : styles.headerIconButton} onClick={onHide} title="Hide overlay">Hide</button>
             </>
           )}
         </div>
       </div>
-      <AnalyticsHubCta backendUrl={backendUrl} compact={sidebarFill} />
     </header>
   )
 }
@@ -1843,7 +2064,7 @@ function vodPulseStatusKind(state: ReturnType<typeof resolveVodPulseState>): Pul
     case 'missing':
       return 'missing'
     default:
-      return 'backend-error'
+      return state.status === 'error' && state.archiveConflict ? 'archive-conflict' : 'backend-error'
   }
 }
 
@@ -1878,7 +2099,7 @@ function VodPulseStatusCard({
       <div style={styles.vodStateWrap}>
         <PulseStatusPill status={status} />
         <p style={styles.stateText}>{subtitle}</p>
-        {onRetry ? (
+        {onRetry && !(state.status === 'error' && state.retryable === false) ? (
           <button type="button" style={styles.secondaryButton} onClick={onRetry}>
             Retry
           </button>
@@ -1888,17 +2109,66 @@ function VodPulseStatusCard({
   )
 }
 
-export function ClipSpikeCard({ clip, backendUrl }: { clip: ExtensionClip; backendUrl: string }) {
+function StreamClipCarousel({ clips, backendUrl, state, onRetry, onSelect }: { clips: ExtensionClip[]; backendUrl: string; state: 'loading' | 'ready' | 'error'; onRetry: () => void; onSelect: (clip: ExtensionClip) => void }) {
+  const rail = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ start: true, end: false })
+  const validClips = clips.filter(clip => safeTwitchNavigationUrl(clip.url))
+  function updatePosition() {
+    const element = rail.current
+    if (element) setPosition({ start: element.scrollLeft < 2, end: element.scrollLeft + element.clientWidth >= element.scrollWidth - 2 })
+  }
+  useEffect(() => {
+    const element = rail.current
+    if (!element) return
+    element.scrollLeft = 0
+    updatePosition()
+    const observer = new ResizeObserver(updatePosition)
+    observer.observe(element)
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
+      const delta = event.deltaY
+      const end = element.scrollWidth - element.clientWidth
+      if (!delta || end <= 0 || (delta < 0 && element.scrollLeft <= 0) || (delta > 0 && element.scrollLeft >= end - 1)) return
+      event.preventDefault()
+      move(delta < 0 ? -1 : 1)
+    }
+    element.addEventListener('wheel', wheel, { passive: false })
+    return () => { observer.disconnect(); element.removeEventListener('wheel', wheel) }
+  }, [clips])
+  function move(direction: number) {
+    const element = rail.current
+    if (element) element.scrollBy({ left: direction * element.clientWidth * .88, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }
+  return <section className="pulse-clips-section" aria-label="Top clips from this stream" aria-busy={state === 'loading'}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <h3 style={styles.clipSpikeHeading}>Top clips <span className="pulse-clips-count">{validClips.length || ''}</span></h3>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button type="button" className="pulse-clip-control" aria-label="Refresh stream clips" title="Refresh stream clips" disabled={state === 'loading'} onClick={onRetry}>↻</button>
+        {validClips.length > 1 && <>
+        <button type="button" className="pulse-clip-control" aria-label="Previous clips" title="Previous clips" disabled={position.start} onClick={() => move(-1)}>←</button>
+        <button type="button" className="pulse-clip-control" aria-label="Next clips" title="Next clips" disabled={position.end} onClick={() => move(1)}>→</button>
+        </>}
+      </div>
+    </div>
+    {!validClips.length && <p role="status" style={styles.stateText}>{state === 'loading' ? 'Loading stream clips...' : state === 'error' ? 'Clips could not be loaded. Try refreshing.' : 'No clips available for this stream yet.'}</p>}
+    <div ref={rail} className="pulse-clips-rail" tabIndex={validClips.length ? 0 : -1} aria-label="Stream clips carousel" onScroll={updatePosition}
+      onKeyDown={event => { if (event.target === event.currentTarget && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1) } }}
+      style={{ display: 'flex', gap: 12, overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '10px 0 2px', scrollbarWidth: 'none' }}>
+      {validClips.map(clip => <div key={clip.id} style={{ flex: '0 0 min(232px, 88%)', minWidth: 0, scrollSnapAlign: 'start' }}><ClipSpikeCard clip={clip} backendUrl={backendUrl} onSelect={onSelect} /></div>)}
+    </div>
+  </section>
+}
+
+export function ClipSpikeCard({ clip, backendUrl, onSelect }: { clip: ExtensionClip; backendUrl: string; onSelect?: (clip: ExtensionClip) => void }) {
   const duration = formatClipDuration(clip.durationSeconds)
   const clipUrl = safeTwitchNavigationUrl(clip.url)
   const thumbnailUrl = safeImageUrl(clip.thumbnailUrl, backendUrl)
   if (!clipUrl) return null
   return (
-    <section style={styles.clipSpikeSection}>
-      <h3 style={styles.clipSpikeHeading}>Clip spike</h3>
       <a
         className="pulse-clip-spike-card"
         data-clip-spike-card
+        onClick={() => onSelect?.(clip)}
         href={clipUrl}
         target="_blank"
         rel="noreferrer"
@@ -1925,7 +2195,6 @@ export function ClipSpikeCard({ clip, backendUrl }: { clip: ExtensionClip; backe
           <span style={styles.clipViews}>{formatNumber(clip.viewCount ?? 0)} views</span>
         </div>
       </a>
-    </section>
   )
 }
 
@@ -2005,52 +2274,6 @@ function ChattersIcon() {
   )
 }
 
-function BrandMark() {
-  return <span style={styles.brandMark}><span style={styles.brandDot} /></span>
-}
-
-function StatusPill({ tracking, isLive, compact = false }: { tracking: boolean; isLive: boolean; compact?: boolean }) {
-  return (
-    <span style={tracking ? (compact ? styles.statusLiveCompact : styles.statusLive) : (compact ? styles.statusIdleCompact : styles.statusIdle)}>
-      <span className={tracking && isLive ? 'pulse-live-dot' : undefined} style={tracking ? styles.dotGreen : styles.dotMuted} />
-      {tracking ? (isLive ? 'Live' : 'Tracking') : 'Not tracking'}
-    </span>
-  )
-}
-
-function HeatStrip({ values, compact = false }: { values: number[]; compact?: boolean }) {
-  const display = values.slice(-30)
-  if (display.length === 0 || display.every(value => value <= 0)) {
-    return (
-      <div style={compact ? styles.heatStripEmptyCompact : styles.heatStripEmpty} aria-hidden="true">
-        {compact ? 'No heat yet' : 'Heatmap fills in after the first completed minutes'}
-      </div>
-    )
-  }
-  const max = Math.max(...display, 1)
-  return (
-    <div style={compact ? styles.heatStripCompact : styles.heatStrip}>
-      {display.map((value, index) => {
-        const hot = value >= max * 0.88 && max > 0
-        return (
-          <span
-            key={`${index}-${value}`}
-            className="pulse-bar-grow"
-            style={{
-              ...styles.heatBar,
-              height: `${Math.max(12, Math.round((value / max) * (compact ? 34 : 92)))}%`,
-              background: hot
-                ? `linear-gradient(180deg, ${theme.rank1}, #fb7185)`
-                : `linear-gradient(180deg, ${theme.accent}, ${theme.accentStrong})`,
-              animationDelay: `${index * 18}ms`,
-            }}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
 function WarmingState({
   count,
   coverageStart = 0,
@@ -2084,7 +2307,7 @@ function WarmingState({
         {firstMinutePending
           ? 'IRC chat rollups close once per minute. The chart and Top Moments fill in automatically — nothing to load from stream start yet.'
           : lateTracking
-            ? `Streamclone is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes of chat rollups.`
+            ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes of chat rollups.`
             : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes, never shown as final early.`}
       </p>
       <div className="pulse-shimmer" style={styles.progressTrack}><span style={{ ...styles.progressFill, width: `${progress * 100}%` }} /></div>
@@ -2093,11 +2316,25 @@ function WarmingState({
   )
 }
 
-function BackendError({ backendUrl, onRetry, onSettings }: { backendUrl: string; onRetry: () => void; onSettings: () => void }) {
+function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: string; error?: string; onRetry: () => void; onSettings: () => void }) {
+  // A disconnected tab is not an unreachable backend. Retrying and opening
+  // settings both go through the same dead port, so a reload is the only thing
+  // worth offering.
+  if (error === EXTENSION_RECONNECT_MESSAGE) {
+    return (
+      <section style={styles.errorBlock}>
+        <h2 style={styles.errorTitle}>Extension disconnected</h2>
+        <p style={styles.stateText}>This tab lost its connection to StreamPulse, which happens whenever the extension updates or reloads. Refreshing the page reconnects it.</p>
+        <div style={styles.footerActions}>
+          <button type="button" style={styles.secondaryButton} onClick={() => window.location.reload()}>Reload page</button>
+        </div>
+      </section>
+    )
+  }
   return (
     <section style={styles.errorBlock}>
-      <h2 style={styles.errorTitle}>Can&apos;t reach Streamclone</h2>
-      <p style={styles.stateText}>No response from {backendUrl}. Is the Streamclone stack running? Showing this instead of empty charts.</p>
+      <h2 style={styles.errorTitle}>Can&apos;t reach StreamPulse</h2>
+      <p style={styles.stateText}>No response from {backendUrl}. Is the StreamPulse stack running? Showing this instead of empty charts.</p>
       <div style={styles.footerActions}>
         <button type="button" style={styles.secondaryButton} onClick={onRetry}>Retry</button>
         <button type="button" style={styles.textButtonLarge} onClick={onSettings}>Open settings</button>
@@ -2141,70 +2378,18 @@ function formatClipDuration(durationSeconds?: number): string | null {
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: { background: theme.bgCanvas, display: 'flex', flexDirection: 'column' },
+  panel: { background: theme.bgCanvas, display: 'flex', flexDirection: 'column', minHeight: 0 },
   panelHidden: { display: 'none' },
   sidebarTabsWrap: { flexShrink: 0, padding: 8 },
   headerTabsShell: { alignItems: 'center', display: 'flex', height: '100%', justifyContent: 'center', width: '100%' },
   miniHost: { display: 'flex', height: '100%', width: '100%' },
   collapsedHost: { display: 'flex', height: '100%', width: '100%' },
-  header: { alignItems: 'flex-start', display: 'flex', gap: 12, justifyContent: 'space-between' },
-  titleRow: { alignItems: 'center', display: 'flex', gap: 12 },
-  headerActions: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
-  title: { fontSize: 22, fontWeight: 800, lineHeight: 1.15 },
-  titleLogin: { color: theme.textSecondary, fontWeight: 700, marginLeft: 6 },
-  subtitle: { color: theme.textSecondary, fontSize: 12, marginTop: 3 },
-  brandMark: { alignItems: 'center', background: theme.accent, borderRadius: 10, display: 'inline-flex', height: 34, justifyContent: 'center', minWidth: 34 },
-  brandDot: { background: theme.textPrimary, borderRadius: 999, display: 'block', height: 12, width: 12 },
-  statusLive: { alignItems: 'center', background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.55)', borderRadius: theme.radiusPill, color: theme.liveSoft, display: 'inline-flex', fontSize: 12, fontWeight: 800, gap: 8, padding: '7px 12px' },
-  statusIdle: { alignItems: 'center', background: theme.panelElevated, border: `1px solid ${theme.border}`, borderRadius: theme.radiusPill, color: theme.textSecondary, display: 'inline-flex', fontSize: 12, fontWeight: 800, gap: 8, padding: '7px 12px' },
-  statusLiveCompact: { alignItems: 'center', background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: theme.radiusPill, color: theme.liveSoft, display: 'inline-flex', fontSize: 10, fontWeight: 800, gap: 6, padding: '4px 8px', width: 'fit-content' },
-  statusIdleCompact: { alignItems: 'center', background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: theme.radiusPill, color: theme.textSecondary, display: 'inline-flex', fontSize: 10, fontWeight: 800, gap: 6, padding: '4px 8px', width: 'fit-content' },
-  dotGreen: { background: theme.live, borderRadius: 999, display: 'inline-block', height: 9, width: 9 },
-  dotMuted: { background: '#6b7280', borderRadius: 999, display: 'inline-block', height: 9, width: 9 },
-  trackingText: { alignItems: 'center', color: '#4ade80', display: 'inline-flex', fontWeight: 800, gap: 6 },
   muted: { color: '#8b8ba0' },
-  smallButton: { background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, color: theme.textPrimary, cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: '7px 10px' },
-  primaryButtonSmall: { background: theme.accent, border: 0, borderRadius: theme.radiusButton, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '7px 12px' },
-  heatStripEmpty: { alignItems: 'center', background: '#101014', border: '1px dashed #3f3f50', borderRadius: 12, color: '#8b8ba0', display: 'flex', fontSize: 12, height: 112, justifyContent: 'center', padding: 16, textAlign: 'center' },
-  heatStripEmptyCompact: { alignItems: 'center', color: '#8b8ba0', display: 'flex', fontSize: 11, height: 44, justifyContent: 'center', minWidth: 96 },
   trackPrompt: { background: '#1f1f27', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)', borderRadius: 12, marginBottom: 14, padding: 14 },
-  statsGrid: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 18 },
-  recapGrid: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginBottom: 12 },
-  statCard: { background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 12, minWidth: 0, padding: 12 },
-  statLabel: { color: '#a1a1b2', fontSize: 10, fontWeight: 800 },
-  statValue: { fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginTop: 6 },
-  statDetail: { fontSize: 12, fontWeight: 800, marginTop: 6 },
-  section: { borderTop: '1px solid rgba(63,63,80,0.75)', marginTop: 16, paddingTop: 16 },
-  sectionHeading: { alignItems: 'center', color: '#a1a1b2', display: 'flex', fontSize: 12, fontWeight: 800, justifyContent: 'space-between', marginBottom: 10, textTransform: 'uppercase' },
-  heatStrip: { alignItems: 'end', background: '#101014', borderRadius: 12, display: 'flex', gap: 5, height: 112, padding: '16px 14px 12px' },
-  heatStripCompact: { alignItems: 'end', display: 'flex', flex: 1, gap: 5, height: 44, justifyContent: 'flex-end', minWidth: 140 },
-  heatBar: { borderRadius: 4, display: 'block', flex: '1 1 7px', minWidth: 4 },
-  axis: { color: '#8b8ba0', display: 'flex', fontSize: 11, justifyContent: 'space-between', marginTop: 8 },
-  lanes: { display: 'grid', gap: 12 },
-  lane: { alignItems: 'center', display: 'grid', gap: 14, gridTemplateColumns: '74px 1fr' },
-  laneLabel: { color: '#8b8ba0', display: 'grid', fontSize: 11, gap: 2 },
-  laneBars: { alignItems: 'end', display: 'flex', gap: 6, height: 34 },
-  laneBar: { borderRadius: 4, display: 'block', flex: 1, minWidth: 6 },
-  momentList: { display: 'grid', gap: 8 },
-  momentRow: { alignItems: 'center', background: '#22222b', borderRadius: 10, display: 'grid', gap: 10, gridTemplateColumns: '34px 1fr auto', padding: '10px 12px', transition: 'transform 0.15s ease, box-shadow 0.15s ease' },
-  rank: { alignItems: 'center', background: '#7c3aed', borderRadius: 9, display: 'inline-flex', fontWeight: 800, height: 34, justifyContent: 'center', width: 34 },
-  momentMain: { display: 'grid', gap: 3, minWidth: 0 },
-  rowActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 },
-  textButton: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 11, fontWeight: 800, padding: 0 },
   textButtonLarge: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 14, fontWeight: 800, padding: '8px 0' },
-  score: { color: '#fb7185', display: 'grid', fontSize: 11, justifyItems: 'end' },
-  footerActions: { display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr', marginTop: 14 },
-  emoteChips: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  emoteChip: { alignItems: 'center', background: '#22222b', border: '1px solid #3f3f50', borderRadius: 999, color: '#fafafc', display: 'inline-flex', fontSize: 11, fontWeight: 800, gap: 6, padding: '6px 9px' },
-  emoteChipImg: { display: 'block', objectFit: 'contain' },
-  saveTools: { display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr 1fr', marginBottom: 12 },
-  offsetInput: { background: '#101014', border: '1px solid #3f3f50', borderRadius: 10, color: '#fafafc', font: 'inherit', minWidth: 0, padding: '10px 12px' },
-  savedList: { display: 'grid', gap: 8 },
-  savedRow: { alignItems: 'center', background: '#22222b', borderRadius: 10, display: 'grid', gap: 10, gridTemplateColumns: '1fr auto', padding: '9px 12px' },
-  savedMain: { background: 'transparent', border: 0, color: '#fafafc', cursor: 'pointer', display: 'grid', gap: 3, minWidth: 0, padding: 0, textAlign: 'left' },
-  primaryButton: { background: 'var(--pulse-accent, #8b5cf6)', border: 0, borderRadius: 10, color: 'var(--pulse-on-accent, #fff)', cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
-  hubLinkButton: { background: 'var(--pulse-accent, #8b5cf6)', border: 0, borderRadius: 10, color: 'var(--pulse-on-accent, #fff)', cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
-  secondaryButton: { background: '#2b2b32', border: '1px solid #3f3f50', borderRadius: 10, color: '#fafafc', cursor: 'pointer', fontWeight: 800, padding: '12px 14px' },
+  footerActions: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 },
+  primaryButton: { background: 'var(--pulse-accent-strong, #7c3aed)', border: 0, borderRadius: 10, color: 'var(--pulse-on-accent, #fff)', cursor: 'pointer', fontWeight: 800, minHeight: 44, padding: '11px 14px' },
+  secondaryButton: { background: '#2b2b32', border: '1px solid #3f3f50', borderRadius: 10, color: '#fafafc', cursor: 'pointer', fontWeight: 800, minHeight: 44, padding: '11px 14px' },
   stateBlock: { background: '#1f1f27', borderRadius: 12, marginTop: 16, padding: 16 },
   stateTitle: { fontSize: 18, margin: '0 0 10px' },
   stateText: { color: '#b7b7c6', fontSize: 13, lineHeight: 1.35, margin: '0 0 14px' },
@@ -2241,121 +2426,45 @@ const styles: Record<string, CSSProperties> = {
   notice: { background: '#2a2440', border: '1px solid #3f3f50', borderRadius: 10, color: 'var(--pulse-accent-soft, #c4b5fd)', fontSize: 12, fontWeight: 700, margin: '14px 0 0', padding: '10px 12px' },
   noticeWarn: { background: 'rgba(249,115,22,0.12)', borderColor: 'rgba(249,115,22,0.35)', color: '#fdba74' },
   noticeOk: { background: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.35)', color: '#86efac' },
-  streamPulseHeader: { alignItems: 'flex-start', border: '1px solid rgba(255,255,255,0.1)', borderRadius: theme.radiusButton, display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', marginBottom: 14, padding: '12px 14px', width: '100%' },
-  streamPulseHeaderSidebar: { alignItems: 'stretch', border: '1px solid rgba(255,255,255,0.1)', borderRadius: theme.radiusButton, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10, padding: '10px 12px', width: '100%' },
   streamPulseHeaderMain: { flex: '1 1 180px', minWidth: 0, width: '100%' },
   streamPulseHeaderMainSidebar: { flex: '0 0 auto', minWidth: 0, width: '100%' },
-  streamPulseTitleRow: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
-  streamPulseTitle: { fontSize: 13, fontWeight: 900, letterSpacing: '0.06em', margin: 0, textTransform: 'uppercase' },
-  liveBadge: { background: '#dc2626', borderRadius: 4, color: '#fff', fontSize: 10, fontWeight: 900, padding: '2px 6px', textTransform: 'uppercase' },
-  apiPillHosted: {
-    background: 'rgba(34, 197, 94, 0.14)',
-    border: '1px solid rgba(34, 197, 94, 0.35)',
-    borderRadius: 999,
-    color: 'rgba(187, 247, 208, 0.95)',
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
-    padding: '2px 8px',
-    textTransform: 'uppercase',
-  },
-  apiPillLocal: {
-    background: 'rgba(245, 158, 11, 0.14)',
-    border: '1px solid rgba(245, 158, 11, 0.4)',
-    borderRadius: 999,
-    color: 'rgba(253, 230, 138, 0.95)',
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
-    padding: '2px 8px',
-    textTransform: 'uppercase',
-  },
-  streamPulseLead: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, lineHeight: 1.4, margin: '6px 0 0' },
-  headerHubLink: {
-    ...overlayTextLinkButton,
-    flexBasis: '100%',
-    fontSize: 10,
-    fontWeight: 800,
-    letterSpacing: '0.04em',
-    marginTop: 2,
-    textTransform: 'uppercase',
-    width: '100%',
-  },
   streamPulseHeaderActions: { alignItems: 'flex-end', display: 'flex', flexDirection: 'column', flexShrink: 0, gap: 8 },
   streamPulseHeaderActionsSidebar: { alignItems: 'stretch', display: 'flex', flexDirection: 'column', gap: 10, width: '100%' },
   trackStreamerButton: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3)', borderRadius: theme.radiusButton, color: 'var(--pulse-accent-ink, #ddd6fe)', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '8px 12px', textTransform: 'uppercase' },
   trackStreamerButtonFull: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.3)', borderRadius: theme.radiusButton, color: 'var(--pulse-accent-ink, #ddd6fe)', cursor: 'pointer', fontSize: 11, fontWeight: 900, padding: '10px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
   trackingButton: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', borderRadius: 999, color: 'var(--pulse-accent-soft, #c4b5fd)', display: 'inline-block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 10px', textTransform: 'uppercase' },
-  trackingButtonFull: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)', border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', borderRadius: 999, color: 'var(--pulse-accent-soft, #c4b5fd)', display: 'block', fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', padding: '8px 12px', textAlign: 'center', textTransform: 'uppercase', width: '100%' },
-  headerIconButton: { background: 'transparent', border: 0, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 4px' },
-  headerIconButtonFull: { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: theme.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '8px 6px', textAlign: 'center', width: '100%' },
-  settingsHeaderButton: { alignItems: 'center', display: 'inline-flex', gap: 4, justifyContent: 'center', whiteSpace: 'nowrap' },
+  trackingButtonFull: {
+    alignSelf: 'flex-start',
+    background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16)',
+    border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)',
+    borderRadius: 999,
+    color: 'var(--pulse-accent-soft, #c4b5fd)',
+    display: 'inline-block',
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: '0.04em',
+    padding: '4px 10px',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    width: 'fit-content',
+  },
+  headerIconButton: { alignItems: 'center', background: 'transparent', border: 0, color: theme.textMuted, cursor: 'pointer', display: 'inline-flex', fontSize: 11, fontWeight: 700, justifyContent: 'center', minHeight: 32, minWidth: 44, padding: '4px 8px' },
+  headerIconButtonFull: { alignItems: 'center', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, color: theme.textMuted, cursor: 'pointer', display: 'inline-flex', fontSize: 11, fontWeight: 700, justifyContent: 'center', minHeight: 40, padding: '8px 6px', textAlign: 'center', width: '100%' },
   autoUpdateLabel: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8 },
   autoUpdateLabelFull: { alignItems: 'center', color: theme.textSecondary, display: 'flex', fontSize: 11, fontWeight: 600, gap: 8, justifyContent: 'space-between', width: '100%' },
   autoUpdateSwitch: { border: 0, borderRadius: 999, cursor: 'pointer', flexShrink: 0, height: 22, position: 'relative', width: 36 },
   autoUpdateKnob: { background: '#fff', borderRadius: 999, height: 18, position: 'absolute', top: 2, width: 18 },
   headerIconRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
   headerIconRowFull: { display: 'grid', gap: 6, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', width: '100%' },
-  coverageNotice: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, lineHeight: 1.4, margin: '0 0 12px' },
-  liveNowBand: { background: 'rgba(0,0,0,0.25)', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, marginBottom: 14, padding: 12 },
-  liveNowHeader: { alignItems: 'center', display: 'flex', justifyContent: 'space-between', marginBottom: 10 },
-  liveNowTitle: { fontSize: 11, fontWeight: 900, letterSpacing: '0.05em', textTransform: 'uppercase' },
-  syncedBadge: { background: 'rgba(34,211,238,0.15)', border: '1px solid rgba(34,211,238,0.35)', borderRadius: 999, color: theme.accent2, fontSize: 10, fontWeight: 800, padding: '3px 8px' },
-  liveNowMetrics: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 10, width: '100%' },
-  liveNowMetricsSidebar: { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
-  liveNowMetricsCompact: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
-  liveNowMetric: { display: 'grid', gap: 2, minWidth: 0 },
-  liveNowMetricLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' },
-  liveNowMetricValue: { fontSize: 22, fontWeight: 900, lineHeight: 1.1 },
-  liveNowMetricMeta: { color: theme.textSecondary, fontSize: 10, fontWeight: 600 },
-  emoteProviderRate: { marginRight: 8 },
-  sparklineBlock: { display: 'grid', gap: 6, marginTop: 10 },
-  sparklineHeader: { alignItems: 'center', display: 'flex', justifyContent: 'space-between', gap: 8 },
-  sparklineLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' },
-  chartWindowToggle: { alignItems: 'center', display: 'inline-flex', gap: 4 },
-  chartWindowButton: { background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 6, color: theme.textSecondary, cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '3px 8px', textTransform: 'uppercase' },
-  chartWindowButtonActive: { background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2)', borderColor: 'rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)', color: 'var(--pulse-accent-ink, #ddd6fe)' },
-  topEmotesRow: { alignItems: 'center', display: 'flex', gap: 8, marginTop: 10 },
-  topEmotesLabel: { color: theme.textMuted, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' },
-  topEmoteChips: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
-  topEmoteChip: { alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid transparent', borderRadius: 6, display: 'inline-flex', gap: 6, padding: '4px 6px' },
-  topEmoteChipButton: { background: 'rgba(255,255,255,0.05)', color: 'inherit', cursor: 'pointer', font: 'inherit' },
-  topEmoteChipActive: { background: 'rgba(74, 222, 128, 0.12)', borderColor: 'rgba(74, 222, 128, 0.45)' },
-  topEmoteImg: { display: 'block', height: 24, objectFit: 'contain', width: 24 },
-  topEmoteName: { color: theme.textSecondary, fontSize: 11, fontWeight: 700 },
-  topEmoteCount: { color: theme.textMuted, fontSize: 10, fontWeight: 800 },
-  clipSpikeSection: { display: 'grid', gap: 10, marginBottom: 14, marginTop: 14 },
-  clipSpikeHeading: { color: theme.textMuted, fontSize: 11, fontWeight: 900, letterSpacing: '0.04em', margin: 0, textTransform: 'uppercase' },
-  analyticsFooter: { marginTop: 14, paddingBottom: 8, textAlign: 'center' },
-  analyticsFooterLink: { background: 'transparent', border: 0, color: 'var(--pulse-accent-soft, #c4b5fd)', cursor: 'pointer', fontSize: 11, fontWeight: 900, letterSpacing: '0.04em', padding: '4px 0', textTransform: 'uppercase' },
-  clipSpikeCard: { background: 'rgba(255,255,255,0.035)', border: `1px solid ${theme.border}`, borderRadius: theme.radiusButton, color: theme.textPrimary, display: 'block', overflow: 'hidden', textDecoration: 'none' },
-  clipThumbWrap: { aspectRatio: '16 / 9', background: '#101014', position: 'relative' },
+  clipSpikeHeading: { color: theme.textSecondary, fontSize: 12, fontWeight: 700, letterSpacing: 0, margin: 0 },
+  clipSpikeCard: { color: theme.textPrimary, display: 'block', borderRadius: 6, textDecoration: 'none' },
+  clipThumbWrap: { aspectRatio: '16 / 9', background: '#18181b', position: 'relative', borderRadius: 6, overflow: 'hidden' },
   clipThumb: { display: 'block', height: '100%', objectFit: 'cover', width: '100%' },
-  clipThumbFallback: { background: 'linear-gradient(135deg, #1f1f27, #101014)', height: '100%', width: '100%' },
-  clipDurationBadge: { background: 'rgba(0,0,0,0.75)', borderRadius: 4, bottom: 8, color: '#fafafc', fontSize: 11, fontWeight: 800, padding: '2px 8px', position: 'absolute', right: 8 },
-  clipBody: { display: 'grid', gap: 6, padding: 12 },
-  clipTitle: { display: '-webkit-box', fontSize: 13, fontWeight: 800, lineHeight: 1.35, overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 },
-  clipViews: { color: theme.textMuted, fontSize: 11, fontWeight: 700 },
-  collectingBadge: { background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 999, color: '#fde68a', display: 'inline-block', fontSize: 10, fontWeight: 800, padding: '2px 8px', width: 'fit-content' },
-  footerActionsSingle: { display: 'grid', gap: 8, marginTop: 12 },
-  settingsBottomBar: { alignItems: 'center', background: 'rgba(17, 17, 23, 0.96)', border: `1px solid ${theme.borderAccent}`, borderRadius: 8, boxSizing: 'border-box', color: theme.textSecondary, cursor: 'pointer', display: 'flex', fontSize: 11, fontWeight: 800, gap: 8, justifyContent: 'space-between', marginTop: 8, minHeight: 40, padding: '9px 11px', textAlign: 'left', width: '100%' },
-  settingsFabDock: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-    paddingTop: 4,
-  },
-  settingsGearFab: {
-    alignItems: 'center',
-    background: 'rgba(17, 17, 23, 0.96)',
-    border: `1px solid ${theme.borderAccent}`,
-    borderRadius: 999,
-    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
-    color: theme.textSecondary,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
+  clipThumbFallback: { background: '#18181b', height: '100%', width: '100%' },
+  clipDurationBadge: { background: 'rgba(0,0,0,0.8)', borderRadius: 3, bottom: 6, color: '#fafafc', fontSize: 10, fontWeight: 600, padding: '2px 5px', position: 'absolute', right: 6 },
+  clipBody: { display: 'grid', gap: 4, padding: '8px 2px 2px' },
+  clipTitle: { display: '-webkit-box', fontSize: 12, fontWeight: 600, lineHeight: 1.4, height: '2.8em', overflowWrap: 'anywhere', overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 },
+  clipViews: { color: theme.textMuted, fontSize: 10, fontWeight: 500 },
+  settingsFooter: { flexShrink: 0, padding: '0 10px 10px' },
+  settingsBottomBar: { alignItems: 'center', background: 'rgba(17, 17, 23, 0.96)', border: `1px solid ${theme.borderAccent}`, borderRadius: 8, boxSizing: 'border-box', color: theme.textSecondary, cursor: 'pointer', display: 'flex', fontSize: 11, fontWeight: 800, gap: 8, justifyContent: 'space-between', marginTop: 0, minHeight: 44, padding: '9px 11px', textAlign: 'left', width: '100%' },
 }

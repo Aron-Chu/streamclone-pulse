@@ -6,6 +6,8 @@ export type FullHistoryActivation = {
   login: string
   streamId: string
   vodId: string
+  /** Stream/VOD start epoch; protects against reused or corrected stream IDs. */
+  startedAt?: string
 }
 
 export type FullHistoryRequestFailureReason =
@@ -23,12 +25,21 @@ export function makeFullHistoryActivation(input: {
   login?: string | null
   streamId?: string | number | null
   vodId?: string | null
+  startedAt?: string | null
 }): FullHistoryActivation {
   return {
     login: String(input.login ?? '').trim().toLowerCase(),
     streamId: String(input.streamId ?? '').trim(),
     vodId: String(input.vodId ?? '').trim(),
+    startedAt: normalizeStartedAt(input.startedAt),
   }
+}
+
+function normalizeStartedAt(value: string | null | undefined): string | undefined {
+  const raw = String(value ?? '').trim()
+  if (!raw) return undefined
+  const parsed = Date.parse(raw)
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : raw
 }
 
 export function sameFullHistoryActivation(
@@ -37,9 +48,15 @@ export function sameFullHistoryActivation(
 ): boolean {
   if (!a || !b) return false
   if (!a.login || a.login !== b.login) return false
-  if (a.streamId && b.streamId) return a.streamId === b.streamId
-  if (a.vodId && b.vodId) return a.vodId === b.vodId
-  return false
+  const samePrimaryIdentity = a.streamId && b.streamId
+    ? a.streamId === b.streamId
+    : a.vodId && b.vodId
+      ? a.vodId === b.vodId
+      : false
+  if (!samePrimaryIdentity) return false
+  // Older payloads may omit startedAt. When both sides provide it, it is part
+  // of the identity so a reused/corrected stream ID cannot retain old Full.
+  return !a.startedAt || !b.startedAt || a.startedAt === b.startedAt
 }
 
 export function isFullHistoryUnlockedFor(
@@ -56,7 +73,7 @@ export function fullHistoryActivationKey(activation: FullHistoryActivation): str
     : activation.vodId
       ? `vod:${activation.vodId}`
       : 'pending'
-  return `${activation.login}|${identity}`
+  return `${activation.login}|${identity}${activation.startedAt ? `|start:${activation.startedAt}` : ''}`
 }
 
 export function hasStableFullHistoryActivation(activation: FullHistoryActivation): boolean {

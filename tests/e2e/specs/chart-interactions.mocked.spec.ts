@@ -3,6 +3,7 @@ import type { EvidenceCollectors } from '../helpers/evidence.ts'
 import type { MockApiController } from '../helpers/mockApi.ts'
 import type { TestInfo } from '@playwright/test'
 import {
+  assertBookmarkLabel,
   assertExactlyOnePulseRoot,
   assertNoUncaughtErrors,
   PULSE_ROOT_ID,
@@ -180,6 +181,20 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('featured moment is above the chart and opens its selected inspector', async ({ extension, prepare, evidence }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    await expect(featured).toBeVisible()
+    expect((await featured.boundingBox())!.y).toBeLessThan((await chart.boundingBox())!.y)
+    await featured.click()
+    await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-selected-moment-card="true"]`)).toBeVisible()
+    await assertBookmarkLabel(extension.page)
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('chart zoom performs on the first click after a moment is pinned', async ({
     extension,
     prepare,
@@ -199,7 +214,8 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
       .not.toBeNull()
 
-    const spanBefore = viewportSpan(await probeChart(extension.page))
+    const pinnedBefore = await probeChart(extension.page)
+    const spanBefore = viewportSpan(pinnedBefore)
     const zoomIn = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-in]`)
     await expect(zoomIn).toBeVisible()
     await expect(zoomIn).toBeEnabled()
@@ -209,8 +225,8 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => viewportSpan(await probeChart(extension.page)), { timeout: 5_000 })
       .toBeLessThan(spanBefore)
     await expect
-      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
-      .toBeNull()
+      .poll(async () => (await probeChart(extension.page)).activeOffset, { timeout: 5_000 })
+      .toBe(pinnedBefore.activeOffset)
     assertNoUncaughtErrors(evidence)
   })
 
@@ -228,7 +244,8 @@ test.describe('chart preview/lock interactions', () => {
     ).toBeVisible()
     const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
     await expect(chart).toBeVisible()
-    await expect(chart.locator('path[data-chart-series="chat"]')).toHaveCount(1)
+    await expect(chart.locator('path[data-chart-series="chat"][data-chart-path-state="overview"]')).toHaveCount(1)
+    await expect(chart.locator('path[data-chart-series="chat"][data-chart-path-state="detail"]')).toHaveCount(1)
     const games = extension.page.locator(`#${PULSE_ROOT_ID} [data-games-played="true"]`)
     await expect(games).toBeVisible()
     expect((await games.boundingBox())?.y ?? Infinity).toBeLessThan((await chart.boundingBox())?.y ?? -Infinity)
@@ -297,8 +314,8 @@ test.describe('chart preview/lock interactions', () => {
       .not.toBeNull()
     expect((await probeChart(extension.page)).lockedIndex).toBeNull()
     await expect(
-      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-bucket-preview="true"]`),
-    ).toContainText('minute bucket')
+      extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-readout="true"][data-chart-readout-state="preview"]`),
+    ).toContainText('Preview')
 
     // Keyboard events go to the focused element; hover alone never focuses
     // anything, so focus the scrubber explicitly before committing.
@@ -528,7 +545,7 @@ test.describe('chart preview/lock interactions', () => {
     assertNoUncaughtErrors(evidence)
   })
 
-  test('top moment markers are opt-in and share chart selection clearing', async ({
+  test('hiding moment markers preserves selection until explicitly cleared', async ({
     extension,
     prepare,
     evidence,
@@ -557,6 +574,11 @@ test.describe('chart preview/lock interactions', () => {
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-pressed', 'false')
     await expect(markers).toHaveCount(0)
+    await expect
+      .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
+      .not.toBeNull()
+    await extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-scrubber="true"]`).focus()
+    await extension.page.keyboard.press('Escape')
     await expect
       .poll(async () => (await probeChart(extension.page)).lockedIndex, { timeout: 5_000 })
       .toBeNull()
@@ -590,7 +612,8 @@ test.describe('chart preview/lock interactions', () => {
     expect(await settings.evaluate(node => Number.parseFloat(getComputedStyle(node).minHeight))).toBeGreaterThanOrEqual(40)
     await settings.focus()
     await settings.press('Enter')
-    await expect(extension.page.getByRole('combobox', { name: 'Default chart range' })).toBeVisible()
+    await expect(extension.page.getByRole('heading', { name: 'Quick settings' })).toBeVisible()
+    await expect(extension.page.getByRole('combobox', { name: 'Default chart range' })).toHaveCount(0)
     assertNoUncaughtErrors(evidence)
   })
 

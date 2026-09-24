@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { resolveRecapChartPeakOffsets } from '../src/ui/recapChartPeaks.ts'
+import { lastActiveRollupOffsetSeconds, resolveRecapChartPeakOffsets, resolveRecapPointFromRollup } from '../src/ui/recapChartPeaks.ts'
+
+it('preserves a viewer-only measured tail and ignores missing observations', () => {
+  expect(lastActiveRollupOffsetSeconds([
+    { offsetSeconds: 0, chatCount: 12, sevenTvEmoteCount: 0 },
+    { offsetSeconds: 600, chatCount: 0, sevenTvEmoteCount: 0, viewerCount: 250 },
+    { offsetSeconds: 660, chatCount: 0, sevenTvEmoteCount: 0 },
+    { offsetSeconds: 720, chatCount: 0, sevenTvEmoteCount: 0, viewerCount: 250, missing: true },
+  ])).toBe(600)
+})
 
 describe('resolveRecapChartPeakOffsets', () => {
   it('prefers recap topMoments offsets sorted by score', () => {
@@ -134,6 +143,14 @@ describe('resolveRecapSelectionFromOffset', () => {
 })
 
 describe('resolveRecapPointFromRollup', () => {
+  it('keeps an adjacent bucket exact when snapping is disabled', () => {
+    const rollup = { offsetSeconds: 26340, chatCount: 326, sevenTvEmoteCount: 331 }
+    const point = resolveRecapPointFromRollup({ rollup, rollups: [rollup],
+      moments: [{ offsetSeconds: 26280, score: 927, reasons: ['chat_spike'] }],
+      catalog: [], startedAt: undefined, toleranceSeconds: 0 })
+    expect(point.offsetSeconds).toBe(26340)
+    expect(point.chatCount).toBe(326)
+  })
   const moments = [{ offsetSeconds: 13_800, score: 504, reasons: ['emote_spike'] }]
 
   it('uses clicked rollup offset when nearest moment is outside tolerance', async () => {
@@ -214,5 +231,138 @@ describe('recapStreamDurationSeconds', () => {
       },
     })
     expect(seconds).toBe(45_720)
+  })
+
+  it('clips a legacy request-time close that contradicts claimed full coverage', async () => {
+    const { recapStreamDurationSeconds } = await import('../src/ui/recapChartPeaks.ts')
+    const seconds = recapStreamDurationSeconds({
+      login: 'xqc',
+      isLive: false,
+      tracking: false,
+      durationSeconds: 56_770,
+      currentOffsetSeconds: 56_770,
+      rollups: [{ offsetSeconds: 23_708, chatCount: 30, sevenTvEmoteCount: 4 }],
+      fullRollups: [{ offsetSeconds: 23_708, chatCount: 30, sevenTvEmoteCount: 4 }],
+      coverage: {
+        state: 'full_stream_tracked',
+        coverageStartOffsetSeconds: 68,
+        coverageEndOffsetSeconds: 23_760,
+        hasFullStreamCoverage: true,
+        hasGaps: false,
+        canBackfill: false,
+        message: 'Full stream tracked',
+      },
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: {
+        streamId: '320046085086',
+        login: 'xqc',
+        durationSeconds: 56_770,
+        totalMessages: 120_500,
+        peakChatPerMin: 897,
+        topMoments: [],
+        topEmotes: [],
+        clipCandidates: [],
+      },
+    })
+    expect(seconds).toBe(23_820)
+  })
+
+  it('keeps the real duration when the backend declares a missing IRC tail', async () => {
+    const { recapStreamDurationSeconds } = await import('../src/ui/recapChartPeaks.ts')
+    const seconds = recapStreamDurationSeconds({
+      login: 'xqc',
+      isLive: false,
+      tracking: false,
+      durationSeconds: 56_770,
+      currentOffsetSeconds: 56_770,
+      rollups: [{ offsetSeconds: 23_708, chatCount: 30, sevenTvEmoteCount: 4 }],
+      coverage: {
+        state: 'missing_ranges_detected',
+        coverageStartOffsetSeconds: 68,
+        coverageEndOffsetSeconds: 23_760,
+        hasFullStreamCoverage: false,
+        hasGaps: true,
+        missingRanges: [{ fromOffsetSeconds: 23_820, toOffsetSeconds: 56_710 }],
+        canBackfill: true,
+        message: 'Missing IRC tail',
+      },
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: {
+        streamId: '320046085086',
+        login: 'xqc',
+        durationSeconds: 56_770,
+        totalMessages: 120_500,
+        peakChatPerMin: 897,
+        topMoments: [],
+        topEmotes: [],
+        clipCandidates: [],
+      },
+    })
+    expect(seconds).toBe(56_770)
+  })
+
+  it('clips trailing zero-activity dead tail on offline recap without full coverage assertion', async () => {
+    const { recapStreamDurationSeconds } = await import('../src/ui/recapChartPeaks.ts')
+    const activeRollups = [
+      { offsetSeconds: 0, chatCount: 50, sevenTvEmoteCount: 10 },
+      { offsetSeconds: 30_600, chatCount: 120, sevenTvEmoteCount: 25 },
+    ]
+    const deadRollups = [
+      { offsetSeconds: 31_500, chatCount: 0, sevenTvEmoteCount: 0 },
+      { offsetSeconds: 32_400, chatCount: 0, sevenTvEmoteCount: 0 },
+      { offsetSeconds: 78_540, chatCount: 0, sevenTvEmoteCount: 0 },
+    ]
+    const seconds = recapStreamDurationSeconds({
+      login: 'streamer',
+      isLive: false,
+      tracking: false,
+      durationSeconds: 79_140,
+      currentOffsetSeconds: 79_140,
+      rollups: [...activeRollups, ...deadRollups],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: {
+        streamId: '12345',
+        login: 'streamer',
+        durationSeconds: 79_140,
+        totalMessages: 134_100,
+        peakChatPerMin: 500,
+        topMoments: [],
+        topEmotes: [],
+        clipCandidates: [],
+      },
+    })
+    expect(seconds).toBe(30_660)
+  })
+
+  it('clips inflated declared duration when fullRollups ends early without trailing data', async () => {
+    const { recapStreamDurationSeconds } = await import('../src/ui/recapChartPeaks.ts')
+    const seconds = recapStreamDurationSeconds({
+      login: 'streamer',
+      isLive: false,
+      tracking: false,
+      durationSeconds: 79_140,
+      currentOffsetSeconds: 79_140,
+      rollups: [{ offsetSeconds: 30_600, chatCount: 80, sevenTvEmoteCount: 15 }],
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 20, sevenTvEmoteCount: 5 },
+        { offsetSeconds: 30_600, chatCount: 80, sevenTvEmoteCount: 15 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: {
+        streamId: '12345',
+        login: 'streamer',
+        durationSeconds: 79_140,
+        totalMessages: 134_100,
+        peakChatPerMin: 500,
+        topMoments: [],
+        topEmotes: [],
+        clipCandidates: [],
+      },
+    })
+    expect(seconds).toBe(30_660)
   })
 })

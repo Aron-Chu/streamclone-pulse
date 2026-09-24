@@ -1,8 +1,11 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   GAMES_PLAYED_ART_WIDTH_PX,
   GAMES_PLAYED_CHIP_MIN_WIDTH_PX,
   GAMES_PLAYED_HIT_TARGET_HEIGHT_PX,
+  GamesPlayedStrip,
   initialsForGame,
   resolveGameArtCandidates,
   resolveGamesPlayedActivationKey,
@@ -26,6 +29,10 @@ describe('GamesPlayedStrip equal chips', () => {
       'https://static-cdn.jtvnw.net/ttv-boxart/509658-144x192.png',
       'https://static-cdn.jtvnw.net/ttv-boxart/509658_IGDB-144x192.jpg',
     ])
+    expect(resolveGameArtCandidates(
+      'https://static-cdn.jtvnw.net/ttv-boxart/14842174-210x280.jpg',
+      '14842174',
+    )[0]).toBe('https://static-cdn.jtvnw.net/ttv-boxart/14842174_IGDB-144x192.jpg')
   })
 
   it('resets game selection identity when stream activation changes', () => {
@@ -38,5 +45,22 @@ describe('GamesPlayedStrip equal chips', () => {
     expect(initialsForGame('League of Legends')).toBe('LL')
     expect(initialsForGame('Just Chatting')).toBe('JC')
     expect(initialsForGame('')).toBe('?')
+  })
+
+  it('keeps a single game identifiable before interaction or image loading', () => {
+    const html = renderToStaticMarkup(createElement(GamesPlayedStrip, {
+      games: [{
+        gameName: 'NBA 2K27',
+        categoryId: '14842174',
+        offsetSeconds: 0,
+        durationSeconds: 3600,
+      }],
+      durationSeconds: 3600,
+    }))
+
+    expect(html).toContain('<strong')
+    expect(html).toContain('NBA 2K27')
+    expect(html).toContain('data-game-art-fallback="true"')
+    expect(html).toContain('loading="eager"')
   })
 })

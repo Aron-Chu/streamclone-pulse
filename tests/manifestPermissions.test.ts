@@ -11,6 +11,7 @@ function loadManifest(name: string) {
     host_permissions?: string[]
     optional_host_permissions?: string[]
     content_scripts?: Array<{ matches?: string[] }>
+    web_accessible_resources?: Array<{ resources?: string[]; matches?: string[] }>
     version?: string
   }
 }
@@ -30,6 +31,10 @@ const EXPECTED_OPTIONAL_HOST_PERMISSIONS = [
   'http://127.0.0.1:8081/*',
 ]
 const EXPECTED_CONTENT_SCRIPT_MATCHES = ['https://*.twitch.tv/*']
+const EXPECTED_WEB_ACCESSIBLE_RESOURCES = [{
+  resources: ['content/shadow.css'],
+  matches: EXPECTED_CONTENT_SCRIPT_MATCHES,
+}]
 
 describe('manifest targets', () => {
   it('development keeps localhost under optional_host_permissions only', () => {
@@ -66,6 +71,7 @@ describe('manifest targets', () => {
       const manifest = loadManifest(name)
       const matches = manifest.content_scripts?.flatMap((entry) => entry.matches ?? []) ?? []
       expect(matches).toEqual(EXPECTED_CONTENT_SCRIPT_MATCHES)
+      expect(manifest.web_accessible_resources).toEqual(EXPECTED_WEB_ACCESSIBLE_RESOURCES)
     }
   })
 })

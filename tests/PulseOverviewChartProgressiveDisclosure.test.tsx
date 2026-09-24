@@ -12,10 +12,14 @@ describe('PulseOverviewChart signal disclosure', () => {
   it('keeps viewer, chat, and emote trends visible at rest without bars or composite overview', () => {
     const html = renderToStaticMarkup(<PulseOverviewChart reducedMotion rollups={rollups} />)
 
-    expect(html).toContain('data-chart-mode="signals"')
+    expect(html).toContain('data-chart-mode="idle"')
+    expect(html).toContain('data-chart-presentation="idle"')
     expect(html).toContain('data-chart-layer="signals" opacity="1"')
     expect(html).toContain('data-chart-layer="interaction" opacity="0"')
     expect(html).toContain('data-chart-series="viewers"')
+    expect(html).toContain('data-chart-viewer-renderer="shared-no-dot"')
+    expect(html).not.toContain('data-chart-viewer-point=')
+    expect(html).not.toContain('data-chart-layer="viewer-points"')
     expect(html).toContain('data-chart-series="chat"')
     expect(html).toContain('data-chart-series="emotes"')
     expect(html).not.toContain('data-chart-layer="overview"')
@@ -31,25 +35,29 @@ describe('PulseOverviewChart signal disclosure', () => {
     expect(html).toContain('data-chart-signal-group="emotes" opacity="0"')
     expect(html).not.toContain('data-chart-layer="overview"')
     expect(html).toContain('data-chart-series="viewers"')
+    expect(html).not.toContain('data-chart-viewer-point=')
     expect(html).toContain('data-chart-series="chat"')
     expect(html).toContain('data-chart-series="emotes"')
   })
 
-  it('keeps bars, crosshair, and committed time identity visible after pointer leave', () => {
+  it('keeps bars, one bucket band, and committed time identity visible after pointer leave', () => {
     const html = renderToStaticMarkup(
       <PulseOverviewChart reducedMotion rollups={rollups} selectedIndex={1} />,
     )
 
-    expect(html).toContain('data-chart-mode="detail"')
+    expect(html).toContain('data-chart-mode="locked"')
+    expect(html).toContain('data-chart-presentation="locked"')
     expect(html).toContain('data-chart-active-index="1"')
     expect(html).toContain('data-chart-active-offset="60"')
     expect(html).toContain('data-chart-locked-index="1"')
     expect(html).toContain('data-chart-layer="interaction" opacity="1"')
     expect(html).toContain('data-chart-signal-group="chat" opacity="1"')
     expect(html).toContain('data-chart-signal-group="emotes" opacity="1"')
-    expect(html).toContain('stroke="rgba(var(--pulse-accent-soft-rgb, 196, 181, 253), 0.88)"')
-    // Compact readout: committed time plus the bucket's viewer value.
-    expect(html).toContain('>00:01:00 · 140<')
+    expect(html).toContain('data-chart-selection-band="locked"')
+    expect(html).not.toContain('stroke="rgba(var(--pulse-accent-soft-rgb, 196, 181, 253), 0.88)"')
+    // The chart owns only the plot/bucket highlight; the compact readout lives in the
+    // parent chart inspection band.
+    expect(html).not.toContain(' · 140<')
   })
 
   it('keeps plotted geometry immediate with a single short hover-chrome fade', () => {
@@ -59,7 +67,7 @@ describe('PulseOverviewChart signal disclosure', () => {
 
     // No broad line morphing: exactly one short opacity fade (hover chrome).
     expect(html.match(/transition:/g)).toHaveLength(1)
-    expect(html).toContain('opacity 140ms cubic-bezier(0.22, 1, 0.36, 1)')
+    expect(html).toContain('opacity 160ms cubic-bezier(0.22, 1, 0.36, 1)')
     expect(html).not.toContain('420ms')
     // Reduced motion removes even that.
     const still = renderToStaticMarkup(
@@ -97,7 +105,10 @@ describe('PulseOverviewChart signal disclosure', () => {
     expect(html).toContain('data-chart-active-index="0"')
     expect(html).toContain('data-chart-locked-index="0"')
     expect(html).toContain('data-chart-preview-index="2"')
-    expect(html).toContain('data-chart-hover-band="muted"')
+    expect(html).toContain('data-chart-selection-band="locked"')
+    expect(html).toContain('data-chart-selection-band="preview"')
+    expect(html).not.toContain('data-chart-hover-band="muted"')
+    expect(html).not.toContain('stroke="rgba(var(--pulse-accent-soft-rgb, 196, 181, 253), 0.88)"')
     expect(html).toContain('>00:00:00<')
   })
 

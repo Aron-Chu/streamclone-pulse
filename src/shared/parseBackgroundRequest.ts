@@ -1,7 +1,15 @@
 import { normalizeLogin } from './login.ts'
+import { parseMyMoments } from './myMoments.ts'
+import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
+  'MY_MOMENTS',
+  'MOMENT_CAPTURE',
+  'SUPPORTER_ACCOUNT',
+  'SUPPORTER_ENTITLEMENT',
+  'SUPPORTER_COSMETICS',
+  'SUPPORTER_APPEARANCE',
   'TRACK',
   'UNTRACK',
   'GET_PULSE',
@@ -9,7 +17,9 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'GET_ALWAYS_TRACKED',
   'GET_CLIP',
   'HEALTH',
-  'OPEN_OPTIONS',
+  'GET_UPDATE_CHECK_CAPABILITY',
+  'CHECK_FOR_UPDATE',
+  'OPEN_SETTINGS_HOST',
   'LIST_BOOKMARKS',
   'SAVE_BOOKMARK',
   'DELETE_BOOKMARK',
@@ -129,6 +139,9 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
         type,
         login,
         startedAt: optionalString(raw.startedAt),
+        endedAt: optionalString(raw.endedAt),
+        streamId: optionalString(raw.streamId),
+        vodId: optionalString(raw.vodId),
         isLive: optionalBoolean(raw.isLive),
       }
     }
@@ -186,7 +199,13 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       if (!jobId || !login) return null
       return { type, jobId, login }
     }
+    case 'MY_MOMENTS':
+    case 'MOMENT_CAPTURE':
+      return parseMyMoments(raw)
     case 'LIST_BOOKMARKS': {
+      if (raw.contextVodId !== undefined && (typeof raw.contextVodId !== 'string' || !/^\d+$/.test(raw.contextVodId))) return null
+      if (raw.limit !== undefined && !validBookmarkPageLimit(raw.limit)) return null
+      if (raw.cursor !== undefined && !validBookmarkCursor(raw.cursor)) return null
       let login: string | undefined
       if (raw.login != null) {
         const normalized = requireLogin(raw.login)
@@ -198,6 +217,9 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
         login,
         streamId: optionalString(raw.streamId),
         vodId: optionalString(raw.vodId),
+        ...(raw.contextVodId !== undefined ? { contextVodId: raw.contextVodId as string } : {}),
+        ...(raw.limit !== undefined ? { limit: raw.limit as number } : {}),
+        ...(raw.cursor !== undefined ? { cursor: raw.cursor as string } : {}),
       }
     }
     case 'SAVE_BOOKMARK': {
@@ -215,10 +237,36 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       return { type, enabled: raw.enabled }
     }
     case 'HEALTH':
+      return { type, force: optionalBoolean(raw.force) }
+    case 'GET_UPDATE_CHECK_CAPABILITY':
+    case 'CHECK_FOR_UPDATE':
+      return { type }
+    case 'OPEN_SETTINGS_HOST': {
+      // Navigation is always resolved by the worker. Reject attempts to smuggle
+      // a caller-controlled destination into this content-script-reachable action.
+      if ('url' in raw || 'path' in raw || 'target' in raw) return null
+      const section =
+        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'developer'
+          ? raw.section
+          : raw.section == null ? undefined : null
+      if (section === null) return null
+      return section ? { type, section } : { type }
+    }
+    case 'SUPPORTER_ACCOUNT': {
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
+      const action = raw.action
+      return action === 'status' || action === 'start' || action === 'poll' || action === 'cancel' || action === 'disconnect'
+        ? { type, action } : null
+    }
+    case 'SUPPORTER_COSMETICS':
+      if (Object.keys(raw).some(key => !['type', 'enabled', 'finish'].includes(key))) return null
+      return typeof raw.enabled === 'boolean' && (raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo') ? { type, enabled: raw.enabled, finish: raw.finish } : null
+    case 'SUPPORTER_ENTITLEMENT':
+    case 'SUPPORTER_APPEARANCE':
+      return Object.keys(raw).length === 1 ? { type } : null
     case 'GET_DEVICE_AUTH_STATUS':
     case 'ROTATE_DEVICE':
     case 'REVOKE_DEVICE':
-    case 'OPEN_OPTIONS':
     case 'LIST_WATCHLIST':
     case 'SYNC_WATCHLIST':
       return { type }

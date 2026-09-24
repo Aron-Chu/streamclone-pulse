@@ -1,14 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  CACHE_BAR_LIMIT,
-  DEFAULT_FORM,
-  backendHost,
-  formatPollAria,
-  formatPollDisplay,
-  formsEqual,
-  type SettingsForm,
-} from '../src/options/settingsModel.ts'
-import {
   clampPollIntervalMs,
   clearSessionPulseCache,
   countSessionPulseEntries,
@@ -18,6 +9,7 @@ import {
   getOverlayDisplayPreferences,
   getOverlayPlacement,
   getKeepLocalCache,
+  getPollIntervalMs,
   getThemePreference,
   isLocalStackBackendUrl,
   setBackendUrl,
@@ -26,54 +18,7 @@ import {
   setPollIntervalMs,
   setThemePreference,
 } from '../src/shared/storage.ts'
-
-describe('settings dirty-tracking model', () => {
-  it('treats an identical clone as not dirty', () => {
-    expect(formsEqual(DEFAULT_FORM, { ...DEFAULT_FORM })).toBe(true)
-  })
-
-  it('detects a change in every persisted field', () => {
-    const changes: Array<Partial<SettingsForm>> = [
-      { backendUrl: 'http://localhost:9090' },
-      { theme: 'volt' },
-      { chartWindow: '15m' },
-      { autoUpdate: !DEFAULT_FORM.autoUpdate },
-      { pollMs: DEFAULT_FORM.pollMs + 5000 },
-      { autoTrack: 'followed' },
-      { placement: 'right' },
-      { show7tvLabels: !DEFAULT_FORM.show7tvLabels },
-      { keepCache: !DEFAULT_FORM.keepCache },
-    ]
-    for (const change of changes) {
-      expect(formsEqual(DEFAULT_FORM, { ...DEFAULT_FORM, ...change })).toBe(false)
-    }
-  })
-})
-
-describe('polling slider formatting', () => {
-  it('renders compact display labels', () => {
-    expect(formatPollDisplay(10_000)).toBe('10s')
-    expect(formatPollDisplay(30_000)).toBe('30s')
-    expect(formatPollDisplay(60_000)).toBe('1m')
-    expect(formatPollDisplay(90_000)).toBe('1m 30s')
-    expect(formatPollDisplay(300_000)).toBe('5m')
-  })
-
-  it('renders spoken aria value text', () => {
-    expect(formatPollAria(30_000)).toBe('30 seconds')
-    expect(formatPollAria(60_000)).toBe('1 minute')
-    expect(formatPollAria(120_000)).toBe('2 minutes')
-    expect(formatPollAria(90_000)).toBe('1 minute 30 seconds')
-  })
-})
-
-describe('segmented + helpers', () => {
-  it('derives a readable backend host', () => {
-    expect(backendHost('https://api.streampulse.stream')).toBe('api.streampulse.stream')
-    expect(backendHost('http://localhost:8081')).toBe('localhost:8081')
-    expect(backendHost('not a url')).toBe('not a url')
-  })
-
+describe('settings helpers', () => {
   it('detects local stack backend URLs', () => {
     expect(isLocalStackBackendUrl('http://localhost:8081')).toBe(true)
     expect(isLocalStackBackendUrl('http://127.0.0.1:8081')).toBe(true)
@@ -81,9 +26,6 @@ describe('segmented + helpers', () => {
     expect(isLocalStackBackendUrl('https://api.streampulse.stream')).toBe(false)
   })
 
-  it('keeps a sane cache bar limit', () => {
-    expect(CACHE_BAR_LIMIT).toBeGreaterThan(0)
-  })
 })
 
 describe('slider clamping to the polling range', () => {
@@ -195,6 +137,14 @@ describe('settings persistence (mocked chrome.storage)', () => {
   it('persists the polling slider as a clamped millisecond value', async () => {
     await setPollIntervalMs(33_000)
     expect(syncStore.pollIntervalMs).toBe(35_000)
+  })
+
+  it('clamps store builds to 30 seconds without overwriting a developer preference', async () => {
+    syncStore.pollIntervalMs = 15_000
+    vi.stubGlobal('__EXTENSION_STORE_BUILD__', true)
+    expect(await getPollIntervalMs()).toBe(30_000)
+    await setPollIntervalMs(60_000)
+    expect(syncStore.pollIntervalMs).toBe(15_000)
   })
 
   it('counts and clears cached pulse channels', async () => {

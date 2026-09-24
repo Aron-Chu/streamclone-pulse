@@ -35,8 +35,16 @@ function imageResponse(opts: {
 describe('isApprovedEmoteImageUrl', () => {
   it('allows approved HTTPS emote CDN hosts', () => {
     expect(isApprovedEmoteImageUrl('https://cdn.7tv.app/emote/abc/4x.webp')).toBe(true)
+    expect(isApprovedEmoteImageUrl('https://cdn.betterttv.net/emote/abc/3x')).toBe(true)
+    expect(isApprovedEmoteImageUrl('https://cdn.streampulse.stream/emotes/abc.webp')).toBe(true)
     expect(isApprovedEmoteImageUrl('https://static-cdn.jtvnw.net/emoticons/v2/1/default/dark/2.0')).toBe(true)
     expect(isApprovedEmoteImageUrl('https://cdn.frankerfacez.com/emote/1/4')).toBe(true)
+  })
+
+  it('allows only the bounded loopback emote path for local development', () => {
+    expect(isApprovedEmoteImageUrl('http://localhost:8081/emotes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1x.webp')).toBe(true)
+    expect(isApprovedEmoteImageUrl('http://localhost:8081/emotes/not-a-uuid/1x.webp')).toBe(false)
+    expect(isApprovedEmoteImageUrl('http://localhost:8081/api/emotes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1x.webp')).toBe(false)
   })
 
   it('rejects HTTP, userinfo, private, and unsupported hosts', () => {

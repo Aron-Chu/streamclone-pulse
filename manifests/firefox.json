@@ -2,12 +2,11 @@
   "manifest_version": 3,
   "name": "StreamPulse",
   "description": "Live Pulse overlay for Twitch channels powered by the StreamPulse analytics API.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "action": {
     "default_popup": "popup/index.html",
     "default_title": "StreamPulse"
   },
-  "options_page": "options/index.html",
   "background": {
     "scripts": ["background/service-worker.js"],
     "type": "module"
@@ -17,6 +16,12 @@
       "matches": ["https://*.twitch.tv/*"],
       "js": ["content/twitch.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/shadow.css"],
+      "matches": ["https://*.twitch.tv/*"]
     }
   ],
   "permissions": ["storage", "scripting"],
@@ -37,10 +42,9 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "streampulse@streampulse.stream",
-      "strict_min_version": "142.0",
+      "strict_min_version": "140.0",
       "data_collection_permissions": {
-        "required": ["browsingActivity"],
-        "optional": ["technicalAndInteraction"]
+        "required": ["browsingActivity"]
       }
     }
   }

@@ -1,38 +1,17 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useReducedMotion } from './motion/useReducedMotion.ts'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
 import {
   emoteActivityInRollups,
   emoteSelectionKey,
   type EmoteWindowActivity,
 } from './chatActivityEmotes.ts'
+import { emoteChartColor } from './chartTheme.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
 import { theme } from './theme.ts'
 
 const INITIAL_VISIBLE_EMOTES = 12
-
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => (
-    typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  ))
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(mediaQuery.matches)
-    onChange()
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', onChange)
-      return () => mediaQuery.removeEventListener('change', onChange)
-    }
-    mediaQuery.addListener(onChange)
-    return () => mediaQuery.removeListener(onChange)
-  }, [])
-
-  return reduced
-}
 
 export interface SevenTvEmotePanelProps {
   expanded: boolean
@@ -43,7 +22,8 @@ export interface SevenTvEmotePanelProps {
   topEmotes: ExtensionEmote[]
   selectedKeys: string[]
   onToggleEmote: (emote: ExtensionEmote) => void
-  onClearSelection?: () => void
+  /** Remove plotted emote series without changing the selected chart bucket. */
+  onClearPlots?: () => void
   selectedOffsetSeconds: number | null
   sidebarCompact?: boolean
   /** Kept for the chart/recap call sites; picker chips use a neutral treatment. */
@@ -68,7 +48,7 @@ export function SevenTvEmotePanel({
   topEmotes,
   selectedKeys,
   onToggleEmote,
-  onClearSelection,
+  onClearPlots,
   sidebarCompact = false,
   maxSelected = 6,
   rollupsLoading = false,
@@ -98,11 +78,9 @@ export function SevenTvEmotePanel({
     [availableKeys, selectedKeys, selectionLimit],
   )
   const selectedKeySet = useMemo(() => new Set(normalizedSelectedKeys), [normalizedSelectedKeys])
-  const selectedEmotes = topEmotes.filter(emote => selectedKeySet.has(emoteSelectionKey(emote)))
-  const previewEmotes =
-    selectedEmotes.length > 0
-      ? selectedEmotes.slice(0, selectionLimit)
-      : topEmotes.slice(0, Math.min(6, selectionLimit))
+  // The collapsed control previews the actual leaders, not six anonymous
+  // selection dots. Plot selection remains manual and is still capped below.
+  const previewEmotes = topEmotes.slice(0, 3)
   const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
   const selectedCount = normalizedSelectedKeys.length
   const atCap = selectedCount >= selectionLimit
@@ -134,17 +112,30 @@ export function SevenTvEmotePanel({
             Plot on chart · {selectedCount}/{selectionLimit}
           </span>
           {!expanded && previewEmotes.length > 0 ? (
-            <span style={styles.togglePreview} title={previewNames} aria-hidden="true">
-              {previewEmotes.map(emote => (
-                <PulseEmoteImg
-                  key={emoteSelectionKey(emote)}
-                  emote={emote}
-                  backendUrl={backendUrl}
-                  width={18}
-                  height={18}
-                  style={styles.previewImg}
-                />
-              ))}
+            <span
+              style={styles.togglePreview}
+              title={`Top emotes: ${previewNames}`}
+              aria-label={`Top emotes: ${previewNames}`}
+            >
+              {previewEmotes.map(emote => {
+                const selIdx = normalizedSelectedKeys.indexOf(emoteSelectionKey(emote))
+                const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : 'rgba(255, 255, 255, 0.12)'
+                return (
+                  <span
+                    key={emoteSelectionKey(emote)}
+                    data-emote-picker-preview-image="true"
+                    style={{ ...styles.previewEmote, borderColor: lineColor }}
+                  >
+                    <PulseEmoteImg
+                      emote={emote}
+                      backendUrl={backendUrl}
+                      width={18}
+                      height={18}
+                      style={styles.previewImg}
+                    />
+                  </span>
+                )
+              })}
             </span>
           ) : null}
           <span
@@ -170,7 +161,7 @@ export function SevenTvEmotePanel({
             title="Remove all plotted emote lines"
             onClick={event => {
               event.stopPropagation()
-              onClearSelection?.()
+              onClearPlots?.()
             }}
           >
             Clear
@@ -220,7 +211,15 @@ export function SevenTvEmotePanel({
                   style={{
                     ...styles.chip,
                     ...(sidebarCompact ? styles.chipCompact : null),
-                    ...(selected ? styles.chipSelected : null),
+                    ...(selected ? (() => {
+                      const selIdx = normalizedSelectedKeys.indexOf(key)
+                      const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : '#a78bfa'
+                      return {
+                        background: `${lineColor}22`,
+                        borderColor: `${lineColor}f2`,
+                        boxShadow: `0 0 0 1px ${lineColor}cc, 0 0 10px ${lineColor}33`,
+                      }
+                    })() : null),
                     ...(disabled ? styles.chipDisabled : null),
                   }}
                   title={`${emote.name} · ${formatCount(emote.count)} uses · ${hint}`}
@@ -236,7 +235,17 @@ export function SevenTvEmotePanel({
                   <span style={styles.chipCount}>
                     {activity === 'loading' ? '…' : formatCount(emote.count)}
                   </span>
-                  {selected ? <span style={styles.chipCheck} aria-hidden="true">✓</span> : null}
+                  {selected ? (() => {
+                    const selIdx = normalizedSelectedKeys.indexOf(key)
+                    const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : theme.textMuted
+                    return (
+                      <span
+                        style={{ ...styles.chipSwatch, background: lineColor, boxShadow: `0 0 5px ${lineColor}55` }}
+                        aria-hidden="true"
+                        title={`Chart line: ${lineColor}`}
+                      />
+                    )
+                  })() : null}
                 </button>
               )
             })}
@@ -314,6 +323,17 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     minWidth: 0,
   },
+  previewEmote: {
+    alignItems: 'center',
+    background: 'rgba(255, 255, 255, 0.035)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 5,
+    display: 'inline-flex',
+    flexShrink: 0,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
   previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
   chevron: {
     color: theme.accentSoft,
@@ -372,11 +392,6 @@ const styles: Record<string, CSSProperties> = {
     padding: '3px 8px 3px 5px',
   },
   chipCompact: { minHeight: 28, minWidth: 54, padding: '3px 7px 3px 4px' },
-  chipSelected: {
-    background: 'rgba(139, 92, 246, 0.18)',
-    borderColor: 'rgba(196, 181, 253, 0.95)',
-    boxShadow: '0 0 0 1px rgba(167, 139, 250, 0.78), 0 0 12px rgba(139, 92, 246, 0.2)',
-  },
   chipDisabled: { cursor: 'not-allowed', opacity: 0.48 },
   chipImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
   chipCount: {
@@ -386,7 +401,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     lineHeight: 1,
   },
-  chipCheck: { color: '#ddd6fe', fontSize: 11, fontWeight: 900, lineHeight: 1 },
+  chipSwatch: { borderRadius: 999, flexShrink: 0, height: 7, width: 7 },
   moreButton: {
     background: 'rgba(139, 92, 246, 0.1)',
     border: '1px solid rgba(167, 139, 250, 0.35)',

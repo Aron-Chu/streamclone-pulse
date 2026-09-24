@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEVICE_CREDENTIAL_STORAGE_KEY } from '../src/background/deviceAuth.ts'
 import {
@@ -15,6 +16,29 @@ afterEach(() => {
 })
 
 describe('fetchWithTimeout', () => {
+  it('rejects redirects and omits ambient credentials even when a caller requests them', async () => {
+    const fetchImpl = vi.fn(async () => new Response('ok'))
+    const response = await fetchWithTimeout('https://api.streampulse.stream/v1/extension/health', {
+      redirect: 'follow', credentials: 'include',
+    }, { fetchImpl })
+    expect(fetchImpl.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ redirect: 'error', credentials: 'omit' }))
+    await readResponseText(response)
+  })
+
+  it('classifies an already cancelled request as cancellation', async () => {
+    const upstream = new AbortController()
+    upstream.abort()
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal?.aborted).toBe(true)
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      throw error
+    })
+    await expect(fetchWithTimeout('https://api.streampulse.stream/v1/extension/health', {
+      signal: upstream.signal,
+    }, { fetchImpl })).rejects.toThrow('extension_api_cancelled')
+  })
+
   it('maps AbortError to extension_api_timeout', async () => {
     const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
@@ -59,6 +83,21 @@ describe('fetchWithTimeout', () => {
 })
 
 describe('extension API discipline', () => {
+  it('keeps browser update checks out of timers, polling, health, and settings mounts', () => {
+    const sources = [
+      '../src/content/livePoll.ts',
+      '../src/content/entry.ts',
+      '../src/background/service-worker.ts',
+      '../src/ui/SettingsWorkspace.tsx',
+    ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
+    expect(sources.every(source => !source.includes('.requestUpdateCheck('))).toBe(true)
+    const explicitUpdateModule = readFileSync(
+      new URL('../src/background/extensionUpdateCheck.ts', import.meta.url),
+      'utf8',
+    )
+    expect(explicitUpdateModule.match(/\.requestUpdateCheck\(/g)).toHaveLength(1)
+  })
+
   it('bypasses the browser cache for live extension API reads', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       login: 'xqc',
@@ -74,6 +113,7 @@ describe('extension API discipline', () => {
     })
 
     expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ cache: 'no-store' }))
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined()
   })
 
   it('surfaces HTTP 401 from pulse channel', async () => {

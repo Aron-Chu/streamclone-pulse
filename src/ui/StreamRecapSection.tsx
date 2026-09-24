@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  formatHeatOffset,
+  momentClockDisplay,
   peaksToLiveHeatPoints,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
@@ -42,9 +42,13 @@ import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
 import { PulseMomentRow } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
+import { SavedMoments } from './SavedMoments.tsx'
+import { usePinnedCardHold } from './pinnedCardExit.ts'
+import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { theme } from './theme.ts'
 
 export interface StreamRecapSectionProps {
+  externalPoint?: LiveHeatPoint | null
   payload: PulsePayload
   backendUrl: string
   uiState: RecapUiState
@@ -173,6 +177,10 @@ function RecapHighlightStrip({
   selectedKey,
   onSelectSpike,
   onSelectBurst,
+  effectiveSpikeOffset,
+  effectiveBurstOffset,
+  spikeSelected,
+  burstSelected,
 }: {
   spike?: PulseStreamRecap['biggestChatSpike']
   burst?: PulseStreamRecap['funniestEmoteBurst']
@@ -182,43 +190,52 @@ function RecapHighlightStrip({
   selectedKey: string | null
   onSelectSpike: () => void
   onSelectBurst: () => void
+  effectiveSpikeOffset?: number
+  effectiveBurstOffset?: number
+  spikeSelected?: boolean
+  burstSelected?: boolean
 }) {
   if (!spike && !burst) return null
-  const spikeSelected = spike
+  const isSpikeSelected = spikeSelected ?? (spike
     ? selectedKey === recapHighlightSpikeKey(streamId, spike.offsetSeconds)
-    : false
-  const burstSelected = burst
+    : false)
+  const isBurstSelected = burstSelected ?? (burst
     ? selectedKey === recapHighlightBurstKey(streamId, burst.offsetSeconds)
-    : false
+    : false)
+  const spikeOffset = effectiveSpikeOffset ?? spike?.offsetSeconds ?? 0
+  const burstOffset = effectiveBurstOffset ?? burst?.offsetSeconds ?? 0
+  const spikeClock = momentClockDisplay({ offsetSeconds: spikeOffset }).text
+  const burstClock = momentClockDisplay({ offsetSeconds: burstOffset }).text
+
   return (
-    <div style={styles.highlightStrip}>
+    <div style={styles.highlightStrip} data-chart-action="true">
       {spike ? (
         <button
           type="button"
-          className={`pulse-recap-highlight-btn${spikeSelected ? ' pulse-recap-highlight-btn-selected' : ''}`}
+          className={`pulse-recap-highlight-btn${isSpikeSelected ? ' pulse-recap-highlight-btn-selected' : ''}`}
           style={{
             ...styles.highlightButton,
-            ...(spikeSelected ? styles.highlightButtonSelected : {}),
+            ...(isSpikeSelected ? styles.highlightButtonSelected : {}),
           }}
           onClick={onSelectSpike}
-          aria-pressed={spikeSelected}
+          aria-pressed={isSpikeSelected}
         >
           <span style={styles.highlightLabel}>Biggest spike</span>
           <span style={styles.highlightValue}>
-            {formatNumber(spike.chatPerMin)}/min · {formatHeatOffset(spike.offsetSeconds)}
+            {formatNumber(spike.chatPerMin)}/min · {spikeClock}
           </span>
         </button>
       ) : null}
       {burst ? (
         <button
           type="button"
-          className={`pulse-recap-highlight-btn${burstSelected ? ' pulse-recap-highlight-btn-selected' : ''}`}
+          className={`pulse-recap-highlight-btn${isBurstSelected ? ' pulse-recap-highlight-btn-selected' : ''}`}
           style={{
             ...styles.highlightButton,
-            ...(burstSelected ? styles.highlightButtonSelected : {}),
+            ...(isBurstSelected ? styles.highlightButtonSelected : {}),
           }}
           onClick={onSelectBurst}
-          aria-pressed={burstSelected}
+          aria-pressed={isBurstSelected}
         >
           <span style={styles.highlightLabel}>Top emote burst</span>
           <span style={styles.highlightValueRow}>
@@ -233,7 +250,7 @@ function RecapHighlightStrip({
             ) : burst.code ? (
               <span>{burst.code}</span>
             ) : null}
-            <span>×{formatNumber(burst.count)} · {formatHeatOffset(burst.offsetSeconds)}</span>
+            <span>×{formatNumber(burst.count)} · {burstClock}</span>
           </span>
         </button>
       ) : null}
@@ -267,16 +284,6 @@ function RecapMomentRow({
 
 const RECAP_MOMENTS_COLLAPSED_COUNT = 5
 const RECAP_MOMENTS_MAX_COUNT = 20
-
-function recapPointSelectionKey(
-  streamId: string | undefined,
-  point: LiveHeatPoint,
-  moments: PulseRecapMoment[],
-): string {
-  const match = moments.find(moment => Math.abs(moment.offsetSeconds - point.offsetSeconds) < 90)
-  if (match) return recapMomentKey(streamId, match)
-  return `${streamId ?? 'unknown'}:${point.offsetSeconds}:${point.score}`
-}
 
 function RecapMomentsList({
   moments,
@@ -327,7 +334,7 @@ function RecapMomentsList({
         })}
       </div>
       {moments.length > RECAP_MOMENTS_COLLAPSED_COUNT ? (
-        <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} onClick={onToggleExpanded}>
+        <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
           <span>
             {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
           </span>
@@ -341,6 +348,7 @@ function RecapMomentsList({
 }
 
 function RecapReadyContent({
+  externalPoint,
   recap,
   payload,
   backendUrl,
@@ -353,6 +361,7 @@ function RecapReadyContent({
   onRequestFullRollups,
 }: {
   recap: PulseStreamRecap
+  externalPoint?: LiveHeatPoint | null
   payload: PulsePayload
   backendUrl: string
   catalog: ExtensionEmote[]
@@ -397,9 +406,63 @@ function RecapReadyContent({
   }, [payload.streamId, heroMoment?.offsetSeconds, heroMoment?.score])
 
   const selectedMoment = mergedMoments.find(moment => recapMomentKey(payload.streamId, moment) === selectedKey) ?? null
+  useEffect(() => {
+    if (!externalPoint) return
+    userSelectedRef.current = true
+    setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
+    setOverridePoint(externalPoint)
+    setHoveredOffset(null)
+  }, [externalPoint])
   const selectedPoint = selectedMoment
     ? recapMomentToLiveHeatPoint(selectedMoment, catalog, payload.startedAt, rollups, payload.peaks)
     : overridePoint
+
+  // Hold the card for one exit window so clearing a selection fades and
+  // collapses instead of vanishing on the same frame.
+  const recapCardHold = usePinnedCardHold(
+    userSelectedRef.current ? selectedPoint : null,
+    prefersReducedMotion(),
+  )
+
+  const matchingSpikeMoment = useMemo(() => {
+    const spike = recap.biggestChatSpike
+    if (!spike) return null
+    return (
+      mergedMoments.find(
+        m => Math.abs(m.offsetSeconds - spike.offsetSeconds) <= 60 && m.chatCount === spike.chatPerMin,
+      ) ??
+      mergedMoments.find(
+        m => Math.abs(m.offsetSeconds - spike.offsetSeconds) <= 60,
+      ) ??
+      null
+    )
+  }, [recap.biggestChatSpike, mergedMoments])
+
+  const matchingBurstMoment = useMemo(() => {
+    const burst = recap.funniestEmoteBurst
+    if (!burst) return null
+    return (
+      mergedMoments.find(
+        m => Math.abs(m.offsetSeconds - burst.offsetSeconds) <= 60 && m.emoteCount === burst.count,
+      ) ??
+      mergedMoments.find(
+        m => Math.abs(m.offsetSeconds - burst.offsetSeconds) <= 60,
+      ) ??
+      null
+    )
+  }, [recap.funniestEmoteBurst, mergedMoments])
+
+  const spikeKey = matchingSpikeMoment
+    ? recapMomentKey(payload.streamId, matchingSpikeMoment)
+    : recap.biggestChatSpike
+      ? recapHighlightSpikeKey(payload.streamId, recap.biggestChatSpike.offsetSeconds)
+      : null
+
+  const burstKey = matchingBurstMoment
+    ? recapMomentKey(payload.streamId, matchingBurstMoment)
+    : recap.funniestEmoteBurst
+      ? recapHighlightBurstKey(payload.streamId, recap.funniestEmoteBurst.offsetSeconds)
+      : null
 
   function markUserSelected(): void {
     userSelectedRef.current = true
@@ -415,30 +478,34 @@ function RecapReadyContent({
   function selectChatSpike(): void {
     const spike = recap.biggestChatSpike
     if (!spike) return
-    const spikeKey = recapHighlightSpikeKey(payload.streamId, spike.offsetSeconds)
-    if (selectedKey === spikeKey) {
-      clearRecapSelection()
-      return
-    }
     markUserSelected()
-    const point = recapChatSpikeToHeatPoint(spike, catalog, payload.startedAt, rollups, payload.peaks)
-    setSelectedKey(spikeKey)
-    setOverridePoint(point)
+    if (matchingSpikeMoment) {
+      const key = recapMomentKey(payload.streamId, matchingSpikeMoment)
+      setSelectedKey(key)
+      setOverridePoint(null)
+    } else {
+      const key = recapHighlightSpikeKey(payload.streamId, spike.offsetSeconds)
+      const point = recapChatSpikeToHeatPoint(spike, catalog, payload.startedAt, rollups, payload.peaks)
+      setSelectedKey(key)
+      setOverridePoint(point)
+    }
     setHoveredOffset(null)
   }
 
   function selectEmoteBurst(): void {
     const burst = recap.funniestEmoteBurst
     if (!burst) return
-    const burstKey = recapHighlightBurstKey(payload.streamId, burst.offsetSeconds)
-    if (selectedKey === burstKey) {
-      clearRecapSelection()
-      return
-    }
     markUserSelected()
-    const point = recapEmoteBurstToHeatPoint(burst, catalog, payload.startedAt, rollups, payload.peaks)
-    setSelectedKey(burstKey)
-    setOverridePoint(point)
+    if (matchingBurstMoment) {
+      const key = recapMomentKey(payload.streamId, matchingBurstMoment)
+      setSelectedKey(key)
+      setOverridePoint(null)
+    } else {
+      const key = recapHighlightBurstKey(payload.streamId, burst.offsetSeconds)
+      const point = recapEmoteBurstToHeatPoint(burst, catalog, payload.startedAt, rollups, payload.peaks)
+      setSelectedKey(key)
+      setOverridePoint(point)
+    }
     setHoveredOffset(null)
   }
   const topEmotes = resolveRecapEmotes(recap.topEmotes, catalog)
@@ -472,20 +539,13 @@ function RecapReadyContent({
     setHoveredGameKey(null)
   }, [payload.streamId])
 
-  const duration = formatStreamDuration(recap.durationSeconds)
+  const duration = formatStreamDuration(recapDurationSeconds)
   const meta = duration
     ? `${duration} · ${formatNumber(recap.totalMessages)} messages`
     : `${formatNumber(recap.totalMessages)} messages`
 
   return (
     <div style={styles.recapContent}>
-      <RecapAnalyticsNav
-        backendUrl={backendUrl}
-        channelLogin={payload.login}
-        streamId={payload.streamId}
-        offsetSeconds={selectedPoint?.offsetSeconds ?? null}
-        hideHubLink={hideHubLink}
-      />
       <RecapStatBand
         peakChat={recap.peakChatPerMin}
         peakEmotes={peakStats?.peakEmotePerMin}
@@ -500,6 +560,10 @@ function RecapReadyContent({
         selectedKey={selectedKey}
         onSelectSpike={selectChatSpike}
         onSelectBurst={selectEmoteBurst}
+        effectiveSpikeOffset={matchingSpikeMoment?.offsetSeconds}
+        effectiveBurstOffset={matchingBurstMoment?.offsetSeconds}
+        spikeSelected={spikeKey != null && selectedKey === spikeKey}
+        burstSelected={burstKey != null && selectedKey === burstKey}
       />
       <RecapGamesStrip
         games={recapGames}
@@ -520,25 +584,27 @@ function RecapReadyContent({
         onClearSelection={clearRecapSelection}
         onSelectPoint={point => {
           markUserSelected()
-          if (selectedPoint?.offsetSeconds === point.offsetSeconds) {
-            clearRecapSelection()
-            return
-          }
-          const key = recapPointSelectionKey(payload.streamId, point, mergedMoments)
-          setSelectedKey(key)
-          const matched = mergedMoments.some(moment => recapMomentKey(payload.streamId, moment) === key)
-          setOverridePoint(matched ? null : point)
+          setSelectedKey(`bucket:${point.offsetSeconds}`)
+          setOverridePoint(point)
           setHoveredOffset(null)
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      {selectedPoint ? (
-        <SelectedMomentCard
-          point={selectedPoint}
-          backendUrl={backendUrl}
-          onJump={onJump}
-          onAnalytics={onAnalytics}
-        />
+      <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
+      {recapCardHold.point ? (
+        <div
+          className={recapCardHold.exiting ? 'pulse-moment-card-exit' : undefined}
+          data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
+        >
+          <SelectedMomentCard
+            point={recapCardHold.point}
+            backendUrl={backendUrl}
+            compact
+            onJump={onJump}
+            onAnalytics={onAnalytics}
+            onClear={clearRecapSelection}
+          />
+        </div>
       ) : null}
       <RecapMomentsList
         moments={mergedMoments}
@@ -560,6 +626,13 @@ function RecapReadyContent({
         onHighlight={setHoveredOffset}
       />
       <RecapTopEmotesRow backendUrl={backendUrl} emotes={topEmotes} />
+      <RecapAnalyticsNav
+        backendUrl={backendUrl}
+        channelLogin={payload.login}
+        streamId={payload.streamId}
+        offsetSeconds={selectedPoint?.offsetSeconds ?? null}
+        hideHubLink={hideHubLink}
+      />
       {coverage?.liveMetadata?.title ? (
         <span style={styles.offlineMeta}>{coverage.liveMetadata.title}</span>
       ) : null}
@@ -573,6 +646,7 @@ function offlinePointKey(point: LiveHeatPoint): string {
 }
 
 function OfflineFallbackContent({
+  externalPoint,
   payload,
   backendUrl,
   coverage,
@@ -584,6 +658,7 @@ function OfflineFallbackContent({
   onRequestFullRollups,
 }: {
   payload: PulsePayload
+  externalPoint?: LiveHeatPoint | null
   backendUrl: string
   coverage?: ExtensionCoverageResponse | null
   sidebarFill?: boolean
@@ -642,6 +717,21 @@ function OfflineFallbackContent({
       ? null
       : peakPoints.find(point => offlinePointKey(point) === selectedKey) ?? overridePoint
 
+  useEffect(() => {
+    if (!externalPoint) return
+    userSelectedRef.current = true
+    setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
+    setOverridePoint(externalPoint)
+    setHoveredOffset(null)
+  }, [externalPoint])
+
+  // Hold the card for one exit window so clearing a selection fades and
+  // collapses instead of vanishing on the same frame.
+  const recapCardHold = usePinnedCardHold(
+    userSelectedRef.current ? selectedPoint : null,
+    prefersReducedMotion(),
+  )
+
   function clearOfflineSelection(): void {
     userSelectedRef.current = true
     setSelectedKey(null)
@@ -671,7 +761,7 @@ function OfflineFallbackContent({
     setHoveredGameKey(null)
   }, [payload.streamId])
 
-  const duration = formatStreamDuration(payload.durationSeconds)
+  const duration = formatStreamDuration(recapDurationSeconds)
   const endedAgo = formatRelativeTime(payload.endedAt ?? payload.latestEndedAt)
   const metaParts: string[] = []
   if (duration) metaParts.push(duration)
@@ -679,13 +769,6 @@ function OfflineFallbackContent({
 
   return (
     <div style={styles.recapContent}>
-      <RecapAnalyticsNav
-        backendUrl={backendUrl}
-        channelLogin={payload.login}
-        streamId={payload.streamId}
-        offsetSeconds={selectedPoint?.offsetSeconds ?? null}
-        hideHubLink={hideHubLink}
-      />
       {meta?.title ? <div style={styles.offlineTitle}>{meta.title}</div> : null}
       {payload.category ?? meta?.category ? (
         <div style={styles.offlineCategory}>{payload.category ?? meta?.category}</div>
@@ -722,21 +805,27 @@ function OfflineFallbackContent({
         onClearSelection={clearOfflineSelection}
         onSelectPoint={point => {
           userSelectedRef.current = true
-          const key = offlinePointKey(point)
-          setSelectedKey(key)
-          const matched = peakPoints.some(existing => offlinePointKey(existing) === key)
-          setOverridePoint(matched ? null : point)
+          setSelectedKey(`bucket:${point.offsetSeconds}`)
+          setOverridePoint(point)
           setHoveredOffset(null)
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      {selectedPoint ? (
-        <SelectedMomentCard
-          point={selectedPoint}
-          backendUrl={backendUrl}
-          onJump={onJump}
-          onAnalytics={onAnalytics}
-        />
+      <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
+      {recapCardHold.point ? (
+        <div
+          className={recapCardHold.exiting ? 'pulse-moment-card-exit' : undefined}
+          data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
+        >
+          <SelectedMomentCard
+            point={recapCardHold.point}
+            backendUrl={backendUrl}
+            compact
+            onJump={onJump}
+            onAnalytics={onAnalytics}
+            onClear={clearOfflineSelection}
+          />
+        </div>
       ) : null}
       {peakPoints.length > 0 ? (
         <>
@@ -783,12 +872,20 @@ function OfflineFallbackContent({
         </>
       ) : null}
       <RecapTopEmotesRow backendUrl={backendUrl} emotes={topEmotes} />
+      <RecapAnalyticsNav
+        backendUrl={backendUrl}
+        channelLogin={payload.login}
+        streamId={payload.streamId}
+        offsetSeconds={selectedPoint?.offsetSeconds ?? null}
+        hideHubLink={hideHubLink}
+      />
       {metaParts.length > 0 ? <span style={styles.offlineMeta}>{metaParts.join(' · ')}</span> : null}
     </div>
   )
 }
 
 export function StreamRecapSection({
+  externalPoint,
   payload,
   backendUrl,
   uiState,
@@ -809,7 +906,8 @@ export function StreamRecapSection({
   const catalog = useMemo(() => buildRecapEmoteCatalog(payload), [payload])
   const recap = payload.recap
   const title = recap ? 'Stream Recap' : 'Last Stream Recap'
-  const duration = formatStreamDuration(recap?.durationSeconds ?? payload.durationSeconds)
+  const recapDurationSeconds = recapStreamDurationSeconds(payload)
+  const duration = formatStreamDuration(recapDurationSeconds)
   const messageTotal = recap?.totalMessages
     ?? (payload.fullRollups?.length ? payload.fullRollups : payload.rollups)
         .reduce((sum, rollup) => sum + (rollup.chatCount ?? 0), 0)
@@ -859,6 +957,7 @@ export function StreamRecapSection({
     <PulseSectionCard title={title} meta={cardMeta}>
       {recap ? (
         <RecapReadyContent
+          externalPoint={externalPoint}
           recap={recap}
           payload={payload}
           backendUrl={backendUrl}
@@ -872,6 +971,7 @@ export function StreamRecapSection({
         />
       ) : (
         <OfflineFallbackContent
+          externalPoint={externalPoint}
           payload={payload}
           backendUrl={backendUrl}
           coverage={coverage}
@@ -912,13 +1012,6 @@ const styles: Record<string, CSSProperties> = {
     letterSpacing: '0.05em',
     textTransform: 'uppercase',
   },
-  statValue: {
-    color: theme.textPrimary,
-    fontSize: 18,
-    fontVariantNumeric: 'tabular-nums',
-    fontWeight: 900,
-    lineHeight: 1.1,
-  },
   statValuePeak: {
     color: theme.accentInk,
     fontSize: 17,
@@ -927,27 +1020,6 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.1,
   },
   statDetail: { fontSize: 10, fontWeight: 800 },
-  gamesStrip: { display: 'grid', gap: 5 },
-  gamesLabel: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-  },
-  gamesRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  gameChip: {
-    alignItems: 'center',
-    background: 'rgba(249, 115, 22, 0.08)',
-    border: '1px solid rgba(249, 115, 22, 0.22)',
-    borderRadius: 999,
-    display: 'inline-flex',
-    flexWrap: 'wrap',
-    gap: 6,
-    padding: '4px 9px',
-  },
-  gameName: { color: '#fdba74', fontSize: 10, fontWeight: 800 },
-  gameDuration: { color: theme.textMuted, fontSize: 9, fontWeight: 600 },
   highlightStrip: { display: 'grid', gap: 6 },
   highlightButton: {
     alignItems: 'center',

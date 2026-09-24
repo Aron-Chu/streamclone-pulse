@@ -19,6 +19,16 @@ describe('extensionRollupsToChartMinutes', () => {
     expect(out[1]!.minuteTs).toBe('2026-01-01T12:01:00.000Z')
     expect(out[1]!.chatCount).toBe(20)
   })
+
+  it('preserves a sampled zero when the backend omits the optional viewer value', () => {
+    const out = extensionRollupsToChartMinutes([
+      { offsetSeconds: 0, chatCount: 4, viewerSamples: 1, topEmotes: [] },
+    ])
+
+    expect(out[0]!.viewerAvg).toBe(0)
+    expect(out[0]!.viewerLatest).toBe(0)
+    expect(out[0]!.viewerSamples).toBe(1)
+  })
 })
 
 describe('extensionGamesForOverviewChart', () => {

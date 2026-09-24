@@ -3,6 +3,7 @@ import type { ExtensionRollup } from '../src/shared/messages.ts'
 import {
   advanceFollowingLiveViewport,
   clampViewportToCoverage,
+  clampViewportToMaxSpan,
   FOLLOW_LIVE_EPSILON_SECONDS,
   isFollowingLive,
   isViewportAtTimelineEnd,
@@ -15,6 +16,7 @@ import {
   targetBucketCount,
   viewportBuckets,
   viewportCenterSeconds,
+  viewportContainsOffset,
   viewportDurationSeconds,
   wheelZoom,
   WHEEL_ZOOM_MAX_RATIO,
@@ -39,6 +41,14 @@ describe('viewportDurationSeconds / viewportCenterSeconds', () => {
 
   it('averages start and end', () => {
     expect(viewportCenterSeconds({ startSeconds: 10, endSeconds: 30 })).toBe(20)
+  })
+
+  it('uses the chart\'s half-open interval for selected buckets', () => {
+    const viewport = { startSeconds: 600, endSeconds: 1_200 }
+    expect(viewportContainsOffset(viewport, 600)).toBe(true)
+    expect(viewportContainsOffset(viewport, 1_199)).toBe(true)
+    expect(viewportContainsOffset(viewport, 1_200)).toBe(false)
+    expect(viewportContainsOffset(viewport, null)).toBe(false)
   })
 })
 
@@ -185,6 +195,29 @@ describe('clampViewportToCoverage', () => {
   })
 })
 
+describe('clampViewportToMaxSpan', () => {
+  it('keeps a selected range from expanding during manual zoom-out', () => {
+    expect(clampViewportToMaxSpan(
+      { startSeconds: 0, endSeconds: 3_600 },
+      7_200,
+      1_800,
+    )).toEqual({ startSeconds: 900, endSeconds: 2_700 })
+  })
+
+  it('preserves the viewport when it is already inside the selected range', () => {
+    const viewport = { startSeconds: 2_000, endSeconds: 2_900 }
+    expect(clampViewportToMaxSpan(viewport, 7_200, 1_800)).toEqual(viewport)
+  })
+
+  it('uses the full covered range when the selector is Full stream', () => {
+    expect(clampViewportToMaxSpan(
+      { startSeconds: 1_000, endSeconds: 2_000 },
+      3_600,
+      'full',
+    )).toEqual({ startSeconds: 1_000, endSeconds: 2_000 })
+  })
+})
+
 describe('panViewport', () => {
   it('translates start and end by the delta', () => {
     expect(panViewport({ startSeconds: 10, endSeconds: 40 }, 20, 100)).toEqual({
@@ -322,6 +355,19 @@ describe('targetBucketCount', () => {
 })
 
 describe('railGeometry', () => {
+  it('keeps narrow ranges proportional across long streams and coverage offsets', () => {
+    for (const duration of [3600, 14400, 57600]) {
+      for (const coverage of [0, 120]) {
+        for (const span of [300, 600, 1800]) {
+          for (const start of [coverage, duration / 2, duration - span]) {
+            const geo = railGeometry({ startSeconds: start, endSeconds: start + span }, duration, 100, coverage)
+            expect(geo.thumbWidth).toBeCloseTo(span / (duration - coverage) * 100)
+            expect(geo.thumbX).toBeCloseTo((start - coverage) / (duration - coverage) * 100)
+          }
+        }
+      }
+    }
+  })
   it('maps viewport proportions onto the rail', () => {
     expect(railGeometry({ startSeconds: 20, endSeconds: 40 }, 100, 200)).toEqual({
       thumbX: 40,
@@ -341,7 +387,7 @@ describe('railGeometry', () => {
   it('clamps thumb position so it does not overflow the rail', () => {
     const geo = railGeometry({ startSeconds: 98, endSeconds: 100 }, 100, 200)
     expect(geo.thumbX + geo.thumbWidth).toBeLessThanOrEqual(200)
-    expect(geo.thumbWidth).toBeGreaterThanOrEqual(8)
+    expect(geo.thumbWidth).toBeCloseTo(4)
   })
 
   it('returns safe defaults when duration is zero', () => {

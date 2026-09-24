@@ -126,12 +126,19 @@ export const FULL_TIMELINE_MAX_POINTS = 480
 export type RollupWindow = 'recent' | 'full'
 export type ChartTimelineWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
 
+/**
+ * Fresh extension charts open on the complete stream. A saved user range is
+ * restored only after settings hydration; it must not change the fresh-load
+ * default shared by live, VOD, and offline recap surfaces.
+ */
+export const DEFAULT_CHART_TIMELINE_WINDOW = 'full' as const satisfies ChartTimelineWindow
+
 export const CHART_TIMELINE_WINDOWS: readonly ChartTimelineWindow[] = ['15m', '30m', '60m', '2h', '4h', 'full']
 
 export const CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: ChartTimelineWindow; label: string }> = [
   { value: '15m', label: '15 min' },
   { value: '30m', label: '30 min' },
-  { value: '60m', label: '60 min' },
+  { value: '60m', label: '1 hour' },
   { value: '2h', label: '2 hours' },
   { value: '4h', label: '4 hours' },
   { value: 'full', label: 'Full stream' },
@@ -315,27 +322,12 @@ function mergeTopEmotesAcrossMinutes(emoteLists: ExtensionEmote[][]): ExtensionE
 /** Matches backend coverageStartToleranceSec and resolvePulseLiveAccess. */
 export const FULL_CHART_STREAM_START_TOLERANCE_SEC = 120
 
-/** Skip zero-filling long dead zones before the first chat/emote/viewer minute. */
-export const FULL_CHART_DEAD_ZONE_CLIP_SEC = 10 * 60
-
 export function resolveFullChartDensifyFromOffset(
-  payload: PulsePayload,
-  raw: ExtensionRollup[],
-  coverageStartOffsetSeconds?: number,
+  _payload: PulsePayload,
+  _raw: ExtensionRollup[],
+  _coverageStartOffsetSeconds?: number,
 ): number {
-  const coverageStart = resolvePayloadCoverageStartOffset(payload, coverageStartOffsetSeconds)
-  const firstDataOffset = raw.length > 0 ? raw[0]!.offsetSeconds : coverageStart
-  let fromOffset = resolveFullChartFromOffset(coverageStart, firstDataOffset, payload.coverage)
-
-  const firstActive = firstActiveRollupOffset(raw)
-  if (
-    firstActive != null
-    && firstActive > fromOffset + FULL_CHART_DEAD_ZONE_CLIP_SEC
-    && !hasMissingPrefixFromStreamStart(payload.coverage)
-  ) {
-    fromOffset = firstActive
-  }
-  return fromOffset
+  return 0
 }
 
 export function resolvePayloadCoverageStartOffset(
@@ -349,6 +341,35 @@ export function resolvePayloadCoverageStartOffset(
       ?? payload.coverage?.coverageStartOffsetSeconds
       ?? 0,
   )
+}
+
+/**
+ * Resolve the chart/rail domain start from the coverage contract.
+ *
+ * A stream can be tracked from 00:00 while chat/emote rollups do not become
+ * non-empty until much later. The first non-empty rollup is therefore an
+ * activity hint, never a coverage boundary. Keeping this distinction in one
+ * helper prevents the chart and its position rail from disagreeing about the
+ * beginning of a fully covered stream.
+ */
+export function resolveChartCoverageStartSeconds(
+  payload: Pick<PulsePayload, 'coverageStartOffsetSeconds' | 'coverage'>,
+  override?: number,
+  firstRollupOffsetSeconds?: number,
+): number {
+  const coverage = payload.coverage
+  if (coverage?.trackedFromStart || coverage?.hasFullStreamCoverage) return 0
+
+  const explicitStart = resolvePayloadCoverageStartOffset(payload, override)
+  if (hasMissingPrefixFromStreamStart(coverage)) {
+    return explicitStart > 0
+      ? explicitStart
+      : Math.max(0, firstRollupOffsetSeconds ?? 0)
+  }
+
+  // Legacy payloads without a coverage contract can still provide an
+  // explicit start. Do not infer a missing prefix from the first quiet bucket.
+  return explicitStart
 }
 
 /** True when backend reports a missing prefix from 00:00 (joined mid-stream), not a quiet opening. */
@@ -374,29 +395,6 @@ export function hasMissingPrefixFromStreamStart(coverage?: PulseCoverage | null)
   return coverageStart >= 15 * 60
 }
 
-/**
- * Full-stream chart densification start.
- * Quiet openings (chat/viewers warm up a few minutes in) still span 00:00 → now.
- * Late joins keep the honest coverage-start clip.
- */
-export function resolveFullChartFromOffset(
-  coverageStartOffsetSeconds: number,
-  firstDataOffsetSeconds: number,
-  coverage?: PulseCoverage | null,
-): number {
-  if (coverage?.trackedFromStart || coverage?.hasFullStreamCoverage) return 0
-  const coverageStart = Math.max(0, coverageStartOffsetSeconds)
-  if (coverageStart <= FULL_CHART_STREAM_START_TOLERANCE_SEC) return 0
-  if (hasMissingPrefixFromStreamStart(coverage)) {
-    return Math.min(coverageStart, Math.max(0, firstDataOffsetSeconds))
-  }
-  // Without nested coverage, treat long offsets as late join; short ones as warm-up.
-  if (!coverage && coverageStart > 15 * 60) {
-    return Math.min(coverageStart, Math.max(0, firstDataOffsetSeconds))
-  }
-  return 0
-}
-
 export function densifyRollupsForTimeline(
   rollups: ExtensionRollup[],
   options: {
@@ -404,42 +402,69 @@ export function densifyRollupsForTimeline(
     toOffset: number
     maxPoints: number
     missingRanges?: PulseCoverage['missingRanges']
+    missingBeforeOffset?: number
   },
 ): ExtensionRollup[] {
-  const { fromOffset, toOffset, maxPoints, missingRanges = [] } = options
+  const { fromOffset, toOffset, maxPoints, missingRanges = [], missingBeforeOffset = 0 } = options
   if (rollups.length === 0 || toOffset <= fromOffset || maxPoints < 2) {
     return rollups
   }
 
-  const byOffset = new Map<number, ExtensionRollup>()
-  for (const rollup of rollups) {
-    byOffset.set(rollup.offsetSeconds, rollup)
-  }
+  const orderedRollups = [...rollups]
+    .filter(rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset)
+    .sort((left, right) => left.offsetSeconds - right.offsetSeconds)
+  if (orderedRollups.length === 0) return rollups
 
-  const isMissingOffset = (offsetSeconds: number): boolean => missingRanges.some(range => (
-    offsetSeconds >= range.fromOffsetSeconds && offsetSeconds < range.toOffsetSeconds
-  ))
+  const byOffset = new Map<number, ExtensionRollup>()
+  for (const rollup of orderedRollups) byOffset.set(rollup.offsetSeconds, rollup)
+
+  // Hosted rollups are minute buckets relative to stream activation, not
+  // necessarily wall-clock multiples of 60. xQc, for example, is normally
+  // 00:00, 00:01:21, 00:02:21, ... with one initial 00:00 bucket. Exact
+  // lookups against a :00 grid silently converted every later real bucket to
+  // zero. Use the dominant phase for synthetic timeline positions while
+  // retaining every real offset (including a one-off opening bucket).
+  const minutePhase = (() => {
+    const counts = new Map<number, number>()
+    for (const rollup of orderedRollups) {
+      const phase = ((Math.trunc(rollup.offsetSeconds) % 60) + 60) % 60
+      counts.set(phase, (counts.get(phase) ?? 0) + 1)
+    }
+    let bestPhase = 0
+    let bestCount = -1
+    for (const [phase, count] of counts) {
+      if (count > bestCount) {
+        bestPhase = phase
+        bestCount = count
+      }
+    }
+    return bestPhase
+  })()
+
+  const phaseAlignedStart = fromOffset + (
+    (minutePhase - ((Math.trunc(fromOffset) % 60) + 60) % 60 + 60) % 60
+  )
+
+  const isMissingOffset = (offsetSeconds: number): boolean => offsetSeconds < missingBeforeOffset
+    || missingRanges.some(range => (
+      offsetSeconds >= range.fromOffsetSeconds && offsetSeconds < range.toOffsetSeconds
+    ))
+
+  const syntheticRollup = (offsetSeconds: number): ExtensionRollup => ({
+    offsetSeconds,
+    chatCount: 0,
+    sevenTvEmoteCount: 0,
+    missing: isMissingOffset(offsetSeconds),
+  })
 
   const step = 60
   const totalMinutes = Math.floor((toOffset - fromOffset) / step) + 1
   if (totalMinutes <= maxPoints) {
-    const out: ExtensionRollup[] = []
-    for (let off = fromOffset; off <= toOffset; off += step) {
-      const existing = byOffset.get(off)
-      out.push(
-        existing ?? (isMissingOffset(off) ? {
-          offsetSeconds: off,
-          chatCount: 0,
-          sevenTvEmoteCount: 0,
-          missing: true,
-        } : {
-          offsetSeconds: off,
-          chatCount: 0,
-          sevenTvEmoteCount: 0,
-        }),
-      )
-    }
-    return out
+    const offsets = new Set<number>(orderedRollups.map(rollup => rollup.offsetSeconds))
+    for (let off = phaseAlignedStart; off <= toOffset; off += step) offsets.add(off)
+    return [...offsets]
+      .sort((left, right) => left - right)
+      .map(offset => byOffset.get(offset) ?? syntheticRollup(offset))
   }
 
   const bucketMinutes = totalMinutes / maxPoints
@@ -447,6 +472,12 @@ export function densifyRollupsForTimeline(
   for (let i = 0; i < maxPoints; i += 1) {
     const bucketStart = fromOffset + Math.floor(i * bucketMinutes) * step
     const bucketEnd = fromOffset + Math.floor((i + 1) * bucketMinutes) * step
+    const bucketRollups = orderedRollups.filter(rollup => (
+      rollup.offsetSeconds >= bucketStart
+      && (i === maxPoints - 1
+        ? rollup.offsetSeconds <= toOffset
+        : rollup.offsetSeconds < bucketEnd)
+    ))
     let chatSum = 0
     let sevenTvSum = 0
     let totalEmoteSum = 0
@@ -454,26 +485,35 @@ export function densifyRollupsForTimeline(
     let viewerSamples = 0
     let missingMinutes = 0
     const bucketTopEmotes: ExtensionEmote[][] = []
-    for (let off = bucketStart; off < bucketEnd; off += step) {
-      const rollup = byOffset.get(off)
-      if (!rollup) {
-        if (isMissingOffset(off)) missingMinutes += 1
-        continue
-      }
+    for (const rollup of bucketRollups) {
       chatSum += rollup.chatCount ?? 0
       sevenTvSum += rollup.sevenTvEmoteCount ?? 0
       totalEmoteSum += rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0
-      const viewerCount = rollup.viewerCount ?? 0
-      if (viewerCount > 0) {
+      const viewerCount = typeof rollup.viewerCount === 'number'
+        && Number.isFinite(rollup.viewerCount)
+        && rollup.viewerCount >= 0
+        ? rollup.viewerCount
+        : (rollup.viewerSamples ?? 0) > 0
+          ? 0
+          : undefined
+      if (viewerCount !== undefined) {
         viewerSum += viewerCount
-        viewerSamples += 1
+        viewerSamples += Math.max(1, rollup.viewerSamples ?? 0)
       }
       if (rollup.topEmotes?.length) bucketTopEmotes.push(rollup.topEmotes)
     }
+    for (let off = bucketStart; off < bucketEnd; off += step) {
+      if (isMissingOffset(off)) missingMinutes += 1
+    }
     const minutesInBucket = Math.max(1, Math.floor((bucketEnd - bucketStart) / step))
     const provenMinutesInBucket = Math.max(0, minutesInBucket - missingMinutes)
-    if (provenMinutesInBucket === 0) {
-      out.push({ offsetSeconds: bucketStart, chatCount: 0, sevenTvEmoteCount: 0, missing: true })
+    if (provenMinutesInBucket === 0 || bucketRollups.length === 0) {
+      out.push({
+        offsetSeconds: bucketStart,
+        chatCount: 0,
+        sevenTvEmoteCount: 0,
+        missing: true,
+      })
       continue
     }
     out.push({
@@ -482,6 +522,7 @@ export function densifyRollupsForTimeline(
       sevenTvEmoteCount: Math.round(sevenTvSum / provenMinutesInBucket),
       totalEmoteCount: totalEmoteSum > 0 ? Math.round(totalEmoteSum / provenMinutesInBucket) : undefined,
       viewerCount: viewerSamples > 0 ? Math.round(viewerSum / viewerSamples) : undefined,
+      viewerSamples: viewerSamples > 0 ? viewerSamples : undefined,
       topEmotes: mergeTopEmotesAcrossMinutes(bucketTopEmotes),
     })
   }
@@ -499,34 +540,27 @@ type PrepareChartRollupsCache = {
 
 let prepareChartRollupsCache: PrepareChartRollupsCache | null = null
 
-/**
- * Full-history responses can omit Helix viewer samples even when the recent
- * poll already has them. Preserve those matching tail samples so switching to
- * Full does not make the viewer lane disappear or imply a zero value.
- */
-function mergeRecentViewerSamples(
-  rollups: ExtensionRollup[],
+/** Overlay the recurring recent poll onto a retained Full-history snapshot. */
+function mergeRecentRollupTail(
+  fullRollups: ExtensionRollup[],
   recentRollups: ExtensionRollup[],
 ): ExtensionRollup[] {
-  const recentViewers = new Map<number, number>()
-  for (const rollup of recentRollups) {
-    if (
-      rollup.missing
-      || typeof rollup.viewerCount !== 'number'
-      || !Number.isFinite(rollup.viewerCount)
-      || rollup.viewerCount < 0
-    ) continue
-    recentViewers.set(rollup.offsetSeconds, rollup.viewerCount)
+  if (recentRollups.length === 0) return fullRollups
+  const merged = [...fullRollups]
+  for (const recent of recentRollups) {
+    if (recent.missing || !Number.isFinite(recent.offsetSeconds)) continue
+    let index = merged.findIndex(rollup => rollup.offsetSeconds === recent.offsetSeconds)
+    if (index < 0) {
+      index = merged.findIndex(rollup => Math.abs(rollup.offsetSeconds - recent.offsetSeconds) <= 45)
+    }
+    if (index < 0) {
+      merged.push(recent)
+      continue
+    }
+    const offsetSeconds = merged[index]!.offsetSeconds
+    merged[index] = { ...merged[index], ...recent, offsetSeconds, missing: false }
   }
-  if (recentViewers.size === 0) return rollups
-
-  return rollups.map(rollup => {
-    if (rollup.missing || typeof rollup.viewerCount === 'number') return rollup
-    const viewerCount = recentViewers.get(rollup.offsetSeconds)
-    return viewerCount === undefined
-      ? rollup
-      : { ...rollup, viewerCount }
-  })
+  return merged.sort((left, right) => left.offsetSeconds - right.offsetSeconds)
 }
 
 export function prepareChartRollups(
@@ -534,7 +568,7 @@ export function prepareChartRollups(
   options: {
     chartWindow: ChartTimelineWindow
     currentOffsetSeconds: number
-    /** When tracking started late, full-stream charts align here instead of 00:00. */
+    /** Coverage remains missing before this offset, but Full still spans from 00:00. */
     coverageStartOffsetSeconds?: number
     /** Full data is usable only for the current stream/VOD activation. */
     activation?: FullHistoryActivation
@@ -557,18 +591,27 @@ export function prepareChartRollups(
   // A Full request is optional enrichment. Keep the recent tail on screen while
   // it is loading, fails, or is rejected as belonging to another activation.
   const useFullSource = hasFull
-  const raw = rollupSeries(payload, useFullSource ? 'full' : 'recent')
+  const raw = useFullSource
+    ? mergeRecentRollupTail(rollupSeries(payload, 'full'), payload.rollups)
+    : rollupSeries(payload, 'recent')
   let result: ExtensionRollup[]
   if (options.chartWindow === 'full' && !hasFull) {
     const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
     const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
-    const fromOffset = Math.max(0, toOffset - CHART_WINDOW_SECONDS['60m'])
-    const windowed = raw.filter(
-      rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset,
-    )
-    // Never blank a live chart just because the optional full-history request
-    // has not completed. If the window is sparse, retain the newest samples.
-    result = (windowed.length > 0 ? windowed : raw).slice(-SPARKLINE_MAX_POINTS)
+    result = densifyRollupsForTimeline(raw, {
+      fromOffset: 0,
+      toOffset,
+      maxPoints: SPARKLINE_MAX_POINTS,
+      missingRanges: payload.coverage?.missingRanges,
+      missingBeforeOffset: raw[0]?.offsetSeconds ?? toOffset,
+    })
+  } else if (options.chartWindow !== 'full' && hasFull) {
+    // Once validated full history is present, keep the complete source domain
+    // and let the chart viewport implement 15m/30m/60m/2h/4h presets. The
+    // previous implementation sliced the source here while the rail still
+    // used the stream duration, making a 60-minute plot look like Full stream
+    // and hiding historical viewer samples outside the tail.
+    result = raw
   } else if (options.chartWindow !== 'full') {
     const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
     const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
@@ -588,16 +631,19 @@ export function prepareChartRollups(
       result = raw
     } else {
       const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
+      const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
       result = densifyRollupsForTimeline(raw, {
         fromOffset,
         toOffset,
         maxPoints: chartMaxPoints(payload, options.chartWindow, options.activation),
         missingRanges: payload.coverage?.missingRanges,
+        missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
+          || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
+          ? coverageStart
+          : 0,
       })
     }
   }
-
-  result = mergeRecentViewerSamples(result, payload.rollups)
 
   prepareChartRollupsCache = {
     payload,
@@ -738,7 +784,7 @@ export function chartEmptyMessage(options: {
   } = options
   const fullTimelineRequested = chartWindow === 'full'
   if (awaitingFullRollups) {
-    return 'Loading full stream rollups from Streamclone…'
+    return 'Loading full stream rollups from StreamPulse…'
   }
   if (visibleRollupCount >= 1) return ''
   if (rollupCount >= 1) {
@@ -748,7 +794,7 @@ export function chartEmptyMessage(options: {
     return 'Collecting the first minute of chat rollups. The graph appears here automatically.'
   }
   if (fullTimelineRequested && !hasFullRollups && currentOffsetSeconds > 120) {
-    return 'Full stream requested, but Streamclone has no rollups for this broadcast yet. Tracking may have started late or paused.'
+    return 'Full stream requested, but StreamPulse has no rollups for this broadcast yet. Tracking may have started late or paused.'
   }
   return 'No chat activity in the recent window yet.'
 }

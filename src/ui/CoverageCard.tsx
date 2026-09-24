@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useReducedMotion } from './motion/useReducedMotion.ts'
 import type { CSSProperties } from 'react'
 import type { PulseBackfillJob } from '../shared/messages.ts'
 import {
@@ -23,29 +24,6 @@ export interface CoverageCardProps {
   onCheckVod?: () => void
   onOpenSettings?: () => void
   onOpenAnalytics?: () => void
-}
-
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false,
-  )
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(mq.matches)
-    onChange()
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    }
-    mq.addListener(onChange)
-    return () => mq.removeListener(onChange)
-  }, [])
-
-  return reduced
 }
 
 export function CoverageCard({
@@ -77,7 +55,7 @@ export function CoverageCard({
 
   const helixBlocked = source.helixEnabled === false
   const errorText = helixBlocked
-    ? 'Streamclone backend is missing Twitch API credentials (TWITCH_OAUTH_CLIENT_ID / SECRET). VOD lookup cannot run.'
+    ? 'StreamPulse backend is missing Twitch API credentials (TWITCH_OAUTH_CLIENT_ID / SECRET). VOD lookup cannot run.'
     : formatPulseApiError(checkError ?? (buttonState === 'failed' ? job?.error : null))
 
   let statusLine = copy.body

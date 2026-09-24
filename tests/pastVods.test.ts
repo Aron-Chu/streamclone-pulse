@@ -16,7 +16,6 @@ describe('vodThumbnailUrl', () => {
     )
   })
 })
-
 describe('buildTwitchVodUrl', () => {
   it('builds twitch vod url with optional offset', () => {
     expect(buildTwitchVodUrl('12345')).toBe('https://www.twitch.tv/videos/12345')
@@ -127,6 +126,23 @@ describe('mergePastVodRows', () => {
 
     expect(rows.map(row => row.streamId)).toEqual(['live', 'past'])
     expect(rows[0]?.analyticsStatus).toBe('current-live')
+  })
+
+  it('does not label ended stream as current-live when isLive is false', () => {
+    const rows = mergePastVodRows(
+      [
+        { id: 'ended-1', title: 'Just ended stream', startedAt: '2026-06-12T12:00:00.000Z' },
+        { id: 'older-stream', title: 'Older stream', startedAt: '2026-06-11T12:00:00.000Z' },
+      ],
+      [
+        { streamId: 'ended-1', chatMessages: 10, viewerSamples: 5 },
+        { streamId: 'older-stream', chatMessages: 0, viewerSamples: 0 },
+      ],
+      { liveStreamId: 'ended-1', isLive: false },
+    )
+
+    expect(rows[0]?.analyticsStatus).toBe('synced')
+    expect(rows.some(r => r.analyticsStatus === 'current-live')).toBe(false)
   })
 
   it('sorts newest streams first', () => {

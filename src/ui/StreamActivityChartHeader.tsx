@@ -64,6 +64,7 @@ export function StreamActivityChartHeader({
         key={`${seriesKey}-${label}`}
         type="button"
         className={legendChipClassName(isFocused, isDimmed)}
+        data-chart-action="true"
         style={chipStyle}
         aria-pressed={isFocused}
         title={isFocused ? 'Click to show all series' : `Highlight ${label}`}

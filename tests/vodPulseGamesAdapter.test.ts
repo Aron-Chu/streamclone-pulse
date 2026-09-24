@@ -33,4 +33,18 @@ describe('vodPulseToChannelPayload games', () => {
     const payload = vodPulseToChannelPayload(base)
     expect(payload?.games).toBeUndefined()
   })
+
+  it('preserves the completed VOD window for stream-specific clips', () => {
+    const payload = vodPulseToChannelPayload({ ...base, startedAt: '2026-07-10T12:00:00Z' })
+    expect(payload?.endedAt).toBe('2026-07-10T13:00:00.000Z')
+  })
+
+  it.each([undefined, 0, -1, Infinity])('does not infer clip boundaries from chart samples with duration %s', durationSeconds => {
+    const payload = vodPulseToChannelPayload({ ...base, startedAt: '2026-07-10T12:00:00Z', durationSeconds })
+    expect(payload?.endedAt).toBeUndefined()
+  })
+
+  it('does not invent an end time when the start timestamp is invalid', () => {
+    expect(vodPulseToChannelPayload({ ...base, startedAt: 'invalid' })?.endedAt).toBeUndefined()
+  })
 })

@@ -1,4 +1,10 @@
+import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement } from './supporterAccount.ts'
+
 export type MessageType =
+  | 'SUPPORTER_ACCOUNT'
+  | 'SUPPORTER_ENTITLEMENT'
+  | 'SUPPORTER_COSMETICS'
+  | 'SUPPORTER_APPEARANCE'
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
@@ -6,8 +12,12 @@ export type MessageType =
   | 'GET_ALWAYS_TRACKED'
   | 'GET_CLIP'
   | 'HEALTH'
-  | 'OPEN_OPTIONS'
+  | 'GET_UPDATE_CHECK_CAPABILITY'
+  | 'CHECK_FOR_UPDATE'
+  | 'OPEN_SETTINGS_HOST'
   | 'LIST_BOOKMARKS'
+  | 'MY_MOMENTS'
+  | 'MOMENT_CAPTURE'
   | 'SAVE_BOOKMARK'
   | 'DELETE_BOOKMARK'
   | 'LIST_WATCHLIST'
@@ -63,10 +73,15 @@ export interface GetClipMessage {
   type: 'GET_CLIP'
   login: string
   startedAt?: string
+  endedAt?: string
+  streamId?: string
+  vodId?: string
   isLive?: boolean
 }
 
 export interface ExtensionClip {
+  videoId?: string
+  vodOffsetSeconds?: number
   id: string
   title: string
   url: string
@@ -133,6 +148,23 @@ export interface PastVodRow {
 
 export interface HealthMessage {
   type: 'HEALTH'
+  force?: boolean
+}
+
+export interface GetUpdateCheckCapabilityMessage {
+  type: 'GET_UPDATE_CHECK_CAPABILITY'
+}
+
+export interface CheckForUpdateMessage {
+  type: 'CHECK_FOR_UPDATE'
+}
+
+export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'developer'
+
+/** Open the packaged extension-origin settings host from a Twitch surface. */
+export interface OpenSettingsHostMessage {
+  type: 'OPEN_SETTINGS_HOST'
+  section?: SettingsHostSection
 }
 
 export interface EnrollDeviceMessage {
@@ -179,15 +211,15 @@ export interface EmitExtensionAnalyticsMessage {
   name: 'pulse_load_completed' | 'extension_error_shown'
 }
 
-export interface OpenOptionsMessage {
-  type: 'OPEN_OPTIONS'
-}
-
 export interface ListBookmarksMessage {
   type: 'LIST_BOOKMARKS'
+  /** Sender-page identity only; never a backend bookmark filter. */
+  contextVodId?: string
   login?: string
   streamId?: string
   vodId?: string
+  limit?: number
+  cursor?: string
 }
 
 export interface SaveBookmarkMessage {
@@ -201,6 +233,11 @@ export interface DeleteBookmarkMessage {
 }
 
 export type BackgroundRequest =
+  | import('./myMoments.ts').MyMomentsRequest
+  | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
+  | { type: 'SUPPORTER_ENTITLEMENT' }
+  | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
+  | { type: 'SUPPORTER_APPEARANCE' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -208,13 +245,15 @@ export type BackgroundRequest =
   | GetAlwaysTrackedMessage
   | GetClipMessage
   | HealthMessage
+  | GetUpdateCheckCapabilityMessage
+  | CheckForUpdateMessage
+  | OpenSettingsHostMessage
   | EnrollDeviceMessage
   | GetDeviceAuthStatusMessage
   | RotateDeviceMessage
   | RevokeDeviceMessage
   | ReportExtensionDiagnosticMessage
   | EmitExtensionAnalyticsMessage
-  | OpenOptionsMessage
   | ListBookmarksMessage
   | SaveBookmarkMessage
   | DeleteBookmarkMessage
@@ -264,6 +303,9 @@ export interface ExtensionRollup {
   sevenTvEmoteCount: number
   totalEmoteCount?: number
   viewerCount?: number
+  /** Number of Helix observations contributing to this minute. A positive
+   * value is authoritative even when viewerCount is omitted for a sampled 0. */
+  viewerSamples?: number
   keywordCount?: number
   topEmotes?: ExtensionEmote[]
   missing?: boolean
@@ -272,12 +314,22 @@ export interface ExtensionRollup {
 export interface ExtensionPeak {
   offsetSeconds: number
   score: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
   reasons: string[]
   reasonLabel?: string
   dominantSignal: string
   chatCount?: number
   emoteCount?: number
   topEmotes?: ExtensionEmote[]
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
 }
 
 export interface ExtensionLanes {
@@ -292,7 +344,20 @@ export interface ExtensionHealthResponse {
   ok: boolean
   version: string
   time: number
+  hostedMode?: boolean
   helixEnabled?: boolean
+  identityComplete?: boolean
+  viewerSampling?: {
+    enabled: boolean
+    owner?: string
+    intervalSeconds?: number
+    lastAttemptAt?: number
+    lastSampleAt?: number
+    lastSampleAgeSeconds?: number
+    streamsWritten: number
+    lastResult?: string
+    consecutiveFailures: number
+  }
   capabilities?: {
     deviceAuth?: boolean
     protectedTracking?: boolean
@@ -360,6 +425,12 @@ export interface PulseBookmark {
   updatedAt: string
 }
 
+/** A bounded private page. Callers must preserve nextCursor; this is not the full Library. */
+export interface PulseBookmarkPage {
+  items: PulseBookmark[]
+  nextCursor?: string
+}
+
 export interface CreatePulseBookmarkInput {
   login?: string
   streamId?: string
@@ -391,11 +462,21 @@ export interface ExtensionGameSegment {
 export interface PulseRecapMoment {
   offsetSeconds: number
   score: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
   reasons: string[]
   chatCount?: number
   emoteCount?: number
   viewerCount?: number
   topEmotes?: PulseRecapEmote[]
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
 }
 
 export interface PulseStreamRecap {
@@ -618,11 +699,38 @@ export interface VodPulseUpdateMessage {
 export type BackgroundResponse =
   | PulseUpdateMessage
   | VodPulseUpdateMessage
-  | { type: 'CLIP'; clip: ExtensionClip | null; error?: string }
-  | { type: 'HEALTH'; ok: boolean; version?: string; helixEnabled?: boolean; error?: string }
+    | { type: 'CLIP'; clip: ExtensionClip | null; clips?: ExtensionClip[]; error?: string }
+  | {
+      type: 'HEALTH'
+      ok: boolean
+      version?: string
+      hostedMode?: boolean
+      helixEnabled?: boolean
+      identityComplete?: boolean
+      viewerSampling?: ExtensionHealthResponse['viewerSampling']
+      checkedAt?: number
+      cached?: boolean
+      error?: string
+    }
+  | {
+      type: 'UPDATE_CHECK_CAPABILITY'
+      supported: boolean
+      managedBy: 'browser' | 'development'
+    }
+  | {
+      type: 'UPDATE_CHECK'
+      status: 'current' | 'update_available' | 'throttled' | 'unsupported' | 'error'
+      version?: string
+      error?: string
+    }
+  | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
+  | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
+  | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
+  | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
+  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
-  | { type: 'BOOKMARKS'; items: PulseBookmark[]; error?: string }
+  | ({ type: 'BOOKMARKS'; error?: string } & PulseBookmarkPage)
   | { type: 'BOOKMARK'; item: PulseBookmark; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
   | { type: 'WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }

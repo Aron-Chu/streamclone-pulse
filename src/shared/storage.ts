@@ -7,7 +7,7 @@ import type {
 
 const BACKEND_URL_KEY = 'backendUrl'
 const LOCAL_BACKEND_OPT_IN_KEY = 'localBackendOptIn'
-const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
+export const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
 const OVERLAY_MODE_KEY = 'overlayMode'
 const OVERLAY_PLACEMENT_KEY = 'overlayPlacement'
 const SIDEBAR_TAB_KEY = 'sidebarTab'
@@ -15,14 +15,18 @@ const CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY = 'chatClosedPulseDockEnabled'
 /** @deprecated Migrated to CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY */
 const LEGACY_SIDEBAR_PULSE_TAB_ENABLED_KEY = 'sidebarPulseTabEnabled'
 const AUTO_TRACK_POLICY_KEY = 'autoTrackPolicy'
-const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
+export const AUTO_UPDATE_ENABLED_KEY = 'autoUpdateEnabled'
 const THEME_PREFERENCE_KEY = 'themePreference'
-export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY }
+const DENSITY_PREFERENCE_KEY = 'densityPreference'
+const VOD_JUMP_CHART_PIN_KEY = 'vodJumpChartPinEnabled'
+export { THEME_PREFERENCE_KEY, CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY, DENSITY_PREFERENCE_KEY, VOD_JUMP_CHART_PIN_KEY }
 const DEFAULT_CHART_WINDOW_KEY = 'defaultChartWindow'
-/** Historical v1 flag (legacy sticky → Full). Superseded by v2 → 60m. */
+/** Historical v1 flag (legacy sticky → Full). */
 const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY = 'defaultChartWindowMigratedToFullV1'
-/** One-time sync flag: every pre-v2 chart preference (including Full) → 60m. */
+/** Historical v2 flag: every pre-v2 chart preference → 60m. */
 const DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY = 'defaultChartWindowMigratedToRecentV2'
+/** One-time v3 flag: restore Full stream as the product default. */
+const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY = 'defaultChartWindowMigratedToFullV3'
 const KEEP_LOCAL_CACHE_KEY = 'keepLocalCache'
 export const PROTECT_SYNC_STATE_KEY = 'protectSyncState'
 
@@ -35,7 +39,8 @@ export type OverlayMode = 'collapsed' | 'mini' | 'expanded'
 export type OverlayPlacement = 'bottom' | 'right' | 'sidebar' | 'hidden'
 export type SidebarTab = 'chat' | 'pulse'
 export type AutoTrackPolicy = 'off' | 'followed' | 'ask'
-export type ThemePreference = 'aurora' | 'volt' | 'azure'
+export type ThemePreference = 'aurora' | 'volt' | 'azure' | 'emerald'
+export type DensityPreference = 'comfortable' | 'compact'
 export type DefaultChartWindow = '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
 export interface OverlayDisplayPreferences {
   placement: OverlayPlacement
@@ -48,11 +53,19 @@ export const DEFAULT_CHAT_CLOSED_PULSE_DOCK_ENABLED = false
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
 export const DEFAULT_AUTO_TRACK_POLICY: AutoTrackPolicy = 'off'
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'aurora'
-export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
+export const DEFAULT_DENSITY_PREFERENCE: DensityPreference = 'comfortable'
+export const DEFAULT_VOD_JUMP_CHART_PIN_ENABLED = true
+export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = 'full'
 export const DEFAULT_KEEP_LOCAL_CACHE = true
 
 const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+// Keep development-only origins out of store bundles after minifier constant folding.
+const LOOPBACK_IPV4 = [
+  String.fromCharCode(49, 50, 55),
+  String.fromCharCode(48),
+  String.fromCharCode(48),
+  String.fromCharCode(49),
+].join('.')
 const LOCAL_BACKEND_PORT = String.fromCharCode(56, 48, 56, 49)
 const LEGACY_BACKEND_PORT = String.fromCharCode(56, 48, 57, 48)
 const LOCAL_WORKER_HOST = [108, 97, 112, 116, 111, 112, 119, 111, 114, 107, 101, 114]
@@ -151,14 +164,64 @@ async function sessionStorageGet(
   }
 }
 
+const SESSION_CACHE_MAX_KEYS = 24
+const SESSION_CACHE_TARGET_BYTES = 6 * 1024 * 1024
+let sessionCacheWriteQueue: Promise<void> = Promise.resolve()
+
+function isSessionCacheKey(key: string): boolean {
+  return key.startsWith('pulse:') || key.startsWith('coverage:')
+}
+
+function isStorageQuotaError(err: unknown): boolean {
+  return /quota.*(?:bytes|exceed)|(?:bytes|exceed).*quota/i.test(err instanceof Error ? err.message : String(err))
+}
+
 async function sessionStorageSet(items: Record<string, unknown>): Promise<void> {
-  if (!isExtensionContextAlive()) return
-  try {
-    await chrome.storage.session.set(items)
-  } catch (err) {
-    if (isBenignStorageError(err)) return
-    throw err
-  }
+  // Only derived analytics use this writer. Serialize eviction with concurrent
+  // polls, and never clear credentials, navigation bridges, or saved moments.
+  const write = sessionCacheWriteQueue.then(async () => {
+    if (!isExtensionContextAlive()) return
+    try {
+      const stored = await sessionStorageGet(null)
+      const now = Date.now()
+      const timestamp = (key: string): number => {
+        const value = stored[key] as { fetchedAt?: number } | null
+        return Number.isFinite(value?.fetchedAt) ? value!.fetchedAt! : 0
+      }
+      const existing = Object.keys(stored).filter(isSessionCacheKey)
+      const expired = existing.filter(key => now - timestamp(key) > (
+        key.startsWith('pulse:') ? PULSE_CACHE_TTL_MS : COVERAGE_CACHE_TTL_MS
+      ) || timestamp(key) > now)
+      const survivors = existing.filter(key => !expired.includes(key) && !(key in items))
+        .sort((a, b) => timestamp(a) - timestamp(b))
+      const overflow = Math.max(0, survivors.length + Object.keys(items).length - SESSION_CACHE_MAX_KEYS)
+      const remove = [...expired, ...survivors.splice(0, overflow)]
+      if (remove.length) await sessionStorageRemove(remove)
+      try {
+        await chrome.storage.session.set(items)
+      } catch (err) {
+        if (!isStorageQuotaError(err)) throw err
+        // Chrome accounts for allocated memory, not JSON size. Reclaim only
+        // disposable cache and retry once; an oversized response stays uncached.
+        const keys = Object.keys(await sessionStorageGet(null)).filter(isSessionCacheKey)
+        if (keys.length) await sessionStorageRemove(keys)
+        try { await chrome.storage.session.set(items) } catch (retryError) {
+          if (!isStorageQuotaError(retryError)) throw retryError
+          return
+        }
+      }
+      if (chrome.storage.session.getBytesInUse) {
+        const oldestFirst = [...survivors, ...Object.keys(items)]
+        while (oldestFirst.length && await chrome.storage.session.getBytesInUse(null) > SESSION_CACHE_TARGET_BYTES) {
+          await sessionStorageRemove(oldestFirst.splice(0, Math.max(1, Math.ceil(oldestFirst.length / 2))))
+        }
+      }
+    } catch (err) {
+      if (!isBenignStorageError(err)) throw err
+    }
+  })
+  sessionCacheWriteQueue = write.catch(() => undefined)
+  await write
 }
 
 async function sessionStorageRemove(keys: string | string[]): Promise<void> {
@@ -396,12 +459,16 @@ export async function setProtectSyncState(state: ProtectSyncStorageState): Promi
 }
 
 export async function getPollIntervalMs(): Promise<number> {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) {
+    return DEFAULT_POLL_INTERVAL_MS
+  }
   const stored = await syncStorageGet(POLL_INTERVAL_MS_KEY)
   const value = Number(stored[POLL_INTERVAL_MS_KEY])
   return Number.isFinite(value) && value >= 15_000 ? value : DEFAULT_POLL_INTERVAL_MS
 }
 
 export async function setPollIntervalMs(ms: number): Promise<void> {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) return
   const safe = clampPollIntervalMs(ms)
   await syncStorageSet({ [POLL_INTERVAL_MS_KEY]: safe })
 }
@@ -545,8 +612,50 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await syncStorageSet({ [THEME_PREFERENCE_KEY]: normalizeThemePreference(pref) })
 }
 
+export const PULSE_BANNER_KEY = 'pulseBanner'
+export type PulseBannerPreference = { mode: 'off' | 'still' | 'rain'; intensity: number; title: string }
+export const DEFAULT_PULSE_BANNER: PulseBannerPreference = { mode: 'rain', intensity: 35, title: '' }
+
+export function normalizePulseBanner(value: unknown): PulseBannerPreference {
+  const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return {
+    mode: raw.mode === 'off' || raw.mode === 'still' || raw.mode === 'rain' ? raw.mode : DEFAULT_PULSE_BANNER.mode,
+    intensity: typeof raw.intensity === 'number' && Number.isFinite(raw.intensity)
+      ? Math.min(70, Math.max(10, Math.round(raw.intensity))) : DEFAULT_PULSE_BANNER.intensity,
+    title: typeof raw.title === 'string' ? raw.title.trim().slice(0, 40) : '',
+  }
+}
+
+export async function getPulseBanner(): Promise<PulseBannerPreference> {
+  const stored = await syncStorageGet(PULSE_BANNER_KEY)
+  return normalizePulseBanner(stored[PULSE_BANNER_KEY])
+}
+
+export async function setPulseBanner(value: PulseBannerPreference): Promise<void> {
+  await syncStorageSet({ [PULSE_BANNER_KEY]: normalizePulseBanner(value) })
+}
+
+export async function getDensityPreference(): Promise<DensityPreference> {
+  const stored = await syncStorageGet(DENSITY_PREFERENCE_KEY)
+  return normalizeDensityPreference(stored[DENSITY_PREFERENCE_KEY])
+}
+
+export async function setDensityPreference(pref: DensityPreference): Promise<void> {
+  await syncStorageSet({ [DENSITY_PREFERENCE_KEY]: normalizeDensityPreference(pref) })
+}
+
+export async function getVodJumpChartPinEnabled(): Promise<boolean> {
+  const stored = await syncStorageGet(VOD_JUMP_CHART_PIN_KEY)
+  const value = stored[VOD_JUMP_CHART_PIN_KEY]
+  return value === undefined ? DEFAULT_VOD_JUMP_CHART_PIN_ENABLED : Boolean(value)
+}
+
+export async function setVodJumpChartPinEnabled(enabled: boolean): Promise<void> {
+  await syncStorageSet({ [VOD_JUMP_CHART_PIN_KEY]: Boolean(enabled) })
+}
+
 /**
- * @deprecated Prefer migrateDefaultChartWindowToRecentV2Once (RPR-1).
+ * @deprecated Prefer migrateDefaultChartWindowToFullV3Once.
  * Historical v1 migration kept for tests that inspect the old flag.
  */
 export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
@@ -566,28 +675,32 @@ export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
 }
 
 /**
- * One-time migration v2: every pre-v2 stored chart preference (including Full)
- * becomes 60m. Idempotent via DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY.
- * After v2, an explicit user Full selection is preserved (setDefaultChartWindow
- * also stamps the v2 marker).
+ * Initialize the current default without replacing an existing range choice.
+ * Older migrations did not record whether a value was chosen by the user,
+ * so preserve every valid stored range rather than guessing its provenance.
  */
-export async function migrateDefaultChartWindowToRecentV2Once(): Promise<void> {
+export async function migrateDefaultChartWindowToFullV3Once(): Promise<void> {
   try {
     const stored = await syncStorageGet([
+      DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY,
       DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY,
       DEFAULT_CHART_WINDOW_KEY,
     ])
-    // Only an explicit boolean true completes the migration; missing/false/malformed re-run.
-    if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY] === true) return
+    if (stored[DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY] === true) return
     await syncStorageSet({
-      [DEFAULT_CHART_WINDOW_KEY]: '60m',
+      [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(stored[DEFAULT_CHART_WINDOW_KEY]),
+      [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY]: true,
       [DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]: true,
-      // Keep v1 flag set so older codepaths do not re-apply Full.
       [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
     })
   } catch {
     /* ignore storage errors in restricted contexts */
   }
+}
+
+/** @deprecated Use migrateDefaultChartWindowToFullV3Once. */
+export async function migrateDefaultChartWindowToRecentV2Once(): Promise<void> {
+  return migrateDefaultChartWindowToFullV3Once()
 }
 
 export async function getDefaultChartWindow(): Promise<DefaultChartWindow> {
@@ -600,6 +713,7 @@ export async function setDefaultChartWindow(window: DefaultChartWindow): Promise
     [DEFAULT_CHART_WINDOW_KEY]: normalizeDefaultChartWindow(window),
     [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY]: true,
     [DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY]: true,
+    [DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY]: true,
   })
 }
 
@@ -607,6 +721,7 @@ export async function setDefaultChartWindow(window: DefaultChartWindow): Promise
 export const CHART_WINDOW_MIGRATION_KEYS = {
   v1: DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V1_KEY,
   v2: DEFAULT_CHART_WINDOW_MIGRATED_TO_RECENT_V2_KEY,
+  v3: DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY,
   value: DEFAULT_CHART_WINDOW_KEY,
 } as const
 
@@ -756,10 +871,14 @@ function normalizeAutoTrackPolicy(value: unknown): AutoTrackPolicy {
 }
 
 function normalizeThemePreference(value: unknown): ThemePreference {
-  if (value === 'aurora' || value === 'volt' || value === 'azure') return value
+  if (value === 'aurora' || value === 'volt' || value === 'azure' || value === 'emerald') return value
   if (value === 'volcano') return 'volt'
   if (value === 'ocean') return 'azure'
   return DEFAULT_THEME_PREFERENCE
+}
+
+export function normalizeDensityPreference(value: unknown): DensityPreference {
+  return value === 'compact' || value === 'comfortable' ? value : DEFAULT_DENSITY_PREFERENCE
 }
 
 function normalizeDefaultChartWindow(value: unknown): DefaultChartWindow {

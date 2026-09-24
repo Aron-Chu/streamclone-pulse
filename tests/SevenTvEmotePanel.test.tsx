@@ -44,7 +44,11 @@ describe('SevenTvEmotePanel packed picker', () => {
     container.remove()
   })
 
-  function renderPicker(selectedKeys: string[] = [], expanded = true) {
+  function renderPicker(
+    selectedKeys: string[] = [],
+    expanded = true,
+    onClearPlots = vi.fn(),
+  ) {
     act(() => {
       root.render(
         createElement(SevenTvEmotePanel, {
@@ -55,6 +59,7 @@ describe('SevenTvEmotePanel packed picker', () => {
           topEmotes: emotes,
           selectedKeys,
           onToggleEmote: vi.fn(),
+          onClearPlots,
           selectedOffsetSeconds: null,
           maxSelected: 6,
         }),
@@ -64,6 +69,10 @@ describe('SevenTvEmotePanel packed picker', () => {
 
   it('keeps the picker mounted for enter/exit motion and removes collapsed controls from tab order', () => {
     renderPicker([], false)
+    const preview = [...container.querySelectorAll('[data-emote-picker-preview-image="true"]')]
+    expect(preview).toHaveLength(3)
+    expect(preview.map(node => node.textContent)).toEqual(['EMOTE_0', 'EMOTE_1', 'EMOTE_2'])
+    expect(container.querySelector('.pulse-seven-tv-toggle')?.textContent).toContain('0/6')
     const collapsedBody = container.querySelector('[data-emote-picker-body]')
     expect(collapsedBody).not.toBeNull()
     expect(collapsedBody?.getAttribute('data-expanded')).toBe('false')
@@ -84,6 +93,28 @@ describe('SevenTvEmotePanel packed picker', () => {
     expect((container.querySelector('[data-emote-picker-body]') as HTMLElement).style.transition).toContain('grid-template-rows')
     expect(container.querySelector<HTMLButtonElement>('.pulse-seven-tv-chip')?.tabIndex).toBe(0)
     expect(container.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.tabIndex).toBe(0)
+  })
+
+  it('shows fewer than three preview images without changing manual selection', () => {
+    const shortEmotes = emotes.slice(0, 2)
+    act(() => {
+      root.render(
+        createElement(SevenTvEmotePanel, {
+          expanded: false,
+          onToggleExpanded: vi.fn(),
+          backendUrl: 'https://api.streampulse.stream',
+          rollups: [{ ...rollups[0], topEmotes: shortEmotes }],
+          topEmotes: shortEmotes,
+          selectedKeys: [],
+          onToggleEmote: vi.fn(),
+          onClearPlots: vi.fn(),
+          selectedOffsetSeconds: null,
+          maxSelected: 6,
+        }),
+      )
+    })
+    expect(container.querySelectorAll('[data-emote-picker-preview-image="true"]')).toHaveLength(2)
+    expect(container.querySelector('.pulse-seven-tv-toggle')?.textContent).toContain('0/6')
   })
 
   it('shows twelve chips first and expands the rest with one more control', () => {
@@ -115,6 +146,22 @@ describe('SevenTvEmotePanel packed picker', () => {
     renderPicker(selectedKeys)
     expect(container.querySelector('.pulse-seven-tv-toggle')?.textContent).toContain('6/6')
     expect(container.querySelector('[data-emote-picker-grid]')?.getAttribute('aria-label')).toContain('6 of 6 selected')
+  })
+
+  it('offers a clear action only when lines are plotted and keeps picker state intact', () => {
+    const onClearPlots = vi.fn()
+    renderPicker([emoteSelectionKey(emotes[0]!)], true, onClearPlots)
+    const clear = container.querySelector<HTMLButtonElement>('[data-emote-picker-clear]')
+    expect(clear).not.toBeNull()
+    expect(clear?.getAttribute('aria-label')).toBe('Clear plotted emotes')
+    expect(container.querySelector('.pulse-seven-tv-toggle')?.getAttribute('aria-expanded')).toBe('true')
+
+    act(() => clear?.click())
+    expect(onClearPlots).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.pulse-seven-tv-toggle')?.getAttribute('aria-expanded')).toBe('true')
+
+    renderPicker([], true, onClearPlots)
+    expect(container.querySelector('[data-emote-picker-clear]')).toBeNull()
   })
 
   it('does not retain a clipping max-height when the expanded list grows', () => {

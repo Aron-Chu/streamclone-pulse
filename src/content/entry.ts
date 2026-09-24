@@ -23,6 +23,7 @@ import { createRoutePathTracker, createRouteSyncScheduler } from './routeSyncSch
 import { parseTwitchPage, detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
 import type { PulseUpdateMessage, VodPulseUpdateMessage } from '../shared/messages.ts'
+import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
 import {
   requestPulseLoadCompletedAnalytics,
   resetAnalyticsActivationLatches,
@@ -30,8 +31,12 @@ import {
 
 import {
   getAutoTrackPolicy,
+  getAutoUpdateEnabled,
   getBackendUrl,
+  getPollIntervalMs,
+  AUTO_UPDATE_ENABLED_KEY,
   CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY,
+  POLL_INTERVAL_MS_KEY,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
 } from '../shared/storage.ts'
@@ -42,6 +47,7 @@ import { isPulseRosterEligible } from '../ui/pulseEligibility.ts'
 
 import { vodPulseToChannelPayload } from '../vod/vodPulseToChannelPayload.ts'
 import { isSupportedTwitchUrl } from '../background/pulseBroadcastTargets.ts'
+import { readVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 
 if (isSupportedTwitchUrl(window.location.href)) {
 type ActiveSession =
@@ -66,6 +72,17 @@ let overlayPrefsListenerInstalled = false
 const activationGate = createActivationGate()
 
 const livePoll = createLivePollController(() => parseTwitchPage(window.location.pathname))
+let livePollConfigGeneration = 0
+
+function hydrateLivePollPreferences(): void {
+  const generation = ++livePollConfigGeneration
+  void Promise.all([getAutoUpdateEnabled(), getPollIntervalMs()]).then(([enabled, intervalMs]) => {
+    if (generation !== livePollConfigGeneration) return
+    livePoll.configure({ enabled, intervalMs })
+  })
+}
+
+hydrateLivePollPreferences()
 const VOD_LIVE_POLL_INTERVAL_MS = 30_000
 let vodLivePollTimer: ReturnType<typeof setTimeout> | null = null
 let vodLivePollInFlight = false
@@ -127,6 +144,7 @@ function setLivePollWindow(window: 'recent' | 'full'): void {
 
 const overlayMountOptions = {
   onLivePollWindowChange: setLivePollWindow,
+  livePollStore: livePoll,
 } as const
 
 function installOverlayPrefsListener(): void {
@@ -135,6 +153,18 @@ function installOverlayPrefsListener(): void {
   overlayPrefsListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return
+    if (changes[AUTO_UPDATE_ENABLED_KEY]) {
+      livePollConfigGeneration += 1
+      const stored = changes[AUTO_UPDATE_ENABLED_KEY].newValue
+      livePoll.setEnabled(stored === undefined ? true : Boolean(stored))
+    }
+    if (changes[POLL_INTERVAL_MS_KEY]) {
+      const generation = ++livePollConfigGeneration
+      void getPollIntervalMs().then(intervalMs => {
+        if (generation !== livePollConfigGeneration) return
+        livePoll.configure({ enabled: livePoll.getSnapshot().enabled, intervalMs })
+      })
+    }
     if (!changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY] && !changes.overlayPlacement) return
     const context = parseTwitchPage(window.location.pathname)
     if (!activeSession) return
@@ -147,10 +177,29 @@ function installOverlayPrefsListener(): void {
   })
 }
 
+installOverlayPrefsListener()
+
+/**
+ * A worker that never answers is not empty data.
+ *
+ * `sendBackgroundMessage` resolves — it does not throw — when the extension
+ * context has been invalidated, which is what happens to an open Twitch tab
+ * whenever the extension is reloaded. Treating that envelope as "no payload
+ * yet" left the panel on "Loading Pulse" forever with nothing telling the
+ * reader that a page refresh is all it needs.
+ */
+function pulseTransportError(response: unknown): string {
+  return backgroundErrorMessage(response, EXTENSION_RECONNECT_MESSAGE) ?? EXTENSION_RECONNECT_MESSAGE
+}
+
 async function refreshChannelPulse(login: string): Promise<void> {
   const response = await sendBackgroundMessage({ type: 'GET_PULSE', login, watch: false })
   if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== login) return
-  if (!('type' in response) || response.type !== 'PULSE_UPDATE') return
+  if (!('type' in response) || response.type !== 'PULSE_UPDATE') {
+    // Null payload keeps any chart already on screen; only the error lane moves.
+    updateOverlayPayload(null, pulseTransportError(response), null, { authoritative: true })
+    return
+  }
   if (response.payload?.streamId) activeStreamId = response.payload.streamId.trim()
   updateOverlayPayload(response.payload, response.error, response.coverageTier ?? null, { authoritative: true })
 }
@@ -160,7 +209,7 @@ async function fetchChannelPulse(login: string): Promise<PulseUpdateMessage> {
   if ('type' in response && response.type === 'PULSE_UPDATE') {
     return response
   }
-  return { type: 'PULSE_UPDATE', login, payload: null }
+  return { type: 'PULSE_UPDATE', login, payload: null, error: pulseTransportError(response) }
 }
 
 async function loadInitialChannelPayload(
@@ -359,13 +408,13 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   livePoll.stop()
 
   const login = placeholderLoginForContext(context)
-  const generation = activationGate.begin()
 
   if (activeSession?.kind === 'vod' && activeSession.vodId === vodId) {
     updateOverlayContext(context)
     return
   }
 
+  const generation = activationGate.begin()
   stopVodLivePoll()
 
   resetAnalyticsActivationLatches()
@@ -378,6 +427,7 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
 
   mountOverlay(login, null, context, {
     sessionOpenedAtMs,
+    ...overlayMountOptions,
     onPulseRefresh: async () => {
       const currentStreamId = activeSession?.kind === 'vod' && activeSession.vodId === vodId
         ? activeSession.streamId ?? undefined
@@ -389,7 +439,23 @@ async function activateVod(context: TwitchPageContext): Promise<void> {
   })
   updateOverlayVodState({ vodPulse: null, loading: true })
 
-  const result = await fetchVodPulseResult(vodId)
+  const bridge = await readVodAnalyticsBridge(vodId)
+  if (
+    !isVodActivationCurrent({
+      generation,
+      gateCurrent: activationGate.current(),
+      activeSession,
+      intendedVodId: vodId,
+    })
+  ) {
+    return
+  }
+  if (bridge?.login && activeSession.kind === 'vod' && activeSession.login !== bridge.login) {
+    activeSession = { ...activeSession, login: bridge.login }
+    updateOverlayLogin(bridge.login)
+  }
+
+  const result = await fetchVodPulseResult(vodId, bridge?.streamId)
   if (
     !isVodActivationCurrent({
       generation,

@@ -31,7 +31,7 @@ export function coverageDiagnostics(
   checks.push({
     label: 'Live tracking',
     ok: tracking,
-    detail: tracking ? 'Streamclone is collecting chat' : 'Track this channel to collect chat',
+    detail: tracking ? 'StreamPulse is collecting chat' : 'Track this channel to collect chat',
   })
 
   checks.push({
@@ -78,14 +78,14 @@ export function coverageDiagnostics(
 
   let fixHint: string | undefined
   if (!tracking) {
-    fixHint = 'Tap Track this channel in the header so Streamclone collects live chat.'
+    fixHint = 'Tap Track this channel in the header so StreamPulse collects live chat.'
   } else if (!hasVod && source.isLive) {
     fixHint =
-      'Twitch assigns a VOD ID during live streams. Pulse checks automatically — or tap Check for VOD. If this persists after 30+ minutes, verify Twitch API credentials on your Streamclone backend.'
+      'Twitch assigns a VOD ID during live streams. Pulse checks automatically — or tap Check for VOD. If this persists after 30+ minutes, verify Twitch API credentials on your StreamPulse backend.'
   } else if (backfillFailed) {
     fixHint = job?.error?.includes('capacity')
       ? 'Another backfill may be running — wait a minute and tap Retry.'
-      : 'Try Retry, or open full analytics to sync from Streamclone.'
+      : 'Try Retry, or open full analytics to sync from StreamPulse.'
   } else if (job?.status === 'waiting_for_vod') {
     fixHint = 'Backfill queued but VOD chat is not published yet. Pulse will retry when the VOD link appears.'
   }

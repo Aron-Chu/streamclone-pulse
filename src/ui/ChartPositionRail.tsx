@@ -21,6 +21,7 @@ export interface ChartPositionRailProps {
   viewport: ChartViewport
   durationSeconds: number
   onViewportChange: (viewport: ChartViewport) => void
+  /** Legacy prop; rail navigation never changes playback. Use an explicit Jump action. */
   onJumpToOffset?: (offsetSeconds: number) => void
   disabled?: boolean
   height?: number
@@ -31,6 +32,8 @@ export interface ChartPositionRailProps {
   hideRangeLabel?: boolean
   /** Fires when direct pointer manipulation starts or ends. */
   onInteractionChange?: (active: boolean) => void
+  /** Stream-relative selected bucket, shown against the covered rail domain. */
+  selectedOffsetSeconds?: number | null
 }
 
 /** Keep the rail useful on short streams without mounting it for an empty chart. */
@@ -39,7 +42,7 @@ export const LONG_STREAM_OVERVIEW_SECONDS = 90 * 60
 const DEFAULT_FOCUS_SECONDS = 60 * 60
 const MIN_PAN_SECONDS = 60
 const SHIFT_PAN_SECONDS = 10 * 60
-const RESIZE_HANDLE_PX = 8
+const RESIZE_HANDLE_PX = 14
 const POINTER_CLICK_THRESHOLD_PX = CHART_DRAG_INTENT_PX
 
 export function shouldShowChartRail(
@@ -84,8 +87,9 @@ export function resolveRailPointerViewport(args: {
 
   const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
   const offsetX = clamp(clientX - trackLeft, 0, trackWidth)
-  const offsetSeconds = (offsetX / trackWidth) * durationSeconds
-  if (offsetSeconds < coverageStart) return null
+  const availableDuration = Math.max(0, durationSeconds - coverageStart)
+  if (availableDuration <= 0) return null
+  const offsetSeconds = coverageStart + (offsetX / trackWidth) * availableDuration
 
   const normalizedViewport = clampViewportToCoverage(
     args.viewport,
@@ -93,7 +97,6 @@ export function resolveRailPointerViewport(args: {
     coverageStart,
   )
   const viewportDuration = viewportDurationSeconds(normalizedViewport)
-  const availableDuration = Math.max(0, durationSeconds - coverageStart)
   let base = normalizedViewport
   if (
     viewportDuration >= availableDuration - FOLLOW_LIVE_EPSILON_SECONDS
@@ -159,18 +162,24 @@ export function resolveRailKeyboardViewport(args: {
   switch (key) {
     case 'ArrowLeft':
       next = altKey
-        ? {
-            startSeconds: normalizedViewport.startSeconds - panSeconds,
-            endSeconds: normalizedViewport.endSeconds,
-          }
+        ? resizeViewportEdge(
+            normalizedViewport,
+            'start',
+            -panSeconds,
+            durationSeconds,
+            coverageStartSeconds,
+          )
         : panViewport(normalizedViewport, -panSeconds, durationSeconds, true, coverageStartSeconds)
       break
     case 'ArrowRight':
       next = altKey
-        ? {
-            startSeconds: normalizedViewport.startSeconds + panSeconds,
-            endSeconds: normalizedViewport.endSeconds,
-          }
+        ? resizeViewportEdge(
+            normalizedViewport,
+            'start',
+            panSeconds,
+            durationSeconds,
+            coverageStartSeconds,
+          )
         : panViewport(normalizedViewport, panSeconds, durationSeconds, true, coverageStartSeconds)
       break
     case '[':
@@ -228,13 +237,13 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   viewport,
   durationSeconds,
   onViewportChange,
-  onJumpToOffset,
   disabled = false,
   height = 14,
   ariaLabel = 'Chart position',
   coverageStartSeconds = 0,
   hideRangeLabel = false,
   onInteractionChange,
+  selectedOffsetSeconds = null,
 }: ChartPositionRailProps) {
   const trackRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{
@@ -258,6 +267,25 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   const showRail = shouldShowChartRail(normalizedViewport, durationSeconds, coverageStartSeconds)
   const geometry = railGeometry(normalizedViewport, durationSeconds, 100, coverageStartSeconds)
   const following = isFollowingLive(normalizedViewport, durationSeconds)
+  const coverageStart = clamp(coverageStartSeconds, 0, durationSeconds)
+  const selectedInDomain = selectedOffsetSeconds != null
+    && Number.isFinite(selectedOffsetSeconds)
+    && selectedOffsetSeconds >= 0
+    && selectedOffsetSeconds <= durationSeconds
+  const selectedInViewport = selectedInDomain
+    && selectedOffsetSeconds >= normalizedViewport.startSeconds
+    && selectedOffsetSeconds < normalizedViewport.endSeconds
+  const coverageDuration = Math.max(0, durationSeconds - coverageStart)
+  // The extension rail maps its full width to available coverage. Keep the
+  // marker in that same coordinate system so it stays aligned with the thumb
+  // and pointer jumps when the leading part of a stream is still unavailable.
+  // A pre-coverage selection remains represented by the off-screen state and
+  // return action, but is not painted at a misleading covered timestamp.
+  const selectedMarkerPercent = selectedInDomain
+    && coverageDuration > 0
+    && selectedOffsetSeconds >= coverageStart
+    ? ((selectedOffsetSeconds - coverageStart) / coverageDuration) * 100
+    : null
 
   const setInteractionActive = useCallback((active: boolean) => {
     if (interactionActiveRef.current === active) return
@@ -412,7 +440,8 @@ export const ChartPositionRail = memo(function ChartPositionRail({
       state.active = true
       setInteractionActive(true)
     }
-    const deltaSeconds = deltaPixels * (durationSeconds / rect.width)
+    const availableDuration = Math.max(0, durationSeconds - clamp(coverageStartSeconds, 0, durationSeconds))
+    const deltaSeconds = deltaPixels * (availableDuration / rect.width)
     let next: ChartViewport
     if (state.mode === 'pan') {
       next = panViewport(state.startViewport, deltaSeconds, durationSeconds, true, coverageStartSeconds)
@@ -435,7 +464,6 @@ export const ChartPositionRail = memo(function ChartPositionRail({
         const result = resolveTrackClick(event.clientX)
         if (result) {
           onViewportChange(result.viewport)
-          onJumpToOffset?.(result.offsetSeconds)
         }
       }
       finishPointerInteraction(event.pointerId)
@@ -446,7 +474,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     event.stopPropagation()
     if (state.active) flushPendingViewport()
     finishPointerInteraction(event.pointerId)
-  }, [finishPointerInteraction, flushPendingViewport, onJumpToOffset, onViewportChange, resolveTrackClick])
+  }, [finishPointerInteraction, flushPendingViewport, onViewportChange, resolveTrackClick])
 
   const onPointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     finishPointerInteraction(event.pointerId)
@@ -464,13 +492,12 @@ export const ChartPositionRail = memo(function ChartPositionRail({
     })
     if (!result) return
     event.preventDefault()
+    event.stopPropagation()
     onViewportChange(result.viewport)
-    if (result.jumpOffsetSeconds != null) onJumpToOffset?.(result.jumpOffsetSeconds)
   }, [
     coverageStartSeconds,
     disabled,
     durationSeconds,
-    onJumpToOffset,
     onViewportChange,
     normalizedViewport,
     viewportDuration,
@@ -481,18 +508,15 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   const startLabel = formatHeatOffset(normalizedViewport.startSeconds)
   const endLabel = formatHeatOffset(normalizedViewport.endSeconds)
   const totalLabel = formatHeatOffset(durationSeconds)
-  const coverageWidth = durationSeconds > 0
-    ? `${clamp(coverageStartSeconds / durationSeconds, 0, 1) * 100}%`
-    : '0%'
   // Animate thumb movement for wheel/keyboard/click jumps; skip during active
   // pointer drags and for reduced-motion users so tracking stays immediate.
   const thumbTransition = !prefersReducedMotion() && !interacting
-    ? 'transform 140ms cubic-bezier(0.22, 1, 0.36, 1), width 140ms cubic-bezier(0.22, 1, 0.36, 1)'
+    ? 'left 140ms cubic-bezier(0.22, 1, 0.36, 1), width 140ms cubic-bezier(0.22, 1, 0.36, 1)'
     : undefined
-  const atAvailableRange = following && normalizedViewport.startSeconds <= coverageStartSeconds + FOLLOW_LIVE_EPSILON_SECONDS
+  const atAvailableRange = following && normalizedViewport.startSeconds <= coverageStart + FOLLOW_LIVE_EPSILON_SECONDS
   const rangeText = atAvailableRange
-    ? coverageStartSeconds > FOLLOW_LIVE_EPSILON_SECONDS
-      ? `Available coverage · from ${formatHeatOffset(coverageStartSeconds)}`
+    ? coverageStart > FOLLOW_LIVE_EPSILON_SECONDS
+      ? `Available coverage · from ${formatHeatOffset(coverageStart)}`
       : 'Full stream'
     : `Viewing ${startLabel} – ${endLabel} of ${totalLabel}`
 
@@ -504,39 +528,49 @@ export const ChartPositionRail = memo(function ChartPositionRail({
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label={ariaLabel}
-        aria-valuemin={Math.round(clamp(coverageStartSeconds, 0, durationSeconds))}
+        aria-disabled={disabled || undefined}
+        aria-valuemin={Math.round(coverageStart)}
         aria-valuemax={Math.round(durationSeconds)}
         aria-valuenow={Math.round(normalizedViewport.startSeconds)}
-        aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}. Arrow keys pan; Alt+arrows or [ ] resize the window.`}
+        aria-valuetext={`Viewing minutes ${startLabel}–${endLabel} of ${totalLabel}${selectedInDomain && !selectedInViewport ? '; selected minute is outside the window' : ''}. Arrow keys pan; Alt+arrows or [ ] resize the window.`}
+        title={disabled ? undefined : 'Drag to pan, or pull either edge to resize the window'}
         style={{
           ...styles.track,
           height,
           cursor: disabled ? 'default' : interacting ? 'grabbing' : 'pointer',
           touchAction: 'none',
         }}
+        className="pulse-chart-rail-track"
         data-chart-rail
+        data-chart-interacting={interacting ? 'true' : 'false'}
+        data-chart-selection-state={selectedOffsetSeconds == null ? 'none' : selectedInViewport ? 'in-view' : 'off-screen'}
         onPointerDown={onTrackPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onLostPointerCapture={onPointerCancel}
         onKeyDown={handleKeyDown}
+        onClick={event => event.stopPropagation()}
       >
-        {coverageStartSeconds > 0 ? (
+        {selectedMarkerPercent != null ? (
           <div
+            data-chart-rail-selection-marker="true"
+            data-chart-rail-selection-offscreen={selectedInViewport ? 'false' : 'true'}
             aria-hidden
-            style={{ ...styles.uncovered, width: coverageWidth }}
-            data-chart-rail-uncovered
+            title="Selected minute"
+            style={{ ...styles.selectionMarker, left: `${selectedMarkerPercent}%` }}
           />
         ) : null}
         <div
           style={{
             ...styles.thumb,
             width: `${geometry.thumbWidth}%`,
-            transform: `translateX(${geometry.thumbWidth > 0 ? (geometry.thumbX / geometry.thumbWidth) * 100 : 0}%)`,
+            left: `${geometry.thumbX}%`,
             background: following ? theme.accentStrong : theme.accent,
+            cursor: disabled ? 'default' : interacting ? 'grabbing' : 'grab',
             transition: thumbTransition,
           }}
+          className="pulse-chart-rail-thumb"
           data-chart-rail-thumb
           aria-hidden
           onPointerDown={onThumbPointerDown}
@@ -545,7 +579,12 @@ export const ChartPositionRail = memo(function ChartPositionRail({
           onPointerCancel={onPointerCancel}
         >
           <div
-            style={{ ...styles.resizeHandle, left: 0 }}
+            style={{
+              ...styles.resizeHandle,
+              borderLeft: `1px solid ${interacting ? 'rgba(221, 214, 254, 0.95)' : 'rgba(196, 181, 253, 0.55)'}`,
+              left: 0,
+              ...(geometry.thumbWidth < 13 ? { maxWidth: 'none', transform: 'translateX(-100%)' } : {}),
+            }}
             data-chart-rail-resize="start"
             data-chart-rail-handle="start"
             onPointerDown={event => onResizePointerDown(event, 'start')}
@@ -554,7 +593,12 @@ export const ChartPositionRail = memo(function ChartPositionRail({
             onPointerCancel={onPointerCancel}
           />
           <div
-            style={{ ...styles.resizeHandle, right: 0 }}
+            style={{
+              ...styles.resizeHandle,
+              borderRight: `1px solid ${interacting ? 'rgba(221, 214, 254, 0.95)' : 'rgba(196, 181, 253, 0.55)'}`,
+              right: 0,
+              ...(geometry.thumbWidth < 13 ? { maxWidth: 'none', transform: 'translateX(100%)' } : {}),
+            }}
             data-chart-rail-resize="end"
             data-chart-rail-handle="end"
             onPointerDown={event => onResizePointerDown(event, 'end')}
@@ -591,15 +635,6 @@ const styles: Record<string, CSSProperties> = {
     userSelect: 'none',
     width: '100%',
   },
-  uncovered: {
-    background: theme.border,
-    bottom: 0,
-    left: 0,
-    opacity: 0.45,
-    position: 'absolute',
-    top: 0,
-    pointerEvents: 'none',
-  },
   thumb: {
     borderRadius: 4,
     bottom: 0,
@@ -609,17 +644,29 @@ const styles: Record<string, CSSProperties> = {
     top: 0,
   },
   resizeHandle: {
-    background: 'rgba(255, 255, 255, 0.72)',
-    border: '1px solid rgba(17, 17, 23, 0.45)',
-    borderRadius: 2,
-    bottom: 2,
-    boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.12)',
+    background: 'transparent',
+    borderRadius: 0,
+    bottom: 0,
+    boxSizing: 'border-box',
     cursor: 'ew-resize',
-    height: 8,
-    opacity: 0.9,
+    height: '100%',
+    // Reserve the middle half for panning even at the minimum thumb width.
+    maxWidth: '25%',
+    opacity: 1,
     position: 'absolute',
-    top: 2,
-    width: RESIZE_HANDLE_PX - 2,
+    top: 0,
+    width: RESIZE_HANDLE_PX,
     zIndex: 1,
+  },
+  selectionMarker: {
+    background: 'rgba(251, 191, 36, 0.95)',
+    bottom: 0,
+    boxShadow: '0 0 5px rgba(251, 191, 36, 0.6)',
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: 0,
+    transform: 'translateX(-1px)',
+    width: 2,
+    zIndex: 2,
   },
 }

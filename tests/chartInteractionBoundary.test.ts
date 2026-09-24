@@ -18,6 +18,18 @@ describe('chart outside-click boundary', () => {
     expect(isChartActionPointerTarget(pointerLike(button))).toBe(true)
   })
 
+  it('recognizes a child of a protected portaled menu', () => {
+    const menu = document.createElement('ul')
+    menu.dataset.chartAction = 'true'
+    const option = document.createElement('button')
+    menu.appendChild(option)
+
+    expect(isChartActionPointerTarget({
+      target: option,
+      composedPath: () => [option, menu],
+    } as unknown as PointerEvent)).toBe(true)
+  })
+
   it('does not classify a passive outside surface as a chart action', () => {
     const surface = document.createElement('div')
 

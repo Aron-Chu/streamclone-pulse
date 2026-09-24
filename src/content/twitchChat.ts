@@ -92,6 +92,30 @@ export const CHAT_EDITOR_SELECTORS: readonly string[] = [
   'textarea[placeholder*="Send a message" i]',
 ]
 
+/**
+ * Twitch often removes and recreates the editor while the chat column changes
+ * tabs. Keep the retry window short so a navigation cannot leave a background
+ * focus job alive indefinitely, but long enough to cover those remounts.
+ */
+export const NATIVE_CHAT_FOCUS_RETRY_INTERVAL_MS = 50
+export const NATIVE_CHAT_FOCUS_TIMEOUT_MS = 1_200
+
+export interface NativeChatFocusHandoffOptions {
+  readonly doc?: Document
+  readonly retryIntervalMs?: number
+  readonly timeoutMs?: number
+  readonly now?: () => number
+  readonly setTimeout?: (callback: () => void, delayMs: number) => unknown
+  readonly clearTimeout?: (handle: unknown) => void
+}
+
+export interface NativeChatFocusHandoff {
+  /** Cancel pending retries and release all event listeners. */
+  cancel(): void
+  /** Whether this handoff can still make a focus attempt. */
+  readonly active: boolean
+}
+
 function isVisibleChatEditor(element: Element): element is HTMLElement {
   const HTMLElementCtor = element.ownerDocument.defaultView?.HTMLElement
     ?? (typeof HTMLElement !== 'undefined' ? HTMLElement : null)
@@ -130,6 +154,119 @@ export function focusNativeChatComposer(doc: Document = document): boolean {
     editor.focus()
   }
   return doc.activeElement === editor || editor.contains(doc.activeElement)
+}
+
+function isComposerFocusTarget(doc: Document, target: EventTarget | null): boolean {
+  if (!target) return false
+  const editor = resolveNativeChatComposer(doc)
+  if (!editor || target === editor) return target === editor
+  const NodeCtor = doc.defaultView?.Node
+    ?? (typeof Node !== 'undefined' ? Node : null)
+  return !!NodeCtor && target instanceof NodeCtor && editor.contains(target)
+}
+
+/**
+ * Focus the native Twitch composer across a brief route/remount window.
+ *
+ * This is intentionally separate from `focusNativeChatComposer`: callers that
+ * already have a direct editor gesture can keep the synchronous helper, while
+ * sidebar tab transitions can use this bounded handoff. Any pointer, touch,
+ * keyboard, or non-composer focus interaction cancels the retries so the
+ * extension never steals focus after the user has moved elsewhere.
+ */
+export function scheduleNativeChatFocusHandoff(
+  options: NativeChatFocusHandoffOptions = {},
+): NativeChatFocusHandoff {
+  const doc = options.doc ?? document
+  const view = doc.defaultView
+  const schedule = options.setTimeout
+    ?? ((callback: () => void, delayMs: number) => (
+      view?.setTimeout(callback, delayMs) ?? globalThis.setTimeout(callback, delayMs)
+    ))
+  const cancelTimer = options.clearTimeout
+    ?? ((handle: unknown) => {
+      if (view) view.clearTimeout(handle as number)
+      else globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>)
+    })
+  const now = options.now ?? (() => Date.now())
+  const retryIntervalMs = Math.max(
+    0,
+    options.retryIntervalMs ?? NATIVE_CHAT_FOCUS_RETRY_INTERVAL_MS,
+  )
+  const timeoutMs = Math.max(
+    0,
+    options.timeoutMs ?? NATIVE_CHAT_FOCUS_TIMEOUT_MS,
+  )
+
+  let active = true
+  let timer: unknown = null
+  const startedAt = now()
+
+  const finish = (): void => {
+    if (!active) return
+    active = false
+    if (timer !== null) {
+      cancelTimer(timer)
+      timer = null
+    }
+    for (const eventName of ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'focusin'] as const) {
+      doc.removeEventListener(eventName, onUserIntent, true)
+    }
+    view?.removeEventListener('blur', onWindowBlur, true)
+  }
+
+  const onUserIntent = (event: Event): void => {
+    // `focusin` is also emitted by our successful `.focus()` call. Allow that
+    // event through; all other focus changes represent an intent to keep the
+    // user's newly focused control focused.
+    if (
+      event.type === 'focusin'
+      && (
+        event.target === doc.body
+        || event.target === doc.documentElement
+        || isComposerFocusTarget(doc, event.target)
+      )
+    ) {
+      return
+    }
+    finish()
+  }
+
+  const onWindowBlur = (): void => {
+    // A click on browser chrome or a tab switch does not bubble through the
+    // page document, but it is still user intent and must cancel the handoff.
+    finish()
+  }
+
+  const attempt = (): void => {
+    timer = null
+    if (!active) return
+
+    if (focusNativeChatComposer(doc)) {
+      finish()
+      return
+    }
+
+    const elapsedMs = Math.max(0, now() - startedAt)
+    if (elapsedMs >= timeoutMs) {
+      finish()
+      return
+    }
+    timer = schedule(attempt, Math.min(retryIntervalMs, timeoutMs - elapsedMs))
+  }
+
+  for (const eventName of ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'focusin'] as const) {
+    doc.addEventListener(eventName, onUserIntent, true)
+  }
+  view?.addEventListener('blur', onWindowBlur, true)
+  timer = schedule(attempt, 0)
+
+  return {
+    cancel: finish,
+    get active(): boolean {
+      return active
+    },
+  }
 }
 
 /** Stream Chat title text inside the header row. */

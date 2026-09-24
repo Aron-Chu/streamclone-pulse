@@ -3,9 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type BrowserContext, type Page, type Worker } from '@playwright/test'
+import type { DefaultChartWindow, DensityPreference, ThemePreference } from '../../../src/shared/storage.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
-export const EXTENSION_DIST_DIR = path.join(root, 'dist')
+export const EXTENSION_DIST_DIR = path.resolve(root, process.env.PULSE_EXTENSION_DIST_DIR || 'dist')
 export const EXTENSION_MANIFEST_PATH = path.join(EXTENSION_DIST_DIR, 'manifest.json')
 
 export interface ExtensionStorageSeed {
@@ -15,19 +16,18 @@ export interface ExtensionStorageSeed {
   sidebarTab?: 'chat' | 'pulse'
   autoUpdateEnabled?: boolean
   pollIntervalMs?: number
-  themePreference?: 'aurora' | 'volt' | 'azure'
+  /** Bound to the shipped union so a new accent cannot be unreachable here. */
+  themePreference?: ThemePreference
+  densityPreference?: DensityPreference
   chatClosedPulseDockEnabled?: boolean
-  defaultChartWindow?: '15m' | '30m' | '60m' | '2h' | '4h' | 'full'
+  defaultChartWindow?: DefaultChartWindow
   /**
    * Legacy v1 migration flag (sticky → Full). Prefer v2 for new seeds.
    */
   defaultChartWindowMigratedToFullV1?: boolean
-  /**
-   * When true, skips the one-time pre-v2→60m migration so a seeded
-   * defaultChartWindow (including Full) survives mount.
-   * When omitted/false, migrateDefaultChartWindowToRecentV2Once runs.
-   */
+  /** When true, skips the one-time pre-v3→Full migration for this fixture. */
   defaultChartWindowMigratedToRecentV2?: boolean
+  defaultChartWindowMigratedToFullV3?: boolean
 }
 
 export interface LaunchedExtension {
@@ -58,13 +58,15 @@ export async function launchExtensionContext(
 
   const userDataDir = options?.userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-e2e-'))
   const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ext-video-'))
-  const headless = options?.headless ?? false
+  const headless = options?.headless ?? process.env.PULSE_EXTENSION_HEADLESS === '1'
   const viewport = options?.viewport ?? { width: 1440, height: 900 }
   const deviceScaleFactor = options?.deviceScaleFactor ?? 1
   const browserChannel = process.env.PULSE_EXTENSION_BROWSER_CHANNEL?.trim() || undefined
+  const browserExecutablePath = process.env.PULSE_EXTENSION_BROWSER_EXECUTABLE_PATH?.trim() || undefined
 
   const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: browserChannel,
+    channel: browserExecutablePath ? undefined : browserChannel,
+    executablePath: browserExecutablePath,
     headless,
     args: [
       `--disable-extensions-except=${EXTENSION_DIST_DIR}`,
@@ -116,8 +118,9 @@ export async function seedExtensionStorage(
     autoUpdateEnabled: seed.autoUpdateEnabled ?? true,
     pollIntervalMs: seed.pollIntervalMs ?? 60_000,
     themePreference: seed.themePreference ?? 'aurora',
+    densityPreference: seed.densityPreference ?? 'comfortable',
     chatClosedPulseDockEnabled: seed.chatClosedPulseDockEnabled ?? false,
-    defaultChartWindow: seed.defaultChartWindow ?? '60m',
+    defaultChartWindow: seed.defaultChartWindow ?? 'full',
     keepLocalCache: true,
   }
 
@@ -127,6 +130,10 @@ export async function seedExtensionStorage(
   if (seed.defaultChartWindowMigratedToRecentV2 === true) {
     payload.defaultChartWindowMigratedToRecentV2 = true
     payload.defaultChartWindowMigratedToFullV1 = true
+    payload.defaultChartWindowMigratedToFullV3 = true
+  }
+  if (seed.defaultChartWindowMigratedToFullV3 === true) {
+    payload.defaultChartWindowMigratedToFullV3 = true
   }
 
   await serviceWorker.evaluate(async storage => {

@@ -1,5 +1,5 @@
 import { sendBackgroundMessage } from './bridge.ts'
-import { getAutoUpdateEnabled, getPollIntervalMs, type PulseCacheWindow } from '../shared/storage.ts'
+import type { PulseCacheWindow } from '../shared/storage.ts'
 import { detectTwitchChannelLive, type TwitchPageContext } from './twitch.ts'
 
 /** True when the open Twitch watch tab should drive live pulse refresh. */
@@ -23,6 +23,9 @@ export function shouldRunLivePoll(args: {
 const JITTER_RATIO = 0.15
 const BACKOFF_BASE_MS = 30_000
 const BACKOFF_MAX_MS = 120_000
+const DEFAULT_INTERVAL_MS = 30_000
+const MIN_INTERVAL_MS = 15_000
+const MAX_ERROR_LENGTH = 120
 
 /** Compute next poll delay with jitter and capped exponential backoff after failures. */
 export function computeLivePollDelayMs(
@@ -41,16 +44,45 @@ export function computeLivePollDelayMs(
   return Math.max(1_000, Math.round(backoff + jitter))
 }
 
+export type LivePollPhase = 'paused' | 'idle' | 'scheduled' | 'refreshing' | 'retrying'
+
+export interface LivePollSnapshot {
+  phase: LivePollPhase
+  enabled: boolean
+  lastAttemptAt: number | null
+  lastSuccessfulCheckAt: number | null
+  nextScheduledAt: number | null
+  consecutiveFailures: number
+  lastError: string | null
+}
+
 export type LivePollController = {
+  /** Hydrate preferences without treating them as a user enable transition. */
+  configure: (settings: { enabled: boolean; intervalMs: number }) => void
   sync: (
     activeLogin: string | null,
     context: TwitchPageContext,
     tracking?: boolean,
     hosted?: boolean,
   ) => void
+  /** The only operation allowed to give false -> true immediate-fetch semantics. */
+  setEnabled: (enabled: boolean) => void
+  getSnapshot: () => LivePollSnapshot
+  subscribe: (listener: () => void) => () => void
   /** Kept for overlay wiring; recurring polls always use `recent`. */
   setPollWindow: (window: PulseCacheWindow) => void
   stop: () => void
+}
+
+function boundedError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || 'pulse_check_failed')
+  return message.trim().slice(0, MAX_ERROR_LENGTH) || 'pulse_check_failed'
+}
+
+function normalizedIntervalMs(value: number): number {
+  return Number.isFinite(value) && value >= MIN_INTERVAL_MS
+    ? Math.floor(value)
+    : DEFAULT_INTERVAL_MS
 }
 
 /**
@@ -59,18 +91,58 @@ export type LivePollController = {
  */
 export function createLivePollController(
   readContext: () => TwitchPageContext,
+  options: { now?: () => number } = {},
 ): LivePollController {
+  const now = options.now ?? Date.now
+  const listeners = new Set<() => void>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let tickInFlight = false
-  let intervalMs = 30_000
-  let autoUpdate = true
+  let immediateFollowUp = false
+  let lifecycleGeneration = 0
+  let intervalMs = DEFAULT_INTERVAL_MS
+  // Start disabled until entry.ts hydrates the stored preference. This prevents
+  // module startup or sync() from inventing an enable transition.
+  let autoUpdate = false
   let activeLogin: string | null = null
   let collecting = false
   let hostedBackend = true
-  let consecutiveFailures = 0
+  let snapshot: LivePollSnapshot = {
+    phase: 'paused',
+    enabled: false,
+    lastAttemptAt: null,
+    lastSuccessfulCheckAt: null,
+    nextScheduledAt: null,
+    consecutiveFailures: 0,
+    lastError: null,
+  }
   // Recurring live poll is always recent. Explicit full-window chart loads are
   // one-shot GET_PULSE calls from the overlay, not a persistent poll mode.
   const pollWindow: PulseCacheWindow = 'recent'
+
+  function publish(patch: Partial<LivePollSnapshot>): void {
+    const next = { ...snapshot, ...patch }
+    if (
+      next.phase === snapshot.phase
+      && next.enabled === snapshot.enabled
+      && next.lastAttemptAt === snapshot.lastAttemptAt
+      && next.lastSuccessfulCheckAt === snapshot.lastSuccessfulCheckAt
+      && next.nextScheduledAt === snapshot.nextScheduledAt
+      && next.consecutiveFailures === snapshot.consecutiveFailures
+      && next.lastError === snapshot.lastError
+    ) return
+    snapshot = next
+    for (const listener of listeners) listener()
+  }
+
+  function canRun(): boolean {
+    return shouldRunLivePoll({
+      activeLogin,
+      context: readContext(),
+      autoUpdate,
+      tracking: collecting,
+      hosted: hostedBackend,
+    })
+  }
 
   function stopTimer(): void {
     if (timer) {
@@ -79,88 +151,186 @@ export function createLivePollController(
     }
   }
 
+  function publishInactive(): void {
+    publish({
+      phase: autoUpdate ? 'idle' : 'paused',
+      enabled: autoUpdate,
+      nextScheduledAt: null,
+    })
+  }
+
   function scheduleNext(): void {
     stopTimer()
-    const delayMs = computeLivePollDelayMs(intervalMs, consecutiveFailures)
+    if (!canRun()) {
+      publishInactive()
+      return
+    }
+    const delayMs = computeLivePollDelayMs(intervalMs, snapshot.consecutiveFailures)
+    const nextScheduledAt = now() + delayMs
+    publish({
+      phase: snapshot.consecutiveFailures > 0 ? 'retrying' : 'scheduled',
+      enabled: autoUpdate,
+      nextScheduledAt,
+    })
     timer = setTimeout(() => {
+      timer = null
       void tick()
     }, delayMs)
   }
 
-  async function refreshSettings(): Promise<void> {
-    autoUpdate = await getAutoUpdateEnabled()
-    intervalMs = await getPollIntervalMs()
-  }
-
   async function tick(): Promise<void> {
-    if (!activeLogin || tickInFlight) return
-    const context = readContext()
-    if (!shouldRunLivePoll({
-      activeLogin,
-      context,
-      autoUpdate,
-      tracking: collecting,
-      hosted: hostedBackend,
-    })) {
-      stopTimer()
+    if (!activeLogin || tickInFlight || !canRun()) {
+      if (!tickInFlight) publishInactive()
       return
     }
     tickInFlight = true
+    const login = activeLogin
+    const requestGeneration = lifecycleGeneration
+    publish({
+      phase: 'refreshing',
+      enabled: autoUpdate,
+      lastAttemptAt: now(),
+      nextScheduledAt: null,
+    })
     try {
-      await sendBackgroundMessage({
+      const response = await sendBackgroundMessage({
         type: 'GET_PULSE',
-        login: activeLogin,
+        login,
         watch: false,
         window: pollWindow,
       })
-      consecutiveFailures = 0
-    } catch {
-      consecutiveFailures += 1
+      if (!('type' in response) || response.type !== 'PULSE_UPDATE') {
+        throw new Error('unexpected_pulse_response')
+      }
+      if (response.error) throw new Error(response.error)
+      if (requestGeneration === lifecycleGeneration) {
+        publish({
+          consecutiveFailures: 0,
+          lastError: null,
+          lastSuccessfulCheckAt: now(),
+        })
+      }
+    } catch (error) {
+      if (requestGeneration === lifecycleGeneration) {
+        publish({
+          consecutiveFailures: snapshot.consecutiveFailures + 1,
+          lastError: boundedError(error),
+        })
+      }
     } finally {
       tickInFlight = false
-      if (shouldRunLivePoll({
-        activeLogin,
-        context: readContext(),
-        autoUpdate,
-        tracking: collecting,
-        hosted: hostedBackend,
-      })) {
+      if (requestGeneration !== lifecycleGeneration) {
+        if (immediateFollowUp && canRun()) {
+          immediateFollowUp = false
+          queueMicrotask(() => void tick())
+        } else if (canRun() && !timer) {
+          scheduleNext()
+        } else if (!canRun()) {
+          publishInactive()
+        }
+        return
+      }
+      if (immediateFollowUp && canRun()) {
+        immediateFollowUp = false
+        queueMicrotask(() => void tick())
+      } else {
+        immediateFollowUp = false
         scheduleNext()
       }
     }
   }
 
   return {
-    sync(login: string | null, context: TwitchPageContext, tracking = false, hosted = true) {
+    configure(settings) {
+      autoUpdate = settings.enabled
+      intervalMs = normalizedIntervalMs(settings.intervalMs)
+      // Configuration hydration may schedule the next cadence, but must never
+      // perform the immediate request reserved for a user false -> true toggle.
+      if (!autoUpdate) {
+        immediateFollowUp = false
+        stopTimer()
+        publishInactive()
+      } else if (!tickInFlight) {
+        scheduleNext()
+      } else {
+        publish({ enabled: true })
+      }
+    },
+    sync(login: string | null, _context: TwitchPageContext, tracking = false, hosted = true) {
+      const loginChanged = activeLogin !== login
+      if (loginChanged) {
+        lifecycleGeneration += 1
+        stopTimer()
+        if (activeLogin !== null && login !== activeLogin) {
+          publish({
+            lastAttemptAt: null,
+            lastSuccessfulCheckAt: null,
+            consecutiveFailures: 0,
+            lastError: null,
+          })
+        }
+      }
       activeLogin = login
       collecting = tracking
       hostedBackend = hosted
-      void refreshSettings().then(() => {
-        if (!shouldRunLivePoll({
-          activeLogin,
-          context,
-          autoUpdate,
-          tracking: collecting,
-          hosted: hostedBackend,
-        })) {
-          stopTimer()
-          return
-        }
-        // Avoid restarting the poll on every sync. PULSE_UPDATE handlers and SPA
-        // re-entrancy call sync frequently; an immediate tick each time would create
-        // an uncontrolled GET_PULSE loop (observed ~500+/s in extension e2e).
-        if (tickInFlight || timer) return
-        consecutiveFailures = 0
-        void tick()
-      })
+      if (!canRun()) {
+        stopTimer()
+        publishInactive()
+        return
+      }
+      // PULSE_UPDATE handlers and SPA route churn call sync frequently. It may
+      // maintain one future timer, but it never performs an immediate request.
+      if (!tickInFlight && !timer) scheduleNext()
+    },
+    setEnabled(enabled: boolean) {
+      const wasEnabled = autoUpdate
+      autoUpdate = enabled
+      if (!enabled) {
+        lifecycleGeneration += 1
+        immediateFollowUp = false
+        stopTimer()
+        publishInactive()
+        return
+      }
+      publish({ enabled: true })
+      if (wasEnabled) {
+        if (!tickInFlight && !timer) scheduleNext()
+        return
+      }
+      if (!canRun()) {
+        publishInactive()
+        return
+      }
+      stopTimer()
+      if (tickInFlight) {
+        immediateFollowUp = true
+        return
+      }
+      void tick()
+    },
+    getSnapshot() {
+      return snapshot
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
     },
     setPollWindow(_window: PulseCacheWindow) {
       // no-op: recurring polls never leave recent
     },
     stop() {
+      lifecycleGeneration += 1
       activeLogin = null
-      consecutiveFailures = 0
+      collecting = false
+      immediateFollowUp = false
       stopTimer()
+      publish({
+        lastAttemptAt: null,
+        lastSuccessfulCheckAt: null,
+        consecutiveFailures: 0,
+        lastError: null,
+      })
+      publishInactive()
     },
   }
 }

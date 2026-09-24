@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createLivePollController } from '../src/content/livePoll.ts'
+import type { TwitchPageContext } from '../src/content/twitch.ts'
 import {
   createPulseCoordinatorState,
   handleGetPulse,
@@ -13,6 +15,13 @@ import {
   PULSE_REVALIDATE_FAILURE_COOLDOWN_MS,
   PULSE_REVALIDATE_MIN_GAP_MS,
 } from '../src/background/pulseRevalidateGate.ts'
+
+vi.mock('../src/content/twitch.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../src/content/twitch.ts')>()
+  return { ...actual, detectTwitchChannelLive: vi.fn(() => true) }
+})
+
+vi.mock('../src/content/bridge.ts', () => ({ sendBackgroundMessage: vi.fn() }))
 
 function fakePayload(login = 'xqc'): PulseCacheEntry['payload'] {
   return {
@@ -314,5 +323,43 @@ describe('production pulse GET_PULSE coordinator matrix', () => {
       state,
     )
     expect(fetches).toBe(1)
+  })
+})
+
+describe('auto-update request-count matrix', () => {
+  it('adds exactly one request for each eligible false-to-true toggle and none for repeated sync', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const context: TwitchPageContext = { kind: 'channel', login: 'xqc', vodId: null }
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    const send = vi.mocked(sendBackgroundMessage)
+    send.mockResolvedValue({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+    const controller = createLivePollController(() => context)
+
+    try {
+      controller.configure({ enabled: false, intervalMs: 30_000 })
+      controller.sync('xqc', context, true, true)
+      controller.setEnabled(true)
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(send).toHaveBeenCalledTimes(1)
+
+      controller.setEnabled(true)
+      controller.sync('xqc', context, true, true)
+      controller.sync('xqc', context, true, true)
+      await Promise.resolve()
+      expect(send).toHaveBeenCalledTimes(1)
+
+      controller.setEnabled(false)
+      controller.setEnabled(true)
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(send).toHaveBeenCalledTimes(2)
+    } finally {
+      controller.stop()
+      vi.clearAllTimers()
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    }
   })
 })

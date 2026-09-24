@@ -116,6 +116,7 @@ function sameRollup(a: ExtensionRollup, b: ExtensionRollup): boolean {
     && (a.sevenTvEmoteCount ?? 0) === (b.sevenTvEmoteCount ?? 0)
     && (a.totalEmoteCount ?? 0) === (b.totalEmoteCount ?? 0)
     && (a.viewerCount ?? 0) === (b.viewerCount ?? 0)
+    && (a.viewerSamples ?? 0) === (b.viewerSamples ?? 0)
     && (a.keywordCount ?? 0) === (b.keywordCount ?? 0)
     && Boolean(a.missing) === Boolean(b.missing)
     && sameTopEmotes(a.topEmotes, b.topEmotes)
@@ -148,10 +149,20 @@ function samePeak(a: ExtensionPeak, b: ExtensionPeak): boolean {
   if (
     a.offsetSeconds !== b.offsetSeconds
     || a.score !== b.score
+    || a.compositeScore !== b.compositeScore
+    || a.reactionScore !== b.reactionScore
+    || a.viewerMomentumScore !== b.viewerMomentumScore
     || a.dominantSignal !== b.dominantSignal
     || a.reasonLabel !== b.reasonLabel
     || (a.chatCount ?? 0) !== (b.chatCount ?? 0)
     || (a.emoteCount ?? 0) !== (b.emoteCount ?? 0)
+    || a.reactionOnsetOffsetSeconds !== b.reactionOnsetOffsetSeconds
+    || a.reactionApexOffsetSeconds !== b.reactionApexOffsetSeconds
+    || a.seekOffsetSeconds !== b.seekOffsetSeconds
+    || a.precisionSeconds !== b.precisionSeconds
+    || a.refinementStatus !== b.refinementStatus
+    || a.refinementConfidence !== b.refinementConfidence
+    || a.reactionScoringVersion !== b.reactionScoringVersion
   ) {
     return false
   }
@@ -244,13 +255,19 @@ function samePayloadSurface(previous: PulsePayload, incoming: PulsePayload): boo
   const previousStreamId = String(previous.streamId ?? '').trim()
   const incomingStreamId = String(incoming.streamId ?? '').trim()
   if (previousStreamId || incomingStreamId) {
-    return Boolean(previousStreamId && incomingStreamId && previousStreamId === incomingStreamId)
+    if (!(previousStreamId && incomingStreamId && previousStreamId === incomingStreamId)) return false
+    const previousStartedAt = makeFullHistoryActivation(previous).startedAt
+    const incomingStartedAt = makeFullHistoryActivation(incoming).startedAt
+    return !previousStartedAt || !incomingStartedAt || previousStartedAt === incomingStartedAt
   }
 
   const previousVodId = String(previous.vodId ?? '').trim()
   const incomingVodId = String(incoming.vodId ?? '').trim()
   if (previousVodId || incomingVodId) {
-    return Boolean(previousVodId && incomingVodId && previousVodId === incomingVodId)
+    if (!(previousVodId && incomingVodId && previousVodId === incomingVodId)) return false
+    const previousStartedAt = makeFullHistoryActivation(previous).startedAt
+    const incomingStartedAt = makeFullHistoryActivation(incoming).startedAt
+    return !previousStartedAt || !incomingStartedAt || previousStartedAt === incomingStartedAt
   }
 
   return true
@@ -309,7 +326,12 @@ export function mergePulsePayload(
     : prevFull ?? (sameActivation ? incoming.fullRollups : undefined)
 
   const mergedRollups = sameSurface
-    ? mergeRollupsByOffset(previous.rollups, incoming.rollups)
+    ? source === 'full'
+      // Full history is enrichment. Its embedded recent window may already be
+      // stale by the time it resolves, so merge it underneath the live payload
+      // instead of letting it replace the newer recurring-poll tail.
+      ? mergeRollupsByOffset(incoming.rollups, previous.rollups)
+      : mergeRollupsByOffset(previous.rollups, incoming.rollups)
     : incoming.rollups
 
   const coverage =

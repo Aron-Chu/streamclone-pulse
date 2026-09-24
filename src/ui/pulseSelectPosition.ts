@@ -49,15 +49,17 @@ export function isTriggerVisibleInScrollport(
   )
 }
 
-export function findScrollportElement(start: HTMLElement | null): HTMLElement | null {
+export function listScrollableAncestors(start: HTMLElement | null): HTMLElement[] {
+  const scrollports: HTMLElement[] = []
   let node = start
   while (node) {
-    if (node.classList?.contains('pulse-panel-body')) return node
+    let scrollable = node.classList?.contains('pulse-panel-body') ?? false
     const style = typeof getComputedStyle === 'function' ? getComputedStyle(node) : null
     const overflowY = style?.overflowY ?? ''
     if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
-      return node
+      scrollable = true
     }
+    if (scrollable) scrollports.push(node)
     const parent = node.parentElement
     if (!parent && node.getRootNode) {
       const root = node.getRootNode()
@@ -68,5 +70,9 @@ export function findScrollportElement(start: HTMLElement | null): HTMLElement | 
     }
     node = parent as HTMLElement | null
   }
-  return null
+  return scrollports
+}
+
+export function findScrollportElement(start: HTMLElement | null): HTMLElement | null {
+  return listScrollableAncestors(start)[0] ?? null
 }

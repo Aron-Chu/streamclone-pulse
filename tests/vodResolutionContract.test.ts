@@ -130,7 +130,7 @@ describe('live DVR VOD-resolution contract', () => {
       retryable: false,
       coverageStatus: 'error',
     })
-    expect(resolveVodPulseState(response).status).toBe('error')
+    expect(resolveVodPulseState(response)).toMatchObject({ status: 'error', archiveConflict: true, retryable: false })
   })
 
   it('accepts a backend-validated growing archive without persisting the association', async () => {

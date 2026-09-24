@@ -233,8 +233,7 @@ export async function clickFullStreamChip(page: Page): Promise<void> {
     const host = document.getElementById(rootId)
     const root = host?.shadowRoot
     if (!root) return false
-    const buttons = [...root.querySelectorAll('button')]
-    const chip = buttons.find(btn => (btn.textContent ?? '').trim() === 'Full stream')
+    const chip = root.querySelector<HTMLButtonElement>('[data-testid="show-full-stream"]')
     if (!chip) return false
     chip.click()
     return true

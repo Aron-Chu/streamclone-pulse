@@ -1,29 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import { useReducedMotion } from './useReducedMotion.ts'
+
 export const CHART_EXPANSION_MS = 180
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
-
-function readReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(readReducedMotion)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const update = () => setReduced(query.matches)
-    update()
-    query.addEventListener?.('change', update)
-    return () => query.removeEventListener?.('change', update)
-  }, [])
-
-  return reduced
-}
 
 export interface ChartExpansionHeights {
   collapsed: number
@@ -69,7 +50,7 @@ export function useChartExpansion({
   heights,
   reducedMotion: reducedMotionOverride,
 }: ChartExpansionOptions): ChartExpansionState {
-  const systemReducedMotion = usePrefersReducedMotion()
+  const systemReducedMotion = useReducedMotion()
   const reducedMotion = reducedMotionOverride ?? systemReducedMotion
   const [expanded, setExpanded] = useState(false)
   const [height, setHeight] = useState(heights.collapsed)

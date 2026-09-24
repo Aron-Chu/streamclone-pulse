@@ -31,12 +31,19 @@ describe('extensionEmoteImageUrl', () => {
   it('falls back to provider and id when imageUrl is empty', () => {
     const url = extensionEmoteImageUrl(
       {
-        id: '12345',
+        id: '62a3bf572b964d6cc2766004',
         provider: 'seventv',
       },
       'http://localhost:8081',
     )
-    expect(url).toBe('https://cdn.7tv.app/emote/12345/4x.webp')
+    expect(url).toBe('https://cdn.7tv.app/emote/62a3bf572b964d6cc2766004/4x.webp')
+  })
+
+  it('does not turn an emote name into a 7TV CDN URL', () => {
+    expect(extensionEmoteImageUrl(
+      { id: 'Clap', provider: 'seventv' },
+      'http://localhost:8081',
+    )).toBeUndefined()
   })
 
   it('uses 7TV CDN for legacy ids even when backend returns a broken local path', () => {
@@ -77,6 +84,10 @@ describe('extensionEmoteImageUrl', () => {
       },
       'https://api.streampulse.stream',
     )
-    expect(urls).toEqual(['https://cdn.7tv.app/emote/provider-id/4x.webp'])
+    expect(urls).toEqual([
+      'https://cdn.7tv.app/emote/provider-id/4x.webp',
+      'https://cdn.7tv.app/emote/provider-id/2x.webp',
+      'https://cdn.7tv.app/emote/provider-id/1x.webp',
+    ])
   })
 })

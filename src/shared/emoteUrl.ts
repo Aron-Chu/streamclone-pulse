@@ -16,25 +16,25 @@ function backendProxyUrl(path: string, backendUrl: string): string | undefined {
   return safeImageUrl(`${base}${path}`, backendUrl)
 }
 
-function sevenTvCdnUrl(id: string): string {
-  return `https://cdn.7tv.app/emote/${id}/4x.webp`
+function sevenTvCdnUrls(id: string): string[] {
+  return ['4x', '2x', '1x'].map(scale => `https://cdn.7tv.app/emote/${id}/${scale}.webp`)
 }
 
 const SAFE_PROVIDER_ID = /^[A-Za-z0-9_-]{1,128}$/
 
-function providerCdnUrl(provider: string | undefined, providerId: string): string | undefined {
-  if (!SAFE_PROVIDER_ID.test(providerId)) return undefined
+function providerCdnUrls(provider: string | undefined, providerId: string): string[] {
+  if (!SAFE_PROVIDER_ID.test(providerId)) return []
   switch (provider) {
     case 'twitch':
-      return `https://static-cdn.jtvnw.net/emoticons/v2/${providerId}/default/dark/3.0`
+      return [`https://static-cdn.jtvnw.net/emoticons/v2/${providerId}/default/dark/3.0`]
     case 'seventv':
-      return `https://cdn.7tv.app/emote/${providerId}/4x.webp`
+      return sevenTvCdnUrls(providerId)
     case 'ffz':
-      return `https://cdn.frankerfacez.com/emoticon/${providerId}/4`
+      return [`https://cdn.frankerfacez.com/emoticon/${providerId}/4`]
     case 'bttv':
-      return `https://cdn.betterttv.net/emote/${providerId}/3x`
+      return [`https://cdn.betterttv.net/emote/${providerId}/3x`]
     default:
-      return undefined
+      return []
   }
 }
 
@@ -58,11 +58,15 @@ export function extensionEmoteImageUrls(
   }
 
   if (providerEmoteId) {
-    pushUnique(candidates, providerCdnUrl(provider, providerEmoteId))
+    for (const candidate of providerCdnUrls(provider, providerEmoteId)) {
+      pushUnique(candidates, candidate)
+    }
   }
 
   if (provider === 'seventv' && id && LEGACY_SEVEN_TV_ID.test(id)) {
-    pushUnique(candidates, sevenTvCdnUrl(id))
+    for (const candidate of sevenTvCdnUrls(id)) {
+      pushUnique(candidates, candidate)
+    }
   }
 
   if (raw && raw.startsWith('/') && !isBrokenLocalEmotePath(raw)) {

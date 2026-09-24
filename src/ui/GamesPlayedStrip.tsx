@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useReducedMotion } from './motion/useReducedMotion.ts'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   buildGamesPlayedTimelineSlots,
@@ -25,29 +26,6 @@ const CHIP_GAP_PX = 8
 const CHIP_STEP_PX = GAMES_PLAYED_HIT_TARGET_PX + CHIP_GAP_PX
 const SCROLL_EDGE_EPSILON_PX = 0.5
 const GAME_ART_PATH = /^\/ttv-boxart\/\d+(?:_IGDB)?-\d+x\d+\.(?:jpe?g|png)$/i
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false
-  ))
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(mediaQuery.matches)
-    onChange()
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', onChange)
-      return () => mediaQuery.removeEventListener('change', onChange)
-    }
-    mediaQuery.addListener(onChange)
-    return () => mediaQuery.removeListener(onChange)
-  }, [])
-
-  return reduced
-}
-
 export interface GamesPlayedVisibleRange {
   startOffset: number
   endOffset: number
@@ -145,11 +123,12 @@ export function resolveGameArtCandidates(boxArtUrl: string | undefined, category
   if (explicit) candidates.push(explicit)
   const id = categoryId?.trim()
   if (id && /^\d{1,20}$/.test(id)) {
+    const igdb = `https://static-cdn.jtvnw.net/ttv-boxart/${id}_IGDB-144x192.jpg`
+    if (id === '14842174') candidates.unshift(igdb)
     for (const suffix of ['144x192.jpg', '144x192.png']) {
       const candidate = `https://static-cdn.jtvnw.net/ttv-boxart/${id}-${suffix}`
       if (!candidates.includes(candidate)) candidates.push(candidate)
     }
-    const igdb = `https://static-cdn.jtvnw.net/ttv-boxart/${id}_IGDB-144x192.jpg`
     if (!candidates.includes(igdb)) candidates.push(igdb)
   }
   return candidates
@@ -188,26 +167,26 @@ function GameArt({
   const [candidateIndex, setCandidateIndex] = useState(0)
   useEffect(() => setCandidateIndex(0), [candidates.join('\n')])
   const src = candidates[candidateIndex]
-  if (!src) {
-    return (
-      <span data-game-art-fallback aria-hidden="true" style={styles.gameArtFallback}>
+  return (
+    <span aria-hidden="true" style={styles.gameArtShell}>
+      <span data-game-art-fallback style={styles.gameArtFallback}>
         {initialsForGame(gameName)}
       </span>
-    )
-  }
-  return (
-    <img
-      data-game-art
-      src={src}
-      alt=""
-      width={GAMES_PLAYED_ART_WIDTH_PX}
-      height={GAMES_PLAYED_ICON_SIZE_PX}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      style={styles.gameArt}
-      onError={() => setCandidateIndex(index => index + 1)}
-    />
+      {src ? (
+        <img
+          data-game-art
+          src={src}
+          alt=""
+          width={GAMES_PLAYED_ART_WIDTH_PX}
+          height={GAMES_PLAYED_ICON_SIZE_PX}
+          loading="eager"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          style={styles.gameArt}
+          onError={() => setCandidateIndex(index => index + 1)}
+        />
+      ) : null}
+    </span>
   )
 }
 
@@ -308,6 +287,34 @@ export function GamesPlayedStrip({
     if (activeKey && !validKeys.has(activeKey)) setActiveKey(null)
   }, [activeKey, gameSlots, onSelectKey, selectedKey])
 
+  useEffect(() => {
+    if (!selectedKey) return
+    function handlePointerDown(event: PointerEvent) {
+      if (event.defaultPrevented) return
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('button, a, input, select, [data-chart-action="true"]')) {
+        return
+      }
+      setSelectedKey(null)
+      onSelectKey?.(null)
+      onHighlightKey?.(null)
+    }
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSelectedKey(null)
+        onSelectKey?.(null)
+        onHighlightKey?.(null)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onHighlightKey, onSelectKey, selectedKey])
+
   if (!hasMeaningfulGameSegments(segments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
     return (
       <div data-games-played data-games-played-empty aria-label="Games played" style={styles.gamesEmpty}>
@@ -323,7 +330,11 @@ export function GamesPlayedStrip({
   }
 
   const displayedKey = activeKey ?? selectedKey
-  const displayedSlot = displayedKey ? gameSlots.find(slot => gameSegmentKey(slot.segment) === displayedKey) : null
+  const displayedSlot = displayedKey
+    ? gameSlots.find(slot => gameSegmentKey(slot.segment) === displayedKey)
+    : gameSlots.length === 1
+      ? gameSlots[0]
+      : null
   const scrollBehavior = reducedMotion ? 'auto' : 'smooth'
 
   function scrollBy(direction: -1 | 1): void {
@@ -355,6 +366,15 @@ export function GamesPlayedStrip({
         setActiveKey(null)
         onHighlightKey?.(selectedKey)
       }}
+      onClick={event => {
+        const target = event.target as HTMLElement | null
+        if (target?.closest('button, a, input, select')) return
+        if (selectedKey != null) {
+          setSelectedKey(null)
+          onSelectKey?.(null)
+          onHighlightKey?.(null)
+        }
+      }}
     >
       <div data-games-played-header style={styles.headerRow}>
         <span data-games-played-label style={styles.gamesLabelShell}>
@@ -372,8 +392,8 @@ export function GamesPlayedStrip({
           <span data-games-played-count style={styles.gameCount}>{gameSlots.length} {gameSlots.length === 1 ? 'game' : 'games'}</span>
           {scrollState.maxScroll > SCROLL_EDGE_EPSILON_PX ? (
             <span style={styles.headerNav} aria-label="Games played navigation">
-              <button type="button" aria-label="Previous games" title="Previous games" disabled={!scrollState.canScrollLeft} style={{ ...styles.headerArrow, ...(!scrollState.canScrollLeft ? styles.disabled : null) }} onClick={() => scrollBy(-1)}>‹</button>
-              <button type="button" aria-label="Next games" title="Next games" disabled={!scrollState.canScrollRight} style={{ ...styles.headerArrow, ...(!scrollState.canScrollRight ? styles.disabled : null) }} onClick={() => scrollBy(1)}>›</button>
+              <button type="button" data-chart-action="true" aria-label="Previous games" title="Previous games" disabled={!scrollState.canScrollLeft} style={{ ...styles.headerArrow, ...(!scrollState.canScrollLeft ? styles.disabled : null) }} onClick={() => scrollBy(-1)}>‹</button>
+              <button type="button" data-chart-action="true" aria-label="Next games" title="Next games" disabled={!scrollState.canScrollRight} style={{ ...styles.headerArrow, ...(!scrollState.canScrollRight ? styles.disabled : null) }} onClick={() => scrollBy(1)}>›</button>
             </span>
           ) : null}
         </span>
@@ -395,6 +415,7 @@ export function GamesPlayedStrip({
                 <button
                   type="button"
                   data-games-played-item
+                  data-chart-action="true"
                   data-game-key={key}
                   data-game-name={slot.segment.gameName}
                   data-game-offset={slot.segment.offsetSeconds}
@@ -428,7 +449,7 @@ export function GamesPlayedStrip({
                   onKeyDown={event => onItemKeyDown(event, index)}
                 >
                   <GameArt gameName={slot.segment.gameName} boxArtUrl={slot.segment.boxArtUrl} categoryId={slot.segment.categoryId} />
-                  {activeKey === key || selected ? <span aria-hidden="true" style={styles.gameCardName}>{slot.segment.gameName}</span> : null}
+                  <span aria-hidden="true" style={styles.gameCardName}>{slot.segment.gameName}</span>
                 </button>
               </div>
             )
@@ -459,7 +480,8 @@ const styles: Record<string, CSSProperties> = {
   gameCard: { alignItems: 'center', background: theme.panel, border: `1px solid ${theme.border}`, borderRadius: 8, boxSizing: 'border-box', cursor: 'pointer', display: 'flex', height: GAMES_PLAYED_HIT_TARGET_HEIGHT_PX, justifyContent: 'center', outline: 'none', overflow: 'hidden', padding: 2, position: 'relative', textAlign: 'center', transition: 'background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease', width: GAMES_PLAYED_HIT_TARGET_PX },
   clipped: { borderStyle: 'dashed' },
   active: { background: 'rgba(139, 92, 246, 0.14)', border: `1px solid ${theme.borderAccent}`, boxShadow: '0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24)', transform: 'translateY(-2px) scale(1.02)' },
-  gameArt: { borderRadius: 7, boxSizing: 'border-box', display: 'block', height: GAMES_PLAYED_ICON_SIZE_PX, objectFit: 'contain', width: GAMES_PLAYED_ART_WIDTH_PX },
-  gameArtFallback: { alignItems: 'center', background: theme.bg, border: `1px dashed ${theme.border}`, borderRadius: 7, boxSizing: 'border-box', color: theme.textSecondary, display: 'flex', fontSize: 14, fontWeight: 900, height: GAMES_PLAYED_ICON_SIZE_PX, justifyContent: 'center', letterSpacing: '0.08em', width: GAMES_PLAYED_ART_WIDTH_PX },
-  gameCardName: { background: 'rgba(0,0,0,0.72)', bottom: 0, color: '#fafafc', fontSize: 8, fontWeight: 800, left: 0, overflow: 'hidden', padding: '8px 3px 3px', pointerEvents: 'none', position: 'absolute', right: 0, textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  gameArtShell: { borderRadius: 7, display: 'block', height: GAMES_PLAYED_ICON_SIZE_PX, overflow: 'hidden', position: 'relative', width: GAMES_PLAYED_ART_WIDTH_PX },
+  gameArt: { borderRadius: 7, boxSizing: 'border-box', display: 'block', height: GAMES_PLAYED_ICON_SIZE_PX, inset: 0, objectFit: 'cover', position: 'absolute', width: GAMES_PLAYED_ART_WIDTH_PX },
+  gameArtFallback: { alignItems: 'center', background: 'linear-gradient(155deg, rgba(139,92,246,0.20), rgba(15,23,42,0.94))', border: `1px dashed ${theme.borderAccent}`, borderRadius: 7, boxSizing: 'border-box', color: theme.textPrimary, display: 'flex', fontSize: 14, fontWeight: 900, height: GAMES_PLAYED_ICON_SIZE_PX, inset: 0, justifyContent: 'center', letterSpacing: '0.08em', position: 'absolute', width: GAMES_PLAYED_ART_WIDTH_PX },
+  gameCardName: { background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.92) 42%)', bottom: 0, color: '#fafafc', fontSize: 9, fontWeight: 850, left: 0, lineHeight: 1.15, overflow: 'hidden', padding: '10px 3px 3px', pointerEvents: 'none', position: 'absolute', right: 0, textOverflow: 'ellipsis', textShadow: '0 1px 2px rgba(0,0,0,0.9)', whiteSpace: 'nowrap' },
 }

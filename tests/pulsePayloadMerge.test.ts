@@ -92,6 +92,30 @@ describe('mergePulsePayload', () => {
     expect(merged.fullRollups).toEqual(incoming.fullRollups)
   })
 
+  it('keeps the newer recent tail when a Full enrichment resolves late', () => {
+    const previous = basePayload({
+      streamId: 'stream-a',
+      currentOffsetSeconds: 7200,
+      rollups: [{ offsetSeconds: 7140, chatCount: 90, sevenTvEmoteCount: 30, viewerCount: 42_000 }],
+    })
+    const incoming = basePayload({
+      streamId: 'stream-a',
+      currentOffsetSeconds: 3600,
+      rollups: [{ offsetSeconds: 3540, chatCount: 10, sevenTvEmoteCount: 2, viewerCount: 40_000 }],
+      fullRollups: [{ offsetSeconds: 0, chatCount: 4, sevenTvEmoteCount: 1 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming, { source: 'full' })
+
+    expect(merged.currentOffsetSeconds).toBe(7200)
+    expect(merged.rollups.at(-1)).toMatchObject({
+      offsetSeconds: 7140,
+      chatCount: 90,
+      sevenTvEmoteCount: 30,
+      viewerCount: 42_000,
+    })
+  })
+
   it('preserves same-stream Full rollups when a recent response includes an empty field', () => {
     const fullRollups = [
       { offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 },
@@ -133,6 +157,27 @@ describe('mergePulsePayload', () => {
     })
     const incoming = basePayload({ login: 'streamer_b', streamId: 'stream-b' })
     expect(mergePulsePayload(previous, incoming).fullRollups).toBeUndefined()
+  })
+
+  it('does not retain peaks or full history when a reused stream ID changes start time', () => {
+    const previous = basePayload({
+      login: 'xqc',
+      streamId: 'reused-stream',
+      startedAt: '2026-08-25T06:00:00.000Z',
+      fullRollups: [{ offsetSeconds: 0, chatCount: 100, sevenTvEmoteCount: 20 }],
+      peaks: [{ offsetSeconds: 0, score: 90, reasons: ['chat_spike'], dominantSignal: 'chat' }],
+    })
+    const incoming = basePayload({
+      login: 'xqc',
+      streamId: 'reused-stream',
+      startedAt: '2026-08-25T06:01:00.000Z',
+      rollups: [{ offsetSeconds: 0, chatCount: 2, sevenTvEmoteCount: 1 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged.fullRollups).toBeUndefined()
+    expect(merged.peaks).toBeUndefined()
+    expect(merged.rollups).toEqual(incoming.rollups)
   })
 
   it('does not carry omitted live fields across a different streamer', () => {
@@ -190,6 +235,19 @@ describe('mergePulsePayload', () => {
     const merged = mergePulsePayload(previous, incoming)
     expect(merged).not.toBe(previous)
     expect(merged.rollups[0]?.keywordCount).toBe(4)
+  })
+
+  it('treats a newly observed viewer sample as a meaningful rollup change', () => {
+    const previous = basePayload({
+      rollups: [{ offsetSeconds: 60, chatCount: 10, sevenTvEmoteCount: 2 }],
+    })
+    const incoming = basePayload({
+      rollups: [{ offsetSeconds: 60, chatCount: 10, sevenTvEmoteCount: 2, viewerSamples: 1 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged).not.toBe(previous)
+    expect(merged.rollups[0]?.viewerSamples).toBe(1)
   })
 
   it('keeps games when a recent poll omits them', () => {

@@ -20,6 +20,19 @@ describe('chart motion and accessibility chrome', () => {
     expect(shadowStyles).not.toContain('button:focus, button:focus-visible')
   })
 
+  it('does not make disabled actions look interactive on hover', () => {
+    for (const selector of [
+      '.pulse-action-chip:hover:not(:disabled)',
+      '.pulse-analytics-hub-cta:hover:not(:disabled)',
+      '.pulse-chart-zoom-button:hover:not(:disabled)',
+      '.pulse-past-vod-action:hover:not(:disabled)',
+      '.pulse-segment-moments-btn:hover:not(:disabled)',
+      '.pulse-sidebar-tab:not(.active):hover:not(:disabled)',
+    ]) {
+      expect(shadowStyles).toContain(selector)
+    }
+  })
+
   it('renders Clip Spike as an accessible, classed interaction surface', () => {
     const clip: ExtensionClip = {
       id: 'clip-1',
