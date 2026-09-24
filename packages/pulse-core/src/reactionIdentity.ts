@@ -13,6 +13,11 @@ export type ReactionIdentityFields = {
   precisionSeconds?: number | null
 }
 
+export type MomentClockDisplay = {
+  text: string
+  approximate: boolean
+}
+
 function hasSecondLevelPrecision(fields: ReactionIdentityFields): boolean {
   const precision = fields.precisionSeconds ?? 60
   return precision > 0 && precision < 60
@@ -34,21 +39,32 @@ export function reactionAnalyticalOffset(fields: ReactionIdentityFields): number
 }
 
 /**
- * Top Moments / selected-moment list clock.
- * Refined → analytical onset seconds. Coarse / live → approximate minute (`~HH:MM`)
- * so floored `:00` does not look exact and stream-start remainders never look like precision.
+ * Top Moments / selected-moment clock. Approximation is structured metadata
+ * so UI can render a readable badge instead of punctuation inside the time.
  */
-export function formatMomentClock(fields: ReactionIdentityFields): string {
+export function momentClockDisplay(fields: ReactionIdentityFields): MomentClockDisplay {
   const onset = fields.reactionOnsetOffsetSeconds
   if (hasSecondLevelPrecision(fields) && onset != null && Number.isFinite(onset)) {
-    return formatHeatOffset(Math.max(0, Math.round(onset)))
+    return {
+      text: formatHeatOffset(Math.max(0, Math.round(onset))),
+      approximate: false,
+    }
   }
   const floored = floorOffsetToMinute(fields.offsetSeconds)
   const s = Math.max(0, Math.floor(floored))
   const hh = Math.floor(s / 3600)
   const mm = Math.floor((s % 3600) / 60)
   const pad = (n: number) => n.toString().padStart(2, '0')
-  return `~${pad(hh)}:${pad(mm)}`
+  return {
+    text: `${pad(hh)}:${pad(mm)}`,
+    approximate: true,
+  }
+}
+
+/** Legacy formatted clock for non-visual/portal callers. Prefer structured UI metadata. */
+export function formatMomentClock(fields: ReactionIdentityFields): string {
+  const display = momentClockDisplay(fields)
+  return display.approximate ? `~${display.text}` : display.text
 }
 
 /** Playback Jump / Open Twitch only. */

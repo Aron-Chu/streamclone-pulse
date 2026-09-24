@@ -50,7 +50,7 @@ export function StreamQualityBanner({
           type="button"
           onClick={handleAction}
           disabled={syncing}
-          className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
+          className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
         >
           {diagnosis.actionLabel}
         </button>

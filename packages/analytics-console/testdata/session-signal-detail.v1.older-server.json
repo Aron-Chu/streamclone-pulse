@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "session-signal-detail.v1",
+  "streamId": "stream_fixture_v1",
+  "startedAt": "2026-07-11T18:00:00.000Z",
+  "detail": {
+    "channel": "denims",
+    "state": "historical",
+    "stream": {
+      "streamId": "stream_fixture_v1",
+      "login": "denims",
+      "startedAt": "2026-07-11T18:00:00.000Z",
+      "endedAt": "2026-07-11T20:00:00.000Z"
+    },
+    "rollups": [],
+    "topEmotes": [],
+    "sources": [],
+    "updatedAt": 1720720800000,
+    "chatCoveragePct": 82,
+    "chatCoverage": {
+      "coveragePct": 82,
+      "partial": true
+    }
+  },
+  "rollups": [
+    {
+      "minuteTs": "2026-07-11T18:00:00.000Z",
+      "viewerAvg": 100,
+      "viewerMax": 110,
+      "viewerLatest": 105,
+      "viewerSamples": 3,
+      "chatCount": 40,
+      "totalEmoteCount": 12,
+      "seventvEmoteCount": 8,
+      "missing": false
+    },
+    {
+      "minuteTs": "2026-07-11T18:01:00.000Z",
+      "viewerAvg": 0,
+      "viewerMax": 0,
+      "viewerLatest": 0,
+      "viewerSamples": 2,
+      "chatCount": 0,
+      "totalEmoteCount": 0,
+      "seventvEmoteCount": 0,
+      "missing": false
+    },
+    {
+      "minuteTs": "2026-07-11T18:02:00.000Z",
+      "viewerAvg": 90,
+      "viewerMax": 95,
+      "viewerLatest": 92,
+      "viewerSamples": 0,
+      "chatCount": 10,
+      "totalEmoteCount": 3,
+      "seventvEmoteCount": 1,
+      "missing": false
+    },
+    {
+      "minuteTs": "2026-07-11T18:03:00.000Z",
+      "missing": true,
+      "chatCount": 0,
+      "totalEmoteCount": 0,
+      "viewerSamples": 0
+    },
+    {
+      "minuteTs": "2026-07-11T18:04:00.000Z",
+      "viewerAvg": 120,
+      "viewerMax": 130,
+      "viewerLatest": 125,
+      "viewerSamples": 4,
+      "chatCount": 55,
+      "totalEmoteCount": 20,
+      "seventvEmoteCount": 14,
+      "missing": false
+    },
+    {
+      "minuteTs": "2026-07-11T18:05:00.000Z",
+      "viewerAvg": 118,
+      "viewerMax": 122,
+      "viewerLatest": 120,
+      "viewerSamples": 3,
+      "chatCount": 8,
+      "totalEmoteCount": 2,
+      "seventvEmoteCount": 1,
+      "missing": false
+    }
+  ],
+  "recap": {
+    "streamId": "stream_fixture_v1",
+    "login": "denims",
+    "durationSeconds": 7200,
+    "topMoments": [
+      {
+        "offsetSeconds": 240,
+        "score": 88,
+        "reasons": ["chat_spike"],
+        "chatCount": 55,
+        "emoteCount": 20
+      }
+    ],
+    "clipCandidates": []
+  }
+}

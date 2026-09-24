@@ -27,7 +27,8 @@ export function PastBroadcastBanner({
 
   const startedLabel = stream?.startedAt ? formatDateTime(stream.startedAt) : null
   const durationLabel = duration(stream)
-  const endedLabel = stream?.endedAt ? formatDateTime(stream.endedAt) : null
+  const lifecycleKnown = stream?.lifecycleState === 'confirmed_ended'
+  const lifecycleUnknown = !stream?.lifecycleState || stream.lifecycleState === 'unknown'
   const vodUrl = vodLinkState?.status === 'linked' && vodLinkState.vodId
     ? buildTwitchVodUrl(vodLinkState.vodId)
     : null
@@ -36,13 +37,14 @@ export function PastBroadcastBanner({
     : null
 
   if (isLiveRoute) {
-    const parts = ['Streamer offline', 'Showing last broadcast']
+    const parts = lifecycleKnown ? ['Streamer offline', 'Showing last broadcast']
+      : lifecycleUnknown ? ['Session lifecycle unknown', 'Showing measured session'] : ['Showing measured session']
     if (startedLabel) parts.push(`Started ${startedLabel}`)
-    if (durationLabel && durationLabel !== '-') parts.push(durationLabel)
+    if (durationLabel && durationLabel !== '-') parts.push(`Measured span ${durationLabel}`)
 
     return (
       <div
-        className="rounded border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-[11px] font-semibold text-zinc-300"
+        className="rounded border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-xs font-semibold text-zinc-300"
         role="status"
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -50,7 +52,7 @@ export function PastBroadcastBanner({
           {sessionPath ? (
             <a
               href={sessionPath}
-              className="rounded border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-black uppercase text-zinc-200 transition hover:bg-white/[0.08]"
+              className="rounded border border-white/10 bg-white/[0.04] inline-flex min-h-11 min-w-11 items-center px-2 py-2 text-xs font-black uppercase text-zinc-200 transition hover:bg-white/[0.08]"
             >
               Open session page
             </a>
@@ -59,8 +61,8 @@ export function PastBroadcastBanner({
             <a
               href={vodUrl}
               target="_blank"
-              rel="noreferrer"
-              className="rounded border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-black uppercase text-cyan-100 transition hover:bg-cyan-400/15"
+              rel="noopener noreferrer"
+              className="rounded border border-cyan-400/20 bg-cyan-400/10 inline-flex min-h-11 min-w-11 items-center px-2 py-2 text-xs font-black uppercase text-cyan-100 transition hover:bg-cyan-400/15"
             >
               Watch VOD
             </a>
@@ -70,14 +72,14 @@ export function PastBroadcastBanner({
     )
   }
 
-  const parts = ['Past broadcast']
-  if (endedLabel) parts.push(`Ended ${endedLabel}`)
-  else if (startedLabel) parts.push(`Started ${startedLabel}`)
-  if (durationLabel && durationLabel !== '-') parts.push(durationLabel)
+  const parts = [lifecycleKnown ? 'Past broadcast' : lifecycleUnknown ? 'Session lifecycle unknown' : 'Measured session']
+  if (lifecycleKnown) parts.push(`Offline confirmed ${formatDateTime(stream.lifecycleDetectedAt)} (exact end time unknown)`)
+  if (startedLabel) parts.push(`Started ${startedLabel}`)
+  if (durationLabel && durationLabel !== '-') parts.push(`Measured span ${durationLabel}`)
 
   return (
     <div
-      className="rounded border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] font-semibold text-zinc-400"
+      className="rounded border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs font-semibold text-zinc-400"
       role="status"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -86,8 +88,8 @@ export function PastBroadcastBanner({
           <a
             href={vodUrl}
             target="_blank"
-            rel="noreferrer"
-            className="rounded border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-black uppercase text-cyan-100 transition hover:bg-cyan-400/15"
+            rel="noopener noreferrer"
+            className="rounded border border-cyan-400/20 bg-cyan-400/10 inline-flex min-h-11 min-w-11 items-center px-2 py-2 text-xs font-black uppercase text-cyan-100 transition hover:bg-cyan-400/15"
           >
             Watch VOD
           </a>

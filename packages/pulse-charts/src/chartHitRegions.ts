@@ -20,6 +20,11 @@ function median(values: number[]): number {
   return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
 }
 
+// Keep sparse timelines honest. With only two points, the only spacing is the
+// full timestamp gap; using 58% of it would make the two hit regions overlap
+// almost the entire gap and turn a blank interval into a selectable neighbor.
+const MAX_HIT_REGION_HALF_WIDTH = 24
+
 /**
  * Precompute non-overlapping pointer hit regions for timestamp-positioned data.
  * Region widths are capped to the typical bucket spacing so a real timestamp
@@ -38,7 +43,10 @@ export function buildChartHitRegions(points: ChartHitPoint[]): ChartHitRegion[] 
     if (spacing > 0) spacings.push(spacing)
   }
   const typicalSpacing = median(spacings) || 1
-  const maximumHalfWidth = Math.max(0.5, typicalSpacing * 0.58)
+  const maximumHalfWidth = Math.max(
+    0.5,
+    Math.min(MAX_HIT_REGION_HALF_WIDTH, typicalSpacing * 0.58),
+  )
 
   return sorted.map((point, index) => {
     const previous = sorted[index - 1]

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { preferSmallerSevenTVAsset } from '../../utils/emoteImageUrl.ts'
+import { emoteDisplaySources, preferSmallerSevenTVAsset } from '../../utils/emoteImageUrl.ts'
 
 function emoteInitial(name: string): string {
   const trimmed = name.trim()
@@ -42,14 +42,16 @@ export function ConsoleEmoteImg({
   }, [normalizedSrc])
 
   const attempt = currentFailure?.attempt ?? 0
+  // First attempt: the display-sized asset; a failure retries the supplied URL.
+  const display = attempt === 0 && normalizedSrc ? emoteDisplaySources(normalizedSrc) : null
   const imageSrc = attempt === 0
-    ? normalizedSrc
+    ? display?.src ?? normalizedSrc
     : normalizedFallbackSrc || retryUrl(normalizedSrc)
 
   if (!normalizedSrc || attempt > 1 || !imageSrc) {
     return (
       <span
-        className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-[10px] font-black text-zinc-500'}
+        className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500'}
         aria-hidden="true"
       >
         {emoteInitial(name)}
@@ -59,6 +61,7 @@ export function ConsoleEmoteImg({
   return (
     <img
       src={imageSrc}
+      srcSet={display?.srcSet}
       alt=""
       aria-hidden
       className={className}

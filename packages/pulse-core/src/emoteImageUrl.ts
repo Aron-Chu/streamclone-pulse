@@ -4,6 +4,7 @@ const FFZ_CDN_TEMPLATE = 'https://cdn.frankerfacez.com/emoticon/%s/4'
 const BTTV_CDN_TEMPLATE = 'https://cdn.betterttv.net/emote/%s/3x'
 
 const LOCAL_EMOTE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+const SEVEN_TV_EMOTE_ID = /^[0-9A-HJKMNP-TV-Z]{20,32}$/i
 
 export function localEmotePath(id: string, scale = '1x'): string {
   const resolvedScale = scale.trim() || '1x'
@@ -31,12 +32,13 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
   const scale = opts.scale?.trim() || '1x'
   const id = opts.id?.trim() ?? ''
   const imageUrl = opts.imageUrl?.trim()
+  const safeImageUrl = imageUrl && !isBrokenLocalEmotePath(imageUrl) ? imageUrl : ''
 
-  if (imageUrl && !isBrokenLocalEmotePath(imageUrl)) {
-    return imageUrl
+  if (safeImageUrl) {
+    return safeImageUrl
   }
   if (!id) {
-    return imageUrl ?? ''
+    return safeImageUrl
   }
 
   const provider = (opts.provider ?? '').trim().toLowerCase()
@@ -46,7 +48,8 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
       return TWITCH_CDN_TEMPLATE.replace('%s', id)
     case 'seventv':
     case '7tv':
-      return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : SEVEN_TV_CDN_TEMPLATE.replace('%s', id)
+      if (isLocalEmoteUuid(id)) return localEmotePath(id, scale)
+      return SEVEN_TV_EMOTE_ID.test(id) ? SEVEN_TV_CDN_TEMPLATE.replace('%s', id) : safeImageUrl
     case 'ffz':
     case 'frankerfacez':
       return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : FFZ_CDN_TEMPLATE.replace('%s', id)
@@ -54,6 +57,6 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
     case 'betterttv':
       return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : BTTV_CDN_TEMPLATE.replace('%s', id)
     default:
-      return localEmotePath(id, scale)
+      return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : safeImageUrl
   }
 }

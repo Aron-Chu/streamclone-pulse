@@ -142,7 +142,7 @@ export function diagnoseLiveViewerWarmup(
   const viewerRow = rollups[firstViewerIdx]
   const offsetLabel = vodClock(viewerRow.minuteTs, streamStartedAt)
   return {
-    message: `Viewer data begins at ${offsetLabel}. Twitch viewer counts are sampled separately from chat and emotes, so the unsampled opening is left blank.`,
+    message: `Viewer samples started at ${offsetLabel}; chat may begin earlier.`,
   }
 }
 

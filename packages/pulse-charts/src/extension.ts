@@ -25,10 +25,12 @@ export {
   gameSegmentPlotBounds,
   gameSegmentPlotBoundsByOffsets,
 } from './gameSegmentChart.ts'
+export { buildChartHitRegions, chartHitRegionAtX } from './chartHitRegions.ts'
 export { viewerScaleBounds } from './viewerScale.ts'
 export {
   buildViewerGeometry,
   buildViewerOverviewAreaPath,
   type ViewerTimedValue,
 } from './viewerGeometry.ts'
+export { ViewerNoDotPath, type ViewerNoDotPathProps } from './ViewerNoDotPath.tsx'
 export { GameSegmentOverlay } from './GameSegmentOverlay.tsx'

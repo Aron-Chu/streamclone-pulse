@@ -322,6 +322,34 @@ export function GamesPlayedStrip({
     if (activeKey && !valid.has(activeKey)) setActiveKey(null)
   }, [activeKey, gameSlots, onSelectKey, selectedKey])
 
+  useEffect(() => {
+    if (!selectedKey) return
+    function handlePointerDown(event: PointerEvent) {
+      if (event.defaultPrevented) return
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('button, a, input, select, [data-chart-action="true"]')) {
+        return
+      }
+      setSelectedKey(null)
+      onSelectKey?.(null)
+      onHighlightKey?.(null)
+    }
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSelectedKey(null)
+        onSelectKey?.(null)
+        onHighlightKey?.(null)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onHighlightKey, onSelectKey, selectedKey])
+
   if (!hasMeaningfulGameSegments(allSegments, durationSeconds) || !timelineRange || gameSlots.length === 0) {
     return null
   }
@@ -377,13 +405,22 @@ export function GamesPlayedStrip({
         setActiveKey(null)
         onHighlightKey?.(selectedKey)
       }}
+      onClick={event => {
+        const target = event.target as HTMLElement | null
+        if (target?.closest('button, a, input, select')) return
+        if (selectedKey != null) {
+          setSelectedKey(null)
+          onSelectKey?.(null)
+          onHighlightKey?.(null)
+        }
+      }}
       data-games-played
     >
       <div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/10 px-2.5 py-1.5" data-games-played-header>
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-zinc-500">Games played</span>
+        <span className="shrink-0 text-xs font-black uppercase tracking-wide text-zinc-500">Games played</span>
         <div className="flex min-w-0 items-center gap-1.5" data-games-played-trail>
           {allSegments.length > 1 ? (
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-black tabular-nums text-zinc-300">
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black tabular-nums text-zinc-300">
               {expanded || !rangeAware ? allSegments.length : inRangeCount}
               {rangeAware && hiddenCount > 0 && !expanded ? `/${allSegments.length}` : ''}
             </span>
@@ -391,7 +428,7 @@ export function GamesPlayedStrip({
           {rangeAware && hiddenCount > 0 ? (
             <button
               type="button"
-              className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-zinc-400 transition hover:border-white/25 hover:text-zinc-100"
+              className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:border-white/25 hover:text-zinc-100"
               aria-expanded={expanded}
               onClick={() => setExpanded(value => !value)}
             >
@@ -482,7 +519,7 @@ export function GamesPlayedStrip({
 
       {displayedSlot ? (
         <div
-          className="mx-2.5 mb-1 min-w-0 truncate px-0.5 text-[9px] font-semibold tabular-nums text-zinc-500"
+          className="mx-2.5 mb-1 min-w-0 truncate px-0.5 text-xs font-semibold tabular-nums text-zinc-500"
           data-games-played-details
           aria-live="polite"
           title={`${displayedSlot.segment.gameName} · ${formatWindowLabel(displayedSlot.visibleStart, displayedSlot.visibleEnd)}${displayedSlot.clipped ? ' · chart window' : ''}`}

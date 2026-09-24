@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   formatMomentClock,
+  momentClockDisplay,
   reactionAnalyticalOffset,
   reactionLeadInOffset,
 } from '../src/reactionIdentity.ts'
@@ -18,6 +19,7 @@ describe('reaction identity and playback offsets', () => {
 
     assert.equal(reactionAnalyticalOffset(point), 623)
     assert.equal(formatMomentClock(point), '00:10:23')
+    assert.deepEqual(momentClockDisplay(point), { text: '00:10:23', approximate: false })
   })
 
   it('seeks five seconds before a refined onset', () => {
@@ -46,6 +48,7 @@ describe('reaction identity and playback offsets', () => {
   it('keeps coarse moments approximate and uses their coarse lead-in', () => {
     const point = { offsetSeconds: 600, reactionOnsetOffsetSeconds: 623 }
     assert.equal(formatMomentClock(point), '~00:10')
+    assert.deepEqual(momentClockDisplay(point), { text: '00:10', approximate: true })
     assert.equal(reactionLeadInOffset(point), 595)
   })
 })

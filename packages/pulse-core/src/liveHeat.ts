@@ -80,6 +80,8 @@ export interface LiveHeatPoint {
   topEmotes: LiveHeatEmote[]
   collecting: boolean
   viewerCount?: number
+  /** True when the backend supplied an explicit viewer observation, including 0. */
+  viewerSampled?: boolean
   viewerDelta?: number
 }
 

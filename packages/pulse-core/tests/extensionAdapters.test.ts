@@ -148,6 +148,16 @@ describe('splitEmoteProviderRates via extension mapping', () => {
     assert.equal(stats.viewerSource, 'liveMetadata')
     assert.equal(stats.viewerState, 'fresh')
   })
+
+  it('keeps a sampled zero when the backend omits viewerCount', () => {
+    const input = toLiveStatsInputFromExtension({
+      isLive: true,
+      rollups: [{ offsetSeconds: 0, chatCount: 4, viewerSamples: 1 }],
+    })
+
+    assert.equal(input.rollups[0]?.viewerSamples, 1)
+    assert.equal(deriveLiveStats(input).currentViewers, 0)
+  })
 })
 
 describe('toLiveHeatInputFromExtension', () => {

@@ -17,6 +17,42 @@ export function preferSmallerSevenTVAsset(url: string): string {
   }
 }
 
+export interface EmoteDisplaySources {
+  src: string
+  srcSet?: string
+}
+
+const DISPLAY_SCALES: Array<{ host: string; path: RegExp; one: string; two: string }> = [
+  { host: 'cdn.7tv.app', path: /^(\/emote\/[^/]+\/)(?:1x|2x|3x|4x)(\.(?:webp|avif|gif|png))$/i, one: '1x', two: '2x' },
+  { host: 'static-cdn.jtvnw.net', path: /^(\/emoticons\/v[12]\/.+\/)(?:1\.0|2\.0|3\.0)()$/, one: '1.0', two: '2.0' },
+  { host: 'cdn.frankerfacez.com', path: /^(\/emot(?:e|icon)\/[^/]+\/)(?:1|2|4)()$/, one: '1', two: '2' },
+  { host: 'cdn.betterttv.net', path: /^(\/emote\/[^/]+\/)(?:1x|2x|3x)(\.webp)?$/, one: '1x', two: '2x' },
+]
+
+/**
+ * Console emotes render at ≤ 24 CSS px, but payloads often carry the provider's
+ * largest scale (a single animated 7TV 4x asset can exceed 1 MB). Request the
+ * 1x asset with a 2x candidate for high-density screens.
+ */
+export function emoteDisplaySources(url: string): EmoteDisplaySources {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return { src: url }
+  }
+  const rule = DISPLAY_SCALES.find(candidate => candidate.host === parsed.hostname.toLowerCase())
+  const match = rule ? parsed.pathname.match(rule.path) : null
+  if (!rule || !match) return { src: url }
+  const withScale = (scale: string) => {
+    const next = new URL(parsed.toString())
+    next.pathname = `${match[1]}${scale}${match[2] ?? ''}`
+    return next.toString()
+  }
+  const one = withScale(rule.one)
+  return { src: one, srcSet: `${one} 1x, ${withScale(rule.two)} 2x` }
+}
+
 export function localEmotePath(id: string, scale = '1x'): string {
   const resolvedScale = scale.trim() || '1x'
   return `/emotes/${id}/${resolvedScale}.webp`
@@ -69,12 +105,13 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
   const scale = opts.scale?.trim() || '1x'
   const id = opts.id?.trim() ?? ''
   const imageUrl = opts.imageUrl?.trim()
+  const safeImageUrl = imageUrl && !isBrokenLocalEmotePath(imageUrl) ? imageUrl : ''
 
-  if (imageUrl && !isBrokenLocalEmotePath(imageUrl) && !isBackendEmoteProxyUrl(imageUrl)) {
-    return imageUrl
+  if (safeImageUrl && !isBackendEmoteProxyUrl(safeImageUrl)) {
+    return safeImageUrl
   }
   if (!id) {
-    return imageUrl ?? ''
+    return safeImageUrl
   }
 
   const provider = (opts.provider ?? '').trim().toLowerCase()
@@ -85,7 +122,7 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
     case 'seventv':
     case '7tv':
       if (isLocalEmoteUuid(id)) return localEmotePath(id, scale)
-      return SEVEN_TV_EMOTE_ID.test(id) ? SEVEN_TV_CDN_TEMPLATE.replace('%s', id) : imageUrl ?? ''
+      return SEVEN_TV_EMOTE_ID.test(id) ? SEVEN_TV_CDN_TEMPLATE.replace('%s', id) : safeImageUrl
     case 'ffz':
     case 'frankerfacez':
       return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : FFZ_CDN_TEMPLATE.replace('%s', id)
@@ -93,6 +130,6 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
     case 'betterttv':
       return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : BTTV_CDN_TEMPLATE.replace('%s', id)
     default:
-      return localEmotePath(id, scale)
+      return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : safeImageUrl
   }
 }

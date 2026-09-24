@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "session-signal-detail.v1",
+  "streamId": "stream_fixture_v1",
+  "startedAt": "2026-07-11T18:00:00.000Z",
+  "detail": {
+    "channel": "denims",
+    "state": "historical",
+    "stream": {
+      "streamId": "stream_fixture_v1",
+      "login": "denims",
+      "startedAt": "2026-07-11T18:00:00.000Z"
+    },
+    "rollups": [],
+    "topEmotes": [],
+    "sources": [],
+    "updatedAt": 1720720800000,
+    "signalWatermarks": {
+      "chat": {
+        "state": "current",
+        "observedThrough": "2026-07-11T18:00:00.000Z",
+        "coveragePct": 150
+      }
+    }
+  },
+  "rollups": [
+    {
+      "minuteTs": "2026-07-11T18:00:00.000Z",
+      "viewerSamples": 1,
+      "viewerAvg": 10,
+      "chatCount": 5,
+      "totalEmoteCount": 1,
+      "missing": false,
+      "signalObservations": {
+        "chat": {
+          "state": "measured",
+          "observedAt": null,
+          "value": null
+        },
+        "emotes": {
+          "state": "missing",
+          "observedAt": "2026-07-11T18:00:00.000Z",
+          "value": 3
+        },
+        "viewers": {
+          "state": "stale",
+          "observedAt": "2026-07-11T18:00:00.000Z"
+        }
+      }
+    }
+  ],
+  "recap": {
+    "streamId": "stream_fixture_v1",
+    "login": "denims",
+    "topMoments": [
+      {
+        "offsetSeconds": 0,
+        "score": 50,
+        "reasons": ["chat_spike"],
+        "peakObservation": {
+          "state": "measured",
+          "observedAt": "2026-07-11T18:00:00.000Z",
+          "confirmed": true,
+          "detector": "heatmap:chat_spike"
+        }
+      }
+    ]
+  }
+}

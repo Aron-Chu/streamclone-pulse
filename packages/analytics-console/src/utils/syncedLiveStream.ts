@@ -46,6 +46,8 @@ export function streamSyncBadgeLabel(badge: StreamSyncBadge): string {
       return 'Synced'
     case 'partial':
       return 'Partial'
+    case 'unknown':
+      return 'Check status'
     default:
       return 'Stats only'
   }
@@ -89,15 +91,12 @@ export function getAnalyticsStreamDateSlug(startedAt?: string): string {
   return `${year}-${month}-${day}`
 }
 
-/** Route slug for /analytics/{login}/{slug} — date when unique that day, else stream id. */
+/** New links always use immutable stream identity. Date slugs remain read-only legacy aliases. */
 export function analyticsStreamPathSlug(
   stream: AnalyticsStream,
-  allStreams: AnalyticsStream[],
+  _allStreams: AnalyticsStream[],
 ): string {
-  const dateSlug = getAnalyticsStreamDateSlug(stream.startedAt)
-  if (!dateSlug) return stream.streamId
-  const sameDay = allStreams.filter(s => getAnalyticsStreamDateSlug(s.startedAt) === dateSlug).length
-  return sameDay === 1 ? dateSlug : stream.streamId
+  return stream.streamId
 }
 
 /**

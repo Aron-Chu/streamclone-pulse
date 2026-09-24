@@ -1,12 +1,11 @@
-/** Y-axis bounds for the viewers lane. Fit mode always includes the full positive source range. */
+/** Y-axis bounds for the viewers lane. Compact fit mode stays zero-anchored so
+ * ordinary Helix snapshot changes are not exaggerated into dramatic spikes. */
 
 export type ViewerScaleAxis = {
   min: number
   max: number
   mode: 'fit' | 'peak'
 }
-
-const FIT_TOP_PAD = 0.03
 
 export function viewerScaleBounds(
   values: Array<number | null | undefined>,
@@ -28,10 +27,11 @@ export function viewerScaleBounds(
     return { min: 0, max: Math.max(1, Math.ceil(safeStreamPeak)), mode: 'fit' }
   }
 
-  const absoluteMax = Math.max(safeStreamPeak, ...positive)
-  const topPad = Math.max(1, Math.ceil(absoluteMax * FIT_TOP_PAD))
+  const observedMax = Math.max(...positive)
+  const absoluteMax = Math.max(safeStreamPeak, observedMax)
+  const pad = Math.max(1, absoluteMax * 0.03)
   const fitMin = 0
-  const fitMax = Math.max(fitMin + 1, Math.ceil(absoluteMax + topPad))
+  const fitMax = Math.max(1, Math.ceil(absoluteMax + pad))
 
   return { min: fitMin, max: fitMax, mode: 'fit' }
 }

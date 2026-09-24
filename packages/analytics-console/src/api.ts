@@ -44,6 +44,8 @@ export async function getStreamStatus(streamId: string): Promise<{
   syncPhase?: string
   streamId?: string
   vodId?: string
+  vodAlignSeconds?: number
+  vodDurationSeconds?: number
   analyticsQuality?: string
   dataCoveragePct?: number
   chatCoveragePct?: number

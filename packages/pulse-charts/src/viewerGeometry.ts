@@ -590,7 +590,16 @@ function curvePath(segment: ViewerSegment): string {
 }
 
 function linePath(segments: ViewerSegment[]): string {
-  return segments.map(curvePath).filter(Boolean).join(' ')
+  return segments.map(segment => {
+    if (segment.length !== 1) return curvePath(segment)
+    const point = segment[0]!
+    if (point.y == null) return ''
+    // A single observation is still a bucket, not a point cloud marker. Give
+    // it a short horizontal footprint so sampled zero and lone samples remain
+    // legible without introducing a persistent circle.
+    const halfStroke = 3
+    return `M${formatNumber(point.x - halfStroke)} ${formatNumber(point.y)} L${formatNumber(point.x + halfStroke)} ${formatNumber(point.y)}`
+  }).filter(Boolean).join(' ')
 }
 
 function areaPath(segments: ViewerSegment[], bandBottom: number): string {

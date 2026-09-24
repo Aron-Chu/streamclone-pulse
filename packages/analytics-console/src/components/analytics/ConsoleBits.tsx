@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { formatCoveragePercent } from '@streampulse/pulse-core'
 import type { AnalyticsStreamDetail, SourceStatus } from '../../apiTypes.ts'
 import { emoteProviderLabel, emoteProviderTone } from '../../emoteUtils.ts'
-import { sourceTone } from '../../utils/consoleFormat.ts'
+import { formatDateTime, sourceTone } from '../../utils/consoleFormat.ts'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
 import { mapViewerSourceBadge, viewerSourceBadgeClass } from '../../utils/sourceBadge.ts'
+import { resolveAnalyticsVodId } from '../../utils/twitchVodUrl.ts'
 import {
   analyticsQualityChipClass,
   deriveAnalyticsQualityLabel,
@@ -26,15 +28,67 @@ export function StatCard({ label, value, tone }: { label: string; value: string;
 
   return (
     <div className="sc-stat-card rounded border border-white/10 bg-white/[0.035] p-3" data-value-changed={pulse ? 'true' : undefined}>
-      <div className="text-[11px] font-black uppercase text-zinc-500">{label}</div>
+      <div className="text-xs font-black uppercase text-zinc-400">{label}</div>
       <div className={`sc-stat-card__value mt-1 truncate text-xl font-black ${tone || 'text-white'}`}>{value}</div>
     </div>
   )
 }
 
+export function DataQualityDisclosure({
+  detail,
+  summaryMetrics,
+}: {
+  detail?: AnalyticsStreamDetail
+  summaryMetrics?: StreamSummaryMetrics
+}) {
+  const quality = deriveAnalyticsQualityLabel({
+    analyticsQuality: detail?.analyticsQuality,
+    summaryMetrics,
+    rollupCount: detail?.timelineMinutes ?? detail?.rollups?.length,
+    chatMessages: detail?.stream?.chatMessages,
+    vodId: detail?.vodId ?? detail?.stream?.vodId,
+    chartState: detail?.availability?.chartState,
+    chartUsable: detail?.availability?.chartUsable,
+  })
+  const chatPct = detail?.chatCoveragePct ?? detail?.chatCoverage?.coveragePct ?? summaryMetrics?.data_coverage_pct
+  const chatSpan = detail?.chatCoverage?.chatSpanMinutes
+  const streamSpan = detail?.chatCoverage?.streamSpanMinutes
+  const viewerSamples = summaryMetrics?.viewerSampleCount ?? detail?.stream?.viewerSamples
+  const viewerSource = mapViewerSourceBadge(detail?.viewerSource)
+  const vodState = (detail?.availability?.vodState ?? '').toLowerCase()
+  const hasVod = Boolean(resolveAnalyticsVodId(detail))
+  // A stale live-archive status must not claim the broadcast is live when
+  // lifecycle evidence is unavailable (or confirms that it ended).
+  const displayedVodState = hasVod ? 'linked'
+    : vodState === 'pending_live' && detail?.stream?.lifecycleState !== 'confirmed_live' ? 'unavailable'
+      : vodState ? vodState.replace(/_/g, ' ') : 'status unavailable'
+
+  return (
+    <details className="relative text-xs normal-case" data-data-quality-disclosure>
+      <summary
+        className={`min-h-11 cursor-pointer list-none rounded border px-3 py-2 font-black uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 ${analyticsQualityChipClass(quality)}`}
+      >
+        Data quality: {quality}
+      </summary>
+      <div className="absolute left-0 z-20 mt-2 min-w-64 rounded border border-white/15 bg-zinc-950 p-3 font-semibold leading-5 text-zinc-200 shadow-xl">
+        <dl className="space-y-2">
+          <div><dt className="inline text-zinc-400">Chat measured: </dt><dd className="inline">{chatPct != null ? `${formatCoveragePercent(chatPct)} of the timeline` : 'coverage unavailable'}{chatSpan != null && streamSpan != null ? ` (${chatSpan} of ${streamSpan} minutes)` : ''}</dd></div>
+          <div><dt className="inline text-zinc-400">Viewer measurements: </dt><dd className="inline">{viewerSamples && viewerSamples > 0 ? `${viewerSamples} samples` : 'unavailable'}{viewerSource ? ` · ${viewerSource.label}` : ''}</dd></div>
+          <div><dt className="inline text-zinc-400">VOD: </dt><dd className="inline">{displayedVodState}</dd></div>
+          {detail?.stream?.lifecycleState === 'confirmed_ended' ? <div>
+            <dt className="text-zinc-400">Broadcast end window</dt>
+            <dd>Last confirmed live: {formatDateTime(detail.stream.lifecycleObservedAt)}. Offline confirmed: {formatDateTime(detail.stream.lifecycleDetectedAt)}. The exact end time is not measured.</dd>
+          </div> : null}
+        </dl>
+        <p className="mt-2 text-zinc-400">Quality reflects measured coverage and backend-reported availability; missing spans are not estimated.</p>
+      </div>
+    </details>
+  )
+}
+
 export function ChatCoverageBadge({ detail }: { detail?: AnalyticsStreamDetail }) {
   const pct = detail?.chatCoveragePct ?? detail?.chatCoverage?.coveragePct
-  if (pct === undefined || pct <= 0) return null
+  if (pct === undefined) return null
   const partial = detail?.chatCoverage?.partial
   const title = partial
     ? `Chat spans ${detail?.chatCoverage?.chatSpanMinutes ?? 0} of ${detail?.chatCoverage?.streamSpanMinutes ?? 0} stream minutes — re-sync later for more`
@@ -42,13 +96,13 @@ export function ChatCoverageBadge({ detail }: { detail?: AnalyticsStreamDetail }
   return (
     <span
       title={title}
-      className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${
+      className={`rounded border px-2 py-1 text-xs font-black uppercase ${
         partial
           ? 'border-amber-400/25 bg-amber-500/10 text-amber-200'
           : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300'
       }`}
     >
-      {Math.round(pct)}% chat coverage
+      {formatCoveragePercent(pct)} chat coverage
     </span>
   )
 }
@@ -84,7 +138,7 @@ export function SourcePills({ sources }: { sources?: SourceStatus[] }) {
           <span
             key={`${source.source}-${source.state}-${source.label ?? ''}`}
             title={source.label}
-            className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${sourceTone(source.state)}`}
+            className={`rounded border px-2 py-1 text-xs font-black uppercase ${sourceTone(source.state)}`}
           >
             {text}
           </span>
@@ -97,7 +151,7 @@ export function SourcePills({ sources }: { sources?: SourceStatus[] }) {
 export function EmoteProviderBadge({ provider }: { provider?: string }) {
   if (!provider) return null
   return (
-    <span className={`rounded border px-1.5 py-0.5 text-[9px] font-black uppercase ${emoteProviderTone(provider)}`}>
+    <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-black uppercase ${emoteProviderTone(provider)}`}>
       {emoteProviderLabel(provider)}
     </span>
   )
@@ -108,7 +162,7 @@ export function ViewerSourceBadge({ source }: { source?: string }) {
   if (!badge) return null
   return (
     <span
-      className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${viewerSourceBadgeClass(badge.tone)}`}
+      className={`rounded border px-2 py-1 text-xs font-black uppercase ${viewerSourceBadgeClass(badge.tone)}`}
     >
       {badge.label}
     </span>
@@ -125,7 +179,7 @@ export function AnalyticsQualityChip({
   const label = deriveAnalyticsQualityLabel({
     analyticsQuality: detail?.analyticsQuality,
     summaryMetrics,
-    rollupCount: detail?.rollups?.length ?? detail?.timelineMinutes,
+    rollupCount: detail?.timelineMinutes ?? detail?.rollups?.length,
     chatMessages: detail?.stream?.chatMessages,
     vodId: detail?.vodId ?? detail?.stream?.vodId,
     chartState: detail?.availability?.chartState,
@@ -133,7 +187,7 @@ export function AnalyticsQualityChip({
   })
   return (
     <span
-      className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${analyticsQualityChipClass(label)}`}
+      className={`rounded border px-2 py-1 text-xs font-black uppercase ${analyticsQualityChipClass(label)}`}
       title="Derived from coverage, sync health, and rollup availability"
     >
       Analytics {label}
@@ -156,7 +210,7 @@ export function CoverageFacets({
   if (viewerSamples != null && viewerSamples > 0) parts.push(`Viewer samples ${viewerSamples}`)
   if (parts.length === 0) return null
   return (
-    <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-semibold normal-case text-zinc-400">
+    <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-semibold normal-case text-zinc-400">
       {parts.join(' · ')}
     </span>
   )
@@ -176,19 +230,22 @@ export function CoverageStartBanner({
   const mins = Math.floor(start / 60)
   const secs = start % 60
   const label = secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
+  // Say what is missing in viewer terms; the backend's own wording stays available as a tooltip.
+  // No percentage here: the backend coverage figure is not a share of the whole broadcast.
   return (
     <div
-      className="rounded border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] font-semibold text-amber-100/90"
+      className="rounded border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs font-semibold text-amber-100/90"
       role="status"
+      title={message?.trim() || undefined}
     >
-      {message?.trim() || `Partial data coverage — missing 0:00–${label} (backend-authored)`}
+      {`The first ${label} weren't tracked`}
     </div>
   )
 }
 
 export function VodAvailabilityChip({ detail }: { detail?: AnalyticsStreamDetail }) {
   const state = (detail?.availability?.vodState ?? '').toLowerCase()
-  if (!state || state === 'none' || state === 'linked') return null
+  if (!state || state === 'none' || state === 'linked' || resolveAnalyticsVodId(detail)) return null
   const label =
     state === 'pending_live'
       ? 'VOD pending (live)'
@@ -201,7 +258,7 @@ export function VodAvailabilityChip({ detail }: { detail?: AnalyticsStreamDetail
             : `VOD ${state.replace(/_/g, ' ')}`
   return (
     <span
-      className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-black uppercase text-zinc-300"
+      className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-black uppercase text-zinc-300"
       title={detail?.availability?.vodMessage}
     >
       {label}

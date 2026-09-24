@@ -16,6 +16,14 @@ export interface AnalyticsStream {
   gamesSummary?: string;
   startedAt: string;
   endedAt?: string | null;
+  /** Backend-authored lifecycle truth. Absence means a legacy response, not live. */
+  lifecycleState?: "unknown" | "confirmed_ended" | "confirmed_live";
+  lifecycleObservedAt?: string;
+  lifecycleDetectedAt?: string;
+  measuredStartAt?: string;
+  measuredEndAt?: string;
+  /** Stored rollup min/max span; distinct from confirmed wall-clock duration. */
+  measuredSpanSeconds?: number;
   lastSeenAt?: string;
   currentViewers?: number;
   peakViewers?: number;
@@ -128,6 +136,8 @@ export interface AnalyticsStreamDetail {
   updatedAt: number;
   vodId?: string;
   vodAlignSeconds?: number;
+  /** Duration observed during the exact archive metadata check; not media preservation. */
+  vodDurationSeconds?: number;
   syncPhase?: string;
   chatCoveragePct?: number;
   chatCoverage?: ChatCoverageSummary;

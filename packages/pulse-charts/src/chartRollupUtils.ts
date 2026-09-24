@@ -59,8 +59,8 @@ export function chartViewerValue(point: ChartMinuteRollup): number | null {
   const fallback = viewerValue(point)
   if (fallback > 0) return fallback
   const explicitCount = (point as ChartMinuteRollup & { viewerCount?: unknown }).viewerCount
-  return typeof explicitCount === 'number' && Number.isFinite(explicitCount)
-    ? Math.max(0, explicitCount)
+  return typeof explicitCount === 'number' && Number.isFinite(explicitCount) && explicitCount > 0
+    ? explicitCount
     : null
 }
 

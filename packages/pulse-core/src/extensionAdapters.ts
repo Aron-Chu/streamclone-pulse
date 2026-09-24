@@ -31,6 +31,7 @@ export interface ExtensionRollupLike {
   sevenTvEmoteCount?: number
   totalEmoteCount?: number
   viewerCount?: number | null
+  viewerSamples?: number
   topEmotes?: ExtensionEmoteLike[]
   missing?: boolean
 }
@@ -217,9 +218,11 @@ function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string
   const viewerCount = r.viewerCount
   const hasViewerSample =
     !r.missing
-    && typeof viewerCount === 'number'
-    && Number.isFinite(viewerCount)
-    && viewerCount >= 0
+    && ((r.viewerSamples ?? 0) > 0 || (
+      typeof viewerCount === 'number'
+      && Number.isFinite(viewerCount)
+      && viewerCount >= 0
+    ))
   let totalEmoteCount = r.totalEmoteCount
   let seventvEmoteCount = r.sevenTvEmoteCount
 
@@ -239,8 +242,8 @@ function extensionRollupToStatsRollup(r: ExtensionRollupLike, startedAt?: string
     chatCount: r.chatCount,
     totalEmoteCount,
     seventvEmoteCount,
-    viewerLatest: hasViewerSample ? viewerCount : undefined,
-    viewerSamples: hasViewerSample ? 1 : undefined,
+    viewerLatest: hasViewerSample ? (typeof viewerCount === 'number' ? viewerCount : 0) : undefined,
+    viewerSamples: hasViewerSample ? Math.max(1, r.viewerSamples ?? 0) : undefined,
     missing: r.missing,
   }
 }
@@ -249,16 +252,18 @@ function extensionRollupToHeatRollup(r: ExtensionRollupLike, startedAt?: string)
   const viewerCount = r.viewerCount
   const hasViewerSample =
     !r.missing
-    && typeof viewerCount === 'number'
-    && Number.isFinite(viewerCount)
-    && viewerCount >= 0
+    && ((r.viewerSamples ?? 0) > 0 || (
+      typeof viewerCount === 'number'
+      && Number.isFinite(viewerCount)
+      && viewerCount >= 0
+    ))
   return {
     minuteTs: minuteTsFromOffset(startedAt, r.offsetSeconds),
     chatCount: r.chatCount,
     totalEmoteCount: r.totalEmoteCount,
     seventvEmoteCount: r.sevenTvEmoteCount,
     emotes: rollupTopEmotesToEmotesMap(r.topEmotes),
-    viewerSamples: hasViewerSample ? 1 : 0,
+    viewerSamples: hasViewerSample ? Math.max(1, r.viewerSamples ?? 0) : 0,
     missing: r.missing,
   }
 }

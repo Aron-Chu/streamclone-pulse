@@ -15,7 +15,7 @@ export function defaultEmotePlotKeys(
     return keys[0] ? new Set([keys[0]]) : new Set()
   }
   if (viewMode === 'emotes') {
-    return new Set(keys.slice(0, 4))
+    return new Set(keys.slice(0, MAX_PLOTTED_EMOTES))
   }
   return new Set(keys.slice(0, 3))
 }
@@ -52,7 +52,8 @@ export function toggleEmotePlotSelection(
 }
 
 export function activityZoneFraction(expanded: boolean): number {
-  return expanded ? 0.56 : 0.36
+  // Chat and emotes own the primary plot; viewers remain a compact context rail.
+  return expanded ? 0.86 : 0.74
 }
 
 export function activityBandFractions(

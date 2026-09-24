@@ -1,6 +1,8 @@
 export type { ChartGameSegment, ChartMinuteRollup, ChartPlayhead, ChartReactionPoint } from './types.ts'
 export { PulseMultiSignalChart, type PulseMultiSignalChartProps } from './PulseMultiSignalChartPublic.tsx'
 export { PulseMultiSignalChartInner, type ChartDragPanMode, type ChartLayoutMode } from './PulseMultiSignalChart.tsx'
+export { ViewerMorphPaths, type ViewerMorphPathsProps } from './ViewerMorphPaths.tsx'
+export { ViewerNoDotPath, type ViewerNoDotPathProps } from './ViewerNoDotPath.tsx'
 export { normalizeGameSegments, hasMeaningfulGameSegments, gameSegmentKey, gameSegmentOverlapsOffsetRange, gameSegmentVisibleSecondsInRange } from './gameSegments.ts'
 export {
   CHART_PLOT_PAD_LEFT,
@@ -29,7 +31,7 @@ export {
 } from './GameSegmentOverlay.tsx'
 export { rollupsForChart } from './chartSession.ts'
 export { buildChartSeries, type ChartSeries } from './chartSeries.ts'
-export { useSmoothedScalar, type ScalarMotionOptions } from './useSmoothedScalar.ts'
+export { useSmoothedScalar, lerpScalar, type ScalarMotionOptions } from './useSmoothedScalar.ts'
 export { MAX_PLOTTED_EMOTES } from './emotePlotSelection.ts'
 export { viewerScaleBounds, type ViewerScaleAxis } from './viewerScale.ts'
 export {

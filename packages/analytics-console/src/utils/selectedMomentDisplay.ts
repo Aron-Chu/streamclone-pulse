@@ -20,10 +20,57 @@ import type {
   ReplayHeatmapPoint,
 } from "../types/heatmap.ts";
 import { minuteEmoteTotal } from "../components/analytics/chartRollupUtils.ts";
-import { buildTwitchVodUrl, type VodLinkState } from "./twitchVodUrl.ts";
+import { alignedVodOffset, buildTwitchVodUrl, type VodLinkState } from "./twitchVodUrl.ts";
 import { formatVodOffset, rollupOffsetSeconds } from "./consoleFormat.ts";
 import { resolveMomentEmotesForOffset } from "./recapEmoteEnrich.ts";
 import { recapEmotesToRollupHits } from "./momentRowDisplay.ts";
+
+export interface MomentVodJump {
+  url: string;
+  /** Verified Twitch VOD timestamp label; absent when alignment is unknown. */
+  offsetStr?: string;
+  seekOffsetSeconds: number;
+}
+
+/** Playback offset a moment should seek to, honouring a refined recap onset. */
+export function momentSeekOffsetSeconds(args: {
+  rollup: AnalyticsMinuteRollup;
+  startedAt?: string;
+  recapMoment?: PulseRecapMoment | null;
+}): number {
+  const { rollup, startedAt, recapMoment } = args;
+  if (recapMoment) return recapMomentSeekOffset(recapMoment);
+  if (!startedAt) return 0;
+  return rollupOffsetSeconds(rollup, startedAt);
+}
+
+/**
+ * The one place a selected moment turns into a Twitch VOD link.
+ *
+ * Both the chart's selection line and the Moments rail card call this, so a
+ * jump can never be offered in one place and missing in the other, and neither
+ * can invent a timestamp when VOD alignment is unverified.
+ */
+export function resolveMomentVodJump(args: {
+  rollup: AnalyticsMinuteRollup;
+  startedAt?: string;
+  recapMoment?: PulseRecapMoment | null;
+  vodLinkState: VodLinkState;
+  vodAlignSeconds?: number | null;
+  vodDurationSeconds?: number | null;
+}): MomentVodJump | null {
+  const { startedAt, vodLinkState, vodAlignSeconds, vodDurationSeconds } = args;
+  const seekOffsetSeconds = momentSeekOffsetSeconds(args);
+  if (vodLinkState.status !== "linked" || !vodLinkState.vodId) return null;
+  const jumpOffset = startedAt
+    ? alignedVodOffset(seekOffsetSeconds, vodAlignSeconds, vodDurationSeconds)
+    : undefined;
+  return {
+    url: buildTwitchVodUrl(vodLinkState.vodId, jumpOffset ?? 0),
+    offsetStr: jumpOffset === undefined ? undefined : formatVodOffset(jumpOffset),
+    seekOffsetSeconds,
+  };
+}
 
 export interface SelectedMomentDisplay {
   /** Backward-compatible alias of analyticalOffsetSeconds. */
@@ -31,6 +78,8 @@ export interface SelectedMomentDisplay {
   analyticalOffsetSeconds: number;
   seekOffsetSeconds: number;
   offsetStr: string;
+  /** Verified Twitch VOD timestamp label; absent when alignment is unknown. */
+  vodJumpOffsetStr?: string;
   vodUrl?: string;
   scoreModel: ReturnType<typeof buildMomentScoreModel>;
   momentEmotes: RollupEmoteHit[];
@@ -50,6 +99,7 @@ export function buildSelectedMomentDisplay({
   recapMoment,
   gameName = null,
   vodAlignSeconds,
+  vodDurationSeconds,
 }: {
   rollup: AnalyticsMinuteRollup;
   rollups: AnalyticsMinuteRollup[];
@@ -63,6 +113,7 @@ export function buildSelectedMomentDisplay({
   gameName?: string | null;
   /** Verified Twitch VOD alignment; without this, do not emit a jump offset. */
   vodAlignSeconds?: number | null;
+  vodDurationSeconds?: number | null;
 }): SelectedMomentDisplay {
   const baselines = computeStreamBaselines(rollups);
   let analyticalOffsetSeconds = 0;
@@ -88,8 +139,8 @@ export function buildSelectedMomentDisplay({
     fallbackTopEmotes: heatmapEmotesFromRollup(rollup, 5, topEmotesCatalog),
   });
 
-  // When this minute is a Pulse Moments row, prefer that row's score/reason/emotes
-  // so Selected Moment and the rail cannot disagree for the same highlight.
+  // Keep the detection's score and reason; measured activity and emotes below
+  // come from the selected minute so the list and inspector stay consistent.
   if (recapMoment && Number.isFinite(recapMoment.score)) {
     const reason =
       recapMoment.reasons?.[0]?.trim() || scoreModel.reason || "manual";
@@ -114,20 +165,21 @@ export function buildSelectedMomentDisplay({
           limit: 3,
         })
       : [];
-  const momentEmotes: RollupEmoteHit[] =
-    fromPulse.length > 0
-      ? recapEmotesToRollupHits(fromPulse, topEmotesCatalog)
-      : topEmotesFromRollup(rollup, 3, topEmotesCatalog);
+  const measuredEmotes = topEmotesFromRollup(rollup, 3, topEmotesCatalog);
+  const momentEmotes: RollupEmoteHit[] = rollup.emotes != null
+    ? measuredEmotes
+    : fromPulse.length > 0 ? recapEmotesToRollupHits(fromPulse, topEmotesCatalog) : measuredEmotes;
 
-  const verifiedAlign =
-    typeof vodAlignSeconds === "number" && Number.isFinite(vodAlignSeconds);
-  const jumpOffset = verifiedAlign
-    ? Math.max(0, Math.floor(vodAlignSeconds + seekOffsetSeconds))
-    : 0;
-  const vodUrl =
-    vodLinkState.status === "linked" && vodLinkState.vodId
-      ? buildTwitchVodUrl(vodLinkState.vodId, verifiedAlign ? jumpOffset : 0)
-      : undefined;
+  const jump = resolveMomentVodJump({
+    rollup,
+    startedAt,
+    recapMoment,
+    vodLinkState,
+    vodAlignSeconds,
+    vodDurationSeconds,
+  });
+  const vodJumpOffsetStr = jump?.offsetStr;
+  const vodUrl = jump?.url;
   const chatCount = rollup.chatCount ?? 0;
   const emoteCount = minuteEmoteTotal(rollup);
 
@@ -136,6 +188,7 @@ export function buildSelectedMomentDisplay({
     analyticalOffsetSeconds,
     seekOffsetSeconds,
     offsetStr,
+    vodJumpOffsetStr,
     vodUrl,
     scoreModel,
     momentEmotes,
