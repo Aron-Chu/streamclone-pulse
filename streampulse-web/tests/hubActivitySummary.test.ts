@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   activityPointRates,
   applyLivePoolViewerFloor,
+  assessViewerCoverage,
   bucketMinutes,
   chartActivityPoints,
   dropTrailingOpenBucket,
@@ -124,6 +125,140 @@ describe('hubActivityEmoteCount', () => {
   })
 })
 
+describe('assessViewerCoverage', () => {
+  it('requires complete contributor coverage before qualifying a viewer line', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 2,
+        viewerExpectedContributors: 3,
+        viewerCoverage: 'partial',
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'partial', coveragePct: 66.66666666666666 })
+
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 3,
+        viewerExpectedContributors: 3,
+        viewerCoverage: 'complete',
+      }),
+    ).toMatchObject({ sampled: true, qualified: true, quality: 'complete' })
+  })
+
+  it('does not let an explicit unknown state become a continuous line', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        hasViewerRollup: true,
+        viewerCoverage: 'unknown',
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
+  })
+
+  it('honors complete coverage with offline channels when generation was verified complete', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 311_600,
+        viewerContributors: 63,
+        viewerExpectedContributors: 500,
+        viewerCoveragePct: 100,
+        viewerCoverage: 'complete',
+        viewerComplete: true,
+      }),
+    ).toMatchObject({
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors: 63,
+      expectedContributors: 500,
+      coveragePct: 100,
+    })
+  })
+
+  it('distinguishes successfully sampled channels from live contributors', () => {
+    // Full sampling generation where only 49 channels are live
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 311_600,
+        viewerContributors: 49,
+        viewerSampledContributors: 500,
+        viewerExpectedContributors: 500,
+      }),
+    ).toMatchObject({
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors: 49,
+      sampledContributors: 500,
+      expectedContributors: 500,
+      coveragePct: 100,
+    })
+
+    // Incomplete sampling generation (missed channels)
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 311_600,
+        viewerContributors: 49,
+        viewerSampledContributors: 350,
+        viewerExpectedContributors: 500,
+      }),
+    ).toMatchObject({
+      sampled: true,
+      qualified: false,
+      quality: 'partial',
+      contributors: 49,
+      sampledContributors: 350,
+      expectedContributors: 500,
+      coveragePct: 70,
+    })
+  })
+
+  it('treats contributors above the denominator as unknown population drift', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 4,
+        viewerExpectedContributors: 3,
+        viewerCoverage: 'complete',
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
+
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 2,
+        viewerSampledContributors: 4,
+        viewerExpectedContributors: 3,
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
+  })
+})
+
 describe('chartActivityPoints', () => {
   it('orders unsorted activity rows before selecting the trailing bucket', () => {
     const nowMs = Date.parse('2026-07-04T10:31:00Z')
@@ -170,6 +305,24 @@ describe('chartActivityPoints', () => {
     ]
     expect(peakActivityViewers(points30, 30)).toBe(top500Viewers)
     expect(peakActivityViewers(points60, 60)).toBe(top500Viewers)
+  })
+
+  it('never replaces a historical viewer observation with the live-pool KPI', () => {
+    const nowMs = Date.parse('2026-07-04T10:31:00Z')
+    const points: HubActivityPoint[] = [
+      {
+        t: Date.parse('2026-07-04T10:29:00Z'),
+        chat: 100,
+        seventv: 10,
+        viewers: 250,
+        hasViewerRollup: true,
+        bucketComplete: true,
+      },
+    ]
+
+    const charted = chartActivityPoints(points, 30, nowMs, 50_000)
+    expect(charted.at(-1)?.viewers).toBe(250)
+    expect(charted.at(-1)?.viewers).not.toBe(50_000)
   })
 })
 

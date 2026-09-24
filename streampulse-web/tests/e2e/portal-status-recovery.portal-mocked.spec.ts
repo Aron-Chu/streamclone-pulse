@@ -24,10 +24,14 @@ test.describe('portal status recovery (mocked)', () => {
 
       const resolvingBody = buildStatus({
         state: 'ended',
+        vodId: '',
+        vodTiming: { state: 'unavailable' },
         availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable' },
       })
       const failedBody = buildStatus({
         state: 'ended',
+        vodId: '',
+        vodTiming: { state: 'unavailable' },
         availability: {
           liveDvrState: 'ended',
           vodState: 'request_failed',

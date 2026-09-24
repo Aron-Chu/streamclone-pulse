@@ -21,6 +21,10 @@ test.describe('portal lifecycle (mocked)', () => {
       kind: 'json' as const,
       body: buildStatus({
         state: 'ended',
+        // A status VOD observation must be explicit. A cache miss is not a
+        // source recheck and must not overwrite the prior archive state.
+        vodId: '',
+        vodTiming: { state: 'unavailable' },
         availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable' },
         stream: buildStreamRecord({ endedAt: '2026-07-26T04:00:00.000Z', currentViewers: 0 }),
       }),
@@ -30,6 +34,9 @@ test.describe('portal lifecycle (mocked)', () => {
       body: buildStatus({
         state: 'ended',
         vodId: PORTAL_VOD_ID,
+        vodAlignSeconds: 0,
+        vodDurationSeconds: 24 * 60 * 60,
+        vodTiming: { state: 'verified' },
         availability: {
           liveDvrState: 'ended',
           vodState: 'linked',
@@ -62,7 +69,7 @@ test.describe('portal lifecycle (mocked)', () => {
     })
 
     await openAnalyticsSession(page)
-    await expect(page.getByText(/VOD pending \(live\)|Live — no VOD yet/i).first()).toBeVisible()
+    await expect(page.getByText(/This session is still live\. A timestamped VOD link appears/i).first()).toBeVisible()
     await expect(page.getByText(/Just Chatting|xQc|Deterministic portal/i).first()).toBeVisible()
 
     const mountBefore = await getMountId(page)

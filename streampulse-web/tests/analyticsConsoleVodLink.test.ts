@@ -20,13 +20,13 @@ describe('resolveAnalyticsVodId', () => {
 describe('resolveVodLinkState', () => {
   it('links when vod id is on stream detail', () => {
     const state = resolveVodLinkState({
-      detail: {
-        vodId: '123',
-        stream: { vodId: '123', endedAt: null },
+        detail: {
+        vodId: '123456789',
+        stream: { vodId: '123456789', endedAt: null },
       },
     })
     expect(state.status).toBe('linked')
-    expect(state.vodId).toBe('123')
+    expect(state.vodId).toBe('123456789')
     expect(buildTwitchVodUrl(state.vodId!, 125)).toContain('123')
     expect(buildTwitchVodUrl(state.vodId!, 125)).toContain('t=2m5s')
   })
@@ -63,11 +63,11 @@ describe('resolveVodLinkState', () => {
         stream: {
           endedAt: '2026-06-01T06:00:00Z',
         },
-        availability: { vodState: 'unavailable' },
       },
     })
     expect(state.status).toBe('unavailable')
-    expect(state.detail.toLowerCase()).toContain('deleted')
+    expect(state.detail).toBe('No verified Twitch VOD link is available for this session. This does not establish whether an archive exists.')
+    expect(state.detail.toLowerCase()).not.toContain('deleted')
   })
 
   it('does not show live copy when channelIsLive is false on stale open row', () => {

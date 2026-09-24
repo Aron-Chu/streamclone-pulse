@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { AppRoutes } from '../src/routes/index'
@@ -64,7 +64,8 @@ describe('privacy route', () => {
   it('exposes Privacy and Support links from the public layout', async () => {
     renderPath('/privacy')
     expect((await screen.findByRole('link', { name: /^privacy$/i })).getAttribute('href')).toBe('/privacy')
-    expect(screen.getByRole('link', { name: /^support$/i }).getAttribute('href')).toBe('/support')
+    const navigation = screen.getByRole('navigation', { name: /main navigation/i })
+    expect(within(navigation).getByRole('link', { name: /^support$/i }).getAttribute('href')).toBe('/support')
   })
 })
 

@@ -15,6 +15,7 @@ import {
   isAttestedActivityGap,
   isHubActivityFullyMeasured,
   isHubActivityHealthyHistoricalProjection,
+  isHubActivityHistoricalProjection,
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
 } from '../src/lib/hubActivityHonesty'
@@ -149,6 +150,27 @@ describe('hub activity honesty (live_pool_fallback)', () => {
     expect(isHubActivityFullyMeasured(healthy)).toBe(true)
     expect(resolveHubActivityChartWindowMinutes(healthy)).toBe(1440)
     expect(formatHubActivityServedLabel(healthy)).toBe('1 day')
+  })
+
+  it('keeps sparse explicit projection provenance distinct from fully measured coverage', () => {
+    const sparseProjection: HubActivity = {
+      points: makePoints(237),
+      windowMinutes: 10080,
+      channelCount: 249,
+      source: 'historical_projection',
+      state: 'healthy',
+      availableWindowMinutes: 10080,
+      servedWindowMinutes: 10080,
+      measuredWindowMinutes: 7140,
+      accountedWindowMinutes: 7140,
+      bucketMinutes: 42,
+    }
+
+    expect(isHubActivityHistoricalProjection(sparseProjection)).toBe(true)
+    expect(isHubActivityHealthyHistoricalProjection(sparseProjection)).toBe(false)
+    expect(isHubActivityFullyMeasured(sparseProjection)).toBe(false)
+    expect(resolveHubActivityChartWindowMinutes(sparseProjection)).toBe(10080)
+    expect(formatHubActivityServedLabel(sparseProjection)).toBe('7 days')
   })
 
   it('does not promote a mismatched historical payload to a full requested chart', () => {

@@ -1,9 +1,8 @@
 /**
  * Unit coverage for analytics landing / hub render paths.
  *
- * Known debt: the stats-fallback case can OOM or hang under full vitest runs (~50 min observed).
- * Until the render memory issue is isolated, treat e2e
- * `tests/e2e/analytics-hub-metrics-honesty.spec.ts` as authority for stats-fallback honesty.
+ * Keep mocked hub snapshots stable across renders so effects and charts can
+ * settle under the same data identity they receive from the real hub hook.
  */
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -15,11 +14,12 @@ const hubMockOpts = vi.hoisted(() => ({
   loadSource: "full" as "full" | "stats-fallback" | "cache",
   hubEndpointOk: true,
   activityFallback: false,
+  dataByMode: {} as Record<string, unknown>,
 }));
 
 vi.mock("../src/hooks/usePublicHubData", () => ({
   usePublicHubData: () => ({
-    data: {
+    data: hubMockOpts.dataByMode[hubMockOpts.activityFallback ? "fallback" : "full"] ??= {
       generatedAt: new Date().toISOString(),
       poolSize: 0,
       corpus: {
@@ -114,7 +114,7 @@ vi.mock("../src/hooks/usePublicHubData", () => ({
           seventvPerMin: 66,
           coverageState: "synced",
           trendPct: -34,
-          profileImageUrl: "https://cdn.example/soda.png",
+          profileImageUrl: "https://static-cdn.jtvnw.net/jtv_user_pictures/soda-profile_image-300x300.png",
         },
         {
           login: "xqc",
@@ -126,7 +126,7 @@ vi.mock("../src/hooks/usePublicHubData", () => ({
           seventvPerMin: 380,
           coverageState: "synced",
           trendPct: -10,
-          profileImageUrl: "https://cdn.example/xqc.png",
+          profileImageUrl: "https://static-cdn.jtvnw.net/jtv_user_pictures/xqc-profile_image-300x300.png",
         },
         {
           login: "eliasn97",
@@ -173,6 +173,20 @@ vi.mock("../src/hooks/useHubRecentLogins", () => ({
   useHubRecentLogins: () => [],
 }));
 
+vi.mock("../src/hooks/useNewsroomData", () => ({
+  useNewsroomData: () => ({
+    data: null,
+    loading: false,
+    refreshing: false,
+    loadingMore: false,
+    error: "Newsroom unavailable",
+    unavailable: true,
+    announcement: "",
+    refresh: vi.fn(),
+    loadMore: vi.fn(),
+  }),
+}));
+
 describe("/analytics landing (AnalyticsLandingPage)", () => {
   afterEach(() => {
     hubMockOpts.loadSource = "full";
@@ -192,14 +206,14 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     expect(screen.queryByRole("heading", { name: /Moments feed/i })).toBeNull();
   });
 
-  it("renders Live Activity before Pulse Moments in the page flow", async () => {
+  it("renders Global activity before Pulse Moments in the page flow", async () => {
     render(
       <MemoryRouter>
         <AnalyticsLandingPage />
       </MemoryRouter>,
     );
 
-    const liveActivity = await screen.findByRole("region", { name: /Live Activity/i });
+    const liveActivity = await screen.findByRole("region", { name: /Global activity/i });
     const pulseMoments = await screen.findByRole("heading", { name: /Pulse Moments/i });
     const activityHub = document.querySelector(".figma-activity-hub");
 
@@ -217,7 +231,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
       </MemoryRouter>,
     );
 
-    const liveActivity = await screen.findByRole("region", { name: /Live Activity/i });
+    const liveActivity = await screen.findByRole("region", { name: /Global activity/i });
     expect(liveActivity.getAttribute("data-hub-activity-state")).toBe("unmeasured");
     expect(liveActivity.getAttribute("data-hub-requested-window-minutes")).toBe("10080");
     expect(liveActivity.getAttribute("data-hub-served-window-minutes")).toBe("30");
@@ -234,8 +248,9 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("region", { name: /Live Activity/i });
+    await screen.findByRole("region", { name: /Global activity/i });
     expect(screen.getByText("24h · 30m available")).toBeTruthy();
+    expect(screen.queryByText(/^7d/)).toBeNull();
     expect(screen.getByTestId("hub-activity-served-window").textContent).toContain(
       "1 day requested · 30 minutes available",
     );
@@ -248,7 +263,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
       </MemoryRouter>,
     );
     expect(
-      await screen.findByRole("region", { name: /Live Activity/i }),
+      await screen.findByRole("region", { name: /Global activity/i }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("region", { name: /Featured session analytics/i }),
@@ -279,10 +294,10 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("heading", { name: /Emote signal/i });
+    await screen.findByRole("heading", { name: /Emote Market/i });
     const moverRow = document.querySelector(".hx-mover");
     expect(moverRow?.querySelector("img")?.getAttribute("src")).toContain(
-      "cdn.example/xqc.png",
+      "static-cdn.jtvnw.net/jtv_user_pictures/xqc-profile_image-300x300.png",
     );
   });
 
@@ -314,7 +329,7 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     expect(
       await screen.findByText(/Hub temporarily unavailable/i),
     ).toBeTruthy();
-    expect(screen.getAllByText(/hub unavailable — live network feed paused/i).length).toBe(1);
+    expect(screen.getAllByText(/live network feed paused/i).length).toBe(1);
     expect(screen.queryByText("NEW")).toBeNull();
   });
 });

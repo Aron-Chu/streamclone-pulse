@@ -7,22 +7,34 @@ import Landing from '../src/routes/public/Landing'
 // tests/setup.ts cannot wipe their implementations between cases.
 vi.mock('../src/lib/publicHub', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/lib/publicHub')>()
+  const hub = {
+    generatedAt: new Date().toISOString(),
+    poolSize: 0,
+    corpus: {},
+    coverage: {},
+    activity: { points: [], windowMinutes: 30, channelCount: 0 },
+    emoteIntel: {},
+    topEmotes: [{ name: 'KEKW', provider: '7tv', count: 900, sharePct: 22 }],
+    topMovers: [
+      {
+        login: 'xqc',
+        displayName: 'xQc',
+        viewers: 12_000,
+        chatPerMin: 400,
+        seventvPerMin: 120,
+        trendPct: 8,
+      },
+    ],
+    liveChannels: [],
+    moments: [],
+  }
   return {
     ...actual,
-    fetchPublicHub: () =>
+    fetchPublicHubBase: () =>
       Promise.resolve({
-        data: {
-          generatedAt: new Date().toISOString(),
-          poolSize: 0,
-          corpus: {},
-          coverage: {},
-          activity: { points: [], windowMinutes: 30, channelCount: 0 },
-          emoteIntel: {},
-          topEmotes: [],
-          topMovers: [],
-          liveChannels: [],
-          moments: [],
-        },
+        data: hub,
+        loadSource: 'full' as const,
+        hubEndpointOk: true,
       }),
   }
 })
@@ -78,6 +90,22 @@ describe('landing page', () => {
     )
     expect(install.getAttribute('target')).toBe('_blank')
     expect(install.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('restores the ungated demo sequence and preserves working in-page navigation', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const samples = container.querySelectorAll('details.sl-optional-demo')
+    expect(samples).toHaveLength(0)
+    expect(container.querySelector('.sl-fx')).not.toBeNull()
+    expect(container.querySelector('.sl-chatbg')).not.toBeNull()
+    expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
+    expect(container.querySelector('main > section:nth-child(3)')?.id).toBe('analysis')
+    expect(container.querySelectorAll('.lsg')).toHaveLength(1)
+    for (const anchor of container.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
+      expect(container.querySelector(anchor.getAttribute('href')!)).not.toBeNull()
+    }
+    expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href')).toBe('#landing-main')
   })
 
   it('does not expose legacy /setup or /login nav CTAs', async () => {

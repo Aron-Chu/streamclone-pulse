@@ -19,23 +19,27 @@ describe('resolveMomentActions', () => {
   it('falls back to the canonical analytics route with #t offset', () => {
     const out = resolveMomentActions(base)
     expect(out.analyticsHref).toBe('/analytics/somechannel/abc123#t=300')
+    expect(out.reviewHref).toBe('/analytics/moments?view=recent&login=somechannel&stream=abc123&offset=300')
   })
 
-  it('emits vodHref only when a vodId is set', () => {
+  it('routes raw VOD metadata through exact-identity review instead of a Twitch timestamp', () => {
     const out = resolveMomentActions({ ...base, vodId: 'vod-999' })
-    expect(out.vodHref).toBe('https://www.twitch.tv/videos/vod-999?t=300s')
-  })
-
-  it('omits vodHref when vodId is absent', () => {
-    const out = resolveMomentActions(base)
-    expect(out.vodHref).toBeUndefined()
+    expect(out.reviewHref).toBe('/analytics/moments?view=recent&login=somechannel&stream=abc123&offset=300')
+    expect(Object.values(out).some((value) => value?.includes('twitch.tv/videos'))).toBe(false)
   })
 
   it('sets disabledReason with no "#" when nothing resolves', () => {
     const minimal: FigmaMomentRow = { offsetSeconds: 0, label: 'x' }
     const out = resolveMomentActions(minimal)
     expect(out.analyticsHref).toBeUndefined()
-    expect(out.vodHref).toBeUndefined()
+    expect(out.reviewHref).toBeUndefined()
     expect(out.disabledReason).toBe('Live tracking only')
+  })
+
+  it.each([
+    { ...base, login: 'nearby channel' },
+    { ...base, streamId: '' },
+  ])('does not create a review route for invalid exact identity %o', (moment) => {
+    expect(resolveMomentActions(moment).reviewHref).toBeUndefined()
   })
 })

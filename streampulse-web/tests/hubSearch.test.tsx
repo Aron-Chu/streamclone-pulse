@@ -67,6 +67,7 @@ describe('HubSearch', () => {
     })
     expect(screen.getByRole('listbox')).toBeTruthy()
     expect(screen.getByRole('option', { name: /xQc/i })).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('1 channel suggestion available')
   })
 
   it('includes offline remote search matches while typing', async () => {

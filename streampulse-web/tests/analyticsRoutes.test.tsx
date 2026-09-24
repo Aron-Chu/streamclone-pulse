@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation, useParams } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -76,6 +76,13 @@ describe('public channel analytics routes', () => {
     expect(screen.getByTestId('pathname').textContent).toBe('/analytics/xqc/12345')
     expect(screen.getByTestId('stream-id').textContent).toBe('12345')
   })
+
+  it.each(['/s/xqc%2Fdocs/12345', '/s/xqc/123%2Fdocs', '/analytics/xqc/s/123%2Fdocs'])(
+    'does not interpolate decoded path separators from %s into a share redirect', async path => {
+      renderPath(path)
+      await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/analytics'))
+    },
+  )
 
   it('keeps unknown paths on NotFound', async () => {
     renderPath('/definitely-missing-path')

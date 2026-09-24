@@ -10,7 +10,9 @@ const FIXTURE_DIR = join(__dirname, '../fixtures/portal-acceptance')
 export const PORTAL_LOGIN = 'xqc'
 export const PORTAL_STREAM_ID = '320567744986'
 export const PORTAL_STARTED_AT = '2026-07-25T21:28:27.000Z'
-export const PORTAL_VOD_ID = 'vod_exact_320567744986'
+// Twitch VOD IDs are numeric. Keep the fixture valid so the same normalization
+// and link-safety rules exercised in production are covered by the mocked flow.
+export const PORTAL_VOD_ID = '498765432109'
 export const NEIGHBOR_VOD_ID = 'vod_neighbor_other_stream'
 export const SYSTEM_TIME_ISO = '2026-07-26T12:00:00.000Z'
 
@@ -239,6 +241,10 @@ export function buildMinutes(opts?: {
 }
 
 export function buildStreamRecord(overrides: Record<string, unknown> = {}) {
+  // These acceptance fixtures exercise verified lifecycle transitions. The
+  // portal now requires observed/detected evidence and correctly treats the
+  // legacy `state` or `endedAt` fields alone as unknown.
+  const endedAt = typeof overrides.endedAt === 'string' ? overrides.endedAt : null
   return {
     streamId: PORTAL_STREAM_ID,
     login: PORTAL_LOGIN,
@@ -247,6 +253,9 @@ export function buildStreamRecord(overrides: Record<string, unknown> = {}) {
     category: 'Just Chatting',
     startedAt: PORTAL_STARTED_AT,
     endedAt: null,
+    lifecycleState: endedAt ? 'confirmed_ended' : 'confirmed_live',
+    lifecycleObservedAt: endedAt ?? SYSTEM_TIME_ISO,
+    lifecycleDetectedAt: endedAt ?? undefined,
     currentViewers: 42_000,
     peakViewers: 55_000,
     viewerSamples: 400,
@@ -258,7 +267,8 @@ export function buildStreamRecord(overrides: Record<string, unknown> = {}) {
 
 export function buildDetail(overrides: Record<string, unknown> = {}) {
   const stream = buildStreamRecord(
-    (overrides.stream as Record<string, unknown> | undefined) ?? {},
+    (overrides.stream as Record<string, unknown> | undefined) ??
+      (overrides.state === 'ended' ? { endedAt: '2026-07-26T04:00:00.000Z' } : {}),
   )
   return {
     channel: PORTAL_LOGIN,
@@ -312,7 +322,7 @@ export function buildStatus(overrides: Record<string, unknown> = {}) {
       chartState: 'usable',
       chartUsable: true,
     },
-    stream: buildStreamRecord(),
+    stream: buildStreamRecord(overrides.state === 'ended' ? { endedAt: '2026-07-26T04:00:00.000Z' } : {}),
     ...overrides,
   }
 }
@@ -720,12 +730,21 @@ export async function installPortalAcceptanceHarness(
     }
 
     if (path.includes(`/channels/${PORTAL_LOGIN}/live`)) {
+      const liveMinutes =
+        minutesPayload && typeof minutesPayload === 'object' && !Array.isArray(minutesPayload)
+          ? (minutesPayload as { minutes?: unknown }).minutes
+          : undefined
       await fulfill(route, {
         kind: 'json',
         body: {
           channel: PORTAL_LOGIN,
           state: 'live',
           stream: buildStreamRecord(),
+          // The live endpoint carries the current minute rollups in the
+          // hosted contract. Keep the acceptance mock aligned so a historical
+          // route that resolves to the active stream still renders its chart
+          // and staged games/emote enrichment.
+          rollups: Array.isArray(liveMinutes) ? liveMinutes : [],
           availability: {
             liveDvrState: 'live',
             vodState: 'pending_live',
@@ -828,6 +847,20 @@ export async function openAnalyticsSession(
   await expect(
     page.getByRole('region', { name: new RegExp(`Analytics for ${login}|Streamclone analytics console`, 'i') }),
   ).toBeVisible({ timeout: 30_000 })
+
+  // The console stages games/summary/recap enrichment after first paint. The
+  // harness installs a fake clock, so advance it here instead of making every
+  // acceptance test rediscover that implementation detail independently.
+  const clock = page.clock as { runFor?: (ms: number) => Promise<void> }
+  if (typeof clock.runFor === 'function') {
+    // The first detail response and its staged-enrichment effect resolve on
+    // separate turns. Give both turns a chance to register before advancing
+    // the 1.5s staging delay under the fake clock.
+    for (let i = 0; i < 3; i += 1) {
+      await page.waitForTimeout(0)
+      await clock.runFor(2_000)
+    }
+  }
 }
 
 export async function assertNoUnexpected(harness: PortalHarness): Promise<void> {
@@ -856,11 +889,10 @@ export async function getMountId(page: Page): Promise<string> {
 }
 
 export async function openEmotesRail(page: Page): Promise<void> {
-  // Right recap rail (Moments / Emotes / Status) — not the streams sidebar.
-  const rail = page.locator('aside').filter({
-    has: page.getByRole('button', { name: /^Moments$/i }),
-  })
-  const tab = rail.getByRole('button', { name: /^Emotes$/i })
+  // Session details tabs (Moments / Emotes / Status) — not the streams sidebar.
+  const tab = page
+    .getByRole('tablist', { name: 'Session details' })
+    .getByRole('tab', { name: /^Emotes$/i })
   await tab.scrollIntoViewIfNeeded()
   await tab.click()
 }
@@ -869,7 +901,7 @@ export async function setChartViewEmotes(page: Page): Promise<void> {
   // Chart toolbar Overview/Emotes/Spikes — not the right-rail tab.
   await page
     .locator('.analytics-console button.rounded')
-    .filter({ hasText: /^Emotes$/i })
+    .filter({ hasText: /^Emotes(?:\/min)?(?:\s|$)/i })
     .first()
     .click()
 }

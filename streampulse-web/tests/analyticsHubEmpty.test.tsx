@@ -3,13 +3,29 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import AnalyticsLandingPage from '../src/routes/analytics/AnalyticsLandingPage'
 
+const hubFixture = vi.hoisted(() => ({ data: null as unknown }))
+
 vi.mock('../src/hooks/useHubRecentLogins', () => ({
   useHubRecentLogins: () => [],
 }))
 
+vi.mock('../src/hooks/useNewsroomData', () => ({
+  useNewsroomData: () => ({
+    data: null,
+    loading: false,
+    refreshing: false,
+    loadingMore: false,
+    error: 'Newsroom unavailable',
+    unavailable: true,
+    announcement: '',
+    refresh: vi.fn(),
+    loadMore: vi.fn(),
+  }),
+}))
+
 vi.mock('../src/hooks/usePublicHubData', () => ({
   usePublicHubData: () => ({
-    data: {
+    data: hubFixture.data ??= {
       generatedAt: new Date().toISOString(),
       poolSize: 0,
       corpus: { streamsTracked: 0, momentsDetected: 0, chatMessagesProcessed: 0, emotesIndexed: 0, vodsAnalyzed: 0 },
@@ -82,9 +98,11 @@ describe('Analytics hub empty watchlist (HUB-P4)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: /Command center/i })).toBeTruthy()
     expect(screen.getByText(/Stream intelligence/i)).toBeTruthy()
     expect(screen.getByRole('search', { name: /Channel search/i })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: /Live Activity/i })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: /Live collector readiness/i })).toBeTruthy()
-    expect(screen.getAllByText(/No channels live right now/i).length).toBeGreaterThan(0)
+    const activity = screen.getByRole('region', { name: /Global activity/i })
+    expect(activity.getAttribute('data-hub-activity-state')).toBe('unmeasured')
+    expect(screen.getByRole('heading', { name: /Hottest Live/i })).toBeTruthy()
+    expect(screen.getByText(/No channel activity supplied/i)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Emote Market/i })).toBeTruthy()
     expect(screen.queryByText(/add channels to your watchlist to see live analytics/i)).toBeNull()
   })
 })

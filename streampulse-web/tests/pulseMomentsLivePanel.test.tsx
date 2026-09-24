@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -125,9 +125,11 @@ function sampleHub(): PublicHub {
 function renderPanel({
   selectedMomentKey,
   onSelectMoment,
+  requireExplicitSelection,
+  onPoolMomentsChange,
 }: Pick<
   PulseMomentsLivePanelProps,
-  'selectedMomentKey' | 'onSelectMoment'
+  'selectedMomentKey' | 'onSelectMoment' | 'requireExplicitSelection' | 'onPoolMomentsChange'
 >) {
   const hub = sampleHub()
   return render(
@@ -140,6 +142,8 @@ function renderPanel({
           layout="embedded"
           selectedMomentKey={selectedMomentKey}
           onSelectMoment={onSelectMoment}
+          requireExplicitSelection={requireExplicitSelection}
+          onPoolMomentsChange={onPoolMomentsChange}
         />
       </AnalyticsThemeProvider>
     </MemoryRouter>,
@@ -147,6 +151,33 @@ function renderPanel({
 }
 
 describe('PulseMomentsLivePanel controlled hub selection', () => {
+  it('shows the full-width moment browser without an empty inspector', async () => {
+    const onPoolMomentsChange = vi.fn()
+    renderPanel({ selectedMomentKey: null, onSelectMoment: vi.fn(), requireExplicitSelection: true, onPoolMomentsChange })
+    await waitFor(() => expect(onPoolMomentsChange).toHaveBeenCalled())
+    expect(screen.getByRole('table')).toBeTruthy()
+    expect(screen.getByText('Live-session peaks')).toBeTruthy()
+    expect(screen.queryByText(/last 24 hours/)).toBeNull()
+    expect(screen.queryByLabelText('Moment Inspector')).toBeNull()
+    expect(screen.getByRole('toolbar', { name: 'Moment filters' })).toBeTruthy()
+    expect(document.querySelector('[data-moment-row][aria-selected="true"]')).toBeNull()
+  })
+
+  it('does not substitute another moment for an unresolved explicit identity', () => {
+    renderPanel({ selectedMomentKey: 'missing-exact-id', onSelectMoment: vi.fn(), requireExplicitSelection: true })
+    expect(screen.queryByLabelText('Moment Inspector')).toBeNull()
+  })
+  it('selects the exact row with the keyboard and removes the inspector after filtering to no results', () => {
+    const onSelectMoment = vi.fn()
+    renderPanel({ selectedMomentKey: null, onSelectMoment, requireExplicitSelection: true })
+    fireEvent.keyDown(document.querySelector('[data-moment-row]')!, { key: 'Enter' })
+    expect(onSelectMoment).toHaveBeenCalledWith(expect.objectContaining({ login: 'xqc', streamId: 's1', offsetSeconds: 120 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Chat spikes' }))
+    expect(screen.getByText('No moments match this filter')).toBeTruthy()
+    expect(screen.queryByLabelText('Moment Inspector')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    expect(document.querySelectorAll('[data-moment-row]')).toHaveLength(1)
+  })
   it('does not invent an initial selection for a controlled hub', async () => {
     const onSelectMoment = vi.fn()
     renderPanel({ selectedMomentKey: undefined, onSelectMoment })

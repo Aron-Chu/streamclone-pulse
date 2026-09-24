@@ -6,6 +6,7 @@ import {
   featuredSessionFromPublicHub,
   isValidPeakOffsetSeconds,
   livePulseMomentsFromPublicHub,
+  mapHubPulseMoment,
   nearestMomentForOffset,
   resolveLivePulseMoments,
 } from '../src/lib/figmaSessionAnalytics'
@@ -192,6 +193,14 @@ describe('livePulseMomentsFromPublicHub', () => {
     expect(result.moments).toHaveLength(2)
     expect(result.moments.map((r) => r.login)).toEqual(['xqc', 'jynxzi'])
     expect(livePulseMomentsFromPublicHub(hub)).toHaveLength(2)
+  })
+
+  it('maps exact category display metadata through the session row adapter', () => {
+    const boxArtUrl = 'https://static-cdn.jtvnw.net/ttv-boxart/213490846-144x192.jpg'
+    expect(mapHubPulseMoment({
+      login: 'creator', streamId: 'stream-a', offsetSeconds: 60, score: 80, label: 'Peak',
+      category: 'Wuthering Waves', categoryId: '213490846', boxArtUrl,
+    })).toMatchObject({ category: 'Wuthering Waves', categoryId: '213490846', boxArtUrl })
   })
 })
 

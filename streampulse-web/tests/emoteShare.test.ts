@@ -9,6 +9,12 @@ import {
 import type { HubEmote } from '../src/lib/publicHub'
 
 describe('emoteShare', () => {
+  it('preserves estimated provenance when the inspector normalizes an already prepared list', () => {
+    const once = withComputedBurstShare([{ code: 'emo', count: 58 }, { code: 'Listening', count: 39 }, { code: 'xqcL', count: 37 }])
+    const twice = withComputedBurstShare(once)
+    expect(twice.every(row => row.shareEstimated)).toBe(true)
+    expect(twice.map(row => row.sharePct)).toEqual(once.map(row => row.sharePct))
+  })
   it('isBackendSharePct accepts positive finite values only', () => {
     expect(isBackendSharePct(12.5)).toBe(true)
     expect(isBackendSharePct(0)).toBe(false)

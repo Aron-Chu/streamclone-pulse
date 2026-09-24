@@ -30,9 +30,8 @@ for (const viewport of VIEWPORTS) {
       await page.goto('/analytics')
       await expect(page.getByRole('main', { name: /StreamPulse analytics/i })).toBeVisible()
       await expect(page.getByRole('heading', { level: 1, name: /Command center/i })).toBeVisible()
-      await expect(page.locator('.figma-analytics__right-rail .hub-live-wire')).toBeVisible()
-      await expect(page.locator('.hub-live-wire--rail')).toBeVisible()
-      await expect(page.locator('.hub-live-wire--ticker')).toHaveCount(0)
+      await expect(page.locator('.figma-global-activity__annotation-lane .hub-live-wire--lane')).toBeVisible()
+      await expect(page.locator('.figma-analytics__right-rail, .hub-live-wire--rail')).toHaveCount(0)
       if (viewport.width >= 1100) {
         await expect(page.getByRole('navigation', { name: /Analytics sections/i })).toBeVisible()
       }

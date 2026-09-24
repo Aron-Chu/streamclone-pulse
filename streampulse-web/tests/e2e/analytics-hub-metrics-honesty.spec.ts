@@ -140,6 +140,9 @@ async function installSparseViewerRollupMock(page: Page): Promise<void> {
   await page.route(/\/v1\/public\/hub\/moments(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ready', moments: [] }) }),
   )
+  await page.route(/\/v1\/public\/newsroom(\/[^?]+)?(\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schemaVersion: 0 }) }),
+  )
 }
 
 /** Mock a legacy degraded response whose payload still contains stale rows. */

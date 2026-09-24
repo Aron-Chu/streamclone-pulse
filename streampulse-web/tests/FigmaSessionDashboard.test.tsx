@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { FigmaSessionDashboard } from '../src/ui/components/analytics/FigmaSessionDashboard'
 import type { FigmaSessionViewModel } from '../src/lib/figmaSessionAnalytics'
@@ -11,8 +12,8 @@ function readyModel(): FigmaSessionViewModel {
     streamId: 'stream-1',
     vodId: 'vod-1',
     moments: [
-      { offsetSeconds: 60, score: 70, label: 'First peak' },
-      { offsetSeconds: 300, score: 90, label: 'Second peak' },
+      { offsetSeconds: 60, score: 70, label: 'First peak', login: 'xqc', streamId: 'stream-1' },
+      { offsetSeconds: 300, score: 90, label: 'Second peak', login: 'xqc', streamId: 'stream-1' },
     ],
     chartPoints: [
       { offsetSeconds: 0, chatNorm: 10, viewersNorm: 10, emotesNorm: 10, heat: 20 },
@@ -27,7 +28,7 @@ function readyModel(): FigmaSessionViewModel {
 
 describe('FigmaSessionDashboard chart selection', () => {
   it('snaps chart End key to the nearest backend moment row', () => {
-    const { container } = render(<FigmaSessionDashboard model={readyModel()} />)
+    const { container } = render(<MemoryRouter><FigmaSessionDashboard model={readyModel()} /></MemoryRouter>)
     const wrap = container.querySelector('.figma-chart__svg-wrap') as HTMLElement
     wrap.focus()
     fireEvent.keyDown(wrap, { key: 'End' })
@@ -35,15 +36,17 @@ describe('FigmaSessionDashboard chart selection', () => {
     expect(activeRow?.textContent).toContain('Second peak')
   })
 
-  it('keeps exact table selection when a moment VOD link is clicked', () => {
-    render(<FigmaSessionDashboard model={readyModel()} />)
-    fireEvent.click(screen.getByRole('link', { name: '5:00' }))
+  it('keeps exact table selection when its exact-identity review link is clicked', () => {
+    render(<MemoryRouter><FigmaSessionDashboard model={readyModel()} /></MemoryRouter>)
+    const review = screen.getByRole('link', { name: '5:00' })
+    expect(review.getAttribute('href')).toBe('/analytics/moments?view=recent&login=xqc&stream=stream-1&offset=300')
+    fireEvent.click(review)
     const activeRow = document.querySelector('tr.is-active')
     expect(activeRow?.textContent).toContain('Second peak')
   })
 
   it('plots bursts anchored at stream start', () => {
-    render(<FigmaSessionDashboard model={readyModel()} />)
+    render(<MemoryRouter><FigmaSessionDashboard model={readyModel()} /></MemoryRouter>)
     fireEvent.click(screen.getByTitle('Plot KEKW on chart'))
     expect(screen.getByText('KEKW @ 00:00')).toBeTruthy()
   })

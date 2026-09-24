@@ -1,0 +1,21 @@
+{
+  "channel": "xqc",
+  "state": "historical",
+  "stream": {
+    "streamId": "321192454233",
+    "login": "xqc",
+    "startedAt": "2026-08-01T12:00:00Z",
+    "vodId": "2864434763",
+    "lifecycleState": "unknown"
+  },
+  "sources": [{"source": "analytics_db", "state": "ready"}],
+  "updatedAt": 1785672000000,
+  "vodId": "2864434763",
+  "vodAlignSeconds": -75.5,
+  "vodDurationSeconds": 18000,
+  "vodTiming": {
+    "state": "verified",
+    "source": "helix_archive_origin",
+    "checkedAt": "2026-08-02T12:00:00Z"
+  }
+}

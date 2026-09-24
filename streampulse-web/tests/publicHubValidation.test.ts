@@ -37,15 +37,15 @@ describe('validatePublicHubInvariants', () => {
         reason: 'historical_projection_unavailable',
         channelCount: 1,
         points: [
-          { t: 0, chat: 10, seventv: 1, viewers: 100 },
-          { t: 32 * 60_000, chat: 10, seventv: 1, viewers: 100 },
+          { t: Date.UTC(2026, 7, 1) + 0, chat: 10, seventv: 1, viewers: 100 },
+          { t: Date.UTC(2026, 7, 1) + 32 * 60_000, chat: 10, seventv: 1, viewers: 100 },
         ],
       },
     })
     expect(hub.activity.source).toBe('live_pool_fallback')
     expect(hub.activity.points).toHaveLength(2)
-    expect(hub.activity.points[0]?.t).toBe(0)
-    expect(hub.activity.points[1]?.t).toBe(32 * 60_000)
+    expect(hub.activity.points[0]?.t).toBe(Date.UTC(2026, 7, 1))
+    expect(hub.activity.points[1]?.t).toBe(Date.UTC(2026, 7, 1) + 32 * 60_000)
     expect(hub.activity.servedWindowMinutes).toBe(30)
     expect(isHubActivityLivePoolFallback(hub.activity)).toBe(true)
     expect(hubActivityContractIssues(hub.activity)).toEqual([
@@ -67,8 +67,8 @@ describe('validatePublicHubInvariants', () => {
         reason: 'historical_projection_unavailable',
         channelCount: 1,
         points: [
-          { t: 0, chat: 10, seventv: 1, viewers: 100 },
-          { t: 60_000, chat: 12, seventv: 1, viewers: 110 },
+          { t: Date.UTC(2026, 7, 1) + 0, chat: 10, seventv: 1, viewers: 100 },
+          { t: Date.UTC(2026, 7, 1) + 60_000, chat: 12, seventv: 1, viewers: 110 },
         ],
       },
     })
@@ -104,8 +104,8 @@ describe('validatePublicHubInvariants', () => {
         windowMinutes: 60 * 24 * 7,
         channelCount: 39,
         points: [
-          { t: 1, chat: 10, seventv: 5, viewers: 100 },
-          { t: 61_001, chat: 12, seventv: 6, viewers: 110 },
+          { t: Date.UTC(2026, 7, 1) + 1, chat: 10, seventv: 5, viewers: 100 },
+          { t: Date.UTC(2026, 7, 1) + 61_001, chat: 12, seventv: 6, viewers: 110 },
         ],
       },
     })
@@ -121,8 +121,8 @@ describe('validatePublicHubInvariants', () => {
         windowMinutes: 60,
         channelCount: 1,
         points: [
-          { t: 1000, chat: 1, seventv: 0, viewers: 1 },
-          { t: 500, chat: 1, seventv: 0, viewers: 1 },
+          { t: Date.UTC(2026, 7, 1) + 1000, chat: 1, seventv: 0, viewers: 1 },
+          { t: Date.UTC(2026, 7, 1) + 500, chat: 1, seventv: 0, viewers: 1 },
         ],
       },
     })
@@ -180,8 +180,8 @@ describe('validatePublicHubInvariants', () => {
         windowMinutes: 30,
         channelCount: 100,
         points: [
-          { t: 1, chat: 0, seventv: 0, viewers: 1000 },
-          { t: 60_001, chat: 0, seventv: 0, viewers: 1100 },
+          { t: Date.UTC(2026, 7, 1) + 1, chat: 0, seventv: 0, viewers: 1000 },
+          { t: Date.UTC(2026, 7, 1) + 60_001, chat: 0, seventv: 0, viewers: 1100 },
         ],
       },
     })

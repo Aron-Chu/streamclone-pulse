@@ -27,6 +27,26 @@ describe('HubActivityBarSeries', () => {
     expect(container.querySelectorAll('rect.hx-bar-segment--viewers, rect.hx-bar-segment--emotes')).toHaveLength(0)
   })
 
+  it('keeps bars inside a lower activity lane when a top inset is provided', () => {
+    const { container } = render(
+      <svg>
+        <HubActivityBarSeries
+          points={points}
+          timeDomain={domain}
+          height={100}
+          paddingTop={39}
+          paddingBottom={0}
+          chatMax={20}
+        />
+      </svg>,
+    )
+    const series = container.querySelector('[data-component="HubActivityBarSeries"]')
+    const bars = Array.from(container.querySelectorAll('rect.hx-chat-bar'))
+    expect(series?.getAttribute('data-activity-lane-top')).toBe('39')
+    expect(bars).toHaveLength(2)
+    expect(bars.every((bar) => Number(bar.getAttribute('y')) >= 39)).toBe(true)
+  })
+
   it('skips segments whose value is 0', () => {
     const { container } = render(
       <svg>

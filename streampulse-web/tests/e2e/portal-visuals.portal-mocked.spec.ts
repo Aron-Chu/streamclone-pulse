@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import {
   assertEmotePlotLines,
   assertNoUnexpected,
@@ -14,12 +14,31 @@ import {
   openEmotesRail,
   PORTAL_VOD_ID,
   setChartViewEmotes,
+  PORTAL_STARTED_AT,
 } from './helpers/portalAcceptanceHarness'
 
+const ENDED_AT = '2026-07-26T04:00:00.000Z'
+const ENDED_VOD_DURATION_SECONDS = Math.floor(
+  (Date.parse(ENDED_AT) - Date.parse(PORTAL_STARTED_AT)) / 1_000,
+)
+
 async function assertNonBlankScreenshot(page: import('@playwright/test').Page, name: string) {
+  // Semantic checks may scroll scenario content into view on narrow screens.
+  // Keep the original viewport snapshot anchored to the page top; the
+  // scenario-region snapshots below cover content farther down the page.
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   const shot = await page.screenshot({ fullPage: false })
   expect(shot.byteLength).toBeGreaterThan(5_000)
   await expect(page).toHaveScreenshot(name, {
+    maxDiffPixelRatio: 0.04,
+    animations: 'disabled',
+  })
+}
+
+async function assertScenarioRegionScreenshot(region: Locator, name: string) {
+  await expect(region).toBeVisible()
+  await expect(region).toHaveScreenshot(name, {
     maxDiffPixelRatio: 0.04,
     animations: 'disabled',
   })
@@ -37,8 +56,16 @@ test.describe('portal responsive visuals (mocked)', () => {
         const harness = await installPortalAcceptanceHarness(page)
         harness.setMinutesPayload(buildMinutes({ count: 24, withEmotes: true }))
         await openAnalyticsSession(page)
-        await expect(page.locator('svg').first()).toBeVisible({ timeout: 25_000 })
+        const chart = page.getByRole('region', { name: 'Session activity chart' })
+        await expect(chart.locator('svg[aria-label="Analytics timeline chart"]')).toBeVisible({ timeout: 25_000 })
+        await expect(chart.locator('path[data-presentation-trend="chat"]')).toHaveCount(1)
         await assertNonBlankScreenshot(page, `portal-live-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-analytics-center-column]'),
+            'portal-live-narrow-center.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
 
@@ -50,19 +77,27 @@ test.describe('portal responsive visuals (mocked)', () => {
           body: buildDetail({
             state: 'ended',
             availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable', chartUsable: true },
-            stream: buildStreamRecord({ endedAt: '2026-07-26T04:00:00.000Z', currentViewers: 0 }),
+            stream: buildStreamRecord({ endedAt: ENDED_AT, currentViewers: 0 }),
           }),
         })
         harness.status.setFallback({
           kind: 'json',
           body: buildStatus({
             state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
             availability: { liveDvrState: 'ended', vodState: 'resolving', chartState: 'usable' },
           }),
         })
         await openAnalyticsSession(page)
         await expect(page.getByText(/Waiting for Twitch VOD/i).first()).toBeVisible({ timeout: 20_000 })
         await assertNonBlankScreenshot(page, `portal-resolving-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-analytics-center-column]'),
+            'portal-resolving-narrow-center.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
 
@@ -74,6 +109,9 @@ test.describe('portal responsive visuals (mocked)', () => {
           body: buildDetail({
             state: 'ended',
             vodId: PORTAL_VOD_ID,
+            vodAlignSeconds: 0,
+            vodDurationSeconds: ENDED_VOD_DURATION_SECONDS,
+            vodTiming: { state: 'verified' },
             availability: {
               liveDvrState: 'ended',
               vodState: 'linked',
@@ -82,7 +120,7 @@ test.describe('portal responsive visuals (mocked)', () => {
               chartUsable: true,
             },
             stream: buildStreamRecord({
-              endedAt: '2026-07-26T04:00:00.000Z',
+              endedAt: ENDED_AT,
               vodId: PORTAL_VOD_ID,
               currentViewers: 0,
             }),
@@ -93,6 +131,9 @@ test.describe('portal responsive visuals (mocked)', () => {
           body: buildStatus({
             state: 'ended',
             vodId: PORTAL_VOD_ID,
+            vodAlignSeconds: 0,
+            vodDurationSeconds: ENDED_VOD_DURATION_SECONDS,
+            vodTiming: { state: 'verified' },
             availability: {
               liveDvrState: 'ended',
               vodState: 'linked',
@@ -104,6 +145,12 @@ test.describe('portal responsive visuals (mocked)', () => {
         await openAnalyticsSession(page)
         await expect(page.getByText(new RegExp(PORTAL_VOD_ID))).toBeVisible({ timeout: 20_000 })
         await assertNonBlankScreenshot(page, `portal-linked-vod-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-analytics-center-column]'),
+            'portal-linked-vod-narrow-center.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
 
@@ -114,6 +161,8 @@ test.describe('portal responsive visuals (mocked)', () => {
           kind: 'json',
           body: buildDetail({
             state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
             availability: {
               liveDvrState: 'ended',
               vodState: 'request_failed',
@@ -127,6 +176,8 @@ test.describe('portal responsive visuals (mocked)', () => {
           kind: 'json',
           body: buildStatus({
             state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
             availability: {
               liveDvrState: 'ended',
               vodState: 'request_failed',
@@ -138,6 +189,12 @@ test.describe('portal responsive visuals (mocked)', () => {
         await openAnalyticsSession(page)
         await expect(page.getByText(/VOD lookup failed/i).first()).toBeVisible({ timeout: 20_000 })
         await assertNonBlankScreenshot(page, `portal-request-failed-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-analytics-center-column]'),
+            'portal-request-failed-narrow-center.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
 
@@ -163,6 +220,12 @@ test.describe('portal responsive visuals (mocked)', () => {
         await openAnalyticsSession(page)
         await expect(page.getByLabel('Games played').first()).toBeVisible({ timeout: 25_000 })
         await assertNonBlankScreenshot(page, `portal-games-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-analytics-center-column]'),
+            'portal-games-narrow-center.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
 
@@ -175,14 +238,43 @@ test.describe('portal responsive visuals (mocked)', () => {
           kind: 'json',
           body: buildDetail({
             state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
             availability: { liveDvrState: 'ended', vodState: 'unavailable', chartState: 'usable', chartUsable: true },
+          }),
+        })
+        harness.status.setFallback({
+          kind: 'json',
+          body: buildStatus({
+            state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
+            availability: { liveDvrState: 'ended', vodState: 'unavailable', chartState: 'usable' },
           }),
         })
         await openAnalyticsSession(page)
         await openEmotesRail(page)
         await setChartViewEmotes(page)
+        await page.getByRole('button', { name: /^Emote overlays, 1 active/ }).click()
+        for (const name of ['OMEGALUL', 'Clap', 'Clap', 'NODDERS', 'Sadge']) {
+          await page.getByRole('button', { name: `Plot ${name} on chart`, exact: true }).first().click()
+        }
+        await expect(page.getByRole('button', { name: /^Emote overlays, 6 active/ })).toBeVisible()
         await assertEmotePlotLines(page, 6)
+        // Park the pointer off the page: the last click would otherwise leave a
+        // control mid-hover wherever the scrolled screenshot puts it.
+        await page.mouse.move(-1, -1)
         await assertNonBlankScreenshot(page, `portal-six-emotes-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-analytics-center-column]'),
+            'portal-six-emotes-narrow-center.png',
+          )
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-session-details-tabs]'),
+            'portal-six-emotes-narrow-details.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
 
@@ -195,7 +287,18 @@ test.describe('portal responsive visuals (mocked)', () => {
           kind: 'json',
           body: buildDetail({
             state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
             availability: { liveDvrState: 'ended', vodState: 'unavailable', chartState: 'usable', chartUsable: true },
+          }),
+        })
+        harness.status.setFallback({
+          kind: 'json',
+          body: buildStatus({
+            state: 'ended',
+            vodId: '',
+            vodTiming: { state: 'unavailable' },
+            availability: { liveDvrState: 'ended', vodState: 'unavailable', chartState: 'usable' },
           }),
         })
         await openAnalyticsSession(page)
@@ -203,6 +306,12 @@ test.describe('portal responsive visuals (mocked)', () => {
         await expect(page.getByText('No emotes counted')).toBeVisible({ timeout: 20_000 })
         await expect(page.getByText(/Collected chat has not matched known emotes/i)).toBeVisible()
         await assertNonBlankScreenshot(page, `portal-emotes-unavailable-${viewport.name}.png`)
+        if (viewport.name === 'narrow') {
+          await assertScenarioRegionScreenshot(
+            page.locator('[data-session-details-tabs]'),
+            'portal-emotes-unavailable-narrow-details.png',
+          )
+        }
         await assertNoUnexpected(harness)
       })
     })

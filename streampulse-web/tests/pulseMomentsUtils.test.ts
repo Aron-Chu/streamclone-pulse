@@ -13,6 +13,7 @@ import {
   resolveMomentEmote,
   resolveMomentEmotesPerMin,
   resolveMomentViewers,
+  resolveMomentWallClockAt,
   ROLLUP_CONFIDENCE_LABEL,
   sourceLabel,
   vodStateLabel,
@@ -156,17 +157,25 @@ describe('filterMomentsByBucket', () => {
     expect(filtered[0]?.label).toBe('in bucket')
   })
 
-  it('derives wall-clock time from channel startedAt when at is missing', () => {
+  it('derives wall-clock time only from an exact matching stream when at is missing', () => {
     const startedAt = '2024-01-01T12:00:00.000Z'
     const startMs = Date.parse(startedAt)
     const bucketT = startMs + 5 * 60_000
     const moments = [
-      { offsetSeconds: 300, score: 90, label: 'derived', login: 'xqc' },
+      { offsetSeconds: 300, score: 90, label: 'derived', login: 'xqc', streamId: '123' },
     ]
     const filtered = filterMomentsByBucket(moments, bucketT, 1440, [
-      { login: 'xqc', startedAt },
+      { login: 'xqc', startedAt, streamId: '123' },
     ])
     expect(filtered).toHaveLength(1)
+  })
+
+  it('rejects future/sentinel clocks and does not borrow another broadcast start', () => {
+    const moment = { offsetSeconds: 300, label: 'test', login: 'xqc', streamId: '123' }
+    expect(resolveMomentWallClockAt({ ...moment, at: Date.parse('2099-01-01') }, [])).toBeUndefined()
+    expect(resolveMomentWallClockAt({ ...moment, streamStartedAt: 1 }, [])).toBeUndefined()
+    expect(resolveMomentWallClockAt(moment, [{ login: 'xqc', streamId: '456', startedAt: '2026-08-01T12:00:00Z' }])).toBeUndefined()
+    expect(resolveMomentWallClockAt(moment, [{ login: 'xqc', startedAt: '2026-08-01T12:00:00Z' }])).toBeUndefined()
   })
 })
 
@@ -398,13 +407,13 @@ describe('resolveMomentViewers', () => {
     ).toBe(8420)
   })
 
-  it('falls back to live pool viewers for the channel', () => {
+  it('does not substitute a current live-pool value for a historical minute', () => {
     expect(
       resolveMomentViewers(
         { offsetSeconds: 60, score: 80, label: 'Chat spike', login: 'caseoh' },
         [{ login: 'caseoh', viewers: 18500 }],
       ),
-    ).toBe(18500)
+    ).toBeUndefined()
   })
 })
 
@@ -420,14 +429,14 @@ describe('resolveMomentViewerTableCell', () => {
     expect(cell.muted).toBe(false)
   })
 
-  it('falls back to live pool with muted styling when minute CCU is missing', async () => {
+  it('shows historical viewer count as unavailable when minute CCU is missing', async () => {
     const { resolveMomentViewerTableCell } = await import('../src/lib/pulseMomentsUtils')
     const cell = resolveMomentViewerTableCell(
       { offsetSeconds: 60, score: 80, label: 'Emote spike', login: 'forsen', viewerDelta: '+67' },
       [{ login: 'forsen', viewers: 12000 }],
     )
-    expect(cell.text).toBe('12K')
+    expect(cell.text).toBe('—')
     expect(cell.muted).toBe(true)
-    expect(cell.title).toContain('live pool snapshot')
+    expect(cell.title).toContain('unavailable')
   })
 })

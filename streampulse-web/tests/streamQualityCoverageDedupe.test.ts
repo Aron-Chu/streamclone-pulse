@@ -27,7 +27,7 @@ describe('diagnoseStreamQuality live viewer warmup', () => {
     })
 
     const detail = {
-      coverageStartOffsetSeconds: 480,
+      coverageStartOffsetSeconds: 0,
       stream: { startedAt },
       rollups,
     } as unknown as Parameters<typeof diagnoseStreamQuality>[0]['detail']

@@ -10,7 +10,8 @@ import type { PublicHubMomentsResponse } from '../src/lib/publicHub'
 
 const fetchHistoricalHubMoments = vi.fn()
 
-vi.mock('../src/lib/apiClient', () => ({
+vi.mock('../src/lib/apiClient', async (original) => ({
+  ...await original<typeof import('../src/lib/apiClient')>(),
   getBackendUrl: () => 'https://api.streampulse.stream',
 }))
 
@@ -122,4 +123,32 @@ describe('prefetchHubBucketMoments', () => {
     const calledBuckets = fetchHistoricalHubMoments.mock.calls.map((call) => call[0])
     expect(calledBuckets).not.toContain(neighbor)
   })
+})
+
+
+it('cancelling the first consumer cannot abort another subscriber', async () => {
+  clearHubBucketMomentsInFlight()
+  let finish!: (value: PublicHubMomentsResponse) => void
+  fetchHistoricalHubMoments.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const firstController = new AbortController()
+  const opts = { bucketT: 1719000900000, activityWindow: '24h' as const, activityWindowMinutes: 1440 }
+  const first = requestHubBucketMoments({ ...opts, signal: firstController.signal })
+  const second = requestHubBucketMoments(opts)
+  const cancelled = expect(first).rejects.toMatchObject({ name: 'AbortError' })
+  firstController.abort()
+  finish(momentsResponse(opts.bucketT))
+  await cancelled
+  await expect(second).resolves.toMatchObject({ bucketT: opts.bucketT, status: 'ready' })
+})
+
+
+it('honors a rate limit across bucket selections on the same backend', async () => {
+  clearHubBucketMomentsInFlight()
+  fetchHistoricalHubMoments.mockReset()
+  fetchHistoricalHubMoments.mockRejectedValue({ kind: 'rate_limited', status: 429, message: 'slow down', retryAfterMs: 30000 })
+  const opts = { bucketT: 1719000900000, activityWindow: '24h' as const, activityWindowMinutes: 1440 }
+  await expect(requestHubBucketMoments(opts)).rejects.toMatchObject({ status: 429 })
+  await expect(requestHubBucketMoments({ ...opts, bucketT: opts.bucketT + 360000 })).rejects.toMatchObject({ status: 429 })
+  expect(fetchHistoricalHubMoments).toHaveBeenCalledTimes(1)
+  clearHubBucketMomentsInFlight()
 })
