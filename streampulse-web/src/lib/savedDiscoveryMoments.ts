@@ -5,7 +5,7 @@ import type { LiveWireMetricComparison, LiveWireMomentComparison } from './liveW
 export const SAVED_MOMENTS_KEY = 'streampulse.saved-moments.v2'
 export const LEGACY_SAVED_MOMENTS_KEY = 'streampulse.saved-moments.v1'
 export const SAVED_MOMENTS_LIMIT = 200
-export interface SavedMoment extends DiscoveryMoment { savedAt: number }
+export interface SavedMoment extends DiscoveryMoment { savedAt: number; note?: string }
 interface Snapshot { items: SavedMoment[]; warning: string }
 let snapshot: Snapshot = { items: [], warning: '' }
 let initialized = false
@@ -105,7 +105,8 @@ export function savedMomentRecord(moment: DiscoveryMoment, savedAt = Date.now())
     ...(chatPerMin == null ? {} : { chatPerMin }), ...(emotesPerMin == null ? {} : { emotesPerMin }),
     ...(evidenceAsOf ? { evidenceAsOf } : {}), ...(measurementScope ? { measurementScope } : {}),
     ...(comparison ? { comparison } : {}), ...(moment.reactionSignal === 'chat' || moment.reactionSignal === 'emotes' ? { reactionSignal: moment.reactionSignal } : {}),
-    ...(topEmotes ? { topEmotes } : {}), ...(revision == null ? {} : { revision }), ...(moment.storyId ? { storyId: moment.storyId } : {}) }
+    ...(topEmotes ? { topEmotes } : {}), ...(revision == null ? {} : { revision }), ...(moment.storyId ? { storyId: moment.storyId } : {}),
+    ...((moment as SavedMoment).note ? { note: (moment as SavedMoment).note!.slice(0, 1000) } : {}) }
 }
 export function parseSavedMoments(raw: string | null): SavedMoment[] {
   if (!raw) return []
@@ -135,7 +136,7 @@ export function parseSavedMoments(raw: string | null): SavedMoment[] {
     moment.evidenceAsOf = envelope.version === 2 ? cleanEvidenceTime(row.evidenceAsOf) : undefined
     moment.revision = envelope.version === 2 ? integer(row.revision, 1) : undefined
     moment.storyId = typeof row.storyId === 'string' && row.storyId.length <= 220 ? row.storyId : undefined
-    unique.set(moment.key, savedMomentRecord(moment, row.savedAt))
+    unique.set(moment.key, { ...savedMomentRecord(moment, row.savedAt), ...(typeof row.note === 'string' ? { note: row.note.slice(0, 1000) } : {}) })
   }
   return [...unique.values()]
 }
@@ -212,6 +213,12 @@ export function toggleSavedMoment(moment: DiscoveryMoment): string {
   if (existing) { persist(snapshot.items.filter(item => item.key !== moment.key)); return 'Removed from saved moments.' }
   if (snapshot.items.length >= SAVED_MOMENTS_LIMIT) return '200 saved moments reached. Remove a saved moment before adding another.'
   persist([savedMomentRecord(moment), ...snapshot.items]); return sessionOnly ? 'Saved for this session only.' : 'Saved on this device.'
+}
+export function updateSavedMomentNote(key: string, note: string): string {
+  initialize(); refreshStored()
+  if (!snapshot.items.some(item => item.key === key)) return 'This moment is no longer saved.'
+  persist(snapshot.items.map(item => item.key === key ? { ...item, note: note.slice(0, 1000) } : item))
+  return sessionOnly ? 'Note saved for this session only.' : 'Note saved on this device.'
 }
 function subscribe(listener: () => void) {
   if (!listeners.size) window.addEventListener('storage', onStorage)

@@ -88,6 +88,18 @@ describe('device shortlist', () => {
     expect(refreshed).not.toHaveProperty('vodId')
     expect(refreshed).not.toHaveProperty('handoffRef')
   })
+  it('stores bounded notes and preserves them when reading saved identities', async () => {
+    vi.resetModules()
+    const store = await import('../src/lib/savedDiscoveryMoments')
+    store.toggleSavedMoment(moment)
+    expect(store.updateSavedMomentNote(moment.key, 'Watch the lead-in')).toContain('Note saved')
+    expect(store.parseSavedMoments(localStorage.getItem(store.SAVED_MOMENTS_KEY))[0]?.note).toBe('Watch the lead-in')
+    store.updateSavedMomentNote(moment.key, 'x'.repeat(2000))
+    expect(store.parseSavedMoments(localStorage.getItem(store.SAVED_MOMENTS_KEY))[0]?.note).toHaveLength(1000)
+    store.toggleSavedMoment(moment)
+    expect(store.updateSavedMomentNote(moment.key, 'Do not recreate')).toContain('no longer saved')
+    expect(store.parseSavedMoments(localStorage.getItem(store.SAVED_MOMENTS_KEY))).toEqual([])
+  })
   it('rejects malformed and oversized persisted data', () => {
     expect(() => parseSavedMoments('{')).toThrow()
     expect(() => parseSavedMoments(JSON.stringify({ version: 3, items: [] }))).toThrow()
