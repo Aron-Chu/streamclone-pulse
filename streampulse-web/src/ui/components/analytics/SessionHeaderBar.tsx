@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { formatCoveragePercent } from '@streampulse/pulse-core'
 import { Download, Play } from 'lucide-react'
 import { fetchPortalStreamSummary, type PortalStreamSummary } from '../../../lib/streamcloneAnalytics'
 import { compact } from './hubFormat'
@@ -43,7 +44,7 @@ export function SessionHeaderBar({ login, streamId }: SessionHeaderBarProps) {
         { label: 'chat / min', value: compact(Math.round(metrics.chat_per_min)), suffix: '/m', tone: 'accent' },
         { label: '7TV / min', value: compact(Math.round(metrics.seventv_per_min)), suffix: '/m', tone: 'cyan' },
         { label: 'reaction', value: compact(Math.round(metrics.reaction_score_0_100 ?? 0)), suffix: '', tone: 'amber' },
-        { label: 'VOD conf.', value: compact(Math.round(metrics.data_coverage_pct ?? 0)), suffix: '%', tone: 'good' },
+        { label: 'VOD conf.', value: formatCoveragePercent(metrics.data_coverage_pct), suffix: '', tone: 'good' },
       ]
     : []
 

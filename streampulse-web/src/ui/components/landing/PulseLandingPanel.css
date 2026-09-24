@@ -79,12 +79,19 @@
 
 .sl-xtour[data-static] .pulse-landing-panel .pulse-landing-scrollport,
 .sl-xtour[data-static] .pulse-landing-panel .sl-ext__scrollport {
-  overflow: hidden !important;
+  overflow: visible !important;
+  flex: none;
+}
+
+.sl-xtour[data-static] .pulse-landing-panel.sl-ext,
+.sl-xtour[data-static] .pulse-landing-shell {
+  height: auto;
+  max-height: none;
 }
 
 .sl-xtour[data-static] .pulse-landing-panel .pulse-landing-scroll,
 .sl-xtour[data-static] .pulse-landing-panel .sl-ext__scroll {
-  overflow-y: auto;
+  overflow: visible;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }

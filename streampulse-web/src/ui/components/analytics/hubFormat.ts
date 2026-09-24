@@ -1,4 +1,5 @@
 import type { HubCoverageState, HubEmote } from '../../../lib/publicHub'
+import { measurementTimeMs } from '@streampulse/pulse-core'
 
 /** 1234 -> "1.2K", 2_400_000 -> "2.4M". */
 export function compact(value: number | null | undefined): string {
@@ -235,8 +236,8 @@ export function twitchLivePreviewUrlFresh(login: string, width = 320, height = 1
 /** Human uptime from an ISO startedAt (e.g. "2h 14m"). */
 export function formatStreamUptime(startedAt?: string): string {
   if (!startedAt?.trim()) return ''
-  const ms = Date.parse(startedAt)
-  if (!Number.isFinite(ms)) return ''
+  const ms = measurementTimeMs(startedAt)
+  if (ms == null || ms > Date.now()) return ''
   const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000))
   if (sec < 60) return `${sec}s`
   const min = Math.floor(sec / 60)

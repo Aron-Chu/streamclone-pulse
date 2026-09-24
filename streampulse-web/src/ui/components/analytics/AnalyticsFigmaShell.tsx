@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 
 import { useRef } from 'react'
+import { Link } from 'react-router-dom'
 
 import { useAnalyticsTheme } from '../../providers/AnalyticsThemeProvider'
 
 import { AnalyticsThemeProvider } from '../../providers/AnalyticsThemeProvider'
 
-import { sidebarLabelFor } from '../../themes/commandCenterLabels'
 
 import { AnalyticsHubSidebar } from './AnalyticsHubSidebar'
 
@@ -15,6 +15,11 @@ import { AnalyticsTopNav } from './AnalyticsTopNav'
 const NAV_ITEMS = [
   { label: 'Home', to: '/', end: true },
   { label: 'Analytics', to: '/analytics', end: true },
+  // "All moments" rather than "Moments": the session page's right rail already
+  // has a Moments tab scoped to one stream, and two links named the same thing
+  // at different scopes read as the same destination.
+  { label: 'All moments', to: '/analytics/moments' },
+  { label: 'Pulse Explorer', to: '/analytics/explore' },
 ]
 
 export interface AnalyticsFigmaShellProps {
@@ -40,16 +45,16 @@ function AnalyticsFigmaShellInner({
   const centerRef = useRef<HTMLDivElement>(null)
 
   const sidebarTone =
-    backendStatus?.tone === 'offline'
+    backendStatus?.tone === 'checking'
+      ? 'checking'
+      : backendStatus?.tone === 'offline'
       ? 'offline'
       : backendStatus?.tone === 'degraded'
         ? 'degraded'
         : 'ready'
 
-  const resolvedSections = sidebarSections?.map((section) => ({
-    ...section,
-    label: sidebarLabelFor(section.id, labels, section.label),
-  }))
+  // The route owns its four-question navigation; do not relabel it as extra products.
+  const resolvedSections = sidebarSections
 
   return (
     <div className="figma-analytics">
@@ -85,11 +90,15 @@ function AnalyticsFigmaShellInner({
         </div>
 
         {rightRail ? (
-          <aside className="figma-analytics__right-rail" aria-label="Live moments">
+          <aside className="figma-analytics__right-rail" aria-label="Live Wire discovery">
             {rightRail}
           </aside>
         ) : null}
       </div>
+      <footer className="figma-analytics__site-footer" aria-label="Site information">
+        <span>StreamPulse Analytics Hub</span>
+        <nav aria-label="Site links"><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/support">Support</Link></nav>
+      </footer>
     </div>
   )
 }

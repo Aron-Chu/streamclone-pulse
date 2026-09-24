@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { optionsForBoundedActivityFallback } from "../../lib/activityRangeCapabilities";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useHubRecentLogins } from "../../hooks/useHubRecentLogins";
 import { usePublicHubData } from "../../hooks/usePublicHubData";
 import { usePoolWireEvents } from "../../hooks/usePoolWireEvents";
+import { useMomentProfiles } from "../../hooks/useMomentProfiles";
 import { getBackendUrl } from "../../lib/apiClient";
 import {
   resolveBackendSource,
@@ -15,7 +18,14 @@ import {
   activityBucketKey,
   formatActivityWindowLabel,
 } from "../../lib/hubActivitySummary";
-import { resolveHubActivityChartWindowMinutes } from "../../lib/hubActivityHonesty";
+import {
+  isHubActivityLivePoolFallback,
+  resolveHubActivityChartWindowMinutes,
+} from "../../lib/hubActivityHonesty";
+import {
+  deriveHubChartActivityModel,
+  selectHubChartActivityInputs,
+} from "../../lib/hubChartActivityModel";
 import {
   aggregateEmotesFromMoments,
   rankLiveChannelsByActivity,
@@ -23,14 +33,14 @@ import {
 import type { FigmaMomentRow } from "../../lib/figmaSessionAnalytics";
 import { filterMomentsByBucket } from "../../lib/pulseMomentsUtils";
 import { hasBucketMomentsCache, readBucketMomentsCache } from "../../lib/bucketMomentsCache";
-import { requestHubBucketMoments } from "../../lib/prefetchHubBucketMoments";
+
 import {
   HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   resolveHubTopMovers,
   type PublicHubActivityWindow,
 } from "../../lib/publicHub";
-import { resolveHubUiState } from "../../lib/hubUiState";
+import { resolveHubStatus, resolveHubUiState } from "../../lib/hubUiState";
 import { isLifecycleMomentKind } from "../../lib/poolWireReducer";
 import type { HubActivityRangeOption } from "../../ui/components/hub/HubActivityChart";
 import { AnalyticsFigmaShell } from "../../ui/components/analytics/AnalyticsFigmaShell";
@@ -40,11 +50,10 @@ import {
   FigmaGlobalActivityPanel,
 } from "../../ui/components/analytics/FigmaGlobalActivityPanel";
 import { HubLiveWireFeed } from "../../ui/components/analytics/HubLiveWireFeed";
+import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
 import { HubCommandHeader } from "../../ui/components/analytics/HubCommandHeader";
-import { ChromeInstallCta } from "../../ui/components/ChromeInstallCta";
 import { HubCoverageTrustStrip } from "../../ui/components/analytics/HubCoverageTrustStrip";
 import { LiveChannelsMatrix } from "../../ui/components/analytics/LiveChannelsMatrix";
-import { FigmaLiveChannelRail } from "../../ui/components/analytics/FigmaLiveChannelRail";
 import { PulseMomentsLivePanel } from "../../ui/components/analytics/PulseMomentsLivePanel";
 import { TopClipsShelf } from "../../ui/components/analytics/TopClipsShelf";
 import { HubSearch, type HubSuggestion } from "../../ui/components/hub/HubSearch";
@@ -53,6 +62,9 @@ import { compact } from "../../ui/components/analytics/hubFormat";
 import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvider";
 import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
 import "../../ui/components/analytics/figma-analytics.css";
+import "../../ui/components/newsroom/newsroom.css";
+import "../../ui/components/analytics/discovery-layout.css";
+import "../../ui/components/analytics/analytics-interaction.css";
 
 const FALLBACK_SUGGESTIONS: HubSuggestion[] = [
   { login: "xqc", displayName: "xQc", category: "Just Chatting" },
@@ -86,11 +98,10 @@ function compactWindowLabel(minutes: number): string {
   return formatActivityWindowLabel(minutes);
 }
 
-const RAIL_COLORS = ["#1e3a5f", "#1a3d2b", "#2d1b4e", "#3d2a1b", "#1b3d3d"];
 
-function formatUpdatedAgo(ts: number | null): string | undefined {
+function formatUpdatedAgo(ts: number | null, nowMs: number): string | undefined {
   if (!ts) return undefined;
-  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  const sec = Math.max(0, Math.floor((nowMs - ts) / 1000));
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m ago`;
@@ -101,8 +112,12 @@ function formatUpdatedAgo(ts: number | null): string | undefined {
 /** Public `/analytics` command-center landing. */
 function AnalyticsLandingContent() {
   const labels = useCommandCenterLabels();
-  const [activityWindow, setActivityWindow] =
-    useState<PublicHubActivityWindow>("24h");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { hash } = useLocation();
+  const rawWindow = searchParams.get("window") || searchParams.get("activityWindow");
+  const activityWindow: PublicHubActivityWindow = (rawWindow && rawWindow in ACTIVITY_WINDOW_MINUTES)
+    ? (rawWindow as PublicHubActivityWindow)
+    : "24h";
   const [selectedBucketT, setSelectedBucketT] = useState<number | null>(null);
   const [hoverBucketT, setHoverBucketT] = useState<number | null>(null);
   const [selectedMomentKey, setSelectedMomentKey] = useState<string | null>(null);
@@ -111,17 +126,52 @@ function AnalyticsLandingContent() {
   const [hoverBucketMoments, setHoverBucketMoments] = useState<FigmaMomentRow[]>([]);
   const [hoverBucketMomentsLoading, setHoverBucketMomentsLoading] = useState(false);
   const [poolMoments, setPoolMoments] = useState<FigmaMomentRow[]>([]);
+  const [wireSelectionActive, setWireSelectionActive] = useState(false);
+  const [freshnessNowMs, setFreshnessNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden) setFreshnessNowMs(Date.now());
+    }, 10_000);
+    const updateOnReturn = () => {
+      if (!document.hidden) setFreshnessNowMs(Date.now());
+    };
+    document.addEventListener("visibilitychange", updateOnReturn);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", updateOnReturn);
+    };
+  }, []);
   const hub = usePublicHubData({ enabled: true, activityWindow });
   const recentLogins = useHubRecentLogins();
   const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
   // Requested range drives the endpoint/range tab; served range owns all bucket
   // geometry so a bounded fallback cannot select or prefetch invented history.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);
+  // Live Wire and Newsroom may only claim an in-place chart selection when the
+  // exact bucket survived the same bounding, alignment, and open-tip filtering
+  // used by FigmaGlobalActivityPanel. Raw activity rows are not sufficient:
+  // legacy payloads can contain rows that the truthful chart model omits.
+  const selectableActivityBucketTs = useMemo(() => {
+    const model = deriveHubChartActivityModel(selectHubChartActivityInputs(data));
+    return new Set(model.chartPoints.map((point) => point.t));
+  }, [data]);
   const activityRangeOptions = useMemo(
-    () =>
-      ACTIVITY_WINDOW_OPTIONS.map((option) => {
+    () => {
+      const fallback = isHubActivityLivePoolFallback(data.activity);
+      const supportedOptions = fallback
+        ? optionsForBoundedActivityFallback(ACTIVITY_WINDOW_OPTIONS, activityWindow, "30m")
+        : ACTIVITY_WINDOW_OPTIONS;
+      return supportedOptions.map((option) => {
         const requestedMinutes = ACTIVITY_WINDOW_MINUTES[option.key] ?? servedActivityWindowMinutes;
-        if (servedActivityWindowMinutes >= requestedMinutes || option.key === "30m") {
+        // A healthy 24h response does not prove that a 7d projection is
+        // unavailable. Only annotate longer options while the current payload
+        // is explicitly the bounded live-pool fallback; the next selection
+        // fetches and proves its own requested window.
+        if (
+          !isHubActivityLivePoolFallback(data.activity) ||
+          servedActivityWindowMinutes >= requestedMinutes ||
+          option.key === "30m"
+        ) {
           return option;
         }
         const servedLabel = compactWindowLabel(servedActivityWindowMinutes);
@@ -130,10 +180,13 @@ function AnalyticsLandingContent() {
           label: `${option.label} · ${servedLabel} available`,
           description: `${option.label} requested; only ${formatActivityWindowLabel(servedActivityWindowMinutes)} is currently available`,
         };
-      }),
-    [servedActivityWindowMinutes],
+      });
+    },
+    [activityWindow, data.activity, servedActivityWindowMinutes],
   );
   const loadingInitial = hub.loading && !hub.data;
+  const measurementAvailable = Boolean(hub.data && hub.loadSource !== 'stats-fallback');
+  const measurementsUnavailable = !loadingInitial && !measurementAvailable;
   const hubUiState = resolveHubUiState({
     loading: hub.loading,
     data: hub.data,
@@ -141,7 +194,7 @@ function AnalyticsLandingContent() {
     hubEndpointOk: hub.hubEndpointOk,
     loadSource: hub.loadSource,
   });
-  const updatedAgo = formatUpdatedAgo(hub.lastUpdated);
+  const updatedAgo = formatUpdatedAgo(hub.lastUpdated, freshnessNowMs);
   const chartLoading = loadingInitial || hub.activityRefreshing;
 
   const poolWire = usePoolWireEvents({
@@ -149,7 +202,11 @@ function AnalyticsLandingContent() {
     pollSequence: hub.pollSequence,
     lastSuccessfulPollAt: hub.lastSuccessfulPollAt,
     hubEndpointOk: hub.hubEndpointOk,
-    healthy: hubUiState === "ready" || hubUiState === "empty",
+    // A cache hydrate is a truthful snapshot for the page, but it is not a
+    // live observation. Keep lifecycle membership uninitialized until a full
+    // network poll proves the current pool, otherwise cached openings/joins
+    // can be presented as current transitions after recovery.
+    healthy: (hubUiState === "ready" || hubUiState === "empty") && hub.loadSource === "full",
   });
 
   const [pulseLiveChannels, setPulseLiveChannels] = useState(false);
@@ -176,7 +233,9 @@ function AnalyticsLandingContent() {
     return () => window.clearTimeout(t);
   }, [poolWire.events, poolWire.initialized]);
 
-  const livePulseFeed = useMemo(() => resolveLivePulseMoments(data), [data]);
+  const rawPulseFeed = useMemo(() => resolveLivePulseMoments(data), [data]);
+  const profileMoments = useMomentProfiles(rawPulseFeed.moments);
+  const livePulseFeed = useMemo(() => ({ ...rawPulseFeed, moments: profileMoments }), [rawPulseFeed, profileMoments]);
   /** Live Wire is peaks/momentum only — lifecycle belongs in Pool Wire. */
   const liveWireFeed = useMemo(
     () => ({
@@ -257,28 +316,7 @@ function AnalyticsLandingContent() {
     }
 
     setHoverBucketMoments([]);
-    setHoverBucketMomentsLoading(true);
-
-    const controller = new AbortController();
-    requestHubBucketMoments({
-      bucketT: hoverBucketT,
-      activityWindow,
-      activityWindowMinutes: servedActivityWindowMinutes,
-      signal: controller.signal,
-      includeAdjacent: true,
-    })
-      .then(() => {
-        const rows = readBucketMomentsCache(hoverBucketT, activityWindow) ?? [];
-        setHoverBucketMoments(rows);
-        setHoverBucketMomentsLoading(false);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setHoverBucketMomentsLoading(false);
-        }
-      });
-
-    return () => controller.abort();
+    setHoverBucketMomentsLoading(false);
   }, [
     activityWindow,
     servedActivityWindowMinutes,
@@ -288,12 +326,14 @@ function AnalyticsLandingContent() {
   ]);
 
   const handleClearBucketFilter = useCallback(() => {
+    setWireSelectionActive(false);
     setSelectedBucketT(null);
     setHoverBucketT(null);
     setSelectedMomentKey(null);
   }, []);
 
   const handleBucketSelect = useCallback((bucketT: number | null) => {
+    setWireSelectionActive(false);
     setSelectedBucketT(bucketT);
     setHoverBucketT(null);
     setSelectedMomentKey(null);
@@ -389,22 +429,21 @@ function AnalyticsLandingContent() {
 
   const backendSource = resolveBackendSource(getBackendUrl());
   const isHostedBackend = backendSource === "hosted";
-  const hubUnavailable = hubUiState === "error";
+  const measurementStatus = resolveHubStatus(hub);
   const showTrackedTable = data.liveChannels.length > 0;
-  const featuredChannels = rankLiveChannelsByActivity(data.liveChannels, 12);
+  const featuredChannels = useMemo(
+    () => rankLiveChannelsByActivity(data.liveChannels, 12),
+    [data.liveChannels],
+  );
   const sidebarSections = useMemo<HubSidebarSection[]>(
     () => [
       { id: "section-overview", label: labels.overview },
-      { id: "section-live-rail", label: labels.liveRail, hidden: featuredChannels.length === 0 },
-      { id: "section-hottest", label: "Hottest live" },
-      { id: "section-live-wire", label: "Pulse Wire" },
-      { id: "section-global-activity", label: "Global Activity" },
-      { id: "section-pulse-moments", label: labels.pulseMoments },
-      { id: "section-emote-signal", label: labels.emoteSignal },
-      { id: "section-tracked", label: labels.trackedChannels, hidden: !showTrackedTable },
-      { id: "section-coverage", label: labels.coverage },
+      { id: "section-live-rail", label: "Hottest Live" },
+      { id: "section-pulse-moments", label: "Moments" },
+      { id: "section-emote-signal", label: "Emotes" },
+      { id: "section-tracked", label: "Channels", hidden: !showTrackedTable },
     ],
-    [featuredChannels.length, labels, showTrackedTable],
+    [labels, showTrackedTable],
   );
 
   const topMovers = useMemo(
@@ -415,7 +454,6 @@ function AnalyticsLandingContent() {
   const liveWireFeedProps = {
     hub: data,
     feed: liveWireFeed,
-    activityWindow,
     loading: loadingInitial || hubUiState === "loading",
     hubEndpointOk: hub.hubEndpointOk,
     // Do not default to "full" — that made pending hubEndpointOk=false look like a confirmed outage.
@@ -438,21 +476,73 @@ function AnalyticsLandingContent() {
 
   const accentBucketT = useMemo(() => {
     if (!selectedMoment?.at) return null;
-    return activityBucketKey(selectedMoment.at, servedActivityWindowMinutes);
-  }, [selectedMoment, servedActivityWindowMinutes]);
+    const bucketT = activityBucketKey(selectedMoment.at, servedActivityWindowMinutes);
+    return selectableActivityBucketTs.has(bucketT) ? bucketT : null;
+  }, [selectedMoment, servedActivityWindowMinutes, selectableActivityBucketTs]);
 
   const handleSelectMoment = useCallback((moment: FigmaMomentRow) => {
+    setWireSelectionActive(false);
     const key = momentRowKey(moment);
     setSelectedMomentKey(key);
-    if (moment.at != null && Number.isFinite(moment.at)) {
-      setSelectedBucketT(
-        chartBucketSelectEnabled
-          ? activityBucketKey(moment.at, servedActivityWindowMinutes)
-          : null,
-      );
+    // Selecting a row must not replace its collection with a bucket fetch.
+    // The chart accents the selected moment independently via accentBucketT.
+    setHoverBucketT(null);
+  }, []);
+
+  const handleSelectLiveWireMoment = useCallback((moment: FigmaMomentRow) => {
+    handleSelectMoment(moment);
+    setWireSelectionActive(true);
+    setBucketMoments([moment]);
+    setBucketMomentsLoading(false);
+  }, [handleSelectMoment]);
+
+  useEffect(() => {
+    if (selectedBucketT == null && selectedMomentKey == null) return;
+    const dismiss = () => {
+      setSelectedBucketT(null);
+      setSelectedMomentKey(null);
       setHoverBucketT(null);
+      setWireSelectionActive(false);
+    };
+    const clickAway = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      // Finish the click before collapsing. Selection controls and inspector
+      // actions keep their target in place through pointer-up.
+      if (target.closest('.figma-global-activity__chart-col, .figma-global-activity__inspector, .pulse-moments-live, .hub-live-wire')) return;
+      dismiss();
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); };
+    document.addEventListener('click', clickAway);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('click', clickAway);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [selectedBucketT, selectedMomentKey]);
+
+  // Exact stream-minute identity, not a public ID, is what the chart needs: the
+  // hub payload does not always supply `publicMomentId`, and requiring one left
+  // every real row unselectable. `momentRowKey` is login:streamId:offsetSeconds,
+  // so this stays fail-closed — a row still has to match a loaded moment and
+  // resolve to a bucket the truthful chart model actually rendered.
+  const canSelectLiveWireMoment = useCallback((moment: FigmaMomentRow) => {
+    if (!chartBucketSelectEnabled || !moment.login?.trim() || !moment.streamId || moment.at == null || !Number.isFinite(moment.at)) {
+      return false;
     }
-  }, [chartBucketSelectEnabled, servedActivityWindowMinutes]);
+    const loadedMoment = momentLookupPool.get(momentRowKey(moment));
+    if (!loadedMoment || loadedMoment.streamId !== moment.streamId) return false;
+    // When both sides name a public moment they must agree; a mismatch is a
+    // different detection wearing the same minute.
+    if (moment.publicMomentId && loadedMoment.publicMomentId && loadedMoment.publicMomentId !== moment.publicMomentId) return false;
+    const bucketT = activityBucketKey(moment.at, servedActivityWindowMinutes);
+    return selectableActivityBucketTs.has(bucketT);
+  }, [
+    chartBucketSelectEnabled,
+    momentLookupPool,
+    selectableActivityBucketTs,
+    servedActivityWindowMinutes,
+  ]);
 
   return (
     <AnalyticsFigmaShell
@@ -460,41 +550,39 @@ function AnalyticsLandingContent() {
         isHostedBackend
           ? {
               label: "Status",
-              value: hubUnavailable ? "Unavailable" : "Live",
-              tone: hubUnavailable ? "offline" : "ready",
+              value: measurementStatus.value,
+              tone: measurementStatus.tone,
             }
           : {
               label: "API",
               value: backendSourceLabel(backendSource),
-              tone: hubUnavailable ? "offline" : "ready",
+              tone: measurementStatus.tone,
             }
       }
       sidebarStatusLabel={
         isHostedBackend
-          ? hubUnavailable
-            ? "Unavailable"
-            : "Live"
+          ? measurementStatus.value
           : backendSourceLabel(backendSource)
       }
       sidebarSections={sidebarSections}
       rightRail={
-        <HubLiveWireFeed
-          {...liveWireFeedProps}
-          layout="rail"
-          // A bounded live-pool fallback has no historical chart bucket to
-          // inspect. Do not render a button that would silently do nothing;
-          // the Live Wire card still links to the channel/moment when that
-          // route is available.
-          onSelectMoment={chartBucketSelectEnabled ? handleSelectMoment : undefined}
-        />
+        <div className="analytics-discovery-layout__wire" id="section-live-wire">
+          <HubLiveWireFeed
+            {...liveWireFeedProps}
+            selectedMomentKey={selectedMomentKey}
+            onSelectMoment={chartBucketSelectEnabled ? handleSelectLiveWireMoment : undefined}
+            canSelectMoment={canSelectLiveWireMoment}
+            footer={<Link className="analytics-discovery-layout__moments-link" to="/analytics/moments">Browse all moments & saved →</Link>}
+          />
+        </div>
       }
     >
       <main
         className="figma-analytics__main"
-        id="analytics-main"
         aria-label="StreamPulse analytics"
         data-hub-state={hubUiState}
       >
+        <div id="analytics-main" tabIndex={-1} className="analytics-focus-target">Analytics content</div>
         {hub.loadSource === "cache" && hub.refreshing ? (
           <div
             className="figma-hub-fallback-banner figma-hub-fallback-banner--info"
@@ -515,34 +603,23 @@ function AnalyticsLandingContent() {
         />
         <HubBackendSourceBanner />
 
+        <nav className="hub-mobile-sections" aria-label="Analytics sections">
+          {sidebarSections.filter(section => !section.hidden).map(section => <a key={section.id} href={`#${section.id}`} aria-current={(hash || '#section-overview') === `#${section.id}` ? 'location' : undefined}>{section.label}</a>)}
+        </nav>
+
         <SectionReveal id="section-overview">
           <HubCommandHeader
             hub={data}
+            measurementAvailable={measurementAvailable}
             loading={loadingInitial || hubUiState === "loading"}
             lastSuccessfulPollAt={hub.lastSuccessfulPollAt}
             hubEndpointOk={hub.hubEndpointOk}
+            loadSource={hub.loadSource}
             error={hub.error}
             poolWireEvents={poolWire.events}
             poolWireInitialized={poolWire.initialized}
             pulseLiveChannels={pulseLiveChannels}
           />
-          {hubUiState === "empty" || hubUiState === "error" ? (
-            <div
-              className="hub-onboarding-cta"
-              data-testid="analytics-onboarding-cta"
-              role="region"
-              aria-label="Get StreamPulse on Twitch"
-            >
-              <p>
-                Install the StreamPulse Chrome extension to open Pulse on Twitch live and VOD
-                pages. This site does not detect install state — use the store listing.
-              </p>
-              <ChromeInstallCta
-                className="hub-onboarding-cta__link"
-                data-cta="chrome-install-analytics-onboarding"
-              />
-            </div>
-          ) : null}
           <div className="hub-command-search" role="search" aria-label="Channel search">
             <HubSearch
               suggestions={suggestions}
@@ -555,30 +632,31 @@ function AnalyticsLandingContent() {
           </div>
         </SectionReveal>
 
-        {featuredChannels.length > 0 ? (
-          <SectionReveal
-            as="section"
-            id="section-live-rail"
-            className="hub-live-rail-section"
-          >
-            <div className="hub-live-rail-section__head">
-              <h2 className="hub-live-rail-section__title">{labels.liveRail}</h2>
-              <span className="hub-live-rail-section__meta">
-                Showing top {featuredChannels.length} by activity of{" "}
-                {compact(data.liveChannels.length)} in pool
-              </span>
-            </div>
-            <FigmaLiveChannelRail
-              channels={featuredChannels}
-              colors={RAIL_COLORS}
-              loading={loadingInitial}
-            />
-          </SectionReveal>
-        ) : null}
+        <SectionReveal id="section-live-rail" className="hub-live-rail-section">
+          <div className="hub-live-rail-section__head">
+            <h2 className="hub-live-rail-section__title">Hottest Live</h2>
+            <span className="hub-live-rail-section__meta">Channel discovery · not a clip-quality ranking</span>
+          </div>
+          <p className="muted">Top {featuredChannels.length} supplied channels by recent chat or emote rate. Tracking does not confirm current live presence.</p>
+          {measurementsUnavailable ? (
+            <p role="status" className="muted">Channel activity unavailable. Search still opens channel analytics.</p>
+          ) : (
+            <FigmaLiveChannelRail channels={featuredChannels} loading={loadingInitial} />
+          )}
+        </SectionReveal>
 
         <SectionReveal id="section-network">
           <div className="figma-activity-hub">
+            {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
+              <p className="figma-hub-fallback-banner" role="status">
+                Could not load {activityWindow} activity. Retaining the last {formatActivityWindowLabel(servedActivityWindowMinutes)} snapshot.
+              </p>
+            ) : null}
+            <a className="analytics-discovery__jump" href="#section-live-wire">Jump to Live Wire</a>
+            <div className="analytics-discovery-layout">
+            <div className="analytics-discovery-layout__chart">
             <FigmaGlobalActivityPanel
+              unavailable={measurementsUnavailable}
               hub={data}
               activitySummary={activitySummary}
               suggestions={suggestions}
@@ -599,7 +677,15 @@ function AnalyticsLandingContent() {
                 active: activityWindow,
                 options: activityRangeOptions,
                 onSelect: (key) => {
-                  setActivityWindow(key as PublicHubActivityWindow);
+                  setSearchParams(
+                    (prev) => {
+                      const next = new URLSearchParams(prev);
+                      next.set("window", key);
+                      return next;
+                    },
+                    { replace: true },
+                  );
+                  setWireSelectionActive(false);
                   setSelectedBucketT(null);
                   setHoverBucketT(null);
                   setSelectedMomentKey(null);
@@ -625,20 +711,23 @@ function AnalyticsLandingContent() {
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
             />
-            <PulseMomentsLivePanel
+            </div>
+            <div className="analytics-discovery-layout__secondary">
+            {measurementsUnavailable ? <section id="section-pulse-moments" role="status"><h2>Moments unavailable</h2><p>No measured hub snapshot is available. Retry the hub request to check for moments.</p></section> : <PulseMomentsLivePanel
               hub={data}
               feed={livePulseFeed}
               topEmotes={data.topEmotes}
               loading={loadingInitial}
               layout="embedded"
-              selectedBucketT={chartBucketSelectEnabled ? selectedBucketT : null}
-              hoverBucketT={chartBucketSelectEnabled ? hoverBucketT : null}
+              requireExplicitSelection
+              selectedBucketT={chartBucketSelectEnabled && !wireSelectionActive ? selectedBucketT : null}
+              hoverBucketT={chartBucketSelectEnabled && !wireSelectionActive ? hoverBucketT : null}
               onClearBucketFilter={
                 chartBucketSelectEnabled ? handleClearBucketFilter : undefined
               }
-              onBucketMomentsChange={chartBucketSelectEnabled ? setBucketMoments : undefined}
+              onBucketMomentsChange={chartBucketSelectEnabled && !wireSelectionActive ? setBucketMoments : undefined}
               onBucketLoadingChange={
-                chartBucketSelectEnabled ? setBucketMomentsLoading : undefined
+                chartBucketSelectEnabled && !wireSelectionActive ? setBucketMomentsLoading : undefined
               }
               onPoolMomentsChange={chartBucketSelectEnabled ? setPoolMoments : undefined}
               activityWindow={activityWindow}
@@ -646,12 +735,14 @@ function AnalyticsLandingContent() {
               updatedAgo={updatedAgo}
               selectedMomentKey={selectedMomentKey}
               onSelectMoment={handleSelectMoment}
-            />
+            />}
+            </div>
+            </div>
           </div>
         </SectionReveal>
 
         <SectionReveal id="section-emote-signal">
-          <FigmaEmoteSignalBlock
+          {measurementsUnavailable ? <section role="status"><h2>Emote measurements unavailable</h2><p>No measured hub snapshot is available; missing data does not mean zero emote traffic.</p></section> : <FigmaEmoteSignalBlock
             intel={data.emoteIntel}
             topEmotes={data.topEmotes}
             topMovers={topMovers}
@@ -660,7 +751,7 @@ function AnalyticsLandingContent() {
             poolSize={data.poolSize}
             windowMinutes={data.activity.windowMinutes}
             emoteMarket={data.emoteMarket}
-          />
+          />}
         </SectionReveal>
 
         {(data.publicClips?.length ?? 0) > 0 ? (
@@ -682,6 +773,9 @@ function AnalyticsLandingContent() {
           </SectionReveal>
         ) : null}
 
+        <details className="hub-audit-disclosure" data-collection-diagnostics>
+          <summary>Collection diagnostics and source details</summary>
+        {measurementsUnavailable ? <p role="status">Collection measurements and their source window are unavailable. No coverage or capacity values can be inferred from a failed request.</p> : <>
         <SectionReveal>
           <HubCoverageTrustStrip
             pipeline={data.corpusPipeline}
@@ -696,6 +790,8 @@ function AnalyticsLandingContent() {
           activitySummary={activitySummary}
           className="figma-analytics__source-footer"
         />
+        </>}
+        </details>
       </main>
     </AnalyticsFigmaShell>
   );

@@ -48,6 +48,11 @@ export async function migrateDefaultChartWindowToFullOnce(): Promise<void> {
   /* no-op */
 }
 
+/** Portal shim — no chrome.storage; LiveStatsBand calls this on mount (RPR-3). */
+export async function migrateDefaultChartWindowToFullV3Once(): Promise<void> {
+  /* no-op */
+}
+
 /** Portal shim — no chrome.storage; LiveStatsBand calls this on mount (RPR-1). */
 export async function migrateDefaultChartWindowToRecentV2Once(): Promise<void> {
   /* no-op */

@@ -1,7 +1,7 @@
-import type { KeyboardEvent, MouseEvent, MutableRefObject } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { momentRowKey, type FigmaMomentRow, buildVodTimestampUrl, formatOffsetLabel } from '../../../lib/figmaSessionAnalytics'
+import { momentRowKey, type FigmaMomentRow, formatOffsetLabel } from '../../../lib/figmaSessionAnalytics'
+import { discoveryMomentHref, fromHubMoment } from '../../../lib/discoveryMoments'
 import type { HubEmote } from '../../../lib/publicHub'
 import {
   formatMomentTableTime,
@@ -21,6 +21,7 @@ import {
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { initial } from './hubFormat'
 import { ResilientImage } from '../ResilientImage'
+import { twitchProfileImageRendition } from '../../../lib/twitchProfileImage'
 import {
   formatChatRate,
   formatChatRateCompact,
@@ -80,7 +81,8 @@ function ChannelCell({
   return (
     <span className={`pulse-moments__channel${compactLayout ? ' pulse-moments__channel--compact' : ''}`}>
       <ResilientImage
-        src={profileImageUrl}
+        src={twitchProfileImageRendition(profileImageUrl, 70)}
+        fallbackSrc={profileImageUrl}
         alt=""
         loading="lazy"
         decoding="async"
@@ -90,7 +92,7 @@ function ChannelCell({
           </span>
         }
       />
-      {live ? <span className="pulse-moments__channel-live-dot" aria-label="Live" title="Live now" /> : null}
+      {live ? <span className="pulse-moments__channel-live-dot" role="img" aria-label="Live now" title="Live now" /> : null}
       {twitchHref ? (
         <a
           className="pulse-moments__channel-name pulse-moments__channel-name--link"
@@ -152,8 +154,13 @@ function MomentEmotesCell({
           )
           if (!resolved) return null
           const providerLabel = momentEmoteProviderLabel(resolved.provider)
-          const href = momentEmoteExternalUrl(resolved.name, resolved.provider)
-          return (
+          const href = momentEmoteExternalUrl(resolved.provider, resolved.id)
+          const content = resolved.imageUrl ? (
+            <PeakEmoteImage src={resolved.imageUrl} name={resolved.name} />
+          ) : (
+            <span aria-hidden="true">{initial(resolved.name)}</span>
+          )
+          return href ? (
             <a
               key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
               className={`pulse-moments__peak-emote${resolved.imageUnavailable ? ' pulse-moments__peak-emote--text-only' : ''}`}
@@ -164,12 +171,16 @@ function MomentEmotesCell({
               aria-label={`${resolved.name} on ${providerLabel} (opens in new tab)`}
               onClick={(event) => event.stopPropagation()}
             >
-              {resolved.imageUrl ? (
-                <PeakEmoteImage src={resolved.imageUrl} name={resolved.name} />
-              ) : (
-                <span aria-hidden="true">{initial(resolved.name)}</span>
-              )}
+              {content}
             </a>
+          ) : (
+            <span
+              key={`${emote.provider ?? 'emote'}-${emote.name}-${index}`}
+              className={`pulse-moments__peak-emote${resolved.imageUnavailable ? ' pulse-moments__peak-emote--text-only' : ''}`}
+              title={`${momentEmoteTitle(resolved)} · Provider link unavailable`}
+            >
+              {content}
+            </span>
           )
         })}
       </span>
@@ -181,8 +192,8 @@ function MomentEmotesCell({
     const resolved = resolveMomentEmote(moment, lookup ?? new Map())
     if (resolved) {
       const providerLabel = momentEmoteProviderLabel(resolved.provider)
-      const href = momentEmoteExternalUrl(resolved.name, resolved.provider)
-      return (
+      const href = momentEmoteExternalUrl(resolved.provider, resolved.id)
+      return href ? (
         <a
           className="pulse-moments__emote-chip pulse-moments__emote-chip--link"
           href={href}
@@ -194,6 +205,10 @@ function MomentEmotesCell({
         >
           {resolved.name}
         </a>
+      ) : (
+        <span className="pulse-moments__emote-chip" title={`${momentEmoteTitle(resolved)} · Provider link unavailable`}>
+          {resolved.name}
+        </span>
       )
     }
   }
@@ -234,24 +249,22 @@ function VodTimeCell({
   compact?: boolean
   timeLabel?: string
 }) {
-  const resolvedVodId = moment.vodId ?? vodId
   const label = timeLabel ?? formatOffsetLabel(moment.offsetSeconds)
   const className = compactLayout ? 'pulse-moments__peak-time' : 'pulse-moments__vod-pill'
-  if (resolvedVodId) {
+  const discoveryMoment = fromHubMoment({ ...moment, vodId: moment.vodId ?? vodId })
+  if (discoveryMoment) {
     return (
-      <a
+      <Link
         className={className}
-        href={buildVodTimestampUrl(resolvedVodId, moment.offsetSeconds)}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={`Jump to VOD at ${label}`}
+        to={discoveryMomentHref(discoveryMoment)}
+        title={`Review moment at ${label}`}
         onClick={(event) => {
           event.stopPropagation()
           onSelect?.(moment)
         }}
       >
         {label}
-      </a>
+      </Link>
     )
   }
   if (moment.href) {
@@ -282,39 +295,6 @@ function VodTimeCell({
   )
 }
 
-function handlePulseRowClick(event: MouseEvent, moment: FigmaMomentRow, onSelect?: (moment: FigmaMomentRow) => void) {
-  const target = event.target as HTMLElement
-  if (target.closest('a, button')) return
-  onSelect?.(moment)
-}
-
-function handlePulseRowKeyDown(
-  event: KeyboardEvent,
-  index: number,
-  moments: FigmaMomentRow[],
-  onSelect: ((moment: FigmaMomentRow) => void) | undefined,
-  setFocusIndex: (index: number) => void,
-  rowRefs: MutableRefObject<Array<HTMLTableRowElement | null>>,
-) {
-  if (event.key === 'ArrowDown') {
-    event.preventDefault()
-    const next = Math.min(index + 1, moments.length - 1)
-    setFocusIndex(next)
-    rowRefs.current[next]?.focus({ preventScroll: true })
-    return
-  }
-  if (event.key === 'ArrowUp') {
-    event.preventDefault()
-    const prev = Math.max(index - 1, 0)
-    setFocusIndex(prev)
-    rowRefs.current[prev]?.focus({ preventScroll: true })
-    return
-  }
-  if (event.key !== 'Enter' && event.key !== ' ') return
-  event.preventDefault()
-  onSelect?.(moments[index]!)
-}
-
 function PulseLiveMomentList({
   moments,
   selectedKey,
@@ -332,14 +312,13 @@ function PulseLiveMomentList({
   const [focusIndex, setFocusIndex] = useState(0)
 
   useEffect(() => {
-    if (selectedKey) {
-      const selectedIndex = moments.findIndex((moment) => momentRowKey(moment) === selectedKey)
-      if (selectedIndex >= 0) setFocusIndex(selectedIndex)
-      return
-    }
-    if (selectedOffset != null) {
-      const selectedIndex = moments.findIndex((moment) => moment.offsetSeconds === selectedOffset)
-      if (selectedIndex >= 0) setFocusIndex(selectedIndex)
+    const selectedIndex = moments.findIndex((moment) =>
+      selectedKey ? momentRowKey(moment) === selectedKey : selectedOffset != null && moment.offsetSeconds === selectedOffset,
+    )
+    if (selectedIndex >= 0) {
+      setFocusIndex(selectedIndex)
+    } else {
+      setFocusIndex((index) => Math.min(index, Math.max(moments.length - 1, 0)))
     }
   }, [moments, selectedKey, selectedOffset])
 
@@ -388,24 +367,37 @@ function PulseLiveMomentList({
                     rowRefs.current[index] = node
                   }}
                   data-moment-row
-                  tabIndex={index === focusIndex ? 0 : -1}
                   aria-selected={active}
-                  className={`pulse-moments__peak-row${active ? ' is-active' : ''}${emoteMatch ? ' is-emote-plotted' : ''}${momentHasEmoteRollups(moment) ? ' has-emotes' : ''}`}
-                  onClick={(event) => handlePulseRowClick(event, moment, onSelect)}
-                  onKeyDown={(event) => handlePulseRowKeyDown(event, index, moments, onSelect, setFocusIndex, rowRefs)}
+                  tabIndex={index === focusIndex ? 0 : -1}
+                  onClick={() => onSelect?.(moment)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      const next = Math.max(0, Math.min(index + (event.key === 'ArrowDown' ? 1 : -1), moments.length - 1))
+                      setFocusIndex(next)
+                      rowRefs.current[next]?.focus({ preventScroll: true })
+                      return
+                    }
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      onSelect?.(moment)
+                    }
+                  }}
                   onFocus={() => setFocusIndex(index)}
+                  className={`pulse-moments__peak-row${active ? ' is-active' : ''}${emoteMatch ? ' is-emote-plotted' : ''}${momentHasEmoteRollups(moment) ? ' has-emotes' : ''}`}
                 >
-                  <td className="pulse-moments__peak-rank">#{index + 1}</td>
-                  <td>
+                  <td className="pulse-moments__peak-rank" data-label="Rank">#{index + 1}</td>
+                  <td data-label="Channel">
                     <ChannelCell moment={moment} fallback={channel} liveLogins={liveLogins} compact showGame={false} />
                   </td>
-                  <td className="pulse-moments__peak-category" title={categoryLabel}>
+                  <td className="pulse-moments__peak-category" title={categoryLabel} data-label="Category">
                     {categoryLabel}
                   </td>
-                  <td>
+                  <td data-label="Time">
                     <VodTimeCell moment={moment} vodId={moment.vodId} onSelect={onSelect} compact timeLabel={timeLabel} />
                   </td>
-                  <td>
+                  <td data-label="Moment">
                     <div className="pulse-moments__peak-moment">
                       <span className="pulse-moments__peak-label" title={moment.label}>
                         {moment.label}
@@ -416,22 +408,25 @@ function PulseLiveMomentList({
                   <td
                     className={`pulse-moments__peak-chat pulse-moments__num${chatLabel === '—' ? ' pulse-moments__peak-chat--flat' : ''}`}
                     title={formatChatRate(moment.chatPerMin)}
+                    data-label="Chat/min"
                   >
                     {chatLabel}
                   </td>
                   <td
                     className={`pulse-moments__peak-emotes-rate pulse-moments__num${emotesLabel === '—' ? ' pulse-moments__peak-emotes-rate--flat' : ''}`}
                     title={emotesPerMin != null ? formatEmoteRateCompact(emotesPerMin).replace('/m', '/min emote uses') : 'Emote rate unavailable for this minute'}
+                    data-label="Emotes/min"
                   >
                     {emotesLabel}
                   </td>
                   <td
                     className={`pulse-moments__peak-viewers pulse-moments__num${viewerCell.muted ? ' pulse-moments__peak-viewers--flat' : ''}`}
                     title={viewerCell.title}
+                    data-label="Viewers"
                   >
                     {viewerCell.text}
                   </td>
-                  <td>
+                  <td data-label="Top emotes">
                     <MomentEmotesCell moment={moment} lookup={emoteLookup} />
                   </td>
                 </tr>
@@ -512,10 +507,20 @@ export function MostReactedMinutesTable({
               momentTopEmoteCode(moment).toLowerCase() === plottedEmoteCode.trim().toLowerCase()
             const emote = resolveMomentEmote(moment, emoteLookup ?? new Map())
             const emoteName = emote?.name ?? moment.topEmoteCode ?? '—'
+            const emoteHref = emote ? momentEmoteExternalUrl(emote.provider, emote.id) : null
             return (
               <tr
                 key={moment.offsetSeconds}
                 className={`${active ? 'is-active' : ''}${emoteMatch ? ' is-emote-plotted' : ''}`.trim() || undefined}
+                tabIndex={0}
+                onClick={() => onSelect?.(moment)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onSelect?.(moment)
+                  }
+                }}
               >
                 <td>
                   <VodTimeCell moment={moment} vodId={vodId} onSelect={onSelect} />
@@ -526,16 +531,18 @@ export function MostReactedMinutesTable({
                 <td>{formatEmoteRateCompact(resolveMomentEmotesPerMin(moment))}</td>
                 <td>{formatMomentViewers(resolveMomentViewers(moment, liveChannels))}</td>
                 <td>
-                  {emoteName !== '—' ? (
+                  {emoteName !== '—' && emoteHref ? (
                     <a
                       className="pulse-moments__emote-chip pulse-moments__emote-chip--link pulse-moments__emote-chip--text-only"
-                      href={momentEmoteExternalUrl(emoteName, emote?.provider)}
+                      href={emoteHref}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(event) => event.stopPropagation()}
                     >
                       {emoteName}
                     </a>
+                  ) : emoteName !== '—' ? (
+                    <span className="pulse-moments__emote-chip pulse-moments__emote-chip--text-only">{emoteName}</span>
                   ) : (
                     '—'
                   )}

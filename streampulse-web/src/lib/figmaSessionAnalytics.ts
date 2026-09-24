@@ -1,13 +1,20 @@
 import { buildAnalyticsHref } from './analyticsLinks'
 import { apiClient } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
+import type { LiveWireMomentComparison } from './liveWire'
 import type { HubFeaturedCoverageRow, HubFeaturedSession, PublicHub } from './publicHub'
-import { formatStreamOffset } from './streamcloneAnalytics'
+import { formatStreamOffset } from './formatStreamOffset'
 import { PORTAL_MINUTES_TIMEOUT_MS } from './timelineDownsample'
 
 export type FigmaSessionState = 'loading' | 'empty' | 'ready'
 
 export interface FigmaMomentRow {
+  /** Stable public identity, distinct from the source stream or a private clip candidate. */
+  publicMomentId?: string
+  /** Server-issued eligible candidate reference; never derive it from publicMomentId. */
+  handoffRef?: string
+  /** Validated, backend-owned evidence; the presenter must not recompute a baseline. */
+  comparison?: LiveWireMomentComparison
   offsetSeconds: number
   /** Wall-clock peak time (unix ms) when known — used for cross-channel feed sort. */
   at?: number
@@ -21,7 +28,7 @@ export interface FigmaMomentRow {
   viewers?: number
   viewerDelta?: string
   topEmoteCode?: string
-  topEmotes?: Array<{ name: string; provider?: string; count?: number; imageUrl?: string; sharePct?: number }>
+  topEmotes?: Array<{ id?: string; name: string; provider?: string; count?: number; imageUrl?: string; sharePct?: number }>
   confidence?: number
   vodState?: string
   href?: string
@@ -31,6 +38,9 @@ export interface FigmaMomentRow {
   streamId?: string
   vodId?: string
   category?: string
+  categoryId?: string
+  boxArtUrl?: string
+  categoryMetadataRejected?: true
   streamStartedAt?: number
   activityTag?: string
 }
@@ -48,6 +58,7 @@ export interface FigmaChartPoint {
 }
 
 export interface FigmaEmoteBurst {
+  id?: string
   code: string
   provider?: string
   imageUrl?: string
@@ -97,7 +108,7 @@ export interface PortalPeak {
   viewerDelta?: string
   confidence?: number
   vodState?: string
-  topEmotes?: Array<{ name: string; count: number; provider?: string; imageUrl?: string }>
+  topEmotes?: Array<{ id?: string; name: string; count: number; provider?: string; imageUrl?: string }>
 }
 
 export interface PortalCoverageTruthResponse {
@@ -186,6 +197,9 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
         ? buildAnalyticsHref({ login, offsetSeconds: moment.offsetSeconds })
         : undefined
   return {
+    publicMomentId: moment.publicMomentId,
+    handoffRef: moment.handoffRef,
+    comparison: moment.comparison,
     offsetSeconds: moment.offsetSeconds,
     score: moment.score,
     label: moment.label,
@@ -197,6 +211,7 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     viewerDelta: moment.viewerDelta,
     topEmoteCode: moment.topEmoteCode,
     topEmotes: moment.topEmotes?.map((emote) => ({
+      id: emote.id,
       name: emote.name,
       provider: emote.provider,
       count: emote.count,
@@ -212,6 +227,9 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     vodId: moment.vodId,
     at: moment.at,
     category: moment.category,
+    categoryId: moment.categoryId,
+    boxArtUrl: moment.boxArtUrl,
+    categoryMetadataRejected: moment.categoryMetadataRejected,
     streamStartedAt: moment.streamStartedAt,
     activityTag: moment.activityTag,
     href:
@@ -269,6 +287,7 @@ function featuredFallbackMoments(hub: PublicHub): FigmaMomentRow[] {
     viewerDelta: moment.viewerDelta,
     topEmoteCode: moment.topEmoteCode,
     topEmotes: moment.topEmotes?.map((emote) => ({
+      id: emote.id,
       name: emote.name,
       provider: emote.provider,
       count: emote.count,
@@ -311,6 +330,7 @@ function hubMomentsFallback(hub: PublicHub): FigmaMomentRow[] {
         profileImageUrl: live?.profileImageUrl,
         streamId: moment.streamId,
         topEmotes: moment.topEmotes?.map((emote) => ({
+          id: emote.id,
           name: emote.name,
           provider: emote.provider,
           count: emote.count,
@@ -399,6 +419,7 @@ export function mapFeaturedSession(featured: HubFeaturedSession): FigmaSessionVi
       viewerDelta: moment.viewerDelta,
       topEmoteCode: moment.topEmoteCode,
       topEmotes: moment.topEmotes?.map((emote) => ({
+        id: emote.id,
         name: emote.name,
         provider: emote.provider,
         count: emote.count,
@@ -648,6 +669,7 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
       viewerDelta: peak.viewerDelta,
       topEmoteCode: peak.topEmotes?.[0]?.name,
       topEmotes: peak.topEmotes?.map((emote) => ({
+        id: emote.id,
         name: emote.name,
         provider: emote.provider,
         count: emote.count,
@@ -662,6 +684,7 @@ export async function fetchPortalSessionViewModel(streamId: string, login?: stri
     chartPoints: chartFromMinutes,
     bursts: peaks.flatMap((peak) =>
       (peak.topEmotes ?? []).slice(0, 1).map((emote) => ({
+        id: emote.id,
         code: emote.name,
         provider: emote.provider,
         imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
@@ -707,6 +730,6 @@ export function formatOffsetLabel(seconds: number): string {
 
 export function buildVodTimestampUrl(vodId: string, offsetSeconds: number): string {
   const base = `https://www.twitch.tv/videos/${vodId}`
-  if (offsetSeconds <= 0) return base
+  if (!Number.isFinite(offsetSeconds) || offsetSeconds < 0) return base
   return `${base}?t=${Math.max(0, Math.floor(offsetSeconds))}s`
 }

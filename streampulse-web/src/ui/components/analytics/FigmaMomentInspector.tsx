@@ -1,10 +1,9 @@
 import { Fragment, useId, type ReactNode } from 'react'
-import { BarChart3, Info } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { analyticsActionLabel } from '../../../lib/analyticsLinks'
 import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import type { HubEmote, HubLiveChannel } from '../../../lib/publicHub'
-import { buildVodTimestampUrl } from '../../../lib/figmaSessionAnalytics'
+import { discoveryMomentHref, fromHubMoment } from '../../../lib/discoveryMoments'
 import {
   momentActivityBadge,
   momentHasEmoteRollups,
@@ -21,6 +20,7 @@ import { compact } from './hubFormat'
 import { formatChatRate, formatMomentViewersLabel, formatReactionScore, REACTION_SCORE_TOOLTIP } from '../../../lib/momentMetricLabels'
 import type { MomentChannelContext } from './MostReactedMinutesTable'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
+import { MomentHandoffActions } from './MomentHandoffActions'
 
 export interface FigmaMomentInspectorProps {
   moment?: FigmaMomentRow | null
@@ -179,14 +179,13 @@ export function FigmaMomentInspector({
         aria-label={labels.inspector}
       >
         <header><h3>{labels.inspector}</h3></header>
-        <p className="muted">Select a reacted minute to inspect backend scoring and VOD jump targets.</p>
+        <p className="muted">Select a moment to inspect its measured activity and available replay actions.</p>
       </aside>
     )
   }
 
-  const resolvedVodId = moment.vodId ?? vodId
-  const vodHref = resolvedVodId ? buildVodTimestampUrl(resolvedVodId, moment.offsetSeconds) : undefined
-  const vodPartial = (moment.vodState ?? '').toLowerCase() === 'partial'
+  const reviewMoment = fromHubMoment({ ...moment, vodId: moment.vodId ?? vodId })
+  const reviewHref = reviewMoment ? discoveryMomentHref(reviewMoment) : undefined
   const openMomentHref = momentHref ?? moment.href
   const vodStateDisplay = vodStateLabel(moment.vodState, channelLive)
   const timeLabel = momentWallClockLabel(moment, liveChannels)
@@ -200,6 +199,7 @@ export function FigmaMomentInspector({
       <header className="pulse-moments__inspector-head pulse-moments__inspector-head--split">
         <div className="pulse-moments__inspector-head-main">
           <h3>{labels.inspector}</h3>
+          {isLive && moment.login ? <p className="pulse-moments__inspector-creator">{moment.displayName || moment.login}</p> : null}
           <p className="pulse-moments__inspector-moment-head">
             <strong>{moment.label}</strong>
             {category ? <span className="pulse-moments__inspector-game"> · {category}</span> : null}
@@ -238,27 +238,23 @@ export function FigmaMomentInspector({
       ) : null}
 
       <div className={`figma-inspector__actions${isLive ? ' pulse-moments__inspector-actions--compact' : ''}`}>
-        {openMomentHref ? (
-          <Link className="hub-openbtn" to={openMomentHref}>
-            View moment
+        {reviewHref ? (
+          <Link className="hub-openbtn" to={reviewHref}>
+            Review moment
           </Link>
         ) : null}
-        {vodHref ? (
-          <a className="hub-openbtn hub-openbtn--ghost" href={vodHref} target="_blank" rel="noreferrer">
-            {vodPartial ? 'Jump to partial VOD' : 'Jump to VOD'}
-          </a>
-        ) : (
-          <span className="hub-openbtn hub-openbtn--disabled" aria-disabled="true">
-            {channelLive === false ? 'No VOD indexed yet' : 'Live tracking only'}
-          </span>
-        )}
-        {sessionHref ? (
-          <Link className="hub-openbtn hub-openbtn--accent" to={sessionHref}>
-            <BarChart3 size={13} strokeWidth={2.25} aria-hidden="true" />
-            {analyticsActionLabel('recent-session')}
+        {openMomentHref || sessionHref ? (
+          <Link className="hub-openbtn hub-openbtn--ghost" to={(openMomentHref || sessionHref)!}>
+            Open analytics
           </Link>
+        ) : null}
+        {!reviewHref && !openMomentHref && !sessionHref ? (
+          <span className="hub-openbtn hub-openbtn--disabled" aria-disabled="true">
+            {channelLive === true ? 'Moment identity pending' : 'Moment unavailable'}
+          </span>
         ) : null}
       </div>
+      <MomentHandoffActions key={`${moment.streamId}:${moment.offsetSeconds}`} moment={moment} />
     </aside>
   )
 }

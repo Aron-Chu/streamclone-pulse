@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { InspectorReveal } from './InspectorReveal';
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import {
   bucketMinutes,
@@ -11,7 +12,7 @@ import {
   hubActivityHonestyEmptyCopy,
   hubActivityContractIssues,
   hubActivityPointsWithinServedWindow,
-  isHubActivityHealthyHistoricalProjection,
+  isHubActivityHistoricalProjection,
   isHubActivityLivePoolFallback,
   resolveHubActivityChartWindowMinutes,
 } from "../../../lib/hubActivityHonesty";
@@ -104,7 +105,7 @@ export function ChartSourceBanner({
   className?: string;
 }) {
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
-  const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
+  const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
   const windowLabel = formatHubActivityServedLabel(hub.activity);
   const requestedWindowLabel = formatActivityWindowLabel(
     Math.max(1, hub.activity.windowMinutes || 30),
@@ -125,7 +126,7 @@ export function ChartSourceBanner({
         <strong>Source:</strong>{" "}
         {livePoolFallback
           ? "Live pool fallback (recent only)"
-          : healthyProjection
+          : historicalProjection
             ? "Historical projection"
             : "Legacy/unspecified activity source"}
       </span>
@@ -133,7 +134,7 @@ export function ChartSourceBanner({
         <strong>Window:</strong>{" "}
         {livePoolFallback
           ? `${requestedWindowLabel} requested · ${availableWindowLabel} available`
-          : healthyProjection
+          : historicalProjection
             ? `last ${windowLabel}`
             : `served ${windowLabel}`}
       </span>
@@ -179,6 +180,7 @@ export interface FigmaGlobalActivityPanelProps {
   suggestions: HubSuggestion[];
   topEmotes?: HubEmote[];
   loading?: boolean;
+  unavailable?: boolean;
   rangeControl?: HubActivityRangeControl;
   livePulseSource?:
     | "network"
@@ -213,6 +215,8 @@ export interface FigmaGlobalActivityPanelProps {
   accentBucketT?: number | null;
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
+  /** Fresh Live Wire breakouts mounted directly above the chart they control. */
+  annotationLane?: ReactNode;
 }
 
 function formatPeakTime(ts: number): string {
@@ -231,6 +235,7 @@ export function FigmaGlobalActivityPanel({
   suggestions,
   topEmotes = [],
   loading,
+  unavailable = false,
   rangeControl,
   livePulseSource = "empty",
   chartBucketSelectEnabled = false,
@@ -250,15 +255,16 @@ export function FigmaGlobalActivityPanel({
   accentBucketT = null,
   selectedMomentKey = null,
   onSelectMoment,
+  annotationLane,
 }: FigmaGlobalActivityPanelProps) {
   const labels = useCommandCenterLabels();
-  const { transitionInspector, fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
+  const { fadeThemeCenter, motionEnabled } = useAnalyticsMotion();
   const inspectorRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const prevWindowKeyRef = useRef(activityWindowKey);
   const livePoolFallback = isHubActivityLivePoolFallback(hub.activity);
-  const healthyProjection = isHubActivityHealthyHistoricalProjection(hub.activity);
+  const historicalProjection = isHubActivityHistoricalProjection(hub.activity);
   const servedLabel = formatHubActivityServedLabel(hub.activity);
   const honestyDetail = hubActivityHonestyDetail(hub.activity);
   const honestyEmpty = hubActivityHonestyEmptyCopy(hub.activity);
@@ -339,8 +345,10 @@ export function FigmaGlobalActivityPanel({
   }, [onBucketHover, selectedBucketT]);
 
   useEffect(() => {
-    const bucketFocused = selectedBucketT != null || hoverBucketT != null;
-    if (!bucketFocused) return;
+    // Pinned investigation survives actions in Live Wire and the moment list.
+    // Dismissing it on pointer-down shifts layout before those controls receive
+    // pointer-up, losing clicks as well as the user's selection.
+    if (selectedBucketT != null || hoverBucketT == null) return;
 
     const onPointerDown = (event: PointerEvent) => {
       const chartArea = chartAreaRef.current;
@@ -385,7 +393,7 @@ export function FigmaGlobalActivityPanel({
     : activityContractIssue;
   const chartState = loading
     ? "loading"
-    : blockingActivityContractIssue
+    : unavailable || blockingActivityContractIssue
       ? "unavailable"
     : chartModel.chartState === "ready"
       ? livePoolFallback
@@ -419,21 +427,19 @@ export function FigmaGlobalActivityPanel({
     onBucketHover?.(hoverBucketT);
   }, [hoverBucketT, onBucketHover, selectedPoint]);
 
-  const prevSelectedTRef = useRef<number | null>(null);
-
+  // On touch layouts the inspector stacks below a tall chart: bring a newly
+  // tapped bucket's summary into view instead of changing content off-screen.
   useEffect(() => {
-    const nextT = selectedPoint?.t ?? null;
-    if (nextT == null) {
-      prevSelectedTRef.current = null;
-      return;
-    }
-    if (prevSelectedTRef.current === nextT) return;
-    prevSelectedTRef.current = nextT;
-    const chrome = inspectorRef.current?.querySelector(
-      ".activity-bucket-inspector__chrome",
-    );
-    transitionInspector(chrome instanceof HTMLElement ? chrome : null);
-  }, [selectedPoint?.t, transitionInspector]);
+    if (selectedBucketT == null || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    if (!window.matchMedia("(hover: none) and (pointer: coarse)").matches) return;
+    const inspector = inspectorRef.current;
+    if (!inspector) return;
+    const stickyHeader = document.querySelector<HTMLElement>(".analytics-topnav")?.getBoundingClientRect().height ?? 0;
+    const rect = inspector.getBoundingClientRect();
+    if (rect.top >= stickyHeader && rect.top < window.innerHeight - 120) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: window.scrollY + rect.top - stickyHeader - 8, behavior: reducedMotion ? "auto" : "smooth" });
+  }, [selectedBucketT]);
 
   useEffect(() => {
     if (!activityWindowKey || !motionEnabled) return;
@@ -448,6 +454,13 @@ export function FigmaGlobalActivityPanel({
         livePulseSource === "legacy_fallback"
       ? "Chart clicks don't filter fallback moments — open a channel session for chart-to-moment. In-progress bucket omitted from chart."
       : "Hover for bucket totals. Tracked chat only (not all of Twitch). In-progress bucket omitted from chart.";
+  const measurementSummary = unavailable
+    ? "Network measurements are unavailable. This is not evidence of an empty or inactive tracking pool."
+    : livePoolFallback
+      ? `Showing ${servedLabel} of measured tracked-network activity. Viewer peaks use tracked channels; chat and emote rates use the live IRC collection pool.`
+      : historicalProjection
+        ? `Showing the measured ${servedLabel} historical projection for tracked channels; sparse buckets remain visible as gaps.`
+        : `Showing the served ${servedLabel} tracked-network measurement. Historical projection provenance is not confirmed.`;
 
   return (
     <section
@@ -466,19 +479,7 @@ export function FigmaGlobalActivityPanel({
             <HubFreshnessCaption updatedAgo={updatedAgo} className="figma-global-activity__freshness" />
           ) : null}
         </div>
-        <p className="figma-global-activity__lede muted">
-          {livePoolFallback
-            ? `Network viewer peaks from tracked channels — ${servedLabel}. Chat and emote lines come from the live tracking pool; full requested history is not available.`
-            : healthyProjection
-              ? `Network viewer peaks from tracked channels — last ${windowLabel}. Chat and emote lines come from the historical projection.`
-              : `Network viewer peaks from tracked channels — served ${servedLabel}. Historical projection provenance has not been confirmed.`}
-        </p>
-        <p className="figma-global-activity__lede muted">{hubMetricLegend(hub)}</p>
-        <ActivityViewerSanityBanner
-          hub={hub}
-          chartPeakViewers={peakViewers}
-          chartWindowMinutes={chartInputs.windowMinutes}
-        />
+        <p className="figma-global-activity__lede muted">{measurementSummary}</p>
         {peakViewersAt != null && peakViewers > 0 ? (
           <div className="figma-global-activity__peak-row" role="group" aria-label="Peak summary">
             <span className="figma-global-activity__peak-stat">
@@ -504,8 +505,30 @@ export function FigmaGlobalActivityPanel({
             ) : null}
           </div>
         ) : null}
-        <ActivityHonestyChip hub={hub} />
-        <CollectorHealthChip hub={hub} />
+        <details className="figma-global-activity__measurement-details">
+          <summary>Measurement and coverage details</summary>
+          {!unavailable ? <p>{hubMetricLegend(hub)}</p> : null}
+          <ActivityViewerSanityBanner
+            hub={hub}
+            chartPeakViewers={peakViewers}
+            chartWindowMinutes={chartInputs.windowMinutes}
+          />
+          <div className="figma-global-activity__measurement-statuses">
+            <ActivityHonestyChip hub={hub} />
+            <CollectorHealthChip hub={hub} />
+          </div>
+          <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
+            {unavailable ? 'Measurement window unavailable.' : fallbackPayloadRepaired
+              ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
+              : blockingActivityContractIssue
+              ? `Activity payload withheld: ${blockingActivityContractIssue}.`
+              : livePoolFallback
+              ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
+              : `Showing served ${servedLabel}.`}
+          </p>
+          {honestyDetail ? <p>{honestyDetail}</p> : null}
+          {!unavailable ? <p>{chartNote}</p> : null}
+        </details>
       </div>
       {showSearch ? (
       <div
@@ -521,8 +544,7 @@ export function FigmaGlobalActivityPanel({
       </div>
       ) : null}
       <p className="figma-global-activity__chart-note" role="note">
-        {livePoolFallback && honestyDetail ? `${honestyDetail} ` : null}
-        {chartNote}
+        {unavailable ? 'Chart interaction is unavailable until a measured snapshot loads.' : 'In-progress bucket omitted.'}
         {activityRefreshing ? (
           <span className="figma-global-activity__chart-refresh" role="status">
             {" "}
@@ -530,16 +552,11 @@ export function FigmaGlobalActivityPanel({
           </span>
         ) : null}
       </p>
-      <p className="figma-global-activity__served-window" data-testid="hub-activity-served-window" role="status">
-        {fallbackPayloadRepaired
-          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; older fallback rows were discarded because historical projection is unavailable.`
-          : blockingActivityContractIssue
-          ? `Activity payload withheld: ${blockingActivityContractIssue}.`
-          : livePoolFallback
-          ? `${requestedWindowLabel} requested · ${availableWindowLabel} available; historical projection is unavailable.`
-          : `Showing served ${servedLabel}.`}
-      </p>
-      <div className="figma-global-activity__body" ref={bodyRef}>
+      <div
+        className="figma-global-activity__body"
+        data-inspector-active={Boolean(selectedPoint)}
+        ref={bodyRef}
+      >
         <div
           className="figma-global-activity__chart-col"
           ref={chartAreaRef}
@@ -563,24 +580,23 @@ export function FigmaGlobalActivityPanel({
                   : activitySummary.footnote
               }
               rangeControl={rangeControl}
-              emptyTitle={honestyEmpty?.title}
-              emptyDescription={honestyEmpty?.description}
+              annotationLane={annotationLane}
+              emptyTitle={unavailable ? 'Measured activity unavailable' : honestyEmpty?.title}
+              emptyDescription={unavailable ? 'The hub could not supply a measured snapshot. This is not evidence of an empty or inactive pool.' : honestyEmpty?.description}
               selectedBucketT={selectedBucketT}
               accentBucketT={selectedBucketT == null ? accentBucketT : null}
+              providerTotalsComplete={hub.activity.providerTotalsComplete === true}
               onBucketSelect={
                 chartBucketSelectEnabled ? onBucketSelect : undefined
               }
-              onBucketHover={
-                selectedBucketT == null && !hasLinkedMoment
-                  ? handleBucketHover
-                  : undefined
-              }
+              onBucketHover={undefined}
               emoteImages={emoteImages}
             />
           </div>
         </div>
-        <div className="figma-global-activity__inspector" ref={inspectorRef}>
-          <ActivityBucketInspector
+        <div className="figma-global-activity__inspector" data-active={Boolean(selectedPoint)} ref={inspectorRef}>
+          <InspectorReveal open={Boolean(selectedPoint)}>
+            <ActivityBucketInspector
             rangeEmotes={topEmotes}
             bucketMomentEmotes={bucketMomentEmotes}
             bucketMoments={bucketMoments}
@@ -591,13 +607,16 @@ export function FigmaGlobalActivityPanel({
             emoteIntel={hub.emoteIntel}
             topEmoteName={topEmotes[0]?.name}
             selectedPoint={selectedPoint}
-            hoverPoint={hoverPoint}
+            hoverPoint={null}
             linkedMoment={linkedMoment}
             onClearLinkedMoment={onClearLinkedMoment}
             bucketLocked={selectedBucketT != null}
+            onClearBucket={clearBucketFocus}
+            providerTotalsComplete={hub.activity.providerTotalsComplete === true}
             liveChannels={liveChannels}
             className="figma-global-activity__inspector-panel"
           />
+          </InspectorReveal>
         </div>
       </div>
     </section>

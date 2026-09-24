@@ -75,6 +75,23 @@ export function isLocalDevBackendUrl(url: string): boolean {
   }
 }
 
+/**
+ * The shareable `?spBackend=` convenience is intentionally narrower than the
+ * explicit Setup/custom-endpoint field. It is only for a local fixture or
+ * local BFF and must be an origin, so a link cannot repoint a dev page at an
+ * arbitrary remote server before the app starts making credentialed calls.
+ */
+export function isAllowedDevBackendQueryOverride(url: string): boolean {
+  const trimmed = url.trim()
+  if (!trimmed || !isLocalDevBackendUrl(trimmed)) return false
+  try {
+    const parsed = new URL(trimmed)
+    return !parsed.username && !parsed.password && parsed.pathname === '/' && !parsed.search && !parsed.hash
+  } catch {
+    return false
+  }
+}
+
 /** True when `npm run dev:local` (or env) explicitly opts into localhost :8081. */
 export function allowsExplicitLocalBackend(): boolean {
   return import.meta.env.DEV && import.meta.env.VITE_ALLOW_LOCAL_BACKEND === '1'
@@ -95,9 +112,18 @@ export function resolvePortalDefaultBackendUrl(opts?: {
 
 export const DEFAULT_BACKEND_URL = resolvePortalDefaultBackendUrl()
 
-/** Drop stale session overrides that pointed at local backend from older portal builds. */
+/**
+ * Drop stale session overrides that pointed at local backend from older portal builds.
+ *
+ * Honours the same explicit opt-in as `getBackendUrlOverride` and
+ * `setBackendUrlOverride`: with `VITE_ALLOW_LOCAL_BACKEND=1` a local override is
+ * intentional and must survive startup. Without that guard this cleared the
+ * override before the first request, so the documented local-backend workflow
+ * silently fell back to the hosted API.
+ */
 export function clearStaleLocalBackendOverride(): void {
   if (import.meta.env.PROD) return
+  if (allowsExplicitLocalBackend()) return
   try {
     const value = sessionStorage.getItem(BACKEND_OVERRIDE_KEY)?.trim()
     if (value && isLocalDevBackendUrl(value)) {

@@ -10,8 +10,9 @@ export interface HubActivityMomentAnnotationsProps {
   selectedAnnotationKey?: string | null
 }
 
-const STAMP_HEIGHT = 14
-const STAMP_WIDTH = 26
+// Six uppercase characters at the 12px readability floor need roughly 44px.
+const STAMP_HEIGHT = 18
+const STAMP_WIDTH = 48
 
 export const HubActivityMomentAnnotations = memo(function HubActivityMomentAnnotations({
   annotations,
@@ -78,8 +79,8 @@ export const HubActivityMomentAnnotations = memo(function HubActivityMomentAnnot
                   />
                   <text
                     x={x}
-                    y={14}
-                    fontSize={8}
+                    y={17}
+                    fontSize={12}
                     textAnchor="middle"
                     className="hx-moment-stamp__label"
                   >
@@ -119,7 +120,7 @@ export const HubActivityMomentAnnotations = memo(function HubActivityMomentAnnot
               <text
                 x={x + STAMP_WIDTH / 2 + 4}
                 y={height - STAMP_HEIGHT / 2 - 4}
-                fontSize={9}
+                fontSize={12}
                 className="hx-moment-stamp__label"
               >
                 {a.channelName}

@@ -1,9 +1,8 @@
 import { mapHubPulseMoment } from './figmaSessionAnalytics'
-import { getBackendUrl } from './apiClient'
+import { getBackendUrl, isApiError, type ApiError } from './apiClient'
 import {
   bucketMomentsCacheKey,
   hasBucketMomentsCache,
-  readBucketMomentsCache,
   writeBucketMomentsCache,
 } from './bucketMomentsCache'
 import { activityBucketMs } from './hubActivitySummary'
@@ -24,6 +23,7 @@ export interface RequestHubBucketMomentsOptions {
 }
 
 const inFlight = new Map<string, Promise<PublicHubMomentsResponse>>()
+const backoff = new Map<string, { until: number; error: ApiError }>()
 
 function dedupeKey(bucketT: number, activityWindow: PublicHubActivityWindow): string {
   return bucketMomentsCacheKey(bucketT, activityWindow, getBackendUrl())
@@ -41,17 +41,28 @@ export function adjacentBucketTs(
 async function fetchOneBucket(
   bucketT: number,
   activityWindow: PublicHubActivityWindow,
-  signal?: AbortSignal,
 ): Promise<PublicHubMomentsResponse> {
   const key = dedupeKey(bucketT, activityWindow)
   const pending = inFlight.get(key)
   if (pending) return pending
+  const origin = getBackendUrl()
+  const cooldown = backoff.get(origin)
+  if (cooldown && cooldown.until > Date.now()) throw { ...cooldown.error, retryAfterMs: cooldown.until - Date.now() }
+  backoff.delete(origin)
 
-  const work = fetchHistoricalHubMoments(bucketT, activityWindow, signal)
+  // The transport belongs to the shared request, never to its first consumer.
+  // apiClient supplies a bounded deadline; an abandoned consumer stops waiting.
+  const work = fetchHistoricalHubMoments(bucketT, activityWindow)
     .then((response) => {
       const rows = response.moments.map(mapHubPulseMoment)
-      writeBucketMomentsCache(bucketT, activityWindow, rows)
+      writeBucketMomentsCache(bucketT, activityWindow, rows, response)
       return response
+    })
+    .catch(error => {
+      if (isApiError(error) && error.kind === 'rate_limited') {
+        backoff.set(origin, { until: Date.now() + (error.retryAfterMs ?? 30_000), error })
+      }
+      throw error
     })
     .finally(() => {
       inFlight.delete(key)
@@ -85,10 +96,18 @@ export async function requestHubBucketMoments(
     }
   }
 
-  return fetchOneBucket(bucketT, activityWindow, signal)
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const work = fetchOneBucket(bucketT, activityWindow)
+  if (!signal) return work
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException('Aborted', 'AbortError'))
+    signal.addEventListener('abort', abort, { once: true })
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
 }
 
 /** Test-only */
 export function clearHubBucketMomentsInFlight(): void {
   inFlight.clear()
+  backoff.clear()
 }

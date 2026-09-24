@@ -11,6 +11,19 @@ export interface ResolveHubUiStateInput {
   loadSource: PublicHubLoadSource | null
 }
 
+/** Health of this measurement response, never a claim that a stream is live. */
+export function resolveHubStatus(input: ResolveHubUiStateInput): { value: string; tone: 'checking' | 'ready' | 'degraded' | 'offline' } {
+  if (!input.data) return input.loading && !input.error
+    ? { value: 'Checking', tone: 'checking' } : { value: 'Unavailable', tone: 'offline' }
+  if (input.error || !input.hubEndpointOk) return {
+    value: input.loadSource === 'stats-fallback' ? 'Limited data' : 'Stale data', tone: 'degraded',
+  }
+  if (input.loadSource === 'cache') return { value: 'Cached data', tone: 'degraded' }
+  const state = input.data.coverage.state
+  if (!['operational', 'healthy', 'ok'].includes(state)) return { value: 'Partial data', tone: 'degraded' }
+  return { value: 'Data available', tone: 'ready' }
+}
+
 export function resolveHubUiState(input: ResolveHubUiStateInput): HubUiState {
   const { loading, data, error, hubEndpointOk, loadSource } = input
 

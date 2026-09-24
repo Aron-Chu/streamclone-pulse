@@ -1,3 +1,5 @@
+import { isChannelRouteLogin } from './channelRoute'
+
 export interface PageMetadata {
   title: string
   description: string
@@ -12,16 +14,18 @@ function channelTitle(pathname: string): string | null {
   const match = pathname.match(/^\/analytics\/([^/]+)(?:\/(?:s\/)?[^/]+)?$/)
   if (!match) return null
   try {
-    const login = decodeURIComponent(match[1]).replace(/[_-]+/g, ' ').trim()
+    const rawLogin = decodeURIComponent(match[1])
+    if (!isChannelRouteLogin(rawLogin)) return null
+    const login = rawLogin.replace(/_/g, ' ').trim()
     return login ? `${login} Analytics — StreamPulse` : null
   } catch {
-    return 'Channel Analytics — StreamPulse'
+    return null
   }
 }
 
-export function resolvePageMetadata(pathname: string, search = ''): PageMetadata {
+function resolveBasePageMetadata(pathname: string): PageMetadata {
+  if (pathname.startsWith('/account/')) return { title: 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: pathname.split(/[?#]/)[0], robots: 'noindex,nofollow' }
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
-  const isFigmaPreview = new URLSearchParams(search).get('figma') === '1'
 
   switch (normalizedPath) {
     case '/':
@@ -43,6 +47,9 @@ export function resolvePageMetadata(pathname: string, search = ''): PageMetadata
         robots: 'index,follow',
       }
     case '/docs':
+    case '/docs/getting-started':
+    case '/docs/coverage':
+    case '/docs/api':
       return {
         title: 'Documentation — StreamPulse',
         description: 'Install StreamPulse, understand coverage states, and open public Twitch analytics.',
@@ -63,6 +70,12 @@ export function resolvePageMetadata(pathname: string, search = ''): PageMetadata
         canonicalPath: '/privacy',
         robots: 'index,follow',
       }
+    case '/supporter':
+      return { title: 'Pulse Supporter — StreamPulse', description: 'Optional monthly membership, cosmetics, pricing, and membership availability.', canonicalPath: normalizedPath, robots: 'index,follow' }
+    case '/terms':
+      return { title: 'Supporter Terms — StreamPulse', description: 'StreamPulse Supporter subscription terms and payment conditions.', canonicalPath: normalizedPath, robots: 'index,follow' }
+    case '/refunds':
+      return { title: 'Cancellation and Refunds — StreamPulse', description: 'Manage cancellation, paid access, and refund requests for Pulse Supporter.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/support':
       return {
         title: 'Support — StreamPulse',
@@ -71,12 +84,23 @@ export function resolvePageMetadata(pathname: string, search = ''): PageMetadata
         robots: 'index,follow',
       }
     default: {
-      if (normalizedPath.startsWith('/docs/')) {
+      if (normalizedPath === '/analytics/moments') {
+        return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
+      }
+      if (normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {
         return {
-          title: 'Documentation — StreamPulse',
-          description: 'Install StreamPulse, understand coverage states, and open public Twitch analytics.',
-          canonicalPath: '/docs',
-          robots: 'index,follow',
+          title: 'Pulse Explorer — StreamPulse',
+          description: 'Browse verified reaction activity by broadcast and inspect measured moments.',
+          canonicalPath: '/analytics/explore',
+          robots: 'noindex,nofollow',
+        }
+      }
+      if (normalizedPath === '/analytics/newsroom' || /^\/analytics\/newsroom\/[^/]+$/.test(normalizedPath)) {
+        return {
+          title: normalizedPath === '/analytics/newsroom' ? 'Moment updates — StreamPulse' : 'Moment update — StreamPulse',
+          description: 'Explore grouped Twitch moment updates with source-relative evidence and timestamped stream context.',
+          canonicalPath: normalizedPath,
+          robots: normalizedPath === '/analytics/newsroom' ? 'index,follow' : 'noindex,nofollow',
         }
       }
       const channel = channelTitle(normalizedPath)
@@ -85,7 +109,9 @@ export function resolvePageMetadata(pathname: string, search = ''): PageMetadata
           title: channel,
           description: 'Review aggregate Twitch stream activity, moments, coverage, games, and emote reactions.',
           canonicalPath: normalizedPath.replace(/\/s\//, '/'),
-          robots: isFigmaPreview ? 'noindex,nofollow' : 'index,follow',
+          // Route syntax does not prove this channel/session exists. Indexable
+          // dynamic metadata requires server-verified delivery, not a slug guess.
+          robots: 'noindex,nofollow',
         }
       }
       return {
@@ -96,4 +122,11 @@ export function resolvePageMetadata(pathname: string, search = ''): PageMetadata
       }
     }
   }
+}
+
+export function resolvePageMetadata(pathname: string, search = ''): PageMetadata {
+  const metadata = resolveBasePageMetadata(pathname)
+  return new URLSearchParams(search).get('figma') === '1'
+    ? { ...metadata, robots: 'noindex,nofollow' }
+    : metadata
 }

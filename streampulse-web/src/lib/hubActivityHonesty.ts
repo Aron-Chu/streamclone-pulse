@@ -94,6 +94,20 @@ export function isHubActivityHealthyHistoricalProjection(activity: HubActivity):
 }
 
 /**
+ * True when the backend explicitly selected the historical projection for the
+ * requested domain. This is intentionally broader than the fully-accounted
+ * health predicate above: sparse measured buckets can still be a valid
+ * historical projection and must not be relabeled as a legacy/fallback feed.
+ */
+export function isHubActivityHistoricalProjection(activity: HubActivity): boolean {
+  const requested = validWindowMinutes(activity.windowMinutes)
+  const available = validWindowMinutes(activity.availableWindowMinutes)
+  if (requested == null || available == null || available < requested) return false
+  if (activity.source !== HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION) return false
+  return activity.state === 'healthy' || activity.state === 'partial' || activity.state === 'ok'
+}
+
+/**
  * True when hub activity is pool-only / degraded rather than a complete
  * historical projection for the requested window.
  */

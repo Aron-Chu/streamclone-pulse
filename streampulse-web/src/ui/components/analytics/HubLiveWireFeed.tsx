@@ -1,24 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ChevronDown, Radio } from 'lucide-react'
+import { formatCoveragePercent } from '@streampulse/pulse-core'
+import { Activity, Radio } from 'lucide-react'
 import {
   compareMomentsChronologically,
   momentRowKey,
   type FigmaMomentRow,
   type LivePulseMomentsResult,
 } from '../../../lib/figmaSessionAnalytics'
+import { buildEmoteLookupFromMoments, enrichPulseMomentRows } from '../../../lib/pulseMomentRow'
 import {
-  buildEmoteLookupFromMoments,
-  enrichPulseMomentRows,
-} from '../../../lib/pulseMomentRow'
-import {
-  capNewKeysPerPoll,
+  formatMomentDateTime,
+  partitionMomentWindow,
   classifyMomentWindow,
-  dedupeMomentsByLogin,
-  normalizeRatePct,
+  resolveMomentAtMs,
 } from '../../../lib/liveWire'
-import { resolveMomentActions } from '../../../lib/momentActions'
+import { momentComparisonBadge, momentReactionSignal } from '../../../lib/momentComparison'
 import { resolveMomentEmote } from '../../../lib/pulseMomentsUtils'
+import { discoveryAnalyticsHref, discoveryMomentHref, fromHubMoment } from '../../../lib/discoveryMoments'
+import { formatStreamOffset } from '../../../lib/formatStreamOffset'
 import type { PublicHub, PublicHubLoadSource } from '../../../lib/publicHub'
 import { isHubNetworkDegraded } from '../../../lib/hubUiState'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
@@ -26,53 +26,61 @@ import { displayName, compact } from './hubFormat'
 import { EmoteImg } from './EmoteImg'
 import { Avatar } from '../hub/primitives'
 import { isLifecycleMomentKind } from '../../../lib/poolWireReducer'
+import { SaveMomentButton } from '../moments/SaveMomentButton'
+import { useSavedMoments } from '../../../lib/savedDiscoveryMoments'
+import './live-wire-refinement.css'
 
 const LIVE_WINDOW_MS = 30 * 60 * 1000
 const VISIBLE_CAP_LIVE = 10
 const VISIBLE_CAP_OLDER = 12
-const DEDUPE_WINDOW_MS = 10 * 60 * 1000
+/** The rail is an arrivals ticker; the Moments table owns depth. */
+const SHOWN_LIVE = 5
+const SHOWN_OLDER = 2
 const MAX_NEW_ANIMATIONS_PER_POLL = 3
-const LIVE_WIRE_QUIET_EMPTY = 'No network breakouts in the live window right now'
+const MAX_SEEN_IDENTITIES = 1000
+const MAX_QUEUED_MOMENTS = 20
+const MAX_DISPLAYED_MOMENTS = VISIBLE_CAP_LIVE + VISIBLE_CAP_OLDER
+
+type WireMoment = FigmaMomentRow
+function liveWireIdentity(moment: WireMoment): string {
+  const discoveryMoment = fromHubMoment(moment)
+  if (discoveryMoment) return discoveryMoment.key
+  return `legacy:${momentRowKey(moment)}`
+}
+
+function mergeWireMoments(current: WireMoment[], retained: WireMoment[], cap: number, now: number): WireMoment[] {
+  const unique = new Map<string, WireMoment>()
+  // The latest response wins revisions; displaced arrivals live only for the live window.
+  for (const moment of [...current, ...retained.filter(row => classifyMomentWindow(row.at, now, LIVE_WINDOW_MS) === 'live')]) {
+    const key = liveWireIdentity(moment)
+    if (!unique.has(key)) unique.set(key, moment)
+  }
+  return [...unique.values()].sort(compareMomentsChronologically).slice(0, cap)
+}
 
 const EMPTY_REASONS: Record<string, string> = {
-  no_qualifying_session:
-    'No live channel currently qualifies. Peaks appear once tracked rooms have enough chat activity.',
-  store_unavailable: 'Analytics store unavailable — live moments will return when storage recovers.',
-  stream_unavailable: 'The picked live stream could not be loaded.',
+  no_qualifying_session: 'No qualifying detections were returned for the loaded tracking sample.',
+  store_unavailable: 'Analytics storage is unavailable. Live breakouts will return after recovery.',
+  stream_unavailable: 'The selected live stream could not be loaded.',
   rollup_unavailable: 'Minute activity is still warming up for the tracking pool.',
-  insufficient_peaks:
-    'Activity is flowing but no peaks were detected yet. Give the stream a few minutes.',
+  insufficient_peaks: 'Activity is flowing, but no qualifying detections were returned in this sample.',
 }
 
 export interface HubLiveWireFeedProps {
   hub: PublicHub
   feed: LivePulseMomentsResult
-  activityWindow?: string
   loading?: boolean
   hubEndpointOk?: boolean
   loadSource?: PublicHubLoadSource
-  layout?: 'section' | 'ticker' | 'rail'
   titleId?: string
   pollSequence?: number
+  selectedMomentKey?: string | null
   /** Select the corresponding Global Activity bucket without nesting links. */
   onSelectMoment?: (moment: FigmaMomentRow) => void
-}
-
-interface WireHeaderProps {
-  titleId: string
-  metaLabel: string
-}
-
-function WireHeader({ titleId, metaLabel }: WireHeaderProps) {
-  return (
-    <header className="hub-live-wire__head">
-      <h2 id={titleId} className="hub-live-wire__title">
-        <Radio aria-hidden="true" />
-        Live Wire
-      </h2>
-      <span className="hub-live-wire__meta">{metaLabel}</span>
-    </header>
-  )
+  /** Fail-closed proof that this real moment resolves to a currently loaded chart bucket. */
+  canSelectMoment?: (moment: FigmaMomentRow) => boolean
+  /** Rendered beside the comparison disclosure so the rail ends in one footer. */
+  footer?: ReactNode
 }
 
 function relativeTime(at: number | undefined, now: number): string {
@@ -87,371 +95,415 @@ function relativeTime(at: number | undefined, now: number): string {
   return `${Math.round(hr / 24)}d ago`
 }
 
+function evidenceLabel(moment: FigmaMomentRow): string {
+  const comparison = moment.comparison
+  if (!comparison) return moment.source === 'live_irc' ? 'IRC measured · comparison unavailable' : 'Comparison unavailable'
+  const evidence = comparison.evidence
+  return `Earlier baseline ${evidence.baselineMeasuredMinutes}/${evidence.baselineExpectedMinutes} min · ${formatCoveragePercent(evidence.baselineCoveragePct)} coverage`
+}
+
 export function HubLiveWireFeed({
   hub,
   feed,
   loading = false,
   hubEndpointOk,
   loadSource,
-  layout = 'rail',
   titleId = 'hub-live-wire-title',
   pollSequence = 0,
+  selectedMomentKey = null,
   onSelectMoment,
+  canSelectMoment,
+  footer,
 }: HubLiveWireFeedProps) {
-  const isRail = layout === 'rail'
-  const { animateEnterHorizontal, motionEnabled } = useAnalyticsMotion()
+  const { warning: savedWarning } = useSavedMoments()
+  const { animateEnterHorizontal } = useAnalyticsMotion()
   const hubDegraded = isHubNetworkDegraded(loadSource, hubEndpointOk)
-  const isLiveNetwork = feed.source === 'network' && !hubDegraded
-  /** Hard gate: a moment may only be NEW on a healthy full network feed. */
+  // A cache hydrate preserves a truthful snapshot, but it is not evidence of
+  // a currently healthy network cadence. Only a successful full hub read may
+  // label the rail as live; cache and stats fallback stay explicitly snapshot.
+  const isLiveNetwork = feed.source === 'network' && loadSource === 'full' && !hubDegraded
   const healthyFullNetwork = feed.source === 'network' && loadSource === 'full' && hubEndpointOk === true
-
   const [now, setNow] = useState(() => Date.now())
-  const [showOlder, setShowOlder] = useState(false)
   const [activeNewKeys, setActiveNewKeys] = useState<Set<string>>(new Set())
+  const [focusWithin, setFocusWithin] = useState(false)
+  const [pointerWithin, setPointerWithin] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [showAllLoaded, setShowAllLoaded] = useState(false)
+  const [atNewest, setAtNewest] = useState(true)
+  const [announcement, setAnnouncement] = useState('')
+  const sectionRef = useRef<HTMLElement>(null)
+  const scrollRootRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const section = sectionRef.current
+    if (!section) return
+    let ancestor: HTMLElement | null = null
+    let root: HTMLElement | Window = window
+    const update = () => {
+      const rect = section.getBoundingClientRect()
+      setAtNewest(ancestor ? ancestor.scrollTop <= 8 : rect.height === 0 || rect.top >= 64)
+    }
+    const attach = () => {
+      root.removeEventListener('scroll', update)
+      ancestor = section.parentElement
+      while (ancestor && !/(auto|scroll)/.test(getComputedStyle(ancestor).overflowY)) ancestor = ancestor.parentElement
+      scrollRootRef.current = ancestor
+      root = ancestor ?? window
+      root.addEventListener('scroll', update, { passive: true })
+      update()
+    }
+    attach()
+    window.addEventListener('resize', attach)
+    return () => { root.removeEventListener('scroll', update); window.removeEventListener('resize', attach) }
+  }, [])
+  const [displayedMoments, setDisplayedMoments] = useState<WireMoment[]>([])
+  const [queuedMoments, setQueuedMoments] = useState<FigmaMomentRow[]>([])
+  const displayedMomentsRef = useRef(displayedMoments)
+  const queuedMomentsRef = useRef(queuedMoments)
+  displayedMomentsRef.current = displayedMoments
+  queuedMomentsRef.current = queuedMoments
 
   const profileImageByLogin = useMemo(() => {
     const map = new Map<string, string>()
-    for (const ch of hub.liveChannels) {
-      if (ch.profileImageUrl) map.set(ch.login.toLowerCase(), ch.profileImageUrl)
+    for (const channel of hub.liveChannels) {
+      if (channel.profileImageUrl) map.set(channel.login.toLowerCase(), channel.profileImageUrl)
     }
     return map
   }, [hub.liveChannels])
 
-  const categoryByLogin = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const ch of hub.liveChannels) {
-      const category = ch.category?.trim()
-      if (category) map.set(ch.login.toLowerCase(), category)
-    }
-    return map
-  }, [hub.liveChannels])
+  const liveChannelsWithoutCategory = useMemo(() => hub.liveChannels.map((channel) => ({
+    ...channel,
+    category: undefined,
+  })), [hub.liveChannels])
 
-  const enrichCtx = useMemo(
-    () => ({ liveChannels: hub.liveChannels, categoryByLogin }),
-    [categoryByLogin, hub.liveChannels],
-  )
-
-  // Valid retained candidates — NO 30m pre-filter. Older moments appear in the
-  // "Recent detections" disclosure, not dropped.
+  /**
+   * Peaks and momentum only. Lifecycle belongs to Pool Wire in the command
+   * header, which already names every confirmed transition; a second list of
+   * the same events here only competed with the arrivals this rail exists for.
+   */
   const candidates = useMemo(() => {
-    const peakOnly = feed.moments.filter((m) => !isLifecycleMomentKind(m.kind))
-    return enrichPulseMomentRows(peakOnly, enrichCtx)
-  }, [enrichCtx, feed.moments])
+    const peakOnly = feed.moments.filter((moment) => !isLifecycleMomentKind(moment.kind))
+    // Current channel category is not evidence of the detection's category,
+    // especially for older moments after a game change. Keep other cosmetic
+    // live-channel enrichment, but leave missing moment category unavailable.
+    return enrichPulseMomentRows(peakOnly, { liveChannels: liveChannelsWithoutCategory }) as WireMoment[]
+  }, [feed.moments, liveChannelsWithoutCategory])
 
-  const { liveMoments, olderMoments } = useMemo(() => {
-    const live: FigmaMomentRow[] = []
-    const older: FigmaMomentRow[] = []
-    for (const m of candidates) {
-      const cls = classifyMomentWindow(m.at, now, LIVE_WINDOW_MS)
-      if (cls === 'live') live.push(m)
-      else if (cls === 'older') older.push(m)
-      // 'omit' (missing/future) entries are dropped
-    }
-    const sortDesc = (rows: FigmaMomentRow[]) =>
-      [...rows].sort(compareMomentsChronologically)
-    return {
-      liveMoments: dedupeMomentsByLogin(sortDesc(live), VISIBLE_CAP_LIVE, DEDUPE_WINDOW_MS),
-      olderMoments: dedupeMomentsByLogin(sortDesc(older), VISIBLE_CAP_OLDER, DEDUPE_WINDOW_MS),
-    }
-  }, [candidates, now])
-
-  // Normalize bar dimensions across the combined retained set (live + older).
-  const { maxChatPerMin, maxEmotesPerMin } = useMemo(() => {
-    const retained = [...liveMoments, ...olderMoments]
-    let maxChat = 0
-    let maxEmotes = 0
-    for (const m of retained) {
-      if (m.chatPerMin != null && m.chatPerMin > maxChat) maxChat = m.chatPerMin
-      if (m.emotesPerMin != null && m.emotesPerMin > maxEmotes) maxEmotes = m.emotesPerMin
-    }
-    return { maxChatPerMin: maxChat, maxEmotesPerMin: maxEmotes }
-  }, [liveMoments, olderMoments])
-
-  const emoteLookup = useMemo(
-    () => buildEmoteLookupFromMoments(candidates, hub.topEmotes),
-    [candidates, hub.topEmotes],
-  )
-
-  // Incremental NEW tracking — refs persist across renders so we don't re-badge
-  // already-seen moments every second.
-  const prevSeenRef = useRef<Set<string>>(new Set())
-  const newKeysRef = useRef<Set<string>>(new Set())
-  const hasBaselinedRef = useRef(false)
-  const rowRefs = useRef<Map<string, HTMLElement>>(new Map())
-
-  const liveMomentsRef = useRef(liveMoments)
-  liveMomentsRef.current = liveMoments
-  const nowRef = useRef(now)
-  nowRef.current = now
+  const displayInitializedRef = useRef(false)
+  const resumedMomentsRef = useRef<WireMoment[]>([])
+  const holdingUpdates = paused || focusWithin || pointerWithin || !atNewest
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
+    const currentTime = Date.now()
+    const boundedCandidates = mergeWireMoments(candidates, [], MAX_DISPLAYED_MOMENTS, currentTime)
+    if (!displayInitializedRef.current) {
+      displayInitializedRef.current = true
+      setDisplayedMoments(boundedCandidates)
+      return
+    }
+
+    if (hubDegraded) return
+    const latestByKey = new Map(boundedCandidates.map(moment => [liveWireIdentity(moment), moment]))
+    // Refresh the retained copy too, so a later omission cannot restore old measurements.
+    resumedMomentsRef.current = mergeWireMoments([], resumedMomentsRef.current.map(moment =>
+      latestByKey.get(liveWireIdentity(moment)) ?? moment,
+    ), MAX_QUEUED_MOMENTS, currentTime)
+    const visibleKeys = new Set(displayedMomentsRef.current.map(liveWireIdentity))
+    const arrivals = boundedCandidates.filter((moment) => {
+      const key = liveWireIdentity(moment)
+      return !visibleKeys.has(key)
+    })
+    if (holdingUpdates) {
+      setQueuedMoments(mergeWireMoments(arrivals, queuedMomentsRef.current, MAX_QUEUED_MOMENTS, currentTime))
+      return
+    }
+    if (!holdingUpdates) {
+      resumedMomentsRef.current = mergeWireMoments([], [...queuedMomentsRef.current, ...resumedMomentsRef.current], MAX_QUEUED_MOMENTS, currentTime)
+      setDisplayedMoments(mergeWireMoments(boundedCandidates, resumedMomentsRef.current, MAX_DISPLAYED_MOMENTS, currentTime))
+      setQueuedMoments([])
+    }
+  }, [candidates, holdingUpdates, hubDegraded])
+
+  const revealQueuedMoments = () => {
+    setPaused(false)
+    setAtNewest(true)
+    setFocusWithin(false)
+    setPointerWithin(false)
+    // Focus scrolling would center the header; position it explicitly below.
+    sectionRef.current?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+    const root = scrollRootRef.current
+    const section = sectionRef.current
+    if (root) root.scrollTo?.({ top: 0 })
+    else if (section) {
+      // Land the header below the sticky analytics nav (two rows on phones), which
+      // also clears the reading threshold so arrivals keep flowing.
+      const stickyHeader = document.querySelector<HTMLElement>('.analytics-topnav')?.getBoundingClientRect().height ?? 0
+      const clearance = Math.max(stickyHeader, 64) + 8
+      const rect = section.getBoundingClientRect()
+      if (rect.height > 0 && rect.top < clearance) window.scrollTo?.({ top: Math.max(0, window.scrollY + rect.top - clearance) })
+    }
+    const currentTime = Date.now()
+    resumedMomentsRef.current = mergeWireMoments([], [...queuedMomentsRef.current, ...resumedMomentsRef.current], MAX_QUEUED_MOMENTS, currentTime)
+    setDisplayedMoments(mergeWireMoments(candidates, resumedMomentsRef.current, MAX_DISPLAYED_MOMENTS, currentTime))
+    setQueuedMoments([])
+  }
+
+  const orderedMoments = useMemo(
+    () => [...displayedMoments].sort(compareMomentsChronologically),
+    [displayedMoments],
+  )
+
+  const heldClassificationNowRef = useRef(now)
+  if (!holdingUpdates) heldClassificationNowRef.current = now
+  const classificationNow = holdingUpdates ? heldClassificationNowRef.current : now
+
+  const momentWindow = useMemo(
+    () => partitionMomentWindow(orderedMoments, classificationNow, LIVE_WINDOW_MS),
+    [classificationNow, orderedMoments],
+  )
+
+  const retainMoments = (moments: WireMoment[], cap: number) => {
+    const unique = new Map<string, WireMoment>()
+    for (const moment of moments) {
+      const key = liveWireIdentity(moment)
+      if (!unique.has(key)) unique.set(key, moment)
+    }
+    return [...unique.values()].slice(0, cap)
+  }
+
+  const liveMoments = useMemo(
+    () => retainMoments(momentWindow.live, VISIBLE_CAP_LIVE),
+    [momentWindow.live],
+  )
+  const olderMoments = useMemo(
+    () => retainMoments(momentWindow.older, VISIBLE_CAP_OLDER),
+    [momentWindow.older],
+  )
+  const loadedCount = liveMoments.length + olderMoments.length
+  const previewCount = Math.min(liveMoments.length, SHOWN_LIVE) + Math.min(olderMoments.length, SHOWN_OLDER)
+  const hasHiddenMoments = loadedCount > previewCount
+  const shownCount = showAllLoaded ? loadedCount : previewCount
+
+  const emoteLookup = useMemo(
+    () => buildEmoteLookupFromMoments([...liveMoments, ...olderMoments], hub.topEmotes),
+    [hub.topEmotes, liveMoments, olderMoments],
+  )
+
+  const committedKeys = useRef<Set<string> | null>(null)
+  const seenCommittedKeys = useRef(new Set<string>())
+  useLayoutEffect(() => setActiveNewKeys(new Set()), [pollSequence])
+  const rowRefs = useRef<Map<string, HTMLElement>>(new Map())
+  useEffect(() => {
+    // Relative ages tick every second while visible; a hidden tab does no work.
+    let id: number | undefined
+    const stop = () => { if (id !== undefined) { window.clearInterval(id); id = undefined } }
+    const sync = () => {
+      if (document.visibilityState === 'hidden') return stop()
+      if (id !== undefined) return
+      setNow(Date.now())
+      id = window.setInterval(() => setNow(Date.now()), 1000)
+    }
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    return () => { stop(); document.removeEventListener('visibilitychange', sync) }
   }, [])
-
-  // Keyed on pollSequence (the hub poll identity), not the 1-second clock.
   useLayoutEffect(() => {
-    const moments = liveMomentsRef.current
-    const nowMs = nowRef.current
-    const liveKeys = moments.map(momentRowKey)
-
-    if (!healthyFullNetwork) {
-      // Cache/degraded: never NEW, never animate, but keep the seen-set intact
-      // so a recovered feed doesn't re-badge already-shown moments.
-      liveKeys.forEach((k) => prevSeenRef.current.add(k))
-      setActiveNewKeys(new Set())
-      return
+    // The first usable snapshot establishes a baseline, including cache hydration.
+    if (committedKeys.current === null && displayedMoments.length === 0) return
+    const keys = new Set(displayedMoments.map(liveWireIdentity))
+    const added = committedKeys.current ? [...keys].filter(key => !seenCommittedKeys.current.has(key)) : []
+    for (const key of keys) seenCommittedKeys.current.add(key)
+    while (seenCommittedKeys.current.size > MAX_SEEN_IDENTITIES) seenCommittedKeys.current.delete(seenCommittedKeys.current.values().next().value!)
+    committedKeys.current = keys
+    if (!healthyFullNetwork || added.length === 0) return
+    setAnnouncement(added.length + ' new live entries')
+    setActiveNewKeys(new Set(added.slice(0, MAX_NEW_ANIMATIONS_PER_POLL)))
+    for (const key of added.slice(0, MAX_NEW_ANIMATIONS_PER_POLL)) {
+      const element = rowRefs.current.get(key)
+      if (element) animateEnterHorizontal(element, { from: 'left' })
     }
-
-    // Baseline: the first healthy full snapshot seeds the seen-set so the initial
-    // state is never a burst of NEW badges / entrance animation.
-    if (!hasBaselinedRef.current) {
-      hasBaselinedRef.current = true
-      liveKeys.forEach((k) => prevSeenRef.current.add(k))
-      setActiveNewKeys(new Set())
-      return
-    }
-
-    const freshUnseen = moments.filter(
-      (m) =>
-        !prevSeenRef.current.has(momentRowKey(m)) &&
-        classifyMomentWindow(m.at, nowMs, LIVE_WINDOW_MS) === 'live',
-    )
-
-    // Semantic NEW = all fresh unseen in-window keys; animation = capped subset.
-    const animationKeys = capNewKeysPerPoll(
-      prevSeenRef.current,
-      moments.map((m) => ({ key: momentRowKey(m), at: m.at })),
-      nowMs,
-      LIVE_WINDOW_MS,
-      MAX_NEW_ANIMATIONS_PER_POLL,
-    )
-    newKeysRef.current = new Set([...newKeysRef.current, ...freshUnseen.map(momentRowKey)])
-    setActiveNewKeys(animationKeys)
-
-    // Record current keys as seen (after computing fresh so we don't self-baseline).
-    liveKeys.forEach((k) => prevSeenRef.current.add(k))
-
-    // Animate only the newly introduced rows (right-entry). rowRefs are populated
-    // by the render that produced `moments`.
-    for (const key of animationKeys) {
-      const el = rowRefs.current.get(key)
-      if (el) animateEnterHorizontal(el, { from: 'right' })
-    }
-  }, [animateEnterHorizontal, healthyFullNetwork, pollSequence])
+  }, [displayedMoments, healthyFullNetwork, animateEnterHorizontal])
 
   const metaLabel = isLiveNetwork
-    ? 'detected in the last 30m · newest first'
+    ? 'Loaded detections'
     : hubDegraded
       ? 'live network feed paused'
-      : 'snapshot — not live network cadence'
+      : 'snapshot · not live network cadence'
   const emptyReason = hubDegraded
-    ? 'Live network moments need a healthy hub connection. Showing aggregate stats only until the feed recovers.'
-    : (feed.reason && EMPTY_REASONS[feed.reason]) || LIVE_WIRE_QUIET_EMPTY
+    ? 'Live comparisons need a healthy hub connection. The chart remains available from the last truthful snapshot.'
+    : (feed.reason && EMPTY_REASONS[feed.reason]) || 'No qualifying detections were returned in this sample.'
 
-  const renderCard = (moment: FigmaMomentRow) => {
-    const key = momentRowKey(moment)
+  const renderCard = (moment: WireMoment) => {
+    const key = liveWireIdentity(moment)
+    const externalKey = momentRowKey(moment)
     const login = moment.login ?? ''
     const name = displayName(login, moment.displayName)
-    const category = moment.category?.trim() || categoryByLogin.get(login.toLowerCase())?.trim()
-    const actions = resolveMomentActions(moment)
-    const chatPct = normalizeRatePct(moment.chatPerMin, maxChatPerMin)
-    const emotesPct = normalizeRatePct(moment.emotesPerMin, maxEmotesPerMin)
-    const isNew =
-      healthyFullNetwork &&
-      newKeysRef.current.has(key) &&
-      classifyMomentWindow(moment.at, now, LIVE_WINDOW_MS) === 'live'
+    const timeLabel = relativeTime(moment.at, now)
+    const discoveryMoment = fromHubMoment(moment)
+    const comparison = discoveryMoment?.comparison
+    const chatPerMin = discoveryMoment?.chatPerMin ?? moment.chatPerMin
+    const emotesPerMin = discoveryMoment?.emotesPerMin ?? moment.emotesPerMin
+    /**
+     * The magnitude is the headline, not a sentence. `momentComparisonBadge`
+     * refuses to compress a percentage or absolute-delta fallback, and a row
+     * with no ready comparison says so plainly rather than borrowing the
+     * emphasis of a measured breakout.
+     */
+    const badge = momentComparisonBadge(comparison, momentReactionSignal(moment.kind))
+    const category = moment.category?.trim()
     const profileImageUrl = moment.profileImageUrl ?? profileImageByLogin.get(login.toLowerCase())
-    const signalLabel = moment.label?.trim() || 'Activity moment'
-    const sourceLabel = moment.source === 'live_irc'
-      ? 'IRC measured'
-      : moment.source?.trim()
-      ? moment.source.split('_').join(' ')
-        : null
-
-    const refCb = (el: HTMLElement | null) => {
-      if (el) rowRefs.current.set(key, el)
+    const canInspect = Boolean(onSelectMoment && canSelectMoment?.(moment) === true)
+    const isSelected = canInspect && selectedMomentKey === externalKey
+    const isNew = healthyFullNetwork && activeNewKeys.has(key) &&
+      classifyMomentWindow(moment.at, now, LIVE_WINDOW_MS) === 'live'
+    const isEntering = activeNewKeys.has(key)
+    const actionContext = `${name} ${moment.label?.trim() || 'activity moment'} at ${formatStreamOffset(moment.offsetSeconds)}`
+    const ref = (element: HTMLElement | null) => {
+      if (element) rowRefs.current.set(key, element)
       else rowRefs.current.delete(key)
     }
-
+    const className = `hub-live-wire__rail-card hub-live-wire__event-card${isSelected ? ' is-selected' : ''}${isNew ? ' hub-live-wire__card--new' : ''}${isEntering ? ' is-entering' : ''}${canInspect ? ' is-inspectable' : ''}`
     return (
       <li role="listitem" key={key}>
-        <article
-          className={`hub-live-wire__rail-card${isNew ? ' hub-live-wire__card--new' : ''}`}
-          ref={refCb as never}
-        >
-          <div className="hub-live-wire__rail-head">
-            <Avatar login={login} src={profileImageUrl} alt="" className="hub-live-wire__rail-av" />
-            <span className="hub-live-wire__rail-names">
-              <span className="hub-live-wire__rail-name">{name}</span>
-              {category ? <span className="hub-live-wire__rail-category">{category}</span> : null}
-            </span>
-            <span className="hub-live-wire__rail-age">{relativeTime(moment.at, now)}</span>
-          </div>
-
-          <div className="hub-live-wire__rail-signal" aria-label="Detected event">
-            <strong>{signalLabel}</strong>
-            {moment.score != null && moment.score > 0 ? (
-              <span className="hub-live-wire__rail-score">score {moment.score}</span>
-            ) : null}
-          </div>
-
-          <div className="hub-live-wire__rail-metrics">
-            <div className="hub-live-wire__bar-row">
-              <span className="hub-live-wire__bar-label">Chat</span>
-              <span className="hub-live-wire__bar">
-                <i className="hub-live-wire__bar-fill" aria-hidden="true" style={{ width: chatPct ?? '0%' }} />
-              </span>
-              <span className="hub-live-wire__bar-value">
-                {moment.chatPerMin != null && moment.chatPerMin > 0 ? `${compact(moment.chatPerMin)}/m` : '—'}
-              </span>
-            </div>
-            <div className="hub-live-wire__bar-row">
-              <span className="hub-live-wire__bar-label">Emotes</span>
-              <span className="hub-live-wire__bar">
-                <i className="hub-live-wire__bar-fill" aria-hidden="true" style={{ width: emotesPct ?? '0%' }} />
-              </span>
-              <span className="hub-live-wire__bar-value">
-                {moment.emotesPerMin != null && moment.emotesPerMin > 0 ? `${compact(moment.emotesPerMin)}/m` : '—'}
-              </span>
-            </div>
-          </div>
-
-          {(moment.topEmotes?.length ?? 0) > 0 ? (
-            <div className="hub-live-wire__rail-emotes" aria-label="Top emotes">
-              {(moment.topEmotes ?? []).slice(0, 3).map((emote, index) => {
-                const resolved = resolveMomentEmote(
-                  { ...moment, topEmotes: [emote] },
-                  emoteLookup,
-                )
-                return (
-                  <span className="hub-live-wire__rail-emote" key={`${emote.name}-${index}`}>
-                    <EmoteImg src={resolved?.imageUrl ?? emote.imageUrl} name={emote.name ?? '?'} />
-                  </span>
-                )
-              })}
-            </div>
-          ) : null}
-
-          <div className="hub-live-wire__rail-evidence">
-            {sourceLabel ? <span>{sourceLabel}</span> : null}
-            {moment.confidence != null && moment.confidence > 0 ? (
-              <span>confidence {moment.confidence}%</span>
-            ) : null}
-            {moment.viewerDelta ? <span>{moment.viewerDelta}</span> : null}
-            {!sourceLabel && !(moment.confidence != null && moment.confidence > 0) && !moment.viewerDelta ? (
-              <span>Baseline comparison unavailable</span>
-            ) : null}
-          </div>
-
-          <div className="hub-live-wire__rail-footer">
+      <article
+        className={className}
+        ref={ref}
+        aria-label={actionContext}
+        data-public-moment-id={moment.publicMomentId}
+        data-stream-id={moment.streamId}
+        onClick={canInspect ? (event) => {
+          // Links and controls inside the row keep their own behaviour; the
+          // remaining surface is the same "open this on the chart" target the
+          // explicit action provides.
+          if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, summary')) return
+          onSelectMoment?.(moment)
+        } : undefined}
+      >
+        <div className="hub-live-wire__rail-head">
+          <Avatar login={login} src={profileImageUrl} alt="" className="hub-live-wire__rail-av" profileSize={70} />
+          <span className="hub-live-wire__rail-names">
+            <strong className="hub-live-wire__rail-name">{name}</strong>
+            <small className="hub-live-wire__rail-category">{category || 'Category unavailable'}</small>
+          </span>
+          <span className="hub-live-wire__rail-timing">
+            <time className="hub-live-wire__rail-age" dateTime={formatMomentDateTime(moment.at)}>{timeLabel || 'Time unavailable'}</time>
             {isNew ? <span className="hub-live-wire__rail-new">NEW</span> : null}
-            <div className="hub-live-wire__rail-actions">
-              {onSelectMoment && moment.at != null ? (
-                <button
-                  type="button"
-                  className="hub-live-wire__action"
-                  onClick={() => onSelectMoment(moment)}
-                >
-                  Inspect this minute
-                </button>
-              ) : null}
-              {actions.analyticsHref ? (
-                <Link className="hub-live-wire__action" to={actions.analyticsHref}>
-                  View moment
-                </Link>
-              ) : null}
-              {actions.vodHref ? (
-                <a className="hub-live-wire__action" href={actions.vodHref} target="_blank" rel="noreferrer">
-                  Jump to VOD
-                </a>
-              ) : null}
-              {!actions.analyticsHref && !actions.vodHref ? (
-                <span
-                  className="hub-live-wire__action hub-live-wire__action--disabled"
-                  aria-disabled="true"
-                >
-                  Live tracking only
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </article>
+          </span>
+        </div>
+        <div className="hub-live-wire__rail-signal" aria-label="Detected event">
+          {badge ? (
+            <span
+              className="hub-live-wire__magnitude"
+              data-below={badge.belowBaseline ? 'true' : undefined}
+              title={badge.long}
+            >{badge.short}</span>
+          ) : null}
+          <strong className="hub-live-wire__rail-label" title={evidenceLabel(moment)}>{moment.label?.trim() || 'Activity moment'}</strong>
+          <span className="hub-live-wire__rail-metrics" aria-label="Measured rates">
+            {([['Chat', chatPerMin], ['Emotes', emotesPerMin]] as const).map(([label, value]) => (
+              <span className="hub-live-wire__metric" key={label}>
+                <span>{label}</span> <strong>{value != null && Number.isFinite(value) ? `${compact(value)}/m` : '—'}</strong>
+              </span>
+            ))}
+          </span>
+        </div>
+        {/* The baseline evidence already titles the label above; saying the
+            comparison is unavailable needs no second copy of it. */}
+        {badge ? null : (
+          <p className="hub-live-wire__rail-comparison">Comparison unavailable</p>
+        )}
+        {(moment.topEmotes?.length ?? 0) > 0 ? <div className="hub-live-wire__rail-emotes" aria-label="Top emotes">
+          {(moment.topEmotes ?? []).slice(0, 3).map((emote, index) => {
+            const resolved = resolveMomentEmote({ ...moment, topEmotes: [emote] }, emoteLookup)
+            const emoteName = emote.name?.trim() || 'Emote'
+            const emoteCount = emote.count != null && Number.isFinite(emote.count) ? compact(emote.count) : null
+            return <span className="hub-live-wire__rail-emote" title={emote.name ?? undefined} key={`${emote.name}-${index}`}>
+              <EmoteImg src={resolved?.imageUrl ?? emote.imageUrl} name={emoteName} />
+              {/* The name may truncate; the count is the evidence and always stays visible. */}
+              <span className="hub-live-wire__rail-emote-label">{emoteName}</span>
+              {emoteCount ? <span className="hub-live-wire__rail-emote-count">{emoteCount}</span> : null}
+            </span>
+          })}
+        </div> : null}
+        {/* The primary action keeps its own slot across the bottom of the card;
+            the repeated secondary actions sit to its right. */}
+        <div className="hub-live-wire__rail-footer" role="group" aria-label={`Actions for ${actionContext}`}>
+          {discoveryMoment ? (
+            <Link className="hub-live-wire__action hub-live-wire__action--primary" aria-label={`Open moment for ${actionContext}`} to={discoveryMomentHref(discoveryMoment)} state={{ hubMoment: moment }}>
+              <span>Open moment</span><span aria-hidden="true">→</span>
+            </Link>
+          ) : <span className="hub-live-wire__identity-note">Moment identity unavailable</span>}
+          {discoveryMoment || canInspect ? <div className="hub-live-wire__rail-actions" aria-label="Moment actions">
+            {discoveryMoment ? <SaveMomentButton moment={discoveryMoment} contextLabel={actionContext} /> : null}
+            {discoveryMoment ? <Link className="hub-live-wire__stream-link" aria-label={`Stream analytics for ${actionContext}`} to={discoveryAnalyticsHref(discoveryMoment)}>Analytics</Link> : null}
+            {canInspect ? <button type="button" className="hub-live-wire__action hub-live-wire__action--secondary" aria-label={`Show ${actionContext} on chart`} aria-pressed={isSelected} onClick={() => onSelectMoment?.(moment)}>Chart</button>
+              // Keep the action slot stable across cards; say why it is unavailable.
+              : onSelectMoment ? <button type="button" className="hub-live-wire__action hub-live-wire__action--secondary" disabled aria-label={`Chart not available for ${actionContext}`} title="Not on the current chart: the bucket may still be filling or outside the loaded range">Chart</button>
+              : null}
+          </div> : null}
+        </div>
+      </article>
       </li>
     )
   }
 
-  const rootClass = `hub-live-wire${isRail ? ' hub-live-wire--rail' : ''}`
-  const skeletonCount = 4
+  const listProps = {
+    role: 'list',
+    className: 'hub-live-wire__rail-list',
+    onPointerEnter: () => setPointerWithin(true),
+    onPointerLeave: () => setPointerWithin(false),
+  } as const
 
-  if (loading && liveMoments.length === 0) {
-    return (
-      <section className={rootClass} aria-labelledby={titleId} aria-busy="true">
-        <WireHeader titleId={titleId} metaLabel={metaLabel} />
-        <ul role="list" className="hub-live-wire__rail-list">
-          {Array.from({ length: skeletonCount }).map((_, i) => (
-            <li key={i} role="listitem">
-              <article className="hub-live-wire__rail-card hub-live-wire__card--skeleton" aria-hidden="true" />
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
+  const feedBody = loading && liveMoments.length === 0 ? (
+    <ul {...listProps}>{Array.from({ length: 3 }).map((_, index) => <li key={index}><span className="hub-live-wire__rail-card hub-live-wire__card--skeleton" aria-hidden="true" /></li>)}</ul>
+  ) : liveMoments.length === 0 && olderMoments.length === 0 ? (
+    <div className="hub-live-wire__empty hub-live-wire__empty--rail" role="status"><Activity aria-hidden="true" /><span>{emptyReason}</span></div>
+  ) : (
+    <>
+      {liveMoments.length > 0
+        ? <><h3 className="hub-live-wire__rail-tier">{isLiveNetwork ? 'Last 30 minutes' : 'Snapshot detections'}</h3><ul {...listProps}>{(showAllLoaded ? liveMoments : liveMoments.slice(0, SHOWN_LIVE)).map(renderCard)}</ul></>
+        : <p className="hub-live-wire__quiet" role="status">No loaded detections in the last 30 minutes. Earlier moments are below.</p>}
+      {olderMoments.length > 0 ? <><h3 className="hub-live-wire__rail-tier">Earlier detections</h3><ul {...listProps}>{(showAllLoaded ? olderMoments : olderMoments.slice(0, SHOWN_OLDER)).map(renderCard)}</ul></> : null}
+    </>
+  )
 
   return (
-    <section className={rootClass} aria-labelledby={titleId}>
-      <WireHeader titleId={titleId} metaLabel={metaLabel} />
-
-      {hubDegraded ? (
-        <p className="hub-live-wire__banner hub-live-wire__banner--warn" role="status">
-          Live network moments need a healthy hub connection. Showing aggregate stats only until the feed recovers.
-        </p>
-      ) : null}
-
-      {!hubDegraded && !isLiveNetwork && feed.banner ? (
-        <p className="hub-live-wire__banner" role="status">
-          {feed.banner}
-        </p>
-      ) : null}
-
-      {liveMoments.length === 0 && olderMoments.length === 0 ? (
-        <div className="hub-live-wire__empty" role="status">
-          <Activity aria-hidden="true" />
-          <span>{emptyReason}</span>
-        </div>
-      ) : (
-        <>
-          {liveMoments.length > 0 ? (
-            <>
-              <h3 className="hub-live-wire__rail-tier hub-live-wire__rail-tier--live">Live now</h3>
-              <ul role="list" className="hub-live-wire__rail-list">
-                {liveMoments.map(renderCard)}
-              </ul>
-            </>
-          ) : null}
-
-          {olderMoments.length > 0 ? (
-            <>
-              <button
-                type="button"
-                className="hub-live-wire__disclosure"
-                aria-expanded={showOlder}
-                onClick={() => setShowOlder((v) => !v)}
-              >
-                Recent detections
-                <span className="hub-live-wire__disclosure-count">{olderMoments.length}</span>
-                <ChevronDown className="hub-live-wire__disclosure-chevron" aria-hidden="true" size={14} />
-              </button>
-              {showOlder ? (
-                <ul role="list" className="hub-live-wire__rail-list">
-                  {olderMoments.map(renderCard)}
-                </ul>
-              ) : null}
-            </>
-          ) : null}
-        </>
-      )}
+    <section ref={sectionRef} className="hub-live-wire hub-live-wire--rail" aria-labelledby={titleId} aria-busy={loading || undefined} onFocusCapture={event => setFocusWithin(Boolean((event.target as HTMLElement).closest('button, a, select, input')))} onBlurCapture={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
+    }}>
+      <header className="hub-live-wire__head">
+        <h2 id={titleId} tabIndex={-1} className="hub-live-wire__title"><Radio aria-hidden="true" />Live Wire</h2>
+        <span className="hub-live-wire__meta">{metaLabel}</span>
+      </header>
+      {savedWarning ? <p role="status" className="moments-notice">{savedWarning}</p> : null}
+      <p className="hub-live-wire__announcement" role="status" aria-live="polite">{announcement}</p>
+      {/* One state, one control: the label never contradicts the button beside it.
+          Reading (pointer, focus or scroll) only holds arrivals; "Paused" is reserved
+          for an explicit Pause, and Resume appears only when it would change something. */}
+      <div className="hub-live-wire__follow-controls">
+        <span>{!holdingUpdates ? 'Following newest' : paused ? 'Paused' : 'Holding updates while you read'}</span>
+        {paused || (holdingUpdates && queuedMoments.length > 0)
+          ? <button type="button" onClick={revealQueuedMoments}>Resume live{queuedMoments.length > 0 ? ' · ' + queuedMoments.length + ' new' : ''}</button>
+          : <button type="button" onClick={() => setPaused(true)}>Pause</button>}
+      </div>
+      {hubDegraded ? <p className="hub-live-wire__banner hub-live-wire__banner--warn" role="status">{emptyReason}</p> : null}
+      {!hubDegraded && !isLiveNetwork && feed.banner ? <p className="hub-live-wire__banner" role="status">{feed.banner}</p> : null}
+      {loadedCount > 0 ? <div className="hub-live-wire__display-count">
+        <span>Showing {shownCount} of {loadedCount} loaded detections</span>
+        {hasHiddenMoments ? <button type="button" aria-expanded={showAllLoaded} aria-controls={`${titleId}-detections`} onClick={() => setShowAllLoaded(value => !value)}>{showAllLoaded ? 'Show preview' : `Show all ${loadedCount}`}</button> : null}
+      </div> : null}
+      <div id={`${titleId}-detections`} className="hub-live-wire__detections">{feedBody}
+        {/* Scrolled into the feed, the header's Resume is off-screen; keep arrivals reachable where the reader is. */}
+        {!atNewest && queuedMoments.length > 0
+          ? <button type="button" className="hub-live-wire__arrivals" onClick={revealQueuedMoments}>Show {queuedMoments.length} new detection{queuedMoments.length === 1 ? '' : 's'} ↑</button>
+          : null}
+      </div>
+      <div className="hub-live-wire__rail-footer-row">
+        <details className="hub-live-wire__about">
+          <summary>About comparisons</summary>
+          <p>A detected minute is compared with measured history earlier in the same broadcast. Missing evidence is labeled, not estimated in the browser. Opening a row uses its exact stream and minute; no media preview loads in this feed.</p>
+        </details>
+        {footer}
+      </div>
     </section>
   )
 }

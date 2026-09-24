@@ -25,14 +25,14 @@
     <link rel="canonical" href="https://streampulse.stream/" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.streampulse.stream https://o4511718232686592.ingest.us.sentry.io https://challenges.cloudflare.com; img-src 'self' https: data:; font-src 'self'; frame-src https://challenges.cloudflare.com; child-src 'self' blob: https://challenges.cloudflare.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';"
+      content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.streampulse.stream https://o4511718232686592.ingest.us.sentry.io https://challenges.cloudflare.com; img-src 'self' https: data:; font-src 'self'; frame-src https://challenges.cloudflare.com https://player.twitch.tv; child-src 'self' blob: https://challenges.cloudflare.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://api.streampulse.stream" crossorigin />
     <title>StreamPulse — Twitch reaction analytics</title>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin:0;background:#09090b;color:#e4e4e7">
+    <!--public-root:start--><div id="root"><main aria-label="Loading StreamPulse" style="max-width:36rem;margin:12vh auto;padding:1.5rem;font-family:system-ui,sans-serif"><h1>Loading StreamPulse…</h1><p>The page is starting. If it doesn’t open, <a href="" style="color:#99f6e4">reload this page</a>.</p><noscript>Enable JavaScript to open interactive analytics.</noscript></main></div><!--public-root:end-->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

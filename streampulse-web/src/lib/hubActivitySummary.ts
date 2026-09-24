@@ -1,4 +1,4 @@
-import type { HubActivityPoint } from './publicHub'
+import type { HubActivityPoint, HubViewerCoverage } from './publicHub'
 
 /** Client chart-grid placeholder — keep in sync with hubActivityHonesty. */
 const GAP_KIND_UNMEASURED = 'unmeasured'
@@ -30,7 +30,300 @@ export function hubActivityEmoteCount(point: HubActivityPoint): number {
   if (typeof point.emotes === 'number' && Number.isFinite(point.emotes)) {
     return Math.max(0, point.emotes)
   }
-  return Math.max(point.emotes ?? 0, point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
+  return Math.max(
+    point.emotes ?? 0,
+    point.seventv ?? 0,
+    point.twitch ?? 0,
+    point.bttv ?? 0,
+    point.ffz ?? 0,
+    point.other ?? 0,
+  )
+}
+
+export type ViewerSampleQuality = 'complete' | 'partial' | 'unknown' | 'legacy'
+
+export interface ViewerCoverageAssessment {
+  /** A viewer observation exists, including an explicit measured zero. */
+  sampled: boolean
+  /** This observation can participate in a continuous global viewer line. */
+  qualified: boolean
+  quality: ViewerSampleQuality
+  contributors?: number
+  sampledContributors?: number
+  expectedContributors?: number
+  coveragePct?: number
+}
+
+function nonNegativeFinite(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function viewerCoverageDetail(point: HubActivityPoint): HubViewerCoverage | undefined {
+  return point.viewerCoverageDetail
+}
+
+function explicitViewerCoverage(point: HubActivityPoint): boolean {
+  return (
+    point.viewerCoverage != null ||
+    point.viewerCoveragePct != null ||
+    point.viewerContributors != null ||
+    point.viewerSampledContributors != null ||
+    point.viewerExpectedContributors != null ||
+    point.viewerComplete != null ||
+    point.viewerCoverageDetail != null
+  )
+}
+
+function normalizeViewerCoverageState(value: unknown): ViewerSampleQuality | undefined {
+  if (typeof value !== 'string') return undefined
+  const state = value.trim().toLowerCase()
+  if (state === 'complete' || state === 'full' || state === 'qualified' || state === 'measured') return 'complete'
+  if (state === 'partial' || state === 'incomplete' || state === 'sparse' || state === 'degraded') return 'partial'
+  if (state === 'unknown' || state === 'unavailable' || state === 'none') return 'unknown'
+  return undefined
+}
+
+/**
+ * Resolve the viewer truth contract without guessing from the magnitude of a
+ * sum. Contributor counts are the strongest evidence when present. Live channels
+ * with viewer counts (viewerContributors) are distinguished from total sampled
+ * channels including offline channels (viewerSampledContributors).
+ *
+ * When Helix executes a verified complete sampling generation across the entire
+ * roster, offline channels have 0 viewers, so viewerContributors can legitimately
+ * be less than viewerExpectedContributors while viewerCoverage remains 'complete'.
+ */
+export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAssessment {
+  const detail = viewerCoverageDetail(point)
+  const contributors = nonNegativeFinite(point.viewerContributors ?? detail?.contributors)
+  const sampledContributors = nonNegativeFinite(
+    point.viewerSampledContributors ?? detail?.sampledContributors,
+  )
+  const expectedContributors = nonNegativeFinite(
+    point.viewerExpectedContributors ?? detail?.expectedContributors,
+  )
+  const coveragePct = nonNegativeFinite(point.viewerCoveragePct ?? detail?.coveragePct)
+  const state = normalizeViewerCoverageState(point.viewerCoverage ?? detail?.state)
+  const explicitComplete = point.viewerComplete ?? detail?.complete
+  const hasValue = point.viewers > 0 || point.hasViewerRollup === true
+  const explicitMeasuredZero = point.hasViewerRollup === true
+  const sampled = explicitMeasuredZero || hasValue || contributors != null || sampledContributors != null
+
+  let derivedCoveragePct: number | undefined
+  if (sampledContributors != null && expectedContributors != null && expectedContributors > 0) {
+    derivedCoveragePct = Math.min(100, (sampledContributors / expectedContributors) * 100)
+  } else if ((explicitComplete === true || state === 'complete') && coveragePct == null) {
+    derivedCoveragePct = 100
+  } else if (
+    contributors != null &&
+    expectedContributors != null &&
+    expectedContributors > 0 &&
+    state !== 'complete' &&
+    explicitComplete !== true
+  ) {
+    derivedCoveragePct = Math.min(100, (contributors / expectedContributors) * 100)
+  }
+  const resolvedCoveragePct = coveragePct ?? derivedCoveragePct
+
+  if (!sampled) {
+    return {
+      sampled: false,
+      qualified: false,
+      quality: state ?? 'unknown',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+
+  // Live contributors and sampled channels cannot exceed the expected roster denominator.
+  if (expectedContributors != null) {
+    if (
+      expectedContributors <= 0 ||
+      (contributors != null && contributors > expectedContributors) ||
+      (sampledContributors != null && sampledContributors > expectedContributors)
+    ) {
+      return {
+        sampled: true,
+        qualified: false,
+        quality: 'unknown',
+        contributors,
+        sampledContributors,
+        expectedContributors,
+        coveragePct: resolvedCoveragePct,
+      }
+    }
+  }
+
+  // If sampledContributors is provided, it specifically measures sampling completeness
+  // (both live and offline channels) against expected roster channels.
+  if (sampledContributors != null && expectedContributors != null) {
+    if (sampledContributors < expectedContributors) {
+      return {
+        sampled: true,
+        qualified: false,
+        quality: 'partial',
+        contributors,
+        sampledContributors,
+        expectedContributors,
+        coveragePct: resolvedCoveragePct,
+      }
+    }
+    return {
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct ?? 100,
+    }
+  }
+
+  // When sampledContributors is omitted (legacy or current release backend),
+  // a verified `complete` flag confirms a full sampling generation even if
+  // offline channels explain fewer live contributors (e.g. 63 live out of 500 roster channels).
+  if (explicitComplete === true || state === 'complete') {
+    return {
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct ?? 100,
+    }
+  }
+
+  if (explicitComplete === false || state === 'partial') {
+    return {
+      sampled: true,
+      qualified: false,
+      quality: 'partial',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+
+  if (state === 'unknown') {
+    return {
+      sampled: true,
+      qualified: false,
+      quality: 'unknown',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+
+  // Unflagged rows with contributor counts: without an explicit server complete assertion
+  // or sampledContributors, fewer contributors than denominator fails closed to partial.
+  if (contributors != null && expectedContributors != null && expectedContributors > 0) {
+    const complete = contributors === expectedContributors
+    return {
+      sampled: true,
+      qualified: complete,
+      quality: complete ? 'complete' : 'partial',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
+  }
+
+  if (coveragePct != null) {
+    const complete = coveragePct >= 100
+    return {
+      sampled: true,
+      qualified: complete,
+      quality: complete ? 'complete' : 'partial',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct,
+    }
+  }
+
+  // Legacy viewer rows are known observations but have no population
+  // denominator. Older payloads often omitted `hasViewerRollup` and only
+  // carried a positive value, so keep that compatibility path plottable while
+  // exposing the legacy quality to callers so the UI can label it honestly.
+  if (!explicitViewerCoverage(point) && (point.hasViewerRollup === true || point.viewers > 0)) {
+    return { sampled: true, qualified: true, quality: 'legacy' }
+  }
+  return {
+    sampled: true,
+    qualified: false,
+    quality: 'unknown',
+    contributors,
+    sampledContributors,
+    expectedContributors,
+    coveragePct: resolvedCoveragePct,
+  }
+}
+
+export function hasViewerSample(point: HubActivityPoint): boolean {
+  return assessViewerCoverage(point).sampled
+}
+
+export function isViewerCoverageQualified(point: HubActivityPoint): boolean {
+  return assessViewerCoverage(point).qualified
+}
+
+export function isViewerCoveragePartial(point: HubActivityPoint): boolean {
+  const assessment = assessViewerCoverage(point)
+  return assessment.sampled && !assessment.qualified
+}
+
+/** Stable provider aliases used by both legacy and projection payloads. */
+export type HubProviderLaneKey = 'sevenTv' | 'twitch' | 'bttv' | 'ffz'
+
+function providerCoverageEntry(point: HubActivityPoint, key: HubProviderLaneKey): unknown {
+  const map = point.providerCoverage
+  if (!map) return undefined
+  const aliases = key === 'sevenTv' ? ['seventv', '7tv', 'sevenTv'] : [key]
+  for (const alias of aliases) {
+    if (Object.prototype.hasOwnProperty.call(map, alias)) return map[alias]
+  }
+  return undefined
+}
+
+/** Whether one provider's value is a measured observation in this bucket. */
+export function hasProviderSample(point: HubActivityPoint, key: HubProviderLaneKey): boolean {
+  // Client-created grid placeholders carry zero-valued fields for the shape,
+  // but they are not provider observations. Never let those placeholders turn
+  // a sparse lane into an apparently complete flat zero signal.
+  if (isGapMarker(point)) return false
+  const value = point[key === 'sevenTv' ? 'seventv' : key]
+  const hasValue = typeof value === 'number' && Number.isFinite(value)
+  const explicit = providerCoverageEntry(point, key)
+  // Coverage metadata cannot manufacture the corresponding metric. A
+  // measured-zero provider is represented by an explicit numeric zero; an
+  // omitted count remains unavailable even when an aggregate state says the
+  // provider was expected.
+  if (typeof explicit === 'boolean') return explicit && hasValue
+  if (typeof explicit === 'string') {
+    const state = explicit.trim().toLowerCase()
+    if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
+    if (state === 'complete' || state === 'partial' || state === 'measured' || state === 'available') return hasValue
+  }
+  if (explicit && typeof explicit === 'object') {
+    const detail = explicit as { measured?: unknown; state?: unknown }
+    if (typeof detail.measured === 'boolean') return detail.measured && hasValue
+    if (typeof detail.state === 'string') {
+      const state = detail.state.trim().toLowerCase()
+      if (state === 'unknown' || state === 'unavailable' || state === 'none') return false
+      if (state === 'complete' || state === 'partial' || state === 'measured' || state === 'available') return hasValue
+    }
+  }
+  // 7TV is always present in the backend point schema (including measured
+  // zero). Optional provider fields preserve omission so zero is not invented.
+  if (key === 'sevenTv') return typeof point.seventv === 'number' && Number.isFinite(point.seventv)
+  return hasValue
 }
 
 /** Mirrors hubActivityMaxPoints in streamclone internal/analytics/hub_overview.go */
@@ -123,8 +416,11 @@ export function chartActivityPoints(
   livePoolViewerSum?: number,
 ): HubActivityPoint[] {
   const ordered = sortActivityPoints(points)
-  const floored = applyLivePoolViewerFloor(ordered, livePoolViewerSum, windowMinutes)
-  const trimmed = dropTrailingOpenBucket(floored, windowMinutes, nowMs ?? Date.now())
+  // `livePoolViewerSum` is a current-state KPI, not a historical bucket
+  // observation. It is intentionally accepted for source compatibility with
+  // older callers but must never floor or replace an activity point here.
+  void livePoolViewerSum
+  const trimmed = dropTrailingOpenBucket(ordered, windowMinutes, nowMs ?? Date.now())
   return normalizeActivityPointsForChart(trimmed, windowMinutes)
 }
 

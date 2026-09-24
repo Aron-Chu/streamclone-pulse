@@ -53,7 +53,7 @@ export function HubSubbar({
         <Badge variant={statusTone === 'live' ? 'live' : 'down'} dot pulse={statusTone === 'live'}>
           {statusLabel}
         </Badge>
-        <span className="muted" style={{ fontSize: '0.74rem' }}>
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
           {updatedLabel}
         </span>
         <IconButton ariaLabel="Refresh hub data" onClick={onRefresh} busy={refreshing}>

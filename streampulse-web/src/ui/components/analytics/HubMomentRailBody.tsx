@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { buildVodTimestampUrl, type FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
+import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
+import { discoveryMomentHref, fromHubMoment } from '../../../lib/discoveryMoments'
 import { withComputedBurstShare } from '../../../lib/emoteShare'
 import type { HubEmote, HubLiveChannel } from '../../../lib/publicHub'
 import {
@@ -63,10 +64,8 @@ export function HubMomentRailBody({
     )
   }, [moment.topEmotes])
 
-  const resolvedVodId = moment.vodId
-  const vodHref = resolvedVodId
-    ? buildVodTimestampUrl(resolvedVodId, moment.offsetSeconds)
-    : undefined
+  const reviewMoment = fromHubMoment(moment)
+  const reviewHref = reviewMoment ? discoveryMomentHref(reviewMoment) : undefined
   const analyticsHref =
     moment.href ??
     (moment.login
@@ -76,9 +75,8 @@ export function HubMomentRailBody({
           offsetSeconds: moment.offsetSeconds,
         })
       : undefined)
-  const primaryHref = analyticsHref ?? vodHref
-  const primaryExternal = !analyticsHref && Boolean(vodHref)
-  const primaryLabel = analyticsHref ? 'Open analytics' : vodHref ? 'Jump to VOD' : null
+  const primaryHref = reviewHref ?? analyticsHref
+  const primaryLabel = reviewHref ? 'Review moment' : analyticsHref ? 'Open analytics' : null
 
   return (
     <div className="hub-moment-rail">
@@ -146,15 +144,9 @@ export function HubMomentRailBody({
 
       {primaryHref && primaryLabel ? (
         <div className="hub-moment-rail__cta">
-          {primaryExternal ? (
-            <a className="hub-openbtn hub-openbtn--accent" href={primaryHref} target="_blank" rel="noreferrer">
-              {primaryLabel}
-            </a>
-          ) : (
-            <Link className="hub-openbtn hub-openbtn--accent" to={primaryHref}>
-              {primaryLabel}
-            </Link>
-          )}
+          <Link className="hub-openbtn hub-openbtn--accent" to={primaryHref}>
+            {primaryLabel}
+          </Link>
         </div>
       ) : (
         <div className="hub-moment-rail__cta">

@@ -2,13 +2,15 @@
  * Shared scroll-scene engine for the landing page's pinned, scroll-driven
  * sections (extension tour + live signal replay), so both feel identical.
  *
- * - Pins the sticky stage with an exact GPU transform that tracks scroll 1:1
- *   (easing the pin would make the stage rubber-band against the page).
- * - Exposes a *smoothed* progress value: wheel/trackpad scrolling arrives in
- *   discrete steps, so applying raw progress makes reveal animations look
- *   steppy. Each animation frame eases the applied progress toward the raw
- *   target (exponential smoothing), and the loop keeps running until it
- *   converges — short inertial settle, zero work at idle.
+ * The pin itself is `position: sticky` in CSS — the compositor keeps it exactly
+ * in step with scroll, which a JS-written transform cannot (it lands a frame
+ * late and the stage visibly drifts on fast wheel/trackpad scrolling).
+ *
+ * This engine only reports progress, and reports it *smoothed*: wheel/trackpad
+ * scrolling arrives in discrete steps, so applying raw progress makes reveal
+ * animations look steppy. Each animation frame eases the applied progress
+ * toward the raw target (exponential smoothing), and the loop keeps running
+ * until it converges — short inertial settle, zero work at idle.
  *
  * SSR/reduced-motion: callers only start the engine in animated mode; the
  * static fallback stays pure CSS (`data-static`).
@@ -17,8 +19,6 @@
 export interface ScrollSceneOptions {
   /** Tall element that defines the scroll distance. */
   scene: HTMLElement
-  /** Stage to pin while the scene scrolls past (transform-pinned). */
-  sticky?: HTMLElement | null
   /** Called each animation frame with smoothed progress (reveals) and raw scroll progress (position). */
   onProgress: (smoothed: number, raw: number) => void
   /**
@@ -31,7 +31,7 @@ export interface ScrollSceneOptions {
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
 
 /** Starts the engine; returns a cleanup function. */
-export function startScrollScene({ scene, sticky, onProgress, stiffness = 14 }: ScrollSceneOptions): () => void {
+export function startScrollScene({ scene, onProgress, stiffness = 14 }: ScrollSceneOptions): () => void {
   let raf = 0
   let current = -1 // -1 = snap to target on the first frame (no load-in swoosh)
   let lastTime = 0
@@ -42,11 +42,6 @@ export function startScrollScene({ scene, sticky, onProgress, stiffness = 14 }: 
     const rect = scene.getBoundingClientRect()
     const scrollable = scene.offsetHeight - vh
     const target = scrollable > 0 ? clamp01(-rect.top / scrollable) : 0
-
-    if (sticky) {
-      const pin = Math.min(Math.max(-rect.top, 0), Math.max(scrollable, 0))
-      sticky.style.transform = `translate3d(0, ${pin}px, 0)`
-    }
 
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 1 / 60
     lastTime = time

@@ -1,6 +1,7 @@
 /* Command center — operational dark theme (teal accent) */
 .figma-analytics {
   --sp-bg: #09090b;
+  --sp-popover: #18181b;
   --sp-surface-1: rgba(255, 255, 255, 0.016);
   --sp-surface-2: rgba(255, 255, 255, 0.022);
   --sp-surface-3: rgba(255, 255, 255, 0.028);
@@ -13,7 +14,7 @@
 
   --sp-text: rgba(255, 255, 255, 0.9);
   --sp-text-muted: rgba(255, 255, 255, 0.55);
-  --sp-text-faint: rgba(255, 255, 255, 0.42);
+  --sp-text-faint: rgba(255, 255, 255, 0.62);
 
   --sp-accent: #5eead4;
   --sp-accent-strong: #99f6e4;

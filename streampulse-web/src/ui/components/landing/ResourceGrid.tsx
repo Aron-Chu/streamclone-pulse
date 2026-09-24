@@ -9,34 +9,26 @@ interface ResourceLink {
   cta: string
 }
 
-interface ResourceSoon {
-  icon: LucideIcon
-  title: string
-  copy: string
-}
-
 const LINKS: ResourceLink[] = [
   {
     to: '/docs',
     icon: BookOpen,
     title: 'Documentation',
-    copy: 'Coverage states, backfill behavior, and how the hosted console maps to Streamclone.',
+    copy: 'Install the extension, understand coverage, and find moments in Analytics.',
     cta: 'Read the docs',
   },
   {
     to: '/status',
     icon: Activity,
     title: 'System status',
-    copy: 'Live API health, collector coverage, and incident history for the hosted stack.',
+    copy: 'Available service health and coverage measurements, with their last update time.',
     cta: 'View status',
   },
+  {
+    to: '/docs#api', icon: TerminalSquare, title: 'Developer reference',
+    copy: 'Read-only aggregate endpoints and the boundaries of the public API.', cta: 'View reference',
+  },
 ]
-
-const SOON: ResourceSoon = {
-  icon: TerminalSquare,
-  title: 'Public API',
-  copy: 'Programmatic access to sanitized peaks, coverage, and moments. Landing soon.',
-}
 
 export function ResourceGrid() {
   return (
@@ -53,16 +45,6 @@ export function ResourceGrid() {
           </span>
         </Link>
       ))}
-      <div className="sl-rescard" aria-label={`${SOON.title} — coming soon`}>
-        <span className="sl-res-ic" aria-hidden="true">
-          <SOON.icon size={20} />
-        </span>
-        <h3>
-          {SOON.title}
-          <span className="sl-res-soon">Soon</span>
-        </h3>
-        <p>{SOON.copy}</p>
-      </div>
     </div>
   )
 }

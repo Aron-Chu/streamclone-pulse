@@ -36,11 +36,31 @@ const REJECT_PRIVATE_KEYS = [
 ] as const
 
 const TWITCH_VOD_HOSTS = new Set(['www.twitch.tv', 'twitch.tv', 'm.twitch.tv'])
+const PUBLIC_CLIP_MEDIA_HOSTS = new Set(['cdn.streampulse.stream'])
 
-function isHttpUrl(value: string): boolean {
+function isSafePublicClipMediaUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    if (url.protocol !== 'https:' || url.port || hasCredentials(url)) return false
+    const host = url.hostname.toLowerCase()
+    if (!PUBLIC_CLIP_MEDIA_HOSTS.has(host)) return false
+    // Do not let a future host allowlist accidentally admit loopback, local,
+    // or private-network targets through a DNS alias.
+    if (
+      host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.local') ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      /^127\./.test(host) ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^169\.254\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
+      return false
+    }
+    return true
   } catch {
     return false
   }
@@ -127,7 +147,7 @@ export function normalizeHubPublicClip(raw: unknown): HubPublicClip | null {
   const durationSeconds = Number(row.durationSeconds)
   if (!id || !login || !title || !thumbnailUrl || !playbackUrl || !publishedAt) return null
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return null
-  if (!isHttpUrl(thumbnailUrl) || !isHttpUrl(playbackUrl)) return null
+  if (!isSafePublicClipMediaUrl(thumbnailUrl) || !isSafePublicClipMediaUrl(playbackUrl)) return null
   // Reject private candidate / job fields if accidentally present.
   for (const key of REJECT_PRIVATE_KEYS) {
     if (key in row) return null

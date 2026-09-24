@@ -1,0 +1,93 @@
+/* Readability floor for secondary labels on the public Hub chart and health banner. */
+.hubx .hx-health-banner__caption,
+.hubx .hx-health-banner__detail,
+.hubx .hx-chart-footnote,
+.hubx .hx-chart-summary,
+.hubx .hx-chart-header__readout,
+.hubx .hx-chart2 .ylab,
+.hubx .hx-chart-axis-labels,
+.hubx .hx-chart-series-labels,
+.hubx .hx-chart-status__note,
+.hubx .hx-chart-tip-slot .tip,
+.hubx .hx-chart-tip-slot .tip .tip-emotes__label {
+  font-size: 0.75rem;
+}
+
+/* Reserve an external axis gutter without covering the newest measurements. */
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] {
+  height: 420px !important;
+  margin-right: 4.25rem;
+  overflow: visible;
+}
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] .ylab {
+  display: none;
+}
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks {
+  inset: 6% -4.25rem 52% auto;
+  width: 4.25rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid hsl(var(--border) / 0.45);
+}
+.hubx .hx-chart2[data-chart-layout="viewer-lane"] .hx-viewer-axis-ticks span {
+  right: 0.35rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+}
+@media (max-width: 719px) {
+  .hubx .hx-chart2[data-chart-layout="viewer-lane"] {
+    height: 360px !important;
+  }
+}
+
+/* Keep the time-bearing rows on the same reduced plot width as the chart. */
+.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-chart-navigator,
+.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-axis,
+.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-provider-lanes {
+  margin-right: 4.25rem;
+}
+.hubx .hx-plot-stack:has(.hx-chart2[data-chart-layout="viewer-lane"]) .hx-chart-navigator {
+  width: calc(100% - 4.25rem);
+}
+.hubx.figma-global-activity__hub-chart .hx-chart-header {
+  flex-wrap: wrap;
+}
+.hubx .hx-chart-header .hx-chart-header__readout {
+  display: block;
+  position: static;
+  box-sizing: border-box;
+  width: 100%;
+  grid-column: 1 / -1;
+  flex: none;
+  height: 132px;
+  min-width: 0;
+  margin: 8px 0 0;
+  padding: 8px 0;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-align: left;
+  border-top: 1px solid hsl(var(--border));
+}
+.hubx .hx-hover-interval { height: 36px; font-variant-numeric: tabular-nums; }
+.hubx .hx-hover-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; height: 54px; }
+.hubx .hx-hover-metrics > div { min-width: 0; }
+.hubx .hx-hover-metrics span, .hubx .hx-hover-metrics strong { display: block; overflow-wrap: anywhere; }
+.hubx .hx-hover-metrics strong { font-weight: 600; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+.hubx .hx-hover-status { display: block; font-size: 12px; line-height: 18px; }
+.hubx .hx-chart-header .hx-chart-header__readout:not([data-active]) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+.hubx .hx-chart-header__readout:not([data-active]) .hx-hover-interval {
+  height: auto;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+.hubx .hx-chart-header__readout:not([data-active]) .hx-hover-metrics { display: none; }
+@media (max-width: 719px) {
+  .hubx .hx-chart-header .hx-chart-header__readout { height: 168px; }
+  .hubx .hx-hover-metrics { height: 72px; }
+}

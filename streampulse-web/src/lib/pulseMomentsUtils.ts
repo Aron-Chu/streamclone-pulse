@@ -1,4 +1,5 @@
 import type { FigmaMomentRow } from './figmaSessionAnalytics'
+import { measurementTimeMs } from '@streampulse/pulse-core'
 import { formatOffsetLabel } from './figmaSessionAnalytics'
 import { activityBucketKey, activityBucketMs } from './hubActivitySummary'
 import { absolutizeEmoteAssetUrl, preferResolvableEmoteUrl } from './emoteAssetUrl'
@@ -29,6 +30,7 @@ export function isBucketWithinLiveHorizon(bucketT: number | undefined, nowMs = D
 }
 
 export interface ResolvedMomentEmote {
+  id?: string
   name: string
   provider?: string
   count?: number
@@ -74,11 +76,13 @@ function resolveByName(
   count: number | undefined,
   imageUrl: string | undefined,
   lookup: Map<string, HubEmote>,
+  id?: string,
 ): ResolvedMomentEmote {
   const key = name.trim().toLowerCase()
   const hit = lookup.get(emoteLookupKey(name, provider)) ?? lookup.get(key)
   const resolvedUrl = preferResolvableEmoteUrl(imageUrl, hit?.imageUrl)
   return {
+    id: id?.trim() || hit?.id?.trim() || undefined,
     name,
     provider: provider ?? hit?.provider,
     count: count ?? hit?.count,
@@ -103,7 +107,14 @@ export function resolveMomentEmote(
 ): ResolvedMomentEmote | null {
   const fromRow = moment.topEmotes?.[0]
   if (fromRow?.name) {
-    return resolveByName(fromRow.name, fromRow.provider, fromRow.count, fromRow.imageUrl, lookup)
+    return resolveByName(
+      fromRow.name,
+      fromRow.provider,
+      fromRow.count,
+      fromRow.imageUrl,
+      lookup,
+      (fromRow as typeof fromRow & { id?: string }).id,
+    )
   }
   const code = moment.topEmoteCode?.trim()
   if (!code) return null
@@ -181,23 +192,30 @@ export function momentEmoteProviderLabel(provider?: string): string {
   if (p === 'ffz' || p === 'frankerfacez') return 'FFZ'
   if (p === 'bttv' || p === 'betterttv') return 'BetterTTV'
   if (p === 'seventv' || p === '7tv') return '7TV'
-  return provider?.trim() || '7TV'
+  return provider?.trim() || 'Unknown'
 }
 
-export function momentEmoteExternalUrl(name: string, provider?: string): string {
-  const trimmed = name.trim()
-  const q = encodeURIComponent(trimmed)
+export function momentEmoteExternalUrl(provider?: string, id?: string): string | null {
   const p = (provider ?? '').trim().toLowerCase()
+  const providerID = (id ?? '').trim()
+  const validID =
+    (p === 'twitch' && /^\d{1,24}$/.test(providerID)) ||
+    ((p === 'ffz' || p === 'frankerfacez') && /^\d{1,24}$/.test(providerID)) ||
+    ((p === 'bttv' || p === 'betterttv') && /^[a-f0-9]{24}$/i.test(providerID)) ||
+    ((p === 'seventv' || p === '7tv') && /^[a-z0-9_-]{20,64}$/i.test(providerID))
+  if (!validID) return null
+  const encodedID = encodeURIComponent(providerID)
   if (p === 'twitch') {
-    return `https://www.twitch.tv/emotes?query=${q}`
+    return `https://www.twitch.tv/emotes/${encodedID}`
   }
   if (p === 'ffz' || p === 'frankerfacez') {
-    return `https://www.frankerfacez.com/emoticons?q=${q}`
+    return `https://www.frankerfacez.com/emoticon/${encodedID}`
   }
   if (p === 'bttv' || p === 'betterttv') {
-    return `https://betterttv.com/emotes/${q}`
+    return `https://betterttv.com/emotes/${encodedID}`
   }
-  return `https://7tv.app/emotes?query=${q}`
+  if (p === 'seventv' || p === '7tv') return `https://7tv.app/emotes/${encodedID}`
+  return null
 }
 
 export function momentContextParts(moment: FigmaMomentRow, channelLive?: boolean): string[] {
@@ -275,30 +293,28 @@ export function filterPulseMoments(moments: FigmaMomentRow[], filter: PulseMomen
 /** Resolve wall-clock peak time from backend `at` or stream start + offset. */
 export function resolveMomentWallClockAt(
   moment: FigmaMomentRow,
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>>,
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'streamId'>>,
 ): number | undefined {
-  if (moment.at != null && Number.isFinite(moment.at) && moment.at > 0) {
-    return moment.at
-  }
+  if (moment.at != null) return measurementTimeMs(moment.at) ?? undefined
   if (
     moment.streamStartedAt != null &&
-    Number.isFinite(moment.streamStartedAt) &&
-    moment.streamStartedAt > 0 &&
+    measurementTimeMs(moment.streamStartedAt) != null &&
     moment.offsetSeconds != null &&
     Number.isFinite(moment.offsetSeconds)
   ) {
-    return moment.streamStartedAt + moment.offsetSeconds * 1000
+    return moment.offsetSeconds >= 0 ? measurementTimeMs(moment.streamStartedAt + moment.offsetSeconds * 1000) ?? undefined : undefined
   }
   const login = moment.login?.trim().toLowerCase()
   if (!login || moment.offsetSeconds == null || !Number.isFinite(moment.offsetSeconds)) {
     return undefined
   }
-  const channel = liveChannels.find((ch) => ch.login.trim().toLowerCase() === login)
+  if (!moment.streamId || moment.offsetSeconds < 0) return undefined
+  const channel = liveChannels.find((ch) => ch.login.trim().toLowerCase() === login && ch.streamId === moment.streamId)
   const startedAt = channel?.startedAt?.trim()
   if (!startedAt) return undefined
-  const startMs = Date.parse(startedAt)
-  if (!Number.isFinite(startMs)) return undefined
-  return startMs + moment.offsetSeconds * 1000
+  const startMs = measurementTimeMs(startedAt)
+  if (startMs == null) return undefined
+  return measurementTimeMs(startMs + moment.offsetSeconds * 1000) ?? undefined
 }
 
 /** Sum of backend top-emote counts for the selected minute (partial when API caps rows). */
@@ -319,15 +335,11 @@ export function resolveMomentEmotesPerMin(moment: FigmaMomentRow): number | unde
 /** CCU at the spike minute — prefers backend viewers, falls back to live pool snapshot. */
 export function resolveMomentViewers(
   moment: FigmaMomentRow,
-  liveChannels: Array<Pick<HubLiveChannel, 'login'> & { viewers?: number }> = [],
+  _liveChannels: Array<Pick<HubLiveChannel, 'login'> & { viewers?: number }> = [],
 ): number | undefined {
   if (moment.viewers != null && Number.isFinite(moment.viewers) && moment.viewers > 0) {
     return moment.viewers
   }
-  const login = moment.login?.trim().toLowerCase()
-  if (!login) return undefined
-  const channel = liveChannels.find((ch) => ch.login.trim().toLowerCase() === login)
-  if (channel?.viewers != null && channel.viewers > 0) return channel.viewers
   return undefined
 }
 
@@ -341,7 +353,7 @@ export function momentViewersTitle(
   if (moment.viewers != null && moment.viewers > 0) {
     return `${label} viewers at this minute`
   }
-  return `${label} viewers (live pool snapshot — minute rollup unavailable)`
+  return `${label} viewers at this minute`
 }
 
 export interface MomentViewerTableCell {
@@ -374,7 +386,7 @@ export function resolveMomentViewerTableCell(
 /** Wall-clock label for inspector header; falls back to stream offset when unknown. */
 export function momentWallClockLabel(
   moment: FigmaMomentRow,
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>> = [],
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'streamId'>> = [],
 ): { primary: string; secondary?: string } {
   const wallMs = resolveMomentWallClockAt(moment, liveChannels)
   if (wallMs != null) {
@@ -390,7 +402,7 @@ export function momentWallClockLabel(
 /** Wall-clock time for bucket-filtered tables; falls back to stream offset. */
 export function formatMomentTableTime(
   moment: FigmaMomentRow,
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>> = [],
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'streamId'>> = [],
 ): string {
   const wallMs = resolveMomentWallClockAt(moment, liveChannels)
   if (wallMs != null) {
@@ -408,7 +420,7 @@ export function filterMomentsByBucket(
   moments: FigmaMomentRow[],
   bucketT: number | undefined,
   windowMinutes: number,
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>> = [],
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'streamId'>> = [],
 ): FigmaMomentRow[] {
   if (bucketT == null || !Number.isFinite(bucketT)) return moments
   const bucketStart = activityBucketKey(bucketT, windowMinutes)
@@ -421,7 +433,7 @@ export function filterMomentsByBucket(
 
 export function momentsHaveWallClockAt(
   moments: FigmaMomentRow[],
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>> = [],
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'streamId'>> = [],
 ): boolean {
   return moments.some((moment) => resolveMomentWallClockAt(moment, liveChannels) != null)
 }
@@ -430,7 +442,7 @@ export function momentsHaveWallClockAt(
 export function resolveMomentChartBucketT(
   moment: FigmaMomentRow,
   windowMinutes: number,
-  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt'>>,
+  liveChannels: Array<Pick<HubLiveChannel, 'login' | 'startedAt' | 'streamId'>>,
   activityPoints: Array<{ t: number }>,
 ): number | null {
   const wallMs = resolveMomentWallClockAt(moment, liveChannels)

@@ -59,10 +59,10 @@ export default defineConfig({
     testTimeout: 120_000,
     setupFiles: ['./tests/setup.ts'],
     exclude: [
+      'scripts/account-routing.test.mjs',
+      'scripts/account-proxy-candidate.test.mjs',
       'tests/e2e/**',
       'node_modules/**',
-      'tests/analyticsLandingPage.test.tsx',
-      'tests/analyticsHubEmpty.test.tsx',
     ],
     server: {
       deps: {

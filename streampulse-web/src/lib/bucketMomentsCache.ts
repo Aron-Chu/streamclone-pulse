@@ -1,23 +1,24 @@
 import type { FigmaMomentRow } from './figmaSessionAnalytics'
 import { getBackendUrl } from './apiClient'
-import type { PublicHubActivityWindow } from './publicHub'
+import type { PublicHubActivityWindow, PublicHubMomentsResponse } from './publicHub'
 
 /** Ready bucket entries may render from cache while refreshing. */
 export const BUCKET_MOMENTS_CACHE_READY_MS = 30 * 60 * 1000
 /** Empty bucket entries expire quickly — corpus may backfill. */
 export const BUCKET_MOMENTS_CACHE_EMPTY_MS = 2 * 60 * 1000
 
-const STORAGE_PREFIX = 'sp:bucketMoments:v1:'
+const STORAGE_PREFIX = 'sp:bucketMoments:v2:'
 const memory = new Map<string, BucketMomentsCacheEntry>()
 
 interface BucketMomentsCacheEntry {
-  version: 1
+  version: 2
   cachedAt: number
   backendUrl: string
   activityWindow: PublicHubActivityWindow
   bucketT: number
   moments: FigmaMomentRow[]
   empty: boolean
+  response?: PublicHubMomentsResponse
 }
 
 function normalizeBackendUrl(url: string): string {
@@ -53,7 +54,7 @@ function parseStorageEntry(raw: string): BucketMomentsCacheEntry | null {
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return null
     const entry = parsed as Partial<BucketMomentsCacheEntry>
-    if (entry.version !== 1) return null
+    if (entry.version !== 2) return null
     if (entry.backendUrl !== normalizeBackendUrl(getBackendUrl())) return null
     if (typeof entry.activityWindow !== 'string') return null
     if (typeof entry.bucketT !== 'number' || !Number.isFinite(entry.bucketT)) return null
@@ -135,19 +136,25 @@ export function writeBucketMomentsCache(
   bucketT: number,
   activityWindow: PublicHubActivityWindow,
   moments: FigmaMomentRow[],
+  response?: PublicHubMomentsResponse,
 ): void {
   const entry: BucketMomentsCacheEntry = {
-    version: 1,
+    version: 2,
     cachedAt: Date.now(),
     backendUrl: normalizeBackendUrl(getBackendUrl()),
     activityWindow,
     bucketT,
     moments,
     empty: moments.length === 0,
+    response,
   }
   const key = bucketMomentsCacheKey(bucketT, activityWindow)
   memory.set(key, entry)
   writeStorageEntry(entry)
+}
+
+export function readBucketMomentsResponse(bucketT: number, activityWindow: PublicHubActivityWindow) {
+  return readEntry(bucketT, activityWindow)?.response
 }
 
 /** Test-only — clears in-memory L1 only (sessionStorage preserved). */

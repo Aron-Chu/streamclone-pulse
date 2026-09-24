@@ -98,10 +98,12 @@ export function EmoteEconomyPanel({
   intel,
   topEmotes,
   loading,
+  showSummary = true,
 }: {
   intel: HubEmoteIntel
   topEmotes: HubEmote[]
   loading?: boolean
+  showSummary?: boolean
 }) {
   const backendProviderShares = intel.providerShares ?? []
   const providerShares = backendProviderShares
@@ -109,6 +111,11 @@ export function EmoteEconomyPanel({
   const leadingProvider = hasProviderRollups ? providerShares[0] : undefined
   const ring = providerRing(providerShares)
   const leadingShare = formatLeadingEmoteShare(topEmotes, intel.topEmoteSharePct)
+  const peakAvailable = intel.scope === 'tracked_live_pool'
+    && intel.windowMinutes === 30
+    && intel.biggestPeakUnit === 'emote_uses_per_channel_minute'
+    && typeof intel.asOf === 'string'
+    && Number.isFinite(Date.parse(intel.asOf))
   if (loading && topEmotes.length === 0) {
     return (
       <div style={{ display: 'flex', gap: '1.1rem', alignItems: 'center' }}>
@@ -154,11 +161,11 @@ export function EmoteEconomyPanel({
               ) : null}
             </span>
           ))}
-          <span className="muted" style={{ fontSize: '0.72rem' }}>
+          {(!hasProviderRollups || showSummary) && <span className="muted" style={{ fontSize: '0.75rem' }}>
             {hasProviderRollups
               ? `${compact(intel.uniqueEmotes)} unique emotes seen`
               : 'Aggregate emote counts only — provider hourly rollups not available for this window'}
-          </span>
+          </span>}
         </div>
       </div>
       <div className="hx-econ-split">
@@ -168,7 +175,7 @@ export function EmoteEconomyPanel({
           </div>
           <HubTopEmotesTable emotes={topEmotes} loading={loading} maxRows={10} layout="leaderboard" />
         </div>
-        <div>
+        {showSummary && <div>
           <div className="hx-card__desc" style={{ marginBottom: '0.35rem' }}>
             Velocity
             <span className="muted" style={{ display: 'block', fontWeight: 400, marginTop: '0.15rem' }}>
@@ -180,18 +187,18 @@ export function EmoteEconomyPanel({
             value={compact(intel.emotesPerMin)}
             hint="Average emotes posted per minute network-wide"
           />
-          <EconStat
+          {peakAvailable ? <EconStat
             label="Biggest peak"
             value={`${compact(intel.biggestPeakPerMin)}/m`}
-            hint="Highest single-minute emote rate detected"
-          />
+            hint="Highest per-channel minute in the tracked live pool over the latest 30 minutes"
+          /> : null}
           <EconStat
             label={leadingShare.label}
             value={leadingShare.value}
             hint={leadingShare.sub}
             title={leadingShare.title}
           />
-        </div>
+        </div>}
       </div>
     </>
   )

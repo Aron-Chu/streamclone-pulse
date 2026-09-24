@@ -1,3 +1,5 @@
+import { Skeleton } from '../../../primitives'
+
 export type KpiTone = 'accent' | 'neutral' | 'viewers' | 'chat'
 
 export interface KpiCardProps {
@@ -35,7 +37,13 @@ export function KpiCard({
         ) : null}
         {label}
       </span>
-      <strong className="hub-command-header__kpi-value">{loading ? '…' : value}</strong>
+      <strong className="hub-command-header__kpi-value">
+        {loading ? (
+          <Skeleton width="3.5rem" height="1.15rem" className="hub-command-header__kpi-loading" />
+        ) : (
+          value
+        )}
+      </strong>
       {sub ? <span className="hub-command-header__kpi-sub">{sub}</span> : null}
     </div>
   )

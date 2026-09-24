@@ -1,12 +1,14 @@
 import { memo, useMemo, type ReactNode } from 'react'
-import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
+import { momentRowKey, type FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import type { HubActivityPoint, HubEmote, HubEmoteIntel, HubLiveChannel } from '../../../lib/publicHub'
-import { bucketMinutes, hubActivityEmoteCount } from '../../../lib/hubActivitySummary'
+import { assessViewerCoverage, bucketMinutes, hasProviderSample, hubActivityEmoteCount } from '../../../lib/hubActivitySummary'
+import { formatMomentTableTime } from '../../../lib/pulseMomentsUtils'
 import type { HubEmoteWithShare } from '../../../lib/emoteShare'
 import { compact, displayName, initial } from './hubFormat'
 import { HubTopEmotesTable } from './HubTopEmotesTable'
 import { InspectorTopEmoteCard } from './InspectorTopEmoteCard'
 import { ResilientImage } from '../ResilientImage'
+import { twitchProfileImageRendition } from '../../../lib/twitchProfileImage'
 import {
   type InspectorMode,
   inspectorEmoteListSignature,
@@ -47,6 +49,9 @@ export interface ActivityBucketInspectorProps {
   onClearLinkedMoment?: () => void
   /** True when selectedPoint comes from an explicit chart lock (not moment accent). */
   bucketLocked?: boolean
+  onClearBucket?: () => void
+  /** Whether non-7TV provider totals are exact counters rather than legacy lower bounds. */
+  providerTotalsComplete?: boolean
   liveChannels?: HubLiveChannel[]
   className?: string
 }
@@ -65,12 +70,32 @@ function formatBucketTime(ts: number): string {
   })
 }
 
+/** The viewer's zone name ("PDT", "UTC", "GMT+9"); times in this inspector are local. */
+function localZoneLabel(ts: number): string {
+  try {
+    return new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date(ts))
+      .find(part => part.type === 'timeZoneName')?.value ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function formatBucketInterval(ts: number, minutes: number): string {
+  const start = new Date(ts)
+  const end = new Date(ts + minutes * 60_000)
+  const date = { month: 'short', day: 'numeric' } as const
+  const time = { hour: 'numeric', minute: '2-digit' } as const
+  const endDate = start.toDateString() === end.toDateString() ? '' : `${end.toLocaleDateString([], date)}, `
+  return `${start.toLocaleDateString([], date)}, ${start.toLocaleTimeString([], time)} – ${endDate}${end.toLocaleTimeString([], time)}`
+}
+
 function dominantProvider(point: HubActivityPoint): string | null {
   const entries: Array<{ key: string; label: string; value: number }> = [
     { key: '7tv', label: '7TV', value: point.seventv ?? 0 },
     { key: 'twitch', label: 'Twitch', value: point.twitch ?? 0 },
     { key: 'bttv', label: 'BTTV', value: point.bttv ?? 0 },
     { key: 'ffz', label: 'FFZ', value: point.ffz ?? 0 },
+    { key: 'other', label: 'Other', value: point.other ?? 0 },
   ]
   const best = entries.reduce((a, b) => (b.value > a.value ? b : a), entries[0])
   return best.value > 0 ? best.label : null
@@ -150,7 +175,8 @@ const InspectorStreamersFooter = memo(function InspectorStreamersFooter({
               </span>
               <span className="pulse-moments__channel pulse-moments__channel--compact activity-bucket-inspector__streamer-channel">
                 <ResilientImage
-                  src={streamer.profileImageUrl}
+                  src={twitchProfileImageRendition(streamer.profileImageUrl, 70)}
+                  fallbackSrc={streamer.profileImageUrl}
                   alt=""
                   loading="eager"
                   decoding="async"
@@ -291,6 +317,8 @@ export function ActivityBucketInspector({
   linkedMoment = null,
   onClearLinkedMoment,
   bucketLocked = false,
+  onClearBucket,
+  providerTotalsComplete = false,
   liveChannels = [],
   className,
 }: ActivityBucketInspectorProps) {
@@ -359,7 +387,8 @@ export function ActivityBucketInspector({
   const streamersFooterEmptyHint = bucketMode === 'range' && topLiveStreamers.length === 0
 
   const displayPoint = activePoint && bucketMode !== 'range' ? activePoint : null
-  const statsChatLabel = bucketMinutes(windowMinutes) > 1 ? 'Chat / min then' : 'Chat then'
+  const viewerCoverage = displayPoint ? assessViewerCoverage(displayPoint) : null
+  const chatMissing = displayPoint?.hasChatRollup === false || Boolean(displayPoint?.gapKind)
 
   const stats: InspectorStat[] =
     bucketMode === 'range'
@@ -369,11 +398,11 @@ export function ActivityBucketInspector({
           { label: rangeStats.stat3Label, value: rangeStats.stat3Value },
         ]
       : [
-          { label: 'Viewers then', value: displayPoint ? compact(displayPoint.viewers) : '—' },
-          { label: statsChatLabel, value: displayPoint ? compact(displayPoint.chat) : '—' },
+          { label: viewerCoverage?.quality === 'partial' ? 'Viewers (partial)' : 'Viewers', value: displayPoint && viewerCoverage?.sampled ? compact(displayPoint.viewers) : '—' },
+          { label: 'Chat / min', value: displayPoint && !chatMissing ? compact(displayPoint.chat) : '—' },
           {
-            label: 'Emotes then',
-            value: displayPoint ? compact(hubActivityEmoteCount(displayPoint)) : '—',
+            label: 'Emotes / min',
+            value: displayPoint && !chatMissing ? compact(hubActivityEmoteCount(displayPoint)) : '—',
           },
         ]
 
@@ -398,6 +427,94 @@ export function ActivityBucketInspector({
       : bucketMode === 'preview'
         ? ' activity-bucket-inspector--preview'
         : ''
+
+  if (activePoint) {
+    const coverageLabel = viewerCoverage?.coveragePct != null
+      ? `${Math.round(viewerCoverage.coveragePct)}% of viewer samples`
+      : viewerCoverage?.quality === 'complete'
+        ? 'Viewer sampling complete'
+        : viewerCoverage?.quality === 'partial'
+          ? 'Partial viewer sample'
+          : 'Viewer coverage unknown'
+    const providerRows = [
+      { key: 'sevenTv' as const, label: '7TV', value: activePoint.seventv },
+      { key: 'twitch' as const, label: 'Twitch', value: activePoint.twitch },
+      { key: 'bttv' as const, label: 'BTTV', value: activePoint.bttv },
+      { key: 'ffz' as const, label: 'FFZ', value: activePoint.ffz },
+    ]
+
+    return (
+      <aside className="activity-bucket-inspector activity-bucket-inspector--summary" aria-label="Activity bucket inspector">
+        {linkedMoment ? <LinkedMomentStrip linked={linkedMoment} onClear={onClearLinkedMoment} /> : null}
+        <header className="activity-bucket-inspector__summary-header">
+          <div className="activity-bucket-inspector__summary-heading">
+            <span className="activity-bucket-inspector__selection-state">
+              {bucketLocked ? 'Bucket selected' : linkedMoment ? 'Moment bucket' : 'Bucket preview'}
+            </span>
+            {bucketLocked && onClearBucket ? (
+              <button type="button" onClick={onClearBucket} aria-label="Clear selected bucket">Clear selection</button>
+            ) : null}
+          </div>
+          <strong><time dateTime={new Date(activePoint.t).toISOString()}>{formatBucketInterval(activePoint.t, bucketMinutes(windowMinutes))}</time>{localZoneLabel(activePoint.t) ? <small className="activity-bucket-inspector__zone"> {localZoneLabel(activePoint.t)}</small> : null}</strong>
+          <span>Bucket activity · {bucketMinutes(windowMinutes)} min{activePoint.bucketComplete === false ? ' · In progress' : ''}{bucketLocked ? ' · Filters moments below' : ''}</span>
+        </header>
+        <dl className="activity-bucket-inspector__summary-stats">
+          {stats.map(stat => <div key={stat.label}><dt>{stat.label}</dt><dd>{stat.value}</dd></div>)}
+        </dl>
+        <p className="activity-bucket-inspector__scope">
+          <span>{chatMissing ? 'Chat and emote measurements unavailable.' : 'Tracked IRC chat and emotes, averaged over this interval.'}</span>
+          {activePoint.providerCountsLowerBound ? <span>Provider counts are lower bounds.</span> : null}
+        </p>
+        <section className="activity-bucket-inspector__context" aria-label="Bucket breakdown">
+          <div className="activity-bucket-inspector__summary-emotes">
+            <h4>{momentFallbackActive ? 'Top emotes · uses in matching detections' : 'Top emotes · uses in this bucket'}</h4>
+            {tableEmotes.length ? <ul>{tableEmotes.slice(0, 3).map((emote, index) => <li key={`${emote.name}-${index}`}>
+              <ResilientImage src={emote.imageUrl} alt="" fallback={<span aria-hidden="true">—</span>} />
+              <span title={emote.name}>{emote.name}</span>
+              <strong title={`${emote.count.toLocaleString()} uses`}>{compact(emote.count)}</strong>
+            </li>)}</ul> : <p>No named emote breakdown was supplied for this interval.</p>}
+          </div>
+        </section>
+        {bucketLocked ? (
+          <section className="activity-bucket-inspector__matching" aria-label="Matching moments in selected bucket">
+            <div className="activity-bucket-inspector__matching-heading">
+              <h4>Matching detections</h4>
+              <span>{bucketMoments.length > 3 ? `Previewing 3 of ${bucketMoments.length} loaded` : `${bucketMoments.length} loaded`}{bucketMomentsLoading ? ' · checking for more' : ''}</span>
+            </div>
+            {bucketMoments.length > 0 ? (
+              <ol>
+                {bucketMoments.slice(0, 3).map(moment => (
+                  <li key={momentRowKey(moment)}>
+                    <span className="activity-bucket-inspector__matching-channel" title={moment.displayName || moment.login || undefined}>
+                      {moment.displayName || moment.login || 'Unknown channel'}
+                    </span>
+                    <strong title={moment.label}>{moment.label}</strong>
+                    <span className="activity-bucket-inspector__matching-time">{formatMomentTableTime(moment, liveChannels)}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>{bucketMomentsLoading ? 'Checking for matching detections…' : 'No matching detections loaded. Check Pulse Moments below for the fetch status.'}</p>
+            )}
+            <p className="activity-bucket-inspector__matching-note">Detector-selected moments only; this is not a list of every active channel.</p>
+            <a className="activity-bucket-inspector__moments-link" href="#section-pulse-moments">Inspect matching moments <span aria-hidden="true">↓</span></a>
+          </section>
+        ) : null}
+        <section className="activity-bucket-inspector__providers" aria-label="Selected bucket provider rates">
+          <h4>Emote providers · uses / min</h4>
+          <dl>{providerRows.map(({ key, label, value }) => (
+            <div key={key}>
+              <dt>{label}</dt>
+              <dd>{hasProviderSample(activePoint, key)
+                ? `${key !== 'sevenTv' && !providerTotalsComplete ? '≥' : ''}${compact(value ?? 0)}`
+                : '—'}</dd>
+            </div>
+          ))}</dl>
+          <p>{coverageLabel}</p>
+        </section>
+      </aside>
+    )
+  }
 
   return (
     <aside

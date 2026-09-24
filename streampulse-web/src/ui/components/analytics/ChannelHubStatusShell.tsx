@@ -37,6 +37,7 @@ export function ChannelHubStatusShell({
       <main
         className={mainClassName ?? 'figma-analytics__main'}
         id="analytics-main"
+        tabIndex={-1}
         aria-label={`Analytics for ${displayChannel}`}
       >
         {children}

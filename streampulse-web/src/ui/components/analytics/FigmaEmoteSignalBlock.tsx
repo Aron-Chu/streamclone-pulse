@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Activity, Database, TrendingUp } from 'lucide-react'
 import {
   HUB_TOP_MOVERS_CAP,
@@ -16,6 +16,7 @@ import { EmoteEconomyPanel, TopMoversList } from '../hub'
 import '../hub/hub.css'
 import { compact, formatLeadingEmoteShare } from './hubFormat'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
+import { Skeleton } from '../../primitives'
 
 export interface FigmaEmoteSignalBlockProps {
   intel: HubEmoteIntel
@@ -37,6 +38,20 @@ const MARKET_VIEWS: Array<{ key: EmoteMarketView; label: string }> = [
   { key: 'provider', label: 'Provider regime' },
 ]
 
+function peakEmoteContract(intel: HubEmoteIntel) {
+  const available = intel.scope === 'tracked_live_pool'
+    && intel.windowMinutes === 30
+    && intel.biggestPeakUnit === 'emote_uses_per_channel_minute'
+    && typeof intel.asOf === 'string'
+    && Number.isFinite(Date.parse(intel.asOf))
+  return {
+    available,
+    asOf: available
+      ? new Date(intel.asOf!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : null,
+  }
+}
+
 export function FigmaEmoteSignalBlock({
   intel,
   topEmotes = [],
@@ -49,6 +64,7 @@ export function FigmaEmoteSignalBlock({
 }: FigmaEmoteSignalBlockProps) {
   const labels = useCommandCenterLabels()
   const [view, setView] = useState<EmoteMarketView>('leaders')
+  const tabsId = useId()
 
   const seventvProvider = intel.providerShares.find(
     (row) =>
@@ -74,6 +90,12 @@ export function FigmaEmoteSignalBlock({
       top10SharePct: top10 || undefined,
     }
   }, [emoteMarket?.concentration, topEmotes])
+  const concentrationDenominator = emoteMarket?.concentration
+    ? 'measured sends'
+    : topEmotes.some((emote) => (emote as HubEmote & { shareEstimated?: boolean }).shareEstimated)
+      ? 'displayed rows'
+      : 'measured sends'
+  const peakContract = peakEmoteContract(intel)
 
   const kpis = [
     {
@@ -105,15 +127,20 @@ export function FigmaEmoteSignalBlock({
       title: undefined as string | undefined,
     },
     {
-      label: 'Biggest peak today',
-      value: intel.biggestPeakPerMin > 0 ? compact(intel.biggestPeakPerMin) : '-',
-      sub: 'Highest chat/min in this window',
+      label: 'Peak emotes / channel / min',
+      value: peakContract.available ? compact(intel.biggestPeakPerMin) : '-',
+      sub: peakContract.available
+        ? `Tracked live pool · 30 min · measured through ${peakContract.asOf}`
+        : 'Recent live-pool peak unavailable · window and units not declared',
       color: 'var(--fma-red)',
       title: undefined as string | undefined,
     },
   ]
 
   const viewAvailable = emoteMarketModuleAvailable(emoteMarket, view)
+  const visibleMarketViews = MARKET_VIEWS.filter(
+    (tab) => !['breadth', 'rotation'].includes(tab.key) || emoteMarketModuleAvailable(emoteMarket, tab.key),
+  )
 
   return (
     <section className="figma-block emote-market" aria-labelledby="figma-emote-signal-title">
@@ -122,10 +149,7 @@ export function FigmaEmoteSignalBlock({
           {labels.emoteSignal}
         </h2>
         <p className="figma-block__sub">
-          Answers which reactions are leading, concentrating, or (when the hub ships market
-          fields) spreading and rotating — separate from Pulse Moments investigation.
-          Leaders and concentration use current hub rollups; breadth/rotation stay honest
-          empty until backend aggregations exist.
+          Leading emotes and their distribution across the displayed measurement window.
           {corpusPipeline ? (
             <>
               {' '}
@@ -140,22 +164,30 @@ export function FigmaEmoteSignalBlock({
       </div>
 
       <div className="emote-market__views" role="tablist" aria-label="Emote Market views">
-        {MARKET_VIEWS.map((tab) => {
+        {visibleMarketViews.map((tab) => {
           const available = emoteMarketModuleAvailable(emoteMarket, tab.key)
-          const pending = !available && (tab.key === 'breadth' || tab.key === 'rotation')
           return (
             <button
               key={tab.key}
               type="button"
               role="tab"
+              id={`${tabsId}-${tab.key}`}
+              aria-controls={`${tabsId}-panel`}
+              tabIndex={view === tab.key ? 0 : -1}
               aria-selected={view === tab.key}
-              className={`emote-market__view-tab${view === tab.key ? ' is-active' : ''}${
-                pending ? ' emote-market__view-tab--pending' : ''
-              }`}
+              className={`emote-market__view-tab${view === tab.key ? ' is-active' : ''}`}
               onClick={() => setView(tab.key)}
+              onKeyDown={event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                event.preventDefault()
+                const current = visibleMarketViews.findIndex(item => item.key === tab.key)
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? visibleMarketViews.length - 1
+                  : (current + (event.key === 'ArrowRight' ? 1 : -1) + visibleMarketViews.length) % visibleMarketViews.length
+                setView(visibleMarketViews[next].key)
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+              }}
             >
               {tab.label}
-              {pending ? <span className="emote-market__view-hint"> · soon</span> : null}
             </button>
           )
         })}
@@ -166,13 +198,14 @@ export function FigmaEmoteSignalBlock({
           <div key={label} className="figma-kpi" title={title}>
             <div className="figma-kpi__lbl">{label}</div>
             <div className="figma-kpi__val" style={{ color }}>
-              {loading ? '...' : value}
+              {loading ? <Skeleton width="3.5rem" height="1.25rem" /> : value}
             </div>
             <div className="figma-kpi__sub">{sub}</div>
           </div>
         ))}
       </div>
 
+      <div key={view} id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${view}`} className="emote-market__view-content">
       {view === 'leaders' ? (
         <div className="figma-economy-grid figma-economy-grid--padded">
           <div className="figma-panel">
@@ -212,7 +245,7 @@ export function FigmaEmoteSignalBlock({
               </span>
             </div>
             <div className="hubx figma-economy-embed">
-              <EmoteEconomyPanel intel={intel} topEmotes={topEmotes} loading={loading} />
+              <EmoteEconomyPanel intel={intel} topEmotes={topEmotes} loading={loading} showSummary={false} />
             </div>
           </div>
         </div>
@@ -248,7 +281,7 @@ export function FigmaEmoteSignalBlock({
       {view === 'concentration' ? (
         <div className="emote-market__panel emote-market__concentration" role="status">
           <div className="emote-market__stat">
-            <span className="emote-market__stat-lbl">Top 1 share</span>
+            <span className="emote-market__stat-lbl">Top 1 share of {concentrationDenominator}</span>
             <strong>
               {concentration.top1SharePct != null
                 ? `${Math.round(concentration.top1SharePct)}%`
@@ -256,7 +289,7 @@ export function FigmaEmoteSignalBlock({
             </strong>
           </div>
           <div className="emote-market__stat">
-            <span className="emote-market__stat-lbl">Top 5 share</span>
+            <span className="emote-market__stat-lbl">Top 5 share of {concentrationDenominator}</span>
             <strong>
               {concentration.top5SharePct != null
                 ? `${Math.round(concentration.top5SharePct)}%`
@@ -264,7 +297,7 @@ export function FigmaEmoteSignalBlock({
             </strong>
           </div>
           <div className="emote-market__stat">
-            <span className="emote-market__stat-lbl">Top 10 share</span>
+            <span className="emote-market__stat-lbl">Top 10 share of {concentrationDenominator}</span>
             <strong>
               {concentration.top10SharePct != null
                 ? `${Math.round(concentration.top10SharePct)}%`
@@ -354,6 +387,7 @@ export function FigmaEmoteSignalBlock({
           </table>
         </div>
       ) : null}
+      </div>
     </section>
   )
 }
