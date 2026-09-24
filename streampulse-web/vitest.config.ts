@@ -25,6 +25,10 @@ export default defineConfig({
         replacement: resolve(analyticsConsoleRoot, 'analytics-chart-motion.css'),
       },
       {
+        find: '@streampulse/analytics-console/session-signal-tape.css',
+        replacement: resolve(analyticsConsoleRoot, 'session-signal-tape.css'),
+      },
+      {
         find: '@streampulse/pulse-charts/pulse-chart-motion.css',
         replacement: resolve(pulseChartsRoot, 'pulse-chart-motion.css'),
       },

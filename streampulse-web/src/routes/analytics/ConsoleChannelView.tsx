@@ -4,6 +4,8 @@ import { analyticsReturnPath, broadcastTimelineHref } from '../../lib/momentsNav
 import { fromHubMoment } from '../../lib/discoveryMoments'
 import { SaveMomentButton } from '../../ui/components/moments/SaveMomentButton'
 import { AnalyticsConsole } from '@streampulse/analytics-console'
+// Same cascade position as when the console module imported it: before portal styles.
+import '@streampulse/analytics-console/session-signal-tape.css'
 import { setupStreamcloneAnalyticsApi, usesLocalAnalyticsBackend } from '../../lib/streamcloneAnalytics'
 import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { ChannelHubStatusShell } from '../../ui/components/analytics/ChannelHubStatusShell'

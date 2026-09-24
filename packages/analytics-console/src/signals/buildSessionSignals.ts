@@ -3,8 +3,8 @@ import type {
   AnalyticsStreamDetail,
   PulseStreamRecap,
 } from '../apiTypes'
-import { getVerifiedTransition } from './motionEligibility'
-import { finiteCoveragePct, parseTimestamp, watermarkState } from './signalFreshness'
+import { getVerifiedTransition } from './motionEligibility.ts'
+import { finiteCoveragePct, parseTimestamp, watermarkState } from './signalFreshness.ts'
 import {
   normalizedDetector,
   type CoverageSignal,
@@ -13,7 +13,7 @@ import {
   type SessionSignal,
   type SignalObservation,
   type SignalValue,
-} from './signalTypes'
+} from './signalTypes.ts'
 
 const MINUTE_CONTIGUOUS_TOLERANCE_MS = 90_000
 const PEAK_SEEK_MAX_DISTANCE_MS = 60_000

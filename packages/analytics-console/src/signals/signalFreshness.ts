@@ -1,4 +1,4 @@
-import type { SignalWatermark } from './signalTypes'
+import type { SignalWatermark } from './signalTypes.ts'
 
 export function finiteCoveragePct(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100

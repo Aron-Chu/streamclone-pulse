@@ -15,13 +15,15 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"
     },
-    "./analytics-chart-motion.css": "./analytics-chart-motion.css"
+    "./analytics-chart-motion.css": "./analytics-chart-motion.css",
+    "./session-signal-tape.css": "./session-signal-tape.css"
   },
   "files": [
     "dist",
     "LICENSE",
     "NOTICE",
-    "analytics-chart-motion.css"
+    "analytics-chart-motion.css",
+    "session-signal-tape.css"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

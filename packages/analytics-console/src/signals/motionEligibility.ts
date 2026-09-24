@@ -1,4 +1,4 @@
-import type { SignalValue } from './signalTypes'
+import type { SignalValue } from './signalTypes.ts'
 
 export function isVerifiedSignalValue(value: SignalValue): boolean {
   return (

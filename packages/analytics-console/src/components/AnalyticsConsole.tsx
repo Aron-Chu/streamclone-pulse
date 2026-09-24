@@ -80,7 +80,8 @@ import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
 import { AnalyticsConsoleDataSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
-import './signals/session-signal-tape.css'
+// Signal tape styles ship as `@streampulse/analytics-console/session-signal-tape.css`:
+// package modules stay CSS-free so plain Node ESM consumers can import them.
 
 type RightPanelTab = 'moments' | 'emotes' | 'status'
 
