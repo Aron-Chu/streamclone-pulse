@@ -5,19 +5,21 @@
  * right-rail rail and the inspector resolve identically.
  */
 import { buildAnalyticsHref } from './analyticsLinks'
+import { discoveryMomentHref, fromHubMoment } from './discoveryMoments'
 import type { FigmaMomentRow } from './figmaSessionAnalytics'
-import { buildVodTimestampUrl } from './figmaSessionAnalytics'
 
 export interface MomentActions {
   /** Canonical analytics route for the channel/session (or an explicit href). */
   analyticsHref?: string
-  /** Twitch VOD deep-link when the moment is tied to a VOD. */
-  vodHref?: string
+  /** Exact-identity review route. Playback remains gated on its source check. */
+  reviewHref?: string
   /** Set when no actionable target resolves (e.g. transient live-only row). */
   disabledReason?: string
 }
 
 export function resolveMomentActions(moment: FigmaMomentRow): MomentActions {
+  const discoveryMoment = fromHubMoment(moment)
+  const reviewHref = discoveryMoment ? discoveryMomentHref(discoveryMoment) : undefined
   const analyticsHref =
     moment.href ??
     (moment.login
@@ -28,10 +30,8 @@ export function resolveMomentActions(moment: FigmaMomentRow): MomentActions {
         })
       : undefined)
 
-  const vodHref = moment.vodId ? buildVodTimestampUrl(moment.vodId, moment.offsetSeconds) : undefined
-
-  if (!analyticsHref && !vodHref) {
+  if (!analyticsHref && !reviewHref) {
     return { disabledReason: 'Live tracking only' }
   }
-  return { analyticsHref, vodHref }
+  return { analyticsHref, reviewHref }
 }

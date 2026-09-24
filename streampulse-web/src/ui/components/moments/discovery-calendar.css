@@ -1,0 +1,126 @@
+.discovery-calendar {
+  margin: 18px 0; padding: 18px; border: 1px solid var(--fma-border, #303030); border-radius: 6px; background: var(--fma-panel, #0d0d0d);
+  /* One sequential intensity ramp for the whole activity calendar: month grid,
+     year grid and legend all read from these, so the encoding cannot drift
+     between the two modes. Single-hue cyan (~194deg) on StreamPulse's dark
+     charcoal, tracking --sp-cyan. Purple stays the chart's chat-signal colour,
+     so intensity here never collides with a signal identity. */
+  --discovery-level-0: #1b2124;
+  --discovery-level-1: #1b2c33;
+  --discovery-level-2: #1d3b45;
+  --discovery-level-3: #1f4b59;
+  --discovery-level-4: #235d6e;
+}
+.moments-history.discovery-calendar { padding: 16px 0; border-inline: 0; border-radius: 0; background: transparent; }
+.moments-history__header, .moments-history__ranking { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.moments-history__header h2 { margin: 0; font-size: 18px; }
+.moments-history__header .moments-filter-field { width: 104px; }
+.moments-history .discovery-year { --discovery-cell-size: 32px; }
+.moments-history .discovery-year__row { border-top: 0; }
+.moments-history .discovery-year__row-heading h3 { display: none; }
+.moments-history .discovery-year__readout { min-height: 3em; margin-bottom: 0; }
+.moments-history__ranking { padding-top: 12px; border-top: 1px solid var(--fma-border); }
+.moments-history__orders { display: flex; flex-wrap: wrap; gap: 4px; margin-right: auto; }
+.moments-workspace .moments-history__orders button { min-height: 44px; background: transparent; border-color: transparent; }
+.moments-workspace .moments-history__orders button[aria-pressed="true"] { color: var(--fma-text); background: var(--fma-panel); border-color: var(--fma-accent-text); }
+.moments-history__ranking > .moments-muted { display: inline-flex; align-items: center; gap: 4px; }
+.moments-history__filters summary { cursor: pointer; min-height: 36px; align-content: center; }
+.moments-history__filters select { max-width: 240px; }
+.moments-workspace .moments-history .discovery-year__grid button[aria-pressed="true"] { outline: 2px solid var(--fma-text); outline-offset: 1px; }
+@media (max-width: 520px) {
+  .moments-history .discovery-year { --discovery-cell-size: 40px; }
+  .moments-history__header > .moments-muted { flex-basis: 100%; }
+  .moments-history__orders { width: 100%; }
+  .moments-workspace .moments-history__orders button { flex: 1; padding-inline: 8px; }
+}
+.discovery-calendar__body { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(350px, 1.2fr); gap: 24px; align-items: start; }
+.discovery-calendar__scope, .discovery-calendar__activity { min-width: 0; }
+#activity-calendar-content[hidden] { display: none; }
+.discovery-calendar__heading { margin-bottom: 12px; }
+.discovery-calendar__summary { font-size: 12px; }
+.discovery-calendar__summary label { display: grid; gap: 5px; max-width: 240px; }
+.discovery-calendar__summary strong { color: var(--fma-text); font-size: 20px; font-variant-numeric: tabular-nums; }
+.discovery-calendar__summary summary { cursor: pointer; min-height: 36px; display: list-item; align-content: center; }
+.discovery-calendar__selection { font-size: 12px; border-top: 1px solid var(--fma-border); padding-top: 12px; }
+.discovery-calendar__modes { display: flex; gap: 6px; margin-bottom: 10px; }
+.discovery-calendar__collection-status { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(340px, 1.2fr); gap: 8px 24px; margin: 0 0 18px; padding: 12px 0; border-block: 1px solid var(--fma-border, #303030); font-size: 12px; }
+.discovery-calendar__collection-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.discovery-calendar__collection-heading h3, .discovery-calendar__collection-heading p, .discovery-calendar__collection-status dl, .discovery-calendar__collection-status dd, .discovery-calendar__collection-status > p { margin: 0; }
+.discovery-calendar__collection-heading h3 { color: var(--fma-text); font-size: 13px; }
+.discovery-calendar__collection-heading p { flex-basis: 100%; color: var(--fma-muted, #999); }
+.discovery-calendar__state { padding: 2px 7px; border: 1px solid var(--fma-border, #303030); border-radius: 999px; color: var(--fma-sub, #bbb); }
+.discovery-calendar__state[data-state="stale"] { border-color: currentColor; }
+.discovery-calendar__collection-status dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+.discovery-calendar__collection-status dt { color: var(--fma-muted, #999); }
+.discovery-calendar__collection-status dd { margin-top: 3px; color: var(--fma-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.discovery-calendar__collection-status > p { grid-column: 2; }
+.discovery-calendar__body--overview { grid-template-columns: minmax(0, 1fr); }
+.discovery-year { min-width: 0; --discovery-cell-size: 24px; }
+.discovery-year__row { padding: 14px 0; border-top: 1px solid var(--fma-border); }
+.discovery-year__row-heading { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.discovery-year__row-heading h3, .discovery-year__row-heading p { margin: 0 0 8px; }
+.discovery-year__row-heading h3 { font-size: 18px; }
+.discovery-year__row-heading p { font-size: 12px; color: var(--fma-sub); }
+.moments-workspace .discovery-year .discovery-calendar__controls :is(button, input, select) { min-height: 44px; }
+.discovery-year .discovery-calendar__controls form { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+.discovery-year__scroll { overflow-x: auto; padding: 5px 3px; scrollbar-width: thin; }
+.discovery-year__labels { display: grid; gap: 2px; margin: 0 0 6px 38px; font-size: 12px; color: var(--fma-muted); }
+.discovery-year__plot { display: flex; gap: 8px; width: max-content; }
+.discovery-year__weekdays { display: grid; grid-template-rows: repeat(7,var(--discovery-cell-size)); gap: 2px; width: 30px; font-size: 12px; color: var(--fma-muted); align-items: center; }
+/* One legend row shared by Month detail and Year overview. */
+.discovery-calendar__legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 10px; color: var(--fma-muted); font-size: 12px; }
+.discovery-calendar__legend-ramp, .discovery-calendar__legend-key { display: inline-flex; align-items: center; gap: 4px; }
+.discovery-calendar__legend i { width: 14px; height: 14px; flex: none; border: 1px solid var(--fma-border); border-radius: 2px; }
+.discovery-calendar__legend i[data-level="0"] { background: var(--discovery-level-0); }
+.discovery-calendar__legend i[data-level="1"] { background: var(--discovery-level-1); }
+.discovery-calendar__legend i[data-level="2"] { background: var(--discovery-level-2); }
+.discovery-calendar__legend i[data-level="3"] { background: var(--discovery-level-3); }
+.discovery-calendar__legend i[data-level="4"] { background: var(--discovery-level-4); }
+/* Matches the dashed treatment the unmeasured day cells use. */
+.discovery-calendar__legend i[data-state="no_measurement"] { border-style: dashed; background: transparent; }
+.discovery-year__labels span { white-space: nowrap; }
+.discovery-year__grid { display: grid; grid-template-rows: repeat(7, var(--discovery-cell-size)); grid-auto-flow: column; gap: 2px; width: max-content; }
+.moments-workspace .discovery-year__grid button { width: var(--discovery-cell-size); height: var(--discovery-cell-size); min-height: var(--discovery-cell-size); padding: 0; border-radius: 2px; border: 1px dashed var(--fma-border); }
+.moments-workspace .discovery-year__grid button[data-state="measured"] { border-style: solid; }
+.moments-workspace .discovery-year__grid button[data-level="0"] { --discovery-cell: var(--discovery-level-0); background: var(--discovery-cell); }
+.moments-workspace .discovery-year__grid button[data-level="1"] { --discovery-cell: var(--discovery-level-1); background: var(--discovery-cell); }
+.moments-workspace .discovery-year__grid button[data-level="2"] { --discovery-cell: var(--discovery-level-2); background: var(--discovery-cell); }
+.moments-workspace .discovery-year__grid button[data-level="3"] { --discovery-cell: var(--discovery-level-3); background: var(--discovery-cell); }
+.moments-workspace .discovery-year__grid button[data-level="4"] { --discovery-cell: var(--discovery-level-4); background: var(--discovery-cell); }
+.moments-workspace .discovery-year__grid button:hover:not(:disabled) { background: var(--discovery-cell, var(--fma-panel)); outline: 1px solid var(--fma-accent-text); outline-offset: 1px; }
+.discovery-year__readout { min-height: 3em; font-size: 12px; }
+.discovery-calendar__heading, .discovery-calendar__controls, .discovery-calendar__month { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.discovery-calendar__heading { justify-content: space-between; }
+.discovery-calendar__heading h2 { margin: 0; }
+.discovery-calendar__controls { margin: 12px 0 18px; align-items: end; }
+.discovery-calendar__controls label { display: grid; gap: 5px; font-size: 12px; }
+.discovery-calendar__month { margin-bottom: 12px; }
+.discovery-calendar__days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.discovery-calendar__weekday { text-align: center; font-size: 12px; color: var(--fma-muted, #999); }
+.moments-workspace .discovery-calendar__days button { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; min-height: 44px; padding: 4px; background: transparent; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.discovery-calendar__days button small { font-size: 12px; line-height: 1.2; color: inherit; }
+.discovery-calendar__days button[data-state="no_measurement"] { border-style: dashed; color: var(--fma-muted, #999); }
+.moments-workspace .discovery-calendar__days button[data-level="0"] { background: var(--discovery-level-0); }
+.moments-workspace .discovery-calendar__days button[data-level="1"] { background: var(--discovery-level-1); }
+.moments-workspace .discovery-calendar__days button[data-level="2"] { background: var(--discovery-level-2); }
+.moments-workspace .discovery-calendar__days button[data-level="3"] { background: var(--discovery-level-3); }
+.moments-workspace .discovery-calendar__days button[data-level="4"] { background: var(--discovery-level-4); }
+.discovery-calendar__days button[aria-pressed="true"] { outline: 2px solid var(--fma-accent-text, #95c6b8); outline-offset: 1px; }
+.discovery-calendar button:focus-visible, .discovery-calendar input:focus-visible { outline: 2px solid var(--fma-accent-text, #95c6b8); outline-offset: 3px; }
+.discovery-calendar button:disabled { opacity: .4; cursor: default; }
+.moments-toolbar[hidden], .moments-layout[hidden] { display: none; }
+@media (max-width: 850px) {
+  .discovery-calendar__collection-status { grid-template-columns: minmax(0, 1fr); }
+  .discovery-calendar__collection-status > p { grid-column: auto; }
+  .discovery-calendar__body { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .moments-workspace.is-reviewing .discovery-calendar { display: none; }
+}
+@media (max-width: 520px) {
+  .discovery-calendar { padding: 12px; }
+  .discovery-calendar__collection-status dl { grid-template-columns: minmax(0, 1fr); }
+  .discovery-calendar__days { gap: 3px; }
+  .moments-workspace .discovery-calendar__days button { min-height: 50px; padding: 4px; font-size: 12px; }
+  .discovery-calendar__days button small { font-size: 12px; overflow-wrap: anywhere; }
+  .discovery-calendar__controls label { min-width: 0; max-width: 100%; }
+  .moments-workspace .discovery-calendar :is(input, select) { min-width: 0; max-width: 100%; font-size: 16px; }
+}
