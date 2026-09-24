@@ -1,0 +1,6 @@
+.library-demo-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px 16px; padding:10px 16px; background:#19151f; border-bottom:1px solid #49365c; color:#c4b5fd; font:12px/1.5 system-ui,sans-serif; }
+.library-demo-bar label { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
+.library-demo-bar select,.library-demo-bar button { font:inherit; color:#e8e8ee; background:#19191f; border:1px solid #666175; padding:7px 9px; border-radius:6px; max-width:100%; }
+.library-demo-bar :focus-visible { outline:2px solid #c4b5fd; outline-offset:3px; }
+@media(max-width:540px) { .library-demo-bar { justify-content:flex-start; } .library-demo-bar > span { flex-basis:100%; } .library-demo-bar select { font-size:16px; } }
+@media(prefers-reduced-motion:reduce) { .pulse-host * { scroll-behavior:auto !important; transition:none !important; } }
