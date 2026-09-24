@@ -1,6 +1,6 @@
 {
   "name": "streamclone-pulse",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test --project=extension-mocked",
     "test:e2e:mocked": "playwright test --project=extension-mocked",
+    "test:e2e:chrome": "node scripts/run-extension-e2e-chromium.mjs chrome",
+    "test:e2e:brave": "node scripts/run-extension-e2e-chromium.mjs brave",
     "test:e2e:firefox": "node scripts/run-extension-e2e-firefox.mjs",
     "test:e2e:live": "playwright test --project=live-twitch",
     "test:e2e:edge": "node scripts/run-extension-e2e-edge.mjs",
@@ -59,8 +61,10 @@
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "6.0.2",
     "jsdom": "^29.1.1",
+    "lightningcss": "1.33.0",
     "rollup": "^4.43.0",
     "selenium-webdriver": "^4.46.0",
+    "terser": "^5.51.2",
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "3.2.7",
