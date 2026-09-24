@@ -293,6 +293,7 @@ export function ViewerMorphPaths({
       <defs>
         <clipPath id={beforeClipId} clipPathUnits="userSpaceOnUse">
           <rect
+            data-viewer-clip="before"
             x={plotStartX}
             y="0"
             width={Math.max(0, Math.min(plotEndX, safeCursorX + halfStrokeX) - plotStartX)}
@@ -301,6 +302,7 @@ export function ViewerMorphPaths({
         </clipPath>
         <clipPath id={afterClipId} clipPathUnits="userSpaceOnUse">
           <rect
+            data-viewer-clip="after"
             x={Math.max(plotStartX, safeCursorX - halfStrokeX)}
             y="0"
             width={Math.max(0, plotEndX - Math.max(plotStartX, safeCursorX - halfStrokeX))}

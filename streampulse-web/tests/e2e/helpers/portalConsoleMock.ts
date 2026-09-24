@@ -161,4 +161,8 @@ export async function installPortalConsoleMock(
       isLive: true,
     }),
   )
+
+  await page.route(/\/v1\/analytics\/channels\/[^/]+\/watch(\?.*)?$/, (route) =>
+    json(route, { state: 'ok' }),
+  )
 }
