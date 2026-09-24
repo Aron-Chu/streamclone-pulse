@@ -1,3 +1,5 @@
+import { resolveEmoteAssetUrl } from '../configureApi.ts'
+
 const TWITCH_CDN_TEMPLATE = 'https://static-cdn.jtvnw.net/emoticons/v2/%s/default/dark/2.0'
 const SEVEN_TV_CDN_TEMPLATE = 'https://cdn.7tv.app/emote/%s/2x.webp'
 const FFZ_CDN_TEMPLATE = 'https://cdn.frankerfacez.com/emoticon/%s/4'
@@ -51,6 +53,45 @@ export function emoteDisplaySources(url: string): EmoteDisplaySources {
   }
   const one = withScale(rule.one)
   return { src: one, srcSet: `${one} 1x, ${withScale(rule.two)} 2x` }
+}
+
+/** HTTPS emote CDNs and the hosted emote proxy the console may bind to an <img>. */
+export const ALLOWED_CONSOLE_EMOTE_HOSTS = Object.freeze([
+  'cdn.7tv.app',
+  'static-cdn.jtvnw.net',
+  'cdn.frankerfacez.com',
+  'cdn.betterttv.net',
+  'api.streampulse.stream',
+])
+
+/**
+ * Return a URL's href only after https + host allowlist validation. Relative
+ * `/emotes/` paths resolve against the configured asset base first. Bind this
+ * return value, never the raw payload URL, to img src.
+ */
+export function sanitizeConsoleEmoteUrl(url: string | undefined): string | undefined {
+  const trimmed = url?.trim()
+  if (!trimmed) return undefined
+  try {
+    const parsed = new URL(resolveEmoteAssetUrl(trimmed))
+    if (parsed.protocol !== 'https:') return undefined
+    if (!ALLOWED_CONSOLE_EMOTE_HOSTS.includes(parsed.hostname.toLowerCase())) return undefined
+    return parsed.href
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Rebuild an `emoteDisplaySources` srcset (`<1x> 1x, <2x> 2x`) from sanitized
+ * candidates only; refusing either candidate drops the srcset.
+ */
+export function sanitizeConsoleEmoteSrcSet(srcSet: string | undefined): string | undefined {
+  if (!srcSet) return undefined
+  const [one, two] = srcSet.split(',').map(candidate => candidate.trim().split(/\s+/)[0])
+  const safeOne = sanitizeConsoleEmoteUrl(one)
+  const safeTwo = sanitizeConsoleEmoteUrl(two)
+  return safeOne && safeTwo ? `${safeOne} 1x, ${safeTwo} 2x` : undefined
 }
 
 export function localEmotePath(id: string, scale = '1x'): string {

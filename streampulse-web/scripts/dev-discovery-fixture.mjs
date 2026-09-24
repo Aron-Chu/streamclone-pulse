@@ -27,6 +27,7 @@ import { discoveryFixtureResponse } from './fixtures/discoveryFixture.mjs'
 const PORT = Number(process.env.SP_FIXTURE_PORT || 8099)
 const HOST = '127.0.0.1'
 const UPSTREAM = process.env.SP_FIXTURE_UPSTREAM?.trim() || 'https://api.streampulse.stream'
+const UPSTREAM_ORIGIN = new URL(UPSTREAM).origin
 // Only the portal's own dev origins. Not a wildcard.
 const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5173',
@@ -80,7 +81,7 @@ function serveMockup(response, pathname) {
     return
   }
   const body = readFileSync(file)
-  console.log(`[fixture] MOCKUP  200 ${pathname}`)
+  console.log(`[fixture] MOCKUP  200 ${logSafe(pathname)}`)
   response.writeHead(200, {
     'Content-Type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'Content-Length': body.byteLength,
@@ -99,8 +100,20 @@ function sendJson(response, status, body) {
   response.end(payload)
 }
 
+/** Request-derived text in logs: drop line breaks so a path cannot forge log lines. */
+function logSafe(value) {
+  return String(value).replace(/\n|\r/g, '')
+}
+
 async function passThrough(request, response, url) {
-  const target = new URL(url.pathname + url.search, UPSTREAM)
+  // Keep the upstream origin fixed: a path such as `//host/x` must not become the host.
+  const target = new URL(UPSTREAM)
+  target.pathname = url.pathname
+  target.search = url.search
+  if (target.origin !== UPSTREAM_ORIGIN) {
+    sendJson(response, 400, { error: 'fixture_bad_upstream_path' })
+    return
+  }
   try {
     const upstream = await fetch(target, {
       method: request.method,
@@ -109,7 +122,7 @@ async function passThrough(request, response, url) {
     })
     const body = Buffer.from(await upstream.arrayBuffer())
     const type = upstream.headers.get('content-type') ?? 'application/octet-stream'
-    console.log(`[fixture]  → upstream ${upstream.status} ${url.pathname}`)
+    console.log(`[fixture]  → upstream ${upstream.status} ${logSafe(url.pathname)}`)
     response.writeHead(upstream.status, {
       'Content-Type': type,
       'Content-Length': body.byteLength,
@@ -117,7 +130,7 @@ async function passThrough(request, response, url) {
     })
     response.end(body)
   } catch (error) {
-    console.error(`[fixture]  → upstream FAILED ${url.pathname}: ${error.message}`)
+    console.error(`[fixture]  → upstream FAILED ${logSafe(url.pathname)}: ${logSafe(error.message)}`)
     sendJson(response, 502, { error: 'fixture_upstream_unreachable' })
   }
 }
@@ -145,7 +158,7 @@ const server = createServer((request, response) => {
   if (fixture) {
     const day = url.searchParams.get('day')
     const items = Array.isArray(fixture.items) ? fixture.items.length : 0
-    console.log(`[fixture] FIXTURE 200 ${url.pathname}${day ? ` day=${day}` : ''} items=${items}`)
+    console.log(`[fixture] FIXTURE 200 ${logSafe(url.pathname)}${day ? ` day=${logSafe(day)}` : ''} items=${items}`)
     sendJson(response, 200, fixture)
     return
   }

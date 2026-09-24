@@ -30,7 +30,8 @@ function startVite() {
     delete env.VITE_BACKEND_URL
     console.log('[dev-portal] ignoring localhost VITE_BACKEND_URL — portal dev uses hosted API')
   }
-  const apiMode = env.VITE_BACKEND_URL?.trim() || 'https://api.streampulse.stream (hosted default)'
+  // Name the source, not the value: environment values stay out of logs.
+  const apiMode = env.VITE_BACKEND_URL?.trim() ? 'VITE_BACKEND_URL override' : 'https://api.streampulse.stream (hosted default)'
   console.log(`[dev-portal] worktree ${webRoot}`)
   console.log(`[dev-portal] API ${apiMode}`)
   console.log(`[dev-portal] starting vite ${viteArgs.join(' ')}`)

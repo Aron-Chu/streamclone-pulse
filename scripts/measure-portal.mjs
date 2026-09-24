@@ -2,11 +2,14 @@
 // Usage: node ../scripts/measure-portal.mjs
 import { chromium } from 'playwright'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const BROWSER = '/home/aron/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome'
+// Optional pinned browser; Playwright's managed Chromium otherwise.
+const BROWSER = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined
 const BASE = 'http://localhost:5173'
-const OUTDIR = '/tmp/portal-metrics'
-fs.mkdirSync(OUTDIR, { recursive: true })
+// A private, freshly created directory rather than a fixed shared temp path.
+const OUTDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-metrics-'))
 
 const browser = await chromium.launch({ headless: true, executablePath: BROWSER })
 

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 
 export type Reconciliation = {
   dataClass: 'approved_real_stored_irc'
@@ -67,8 +67,9 @@ export function loadReconciliation(): Reconciliation {
 
   let bytes: Buffer
   try {
-    if (statSync(path).size >= 1_000_000) throw new Error('reconciliation manifest exceeds the 1 MB limit')
+    // Read once and check the bytes read, so the size check cannot race the read.
     bytes = readFileSync(path)
+    if (bytes.length >= 1_000_000) throw new Error('reconciliation manifest exceeds the 1 MB limit')
   } catch (error) {
     throw new Error(`BLOCKED: cannot read reconciliation manifest: ${error instanceof Error ? error.message : String(error)}`)
   }

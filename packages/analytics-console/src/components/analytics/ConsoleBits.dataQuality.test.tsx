@@ -45,7 +45,7 @@ describe('DataQualityDisclosure', () => {
       topEmotes: [],
       chatCoveragePct: coverage,
     }} />)
-    expect(screen.getByText(new RegExp(`${expected.replace('%', '\\%')} of the timeline`, 'i'))).not.toBeNull()
+    expect(screen.getByText(new RegExp(`${expected.replace(/[.*+?^${}()|[\]\\%]/g, '\\$&')} of the timeline`, 'i'))).not.toBeNull()
   })
 
   it('does not describe an unknown lifecycle as pending live', () => {

@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { emoteDisplaySources, preferSmallerSevenTVAsset } from '../../utils/emoteImageUrl.ts'
+import {
+  emoteDisplaySources,
+  preferSmallerSevenTVAsset,
+  sanitizeConsoleEmoteSrcSet,
+  sanitizeConsoleEmoteUrl,
+} from '../../utils/emoteImageUrl.ts'
 
 function emoteInitial(name: string): string {
   const trimmed = name.trim()
@@ -44,9 +49,11 @@ export function ConsoleEmoteImg({
   const attempt = currentFailure?.attempt ?? 0
   // First attempt: the display-sized asset; a failure retries the supplied URL.
   const display = attempt === 0 && normalizedSrc ? emoteDisplaySources(normalizedSrc) : null
-  const imageSrc = attempt === 0
+  // Payload URLs are untrusted: only an https allowlisted CDN/proxy URL reaches the <img>.
+  const imageSrc = sanitizeConsoleEmoteUrl(attempt === 0
     ? display?.src ?? normalizedSrc
-    : normalizedFallbackSrc || retryUrl(normalizedSrc)
+    : normalizedFallbackSrc || retryUrl(normalizedSrc))
+  const imageSrcSet = imageSrc ? sanitizeConsoleEmoteSrcSet(display?.srcSet) : undefined
 
   if (!normalizedSrc || attempt > 1 || !imageSrc) {
     return (
@@ -61,7 +68,7 @@ export function ConsoleEmoteImg({
   return (
     <img
       src={imageSrc}
-      srcSet={display?.srcSet}
+      srcSet={imageSrcSet}
       alt=""
       aria-hidden
       className={className}
