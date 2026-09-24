@@ -11,8 +11,13 @@ const VIEWPORTS = [
   { width: 768, height: 1024 },
   { width: 1280, height: 900 },
   { width: 1440, height: 900 },
+  { width: 1536, height: 900 },
   { width: 1600, height: 900 },
 ] as const
+
+// The sticky outer rail enters at 1536px (September 24 canvas-width correction);
+// narrower layouts keep Live Wire in flow after Global Activity.
+const OUTER_RAIL_MIN_WIDTH = 1536
 
 test.describe('analytics hub independent Live Wire rail', () => {
   test.beforeEach(async ({ page }) => {
@@ -75,7 +80,7 @@ test.describe('analytics hub independent Live Wire rail', () => {
       })
       expect(geometry).not.toBeNull()
       if (!geometry) throw new Error('Expected the outer Live Wire rail and analytics sections to render')
-      if (viewport.width >= 1440) {
+      if (viewport.width >= OUTER_RAIL_MIN_WIDTH) {
         expect(geometry.besideCenter).toBe(true)
         expect(geometry.centerWidth).toBeGreaterThanOrEqual(719)
         expect(geometry.railWidth).toBeCloseTo(380, 0)
@@ -83,7 +88,7 @@ test.describe('analytics hub independent Live Wire rail', () => {
       else expect(geometry.stackedInOrder).toBe(true)
 
       const jump = page.getByRole('link', { name: 'Jump to Live Wire' })
-      if (viewport.width >= 1440) await expect(jump).toBeHidden()
+      if (viewport.width >= OUTER_RAIL_MIN_WIDTH) await expect(jump).toBeHidden()
       else await expect(jump).toBeVisible()
 
       await assertNoPageHorizontalOverflow(page)

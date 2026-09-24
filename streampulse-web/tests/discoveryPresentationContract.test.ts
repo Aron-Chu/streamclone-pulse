@@ -28,7 +28,11 @@ describe('Analytics discovery presentation contract', () => {
   })
 
   it('separates outer rail width from the chart-inspector breakpoint', () => {
-    expect(layout).toContain('@media (min-width: 1440px)')
+    // The September 24 outer-rail correction moved the sticky three-column layout
+    // from 1440px to 1536px so the Global Activity canvas keeps its 720px floor
+    // (docs/website-portal/analytics-command-center-layout.md).
+    expect(layout).toContain('@media (min-width: 1536px)')
+    expect(layout).not.toContain('@media (min-width: 1440px)')
     expect(layout).toContain('@container (min-width: 1200px)')
     expect(layout).toContain('grid-template-columns: minmax(0, 1fr) 320px')
     expect(layout).toContain('#section-network ~ * { order: 3; }')
