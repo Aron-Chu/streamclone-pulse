@@ -73,14 +73,46 @@ is added later, it must be an explicit token set — do not invent ad-hoc light 
 User-selectable accents written to `document.documentElement` as `--pulse-*` so they
 cascade into Shadow DOM hosts:
 
-| Pref | Accent | Strong | Soft | On-accent |
-|------|--------|--------|------|-----------|
-| Aurora (default) | `#8b5cf6` | `#7c3aed` | `#c4b5fd` | `#ffffff` |
-| Volt | `#53fc18` | `#43e80f` | `#b6ff8f` | `#07140a` |
-| Azure | `#22d3ee` | `#0fb6d6` | `#a5f0fb` | `#04181d` |
+| Pref | Accent | Strong | Light | Soft | On-accent |
+|------|--------|--------|-------|------|-----------|
+| Aurora (default) | `#8b5cf6` | `#7c3aed` | `#a78bfa` | `#c4b5fd` | `#ffffff` |
+| Volt | `#f97316` | `#ea580c` | `#fb923c` | `#fdba74` | `#04181d` |
+| Emerald | `#34d399` | `#10b981` | `#6ee7b7` | `#a7f3d0` | `#04181d` |
+| Azure | `#22d3ee` | `#0fb6d6` | `#67e8f9` | `#a5f0fb` | `#04181d` |
+
+All four are user-selectable. `ACCENT_THEME_OPTIONS` derives each picker swatch
+from `ACCENT_PALETTES[value].accent`, so a swatch cannot drift from the accent it
+represents. Adding a palette entry without a row here fails
+`tests/accentThemeVariables.test.ts`.
+
+`accentLight` backs `--pulse-accent-light`, which focus rings and hover borders
+in both settings surfaces consume. Every `var(--pulse-*)` reference must resolve
+to a variable the runtime actually writes; an undefined one silently renders the
+Aurora fallback under every accent, which is how focus rings previously stayed
+purple on Volt, Azure and Emerald.
+
+### WCAG Contrast Verification
+
+Computed relative luminance and contrast ratios against foreground text:
+
+| Theme | Background / Fill | Foreground | Contrast Ratio | WCAG Compliance | Notes |
+|-------|-------------------|------------|----------------|-----------------|-------|
+| **Volt** | `#ea580c` (Strong) | `#04181d` (Dark ink) | **5.11:1** | **Pass (AA)** | Default on-accent |
+| **Volt** | `#f97316` (Accent) | `#04181d` (Dark ink) | **6.49:1** | **Pass (AA)** | High-contrast pairing |
+| **Volt** | `#ea580c` (Strong) | `#ffffff` (White) | **3.56:1** | **Fail (< 4.5:1)** | White on Volt strong is prohibited |
+| **Azure** | `#0fb6d6` (Strong) | `#04181d` (Dark ink) | **7.53:1** | **Pass (AAA)** | Default on-accent |
+| **Azure** | `#22d3ee` (Accent) | `#04181d` (Dark ink) | **10.07:1** | **Pass (AAA)** | Very high contrast |
+| **Aurora** | `#7c3aed` (Strong) | `#ffffff` (White) | **5.70:1** | **Pass (AA)** | Default on-accent |
+| **Aurora** | `#8b5cf6` (Accent) | `#ffffff` (White) | **4.23:1** | Border / Large only | Filled text buttons use `#7c3aed` Strong |
+| **Emerald** | `#10b981` (Strong) | `#04181d` (Dark ink) | **7.18:1** | **Pass (AAA)** | Default on-accent |
+| **Emerald** | `#34d399` (Accent) | `#04181d` (Dark ink) | **9.47:1** | **Pass (AAA)** | Very high contrast |
+| **Emerald** | `#10b981` (Strong) | `#ffffff` (White) | **2.54:1** | **Fail (< 4.5:1)** | White on Emerald strong is prohibited |
 
 Use accents for interactive chrome (buttons, selection rings, pin bands). Do **not**
-recolor semantic chart lanes to follow accent (see charts).
+recolor semantic chart lanes to follow accent (see charts). Buttons, badges, and
+interactive pills with solid fills use `accentStrong` paired with `onAccent` (`#04181d` for
+Volt and Azure, `#ffffff` for Aurora) ensuring all interactive text exceeds the WCAG AA
+4.5:1 threshold.
 
 ---
 
@@ -116,6 +148,23 @@ Prefer tokens from `analytics-surfaces.css`.
 
 - Family: Inter stack as in `theme.ts` / Figma handoff
 - Panel titles ~14–16 semi-bold; section caps ~9 uppercase; body ~12
+
+### Per-surface minimum sizes
+
+The floor differs by surface **on purpose**, because the constraints differ. Record
+the reason rather than treating either number as drift:
+
+| Surface | Floor | Why |
+|---------|-------|-----|
+| Twitch overlay (content) | 9px, uppercase caps and chart axis labels only | Lives in a ~320px rail beside chat; body text stays ~12 |
+| Popup | 11px | Small but freestanding, no host competing for width |
+| Full-page settings / options | 12px | A real top-level page has no width excuse |
+| Portal | 12px, enforced by test | Same reasoning as the settings page |
+
+Nothing may go below its surface floor. **8px is below every floor** and is not
+permitted anywhere — including chart readouts, game-card names and emote badges,
+which previously used it. When a label will not fit at the floor, truncate,
+abbreviate or drop it; do not shrink past legibility.
 - Numeric Pulse values: tabular / monospace-friendly rendering where charts and KPIs
   already do so; keep units honest (msg/min, viewers, offsets)
 - Do not use oversized marketing display type inside overlay, popup, or options tools
@@ -164,6 +213,19 @@ Prefer tokens from `analytics-surfaces.css`.
 
 Interaction chrome (pin band, crosshair, marker rings) **does** follow `--pulse-*`.
 
+### Sticky bucket selection
+
+- A committed minute/moment stays selected while users change chart range, zoom/pan,
+  expand/reset the chart, toggle spike or emote overlays, use chart dropdowns, or
+  interact with Games Played.
+- “Clear plotted emotes” clears only emote lines. It must never share the committed
+  bucket-clear callback.
+- Close, Escape, an unrelated outside click, or a real stream/channel/VOD identity
+  change clears the selection. Selecting another minute or moment replaces it.
+- When navigation moves the committed bucket off-screen, keep its full-rail marker
+  and show “Return to selected”; returning recenters the viewport without seeking
+  Twitch playback.
+
 ### Axes, tooltips, legends
 
 - Keep legends aligned to fixed lane colors
@@ -184,7 +246,7 @@ Interaction chrome (pin band, crosshair, marker rings) **does** follow `--pulse-
 ### Full-window behavior
 
 - Recurring live polling uses **recent** windows
-- **Full** history is an explicit user action (planned chart migration v2 / R14)
+- **Full** history may load once automatically after stable activation identity; retry remains an explicit action. Recurring polling stays recent and gaps remain visible (R14)
 - Coverage and backfill UI must match backend state — no fake progress
 
 ---
@@ -281,6 +343,15 @@ Do not copy portal dashboard density into the MV3 popup.
 
 ## 20. Prohibited generic patterns
 
+- **The same control implemented twice with divergent markup, class names or
+  copy.** The overlay settings tab and the full-page settings workspace each had
+  their own accent, density and placement pickers, which is why the two surfaces
+  read as different products — the same placement value was even labelled "Right"
+  in one and "Right dock" in the other. Share one component with a density
+  variant (`src/ui/ChoicePicker.tsx`) and one option list
+  (`src/ui/preferenceOptions.ts`, `ACCENT_THEME_OPTIONS`)
+- Inline `style={{…}}` for values a token or stylesheet already owns, or for a
+  class that exists in no stylesheet
 - Decorative card stacks and nested cards that add no interaction
 - Oversized marketing type inside tools
 - Ornamental gradients / orbs as the main visual idea

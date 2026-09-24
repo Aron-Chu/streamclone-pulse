@@ -52,10 +52,12 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] Store package contains **no** `localhost` / `127.0.0.1` host permissions
 - [ ] Development-only local BFF access lives in a **separate development manifest** (RPR-2 / R18)
 - [ ] Privacy and Support URLs match live pages and **current** disclosures
+- [ ] Every route linked by the extension returns the intended live portal page, including supporter, account, policy, and changelog routes
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
-- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (source manifests are `0.1.3`; owner must verify the live listing is behind 0.1.3 before upload)
+- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (working-tree manifests are `0.2.1`, and the public listing reported `0.2.1` on 2026-09-24; verify the dashboard before choosing a new version)
 - [ ] Support URL / dashboard state rechecked by owner (do not claim dashboard changes from this checklist)
+- [ ] Real unpacked-extension Twitch smoke recorded for the release SHA (mocked Playwright is not live evidence)
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
 
 ### Permissions expected for the next **store** artifact
@@ -88,7 +90,7 @@ Required `host_permissions` (store):
 - [ ] Limited Use affirmed
 - [ ] Listing name / screenshots say **StreamPulse**
 - [ ] Listing / submission / Google approval — owner action only
-- [ ] Live listing version + Support URL rechecked by owner (source is `0.1.3`; do not claim dashboard edits from repo docs)
+- [ ] Publisher-dashboard version + Support URL rechecked by owner (public listing `0.2.1` still linked Support to Twitch on 2026-09-24; set the dashboard field to `https://streampulse.stream/support/`; do not claim dashboard edits from repo docs)
 
 ### Packaging commands (next candidate)
 

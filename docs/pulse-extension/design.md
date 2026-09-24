@@ -222,15 +222,73 @@ Single compact payload (see `requirements.md` for the full shape): `isLive`, `tr
 - 404 if non-channel; `tracking:false` + warming state if `< 5` completed rollups (R8.2).
 
 ### 6.2 Health — `GET /v1/extension/health`
-`{ ok, version, time }`. Used by the worker to validate the configured backend URL and drive the "Can't reach Streamclone" state (R8.1).
+`{ ok, version, time, hostedMode, helixEnabled, viewerSampling }`. The
+`viewerSampling` object is aggregate-only and may be absent on older backends;
+when present it reports `enabled`, `owner`, `lastAttemptAt`, `lastSampleAt`,
+`lastSampleAgeSeconds`, `streamsWritten`, `lastResult`, and
+`consecutiveFailures`. The worker uses this to distinguish an old backend,
+disabled sampling, warming/no-live-stream state, and sampler failure instead of
+inferring viewer coverage from Helix availability alone. `hostedMode` is
+reported separately so a configuration drift (for example, the public API
+running in local mode) is visible. No channel names, credentials, or raw chat
+are exposed. Used by the worker to validate the configured backend URL and
+drive the "Can't reach Streamclone" state (R8.1).
 
 ### 6.3 Bookmarks — R10
+
+Account-device integration (local implementation, not hosted release evidence):
+the canonical bearer is the 64-character lowercase hexadecimal access token
+returned by `/v1/account/device-links/poll` or `/v1/account/devices/refresh`,
+sent as `Authorization: Bearer <token>`. The backend resolves the device through
+the accounts store and owns all bookmark GET/POST/PATCH/DELETE rows as
+`principal_id = account:<account UUID>`, `principal_kind = user`. Device expiry,
+revocation, refresh rotation/replay, and account deletion are checked on requests.
+Account bearers are integrated only for bookmark routes, not Protect/watchlists.
+
+Legacy `spdev_` device, beta, and guest bookmark rows are not imported, reassigned,
+or deleted. Legacy authorized clients retain their separate namespace. The
+extension bookmark transport now requires the linked account and never falls
+back to its legacy Protect credential after disconnect. Account access/refresh
+tokens remain in worker-private IndexedDB, travel only to the exact hosted API
+with cookies omitted and redirects rejected, and share one serialized refresh
+queue with account operations. An uncertain refresh requires relinking; writes
+are not automatically replayed. A token-free `pulseAccountRevision` invalidates
+open library and overlay caches. Local history and notes remain device-local,
+scoped by backend and account; reconnecting the same account restores that local
+namespace, but reinstall recovery restores only server bookmarks.
+
+Apply existing bookmark/principal/device migrations before account migrations
+`100008`, `100009`, and `100010`, in that order. The database tests apply these
+in an isolated schema; this does not establish production migration state.
+Portal `/analytics/moments` discovery saves remain separate from these extension
+server bookmarks. Billing/supporter entitlement is not a bookmark access gate.
+
 | Method | Path | Body / Query | Notes |
 |--------|------|--------------|-------|
-| GET | `/v1/pulse/bookmarks` | `?login=&streamId=&vodId=&limit=50&cursor=` | Cursor pagination on `created_at`. User-scoped when hosted. |
+| GET | `/v1/pulse/bookmarks` | `?login=&streamId=&vodId=&limit=50&cursor=` | `{items,nextCursor?}`; opaque `(created_at,id)` continuation bound to owner and filters. Credential-scoped when hosted. |
 | POST | `/v1/pulse/bookmarks` | `{streamId,vodId,offsetSeconds,label,notes,score,source}` | Returns created record w/ `id`. Server stamps `created_at`. |
 | PATCH | `/v1/pulse/bookmarks/{id}` | `{label?,notes?}` | 404 if not owner. |
 | DELETE | `/v1/pulse/bookmarks/{id}` | — | Idempotent 204. |
+
+**2026-09-05 local implementation checkpoint:** All hosted bookmark handlers
+reject guest/service/unknown principals before body or store access. Existing
+beta/device/user credentials retain access to their own namespace; a shared
+beta credential is not an individual account or a sync entitlement. Local
+non-hosted mode remains unscoped and must never serve a public Library.
+Responses use `Cache-Control: private, no-store`; missing storage reports503.
+Writes accept one JSON document up to16KiB and preserve valid UTF-8 within the
+existing160/1000-byte label/note allowances. Foreign PATCH returns404; DELETE
+is204 whether missing or outside ownership, without altering another owner.
+
+New list traversals receive versioned, tie-safe cursors (not authorization
+tokens). Preserve them verbatim and reset pagination when filters change.
+Legacy timestamp cursors remain accepted with their old exclusive boundary;
+restart those traversals to gain tie safety. Extension `LIST_BOOKMARKS` accepts
+optional `limit`1–100 and `cursor`; worker `BOOKMARKS` retains `nextCursor`.
+The client validates bounded pages and exposes errors instead of false empty
+success. This is page retrieval, not a completed Library/export/sync adapter.
+No existing guest records were migrated, deleted, or assigned to accounts.
+The backend change requires a separately authorized release; no hosted claim.
 
 ### 6.4 Recap — `GET /v1/pulse/streams/{streamID}/recap` — R12
 Returns cached payload (top 10 moments, top emotes, biggest chat spike, funniest burst, clip candidates, totals, peak chat/min). 425/“not ready” shape while a stream is still live; compute-on-miss after end.
@@ -280,7 +338,7 @@ Today **hosted-production-vps** runs the hosted compose stack (streampulse-backe
 ## 9. Performance notes
 
 - **Tab-scoped recent polling (R14 landed).** Content scripts own the live poll controller; the service worker brokers fetches, caches, and coalesces via `pulseGetCoordinator`. Default interval remains ~30s with jitter; configurable 15/30/60s (R6.2). WebSockets are a later optimization.
-- **Explicit Full only (R14 landed).** Full-history fetches run only after an explicit user chart action (“Load full history”). Chart preference migration v2 maps legacy values (including Full) once to `60m`; post-v2 user Full selection persists.
+- **Activation-scoped Full (R14 landed).** After recent data establishes a stable stream/VOD identity, the client may make one full-history request for that activation and switch to Full only after validated data arrives. Failed requests expose an explicit retry. Recurring polling remains recent, and missing coverage stays visible rather than being synthesized. Chart preference migration v2 maps legacy values (including Full) once to `60m`; post-v2 user range selection persists.
 - **Read amplification control.** BFF Redis cache (10–15s TTL keyed by login) plus SW coalescing decouple viewer/tab count from backend compute.
 - **Payload size.** Cap `rollups`/`lanes` to a rolling window (e.g. last 60 completed minutes) so the payload stays a few KB; peaks ≤ 10 (existing gating).
 - **Lanes are precomputed server-side** (normalized 0–100) so the extension does zero scoring math (R11.3).

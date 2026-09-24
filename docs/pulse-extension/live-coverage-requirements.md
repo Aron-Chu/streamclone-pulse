@@ -5,8 +5,8 @@
 | **Status** | Draft v1 — requirements |
 | **Owner** | Aron-Chu |
 | **Scope** | Chrome MV3 extension + hosted analytics backend at `https://api.streampulse.stream` (+ StreamPulse portal parity) |
-| **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · streamclone [`roster-naming-truth-table.md`](../../twitch-7tv-clone/docs/pulse-extension/roster-naming-truth-table.md) · `internal/analytics/pulse_coverage.go` · `extension_api.go` |
-| **Repos** | Extension: **streamclone-pulse**. Backend: **streamclone** (hosted at `https://api.streampulse.stream`; operator deploy in private **streampulse-ops**). Legacy rollback host is archive only. |
+| **Related** | [`requirements.md`](requirements.md) · [`design.md`](design.md) · [`website-portal-requirements.md`](website-portal-requirements.md) · [coverage and roster definitions](#2-definitions) · `internal/analytics/pulse_coverage.go` · `extension_api.go` |
+| **Repos** | Extension: **streamclone-pulse**. Backend: **streampulse-backend** (hosted at `https://api.streampulse.stream`; operator deploy in private **streampulse-ops**). Legacy rollback host is archive only. |
 
 ---
 
@@ -397,7 +397,7 @@ curl -H "X-Streamclone-Beta-Key: $KEY" \
 
 | ID | Requirement |
 |----|-------------|
-| OPS-LATE-1 | When a cap-tier source (`top_roster`, `always_track`, `protected`) writes its first rollup **>120s** after Twitch stream start, increment **`pulse_late_cap_start_total{source}`** and surface alert guidance in [`pulse-metrics-runbook.md`](../../twitch-7tv-clone/docs/pulse-extension/pulse-metrics-runbook.md) §8. |
+| OPS-LATE-1 | When a cap-tier source (`top_roster`, `always_track`, `protected`) writes its first rollup **>120s** after Twitch stream start, increment **`pulse_late_cap_start_total{source}`** and record alert guidance with the owning private **streampulse-ops** runbook. The former Streamclone metrics runbook is retired; this requirement does not prove the alert is implemented. |
 
 ---
 

@@ -17,6 +17,9 @@ Do not treat historical ZIP bytes as the current upload candidate.
 | Extension ID | `nifgoonpcgmdhiffcpmhndjgkgahnelg` |
 | Privacy policy | https://streampulse.stream/privacy |
 | Support URL (site) | https://streampulse.stream/support |
+| Terms of use | https://streampulse.stream/terms |
+| Cancellation & refunds | https://streampulse.stream/refunds |
+| Supporter offer | https://streampulse.stream/supporter |
 | Privacy contact | privacy@streampulse.stream |
 | Manifest name | StreamPulse |
 | Dashboard Support URL | **Owner confirmation required** — public scrape is not authoritative |
@@ -146,7 +149,11 @@ Local StreamPulse BFF hosts (`http://localhost:8081/*`, `http://127.0.0.1:8081/*
 | Remote hosted code? | **No** — bundled JS only |
 | Privacy policy URL | https://streampulse.stream/privacy |
 | Support URL | https://streampulse.stream/support |
+| Terms of use URL | https://streampulse.stream/terms |
+| Refund / cancellation URL | https://streampulse.stream/refunds |
 | Limited Use | Affirmed on privacy page + this listing |
+| Account data disclosed | Email address for optional sign-in; disclosed on the privacy page |
+| Payment data disclosed | Stripe processes payment; no card data reaches StreamPulse |
 | Extension crash/product analytics SDKs | Not present in the current extension package |
 | Protect enrollment | Optional one-time beta key enrollment; key discarded; opaque device token stored locally and revocable |
 | Separate default-off analytics consent | Options toggle exists; ingest kill switch remains off; no PostHog host permission |
