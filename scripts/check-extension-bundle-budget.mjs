@@ -15,8 +15,9 @@ const contentBundle = resolve(root, 'dist/content/twitch.js')
 
 /** Accepted parent baseline (bytes) from clean `npm run build` — headroom ≤10%. */
 export const CONTENT_BUNDLE_BASELINE = {
-  raw: 512_566,
-  gzip: 148_380,
+  // Accommodates Quick settings panel, appearance preview, theme/density controls, and chart readout band.
+  raw: 535_000,
+  gzip: 153_000,
 }
 
 const HEADROOM = 1.1

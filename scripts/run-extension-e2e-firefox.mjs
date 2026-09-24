@@ -91,18 +91,22 @@ try {
 
   await driver.get(`moz-extension://${hostname}/options/index.html`)
   await driver.wait(until.titleIs(EXPECTED_TITLE), timeoutMs)
-  const consent = await driver.wait(
-    until.elementLocated(By.css('[data-testid="analytics-consent-toggle"]')),
-    timeoutMs,
-  )
-  if (await consent.isSelected()) {
-    throw new Error('Analytics consent must be off in a fresh Firefox profile')
-  }
-  const optionsText = await driver.findElement(By.css('body')).getText()
-  for (const expected of ['StreamPulse', 'Share anonymous product usage', 'Probe backend']) {
-    if (!optionsText.includes(expected)) {
-      throw new Error(`Firefox options page missing expected text: ${expected}`)
-    }
+  await driver.wait(until.elementLocated(By.css('[data-settings-workspace="true"]')), timeoutMs)
+  await driver.wait(until.elementLocated(By.css('[data-settings-section="general"]')), timeoutMs)
+  await driver.wait(until.elementLocated(By.css('[data-settings-section="about"]')), timeoutMs)
+  const expectedOptionsText = [
+    'StreamPulse settings',
+    'General',
+    'Changelog & About',
+    'Updates are managed by this browser',
+  ]
+  await driver.wait(async () => {
+    const text = await driver.executeScript(`return document.body?.textContent || ''`)
+    return expectedOptionsText.every(expected => text.includes(expected))
+  }, timeoutMs, 'Firefox shared settings host did not finish rendering expected copy')
+  const updateButtons = await driver.findElements(By.xpath("//button[contains(normalize-space(.), 'Check now')]"))
+  if (updateButtons.length !== 0) {
+    throw new Error('Firefox must not render a manual update-check button')
   }
 
   const watchlist = await runtimeMessage(driver, { type: 'LIST_WATCHLIST' })
@@ -138,7 +142,7 @@ try {
       optionsRendered: true,
       popupRendered: true,
       backgroundMessage: watchlist.type,
-      analyticsConsentDefault: false,
+      manualUpdateCheckHidden: true,
     }),
   )
 } finally {

@@ -198,12 +198,13 @@ export function compareZipEntriesToExpected(zipEntries, expectedFiles) {
     'content/twitch.js',
     'popup/index.html',
     'popup/popup.js',
-    'options/index.html',
-    'options/options.js',
     'icons/icon16.png',
     'icons/icon48.png',
     'icons/icon128.png',
   ]
+  if (expectedSet.has('options/index.html') || expectedSet.has('options/options.js')) {
+    required.push('options/index.html', 'options/options.js')
+  }
   for (const rel of required) {
     if (!actualSet.has(rel)) errors.push(`required entry missing: ${rel}`)
   }

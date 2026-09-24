@@ -32,3 +32,6 @@ docs/pulse-extension/cws-screenshots/
 
 # Visual companion mockups (brainstorming)
 .superpowers/
+
+# Ad-hoc command logs written at the repo root (archive under .artifacts/)
+/*.log

@@ -33,6 +33,7 @@ import {
   validateExtensionAttributionBytes,
 } from './stage-extension-attribution.mjs'
 import { textContainsHostedApiOrigin } from './lib/hosted-api-origin.mjs'
+import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -138,13 +139,12 @@ function validateManifest(manifest, target) {
     }
     if (manifest.browser_specific_settings?.gecko?.id !== 'streampulse@streampulse.stream') {
       fail('Firefox manifest requires stable browser_specific_settings.gecko.id')
-    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '142.0') {
-      fail('Firefox manifest requires strict_min_version=142.0 for built-in consent across supported Firefox variants')
+    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0') {
+      fail('Firefox desktop manifest requires strict_min_version=140.0 for built-in consent')
     } else if (
       JSON.stringify(manifest.browser_specific_settings?.gecko?.data_collection_permissions) !==
       JSON.stringify({
         required: ['browsingActivity'],
-        optional: ['technicalAndInteraction'],
       })
     ) {
       fail('Firefox manifest data collection declaration drifted')
@@ -174,11 +174,22 @@ function validateManifest(manifest, target) {
     ok(`REQUIRED: popup present: ${popup}`)
   }
 
-  const options = manifest.options_page
-  if (!options || !existsSync(join(dist, options))) {
-    fail(`options_page missing from dist: ${options ?? '(none)'}`)
+  const sharedOptionsHost = ['options/index.html', 'options/options.js']
+  const missingSharedOptionsFiles = sharedOptionsHost.filter((path) => !existsSync(join(dist, path)))
+  if (missingSharedOptionsFiles.length) {
+    fail(`packaged shared settings host missing: ${missingSharedOptionsFiles.join(', ')}`)
   } else {
-    ok(`REQUIRED: options present: ${options}`)
+    ok('REQUIRED: packaged shared settings host present')
+  }
+
+  const options = manifest.options_page
+  if (isStoreTarget(target)) {
+    if (options) fail(`store manifest must keep user settings inline, found options_page=${options}`)
+    else ok('REQUIRED: store manifest has no separate options page')
+  } else if (!options || !existsSync(join(dist, options))) {
+    fail(`development options_page missing from dist: ${options ?? '(none)'}`)
+  } else {
+    ok(`REQUIRED: developer options present: ${options}`)
   }
 
   for (const [size, iconPath] of Object.entries(manifest.icons ?? {})) {
@@ -256,6 +267,11 @@ function validateDistContents(store, target) {
     scanTextArtifact(rel, contents, store)
     if (/\.js$/i.test(rel)) {
       sawJs = true
+      if (store) {
+        for (const marker of findStoreDeveloperMarkers(contents)) {
+          fail(`store artifact contains developer tooling marker in ${rel}: ${marker}`)
+        }
+      }
       for (const match of contents.matchAll(/streampulse-extension-runtime-target:[a-z]+/g)) {
         runtimeTargetMarkers.add(match[0])
       }
@@ -408,6 +424,52 @@ async function validateZipBytes(target, packable, version) {
   ok(`wrote validation report ${names.reportName}`)
 }
 
+/**
+ * A store artifact must not ship a changelog that contradicts itself. When the
+ * packaged version is still marked `unreleased`, the in-product changelog renders
+ * both "Installed" and "Unreleased" on the same entry, which is fine locally but
+ * is a factual error in a published listing. Fail closed rather than masking the
+ * badge in the UI, so the manifest and the notes are reconciled before upload.
+ */
+function validateReleaseNotes(manifest, target) {
+  const notesPath = join(root, 'src/shared/release-notes.json')
+  if (!existsSync(notesPath)) {
+    fail('src/shared/release-notes.json missing — the in-product changelog cannot be verified')
+    return
+  }
+  let notes
+  try {
+    notes = JSON.parse(readFileSync(notesPath, 'utf8'))
+  } catch (err) {
+    fail(`src/shared/release-notes.json is not valid JSON: ${err.message}`)
+    return
+  }
+
+  if (notes.currentVersion !== manifest.version) {
+    fail(`release-notes currentVersion=${JSON.stringify(notes.currentVersion)} != manifest version ${JSON.stringify(manifest.version)}`)
+  } else {
+    ok(`REQUIRED: release-notes currentVersion matches manifest ${manifest.version}`)
+  }
+
+  const entry = (notes.releases ?? []).find((release) => release.version === manifest.version)
+  if (!entry) {
+    fail(`release-notes has no entry for packaged version ${manifest.version}`)
+    return
+  }
+
+  if (isStoreTarget(target)) {
+    if (entry.status === 'unreleased') {
+      fail(`store target ${target}: release-notes entry ${manifest.version} is still status="unreleased" — set it to "released" with a releasedAt date before upload`)
+    } else if (!entry.releasedAt) {
+      fail(`store target ${target}: release-notes entry ${manifest.version} has status="${entry.status}" but no releasedAt date`)
+    } else {
+      ok(`REQUIRED: release-notes entry ${manifest.version} is publishable (status=${entry.status})`)
+    }
+  } else {
+    note(`release-notes entry ${manifest.version} status=${entry.status} (development target does not require a publishable status)`)
+  }
+}
+
 async function main() {
   const target = parseTargetArg()
   if (!existsSync(join(dist, 'manifest.json'))) {
@@ -429,6 +491,7 @@ async function main() {
   }
 
   validateManifest(manifest, target)
+  validateReleaseNotes(manifest, target)
 
   // Attribution is mandatory — stage if a local dist was built without zip-dist,
   // then require exact byte match to repo LICENSE / NOTICE / packages/NOTICE.
