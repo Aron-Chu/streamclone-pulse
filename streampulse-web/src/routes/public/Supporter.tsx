@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { PrelaunchNotice } from './PrelaunchNotice'
 
 /**
  * Public Supporter offer. One honest monthly price, stated once.
@@ -9,8 +10,11 @@ import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
  * whose terms that card summarizes — so the two must agree on price, cadence and
  * cancellation. Checkout availability remains server-controlled on the
  * authenticated billing page; this public page must not guess deployment state.
+ *
+ * USD only at launch: Checkout charges in US dollars, so the price says so. Tax
+ * wording stays general until Checkout calculates tax itself.
  */
-const PRICE_DISPLAY = '$4.99 / month'
+const PRICE_DISPLAY = 'US$4.99 per month, charged in US dollars'
 
 export default function Supporter() {
   return (
@@ -33,8 +37,10 @@ export default function Supporter() {
           </p>
         </header>
 
+        <PrelaunchNotice />
+
         <section className="mt-8 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] p-6" data-testid="supporter-terms">
-          <h2 className="!mt-0">The offer</h2>
+          <h2 className="!mt-0">The offer, once sign-ups open</h2>
           <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
             <dt className="text-sm font-bold text-zinc-400">Price</dt>
             <dd className="m-0 text-sm font-bold text-white">{PRICE_DISPLAY}</dd>
@@ -42,11 +48,20 @@ export default function Supporter() {
             <dd className="m-0 text-sm text-zinc-200">Monthly, automatically, until you cancel</dd>
             <dt className="text-sm font-bold text-zinc-400">Cancel</dt>
             <dd className="m-0 text-sm text-zinc-200">
-              Any time. Access runs to the end of the month you already paid for.
+              Any time, in the Stripe Customer Portal. Cancellation takes effect at the end of the
+              period you already paid for, and access continues until then.
+            </dd>
+            <dt className="text-sm font-bold text-zinc-400">Failed payment</dt>
+            <dd className="m-0 text-sm text-zinc-200">
+              A 7-day grace period while the payment is retried, then Supporter access lapses.
+            </dd>
+            <dt className="text-sm font-bold text-zinc-400">Refunds</dt>
+            <dd className="m-0 text-sm text-zinc-200">
+              A full refund ends access for that period; a partial refund keeps it.
             </dd>
             <dt className="text-sm font-bold text-zinc-400">Taxes</dt>
             <dd className="m-0 text-sm text-zinc-200">
-              Stripe checkout shows the final total, including any tax it calculates, before you pay.
+              Handled as stated at checkout. Stripe checkout shows the total before you pay.
             </dd>
             <dt className="text-sm font-bold text-zinc-400">Payment</dt>
             <dd className="m-0 text-sm text-zinc-200">
@@ -64,9 +79,8 @@ export default function Supporter() {
 
         <h2>What it does not include</h2>
         <p>
-          <strong>No public Twitch chat badge.</strong> A chat badge is designed but not shipped, and
-          is not part of what you are buying. If it ever ships it will be added for existing
-          Supporters at no extra cost — but do not subscribe expecting it.
+          <strong>No public Twitch chat badge.</strong> A chat badge is not included in Supporter and
+          is not part of what you would be buying.
         </p>
         <p>
           Supporter does not unlock analytics, change coverage, raise rate limits, or affect what the
@@ -83,9 +97,8 @@ export default function Supporter() {
         <h2 id="subscribe">How to subscribe</h2>
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
-            <strong>Paid sign-ups are not open yet.</strong> Existing members can use account billing
-            to manage their membership. When new sign-ups open, account billing will show the Stripe
-            checkout option.
+            <strong>Paid sign-ups are not open yet.</strong> Supporter cannot be bought on this site
+            today. When sign-ups open, account billing will show the Stripe checkout option.
           </p>
           <p className="mb-0">
             <Link className="btn btn-primary" to="/account/billing">
@@ -96,10 +109,12 @@ export default function Supporter() {
 
         <h2>Managing a membership</h2>
         <p>
-          Payment method, invoice history and cancellation are handled in the Stripe customer portal,
-          reachable from account billing for existing members. Cancelling takes effect at the end of
-          the period you have already paid for, and billing history stays available after access ends. See{' '}
-          <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for the details.
+          Once sign-ups open, payment method, invoice history and cancellation are handled in the
+          Stripe Customer Portal, reachable from account billing. Cancelling takes effect at the end of
+          the period you have already paid for, and billing history stays available after access
+          ends. While Stripe finalizes a renewal, a membership may show as active for up to 72 hours
+          after the paid period ends. See <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for
+          the details.
         </p>
 
         <h2>Before you subscribe</h2>
@@ -111,6 +126,8 @@ export default function Supporter() {
         </p>
 
         <h2>Questions</h2>
+        {/* MERGE GATE (memo T1-6): the owner confirms that this mailbox is monitored
+            for billing email, who answers it and the response time, before publication. */}
         <p>
           Billing and account questions: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>.
           Product questions and bug reports belong on the <Link to="/support">support page</Link>.

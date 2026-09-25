@@ -68,4 +68,6 @@ test('unmounted account backend produces a clear unavailable state', async ({ ex
   await extension.page.getByRole('button', { name: 'Link extension', exact: true }).click()
   await expect(extension.page.getByText('Account linking is not available on the server yet. Your free tools still work.')).toBeVisible()
   await expect(extension.page.getByRole('link', { name: 'Open account page' })).toHaveCount(0)
+  // UI-11: linking that is not deployed is explained, not offered again.
+  await expect(extension.page.getByRole('button', { name: 'Link extension', exact: true })).toHaveCount(0)
 })

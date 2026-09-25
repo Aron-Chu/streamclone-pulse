@@ -81,7 +81,7 @@ export default function BillingPage() {
       setError(error instanceof AccountError && error.code === 'subscription_exists' ? 'You already have a subscription. Use Manage membership to make changes.'
         : error instanceof AccountError && error.code === 'checkout_pending' ? 'A checkout is awaiting confirmation. Refresh status before trying again.'
         : error instanceof AccountError && error.code === 'checkout_expired' ? 'The previous checkout expired without a purchase. You can start a new checkout.'
-        : error instanceof AccountError && error.code === 'checkout_disabled' ? 'New purchases are paused. Existing members can still manage billing.'
+        : error instanceof AccountError && error.code === 'checkout_disabled' ? 'Checkout is not open right now. Refresh status to see your current membership.'
         : error instanceof AccountError && error.status === 401 ? 'Sign in again before changing your membership.'
         : 'Billing could not open. Refresh status before trying again.')
       setBusy(false)
@@ -91,14 +91,21 @@ export default function BillingPage() {
   // Checkout is opt-in on the server. Older responses and disabled deployments
   // must never expose a purchase control that will only fail after a click.
   const checkoutEnabled = snapshot?.checkoutEnabled === true
+  // The billing snapshot names the Stripe environment the server is configured
+  // for. Only an explicit "sandbox" proves test mode; a missing or unknown value
+  // shows no banner, because the page cannot tell which environment it is.
+  const sandbox = snapshot?.environment === 'sandbox'
   const labels: Record<string, string> = { none: 'No subscription', active: 'Supporter active', grace: 'Payment needs attention', pending: 'Payment pending', expired: 'Supporter ended', review: 'Membership needs review' }
   return <PublicLayout><section className="pulse-account" aria-label="Supporter billing">
     <p className="pulse-account-kicker">StreamPulse account</p><h1>Supporter membership</h1>
+    {sandbox ? <p className="pulse-account-sandbox" role="note" data-testid="billing-sandbox-banner"><strong>Sandbox — test mode, no real charge.</strong> This page is connected to Stripe’s test environment. No real card is charged and no real membership is created.</p> : null}
     <div role="status">{busy ? <p>Checking billing...</p> : null}{error ? <p>{error}</p> : null}</div>
     {signIn ? <Link to={signInHref}>Sign in to Pulse</Link> : null}
     {snapshot ? <>
       <h2>{labels[status]}</h2>
       {typeof snapshot.accessUntil === 'string' && Number.isFinite(Date.parse(snapshot.accessUntil)) && ['active', 'grace'].includes(status) ? <p>Access through {new Date(snapshot.accessUntil).toLocaleDateString()}.</p> : null}
+      {status === 'grace' ? <p>Your last renewal payment did not go through. Supporter stays active for a 7-day grace period from the end of the paid period while the payment is retried. Update your payment method in Manage membership.</p> : null}
+      {status === 'review' ? <p>Supporter access is suspended while this payment is under review, for example during an open dispute.</p> : null}
       {checkoutCancelled
         ? <p>You left Stripe checkout before it confirmed a payment. Your current membership is shown below.</p>
         : attemptState === 'pending'
@@ -107,11 +114,11 @@ export default function BillingPage() {
             ? <p>This checkout expired without a confirmed payment. Your current membership is shown below.</p>
             : null}
       {['none', 'expired'].includes(status) ? checkoutEnabled
-        ? <><p>$4.99 per month, renewing automatically until cancellation. Taxes, if any, are shown at checkout.</p><p>Includes a private Pulse header accent, three private finishes, and private support recognition.</p><button type="button" disabled={busy} onClick={() => void open('checkout')}>Continue to Stripe checkout</button></>
-        : <p>New Supporter sign-ups are not open yet. Existing members can still manage billing from this page.</p>
+        ? <><p>US$4.99 per month, charged in US dollars, renewing automatically until you cancel. Taxes are handled as stated at checkout.</p><p>Includes a private Pulse header accent, three private finishes, and private support recognition.</p><button type="button" disabled={busy} onClick={() => void open('checkout')}>Continue to Stripe checkout</button></>
+        : <p>New Supporter sign-ups are not open yet.</p>
         : null}
       {status !== 'none' ? <><button type="button" disabled={busy} onClick={() => void open('portal')}>Manage membership</button>
-      <p>Manage payment details, invoices, and cancellation through Stripe. Cancellation keeps access through the paid period.</p></> : null}
+      <p>Manage payment details, invoices and cancellation in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period, and access continues until then.</p></> : null}
     </> : null}
     <button type="button" disabled={busy} onClick={() => void refresh()}>Refresh status</button>
     <p><Link to="/account/link-device">Link your extension</Link></p>

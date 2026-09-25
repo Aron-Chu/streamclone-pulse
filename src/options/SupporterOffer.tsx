@@ -15,7 +15,8 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
  *
  * Existing members use the authenticated website billing page.
  */
-const PRICE_DISPLAY = '$4.99 / month'
+// USD only at launch, matching the public /supporter page.
+const PRICE_DISPLAY = 'US$4.99 / month'
 
 const STATUS_COPY: Record<string, { title: string; detail: string }> = {
   none: {
@@ -110,6 +111,19 @@ export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: Supp
   // page, including an expired membership that may still need invoice access.
   const canOpenBilling = entitlement?.state === 'ready'
     && status !== 'none'
+  // A website link is shown only when the server returned a membership status.
+  // Without one (not linked, a missing or unreachable service, a build that does
+  // not honour the server's billing environment, a linked account whose renewal
+  // is waiting, or a failed read), the extension cannot know whether an offer
+  // applies, so it never shows a purchase link. A purchase offer itself appears
+  // only for `ready` + none (public offer) or expired (billing, which can also
+  // restart a membership).
+  const showWebsiteLink = status !== null
+  // Every other non-ready state means a linked installation's status could not
+  // be read, or the worker did not answer, so the only honest action is to read
+  // again. not_linked has no action here: the account card above owns linking,
+  // and this card re-reads by itself once the link completes.
+  const statusUnknown = entitlement?.state === 'unavailable' || entitlement?.state === 'error'
   const actionLabel = status === 'pending'
     ? 'Check payment status on streampulse.stream'
     : status === 'review'
@@ -171,27 +185,29 @@ export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: Supp
         </>
       ) : null}
 
-      <div className="pulse-account-link-actions">
-        {/* Checkout and billing management both need a browser session, so both
-            are handled on the website rather than in the extension. */}
-        {entitlement ? (
-          <a
-            data-supporter-action="billing"
-            href={productLink(canOpenBilling ? 'billing' : 'supporter', portalOrigin)}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {actionLabel}
-          </a>
-        ) : (
-          <span data-supporter-action="billing" aria-disabled="true">
-            Checking Supporter status…
-          </span>
-        )}
-        <button type="button" disabled={busy} onClick={() => void refresh()}>
-          {busy ? 'Checking…' : 'Refresh status'}
-        </button>
-      </div>
+      {entitlement?.state === 'not_linked' ? null : (
+        <div className="pulse-account-link-actions">
+          {/* Checkout and billing management both need a browser session, so both
+              are handled on the website rather than in the extension. */}
+          {showWebsiteLink ? (
+            <a
+              data-supporter-action="billing"
+              href={productLink(canOpenBilling ? 'billing' : 'supporter', portalOrigin)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {actionLabel}
+            </a>
+          ) : !entitlement ? (
+            <span data-supporter-action="billing" aria-disabled="true">
+              Checking Supporter status…
+            </span>
+          ) : null}
+          <button type="button" disabled={busy} onClick={() => void refresh()}>
+            {busy ? 'Checking…' : statusUnknown ? 'Check again' : 'Refresh status'}
+          </button>
+        </div>
+      )}
 
       <p className="pulse-supporter-detail">
         Core Pulse tools, your existing accent themes and ordinary clip downloading remain free.
