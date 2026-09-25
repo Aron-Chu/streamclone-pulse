@@ -208,6 +208,14 @@ test.describe('chart preview/lock interactions', () => {
       .poll(async () => (await probeChart(extension.page)).svg, { timeout: 20_000 })
       .not.toBeNull()
 
+    // Zoom buttons appear once the chart is zoomed: zoom from the keyboard first,
+    // then pin a moment and check the very next button click still zooms.
+    const scrubber = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-scrubber="true"]`)
+    await scrubber.focus()
+    await scrubber.press('=')
+    const zoomIn = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-in]`)
+    await expect(zoomIn).toBeVisible()
+
     const box = (await probeChart(extension.page)).svg!
     await extension.page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5)
     await expect
@@ -216,7 +224,6 @@ test.describe('chart preview/lock interactions', () => {
 
     const pinnedBefore = await probeChart(extension.page)
     const spanBefore = viewportSpan(pinnedBefore)
-    const zoomIn = extension.page.locator(`#${PULSE_ROOT_ID} [data-chart-zoom-in]`)
     await expect(zoomIn).toBeVisible()
     await expect(zoomIn).toBeEnabled()
     await zoomIn.click()

@@ -223,7 +223,8 @@ test.describe('emote picker redesign (mocked MV3)', () => {
       const root = document.getElementById(rootId)?.shadowRoot
       root?.querySelector('.pulse-seven-tv-toggle')?.scrollIntoView({ block: 'center' })
     }, PULSE_ROOT_ID)
-    await expect(panel).toHaveScreenshot('emote-picker-initial-narrow.png', {
+    // Soft: one run reports (and writes actuals for) every narrow snapshot, not just the first.
+    await expect.soft(panel).toHaveScreenshot('emote-picker-initial-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
@@ -233,13 +234,13 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     const picker = panel.locator('.pulse-seven-tv-panel').first()
     await expandEmotePicker(extension.page)
     await picker.scrollIntoViewIfNeeded()
-    await expect(picker).toHaveScreenshot('emote-picker-expanded-narrow.png', {
+    await expect.soft(picker).toHaveScreenshot('emote-picker-expanded-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
     await expandPickerCatalog(extension.page)
     await picker.scrollIntoViewIfNeeded()
-    await expect(picker).toHaveScreenshot('emote-picker-expanded-more-narrow.png', {
+    await expect.soft(picker).toHaveScreenshot('emote-picker-expanded-more-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
@@ -248,7 +249,7 @@ test.describe('emote picker redesign (mocked MV3)', () => {
       const root = document.getElementById(rootId)?.shadowRoot
       root?.querySelector('.pulse-chart-overlay-legend-chip')?.scrollIntoView({ block: 'center' })
     }, PULSE_ROOT_ID)
-    await expect(panel).toHaveScreenshot('emote-picker-six-selected-narrow.png', {
+    await expect.soft(panel).toHaveScreenshot('emote-picker-six-selected-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 

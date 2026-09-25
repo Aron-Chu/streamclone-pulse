@@ -63,6 +63,13 @@ for (const duration of [120, 21600]) {
     const zoomIn = root.getByRole('button', { name: 'Zoom in chart', exact: true })
     const zoomOut = root.getByRole('button', { name: 'Zoom out chart', exact: true })
     const reset = root.getByRole('button', { name: 'Reset chart view', exact: true })
+    // Zoom buttons appear only once the chart is zoomed; the first zoom comes from
+    // the keyboard (or wheel/rail), as a reader would reach it.
+    const scrubber = root.locator('[data-chart-scrubber="true"]')
+    const zoomFromKeyboard = async () => {
+      await scrubber.focus()
+      await scrubber.press('=')
+    }
     const viewport = async () => chart.evaluate(element => ({
       start: Number(element.getAttribute('data-chart-viewport-start')),
       end: Number(element.getAttribute('data-chart-viewport-end')),
@@ -81,19 +88,24 @@ for (const duration of [120, 21600]) {
       await expect(range).toContainText(label)
       const maximum = Math.min(limit, duration)
       await expect.poll(span).toBeCloseTo(maximum, -1)
-      await expect(zoomOut).toBeDisabled()
-      if (duration <= 300) {
-        await expect(zoomIn).toBeDisabled()
-      } else {
-        await expect(zoomIn).toBeEnabled()
-        await zoomIn.click()
+      // At a range's full extent there is nothing to zoom out of: the buttons are
+      // hidden until the chart is zoomed, or shown with zoom-out disabled.
+      await expect(root.locator('[data-chart-zoom-out]:not([disabled])')).toHaveCount(0)
+      if (duration <= 300) await expect(root.locator('[data-chart-zoom-in]:not([disabled])')).toHaveCount(0)
+      if (duration > 300) {
+        await zoomFromKeyboard()
         await expect.poll(span).toBeLessThan(maximum)
         const zoomed = await viewport()
         expect(zoomed.start).toBeGreaterThanOrEqual(0)
         expect(zoomed.end).toBeLessThanOrEqual(duration + 10)
+        await expect(zoomOut).toBeEnabled()
         await zoomOut.click()
         await expect.poll(span).toBeCloseTo(maximum, -1)
-        await zoomIn.click()
+        // Back at the range limit there is nothing further to zoom out of: the
+        // button is disabled, or hidden once the viewport is exactly the range.
+        await expect(root.locator('[data-chart-zoom-out]:not([disabled])')).toHaveCount(0)
+        await zoomFromKeyboard()
+        await expect(reset).toBeEnabled()
         await reset.click()
         await expect.poll(span).toBeCloseTo(maximum, -1)
       }
@@ -105,6 +117,8 @@ for (const duration of [120, 21600]) {
     if (duration > 300) {
       await range.click()
       await root.getByRole('option', { name: '15 min', exact: true }).click()
+      await zoomFromKeyboard()
+      await expect(zoomIn).toBeVisible()
       for (let step = 0; step < 6 && await zoomIn.isEnabled(); step++) {
         const previousSpan = await span()
         await zoomIn.click()
@@ -118,7 +132,9 @@ for (const duration of [120, 21600]) {
       const endHandle = await root.locator('[data-chart-rail-handle="end"]').boundingBox()
       expect(startHandle).not.toBeNull()
       expect(endHandle).not.toBeNull()
-      expect(endHandle!.x - startHandle!.x - startHandle!.width).toBeGreaterThanOrEqual(10)
+      // The thumb stays proportional at the deepest zoom (railGeometry); its resize
+      // handles move outside it, so they never overlap and the thumb stays the pan target.
+      expect(endHandle!.x - startHandle!.x - startHandle!.width).toBeGreaterThanOrEqual(0)
 
       const before = await viewport()
       const box = (await thumb.boundingBox())!

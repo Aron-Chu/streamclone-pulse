@@ -39,62 +39,35 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
 
-    // Open Quick Settings
+    // Semantic lanes are fixed in src/ui/chartTheme.ts so the legend always matches the
+    // chart whatever accent is chosen: chat trend purple, emotes green, viewers cyan.
+    const semantic = { chat: '#a78bfa', emotes: '#34d399', viewers: '#22d3ee' }
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    const seriesColors = () => chart.evaluate(svg => ({
+      chat: svg.querySelector('path[data-chart-series="chat"]')?.getAttribute('stroke') ?? null,
+      emotes: svg.querySelector('path[data-chart-series="emotes"]')?.getAttribute('stroke') ?? null,
+      viewers: svg.querySelector('[data-chart-series="viewers"] path[stroke]')?.getAttribute('stroke') ?? null,
+    }))
+    await expect(chart).toBeVisible()
+    await expect.poll(seriesColors).toEqual(semantic)
+
+    // Quick Settings previews the saved appearance (title and 7TV backdrop).
     await extension.page.getByRole('button', { name: 'Open settings' }).click()
     const settingsPanel = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settingsPanel).toBeVisible()
-
-    // Assert appearance preview exists
     const preview = settingsPanel.locator('[data-appearance-preview="true"]')
     await expect(preview).toBeVisible()
-
-    // Verify semantic colors in AppearancePreview
-    const colors = await preview.evaluate(el => {
-      const chatLine = el.querySelector('path[data-series="chat"]')
-      const chatSummary = el.querySelector('[data-summary="chat"]')
-      const viewersLine = el.querySelector('path[data-series="viewers"]')
-      const emotesEl = el.querySelector('[data-series="emotes"]')
-      const jumpBtn = el.querySelector('button')
-
-      return {
-        chatStroke: chatLine?.getAttribute('stroke'),
-        chatSummaryColor: chatSummary ? getComputedStyle(chatSummary).color : null,
-        viewersStroke: viewersLine?.getAttribute('stroke'),
-        emotesColor: emotesEl?.getAttribute('fill') ?? emotesEl?.getAttribute('stroke'),
-        jumpBg: jumpBtn ? getComputedStyle(jumpBtn).backgroundColor : null,
-      }
-    })
-
-    // Chat line and summary use semantic purple (#a78bfa = rgb(167, 139, 250))
-    expect(colors.chatStroke).toBe('#a78bfa')
-    // Viewers line uses semantic cyan (#22d3ee)
-    expect(colors.viewersStroke).toBe('#22d3ee')
-    // Emotes line uses semantic green (#22c55e)
-    expect(colors.emotesColor).toBe('#22c55e')
-
-    // Capture screenshot of quick settings showing semantic colors
+    await expect(preview).toHaveAttribute('aria-label', /^Appearance preview: /)
     await saveScreenshot(extension.page, '15-appearance-preview-semantic-colors.png', settingsPanel)
 
-    // Switch themes to Azure and verify chat stays purple while accent changes
+    // Switching the accent to Azure must leave the semantic lanes unchanged.
     const azureBtn = settingsPanel.getByRole('button', { name: 'Azure', exact: true })
     await azureBtn.click()
     await expect(azureBtn).toHaveAttribute('aria-pressed', 'true')
-
-    const azureColors = await preview.evaluate(el => {
-      const chatLine = el.querySelector('path[data-series="chat"]')
-      const viewersLine = el.querySelector('path[data-series="viewers"]')
-      const emotesEl = el.querySelector('[data-series="emotes"]')
-      return {
-        chatStroke: chatLine?.getAttribute('stroke'),
-        viewersStroke: viewersLine?.getAttribute('stroke'),
-        emotesColor: emotesEl?.getAttribute('fill') ?? emotesEl?.getAttribute('stroke'),
-      }
-    })
-    expect(azureColors.chatStroke).toBe('#a78bfa')
-    expect(azureColors.viewersStroke).toBe('#22d3ee')
-    expect(azureColors.emotesColor).toBe('#22c55e')
-
     await saveScreenshot(extension.page, '16-quick-settings-azure-theme.png', settingsPanel)
+    await extension.page.getByRole('button', { name: 'Back to Pulse' }).click()
+    await expect(chart).toBeVisible()
+    await expect.poll(seriesColors).toEqual(semantic)
   })
 
   test('2. Compact density in live sidebar mode', async ({

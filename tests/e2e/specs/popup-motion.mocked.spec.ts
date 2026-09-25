@@ -28,7 +28,7 @@ test('popup hub motion is loaded and respects reduced motion', async ({ extensio
   await expect(hub).toHaveCSS('animation-name', 'none')
   await expect(hub).toHaveCSS('transition-duration', '0s')
   expect(await hub.evaluate(element => getComputedStyle(element, '::before').animationName)).toBe('none')
+  // The arrow is part of the label text (no separately animated element).
   await hub.hover()
   await expect(hub).toHaveCSS('transform', 'none')
-  await expect(hub.locator('.pulse-hub-arrow')).toHaveCSS('transition-duration', '0s')
 })
