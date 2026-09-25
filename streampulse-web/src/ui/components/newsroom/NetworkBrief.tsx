@@ -1,4 +1,5 @@
 import { Activity, MessageSquare, Sparkles } from 'lucide-react'
+import { formatCoveragePercent } from '@streampulse/pulse-core'
 import type { NewsroomNetworkBrief } from '../../../lib/newsroom'
 
 export interface NetworkBriefProps {
@@ -25,7 +26,7 @@ export function NetworkBrief({ brief }: NetworkBriefProps) {
         <div><dt><MessageSquare aria-hidden="true" />Chat</dt><dd>{changeLabel(brief.chatChangePct)}</dd></div>
         <div><dt><Sparkles aria-hidden="true" />Emotes</dt><dd>{changeLabel(brief.emoteChangePct)}</dd></div>
         <div><dt>Comparable channels</dt><dd>{brief.comparableChannels}</dd></div>
-        <div><dt>Temporal coverage</dt><dd>{Math.round(brief.coveragePct)}%</dd></div>
+        <div><dt>Temporal coverage</dt><dd>{formatCoveragePercent(brief.coveragePct)}</dd></div>
       </dl>
       <p className="newsroom-network-brief__window">
         Current <time dateTime={brief.currentStart}>{new Date(brief.currentStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>–<time dateTime={brief.currentEnd}>{new Date(brief.currentEnd).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>

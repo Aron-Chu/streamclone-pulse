@@ -1,7 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ fetchNewsroom: vi.fn() }))
+const mocks = vi.hoisted(() => ({ fetchNewsroom: vi.fn(), loadNewsroomProfiles: vi.fn(async (logins: string[], signal: AbortSignal, onProfile: (login: string, url: string) => void) => {
+  for (const login of logins) if (!signal.aborted) onProfile(login, `https://static-cdn.jtvnw.net/jtv_user_pictures/${login}.jpg`)
+}) }))
+
+vi.mock('../src/lib/newsroomProfiles', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/newsroomProfiles')>()),
+  loadNewsroomProfiles: mocks.loadNewsroomProfiles,
+}))
 
 vi.mock('../src/lib/newsroom', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/newsroom')>()),
@@ -99,7 +106,6 @@ function envelope(overrides: {
     createdAt: new Date(at).toISOString(),
     lastPublishedAt: update.publishedAt,
     leadUpdate: update,
-    sources: [],
   }
   return {
     schemaVersion: 1,
@@ -114,7 +120,27 @@ function envelope(overrides: {
 }
 
 describe('useNewsroomData', () => {
-  afterEach(() => mocks.fetchNewsroom.mockReset())
+  afterEach(() => { mocks.fetchNewsroom.mockReset(); mocks.loadNewsroomProfiles.mockClear() })
+
+  it('enriches explicitly loaded later pages in bounded batches without changing measured facts', async () => {
+    const first = { ...envelope(), nextCursor: 'next', stories: Array.from({ length: 20 }, (_, index) => envelope({ id: `creator${index}` }).stories[0]!) }
+    const second = { ...envelope(), stories: Array.from({ length: 20 }, (_, index) => envelope({ id: `creator${20 + index}` }).stories[0]!) }
+    mocks.fetchNewsroom.mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    const { result } = renderHook(() => useNewsroomData({ pollMs: 0, enrichProfiles: true }))
+    await waitFor(() => expect(result.current.data?.stories.filter(story => story.profileImageUrl)).toHaveLength(20))
+    act(() => result.current.loadMore())
+    await waitFor(() => expect(result.current.data?.stories.filter(story => story.profileImageUrl)).toHaveLength(40))
+    expect(mocks.loadNewsroomProfiles.mock.calls.every(([logins]) => logins.length <= 20)).toBe(true)
+    expect(result.current.data?.stories.find(story => story.login === 'creator39')?.leadUpdate).toEqual(second.stories[19]!.leadUpdate)
+  })
+
+  it('does not issue a request when a capability gate disables the query', async () => {
+    const { result } = renderHook(() => useNewsroomData({ window: '24h', enabled: false, pollMs: 0 }))
+    await act(async () => { await Promise.resolve() })
+    expect(mocks.fetchNewsroom).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(false)
+    expect(result.current.unavailable).toBe(true)
+  })
 
   it('silently baselines the first healthy response and announces only a later lifecycle transition', async () => {
     mocks.fetchNewsroom
@@ -172,6 +198,19 @@ describe('useNewsroomData', () => {
     act(() => result.current.refresh())
     await waitFor(() => expect(result.current.data?.leadStoryId).toBe('story-2'))
     expect(result.current.announcement).toMatch(/^New Pulse story:/)
+  })
+
+  it('clears a pagination error after the same cursor succeeds without replacing existing results', async () => {
+    const first={...envelope(),nextCursor:'next'}
+    const second={...envelope({id:'second'}),snapshotAt:first.snapshotAt,nextCursor:undefined}
+    mocks.fetchNewsroom.mockResolvedValueOnce(first).mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce(second)
+    const {result}=renderHook(()=>useNewsroomData({pollMs:0}))
+    await waitFor(()=>expect(result.current.data?.stories).toHaveLength(1))
+    act(()=>result.current.loadMore())
+    await waitFor(()=>expect(result.current.error).toBeTruthy())
+    act(()=>result.current.loadMore())
+    await waitFor(()=>expect(result.current.data?.stories).toHaveLength(2))
+    expect(result.current.error).toBeNull()
   })
 
   it('aborts and ignores old-window pagination after the canonical query changes', async () => {

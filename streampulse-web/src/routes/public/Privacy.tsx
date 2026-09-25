@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 
 /** Public privacy policy for StreamPulse (portal + Chrome extension). Current behavior only. */
 export default function Privacy() {
@@ -13,39 +14,14 @@ export default function Privacy() {
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Privacy-First & Rollup-Only
+              Extension and website privacy
             </span>
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: August 3, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: September 24, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
-
-        {/* Privacy at a Glance Highlights */}
-        <div className="feature-grid">
-          <div className="feature-card">
-            <span className="feature-card__badge text-emerald-300">Guaranteed</span>
-            <h3>No Raw Chat Storage</h3>
-            <p>
-              StreamPulse records only mathematical aggregates (emotes/min, chat counts, viewer sums). We never log chat messages or chatter usernames.
-            </p>
-          </div>
-          <div className="feature-card">
-            <span className="feature-card__badge text-cyan-300">Zero OAuth</span>
-            <h3>No Account Credentials</h3>
-            <p>
-              The extension requires no Twitch OAuth logins, passwords, or personal account tokens to inspect public stream activity.
-            </p>
-          </div>
-          <div className="feature-card">
-            <span className="feature-card__badge text-violet-300">Local Only</span>
-            <h3>Client-Held Tokens</h3>
-            <p>
-              Protect enrollment generates a localized, opaque device credential stored only in browser storage.
-            </p>
-          </div>
-        </div>
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
@@ -55,7 +31,99 @@ export default function Privacy() {
             chatter identity to users. The extension does not use Twitch OAuth. Protect enrollment is
             optional and uses a beta access key once to create a local device credential.
           </p>
+          <p className="text-zinc-300">
+            An account is optional and needs only an email address. Pulse Supporter is an optional paid
+            subscription; card details go to Stripe and never to StreamPulse. Neither an account nor a
+            subscription is required to use the extension or the public analytics.
+          </p>
         </section>
+
+        <h2>Your account, if you create one</h2>
+        <p>
+          An account is optional. You need one only to link the extension to a Pulse account or to
+          hold a <Link to={SUPPORTER_PATH}>Supporter</Link> subscription. Creating one stores your
+          email address, an internal account identifier, and timestamps for creation and sign-in.
+          There is no password, no name field, and no profile.
+        </p>
+        <p>
+          Sign-in works by emailed link. When you request one, StreamPulse stores a hash of a
+          single-use secret — not the secret itself — with a 15-minute expiry, and emails you a link
+          containing it. The secret travels in the link's <strong>URL fragment</strong> (after the{' '}
+          <code>#</code>), which browsers do not send to the server or include in a{' '}
+          <code>Referer</code> header, so it is not written into server logs. Confirming a sign-in
+          requires the same browser that requested it.
+        </p>
+        <p>
+          Linking the extension stores a short-lived connection code, the device label you approve,
+          and a device credential identifier. Approving a device does not connect your Twitch
+          identity, publish anything about you, or start a subscription.
+        </p>
+        <p>
+          Account email is used for sign-in links and for notices about your account or subscription.
+          It is not used for marketing, and it is not sold, shared or used to build an advertising
+          profile.
+        </p>
+
+        <h2>Payment data, if you subscribe</h2>
+        <p>
+          Payments are processed by <strong>Stripe</strong>. Card numbers, CVC and billing address are
+          entered on Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores
+          them.
+        </p>
+        <p>
+          What StreamPulse stores is the identifiers and state needed to know whether your membership
+          is paid: a Stripe customer identifier, subscription and invoice identifiers, paid period
+          start and end dates, amounts and currency, payment status, and refund or dispute state.
+          These identifiers are treated as private financial references; they are never shown
+          publicly or attached to a badge or profile.
+        </p>
+        <p>
+          Provider webhook notifications are stored in a durable queue so a payment event is never
+          lost or processed twice. The proposed retention for a raw stored notification is about 30
+          days after it is successfully processed, with minimal identifiers kept longer for
+          de-duplication and audit; unresolved failures are not silently discarded. Server-side
+          retention remains governed by operational and financial-record obligations.
+        </p>
+        <p>
+          Chat content, viewing history, saved moments and searched channels are{' '}
+          <strong>never</strong> written into billing records or used as evidence in a payment
+          dispute. Only payment records and delivery state are used for that.
+        </p>
+
+        <h2>Cookies</h2>
+        <p>
+          StreamPulse does not use advertising, tracking or analytics cookies, and there is no consent
+          banner because there is nothing optional to consent to.
+        </p>
+        <p>
+          Three cookies exist, all strictly necessary, all set by the StreamPulse API at{' '}
+          <code>https://api.streampulse.stream</code> and all carrying the{' '}
+          <code>__Host-</code> prefix, which locks each one to that exact HTTPS origin:
+        </p>
+        <ul>
+          <li>
+            <strong><code>__Host-pulse_account</code></strong> — your session, set only after you
+            confirm a sign-in. <code>Secure</code> and <code>HttpOnly</code>, so page JavaScript
+            cannot read it, and <code>SameSite=Lax</code>.
+          </li>
+          <li>
+            <strong><code>__Host-pulse_csrf</code></strong> — a separate value that page JavaScript
+            reads and echoes back in a request header, so a third-party site cannot act on your
+            behalf. It is deliberately readable and is <em>not</em> a credential on its own.{' '}
+            <code>Secure</code>, <code>SameSite=Strict</code>. It expires and is revoked together
+            with the session.
+          </li>
+          <li>
+            <strong><code>__Host-pulse_login</code></strong> — set while a sign-in link is
+            outstanding, so the link can only be confirmed in the browser that requested it.{' '}
+            <code>Secure</code>, <code>HttpOnly</code>, <code>SameSite=Strict</code>, and it expires
+            with the 15-minute challenge.
+          </li>
+        </ul>
+        <p>
+          Signing out clears all three. No cookie is set for browsing the public site, the analytics
+          hub, or the documentation.
+        </p>
 
         <h2>What the Chrome extension observes on Twitch</h2>
         <ul>
@@ -129,11 +197,20 @@ export default function Privacy() {
              stored.
           </li>
           <li>
+            <strong>Extension IndexedDB</strong> (<code>pulse-account-private-v1</code>) — after you
+            link the extension to a Pulse account, the account device credential is held in an
+            extension-origin database reachable only from the extension's own trusted contexts, not
+            from any Twitch page script. Disconnecting the extension or uninstalling it removes it.
+          </li>
+          <li>
             <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
             (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
             backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
-            10 minutes), and an optional beta key (<code>sp.betaKey</code>) when a gated portal feature is
-            used. Clearing site data for streampulse.stream removes these keys.
+            10 minutes), browser-saved moments and any notes you add to them
+            (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
+            migration), and an optional beta key (<code>sp.betaKey</code>) when a gated portal feature is
+            used. Saved moments and notes are not synced to your account and remain on this browser after
+            sign-out. Clearing site data for streampulse.stream removes these keys.
           </li>
           <li>
             <strong>Portal sessionStorage</strong> — may hold a developer backend URL override
@@ -147,6 +224,19 @@ export default function Privacy() {
           <li>
             <strong>StreamPulse API</strong> — the hosted analytics service at
             <code>https://api.streampulse.stream</code>.
+          </li>
+          <li>
+            <strong>Resend (transactional email)</strong> — receives your email address and the
+            sign-in message in order to deliver it. Used only for account sign-in links and account
+            notices, never for marketing. Open and click tracking are switched off, so links in
+            StreamPulse email are not rewritten through a tracking domain and opening an email is not
+            recorded.
+          </li>
+          <li>
+            <strong>Stripe (payments)</strong> — only if you subscribe to Supporter. Stripe receives
+            your payment details directly and acts as the payment processor; StreamPulse receives
+            payment status and identifiers back, not card data. See{' '}
+            <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for how billing is handled.
           </li>
           <li>
             <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on
@@ -177,7 +267,8 @@ export default function Privacy() {
         <h2>Purpose</h2>
         <p>
           Data is used to provide Pulse overlays on Twitch, honest coverage and backfill status, and public
-          aggregate analytics. Data is not sold, used for advertising, or used for unrelated profiling.
+          aggregate analytics. Account data is used to sign you in and, if you subscribe, to know whether
+          your membership is paid. Data is not sold, used for advertising, or used for unrelated profiling.
         </p>
 
         <h2>Retention and deletion</h2>
@@ -198,6 +289,16 @@ export default function Privacy() {
           does not claim a fixed public retention period for protected watchlist rows, rollups, or operational
           logs. Browser removal and token revocation do not retroactively erase aggregate analytics.
         </p>
+        <p>
+          <strong>Account and billing records.</strong> Signing out ends a session but keeps the
+          account. To delete an account, email the address below from the account's own address;
+          sessions and device links are revoked and the account record is removed. Payment records —
+          invoices, amounts and dates — are kept after deletion where financial-record or tax
+          obligations require it, and are then no longer linked to an active account. Unconfirmed
+          sign-in challenges expire on their own after 15 minutes. Cancelling a subscription does not
+          delete the account, and deleting an account does not by itself cancel a subscription: see{' '}
+          <Link to={REFUNDS_PATH}>cancellation and refunds</Link>.
+        </p>
 
         <h2>Chrome Web Store limited use</h2>
         <p>
@@ -212,8 +313,15 @@ export default function Privacy() {
         <p data-testid="privacy-contact">
           For privacy or legal questions, email{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}
-          <Link to="/support">support page</Link>. That mailbox is privacy/legal only — not routine
-          product support.
+          <Link to="/support">support page</Link>. That mailbox is privacy, legal and billing only —
+          not routine product support.
+        </p>
+
+        <h2>Related documents</h2>
+        <p>
+          <Link to={TERMS_PATH}>Terms of use</Link> ·{' '}
+          <Link to={REFUNDS_PATH}>Cancellation and refunds</Link> ·{' '}
+          <Link to={SUPPORTER_PATH}>Supporter</Link>
         </p>
 
         <h2>Changes</h2>

@@ -356,7 +356,7 @@ Backed by the existing `pulse_bookmarks` table and `/v1/pulse/bookmarks` CRUD (d
 | M3 | Each row SHALL offer **Jump** (VOD deep link once resolved), **Open analytics**, **Copy link**, **Export**. |
 | M4 | SHALL let users edit `label`/`notes`/tags (PATCH) and delete (DELETE, idempotent). |
 | M5 | `offsetSeconds` is canonical and SHALL resolve to a VOD deep link once `vodId` exists (R10.5). |
-| M6 | Moments created in extension vs web SHALL be the same records (`source` field), single source of truth. |
+| M6 | Moments created in extension vs web SHALL be the same records (`source` field), single source of truth. **Blocked for the extension side as of 0.2.0:** the overlay has no bookmark-creation UI (see R10 status revision), so `source: 'extension'` records cannot originate there. The record shape and transport are unchanged, so parity resumes without a schema change once the UI lands. |
 | M7 | Export SHALL support CSV + JSON of the filtered set (no raw chat included). |
 
 ### 9.2 Saved moment row (example)

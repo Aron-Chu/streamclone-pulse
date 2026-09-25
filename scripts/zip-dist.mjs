@@ -17,6 +17,7 @@ import {
 import { resolveExtensionTarget } from './extension-target.mjs'
 import { stageExtensionAttribution } from './stage-extension-attribution.mjs'
 import { makePrivateTempDir, writePrivateTempFile } from './lib/private-temp.mjs'
+import { resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
 
 function parseTargetArg(argv = process.argv.slice(2)) {
   const idx = argv.findIndex((a) => a === '--target' || a.startsWith('--target='))
@@ -28,7 +29,12 @@ function parseTargetArg(argv = process.argv.slice(2)) {
 const dist = join(process.cwd(), 'dist')
 const target = parseTargetArg()
 const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'))
-const names = targetArtifactNames(target, manifest.version)
+const ciProbe = resolveCiPackageProbe()
+if (ciProbe.error) {
+  console.error(`FAIL: ${ciProbe.error}`)
+  process.exit(1)
+}
+const names = targetArtifactNames(target, manifest.version, { ciProbe: ciProbe.enabled })
 const zipPath = join(process.cwd(), names.zipName)
 
 function zipWithInfoZip(files) {

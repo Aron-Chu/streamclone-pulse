@@ -4,6 +4,7 @@ import type { HubCorpusPipeline } from '../../../lib/publicHub'
 import type { PublicHubLoadSource } from '../../../lib/publicHub'
 import { backendSourceCaption, resolveBackendSource } from '../../../lib/backendSource'
 import type { ActivitySummary } from '../../../lib/hubActivitySummary'
+import './hub-public-audit.css'
 
 export interface HubDataHealthBannerProps {
   loadSource?: PublicHubLoadSource | null
@@ -18,6 +19,14 @@ export interface HubDataHealthBannerProps {
 }
 
 type HealthMessage = { tone: 'warn' | 'info'; text: string; detail?: string }
+
+export function formatCoveragePercent(pointCount: number, expectedBuckets: number): string {
+  const expected = Math.max(0, Math.floor(expectedBuckets))
+  const measured = Math.max(0, Math.floor(pointCount))
+  if (expected === 0) return '0%'
+  if (measured >= expected) return '100%'
+  return `${(Math.floor((measured / expected) * 1_000) / 10).toFixed(1)}%`
+}
 
 export function HubDataHealthBanner({
   loadSource,
@@ -64,10 +73,10 @@ export function HubDataHealthBanner({
     }
 
     if (activitySummary.expectedBuckets > 0 && activitySummary.missingBuckets > 0) {
-      const pct = Math.round(activitySummary.coveragePct)
+      const pct = formatCoveragePercent(activitySummary.pointCount, activitySummary.expectedBuckets)
       messages.push({
         tone: 'warn',
-        text: `Activity coverage ${pct}% for this window (${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets).`,
+        text: `Activity coverage ${pct} for this window (${activitySummary.pointCount}/${activitySummary.expectedBuckets} buckets).`,
         detail: `${activitySummary.missingBuckets} bucket${activitySummary.missingBuckets === 1 ? '' : 's'} missing from stored rollups.`,
       })
     }

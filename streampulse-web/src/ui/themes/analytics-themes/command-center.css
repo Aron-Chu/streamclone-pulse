@@ -1,6 +1,7 @@
 /* Command center — operational dark theme (teal accent) */
 .figma-analytics {
   --sp-bg: #09090b;
+  --sp-popover: #18181b;
   --sp-surface-1: rgba(255, 255, 255, 0.016);
   --sp-surface-2: rgba(255, 255, 255, 0.022);
   --sp-surface-3: rgba(255, 255, 255, 0.028);
@@ -13,24 +14,17 @@
 
   --sp-text: rgba(255, 255, 255, 0.9);
   --sp-text-muted: rgba(255, 255, 255, 0.55);
-  --sp-text-faint: rgba(255, 255, 255, 0.42);
+  --sp-text-faint: rgba(255, 255, 255, 0.62);
 
   --sp-accent: #5eead4;
   --sp-accent-strong: #99f6e4;
   --sp-accent-bg: rgba(94, 234, 212, 0.1);
   --sp-accent-dim: rgba(94, 234, 212, 0.05);
 
-  /* Spacious settings-style rhythm: grouped, calm, and still data-dense. */
-  --sp-radius-sm: 6px;
-  --sp-radius-md: 10px;
-  --sp-radius-lg: 12px;
-  --sp-radius-xl: 14px;
-  --sp-space-1: 0.35rem;
-  --sp-space-2: 0.55rem;
-  --sp-space-3: 0.75rem;
-  --sp-space-4: 1rem;
-  --sp-space-5: 1.25rem;
-  --sp-space-6: 1.5rem;
+  --sp-radius-sm: 4px;
+  --sp-radius-md: 8px;
+  --sp-radius-lg: 10px;
+  --sp-radius-xl: 12px;
 
   --sp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 

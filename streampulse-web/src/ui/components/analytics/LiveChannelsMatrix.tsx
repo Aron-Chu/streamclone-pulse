@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Radio, Search } from 'lucide-react'
 import type { HubLiveChannel } from '../../../lib/publicHub'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
@@ -105,7 +105,6 @@ interface ChannelMatrixRowProps {
 }
 
 function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
-  const navigate = useNavigate()
   const meta = coverageMeta(channel.coverageState)
   const pct = coveragePercent(channel.coverageState)
   const barMeta = coveragePctMeta(pct)
@@ -114,24 +113,10 @@ function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
   const category = channelCategoryLabel(channel.category)
   const screener = channel.screener
 
-  const activate = () => navigate(href)
-
   return (
-    <tr
-      className="live-channels-matrix__row"
-      role="link"
-      tabIndex={0}
-      aria-label={label}
-      onClick={activate}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          activate()
-        }
-      }}
-    >
+    <tr className="live-channels-matrix__row">
       <td className="live-channels-matrix__channel-cell">
-        <span className="live-channels-matrix__channel">
+        <Link to={href} className="live-channels-matrix__channel" aria-label={label}>
           <span className="live-channels-matrix__avatar" aria-hidden="true">
             <ResilientImage
               src={channel.profileImageUrl}
@@ -149,7 +134,7 @@ function ChannelMatrixRow({ channel, href, view }: ChannelMatrixRowProps) {
               <span className="live-channels-matrix__pill">Newly live</span>
             ) : null}
           </span>
-        </span>
+        </Link>
       </td>
       <td className="live-channels-matrix__hide-md" title={category}>
         {category}
@@ -275,7 +260,8 @@ export function LiveChannelsMatrix({
   const [sortKey, setSortKey] = useState<MatrixSortKey>('viewers')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [query, setQuery] = useState('')
-  const [expanded, setExpanded] = useState(false)
+  const [page, setPage] = useState(0)
+  const pageSize = Math.max(1, maxRows)
 
   const toggleSort = (key: MatrixSortKey) => {
     if (key === sortKey) {
@@ -304,6 +290,9 @@ export function LiveChannelsMatrix({
   const backendAnomaliesAvailable = useMemo(
     () => channels.some(hasBackendAnomaly),
     [channels],
+  )
+  const visibleScreenerViews = SCREENER_VIEWS.filter(
+    (key) => (key !== 'momentum' || backendMomentumAvailable) && (key !== 'anomalies' || backendAnomaliesAvailable),
   )
 
   const sorted = useMemo(() => {
@@ -339,8 +328,11 @@ export function LiveChannelsMatrix({
     view,
   ])
 
-  const rows = expanded ? sorted : sorted.slice(0, maxRows)
-  const hiddenCount = sorted.length - rows.length
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
+  useEffect(() => setPage(0), [filter, query, sortKey, sortDir, view])
+  useEffect(() => setPage(current => Math.min(current, pageCount - 1)), [pageCount])
+  const safePage = Math.min(page, pageCount - 1)
+  const rows = sorted.slice(safePage * pageSize, (safePage + 1) * pageSize)
 
   const tabs: Array<{ key: MatrixFilterKey; label: string }> = [
     { key: 'all', label: 'All' },
@@ -403,10 +395,7 @@ export function LiveChannelsMatrix({
       </div>
 
       <div className="live-channels-matrix__views" role="tablist" aria-label="Channel Screener views">
-        {SCREENER_VIEWS.map((key) => {
-          const gated =
-            (key === 'momentum' && !backendMomentumAvailable) ||
-            (key === 'anomalies' && !backendAnomaliesAvailable)
+        {visibleScreenerViews.map((key) => {
           return (
             <button
               key={key}
@@ -415,14 +404,8 @@ export function LiveChannelsMatrix({
               aria-selected={view === key}
               className={`live-channels-matrix__view-tab${view === key ? ' is-active' : ''}`}
               onClick={() => setView(key)}
-              title={
-                gated
-                  ? 'Extra columns appear when the hub ships screener fields'
-                  : undefined
-              }
             >
               {screenerViewLabel(key)}
-              {gated ? <span className="live-channels-matrix__view-hint"> · basic</span> : null}
             </button>
           )
         })}
@@ -445,7 +428,7 @@ export function LiveChannelsMatrix({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)
-              setExpanded(false)
+              setPage(0)
             }}
             placeholder="Search channel or category…"
             aria-label="Search tracked channels"
@@ -456,6 +439,11 @@ export function LiveChannelsMatrix({
             ? `${compact(sorted.length)} of ${compact(channels.length)} channels`
             : `${compact(channels.length)} channels tracked`}
         </span>
+        {query.trim() || filter !== 'all' || view !== 'overview' ? (
+          <button type="button" className="live-channels-matrix__reset" onClick={() => {
+            setQuery(''); setFilter('all'); setView('overview'); setPage(0)
+          }}>Reset</button>
+        ) : null}
       </div>
 
       {loading && channels.length === 0 ? (
@@ -532,19 +520,11 @@ export function LiveChannelsMatrix({
               </table>
             </div>
           )}
-          {sorted.length > maxRows ? (
+          {sorted.length > pageSize ? (
             <div className="live-channels-matrix__footer">
-              <button
-                type="button"
-                className="live-channels-matrix__expand"
-                onClick={() => setExpanded((value) => !value)}
-                aria-expanded={expanded}
-              >
-                {expanded ? 'Show less' : `Show all ${compact(sorted.length)} channels`}
-                {!expanded && hiddenCount > 0 ? (
-                  <span className="live-channels-matrix__expand-count">+{compact(hiddenCount)}</span>
-                ) : null}
-              </button>
+              <button type="button" className="live-channels-matrix__expand" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={safePage === 0}>Previous</button>
+              <span>Page {safePage + 1} of {pageCount} · {compact(sorted.length)} channels</span>
+              <button type="button" className="live-channels-matrix__expand" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={safePage >= pageCount - 1}>Next</button>
             </div>
           ) : null}
         </>

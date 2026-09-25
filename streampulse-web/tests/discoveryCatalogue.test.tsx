@@ -5,8 +5,8 @@ import { fetchDiscoveryCatalogue, normalizeDiscoveryCatalogue, validDiscoverySco
 import { DiscoveryCalendar, discoveryDayLabel } from '../src/ui/components/moments/DiscoveryCalendar'
 import { useDiscoveryCatalogue } from '../src/hooks/useDiscoveryCatalogue'
 import { readDiscoveryPresentation } from '../src/lib/discoveryPresentation'
-import { apiClient } from '../src/lib/momentsApiClient'
-vi.mock('../src/lib/momentsApiClient', () => ({ apiClient: vi.fn() }))
+import { apiClient } from '../src/lib/apiClient'
+vi.mock('../src/lib/apiClient', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/apiClient')>(), apiClient: vi.fn() }))
 const scope = { month: '2026-09', creator: '', day: '' }
 export function catalogueFixture(creator = 'creator', offset = 60) {
   return { schemaVersion: 1, state: 'ready', scope: 'indexed_public_irc_streams', calendarScope: 'month_and_creator_only', month: '2026-09',
@@ -32,9 +32,11 @@ afterEach(() => { cleanup(); vi.resetAllMocks() })
 describe('stored discovery contract', () => {
   it('presents ready stored activity with the two supplied collection timestamps', () => {
     renderCalendar(catalogueFixture())
-    const status = screen.getByRole('region', { name: 'Collection status' })
-    expect(status.textContent).toContain('Stored results ready')
-    expect(status.textContent).toContain('Indexed tracked broadcasts · partial coverage')
+    const status = screen.getByRole('group', { name: 'Calendar options and coverage' })
+    expect(status.hasAttribute('open')).toBe(false)
+    fireEvent.click(screen.getByText('Calendar options & coverage', { selector: 'summary' }))
+    expect(status.hasAttribute('open')).toBe(true)
+    expect(status.textContent).toContain('Indexed broadcasts only; coverage may be partial')
     expect(status.querySelector('time[datetime="2026-09-05T11:59:00Z"]')).not.toBeNull()
     expect(status.querySelector('time[datetime="2026-09-05T11:58:00Z"]')).not.toBeNull()
   })
@@ -42,7 +44,6 @@ describe('stored discovery contract', () => {
     const raw = catalogueFixture()
     raw.state = 'stale'
     renderCalendar(raw)
-    expect(screen.getByRole('region', { name: 'Collection status' }).textContent).toContain('May be stale')
     expect(screen.getByText(/Stored results may be stale\. Oldest projection check:/)).toBeTruthy()
   })
   it('labels null collection timestamps as unavailable', () => {
@@ -50,14 +51,14 @@ describe('stored discovery contract', () => {
     raw.projectionUpdatedAt = null as unknown as string
     raw.dataThrough = null as unknown as string
     renderCalendar(raw)
-    const status = screen.getByRole('region', { name: 'Collection status' })
+    const status = screen.getByRole('group', { name: 'Calendar options and coverage' })
     expect(status.querySelectorAll('dd')).toHaveLength(2)
     expect(status.querySelectorAll('dd')[0].textContent).toBe('Unavailable')
     expect(status.querySelectorAll('dd')[1].textContent).toBe('Unavailable')
   })
   it('states that the latest supplied measurement is not contiguous completeness', () => {
     renderCalendar(catalogueFixture())
-    expect(screen.getByText('Latest supplied measured time is not a claim of contiguous or complete coverage.')).toBeTruthy()
+    expect(screen.getByText(/The latest measurement does not imply continuous coverage\./)).toBeTruthy()
     expect(screen.queryByText(/percent|global Twitch|activation/i)).toBeNull()
   })
   it('changes the displayed calendar measure without fetching or changing selection', () => {
@@ -76,10 +77,10 @@ describe('stored discovery contract', () => {
     render(<Calendar />)
     const day = screen.getByRole('button', { name: /^2026-09-01:/ })
     expect(day.querySelector('small')?.textContent).toBe('6')
-    fireEvent.click(screen.getByRole('combobox', { name: 'Calendar measure' }))
-    fireEvent.click(screen.getByRole('option', { name: 'Emote uses' }))
+    fireEvent.click(screen.getByText('Calendar options & coverage', { selector: 'summary' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Calendar measure' }), { target: { value: 'emoteUses' } })
     expect(day.querySelector('small')?.textContent).toBe('300')
-    expect(screen.getByText(/emote uses · whole month/).textContent).toContain('300')
+    expect(screen.getByText(/emote uses this month/).textContent).toContain('300')
     expect(screen.getByRole('button', { name: /^2026-09-02:/ }).querySelector('small')?.textContent).toBe('—')
     expect(onChange).not.toHaveBeenCalled()
     fireEvent.click(day)
@@ -176,6 +177,27 @@ describe('stored discovery contract', () => {
   })
 })
 describe('catalogue request ownership', () => {
+  it.each([
+    [{ kind: 'server', status: 503 }, /temporarily unavailable.*503/i],
+    [{ kind: 'bad_request', status: 404 }, /not available.*404/i],
+    [{ kind: 'timeout', status: 0 }, /timed out/i],
+    [{ kind: 'unreachable', status: 0 }, /could not be reached/i],
+  ])('distinguishes a history failure from an empty collection: %j', async (error, message) => {
+    vi.mocked(apiClient).mockRejectedValueOnce(error)
+    const { result } = renderHook(() => useDiscoveryCatalogue(true, scope))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toMatch(message)
+    expect(result.current.data).toBeUndefined()
+  })
+  it('reports an invalid history response and recovers on explicit retry', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce({ status: 200, data: {} })
+    const { result } = renderHook(() => useDiscoveryCatalogue(true, scope))
+    await waitFor(() => expect(result.current.error).toMatch(/could not be verified/i))
+    vi.mocked(apiClient).mockResolvedValueOnce({ status: 200, data: catalogueFixture() })
+    act(() => result.current.refresh())
+    await waitFor(() => expect(result.current.data?.items).toHaveLength(1))
+    expect(result.current.error).toBe('')
+  })
   it('rejects cursor cycles without committing the looping page', async () => {
     const api = vi.mocked(apiClient)
     api.mockResolvedValueOnce({ status: 200, data: { ...catalogueFixture('creator', 1), nextCursor: 'A' } })

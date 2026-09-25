@@ -159,6 +159,8 @@ describe('Pulse Explorer contract and workspace', () => {
     renderExplorer(data)
     expect(screen.queryByRole('img', { name: /reaction score trend/i })).toBeNull()
     expect(screen.getByText(/not enough measured points/i)).toBeTruthy()
+    expect(screen.getByText('Baseline coverage')).toBeTruthy()
+    expect(screen.getByText('20/20 min measured')).toBeTruthy()
     expect(screen.queryByText('Pog4')).toBeNull()
     expect(screen.getByText(/never changes StreamPulse scores or ordering/i)).toBeTruthy()
   })

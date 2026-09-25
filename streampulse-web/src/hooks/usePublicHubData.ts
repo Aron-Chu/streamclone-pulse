@@ -9,6 +9,7 @@ import {
   type PublicHub,
   type PublicHubActivityWindow,
   type PublicHubLoadSource,
+  type PublicHubProjection,
 } from '../lib/publicHub'
 import { hubActivityNeedsRecentFallback } from '../lib/hubActivityHonesty'
 import { computeJitteredDelayMs } from '../lib/pollDelay'
@@ -19,6 +20,8 @@ export interface UsePublicHubOptions {
   pollMs?: number
   enabled?: boolean
   activityWindow?: PublicHubActivityWindow
+  /** A bounded page-specific response, cached separately from full hub snapshots. */
+  projection?: PublicHubProjection
   /** Injected RNG for deterministic tests. */
   random?: () => number
 }
@@ -53,8 +56,20 @@ export interface PublicHubState {
 
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
 
-function hydrateFromCache(activityWindow: PublicHubActivityWindow) {
-  const cached = readPublicHubCacheForCurrentBackend(activityWindow)
+function canRecoverHubRead(error: unknown): boolean {
+  return isApiError(error) &&
+    error.code !== 'invalid_json_response' &&
+    error.code !== 'invalid_hub_response' &&
+    ['server', 'timeout', 'unreachable'].includes(error.kind)
+}
+
+const WINDOW_MINUTES: Partial<Record<PublicHubActivityWindow, number>> = {
+  '30m': 30, 'recent': 30, '24h': 1440, '7d': 10080, '1m': 43200,
+  '3m': 129600, '6m': 259200, '1y': 525600,
+}
+
+function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: PublicHubProjection) {
+  const cached = readPublicHubCacheForCurrentBackend(activityWindow, projection)
   if (!cached) {
     return {
       data: null as PublicHub | null,
@@ -80,8 +95,8 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow) {
   }
 }
 
-function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub) {
-  writePublicHubCacheForCurrentBackend(activityWindow, hub)
+function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection) {
+  writePublicHubCacheForCurrentBackend(activityWindow, hub, projection)
 }
 
 function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: PublicHub): PublicHub {
@@ -108,10 +123,10 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
 }
 
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
-  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h', random = Math.random } = options
+  const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h', projection, random = Math.random } = options
   // Mount-only cache hydrate — do not re-read localStorage on every render (P4-L01).
   // Later activity-window transitions read cache only in the effect below.
-  const [initial] = useState(() => hydrateFromCache(activityWindow))
+  const [initial] = useState(() => hydrateFromCache(activityWindow, projection))
   const [data, setData] = useState<PublicHub | null>(() => initial.data)
   const [loading, setLoading] = useState(() => initial.loading)
   const [refreshing, setRefreshing] = useState(false)
@@ -134,6 +149,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const pollSequenceRef = useRef(initial.hasData ? 1 : 0)
   const consecutiveFailuresRef = useRef(0)
   const nextRetryAfterMsRef = useRef<number | null>(null)
+  const retryNotBeforeRef = useRef(0)
   const randomRef = useRef(random)
   randomRef.current = random
 
@@ -149,14 +165,16 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setPollSequence(pollSequenceRef.current)
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
-      persistSuccessfulHub(activityWindow, hub)
+      if (endpointOk) persistSuccessfulHub(activityWindow, hub, projection)
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
+      retryNotBeforeRef.current = 0
     },
-    [activityWindow],
+    [activityWindow, projection],
   )
 
   const load = useCallback(async (force = false) => {
+    if (Date.now() < retryNotBeforeRef.current) return
     if (inFlightRef.current && !force) return
 
     controllerRef.current?.abort(new DOMException('superseded by new request', 'AbortError'))
@@ -168,8 +186,39 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     else setLoading(true)
 
     try {
-      // One full-hub origin request per poll. Stats/status fallback is a different endpoint.
-      const base = await fetchPublicHubBase(controller.signal, activityWindow)
+      // A historical outage must not erase independently available live health.
+      // At most one recent-window recovery read; never bypass auth or 429 backoff.
+      let base: Awaited<ReturnType<typeof fetchPublicHubBase>>
+      try {
+        base = await fetchPublicHubBase(controller.signal, activityWindow, projection)
+      } catch (primaryError) {
+        if (controller.signal.aborted || !mountedRef.current) return
+        if (!canRecoverHubRead(primaryError)) throw primaryError
+        let recent: Awaited<ReturnType<typeof fetchPublicHubBase>> | undefined
+        const minutes = WINDOW_MINUTES[activityWindow]
+        if (minutes != null && minutes > 30) {
+          try {
+            recent = await fetchPublicHubBase(controller.signal, '30m', projection)
+          } catch (recentError) {
+            if (!canRecoverHubRead(recentError)) throw recentError
+          }
+        }
+        if (controller.signal.aborted || !mountedRef.current) return
+        if (recent?.hubEndpointOk && minutes != null) {
+          const recovered = replaceWithCanonicalRecentActivity({
+            ...recent.data,
+            activity: { ...recent.data.activity, windowMinutes: minutes, requestedWindowMinutes: minutes },
+          }, recent.data)
+          applySuccessfulLoad(recovered, recent.loadSource, true)
+          return
+        }
+        // Keep an existing measured snapshot instead of replacing it with totals.
+        if (hasDataRef.current) throw primaryError
+        const fallback = await fetchPublicHubStatsFallback(controller.signal)
+        if (controller.signal.aborted || !mountedRef.current) return
+        applySuccessfulLoad(fallback.data, fallback.loadSource, false)
+        return
+      }
       if (!mountedRef.current || controller.signal.aborted) return
 
       if (base.hubEndpointOk) {
@@ -179,7 +228,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         // chart never presents repeated aggregates as minute activity.
         if (activityWindow !== '30m' && hubActivityNeedsRecentFallback(base.data.activity)) {
           try {
-            const recent = await fetchPublicHubBase(controller.signal, '30m')
+            const recent = await fetchPublicHubBase(controller.signal, '30m', projection)
             if (recent.hubEndpointOk) {
               next = replaceWithCanonicalRecentActivity(base.data, recent.data)
             } else {
@@ -197,7 +246,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
                 },
               }
             }
-          } catch {
+          } catch (repairError) {
+            if (isApiError(repairError) && ['aborted', 'rate_limited', 'unauthorized'].includes(repairError.kind)) {
+              throw repairError
+            }
             // Never paint a known-invalid coarse payload if the repair request
             // is unavailable; keep the shell and expose an honest empty chart.
             next = {
@@ -215,6 +267,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
             }
           }
         }
+        if (controller.signal.aborted || !mountedRef.current) return
         applySuccessfulLoad(next, base.loadSource, true)
         return
       }
@@ -241,6 +294,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       if (isApiError(err) && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
         // Honor server Retry-After when present; never shorten below healthy cadence.
         nextRetryAfterMsRef.current = Math.max(pollMs, err.retryAfterMs)
+        retryNotBeforeRef.current = Date.now() + nextRetryAfterMsRef.current
       }
       setError(
         isApiError(err)
@@ -261,7 +315,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         }
       }
     }
-  }, [activityWindow, applySuccessfulLoad, pollMs])
+  }, [activityWindow, applySuccessfulLoad, pollMs, projection])
 
   const refresh = useCallback(() => {
     void load(true)
@@ -270,7 +324,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   useEffect(() => {
     if (prevActivityWindowRef.current === activityWindow) return
     prevActivityWindowRef.current = activityWindow
-    const cached = readPublicHubCacheForCurrentBackend(activityWindow)
+    const cached = readPublicHubCacheForCurrentBackend(activityWindow, projection)
     if (cached) {
       setData(cached.data)
       setLoading(false)
@@ -288,7 +342,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     if (!hasDataRef.current) {
       setLoading(true)
     }
-  }, [activityWindow])
+  }, [activityWindow, projection])
 
   useEffect(() => {
     mountedRef.current = true
@@ -305,11 +359,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       }
     }
 
-    void load()
-
+    let active = true
     let pollTimer: number | undefined
     const scheduleNext = () => {
-      if (pollMs <= 0) return
+      if (!active || pollMs <= 0) return
       const retryAfter = nextRetryAfterMsRef.current
       nextRetryAfterMsRef.current = null
       const delay =
@@ -321,13 +374,15 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           return
         }
         void load().finally(() => {
-          if (mountedRef.current) scheduleNext()
+          if (active) scheduleNext()
         })
       }, delay)
     }
-    scheduleNext()
+    // Initial failures must establish their Retry-After before scheduling a poll.
+    void load().finally(scheduleNext)
 
     const onVisible = () => {
+      if (pollMs <= 0) return
       if (document.visibilityState !== 'visible') return
       const sinceLastFetch = Date.now() - lastFetchAtRef.current
       if (sinceLastFetch < Math.min(pollMs / 2, 15_000)) return
@@ -336,6 +391,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     document.addEventListener('visibilitychange', onVisible)
 
     return () => {
+      active = false
       mountedRef.current = false
       const controller = controllerRef.current
       controller?.abort(new DOMException('component unmounted', 'AbortError'))
@@ -351,9 +407,9 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const activityRefreshing = useMemo(
     () =>
       Boolean(
-        data && loadedActivityWindow != null && loadedActivityWindow !== activityWindow,
+        refreshing && data && loadedActivityWindow != null && loadedActivityWindow !== activityWindow,
       ),
-    [activityWindow, data, loadedActivityWindow],
+    [activityWindow, data, loadedActivityWindow, refreshing],
   )
 
   return {

@@ -4,7 +4,7 @@ import { ChannelHubStatusShell } from '../../ui/components/analytics/ChannelHubS
 import { FigmaChannelDashboard } from '../../ui/components/analytics/FigmaChannelDashboard'
 import '../../ui/components/analytics/figma-analytics.css'
 
-/** Default public channel session dashboard (stats strip + portal session panels). */
+/** Retired, unrouted prototype. The supported channel route uses ConsoleChannelView. */
 export default function FigmaChannelView() {
   const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
   const channelData = useChannelPageData(login, streamId)

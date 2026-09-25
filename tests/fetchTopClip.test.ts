@@ -4,13 +4,15 @@ import type { ExtensionClip } from '../src/shared/messages.ts'
 
 describe('fetchTopClip', () => {
   const clips: ExtensionClip[] = [
-    { id: 'low', title: 'Low', url: 'https://clips.twitch.tv/low', viewCount: 5 },
-    { id: 'high', title: 'High', url: 'https://clips.twitch.tv/high', viewCount: 500 },
+    { id: 'low', title: 'Low', url: 'https://clips.twitch.tv/low', viewCount: 5, createdAt: '2026-09-18T12:30:00Z' },
+    { id: 'high', title: 'High', url: 'https://clips.twitch.tv/high', viewCount: 500, createdAt: '2026-09-18T13:30:00Z' },
   ]
 
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({ items: clips }),
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(
+      JSON.stringify({ items: url.includes('/streams/history')
+        ? [{ id: 'stream-1', startedAt: '2026-09-18T12:00:00Z', endedAt: '2026-09-18T14:00:00Z' }]
+        : clips }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     )))
   })

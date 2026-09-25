@@ -8,6 +8,12 @@ describe('safe URL boundaries', () => {
     ).toBe('http://localhost:8081/emotes/example.webp')
   })
 
+  it('allows the StreamPulse CDN image origin', () => {
+    expect(safeImageUrl('https://cdn.streampulse.stream/emotes/example.webp')).toBe(
+      'https://cdn.streampulse.stream/emotes/example.webp',
+    )
+  })
+
   it('rejects ports on trusted public image and navigation hosts', () => {
     expect(safeImageUrl('https://cdn.7tv.app:8443/emote/example.webp')).toBeUndefined()
     expect(safeTwitchNavigationUrl('https://clips.twitch.tv:8443/example')).toBeUndefined()

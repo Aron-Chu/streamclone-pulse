@@ -28,7 +28,7 @@ function DeferredDemo({ children }: { children: ReactNode }) {
     if (!host.current || typeof IntersectionObserver === 'undefined') { setVisible(true); return }
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
-    }, { rootMargin: '200px' })
+    }, { rootMargin: '0px' })
     observer.observe(host.current)
     return () => observer.disconnect()
   }, [])
@@ -200,7 +200,7 @@ function Footer() {
 
 export default function Landing() {
   // Marketing needs one bounded snapshot, not a full analytics poll loop.
-  const { data } = usePublicHubData({ pollMs: 0, activityWindow: '30m' })
+  const { data } = usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'tickers' })
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const mainRef = useRef<HTMLElement | null>(null)

@@ -4,7 +4,7 @@
  */
 export const STREAM_PULSE_HOSTED_API_URL = 'https://api.streampulse.stream' as const
 
-export const STREAM_PULSE_ANALYTICS_URL = 'https://streampulse.stream/analytics/' as const
+export const STREAM_PULSE_ANALYTICS_URL = 'https://streampulse.stream/analytics' as const
 export const STREAM_PULSE_SUPPORT_URL = 'https://streampulse.stream/support' as const
 export const STREAM_PULSE_PRIVACY_URL = 'https://streampulse.stream/privacy' as const
 

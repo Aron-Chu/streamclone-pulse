@@ -17,11 +17,13 @@
 /account/sign-in/ /account/sign-in 301
 /account/confirm/ /account/confirm 301
 /account/link-device/ /account/link-device 301
+/account/settings/ /account/settings 301
 /account/billing/ /account/billing 301
 /account/billing/return/ /account/billing/return 301
 /account/sign-in /index.html 200
 /account/confirm /index.html 200
 /account/link-device /index.html 200
+/account/settings /index.html 200
 /account/billing /index.html 200
 /account/billing/return /index.html 200
 

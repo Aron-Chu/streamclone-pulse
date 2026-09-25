@@ -252,6 +252,12 @@ jobs:
           fi
 
       - name: Store-target package validation
+        env:
+          # CI package probe: builds and validates every store target even while
+          # release notes are unreleased. Artifacts are renamed
+          # *-ci-probe-not-for-upload and report uploadable=false. Never set this
+          # anywhere else; Release artifacts refuses it.
+          STREAMPULSE_CI_PACKAGE_PROBE: '1'
         run: |
           set -euo pipefail
           # Rebuilds dist for each store target; keep after E2E so mocked tests use development dist.
@@ -259,12 +265,13 @@ jobs:
           npm run package:cws
           npm run package:edge
           npm run package:firefox
-          test -f "streampulse-extension-cws-${VERSION}.zip"
-          test -f "streampulse-extension-edge-${VERSION}.zip"
-          test -f "streampulse-extension-firefox-${VERSION}.zip"
-          test -f "streampulse-extension-cws-${VERSION}.zip.sha256"
-          test -f "streampulse-extension-edge-${VERSION}.zip.sha256"
-          test -f "streampulse-extension-firefox-${VERSION}.zip.sha256"
+          for target in cws edge firefox; do
+            stem="streampulse-extension-${target}-${VERSION}-ci-probe-not-for-upload"
+            test -f "${stem}.zip"
+            test -f "${stem}.zip.sha256"
+            test ! -e "streampulse-extension-${target}-${VERSION}.zip"
+            node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); if (r.uploadable !== false || r.ciPackageProbe !== true) { console.error("probe report must be uploadable=false"); process.exit(1) }' "${stem}.validation.json"
+          done
           # Restore development dist for any later local inspection.
           npm run build
           # Do not upload store ZIPs.
@@ -278,7 +285,10 @@ jobs:
           # repository's Actions allowlist.
 
       - name: Firefox packaged-extension runtime smoke
-        run: npm run test:e2e:firefox
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          npm run test:e2e:firefox -- --zip "streampulse-extension-firefox-${VERSION}-ci-probe-not-for-upload.zip"
 
       # actions/upload-artifact@v4 — failure evidence only
       - name: Upload Playwright failure evidence

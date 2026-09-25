@@ -136,14 +136,14 @@ CSS variables live in [`../../streampulse-web/src/ui/components/analytics/figma-
 | Chart + inspector grid | [`FigmaSessionDashboard.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaSessionDashboard.tsx) |
 | Live channel rail | [`FigmaLiveChannelRail.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaLiveChannelRail.tsx) |
 | Emote signal | [`FigmaEmoteSignalBlock.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaEmoteSignalBlock.tsx) |
-| Corpus pipeline | [`FigmaCorpusPipelineBlock.tsx`](../../streampulse-web/src/ui/components/analytics/FigmaCorpusPipelineBlock.tsx) |
+| Corpus pipeline | [`CorpusPipelineCard.tsx`](../../streampulse-web/src/ui/components/analytics/CorpusPipelineCard.tsx) |
 | Styles | [`figma-analytics.css`](../../streampulse-web/src/ui/components/analytics/figma-analytics.css) |
 
 **Do not use on the `/analytics` landing:**
 
 - [`Home.tsx`](../../streampulse-web/src/routes/dashboard/Home.tsx) / `hubx`
 - [`hub.css`](../../streampulse-web/src/ui/components/hub/hub.css)
-- [`AnalyticsConsole`](../../../twitch-7tv-clone/packages/analytics-console/src/components/AnalyticsConsole.tsx) — the console is the default surface for **channel routes**, not for the aggregate landing.
+- [`AnalyticsConsole`](../../packages/analytics-console/src/components/AnalyticsConsole.tsx) — the console is the default surface for **channel routes**, not for the aggregate landing.
 
 ## 7. Data Requirements
 

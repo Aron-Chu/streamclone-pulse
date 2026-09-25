@@ -32,6 +32,7 @@ export {
 export {
   clampGamesDurationSeconds,
   deriveChartGameSegments,
+  minuteRollupEndOffsetSeconds,
   minuteRollupSpanSeconds,
   streamWallDurationSeconds,
   trimRollupsToWallDuration,

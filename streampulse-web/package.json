@@ -14,7 +14,7 @@
     "dev:watch-config": "node ../scripts/dev-portal.mjs --watch-config",
     "dev:vite": "vite",
     "dev:hosted": "node ../scripts/dev-portal.mjs",
-    "dev:local": "vite --env-file .env.development.localhost",
+    "dev:local": "vite --mode development.localhost",
     "build:packages": "npm run ensure:packages --prefix ..",
     "build": "npm run build:packages && tsc --noEmit -p tsconfig.json && node scripts/check-analytics-tailwind.mjs && node scripts/check-analytics-routes-spa.mjs && node scripts/check-analytics-links.mjs && node scripts/check-analytics-overlap.mjs && vite build && node scripts/prerender.mjs && node scripts/check-public-pages.mjs && node scripts/check-public-links.mjs && node scripts/check-backend-url.mjs",
     "build:ci": "node scripts/check-analytics-tailwind.mjs && node scripts/check-analytics-routes-spa.mjs && node scripts/check-analytics-links.mjs && node scripts/check-analytics-overlap.mjs && vite build && node scripts/prerender.mjs && node scripts/check-public-pages.mjs && node scripts/check-public-links.mjs && node scripts/check-backend-url.mjs",
@@ -25,7 +25,7 @@
     "test:e2e": "playwright test",
     "test:e2e:mocked": "node scripts/run-portal-e2e-mocked.mjs",
     "test:e2e:analytics-local": "node scripts/run-analytics-local-e2e.mjs",
-    "test:e2e:audit": "playwright test tests/e2e/public-surface-audit.spec.ts tests/e2e/hub-audit-regression.spec.ts --workers=1",
+    "test:e2e:audit": "node scripts/run-portal-e2e-audit.mjs",
     "test:e2e:hosted": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
     "capture:analytics": "playwright test tests/e2e/analytics-visual-capture.spec.ts --workers=1",
     "preview": "vite preview",
@@ -61,7 +61,6 @@
   "overrides": {
     "brace-expansion": "5.0.9",
     "nanoid": "3.3.18",
-    "sharp": "0.35.4",
     "undici": "7.29.0"
   },
   "devDependencies": {
@@ -79,6 +78,6 @@
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "3.2.7",
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.131.2"
   }
 }

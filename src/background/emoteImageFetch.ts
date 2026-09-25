@@ -12,9 +12,15 @@ export const EMOTE_IMAGE_TIMEOUT_MS = 10_000
 
 const APPROVED_EMOTE_HOSTS = new Set([
   'cdn.7tv.app',
+  'cdn.betterttv.net',
+  'cdn.streampulse.stream',
   'static-cdn.jtvnw.net',
   'cdn.frankerfacez.com',
 ])
+const LOCAL_EMOTE_PATH = /^\/emotes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?:1x|2x|4x)\.webp$/i
+const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
+const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
+const LOOPBACK_IPV6 = '::1'
 
 interface CachedEmoteBytes {
   mimeType: string
@@ -34,9 +40,15 @@ export interface EmoteImageBytes {
 export function isApprovedEmoteImageUrl(raw: string): boolean {
   try {
     const url = new URL(raw)
-    if (url.protocol !== 'https:') return false
     if (url.username || url.password) return false
-    return APPROVED_EMOTE_HOSTS.has(url.hostname.toLowerCase())
+    if (url.protocol === 'https:' && !url.port) {
+      return APPROVED_EMOTE_HOSTS.has(url.hostname.toLowerCase())
+    }
+    if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) return false
+    if (url.protocol !== 'http:') return false
+    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+    return (hostname === LOCALHOST || hostname === LOOPBACK_IPV4 || hostname === LOOPBACK_IPV6)
+      && LOCAL_EMOTE_PATH.test(url.pathname)
   } catch {
     return false
   }

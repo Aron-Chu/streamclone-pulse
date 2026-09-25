@@ -1,7 +1,10 @@
 ﻿.sp-landing {
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+  /* Content column width. Decorative layers derive their gutters from this. */
+  --sl-shell: 1120px;
+  /* Clip decorations without creating a second scroll container for the header. */
+  overflow-x: clip;
   background:
     radial-gradient(circle at 50% -10%, hsl(var(--sc-chart-5) / 0.18), transparent 38rem),
     radial-gradient(circle at 100% 10%, hsl(var(--sc-chart-1) / 0.12), transparent 32rem),
@@ -19,8 +22,12 @@
   z-index: 1;
 }
 
+.sl-main > section[id] {
+  scroll-margin-top: 4rem;
+}
+
 .sl-container {
-  width: min(1120px, 100%);
+  width: min(var(--sl-shell, 1120px), 100%);
   margin: 0 auto;
   padding: 0 1.5rem;
 }
@@ -53,27 +60,23 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: min(18rem, 24vw);
+  /* Live entirely in the gutter beside .sl-container (min(1120px, 100%)) so the
+     ambient chat never runs underneath the copy. Collapses to 0 — and so
+     disappears — as soon as the gutter is too narrow to hold it. */
+  width: max(0px, min(18rem, (100vw - var(--sl-shell, 1120px)) / 2 - 1.5rem));
   overflow: hidden;
-  opacity: 0.26;
+  opacity: 0.14;
 }
 
 .sl-chatbg__col--left {
-  left: max(0.25rem, calc(50% - 52rem));
+  left: 0.75rem;
+  /* Fade toward the content edge so the column reads as depth, not as a sidebar. */
+  mask-image: linear-gradient(90deg, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 1) 45%, transparent 100%);
 }
 
 .sl-chatbg__col--right {
-  right: max(0.25rem, calc(50% - 52rem));
-}
-
-@media (min-width: 1280px) {
-  .sl-chatbg__col--left {
-    left: clamp(0.5rem, 4vw, 2.5rem);
-  }
-
-  .sl-chatbg__col--right {
-    right: clamp(0.5rem, 4vw, 2.5rem);
-  }
+  right: 0.75rem;
+  mask-image: linear-gradient(270deg, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 1) 45%, transparent 100%);
 }
 
 .sl-chatbg__inner {
@@ -127,9 +130,19 @@
 .sl-em {
   position: absolute;
   bottom: -14%;
+  /* Drops ride the page gutters, never the content column. Below ~1200px the
+     gutter collapses and the floor keeps them hugging the viewport edge. */
+  /* Less the widest drop, so even lane 1.0 stays clear of the content column. */
+  --sl-gutter: max(0px, max(2.5rem, (100vw - var(--sl-shell, 1120px)) / 2) - 3rem);
+  left: calc(var(--lane, 0.5) * var(--sl-gutter));
   display: inline-flex;
   color: hsl(var(--sc-chart-2) / 0.18);
   animation: sl-floatup linear infinite;
+}
+
+.sl-em[data-side='r'] {
+  left: auto;
+  right: calc(var(--lane, 0.5) * var(--sl-gutter));
 }
 
 .sl-em img {
@@ -249,10 +262,18 @@
 .sl-stage h1 {
   max-width: 18ch;
   margin: 0.9rem auto 0;
-  font-size: clamp(2.55rem, 6vw, 5.4rem);
-  line-height: 0.95;
-  letter-spacing: -0.065em;
+  font-size: 3.5rem;
+  line-height: 1.05;
+  letter-spacing: 0;
   font-weight: 850;
+  /* Without this the last line orphans a two-letter word under the gradient. */
+  text-wrap: balance;
+}
+
+@media (max-width: 960px) {
+  .sl-stage h1 {
+    font-size: 2.5rem;
+  }
 }
 
 .sl-grad {
@@ -266,7 +287,7 @@
   max-width: 48rem;
   margin: 1.1rem auto 0;
   color: hsl(var(--sc-muted-foreground));
-  font-size: clamp(1.02rem, 1.35vw, 1.2rem);
+  font-size: 1.125rem;
   line-height: 1.65;
 }
 
@@ -315,6 +336,18 @@
   border: 1px solid hsl(var(--sc-border));
   border-radius: var(--sc-radius);
   background: hsl(var(--sc-card));
+}
+
+/* The marquee is clipped at the trailing edge, which otherwise slices an item
+   through the middle of a number. (The leading edge is covered by the label.) */
+.sl-ticker::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 1;
+  width: 3rem;
+  background: linear-gradient(90deg, hsl(var(--sc-card) / 0), hsl(var(--sc-card)));
+  pointer-events: none;
 }
 
 /* Emotes row — purple / 7TV accent */
@@ -490,17 +523,18 @@
 
 .sl-xtour__scene {
   position: relative;
-  height: 280vh;
-  overscroll-behavior: none;
+  /* ~4 steps of dwell. Longer reads as a frozen page: the visitor scrolls and
+     nothing appears to move. */
+  height: 180vh;
 }
 
 .sl-xtour__sticky {
-  position: absolute;
-  inset: 0 0 auto;
+  /* Native sticky — see the note on .lsg__sticky in LiveSignalScrollGraph.css. */
+  position: sticky;
+  top: 0;
   min-height: 100vh;
   display: flex;
   align-items: center;
-  will-change: transform;
 }
 
 .sl-xtour__grid {
@@ -764,11 +798,52 @@
   transform: none;
 }
 
+.sl-mobile-nav { display: none; }
+.sl-mobile-nav__toggle {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 44px; padding: .5rem .8rem; border: 1px solid hsl(var(--sc-border));
+  border-radius: .5rem; background: hsl(var(--sc-background));
+  color: hsl(var(--sc-foreground)); font: inherit; cursor: pointer;
+}
+.sl-mobile-nav__layer { position: fixed; inset: 0; z-index: 1000; }
+.sl-mobile-nav__backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 65%); border: 0; }
+.sl-mobile-nav__panel {
+  position: absolute; inset: 0 0 0 auto; width: min(22rem, 100%);
+  overflow-y: auto; background: #101016; padding: 1.25rem;
+  border-left: 1px solid #33333e;
+}
+.sl-mobile-nav__title { margin: 0 0 1rem; font-weight: 700; }
+.sl-mobile-nav__links { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
+.sl-mobile-nav__links a { display: flex; align-items: center; min-height: 44px; padding: .6rem; color: #eee; }
+.sl-mobile-nav__layer :focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+.sl-sample-label {
+  display: inline-block; margin-block: .75rem; padding: .35rem .65rem;
+  border: 1px solid #555063; border-radius: .4rem; color: #d5cce7; font-size: .8rem;
+}
+.sl-demo-placeholder { min-height: 28rem; padding: 2rem; border: 1px solid #33333e; border-radius: 1rem; }
+.sl-optional-demo summary { cursor: pointer; padding: 1rem; min-height: 44px; border: 1px solid #555063; border-radius: .5rem; font-size: 1rem; }
+.sl-optional-demo summary:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 3px; }
+.sl-compact-demo { max-width: 44rem; margin: 1rem auto; }
+.sl-compact-demo__steps { display: flex; flex-wrap: wrap; gap: .5rem; }
+.sl-compact-demo__steps button { min-height: 44px; padding: .5rem .75rem; font-size: .875rem; color: inherit; background: #252033; border: 1px solid #655779; border-radius: .5rem; }
+.sl-compact-demo__steps button[aria-pressed='true'] { background: #493464; border-color: #c4b5fd; }
+.sl-compact-demo__steps button:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+.sl-compact-demo .pulse-landing-scrollport { max-height: 36rem; overflow-y: auto !important; }
+.sl-compact-demo [data-tour-step]:not([data-tour-step-active]) { display: none; }
+.sl-compact-demo .pulse-landing-scroll { transform: none !important; }
+.sl-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; background: #201b2b; color: #fff; transform: translateY(-200%); }
+.sl-skip-link:focus { transform: none; outline: 2px solid #c4b5fd; }
+[data-prerendered] [data-reveal] { opacity: 1; transform: none; }
+
 @media (max-width: 960px) {
+  .sl-mobile-nav { display: block; }
   .sl-menu { display: none; }
   .sl-chatbg { display: none; }
+  /* No gutter survives at this width, so the rain hugs the viewport edge and
+     grazes the copy. Halve it there so it stays texture rather than content. */
+  .sl-fx { opacity: 0.5; }
   /* Match LiveSignalScrollGraph: keep tall scene + sticky pin; only [data-static] collapses. */
-  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 360vh; }
+  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 220vh; }
   .sl-xtour__grid { grid-template-columns: 1fr; }
   .sl-xtour__rail { display: none; }
   .pulse-landing-panel.sl-ext { height: min(72vh, 640px); max-height: 78vh; }
@@ -781,9 +856,9 @@
   .sl-nav { padding: 0 1rem; }
   .sl-nav__right { display: none; }
   .sl-stage { padding: 0 1rem; }
-  .sl-stage h1 { font-size: clamp(2.35rem, 15vw, 3.8rem); }
+  .sl-stage h1 { font-size: 2.35rem; }
   .sl-ln-grid { grid-template-columns: 1fr; }
-  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 420vh; }
+  .sl-xtour:not([data-static]) .sl-xtour__scene { height: 260vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {

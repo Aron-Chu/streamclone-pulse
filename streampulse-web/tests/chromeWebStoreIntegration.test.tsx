@@ -26,7 +26,7 @@ describe('publicSiteConfig', () => {
     expect(CHROME_WEB_STORE_LISTING_URL).toBe(CANONICAL)
     expect(PUBLIC_SITE.chromeWebStoreListingUrl).toBe(CANONICAL)
     expect(PUBLIC_SITE.chromeWebStoreExtensionId).toBe(CHROME_WEB_STORE_EXTENSION_ID)
-    expect(STREAM_PULSE_ANALYTICS_URL).toBe('https://streampulse.stream/analytics/')
+    expect(STREAM_PULSE_ANALYTICS_URL).toBe('https://streampulse.stream/analytics')
     expect(STREAM_PULSE_SUPPORT_URL).toBe('https://streampulse.stream/support')
     expect(STREAM_PULSE_PRIVACY_URL).toBe('https://streampulse.stream/privacy')
   })

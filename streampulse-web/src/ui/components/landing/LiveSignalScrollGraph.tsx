@@ -65,7 +65,7 @@ const BEATS: readonly Beat[] = [
   {
     kicker: 'Beat 02',
     title: 'Chat becomes readable bars',
-    body: 'Each bar is real chat/min volume, so spikes stay visible instead of disappearing into a smoothed line.',
+    body: 'Each bar represents one sample minute of chat. Peaks stay visible instead of disappearing into a smoothed line.',
     tone: 'chat',
   },
   {
@@ -77,7 +77,7 @@ const BEATS: readonly Beat[] = [
   {
     kicker: 'Beat 04',
     title: 'Moments are marked',
-    body: 'Backend-detected peaks become markers. The strongest live marker is pinned as Most reacted so far.',
+    body: 'In the product, peaks come from the backend. This demo illustrates those markers using its fixed sample data.',
     tone: 'spike',
   },
   {
@@ -124,15 +124,19 @@ for (let i = 0; i < MIN; i++) {
   VIEWERS.push(Math.round(880 + 360 * (i / (MIN - 1)) + 110 * Math.sin(i * 0.3) + spikeAt(i) * 5))
 }
 
-const CHAT_MAX = Math.max(...CHAT)
-const LINE_MAX = Math.max(...CHAT, ...EMOTES, ...SV)
-const VIEW_MIN = Math.min(...VIEWERS)
-const VIEW_MAX = Math.max(...VIEWERS)
+export function demoMinuteTime(index: number): string {
+  const minute = 38 + index
+  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}:00`
+}
+
+const FEATURED_INDEX = CHAT.indexOf(Math.max(...CHAT))
 
 const DEMO_MOMENTS: LiveSignalModel['moments'] = [
-  { i: 13, time: '00:51:00', kind: '7TV emote spike', emoteImage: seventvImageUrl('01GB2ZJFBG000DTBJYANG8XYFP'), count: 28 },
-  { i: 31, time: '01:09:00', kind: 'Chat spike', emoteImage: seventvImageUrl('01G98W833R0000BRQD106P0ZNT'), count: 41 },
-  { i: 42, time: '01:20:00', kind: 'Chat spike', emoteImage: seventvImageUrl('01GAZ199Z8000FEWHS6AT5QZV0'), count: 56, top: true },
+  ...SPIKES.map(({ at: i }) => ({
+    i, time: demoMinuteTime(i), kind: 'Sample chat peak',
+    emoteImage: seventvImageUrl('01GAZ199Z8000FEWHS6AT5QZV0'),
+    count: CHAT[i], top: i === FEATURED_INDEX,
+  })),
 ]
 
 const DEMO_TOP_EMOTES: LiveSignalModel['topEmotes'] = [
@@ -153,32 +157,44 @@ const DEMO_CHANNELS: LiveSignalModel['channels'] = [
   { login: 'pokimane', initial: 'P', live: false },
 ]
 
-function buildDemoLiveSignalModel(): LiveSignalModel {
+export function buildDemoLiveSignalModel(): LiveSignalModel {
+  const last = MIN - 1
+  const delta = VIEWERS[last] - VIEWERS[last - 5]
+  // A complete sample breakdown of the last minute, not unrelated headline counts.
+  const weight = DEMO_TOP_EMOTES.reduce((sum, emote) => sum + emote.count, 0)
+  let assigned = 0
+  const topEmotes = DEMO_TOP_EMOTES.map((emote, index) => {
+    const count = index === DEMO_TOP_EMOTES.length - 1
+      ? EMOTES[last] - assigned : Math.floor(EMOTES[last] * emote.count / weight)
+    assigned += count
+    return { ...emote, count, pct: 0 }
+  }).sort((a, b) => b.count - a.count)
+  topEmotes.forEach(emote => { emote.pct = emote.count / Math.max(1, topEmotes[0].count) * 100 })
   return {
     min: MIN,
     chat: CHAT,
     emotes: EMOTES,
     sv: SV,
     viewers: VIEWERS,
-    kpiViewers: 1284,
-    kpiChat: 56,
-    kpiEmotes: 29,
-    kpiSeventv: 19,
-    kpiViewerDelta: '+17 · 5m',
+    kpiViewers: VIEWERS[last],
+    kpiChat: CHAT[last],
+    kpiEmotes: EMOTES[last],
+    kpiSeventv: SV[last],
+    kpiViewerDelta: `${delta > 0 ? '+' : ''}${delta} · 5m`,
     moments: DEMO_MOMENTS,
-    topEmotes: DEMO_TOP_EMOTES,
+    topEmotes,
     channels: DEMO_CHANNELS,
-    axisStart: '00:38:00',
-    axisMid: '01:07:00',
+    axisStart: demoMinuteTime(0),
+    axisMid: demoMinuteTime(Math.floor(MIN / 2)),
     featuredMoment: {
-      time: '01:20:00',
-      kind: 'Chat spike',
-      chatPerMin: 56,
-      emotesPerMin: 19,
+      time: demoMinuteTime(FEATURED_INDEX),
+      kind: 'Sample chat peak',
+      chatPerMin: CHAT[FEATURED_INDEX],
+      emotesPerMin: EMOTES[FEATURED_INDEX],
     },
-    topEmoteCount: 5,
-    topEmoteTotal: 19,
-    trackedChannelCount: 7,
+    topEmoteCount: topEmotes.length,
+    topEmoteTotal: EMOTES[last],
+    trackedChannelCount: DEMO_CHANNELS.length,
   }
 }
 
@@ -255,14 +271,6 @@ const GRID_COLS = Array.from({ length: 6 }, (_, k) => ((k + 1) / 7) * VIEW_W)
 
 const fmtInt = (n: number) => n.toLocaleString('en-US')
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  )
-}
-
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
 
 export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
@@ -274,7 +282,6 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
 
   const rootRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<HTMLDivElement | null>(null)
-  const stickyRef = useRef<HTMLDivElement | null>(null)
   const viewersRef = useRef<HTMLElement | null>(null)
   const chatRef = useRef<HTMLElement | null>(null)
   const emotesRef = useRef<HTMLElement | null>(null)
@@ -285,9 +292,20 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
   const [animate, setAnimate] = useState(false)
 
   useEffect(() => {
-    if (prefersReducedMotion()) return
     if (typeof IntersectionObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') return
-    setAnimate(true)
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const narrow = window.matchMedia('(max-width: 560px)')
+    const short = window.matchMedia('(max-height: 699px)')
+    const update = () => setAnimate(!reduced.matches && !narrow.matches && !short.matches)
+    update()
+    reduced.addEventListener('change', update)
+    narrow.addEventListener('change', update)
+    short.addEventListener('change', update)
+    return () => {
+      reduced.removeEventListener('change', update)
+      narrow.removeEventListener('change', update)
+      short.removeEventListener('change', update)
+    }
   }, [])
 
   // Scroll engine — only attached in animated mode. The shared scroll-scene
@@ -308,9 +326,8 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
     let lastEmotes = ''
     let lastCap = ''
 
-    return startScrollScene({
+    const stop = startScrollScene({
       scene,
-      sticky: stickyRef.current,
       onProgress: (p, _raw) => {
         const wipe = clamp01(p / 0.72) // left→right playhead reveal
         const sigv = clamp01(p / 0.12) // viewers baseline + counters
@@ -334,7 +351,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
         s.setProperty('--channels', channels.toFixed(4))
         if (root.dataset.beat !== String(beat)) root.dataset.beat = String(beat)
 
-        const ease = sigv * sigv * (3 - 2 * sigv) // smoothstep for the counters
+        const ease = 1 // Reveal fixed sample values; do not invent intermediate measurements.
         const viewersText = fmtInt(Math.round(kpiViewers * ease))
         if (viewersRef.current && viewersText !== lastViewers) {
           viewersRef.current.textContent = viewersText
@@ -357,6 +374,13 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
         }
       },
     })
+    return () => {
+      stop()
+      for (const name of ['p', 'wipe', 'sigv', 'sigc', 'emo', 'sv', 'emotes', 'moments', 'channels']) {
+        root.style.removeProperty(`--${name}`)
+      }
+      if (capRef.current) capRef.current.textContent = 'Illustrative analytics replay'
+    }
   }, [animate, kpiViewers, kpiChat, kpiEmotes])
   return (
     <div
@@ -366,7 +390,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
       {...(animate ? {} : { 'data-static': '' })}
     >
       <div className="lsg__scene" ref={sceneRef}>
-        <div className="lsg__sticky" ref={stickyRef}>
+        <div className="lsg__sticky">
           <div className="lsg__grid">
             {/* Left: sticky narrative steps (copy lives in BEATS) */}
             <aside className="lsg__narrative" aria-hidden="true">
@@ -396,7 +420,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                 aria-label="Illustrative StreamPulse signal map — sample chat-per-minute bars, emote rates, viewer baseline, peak markers, and tracked channels. Not live backend data."
               >
                 <figcaption className="lsg__nowcap">
-                  <span className="sl-dot" /> <span ref={capRef}>1 · The live signal starts</span>
+                  <span className="sl-dot" /> <span ref={capRef}>Illustrative analytics replay</span>
                 </figcaption>
 
                 <header className="lsg__head">
@@ -405,9 +429,9 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                   </span>
                   <span className="lsg__head-right">
                     <span className="lsg__pill lsg__pill--live">
-                      <span className="sl-dot" /> Live
+                      <span className="sl-dot" /> Demo
                     </span>
-                    <span className="lsg__pill lsg__pill--sync">Synced</span>
+                    <span className="lsg__pill lsg__pill--sync">Sample data</span>
                   </span>
                 </header>
 
@@ -427,7 +451,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                     <b>
                       <i ref={chatRef}>{kpiChat}</i>
                     </b>
-                    <span className="lsg__kpi-delta">rolling 5m</span>
+                    <span className="lsg__kpi-delta">last sample minute</span>
                   </div>
                   <div className="lsg__kpi" data-sig="emotes">
                     <small>Emotes / min</small>
@@ -469,7 +493,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                       <span
                         className="lsg__bar"
                         key={index}
-                        style={{ '--i': index, height: `${((value / geo.chatMax) * 82).toFixed(1)}%` } as Vars}
+                        style={{ '--i': index, height: `${(100 - geo.yLine(value) / VIEW_H * 100).toFixed(1)}%` } as Vars}
                       />
                     ))}
                   </div>
@@ -489,7 +513,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                         <span className="lsg__peak-callout">
                           <span className="lsg__peak-chip">
                             <img src={moment.emoteImage} alt="" loading="lazy" decoding="async" />
-                            <span>+{moment.count}</span>
+                            <span>{moment.count}/m</span>
                           </span>
                         </span>
                         <span className="lsg__peak-dot" />
@@ -498,14 +522,14 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                   </div>
                   {/* Sweeping playhead / scanline */}
                   <span className="lsg__playhead" aria-hidden="true">
-                    <span className="lsg__playhead-now">Now</span>
+                    <span className="lsg__playhead-now">Replay</span>
                   </span>
 
                   {/* x-axis minute labels */}
                   <div className="lsg__axis" aria-hidden="true">
                     <span>{model.axisStart}</span>
                     <span>{model.axisMid}</span>
-                    <span>Now</span>
+                    <span>{demoMinuteTime(model.min - 1)}</span>
                   </div>                </div>
 
                 {/* Legend */}
@@ -531,8 +555,8 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                 <div className="lsg__lower">
                   <div className="lsg__te">
                     <div className="lsg__te-head">
-                      <span>Top emotes</span>
-                      <span className="lsg__te-count">{model.topEmoteCount} / {model.topEmoteTotal}</span>
+                      <span>Sample emotes · last minute</span>
+                      <span className="lsg__te-count">{model.topEmoteTotal} uses</span>
                     </div>
                     {model.topEmotes.map((emote, idx) => (
                       <div className={`lsg__te-row${idx === 0 ? ' is-hot' : ''}`} key={emote.name}>
@@ -545,13 +569,13 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                         <span className="lsg__te-n">{emote.count}</span>
                       </div>
                     ))}                    <div className="lsg__te-stale">
-                      <span className="sl-dot" /> 7TV set cached for stable labels
+                      <span className="sl-dot" /> Bars relative to the most-used sample emote
                     </div>
                   </div>
 
                   <div className="lsg__moment">
                     <div className="lsg__moment-top">
-                      <span className="lsg__moment-badge">Most reacted so far</span>
+                      <span className="lsg__moment-badge">Highest sample chat rate</span>
                       <span className="lsg__moment-time">{model.featuredMoment.time}</span>
                     </div>
                     <div className="lsg__moment-reason">{model.featuredMoment.kind}</div>
@@ -563,8 +587,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                         <b>{model.featuredMoment.emotesPerMin}</b> emotes / min
                       </span>
                     </div>                    <div className="lsg__moment-btns">
-                      <span className="lsg__moment-btn">Jump to moment</span>
-                      <span className="lsg__moment-btn ghost">Analytics</span>
+                      <span className="lsg__te-stale">Sample moment · not a playable replay</span>
                     </div>
                   </div>
                 </div>
@@ -572,7 +595,7 @@ export function LiveSignalScrollGraph(_props: { hub?: PublicHub | null } = {}) {
                 {/* Beat 5: every tracked channel */}
                 <div className="lsg__channels">
                   <span className="lsg__channels-cap">
-                    Tracking {model.trackedChannelCount}+ channels live · minute by minute
+                    {model.trackedChannelCount} example channels · illustrative statuses
                   </span>
                   <div className="lsg__channels-row">
                     {model.channels.map((channel, idx) => (

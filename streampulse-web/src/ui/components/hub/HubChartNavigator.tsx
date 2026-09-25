@@ -24,6 +24,10 @@ export interface HubChartNavigatorProps {
   endIndex: number
   startLabel: string
   endLabel: string
+  /** Bucket to keep in the viewport when the user presses Zoom in. */
+  focusIndex?: number | null
+  /** Locked bucket, which may be outside a panned viewport. */
+  selectedIndex?: number | null
   presets?: HubChartNavigatorPreset[]
   wheelSurfaceRef?: RefObject<HTMLElement | null>
   onChange: (range: HubChartNavigatorRange) => void
@@ -59,6 +63,28 @@ function normalizedRange(
   return { startIndex: start, endIndex: end }
 }
 
+/** Keep the chart-header shortcut and navigator buttons on the same zoom rule. */
+export function zoomNavigatorRange(
+  pointCount: number,
+  currentRange: HubChartNavigatorRange,
+  focusIndex: number | null | undefined,
+  direction: 'in' | 'out',
+): HubChartNavigatorRange {
+  const range = normalizedRange(pointCount, currentRange.startIndex, currentRange.endIndex)
+  if (pointCount < 2) return range
+  const visibleCount = range.endIndex - range.startIndex + 1
+  const nextCount = clamp(
+    direction === 'in' ? Math.ceil(visibleCount / 2) : visibleCount * 2,
+    2,
+    pointCount,
+  )
+  if (nextCount === visibleCount) return range
+  const focusVisible = focusIndex != null && focusIndex >= range.startIndex && focusIndex <= range.endIndex
+  const center = direction === 'in' && focusVisible ? focusIndex : (range.startIndex + range.endIndex) / 2
+  const nextStart = clamp(Math.round(center - (nextCount - 1) / 2), 0, pointCount - nextCount)
+  return { startIndex: nextStart, endIndex: nextStart + nextCount - 1 }
+}
+
 /**
  * Keyboard- and pointer-accessible navigator for the activity payload already
  * loaded in the browser. It never changes the requested server range.
@@ -69,6 +95,8 @@ export function HubChartNavigator({
   endIndex,
   startLabel,
   endLabel,
+  focusIndex = null,
+  selectedIndex = null,
   presets = [],
   wheelSurfaceRef,
   onChange,
@@ -81,6 +109,9 @@ export function HubChartNavigator({
   const right = (range.endIndex / span) * 100
   const width = Math.max(1, right - left)
   const isFullRange = range.startIndex === 0 && range.endIndex === maxIndex
+  const visibleCount = range.endIndex - range.startIndex + 1
+  const selectedOutsideView = selectedIndex != null && selectedIndex >= 0 && selectedIndex < pointCount &&
+    (selectedIndex < range.startIndex || selectedIndex > range.endIndex)
   const trackRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [draggingMode, setDraggingMode] = useState<DragState['mode'] | null>(null)
@@ -203,6 +234,17 @@ export function HubChartNavigator({
     }
   }
 
+  const zoomFromCenter = (direction: 'in' | 'out') => {
+    const next = zoomNavigatorRange(pointCount, range, focusIndex, direction)
+    if (next.startIndex !== range.startIndex || next.endIndex !== range.endIndex) onChange(next)
+  }
+
+  const showSelectedBucket = () => {
+    if (!selectedOutsideView || selectedIndex == null) return
+    const nextStart = clamp(Math.round(selectedIndex - (visibleCount - 1) / 2), 0, pointCount - visibleCount)
+    onChange({ startIndex: nextStart, endIndex: nextStart + visibleCount - 1 })
+  }
+
   const handleKeyDown = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
     handle: 'start' | 'end',
@@ -228,6 +270,20 @@ export function HubChartNavigator({
     }
   }
 
+  /**
+   * Zooming is an explicit gesture, never ordinary scrolling.
+   *
+   * Alt+wheel zooms around the cursor, Shift+wheel (or horizontal wheel intent)
+   * pans, and a plain wheel is left untouched so the page scrolls instead of
+   * stalling under the pointer. Ctrl/Meta stay reserved for browser page zoom.
+   *
+   * This is the contract in `docs/website-portal/analytics-command-center-layout.md`
+   * ("Ordinary vertical wheel scrolling over the plot or navigator moves the
+   * page and is never consumed"). The explicit Alt zoom rule also appears in
+   * `isChartZoomWheelGesture` in the shared `PulseMultiSignalChart`; horizontal
+   * panning is specific to this hub navigator. Keep bare vertical wheel zoom
+   * out of this chart so ordinary page scrolling remains available.
+  */
   const handleWheel = (event: WheelEvent, surface: HTMLElement) => {
     if (maxIndex <= 1 || event.ctrlKey || event.metaKey) return
     const rect = surface.getBoundingClientRect()
@@ -236,8 +292,10 @@ export function HubChartNavigator({
     const deltaUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(240, rect.width) : 1
     const deltaX = event.deltaX * deltaUnit
     const deltaY = event.deltaY * deltaUnit
+    const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY)
+    if (!event.altKey && !event.shiftKey && !horizontalIntent) return
     const panDelta = event.shiftKey ? (deltaY || deltaX) : deltaX
-    const shouldPan = event.shiftKey || Math.abs(deltaX) > Math.abs(deltaY)
+    const shouldPan = event.shiftKey || horizontalIntent
     let next = range
 
     if (shouldPan) {
@@ -362,12 +420,26 @@ export function HubChartNavigator({
             />
           </div>
         </div>
-        <span className="hx-chart-navigator__range sr-only" data-hub-chart-navigator-range aria-live="polite" aria-atomic="true">
+        <span className="hx-chart-navigator__range" data-hub-chart-navigator-range aria-live="polite" aria-atomic="true">
           {startLabel} – {endLabel}
         </span>
       </div>
+      <div className="hx-chart-navigator__actions">
+        <div className="hx-chart-navigator__readout">
+          <strong>{isFullRange ? 'Full loaded range' : 'Zoomed view'}</strong>
+          <span>{startLabel} – {endLabel}</span>
+          <span>{visibleCount} of {pointCount} buckets</span>
+        </div>
+        <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
+          {selectedOutsideView ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}>Show selected bucket</button> : null}
+          <button type="button" disabled={visibleCount <= 2} onClick={() => zoomFromCenter('in')}>Zoom in</button>
+          <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}>Zoom out</button>
+          <button type="button" disabled={isFullRange} onClick={onReset}>Reset zoom</button>
+        </div>
+      </div>
+      <small className="hx-chart-navigator__hint">Drag the purple bar to choose a time span · Alt + scroll to zoom · Shift + scroll or swipe sideways to pan</small>
       <span id={hintId} className="sr-only">
-        Drag the purple track to select a loaded time span. Drag the selected window to pan, or use its start and end sliders to resize. Mouse wheel zooms; Shift plus wheel pans. Double-click the track or press Escape on either slider to restore the full loaded range.
+        Drag the purple track to select a loaded time span. Drag the selected window to pan, or use its start and end sliders to resize. Alt plus mouse wheel zooms; Shift plus wheel or a horizontal trackpad swipe pans a zoomed view. Double-click the track, use Reset zoom, or press Escape on either slider to restore the full loaded range.
       </span>
     </div>
   )

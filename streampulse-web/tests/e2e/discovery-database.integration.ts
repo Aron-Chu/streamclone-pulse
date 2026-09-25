@@ -5,7 +5,6 @@ const month = '2026-08'
 const entry = `/analytics/moments?collection=history&month=${month}`
 
 async function connectDatabase(page: Page) {
-  await page.addInitScript(() => { Object.assign(window, { __DISCOVERY_CATALOGUE_ENABLED__: true }) })
   await page.routeWebSocket(/.*/, socket => socket.close())
   await page.route('**/*', route => {
     const url = new URL(route.request().url())
@@ -45,7 +44,7 @@ test('exact stored category metadata reaches navigation without a source lookup'
   let sourceChecks = 0
   page.on('request', req => { if (/\/streams\/[^/]+/.test(new URL(req.url()).pathname)) sourceChecks++ })
   await page.goto(`${entry}&creator=fixturealpha`)
-  const category = page.getByRole('button', { name: /^Minecraft \d+ loaded detections?$/ })
+  const category = page.getByRole('button', { name: /^Minecraft \d+ loaded moments?$/ })
   await expect(category).toBeVisible()
   const image = category.locator('img')
   await expect(image).toHaveAttribute('src', art)
@@ -59,7 +58,7 @@ test('exact stored category metadata reaches navigation without a source lookup'
   await expect(page.locator('iframe')).toHaveCount(0)
 })
 
-test('stored artwork metadata never authorizes playback in compact history rows', async ({ page, request }, info) => {
+test('stored artwork reaches initial cards without authorizing playback', async ({ page, request }, info) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   const response = await (await request.get(`${apiOrigin}/v1/public/discovery?month=${month}&login=fixturealpha`)).json()
   expect(response.items[0].archiveArtwork.kind).toBe('archive_thumbnail')
@@ -71,14 +70,15 @@ test('stored artwork metadata never authorizes playback in compact history rows'
   let sourceChecks = 0
   page.on('request', req => { if (/\/streams\/[^/]+/.test(new URL(req.url()).pathname)) sourceChecks++ })
   await page.goto(`${entry}&creator=fixturealpha`)
-  await expect(page.locator('.moments-result').first()).toBeVisible()
-  // History uses compact review rows; cached broadcast art is not a frame preview.
-  await expect(page.locator('.moments-card-artwork')).toHaveCount(0)
+  await expect(page.locator('.moments-card-artwork').first()).toBeVisible()
+  await expect(page.locator('.moments-card-artwork img').first()).toHaveAttribute('loading', 'lazy')
+  await page.locator('.moments-card-artwork').first().scrollIntoViewIfNeeded()
+  await expect(page.locator('.moments-card-artwork img').first()).toHaveJSProperty('naturalWidth', 640)
   await page.screenshot({ path: info.outputPath('stored-artwork-gallery-1440.png'), fullPage: false })
   expect(sourceChecks).toBe(0)
   await expect(page.locator('iframe')).toHaveCount(0)
   await page.locator('.moments-result').first().locator('[data-discovery-key]').click()
-  await expect(page.getByText('Could not check this source. Retry or open its exact analytics session.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Selected moment', exact: true }).getByText('Replay lookup failed', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Selected moment', exact: true }).getByRole('link', { name: /Open VOD at/ })).toHaveCount(0)
   await expect(page.locator('iframe')).toHaveCount(0)
   expect(sourceChecks).toBeGreaterThan(0)
@@ -89,14 +89,12 @@ test('stored scorer results page beyond the live-feed cap and preserve totals', 
   const total = first.days.reduce((sum: number, day: { detections: number | null }) => sum + (day.detections ?? 0), 0)
   expect(total).toBeGreaterThanOrEqual(100)
   await page.goto(entry)
-  await expect(page.getByRole('heading', { name: 'Detections 50 loaded', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Detections 50 shown', exact: true })).toBeVisible()
   const day = page.getByRole('button', { name: /^2026-08-04:/ })
   const before = await day.getAttribute('aria-label')
-  await page.getByRole('combobox', { name: 'Calendar measure', exact: true }).click()
-  await page.getByRole('listbox', { name: 'Calendar measure', exact: true }).getByRole('option', { name: 'Chat messages', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Calendar measure', exact: true }).selectOption('chatMessages')
   await expect(day.locator('small')).toHaveAttribute('title', 'Chat messages: 282,000')
-  await page.getByRole('combobox', { name: 'Calendar measure', exact: true }).click()
-  await page.getByRole('listbox', { name: 'Calendar measure', exact: true }).getByRole('option', { name: 'Detected moments', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Calendar measure', exact: true }).selectOption('detections')
   await expect(day.locator('small')).toHaveText('60')
   while (await page.getByRole('button', { name: 'Load more indexed moments', exact: true }).count()) {
     const old = await page.locator('.moments-result').count()
@@ -124,8 +122,8 @@ test('day and creator scopes preserve exact selection, Save, Back and missing me
   await expect(detail.getByRole('button', { name: 'Recheck source', exact: true })).toBeVisible()
   await expect(detail.locator('iframe,video')).toHaveCount(0)
   await expect(detail.getByRole('link', { name: /Open VOD at/ })).toHaveCount(0)
-  await detail.getByRole('button', { name: 'Save on this device', exact: true }).click()
-  await expect(detail.getByRole('button', { name: 'Saved on this device', exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(detail.getByRole('button', { name: 'Saved', exact: true })).toBeVisible()
   await page.goBack()
   await expect(page).toHaveURL(/day=2026-08-04/)
   await expect(page.locator('[data-discovery-key]').first()).toBeFocused()
@@ -136,9 +134,8 @@ test('day and creator scopes preserve exact selection, Save, Back and missing me
   await expect(page.locator('[data-discovery-key]')).toHaveCount(50)
   await expect.poll(async () => (await page.locator('[data-discovery-key]').evaluateAll(items => items.map(item => JSON.parse(item.getAttribute('data-discovery-key')!)[0]))).every(login => login === 'fixturealpha')).toBe(true)
   await page.reload()
-  await page.getByText('Change creator', { exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Browse creator login' })).toHaveValue('fixturealpha')
-  await expect(page.getByRole('button', { name: 'Saved (1)', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible()
 })
 
 test('measured zero and missing days are distinguishable from detector output', async ({ page }) => {
@@ -146,7 +143,7 @@ test('measured zero and missing days are distinguishable from detector output', 
   await expect(page.getByRole('button', { name: /^2026-08-06: 0 measured chat messages, 0 detections/ })).toBeVisible()
   const missing = page.getByRole('button', { name: '2026-08-05: no indexed measurements; not a measured zero', exact: true })
   await missing.click()
-  await expect(page.getByRole('heading', { name: '2026-08-05 · UTC 0 loaded', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Detections 0 shown', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /^2026-08-04:/ })).toContainText(/[1-9]/)
 })
 
@@ -156,16 +153,13 @@ test('year overview reads daily facts and drills into the exact day and creator'
   await page.getByRole('button', { name: 'Year overview', exact: true }).click()
   const overview = page.getByRole('region', { name: 'Year activity overview', exact: true })
   await expect(overview.getByText('120', { exact: true })).toBeVisible()
-  await overview.getByText('More calendar options', { exact: true }).click()
-  await overview.getByRole('combobox', { name: 'Years shown' }).click()
-  await overview.getByRole('listbox', { name: 'Years shown', exact: true }).getByRole('option', { name: 'Up to three years', exact: true }).click()
+  await overview.getByRole('combobox', { name: 'Years shown' }).selectOption('3')
   await expect(page).toHaveURL(/years=3/)
   await expect(overview.getByRole('region', { name: '2024 activity', exact: true })).toBeVisible()
   await expect(overview.getByRole('region', { name: '2025 activity', exact: true })).toBeVisible()
   await expect(overview.getByRole('region', { name: '2026 activity', exact: true }).getByText('120', { exact: true })).toBeVisible()
   await page.reload()
-  await overview.getByText('More calendar options', { exact: true }).click()
-  await expect(overview.getByRole('combobox', { name: 'Years shown' })).toContainText('Up to three years')
+  await expect(overview.getByRole('combobox', { name: 'Years shown' })).toHaveValue('3')
   const day = overview.getByRole('button', { name: /^2026-08-04:/ })
   const measuredFill = await day.evaluate(el => getComputedStyle(el).backgroundColor)
   await day.hover()
@@ -202,7 +196,7 @@ for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 960 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto(entry)
-    await expect(page.getByRole('heading', { name: 'Detections 50 loaded', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Detections 50 shown', exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`stored-calendar-${width}.png`), fullPage: false })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.locator('[data-discovery-key]').first().click()
@@ -215,7 +209,7 @@ for (const width of [390, 768, 1440]) {
       await page.evaluate(() => { document.documentElement.style.zoom = '2' })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     }
-    await detail.getByRole('button', { name: 'Back to results', exact: true }).click()
+    await detail.getByRole('button', { name: '← Back to results', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Browse measured activity by day', exact: true })).toBeVisible()
     await expect(page.locator('[data-discovery-key]').first()).toBeFocused()
   })

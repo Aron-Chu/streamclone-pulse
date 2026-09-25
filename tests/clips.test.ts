@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { clipWindowBounds, pickTopClip } from '../src/shared/clips.ts'
+import { clipWindowBounds, pickTopClip, selectStreamClips } from '../src/shared/clips.ts'
 import type { ExtensionClip } from '../src/shared/messages.ts'
 
 describe('pickTopClip', () => {
+  it('filters stream bounds, deduplicates and ranks only matching clips', () => {
+    const clip = { id: 'a', title: 'A', url: 'https://clips.twitch.tv/a', createdAt: '2026-09-19T12:00:00Z', viewCount: 10 }
+    expect(selectStreamClips([
+      clip, clip, { ...clip, id: 'b', viewCount: 20 },
+      { ...clip, id: 'old', createdAt: '2026-09-18T12:00:00Z', viewCount: 1000 },
+      { ...clip, id: 'unknown', createdAt: undefined },
+      { ...clip, id: 'future', createdAt: '2026-09-20T12:00:00Z' },
+    ], '2026-09-19T11:00:00Z', '2026-09-19T13:00:00Z').map(item => item.id)).toEqual(['b', 'a'])
+    expect(selectStreamClips([clip], 'invalid', '2026-09-19T13:00:00Z')).toEqual([])
+  })
   it('returns null for empty list', () => {
     expect(pickTopClip([])).toBeNull()
   })

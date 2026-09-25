@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
+  emoteDisplaySources,
   preferSmallerSevenTVAsset,
-  safeConsoleEmoteImageUrl,
+  sanitizeConsoleEmoteSrcSet,
+  sanitizeConsoleEmoteUrl,
 } from '../../utils/emoteImageUrl.ts'
 
 function emoteInitial(name: string): string {
@@ -35,13 +37,8 @@ export function ConsoleEmoteImg({
   width?: number
   height?: number
 }) {
-  const safePrimarySrc = safeConsoleEmoteImageUrl(src)
-  const safeFallbackSrc = safeConsoleEmoteImageUrl(fallbackSrc)
-  // A backend proxy path can be intentionally rejected while the catalog
-  // carries a verified provider CDN fallback. Promote that safe fallback to
-  // the first attempt instead of rendering a placeholder permanently.
-  const normalizedSrc = safePrimarySrc || safeFallbackSrc
-  const normalizedFallbackSrc = safePrimarySrc ? safeFallbackSrc : ''
+  const normalizedSrc = src?.trim() ?? ''
+  const normalizedFallbackSrc = fallbackSrc?.trim() ?? ''
   const [failure, setFailure] = useState<{ src: string; attempt: number } | null>(null)
   const currentFailure = failure?.src === normalizedSrc ? failure : null
 
@@ -50,14 +47,18 @@ export function ConsoleEmoteImg({
   }, [normalizedSrc])
 
   const attempt = currentFailure?.attempt ?? 0
-  const imageSrc = attempt === 0
-    ? normalizedSrc
-    : normalizedFallbackSrc || retryUrl(normalizedSrc)
+  // First attempt: the display-sized asset; a failure retries the supplied URL.
+  const display = attempt === 0 && normalizedSrc ? emoteDisplaySources(normalizedSrc) : null
+  // Payload URLs are untrusted: only an https allowlisted CDN/proxy URL reaches the <img>.
+  const imageSrc = sanitizeConsoleEmoteUrl(attempt === 0
+    ? display?.src ?? normalizedSrc
+    : normalizedFallbackSrc || retryUrl(normalizedSrc))
+  const imageSrcSet = imageSrc ? sanitizeConsoleEmoteSrcSet(display?.srcSet) : undefined
 
   if (!normalizedSrc || attempt > 1 || !imageSrc) {
     return (
       <span
-        className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-[10px] font-black text-zinc-500'}
+        className={fallbackClassName ?? 'inline-flex shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500'}
         aria-hidden="true"
       >
         {emoteInitial(name)}
@@ -66,7 +67,8 @@ export function ConsoleEmoteImg({
   }
   return (
     <img
-      src={encodeURI(imageSrc)}
+      src={imageSrc}
+      srcSet={imageSrcSet}
       alt=""
       aria-hidden
       className={className}

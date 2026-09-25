@@ -31,7 +31,7 @@ export {
 } from './GameSegmentOverlay.tsx'
 export { rollupsForChart } from './chartSession.ts'
 export { buildChartSeries, type ChartSeries } from './chartSeries.ts'
-export { useSmoothedScalar, type ScalarMotionOptions } from './useSmoothedScalar.ts'
+export { useSmoothedScalar, lerpScalar, type ScalarMotionOptions } from './useSmoothedScalar.ts'
 export { MAX_PLOTTED_EMOTES } from './emotePlotSelection.ts'
 export { viewerScaleBounds, type ViewerScaleAxis } from './viewerScale.ts'
 export {

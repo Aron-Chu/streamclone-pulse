@@ -1,53 +1,12 @@
-.sc-chart-root .sc-chart-plot {
-  transition: opacity 0.2s ease;
-}
-
-.sc-chart-root[data-view-mode='overview'] .sc-chart-plot,
-.sc-chart-root[data-view-mode='spikes'] .sc-chart-plot {
-  opacity: 1;
-}
-
-.sc-emote-plot-line {
-  transition: opacity 0.2s ease, stroke-opacity 0.2s ease;
-}
-
-.sc-hover-line,
-.sc-playhead-line {
-  will-change: transform;
-}
-
-.sc-moment-row-selected {
-  animation: sc-moment-row-pop 0.34s cubic-bezier(0.2, 1.35, 0.35, 1);
-}
-
-@keyframes sc-moment-row-pop {
-  0% {
-    transform: translateY(2px) scale(0.992);
-    box-shadow: 0 0 0 rgb(245 158 11 / 0);
-  }
-  58% {
-    transform: translateY(-1px) scale(1.006);
-    box-shadow: 0 0 24px rgb(245 158 11 / 0.16);
-  }
-  100% {
-    transform: translateY(0) scale(1);
-    box-shadow: 0 0 0 rgb(245 158 11 / 0);
-  }
-}
-
-.sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
-  animation: sc-stat-pulse 0.22s ease;
-}
-
-@keyframes sc-stat-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
+/* UNWIRED: nothing imports this file.
+ *
+ * The portal loads `@streampulse/analytics-console/analytics-chart-motion.css`
+ * (the package-root sheet), so the container queries below never take effect —
+ * `[data-analytics-right-column]` computes to `position: static` in the running
+ * app. Kept because the layout work here looks deliberate and in flight; the
+ * motion rules that duplicated the loaded sheet have been removed so editing
+ * either file can no longer silently do nothing. Wire it up or delete it.
+ */
 
 .sc-stream-row {
   min-width: 0;
@@ -186,18 +145,5 @@
     border-top: 1px solid rgb(255 255 255 / 0.1);
     padding-top: 0.375rem;
     padding-left: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sc-chart-root .sc-chart-plot,
-  .sc-emote-plot-line,
-  .sc-stream-row {
-    transition: none !important;
-  }
-
-  .sc-moment-row-selected,
-  .sc-stat-card[data-value-changed='true'] .sc-stat-card__value {
-    animation: none !important;
   }
 }

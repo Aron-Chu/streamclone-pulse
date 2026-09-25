@@ -241,6 +241,10 @@ export function buildMinutes(opts?: {
 }
 
 export function buildStreamRecord(overrides: Record<string, unknown> = {}) {
+  // These acceptance fixtures exercise verified lifecycle transitions. The
+  // portal now requires observed/detected evidence and correctly treats the
+  // legacy `state` or `endedAt` fields alone as unknown.
+  const endedAt = typeof overrides.endedAt === 'string' ? overrides.endedAt : null
   return {
     streamId: PORTAL_STREAM_ID,
     login: PORTAL_LOGIN,
@@ -249,6 +253,9 @@ export function buildStreamRecord(overrides: Record<string, unknown> = {}) {
     category: 'Just Chatting',
     startedAt: PORTAL_STARTED_AT,
     endedAt: null,
+    lifecycleState: endedAt ? 'confirmed_ended' : 'confirmed_live',
+    lifecycleObservedAt: endedAt ?? SYSTEM_TIME_ISO,
+    lifecycleDetectedAt: endedAt ?? undefined,
     currentViewers: 42_000,
     peakViewers: 55_000,
     viewerSamples: 400,
@@ -260,7 +267,8 @@ export function buildStreamRecord(overrides: Record<string, unknown> = {}) {
 
 export function buildDetail(overrides: Record<string, unknown> = {}) {
   const stream = buildStreamRecord(
-    (overrides.stream as Record<string, unknown> | undefined) ?? {},
+    (overrides.stream as Record<string, unknown> | undefined) ??
+      (overrides.state === 'ended' ? { endedAt: '2026-07-26T04:00:00.000Z' } : {}),
   )
   return {
     channel: PORTAL_LOGIN,
@@ -314,7 +322,7 @@ export function buildStatus(overrides: Record<string, unknown> = {}) {
       chartState: 'usable',
       chartUsable: true,
     },
-    stream: buildStreamRecord(),
+    stream: buildStreamRecord(overrides.state === 'ended' ? { endedAt: '2026-07-26T04:00:00.000Z' } : {}),
     ...overrides,
   }
 }
@@ -881,11 +889,10 @@ export async function getMountId(page: Page): Promise<string> {
 }
 
 export async function openEmotesRail(page: Page): Promise<void> {
-  // Right recap rail (Moments / Emotes / Status) — not the streams sidebar.
-  const rail = page.locator('aside').filter({
-    has: page.getByRole('button', { name: /^Moments$/i }),
-  })
-  const tab = rail.getByRole('button', { name: /^Emotes$/i })
+  // Session details tabs (Moments / Emotes / Status) — not the streams sidebar.
+  const tab = page
+    .getByRole('tablist', { name: 'Session details' })
+    .getByRole('tab', { name: /^Emotes$/i })
   await tab.scrollIntoViewIfNeeded()
   await tab.click()
 }

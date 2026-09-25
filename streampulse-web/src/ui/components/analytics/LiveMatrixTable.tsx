@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Radio } from 'lucide-react'
 import type { HubLiveChannel } from '../../../lib/publicHub'
@@ -41,26 +41,11 @@ function filterOf(state: HubLiveChannel['coverageState']): FilterKey {
   return 'metadata'
 }
 
-function miniSpark(trendPct: number, seed: number): { points: string; color: string } {
-  const rising = trendPct >= 0
-  const n = 5
-  const pts: string[] = []
-  for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 60
-    const drift = rising ? 15 - (i / (n - 1)) * 11 : 5 + (i / (n - 1)) * 9
-    const jitter = Math.abs(Math.sin(seed + i)) * 3
-    const y = Math.max(2, Math.min(16, drift + (rising ? -jitter : jitter)))
-    pts.push(`${x.toFixed(0)},${y.toFixed(1)}`)
-  }
-  return {
-    points: pts.join(' '),
-    color: rising ? 'hsl(var(--sc-chart-3))' : 'hsl(var(--sc-chart-5))',
-  }
-}
-
 export function LiveMatrixTable({ channels, loading = false, updatedLabel }: LiveMatrixTableProps) {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [sortKey, setSortKey] = useState<SortKey>('viewers')
+  const [page, setPage] = useState(0)
+  const pageSize = 25
 
   const counts = useMemo(() => {
     const c: Record<FilterKey, number> = {
@@ -79,6 +64,14 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
       sortKey === 'emotesPerMin' ? Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin) : channel[sortKey]
     return [...filtered].sort((a, b) => value(b) - value(a))
   }, [channels, filter, sortKey])
+  const datasetSignature = useMemo(
+    () => channels.map((channel) => channel.login).sort().join('\u0000'),
+    [channels],
+  )
+  useEffect(() => setPage(0), [filter, sortKey, datasetSignature])
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
+  const safePage = Math.min(page, pageCount - 1)
+  const pageRows = rows.slice(safePage * pageSize, (safePage + 1) * pageSize)
 
   const tabs: Array<{ key: FilterKey; label: string }> = [
     { key: 'all', label: 'All' },
@@ -91,9 +84,10 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
     <th
       className="r sortable"
       aria-sort={sortKey === key ? 'descending' : 'none'}
-      onClick={() => setSortKey(key)}
     >
-      {label} {sortKey === key ? <span className="ar">▼</span> : null}
+      <button type="button" onClick={() => setSortKey(key)}>
+        {label} {sortKey === key ? <span className="ar">▼</span> : null}
+      </button>
     </th>
   )
 
@@ -146,10 +140,9 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
               </tr>
             </thead>
             <tbody>
-              {rows.map((channel, index) => {
+              {pageRows.map((channel) => {
                 const meta = coverageMeta(channel.coverageState)
                 const pct = coveragePercent(channel.coverageState)
-                const spark = miniSpark(channel.trendPct, index + 1)
                 const href = buildAnalyticsHref({ login: channel.login, context: 'channel-row' })
                 return (
                   <tr key={channel.login}>
@@ -181,11 +174,7 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
                     <td className="r num">{compact(channel.viewers)}</td>
                     <td className="r chat">{compact(channel.chatPerMin)}</td>
                     <td className="r emote">{compact(Math.max(channel.emotesPerMin ?? 0, channel.seventvPerMin))}</td>
-                    <td className="hide">
-                      <svg className="minispark" viewBox="0 0 60 18" preserveAspectRatio="none" aria-hidden="true" width={60} height={18}>
-                        <polyline points={spark.points} fill="none" stroke={spark.color} strokeWidth={2} />
-                      </svg>
-                    </td>
+                    <td className="hide">{channel.trendPct === 0 ? '—' : `${channel.trendPct > 0 ? '+' : ''}${channel.trendPct.toFixed(1)}%`}</td>
                     <td className="hide" style={{ paddingRight: '1.15rem' }}>
                       <span className="dash-covbar" aria-hidden="true">
                         <i style={{ width: `${pct}%`, background: pct >= 95 ? 'hsl(var(--sc-chart-3))' : 'hsl(var(--sc-chart-4))' }} />
@@ -197,6 +186,7 @@ export function LiveMatrixTable({ channels, loading = false, updatedLabel }: Liv
             </tbody>
           </table>
         )}
+        {rows.length > pageSize ? <div className="dash-pagination"><button type="button" disabled={safePage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</button><span>Page {safePage + 1} of {pageCount} · {rows.length} channels</span><button type="button" disabled={safePage >= pageCount - 1} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next</button></div> : null}
       </div>
     </section>
   )

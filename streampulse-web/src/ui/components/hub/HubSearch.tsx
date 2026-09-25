@@ -291,6 +291,13 @@ export function HubSearch({
           </button>
         ) : null}
       </div>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {showPopover
+          ? remoteLoading ? 'Searching channels.'
+            : filtered.length ? `${filtered.length} channel ${filtered.length === 1 ? 'suggestion' : 'suggestions'} available. Use Up and Down arrow keys to choose.`
+              : query.trim() ? 'No channel suggestions. Press Enter to open the exact login.' : 'No channel suggestions.'
+          : ''}
+      </span>
       {error ? <p className="hx-search__error" role="alert">{error}</p> : null}
       {showPopover
         ? createPortal(

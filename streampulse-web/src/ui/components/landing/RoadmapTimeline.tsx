@@ -14,7 +14,7 @@ const ITEMS: RoadmapItem[] = [
     tag: 'StreamPulse',
     status: 'Live',
     state: 'live',
-    copy: 'Search any tracked Twitch channel and open the full Streamclone console: chat velocity, emote bursts, session ledgers, and moment review.',
+    copy: 'Find tracked channels, compare reaction signals, and open timestamped moments with visible measurement coverage.',
   },
   {
     title: 'Chrome extension overlay',
@@ -28,21 +28,7 @@ const ITEMS: RoadmapItem[] = [
     tag: 'ReplayForge',
     status: 'Planned',
     state: 'planned',
-    copy: 'Planned operator workflow: turn detected peaks into shareable clips via ReplayForge. Stays in the private dashboard — not a public launch surface yet.',
-  },
-  {
-    title: 'ClipTrace — reverse VOD origin resolver',
-    tag: 'ClipTrace',
-    status: 'Planned',
-    state: 'planned',
-    copy: 'Paste a clip, VOD link, or a line of chat and jump back to the exact stream moment it came from, with confidence-scored evidence.',
-  },
-  {
-    title: 'Public API & spike alerts',
-    tag: 'StreamPulse',
-    status: 'Planned',
-    state: 'planned',
-    copy: 'Programmatic access to sanitized peaks plus opt-in notifications when a channel you follow erupts.',
+    copy: 'Next: an authorized moment-to-clip handoff, preview, focused editing, and download. Access and source permissions are required; no public launch date is promised.',
   },
 ]
 
@@ -62,16 +48,16 @@ export function RoadmapTimeline() {
             </div>
             <h3>{item.title}</h3>
             <p>{item.copy}</p>
-            {item.state === 'progress' ? (
+            {item.state === 'progress' && item.progress != null ? (
               <div
                 className="sl-progbar"
                 role="progressbar"
-                aria-valuenow={item.progress ?? 50}
+                aria-valuenow={item.progress}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-label={`${item.title} progress`}
               >
-                <span className="sl-progbar__fill" style={{ width: `${item.progress ?? 50}%` }} />
+                <span className="sl-progbar__fill" style={{ width: `${item.progress}%` }} />
               </div>
             ) : null}
           </div>

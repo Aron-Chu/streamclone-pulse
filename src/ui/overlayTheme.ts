@@ -17,6 +17,13 @@ interface AccentPalette {
   accent: string
   accentStrong: string
   accentSoft: string
+  /**
+   * Hex form of `accentLightRgb`. Focus rings and hover borders in both
+   * settings surfaces read `var(--pulse-accent-light)`; without this the
+   * variable was never defined and they stayed Aurora purple under every
+   * other accent.
+   */
+  accentLight: string
   accentRgb: string
   accentLightRgb: string
   accentStrongRgb: string
@@ -27,10 +34,23 @@ interface AccentPalette {
 
 /** Canonical accent palettes. Aurora mirrors the original purple values exactly. */
 export const ACCENT_PALETTES: Record<ThemePreference, AccentPalette> = {
+  emerald: {
+    accent: '#34d399',
+    accentStrong: '#10b981',
+    accentSoft: '#a7f3d0',
+    accentLight: '#6ee7b7',
+    accentRgb: '52, 211, 153',
+    accentLightRgb: '110, 231, 183',
+    accentStrongRgb: '16, 185, 129',
+    accentSoftRgb: '167, 243, 208',
+    accentInk: '#d1fae5',
+    onAccent: '#04181d',
+  },
   aurora: {
     accent: '#8b5cf6',
     accentStrong: '#7c3aed',
     accentSoft: '#c4b5fd',
+    accentLight: '#a78bfa',
     accentRgb: '139, 92, 246',
     accentLightRgb: '167, 139, 250',
     accentStrongRgb: '124, 58, 237',
@@ -39,20 +59,22 @@ export const ACCENT_PALETTES: Record<ThemePreference, AccentPalette> = {
     onAccent: '#ffffff',
   },
   volt: {
-    accent: '#53fc18',
-    accentStrong: '#43e80f',
-    accentSoft: '#b6ff8f',
-    accentRgb: '83, 252, 24',
-    accentLightRgb: '130, 255, 110',
-    accentStrongRgb: '67, 232, 15',
-    accentSoftRgb: '182, 255, 143',
-    accentInk: '#d8ffc4',
-    onAccent: '#07140a',
+    accent: '#f97316',
+    accentStrong: '#ea580c',
+    accentSoft: '#fdba74',
+    accentLight: '#fb923c',
+    accentRgb: '249, 115, 22',
+    accentLightRgb: '251, 146, 60',
+    accentStrongRgb: '234, 88, 12',
+    accentSoftRgb: '253, 186, 116',
+    accentInk: '#ffedd5',
+    onAccent: '#04181d',
   },
   azure: {
     accent: '#22d3ee',
     accentStrong: '#0fb6d6',
     accentSoft: '#a5f0fb',
+    accentLight: '#67e8f9',
     accentRgb: '34, 211, 238',
     accentLightRgb: '103, 232, 249',
     accentStrongRgb: '15, 182, 214',
@@ -66,6 +88,7 @@ const VAR_NAMES: Record<keyof AccentPalette, string> = {
   accent: '--pulse-accent',
   accentStrong: '--pulse-accent-strong',
   accentSoft: '--pulse-accent-soft',
+  accentLight: '--pulse-accent-light',
   accentRgb: '--pulse-accent-rgb',
   accentLightRgb: '--pulse-accent-light-rgb',
   accentStrongRgb: '--pulse-accent-strong-rgb',
@@ -74,17 +97,28 @@ const VAR_NAMES: Record<keyof AccentPalette, string> = {
   onAccent: '--pulse-on-accent',
 }
 
-/** Visible options for the theme picker (avoid product-specific naming). */
-export const ACCENT_THEME_OPTIONS: ReadonlyArray<{
+export interface AccentThemeOption {
   value: ThemePreference
   label: string
-  hint: string
+  /** Optional page-only cue; compact pickers never render it. */
+  description?: string
+  /** Derived from the palette so a swatch can never drift from its accent. */
   swatch: string
-}> = [
-  { value: 'aurora', label: 'Aurora', hint: 'Signature violet', swatch: '#8b5cf6' },
-  { value: 'volt', label: 'Volt', hint: 'High-energy green', swatch: '#53fc18' },
-  { value: 'azure', label: 'Azure', hint: 'Cool cyan', swatch: '#22d3ee' },
-]
+}
+
+/**
+ * Visible options for the theme picker (avoid product-specific naming). Labels live here
+ * rather than in each picker so every surface agrees; descriptions are
+ * page-only (see options/preferenceDescriptions.ts).
+ */
+export const ACCENT_THEME_OPTIONS: ReadonlyArray<AccentThemeOption> = (
+  [
+    { value: 'aurora', label: 'Aurora' },
+    { value: 'volt', label: 'Volt' },
+    { value: 'emerald', label: 'Emerald' },
+    { value: 'azure', label: 'Azure' },
+  ] as const
+).map(option => ({ ...option, swatch: ACCENT_PALETTES[option.value].accent }))
 
 /**
  * Write the accent palette as `--pulse-*` custom properties on the document root

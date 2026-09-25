@@ -1,12 +1,12 @@
 ---
 description: Portal analytics — delete or gate old UI before adding new paths (anti-overlap)
-globs: streampulse-web/**,../streampulse-backend/packages/analytics-console/**,../streampulse-backend/packages/pulse-charts/**
+globs: streampulse-web/**,packages/analytics-console/**,packages/pulse-charts/**
 alwaysApply: false
 ---
 
 # Analytics — one stack per surface (mandatory)
 
-Portal session UI lives in **`streampulse-backend/packages/analytics-console`** (linked into `streampulse-web`). Hub UI lives in **`streampulse-web/src/ui/components/hub/`**. Extension charts live in **`streamclone-pulse/src/ui/`**.
+Portal session UI lives in **`streamclone-pulse/packages/analytics-console`** (linked into `streampulse-web`). Hub UI lives in **`streampulse-web/src/ui/components/hub/`**. Extension charts live in **`streamclone-pulse/src/ui/`**.
 
 ## Before finishing any analytics portal task
 
@@ -23,6 +23,10 @@ Portal session UI lives in **`streampulse-backend/packages/analytics-console`** 
 | VOD fallback | `resolveSessionFallbackVodId` (current session only) | `for (const row of sidebarStreams)` VOD scan |
 | Hub chart | `HubActivityChart` | `GlobalActivityChart`, second hub chart |
 | Session chart legend | `AnalyticsChart` toolbar | Duplicate legend inside `PulseMultiSignalChart` |
+| Session chart viewport controls | `AnalyticsChart` range row (`data-chart-range-row`) | `[data-chart-viewport-controls]` floated over the plot inside `PulseMultiSignalChart` |
+| Selected-moment detail | `SelectedMomentCompactCard` in the Moments rail | `SelectedMomentPanel` below the chart, a "top moment" button in `StreamRecapPanel` |
+| Moment row markup | `MomentRow` | Bespoke rows inside `SessionRecapMomentsStrip` / `MomentReviewPanel` |
+| Console motion CSS | `analytics-chart-motion.css` (console surfaces) **and** `pulse-chart-motion.css` (chart primitives), disjoint | The same selector or `@keyframes` declared in both — the portal loads both, so one silently wins |
 
 ## Adding a feature
 

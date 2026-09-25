@@ -27,14 +27,14 @@ const detail = {
 
 afterEach(() => cleanup())
 
-function renderChart() {
+function renderChart(selectedRollup: AnalyticsStreamDetail['rollups'][number] | null = null, onSelectRollup = vi.fn()) {
   return render(
     <AnalyticsChart
       detail={detail}
       selectedEmotes={new Set(['Kappa'])}
       onSelectEmote={vi.fn()}
-      selectedRollup={null}
-      onSelectRollup={vi.fn()}
+      selectedRollup={selectedRollup}
+      onSelectRollup={onSelectRollup}
       viewMode="overview"
       onViewModeChange={vi.fn()}
     />,
@@ -56,6 +56,30 @@ describe('AnalyticsChart stable regions', () => {
     expect(screen.getAllByRole('button', { name: 'Expand activity detail' })).toHaveLength(1)
     expect(container.querySelector('[data-selected-moment-shell]')).toBeNull()
     expect(screen.getByRole('button', { name: 'Expand activity detail' })).toBeTruthy()
+  })
+
+  it('provides a bounded minute table and announces the selected point', () => {
+    const selected = detail.rollups[10]!
+    const { container } = renderChart(selected)
+    const alternative = container.querySelector('[data-chart-data-alternative]')
+    expect(alternative?.querySelectorAll('tbody tr')).toHaveLength(121)
+    expect(alternative?.textContent).toContain('120 of 180')
+    expect(alternative?.querySelector('[data-chart-selected-data-row]')?.textContent).toContain('(pinned)')
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier minutes' }))
+    expect(alternative?.textContent).toContain('Page 2 of 2')
+    expect(alternative?.querySelectorAll('tbody tr')).toHaveLength(60)
+    expect(container.querySelector('[data-chart-selection-announcement]')?.textContent).toContain('Selected 00:10:00–00:11:00')
+  })
+
+  it('keeps a pinned minute when the measured table is opened', () => {
+    const onSelectRollup = vi.fn()
+    const { container } = renderChart(detail.rollups[10]!, onSelectRollup)
+    const alternative = container.querySelector('[data-chart-data-alternative]')!
+    const summary = alternative.querySelector('summary')!
+    fireEvent.pointerDown(summary)
+    fireEvent.click(summary)
+    expect(onSelectRollup).not.toHaveBeenCalled()
+    expect(alternative.querySelector('[data-chart-selected-data-row]')?.textContent).toContain('(pinned)')
   })
 
   it('gives the portal viewer, chat, and emote lanes equal height', () => {

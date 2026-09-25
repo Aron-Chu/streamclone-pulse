@@ -13,7 +13,7 @@ export interface PulseMomentsBucketDiagnosticsInput {
   activityPoints: HubActivityPoint[]
   liveMoments: FigmaMomentRow[]
   liveChannels: HubLiveChannel[]
-  historicalStatus: 'idle' | 'ready' | 'empty' | 'error'
+  historicalStatus: 'idle' | 'ready' | 'empty' | 'error' | 'unavailable'
   historicalReason?: string
   historicalCount: number
   historicalLoading: boolean
@@ -110,7 +110,7 @@ export function buildPulseMomentsBucketDiagnostics(
   return {
     bucketStartMs,
     bucketEndMs,
-    bucketLabel: formatRange(bucketStartMs, bucketEndMs),
+    bucketLabel: formatRange(bucketStartMs, bucketEndMs + 1),
     chartHasActivity,
     chartViewers: chartPoint?.viewers ?? 0,
     chartChatPerMin: normalized?.chat ?? 0,

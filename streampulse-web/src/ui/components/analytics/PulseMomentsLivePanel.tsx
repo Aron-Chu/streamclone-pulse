@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { InspectorReveal } from './InspectorReveal';
 import { Link } from "react-router-dom";
 import { buildAnalyticsHref, analyticsActionLabel } from "../../../lib/analyticsLinks";
 import {
@@ -14,21 +15,19 @@ import {
   enrichPulseMomentRows,
 } from "../../../lib/pulseMomentRow";
 import {
-  buildChannelFilterOptions,
   countIrcRollupChannels,
   filterMomentsByBucket,
   filterPulseMoments,
   momentEmoteRollupsEmptyHint,
   PULSE_MOMENT_FILTER_HINT,
   SCORE_EXPLANATION,
-  sortPulseMoments,
   type PulseMomentFilter,
-  type PulseMomentSortKey,
 } from "../../../lib/pulseMomentsUtils";
 import { buildPulseMomentsBucketDiagnostics } from "../../../lib/pulseMomentsBucketDiagnostics";
 import {
   hasBucketMomentsCache,
   readBucketMomentsCache,
+  readBucketMomentsResponse,
 } from "../../../lib/bucketMomentsCache";
 import { requestHubBucketMoments } from "../../../lib/prefetchHubBucketMoments";
 import type { PublicHub, PublicHubActivityWindow } from "../../../lib/publicHub";
@@ -40,6 +39,7 @@ import { compact } from "./hubFormat";
 import { useCommandCenterLabels } from "../../providers/AnalyticsThemeProvider";
 import { useAnalyticsMotion } from "../../motion/useAnalyticsMotion";
 import { resolveSelectedPulseMoment } from "../../../lib/resolveSelectedPulseMoment";
+import { useMomentProfiles } from "../../../hooks/useMomentProfiles";
 
 const NETWORK_FILTERS: Array<{ key: PulseMomentFilter; label: string }> = [
   { key: "all", label: "All" },
@@ -66,6 +66,8 @@ export interface PulseMomentsLivePanelProps {
   loading?: boolean;
   feed?: LivePulseMomentsResult;
   layout?: "standalone" | "embedded";
+  /** Keep the browser visible, but never substitute the first row for an explicit selection. */
+  requireExplicitSelection?: boolean;
   selectedBucketT?: number | null;
   /** Chart hover bucket — prefetch historical peaks for faster lock-on-click. */
   hoverBucketT?: number | null;
@@ -90,8 +92,9 @@ export function PulseMomentsLivePanel({
   loading,
   feed: feedProp,
   layout = "standalone",
+  requireExplicitSelection = false,
   selectedBucketT = null,
-  hoverBucketT = null,
+
   onClearBucketFilter,
   activityWindow = "24h",
   activityWindowMinutes = 180,
@@ -133,9 +136,19 @@ export function PulseMomentsLivePanel({
   >([]);
   const [bucketLoading, setBucketLoading] = useState(false);
   const [bucketStatus, setBucketStatus] = useState<
-    "idle" | "ready" | "empty" | "error"
+    "idle" | "ready" | "empty" | "error" | "unavailable"
   >("idle");
   const [bucketReason, setBucketReason] = useState<string | undefined>();
+  const [retrySequence, setRetrySequence] = useState(0);
+  const [retryAt, setRetryAt] = useState(0);
+  const [retryBlocked, setRetryBlocked] = useState(false);
+  useEffect(() => {
+    const delay = retryAt - Date.now();
+    setRetryBlocked(delay > 0);
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => setRetryBlocked(false), delay);
+    return () => window.clearTimeout(timer);
+  }, [retryAt]);
   const bucketSelected =
     feed.source === "network" && selectedBucketT != null;
 
@@ -182,28 +195,6 @@ export function PulseMomentsLivePanel({
   ]);
 
   useEffect(() => {
-    if (
-      feed.source !== "network" ||
-      hoverBucketT == null ||
-      selectedBucketT != null
-    ) {
-      return;
-    }
-    if (hasBucketMomentsCache(hoverBucketT, activityWindow)) return;
-
-    const controller = new AbortController();
-    requestHubBucketMoments({
-      bucketT: hoverBucketT,
-      activityWindow,
-      activityWindowMinutes,
-      signal: controller.signal,
-    }).catch(() => {
-      /* ignore prefetch errors */
-    });
-    return () => controller.abort();
-  }, [activityWindow, activityWindowMinutes, feed.source, hoverBucketT, selectedBucketT]);
-
-  useEffect(() => {
     if (!bucketSelected || selectedBucketT == null) {
       setBucketMoments([]);
       setBucketStatus("idle");
@@ -211,6 +202,7 @@ export function PulseMomentsLivePanel({
       setBucketLoading(false);
       return;
     }
+    const cachedResponse = readBucketMomentsResponse(selectedBucketT, activityWindow);
     const cached = readBucketMomentsCache(selectedBucketT, activityWindow) ?? [];
     const interim =
       cached.length > 0 ? cached : filterMomentsByBucket(
@@ -220,11 +212,11 @@ export function PulseMomentsLivePanel({
         hub.liveChannels,
       );
     setBucketMoments(interim);
-    setBucketStatus(interim.length > 0 ? "ready" : "idle");
-    setBucketReason(undefined);
+    setBucketStatus(interim.length > 0 ? "ready" : cachedResponse?.reason?.includes("unavailable") || cachedResponse?.status === "unavailable" ? "unavailable" : cachedResponse ? "empty" : "idle");
+    setBucketReason(cachedResponse?.reason);
     setBucketLoading(interim.length === 0);
 
-    if (hasBucketMomentsCache(selectedBucketT, activityWindow)) {
+    if (retrySequence === 0 && hasBucketMomentsCache(selectedBucketT, activityWindow)) {
       setBucketLoading(false);
       return;
     }
@@ -237,19 +229,19 @@ export function PulseMomentsLivePanel({
       signal: controller.signal,
     })
       .then((response) => {
+        if (controller.signal.aborted) return;
         const rows = response.moments.map(mapHubPulseMoment);
-        setBucketMoments(rows);
+        setBucketMoments(rows.length > 0 ? rows : interim);
         setBucketReason(response.reason);
         setBucketStatus(
-          response.status === "ready" && rows.length > 0 ? "ready" : "empty",
+          response.reason?.includes("unavailable") || response.status === "unavailable" ? "unavailable" : rows.length > 0 || interim.length > 0 ? "ready" : "empty",
         );
       })
-      .catch(() => {
-        if (!controller.signal.aborted && interim.length === 0) {
-          setBucketMoments([]);
-          setBucketReason(undefined);
-          setBucketStatus("error");
-        }
+      .catch((error: { retryAfterMs?: number }) => {
+        if (controller.signal.aborted) return;
+        setBucketMoments(interim);
+        setBucketStatus("error");
+        setRetryAt(Date.now() + (error.retryAfterMs ?? 0));
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -261,8 +253,7 @@ export function PulseMomentsLivePanel({
     activityWindow,
     activityWindowMinutes,
     bucketSelected,
-    hub.liveChannels,
-    poolMoments,
+    retrySequence,
     selectedBucketT,
   ]);
 
@@ -296,41 +287,6 @@ export function PulseMomentsLivePanel({
     () => filterPulseMoments(allMoments, effectiveFilter),
     [allMoments, effectiveFilter],
   );
-
-  /* ── Channel filter + sort ──────────────────────────────────────────────── */
-  const channelOptions = useMemo(
-    () => buildChannelFilterOptions(allMoments),
-    [allMoments],
-  );
-  const [channelFilter, setChannelFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<PulseMomentSortKey>("newest");
-
-  // Reset channel filter when snapshot identity changes (new bucket or fresh fetch).
-  const prevAllMomentsRef = useRef(allMoments);
-  useEffect(() => {
-    if (prevAllMomentsRef.current !== allMoments) {
-      setChannelFilter("all");
-      prevAllMomentsRef.current = allMoments;
-    }
-  }, [allMoments]);
-
-  /**
-   * Spike-type filter → channel filter → display.
-   *
-   * Live snapshot scores share one backend ranking contract, so users may
-   * reorder that bounded set. Historical bucket rows can mix evidence from
-   * different sessions and retain the backend's canonical order.
-   */
-  const displayMoments = useMemo(() => {
-    let result = filteredMoments;
-    if (channelFilter !== "all") {
-      result = result.filter(
-        (m) => (m.login ?? "").trim().toLowerCase() === channelFilter,
-      );
-    }
-    if (bucketSelected) return result;
-    return sortPulseMoments(result, sortBy);
-  }, [bucketSelected, filteredMoments, channelFilter, sortBy]);
   const channelCount = useMemo(
     () =>
       new Set(
@@ -343,7 +299,7 @@ export function PulseMomentsLivePanel({
     [hub.liveChannels],
   );
   const [internalSelectedKey, setInternalSelectedKey] = useState<string | undefined>(
-    displayMoments[0] ? momentRowKey(displayMoments[0]) : undefined,
+    !requireExplicitSelection && filteredMoments[0] ? momentRowKey(filteredMoments[0]) : undefined,
   );
 
   const selectedKey = isHubControlled
@@ -352,15 +308,15 @@ export function PulseMomentsLivePanel({
 
   useEffect(() => {
     if (isHubControlled) return;
-    const next = displayMoments[0]
-      ? momentRowKey(displayMoments[0])
+    const next = !requireExplicitSelection && filteredMoments[0]
+      ? momentRowKey(filteredMoments[0])
       : undefined;
     setInternalSelectedKey((current) => {
-      if (current && displayMoments.some((m) => momentRowKey(m) === current))
+      if (current && filteredMoments.some((m) => momentRowKey(m) === current))
         return current;
       return next;
     });
-  }, [displayMoments, isHubControlled]);
+  }, [filteredMoments, isHubControlled, requireExplicitSelection]);
 
   const handleSelectMoment = (moment: FigmaMomentRow) => {
     if (isHubControlled) {
@@ -377,9 +333,10 @@ export function PulseMomentsLivePanel({
       );
       if (exact) return exact;
     }
-    return resolveSelectedPulseMoment(displayMoments, null)
+    if (requireExplicitSelection) return null;
+    return resolveSelectedPulseMoment(filteredMoments, null)
       ?? resolveSelectedPulseMoment(allMoments, null);
-  }, [allMoments, displayMoments, filteredMoments, poolMoments, selectedKey]);
+  }, [allMoments, filteredMoments, poolMoments, selectedKey, requireExplicitSelection]);
 
   const selectedSessionHref = useMemo(() => {
     if (!selectedMoment?.login) return undefined;
@@ -472,10 +429,10 @@ export function PulseMomentsLivePanel({
       channelCount <= 1 &&
       ircChannelCount <= 1
     ) {
-      return "Only one channel has spikes in this window right now.";
+      return "This feed currently contains moments from one channel. Its scope may differ from the chart window.";
     }
     if (feed.source === "network" && channelCount <= 1 && ircChannelCount > 1) {
-      return "Multiple channels are tracked, but only one channel produced spikes right now.";
+      return "The current feed contains one channel; this does not mean other tracked channels had no spikes.";
     }
     return undefined;
   }, [
@@ -504,7 +461,7 @@ export function PulseMomentsLivePanel({
           : undefined;
 
   const sectionClass = `pulse-moments-live${isFallback ? " pulse-moments-live--fallback" : ""}${isEmbedded ? " pulse-moments-live--embedded" : ""}`;
-  const filterStaggerKey = `${effectiveFilter}::${channelFilter}::${bucketSelected ? "backend-order" : sortBy}`;
+  const filterStaggerKey = effectiveFilter;
   const momentsListRef = useRef<HTMLDivElement>(null);
   const { revealStagger, motionEnabled } = useAnalyticsMotion();
 
@@ -519,27 +476,19 @@ export function PulseMomentsLivePanel({
     revealStagger(rows);
   }, [filterStaggerKey, motionEnabled, revealStagger]);
 
+  const profiledMoments = useMomentProfiles(filteredMoments);
   const tableHeaderMeta = useMemo(() => {
     if (!ready) return undefined;
-    const parts: string[] = [];
-    if (channelFilter !== "all" && displayMoments.length !== filteredMoments.length) {
-      parts.push(
-        `Showing ${displayMoments.length} of ${filteredMoments.length}`,
-      );
-    } else {
-      parts.push(
-        `${compact(filteredMoments.length)} moment${filteredMoments.length === 1 ? "" : "s"}`,
-      );
-    }
+    const parts: string[] = [
+      `${compact(filteredMoments.length)} moment${filteredMoments.length === 1 ? "" : "s"}`,
+    ];
     if (channelLabel) parts.push(channelLabel);
     if (!isFallback) {
       parts.push(`${compact(hub.coverage.liveChannels)} live`);
     }
     return parts.join(" · ");
   }, [
-    channelFilter,
     channelLabel,
-    displayMoments.length,
     filteredMoments.length,
     hub.coverage.liveChannels,
     ircChannelCount,
@@ -558,9 +507,7 @@ export function PulseMomentsLivePanel({
         <div>
           <p className="pulse-moments-live__eyebrow">
             <span className="pulse-moments-live__live-dot" aria-hidden="true" />
-            {bucketSourceActive
-              ? "Moments from selected time"
-              : "Top 10 snapshot"}
+            {bucketSelected ? "Moments from selected time" : "Live moments"}
           </p>
           <h2
             id="pulse-moments-live-title"
@@ -574,8 +521,10 @@ export function PulseMomentsLivePanel({
           >
             {isFallback
               ? "Moments are temporarily unavailable — try again shortly."
-              : bucketSourceActive
-                ? `Top spikes for the selected chart bucket — ${SCORE_EXPLANATION.toLowerCase()}`
+              : bucketSelected
+                ? bucketSourceActive
+                  ? `Top spikes for the selected chart bucket — ${SCORE_EXPLANATION.toLowerCase()}`
+                  : "Stored moments for the selected chart bucket."
                 : `Top spikes across tracked channels — ${SCORE_EXPLANATION.toLowerCase()}`}
             {updatedAgo ? ` · As of ${updatedAgo}` : ""}
           </p>
@@ -585,9 +534,6 @@ export function PulseMomentsLivePanel({
             <span className="pulse-moments-live__meta-pill">
               {compact(filteredMoments.length)} moment
               {filteredMoments.length === 1 ? "" : "s"}
-              {channelFilter !== "all"
-                ? ` shown (${filteredMoments.length} loaded)`
-                : ""}
               {channelLabel ? ` - ${channelLabel}` : ""}
             </span>
             {!isFallback ? (
@@ -595,25 +541,30 @@ export function PulseMomentsLivePanel({
                 {compact(hub.coverage.liveChannels)} live
               </span>
             ) : null}
-            {selectedMoment?.href ? (
-              <Link
-                className="pulse-moments-live__open"
-                to={selectedMoment.href}
-              >
-                View moment
-              </Link>
-            ) : null}
             {selectedSessionHref ? (
               <Link
                 className="pulse-moments-live__open pulse-moments-live__open--accent"
                 to={selectedSessionHref}
               >
-                Analytics
+                Open analytics
               </Link>
             ) : null}
           </div>
         ) : null}
       </header>
+      ) : null}
+
+      {isEmbedded ? (
+        <p className="pulse-moments-live__sub">
+          <strong>{bucketSelected ? 'Selected bucket moments' : feed.source === 'network' ? 'Live-session peaks' : 'Limited fallback moments'}</strong>
+          {bucketSelected
+            ? onClearBucketFilter
+              ? ' · Clear the bucket to return to live-session peaks.'
+              : ' · Showing stored moments for this interval.'
+            : requireExplicitSelection
+              ? ' · Select a row to inspect, or a chart bucket for stored moments.'
+            : ' · Chart range differs. Live Wire is a compact preview.'}
+        </p>
       ) : null}
 
       {selectedBucketT != null && onClearBucketFilter && feed.source === "network" ? (
@@ -634,7 +585,7 @@ export function PulseMomentsLivePanel({
         </p>
       ) : null}
 
-      {bucketDiagnostics ? (
+      {bucketDiagnostics && !isEmbedded ? (
         <div
           className={`pulse-moments-live__diagnostics${isEmbedded ? " pulse-moments-live__diagnostics--compact" : ""}`}
           role="status"
@@ -666,7 +617,7 @@ export function PulseMomentsLivePanel({
         </div>
       ) : null}
 
-      {feedBanner ? (
+      {feedBanner && !bucketSelected ? (
         <p
           className={`pulse-moments-live__banner${isFallback ? " pulse-moments-live__banner--info" : ""}`}
           role="status"
@@ -675,7 +626,7 @@ export function PulseMomentsLivePanel({
         </p>
       ) : null}
 
-      {ready && !isFallback ? (
+      {!isFallback ? (
         <div
           className="pulse-moments-live__filters"
           role="toolbar"
@@ -695,47 +646,26 @@ export function PulseMomentsLivePanel({
           <span className="pulse-moments-live__filter-hint">
             {PULSE_MOMENT_FILTER_HINT}
           </span>
-
-          {channelOptions.length > 1 ? (
-            <select
-              className="pulse-moments-live__filter pulse-moments-live__channel-select"
-              value={channelFilter}
-              aria-label="Channel filter"
-              onChange={(e) => setChannelFilter(e.target.value)}
-            >
-              <option value="all">All channels</option>
-              {channelOptions.map(({ login, displayName }) => (
-                <option key={login} value={login}>
-                  {displayName}
-                </option>
-              ))}
-            </select>
-          ) : null}
-
-          {!bucketSelected ? (
-            <select
-              className="pulse-moments-live__filter pulse-moments-live__sort-select"
-              value={sortBy}
-              aria-label="Sort order"
-              onChange={(e) => setSortBy(e.target.value as PulseMomentSortKey)}
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="strongest">Strongest first</option>
-            </select>
-          ) : null}
-
           <span className="pulse-moments-live__count">
-            {loading
-              ? "..."
-              : displayMoments.length === filteredMoments.length
-                ? `${displayMoments.length} shown`
-                : `Showing ${displayMoments.length} of ${filteredMoments.length}`}
+            {loading ? "..." : `${filteredMoments.length} shown`}
           </span>
+          {filter !== "all" ? (
+            <button type="button" className="pulse-moments-live__filter" onClick={() => setFilter("all")}>
+              Reset
+            </button>
+          ) : null}
         </div>
       ) : null}
 
-      {loading && !ready ? (
+      {bucketSelected && (bucketStatus === "error" || bucketStatus === "unavailable") ? (
+        <div className="pulse-moments-live__banner" role="status">
+          <p>{bucketStatus === "unavailable" ? "Stored moments are currently unavailable." : "Could not load moments for this bucket."}{bucketMoments.length > 0 ? " Showing previously loaded matches." : ""}</p>
+          <button type="button" disabled={retryBlocked} onClick={() => setRetrySequence(n => n + 1)}>{retryBlocked ? "Retry shortly" : "Retry"}</button>
+          <button type="button" onClick={onClearBucketFilter}>Clear selection</button>
+        </div>
+      ) : null}
+        <div className={`pulse-moments-live__grid${isFallback ? " pulse-moments-live__grid--fallback" : ""}`} data-has-selection={Boolean(selectedMoment)} ref={momentsListRef}>
+      {bucketSelected && (bucketStatus === "error" || bucketStatus === "unavailable") && filteredMoments.length === 0 ? null : loading && !ready ? (
         <div className="pulse-moments-live__empty" aria-busy="true">
           {bucketLoading
             ? "Loading moments for the selected chart bucket…"
@@ -748,7 +678,9 @@ export function PulseMomentsLivePanel({
       ) : !ready || filteredMoments.length === 0 ? (
         <div className="pulse-moments-live__empty">
           <strong>
-            {!ready
+            {bucketFilterEmpty
+              ? "No spikes in this bucket"
+              : !ready
               ? "Live peaks unavailable"
               : bucketFilterEmpty
                 ? "No spikes in this bucket"
@@ -776,12 +708,8 @@ export function PulseMomentsLivePanel({
           ) : null}
         </div>
       ) : (
-        <div
-          className={`pulse-moments-live__grid${isFallback ? " pulse-moments-live__grid--fallback" : ""}`}
-          ref={momentsListRef}
-        >
           <MostReactedMinutesTable
-            moments={displayMoments}
+            moments={profiledMoments}
             selectedKey={selectedKey}
             emoteLookup={emoteLookup}
             variant="pulse-live"
@@ -790,7 +718,9 @@ export function PulseMomentsLivePanel({
             headerMeta={tableHeaderMeta}
             onSelect={handleSelectMoment}
           />
-          <div className="pulse-moments-live__side">
+      )}
+          <InspectorReveal open={Boolean(selectedMoment)}>
+          {selectedMoment ? <div className="pulse-moments-live__side">
             <FigmaMomentInspector
               moment={selectedMoment}
               vodId={selectedMoment?.vodId}
@@ -814,7 +744,7 @@ export function PulseMomentsLivePanel({
               }
               variant="pulse-live"
             />
-            <TopEmoteBurstsPanel
+            {selectedMoment ? <TopEmoteBurstsPanel
               bursts={selectedBursts}
               emoteLookup={emoteLookup}
               variant="pulse-live"
@@ -823,10 +753,10 @@ export function PulseMomentsLivePanel({
                   ? momentEmoteRollupsEmptyHint(selectedMoment)
                   : "Select a reacted minute to inspect emotes that drove that spike."
               }
-            />
-          </div>
+            /> : null}
+          </div> : null}
+          </InspectorReveal>
         </div>
-      )}
     </section>
   );
 }

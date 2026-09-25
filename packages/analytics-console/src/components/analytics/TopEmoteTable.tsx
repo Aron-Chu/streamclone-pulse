@@ -43,7 +43,7 @@ export function TopEmoteTable({
         embedded ? 'sc-console-scroll max-h-[calc(100vh-14rem)] overflow-y-auto' : 'rounded border border-white/10 bg-white/[0.035]'
       }`}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-white/10 px-2 py-1.5 text-[10px] font-black uppercase text-zinc-500">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-white/10 px-2 py-1.5 text-xs font-black uppercase text-zinc-500">
         <span>Emote</span>
         <span>Provider</span>
         <span className="text-right">Uses</span>
@@ -73,7 +73,7 @@ export function TopEmoteTable({
                   src={imageUrl}
                   name={emote.name}
                   className="max-h-full max-w-full object-contain"
-                  fallbackClassName="inline-flex h-4 w-4 items-center justify-center rounded bg-white/10 text-[8px] font-black text-zinc-400"
+                  fallbackClassName="inline-flex h-4 w-4 items-center justify-center rounded bg-white/10 text-xs font-black text-zinc-400"
                 />
               </span>
               <span className="truncate font-semibold" title={emote.name}>
@@ -84,10 +84,10 @@ export function TopEmoteTable({
               {provider && provider !== 'unknown' ? (
                 <EmoteProviderBadge provider={provider} />
               ) : (
-                <span className="text-[10px] text-zinc-600">—</span>
+                <span className="text-xs text-zinc-600">—</span>
               )}
             </span>
-            <span className="shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-zinc-400">
+            <span className="shrink-0 text-right font-mono text-xs font-semibold tabular-nums text-zinc-400">
               {count(emote.count)}
             </span>
           </button>

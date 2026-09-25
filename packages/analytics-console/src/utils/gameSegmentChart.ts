@@ -1,3 +1,5 @@
+import { measurementTimeMs } from '@streampulse/pulse-core'
+
 export type GameSegmentPlotInput = {
   offsetSeconds: number
   durationSeconds: number
@@ -19,19 +21,43 @@ export function minuteRollupSpanSeconds(rollups: Array<{ minuteTs: string }>): n
   return Math.max(60, Math.round((last - first) / 1000) + 60)
 }
 
+/**
+ * Broadcast offset at which the last minute bucket ends. Chart viewports and game
+ * segments are absolute offsets from go-live, so an untracked opening must not
+ * shorten the end the way the span does. Falls back to the span without a start.
+ */
+export function minuteRollupEndOffsetSeconds(
+  rollups: Array<{ minuteTs: string }>,
+  streamStartedAt: string | undefined,
+): number {
+  const span = minuteRollupSpanSeconds(rollups)
+  if (!rollups.length || !streamStartedAt) return span
+  const startMs = Date.parse(streamStartedAt)
+  const lastMs = Date.parse(rollups[rollups.length - 1].minuteTs)
+  if (!Number.isFinite(startMs) || !Number.isFinite(lastMs)) return span
+  const end = Math.round((lastMs - startMs) / 1000) + 60
+  return end > 0 ? end : span
+}
+
 const WALL_DURATION_SKEW_SECONDS = 120
 
 /** Helix/session wall length — caps overlong TwitchTracker rollup spans. */
 export function streamWallDurationSeconds(
-  stream?: { startedAt?: string; endedAt?: string | null } | null,
+  stream?: { startedAt?: string; endedAt?: string | null; lifecycleState?: string; lifecycleDetectedAt?: string; lifecycleObservedAt?: string } | null,
   nowMs: number = Date.now(),
 ): number {
-  const startMs = Date.parse(stream?.startedAt ?? '')
-  if (!Number.isFinite(startMs)) return 0
-  const endedMs = stream?.endedAt ? Date.parse(stream.endedAt) : Number.NaN
-  const endMs = Number.isFinite(endedMs) ? endedMs : nowMs
-  if (!Number.isFinite(endMs) || endMs < startMs) return 0
-  return Math.max(0, Math.round((endMs - startMs) / 1000) + WALL_DURATION_SKEW_SECONDS)
+  if (stream?.lifecycleState) {
+    const start = measurementTimeMs(stream.startedAt, nowMs)
+    const end = stream.lifecycleState === 'confirmed_ended' ? measurementTimeMs(stream.lifecycleDetectedAt, nowMs)
+      : stream.lifecycleState === 'confirmed_live' ? nowMs : null
+    if (start == null || end == null || end < start) return 0
+    // Offline detection is only an upper bound. Never substitute a mutable end
+    // or cap unknown sessions to a fabricated now-based wall duration.
+    return Math.round((end - start) / 1000) + WALL_DURATION_SKEW_SECONDS
+  }
+  // A legacy end or absent end establishes neither an offline bound nor live
+  // continuity. Retain the measured timeline without a fabricated wall cap.
+  return 0
 }
 
 /** Prefer the shorter of rollup span vs wall duration so Games/chart stay honest. */
@@ -129,7 +155,7 @@ export function gameNameAtOffset(
 /** Synthesize one chart segment when the games API is empty but stream category is known. */
 export function deriveChartGameSegments(
   streamId: string,
-  detail: { stream?: { category?: string; categoryId?: string }; rollups?: Array<{ minuteTs: string }> } | null | undefined,
+  detail: { stream?: { category?: string; categoryId?: string; startedAt?: string }; rollups?: Array<{ minuteTs: string }> } | null | undefined,
   apiSegments: ChartGameSegment[] | null | undefined,
   options?: { allowCategoryFallback?: boolean },
 ): ChartGameSegment[] {
@@ -152,7 +178,7 @@ export function deriveChartGameSegments(
   if (options?.allowCategoryFallback === false) return []
   if (!category || PLACEHOLDER_CATEGORIES.test(category)) return []
   const rollups = detail?.rollups ?? []
-  const durationSeconds = minuteRollupSpanSeconds(rollups)
+  const durationSeconds = minuteRollupEndOffsetSeconds(rollups, detail?.stream?.startedAt)
   if (durationSeconds <= 0) return []
   return [
     {

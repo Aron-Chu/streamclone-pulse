@@ -15,6 +15,15 @@ export function resolveMomentAtMs(at?: number): number | null {
   return at > 1_000_000_000_000 ? at : at * 1000
 }
 
+/** Return a valid machine-readable timestamp without letting malformed rows
+ * throw during render. The visible feed can still explain missing time. */
+export function formatMomentDateTime(at?: number): string | undefined {
+  const ms = resolveMomentAtMs(at)
+  if (ms === null) return undefined
+  const date = new Date(ms)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
+}
+
 export type MomentWindowClass = 'live' | 'older' | 'omit'
 
 export interface MomentWindowBuckets<T> {
@@ -244,7 +253,7 @@ export function buildDirectionalX(from?: 'left' | 'right'): number {
 /**
  * Dedupe moment items by `login`, dropping items whose login appeared within
  * the previous `windowMs` (a recent re-surge is not a fresh moment), then cap
- * the result to `cap` items (keeping earliest first). Items without a usable
+ * the result to `cap` items (preserving input order). Items without a usable
  * login are kept as-is.
  */
 export function dedupeMomentsByLogin<T extends { login?: string; at?: number }>(
@@ -253,11 +262,13 @@ export function dedupeMomentsByLogin<T extends { login?: string; at?: number }>(
   windowMs: number,
 ): T[] {
   const out: T[] = []
+  if (cap <= 0) return out
   const lastSeenAt = new Map<string, number>()
   for (const item of items) {
     const login = item.login
     if (!login) {
       out.push(item)
+      if (out.length >= cap) break
       continue
     }
     const at = item.at ?? 0

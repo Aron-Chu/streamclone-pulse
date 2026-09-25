@@ -58,7 +58,11 @@ export type VodPulseState =
   | { status: 'live_dvr'; data: Extract<ExtensionVodPulseResponse, { mode: 'live_dvr' }> }
   | { status: 'syncing'; vodId: string; reason?: string; data?: ExtensionVodPulseResponse }
   | { status: 'missing'; vodId: string; reason?: string; channelLogin?: string }
-  | { status: 'error'; message: string }
+  | { status: 'error'; message: string; archiveConflict?: boolean; retryable?: boolean }
+
+export function isVodArchiveConflict(data: ExtensionVodPulseResponse | null | undefined): boolean {
+  return data?.resolutionState === 'live_archive_conflict' || data?.resolutionState === 'identity_mismatch'
+}
 
 function isCoverageStatus(value: unknown): value is VodCoverageStatus {
   return (
@@ -215,6 +219,8 @@ export function resolveVodPulseState(
     return {
       status: 'error',
       message: data.coverageMessage?.trim() || ERROR_MESSAGE,
+      archiveConflict: isVodArchiveConflict(data),
+      retryable: data.retryable !== false,
     }
   }
 

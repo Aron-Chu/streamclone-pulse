@@ -1,5 +1,4 @@
 import type { CSSProperties } from 'react'
-import { theme } from './theme.ts'
 
 function SkeletonBlock({ style }: { style?: CSSProperties }) {
   return <div className="pulse-shimmer" style={{ ...styles.block, ...style }} aria-hidden="true" />

@@ -20,6 +20,17 @@ describe('viewerScaleBounds', () => {
     expect(topPad).toBeLessThanOrEqual(0.05)
   })
 
+  it('keeps an all-positive compact viewer lane zero-anchored so snapshot steps stay calm', () => {
+    const axis = viewerScaleBounds([12_828, 15_566, 16_027], 22_000, true)
+    expect(axis.min).toBe(0)
+    expect(axis.max).toBeGreaterThanOrEqual(22_000)
+    expect(axis.max).toBeLessThan(23_000)
+  })
+
+  it('keeps zero on the axis when zero was actually sampled', () => {
+    expect(viewerScaleBounds([0, 10_000, 12_000], 12_000, true).min).toBe(0)
+  })
+
   it('peak mode still anchors at zero using stream peak', () => {
     const values = [10_000, 20_000, 30_000]
     const axis = viewerScaleBounds(values, 90_000, false)

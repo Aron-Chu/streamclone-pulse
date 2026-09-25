@@ -164,6 +164,99 @@ describe('assessViewerCoverage', () => {
       }),
     ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
   })
+
+  it('honors complete coverage with offline channels when generation was verified complete', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 311_600,
+        viewerContributors: 63,
+        viewerExpectedContributors: 500,
+        viewerCoveragePct: 100,
+        viewerCoverage: 'complete',
+        viewerComplete: true,
+      }),
+    ).toMatchObject({
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors: 63,
+      expectedContributors: 500,
+      coveragePct: 100,
+    })
+  })
+
+  it('distinguishes successfully sampled channels from live contributors', () => {
+    // Full sampling generation where only 49 channels are live
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 311_600,
+        viewerContributors: 49,
+        viewerSampledContributors: 500,
+        viewerExpectedContributors: 500,
+      }),
+    ).toMatchObject({
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors: 49,
+      sampledContributors: 500,
+      expectedContributors: 500,
+      coveragePct: 100,
+    })
+
+    // Incomplete sampling generation (missed channels)
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 311_600,
+        viewerContributors: 49,
+        viewerSampledContributors: 350,
+        viewerExpectedContributors: 500,
+      }),
+    ).toMatchObject({
+      sampled: true,
+      qualified: false,
+      quality: 'partial',
+      contributors: 49,
+      sampledContributors: 350,
+      expectedContributors: 500,
+      coveragePct: 70,
+    })
+  })
+
+  it('treats contributors above the denominator as unknown population drift', () => {
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 4,
+        viewerExpectedContributors: 3,
+        viewerCoverage: 'complete',
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
+
+    expect(
+      assessViewerCoverage({
+        t: Date.now(),
+        chat: 1,
+        seventv: 0,
+        viewers: 100,
+        viewerContributors: 2,
+        viewerSampledContributors: 4,
+        viewerExpectedContributors: 3,
+      }),
+    ).toMatchObject({ sampled: true, qualified: false, quality: 'unknown' })
+  })
 })
 
 describe('chartActivityPoints', () => {

@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "currentVersion": "0.2.1",
+  "releases": [
+    {
+      "version": "0.2.1",
+      "status": "unreleased",
+      "releasedAt": null,
+      "title": "Selected-minute clarity and complete extension settings",
+      "summary": "Exact bucket selection, honest viewer history, refined chart motion, validated Twitch VOD playback windows, and a complete responsive settings workspace.",
+      "preview": [
+        "Selected minutes use a compact moment layout with exact metrics, top emotes, and player actions.",
+        "All charts open on Full stream with exact bucket locking.",
+        "Viewer lines preserve honest sampling gaps while settings stay synchronized across extension surfaces."
+      ],
+      "new": [
+        "Clicking a chart bucket opens a compact selected-minute card with chat, emote, and viewer readouts plus Jump and Open Analytics actions.",
+        "Hovering the chart previews a bucket read-only, so a moving pointer never offers actions that vanish.",
+        "Top-emote thumbnails in the selected-minute card show a hover preview with the emote name, provider, and use count.",
+        "Viewer-sampler health is reported separately from API connectivity, distinguishing an older backend, disabled sampling, active writes, and failures."
+      ],
+      "improved": [
+        "Live, offline, and VOD charts open on Full stream; changing the range affects only the current view.",
+        "The viewer lane draws one continuous line with no persistent dots, and a sampled zero stays a real observation.",
+        "Chart hover and lock now identify the exact bucket and its chat and emote bars.",
+        "Selected-minute metrics read Viewers, Chat/min, Emotes/min, with emote chips using a fixed multiplier count.",
+        "Quick settings on Twitch now include auto-update, branded accents, overlay placement, the chat-closed dock, and an expandable three-item What's new preview.",
+        "The full options page is now the complete settings home for Twitch controls, privacy and cache controls, updates, changelog history, and development-only tools.",
+        "The responsive settings workspace uses one normal scroll owner, synchronized immediate-save controls, and section navigation that adapts to narrow layouts.",
+        "Chart previews, selected minutes, range menus, and settings transitions use lightweight motion with reduced-motion support.",
+        "Live polling exposes its state, so a toggle issues exactly one request."
+      ],
+      "fixed": [
+        "Full stream charts now merge recent chat, emote, and viewer minutes into retained history, and refresh game history after a live category change.",
+        "A locked bucket keeps its highlight and both bar lanes visible after the pointer leaves the plot, and clears on a second click.",
+        "Selecting a ranked Top Moment while a minute is locked no longer loses the click to the outside-click handler.",
+        "The viewer line no longer synthesises minutes before sampling began, and no longer overwrites sampled zeroes.",
+        "Chart downsampling no longer lends one minute's peak viewer count to a different minute's bar.",
+        "Emote thumbnails no longer flicker when moving between adjacent buckets.",
+        "Approximate clock prefixes were removed from moment times.",
+        "Viewer-sampling health now reaches the extension UI, including hosted and local mode drift.",
+        "Offline and VOD recap charts honour the reduced-motion preference.",
+        "VOD timelines and moments are constrained to the exact Twitch playback window, so corrupt outlier minutes cannot stretch the chart or issue impossible seeks.",
+        "Opening overlay settings reuses the cached health result, while the Test button still performs an explicit fresh check.",
+        "The Volt accent now renders with its intended orange palette across quick and full settings instead of the previous green treatment."
+      ],
+      "knownIssues": [
+        "Viewer history is collected prospectively; minutes missed before sampling was enabled are not backfilled.",
+        "A live stream may not expose a VOD id until Twitch publishes the archive after the stream ends."
+      ],
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
+    },
+    {
+      "version": "0.1.1",
+      "status": "released",
+      "releasedAt": null,
+      "title": "Published Chrome Web Store beta",
+      "summary": "The build currently listed on the Chrome Web Store. Per-change notes were not recorded when it was published, so no itemised history is claimed here.",
+      "knownIssues": [
+        "A live stream may not expose a VOD id until Twitch publishes the archive after the stream ends."
+      ],
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
+    },
+    {
+      "version": "0.1.0",
+      "status": "unreleased",
+      "releasedAt": null,
+      "title": "Private beta preview",
+      "summary": "Local tester preview used to validate the Twitch overlay, hosted connectivity, and packaging. It was never published to a store.",
+      "new": [
+        "An internal preview established the StreamPulse Twitch overlay and analytics connection flow."
+      ],
+      "knownIssues": [
+        "This preview is not a production release and may include local package cohorts."
+      ],
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
+    }
+  ]
+}

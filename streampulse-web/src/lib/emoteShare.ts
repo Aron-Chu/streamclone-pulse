@@ -48,7 +48,7 @@ export type FigmaEmoteBurstWithShare = FigmaEmoteBurst & EmoteShareRow
 export function withComputedBurstShare(bursts: FigmaEmoteBurst[]): FigmaEmoteBurstWithShare[] {
   const total = bursts.reduce((sum, burst) => sum + Math.max(0, burst.count ?? 0), 0)
   return bursts.map((burst) => {
-    const resolved = resolveEmoteShare(burst.count, burst.sharePct, total)
+    const resolved = resolveEmoteShare(burst.count, (burst as Partial<EmoteShareRow>).shareEstimated ? undefined : burst.sharePct, total)
     if (!resolved) return { ...burst, sharePct: 0, shareEstimated: false }
     return { ...burst, sharePct: resolved.sharePct, shareEstimated: resolved.shareEstimated }
   })

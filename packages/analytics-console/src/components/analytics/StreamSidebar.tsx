@@ -61,14 +61,14 @@ export function StreamSidebar({
   return (
     <div className="flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035] xl:max-h-[calc(100vh-12rem)]">
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
-        <span className="text-[11px] font-black uppercase tracking-wide text-zinc-500">Streams</span>
-        <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-black text-zinc-400">
+        <span className="text-xs font-black uppercase tracking-wide text-zinc-500">Streams</span>
+        <span className="rounded bg-white/10 px-1.5 py-0.5 text-xs font-black text-zinc-400">
           {visibleStreams.length}
           {syncedOnly ? `/${streams.length}` : ''}
         </span>
       </div>
       {onSyncedOnlyChange ? (
-        <label className="flex cursor-pointer items-center gap-2 border-b border-white/5 px-3 py-2 text-[10px] font-semibold text-zinc-400">
+        <label className="flex cursor-pointer items-center gap-2 border-b border-white/5 px-3 py-2 text-xs font-semibold text-zinc-400">
           <input
             type="checkbox"
             checked={Boolean(syncedOnly)}
@@ -89,19 +89,21 @@ export function StreamSidebar({
           >
             <div className="flex items-center gap-2">
               <span className={`h-2 w-2 rounded-full ${liveState === 'live' ? 'bg-red-400 animate-pulse' : 'bg-zinc-600'}`} />
-              <span className="text-sm font-black text-white">Live / Current</span>
+              <span className="text-sm font-black text-white">
+                {liveState === 'live' ? 'Live session' : 'Latest indexed session'}
+              </span>
             </div>
-            <div className="mt-1 text-[10px] font-semibold text-zinc-500">
-              {liveState === 'live' ? 'Live tracking' : 'Most recent session'}
+            <div className="mt-1 text-xs font-semibold text-zinc-500">
+              {liveState === 'live' ? 'Live tracking' : 'No live session confirmed'}
             </div>
           </Link>
         ) : null}
         {streams.length === 0 ? (
-          <div className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
             No past streams indexed yet.
           </div>
         ) : visibleStreams.length === 0 ? (
-          <div className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
             No synced streams match this filter. Turn off &quot;Synced only&quot; to see stats-only sessions.
           </div>
         ) : (
@@ -138,7 +140,7 @@ export function StreamSidebar({
                     isActive ? 'border-l-cyan-400 bg-cyan-400/10' : 'border-l-transparent'
                   }`}
                 >
-                  <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                  <div className="text-xs font-black uppercase tracking-wide text-zinc-500">
                     {formatDateTime(stream.startedAt)}
                   </div>
                   <div
@@ -150,7 +152,7 @@ export function StreamSidebar({
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {(stream.gamesSummary || stream.category) ? (
                       <span
-                        className="min-w-0 max-w-full rounded bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-violet-200"
+                        className="min-w-0 max-w-full rounded bg-violet-500/15 px-1.5 py-0.5 text-xs font-black uppercase text-violet-200"
                         title={`Games played: ${stream.gamesSummary || stream.category}`}
                       >
                         <span className="mr-1 text-violet-300/70">Games played:</span>
@@ -158,14 +160,14 @@ export function StreamSidebar({
                       </span>
                     ) : null}
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${badgeTone}`}
+                      className={`rounded px-1.5 py-0.5 text-xs font-black uppercase ${badgeTone}`}
                       title={streamSyncBadgeTitle(syncBadge, stream)}
                     >
                       {streamSyncBadgeLabel(syncBadge)}
                     </span>
                   </div>
                   {isActive && activeMinutesUnavailable ? (
-                    <p className="mt-1.5 text-[10px] font-semibold leading-snug text-amber-200/80">
+                    <p className="mt-1.5 text-xs font-semibold leading-snug text-amber-200/80">
                       Session metadata synced; minute chart unavailable — try refresh or pick another session.
                     </p>
                   ) : null}
@@ -174,11 +176,17 @@ export function StreamSidebar({
                       <CoreMinuteChartsNotice />
                     </div>
                   ) : null}
-                  <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px] font-bold text-zinc-500">
-                    <span>{duration(stream)}</span>
-                    <span>avg {count(rollupStats?.avg ?? stream.avgViewers)}</span>
-                    <span>peak {count(rollupStats?.peak ?? stream.peakViewers)}</span>
-                  </div>
+                  {(() => {
+                    // Omit a metric the list response does not carry instead of printing "-".
+                    const facts = [
+                      { key: 'measured', text: `measured ${duration(stream)}`, missing: duration(stream) === '-', title: 'Measured span, not broadcast duration' },
+                      { key: 'avg', text: `avg ${count(rollupStats?.avg ?? stream.avgViewers)}`, missing: count(rollupStats?.avg ?? stream.avgViewers) === '-' },
+                      { key: 'peak', text: `peak ${count(rollupStats?.peak ?? stream.peakViewers)}`, missing: count(rollupStats?.peak ?? stream.peakViewers) === '-' },
+                    ].filter(fact => !fact.missing)
+                    return facts.length ? <div className="mt-1.5 grid grid-cols-3 gap-1 text-xs font-bold text-zinc-500">
+                      {facts.map(fact => <span key={fact.key} title={fact.title}>{fact.text}</span>)}
+                    </div> : null
+                  })()}
                 </Link>
               )
             })}
@@ -189,7 +197,7 @@ export function StreamSidebar({
             type="button"
             onClick={() => setArchiveExpanded((prev) => !prev)}
             aria-expanded={archiveExpanded}
-            className="block w-full border-t border-white/10 px-3 py-2 text-center text-[10px] font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white lg:hidden"
+            className="block w-full border-t border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.05] hover:text-white lg:hidden"
           >
             {archiveExpanded ? 'Show fewer streams' : `Show all ${visibleStreams.length} streams`}
           </button>

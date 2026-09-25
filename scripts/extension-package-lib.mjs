@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+import { CI_PACKAGE_PROBE_SUFFIX } from './lib/release-notes-gate.mjs'
 
 /** @deprecated Prefer targetArtifactNames() — kept for transitional tests. */
 export const ZIP_NAME = 'streampulse-extension.zip'
@@ -13,15 +14,18 @@ export const CHECKSUM_SUFFIX = '.sha256'
 /**
  * Unambiguous per-target artifact filenames.
  * Legacy bare `streampulse-extension.zip` must not be produced for store targets.
+ * A CI package probe (see scripts/lib/release-notes-gate.mjs) renames store
+ * artifacts with a not-for-upload suffix so they cannot pass for candidates.
  */
-export function targetArtifactNames(target, version) {
+export function targetArtifactNames(target, version, { ciProbe = false } = {}) {
   const ver = String(version ?? '0.0.0').replace(/[^0-9A-Za-z._-]/g, '')
   if (target === 'cws' || target === 'edge' || target === 'firefox') {
-    const zipName = `streampulse-extension-${target}-${ver}.zip`
+    const stem = `streampulse-extension-${target}-${ver}${ciProbe ? CI_PACKAGE_PROBE_SUFFIX : ''}`
+    const zipName = `${stem}.zip`
     return {
       zipName,
       checksumName: `${zipName}.sha256`,
-      reportName: `streampulse-extension-${target}-${ver}.validation.json`,
+      reportName: `${stem}.validation.json`,
     }
   }
   const zipName = `streampulse-extension-development-${ver}.zip`
@@ -198,12 +202,13 @@ export function compareZipEntriesToExpected(zipEntries, expectedFiles) {
     'content/twitch.js',
     'popup/index.html',
     'popup/popup.js',
-    'options/index.html',
-    'options/options.js',
     'icons/icon16.png',
     'icons/icon48.png',
     'icons/icon128.png',
   ]
+  if (expectedSet.has('options/index.html') || expectedSet.has('options/options.js')) {
+    required.push('options/index.html', 'options/options.js')
+  }
   for (const rel of required) {
     if (!actualSet.has(rel)) errors.push(`required entry missing: ${rel}`)
   }

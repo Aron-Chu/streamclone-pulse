@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, Clock3, Sparkles } from 'lucide-react'
+import { formatCoveragePercent } from '@streampulse/pulse-core'
 import type { LiveWireMetricComparison } from '../../../lib/liveWire'
-import type { NewsroomUpdate } from '../../../lib/newsroom'
+import { newsroomReasonCopy, type NewsroomUpdate } from '../../../lib/newsroom'
 import { compact } from '../analytics/hubFormat'
 
 export interface StoryComparisonProps {
@@ -26,7 +27,9 @@ function stateMeta(metric: LiveWireMetricComparison) {
 
 function deltaLabel(metric: LiveWireMetricComparison): string {
   if (metric.state === 'new_activity') return 'New activity · 0/min earlier'
-  if (metric.state !== 'ready') return metric.reason || 'Not enough measured history'
+  if (metric.reason === 'baseline_warming') return 'Earlier-stream baseline is still warming'
+  if (metric.reason === 'insufficient_baseline') return 'Not enough earlier-stream minutes have been measured'
+  if (metric.state !== 'ready') return newsroomReasonCopy(metric.reason) || 'Not enough measured history'
   if (metric.multiplier != null) return `${metric.multiplier.toFixed(metric.multiplier >= 10 ? 0 : 1)}× earlier`
   if (metric.changePct != null) return `${metric.changePct >= 0 ? '+' : ''}${Math.round(metric.changePct)}% versus earlier`
   if (metric.absoluteDeltaPerMin != null) return `${metric.absoluteDeltaPerMin >= 0 ? '+' : ''}${compact(metric.absoluteDeltaPerMin)}/min versus earlier`
@@ -63,7 +66,7 @@ export function StoryComparison({ label, metric, compact = false }: StoryCompari
       ) : null}
       {!compact ? (
         <p className="newsroom-comparison__evidence">
-          Earlier baseline {metric.baselineMeasuredMinutes}/{metric.baselineExpectedMinutes} min · {Math.round(metric.baselineCoveragePct)}% coverage
+          Earlier baseline {metric.baselineMeasuredMinutes}/{metric.baselineExpectedMinutes} min · {formatCoveragePercent(metric.baselineCoveragePct)} coverage
         </p>
       ) : null}
     </section>

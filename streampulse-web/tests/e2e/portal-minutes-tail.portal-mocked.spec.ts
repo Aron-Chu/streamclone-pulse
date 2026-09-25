@@ -79,20 +79,19 @@ test.describe('portal minutes tail (mocked)', () => {
         }
       }).length
 
-    // Settle initial load (catalog/summary may arrive after first paint).
+    // Settle initial load (summary may arrive after first paint).
     await expect.poll(() => countFullMinutes()).toBeGreaterThanOrEqual(1)
-    await expect.poll(() => harness.counter.count(/emotes\?range=30d/)).toBeGreaterThanOrEqual(1)
     await expect
       .poll(() => harness.counter.count(`/streams/${PORTAL_STREAM_ID}/summary`))
       .toBeGreaterThanOrEqual(1)
 
-    const fullBefore = harness.counter.matching(
-      new RegExp(`/streams/${PORTAL_STREAM_ID}/minutes(?!\\?.*afterOffset)`),
-    )
+    // The chart uses the session minutes' emote evidence. Its live tail does
+    // not need the separate 30-day channel catalog.
+    expect(harness.counter.count(/emotes\?range=30d/)).toBe(0)
+
     const fullCount = countFullMinutes()
     expect(fullCount).toBeLessThanOrEqual(2)
 
-    const catalogBefore = harness.counter.count(/emotes\?range=30d/)
     const summaryBefore = harness.counter.count(`/streams/${PORTAL_STREAM_ID}/summary`)
 
     await harness.advancePoll(30_000)
@@ -111,10 +110,9 @@ test.describe('portal minutes tail (mocked)', () => {
 
     const fullAfter = countFullMinutes()
     expect(fullAfter).toBe(fullCount)
-    expect(fullBefore.length).toBeGreaterThanOrEqual(0)
 
-    // No duplicate 30d catalog / summary spam on live tails after settle.
-    expect(harness.counter.count(/emotes\?range=30d/)).toBe(catalogBefore)
+    // No channel-catalog request or summary spam on live tails after settle.
+    expect(harness.counter.count(/emotes\?range=30d/)).toBe(0)
     expect(harness.counter.count(`/streams/${PORTAL_STREAM_ID}/summary`)).toBe(summaryBefore)
 
     // Chart still present (visually advanced via new points).

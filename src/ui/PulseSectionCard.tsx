@@ -43,13 +43,12 @@ export function PulseSectionCard({
             {subtitle ? <p style={styles.subtitle}>{subtitle}</p> : null}
           </div>
           {meta ? (
-            stackMeta ? (
-              <div style={{ ...styles.meta, ...styles.metaStacked }} data-pulse-section-meta="true">
-                {meta}
-              </div>
-            ) : (
-              <span style={styles.meta}>{meta}</span>
-            )
+            <div
+              style={stackMeta ? { ...styles.meta, ...styles.metaStacked } : styles.meta}
+              data-pulse-section-meta="true"
+            >
+              {meta}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -73,6 +72,9 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     gap: 8,
     justifyContent: 'space-between',
+    minWidth: 0,
+    rowGap: 6,
+    flexWrap: 'wrap',
   },
   headingStacked: {
     display: 'grid',
@@ -81,6 +83,7 @@ const styles: Record<string, CSSProperties> = {
   },
   headingMain: {
     display: 'grid',
+    flex: '1 1 180px',
     gap: 2,
     minWidth: 0,
   },
@@ -108,16 +111,26 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
   },
   meta: {
+    alignItems: 'center',
     color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: 700,
-    whiteSpace: 'nowrap',
-  },
-  metaStacked: {
     display: 'flex',
+    flex: '0 1 auto',
     flexWrap: 'wrap',
     gap: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    justifyContent: 'flex-end',
+    maxWidth: '100%',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    textAlign: 'right',
+    whiteSpace: 'normal',
+  },
+  metaStacked: {
+    flex: '1 1 100%',
     justifyContent: 'flex-start',
     maxWidth: '100%',
+    textAlign: 'left',
   },
 }

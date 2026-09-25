@@ -43,7 +43,7 @@ export function TopEmoteBurstsPanel({
       <header>
         <h3>{title}</h3>
         {isLive && ranked.length > 0 ? (
-          <p className="pulse-moments__bursts-subtitle">Emote breakdown (by share)</p>
+          <p className="pulse-moments__bursts-subtitle">{ranked.some(row => row.shareEstimated) ? 'Share among listed emotes' : 'Share of measured emote sends'}</p>
         ) : null}
       </header>
       {ranked.length === 0 ? (

@@ -55,12 +55,16 @@ test.describe('portal emote plotting (mocked)', () => {
     expect(await images.count()).toBeGreaterThan(0)
     const proxyOnly = page.locator('img[src*="/emotes/proxy/bt1"]')
     const bttvCdn = page.locator('img[src*="frankerfacez.com/emote/bt1"], img[src*="cdn.frankerfacez.com"]')
-    // The channel catalog is staged after first chart paint. Wait for that
-    // enrichment instead of racing the initial summary-only render in CI.
-    await expect.poll(async () => (await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
+    expect((await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
 
-    // Chart emotes view auto-selects up to six session leaders — assert real traces.
+    // Chart focus does not add overlays. Choose six session leaders explicitly
+    // and assert that each selected emote produces a real trace.
     await setChartViewEmotes(page)
+    await page.getByRole('button', { name: /^Emote overlays, 1 active/ }).click()
+    for (const name of ['OMEGALUL', 'Clap', 'Clap', 'NODDERS', 'Sadge']) {
+      await page.getByRole('button', { name: `Plot ${name} on chart`, exact: true }).first().click()
+    }
+    await expect(page.getByRole('button', { name: /^Emote overlays, 6 active/ })).toBeVisible()
     await assertEmotePlotLines(page, 6)
 
     // Stale prune via reload with shrunk catalog.
@@ -91,9 +95,8 @@ test.describe('portal emote plotting (mocked)', () => {
     await openEmotesRail(page)
     await setChartViewEmotes(page)
     await expect(page.getByText('KEKW').first()).toBeVisible()
-    const pathCount = await page.locator('path.sc-emote-plot-line').count()
-    expect(pathCount).toBeLessThanOrEqual(6)
-    expect(pathCount).toBeGreaterThan(0)
+    await expect(page.getByRole('tabpanel', { name: 'Emotes' })).not.toContainText('RareGhost')
+    await assertEmotePlotLines(page, 1)
 
     await assertNoUnexpected(harness)
   })

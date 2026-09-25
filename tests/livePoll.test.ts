@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   computeLivePollDelayMs,
   createLivePollController,
@@ -8,231 +8,198 @@ import type { TwitchPageContext } from '../src/content/twitch.ts'
 
 vi.mock('../src/content/twitch.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/content/twitch.ts')>()
-  return {
-    ...actual,
-    detectTwitchChannelLive: vi.fn(() => true),
-  }
+  return { ...actual, detectTwitchChannelLive: vi.fn(() => true) }
 })
 
+vi.mock('../src/content/bridge.ts', () => ({ sendBackgroundMessage: vi.fn() }))
+
+const liveChannel: TwitchPageContext = { kind: 'channel', login: 'xqc', vodId: null }
+
+async function flush(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve()
+}
+
 describe('shouldRunLivePoll', () => {
-  const liveChannel: TwitchPageContext = { kind: 'channel', login: 'xqc', vodId: null }
-
-  it('runs on a live watch tab when auto-update is enabled', () => {
-    expect(
-      shouldRunLivePoll({
-        activeLogin: 'xqc',
-        context: liveChannel,
-        autoUpdate: true,
-        tracking: true,
-      }),
-    ).toBe(true)
+  it('runs for an enabled hosted live channel', () => {
+    expect(shouldRunLivePoll({ activeLogin: 'xqc', context: liveChannel, autoUpdate: true, hosted: true })).toBe(true)
   })
 
-  it('does not run when the channel is not collecting', () => {
-    expect(
-      shouldRunLivePoll({
-        activeLogin: 'xqc',
-        context: liveChannel,
-        autoUpdate: true,
-        tracking: false,
-      }),
-    ).toBe(false)
+  it('requires local collection but not hosted collection', () => {
+    expect(shouldRunLivePoll({ activeLogin: 'xqc', context: liveChannel, autoUpdate: true, tracking: false, hosted: false })).toBe(false)
+    expect(shouldRunLivePoll({ activeLogin: 'xqc', context: liveChannel, autoUpdate: true, tracking: false, hosted: true })).toBe(true)
   })
 
-  it('does not run when auto-update is disabled', () => {
-    expect(
-      shouldRunLivePoll({
-        activeLogin: 'xqc',
-        context: liveChannel,
-        autoUpdate: false,
-      }),
-    ).toBe(false)
-  })
-
-  it('does not run on browse-only channel tabs', () => {
-    expect(
-      shouldRunLivePoll({
-        activeLogin: 'xqc',
-        context: { kind: 'non-channel', login: null, vodId: null },
-        autoUpdate: true,
-      }),
-    ).toBe(false)
-  })
-
-  it('does not run when the active login differs from the page login', () => {
-    expect(
-      shouldRunLivePoll({
-        activeLogin: 'xqc',
-        context: { kind: 'channel', login: 'shroud', vodId: null },
-        autoUpdate: true,
-      }),
-    ).toBe(false)
+  it('rejects disabled, non-channel, and mismatched contexts', () => {
+    expect(shouldRunLivePoll({ activeLogin: 'xqc', context: liveChannel, autoUpdate: false })).toBe(false)
+    expect(shouldRunLivePoll({ activeLogin: 'xqc', context: { kind: 'non-channel', login: null, vodId: null }, autoUpdate: true })).toBe(false)
+    expect(shouldRunLivePoll({ activeLogin: 'xqc', context: { ...liveChannel, login: 'shroud' }, autoUpdate: true })).toBe(false)
   })
 })
 
 describe('computeLivePollDelayMs', () => {
-  it('applies jitter around the base interval when healthy', () => {
-    const delay = computeLivePollDelayMs(30_000, 0, () => 0.5)
-    expect(delay).toBeGreaterThanOrEqual(27_000)
-    expect(delay).toBeLessThanOrEqual(33_000)
-  })
-
-  it('backs off after consecutive failures', () => {
-    const firstFailure = computeLivePollDelayMs(30_000, 1, () => 0.5)
-    const secondFailure = computeLivePollDelayMs(30_000, 2, () => 0.5)
-    const thirdFailure = computeLivePollDelayMs(30_000, 3, () => 0.5)
-    expect(firstFailure).toBeGreaterThanOrEqual(27_000)
-    expect(secondFailure).toBeGreaterThan(firstFailure)
-    expect(thirdFailure).toBeGreaterThanOrEqual(57_000)
-    expect(thirdFailure).toBeLessThanOrEqual(123_000)
+  it('uses the base cadence while healthy and capped backoff after failures', () => {
+    expect(computeLivePollDelayMs(30_000, 0, () => 0.5)).toBe(30_000)
+    expect(computeLivePollDelayMs(30_000, 1, () => 0.5)).toBe(30_000)
+    expect(computeLivePollDelayMs(30_000, 2, () => 0.5)).toBe(60_000)
+    expect(computeLivePollDelayMs(30_000, 3, () => 0.5)).toBe(120_000)
   })
 })
 
-vi.mock('../src/content/bridge.ts', () => ({
-  sendBackgroundMessage: vi.fn(),
-}))
-
-vi.mock('../src/shared/storage.ts', () => ({
-  getAutoUpdateEnabled: vi.fn(async () => true),
-  getPollIntervalMs: vi.fn(async () => 30_000),
-}))
-
-describe('createLivePollController backoff', () => {
-  let randomSpy: ReturnType<typeof vi.spyOn> | undefined
+describe('createLivePollController', () => {
   let controller: ReturnType<typeof createLivePollController> | undefined
 
   beforeEach(() => {
     vi.useFakeTimers()
-    randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    vi.setSystemTime(new Date('2026-08-28T12:00:00Z'))
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     controller?.stop()
     controller = undefined
-    randomSpy?.mockRestore()
-    await vi.runOnlyPendingTimersAsync()
     vi.clearAllTimers()
+    vi.restoreAllMocks()
     vi.useRealTimers()
-    vi.clearAllMocks()
   })
 
-  it('schedules a longer delay after GET_PULSE failures', async () => {
+  async function successfulBridge() {
     const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
-    vi.mocked(sendBackgroundMessage).mockRejectedValue(new Error('network'))
+    vi.mocked(sendBackgroundMessage).mockResolvedValue({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+    return vi.mocked(sendBackgroundMessage)
+  }
 
-    controller = createLivePollController(() => ({
-      kind: 'channel',
-      login: 'xqc',
-      vodId: null,
-    }))
-    controller.sync('xqc', { kind: 'channel', login: 'xqc', vodId: null }, true, true)
+  it('hydrates and syncs without an immediate request, then performs one scheduled recent poll', async () => {
+    const send = await successfulBridge()
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: true, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+    await flush()
+    expect(send).not.toHaveBeenCalled()
+    expect(controller.getSnapshot().phase).toBe('scheduled')
 
-    for (let i = 0; i < 8; i += 1) {
-      await Promise.resolve()
-    }
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith({ type: 'GET_PULSE', login: 'xqc', watch: false, window: 'recent' })
+  })
+
+  it('adds exactly one immediate request per eligible false-to-true transition', async () => {
+    const send = await successfulBridge()
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: false, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+
+    controller.setEnabled(true)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+
+    controller.setEnabled(true)
+    controller.sync('xqc', liveChannel, true, true)
+    controller.sync('xqc', liveChannel, true, true)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+
+    controller.setEnabled(false)
+    controller.setEnabled(true)
+    await flush()
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('latches one follow-up when re-enabled during an in-flight request', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    const resolvers: Array<(value: { type: 'PULSE_UPDATE'; login: string; payload: null }) => void> = []
+    vi.mocked(sendBackgroundMessage).mockImplementation(() => new Promise(resolve => resolvers.push(resolve)))
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: false, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+    controller.setEnabled(true)
+    await flush()
     expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
 
-    const retryDelayMs = computeLivePollDelayMs(30_000, 1, () => 0.5)
-    await vi.advanceTimersByTimeAsync(retryDelayMs - 1)
+    controller.setEnabled(false)
+    controller.setEnabled(true)
+    controller.setEnabled(true)
     expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
 
-    await vi.advanceTimersByTimeAsync(1)
-    for (let i = 0; i < 8; i += 1) {
-      await Promise.resolve()
-    }
+    resolvers.shift()?.({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+    await flush()
+    expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
+
+    resolvers.shift()?.({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+    await flush()
     expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
   })
 
-  it('defaults recurring live poll to window=recent (not full)', async () => {
+  it('publishes success, application failure, retry, and bounded error state', async () => {
     const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
-    vi.mocked(sendBackgroundMessage).mockResolvedValue({
-      type: 'PULSE_UPDATE',
-      login: 'xqc',
-      payload: null,
+    vi.mocked(sendBackgroundMessage)
+      .mockResolvedValueOnce({ type: 'PULSE_UPDATE', login: 'xqc', payload: null, error: 'upstream_down' })
+      .mockResolvedValueOnce({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+    controller = createLivePollController(() => liveChannel)
+    const phases: string[] = []
+    const unsubscribe = controller.subscribe(() => phases.push(controller!.getSnapshot().phase))
+    controller.configure({ enabled: false, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+    controller.setEnabled(true)
+    await flush()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'retrying',
+      consecutiveFailures: 1,
+      lastError: 'upstream_down',
+      lastSuccessfulCheckAt: null,
+    })
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flush()
+    expect(controller.getSnapshot().consecutiveFailures).toBe(0)
+    expect(controller.getSnapshot().lastSuccessfulCheckAt).not.toBeNull()
+    expect(phases).toContain('refreshing')
+    expect(phases).toContain('retrying')
+
+    const count = phases.length
+    unsubscribe()
+    controller.setEnabled(false)
+    expect(phases).toHaveLength(count)
+  })
+
+  it('clears session state on stop and ignores a stale in-flight result', async () => {
+    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
+    const resolvers: Array<(value: { type: 'PULSE_UPDATE'; login: string; payload: null }) => void> = []
+    vi.mocked(sendBackgroundMessage).mockImplementation(() => new Promise(resolve => resolvers.push(resolve)))
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: false, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
+    controller.setEnabled(true)
+    await flush()
+    expect(controller.getSnapshot().phase).toBe('refreshing')
+
+    controller.stop()
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      lastAttemptAt: null,
+      lastSuccessfulCheckAt: null,
+      consecutiveFailures: 0,
+      lastError: null,
     })
 
-    controller = createLivePollController(() => ({
-      kind: 'channel',
-      login: 'xqc',
-      vodId: null,
-    }))
-    controller.sync('xqc', { kind: 'channel', login: 'xqc', vodId: null }, true, true)
-
-    for (let i = 0; i < 8; i += 1) {
-      await Promise.resolve()
-    }
-
-    expect(sendBackgroundMessage).toHaveBeenCalledWith({
-      type: 'GET_PULSE',
-      login: 'xqc',
-      watch: false,
-      window: 'recent',
+    resolvers.shift()?.({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
+    await flush()
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      lastSuccessfulCheckAt: null,
+      consecutiveFailures: 0,
+      lastError: null,
     })
   })
 
-  it('ignores setPollWindow(full) — recurring polls stay recent', async () => {
-    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
-    vi.mocked(sendBackgroundMessage).mockResolvedValue({
-      type: 'PULSE_UPDATE',
-      login: 'xqc',
-      payload: null,
-    })
-
-    controller = createLivePollController(() => ({
-      kind: 'channel',
-      login: 'xqc',
-      vodId: null,
-    }))
+  it('keeps recurring polls recent after setPollWindow(full)', async () => {
+    const send = await successfulBridge()
+    controller = createLivePollController(() => liveChannel)
+    controller.configure({ enabled: false, intervalMs: 30_000 })
+    controller.sync('xqc', liveChannel, true, true)
     controller.setPollWindow('full')
-    controller.sync('xqc', { kind: 'channel', login: 'xqc', vodId: null }, true, true)
-
-    for (let i = 0; i < 8; i += 1) {
-      await Promise.resolve()
-    }
-
-    expect(sendBackgroundMessage).toHaveBeenCalledWith({
-      type: 'GET_PULSE',
-      login: 'xqc',
-      watch: false,
-      window: 'recent',
-    })
-  })
-
-  it('does not kick a second immediate tick when sync is re-entered while polling', async () => {
-    const { sendBackgroundMessage } = await import('../src/content/bridge.ts')
-    vi.mocked(sendBackgroundMessage).mockImplementation(
-      () =>
-        new Promise(resolve => {
-          setTimeout(() => {
-            resolve({ type: 'PULSE_UPDATE', login: 'xqc', payload: null })
-          }, 50)
-        }),
-    )
-
-    controller = createLivePollController(() => ({
-      kind: 'channel',
-      login: 'xqc',
-      vodId: null,
-    }))
-    const ctx = { kind: 'channel' as const, login: 'xqc', vodId: null }
-    controller.sync('xqc', ctx, true, true)
-    for (let i = 0; i < 8; i += 1) await Promise.resolve()
-
-    // Simulate PULSE_UPDATE → sync re-entry while first tick is in flight.
-    controller.sync('xqc', ctx, true, true)
-    controller.sync('xqc', ctx, true, true)
-    for (let i = 0; i < 8; i += 1) await Promise.resolve()
-
-    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(50)
-    for (let i = 0; i < 8; i += 1) await Promise.resolve()
-    expect(sendBackgroundMessage).toHaveBeenCalledTimes(1)
-
-    // After the scheduled interval, exactly one more poll fires.
-    const nextDelay = computeLivePollDelayMs(30_000, 0, () => 0.5)
-    await vi.advanceTimersByTimeAsync(nextDelay)
-    for (let i = 0; i < 8; i += 1) await Promise.resolve()
-    expect(sendBackgroundMessage).toHaveBeenCalledTimes(2)
+    controller.setEnabled(true)
+    await flush()
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ window: 'recent' }))
   })
 })

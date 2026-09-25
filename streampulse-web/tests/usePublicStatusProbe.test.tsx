@@ -46,6 +46,14 @@ describe('usePublicStatusProbe', () => {
     expect(result.current.degraded).toBe(true)
   })
 
+  it('does not map missing or unfamiliar status vocabulary to ready', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ degraded: false }))
+    const { result } = renderHook(() => usePublicStatusProbe({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.tone).toBe('degraded')
+    expect(result.current.status).toBeNull()
+  })
+
   it('maps unreachable / HTTP failure to offline', async () => {
     fetchMock.mockResolvedValue(jsonResponse({}, 503))
     const { result } = renderHook(() => usePublicStatusProbe({ pollMs: 0 }))

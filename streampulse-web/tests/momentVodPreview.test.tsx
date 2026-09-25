@@ -15,31 +15,43 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 const first = 'https://www.twitch.tv/videos/123456?t=120s'
 
 describe('selected verified preview lifecycle', () => {
-  it.each([399, 400])('honors the exact Twitch minimum width at %ipx', boundary => {
-    width = boundary
+  it('mounts no player until the user asks for one, even at desktop width', () => {
     const view = render(<MomentVodPreview href={first} />)
-    expect(view.container.querySelectorAll('iframe')).toHaveLength(boundary === 400 ? 1 : 0)
-    const linkName = boundary === 400 ? 'Watch at 2:00 on Twitch' : 'Watch on Twitch at 2:00'
-    expect(screen.getByRole('link', { name: linkName }).getAttribute('href')).toBe(first)
-    if (boundary === 400) expect(view.container.querySelector('iframe')!.src).toContain('autoplay=false')
+    expect(view.container.querySelector('iframe')).toBeNull()
+    expect(screen.getByRole('button', { name: /Load Twitch preview/ })).toBeTruthy()
+    // The exact source stays usable without creating any player traffic.
+    expect(screen.getByRole('link', { name: 'Open on Twitch' }).getAttribute('href')).toBe(first)
   })
-  it('loads immediately without autoplay and exposes one exact external action', () => {
+  it('loads the exact verified source without autoplay once explicitly requested', () => {
     const view = render(<MomentVodPreview href={first} />)
+    fireEvent.click(screen.getByRole('button', { name: /Load Twitch preview/ }))
     const source = new URL(view.container.querySelector('iframe')!.src)
     expect(source.origin).toBe('https://player.twitch.tv')
     expect(source.searchParams.get('video')).toBe('v123456')
     expect(source.searchParams.get('time')).toBe('120s')
     expect(source.searchParams.get('autoplay')).toBe('false')
-    expect(screen.getByRole('link', { name: 'Watch at 2:00 on Twitch' }).getAttribute('href')).toBe(first)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close preview' }))
   })
-  it('honors close, but a different selected source gets its own automatic preview', () => {
+  it('honors close and never carries playback over to a newly selected source', () => {
     const view = render(<MomentVodPreview href={first} />)
+    fireEvent.click(screen.getByRole('button', { name: /Load Twitch preview/ }))
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))
     expect(view.container.querySelector('iframe')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /Load Twitch preview/ }))
+
+    // Selecting a different moment must not inherit the opened state.
+    fireEvent.click(screen.getByRole('button', { name: /Load Twitch preview/ }))
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(1)
     view.rerender(<MomentVodPreview href="https://www.twitch.tv/videos/654321?t=300s" />)
+    expect(view.container.querySelector('iframe')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Load Twitch preview/ }))
     expect(view.container.querySelectorAll('iframe')).toHaveLength(1)
     expect(view.container.querySelector('iframe')!.src).toContain('video=v654321&time=300s')
+  })
+  it('does not claim the preview loads automatically', () => {
+    render(<MomentVodPreview href={first} />)
+    expect(screen.queryByText(/loads automatically/i)).toBeNull()
   })
   it('does not instantiate a player below the supported width', () => {
     width = 390

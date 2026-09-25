@@ -49,6 +49,7 @@ export interface ViewerCoverageAssessment {
   qualified: boolean
   quality: ViewerSampleQuality
   contributors?: number
+  sampledContributors?: number
   expectedContributors?: number
   coveragePct?: number
 }
@@ -66,6 +67,7 @@ function explicitViewerCoverage(point: HubActivityPoint): boolean {
     point.viewerCoverage != null ||
     point.viewerCoveragePct != null ||
     point.viewerContributors != null ||
+    point.viewerSampledContributors != null ||
     point.viewerExpectedContributors != null ||
     point.viewerComplete != null ||
     point.viewerCoverageDetail != null
@@ -83,12 +85,20 @@ function normalizeViewerCoverageState(value: unknown): ViewerSampleQuality | und
 
 /**
  * Resolve the viewer truth contract without guessing from the magnitude of a
- * sum. Explicit backend coverage metadata wins; legacy rows are retained as a
- * compatibility state until the backend emits the new fields.
+ * sum. Contributor counts are the strongest evidence when present. Live channels
+ * with viewer counts (viewerContributors) are distinguished from total sampled
+ * channels including offline channels (viewerSampledContributors).
+ *
+ * When Helix executes a verified complete sampling generation across the entire
+ * roster, offline channels have 0 viewers, so viewerContributors can legitimately
+ * be less than viewerExpectedContributors while viewerCoverage remains 'complete'.
  */
 export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAssessment {
   const detail = viewerCoverageDetail(point)
   const contributors = nonNegativeFinite(point.viewerContributors ?? detail?.contributors)
+  const sampledContributors = nonNegativeFinite(
+    point.viewerSampledContributors ?? detail?.sampledContributors,
+  )
   const expectedContributors = nonNegativeFinite(
     point.viewerExpectedContributors ?? detail?.expectedContributors,
   )
@@ -97,11 +107,22 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
   const explicitComplete = point.viewerComplete ?? detail?.complete
   const hasValue = point.viewers > 0 || point.hasViewerRollup === true
   const explicitMeasuredZero = point.hasViewerRollup === true
-  const sampled = explicitMeasuredZero || hasValue || contributors != null
-  const derivedCoveragePct =
-    contributors != null && expectedContributors != null && expectedContributors > 0
-      ? Math.min(100, (contributors / expectedContributors) * 100)
-      : undefined
+  const sampled = explicitMeasuredZero || hasValue || contributors != null || sampledContributors != null
+
+  let derivedCoveragePct: number | undefined
+  if (sampledContributors != null && expectedContributors != null && expectedContributors > 0) {
+    derivedCoveragePct = Math.min(100, (sampledContributors / expectedContributors) * 100)
+  } else if ((explicitComplete === true || state === 'complete') && coveragePct == null) {
+    derivedCoveragePct = 100
+  } else if (
+    contributors != null &&
+    expectedContributors != null &&
+    expectedContributors > 0 &&
+    state !== 'complete' &&
+    explicitComplete !== true
+  ) {
+    derivedCoveragePct = Math.min(100, (contributors / expectedContributors) * 100)
+  }
   const resolvedCoveragePct = coveragePct ?? derivedCoveragePct
 
   if (!sampled) {
@@ -110,46 +131,110 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
       qualified: false,
       quality: state ?? 'unknown',
       contributors,
+      sampledContributors,
       expectedContributors,
-      coveragePct,
+      coveragePct: resolvedCoveragePct,
     }
   }
 
+  // Live contributors and sampled channels cannot exceed the expected roster denominator.
+  if (expectedContributors != null) {
+    if (
+      expectedContributors <= 0 ||
+      (contributors != null && contributors > expectedContributors) ||
+      (sampledContributors != null && sampledContributors > expectedContributors)
+    ) {
+      return {
+        sampled: true,
+        qualified: false,
+        quality: 'unknown',
+        contributors,
+        sampledContributors,
+        expectedContributors,
+        coveragePct: resolvedCoveragePct,
+      }
+    }
+  }
+
+  // If sampledContributors is provided, it specifically measures sampling completeness
+  // (both live and offline channels) against expected roster channels.
+  if (sampledContributors != null && expectedContributors != null) {
+    if (sampledContributors < expectedContributors) {
+      return {
+        sampled: true,
+        qualified: false,
+        quality: 'partial',
+        contributors,
+        sampledContributors,
+        expectedContributors,
+        coveragePct: resolvedCoveragePct,
+      }
+    }
+    return {
+      sampled: true,
+      qualified: true,
+      quality: 'complete',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct ?? 100,
+    }
+  }
+
+  // When sampledContributors is omitted (legacy or current release backend),
+  // a verified `complete` flag confirms a full sampling generation even if
+  // offline channels explain fewer live contributors (e.g. 63 live out of 500 roster channels).
   if (explicitComplete === true || state === 'complete') {
     return {
       sampled: true,
       qualified: true,
       quality: 'complete',
       contributors,
+      sampledContributors,
       expectedContributors,
-      coveragePct: resolvedCoveragePct,
+      coveragePct: resolvedCoveragePct ?? 100,
     }
   }
+
   if (explicitComplete === false || state === 'partial') {
     return {
       sampled: true,
       qualified: false,
       quality: 'partial',
       contributors,
+      sampledContributors,
       expectedContributors,
       coveragePct: resolvedCoveragePct,
     }
   }
+
   if (state === 'unknown') {
-    return { sampled: true, qualified: false, quality: 'unknown', contributors, expectedContributors, coveragePct }
+    return {
+      sampled: true,
+      qualified: false,
+      quality: 'unknown',
+      contributors,
+      sampledContributors,
+      expectedContributors,
+      coveragePct: resolvedCoveragePct,
+    }
   }
 
+  // Unflagged rows with contributor counts: without an explicit server complete assertion
+  // or sampledContributors, fewer contributors than denominator fails closed to partial.
   if (contributors != null && expectedContributors != null && expectedContributors > 0) {
-    const complete = contributors >= expectedContributors
+    const complete = contributors === expectedContributors
     return {
       sampled: true,
       qualified: complete,
       quality: complete ? 'complete' : 'partial',
       contributors,
+      sampledContributors,
       expectedContributors,
       coveragePct: resolvedCoveragePct,
     }
   }
+
   if (coveragePct != null) {
     const complete = coveragePct >= 100
     return {
@@ -157,6 +242,7 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
       qualified: complete,
       quality: complete ? 'complete' : 'partial',
       contributors,
+      sampledContributors,
       expectedContributors,
       coveragePct,
     }
@@ -169,7 +255,15 @@ export function assessViewerCoverage(point: HubActivityPoint): ViewerCoverageAss
   if (!explicitViewerCoverage(point) && (point.hasViewerRollup === true || point.viewers > 0)) {
     return { sampled: true, qualified: true, quality: 'legacy' }
   }
-  return { sampled: true, qualified: false, quality: 'unknown', contributors, expectedContributors, coveragePct }
+  return {
+    sampled: true,
+    qualified: false,
+    quality: 'unknown',
+    contributors,
+    sampledContributors,
+    expectedContributors,
+    coveragePct: resolvedCoveragePct,
+  }
 }
 
 export function hasViewerSample(point: HubActivityPoint): boolean {
@@ -253,52 +347,6 @@ export function activityBucketMs(windowMinutes: number): number {
 export function activityBucketKey(t: number, windowMinutes: number): number {
   const bucketMs = activityBucketMs(windowMinutes)
   return Math.floor(t / bucketMs) * bucketMs
-}
-
-export type MomentActivityBucketRelation = 'exact' | 'nearest_completed'
-
-export interface MomentActivityBucketResolution {
-  bucketT: number
-  relation: MomentActivityBucketRelation
-}
-
-/**
- * Match a detected moment to a chart bucket without inventing activity.
- *
- * A moment in the chart's trailing open interval cannot have an exact rendered
- * bucket because that incomplete point is intentionally omitted. In that one
- * case we let the activity rail inspect the immediately preceding completed
- * bucket and disclose the relationship in the inspector. Older gaps and
- * out-of-range moments fail closed instead of jumping to channel analytics.
- */
-export function resolveMomentActivityBucket(
-  momentAt: number | null | undefined,
-  selectableBucketTs: ReadonlySet<number>,
-  windowMinutes: number,
-): MomentActivityBucketResolution | null {
-  if (momentAt == null || !Number.isFinite(momentAt) || selectableBucketTs.size === 0) {
-    return null
-  }
-
-  const exactBucketT = activityBucketKey(momentAt, windowMinutes)
-  if (selectableBucketTs.has(exactBucketT)) {
-    return { bucketT: exactBucketT, relation: 'exact' }
-  }
-
-  let previousBucketT: number | null = null
-  for (const candidate of selectableBucketTs) {
-    if (!Number.isFinite(candidate) || candidate > exactBucketT) continue
-    if (previousBucketT == null || candidate > previousBucketT) previousBucketT = candidate
-  }
-
-  if (
-    previousBucketT != null &&
-    exactBucketT - previousBucketT <= activityBucketMs(windowMinutes)
-  ) {
-    return { bucketT: previousBucketT, relation: 'nearest_completed' }
-  }
-
-  return null
 }
 
 /** True when the bucket is incomplete for charting (API flag or unconfirmed tip). */

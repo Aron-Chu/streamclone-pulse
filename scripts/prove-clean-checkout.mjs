@@ -1,7 +1,7 @@
 /**
  * RPR-6: prove credential-free clean checkout works without sibling private repos.
  *
- * Copies the current tree (minus node_modules/dist/.git) into an isolated temp
+ * Copies only Git-tracked paths from the current tree into an isolated temp
  * directory with no streampulse-backend / streamclone sibling layout, then:
  *   - npm ci (uses committed lockfile only)
  *   - check:public-source-readiness
@@ -14,53 +14,33 @@
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
-  readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-const SKIP_NAMES = new Set([
-  'node_modules',
-  'dist',
-  '.git',
-  '.artifacts',
-  'test-results',
-  'playwright-report',
-  'coverage',
-])
+function copyTrackedTree(src, dest) {
+  const paths = execFileSync('git', ['ls-files', '-z'], {
+    cwd: src,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
+    .split('\0')
+    .filter(Boolean)
 
-function copyTree(src, dest) {
-  for (const name of readdirSync(src)) {
-    if (SKIP_NAMES.has(name)) continue
-    if (name.startsWith('streampulse-extension-') && name.endsWith('.zip')) continue
-    if (name.endsWith('.sha256') && name.startsWith('streampulse-extension-')) continue
-    const from = join(src, name)
-    const to = join(dest, name)
-    const st = statSync(from)
-    if (st.isDirectory()) {
-      // Avoid nested portal node_modules if present
-      if (name === 'streampulse-web') {
-        copyTree(from, to)
-        continue
-      }
-      cpSync(from, to, {
-        recursive: true,
-        filter: (p) => {
-          const base = p.split(/[/\\]/).pop()
-          return !SKIP_NAMES.has(base ?? '')
-        },
-      })
-    } else {
-      cpSync(from, to)
-    }
+  for (const relativePath of paths) {
+    const from = join(src, relativePath)
+    if (!existsSync(from)) continue
+    const to = join(dest, relativePath)
+    mkdirSync(dirname(to), { recursive: true })
+    cpSync(from, to)
   }
 }
 
@@ -107,7 +87,7 @@ function main() {
   const isolated = join(nest, 'streamclone-pulse')
   console.log(`prove-clean-checkout: isolated root ${isolated}`)
   try {
-    copyTree(root, isolated)
+    copyTrackedTree(root, isolated)
     assertNoSiblingLayout(isolated)
 
     run('npm', ['ci'], isolated)

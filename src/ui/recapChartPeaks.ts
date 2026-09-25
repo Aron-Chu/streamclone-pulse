@@ -114,6 +114,16 @@ export function mergeRecapMoments(
     peaks?.map(peak => ({
       offsetSeconds: peak.offsetSeconds,
       score: peak.score,
+      compositeScore: peak.compositeScore,
+      reactionScore: peak.reactionScore,
+      viewerMomentumScore: peak.viewerMomentumScore,
+      reactionOnsetOffsetSeconds: peak.reactionOnsetOffsetSeconds,
+      reactionApexOffsetSeconds: peak.reactionApexOffsetSeconds,
+      seekOffsetSeconds: peak.seekOffsetSeconds,
+      precisionSeconds: peak.precisionSeconds,
+      refinementStatus: peak.refinementStatus,
+      refinementConfidence: peak.refinementConfidence,
+      reactionScoringVersion: peak.reactionScoringVersion,
       reasons: peak.reasons,
       chatCount: peak.chatCount,
       emoteCount: peak.emoteCount,
@@ -146,13 +156,92 @@ export function resolveRecapChartPeakOffsets(
     .map(peak => peak.offsetSeconds)
 }
 
-/** Best-known stream length for full-timeline chart scaling (recap duration wins). */
+export function lastActiveRollupOffsetSeconds(rollups: readonly ExtensionRollup[]): number {
+  let last = -1
+  for (const rollup of rollups) {
+    if (rollup.missing) continue
+    const chat = rollup.chatCount ?? 0
+    const emotes = rollupEmoteCount(rollup)
+    const viewers = rollup.viewerCount ?? 0
+    if (chat > 0 || emotes > 0 || viewers > 0) {
+      if (rollup.offsetSeconds > last) {
+        last = rollup.offsetSeconds
+      }
+    }
+  }
+  return last
+}
+
+/**
+ * Best-known stream length for full-timeline chart scaling.
+ *
+ * A legacy backend could close an open stream at the time of the first offline
+ * request, hours after the VOD and IRC data ended. When that same payload also
+ * claims full coverage, cap the contradictory wall duration to the observed
+ * coverage end instead of drawing fabricated zero-valued hours. Declared
+ * missing-tail coverage keeps the real stream duration so the gap stays visible.
+ */
 export function recapStreamDurationSeconds(payload: PulsePayload): number {
   const recapDuration = payload.recap?.durationSeconds
-  if (recapDuration != null && recapDuration > 0) return recapDuration
-  if (payload.currentOffsetSeconds > 0) return payload.currentOffsetSeconds
   const rollups = pickRecapRollups(payload)
-  if (rollups.length > 0) return rollups[rollups.length - 1]?.offsetSeconds ?? 0
+  const rollupEnd = rollups.length > 0
+    ? (rollups[rollups.length - 1]?.offsetSeconds ?? 0) + 60
+    : 0
+  const coverageEnd = (payload.coverage?.coverageEndOffsetSeconds ?? 0) > 0
+    ? (payload.coverage?.coverageEndOffsetSeconds ?? 0) + 60
+    : 0
+  const observedEnd = Math.max(rollupEnd, coverageEnd)
+  const payloadDuration = payload.durationSeconds ?? 0
+  const declaredDuration = recapDuration != null && recapDuration > 0
+    ? recapDuration
+    : payloadDuration > 0
+      ? payloadDuration
+      : payload.currentOffsetSeconds
+
+  if (payload.isLive) {
+    if (declaredDuration > 0) return declaredDuration
+    if (rollupEnd > 0) return rollupEnd
+    return 0
+  }
+
+  // If the backend declared a missing IRC tail, keep the declared duration so the gap stays visible.
+  const hasMissingTail = Boolean(
+    payload.coverage?.missingRanges?.some(range => range.toOffsetSeconds >= declaredDuration - 120)
+    || (payload.coverage?.canBackfill === true && payload.coverage?.hasGaps === true),
+  )
+
+  if (!hasMissingTail) {
+    // 1. Explicit full coverage contradicts late wall close.
+    if (
+      payload.coverage?.hasFullStreamCoverage === true
+      && payload.coverage.hasGaps !== true
+      && observedEnd > 0
+      && declaredDuration > observedEnd + 120
+    ) {
+      return observedEnd
+    }
+
+    // 2. Trailing dead zone detection:
+    // If we have rollups with active signal, check if the data has a sustained trailing dead zone
+    // (>15 minutes of consecutive zeros) or if fullRollups was loaded and ended earlier.
+    const lastActive = lastActiveRollupOffsetSeconds(rollups)
+    if (lastActive >= 0) {
+      const activeEnd = lastActive + 60
+      const hasFullHistory = (payload.fullRollups?.length ?? 0) > 0
+      const hasTrailingDeadTail = rollupEnd >= activeEnd + 15 * 60
+
+      if (hasTrailingDeadTail) {
+        return activeEnd
+      }
+
+      if (hasFullHistory && declaredDuration > activeEnd + 15 * 60) {
+        return Math.max(activeEnd, rollupEnd)
+      }
+    }
+  }
+
+  if (declaredDuration > 0) return declaredDuration
+  if (rollupEnd > 0) return rollupEnd
   return 0
 }
 

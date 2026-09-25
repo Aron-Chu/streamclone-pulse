@@ -1,6 +1,6 @@
 /** Presentation-only filtering of loaded records. Never expands backend coverage. */
 export type MomentPeriod = 'all' | '30m' | '24h' | '7d' | 'custom'
-export type MomentOrder = 'newest' | 'oldest' | 'category' | 'chatPerMin' | 'emotesPerMin' | 'chatIncrease' | 'emoteIncrease'
+export type MomentOrder = 'newest' | 'oldest' | 'category'
 export interface MomentBrowse {
   category: string
   query: string
@@ -9,7 +9,7 @@ export interface MomentBrowse {
   from: string
   to: string
 }
-export interface BrowseFields { at?: number; category?: string; text: string; key: string; chatPerMin?: number; emotesPerMin?: number; chatIncrease?: number; emoteIncrease?: number }
+export interface BrowseFields { at?: number; category?: string; text: string; key: string }
 
 /** Neighbors in the displayed collection, not a ranking or a nearest-time match. */
 export function loadedMomentNeighbors<T extends { key: string }>(items: readonly T[], selectedKey?: string) {
@@ -25,7 +25,7 @@ export function readMomentBrowse(params: URLSearchParams): MomentBrowse {
   const order = params.get('sort')
   return { category: params.get('category') || '', query: (params.get('q') || '').slice(0, 200),
     period: period === '30m' || period === '24h' || period === '7d' || period === 'custom' ? period : 'all',
-    order: order === 'oldest' || order === 'category' || order === 'chatPerMin' || order === 'emotesPerMin' || order === 'chatIncrease' || order === 'emoteIncrease' ? order : 'newest',
+    order: order === 'oldest' || order === 'category' ? order : 'newest',
     from: params.get('from') || '', to: params.get('to') || '' }
 }
 
@@ -52,12 +52,6 @@ export function browseLoadedItems<T>(items: readonly T[], browse: MomentBrowse, 
     const timeMatch = browse.period === 'all' || (hasTime && row.at! >= min && (browse.period === 'custom' ? row.at! < max : row.at! <= max))
     return timeMatch && (!browse.category || row.category === browse.category) && (!query || row.text.toLocaleLowerCase().includes(query))
   }).sort((a, b) => {
-    if (browse.order === 'chatPerMin' || browse.order === 'emotesPerMin' || browse.order === 'chatIncrease' || browse.order === 'emoteIncrease') {
-      const left = a[browse.order], right = b[browse.order]
-      const hasLeft = left != null && Number.isFinite(left), hasRight = right != null && Number.isFinite(right)
-      if (hasLeft !== hasRight) return hasLeft ? -1 : 1
-      if (hasLeft && hasRight && left !== right) return right! - left!
-    }
     if (browse.order === 'category') {
       const category = (a.category || '\uffff').localeCompare(b.category || '\uffff')
       if (category) return category

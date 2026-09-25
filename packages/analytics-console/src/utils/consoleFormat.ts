@@ -1,4 +1,5 @@
 import type { AnalyticsMinuteRollup, AnalyticsStream, AnalyticsStreamDetail } from '../apiTypes.ts'
+import { measurementTimeMs } from '@streampulse/pulse-core'
 import { resolveEmoteAssetUrl } from '../configureApi.ts'
 import { parseEmoteKey } from '../emoteUtils.ts'
 import { isPlaceholderStreamTitle } from './analyticsStreamRow.ts'
@@ -13,8 +14,8 @@ export function count(value: number | null | undefined): string {
 
 export function relativeTime(value?: string | number): string {
   if (!value) return '-'
-  const ts = typeof value === 'number' ? value : Date.parse(value)
-  if (!Number.isFinite(ts)) return '-'
+  const ts = measurementTimeMs(value)
+  if (ts == null) return '-'
   const diff = Date.now() - ts
   const minutes = Math.max(1, Math.round(diff / 60000))
   if (minutes < 60) return `${minutes}m ago`
@@ -33,8 +34,8 @@ export function rollupOffsetSeconds(rollup: AnalyticsMinuteRollup, startedAt?: s
 
 export function formatDateTime(value?: string): string {
   if (!value) return '-'
-  const ts = Date.parse(value)
-  if (!Number.isFinite(ts)) return '-'
+  const ts = measurementTimeMs(value)
+  if (ts == null) return '-'
   const date = new Date(ts)
   return (
     date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
@@ -50,11 +51,12 @@ function formatDurationMinutes(minutes: number): string {
 }
 
 export function duration(stream?: AnalyticsStream): string {
-  if (!stream) return '-'
-  const start = Date.parse(stream.startedAt)
-  const end = stream.endedAt ? Date.parse(stream.endedAt) : Date.now()
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '-'
-  return formatDurationMinutes((end - start) / 60000)
+  // Summary rows carry a measured span, not an authoritative broadcast end.
+  // Even confirmed offline state does not make a late stored EndedAt exact.
+  const seconds = stream?.measuredSpanSeconds
+  return seconds != null && Number.isFinite(seconds) && seconds >= 0
+    ? formatDurationMinutes(seconds / 60)
+    : '-'
 }
 
 /**
@@ -63,6 +65,10 @@ export function duration(stream?: AnalyticsStream): string {
  */
 export function durationFromDetail(detail?: AnalyticsStreamDetail | null): string {
   if (!detail) return '-'
+  const measuredSpanSeconds = detail.stream?.measuredSpanSeconds
+  if (measuredSpanSeconds != null && Number.isFinite(measuredSpanSeconds) && measuredSpanSeconds >= 0) {
+    return formatDurationMinutes(measuredSpanSeconds / 60)
+  }
   const coverageMinutes = detail.chatCoverage?.chatSpanMinutes
   if (coverageMinutes != null && coverageMinutes > 0) {
     const wallMinutes = detail.chatCoverage?.streamSpanMinutes ?? 0
@@ -76,16 +82,18 @@ export function durationFromDetail(detail?: AnalyticsStreamDetail | null): strin
   }
   const rollups = detail.rollups ?? []
   if (rollups.length >= 2) {
-    const first = Date.parse(rollups[0]!.minuteTs)
-    const last = Date.parse(rollups[rollups.length - 1]!.minuteTs)
-    if (Number.isFinite(first) && Number.isFinite(last) && last >= first) {
+    const first = measurementTimeMs(rollups[0]!.minuteTs)
+    const last = measurementTimeMs(rollups[rollups.length - 1]!.minuteTs)
+    if (first != null && last != null && last >= first) {
       return formatDurationMinutes((last - first) / 1000 / 60 + 1)
     }
   }
   if (detail.timelineMinutes != null && detail.timelineMinutes > 0) {
     return formatDurationMinutes(detail.timelineMinutes)
   }
-  return duration(detail.stream)
+  // A stored wall-clock end (even on a confirmed-ended row) is not measured
+  // coverage and may be when a worker eventually noticed the stream was offline.
+  return '-'
 }
 
 export function formatVodOffset(seconds: number): string {
@@ -132,6 +140,8 @@ export function streamStateLabel(
   if (state === 'syncing') return 'syncing'
   if (state === 'historical') return 'historical'
   if (state === 'not_collected') return 'stats only'
+  // Fail-closed lifecycle: say what is unknown instead of a bare "unknown".
+  if (state === 'unknown') return 'live status unconfirmed'
   return state || 'loading'
 }
 

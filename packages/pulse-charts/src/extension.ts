@@ -25,6 +25,7 @@ export {
   gameSegmentPlotBounds,
   gameSegmentPlotBoundsByOffsets,
 } from './gameSegmentChart.ts'
+export { buildChartHitRegions, chartHitRegionAtX } from './chartHitRegions.ts'
 export { viewerScaleBounds } from './viewerScale.ts'
 export {
   buildViewerGeometry,

@@ -21,48 +21,50 @@ async function expandEmotePicker(page: import('@playwright/test').Page): Promise
   expect(expanded, 'emote picker toggle').toBe(true)
   await expect
     .poll(async () =>
-      page.evaluate(rootId => {
-        const root = document.getElementById(rootId)?.shadowRoot
-        const list = root?.querySelector<HTMLElement>('[data-emote-picker-scroll]')
-        return list ? { rows: list.querySelectorAll('.pulse-seven-tv-row').length, sh: list.scrollHeight, ch: list.clientHeight } : null
+    page.evaluate(rootId => {
+      const root = document.getElementById(rootId)?.shadowRoot
+        const list = root?.querySelector<HTMLElement>('[data-emote-picker-grid]')
+        return list ? { chips: list.querySelectorAll('.pulse-seven-tv-chip').length } : null
       }, PULSE_ROOT_ID),
     )
-    .toMatchObject({ rows: expect.any(Number) })
+    .toMatchObject({ chips: expect.any(Number) })
 }
 
 async function pickerMetrics(page: import('@playwright/test').Page) {
   return page.evaluate(rootId => {
     const root = document.getElementById(rootId)?.shadowRoot
-    const list = root?.querySelector<HTMLElement>('[data-emote-picker-scroll]')
+    const list = root?.querySelector<HTMLElement>('[data-emote-picker-grid]')
     const toggle = root?.querySelector<HTMLButtonElement>('.pulse-seven-tv-toggle')
-    const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row') ?? [])]
+    const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-chip') ?? [])]
     return {
       label: (toggle?.textContent ?? '').replace(/\s+/g, ' ').trim(),
       expanded: toggle?.getAttribute('aria-expanded') === 'true',
       rowCount: rows.length,
-      scrollHeight: list?.scrollHeight ?? 0,
-      clientHeight: list?.clientHeight ?? 0,
       selected: rows.filter(row => row.getAttribute('aria-selected') === 'true').map(row => row.textContent ?? ''),
       disabledLabels: rows
         .filter(row => row.disabled || row.getAttribute('aria-disabled') === 'true')
-        .map(row => (row.textContent ?? '').replace(/\s+/g, ' ').trim()),
+        .map(row => row.getAttribute('aria-label') ?? ''),
       lastRowText: (rows.at(-1)?.textContent ?? '').replace(/\s+/g, ' ').trim(),
       showMorePresent: Boolean(
-        [...(root?.querySelectorAll('button') ?? [])].some(btn =>
-          /show\s+\d+\s+more|show less/i.test(btn.textContent ?? ''),
-        ),
+        root?.querySelector<HTMLButtonElement>('[data-emote-picker-more]')
+          && /\+\d+\s+more/i.test(root.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.textContent ?? ''),
       ),
+      gridDisplay: list ? getComputedStyle(list).display : '',
       legendCount: root?.querySelectorAll('.pulse-chart-overlay-legend-chip').length ?? 0,
       emoteTraceCount: root?.querySelectorAll('path.sc-emote-plot-line').length ?? 0,
+      clearPresent: Boolean(root?.querySelector('[data-emote-picker-clear]')),
     }
   }, PULSE_ROOT_ID)
 }
 
-async function scrollPickerToBottom(page: import('@playwright/test').Page): Promise<void> {
+async function selectedChartOffset(page: import('@playwright/test').Page): Promise<string | null> {
+  return page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    .getAttribute('data-chart-active-offset')
+}
+
+async function expandPickerCatalog(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(rootId => {
-    const list = document.getElementById(rootId)?.shadowRoot?.querySelector<HTMLElement>('[data-emote-picker-scroll]')
-    if (!list) return
-    list.scrollTop = list.scrollHeight
+    document.getElementById(rootId)?.shadowRoot?.querySelector<HTMLButtonElement>('[data-emote-picker-more]')?.click()
   }, PULSE_ROOT_ID)
 }
 
@@ -72,8 +74,8 @@ async function clickPickerRowsByIndex(
 ): Promise<void> {
   await page.evaluate(
     ({ rootId, indexes: idxs }) => {
-      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-scroll]')
-      const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row') ?? [])]
+      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-grid]')
+      const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-chip') ?? [])]
       for (const index of idxs) {
         const row = rows[index]
         if (row && !row.disabled) row.click()
@@ -88,7 +90,7 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     viewport: { width: 420, height: 900 },
   })
 
-  test('scrollable catalog, six-cap selection, collapse preserve, zero-series blocked', async ({
+  test('packed catalog, six-cap selection, collapse preserve, zero-series blocked', async ({
     extension,
     prepare,
     evidence,
@@ -97,26 +99,37 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
     await assertExactlyOnePulseRoot(extension.page)
-    await assertPulseShadowContains(extension.page, /Plot emotes/i)
+    await assertPulseShadowContains(extension.page, /Plot on chart/i)
+
+    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
+    await expect(chart).toBeVisible()
+    const chartBox = await chart.boundingBox()
+    expect(chartBox).not.toBeNull()
+    await chart.click({ position: { x: chartBox!.width * 0.5, y: chartBox!.height * 0.5 } })
+    await expect.poll(() => selectedChartOffset(extension.page)).not.toBeNull()
+    const pinnedOffset = await selectedChartOffset(extension.page)
 
     await expandEmotePicker(extension.page)
+    await expect.poll(() => selectedChartOffset(extension.page)).toBe(pinnedOffset)
     let metrics = await pickerMetrics(extension.page)
-    expect(metrics.showMorePresent, 'no Show N more / Show less').toBe(false)
-    expect(metrics.rowCount).toBeGreaterThanOrEqual(12)
-    expect(metrics.rowCount).toBeLessThanOrEqual(24)
-    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
-    expect(metrics.label).toMatch(/Plot emotes · 0\/6/i)
+    expect(metrics.showMorePresent, 'picker should offer the hidden chip count').toBe(true)
+    expect(metrics.rowCount).toBe(12)
+    expect(metrics.gridDisplay).toBe('flex')
+    expect(metrics.label).toMatch(/Plot on chart · 0\/6/i)
 
-    await scrollPickerToBottom(extension.page)
+    await expandPickerCatalog(extension.page)
     metrics = await pickerMetrics(extension.page)
+    expect(metrics.rowCount).toBeGreaterThan(12)
+    expect(metrics.showMorePresent).toBe(false)
     expect(metrics.lastRowText.length).toBeGreaterThan(0)
     expect(metrics.disabledLabels.some(label => /No activity/i.test(label))).toBe(true)
 
     // Select six non-adjacent plottable rows (indexes 0,2,4,6,8,10).
     await clickPickerRowsByIndex(extension.page, [0, 2, 4, 6, 8, 10])
+    await expect.poll(() => selectedChartOffset(extension.page)).toBe(pinnedOffset)
     metrics = await pickerMetrics(extension.page)
     expect(metrics.selected).toHaveLength(6)
-    expect(metrics.label).toMatch(/Plot emotes · 6\/6/i)
+    expect(metrics.label).toMatch(/Plot on chart · 6\/6/i)
     expect(metrics.legendCount).toBe(6)
     expect(metrics.emoteTraceCount).toBe(6)
 
@@ -127,16 +140,16 @@ test.describe('emote picker redesign (mocked MV3)', () => {
 
     // Deselect one plottable row, wait for React to free a slot, then select another.
     await extension.page.evaluate(rootId => {
-      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-scroll]')
+      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-grid]')
       const selected = [
-        ...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row[aria-selected="true"]') ?? []),
+        ...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-chip[aria-selected="true"]') ?? []),
       ]
       selected[0]?.click()
     }, PULSE_ROOT_ID)
     await expect.poll(async () => (await pickerMetrics(extension.page)).selected.length).toBe(5)
     await extension.page.evaluate(rootId => {
-      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-scroll]')
-      const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row') ?? [])]
+      const list = document.getElementById(rootId)?.shadowRoot?.querySelector('[data-emote-picker-grid]')
+      const rows = [...(list?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-chip') ?? [])]
       const replacement = rows.find(
         row =>
           row.getAttribute('aria-selected') !== 'true' &&
@@ -156,6 +169,7 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     }, PULSE_ROOT_ID)
     await expect.poll(async () => (await pickerMetrics(extension.page)).expanded).toBe(false)
     await expandEmotePicker(extension.page)
+    await expect.poll(() => selectedChartOffset(extension.page)).toBe(pinnedOffset)
     metrics = await pickerMetrics(extension.page)
     expect(metrics.selected).toHaveLength(6)
     expect(metrics.legendCount).toBe(6)
@@ -167,13 +181,28 @@ test.describe('emote picker redesign (mocked MV3)', () => {
       const rows = [
         ...(document
           .getElementById(rootId)
-          ?.shadowRoot?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-row') ?? []),
+          ?.shadowRoot?.querySelectorAll<HTMLButtonElement>('.pulse-seven-tv-chip') ?? []),
       ]
       const disabled = rows.find(row => row.disabled || /No activity/i.test(row.textContent ?? ''))
       disabled?.click()
     }, PULSE_ROOT_ID)
     metrics = await pickerMetrics(extension.page)
     expect(metrics.legendCount).toBe(beforeLegend)
+
+    // Clear is an explicit action and must remove every plotted line without
+    // collapsing the picker or affecting the chart's moment controls.
+    const clear = extension.page.locator(`#${PULSE_ROOT_ID} [data-emote-picker-clear]`)
+    await expect(clear).toBeVisible()
+    await clear.click()
+    await expect.poll(() => selectedChartOffset(extension.page)).toBe(pinnedOffset)
+    await expect
+      .poll(async () => (await pickerMetrics(extension.page)).selected.length)
+      .toBe(0)
+    metrics = await pickerMetrics(extension.page)
+    expect(metrics.label).toMatch(/Plot on chart · 0\/6/i)
+    expect(metrics.legendCount).toBe(0)
+    expect(metrics.emoteTraceCount).toBe(0)
+    expect(metrics.clearPresent).toBe(false)
 
     assertNoUncaughtErrors(evidence)
   })
@@ -194,21 +223,24 @@ test.describe('emote picker redesign (mocked MV3)', () => {
       const root = document.getElementById(rootId)?.shadowRoot
       root?.querySelector('.pulse-seven-tv-toggle')?.scrollIntoView({ block: 'center' })
     }, PULSE_ROOT_ID)
-    await expect(panel).toHaveScreenshot('emote-picker-initial-narrow.png', {
+    // Soft: one run reports (and writes actuals for) every narrow snapshot, not just the first.
+    await expect.soft(panel).toHaveScreenshot('emote-picker-initial-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
+    // Scope the expanded shots to the picker card itself. Capturing the whole
+    // panel made them depend on the height of every section above the picker, so
+    // unrelated layout changes shifted the frame and the diff drifted.
+    const picker = panel.locator('.pulse-seven-tv-panel').first()
     await expandEmotePicker(extension.page)
-    await extension.page.evaluate(rootId => {
-      const root = document.getElementById(rootId)?.shadowRoot
-      root?.querySelector('[data-emote-picker-scroll]')?.scrollIntoView({ block: 'center' })
-    }, PULSE_ROOT_ID)
-    await expect(panel).toHaveScreenshot('emote-picker-expanded-narrow.png', {
+    await picker.scrollIntoViewIfNeeded()
+    await expect.soft(picker).toHaveScreenshot('emote-picker-expanded-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
-    await scrollPickerToBottom(extension.page)
-    await expect(panel).toHaveScreenshot('emote-picker-scrolled-bottom-narrow.png', {
+    await expandPickerCatalog(extension.page)
+    await picker.scrollIntoViewIfNeeded()
+    await expect.soft(picker).toHaveScreenshot('emote-picker-expanded-more-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
@@ -217,7 +249,7 @@ test.describe('emote picker redesign (mocked MV3)', () => {
       const root = document.getElementById(rootId)?.shadowRoot
       root?.querySelector('.pulse-chart-overlay-legend-chip')?.scrollIntoView({ block: 'center' })
     }, PULSE_ROOT_ID)
-    await expect(panel).toHaveScreenshot('emote-picker-six-selected-narrow.png', {
+    await expect.soft(panel).toHaveScreenshot('emote-picker-six-selected-narrow.png', {
       maxDiffPixelRatio: 0.04,
     })
 
@@ -232,7 +264,7 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     await prepare({ scenario: 'vod-ready', twitchKind: 'vod' })
     await openTwitchVod(extension.page)
     await waitForPulseRoot(extension.page)
-    await assertPulseShadowContains(extension.page, /Plot emotes|Stream recap|Replay|Pulse/i)
+    await assertPulseShadowContains(extension.page, /Plot on chart|Stream recap|Replay|Pulse/i)
     assertNoUncaughtErrors(evidence)
   })
 })

@@ -1,5 +1,5 @@
-import { normalizeCategoryId, normalizeCategoryBoxArt, rejectedCategoryMetadata } from './publicHub'
 import { apiClient } from './apiClient'
+import { measurementTimeMs } from '@streampulse/pulse-core'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import {
   normalizeLiveWireMomentComparison,
@@ -7,7 +7,7 @@ import {
   type LiveWireMetricComparison,
 } from './liveWire'
 import type { HubEmote } from './publicHub'
-import { buildVodTimestampUrl } from './figmaSessionAnalytics'
+import { discoveryMomentHref, fromNewsroomUpdate } from './discoveryMoments'
 
 export const NEWSROOM_SCHEMA_VERSION = 1 as const
 
@@ -70,11 +70,6 @@ export interface NewsroomSparkPoint {
 }
 
 export interface NewsroomUpdate {
-  category?: string
-  categoryId?: string
-  boxArtUrl?: string
-  categorySource?: 'measured_segment'
-  categoryMetadataRejected?: true
   id: string
   revision: number
   detectorEventKey: string
@@ -87,7 +82,7 @@ export interface NewsroomUpdate {
   resolvedAt?: string
   headline: string
   summary: string
-  /** Backend-owned reaction score for Explorer projections. */
+  /** Backend-owned Explorer score, never synthesized by the portal. */
   score?: number
   comparison: NewsroomMomentComparison
   /** Immutable copy of comparison evidence published with this update. */
@@ -118,8 +113,6 @@ export interface NewsroomStory {
   lastPublishedAt: string
   resolvedAt?: string
   leadUpdate: NewsroomUpdate
-  /** Corroborating public coverage; never part of the StreamPulse reaction score. */
-  sources: NewsroomExternalSource[]
 }
 
 export interface NewsroomNetworkBrief {
@@ -160,6 +153,36 @@ export interface FetchNewsroomOptions {
   signal?: AbortSignal
 }
 
+const NEWSROOM_WINDOWS: readonly NewsroomWindow[] = ['live', '24h', '7d']
+
+/**
+ * History is capability-gated because several deployed API revisions only
+ * implement the live index. `live` remains available by default; a deployment
+ * must explicitly opt into each historical window.
+ */
+export function configuredNewsroomWindows(
+  configured = import.meta.env.VITE_PUBLIC_NEWSROOM_WINDOWS,
+): ReadonlySet<NewsroomWindow> {
+  const enabled = new Set<NewsroomWindow>(['live'])
+  if (typeof configured !== 'string') return enabled
+  for (const token of configured.split(',').map((value) => value.trim())) {
+    if (NEWSROOM_WINDOWS.includes(token as NewsroomWindow)) enabled.add(token as NewsroomWindow)
+  }
+  return enabled
+}
+
+export function newsroomWindowAvailability(
+  window: NewsroomWindow,
+  configured?: string,
+): { available: boolean; reason?: string } {
+  if (configuredNewsroomWindows(configured).has(window)) return { available: true }
+  const label = window === '24h' ? '24-hour' : '7-day'
+  return {
+    available: false,
+    reason: `${label} Newsroom history is not available from this portal deployment. Live stories remain available.`,
+  }
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value != null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -193,8 +216,7 @@ function integer(value: unknown): number | null {
 function timestamp(value: unknown): string | null {
   const valueText = text(value)
   if (!valueText) return null
-  const parsed = Date.parse(valueText)
-  return Number.isFinite(parsed) ? valueText : null
+  return measurementTimeMs(valueText) != null ? valueText : null
 }
 
 function enumValue<T extends string>(value: unknown, values: readonly T[]): T | null {
@@ -348,15 +370,6 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
   const momentRef = normalizeMomentRef(row.momentRef)
   const sparkline = normalizeSparkline(row.sparkline)
   const vodId = optionalText(row.vodId)
-  const categorySource = row.categorySource === 'measured_segment' ? 'measured_segment' : undefined
-  const rawCategory = optionalText(row.category)
-  const category = categorySource && typeof rawCategory === 'string' && rawCategory.length <= 150 ? rawCategory : undefined
-  const categoryId = categorySource ? normalizeCategoryId(row.categoryId) : undefined
-  const boxArtUrl = categorySource ? normalizeCategoryBoxArt(row.boxArtUrl, categoryId) : undefined
-  const categorySupplied = row.category != null || row.categoryId != null || row.boxArtUrl != null || row.categorySource != null
-  const categoryMetadataRejected = categorySupplied && (
-    !categorySource || !category || rejectedCategoryMetadata(row.categoryId, row.boxArtUrl, categoryId, boxArtUrl)
-  )
   if (
     !id || revision == null || revision < 1 || !detectorEventKey || !updateKind || !occurredAt || !publishedAt || !signal || !lifecycle ||
     resolvedReason === null || resolvedAt === null || !headline || !summary || score === null || (score !== undefined && score > 100) ||
@@ -392,7 +405,6 @@ export function normalizeNewsroomUpdate(value: unknown): NewsroomUpdate | null {
     isLate: row.isLate,
     sparkline,
     vodId,
-    category, categoryId, boxArtUrl, categorySource, categoryMetadataRejected: categoryMetadataRejected || undefined,
   }
 }
 
@@ -406,7 +418,7 @@ function newsroomSourceUrl(source: NewsroomExternalSourceName, value: unknown): 
     const parsed = new URL(raw)
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null
     const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
-    const hostIs = (...domains: string[]) => domains.some((domain) => host === domain || host.endsWith(`.${domain}`))
+    const hostIs = (...domains: string[]) => domains.some(domain => host === domain || host.endsWith(`.${domain}`))
     const allowed = source === 'twitch_clip'
       ? hostIs('clips.twitch.tv', 'twitch.tv')
       : source === 'reddit'
@@ -417,9 +429,7 @@ function newsroomSourceUrl(source: NewsroomExternalSourceName, value: unknown): 
             ? hostIs('youtube.com', 'youtu.be')
             : host.length > 0
     return allowed ? parsed.toString() : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 function normalizeNewsroomSourceMetrics(value: unknown): Record<string, number> | null {
@@ -478,13 +488,10 @@ export function normalizeNewsroomStory(value: unknown): NewsroomStory | null {
   const lastPublishedAt = timestamp(row.lastPublishedAt)
   const resolvedAt = row.resolvedAt == null ? undefined : timestamp(row.resolvedAt)
   const leadUpdate = normalizeNewsroomUpdate(row.leadUpdate)
-  const rawSources = row.sources == null ? [] : row.sources
-  if (!Array.isArray(rawSources) || rawSources.length > 4) return null
-  const sources = rawSources.map(normalizeNewsroomExternalSource)
   if (
     !id || !login || displayName === null || profileImageUrl === null || category === null || !streamId || !lifecycle ||
     resolvedReason === null || !primarySignal || !headline || !summary || revision == null || !createdAt ||
-    !lastPublishedAt || resolvedAt === null || !leadUpdate || sources.some((source) => source == null) || leadUpdate.momentRef.streamId !== streamId ||
+    !lastPublishedAt || resolvedAt === null || !leadUpdate || leadUpdate.momentRef.streamId !== streamId ||
     leadUpdate.lifecycle !== lifecycle || leadUpdate.revision > revision
   ) return null
   if (lifecycle === 'resolved' && !resolvedReason) return null
@@ -506,11 +513,10 @@ export function normalizeNewsroomStory(value: unknown): NewsroomStory | null {
     lastPublishedAt,
     resolvedAt,
     leadUpdate,
-    sources: sources as NewsroomExternalSource[],
   }
 }
 
-export function normalizeNewsroomNetworkBrief(value: unknown): NewsroomNetworkBrief | undefined | null {
+function normalizeNetworkBrief(value: unknown): NewsroomNetworkBrief | undefined | null {
   if (value == null) return undefined
   const row = record(value)
   if (!row) return null
@@ -540,6 +546,8 @@ export function normalizeNewsroomNetworkBrief(value: unknown): NewsroomNetworkBr
   }
 }
 
+export const normalizeNewsroomNetworkBrief = normalizeNetworkBrief
+
 /** Strict public-contract decoder. Any malformed published field fails the whole envelope closed. */
 export function normalizeNewsroomEnvelope(value: unknown): NewsroomEnvelope | null {
   const row = record(value)
@@ -552,7 +560,7 @@ export function normalizeNewsroomEnvelope(value: unknown): NewsroomEnvelope | nu
   const leadStoryId = optionalText(row.leadStoryId)
   const nextCursor = optionalText(row.nextCursor)
   const reason = optionalText(row.reason)
-  const networkBrief = normalizeNewsroomNetworkBrief(row.networkBrief)
+  const networkBrief = normalizeNetworkBrief(row.networkBrief)
   if (
     !status || !generatedAt || dataThrough === null || !snapshotAt || !window || leadStoryId === null || nextCursor === null ||
     reason === null || networkBrief === null || !Array.isArray(row.stories)
@@ -682,33 +690,11 @@ export function newsroomReasonCopy(reason: string | undefined | null): string | 
 
 export interface NewsroomWatchAction {
   href: string
-  label: 'Watch live' | 'Watch VOD'
+  label: 'Review moment'
 }
 
-/** Derive only allowlisted Twitch destinations from server-owned identifiers. */
+/** Route one selected story lead through exact-identity source review. */
 export function newsroomWatchAction(story: NewsroomStory): NewsroomWatchAction | null {
-  if (story.lifecycle !== 'resolved' || story.resolvedReason === 'quiet_30m') {
-    return {
-      href: `https://www.twitch.tv/${encodeURIComponent(story.login)}`,
-      label: 'Watch live',
-    }
-  }
-  if (story.resolvedReason === 'stream_ended' && story.leadUpdate.vodId) {
-    return {
-      href: buildVodTimestampUrl(story.leadUpdate.vodId, story.leadUpdate.momentRef.offsetSeconds),
-      label: 'Watch VOD',
-    }
-  }
-  return null
-}
-
-export function configuredNewsroomWindows(
-  configured = import.meta.env.VITE_PUBLIC_NEWSROOM_WINDOWS,
-): ReadonlySet<NewsroomWindow> {
-  const enabled = new Set<NewsroomWindow>(['live'])
-  if (typeof configured !== 'string') return enabled
-  for (const token of configured.split(',').map((value) => value.trim())) {
-    if ((['live', '24h', '7d'] as const).includes(token as NewsroomWindow)) enabled.add(token as NewsroomWindow)
-  }
-  return enabled
+  const moment = fromNewsroomUpdate(story, story.leadUpdate)
+  return moment ? { href: discoveryMomentHref(moment), label: 'Review moment' } : null
 }

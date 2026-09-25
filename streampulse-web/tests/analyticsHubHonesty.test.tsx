@@ -29,7 +29,7 @@ const quietActivity: ActivitySummary = {
 }
 
 describe('hub empty / honesty (ported from excluded landing tests)', () => {
-  it('keeps command-center section labels and Global activity before Pulse Moments', () => {
+  it('keeps existing section headings while grouping navigation into four questions', () => {
     expect(COMMAND_CENTER_LABELS.hubTitle).toBe('Command center')
     expect(COMMAND_CENTER_LABELS.hubEyebrow).toBe('Stream intelligence')
     expect(COMMAND_CENTER_LABELS.liveActivity).toBe('Global activity')
@@ -39,10 +39,7 @@ describe('hub empty / honesty (ported from excluded landing tests)', () => {
     render(<AnalyticsHubSidebar />)
     const buttons = screen.getAllByRole('button')
     const labels = buttons.map((el) => el.textContent ?? '')
-    const liveIdx = labels.findIndex((t) => /Global activity/i.test(t))
-    const pulseIdx = labels.findIndex((t) => /Pulse Moments/i.test(t))
-    expect(liveIdx).toBeGreaterThanOrEqual(0)
-    expect(pulseIdx).toBeGreaterThan(liveIdx)
+    expect(labels).toEqual(['Overview', 'Moments', 'Emotes', 'Channels'])
     expect(screen.queryByRole('button', { name: /Moments feed/i })).toBeNull()
     expect(screen.queryByText(/Featured session analytics/i)).toBeNull()
   })
@@ -53,7 +50,9 @@ describe('hub empty / honesty (ported from excluded landing tests)', () => {
         <FigmaLiveChannelRail channels={[]} />
       </MemoryRouter>,
     )
-    expect(screen.getByText(/No channels live right now/i)).toBeTruthy()
+    expect(screen.getByText('No channel activity supplied — search a channel to open analytics.')).toBeTruthy()
+    // An empty supplied list is not evidence that every channel is offline.
+    expect(screen.queryByText(/No channels live right now/i)).toBeNull()
     expect(
       screen.queryByText(/add channels to your watchlist to see live analytics/i),
     ).toBeNull()

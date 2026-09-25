@@ -27,12 +27,22 @@ function vodMomentToPeak(moment: VodMoment): ExtensionPeak {
   return {
     offsetSeconds: moment.offsetSeconds,
     score: moment.score ?? 0,
+    compositeScore: moment.compositeScore,
+    reactionScore: moment.reactionScore,
+    viewerMomentumScore: moment.viewerMomentumScore,
     reasons: moment.reason ? [moment.reason] : [],
     reasonLabel: moment.label,
     dominantSignal: 'composite',
     chatCount: moment.chatPerMin,
     emoteCount: moment.emotesPerMin,
     topEmotes: moment.topEmotes,
+    reactionOnsetOffsetSeconds: moment.reactionOnsetOffsetSeconds,
+    reactionApexOffsetSeconds: moment.reactionApexOffsetSeconds,
+    seekOffsetSeconds: moment.seekOffsetSeconds,
+    precisionSeconds: moment.precisionSeconds,
+    refinementStatus: moment.refinementStatus,
+    refinementConfidence: moment.refinementConfidence,
+    reactionScoringVersion: moment.reactionScoringVersion,
   }
 }
 
@@ -42,15 +52,26 @@ function vodMomentToRecapMoment(moment: VodMoment): PulseRecapMoment {
     count: emote.count,
     provider: emote.provider,
     id: emote.id,
+    providerEmoteId: emote.providerEmoteId,
     imageUrl: emote.imageUrl,
   }))
   return {
     offsetSeconds: moment.offsetSeconds,
     score: moment.score ?? 0,
+    compositeScore: moment.compositeScore,
+    reactionScore: moment.reactionScore,
+    viewerMomentumScore: moment.viewerMomentumScore,
     reasons: moment.reason ? [moment.reason] : [],
     chatCount: moment.chatPerMin,
     emoteCount: moment.emotesPerMin,
     topEmotes,
+    reactionOnsetOffsetSeconds: moment.reactionOnsetOffsetSeconds,
+    reactionApexOffsetSeconds: moment.reactionApexOffsetSeconds,
+    seekOffsetSeconds: moment.seekOffsetSeconds,
+    precisionSeconds: moment.precisionSeconds,
+    refinementStatus: moment.refinementStatus,
+    refinementConfidence: moment.refinementConfidence,
+    reactionScoringVersion: moment.reactionScoringVersion,
   }
 }
 
@@ -63,6 +84,7 @@ function extensionEmotesToRecap(
     count: emote.count,
     provider: emote.provider,
     id: emote.id,
+    providerEmoteId: emote.providerEmoteId,
     imageUrl: emote.imageUrl,
   }))
 }
@@ -150,6 +172,11 @@ export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse, fallbac
   const recap = synthesizeRecap(vod, login)
   const lastOffset = rollups[rollups.length - 1]?.offsetSeconds ?? 0
   const durationSeconds = Math.max(vod.durationSeconds ?? 0, lastOffset + 60)
+  const startedAtMs = Date.parse(vod.startedAt ?? '')
+  const endedAtMs = startedAtMs + (vod.durationSeconds ?? 0) * 1000
+  const endedAt = Number.isFinite(startedAtMs) && (vod.durationSeconds ?? 0) > 0
+    && Number.isFinite(endedAtMs) && Math.abs(endedAtMs) <= 8.64e15
+    ? new Date(endedAtMs).toISOString() : undefined
 
   return {
     mode: 'vod',
@@ -162,6 +189,7 @@ export function vodPulseToChannelPayload(vod: ExtensionVodPulseResponse, fallbac
     resolutionState: vod.resolutionState ?? 'vod_validated',
     retryable: vod.retryable ?? false,
     startedAt: vod.startedAt,
+    endedAt,
     title: vod.title,
     durationSeconds,
     currentOffsetSeconds: durationSeconds,

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { COMMAND_CENTER_LABELS } from '../../themes/commandCenterLabels'
 
 export interface HubSidebarSection {
   id: string
@@ -9,29 +8,27 @@ export interface HubSidebarSection {
 
 const DEFAULT_SECTIONS: HubSidebarSection[] = [
   { id: 'section-overview', label: 'Overview' },
-  { id: 'section-network', label: COMMAND_CENTER_LABELS.liveActivity },
-  { id: 'section-pulse-moments', label: 'Pulse Moments' },
-  { id: 'section-emote-signal', label: 'Emote Market' },
-  { id: 'section-tracked', label: 'Channel Screener' },
-  { id: 'section-coverage', label: 'Coverage' },
+  { id: 'section-pulse-moments', label: 'Moments' },
+  { id: 'section-emote-signal', label: 'Emotes' },
+  { id: 'section-tracked', label: 'Channels' },
 ]
 
 export interface AnalyticsHubSidebarProps {
   sections?: HubSidebarSection[]
   statusLabel?: string
-  statusTone?: 'ready' | 'degraded' | 'offline'
+  statusTone?: 'checking' | 'ready' | 'degraded' | 'offline'
 }
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id)
   if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
 }
 
 export function AnalyticsHubSidebar({
   sections = DEFAULT_SECTIONS,
-  statusLabel = 'Live',
-  statusTone = 'ready',
+  statusLabel = 'Checking',
+  statusTone = 'checking',
 }: AnalyticsHubSidebarProps) {
   const [activeId, setActiveId] = useState(sections[0]?.id ?? '')
 

@@ -25,6 +25,10 @@ export default defineConfig({
         replacement: resolve(analyticsConsoleRoot, 'analytics-chart-motion.css'),
       },
       {
+        find: '@streampulse/analytics-console/session-signal-tape.css',
+        replacement: resolve(analyticsConsoleRoot, 'session-signal-tape.css'),
+      },
+      {
         find: '@streampulse/pulse-charts/pulse-chart-motion.css',
         replacement: resolve(pulseChartsRoot, 'pulse-chart-motion.css'),
       },
@@ -63,8 +67,6 @@ export default defineConfig({
       'scripts/account-proxy-candidate.test.mjs',
       'tests/e2e/**',
       'node_modules/**',
-      'tests/analyticsLandingPage.test.tsx',
-      'tests/analyticsHubEmpty.test.tsx',
     ],
     server: {
       deps: {

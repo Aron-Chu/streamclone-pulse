@@ -71,7 +71,7 @@ describe('Cloudflare Pages production deployment hygiene', () => {
 
   it('rewrites every account deep link to the private SPA entry', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
-    for (const path of ['/account/sign-in', '/account/confirm', '/account/link-device', '/account/billing', '/account/billing/return']) {
+    for (const path of ['/account/sign-in', '/account/confirm', '/account/link-device', '/account/settings', '/account/billing', '/account/billing/return']) {
       expect(redirects).toContain(`${path} /index.html 200`)
       expect(redirects).toContain(`${path}/ ${path} 301`)
     }
@@ -80,7 +80,7 @@ describe('Cloudflare Pages production deployment hygiene', () => {
   it('ships Pages security and cache headers', () => {
     const headers = readFileSync(resolve(webRoot, 'public/_headers'), 'utf8')
     expect(headers).toContain('X-Content-Type-Options: nosniff')
-    expect(headers).toContain('Content-Security-Policy-Report-Only:')
+    expect(headers).not.toContain('Content-Security-Policy-Report-Only:')
     const enforced = headers.split(/\r?\n/).find(line => /^\s+Content-Security-Policy:/.test(line))
     expect(enforced).toContain("object-src 'none'")
     expect(enforced).toContain("frame-ancestors 'none'")

@@ -14,7 +14,7 @@ function TrendArrow({ value }: { value: string }) {
   const up = !value.startsWith('-')
   const color = up ? 'var(--fma-green)' : 'var(--fma-red)'
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color, fontFamily: 'var(--fma-mono)', fontSize: 11, fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color, fontFamily: 'var(--fma-mono)', fontSize: 12, fontWeight: 600 }}>
       {up ? <TrendingUp size={11} strokeWidth={2.5} /> : <TrendingDown size={11} strokeWidth={2.5} />}
       {value}
     </span>
@@ -28,7 +28,7 @@ export function FigmaLiveSessionsTable({ channels, compact: compactMode }: Figma
     <div className="figma-panel">
       <div className="figma-panel__head">
         <span className="figma-panel__head-label">Live sessions</span>
-        <span style={{ fontFamily: 'var(--fma-mono)', fontSize: 9, color: 'var(--fma-accent-text)' }}>
+        <span style={{ fontFamily: 'var(--fma-mono)', fontSize: 12, color: 'var(--fma-accent-text)' }}>
           {rows.length} tracked
         </span>
       </div>

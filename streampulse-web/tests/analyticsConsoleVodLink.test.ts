@@ -66,7 +66,8 @@ describe('resolveVodLinkState', () => {
       },
     })
     expect(state.status).toBe('unavailable')
-    expect(state.detail.toLowerCase()).toContain('deleted')
+    expect(state.detail).toBe('No verified Twitch VOD link is available for this session. This does not establish whether an archive exists.')
+    expect(state.detail.toLowerCase()).not.toContain('deleted')
   })
 
   it('does not show live copy when channelIsLive is false on stale open row', () => {

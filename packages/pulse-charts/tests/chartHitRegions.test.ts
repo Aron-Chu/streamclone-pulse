@@ -25,6 +25,17 @@ describe('chart pointer hit regions', () => {
     expect(chartHitRegionAtX(regions, 100)?.index).toBe(2)
   })
 
+  it('keeps a sparse two-point gap non-interactive', () => {
+    const regions = buildChartHitRegions([
+      { index: 0, centerX: 10 },
+      { index: 1, centerX: 100 },
+    ])
+
+    expect(chartHitRegionAtX(regions, 10)?.index).toBe(0)
+    expect(chartHitRegionAtX(regions, 50)).toBeNull()
+    expect(chartHitRegionAtX(regions, 100)?.index).toBe(1)
+  })
+
   it('keeps authored missing buckets non-interactive', () => {
     const regions = buildChartHitRegions([
       { index: 0, centerX: 10 },

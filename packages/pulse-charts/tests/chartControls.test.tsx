@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { MAX_PLOTTED_EMOTES } from '../src/index.ts'
 import {
+  activityBarAtPlotX,
   PulseMultiSignalChartInner,
   handleMultiSignalWheelEvent,
 } from '../src/PulseMultiSignalChart.tsx'
@@ -20,7 +21,73 @@ const longRollups = Array.from({ length: 20 }, (_, index) => ({
   totalEmoteCount: 2 + index,
 }))
 
+function activityRects(markup: string, signal = 'chat') {
+  return [...markup.matchAll(new RegExp(`<rect[^>]*data-activity-bar="${signal}"[^>]*>`, 'g'))]
+    .map(([rect]) => ({
+      x: Number(rect.match(/\bx="([^"]+)"/)?.[1]),
+      width: Number(rect.match(/\bwidth="([^"]+)"/)?.[1]),
+    }))
+}
+
 describe('chart controls', () => {
+  it('does not select a neighboring activity bar across a timestamp gap', () => {
+    const bars = [
+      { x: 90, width: 4, hasValue: true },
+      { x: 100, width: 4, hasValue: true },
+      { x: 300, width: 4, hasValue: true },
+    ]
+
+    expect(activityBarAtPlotX(bars, 180)).toBeNull()
+    expect(activityBarAtPlotX(bars, 100)).toBe(bars[1])
+    expect(activityBarAtPlotX(bars, 302)).toBe(bars[2])
+  })
+
+  it.each([false, true])('keeps sparse activity at measured timestamps (expanded=%s)', activityExpanded => {
+    const sparseRollups = [0, 1, 20, 21, 22].map((minute, index) => ({
+      ...longRollups[index]!,
+      minuteTs: new Date(Date.parse(longRollups[0]!.minuteTs) + minute * 60_000).toISOString(),
+    }))
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={sparseRollups}
+        streamStartedAt={longRollups[0]!.minuteTs}
+        durationSeconds={23 * 60}
+        activityExpanded={activityExpanded}
+        motionEnabled={false}
+      />,
+    )
+    for (const signal of ['chat', 'emotes']) {
+      const bars = activityRects(markup, signal)
+      expect(bars).toHaveLength(5)
+      // The shared 1000-unit plot spans x=90..966, with a 22-minute domain.
+      expect(bars[1]!.x + bars[1]!.width / 2).toBeCloseTo(90 + 876 / 22, 4)
+      expect(bars[2]!.x + bars[2]!.width / 2).toBeCloseTo(90 + 20 * 876 / 22, 4)
+      for (let index = 1; index < bars.length; index++) {
+        expect(bars[index]!.x).toBeGreaterThan(bars[index - 1]!.x + bars[index - 1]!.width)
+      }
+    }
+  })
+
+  it.each([0, 2])('excludes line halo samples from bars at a %sm zoom start', startMinute => {
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={longRollups}
+        streamStartedAt={longRollups[0]!.minuteTs}
+        durationSeconds={20 * 60}
+        viewport={{ startSeconds: startMinute * 60, endSeconds: (startMinute + 15) * 60 }}
+        motionEnabled={false}
+      />,
+    )
+    for (const signal of ['chat', 'emotes']) {
+      const bars = activityRects(markup, signal)
+      expect(bars).toHaveLength(16)
+      expect(new Set(bars.map(bar => bar.x)).size).toBe(16)
+      for (let index = 1; index < bars.length; index++) {
+        expect(bars[index]!.x).toBeGreaterThan(bars[index - 1]!.x + bars[index - 1]!.width)
+      }
+    }
+  })
+
   it('keeps viewer-led layout as the shared default and exposes equal lanes as opt-in', () => {
     const sharedMarkup = renderToStaticMarkup(
       <PulseMultiSignalChartInner rollups={rollups} motionEnabled={false} />,
@@ -72,7 +139,7 @@ describe('chart controls', () => {
     expect(MAX_PLOTTED_EMOTES).toBe(6)
   })
 
-  it('renders a compact long-stream viewport rail with explicit presets', () => {
+  it('never floats viewport controls over the plot', () => {
     const markup = renderToStaticMarkup(
       <PulseMultiSignalChartInner
         rollups={longRollups}
@@ -83,10 +150,29 @@ describe('chart controls', () => {
       />,
     )
 
-    expect(markup).toContain('data-chart-viewport-controls')
-    expect(markup).toContain('data-chart-viewport-readout')
-    expect(markup).toContain('>15m</button>')
-    expect(markup).toContain('>Full</button>')
+    // An overlay pinned to the top-right of the plot covered the viewer peak.
+    // The console owns these controls now (see AnalyticsChart's range row).
+    expect(markup).not.toContain('data-chart-viewport-controls')
+    expect(markup).not.toContain('data-chart-viewport-readout')
+    expect(markup).not.toContain('>15m</button>')
+  })
+
+  it('omits per-bar native tooltips that duplicate the hover readout', () => {
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={longRollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        durationSeconds={20 * 60}
+        variant="console"
+        motionEnabled={false}
+      />,
+    )
+
+    // Every activity bar used to carry a <title>, so ~44% of the chart's SVG
+    // nodes were native tooltips restating the hover readout a second later.
+    expect(markup).not.toMatch(/data-activity-bar=[^>]*>\s*<title>/)
+    expect(markup).not.toContain('Chat average ')
+    expect(markup).not.toContain('/min at 00:')
   })
 
   it('keeps the emote histogram and trend line when activity is collapsed', () => {
@@ -130,6 +216,30 @@ describe('chart controls', () => {
     expect(Math.max(...unique)).toBeGreaterThan(8)
   })
 
+  it('uses extension-style slot fill when the chart is zoomed', () => {
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={longRollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        durationSeconds={20 * 60}
+        viewport={{ startSeconds: 0, endSeconds: 15 * 60 }}
+        variant="console"
+        activityExpanded={false}
+        motionEnabled={false}
+      />,
+    )
+    const widths = [...markup.matchAll(/<rect[^>]*data-activity-bar="chat"[^>]*>/g)]
+      .map((match) => Number(match[0].match(/\bwidth="([^"]+)"/)?.[1]))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const bars = widths.length
+    // Boundary bars are clipped, not shifted away from their source timestamp.
+    const uniqueWidths = new Set(widths.slice(1, -1).map((value) => value.toFixed(4)))
+
+    expect(bars).toBeGreaterThan(1)
+    expect(uniqueWidths).toHaveLength(1)
+    expect(widths[0]).toBeGreaterThan(12)
+  })
+
   it('uses the same dense time-bin cadence for chat and emote bars', () => {
     const denseRollups = Array.from({ length: 566 }, (_, index) => ({
       minuteTs: new Date(Date.parse('2026-07-31T00:00:00.000Z') + index * 60_000).toISOString(),
@@ -153,6 +263,162 @@ describe('chart controls', () => {
 
     expect(chatCount).toBeGreaterThanOrEqual(200)
     expect(emoteCount).toBe(chatCount)
+  })
+
+  it('keeps dense bars uniform when downsampled timestamps skip minutes', () => {
+    const denseRollups = Array.from({ length: 241 }, (_, index) => ({
+      minuteTs: new Date(Date.parse('2026-07-31T00:00:00.000Z') + (
+        index * 60_000 + Math.floor(index / 8) * 60_000
+      )).toISOString(),
+      viewerAvg: 10_000 + (index % 17) * 20,
+      viewerSamples: 1,
+      chatCount: 100 + (index % 23),
+      totalEmoteCount: 30 + (index % 19),
+    }))
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={denseRollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        durationSeconds={271 * 60}
+        variant="console"
+        activityExpanded={false}
+        motionEnabled={false}
+      />,
+    )
+    const widths = [...markup.matchAll(/<rect[^>]*data-activity-bar="chat"[^>]*>/g)]
+      .map((match) => Number(match[0].match(/\bwidth="([^"]+)"/)?.[1]))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const uniqueWidths = new Set(widths.slice(1, -1).map((value) => value.toFixed(4)))
+    const xPositions = [...markup.matchAll(/<rect[^>]*data-activity-bar="chat"[^>]*>/g)]
+      .map((match) => Number(match[0].match(/\bx="([^"]+)"/)?.[1]))
+      .filter((value) => Number.isFinite(value))
+    const viewBoxWidth = Number(markup.match(/<svg[^>]*viewBox="0 0 ([^ ]+)/)?.[1])
+
+    expect(widths.length).toBeGreaterThanOrEqual(200)
+    expect(widths.length).toBeLessThanOrEqual(denseRollups.length)
+    expect(uniqueWidths).toHaveLength(1)
+    expect(xPositions[0]).toBeGreaterThanOrEqual(0)
+    expect(xPositions.at(-1)! + widths.at(-1)!).toBeLessThanOrEqual(viewBoxWidth)
+    // Real timestamp gaps remain visible on the shared time axis; only the
+    // visual bar cadence is uniform. Requiring equal X deltas would put bars
+    // back into index slots and detach them from hover/selection time.
+    expect(new Set(xPositions.map((value) => value.toFixed(4))).size).toBeGreaterThan(1)
+  })
+
+  it('keeps downsampled overview bars above the 1px needle floor', () => {
+    const longRollups = Array.from({ length: 566 }, (_, index) => ({
+      minuteTs: new Date(
+        Date.parse('2026-07-31T00:00:00.000Z') + index * 60_000,
+      ).toISOString(),
+      viewerAvg: 10_000 + (index % 17) * 20,
+      viewerSamples: 1,
+      chatCount: 100 + (index % 23),
+      totalEmoteCount: 30 + (index % 19),
+    }))
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={longRollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        durationSeconds={566 * 60}
+        variant="console"
+        activityExpanded={false}
+        motionEnabled={false}
+      />,
+    )
+    const widths = [...markup.matchAll(/<rect[^>]*data-activity-bar="chat"[^>]*>/g)]
+      .map((match) => Number(match[0].match(/\bwidth="([^"]+)"/)?.[1]))
+      .filter((value) => Number.isFinite(value) && value > 0)
+
+    expect(widths.length).toBeGreaterThanOrEqual(200)
+    expect(Math.min(...widths)).toBeGreaterThan(1)
+    expect(new Set(widths.slice(1, -1).map((value) => value.toFixed(4)))).toHaveLength(1)
+  })
+
+  it('keeps sparse activity bars within the shared render budget', () => {
+    const sparseRollups = Array.from({ length: 300 }, (_, index) => ({
+      minuteTs: new Date(
+        Date.parse('2026-07-31T00:00:00.000Z') + index * 2 * 60_000,
+      ).toISOString(),
+      viewerAvg: 10_000 + (index % 17) * 20,
+      viewerSamples: 1,
+      chatCount: 100 + (index % 23),
+      totalEmoteCount: 30 + (index % 19),
+    }))
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={sparseRollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        durationSeconds={599 * 60}
+        variant="console"
+        activityExpanded={false}
+        motionEnabled={false}
+      />,
+    )
+
+    for (const signal of ['chat', 'emotes']) {
+      const bars = activityRects(markup, signal)
+      expect(bars).toHaveLength(240)
+    }
+  })
+
+  it('keeps activity geometry finite when timestamps are malformed', () => {
+    const malformedRollups = Array.from({ length: 100 }, (_, index) => ({
+      minuteTs: 'invalid',
+      viewerAvg: 10_000 + index,
+      viewerSamples: 1,
+      chatCount: 100 + index,
+      totalEmoteCount: 30 + index,
+    }))
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={malformedRollups}
+        durationSeconds={99 * 60}
+        variant="console"
+        activityExpanded={false}
+        motionEnabled={false}
+      />,
+    )
+
+    for (const signal of ['chat', 'emotes']) {
+      const bars = activityRects(markup, signal)
+      expect(bars.length).toBeGreaterThan(0)
+      expect(bars.every((bar) => Number.isFinite(bar.x) && Number.isFinite(bar.width))).toBe(true)
+      expect(Math.min(...bars.map((bar) => bar.x))).toBeGreaterThanOrEqual(0)
+      expect(Math.max(...bars.map((bar) => bar.x + bar.width))).toBeLessThanOrEqual(1000)
+    }
+  })
+
+  it('hides decorative SVG primitives behind one concise chart summary', () => {
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={rollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        onSelectRollup={vi.fn()}
+        motionEnabled={false}
+      />,
+    )
+
+    expect(markup).toContain('data-chart-decorative-primitives="true"')
+    expect(markup).toContain('aria-hidden="true"')
+    expect(markup).toContain('Timeline with 2 measured minute rows.')
+    expect(markup).toContain('aria-live="polite"')
+  })
+
+  it('offers a complete paginated data-table alternative', () => {
+    const markup = renderToStaticMarkup(
+      <PulseMultiSignalChartInner
+        rollups={longRollups}
+        streamStartedAt="2026-07-31T00:00:00.000Z"
+        motionEnabled={false}
+      />,
+    )
+
+    expect(markup).toContain('data-shared-chart-data-alternative="true"')
+    expect(markup).toContain('Chart data table (20 rows)')
+    expect(markup).toContain('<table')
+    expect(markup).toContain('Complete analytics timeline data, paginated')
+    expect(markup).toContain('Chat / min')
+    expect(markup).toContain('Emotes / min')
   })
 
   it('renders backend reaction windows at their real interval without hiding emote bars', () => {
@@ -241,23 +507,143 @@ describe('chart controls', () => {
     expect(markup).toContain('data-moment-selected-marker="true"')
   })
 
-  it('ordinary MultiSignal wheel prevents page scroll without ctrl', () => {
-    const preventDefault = vi.fn()
-    const onViewportChange = vi.fn()
-    handleMultiSignalWheelEvent({
-      event: {
-        deltaX: 0,
-        deltaY: -100,
-        deltaMode: 0,
-        preventDefault,
-      },
-      viewport: { startSeconds: 0, endSeconds: 3600 },
-      durationSeconds: 3600,
-      anchorSeconds: 1800,
-      onViewportChange,
+  describe('wheel semantics', () => {
+    const wheel = (
+      overrides: Partial<{
+        deltaX: number
+        deltaY: number
+        deltaMode: number
+        altKey: boolean
+        ctrlKey: boolean
+        metaKey: boolean
+        shiftKey: boolean
+      }> = {},
+    ) => ({
+      deltaX: 0,
+      deltaY: -100,
+      deltaMode: 0,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      ...overrides,
     })
-    expect(preventDefault).toHaveBeenCalledOnce()
-    expect(onViewportChange).toHaveBeenCalledOnce()
+
+    const run = (
+      event: ReturnType<typeof wheel>,
+      overrides: Partial<{ viewport: { startSeconds: number; endSeconds: number }; durationSeconds: number; wheelZoomMode: 'modified' | 'direct' }> = {},
+    ) => {
+      const preventDefault = vi.fn()
+      const onViewportChange = vi.fn()
+      const consumed = handleMultiSignalWheelEvent({
+        event: { ...event, preventDefault },
+        viewport: { startSeconds: 0, endSeconds: 3600 },
+        durationSeconds: 3600,
+        anchorSeconds: 1800,
+        onViewportChange,
+        ...overrides,
+      })
+      return { consumed, preventDefault, onViewportChange }
+    }
+
+    it('lets an ordinary vertical wheel scroll the page instead of zooming', () => {
+      const { consumed, preventDefault, onViewportChange } = run(wheel())
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(onViewportChange).not.toHaveBeenCalled()
+    })
+
+    it('zooms directly when the session chart opts in', () => {
+      const { consumed, preventDefault, onViewportChange } = run(wheel(), { wheelZoomMode: 'direct' })
+      expect(consumed).toBe(true)
+      expect(preventDefault).toHaveBeenCalledOnce()
+      expect(onViewportChange.mock.calls[0][0].endSeconds - onViewportChange.mock.calls[0][0].startSeconds).toBeLessThan(3600)
+    })
+
+    it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { deltaY: 240 }])('preserves browser gestures and the full-range boundary in direct mode: %j', event => {
+      const { consumed, preventDefault } = run(wheel(event), { wheelZoomMode: 'direct' })
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('lets an ordinary downward wheel scroll the page at the full-window boundary', () => {
+      // The original trap: fully zoomed out, scrolling down could not zoom out
+      // any further yet still swallowed the event and stalled the document.
+      const { consumed, preventDefault, onViewportChange } = run(wheel({ deltaY: 240 }))
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(onViewportChange).not.toHaveBeenCalled()
+    })
+
+    it('lets alt + wheel scroll the page when there is no zoom left to apply', () => {
+      // Already at the full window, so zooming out changes nothing. The gesture
+      // is not consumed, matching HubChartNavigator's boundary rule: preventDefault
+      // happens only when the chart actually applies the gesture.
+      const { consumed, preventDefault, onViewportChange } = run(
+        wheel({ altKey: true, deltaY: 240 }),
+      )
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(onViewportChange).not.toHaveBeenCalled()
+    })
+
+    it('zooms on the documented Alt+wheel gesture', () => {
+      const { consumed, preventDefault, onViewportChange } = run(wheel({ altKey: true }))
+      expect(consumed).toBe(true)
+      expect(preventDefault).toHaveBeenCalledOnce()
+      expect(onViewportChange).toHaveBeenCalledOnce()
+    })
+
+    it.each([
+      ['ctrl', { ctrlKey: true }],
+      ['cmd', { metaKey: true }],
+    ] as const)('leaves %s + wheel to the browser instead of zooming the chart', (_label, modifier) => {
+      const { consumed, preventDefault, onViewportChange } = run(wheel(modifier))
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(onViewportChange).not.toHaveBeenCalled()
+    })
+
+    it('leaves shift + wheel to the surrounding navigator rail', () => {
+      const { consumed, preventDefault } = run(wheel({ shiftKey: true }))
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('does not zoom when the browser also claims the gesture (alt + ctrl)', () => {
+      const { consumed, preventDefault } = run(wheel({ altKey: true, ctrlKey: true }))
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('ignores a predominantly horizontal gesture even when alt is held', () => {
+      const { consumed, preventDefault } = run(wheel({ deltaX: -200, deltaY: -10, altKey: true }))
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('never consumes a wheel event when there is no duration to zoom', () => {
+      const { consumed, preventDefault } = run(wheel({ altKey: true }), { durationSeconds: 0 })
+      expect(consumed).toBe(false)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+  })
+
+  it('never sets touch-action:none on the plot surface, in either drag mode', () => {
+    for (const dragPanMode of ['off', 'zoomed'] as const) {
+      const markup = renderToStaticMarkup(
+        <PulseMultiSignalChartInner
+          rollups={longRollups}
+          streamStartedAt="2026-07-31T00:00:00.000Z"
+          durationSeconds={20 * 60}
+          variant="console"
+          motionEnabled={false}
+          dragPanMode={dragPanMode}
+        />,
+      )
+      expect(markup).toContain('data-chart-touch-action="pan-y"')
+      expect(markup).not.toMatch(/touch-action:\s*none/)
+    }
   })
 })
 

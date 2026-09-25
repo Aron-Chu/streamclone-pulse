@@ -58,7 +58,6 @@ export interface StreamSummaryResponse {
 
 export interface AnalyticsApi {
   ensureChannelEmotes(login: string, twitchId: string, providers?: string[]): Promise<unknown>
-  getChannelEmoteCatalog?(login: string): Promise<AnalyticsTopEmote[]>
   getAnalyticsStream(streamId: string, opts?: AnalyticsStreamOptions): Promise<unknown | null>
   getStreamStatus?(streamId: string): Promise<unknown | null>
   getStreamMinutesTail?(streamId: string, afterOffset: number): Promise<unknown | null>

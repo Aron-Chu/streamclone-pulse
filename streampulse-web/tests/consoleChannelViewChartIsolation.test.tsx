@@ -92,3 +92,34 @@ describe('ConsoleChannelView chart isolation (P4-L03 / P4-L05)', () => {
     expect(consoleRenderCount.mock.calls.length).toBe(initialRenders)
   })
 })
+
+describe('ConsoleChannelView Moments return navigation', () => {
+  it.each([
+    ['/analytics/moments?view=recent&q=history', 'Latest moments'],
+    ['/analytics/moments?view=recent#history', 'Latest moments'],
+    ['/analytics/moments?view=saved#history', 'Saved moments'],
+    ['/analytics/moments?view=history&year=2026&category=VALORANT#evidence', 'Broadcast history'],
+  ])('labels %s from its view and preserves its destination', (returnTo, label) => {
+    const query = new URLSearchParams({ returnTo })
+    render(
+      <MemoryRouter initialEntries={[`/analytics/xqc/2026-07-11?${query}`]}>
+        <Routes>
+          <Route path="/analytics/:login/:streamId" element={<ConsoleChannelView />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: new RegExp(`${label}$`) }).getAttribute('href')).toBe(returnTo)
+  })
+
+  it('sends a link without a return path to the creator broadcasts, not global History', () => {
+    render(
+      <MemoryRouter initialEntries={['/analytics/xqc/2026-07-11']}>
+        <Routes>
+          <Route path="/analytics/:login/:streamId" element={<ConsoleChannelView />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: /All xqc broadcasts$/ }).getAttribute('href')).toBe('/analytics/xqc')
+  })
+})

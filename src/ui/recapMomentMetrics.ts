@@ -26,16 +26,22 @@ export function rollupAtOffset(
   rollups: ExtensionRollup[],
   offsetSeconds: number,
 ): ExtensionRollup | null {
-  if (rollups.length === 0) return null
+  if (rollups.length === 0 || !Number.isFinite(offsetSeconds)) return null
   const exact = rollups.find(rollup => rollup.offsetSeconds === offsetSeconds)
   if (exact && !exact.missing) return exact
+
+  const bucketStart = Math.floor(offsetSeconds / 60) * 60
+  const bucketRollup = rollups.find(
+    rollup => !rollup.missing && rollup.offsetSeconds === bucketStart,
+  )
+  if (bucketRollup) return bucketRollup
 
   let nearest: ExtensionRollup | null = null
   let bestDistance = Infinity
   for (const rollup of rollups) {
     if (rollup.missing) continue
     const distance = Math.abs(rollup.offsetSeconds - offsetSeconds)
-    if (distance <= 60 && distance < bestDistance) {
+    if (distance < 60 && distance < bestDistance) {
       bestDistance = distance
       nearest = rollup
     }
@@ -72,15 +78,21 @@ export function peakAtOffset(
   peaks: ExtensionPeak[] | undefined,
   offsetSeconds: number,
 ): ExtensionPeak | null {
-  if (!peaks?.length) return null
+  if (!peaks?.length || !Number.isFinite(offsetSeconds)) return null
   const exact = peaks.find(peak => peak.offsetSeconds === offsetSeconds)
   if (exact) return exact
+
+  const bucketStart = Math.floor(offsetSeconds / 60) * 60
+  const bucketPeak = peaks.find(
+    peak => Math.floor(peak.offsetSeconds / 60) * 60 === bucketStart,
+  )
+  if (bucketPeak) return bucketPeak
 
   let nearest: ExtensionPeak | null = null
   let bestDistance = Infinity
   for (const peak of peaks) {
     const distance = Math.abs(peak.offsetSeconds - offsetSeconds)
-    if (distance <= 60 && distance < bestDistance) {
+    if (distance < 60 && distance < bestDistance) {
       bestDistance = distance
       nearest = peak
     }
@@ -99,22 +111,25 @@ export function resolveRecapMomentMetrics(
   rollups: ExtensionRollup[],
   peaks?: ExtensionPeak[],
 ): RecapMomentMetrics {
-  const peak = peakAtOffset(peaks, moment.offsetSeconds)
   const rollup = rollupAtOffset(rollups, moment.offsetSeconds)
+  const peak = peakAtOffset(peaks, moment.offsetSeconds)
+
+  // When a valid, non-missing rollup exists for this minute bucket, the rollup
+  // is the canonical source of truth for the chart, inspector card, and moment row.
+  if (rollup && !rollup.missing) {
+    return {
+      chatCount: rollup.chatCount ?? moment.chatCount ?? peak?.chatCount ?? 0,
+      emoteCount: rollupEmoteCount(rollup) || (moment.emoteCount ?? peak?.emoteCount ?? 0),
+      viewerCount: rollup.viewerCount ?? moment.viewerCount ?? 0,
+    }
+  }
+
+  // Fallback when rollup is missing or unmeasured for this interval:
+  // preserve missing-data semantics from moment or peak.
   return {
-    chatCount: Math.max(
-      0,
-      moment.chatCount ?? 0,
-      peak?.chatCount ?? 0,
-      rollup?.chatCount ?? 0,
-    ),
-    emoteCount: Math.max(
-      0,
-      moment.emoteCount ?? 0,
-      peak?.emoteCount ?? 0,
-      rollupEmoteCount(rollup),
-    ),
-    viewerCount: Math.max(0, moment.viewerCount ?? 0, rollup?.viewerCount ?? 0),
+    chatCount: moment.chatCount ?? peak?.chatCount ?? 0,
+    emoteCount: moment.emoteCount ?? peak?.emoteCount ?? 0,
+    viewerCount: moment.viewerCount ?? 0,
   }
 }
 
@@ -159,6 +174,18 @@ export function recapMomentToLiveHeatPoint(
     minuteTs: Number.isFinite(Date.parse(minuteTs)) ? minuteTs : '',
     offsetSeconds: Math.max(0, moment.offsetSeconds),
     score: Math.round(moment.score),
+    reactionScore: moment.reactionScore ?? peak?.reactionScore,
+    compositeScore: moment.compositeScore ?? peak?.compositeScore,
+    viewerMomentumScore: moment.viewerMomentumScore ?? peak?.viewerMomentumScore,
+    reactionOnsetOffsetSeconds:
+      moment.reactionOnsetOffsetSeconds ?? peak?.reactionOnsetOffsetSeconds,
+    reactionApexOffsetSeconds:
+      moment.reactionApexOffsetSeconds ?? peak?.reactionApexOffsetSeconds,
+    seekOffsetSeconds: moment.seekOffsetSeconds ?? peak?.seekOffsetSeconds,
+    precisionSeconds: moment.precisionSeconds ?? peak?.precisionSeconds,
+    refinementStatus: moment.refinementStatus ?? peak?.refinementStatus,
+    refinementConfidence: moment.refinementConfidence ?? peak?.refinementConfidence,
+    reactionScoringVersion: moment.reactionScoringVersion ?? peak?.reactionScoringVersion,
     estimated: false,
     reason: recapReasonToLiveHeatReason(reasonCode),
     reasonLabel: momentScoreReasonLabel(reasonCode),

@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub } from '../src/lib/publicHub'
 import { HubCommandHeader } from '../src/ui/components/analytics/HubCommandHeader'
 import { AnalyticsThemeProvider } from '../src/ui/providers/AnalyticsThemeProvider'
@@ -10,6 +10,7 @@ function renderHeader(
     events?: PoolWireEvent[]
     lastSuccessfulPollAt?: number
     hubEndpointOk?: boolean
+    loadSource?: 'full' | 'stats-fallback' | 'cache' | null
   } = {},
 ) {
   const hub = normalizePublicHub({
@@ -45,6 +46,7 @@ function renderHeader(
         hub={hub}
         lastSuccessfulPollAt={overrides.lastSuccessfulPollAt ?? Date.now() - 8_000}
         hubEndpointOk={overrides.hubEndpointOk ?? true}
+        loadSource={overrides.loadSource ?? 'full'}
         poolWireEvents={overrides.events ?? []}
         poolWireInitialized
       />
@@ -83,5 +85,72 @@ describe('HubCommandHeader command surface', () => {
     renderHeader({ events: [] })
     expect(screen.getByTestId('pool-wire-stable').textContent).toMatch(/POOL\s+Stable/i)
     expect(screen.queryByText(/Waiting for lifecycle changes/i)).toBeNull()
+  })
+
+  it('keeps later Pool Wire changes available through an expandable control', () => {
+    const events: PoolWireEvent[] = ['first', 'second', 'third', 'fourth'].map((login) => ({
+      id: `evt:${login}`,
+      kind: 'went_live',
+      channelKey: `login:${login}`,
+      login,
+      at: Date.now() - 34_000,
+      derived: false,
+    }))
+    renderHeader({ events })
+
+    const toggle = screen.getByRole('button', { name: 'Show 2 more pool changes' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByText('first')).toBeTruthy()
+    expect(screen.getByText('second')).toBeTruthy()
+    expect(screen.queryByText('third')).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(screen.getByText('third')).toBeTruthy()
+    expect(screen.getByText('fourth')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Show fewer pool changes' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('does not present a cached Pool Wire snapshot as live', () => {
+    renderHeader({
+      loadSource: 'cache',
+      events: [
+        {
+          id: 'evt:cached',
+          kind: 'went_live',
+          channelKey: 'login:xqc',
+          login: 'xqc',
+          displayName: 'xQc',
+          at: Date.now() - 34_000,
+          derived: false,
+        },
+      ],
+    })
+
+    expect(screen.getByTestId('pool-wire').textContent).toMatch(
+      /Pool updates paused · last snapshot is stale/,
+    )
+    expect(screen.getByTestId('hub-command-trust').textContent).toMatch(/DELAYED/)
+    expect(screen.getByTestId('hub-command-trust').textContent).not.toMatch(/LIVE/)
+    expect(screen.queryByText('Went live')).toBeNull()
+  })
+
+  it('ages a successful poll between network updates and stops claiming LIVE when stale', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-22T18:00:00Z'))
+    const lastSuccessfulPollAt = Date.now()
+    const view = renderHeader({ lastSuccessfulPollAt })
+    try {
+      const trust = screen.getByTestId('hub-command-trust')
+      expect(trust.textContent).toMatch(/UPDATED 0S AGO · LIVE/)
+
+      act(() => vi.advanceTimersByTime(65_000))
+      expect(trust.textContent).toMatch(/UPDATED 1M AGO · DELAYED/)
+
+      act(() => vi.advanceTimersByTime(3 * 60_000))
+      expect(trust.textContent).toMatch(/LAST GOOD UPDATE 4M AGO · RECONNECTING/)
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
   })
 })

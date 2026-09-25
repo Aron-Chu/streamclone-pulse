@@ -2,6 +2,7 @@ import {
   heatmapEmoteToRollupHit,
   normalizeMinuteBucket,
   topEmotesFromRollup,
+  recapMomentAnalyticalOffset,
   type RollupEmoteHit,
 } from '@streampulse/pulse-core'
 import type {
@@ -13,13 +14,12 @@ import type {
 import { viewerReadoutValue } from '@streampulse/pulse-charts'
 import type { ReplayHeatmapPoint } from '../types/heatmap.ts'
 import { minuteEmoteTotal } from '../components/analytics/chartRollupUtils.ts'
-import { findNearestRollupByOffset } from './momentSelection.ts'
 import { enrichRecapEmotesFromCatalog, resolveMomentEmotesForOffset } from './recapEmoteEnrich.ts'
 
 export interface MomentRowStats {
   viewers: number | null
-  chatPerMin: number
-  emotesPerMin: number
+  chatPerMin: number | null
+  emotesPerMin: number | null
 }
 
 export function recapEmoteToRollupHit(emote: PulseRecapEmote): RollupEmoteHit {
@@ -43,34 +43,38 @@ export function recapEmotesToRollupHits(
   return enrichRecapEmotesFromCatalog(emotes, catalog).map(recapEmoteToRollupHit)
 }
 
-/** Prefer recap minute stats; fall back to nearest rollup minute. */
+/** Resolve only the exact analytical minute; never substitute a nearby minute. */
+export function resolveMomentRowRollup(args: {
+  moment?: PulseRecapMoment
+  rollups?: AnalyticsMinuteRollup[]
+  streamStartedAt?: string
+}): AnalyticsMinuteRollup | null {
+  const { moment, rollups, streamStartedAt } = args
+  const start = streamStartedAt ? Date.parse(streamStartedAt) : NaN
+  const exact = Number.isFinite(start) && moment && Number.isFinite(moment.offsetSeconds) && moment.offsetSeconds >= 0
+    ? (rollups ?? []).filter(row => {
+      const at = Date.parse(row.minuteTs)
+      return Number.isFinite(at) && at >= Math.floor(start / 60_000) * 60_000
+        && Math.max(0, Math.trunc((at - start) / 1000)) === recapMomentAnalyticalOffset(moment)
+    }) : []
+  return exact.length === 1 && !exact[0].missing ? exact[0] : null
+}
+
+/** Match the selected-minute inspector. A detection snapshot is fallback only. */
 export function resolveMomentRowStats(args: {
   moment?: PulseRecapMoment
   rollups?: AnalyticsMinuteRollup[]
   streamStartedAt?: string
 }): MomentRowStats {
-  const { moment, rollups, streamStartedAt } = args
-  const rollup =
-    rollups?.length && streamStartedAt && moment
-      ? findNearestRollupByOffset(rollups, streamStartedAt, moment.offsetSeconds)
-      : null
-
-  const viewers =
-    (moment?.viewerCount ?? 0) > 0
-      ? moment!.viewerCount!
-      : rollup
-        ? viewerReadoutValue(rollup)
-        : null
-  const chatPerMin =
-    (moment?.chatCount ?? 0) > 0
-      ? moment!.chatCount!
-      : rollup?.chatCount ?? 0
-  const emotesPerMin =
-    (moment?.emoteCount ?? 0) > 0
-      ? moment!.emoteCount!
-      : rollup
-        ? minuteEmoteTotal(rollup)
-        : 0
+  const { moment } = args
+  const rollup = resolveMomentRowRollup(args)
+  const measured = (value: number | undefined | null): number | null => value != null && Number.isFinite(value) && value >= 0 ? value : null
+  const viewers = rollup ? measured(viewerReadoutValue(rollup)) : measured(moment?.viewerCount)
+  const chatPerMin = rollup ? measured(rollup.chatCount) : measured(moment?.chatCount)
+  // An absent emote map is not a measured zero. Explicit totals, including zero,
+  // retain authority over fallback map values.
+  const rollupEmotes = measured(rollup?.totalEmoteCount) ?? (rollup?.emotes ? measured(minuteEmoteTotal(rollup)) : null)
+  const emotesPerMin = rollup ? rollupEmotes : measured(moment?.emoteCount)
 
   return { viewers, chatPerMin, emotesPerMin }
 }

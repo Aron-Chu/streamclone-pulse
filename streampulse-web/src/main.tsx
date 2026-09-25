@@ -3,7 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AppRoutes } from './routes/index'
-import { clearBetaKey, clearStaleLocalBackendOverride, refreshPrincipal, setBackendUrlOverride } from './lib/auth'
+import {
+  clearBetaKey,
+  clearStaleLocalBackendOverride,
+  isAllowedDevBackendQueryOverride,
+  refreshPrincipal,
+  setBackendUrlOverride,
+} from './lib/auth'
 import { initPortalSentry } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
 import { PageMetadata } from './ui/PageMetadata'
@@ -68,7 +74,7 @@ function applyDevBackendQueryOverride(): void {
   if (!import.meta.env.DEV) return
   const requested = new URLSearchParams(window.location.search).get('spBackend')
   if (requested == null) return
-  setBackendUrlOverride(requested || null)
+  setBackendUrlOverride(isAllowedDevBackendQueryOverride(requested) ? requested : null)
   // Drop the parameter so it does not ride along on shared links or reloads.
   const url = new URL(window.location.href)
   url.searchParams.delete('spBackend')

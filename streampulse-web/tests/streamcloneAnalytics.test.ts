@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureAnalyticsApi } from '@streampulse/analytics-console'
-import type { AnalyticsStreamDetail, GameSegment, PulseStreamRecap } from '@streampulse/analytics-console'
+import type { AnalyticsStreamDetail, AnalyticsStreamsResponse, GameSegment, PulseStreamRecap } from '@streampulse/analytics-console'
+import portalTimingFixture from './fixtures/portal_vod_timing_v1.json'
 
 const apiClientMock = vi.fn()
 const getBackendUrlMock = vi.fn(() => 'http://127.0.0.1:8081')
@@ -11,6 +12,105 @@ vi.mock('../src/lib/apiClient', () => ({
 }))
 
 describe('streamcloneAnalytics adapter', () => {
+  it('deduplicates only pending summaries and fetches corrected data after settlement', async () => {
+    const { fetchPortalStreamSummary } = await import('../src/lib/streamcloneAnalytics')
+    let resolve!: (value: { data: { totalMessages: number } }) => void
+    apiClientMock.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    const first = fetchPortalStreamSummary('summary-refresh')
+    const concurrent = fetchPortalStreamSummary('summary-refresh')
+    expect(apiClientMock).toHaveBeenCalledTimes(1)
+    resolve({ data: { totalMessages: 10 } })
+    expect(await first).toEqual(await concurrent)
+    apiClientMock.mockResolvedValueOnce({ data: { totalMessages: 20 } })
+    expect(await fetchPortalStreamSummary('summary-refresh')).toEqual({ totalMessages: 20 })
+    expect(apiClientMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('isolates pending summaries by backend and permits failure recovery', async () => {
+    const { fetchPortalStreamSummary } = await import('../src/lib/streamcloneAnalytics')
+    let reject!: (error: Error) => void
+    apiClientMock.mockReturnValueOnce(new Promise((_, fail) => { reject = fail }))
+    const old = fetchPortalStreamSummary('summary-origin')
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    apiClientMock.mockResolvedValueOnce({ data: { totalMessages: 20 } })
+    const current = fetchPortalStreamSummary('summary-origin')
+    expect(apiClientMock).toHaveBeenCalledTimes(2)
+    reject(new Error('offline'))
+    expect(await old).toBeNull()
+    expect(await current).toEqual({ totalMessages: 20 })
+    apiClientMock.mockResolvedValueOnce({ data: { totalMessages: 30 } })
+    expect(await fetchPortalStreamSummary('summary-origin')).toEqual({ totalMessages: 30 })
+  })
+
+  it.each(['getReplayHeatmap', 'getReplayHeatmapDetail'] as const)('%s handles asynchronous failures and preserves query parameters', async method => {
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    apiClientMock.mockRejectedValueOnce(new Error('unreachable'))
+    await expect(portalAnalyticsApi[method]!('s1', 60, 'xqc')).resolves.toBeNull()
+    apiClientMock.mockResolvedValueOnce({ data: { windows: [] } })
+    await expect(portalAnalyticsApi[method]!('s1', 60, 'xqc')).resolves.toEqual({ windows: [] })
+    const path = apiClientMock.mock.calls.at(-1)![0] as string
+    expect(path).toContain('/streams/s1/replay-heatmap?window=60')
+    expect(path).toContain('channel=xqc')
+    expect(path.includes('detail=true')).toBe(method === 'getReplayHeatmapDetail')
+  })
+
+  it('preserves an absent source observation on status cache miss or expiry', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    apiClientMock.mockResolvedValue({ data: { streamId: '123', availability: { chartUsable: true, vodState: 'pending_live' } } })
+    const status = await portalAnalyticsApi.getStreamStatus!('123')
+    expect(status).not.toHaveProperty('vodId')
+    expect(status).not.toHaveProperty('vodAlignSeconds')
+    expect(status).not.toHaveProperty('vodDurationSeconds')
+    expect(status).toMatchObject({ availability: { chartUsable: true } })
+    expect((status as { availability: object }).availability).not.toHaveProperty('vodState')
+  })
+  it('status cannot promote unverified or cross-stream replay identities', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    apiClientMock.mockResolvedValue({ data: { streamId: '123', state: 'live', vodId: '2865942971', vodAlignSeconds: 5,
+      vodDurationSeconds: 1000, availability: { vodId: '2865942971', vodState: 'linked', liveDvrState: 'live', chartUsable: true } } })
+    const status = await portalAnalyticsApi.getStreamStatus!('123')
+    expect(status).toMatchObject({ vodId: '', state: undefined, vodAlignSeconds: undefined, vodDurationSeconds: undefined,
+      availability: { vodId: '', vodState: 'request_failed', chartUsable: true } })
+    expect((status as { availability: object }).availability).not.toHaveProperty('liveDvrState')
+    apiClientMock.mockResolvedValue({ data: { streamId: 'other', ...portalTimingFixture } })
+    expect(await portalAnalyticsApi.getStreamStatus!('123')).toBeNull()
+  })
+  it('does not treat future lifecycle observations as live or ended evidence', async () => {
+    const { portalLifecycleDetailState } = await import('../src/lib/streamcloneAnalytics')
+    const now = Date.now()
+    const stream = { streamId: '123', login: 'example', startedAt: new Date(now - 60_000).toISOString(),
+      lifecycleObservedAt: new Date(now + 30_000).toISOString(), lifecycleDetectedAt: new Date(now + 31_000).toISOString() }
+    expect(portalLifecycleDetailState({ ...stream, lifecycleState: 'confirmed_live' }, 'live')).toBe('unknown')
+    expect(portalLifecycleDetailState({ ...stream, lifecycleState: 'confirmed_ended' }, 'historical')).toBe('unknown')
+    expect(portalLifecycleDetailState({ ...stream, lifecycleObservedAt: new Date(now - 1000).toISOString(), lifecycleState: 'confirmed_live' }, 'live')).toBe('live')
+  })
+  it('preserves the Go archive timing bounds and rejects a failed timing recheck', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    let body = portalTimingFixture
+    apiClientMock.mockImplementation(async (path: string) => ({ data: path.endsWith('/321192454233') ? body : { minutes: [], rollups: [], sources: [], items: [] } }))
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const detail = await portalAnalyticsApi.getAnalyticsStream('321192454233') as AnalyticsStreamDetail
+    expect(detail.vodAlignSeconds).toBe(-75.5)
+    expect(detail.vodDurationSeconds).toBe(18000)
+    body = { ...portalTimingFixture, vodTiming: { ...portalTimingFixture.vodTiming, state: 'unavailable' } }
+    const failed = await portalAnalyticsApi.getAnalyticsStream('321192454233') as AnalyticsStreamDetail
+    expect(failed.vodAlignSeconds).toBeUndefined()
+  })
+  it('does not forward late legacy EndedAt into hosted detail or list consumers', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const stream = { streamId: '123', login: 'example', startedAt: '2026-08-01T10:00:00Z', endedAt: '2026-09-01T10:00:00Z' }
+    apiClientMock.mockResolvedValue({ data: { channel: 'example', state: 'historical', stream, items: [stream], updatedAt: Date.now(), rollups: [] } })
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const live = await portalAnalyticsApi.getAnalyticsLive('example') as AnalyticsStreamDetail
+    expect(live.state).toBe('unknown')
+    expect(live.stream?.endedAt).toBeUndefined()
+    expect(live.stream?.lifecycleState).toBe('unknown')
+    const list = await portalAnalyticsApi.getAnalyticsStreams('example') as AnalyticsStreamsResponse
+    expect(list.items[0].endedAt).toBeUndefined()
+    expect(list.items[0].lifecycleState).toBe('unknown')
+  })
   const minute = (index: number) => ({
     minuteTs: new Date(Date.now() + index * 60_000).toISOString(),
     viewerAvg: 0,
@@ -229,7 +329,7 @@ describe('streamcloneAnalytics adapter', () => {
     })) as AnalyticsStreamDetail
 
     expect(detail.stream?.streamId).toBe(requestedId)
-    expect(detail.stream?.startedAt).toBe(currentStartedAt)
+    expect(detail.stream?.startedAt).toBe(new Date(currentStartedAt).toISOString())
     expect(detail.stream?.category).toBe('Mile 27')
     expect(apiClientMock).toHaveBeenCalledWith('/v1/portal/analytics/channels/caseoh_/live')
   })
@@ -382,7 +482,7 @@ describe('streamcloneAnalytics adapter', () => {
           data: {
             streamId: '317839735654',
             channel: 'eliasn97',
-            startedAt: new Date(0).toISOString(),
+            startedAt: '2026-08-01T00:00:00.000Z',
             minutes: [
               {
                 offsetSeconds: 60,
@@ -403,7 +503,7 @@ describe('streamcloneAnalytics adapter', () => {
         data: {
           channel: 'eliasn97',
           state: 'historical',
-          stream: { streamId: '317839735654', login: 'eliasn97', startedAt: new Date(0).toISOString() },
+          stream: { streamId: '317839735654', login: 'eliasn97', startedAt: '2026-08-01T00:00:00.000Z' },
           sources: [],
           updatedAt: Date.now(),
         },
@@ -430,7 +530,7 @@ describe('streamcloneAnalytics adapter', () => {
           data: {
             streamId: '317839735654',
             channel: 'alanzoka',
-            startedAt: new Date(0).toISOString(),
+            startedAt: '2026-08-01T00:00:00.000Z',
             minutes: [
               {
                 offsetSeconds: 60,
@@ -455,7 +555,7 @@ describe('streamcloneAnalytics adapter', () => {
         data: {
           channel: 'alanzoka',
           state: 'historical',
-          stream: { streamId: '317839735654', login: 'alanzoka', startedAt: new Date(0).toISOString() },
+          stream: { streamId: '317839735654', login: 'alanzoka', startedAt: '2026-08-01T00:00:00.000Z' },
           sources: [],
           updatedAt: Date.now(),
         },
@@ -479,7 +579,7 @@ describe('streamcloneAnalytics adapter', () => {
           data: {
             streamId: '317839735654',
             channel: 'xqc',
-            startedAt: new Date(0).toISOString(),
+            startedAt: '2026-08-01T00:00:00.000Z',
             minutes: [
               {
                 offsetSeconds: 60,
@@ -503,7 +603,7 @@ describe('streamcloneAnalytics adapter', () => {
         data: {
           channel: 'xqc',
           state: 'historical',
-          stream: { streamId: '317839735654', login: 'xqc', startedAt: new Date(0).toISOString() },
+          stream: { streamId: '317839735654', login: 'xqc', startedAt: '2026-08-01T00:00:00.000Z' },
           sources: [],
           updatedAt: Date.now(),
         },
@@ -525,7 +625,7 @@ describe('streamcloneAnalytics adapter', () => {
           data: {
             streamId: '317548790616',
             channel: 'zackrawrr',
-            startedAt: new Date(0).toISOString(),
+            startedAt: '2026-08-01T00:00:00.000Z',
             minutes: [
               {
                 offsetSeconds: 120,
@@ -550,7 +650,7 @@ describe('streamcloneAnalytics adapter', () => {
         data: {
           channel: 'zackrawrr',
           state: 'historical',
-          stream: { streamId: '317548790616', login: 'zackrawrr', startedAt: new Date(0).toISOString() },
+          stream: { streamId: '317548790616', login: 'zackrawrr', startedAt: '2026-08-01T00:00:00.000Z' },
           sources: [{ source: 'analytics_db', state: 'ready' }],
           dataSourceBadges: [{ source: 'analytics_db', state: 'ready', label: 'Analytics Db' }],
           updatedAt: Date.now(),
@@ -585,7 +685,7 @@ describe('streamcloneAnalytics adapter', () => {
           data: {
             streamId: '317839735654',
             channel: 'xqc',
-            startedAt: new Date(0).toISOString(),
+            startedAt: '2026-08-01T00:00:00.000Z',
             minutes,
             updatedAt: Date.now(),
           },
@@ -601,7 +701,7 @@ describe('streamcloneAnalytics adapter', () => {
         data: {
           channel: 'xqc',
           state: 'historical',
-          stream: { streamId: '317839735654', login: 'xqc', startedAt: new Date(0).toISOString() },
+          stream: { streamId: '317839735654', login: 'xqc', startedAt: '2026-08-01T00:00:00.000Z' },
           sources: [],
           updatedAt: Date.now(),
         },
@@ -1035,6 +1135,22 @@ describe('streamcloneAnalytics adapter', () => {
 
       expect(apiClientMock).not.toHaveBeenCalledWith('/v1/portal/analytics/channels/jynxzi/emotes?range=30d')
       expect(detail.topEmotes).toEqual([])
+    })
+
+    it('does not mutate collection state during public channel navigation', async () => {
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      await expect(portalAnalyticsApi.watchAnalyticsChannel('xqc')).resolves.toEqual({
+        ok: false,
+        reason: 'explicit_authorization_required',
+      })
+      expect(apiClientMock).not.toHaveBeenCalled()
+    })
+
+    it('does not replace a missing sync source timestamp with the browser clock', async () => {
+      getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+      apiClientMock.mockResolvedValue({ data: { phase: 'completed' } })
+      const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+      await expect(portalAnalyticsApi.getSyncStatus('s1')).resolves.toBeNull()
     })
   })
 })

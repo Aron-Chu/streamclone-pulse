@@ -7,6 +7,7 @@ import { compact } from './hubFormat'
 import { MomentumBadge } from './MomentumBadge'
 import { StreamTogetherBadge, channelCategoryLabel } from './StreamTogetherBadge'
 import { ResilientImage } from '../ResilientImage'
+import { useCollectionArrival } from '../../motion/useCollectionArrival'
 
 export interface FigmaLiveChannelRailProps {
   channels: HubLiveChannel[]
@@ -14,7 +15,7 @@ export interface FigmaLiveChannelRailProps {
   loading?: boolean
 }
 
-const RAIL_THUMB_FALLBACK = '#1e3a5f'
+const RAIL_THUMB_FALLBACK = 'var(--surface-2, #202020)'
 
 function twitchPreviewUrl(login: string): string {
   return `https://static-cdn.jtvnw.net/previews-ttv/live_user_${encodeURIComponent(login.toLowerCase())}-320x180.jpg`
@@ -28,6 +29,7 @@ function TrendBadge({ pct, hasSignal }: { pct: number; hasSignal?: boolean }) {
 
 export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLiveChannelRailProps) {
   const gridRef = useRef<HTMLDivElement>(null)
+  useCollectionArrival(gridRef, JSON.stringify(channels.map(channel => `${channel.login}:${channel.streamId ?? ''}`)))
   const [atEnd, setAtEnd] = useState(true)
   const [fillsRow, setFillsRow] = useState(false)
 
@@ -58,7 +60,7 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
         <div className="figma-live-rail__grid">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="figma-live-rail__card" style={{ opacity: 0.4 }}>
-              <div className="figma-live-rail__thumb" style={{ background: colors[i] ?? '#1e3a5f' }} />
+              <div className="figma-live-rail__thumb" style={{ background: colors[i] ?? RAIL_THUMB_FALLBACK }} />
               <div className="figma-live-rail__body"><strong>…</strong></div>
             </div>
           ))}
@@ -70,7 +72,7 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
   if (channels.length === 0) {
     return (
       <div className="figma-live-rail">
-        <p className="muted">No channels live right now — search a channel to open analytics.</p>
+        <p className="muted">No channel activity supplied — search a channel to open analytics.</p>
       </div>
     )
   }
@@ -87,6 +89,7 @@ export function FigmaLiveChannelRail({ channels, colors = [], loading }: FigmaLi
           return (
             <Link
               key={channel.login}
+              data-arrival-key={`${channel.login}:${channel.streamId ?? ''}`}
               to={href}
               className="figma-live-rail__card"
             >

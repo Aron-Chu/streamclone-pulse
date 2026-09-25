@@ -89,20 +89,25 @@ try {
   const hostname = await extensionHostname(driver)
   if (!hostname) throw new Error(`Could not resolve moz-extension hostname for ${ADDON_ID}`)
 
-  await driver.get(`moz-extension://${hostname}/options/index.html`)
+  // The settings host opens on My Moments; each settings section is addressed by
+  // its hash (see src/options/SettingsHostShell.tsx).
+  const waitForText = (expected, label) => driver.wait(async () => {
+    const text = await driver.executeScript(`return document.body?.textContent || ''`)
+    return expected.every(item => text.includes(item))
+  }, timeoutMs, `Firefox shared settings host did not finish rendering ${label}`)
+
+  await driver.get(`moz-extension://${hostname}/options/index.html#pulse`)
   await driver.wait(until.titleIs(EXPECTED_TITLE), timeoutMs)
-  const consent = await driver.wait(
-    until.elementLocated(By.css('[data-testid="analytics-consent-toggle"]')),
-    timeoutMs,
-  )
-  if (await consent.isSelected()) {
-    throw new Error('Analytics consent must be off in a fresh Firefox profile')
-  }
-  const optionsText = await driver.findElement(By.css('body')).getText()
-  for (const expected of ['StreamPulse', 'Share anonymous product usage', 'Probe backend']) {
-    if (!optionsText.includes(expected)) {
-      throw new Error(`Firefox options page missing expected text: ${expected}`)
-    }
+  await driver.wait(until.elementLocated(By.css('[data-settings-workspace="true"]')), timeoutMs)
+  await driver.wait(until.elementLocated(By.css('[data-settings-section="pulse"]')), timeoutMs)
+  await waitForText(['StreamPulse', 'Extension settings', 'Pulse on Twitch'], 'the Pulse on Twitch section')
+
+  await driver.get(`moz-extension://${hostname}/options/index.html#updates`)
+  await driver.wait(until.elementLocated(By.css('[data-settings-section="updates"]')), timeoutMs)
+  await waitForText(['Updates & Changelog', 'Updates are managed by this browser'], 'the Updates & Changelog section')
+  const updateButtons = await driver.findElements(By.xpath("//button[contains(normalize-space(.), 'Check now')]"))
+  if (updateButtons.length !== 0) {
+    throw new Error('Firefox must not render a manual update-check button')
   }
 
   const watchlist = await runtimeMessage(driver, { type: 'LIST_WATCHLIST' })
@@ -138,7 +143,7 @@ try {
       optionsRendered: true,
       popupRendered: true,
       backgroundMessage: watchlist.type,
-      analyticsConsentDefault: false,
+      manualUpdateCheckHidden: true,
     }),
   )
 } finally {

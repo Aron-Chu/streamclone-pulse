@@ -144,7 +144,7 @@ export function CoverageHealthCard({
   const trackerBad = (pipeline?.roster.metadataStale ?? 0) > 0 || (pipeline?.roster.admissionDisabled ?? 0) > 0
   const trackerWarn = (pipeline?.roster.liveCollectorDeficitRows ?? 0) > 0 || (pipeline?.roster.capacityBlocked ?? 0) > 0
   const backfillPct = coverage.backfillMax > 0
-    ? Math.min(100, Math.round((coverage.backfillActive / coverage.backfillMax) * 100))
+    ? Math.min(100, (coverage.backfillActive / coverage.backfillMax) * 100)
     : coverage.backfillActive > 0
       ? 50
       : 0

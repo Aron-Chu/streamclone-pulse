@@ -1,3 +1,12 @@
+---
+status: canonical
+owner: streamclone-pulse
+last_verified_commit: 67835af7d6e138bf35806598b59d9f269a9b7207
+verification_scope: working-tree
+source_paths:
+  - ../streampulse-sdlc/boundary.json
+---
+
 # Agent guide — Streamclone Pulse extension
 
 Chrome MV3 extension + StreamPulse portal. **StreamPulse backend** (Go BFF, ingest) lives in sibling **`../streampulse-backend`**. Public client packages (`@streampulse/*`) are **Pulse-owned** under `packages/` in this repo. Public **Streamclone** (`../twitch-7tv-clone`) is the desktop Twitch replica only — not the extension/portal API source after boundary split.
@@ -77,7 +86,7 @@ Cross-repo layout: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
 ## Commits (agents)
 
-**Aron-Chu only** — no `Co-authored-by:` trailers. Cross-read streamclone [`.cursor/rules/commits.mdc`](../twitch-7tv-clone/.cursor/rules/commits.mdc) and [`AGENTS.md`](../twitch-7tv-clone/AGENTS.md) § Commits (agents). Cursor may append `Co-authored-by: Cursor`; strip before push via `git commit-tree` + `git update-ref` (`git -c alias.commit-tree= commit-tree …` on Windows). Squash/rebase when needed; commit only when the user asks.
+**Aron-Chu only.** Commit only when explicitly requested. Before pushing, verify the author is `Aron-Chu <aroncloudchu@gmail.com>` and the message has no `Co-authored-by:` trailer. If attribution is wrong, stop and report the exact commit. Rewrite history or force-push only when the user explicitly requests that action; never change global Git config.
 
 ## Commands
 

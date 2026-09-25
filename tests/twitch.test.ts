@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { isTwitchVodPath, parseChannelLogin } from '../src/content/twitch.ts'
+import {
+  isTwitchVodPath,
+  parseChannelLogin,
+  TWITCH_SYSTEM_ROUTES,
+} from '../src/content/twitch.ts'
 
 describe('isTwitchVodPath', () => {
   it('detects VOD watch URLs', () => {
@@ -17,6 +21,27 @@ describe('parseChannelLogin', () => {
 
   it('ignores reserved routes', () => {
     expect(parseChannelLogin('/directory')).toBeNull()
+  })
+
+  it.each([
+    'following',
+    'search',
+    'browse',
+    'downloads',
+    'turbo',
+    'wallet',
+    'jobs',
+    'store',
+    'login',
+    'signup',
+    'products',
+    'privacy',
+    'legal',
+    'help',
+  ])('does not treat /%s or its subroutes as a channel', route => {
+    expect(TWITCH_SYSTEM_ROUTES.has(route)).toBe(true)
+    expect(parseChannelLogin(`/${route}`)).toBeNull()
+    expect(parseChannelLogin(`/${route}/anything`)).toBeNull()
   })
 })
 

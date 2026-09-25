@@ -3,7 +3,7 @@
 import { useSmoothedChartViewport } from '../src/useSmoothedChartViewport.ts'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement, type ReactNode } from 'react'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -47,5 +47,32 @@ describe('useSmoothedChartViewport', () => {
 
     expect(container.querySelector('output')?.getAttribute('data-start')).toBe('1800')
     expect(container.querySelector('output')?.getAttribute('data-end')).toBe('2400')
+  })
+
+  it('still lands on the target when requestAnimationFrame never fires', () => {
+    // A background tab, an occluded window, or power saving stops rAF. The tween
+    // is decoration; the requested viewport is not optional.
+    const raf = vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(1 as never)
+    vi.useFakeTimers()
+    try {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+
+      renderProbe(root, { startSeconds: 0, endSeconds: 12480 }, true)
+      renderProbe(root, { startSeconds: 1310, endSeconds: 2210 }, true)
+
+      expect(container.querySelector('output')?.getAttribute('data-start')).toBe('0')
+
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+
+      expect(container.querySelector('output')?.getAttribute('data-start')).toBe('1310')
+      expect(container.querySelector('output')?.getAttribute('data-end')).toBe('2210')
+    } finally {
+      vi.useRealTimers()
+      raf.mockRestore()
+    }
   })
 })

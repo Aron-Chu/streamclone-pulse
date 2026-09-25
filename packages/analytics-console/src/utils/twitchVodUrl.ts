@@ -2,6 +2,16 @@ import { normalizeVodId } from '@streampulse/pulse-core'
 
 const ANALYTICS_VOD_ID_PATTERN = /^\d{6,20}$/
 
+/** Map an exact stream offset without substituting an archive boundary. */
+export function alignedVodOffset(streamOffset: number, alignment?: number | null, duration?: number | null): number | undefined {
+  if (!Number.isFinite(streamOffset) || streamOffset < 0 || typeof alignment !== 'number'
+    || !Number.isFinite(alignment) || Math.abs(alignment) > 6 * 60 * 60) return undefined
+  const offset = streamOffset + alignment
+  if (!Number.isFinite(offset) || offset < 0) return undefined
+  if (duration !== undefined && (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0 || offset >= duration)) return undefined
+  return Math.floor(offset)
+}
+
 function normalizeAnalyticsVodId(raw: string | undefined): string | undefined {
   const normalized = normalizeVodId(raw)
   return normalized && ANALYTICS_VOD_ID_PATTERN.test(normalized) ? normalized : undefined
@@ -56,7 +66,7 @@ export function resolveVodLinkState(input: {
     vodId?: string
     state?: string
     syncPhase?: string
-    stream?: { vodId?: string; endedAt?: string | null }
+    stream?: { vodId?: string; endedAt?: string | null; lifecycleState?: 'unknown' | 'confirmed_live' | 'confirmed_ended' }
     availability?: {
       vodState?: string
       vodId?: string
@@ -71,6 +81,18 @@ export function resolveVodLinkState(input: {
 }): VodLinkState {
   const authored = input.detail?.availability
   const authoredState = (authored?.vodState ?? '').trim().toLowerCase()
+  const detailState = (input.detail?.state ?? '').trim().toLowerCase()
+  const liveDvrState = (authored?.liveDvrState ?? '').trim().toLowerCase()
+  const lifecycleState = input.detail?.stream?.lifecycleState
+  const lifecycleUnknown = lifecycleState === 'unknown'
+  const pastDetail = detailState === 'historical' || liveDvrState === 'ended'
+  const pastEvidence = lifecycleState === 'confirmed_ended'
+    || (lifecycleState !== 'confirmed_live' && pastDetail)
+  const liveEvidence = lifecycleState === 'confirmed_live'
+    || (lifecycleState == null && !pastDetail && (input.isLiveCollector === true || input.channelIsLive === true))
+  // Archive copy can lag lifecycle status across independent polls. Once the
+  // session is marked past, an older source message cannot assert live.
+  const vodMessage = pastEvidence ? '' : (authored?.vodMessage?.trim() ?? '')
   const vodId =
     resolveAnalyticsVodId(input.detail, input.recapVodId)
     || normalizeAnalyticsVodId(input.fallbackVodId)
@@ -80,13 +102,13 @@ export function resolveVodLinkState(input: {
   // state. Twitch can publish the archive before the availability poll catches
   // up; keep the link usable instead of hiding it behind stale status text.
   if (vodId && (authoredState === 'pending_live' || authoredState === 'resolving')) {
-    const liveArchive = input.isLiveCollector === true
+    const liveArchive = liveEvidence
     return {
       status: 'linked',
       vodId,
       label: liveArchive ? 'Jump to VOD (live archive)' : 'Jump to VOD',
       detail:
-        authored?.vodMessage?.trim()
+        vodMessage
         || (liveArchive
           ? 'Twitch is archiving this broadcast. Timestamps track stream offset from go-live.'
           : ''),
@@ -94,11 +116,23 @@ export function resolveVodLinkState(input: {
   }
 
   if (authoredState === 'pending_live') {
+    if (lifecycleState === 'confirmed_ended') return {
+      status: 'unavailable', label: 'VOD not linked',
+      detail: 'This broadcast is confirmed ended. A fresh archive check has not verified a link yet.',
+    }
+    if (pastDetail) return {
+      status: 'unavailable', label: 'VOD not linked',
+      detail: 'This session is marked as past. A fresh archive check has not verified a link yet.',
+    }
+    if (lifecycleUnknown || !liveEvidence) return {
+      status: 'unavailable', label: 'VOD not linked',
+      detail: 'Analytics are available, but no verified archive link is available. Broadcast lifecycle and archive availability are unknown.',
+    }
     return {
       status: 'live',
       label: 'Live — no VOD yet',
       detail:
-        authored?.vodMessage?.trim()
+        vodMessage
         || 'This session is still live. A timestamped VOD link appears once Twitch publishes a live archive for this stream (Helix stream match).',
     }
   }
@@ -107,7 +141,7 @@ export function resolveVodLinkState(input: {
     return {
       status: 'syncing',
       label: 'Waiting for Twitch VOD',
-      detail: authored?.vodMessage?.trim() || 'Stream ended — waiting for Twitch VOD publication.',
+      detail: lifecycleUnknown ? 'Waiting for an archive link. Broadcast lifecycle remains unknown.' : vodMessage || 'Waiting for Twitch VOD publication.',
     }
   }
 
@@ -115,7 +149,7 @@ export function resolveVodLinkState(input: {
     return {
       status: 'request_failed',
       label: 'VOD lookup failed',
-      detail: authored?.vodMessage?.trim() || 'Could not reach Twitch to resolve the archive. Retry later.',
+      detail: vodMessage || 'Could not reach Twitch to resolve the archive. Retry later.',
     }
   }
 
@@ -124,26 +158,25 @@ export function resolveVodLinkState(input: {
       status: 'unavailable',
       label: 'VOD unavailable',
       detail:
-        authored?.vodMessage?.trim()
-        || 'No Twitch VOD exists for this session — it may have been deleted, expired, or was never archived.',
+        vodMessage
+        || 'No verified Twitch VOD link is available for this session. This does not establish whether an archive exists.',
     }
   }
 
   if (vodId) {
-    const liveArchive = input.isLiveCollector === true
+    const liveArchive = liveEvidence
     return {
       status: 'linked',
       vodId,
       label: liveArchive ? 'Jump to VOD (live archive)' : 'Jump to VOD',
       detail:
-        authored?.vodMessage?.trim()
+        vodMessage
         || (liveArchive
           ? 'Twitch is archiving this broadcast. Timestamps track stream offset from go-live.'
           : ''),
     }
   }
 
-  const detailState = (input.detail?.state ?? '').trim().toLowerCase()
   const syncing =
     detailState === 'syncing'
     || Boolean(input.detail?.syncPhase?.trim())
@@ -156,23 +189,26 @@ export function resolveVodLinkState(input: {
   }
 
   const endedAt = input.detail?.stream?.endedAt?.trim()
-  const liveDvrState = (authored?.liveDvrState ?? '').trim().toLowerCase()
+  if (input.detail?.stream?.lifecycleState === 'unknown') return {
+    status: 'unavailable', label: 'VOD not linked',
+    detail: 'No verified archive link is available. Broadcast lifecycle and archive availability are unknown.',
+  }
   const sessionEnded =
     Boolean(endedAt)
     || liveDvrState === 'ended'
     || detailState === 'historical'
   const channelLive = input.channelIsLive
-  const isLive = input.isLiveCollector ?? (
+  const isLive = !pastEvidence && (input.isLiveCollector ?? (
     channelLive !== false
     && liveDvrState !== 'ended'
     && detailState !== 'historical'
     && (detailState === 'live' || !endedAt)
-  )
+  ))
   if (channelLive === false && !vodId && sessionEnded) {
     return {
       status: 'syncing',
       label: 'Waiting for Twitch VOD',
-      detail: authored?.vodMessage?.trim() || 'Stream ended — waiting for Twitch VOD publication.',
+      detail: vodMessage || 'Stream ended — waiting for Twitch VOD publication.',
     }
   }
   if (isLive) {
@@ -185,8 +221,8 @@ export function resolveVodLinkState(input: {
 
   return {
     status: 'unavailable',
-    label: 'VOD unavailable',
-    detail: 'No Twitch VOD exists for this session — it may have been deleted, expired, or was never archived.',
+    label: 'VOD not linked',
+    detail: 'No verified Twitch VOD link is available for this session. This does not establish whether an archive exists.',
   }
 }
 

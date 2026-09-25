@@ -2,6 +2,7 @@ export type PulseDebugStep =
   | 'vod.discover.dom'
   | 'vod.discover.page'
   | 'vod.discover.gql'
+  | 'vod.discover.history'
   | 'vod.hint.api'
   | 'vod.backfill.start'
   | 'vod.backfill.result'
@@ -57,9 +58,10 @@ function sendDebugMessage<T>(message: Record<string, unknown>): Promise<T> {
 }
 
 export async function initPulseDebug(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.sync) return
   const stored = await chrome.storage.sync.get(ENABLE_KEY)
   cachedEnabled = Boolean(stored[ENABLE_KEY])
-  if (!toggleListenerAttached) {
+  if (!toggleListenerAttached && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener(onDebugToggleChanged)
     toggleListenerAttached = true
   }

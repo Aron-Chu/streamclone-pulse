@@ -31,13 +31,30 @@ export function portalReleaseShort(): string {
 }
 
 export function sanitizePortalPath(pathname: string): string {
-  const path = pathname.split('?')[0] || '/'
+  let path = pathname.split(/[?#]/)[0] || '/'
+  if (/^https?:\/\//i.test(path)) {
+    try { path = new URL(path).pathname } catch { return '/:unknown' }
+  }
   if (path === '/analytics' || path === '/analytics/streams') return path
   if (/^\/analytics\/[^/]+\/s\/[^/]+\/?$/.test(path)) return '/analytics/:login/s/:streamId'
   if (/^\/analytics\/[^/]+\/[^/]+\/?$/.test(path)) return '/analytics/:login/:streamId'
   if (/^\/analytics\/[^/]+\/?$/.test(path)) return '/analytics/:login'
   if (/^\/s\/[^/]+\/[^/]+\/?$/.test(path)) return '/s/:login/:streamId'
-  return path.replace(/\/[0-9a-f]{8,}\b/gi, '/:id')
+  if (['/', '/docs', '/status', '/privacy', '/support', '/dashboard', '/dashboard/clips'].includes(path)) return path
+  return '/:unknown'
+}
+
+/** Free-form runtime/provider text is untrusted, even without a recognizable key. */
+export function scrubDiagnosticText(value: string): string {
+  // Preserve only exact, non-interpolated platform messages. Extending a secret
+  // key blacklist cannot protect opaque tokens or future provider error shapes.
+  const platformMessages = new Set([
+    'Failed to fetch', 'Load failed', 'Script error.',
+    'NetworkError when attempting to fetch resource.',
+    'ResizeObserver loop limit exceeded',
+    'ResizeObserver loop completed with undelivered notifications.',
+  ])
+  return platformMessages.has(value) ? value : 'Diagnostic text omitted'
 }
 
 function scrubRecord(input: Record<string, unknown> | undefined): Record<string, string> {
@@ -46,12 +63,13 @@ function scrubRecord(input: Record<string, unknown> | undefined): Record<string,
   for (const [k, v] of Object.entries(input)) {
     if (!ALLOWED_TAGS.has(k) || SENSITIVE_KEY.test(k)) continue
     if (v == null) continue
-    out[k] = String(v)
+    if (k === 'route') out[k] = sanitizePortalPath(String(v))
+    else if (/^[\w.:@/-]{1,128}$/.test(String(v)) && !String(v).includes('://')) out[k] = String(v)
   }
   return out
 }
 
-function beforeSend(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
+export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
   if (typeof window !== 'undefined' && import.meta.env.PROD) {
     const host = window.location.hostname
     if (host && !PRODUCTION_HOSTS.has(host) && host !== 'localhost' && host !== '127.0.0.1') {
@@ -59,32 +77,40 @@ function beforeSend(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
     }
   }
 
-  event.user = undefined
-  event.request = undefined
-  event.breadcrumbs = undefined
-  event.extra = undefined
-  event.contexts = undefined
-
   const tags = scrubRecord(event.tags as Record<string, unknown> | undefined)
   tags.service = 'portal'
   tags.role = 'portal'
   tags.release = portalRelease()
-  event.tags = tags
-
-  if (event.transaction) {
-    event.transaction = sanitizePortalPath(event.transaction)
+  const safeNumber = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+  // Construct an allowlist rather than mutating the SDK event: future SDK
+  // fields, raw_stacktrace, debug metadata and arbitrary exception extras must
+  // not silently become a second diagnostics upload path.
+  return {
+    type: undefined,
+    event_id: /^[a-f0-9]{32}$/i.test(event.event_id ?? '') ? event.event_id : undefined,
+    timestamp: safeNumber(event.timestamp),
+    platform: 'javascript',
+    level: event.level && ['fatal', 'error', 'warning', 'log', 'info', 'debug'].includes(event.level) ? event.level : undefined,
+    release: portalRelease(),
+    environment: import.meta.env.MODE,
+    tags,
+    transaction: event.transaction ? sanitizePortalPath(event.transaction) : undefined,
+    message: event.message ? scrubDiagnosticText(event.message) : undefined,
+    exception: event.exception?.values ? {
+      values: event.exception.values.slice(0, 5).map(ex => ({
+        type: /^(?:Error|TypeError|RangeError|ReferenceError|SyntaxError|URIError|EvalError|AggregateError)$/.test(ex.type ?? '') ? ex.type : 'Error',
+        value: ex.value ? scrubDiagnosticText(ex.value) : undefined,
+        stacktrace: ex.stacktrace?.frames ? { frames: ex.stacktrace.frames.slice(-50).map(frame => ({
+          // Asset/line/column plus release source maps retain debugging value
+          // without accepting dynamic function names as another free-text sink.
+          filename: frame.filename?.match(/(?:^|\/)(assets\/[\w.-]+\.js)(?:[?#].*)?$/)?.[1],
+          lineno: safeNumber(frame.lineno), colno: safeNumber(frame.colno),
+          in_app: typeof frame.in_app === 'boolean' ? frame.in_app : undefined,
+        })) } : undefined,
+        mechanism: ex.mechanism ? { type: 'generic', handled: typeof ex.mechanism.handled === 'boolean' ? ex.mechanism.handled : undefined } : undefined,
+      })),
+    } : undefined,
   }
-  if (event.message) {
-    event.message = event.message.replace(/Bearer\s+\S+/gi, '[redacted]')
-  }
-  if (event.exception?.values) {
-    for (const ex of event.exception.values) {
-      if (ex.value) {
-        ex.value = ex.value.replace(/Bearer\s+\S+/gi, '[redacted]')
-      }
-    }
-  }
-  return event
 }
 
 function beforeBreadcrumb(breadcrumb: Sentry.Breadcrumb): Sentry.Breadcrumb | null {
@@ -124,7 +150,7 @@ export function initPortalSentry(): void {
     sampleRate: 1.0,
     tracesSampleRate: 0,
     sendDefaultPii: false,
-    beforeSend,
+    beforeSend: scrubPortalEvent,
     beforeBreadcrumb,
     defaultIntegrations: false,
     integrations: [

@@ -33,6 +33,8 @@ import {
   validateExtensionAttributionBytes,
 } from './stage-extension-attribution.mjs'
 import { textContainsHostedApiOrigin } from './lib/hosted-api-origin.mjs'
+import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
+import { evaluateReleaseNotesGate, resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -138,13 +140,12 @@ function validateManifest(manifest, target) {
     }
     if (manifest.browser_specific_settings?.gecko?.id !== 'streampulse@streampulse.stream') {
       fail('Firefox manifest requires stable browser_specific_settings.gecko.id')
-    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '142.0') {
-      fail('Firefox manifest requires strict_min_version=142.0 for built-in consent across supported Firefox variants')
+    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0') {
+      fail('Firefox desktop manifest requires strict_min_version=140.0 for built-in consent')
     } else if (
       JSON.stringify(manifest.browser_specific_settings?.gecko?.data_collection_permissions) !==
       JSON.stringify({
         required: ['browsingActivity'],
-        optional: ['technicalAndInteraction'],
       })
     ) {
       fail('Firefox manifest data collection declaration drifted')
@@ -174,11 +175,22 @@ function validateManifest(manifest, target) {
     ok(`REQUIRED: popup present: ${popup}`)
   }
 
-  const options = manifest.options_page
-  if (!options || !existsSync(join(dist, options))) {
-    fail(`options_page missing from dist: ${options ?? '(none)'}`)
+  const sharedOptionsHost = ['options/index.html', 'options/options.js']
+  const missingSharedOptionsFiles = sharedOptionsHost.filter((path) => !existsSync(join(dist, path)))
+  if (missingSharedOptionsFiles.length) {
+    fail(`packaged shared settings host missing: ${missingSharedOptionsFiles.join(', ')}`)
   } else {
-    ok(`REQUIRED: options present: ${options}`)
+    ok('REQUIRED: packaged shared settings host present')
+  }
+
+  const options = manifest.options_page
+  if (isStoreTarget(target)) {
+    if (options) fail(`store manifest must keep user settings inline, found options_page=${options}`)
+    else ok('REQUIRED: store manifest has no separate options page')
+  } else if (!options || !existsSync(join(dist, options))) {
+    fail(`development options_page missing from dist: ${options ?? '(none)'}`)
+  } else {
+    ok(`REQUIRED: developer options present: ${options}`)
   }
 
   for (const [size, iconPath] of Object.entries(manifest.icons ?? {})) {
@@ -256,6 +268,11 @@ function validateDistContents(store, target) {
     scanTextArtifact(rel, contents, store)
     if (/\.js$/i.test(rel)) {
       sawJs = true
+      if (store) {
+        for (const marker of findStoreDeveloperMarkers(contents)) {
+          fail(`store artifact contains developer tooling marker in ${rel}: ${marker}`)
+        }
+      }
       for (const match of contents.matchAll(/streampulse-extension-runtime-target:[a-z]+/g)) {
         runtimeTargetMarkers.add(match[0])
       }
@@ -291,8 +308,8 @@ function validateDistContents(store, target) {
   return packable
 }
 
-async function validateZipBytes(target, packable, version) {
-  const names = targetArtifactNames(target, version)
+async function validateZipBytes(target, packable, version, releaseGate) {
+  const names = targetArtifactNames(target, version, { ciProbe: releaseGate.ciProbe })
   const zipPath = join(root, names.zipName)
   const checksumPath = join(root, names.checksumName)
   const store = isStoreTarget(target)
@@ -402,14 +419,57 @@ async function validateZipBytes(target, packable, version) {
     zipName: names.zipName,
     version,
     validatedAt: new Date().toISOString(),
-    note: 'not uploaded',
+    uploadable: releaseGate.uploadable,
+    ...(releaseGate.ciProbe ? { ciPackageProbe: true } : {}),
+    note: releaseGate.ciProbe ? 'CI package probe — NOT FOR UPLOAD' : 'not uploaded',
   }
   writeFileSync(join(root, names.reportName), JSON.stringify(report, null, 2))
   ok(`wrote validation report ${names.reportName}`)
 }
 
+/**
+ * A store artifact must not ship a changelog that contradicts itself. When the
+ * packaged version is still marked `unreleased`, the in-product changelog renders
+ * both "Installed" and "Unreleased" on the same entry, which is fine locally but
+ * is a factual error in a published listing. Fail closed rather than masking the
+ * badge in the UI, so the manifest and the notes are reconciled before upload.
+ * Only the CI package probe (scripts/lib/release-notes-gate.mjs) may continue
+ * past an unreleased entry, and its artifacts are marked not uploadable.
+ */
+function validateReleaseNotes(manifest, target, ciProbe) {
+  const notReady = { uploadable: false, ciProbe }
+  const notesPath = join(root, 'src/shared/release-notes.json')
+  if (!existsSync(notesPath)) {
+    fail('src/shared/release-notes.json missing — the in-product changelog cannot be verified')
+    return notReady
+  }
+  let notes
+  try {
+    notes = JSON.parse(readFileSync(notesPath, 'utf8'))
+  } catch (err) {
+    fail(`src/shared/release-notes.json is not valid JSON: ${err.message}`)
+    return notReady
+  }
+
+  const gate = evaluateReleaseNotesGate({
+    notes,
+    version: manifest.version,
+    storeTarget: isStoreTarget(target),
+    probe: ciProbe,
+  })
+  for (const message of gate.oks) ok(`REQUIRED: ${message}`)
+  for (const message of gate.notices) note(message)
+  for (const message of gate.failures) fail(`${target}: ${message}`)
+  return { uploadable: gate.uploadable, ciProbe }
+}
+
 async function main() {
   const target = parseTargetArg()
+  const ciProbe = resolveCiPackageProbe()
+  if (ciProbe.error) {
+    fail(ciProbe.error)
+    process.exit(1)
+  }
   if (!existsSync(join(dist, 'manifest.json'))) {
     fail('dist/manifest.json missing — run npm run build / package:* first')
     process.exit(process.exitCode ?? 1)
@@ -429,6 +489,7 @@ async function main() {
   }
 
   validateManifest(manifest, target)
+  const releaseGate = validateReleaseNotes(manifest, target, ciProbe.enabled)
 
   // Attribution is mandatory — stage if a local dist was built without zip-dist,
   // then require exact byte match to repo LICENSE / NOTICE / packages/NOTICE.
@@ -446,7 +507,7 @@ async function main() {
       fail(`REQUIRED: packable set missing attribution file ${required}`)
     }
   }
-  await validateZipBytes(target, packable, manifest.version)
+  await validateZipBytes(target, packable, manifest.version, releaseGate)
 
   const rpr6 = findSiblingFileDependencies()
   if (rpr6.length) {

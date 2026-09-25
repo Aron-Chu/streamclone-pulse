@@ -9,10 +9,11 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-/** Same gate as LiveSignalScrollGraph — reduced-motion / missing APIs only (no width gate). */
+/** Pinned scenes need enough room for their content before page scrolling resumes. */
 export function canAnimateScrollTour(): boolean {
   if (typeof window === 'undefined') return false
   if (prefersReducedMotion()) return false
+  if (window.innerWidth <= 560 || window.innerHeight < 700) return false
   if (typeof IntersectionObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') {
     return false
   }
@@ -44,7 +45,6 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
     ref,
   ) {
     const sceneRef = useRef<HTMLDivElement | null>(null)
-    const stickyRef = useRef<HTMLDivElement | null>(null)
     const [animate, setAnimate] = useState(false)
 
     useEffect(() => {
@@ -55,16 +55,23 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
       }
 
       apply()
+      window.addEventListener('resize', apply)
 
-      if (typeof window.matchMedia !== 'function') return
+      if (typeof window.matchMedia !== 'function') return () => window.removeEventListener('resize', apply)
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
       const onChange = () => apply()
       if (typeof mq.addEventListener === 'function') {
         mq.addEventListener('change', onChange)
-        return () => mq.removeEventListener('change', onChange)
+        return () => {
+          mq.removeEventListener('change', onChange)
+          window.removeEventListener('resize', apply)
+        }
       }
       mq.addListener(onChange)
-      return () => mq.removeListener(onChange)
+      return () => {
+        mq.removeListener(onChange)
+        window.removeEventListener('resize', apply)
+      }
     }, [onAnimateChange])
 
     useEffect(() => {
@@ -72,11 +79,7 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
       const scene = sceneRef.current
       if (!scene) return
 
-      const stop = startScrollScene({
-        scene,
-        sticky: stickyRef.current,
-        onProgress,
-      })
+      const stop = startScrollScene({ scene, onProgress })
 
       return stop
     }, [animate, onProgress])
@@ -91,7 +94,7 @@ export const ScrollPinnedTour = forwardRef<HTMLDivElement, ScrollPinnedTourProps
         {...(animate ? {} : { 'data-static': '' })}
       >
         <div className={sceneClassName} ref={sceneRef}>
-          <div className="sl-xtour__sticky" ref={stickyRef}>
+          <div className="sl-xtour__sticky">
             {children}
           </div>
         </div>

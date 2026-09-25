@@ -13,7 +13,7 @@ function easeOutCubic(value: number): number {
 
 /**
  * Animates the rendered viewport while leaving the parent's target viewport
- * authoritative. This keeps wheel bursts and rail jumps readable without
+ * authoritative. Discrete jumps can animate; direct gestures disable motion without
  * changing the controlled/uncontrolled ownership contract.
  */
 export function useSmoothedChartViewport(
@@ -26,28 +26,48 @@ export function useSmoothedChartViewport(
 
   useEffect(() => {
     const from = displayedRef.current;
-    if (!enabled || sameViewport(from, target)) {
+    const canAnimate = typeof requestAnimationFrame === "function";
+    if (!enabled || !canAnimate || sameViewport(from, target)) {
       displayedRef.current = target;
       setDisplayed(target);
       return;
     }
 
+    const settle = () => {
+      displayedRef.current = target;
+      setDisplayed(target);
+    };
+
     let frame = 0;
     const startedAt = performance.now();
     const step = (now: number) => {
       const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
+      if (progress >= 1) {
+        settle();
+        return;
+      }
       const eased = easeOutCubic(progress);
-      const next = {
+      displayedRef.current = {
         startSeconds: from.startSeconds + (target.startSeconds - from.startSeconds) * eased,
         endSeconds: from.endSeconds + (target.endSeconds - from.endSeconds) * eased,
       };
-      displayedRef.current = next;
-      setDisplayed(next);
-      if (progress < 1) frame = requestAnimationFrame(step);
+      setDisplayed(displayedRef.current);
+      frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
+
+    // The target viewport is what the user asked for; the tween is decoration.
+    // requestAnimationFrame stops firing whenever the page is not being painted
+    // (background tab, occluded window, power saving), which stranded the plot
+    // on the old range while the readout and rail already showed the new one —
+    // the control looked broken. This guarantees we land on the target.
+    const safety = setTimeout(settle, Math.max(1, durationMs) + 120);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(safety);
+    };
   }, [durationMs, enabled, target.endSeconds, target.startSeconds]);
 
-  return displayed;
+  return enabled ? displayed : target;
 }

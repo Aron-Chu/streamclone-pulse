@@ -92,7 +92,7 @@ export function EmoteEconomyCard({ intel, topEmotes, loading = false }: EmoteEco
                     {share.provider} · {Math.round(share.sharePct)}%
                   </span>
                 ))}
-                <span style={{ color: 'hsl(var(--sc-muted-foreground))', fontSize: '0.72rem' }}>
+                <span style={{ color: 'hsl(var(--sc-muted-foreground))', fontSize: '0.75rem' }}>
                   {compact(intel.emotesPerMin)} emotes/min global
                 </span>
               </div>

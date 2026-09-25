@@ -4,16 +4,17 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   newsroomDataThroughAge,
   newsroomReasonCopy,
+  newsroomWindowAvailability,
   newsroomWatchAction,
   normalizeNewsroomEnvelope,
   type NewsroomEnvelope,
   type NewsroomStory,
 } from '../src/lib/newsroom'
-import { ActivityContextRail } from '../src/ui/components/analytics/ActivityContextRail'
+import { ActivityNewsroomSidecar } from '../src/ui/components/newsroom/ActivityNewsroomSidecar'
 import { LiveDeskRail } from '../src/ui/components/newsroom/LiveDeskRail'
+import { LeadStoryCard } from '../src/ui/components/newsroom/LeadStoryCard'
 import { StoryComparison, StoryComparisonTimeline } from '../src/ui/components/newsroom/StoryComparison'
 import { StorySparkline } from '../src/ui/components/newsroom/StorySparkline'
-import { StorySourceBadges, StorySources } from '../src/ui/components/newsroom/StorySources'
 import { StoryTimeline } from '../src/ui/components/newsroom/StoryTimeline'
 
 const eventAt = Date.UTC(2026, 7, 27, 12, 40, 30)
@@ -131,66 +132,17 @@ function rawEnvelope(): Record<string, any> {
 }
 
 describe('Pulse Newsroom contract', () => {
+  it.each(['0001-01-01T00:00:00Z', '2099-01-01T00:00:00Z'])('rejects sentinel or future observation times: %s', timestamp => {
+    for (const field of ['generatedAt', 'snapshotAt', 'dataThrough']) {
+      expect(normalizeNewsroomEnvelope({ ...rawEnvelope(), [field]: timestamp })).toBeNull()
+    }
+  })
   it('strictly accepts the versioned server-owned story and ignores unknown additions', () => {
     const raw = { ...(rawEnvelope() as Record<string, unknown>), futureField: 'ignored' }
     const envelope = normalizeNewsroomEnvelope(raw)
     expect(envelope?.schemaVersion).toBe(1)
     expect(envelope?.stories[0].leadUpdate.momentRef.publicMomentId).toBe('moment-story-1')
     expect(envelope?.stories[0].leadUpdate.sparkline).toHaveLength(4)
-    expect(envelope?.stories[0].sources).toEqual([])
-  })
-
-  it('accepts allowlisted external corroboration without folding it into reaction evidence', () => {
-    const raw = rawEnvelope() as any
-    raw.stories[0].sources = [
-      {
-        id: 'clip-1',
-        source: 'twitch_clip',
-        kind: 'clip',
-        url: 'https://clips.twitch.tv/VerifiedClip',
-        title: 'Public Twitch clip',
-        author: 'clipper',
-        occurredAt: new Date(eventAt).toISOString(),
-        metrics: { views: 1200, unsupported: 99 },
-        matchConfidence: 0.91,
-        reliabilityWeight: 1,
-      },
-      {
-        id: 'reddit-1',
-        source: 'reddit',
-        kind: 'post',
-        url: 'https://www.reddit.com/r/LivestreamFail/comments/abc/story/',
-        metrics: { score: 420, comments: 38 },
-      },
-    ]
-    const story = normalizeNewsroomEnvelope(raw)?.stories[0]
-    expect(story?.sources).toHaveLength(2)
-    expect(story?.sources[0].metrics).toEqual({ views: 1200 })
-    expect(story?.leadUpdate.comparison.emotes.multiplier).toBe(4)
-  })
-
-  it('fails closed for unsafe or source-spoofed external links', () => {
-    for (const url of [
-      'javascript:alert(1)',
-      'https://clips.twitch.tv.example.com/spoof',
-      'https://example.com/r/LivestreamFail/comments/abc/story/',
-    ]) {
-      const raw = rawEnvelope() as any
-      raw.stories[0].sources = [{ id: 'unsafe', source: url.includes('reddit') ? 'reddit' : 'twitch_clip', kind: 'post', url, metrics: {} }]
-      expect(normalizeNewsroomEnvelope(raw)).toBeNull()
-    }
-  })
-
-  it('rejects an unbounded external-source list', () => {
-    const raw = rawEnvelope() as any
-    raw.stories[0].sources = Array.from({ length: 5 }, (_, index) => ({
-      id: `clip-${index}`,
-      source: 'twitch_clip',
-      kind: 'clip',
-      url: `https://clips.twitch.tv/VerifiedClip${index}`,
-      metrics: {},
-    }))
-    expect(normalizeNewsroomEnvelope(raw)).toBeNull()
   })
 
   it('fails the entire response closed when comparison evidence or moment identity is malformed', () => {
@@ -343,64 +295,46 @@ describe('Pulse Newsroom contract', () => {
     })
     expect(normalized?.stories[0].resolvedReason).toBe('stream_ended')
     expect(normalized?.stories[0].leadUpdate.comparison.chat.state).toBe('unavailable')
-    expect(newsroomWatchAction(normalized!.stories[0])?.label).toBe('Watch VOD')
+    expect(newsroomWatchAction(normalized!.stories[0])?.label).toBe('Review moment')
   })
 })
 
 describe('Pulse Newsroom components', () => {
-  it('presents external coverage as labeled corroboration with safe public links', () => {
-    const story = rawStory() as any
-    story.sources = [
-      {
-        id: 'clip-1',
-        source: 'twitch_clip',
-        kind: 'clip',
-        url: 'https://clips.twitch.tv/VerifiedClip',
-        title: 'The reaction that set chat off',
-        author: 'clipper',
-        occurredAt: new Date(eventAt).toISOString(),
-        metrics: { views: 18000 },
-      },
-      {
-        id: 'reddit-1',
-        source: 'reddit',
-        kind: 'post',
-        url: 'https://www.reddit.com/r/LivestreamFail/comments/abc/story/',
-        title: 'LSF discussion follows the same moment',
-        metrics: { score: 420, comments: 38 },
-      },
-    ]
-    const normalized = normalizeNewsroomEnvelope({ ...rawEnvelope(), stories: [story] })!.stories[0]
-    const { rerender } = render(<StorySourceBadges sources={normalized.sources} />)
-    expect(screen.getByLabelText('External coverage sources').textContent).toContain('Twitch clip')
-    expect(screen.getByLabelText('External coverage sources').textContent).toContain('LSF / Reddit')
-
-    rerender(<StorySources sources={normalized.sources} />)
-    expect(screen.getByText(/does not change its StreamPulse reaction score/i)).toBeTruthy()
-    expect(screen.getByRole('link', { name: /The reaction that set chat off/i }).getAttribute('href')).toBe('https://clips.twitch.tv/VerifiedClip')
-    expect(screen.getByText('18K views')).toBeTruthy()
+  it('gates unsupported history by default and accepts explicit deployment capability', () => {
+    expect(newsroomWindowAvailability('live')).toEqual({ available: true })
+    expect(newsroomWindowAvailability('24h').available).toBe(false)
+    expect(newsroomWindowAvailability('7d').reason).toMatch(/7-day Newsroom history is not available/i)
+    expect(newsroomWindowAvailability('24h', 'live,24h,7d')).toEqual({ available: true })
+    expect(newsroomWindowAvailability('7d', 'live,24h,7d')).toEqual({ available: true })
   })
 
-  it('switches the shared activity rail from Live Wire to preview and locked inspector states', () => {
-    const onClear = vi.fn()
-    const { container, rerender } = render(
-      <ActivityContextRail mode="idle" idle={<div>Live Wire content</div>} inspector={<div>Bucket inspector</div>} onClear={onClear} />,
+  it('keeps index cards compact while reserving comparisons and evidence for detail', () => {
+    const story = normalizeNewsroomEnvelope(rawEnvelope())!.stories[0]
+    const index = render(<MemoryRouter><LeadStoryCard story={story} compact /></MemoryRouter>)
+    expect(screen.getByText(story.headline)).toBeTruthy()
+    expect(screen.getByText(story.summary)).toBeTruthy()
+    expect(screen.getByLabelText('Leading measured metric').textContent).toContain('80/min')
+    expect(index.container.querySelector('.newsroom-lead__comparisons')).toBeNull()
+    expect(index.container.querySelector('.newsroom-lead__evidence')).toBeNull()
+    expect(index.container.querySelector('.newsroom-sparkline')).toBeNull()
+    index.unmount()
+
+    const detail = render(<MemoryRouter><LeadStoryCard story={story} /></MemoryRouter>)
+    expect(detail.container.querySelector('.newsroom-lead__comparisons')).not.toBeNull()
+    expect(detail.container.querySelector('.newsroom-lead__evidence')).not.toBeNull()
+  })
+
+  it('renders only one shared-sidecar view and returns to Live Wire', () => {
+    const onBack = vi.fn()
+    const { rerender } = render(
+      <ActivityNewsroomSidecar focused={false} liveDesk={<div>Live Desk content</div>} inspector={<div>Bucket inspector</div>} onBackToDesk={onBack} />,
     )
-    expect(container.querySelector('.activity-context-rail')?.getAttribute('data-activity-rail-view')).toBe('idle')
-    expect(container.querySelector('.activity-context-rail__pane--wire')?.hasAttribute('aria-hidden')).toBe(false)
-    expect(container.querySelector('.activity-context-rail__pane--inspector')?.getAttribute('aria-hidden')).toBe('true')
-
-    rerender(<ActivityContextRail mode="preview" idle={<div>Live Wire content</div>} inspector={<div>Bucket inspector</div>} onClear={onClear} />)
-    expect(container.querySelector('.activity-context-rail')?.getAttribute('data-activity-rail-view')).toBe('preview')
-    expect(screen.queryByRole('button', { name: 'Back to Live Wire' })).toBeNull()
-
-    rerender(<ActivityContextRail mode="locked" idle={<div>Live Wire content</div>} inspector={<div>Bucket inspector</div>} onClear={onClear} />)
-    const back = screen.getByRole('button', { name: 'Back to Live Wire' })
-    expect(document.activeElement).toBe(back)
-    fireEvent.click(back)
-    expect(onClear).toHaveBeenCalledOnce()
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(onClear).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('Live Desk content')).toBeTruthy()
+    expect(screen.queryByText('Bucket inspector')).toBeNull()
+    rerender(<ActivityNewsroomSidecar focused liveDesk={<div>Live Desk content</div>} inspector={<div>Bucket inspector</div>} onBackToDesk={onBack} />)
+    expect(screen.queryByText('Live Desk content')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Live Wire' }))
+    expect(onBack).toHaveBeenCalledOnce()
   })
 
   it('caps the compact desk at one lead and two secondary headlines with no score', () => {
@@ -459,6 +393,19 @@ describe('Pulse Newsroom components', () => {
       { at: eventAt, currentPerMin: 40 },
     ]} />)
     expect(spark.container.querySelectorAll('.newsroom-sparkline__current')).toHaveLength(2)
+  })
+
+  it('uses comparison-domain warming copy and omits an unmeasured sparkline region', () => {
+    const metric = { ...comparison().chat, state: 'warming' as const, reason: 'baseline_warming' }
+    const comparisonView = render(<StoryComparison label="Chat" metric={metric} />)
+    expect(screen.getByText('Earlier-stream baseline is still warming')).toBeTruthy()
+    expect(screen.queryByText(/Verified stories temporarily unavailable/i)).toBeNull()
+    comparisonView.unmount()
+
+    const spark = render(<StorySparkline signal="chat" points={[
+      { at: eventAt, currentPerMin: 10 },
+    ]} />)
+    expect(spark.container.childElementCount).toBe(0)
   })
 
   it('breaks the dashed baseline at missing baseline samples', () => {
@@ -539,9 +486,13 @@ describe('Pulse Newsroom components', () => {
     expect(screen.queryByText('Live', { exact: true })).toBeNull()
   })
 
-  it('derives Watch destinations from stream resolution truth', () => {
+  it('routes selected story leads through exact-identity review without inferring playback', () => {
     const active = normalizeNewsroomEnvelope(rawEnvelope())!.stories[0]
-    expect(newsroomWatchAction(active)).toEqual({ href: 'https://www.twitch.tv/xqc', label: 'Watch live' })
+    const review = {
+      href: '/analytics/moments?view=sessions&login=xqc&stream=stream-story-1&offset=240&moment=moment-story-1&story=story-1',
+      label: 'Review moment',
+    }
+    expect(newsroomWatchAction(active)).toEqual(review)
 
     const resolved = (reason: 'quiet_30m' | 'stream_ended' | 'administrative', vodId?: string): NewsroomStory => ({
       ...active,
@@ -550,9 +501,16 @@ describe('Pulse Newsroom components', () => {
       resolvedAt: new Date(eventAt + 30 * 60_000).toISOString(),
       leadUpdate: { ...active.leadUpdate, lifecycle: 'resolved', vodId },
     })
-    expect(newsroomWatchAction(resolved('quiet_30m'))).toEqual({ href: 'https://www.twitch.tv/xqc', label: 'Watch live' })
-    expect(newsroomWatchAction(resolved('stream_ended', '12345'))).toEqual({ href: 'https://www.twitch.tv/videos/12345?t=240s', label: 'Watch VOD' })
-    expect(newsroomWatchAction(resolved('stream_ended'))).toBeNull()
-    expect(newsroomWatchAction(resolved('administrative'))).toBeNull()
+    expect(newsroomWatchAction(resolved('quiet_30m'))).toEqual(review)
+    expect(newsroomWatchAction(resolved('stream_ended', '12345'))).toEqual(review)
+    expect(newsroomWatchAction(resolved('stream_ended'))).toEqual(review)
+    expect(newsroomWatchAction(resolved('administrative'))).toEqual(review)
+    expect(newsroomWatchAction({
+      ...active,
+      leadUpdate: {
+        ...active.leadUpdate,
+        momentRef: { ...active.leadUpdate.momentRef, streamId: 'nearby-stream' },
+      },
+    })).toBeNull()
   })
 })

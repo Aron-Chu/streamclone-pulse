@@ -309,10 +309,28 @@ an explicit development mode.
 
 Users SHALL be able to privately save moments to a personal/session library. This is a feature of **Pulse itself**, shared with `apps/web` — not extension-only.
 
-- R10.1 The system SHALL provide `Save Moment` from any Top Moment row, from the heat strip at the current playhead, and from a manual offset, persisting a bookmark record (`streamId`, `vodId`, `offsetSeconds`, `label`, `source`, `score`, `notes`).
+> **Status revision (0.2.0, 2026-08-29).** The extension-side *creation and
+> browsing UI* for R10 is **deferred beyond 0.2.0** and is not a 0.2.0 release
+> gate. A `Bookmark` action was implemented in the shared moment inspector and
+> then deliberately removed: it competed for width with `Jump` and
+> `Open Analytics` in the ~320px Twitch sidebar, and a hand-picked raw minute has
+> no backend Pulse score, so the record it produced was weaker than a ranked
+> moment's. What remains implemented and MUST keep working:
+>
+> - Transport and validation: `LIST_BOOKMARKS` / `SAVE_BOOKMARK` /
+>   `DELETE_BOOKMARK` messages, `CreatePulseBookmarkInput` (`score` optional),
+>   and `parseBackgroundRequest` validation.
+> - Service-worker CRUD against `/v1/pulse/bookmarks` (`src/background/api.ts`).
+>
+> Consequently R10.1 and R10.4 are **not satisfied by the extension** in 0.2.0,
+> and the `Save Moment` action referenced by R3.1, R4.3, and R12.4 is not
+> rendered in the overlay. Re-scope or re-implement before claiming R10 complete;
+> do not treat the surviving transport layer as evidence of the UI requirement.
+
+- R10.1 The system SHALL provide `Save Moment` from any Top Moment row, from the heat strip at the current playhead, and from a manual offset, persisting a bookmark record (`streamId`, `vodId`, `offsetSeconds`, `label`, `source`, `score`, `notes`). **(Deferred past 0.2.0 — no extension UI.)**
 - R10.2 Bookmarks SHALL be **private** memory markers and SHALL NOT auto-create or publish a clip.
-- R10.3 The backend SHALL expose CRUD via `GET/POST/PATCH/DELETE /v1/pulse/bookmarks`, and `apps/web` analytics SHALL show the same library (single source of truth).
-- R10.4 The overlay SHALL show a lightweight saved-moments list for the current stream/VOD and allow `Jump` to each (using the same `pulse-core` deep-link helpers as peaks).
+- R10.3 The backend SHALL expose CRUD via `GET/POST/PATCH/DELETE /v1/pulse/bookmarks`, and `apps/web` analytics SHALL show the same library (single source of truth). **(Transport implemented in the extension; UI parity pending.)**
+- R10.4 The overlay SHALL show a lightweight saved-moments list for the current stream/VOD and allow `Jump` to each (using the same `pulse-core` deep-link helpers as peaks). **(Deferred past 0.2.0 — not implemented.)**
 - R10.5 `source` SHALL record origin (`extension` vs `web`); `offsetSeconds` is canonical and SHALL resolve to a VOD deep link once the VOD exists.
 - R10.6 In local-only MVP, bookmarks SHALL persist server-side without accounts; hosted mode SHALL scope them per user (R9.2) — same record shape.
 
@@ -388,7 +406,7 @@ until clean-consumer + NOTICE/ZIP gates pass.
 ### R14 — Request count and chart migration (landed)
 
 1. Chart preference migration **v2** maps every legacy range (including `Full`) **once** to `60m` under a v2 marker. Missing values and every legacy value are tested. Repeated migration is a no-op. After v2, an explicit user selection of `Full` **persists**.
-2. Recurring polling always uses a **recent** window. Full history is fetched **only** after explicit user action (“Load full history”).
+2. Recurring polling always uses a **recent** window. After the first recent response establishes a stable stream/VOD activation, the client may issue **exactly one activation-scoped full-history request** to complete the chart automatically. A failed request may be retried explicitly for that activation. User range changes remain explicit, later recent polls may extend the retained full data, and missing coverage is never invented.
 3. Content scripts own tab-scoped polling; the service worker brokers, caches, and coalesces (`pulseGetCoordinator`). No `chrome.alarms` unless no-tab durable polling is an explicit requirement.
 4. Cold/fresh/stale cache, failed refresh, multi-tab same login, channel navigation, coverage/backfill, and explicit-Full behaviors are covered by a tested request matrix. Extension single-flight / soft stale refresh landed under RPR-1; further BFF `pulseRevalidateGate` hardening remains a backend concern if needed.
 5. Sustained-mutation navigation, reinjection, listener cleanup, backfill cancellation, one-tabs-host/one-panel-host, and endpoint-count tests pass.

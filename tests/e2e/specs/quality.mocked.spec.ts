@@ -8,6 +8,34 @@ import {
 import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 
 test.describe('extension quality guards', () => {
+  test('packaged shared settings host renders independently of manifest navigation', async ({
+    extension,
+    prepare,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    const host = await extension.context.newPage()
+    await host.goto(`chrome-extension://${extension.extensionId}/options/index.html`)
+    await expect(host).toHaveURL(/options\/index\.html#moments$/)
+    await expect(host.getByRole('heading', { name: 'My Moments', exact: true })).toBeVisible()
+    await host.getByRole('link', { name: 'Pulse on Twitch' }).click()
+    const workspace = host.locator('[data-settings-workspace="true"]')
+    await expect(workspace).toBeVisible()
+    await expect(host).toHaveURL(/options\/index\.html#pulse$/)
+    await expect(workspace.locator('[data-settings-section="pulse"]')).toContainText('Pulse on Twitch')
+    await expect(workspace.locator('[data-settings-section]')).toHaveCount(1)
+
+    const nav = host.getByRole('navigation', { name: 'Settings sections' })
+    await nav.getByRole('link', { name: 'Privacy & Data' }).click()
+    await expect(workspace.locator('[data-settings-section="privacy"]')).toContainText('Privacy & Data')
+    await nav.getByRole('link', { name: 'Updates & Changelog' }).click()
+    await expect(workspace.locator('[data-settings-section="updates"]')).toContainText('Updates & Changelog')
+
+    await host.goto(`chrome-extension://${extension.extensionId}/options/index.html#unknown`)
+    await expect(host).toHaveURL(/options\/index\.html#moments$/)
+    await expect(host.getByRole('heading', { name: 'My Moments', exact: true })).toBeVisible()
+    await host.close()
+  })
+
   test('production dist manifest permissions match the intentional allow-list', async () => {
     // Documents localhost:8081 as intentional local BFF opt-in; forbids :8090 / :9876.
     assertProductionManifestPermissions()

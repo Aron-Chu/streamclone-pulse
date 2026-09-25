@@ -1,17 +1,17 @@
-import { useMemo, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useReducedMotion } from './motion/useReducedMotion.ts'
 import type { ExtensionEmote, ExtensionRollup } from '../shared/messages.ts'
 import {
   emoteActivityInRollups,
   emoteSelectionKey,
   type EmoteWindowActivity,
 } from './chatActivityEmotes.ts'
-import { hexToRgba } from './chartTheme.ts'
+import { emoteChartColor } from './chartTheme.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
 import { theme } from './theme.ts'
 
-/** Stable list viewport: ~6 compact rows before scroll; full catalog (≤24) stays mounted. */
-export const EMOTE_PICKER_SCROLL_MAX_HEIGHT_PX = 168
+const INITIAL_VISIBLE_EMOTES = 12
 
 export interface SevenTvEmotePanelProps {
   expanded: boolean
@@ -22,8 +22,11 @@ export interface SevenTvEmotePanelProps {
   topEmotes: ExtensionEmote[]
   selectedKeys: string[]
   onToggleEmote: (emote: ExtensionEmote) => void
+  /** Remove plotted emote series without changing the selected chart bucket. */
+  onClearPlots?: () => void
   selectedOffsetSeconds: number | null
   sidebarCompact?: boolean
+  /** Kept for the chart/recap call sites; picker chips use a neutral treatment. */
   selectedPlotColors?: Record<string, string>
   maxSelected?: number
   /** True while chart-window rollups are still loading. */
@@ -45,11 +48,17 @@ export function SevenTvEmotePanel({
   topEmotes,
   selectedKeys,
   onToggleEmote,
+  onClearPlots,
   sidebarCompact = false,
-  selectedPlotColors,
   maxSelected = 6,
   rollupsLoading = false,
 }: SevenTvEmotePanelProps) {
+  const [showAll, setShowAll] = useState(false)
+  const reducedMotion = useReducedMotion()
+  useEffect(() => {
+    if (!expanded) setShowAll(false)
+  }, [expanded])
+
   const activityByKey = useMemo(() => {
     const map = new Map<string, EmoteWindowActivity>()
     for (const emote of topEmotes) {
@@ -59,88 +68,135 @@ export function SevenTvEmotePanel({
     return map
   }, [topEmotes, rollups, rollupsLoading])
 
+  const selectionLimit = Math.max(1, Math.trunc(maxSelected))
+  const availableKeys = useMemo(
+    () => new Set(topEmotes.map(emote => emoteSelectionKey(emote))),
+    [topEmotes],
+  )
+  const normalizedSelectedKeys = useMemo(
+    () => selectedKeys.filter(key => availableKeys.has(key)).slice(0, selectionLimit),
+    [availableKeys, selectedKeys, selectionLimit],
+  )
+  const selectedKeySet = useMemo(() => new Set(normalizedSelectedKeys), [normalizedSelectedKeys])
+  // The collapsed control previews the actual leaders, not six anonymous
+  // selection dots. Plot selection remains manual and is still capped below.
+  const previewEmotes = topEmotes.slice(0, 3)
+  const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
+  const selectedCount = normalizedSelectedKeys.length
+  const atCap = selectedCount >= selectionLimit
+  const hiddenCount = Math.max(0, topEmotes.length - INITIAL_VISIBLE_EMOTES)
+  const visibleEmotes = showAll ? topEmotes : topEmotes.slice(0, INITIAL_VISIBLE_EMOTES)
+
   if (topEmotes.length === 0) return null
 
-  const selectedEmotes = topEmotes.filter(emote => selectedKeys.includes(emoteSelectionKey(emote)))
-  const previewEmotes =
-    selectedEmotes.length > 0
-      ? selectedEmotes.slice(0, maxSelected)
-      : topEmotes.slice(0, Math.min(6, maxSelected))
-  const previewNames = previewEmotes.map(emote => emote.name).join(' · ')
-  const selectedCount = selectedKeys.length
-  const atCap = selectedCount >= maxSelected
-  const showOverflowCue = topEmotes.length > 6
-
-  function handleRowActivate(emote: ExtensionEmote, activity: EmoteWindowActivity): void {
+  function handleChipActivate(emote: ExtensionEmote, activity: EmoteWindowActivity): void {
     if (activity !== 'active') return
     const key = emoteSelectionKey(emote)
-    const selected = selectedKeys.includes(key)
+    const selected = selectedKeySet.has(key)
     if (!selected && atCap) return
     onToggleEmote(emote)
   }
 
-  function handleRowKeyDown(
-    event: KeyboardEvent<HTMLButtonElement>,
-    emote: ExtensionEmote,
-    activity: EmoteWindowActivity,
-  ): void {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    handleRowActivate(emote, activity)
-  }
-
   return (
     <div className="pulse-seven-tv-panel" style={styles.panel}>
-      <button
-        type="button"
-        className="pulse-seven-tv-toggle"
-        style={styles.toggle}
-        onClick={onToggleExpanded}
-        aria-expanded={expanded}
-        aria-controls="pulse-emote-picker-list"
-      >
-        <span style={styles.toggleLabel}>
-          Plot emotes · {selectedCount}/{maxSelected}
-        </span>
-        {!expanded && previewEmotes.length > 0 ? (
-          <span style={styles.togglePreview} title={previewNames}>
-            {previewEmotes.map(emote => (
-              <PulseEmoteImg
-                key={emoteSelectionKey(emote)}
-                emote={emote}
-                backendUrl={backendUrl}
-                width={18}
-                height={18}
-                style={styles.previewImg}
-              />
-            ))}
+      <div style={styles.headerRow}>
+        <button
+          type="button"
+          className="pulse-seven-tv-toggle"
+          style={styles.toggle}
+          onClick={onToggleExpanded}
+          aria-expanded={expanded}
+          aria-controls="pulse-emote-picker-list"
+        >
+          <span style={styles.toggleLabel}>
+            Plot on chart · {selectedCount}/{selectionLimit}
           </span>
+          {!expanded && previewEmotes.length > 0 ? (
+            <span
+              style={styles.togglePreview}
+              title={`Top emotes: ${previewNames}`}
+              aria-label={`Top emotes: ${previewNames}`}
+            >
+              {previewEmotes.map(emote => {
+                const selIdx = normalizedSelectedKeys.indexOf(emoteSelectionKey(emote))
+                const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : 'rgba(255, 255, 255, 0.12)'
+                return (
+                  <span
+                    key={emoteSelectionKey(emote)}
+                    data-emote-picker-preview-image="true"
+                    style={{ ...styles.previewEmote, borderColor: lineColor }}
+                  >
+                    <PulseEmoteImg
+                      emote={emote}
+                      backendUrl={backendUrl}
+                      width={18}
+                      height={18}
+                      style={styles.previewImg}
+                    />
+                  </span>
+                )
+              })}
+            </span>
+          ) : null}
+          <span
+            className="pulse-seven-tv-chevron"
+            data-emote-picker-chevron
+            data-expanded={expanded ? 'true' : 'false'}
+            style={{
+              ...styles.chevron,
+              ...(reducedMotion ? styles.motionReducedChevron : null),
+              transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+            }}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        </button>
+        {selectedCount > 0 ? (
+          <button
+            type="button"
+            data-emote-picker-clear
+            style={styles.clearButton}
+            aria-label="Clear plotted emotes"
+            title="Remove all plotted emote lines"
+            onClick={event => {
+              event.stopPropagation()
+              onClearPlots?.()
+            }}
+          >
+            Clear
+          </button>
         ) : null}
-        <span style={styles.chevron} aria-hidden="true">
-          {expanded ? '▾' : '▸'}
-        </span>
-      </button>
+      </div>
 
-      {expanded ? (
-        <div style={styles.body}>
+      <div
+        className="pulse-seven-tv-body"
+        data-emote-picker-body
+        data-expanded={expanded ? 'true' : 'false'}
+        aria-hidden={!expanded}
+        style={{
+          ...styles.body,
+          ...(expanded ? styles.bodyExpanded : null),
+          ...(reducedMotion ? styles.motionReduced : null),
+        }}
+      >
+        <div style={styles.bodyInner}>
           <div
             id="pulse-emote-picker-list"
-            className="pulse-emote-picker-scroll"
-            style={styles.rowList}
-            data-emote-picker-scroll
+            className="pulse-emote-picker-grid"
+            style={styles.chipGrid}
+            data-emote-picker-grid
             role="listbox"
-            aria-label={`Plot emotes · ${selectedCount} of ${maxSelected} selected`}
+            aria-label={`Plot on chart · ${selectedCount} of ${selectionLimit} selected`}
             aria-multiselectable="true"
           >
-            {topEmotes.map((emote, index) => {
+            {visibleEmotes.map(emote => {
               const key = emoteSelectionKey(emote)
-              const selected = selectedKeys.includes(key)
+              const selected = selectedKeySet.has(key)
               const activity = activityByKey.get(key) ?? 'none'
               const plottable = activity === 'active'
               const disabled = !plottable || (!selected && atCap)
-              const plotColor = selected ? selectedPlotColors?.[key] : undefined
-              const usePlotColor = Boolean(selected && plotColor)
-              const hint = activityHint(activity, maxSelected, !selected && atCap)
+              const hint = activityHint(activity, selectionLimit, !selected && atCap)
               return (
                 <button
                   type="button"
@@ -148,66 +204,67 @@ export function SevenTvEmotePanel({
                   role="option"
                   aria-selected={selected}
                   aria-disabled={disabled}
+                  aria-label={`${emote.name}, ${formatCount(emote.count)} uses. ${hint}`}
                   disabled={disabled}
-                  tabIndex={0}
-                  className={
-                    usePlotColor
-                      ? 'pulse-seven-tv-row'
-                      : `pulse-seven-tv-row${selected ? ' pulse-seven-tv-row-active' : ''}${
-                          disabled ? ' pulse-seven-tv-row-disabled' : ''
-                        }`
-                  }
+                  tabIndex={expanded ? 0 : -1}
+                  className={`pulse-seven-tv-chip${selected ? ' pulse-seven-tv-chip-active' : ''}${disabled ? ' pulse-seven-tv-chip-disabled' : ''}`}
                   style={{
-                    ...styles.row,
-                    ...(index % 2 === 1 && !usePlotColor ? styles.rowAlt : null),
-                    ...(sidebarCompact ? styles.rowCompact : null),
-                    ...(disabled ? styles.rowDisabled : null),
-                    ...(usePlotColor
-                      ? {
-                          background: hexToRgba(plotColor!, 0.12),
-                          borderColor: plotColor,
-                        }
-                      : null),
+                    ...styles.chip,
+                    ...(sidebarCompact ? styles.chipCompact : null),
+                    ...(selected ? (() => {
+                      const selIdx = normalizedSelectedKeys.indexOf(key)
+                      const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : '#a78bfa'
+                      return {
+                        background: `${lineColor}22`,
+                        borderColor: `${lineColor}f2`,
+                        boxShadow: `0 0 0 1px ${lineColor}cc, 0 0 10px ${lineColor}33`,
+                      }
+                    })() : null),
+                    ...(disabled ? styles.chipDisabled : null),
                   }}
                   title={`${emote.name} · ${formatCount(emote.count)} uses · ${hint}`}
-                  onClick={() => handleRowActivate(emote, activity)}
-                  onKeyDown={event => handleRowKeyDown(event, emote, activity)}
+                  onClick={() => handleChipActivate(emote, activity)}
                 >
                   <PulseEmoteImg
                     emote={emote}
                     backendUrl={backendUrl}
                     width={sidebarCompact ? 20 : 22}
                     height={sidebarCompact ? 20 : 22}
-                    style={{
-                      ...styles.rowImg,
-                      ...(disabled ? styles.rowImgDisabled : null),
-                    }}
+                    style={styles.chipImg}
                   />
-                  <span style={styles.rowName}>{emote.name}</span>
-                  <span
-                    style={{
-                      ...styles.rowCount,
-                      ...(usePlotColor ? { color: plotColor } : null),
-                      ...(activity === 'none' ? styles.rowCountMuted : null),
-                    }}
-                  >
-                    {activity === 'loading'
-                      ? '…'
-                      : activity === 'none'
-                        ? 'No activity'
-                        : formatCount(emote.count)}
+                  <span style={styles.chipCount}>
+                    {activity === 'loading' ? '…' : formatCount(emote.count)}
                   </span>
+                  {selected ? (() => {
+                    const selIdx = normalizedSelectedKeys.indexOf(key)
+                    const lineColor = selIdx >= 0 ? emoteChartColor(selIdx) : theme.textMuted
+                    return (
+                      <span
+                        style={{ ...styles.chipSwatch, background: lineColor, boxShadow: `0 0 5px ${lineColor}55` }}
+                        aria-hidden="true"
+                        title={`Chart line: ${lineColor}`}
+                      />
+                    )
+                  })() : null}
                 </button>
               )
             })}
           </div>
-          {showOverflowCue ? (
-            <div style={styles.overflowCue} aria-hidden="true">
-              Scroll for more
-            </div>
+          {hiddenCount > 0 ? (
+            <button
+              type="button"
+              data-emote-picker-more
+              className="pulse-seven-tv-more"
+              style={styles.moreButton}
+              aria-expanded={showAll}
+              tabIndex={expanded ? 0 : -1}
+              onClick={() => setShowAll(current => !current)}
+            >
+              {showAll ? 'Show fewer' : `+${hiddenCount} more`}
+            </button>
           ) : null}
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }
@@ -220,6 +277,12 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 8,
     overflow: 'hidden',
   },
+  headerRow: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: 4,
+    minWidth: 0,
+  },
   toggle: {
     alignItems: 'center',
     background: 'transparent',
@@ -230,7 +293,20 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: '8px 10px',
     textAlign: 'left',
-    width: '100%',
+    flex: '1 1 auto',
+    minWidth: 0,
+  },
+  clearButton: {
+    background: 'rgba(139, 92, 246, 0.12)',
+    border: '1px solid rgba(167, 139, 250, 0.3)',
+    borderRadius: 6,
+    color: '#ddd6fe',
+    cursor: 'pointer',
+    flex: '0 0 auto',
+    fontSize: 9,
+    fontWeight: 800,
+    minHeight: 25,
+    padding: '3px 7px',
   },
   toggleLabel: {
     color: theme.textMuted,
@@ -247,81 +323,94 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     minWidth: 0,
   },
-  previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
-  chevron: { color: theme.accentSoft, flexShrink: 0, fontSize: 11, fontWeight: 900, marginLeft: 'auto' },
-  body: {
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-    display: 'grid',
-    gap: 4,
-    padding: '6px 8px 8px',
-  },
-  rowList: {
-    display: 'grid',
-    gap: 4,
-    maxHeight: EMOTE_PICKER_SCROLL_MAX_HEIGHT_PX,
-    overflowY: 'auto',
-    overscrollBehavior: 'contain',
-  },
-  overflowCue: {
-    color: theme.textMuted,
-    fontSize: 9,
-    fontWeight: 700,
-    letterSpacing: '0.04em',
-    opacity: 0.75,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-  },
-  row: {
+  previewEmote: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: 8,
+    background: 'rgba(255, 255, 255, 0.035)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 5,
+    display: 'inline-flex',
+    flexShrink: 0,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
+  previewImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
+  chevron: {
+    color: theme.accentSoft,
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 900,
+    marginLeft: 'auto',
+    transition: 'transform .18s cubic-bezier(.2,0,0,1)',
+  },
+  motionReducedChevron: { transition: 'none' },
+  body: {
+    borderTop: '0 solid transparent',
+    display: 'grid',
+    gap: 0,
+    gridTemplateRows: '0fr',
+    opacity: 0,
+    overflow: 'hidden',
+    padding: '0 8px',
+    pointerEvents: 'none',
+    transform: 'translateY(-4px)',
+    transition: 'grid-template-rows .22s cubic-bezier(.2,0,0,1), opacity .18s cubic-bezier(.2,0,0,1), padding .22s cubic-bezier(.2,0,0,1), border-color .22s cubic-bezier(.2,0,0,1), transform .18s cubic-bezier(.2,0,0,1)',
+  },
+  bodyExpanded: {
+    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    gap: 7,
+    gridTemplateRows: '1fr',
+    opacity: 1,
+    padding: '7px 8px 8px',
+    pointerEvents: 'auto',
+    transform: 'translateY(0)',
+  },
+  motionReduced: { transition: 'none', transform: 'none' },
+  bodyInner: { minHeight: 0, overflow: 'hidden' },
+  chipGrid: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    minWidth: 0,
+  },
+  chip: {
+    alignItems: 'center',
+    background: 'rgba(255, 255, 255, 0.045)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderRadius: 999,
     color: theme.textPrimary,
     cursor: 'pointer',
-    display: 'grid',
-    gap: 8,
-    gridTemplateColumns: '22px 1fr auto',
-    padding: '7px 10px',
-    textAlign: 'left',
-    width: '100%',
+    display: 'inline-flex',
+    flex: '0 1 auto',
+    gap: 5,
+    justifyContent: 'center',
+    minHeight: 30,
+    minWidth: 58,
+    padding: '3px 8px 3px 5px',
   },
-  rowCompact: {
-    gap: 6,
-    gridTemplateColumns: '20px 1fr auto',
-    padding: '5px 8px',
-  },
-  rowAlt: {
-    background: 'rgba(255, 255, 255, 0.02)',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
-  },
-  rowDisabled: {
-    cursor: 'not-allowed',
-    opacity: 0.55,
-  },
-  rowImg: { display: 'block', objectFit: 'contain' },
-  rowImgDisabled: { opacity: 0.65 },
-  rowName: {
-    color: theme.textPrimary,
-    fontSize: 11,
-    fontWeight: 800,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  rowCount: {
-    color: theme.accentSoft,
+  chipCompact: { minHeight: 28, minWidth: 54, padding: '3px 7px 3px 4px' },
+  chipDisabled: { cursor: 'not-allowed', opacity: 0.48 },
+  chipImg: { display: 'block', flexShrink: 0, objectFit: 'contain' },
+  chipCount: {
+    color: theme.textSecondary,
     fontSize: 10,
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 800,
-    minWidth: 28,
-    textAlign: 'right',
+    lineHeight: 1,
   },
-  rowCountMuted: {
-    color: theme.textMuted,
+  chipSwatch: { borderRadius: 999, flexShrink: 0, height: 7, width: 7 },
+  moreButton: {
+    background: 'rgba(139, 92, 246, 0.1)',
+    border: '1px solid rgba(167, 139, 250, 0.35)',
+    borderRadius: 999,
+    color: '#c4b5fd',
+    cursor: 'pointer',
     fontSize: 9,
-    fontWeight: 700,
-    letterSpacing: '0.02em',
-    textTransform: 'none',
+    fontWeight: 800,
+    justifySelf: 'center',
+    padding: '5px 10px',
   },
 }

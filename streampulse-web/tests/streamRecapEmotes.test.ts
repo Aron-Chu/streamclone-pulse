@@ -72,26 +72,42 @@ describe('recap emote catalog enrichment', () => {
   })
 
   it('fills imageUrl from catalog when recap has unresolvable id only', () => {
+    const localId = '328172f0-64fd-4249-a164-9915fc87a26d'
     const enriched = enrichRecapEmoteFromCatalog(
       { code: 'BasedGod', count: 100, provider: 'seventv', id: 'BasedGod' },
       [
         {
-          key: 'seventv:uuid-based:BasedGod',
+          key: `seventv:${localId}:BasedGod`,
           name: 'BasedGod',
           provider: 'seventv',
-          imageUrl: '/emotes/uuid-based/1x.webp',
+          imageUrl: `/emotes/${localId}/1x.webp`,
           count: 100,
         },
       ],
     )
-    expect(enriched.imageUrl).toBe('/emotes/uuid-based/1x.webp')
+    expect(enriched.imageUrl).toBe(`/emotes/${localId}/1x.webp`)
     expect(
       getEmoteImageUrl({
         provider: enriched.provider,
         id: enriched.id,
         imageUrl: enriched.imageUrl,
       }),
-    ).toBe('https://api.streampulse.stream/emotes/uuid-based/1x.webp')
+    ).toBe(`https://api.streampulse.stream/emotes/${localId}/1x.webp`)
+  })
+
+  it('does not render a catalog slug as a hosted emote image', () => {
+    const enriched = enrichRecapEmoteFromCatalog(
+      { code: 'BasedGod', count: 100, provider: 'seventv', id: 'BasedGod' },
+      [{
+        key: 'seventv:uuid-based:BasedGod',
+        name: 'BasedGod',
+        provider: 'seventv',
+        imageUrl: '/emotes/uuid-based/1x.webp',
+        count: 100,
+      }],
+    )
+
+    expect(getEmoteImageUrl(enriched)).toBeUndefined()
   })
 
   it('skips catalog when recap already has resolvable imageUrl', () => {
@@ -148,21 +164,23 @@ describe('resolveRecapDisplayEmotes', () => {
 })
 
 describe('peak emote minute highlight', () => {
+  const lolId = '9ceb7717-39fc-4afa-a5cf-829ad4ef22e3'
+  const forsenId = '328172f0-64fd-4249-a164-9915fc87a26d'
   const catalog = [
     {
-      key: 'seventv:lol-id:LOL',
+      key: `seventv:${lolId}:LOL`,
       name: 'LOL',
-      id: 'lol-id',
+      id: lolId,
       provider: 'seventv',
-      imageUrl: '/emotes/lol-id/1x.webp',
+      imageUrl: `/emotes/${lolId}/1x.webp`,
       count: 13_100,
     },
     {
-      key: 'seventv:forsen-id:forsenPls',
+      key: `seventv:${forsenId}:forsenPls`,
       name: 'forsenPls',
-      id: 'forsen-id',
+      id: forsenId,
       provider: 'seventv',
-      imageUrl: '/emotes/forsen-id/1x.webp',
+      imageUrl: `/emotes/${forsenId}/1x.webp`,
       count: 4,
     },
   ]
@@ -176,12 +194,12 @@ describe('peak emote minute highlight', () => {
     {
       minuteTs: '2026-07-07T10:53:00.000Z',
       chatCount: 100,
-      emotes: { 'seventv:forsen-id:forsenPls': 4 },
+      emotes: { [`seventv:${forsenId}:forsenPls`]: 4 },
     },
     {
       minuteTs: '2026-07-07T10:56:00.000Z',
       chatCount: 480,
-      emotes: { 'seventv:lol-id:LOL': 297 },
+      emotes: { [`seventv:${lolId}:LOL`]: 297 },
     },
   ]
 
@@ -208,7 +226,7 @@ describe('peak emote minute highlight', () => {
       topEmotesCatalog: catalog,
     })
     expect(highlight?.emote.code).toBe('LOL')
-    expect(highlight?.emote.id).toBe('lol-id')
+    expect(highlight?.emote.id).toBe(lolId)
     expect(getEmoteImageUrl({
       provider: highlight?.emote.provider,
       id: highlight?.emote.id,
@@ -221,7 +239,7 @@ describe('peak emote minute highlight', () => {
       { code: 'LOL', count: 12, provider: 'twitch' },
       catalog,
     )
-    expect(out.id).toBe('lol-id')
+    expect(out.id).toBe(lolId)
     expect(out.count).toBe(12)
   })
 })

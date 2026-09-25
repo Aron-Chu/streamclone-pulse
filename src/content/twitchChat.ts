@@ -68,6 +68,207 @@ export const CHAT_BOTTOM_CLAMP_SELECTORS: readonly string[] = [
   '[data-a-target="video-chat-input"]',
 ]
 
+/** Composer controls whose own transitions can change the panel bottom clamp. */
+export const CHAT_COMPOSER_SELECTORS: readonly string[] = [
+  '[data-a-target="chat-input"][contenteditable="true"]',
+  '[data-test-selector="chat-input"][contenteditable="true"]',
+  '[contenteditable="true"][role="textbox"]',
+  '[data-a-target="chat-input"]',
+  '[data-test-selector="chat-input"]',
+  '[data-a-target="chat-input-grid"]',
+  '[data-a-target="chat-room-submit-button"]',
+  'textarea[data-a-target="chat-input"]',
+  'textarea[placeholder*="Send a message" i]',
+  '[data-a-target="video-chat"]',
+  '[data-a-target="video-chat-input"]',
+]
+
+/** The actual editable Twitch composer, ordered before wrapper/grid selectors. */
+export const CHAT_EDITOR_SELECTORS: readonly string[] = [
+  '[data-a-target="chat-input"][contenteditable="true"]',
+  '[data-test-selector="chat-input"][contenteditable="true"]',
+  '[contenteditable="true"][role="textbox"]',
+  'textarea[data-a-target="chat-input"]',
+  'textarea[placeholder*="Send a message" i]',
+]
+
+/**
+ * Twitch often removes and recreates the editor while the chat column changes
+ * tabs. Keep the retry window short so a navigation cannot leave a background
+ * focus job alive indefinitely, but long enough to cover those remounts.
+ */
+export const NATIVE_CHAT_FOCUS_RETRY_INTERVAL_MS = 50
+export const NATIVE_CHAT_FOCUS_TIMEOUT_MS = 1_200
+
+export interface NativeChatFocusHandoffOptions {
+  readonly doc?: Document
+  readonly retryIntervalMs?: number
+  readonly timeoutMs?: number
+  readonly now?: () => number
+  readonly setTimeout?: (callback: () => void, delayMs: number) => unknown
+  readonly clearTimeout?: (handle: unknown) => void
+}
+
+export interface NativeChatFocusHandoff {
+  /** Cancel pending retries and release all event listeners. */
+  cancel(): void
+  /** Whether this handoff can still make a focus attempt. */
+  readonly active: boolean
+}
+
+function isVisibleChatEditor(element: Element): element is HTMLElement {
+  const HTMLElementCtor = element.ownerDocument.defaultView?.HTMLElement
+    ?? (typeof HTMLElement !== 'undefined' ? HTMLElement : null)
+  if (!HTMLElementCtor || !(element instanceof HTMLElementCtor)) return false
+  const rect = element.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return false
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element)
+  if (style?.display === 'none' || style?.visibility === 'hidden') return false
+  if (element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true') return false
+  return true
+}
+
+/** Resolve the visible editable Twitch chat control, never its layout wrapper. */
+export function resolveNativeChatComposer(doc: Document = document): HTMLElement | null {
+  for (const selector of CHAT_EDITOR_SELECTORS) {
+    let nodes: NodeListOf<Element>
+    try {
+      nodes = doc.querySelectorAll(selector)
+    } catch {
+      continue
+    }
+    for (const node of Array.from(nodes)) {
+      if (isVisibleChatEditor(node)) return node
+    }
+  }
+  return null
+}
+
+/** Focus the native editor only when the caller has a direct user gesture. */
+export function focusNativeChatComposer(doc: Document = document): boolean {
+  const editor = resolveNativeChatComposer(doc)
+  if (!editor) return false
+  try {
+    editor.focus({ preventScroll: true })
+  } catch {
+    editor.focus()
+  }
+  return doc.activeElement === editor || editor.contains(doc.activeElement)
+}
+
+function isComposerFocusTarget(doc: Document, target: EventTarget | null): boolean {
+  if (!target) return false
+  const editor = resolveNativeChatComposer(doc)
+  if (!editor || target === editor) return target === editor
+  const NodeCtor = doc.defaultView?.Node
+    ?? (typeof Node !== 'undefined' ? Node : null)
+  return !!NodeCtor && target instanceof NodeCtor && editor.contains(target)
+}
+
+/**
+ * Focus the native Twitch composer across a brief route/remount window.
+ *
+ * This is intentionally separate from `focusNativeChatComposer`: callers that
+ * already have a direct editor gesture can keep the synchronous helper, while
+ * sidebar tab transitions can use this bounded handoff. Any pointer, touch,
+ * keyboard, or non-composer focus interaction cancels the retries so the
+ * extension never steals focus after the user has moved elsewhere.
+ */
+export function scheduleNativeChatFocusHandoff(
+  options: NativeChatFocusHandoffOptions = {},
+): NativeChatFocusHandoff {
+  const doc = options.doc ?? document
+  const view = doc.defaultView
+  const schedule = options.setTimeout
+    ?? ((callback: () => void, delayMs: number) => (
+      view?.setTimeout(callback, delayMs) ?? globalThis.setTimeout(callback, delayMs)
+    ))
+  const cancelTimer = options.clearTimeout
+    ?? ((handle: unknown) => {
+      if (view) view.clearTimeout(handle as number)
+      else globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>)
+    })
+  const now = options.now ?? (() => Date.now())
+  const retryIntervalMs = Math.max(
+    0,
+    options.retryIntervalMs ?? NATIVE_CHAT_FOCUS_RETRY_INTERVAL_MS,
+  )
+  const timeoutMs = Math.max(
+    0,
+    options.timeoutMs ?? NATIVE_CHAT_FOCUS_TIMEOUT_MS,
+  )
+
+  let active = true
+  let timer: unknown = null
+  const startedAt = now()
+
+  const finish = (): void => {
+    if (!active) return
+    active = false
+    if (timer !== null) {
+      cancelTimer(timer)
+      timer = null
+    }
+    for (const eventName of ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'focusin'] as const) {
+      doc.removeEventListener(eventName, onUserIntent, true)
+    }
+    view?.removeEventListener('blur', onWindowBlur, true)
+  }
+
+  const onUserIntent = (event: Event): void => {
+    // `focusin` is also emitted by our successful `.focus()` call. Allow that
+    // event through; all other focus changes represent an intent to keep the
+    // user's newly focused control focused.
+    if (
+      event.type === 'focusin'
+      && (
+        event.target === doc.body
+        || event.target === doc.documentElement
+        || isComposerFocusTarget(doc, event.target)
+      )
+    ) {
+      return
+    }
+    finish()
+  }
+
+  const onWindowBlur = (): void => {
+    // A click on browser chrome or a tab switch does not bubble through the
+    // page document, but it is still user intent and must cancel the handoff.
+    finish()
+  }
+
+  const attempt = (): void => {
+    timer = null
+    if (!active) return
+
+    if (focusNativeChatComposer(doc)) {
+      finish()
+      return
+    }
+
+    const elapsedMs = Math.max(0, now() - startedAt)
+    if (elapsedMs >= timeoutMs) {
+      finish()
+      return
+    }
+    timer = schedule(attempt, Math.min(retryIntervalMs, timeoutMs - elapsedMs))
+  }
+
+  for (const eventName of ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'focusin'] as const) {
+    doc.addEventListener(eventName, onUserIntent, true)
+  }
+  view?.addEventListener('blur', onWindowBlur, true)
+  timer = schedule(attempt, 0)
+
+  return {
+    cancel: finish,
+    get active(): boolean {
+      return active
+    },
+  }
+}
+
 /** Stream Chat title text inside the header row. */
 export const CHAT_HEADER_TITLE_SELECTORS: readonly string[] = [
   '[data-a-target="chat-room-header"] h2',
@@ -144,6 +345,20 @@ export const MIN_PANEL_HEIGHT = 80
  */
 export function isUsableChatRect(rect: RectLike | null | undefined): boolean {
   return !!rect && rect.width >= MIN_CHAT_WIDTH && rect.height >= MIN_CHAT_HEIGHT
+}
+
+/**
+ * Twitch can leave a measurable right column just beyond the viewport after a
+ * recap route restores its layout. Do not snap a fixed Pulse host to a
+ * rectangle that cannot be seen; the caller can use the floating dock.
+ */
+export function isChatRectInViewport(
+  rect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> | null | undefined,
+  viewportWidth: number,
+  viewportHeight: number,
+): boolean {
+  if (!rect || !Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight)) return false
+  return rect.right > 0 && rect.left < viewportWidth && rect.bottom > 0 && rect.top < viewportHeight
 }
 
 /**
@@ -244,8 +459,9 @@ function clampDomRectBottom(rect: DOMRect, bottomBound: number | null): DOMRect 
 }
 
 /**
- * Top Y of the lowest Twitch chat chrome (input row, bits, reward banners).
- * Used to keep the Pulse panel from covering interactive chat controls.
+ * Top Y of the Twitch composer/input chrome. Used to keep the Pulse panel from
+ * covering the interactive chat controls; transient body banners do not move
+ * this bound.
  */
 export function resolveChatBottomBound(
   doc: Document = document,
@@ -257,7 +473,7 @@ export function resolveChatBottomBound(
   const lowerStart = column.top + column.height * 0.4
   let bound: number | null = null
 
-  for (const selector of CHAT_BOTTOM_CLAMP_SELECTORS) {
+  for (const selector of CHAT_COMPOSER_SELECTORS) {
     let nodes: NodeListOf<Element>
     try {
       nodes = doc.querySelectorAll(selector)
@@ -514,7 +730,15 @@ export function resolveChatGiftRowBottom(
   return resolveChatTopBannerBottom(doc, headerBottom, column, CHAT_GIFT_ROW_SELECTORS, 140)
 }
 
-/** Bottom edge of in-chat notices / pinned highlights below the header. */
+/**
+ * Bottom edge of in-chat notices / pinned highlights below the header.
+ *
+ * Measurement helper only — deliberately NOT part of resolveChatContentTop.
+ * Everything matched by CHAT_TOP_NOTICE_SELECTORS is transient popup chrome
+ * (chat notifications, user notices, pinned/community highlights) that pops in
+ * and out while chat runs; using it for panel placement shifted the
+ * position:fixed Pulse host downward with no clean recovery.
+ */
 export function resolveChatTopNoticeBottom(
   doc: Document,
   headerBottom: number,
@@ -523,19 +747,24 @@ export function resolveChatTopNoticeBottom(
   return resolveChatTopBannerBottom(doc, headerBottom, column, CHAT_TOP_NOTICE_SELECTORS, 220)
 }
 
-/** Top of the message list: below gift row and aligned with scrollable chat when found. */
+/**
+ * Top of the Pulse panel body — the measured chat-header bar bottom only.
+ *
+ * Promo/gift rows, notices, and the live message list are transient body
+ * content. They must never raise panel.top: Twitch inserts/removes them while
+ * chat runs, and the Pulse hosts are position:fixed (mount.tsx BASE_STYLE).
+ * Following those rects made the host jump downward and wait for a lucky
+ * reflow before recovering. The lower edge is still clamped separately by the
+ * composer/bottom-chrome measurement in resolveChatPanelRect.
+ */
 export function resolveChatContentTop(
   doc: Document,
   headerBottom: number,
   column: ChatRectSnapshot,
 ): number {
-  let top = resolveChatGiftRowBottom(doc, headerBottom, column)
-  top = Math.max(top, resolveChatTopNoticeBottom(doc, headerBottom, column))
-  const messages = resolveChatMessagesRect(doc)
-  if (messages && messages.top >= headerBottom - 8 && messages.height >= 40) {
-    top = Math.max(top, messages.top)
-  }
-  return top
+  void doc
+  void column
+  return headerBottom
 }
 
 /**
@@ -629,7 +858,7 @@ export function expandHeaderBarRect(
   })
 }
 
-/** Messages / scroll region below gifts — Pulse panel snaps here, above chat input. */
+/** Panel body below the stable chat header, above the composer clamp. */
 export function resolveChatPanelRect(doc: Document = document): ChatRectSnapshot | null {
   const column = measureChatRect(doc)
   if (!column || !isUsableChatRect(column)) return null
@@ -688,6 +917,16 @@ export function measureSidebarSnapLayout(doc: Document = document): SidebarSnapL
   const resolved = resolveChatColumn(doc)
   if (!resolved || !isUsableChatRect(resolved.rect)) return null
 
+  const viewportWidth = doc.defaultView?.innerWidth ?? doc.documentElement?.clientWidth
+  const viewportHeight = doc.defaultView?.innerHeight ?? doc.documentElement?.clientHeight
+  if (
+    viewportWidth != null
+    && viewportHeight != null
+    && Number.isFinite(viewportWidth)
+    && Number.isFinite(viewportHeight)
+    && !isChatRectInViewport(resolved.rect, viewportWidth, viewportHeight)
+  ) return null
+
   const column = toChatRectSnapshot(resolved.rect)
   const header = resolveChatHeaderBarRect(doc, column) ?? resolveChatHeaderRect(doc)
   const panel = resolveChatPanelRect(doc)
@@ -715,6 +954,283 @@ function layoutKey(layout: SidebarSnapLayout | null): string {
 
 const PERIODIC_REMEASURE_MS = 2000
 
+/** Chat message subtrees whose ordinary child churn cannot change snap geometry. */
+export const CHAT_MESSAGE_LIST_IGNORE_SELECTORS: readonly string[] = [
+  ...CHAT_MESSAGES_SELECTORS,
+  '[role="log"]',
+]
+
+/** Stable geometry targets; transient promo/notice/message rects are excluded. */
+export const CHAT_GEOMETRY_SELECTORS: readonly string[] = [
+  ...CHAT_COLUMN_SELECTORS,
+  ...CHAT_HEADER_SELECTORS,
+  ...CHAT_HEADER_TITLE_SELECTORS,
+  ...CHAT_HEADER_COLLAPSE_SELECTORS,
+  ...CHAT_HEADER_TRAILING_SELECTORS,
+  ...CHAT_COMPOSER_SELECTORS,
+]
+
+/** Mutation triggers only; never use these rects to place or size Pulse. */
+const CHAT_TRANSIENT_CHROME_SELECTORS: readonly string[] = [
+  '[data-a-target="chat-banner"]',
+  '[data-a-target="chat-room-banner"]',
+  '[data-a-target="chat-room-promo"]',
+  '[data-test-selector="chat-banner"]',
+  ...CHAT_GIFT_ROW_SELECTORS,
+  ...CHAT_TOP_NOTICE_SELECTORS,
+]
+
+/** Stable chrome plus bottom clamp elements whose transitions can change height. */
+const CHAT_LAYOUT_MUTATION_SELECTORS: readonly string[] = [
+  ...CHAT_HEADER_SELECTORS,
+  ...CHAT_HEADER_TITLE_SELECTORS,
+  ...CHAT_HEADER_COLLAPSE_SELECTORS,
+  ...CHAT_HEADER_TRAILING_SELECTORS,
+  ...CHAT_COMPOSER_SELECTORS,
+  ...CHAT_BOTTOM_CLAMP_SELECTORS,
+]
+
+/** Attribute changes that can reveal, hide, or reposition Twitch chat chrome. */
+export const CHAT_GEOMETRY_ATTRIBUTE_FILTER = [
+  'class',
+  'style',
+  'hidden',
+  'aria-hidden',
+  'aria-expanded',
+] as const
+
+/** rAF remeasure burst stops rescheduling after this long since the trigger. */
+export const CHAT_SNAP_REMEASURE_WINDOW_MS = 600
+/** One trailing measurement after the window so late CSS transitions still land. */
+export const CHAT_SNAP_FINAL_MEASURE_DELAY_MS = 650
+
+export interface BoundedRemeasureSchedulerHooks {
+  now: () => number
+  requestAnimationFrame: (callback: () => void) => number
+  cancelAnimationFrame: (id: number) => void
+  setTimeout: (callback: () => void, ms: number) => number
+  clearTimeout: (id: number) => void
+}
+
+/** Testable ancestry check used by the mutation filter and focused tests. */
+export function matchesChatMessageListAncestry(
+  closest: (selector: string) => unknown,
+): boolean {
+  for (const selector of CHAT_MESSAGE_LIST_IGNORE_SELECTORS) {
+    try {
+      if (closest(selector)) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+function mutationTargetElement(node: Node | null): Element | null {
+  if (!node) return null
+  if (node.nodeType === 1) return node as Element
+  return node.parentElement
+}
+
+function matchesAnySelector(element: Element, selectors: readonly string[]): boolean {
+  for (const selector of selectors) {
+    try {
+      if (element.matches(selector)) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+function matchesAnySelectorAncestry(element: Element, selectors: readonly string[]): boolean {
+  for (const selector of selectors) {
+    try {
+      if (element.closest(selector)) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+function containsAnySelector(element: Element, selectors: readonly string[]): boolean {
+  for (const selector of selectors) {
+    try {
+      if (element.querySelector(selector)) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+function nodeContainsAnySelector(node: Node | null, selectors: readonly string[]): boolean {
+  const element = mutationTargetElement(node)
+  if (!element) return false
+  return matchesAnySelector(element, selectors) || containsAnySelector(element, selectors)
+}
+
+type ChatGeometryMutation = Pick<MutationRecord, 'target'> & Partial<
+  Pick<MutationRecord, 'type' | 'addedNodes' | 'removedNodes'>
+>
+
+function mutationNodes(mutation: ChatGeometryMutation): Node[] {
+  return [
+    ...(mutation.addedNodes ? Array.from(mutation.addedNodes) : []),
+    ...(mutation.removedNodes ? Array.from(mutation.removedNodes) : []),
+  ]
+}
+
+function allMutationNodesMatch(
+  nodes: readonly Node[],
+  selectors: readonly string[],
+): boolean {
+  return nodes.length > 0 && nodes.every(node => nodeContainsAnySelector(node, selectors))
+}
+
+/**
+ * Ignore ordinary message insertion/removal and message-node attribute churn.
+ * Structural mutations in the chat column, header, composer, or route shell
+ * remain relevant. This keeps the observer useful for real transitions without
+ * letting a busy chat log extend or restart a remeasurement burst.
+ */
+export function shouldScheduleChatGeometryFromMutations(
+  mutations: ReadonlyArray<ChatGeometryMutation>,
+): boolean {
+  return mutations.some(mutation => {
+    const element = mutationTargetElement(mutation.target)
+    if (!element) return true
+
+    const type = mutation.type ?? 'childList'
+    const inMessageList = matchesChatMessageListAncestry(selector => element.closest(selector))
+    const transientElement = matchesAnySelectorAncestry(element, CHAT_TRANSIENT_CHROME_SELECTORS)
+
+    if (type === 'attributes') {
+      if (transientElement) return false
+      if (inMessageList) {
+        // A class/style change on the list root can change the chat layout; a
+        // class/style change on an individual message cannot.
+        return matchesAnySelector(element, CHAT_MESSAGE_LIST_IGNORE_SELECTORS)
+      }
+      return (
+        matchesAnySelector(element, CHAT_COLUMN_SELECTORS)
+        || matchesAnySelectorAncestry(element, CHAT_LAYOUT_MUTATION_SELECTORS)
+        || containsAnySelector(element, CHAT_COLUMN_SELECTORS)
+      )
+    }
+
+    const nodes = mutationNodes(mutation)
+    // A top promo/gift/notice may be inserted directly into the column. It is
+    // intentionally not a snap anchor, so do not start a transition burst for
+    // a mutation made up only of that transient chrome.
+    if (transientElement || allMutationNodesMatch(nodes, CHAT_TRANSIENT_CHROME_SELECTORS)) {
+      return false
+    }
+
+    // Child churn inside the live log is intentionally ignored, including
+    // ordinary message nodes and their emote/image subtrees.
+    if (inMessageList) return false
+
+    if (
+      matchesAnySelector(element, CHAT_COLUMN_SELECTORS)
+      || matchesAnySelectorAncestry(element, CHAT_LAYOUT_MUTATION_SELECTORS)
+    ) {
+      return true
+    }
+
+    return nodes.some(node => (
+      nodeContainsAnySelector(node, CHAT_COLUMN_SELECTORS)
+      || nodeContainsAnySelector(node, CHAT_LAYOUT_MUTATION_SELECTORS)
+    ))
+  })
+}
+
+/**
+ * Measure on every animation frame for a bounded ELAPSED-TIME window after a
+ * trigger, then run exactly one trailing measurement.
+ *
+ * Frame-count bursts stop too early on low-refresh-rate displays while Twitch's
+ * sidebar CSS transitions are still settling; bounding by elapsed time gives
+ * the same settle window at any refresh rate, and the final timeout guarantees
+ * one stable measurement even if animation frames stop firing entirely.
+ * Re-triggers during an active burst are ignored instead of extending it —
+ * chat message churn fires mutations continuously, so extending would keep the
+ * loop alive forever.
+ */
+export function createBoundedRemeasureScheduler(
+  measure: () => void,
+  hooks: BoundedRemeasureSchedulerHooks,
+): { schedule: () => void; dispose: () => void } {
+  let disposed = false
+  let rafId: number | null = null
+  let finalTimeoutId: number | null = null
+  let windowDeadline = 0
+
+  function measureFrame(): void {
+    rafId = null
+    if (disposed) return
+    measure()
+    if (!disposed && hooks.now() < windowDeadline) {
+      let callbackRanSynchronously = false
+      const nextRafId = hooks.requestAnimationFrame(() => {
+        callbackRanSynchronously = true
+        measureFrame()
+      })
+      if (!callbackRanSynchronously) rafId = nextRafId
+    }
+  }
+
+  function finalMeasure(): void {
+    finalTimeoutId = null
+    if (rafId !== null) {
+      hooks.cancelAnimationFrame(rafId)
+      rafId = null
+    }
+    if (disposed) return
+    measure()
+  }
+
+  function schedule(): void {
+    if (disposed || rafId !== null || finalTimeoutId !== null) return
+    windowDeadline = hooks.now() + CHAT_SNAP_REMEASURE_WINDOW_MS
+    let callbackRanSynchronously = false
+    const nextRafId = hooks.requestAnimationFrame(() => {
+      callbackRanSynchronously = true
+      measureFrame()
+    })
+    if (!callbackRanSynchronously) rafId = nextRafId
+    finalTimeoutId = hooks.setTimeout(finalMeasure, CHAT_SNAP_FINAL_MEASURE_DELAY_MS)
+  }
+
+  function dispose(): void {
+    disposed = true
+    if (rafId !== null) hooks.cancelAnimationFrame(rafId)
+    rafId = null
+    if (finalTimeoutId !== null) hooks.clearTimeout(finalTimeoutId)
+    finalTimeoutId = null
+  }
+
+  return { schedule, dispose }
+}
+
+function chatGeometryObservationTargets(
+  doc: Document,
+  column: Element | null,
+): Element[] {
+  const targets = new Set<Element>()
+  if (column) targets.add(column)
+  const scope: ParentNode = column ?? doc
+  for (const selector of CHAT_GEOMETRY_SELECTORS) {
+    try {
+      for (const element of Array.from(scope.querySelectorAll(selector))) targets.add(element)
+    } catch {
+      continue
+    }
+  }
+  return Array.from(targets)
+}
+
 /**
  * Observe the chat column rect and invoke `cb` with the latest snapshot, or null
  * when the column disappears (popout/theater/layout change). Combines a
@@ -724,24 +1240,28 @@ const PERIODIC_REMEASURE_MS = 2000
  */
 export function observeChatRect(cb: (rect: DOMRect | null) => void): () => void {
   let lastKey: string | null = null
-  let rafId = 0
-  let observedEl: Element | null = null
+  let observedTargets: Element[] = []
+  let singleRafId: number | null = null
   let disposed = false
 
-  const resizeObserver =
-    typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => scheduleMeasure()) : null
+  function syncObservedTargets(column: Element | null): void {
+    const nextTargets = chatGeometryObservationTargets(document, column)
+    if (
+      nextTargets.length === observedTargets.length
+      && nextTargets.every((element, index) => element === observedTargets[index])
+    ) {
+      return
+    }
+    resizeObserver?.disconnect()
+    observedTargets = nextTargets
+    for (const element of observedTargets) resizeObserver?.observe(element)
+  }
 
   function measure(): void {
     if (disposed) return
     const resolved = resolveChatColumn()
-    const element = resolved?.element ?? null
     const rect = resolved?.rect ?? null
-
-    if (element !== observedEl) {
-      if (resizeObserver && observedEl) resizeObserver.unobserve(observedEl)
-      observedEl = element
-      if (resizeObserver && element) resizeObserver.observe(element)
-    }
+    syncObservedTargets(resolved?.element ?? null)
 
     const key = rectKey(rect)
     if (key !== lastKey) {
@@ -750,31 +1270,51 @@ export function observeChatRect(cb: (rect: DOMRect | null) => void): () => void 
     }
   }
 
-  function scheduleMeasure(): void {
-    if (disposed || rafId) return
-    rafId = requestAnimationFrame(() => {
-      rafId = 0
+  const remeasurer = createBoundedRemeasureScheduler(measure, {
+    now: () => Date.now(),
+    requestAnimationFrame: callback => window.requestAnimationFrame(callback),
+    cancelAnimationFrame: id => window.cancelAnimationFrame(id),
+    setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimeout: id => window.clearTimeout(id),
+  })
+  const scheduleMeasure = () => remeasurer.schedule()
+  const scheduleSingleMeasure = () => {
+    if (disposed || singleRafId !== null) return
+    singleRafId = window.requestAnimationFrame(() => {
+      singleRafId = null
       measure()
     })
   }
 
-  const mutationObserver = new MutationObserver(() => scheduleMeasure())
+  const resizeObserver =
+    typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasure) : null
+
+  const mutationObserver = new MutationObserver(mutations => {
+    if (shouldScheduleChatGeometryFromMutations(mutations)) scheduleMeasure()
+  })
   if (document.body) {
-    mutationObserver.observe(document.body, { childList: true, subtree: true })
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [...CHAT_GEOMETRY_ATTRIBUTE_FILTER],
+    })
   }
 
   window.addEventListener('resize', scheduleMeasure, { passive: true })
-  window.addEventListener('scroll', scheduleMeasure, { passive: true, capture: true })
+  window.addEventListener('scroll', scheduleSingleMeasure, { passive: true, capture: true })
   const intervalId = window.setInterval(measure, PERIODIC_REMEASURE_MS)
 
   measure()
 
   return () => {
     disposed = true
-    if (rafId) cancelAnimationFrame(rafId)
+    remeasurer.dispose()
+    if (singleRafId !== null) window.cancelAnimationFrame(singleRafId)
+    singleRafId = null
     window.clearInterval(intervalId)
     window.removeEventListener('resize', scheduleMeasure)
-    window.removeEventListener('scroll', scheduleMeasure, { capture: true } as EventListenerOptions)
+    window.removeEventListener('scroll', scheduleSingleMeasure, { capture: true } as EventListenerOptions)
     mutationObserver.disconnect()
     resizeObserver?.disconnect()
   }
@@ -782,27 +1322,34 @@ export function observeChatRect(cb: (rect: DOMRect | null) => void): () => void 
 
 /**
  * Observe chat column + header height for sidebar snap layout.
+ *
+ * Remeasures run on every animation frame across a bounded elapsed-time window
+ * (~600ms) after each trigger, followed by one final measurement (~650ms), so
+ * Twitch's CSS transitions still produce a stable snapshot on any refresh rate.
  */
 export function observeChatSnapLayout(cb: (layout: SidebarSnapLayout | null) => void): () => void {
   let lastKey: string | null = null
-  let rafId = 0
-  let observedEl: Element | null = null
+  let observedTargets: Element[] = []
+  let singleRafId: number | null = null
   let disposed = false
 
-  const resizeObserver =
-    typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => scheduleMeasure()) : null
+  function syncObservedTargets(column: Element | null): void {
+    const nextTargets = chatGeometryObservationTargets(document, column)
+    if (
+      nextTargets.length === observedTargets.length
+      && nextTargets.every((element, index) => element === observedTargets[index])
+    ) {
+      return
+    }
+    resizeObserver?.disconnect()
+    observedTargets = nextTargets
+    for (const element of observedTargets) resizeObserver?.observe(element)
+  }
 
   function measure(): void {
     if (disposed) return
     const resolved = resolveChatColumn()
-    const element = resolved?.element ?? null
-
-    if (element !== observedEl) {
-      if (resizeObserver && observedEl) resizeObserver.unobserve(observedEl)
-      observedEl = element
-      if (resizeObserver && element) resizeObserver.observe(element)
-    }
-
+    syncObservedTargets(resolved?.element ?? null)
     const layout = measureSidebarSnapLayout()
     const key = layoutKey(layout)
     if (key !== lastKey) {
@@ -811,31 +1358,53 @@ export function observeChatSnapLayout(cb: (layout: SidebarSnapLayout | null) => 
     }
   }
 
-  function scheduleMeasure(): void {
-    if (disposed || rafId) return
-    rafId = requestAnimationFrame(() => {
-      rafId = 0
+  // Bounded burst: rAF measurements until ~600ms since the trigger, then one
+  // final measurement at ~650ms. Re-triggers never extend the window.
+  const remeasurer = createBoundedRemeasureScheduler(measure, {
+    now: () => Date.now(),
+    requestAnimationFrame: callback => window.requestAnimationFrame(callback),
+    cancelAnimationFrame: id => window.cancelAnimationFrame(id),
+    setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimeout: id => window.clearTimeout(id),
+  })
+  const scheduleMeasure = () => remeasurer.schedule()
+  const scheduleSingleMeasure = () => {
+    if (disposed || singleRafId !== null) return
+    singleRafId = window.requestAnimationFrame(() => {
+      singleRafId = null
       measure()
     })
   }
 
-  const mutationObserver = new MutationObserver(() => scheduleMeasure())
+  const resizeObserver =
+    typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasure) : null
+
+  const mutationObserver = new MutationObserver(mutations => {
+    if (shouldScheduleChatGeometryFromMutations(mutations)) scheduleMeasure()
+  })
   if (document.body) {
-    mutationObserver.observe(document.body, { childList: true, subtree: true })
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [...CHAT_GEOMETRY_ATTRIBUTE_FILTER],
+    })
   }
 
   window.addEventListener('resize', scheduleMeasure, { passive: true })
-  window.addEventListener('scroll', scheduleMeasure, { passive: true, capture: true })
+  window.addEventListener('scroll', scheduleSingleMeasure, { passive: true, capture: true })
   const intervalId = window.setInterval(measure, PERIODIC_REMEASURE_MS)
 
   measure()
 
   return () => {
     disposed = true
-    if (rafId) cancelAnimationFrame(rafId)
+    remeasurer.dispose()
+    if (singleRafId !== null) window.cancelAnimationFrame(singleRafId)
+    singleRafId = null
     window.clearInterval(intervalId)
     window.removeEventListener('resize', scheduleMeasure)
-    window.removeEventListener('scroll', scheduleMeasure, { capture: true } as EventListenerOptions)
+    window.removeEventListener('scroll', scheduleSingleMeasure, { capture: true } as EventListenerOptions)
     mutationObserver.disconnect()
     resizeObserver?.disconnect()
   }

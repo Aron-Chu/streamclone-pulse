@@ -4,7 +4,6 @@ import {
   areaPathInBand,
   chartBarBucketOpacity,
   easeInOutCubic,
-  extendViewerSeriesToLeadingEdge,
   firstViewerOffsetSeconds,
   linePathInBand,
   plotY,
@@ -172,18 +171,6 @@ describe('firstViewerOffsetSeconds', () => {
   })
 })
 
-describe('extendViewerSeriesToLeadingEdge', () => {
-  it('carries the first viewer sample back across earlier chat minutes', () => {
-    const rollups = [
-      { offsetSeconds: 120, chatCount: 40, viewerCount: 0 },
-      { offsetSeconds: 180, chatCount: 55, viewerCount: 0 },
-      { offsetSeconds: 300, chatCount: 60, viewerCount: 41_000 },
-    ]
-    const values = [null, null, 41_000] as Array<number | null>
-    expect(extendViewerSeriesToLeadingEdge(rollups, values)).toEqual([41_000, 41_000, 41_000])
-  })
-})
-
 describe('rampNullableSeriesFromStreamStart', () => {
   it('ramps from 0 at stream start to the first positive sample', () => {
     const values = [null, null, 1000, 900] as Array<number | null>
@@ -198,6 +185,21 @@ describe('rampNullableSeriesFromStreamStart', () => {
   it('ease-in-out reaches the anchor at the first positive index', () => {
     expect(easeInOutCubic(0)).toBe(0)
     expect(easeInOutCubic(1)).toBe(1)
+  })
+
+  // The competing flat-backfill policy (extendViewerSeriesToLeadingEdge) was
+  // removed: two leading-edge policies must not coexist. Only the prefix before
+  // the first sample is synthesised; later unobserved minutes stay gaps.
+  it('leaves gaps after the first sample untouched', () => {
+    const values = [null, 1000, null, null, 800] as Array<number | null>
+    // Only the pre-first-sample prefix is synthesised (index 0 becomes the 0
+    // anchor). Later unobserved minutes stay gaps for buildViewerGeometry.
+    expect(rampNullableSeriesFromStreamStart(values)).toEqual([0, 1000, null, null, 800])
+  })
+
+  it('returns the series unchanged when nothing was ever sampled', () => {
+    const values = [null, null, null] as Array<number | null>
+    expect(rampNullableSeriesFromStreamStart(values)).toEqual(values)
   })
 })
 
@@ -270,5 +272,37 @@ describe('valueYInBand', () => {
     expect(y).not.toBeNull()
     expect(y!).toBeGreaterThanOrEqual(110 - 0.5)
     expect(y!).toBeLessThanOrEqual(130 + 0.5)
+  })
+})
+
+describe('viewer gap honesty', () => {
+  it('never bridges unmeasured buckets: nulls split the trend into separate subpaths', () => {
+    // 6 one-minute buckets with a two-bucket measurement gap in the middle.
+    const values = [10, 12, null, null, 8, 9]
+    const path = smoothLinePathInBand(values, 20, 300, 160, 4, 4, 60, 100)
+
+    // Two disconnected subpaths (one per measured region), never a single run.
+    const subpathCount = path.split(/M /).filter(Boolean).length
+    expect(subpathCount).toBe(2)
+    // No draw command may connect the last x of region 1 to the first x of region 2.
+    expect(path).toMatch(/^M [^M]+ M /)
+  })
+
+  it('smoothing also preserves the hole instead of interpolating across it', () => {
+    const smoothed = smoothNullableSeriesValues([10, 12, null, null, 8, 9], 3)
+    expect(smoothed[2]).toBeNull()
+    expect(smoothed[3]).toBeNull()
+  })
+
+  it('stream-start ramp anchors the known prefix at zero without touching interior gaps', () => {
+    const ramped = rampNullableSeriesFromStreamStart([null, null, 5, 6])
+    // Documented leading-edge treatment: ramp 0 → first measured value.
+    expect(ramped[0]).toBe(0)
+    expect(ramped[1]!).toBeGreaterThan(0)
+    expect(ramped[1]!).toBeLessThan(5)
+    expect(ramped[2]).toBe(5)
+    // Interior nulls are never filled by the ramp.
+    expect(rampNullableSeriesFromStreamStart([5, null, null, 6])[1]).toBeNull()
+    expect(rampNullableSeriesFromStreamStart([5, null, null, 6])[2]).toBeNull()
   })
 })

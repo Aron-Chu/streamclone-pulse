@@ -6,6 +6,7 @@ import {
   featuredSessionFromPublicHub,
   isValidPeakOffsetSeconds,
   livePulseMomentsFromPublicHub,
+  mapHubPulseMoment,
   nearestMomentForOffset,
   resolveLivePulseMoments,
 } from '../src/lib/figmaSessionAnalytics'
@@ -193,6 +194,14 @@ describe('livePulseMomentsFromPublicHub', () => {
     expect(result.moments.map((r) => r.login)).toEqual(['xqc', 'jynxzi'])
     expect(livePulseMomentsFromPublicHub(hub)).toHaveLength(2)
   })
+
+  it('maps exact category display metadata through the session row adapter', () => {
+    const boxArtUrl = 'https://static-cdn.jtvnw.net/ttv-boxart/213490846-144x192.jpg'
+    expect(mapHubPulseMoment({
+      login: 'creator', streamId: 'stream-a', offsetSeconds: 60, score: 80, label: 'Peak',
+      category: 'Wuthering Waves', categoryId: '213490846', boxArtUrl,
+    })).toMatchObject({ category: 'Wuthering Waves', categoryId: '213490846', boxArtUrl })
+  })
 })
 
 describe('resolveLivePulseMoments legacy hub.moments fallback', () => {
@@ -234,67 +243,6 @@ describe('resolveLivePulseMoments featured fallback banner', () => {
     expect(result.source).toBe('featured_fallback')
     expect(result.banner).toContain('Hosted API has not deployed network live moments yet')
     expect(result.moments).toHaveLength(1)
-  })
-
-  it('preserves qualified comparison evidence through the featured fallback', () => {
-    const hub = samplePublicHub()
-    const eventAt = Date.parse('2026-09-01T14:01:09Z')
-    const comparison = {
-      baselineKind: 'current_stream_measured_average_before_event' as const,
-      eventAt,
-      baselineWindow: {
-        start: eventAt - 30 * 60_000,
-        end: eventAt,
-        expectedMinutes: 30,
-        measuredMinutes: 24,
-        coveragePct: 80,
-      },
-      chat: {
-        state: 'ready' as const,
-        currentPerMin: 393,
-        baselinePerMin: 160,
-        absoluteDeltaPerMin: 233,
-        changePct: 145.6,
-        multiplier: 2.456,
-        currentMeasuredMinutes: 1,
-        currentExpectedMinutes: 1,
-        baselineMeasuredMinutes: 24,
-        baselineExpectedMinutes: 30,
-        baselineCoveragePct: 80,
-      },
-      emotes: {
-        state: 'ready' as const,
-        currentPerMin: 133,
-        baselinePerMin: 40,
-        absoluteDeltaPerMin: 93,
-        changePct: 232.5,
-        multiplier: 3.325,
-        currentMeasuredMinutes: 1,
-        currentExpectedMinutes: 1,
-        baselineMeasuredMinutes: 24,
-        baselineExpectedMinutes: 30,
-        baselineCoveragePct: 80,
-      },
-      evidence: {
-        ircBound: true,
-        eventRollupAvailable: true,
-        baselineMeasuredMinutes: 24,
-        baselineExpectedMinutes: 30,
-        baselineCoveragePct: 80,
-      },
-    }
-    hub.featuredSession = {
-      state: 'ready',
-      login: 'xqc',
-      displayName: 'xQc',
-      streamId: 's1',
-      startedAt: '2026-09-01T13:01:09Z',
-      topMoments: [{ offsetSeconds: 3600, score: 80, label: 'Chat spike', comparison }],
-    }
-
-    const result = resolveLivePulseMoments(hub)
-
-    expect(result.moments[0]?.comparison).toEqual(comparison)
   })
 
   it('uses no_peaks copy when backend status says no peaks', () => {

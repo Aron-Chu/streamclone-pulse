@@ -83,7 +83,6 @@ import {
 } from "./viewerGeometry.ts";
 import { resolveViewerInteractionState } from "./viewerInteraction.ts";
 import {
-  chartViewportPresets,
   CHART_DRAG_INTENT_PX,
   dragPanChartViewport,
   fullChartViewport,
@@ -154,14 +153,6 @@ function pointOffsetSeconds(
   const start = streamStartedAt ? Date.parse(streamStartedAt) : Number.NaN;
   if (!Number.isFinite(timestamp) || !Number.isFinite(start)) return null;
   return Math.max(0, (timestamp - start) / 1000);
-}
-
-function formatViewportDuration(seconds: number): string {
-  const totalMinutes = Math.max(0, Math.round(seconds / 60));
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
 type PlotZone =
@@ -435,6 +426,8 @@ function smoothDisplayValues(
 /** Keep collapsed charts light while letting expanded mode expose detail. */
 const ACTIVITY_BARS_COLLAPSED_CAP = 240;
 const ACTIVITY_BARS_EXPANDED_CAP = 480;
+const ACTIVITY_BAR_GAP_RATIO = 0.18;
+const ACTIVITY_BAR_WIDTH_RATIO = 0.72;
 
 function activityBarsMaxForLength(
   length: number,
@@ -450,6 +443,69 @@ function activityBarsMaxForLength(
       (ACTIVITY_BARS_EXPANDED_CAP - ACTIVITY_BARS_COLLAPSED_CAP) * progress,
   );
   return Math.min(length, cap, Math.max(target, progress > 0.5 ? 96 : 64));
+}
+
+/**
+ * Split one global activity-bar budget across timestamp-contiguous runs.
+ * Sparse timelines can contain more runs than the visual budget, so a
+ * per-run minimum would otherwise silently exceed the cap.
+ */
+function allocateActivityBarBudgets(
+  runLengths: readonly number[],
+  budget: number,
+): number[] {
+  const lengths = runLengths.map((length) => Math.max(0, Math.floor(length)));
+  const active = lengths
+    .map((length, index) => ({ index, length }))
+    .filter((run) => run.length > 0);
+  const target = Math.min(
+    Math.max(0, Math.floor(budget)),
+    active.reduce((total, run) => total + run.length, 0),
+  );
+  const allocations = lengths.map(() => 0);
+  if (target === 0 || active.length === 0) return allocations;
+
+  // If there are more runs than slots, sample representative runs across the
+  // source order. The line remains the complete temporal source of truth.
+  if (active.length > target) {
+    for (let slot = 0; slot < target; slot += 1) {
+      const activeIndex = target === 1
+        ? Math.floor(active.length / 2)
+        : Math.round((slot * (active.length - 1)) / (target - 1));
+      const run = active[activeIndex];
+      if (run) allocations[run.index] = 1;
+    }
+    return allocations;
+  }
+
+  // Keep one bar for every run, then distribute the remaining slots by the
+  // number of source samples each run can still represent.
+  for (const run of active) allocations[run.index] = 1;
+  let remaining = target - active.length;
+  if (remaining <= 0) return allocations;
+
+  const capacities = active.map((run) => Math.max(0, run.length - 1));
+  const capacityTotal = capacities.reduce((total, capacity) => total + capacity, 0);
+  if (capacityTotal <= 0) return allocations;
+
+  const remainders = active.map((run, index) => {
+    const exact = (remaining * capacities[index]!) / capacityTotal;
+    const whole = Math.min(capacities[index]!, Math.floor(exact));
+    allocations[run.index] += whole;
+    return { index, fraction: exact - whole };
+  });
+  const allocated = allocations.reduce((total, value) => total + value, 0);
+  remaining -= allocated - active.length;
+  remainders
+    .sort((left, right) => right.fraction - left.fraction || left.index - right.index)
+    .forEach((remainder) => {
+      if (remaining <= 0) return;
+      const run = active[remainder.index];
+      if (!run || allocations[run.index] >= run.length) return;
+      allocations[run.index] += 1;
+      remaining -= 1;
+    });
+  return allocations;
 }
 
 type ActivityBarRect = {
@@ -471,6 +527,34 @@ type ActivityBarRect = {
   fullyObserved: boolean;
   peak: { index: number; value: number } | null;
 };
+
+type ActivityBarHitBar = Pick<ActivityBarRect, "x" | "width" | "hasValue">;
+
+/**
+ * Resolve activity clicks with the same bounded regions used by the shared
+ * timestamp interaction model. A nearest-bar tolerance would make real
+ * timestamp gaps select whichever neighbor happens to be closest.
+ */
+export function activityBarAtPlotX<T extends ActivityBarHitBar>(
+  bars: readonly T[],
+  plotX: number,
+): T | null {
+  for (const bar of bars) {
+    if (!bar.hasValue) continue;
+    if (plotX >= bar.x && plotX <= bar.x + bar.width) return bar;
+  }
+  const region = chartHitRegionAtX(
+    buildChartHitRegions(
+      bars.map((bar, index) => ({
+        index,
+        centerX: bar.x + bar.width / 2,
+        selectable: bar.hasValue,
+      })),
+    ),
+    plotX,
+  );
+  return region ? bars[region.index] ?? null : null;
+}
 
 function activityBarRects(
   values: Array<number | null>,
@@ -495,11 +579,6 @@ function activityBarRects(
   const n = values.length;
   if (n === 0) return [];
   const plotWidth = width - padLeft - padRight;
-  const barSeries = chatBarsForChart(
-    values,
-    activityBarsMaxForLength(n, plotWidth, density.pxPerBar, detailProgress),
-    aggregation,
-  );
   const zoneBand = plotBandForZone(
     height,
     padTop,
@@ -508,6 +587,87 @@ function activityBarRects(
     layout,
   );
   const bandBottom = bandBottomOverride ?? zoneBand.bandBottom;
+  const parseTimestamp = (value: string | undefined) => {
+    const parsed = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const timestampMs = timestamps.map(parseTimestamp);
+  const cadenceDeltas = timestamps
+    .slice(1)
+    .map((timestamp, index) => {
+      const current = parseTimestamp(timestamp);
+      const previous = parseTimestamp(timestamps[index]);
+      return current != null && previous != null && current > previous
+        ? current - previous
+        : null;
+    })
+    .filter((delta): delta is number => delta != null);
+  // Activity rollups are minute-level measurements. Missing ranges should
+  // remain visible on the shared time axis, but must not turn a sparse gap
+  // into a multi-minute-wide bar.
+  const cadenceMs = cadenceDeltas.length > 0
+    ? Math.min(
+      60_000,
+      [...cadenceDeltas].sort((left, right) => left - right)[Math.floor(cadenceDeltas.length / 2)]!,
+    )
+    : 60_000;
+  // A malformed or degenerate timestamp domain still needs finite visual
+  // geometry. In that case `xForTimestamp` already uses its bounded index
+  // fallback, so mirror that cadence here instead of dividing by NaN/zero.
+  const timestampDomainMs = timeScale.lastTimestampMs - timeScale.firstTimestampMs;
+  const domainMs = Number.isFinite(timestampDomainMs) && timestampDomainMs > 0
+    ? timestampDomainMs
+    : cadenceMs * Math.max(1, n - 1);
+  // Line continuity includes offscreen halo rows. Aggregate only visible,
+  // timestamp-contiguous activity, preserving source indices for inspection.
+  const runs: Array<{ startIndex: number; endExclusive: number }> = [];
+  for (let index = 0; index < n; index++) {
+    const at = timestampMs[index];
+    if (at != null && (
+      at < timeScale.firstTimestampMs || at > timeScale.lastTimestampMs
+    )) continue;
+    const previous = timestampMs[index - 1];
+    const lastRun = runs[runs.length - 1];
+    if (
+      lastRun?.endExclusive === index
+      && !(at != null && previous != null && (at <= previous || at - previous > cadenceMs))
+    ) {
+      lastRun.endExclusive = index + 1;
+    } else {
+      runs.push({ startIndex: index, endExclusive: index + 1 });
+    }
+  }
+  const visibleCount = runs.reduce((count, run) => count + run.endExclusive - run.startIndex, 0);
+  if (visibleCount === 0) return [];
+  const budget = activityBarsMaxForLength(visibleCount, plotWidth, density.pxPerBar, detailProgress);
+  const runBudgets = allocateActivityBarBudgets(
+    runs.map((run) => run.endExclusive - run.startIndex),
+    budget,
+  );
+  const barSeries = runs.flatMap((run, runIndex) => {
+    const length = run.endExclusive - run.startIndex;
+    const runBudget = runBudgets[runIndex] ?? 0;
+    if (runBudget <= 0) return [];
+    return chatBarsForChart(
+      values.slice(run.startIndex, run.endExclusive),
+      runBudget,
+      aggregation,
+    ).map((bar) => ({
+      ...bar,
+      index: bar.index + run.startIndex,
+      startIndex: bar.startIndex + run.startIndex,
+      endExclusive: bar.endExclusive + run.startIndex,
+      peak: bar.peak ? { ...bar.peak, index: bar.peak.index + run.startIndex } : null,
+    }));
+  });
+  const bucketSizes = barSeries.map(bar => bar.rangeLength).sort((left, right) => left - right);
+  const medianBucketSize = bucketSizes[Math.floor(bucketSizes.length / 2)] ?? 1;
+  const slotWidth = Math.max(1, plotWidth * cadenceMs * medianBucketSize / domainMs);
+  const gap = Math.max(1.5, slotWidth * ACTIVITY_BAR_GAP_RATIO);
+  const nominalWidth = Math.max(
+    density.minWidth,
+    Math.min(density.maxWidth, slotWidth - gap, slotWidth * ACTIVITY_BAR_WIDTH_RATIO),
+  );
 
   return barSeries.map((bar, barIdx) => {
     const {
@@ -523,22 +683,25 @@ function activityBarRects(
       fullyObserved,
       peak,
     } = bar;
-    const startX = timeScale.xForTimestamp(timestamps[startIndex] ?? "", startIndex, n);
-    const exclusiveX = endExclusive < n
-      ? timeScale.xForTimestamp(timestamps[endExclusive] ?? "", endExclusive, n)
-      : timeScale.plotEndX;
-    const intervalLeft = Math.min(startX, exclusiveX);
-    const intervalRight = Math.max(startX, exclusiveX);
-    const intervalWidth = Math.max(1, intervalRight - intervalLeft);
-    // Chat and emotes share one visual cadence even though their disclosed
-    // values differ (chat average vs emote peak). A consistent inset keeps the
-    // lanes comparable and reveals substantially more time bins at overview.
-    // Peak identity stays on `index` for hit-testing / selection.
-    const widthPx = Math.max(
-      density.minWidth,
-      Math.min(density.maxWidth, intervalWidth * 0.82),
+    // Center on the included measurement timestamps, never the next bucket.
+    // A singleton stays on its source minute; missing time cannot move it.
+    const startX = timeScale.xForTimestamp(
+      timestamps[startIndex] ?? "",
+      startIndex,
+      n,
     );
-    const x = intervalLeft + (intervalWidth - widthPx) / 2;
+    const endX = timeScale.xForTimestamp(
+      timestamps[endExclusive - 1] ?? "",
+      endExclusive - 1,
+      n,
+    );
+    const centerX = startX + Math.max(0, endX - startX) / 2;
+    // Clip boundary bars instead of shifting them onto neighboring minutes.
+    const x = Math.max(timeScale.plotStartX, centerX - nominalWidth / 2);
+    const widthPx = Math.max(
+      0,
+      Math.min(timeScale.plotEndX, centerX + nominalWidth / 2) - x,
+    );
     const cy = plotY(
       value,
       max,
@@ -755,13 +918,51 @@ function linePath(
   return path;
 }
 
+/**
+ * Zooming the chart is an *explicit* gesture, never ordinary scrolling.
+ *
+ * Alt+wheel is the portal's documented chart gesture
+ * (`docs/website-portal/analytics-command-center-layout.md`: "Ordinary wheel
+ * scrolling moves the page; Alt+wheel zooms, Shift+wheel pans"), and it matches
+ * this chart's own keyboard vocabulary, where Alt+Arrow already pans the
+ * viewport. Ctrl/Meta stay reserved for the browser's own page zoom, and Shift
+ * is left to the surrounding navigator rail — so neither is consumed here.
+ */
+export function isChartZoomWheelGesture(
+  event: Pick<WheelEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">,
+): boolean {
+  if (event.ctrlKey === true || event.metaKey === true) return false
+  if (event.shiftKey === true) return false
+  return event.altKey === true
+}
+
+/**
+ * Returns true only when the chart actually consumed the wheel event.
+ *
+ * `preventDefault()` is called exclusively on that consuming path. An ordinary
+ * vertical wheel/touchpad movement over the chart returns false untouched, so
+ * the document scrolls normally instead of stalling under the pointer — which
+ * it previously did even at the full-window boundary, where no zoom was left
+ * to apply.
+ */
 export function handleMultiSignalWheelEvent(args: {
-  event: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "preventDefault">
+  event: Pick<
+    WheelEvent,
+    | "deltaX"
+    | "deltaY"
+    | "deltaMode"
+    | "altKey"
+    | "ctrlKey"
+    | "metaKey"
+    | "shiftKey"
+    | "preventDefault"
+  >
   viewport: ChartViewport
   durationSeconds: number
   anchorSeconds: number
   onViewportChange: (viewport: ChartViewport) => void
   domainStartSeconds?: number
+  wheelZoomMode?: 'modified' | 'direct'
 }): boolean {
   const {
     event,
@@ -771,22 +972,30 @@ export function handleMultiSignalWheelEvent(args: {
     onViewportChange,
     domainStartSeconds = 0,
   } = args
-  if (durationSeconds <= 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return false
-  event.preventDefault()
+  if (durationSeconds <= 0) return false
+  // Session charts opt into direct wheel zoom; other surfaces require Alt.
+  if (!isChartZoomWheelGesture(event) && !(args.wheelZoomMode === 'direct' && !event.ctrlKey && !event.metaKey && !event.shiftKey)) return false
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return false
   const next = wheelZoomChartViewport({
     viewport,
     durationSeconds,
-    deltaY: event.deltaY,
+    deltaY: event.deltaY * (args.wheelZoomMode === 'direct' ? 0.45 : 1),
     deltaMode: event.deltaMode,
     anchorSeconds,
     domainStartSeconds,
   })
+  // At the full-window boundary there is no zoom left to apply, so the gesture
+  // is not consumed and the page scrolls instead of stalling — the same rule
+  // `HubChartNavigator` follows for the portal hub chart.
   if (
-    next.startSeconds !== viewport.startSeconds
-    || next.endSeconds !== viewport.endSeconds
+    next.startSeconds === viewport.startSeconds
+    && next.endSeconds === viewport.endSeconds
   ) {
-    onViewportChange(next)
+    return false
   }
+  // The chart owns this gesture, so it consumes it.
+  event.preventDefault()
+  onViewportChange(next)
   return true
 }
 
@@ -830,6 +1039,7 @@ function PulseMultiSignalChartInnerImpl({
   viewportDomainStartSeconds = 0,
   layoutMode = "viewer-led",
   dragPanMode = "off",
+  wheelZoomMode = 'modified',
   lineWeightMode = "fixed",
 }: {
   rollups: ChartMinuteRollup[];
@@ -885,6 +1095,7 @@ function PulseMultiSignalChartInnerImpl({
   layoutMode?: ChartLayoutMode;
   /** Optional graph-surface navigation. The extension keeps its existing gesture path. */
   dragPanMode?: ChartDragPanMode;
+  wheelZoomMode?: 'modified' | 'direct';
   /** Disable viewport easing while the parent rail is being dragged/resized. */
   viewportMotionEnabled?: boolean;
   /** Portal-only opt-in; shared/extension callers retain the fixed stroke contract. */
@@ -914,6 +1125,7 @@ function PulseMultiSignalChartInnerImpl({
   const lastRevealedSelectionRef = useRef<number | null>(null);
   const chartId = useId().replace(/:/g, "");
   const [announcement, setAnnouncement] = useState("");
+  const [dataPage, setDataPage] = useState(0);
   const activityExpandedControlled = activityExpandedProp !== undefined;
   const showSpikesControlled = showSpikesProp !== undefined;
   const [localActivityExpanded, setLocalActivityExpanded] = useState(false);
@@ -1022,6 +1234,15 @@ function PulseMultiSignalChartInnerImpl({
     [focusedSeriesKey],
   );
   const fullRollups = allRollups;
+  const dataPageSize = 25;
+  const dataPageCount = Math.max(1, Math.ceil(fullRollups.length / dataPageSize));
+  const visibleDataRows = fullRollups.slice(
+    dataPage * dataPageSize,
+    (dataPage + 1) * dataPageSize,
+  );
+  useEffect(() => {
+    setDataPage((current) => Math.min(current, dataPageCount - 1));
+  }, [dataPageCount]);
   const inferredDurationSeconds = useMemo(() => {
     if (durationSeconds > 0) return durationSeconds;
     const offsets = fullRollups
@@ -1056,9 +1277,20 @@ function PulseMultiSignalChartInnerImpl({
     viewportDomainStartSeconds,
     viewportProp,
   ]);
+  // Keep gesture intent ahead of rendering; a wheel burst must accumulate even
+  // when several events arrive before React publishes the next frame.
+  const [directViewport, setDirectViewport] = useState<ChartViewport | null>(null);
+  const [wheelViewport, setWheelViewport] = useState<ChartViewport | null>(null);
+  const pendingDirectRef = useRef(true);
+  const pendingViewportRef = useRef<ChartViewport | null>(null);
+  const navigationFrameRef = useRef<number | null>(null);
+  const directUpdate = directViewport?.startSeconds === targetViewport.startSeconds
+    && directViewport?.endSeconds === targetViewport.endSeconds;
   const effectiveViewport = useSmoothedChartViewport(
     targetViewport,
-    motionEnabled && viewportMotionEnabled,
+    motionEnabled && viewportMotionEnabled && !directUpdate,
+    wheelViewport?.startSeconds === targetViewport.startSeconds
+      && wheelViewport?.endSeconds === targetViewport.endSeconds ? 120 : undefined,
   );
   const isZoomed =
     inferredDurationSeconds > 0 &&
@@ -1086,6 +1318,29 @@ function PulseMultiSignalChartInnerImpl({
       viewportProp,
     ],
   );
+  const publishNavigationRef = useRef(setViewport);
+  publishNavigationRef.current = setViewport;
+  const flushNavigation = useCallback(() => {
+    if (navigationFrameRef.current != null) cancelAnimationFrame(navigationFrameRef.current);
+    navigationFrameRef.current = null;
+    const next = pendingViewportRef.current;
+    pendingViewportRef.current = null;
+    if (next) {
+      setDirectViewport(pendingDirectRef.current ? next : null);
+      setWheelViewport(pendingDirectRef.current ? null : next);
+      publishNavigationRef.current(next);
+    }
+  }, []);
+  const queueNavigation = useCallback((next: ChartViewport, direct = true) => {
+    pendingViewportRef.current = next;
+    pendingDirectRef.current = direct;
+    if (navigationFrameRef.current == null) {
+      navigationFrameRef.current = requestAnimationFrame(flushNavigation);
+    }
+  }, [flushNavigation]);
+  useEffect(() => () => {
+    if (navigationFrameRef.current != null) cancelAnimationFrame(navigationFrameRef.current);
+  }, []);
   useEffect(() => {
     if (!streamStartedAt) return;
     const resolved = resolveSelectionReveal({
@@ -1132,6 +1387,16 @@ function PulseMultiSignalChartInnerImpl({
   const fullDetailRollups = detailRollupsProp?.length
     ? detailRollupsProp
     : fullRollups;
+  // Whole-stream readings for the accessible summary (never padded axis bounds).
+  const summaryPeaks = useMemo(() => {
+    let viewers = 0, chat = 0, emotes = 0;
+    for (const point of fullDetailRollups) {
+      viewers = Math.max(viewers, viewerObservedValue(point) ?? 0);
+      chat = Math.max(chat, point.chatCount ?? 0);
+      emotes = Math.max(emotes, point.totalEmoteCount ?? 0);
+    }
+    return { viewers, chat, emotes };
+  }, [fullDetailRollups]);
   const detailRollups = useMemo(() => {
     if (!isZoomed) return fullDetailRollups;
     const start = effectiveViewport.startSeconds - 60;
@@ -1543,7 +1808,7 @@ function PulseMultiSignalChartInnerImpl({
       padRight,
       padTop,
       padBottom,
-      { pxPerBar: 1.05, minWidth: 1, maxWidth: 10 },
+      { pxPerBar: 1.05, minWidth: 1, maxWidth: 48 },
       activityLayout,
       timestampScale,
       spikeThreshold,
@@ -1757,7 +2022,7 @@ function PulseMultiSignalChartInnerImpl({
       padRight,
       padTop,
       padBottom,
-      { pxPerBar: 1.05, minWidth: 1, maxWidth: 10 },
+      { pxPerBar: 1.05, minWidth: 1, maxWidth: 48 },
       activityLayout,
       timestampScale,
       0,
@@ -1891,20 +2156,9 @@ function PulseMultiSignalChartInnerImpl({
             ? (bar.isSpike ? CHART_THEME.emote.barSpike : CHART_THEME.emote.bar)
             : CHART_THEME.emote.barBaseline) * activityVisualBoost,
         )}
-      >
-        <title>
-          {`Emote peak ${count(emotesItem?.values[bar.sourceIndex] ?? 0)}/min at ${vodClock(rollupMinuteTimestamps[bar.sourceIndex], streamStartedAt)} · interval ${formatVodClock(Math.max(60, (bar.bucketEndExclusive - bar.bucketStartIndex) * 60))}`}
-        </title>
-      </rect>
+      />
     )),
-    [
-      activityVisualBoost,
-      emoteBarRects,
-      emotesItem,
-      rollupMinuteTimestamps,
-      seriesFocusOpacity,
-      streamStartedAt,
-    ],
+    [activityVisualBoost, emoteBarRects, seriesFocusOpacity],
   );
   const chatBarElements = useMemo(
     () => chatWhisperBarRects.map((bar) => (
@@ -1926,18 +2180,9 @@ function PulseMultiSignalChartInnerImpl({
             : CHART_THEME.chat.whisperBar * 0.6)
           * (bar.fullyObserved ? 1 : Math.max(0.35, bar.observedRatio)),
         )}
-      >
-        <title>
-          {`Chat average ${count(bar.value)}/min · peak ${count(bar.peakValue)}/min`
-          + (bar.peak
-            ? ` at ${vodClock(rollupMinuteTimestamps[bar.peak.index], streamStartedAt)}`
-            : "")
-          + ` · coverage ${bar.observedCount}/${bar.rangeLength}`
-          + ` · interval ${formatVodClock(Math.max(60, bar.rangeLength * 60))}`}
-        </title>
-      </rect>
+      />
     )),
-    [chatWhisperBarRects, rollupMinuteTimestamps, seriesFocusOpacity, streamStartedAt],
+    [chatWhisperBarRects, seriesFocusOpacity],
   );
   const perEmoteOverlayElements = useMemo(
     () => perEmoteOverlays.map((overlay) => (
@@ -2119,6 +2364,10 @@ function PulseMultiSignalChartInnerImpl({
     ? viewerAxis
     : viewerPeakAxis;
   const viewerScale = activeViewerAxis.max;
+  // Axis bounds carry headroom and can exceed every reading; labels report readings.
+  const viewerPeakReading = viewerValues.length > 0
+    ? viewerValues.reduce((peak, value) => Math.max(peak, value), 0)
+    : peakViewersFallback;
   const viewerScaleMin = activeViewerAxis.min;
   const viewerScaleSpan = Math.max(1, viewerScale - viewerScaleMin);
   const yMax = padTop;
@@ -2398,25 +2647,6 @@ function PulseMultiSignalChartInnerImpl({
     return hit?.moment ?? null;
   }
 
-  function activityBarAtPlotX(
-    bars: readonly ActivityBarRect[],
-    plotX: number,
-  ): ActivityBarRect | null {
-    let best: ActivityBarRect | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (const bar of bars) {
-      if (!bar.hasValue) continue;
-      if (plotX >= bar.x && plotX <= bar.x + bar.width) return bar;
-      const center = bar.x + bar.width / 2;
-      const dist = Math.abs(center - plotX);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = bar;
-      }
-    }
-    return bestDist <= Math.max(8, (best?.width ?? 0) / 2 + 4) ? best : null;
-  }
-
   function resolveMultiSignalPointerSelection(
     clientX: number,
     clientY: number,
@@ -2475,20 +2705,9 @@ function PulseMultiSignalChartInnerImpl({
       }
     }
 
-    let canonicalIndex = 0;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-    for (let index = 0; index < rollups.length; index++) {
-      const pointX = timestampScale.xForTimestamp(
-        rollups[index]!.minuteTs,
-        index,
-        rollups.length,
-      );
-      const distance = Math.abs(pointX - plotX);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        canonicalIndex = index;
-      }
-    }
+    const region = chartHitRegionAtX(hoverHitRegions, plotX);
+    if (!region) return { kind: "none" };
+    const canonicalIndex = region.index;
     const snapped = pointOffsetSeconds(
       rollups[canonicalIndex]?.minuteTs ?? "",
       streamStartedAt,
@@ -2513,9 +2732,18 @@ function PulseMultiSignalChartInnerImpl({
     onPreviewReactionMoment?.(null);
   }
 
+  useEffect(() => {
+    const index = hoverIndexRef.current;
+    if (index == null || rollups[index]?.missing !== true) return;
+    clearHoverPreview();
+  }, [rollups]);
+
   function toggleRollupSelection(index: number) {
     const rollup = rollups[index];
-    if (!rollup) return;
+    if (!rollup || rollup.missing) {
+      clearHoverPreview();
+      return;
+    }
     if (selectedRollup?.minuteTs === rollup.minuteTs) {
       onSelectRollup?.(null);
       clearHoverPreview();
@@ -2526,22 +2754,6 @@ function PulseMultiSignalChartInnerImpl({
     }
     onSelectRollup?.(rollup);
     setAnnouncement(`Selected ${vodClock(rollup.minuteTs, streamStartedAt)}.`);
-  }
-
-  function viewportAnchorFromClientX(
-    clientX: number,
-    target: Element,
-  ): number {
-    const rect = target.getBoundingClientRect();
-    if (rect.width <= 0) return viewportCenterSeconds(effectiveViewport);
-    const progress = Math.max(
-      0,
-      Math.min(1, (clientX - rect.left) / rect.width),
-    );
-    return (
-      effectiveViewport.startSeconds +
-      progress * viewportDurationSeconds(effectiveViewport)
-    );
   }
 
   function zoomViewportByFactor(factor: number, anchorSeconds?: number) {
@@ -2561,41 +2773,38 @@ function PulseMultiSignalChartInnerImpl({
     setViewport(fullChartViewport(inferredDurationSeconds, viewportDomainStartSeconds));
   }
 
-  const presetAnchorSeconds = Number.isFinite(selectedOffsetSeconds)
-    ? selectedOffsetSeconds!
-    : selectedRollup && streamStartedAt
-      ? (pointOffsetSeconds(selectedRollup.minuteTs, streamStartedAt)
-        ?? (isLive
-          ? inferredDurationSeconds
-          : viewportCenterSeconds(effectiveViewport)))
-      : isLive
-        ? inferredDurationSeconds
-        : viewportCenterSeconds(effectiveViewport);
-
   const handleChartWheel = useCallback((event: WheelEvent) => {
     const anchorTarget = plotMeasureRef.current ?? chartSvgRef.current;
     if (!anchorTarget) return;
+    const viewport = pendingViewportRef.current ?? targetViewport;
+    const bounds = anchorTarget.getBoundingClientRect();
+    const fraction = bounds.width > 0 ? Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)) : 0.5;
     handleMultiSignalWheelEvent({
       event,
-      viewport: effectiveViewport,
+      viewport,
       durationSeconds: inferredDurationSeconds,
-      anchorSeconds: viewportAnchorFromClientX(event.clientX, anchorTarget),
-      onViewportChange: setViewport,
+      anchorSeconds: viewport.startSeconds + viewportDurationSeconds(viewport) * fraction,
+      onViewportChange: next => queueNavigation(next, false),
       domainStartSeconds: viewportDomainStartSeconds,
+      wheelZoomMode,
     });
   }, [
-    effectiveViewport,
+    targetViewport,
     inferredDurationSeconds,
-    setViewport,
+    queueNavigation,
     viewportDomainStartSeconds,
+    wheelZoomMode,
   ]);
 
+  const wheelHandlerRef = useRef(handleChartWheel);
+  wheelHandlerRef.current = handleChartWheel;
   useEffect(() => {
     const node = chartSvgRef.current;
     if (!node) return;
-    node.addEventListener("wheel", handleChartWheel, { passive: false });
-    return () => node.removeEventListener("wheel", handleChartWheel);
-  }, [handleChartWheel]);
+    const listener = (event: WheelEvent) => wheelHandlerRef.current(event);
+    node.addEventListener("wheel", listener, { passive: false });
+    return () => node.removeEventListener("wheel", listener);
+  }, [canRenderChart]);
 
   // Keep this empty-state return after every hook in the component. The chart
   // can legitimately transition between an empty live frame and a populated
@@ -2645,13 +2854,23 @@ function PulseMultiSignalChartInnerImpl({
     const currentIndex = hover ?? (selectedIndex >= 0 ? selectedIndex : 0);
     const step = event.shiftKey ? 5 : 1;
     let nextIndex: number | null = null;
+    const measuredIndexFrom = (index: number, direction: -1 | 1): number | null => {
+      for (
+        let next = Math.min(rollups.length - 1, Math.max(0, index));
+        next >= 0 && next < rollups.length;
+        next += direction
+      ) {
+        if (!rollups[next]!.missing) return next;
+      }
+      return null;
+    };
 
     switch (event.key) {
       case "Home":
-        nextIndex = 0;
+        nextIndex = measuredIndexFrom(0, 1);
         break;
       case "End":
-        nextIndex = rollups.length - 1;
+        nextIndex = measuredIndexFrom(rollups.length - 1, -1);
         break;
       case "ArrowLeft":
       case "ArrowUp":
@@ -2668,7 +2887,7 @@ function PulseMultiSignalChartInnerImpl({
           );
           return;
         }
-        nextIndex = Math.max(0, currentIndex - step);
+        nextIndex = measuredIndexFrom(currentIndex - step, -1);
         break;
       case "ArrowRight":
       case "ArrowDown":
@@ -2685,7 +2904,7 @@ function PulseMultiSignalChartInnerImpl({
           );
           return;
         }
-        nextIndex = Math.min(rollups.length - 1, currentIndex + step);
+        nextIndex = measuredIndexFrom(currentIndex + step, 1);
         break;
       case "Escape":
         event.preventDefault();
@@ -2703,6 +2922,10 @@ function PulseMultiSignalChartInnerImpl({
     }
 
     event.preventDefault();
+    if (nextIndex == null) {
+      if (!rollups[currentIndex] || rollups[currentIndex]!.missing) clearHoverPreview();
+      return;
+    }
     commitHover(nextIndex);
     const rollup = rollups[nextIndex];
     if (rollup)
@@ -2775,7 +2998,7 @@ function PulseMultiSignalChartInnerImpl({
       if (!interactionBoundsRef.current) cacheInteractionBounds(event.currentTarget);
       const rect = interactionBoundsRef.current;
       if (rect && rect.width > 0) {
-        setViewport(dragPanChartViewport({
+        queueNavigation(dragPanChartViewport({
           viewport: pointer.startViewport,
           durationSeconds: inferredDurationSeconds,
           deltaPixels: dx,
@@ -2799,6 +3022,7 @@ function PulseMultiSignalChartInnerImpl({
   }
 
   function handlePlotPointerUp(event: ReactPointerEvent<SVGRectElement>) {
+    flushNavigation();
     const pointer = pointerRef.current;
     if (
       !pointer ||
@@ -2827,8 +3051,8 @@ function PulseMultiSignalChartInnerImpl({
       }
       if (!interactionBoundsRef.current) cacheInteractionBounds(event.currentTarget);
       updateHoverFromClientX(event.clientX);
-      const finalIndex = hoverIndexRef.current ?? hover ?? 0;
-      if (!reaction) toggleRollupSelection(finalIndex);
+      const finalIndex = hoverIndexRef.current;
+      if (!reaction && finalIndex != null) toggleRollupSelection(finalIndex);
     } else if (pointer.dragging) {
       // A pan (including a full-range blocked pan) consumes the gesture but
       // never mutates the committed bucket.
@@ -2839,6 +3063,7 @@ function PulseMultiSignalChartInnerImpl({
   }
 
   function handlePlotPointerCancel(event: ReactPointerEvent<SVGRectElement>) {
+    flushNavigation();
     const pointer = pointerRef.current;
     suppressClickRef.current = true;
     setScrubbing(false);
@@ -2866,73 +3091,14 @@ function PulseMultiSignalChartInnerImpl({
       data-spikes-visible={showSpikes ? "true" : "false"}
       data-chart-pan-state={pointerRef.current?.gesture === "pan" ? "panning" : "idle"}
     >
-      {variant === "console" && inferredDurationSeconds >= 10 * 60 ? (
-        <div
-          className="pointer-events-auto absolute right-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap items-center justify-end gap-1 rounded border border-white/10 bg-zinc-950/80 p-1 text-[9px] font-black uppercase tracking-wide text-zinc-400 shadow-lg backdrop-blur-sm"
-          data-chart-viewport-controls
-          aria-label="Chart zoom controls"
-        >
-          <span
-            className="px-1 tabular-nums text-zinc-500"
-            data-chart-viewport-readout
-          >
-            {isZoomed
-              ? formatViewportDuration(
-                  viewportDurationSeconds(effectiveViewport),
-                )
-              : "Full"}
-          </span>
-          <button
-            type="button"
-            onClick={() => zoomViewportByFactor(1.333333)}
-            aria-label="Zoom chart out"
-            className="rounded px-1.5 py-1 transition hover:bg-white/10 hover:text-zinc-200"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            onClick={() => zoomViewportByFactor(0.75)}
-            aria-label="Zoom chart in"
-            className="rounded px-1.5 py-1 transition hover:bg-white/10 hover:text-zinc-200"
-          >
-            +
-          </button>
-          {chartViewportPresets(inferredDurationSeconds).map((preset) => (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => {
-                if (preset.seconds === "full") resetViewport();
-                else
-                  setViewport(
-                    zoomChartViewport({
-                      viewport: effectiveViewport,
-                      durationSeconds: inferredDurationSeconds,
-                      zoomSeconds: preset.seconds,
-                      anchorSeconds: presetAnchorSeconds,
-                      domainStartSeconds: viewportDomainStartSeconds,
-                    }),
-                  );
-              }}
-              aria-pressed={
-                preset.seconds === "full"
-                  ? !isZoomed
-                  : Math.abs(
-                      viewportDurationSeconds(effectiveViewport) -
-                        preset.seconds,
-                    ) < 1
-              }
-              className="rounded px-1.5 py-1 transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {/* Viewport controls deliberately do not live here. An overlay pinned to
+          the top-right of the plot covered the viewer peak — the one region the
+          chart exists to show. The console renders them in its chart toolbar
+          (`data-chart-range-row`); keyboard (+ / − / 0) and Alt+wheel still work
+          here because the chart owns the gestures, not the buttons. */}
       {variant === "console" && reactionBarRectsForChart.length > 0 ? (
         <div
-          className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-11rem)] flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded border border-amber-400/15 bg-zinc-950/75 px-2 py-1 text-[9px] font-bold tracking-wide text-amber-200/80 shadow-sm backdrop-blur-sm"
+          className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded border border-amber-400/25 bg-zinc-950/70 px-2 py-1 text-xs font-bold tracking-wide text-amber-100 shadow-sm backdrop-blur-sm"
           data-reaction-legend
           title="Backend-authored reaction markers use a fixed-height gutter; color shows reason and opacity shows confidence."
         >
@@ -2960,7 +3126,9 @@ function PulseMultiSignalChartInnerImpl({
             : undefined
         }
         aria-describedby={
-          onSelectRollup ? `${chartId}-announcement` : undefined
+          onSelectRollup
+            ? `${chartId}-summary ${chartId}-announcement`
+            : `${chartId}-summary`
         }
         aria-keyshortcuts={
           onSelectRollup
@@ -3070,6 +3238,8 @@ function PulseMultiSignalChartInnerImpl({
           </mask>
         </defs>
 
+        <g aria-hidden="true" data-chart-decorative-primitives>
+
         {/* Bottom axis grid — only horizontal line we keep; the dashed cyan viewer guides
             and white lane separators are noise. Text labels (MAX/AVG/MIN) read off the
             viewer band height and stay readable without an underline. */}
@@ -3089,9 +3259,9 @@ function PulseMultiSignalChartInnerImpl({
             x={padLeft - 12}
             y={padTop - 4}
             textAnchor="end"
-            className="fill-cyan-400 text-[10px] font-black uppercase"
+            className="fill-cyan-400 text-xs font-black uppercase"
           >
-            MAX
+            PEAK
           </text>
           <text
             x={padLeft - 12}
@@ -3099,7 +3269,7 @@ function PulseMultiSignalChartInnerImpl({
             textAnchor="end"
             className="fill-cyan-400 text-sm font-black"
           >
-            {count(viewerScale)}
+            {count(viewerPeakReading)}
           </text>
 
           {/* AVG Label */}
@@ -3109,7 +3279,7 @@ function PulseMultiSignalChartInnerImpl({
                 x={padLeft - 12}
                 y={yAvg - 4}
                 textAnchor="end"
-                className="fill-cyan-400/80 text-[10px] font-black uppercase"
+                className="fill-cyan-400/80 text-xs font-black uppercase"
               >
                 AVG
               </text>
@@ -3129,7 +3299,7 @@ function PulseMultiSignalChartInnerImpl({
                 x={padLeft - 12}
                 y={viewerBand.bandBottom - 14}
                 textAnchor="end"
-                className="fill-cyan-400/70 text-[10px] font-black uppercase"
+                className="fill-cyan-400/70 text-xs font-black uppercase"
               >
                 MIN
               </text>
@@ -3380,7 +3550,7 @@ function PulseMultiSignalChartInnerImpl({
               textAnchor="start"
               className="fill-emerald-300/80 text-[8px] font-black uppercase"
             >
-              Emote peak {count(activityScaleMax)}
+              Emote peak {count(emotesItem?.max ?? activityScaleMax)}
             </text>
             {chatItem ? (
               <text
@@ -3455,6 +3625,11 @@ function PulseMultiSignalChartInnerImpl({
                 idx,
                 axisRollups.length,
               );
+              const label = vodClock(item.minuteTs, streamStartedAt);
+              // Console charts draw in CSS px, and a centered end label overhangs the
+              // SVG on phones. Keep it inside; the tick itself stays at its minute.
+              const halfLabel = variant === "console" ? label.length * 3.9 + 1 : 0;
+              const labelX = halfLabel > 0 ? Math.min(Math.max(x, halfLabel), width - halfLabel) : x;
               return (
                 <g key={idx} className="opacity-60" data-chart-x-axis-tick="true">
                   <line
@@ -3466,13 +3641,13 @@ function PulseMultiSignalChartInnerImpl({
                     strokeWidth="1"
                   />
                   <text
-                    x={x}
+                    x={labelX}
                     y={height - padBottom + 20}
                     textAnchor="middle"
-                    className="fill-zinc-500 text-[10px] font-black"
+                    className="fill-zinc-500 text-xs font-black"
                     data-chart-x-axis-label="true"
                   >
-                    {vodClock(item.minuteTs, streamStartedAt)}
+                    {label}
                   </text>
                 </g>
               );
@@ -3574,10 +3749,18 @@ function PulseMultiSignalChartInnerImpl({
           fill="transparent"
           style={{
             cursor: dragPanMode === "zoomed" && isZoomed ? "grab" : "crosshair",
-            touchAction: dragPanMode === "zoomed" ? "pan-y" : "none",
+            // `pan-y` in every mode: the browser keeps ordinary vertical touch
+            // scrolling (the touch counterpart of the wheel rule above) while
+            // the element still receives horizontal scrub/pan gestures.
+            // `none` here previously trapped page scrolling on touch devices.
+            touchAction: "pan-y",
           }}
+          data-chart-touch-action="pan-y"
+          data-chart-viewport-start={effectiveViewport.startSeconds}
+          data-chart-viewport-end={effectiveViewport.endSeconds}
           onPointerEnter={(event) => cacheInteractionBounds(event.currentTarget)}
           onMouseMove={(event) => {
+            if (pointerRef.current?.dragging) return;
             onPreviewReactionMoment?.(
               reactionMomentAtClientPoint(event.clientX, event.clientY, event.currentTarget),
             );
@@ -3588,6 +3771,7 @@ function PulseMultiSignalChartInnerImpl({
           onPointerMove={handlePlotPointerMove}
           onPointerUp={handlePlotPointerUp}
           onPointerCancel={handlePlotPointerCancel}
+          onLostPointerCapture={handlePlotPointerCancel}
           onClick={(event) => {
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
@@ -3685,7 +3869,13 @@ function PulseMultiSignalChartInnerImpl({
         {/* Chat-spike dot layer removed in the chart cleanup pass; see the
             emoteSpikeIdxs memo comment above. Emote spikes remain the single
             discrete spike layer; chat minutes still tint via bar.isSpike. */}
+        </g>
       </svg>
+      <span id={`${chartId}-summary`} className="sr-only">
+        Timeline with {fullDetailRollups.length} measured minute rows. Viewer peak {count(summaryPeaks.viewers)}.
+        Chat peak {count(summaryPeaks.chat)} per minute.
+        Emote peak {count(summaryPeaks.emotes)} per minute.
+      </span>
       {onSelectRollup ? (
         <span
           id={`${chartId}-announcement`}
@@ -3695,6 +3885,60 @@ function PulseMultiSignalChartInnerImpl({
         >
           {announcement}
         </span>
+      ) : null}
+      {!chromeless ? (
+      <details className="mt-3 rounded border border-white/10 bg-white/[0.02] text-xs" data-shared-chart-data-alternative>
+        <summary className="min-h-11 cursor-pointer px-3 py-3 font-black uppercase text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300">
+          Chart data table ({fullRollups.length} rows)
+        </summary>
+        <div className="overflow-x-auto border-t border-white/10">
+          <table className="w-full border-collapse text-left text-xs text-zinc-200">
+            <caption className="sr-only">Complete analytics timeline data, paginated in groups of {dataPageSize} rows.</caption>
+            <thead>
+              <tr className="text-zinc-400">
+                <th scope="col" className="px-3 py-2">Time</th>
+                <th scope="col" className="px-3 py-2">Viewers</th>
+                <th scope="col" className="px-3 py-2">Chat / min</th>
+                <th scope="col" className="px-3 py-2">Emotes / min</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleDataRows.map((row) => {
+                const viewers = viewerReadoutValue(row);
+                return (
+                  <tr key={row.minuteTs} className="border-t border-white/[0.06]">
+                    <th scope="row" className="whitespace-nowrap px-3 py-2 font-semibold">{vodClock(row.minuteTs, streamStartedAt)}</th>
+                    <td className="px-3 py-2">{viewers == null ? 'Not measured' : count(viewers)}</td>
+                    <td className="px-3 py-2">{row.missing || row.chatCount == null ? 'Not measured' : count(row.chatCount)}</td>
+                    <td className="px-3 py-2">{row.missing ? 'Not measured' : count(minuteEmoteTotal(row))}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {dataPageCount > 1 ? (
+          <div className="flex items-center justify-between gap-3 border-t border-white/10 p-2">
+            <button
+              type="button"
+              className="min-h-11 rounded border border-white/15 px-3 py-2 font-bold text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:opacity-40"
+              disabled={dataPage === 0}
+              onClick={() => setDataPage((page) => Math.max(0, page - 1))}
+            >
+              Previous rows
+            </button>
+            <span aria-live="polite">Page {dataPage + 1} of {dataPageCount}</span>
+            <button
+              type="button"
+              className="min-h-11 rounded border border-white/15 px-3 py-2 font-bold text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:opacity-40"
+              disabled={dataPage >= dataPageCount - 1}
+              onClick={() => setDataPage((page) => Math.min(dataPageCount - 1, page + 1))}
+            >
+              Next rows
+            </button>
+          </div>
+        ) : null}
+      </details>
       ) : null}
     </div>
   );
@@ -3730,7 +3974,7 @@ function PulseMultiSignalChartInnerImpl({
                       ? "Hide reaction and spike markers"
                       : "Show reaction and spike markers"
                   }
-                  className={`rounded px-2 py-1 text-[10px] font-black uppercase transition ${showSpikes ? "bg-amber-400/10 text-amber-200" : "text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"}`}
+                  className={`min-h-11 rounded px-3 py-2 text-xs font-black uppercase transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 ${showSpikes ? "bg-amber-400/10 text-amber-100" : "text-zinc-300 hover:bg-white/[0.08] hover:text-white"}`}
                 >
                   Markers
                 </button>
@@ -3740,7 +3984,7 @@ function PulseMultiSignalChartInnerImpl({
                   type="button"
                   onClick={toggleActivityExpanded}
                   aria-pressed={activityExpanded}
-                  className={`rounded px-2 py-1 text-[10px] font-black uppercase transition ${activityExpanded ? "bg-violet-400/10 text-violet-200" : "text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"}`}
+                  className={`min-h-11 rounded px-3 py-2 text-xs font-black uppercase transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 ${activityExpanded ? "bg-violet-400/10 text-violet-100" : "text-zinc-300 hover:bg-white/[0.08] hover:text-white"}`}
                 >
                   {activityExpanded ? "Reset" : "Expand"}
                 </button>

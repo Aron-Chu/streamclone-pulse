@@ -75,11 +75,11 @@ export default function LiveCollectionWarmup({
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-red-200">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 py-1 text-xs font-black uppercase tracking-wide text-red-200">
           <span className={`h-2 w-2 rounded-full bg-red-400 ${reducedMotion ? '' : 'animate-pulse'}`} />
           {LIVE_TRACKING_BADGE}
         </span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-zinc-400">
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-zinc-400">
           Refreshes every {autoRefreshSec}s
         </span>
       </div>
@@ -96,7 +96,7 @@ export default function LiveCollectionWarmup({
       </p>
 
       <div className="mt-4">
-        <div className="mb-1.5 flex justify-between text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+        <div className="mb-1.5 flex justify-between text-xs font-bold uppercase tracking-wide text-zinc-500">
           <span>Minute buckets</span>
           <span>
             {progress.readyMinutes} / {progress.targetMinutes}
@@ -125,7 +125,7 @@ export default function LiveCollectionWarmup({
         </div>
       </div>
 
-      <ul className="mt-4 space-y-1 text-left text-[11px] font-semibold text-zinc-500">
+      <ul className="mt-4 space-y-1 text-left text-xs font-semibold text-zinc-500">
         <li className="flex items-start gap-2">
           <span className="mt-0.5 text-violet-300">•</span>
           <span>Polls Twitch for live viewer counts (~every 15s).</span>

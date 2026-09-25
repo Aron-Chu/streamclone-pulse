@@ -10,16 +10,18 @@ test.beforeEach(async ({ context, baseURL }) => {
   })
 })
 
-test('public Supporter page opens account billing at desktop and mobile sizes', async ({ page }, info) => {
+test('analytics support navigation at desktop and mobile sizes', async ({ page }, info) => {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto('/supporter')
-    await page.getByRole('link', { name: 'Open account billing', exact: true }).click()
-    await expect(page).toHaveURL(/\/account\/billing$/)
-    await expect(page.getByRole('heading', { name: 'Supporter membership', exact: true })).toBeVisible()
-    await expect(page.getByRole('status')).toContainText('Billing status is unavailable right now.')
+    await page.goto('/analytics')
+    const menu = page.locator('.analytics-topnav__more')
+    const trigger = menu.getByRole('button', { name: 'Support and account', exact: true })
+    await trigger.click()
+    await expect(menu.getByRole('link', { name: 'Manage membership' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
-    await page.screenshot({ path: info.outputPath(`supporter-billing-${width}.png`), animations: 'disabled' })
+    await page.screenshot({ path: info.outputPath(`analytics-menu-${width}.png`), animations: 'disabled' })
+    await trigger.press('Escape')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
   }
 })
 
