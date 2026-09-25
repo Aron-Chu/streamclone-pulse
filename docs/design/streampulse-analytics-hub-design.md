@@ -100,7 +100,7 @@ Preview build: `VITE_BACKEND_URL=https://api.streampulse.stream npx vite build` 
 
 ## Related docs
 
-- [`analytics-hub-next-plan.md`](./analytics-hub-next-plan.md) — **what’s remaining next** (deploy checklist, phases)
+- [`website-portal/tasks.md`](../website-portal/tasks.md) — current portal task ledger
 - [`website-portal-requirements.md`](../pulse-extension/website-portal-requirements.md)
 - [`website-portal/design.md`](../website-portal/design.md)
 - [`website-portal/tasks.md`](../website-portal/tasks.md) §12 Analytics Hub

@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { deltaLabel, compact } from '../analytics/hubFormat'
 import { TrendWithCaption } from '../analytics/TrendWithCaption'
 import { ResilientImage } from '../ResilientImage'
+import { twitchProfileImageRendition } from '../../../lib/twitchProfileImage'
 
 /** Chart accent token keys available in the .hubx scope. */
 export type HubAccent = 'chart-1' | 'chart-2' | 'chart-3' | 'chart-4' | 'chart-5'
@@ -224,13 +225,16 @@ export interface AvatarProps {
   src?: string
   alt?: string
   className?: string
+  /** Request this Twitch profile rendition first, falling back to `src`. */
+  profileSize?: 70 | 150
 }
 
-export function Avatar({ login, src, alt, className }: AvatarProps) {
+export function Avatar({ login, src, alt, className, profileSize }: AvatarProps) {
   const initial = (login.trim()[0] || '?').toUpperCase()
+  const sized = profileSize ? twitchProfileImageRendition(src, profileSize) : src
   return (
     <span className={`hx-av${className ? ` ${className}` : ''}`} aria-hidden={alt ? undefined : true}>
-      <ResilientImage src={src} alt={alt ?? ''} loading="lazy" fallback={initial} />
+      <ResilientImage src={sized} fallbackSrc={src} alt={alt ?? ''} loading="lazy" fallback={initial} />
     </span>
   )
 }

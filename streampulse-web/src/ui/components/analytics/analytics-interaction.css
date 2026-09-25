@@ -1,0 +1,177 @@
+/* Compact layouts keep the inspector in document flow. At wide container
+   widths discovery-layout.css owns the side-by-side chart/inspector grid. */
+@container (max-width: 1199px) {
+  .analytics-discovery-layout .figma-global-activity__body[data-inspector-active] {
+    display: flex;
+    flex-direction: column;
+  }
+  .analytics-discovery-layout .figma-global-activity__chart-col { width: 100%; min-width: 0; }
+  .analytics-discovery-layout .figma-global-activity__inspector[data-active="true"] {
+    position: static;
+    inset: auto;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    align-self: start;
+    overflow: visible;
+    border-left: 0;
+    border-top: 1px solid var(--fma-border);
+  }
+  .analytics-discovery-layout .figma-global-activity__inspector[data-active="false"] { display: none; }
+}
+.analytics-discovery-layout .activity-bucket-inspector__table-slot { max-height: none; height: auto; overflow: visible; }
+/* A selected point stays beside the plot when both can fit. */
+.hubx .hx-viewer-domain { display: block; margin-bottom: .25rem; }
+.hubx .hx-chart-tip-slot .tip { width: 19rem; max-width: calc(100% - .5rem); white-space: normal; }
+.hub-live-wire__follow-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.hub-live-wire__follow-controls button { min-height: 44px; }
+.hub-live-wire__follow-controls button { padding: .35rem .75rem; border: 1px solid var(--fma-border); border-radius: 6px; background: var(--fma-panel); color: var(--fma-text); cursor: pointer; }
+.hub-live-wire__lifecycle { padding: .8rem; border-bottom: 1px solid var(--fma-border); }
+.hub-live-wire__lifecycle p { margin: .4rem 0; }
+.hub-live-wire__lifecycle a { display: inline-flex; align-items: center; min-height: 44px; }
+.hub-live-wire__announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (prefers-reduced-motion: no-preference) {
+  .hubx .hx-chart-tip-slot .tip { animation: activity-tooltip-in 120ms ease-out; }
+  .analytics-discovery-layout .figma-global-activity__inspector[data-active="true"] { animation: activity-inspector-in 180ms ease-out; }
+}
+@keyframes activity-tooltip-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes activity-inspector-in { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+
+.hubx .hx-chart-header__readout[hidden] { display: none; }
+.hubx .hx-chart2 .ylab--chat, .hubx .hx-chart2 .ylab--emotes { top: 40%; }
+.hub-live-wire { scroll-margin-top: 5rem; }
+.figma-analytics :is(.emote-market__view-tab,.live-channels-matrix__expand,.pulse-moments-live__filter) { border-radius: 6px; min-height: 36px; }
+.figma-analytics :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .emote-market__view-content { animation: activity-inspector-in 180ms ease-out; }
+  .figma-analytics :is(.emote-market__view-tab,.live-channels-matrix__expand,.pulse-moments-live__filter,.figma-live-rail__card) { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+}
+@media (max-width: 719px) {
+  .figma-analytics :is(.emote-market__view-tab,.live-channels-matrix__expand,.pulse-moments-live__filter) { min-height: 44px; }
+}
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__table th:is(:nth-child(6), :nth-child(7)) {
+  width: 86px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.analytics-discovery-layout .activity-bucket-inspector--summary {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 14px;
+  border: 0;
+  border-top: 2px solid var(--fma-accent-text);
+  background: transparent;
+  box-shadow: none;
+}
+.analytics-discovery-layout .figma-global-activity__inspector[data-active="true"] { overflow: visible; }
+.activity-bucket-inspector__summary-header {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--fma-border);
+}
+.activity-bucket-inspector__summary-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.activity-bucket-inspector__selection-state { display: inline-flex; align-items: center; gap: 5px; color: var(--fma-accent-text); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.activity-bucket-inspector__selection-state svg { flex: 0 0 auto; }
+.activity-bucket-inspector__summary-heading button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 5px 9px;
+  border: 1px solid var(--fma-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fma-text);
+  cursor: pointer;
+}
+.activity-bucket-inspector__summary-header strong { display: block; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.activity-bucket-inspector__summary-header > span { color: var(--fma-muted); font-size: 12px; }
+.activity-bucket-inspector__zone {
+  margin-left: 0.25em;
+  color: var(--fma-muted, currentColor);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.activity-bucket-inspector--summary .activity-bucket-inspector__summary-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 12px 0 8px;
+}
+.activity-bucket-inspector__summary-stats > div {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 1px solid var(--fma-border);
+  border-radius: 6px;
+  background: var(--sp-surface-1, var(--fma-panel));
+}
+.activity-bucket-inspector__summary-stats dt { color: var(--fma-muted); font-size: 12px; line-height: 1.3; }
+.activity-bucket-inspector__summary-stats dd { margin: 5px 0 0; font-size: 17px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.activity-bucket-inspector__scope { display: grid; gap: 3px; margin: 0; color: var(--fma-muted); font-size: 12px; line-height: 1.4; }
+.activity-bucket-inspector--summary .activity-bucket-inspector__context { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--fma-border); }
+.activity-bucket-inspector__summary-emotes h4 { margin: 0 0 8px; color: var(--fma-text); font-size: 12px; font-weight: 600; line-height: 1.35; }
+.activity-bucket-inspector__summary-emotes ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.activity-bucket-inspector__summary-emotes li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 7px; align-items: center; min-width: 0; font-size: 12px; }
+.activity-bucket-inspector__summary-emotes li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-bucket-inspector__summary-emotes li > strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.activity-bucket-inspector__summary-emotes img { width: 22px; height: 22px; object-fit: contain; }
+.activity-bucket-inspector__summary-emotes p { margin: 0; color: var(--fma-muted); font-size: 12px; line-height: 1.4; }
+.activity-bucket-inspector__matching { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--fma-border); }
+.activity-bucket-inspector__matching-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+.activity-bucket-inspector__matching-heading h4 { margin: 0; color: var(--fma-text); font-size: 12px; font-weight: 700; }
+.activity-bucket-inspector__matching-heading span { color: var(--fma-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.activity-bucket-inspector__matching ol { display: grid; gap: 0; margin: 9px 0 0; padding: 0; list-style: none; }
+.activity-bucket-inspector__matching li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--fma-border); font-size: 12px; }
+.activity-bucket-inspector__matching-channel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fma-accent-text); font-weight: 700; }
+.activity-bucket-inspector__matching li strong { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.activity-bucket-inspector__matching-time { grid-column: 2; grid-row: 1 / 3; align-self: center; color: var(--fma-muted); font-variant-numeric: tabular-nums; }
+.activity-bucket-inspector__matching > p { margin: 8px 0 0; color: var(--fma-muted); font-size: 12px; line-height: 1.4; }
+.activity-bucket-inspector__matching > .activity-bucket-inspector__matching-note { margin-top: 9px; }
+.activity-bucket-inspector__moments-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--fma-border);
+  border-radius: 6px;
+  color: var(--fma-accent-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.activity-bucket-inspector__moments-link:hover { background: var(--sp-surface-3, var(--fma-dim)); }
+.activity-bucket-inspector__providers { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--fma-border); }
+.activity-bucket-inspector__providers h4 { margin: 0 0 10px; color: var(--fma-text); font-size: 12px; font-weight: 700; }
+.activity-bucket-inspector__providers dl { display: grid; gap: 5px; margin: 0; }
+.activity-bucket-inspector__providers dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-height: 23px; font-size: 12px; }
+.activity-bucket-inspector__providers dt { display: inline-flex; align-items: center; gap: 7px; color: var(--fma-muted); }
+.activity-bucket-inspector__providers dt::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--fma-muted); }
+.activity-bucket-inspector__providers dl > div:nth-child(1) dt::before { background: var(--sp-provider-7tv); }
+.activity-bucket-inspector__providers dl > div:nth-child(2) dt::before { background: var(--sp-provider-twitch); }
+.activity-bucket-inspector__providers dl > div:nth-child(3) dt::before { background: var(--sp-provider-bttv); }
+.activity-bucket-inspector__providers dl > div:nth-child(4) dt::before { background: var(--sp-provider-ffz); }
+.activity-bucket-inspector__providers dd { margin: 0; color: var(--fma-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.activity-bucket-inspector__providers p { margin: 10px 0 0; color: var(--fma-muted); font-size: 12px; line-height: 1.4; }
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments-live__grid[data-has-selection="false"] { grid-template-columns: minmax(0, 1fr); }
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__table :is(th,td):nth-child(9) { display: table-cell; width: 160px; }
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__channel { min-width: 0; max-width: 100%; }
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__channel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-chart-navigator__actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.hx-chart-navigator__actions button { min-height: 44px; padding: 6px 12px; border: 1px solid var(--fma-border); border-radius: 6px; background: transparent; color: var(--fma-text); }
+.hx-chart-navigator__actions button:disabled { opacity: .45; }
+.hx-chart-status summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__channel > img,
+.figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__channel-fallback { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; }
+@container moment-list (max-width: 560px) {
+  .figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__table tbody tr { grid-template-areas: "channel channel" "category category" "time time" "moment moment" "chat emotes" "reactions reactions"; }
+  .figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__table tbody td:nth-child(4) { justify-self: start; }
+  .figma-analytics .figma-activity-hub .pulse-moments-live--embedded .pulse-moments__table tbody td:nth-child(9) { display: block; grid-area: reactions; width: auto; }
+}

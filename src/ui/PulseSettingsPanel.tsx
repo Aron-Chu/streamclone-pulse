@@ -1,498 +1,267 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
-import { sendBackgroundMessage } from '../content/bridge.ts'
-import {
-  clearSessionPulseCache,
-  countSessionPulseEntries,
-  getAutoTrackPolicy,
-  getAutoUpdateEnabled,
-  getBackendUrl,
-  getDefaultChartWindow,
-  getKeepLocalCache,
-  getOverlayPlacement,
-  getPulseDockPreference,
-  getChatClosedPulseDockEnabled,
-  getThemePreference,
-  isLocalStackBackendUrl,
-  migrateDefaultChartWindowToRecentV2Once,
-  setAutoTrackPolicy,
-  setAutoUpdateEnabled,
-  setChatClosedPulseDockEnabled,
-  setDefaultChartWindow,
-  setKeepLocalCache,
-  setOverlayPlacement,
-  setPulseDockPreference,
-  setThemePreference,
-  type AutoTrackPolicy,
-  type DefaultChartWindow,
-  type OverlayPlacement,
-  type ThemePreference,
-} from '../shared/storage.ts'
-import { getWatchlist, removeFromWatchlist } from '../shared/watchlist.ts'
-import { applyAccentTheme } from './overlayTheme.ts'
-import { PulseSectionCard } from './PulseSectionCard.tsx'
-import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import { PeakMark } from './PeakMark.tsx'
+import { PulseBannerQuickPreview } from './PulseBanner.tsx'
 import { theme } from './theme.ts'
+import { compactViewerSamplingLabel, summarizeViewerSampling } from '../shared/viewerSamplingStatus.ts'
+import { useState } from 'react'
+import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
+import { sendBackgroundMessage } from '../content/bridge.ts'
+import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
+import { ChoicePicker } from './ChoicePicker.tsx'
+import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
+import { usePulseHealth } from './usePulseHealth.ts'
+import { usePulsePreferences } from './usePulsePreferences.ts'
+import type { SettingsHostSection } from '../shared/messages.ts'
 
-const HOSTED_API_HOST = 'api.streampulse.stream'
+const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
-type ConnectionKind = 'hosted' | 'local' | 'custom'
+export function PulseSettingsPanel({ onBack }: { onBack?: () => void }) {
+  const preferences = usePulsePreferences()
+  const { health, checking, refresh, error: connectionError } = usePulseHealth()
+  const [openError, setOpenError] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
 
-function resolveConnectionKind(url: string): ConnectionKind {
-  if (isLocalStackBackendUrl(url)) return 'local'
-  const normalized = url.trim().replace(/\/+$/, '').toLowerCase()
-  if (normalized.includes(HOSTED_API_HOST)) return 'hosted'
-  return 'custom'
-}
-
-function connectionPillLabel(kind: ConnectionKind): string {
-  if (kind === 'local') return 'Local dev API'
-  if (kind === 'custom') return 'Custom API'
-  return 'Hosted API'
-}
-
-function connectionTitle(kind: ConnectionKind): string {
-  if (kind === 'local') return 'Local Streamclone stack'
-  if (kind === 'custom') return 'Custom backend'
-  return 'StreamPulse cloud'
-}
-
-function connectionHint(kind: ConnectionKind): string {
-  if (kind === 'local') {
-    return 'Local stack only — Track and auto-track apply here. IRC pool differs from production hosted coverage.'
-  }
-  if (kind === 'custom') {
-    return 'Using a custom API — change in Full settings.'
-  }
-  return 'Live IRC coverage is managed by StreamPulse. Auto-track does not apply on hosted.'
-}
-
-function cacheStatusLabel(entryCount: number, enabled: boolean): string {
-  if (!enabled) {
-    return 'Caching is off — channels are not remembered when you switch tabs in this browser session.'
-  }
-  if (entryCount === 0) {
-    return 'No channels cached yet this session. Snapshots expire after about 45 seconds.'
-  }
-  if (entryCount === 1) {
-    return '1 channel cached this session. Snapshots expire after about 45 seconds.'
-  }
-  return `${entryCount} channels cached this session. Snapshots expire after about 45 seconds.`
-}
-
-const ACCENT_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
-  { value: 'aurora', label: 'Aurora' },
-  { value: 'volt', label: 'Volt' },
-  { value: 'azure', label: 'Azure' },
-]
-
-const CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: DefaultChartWindow; label: string }> = [
-  { value: '15m', label: '15m' },
-  { value: '30m', label: '30m' },
-  { value: '60m', label: '1h' },
-  { value: '2h', label: '2h' },
-  { value: '4h', label: '4h' },
-  { value: 'full', label: 'All' },
-]
-
-const PLACEMENT_OPTIONS: ReadonlyArray<{ value: OverlayPlacement; label: string }> = [
-  { value: 'sidebar', label: 'Sidebar tab' },
-  { value: 'right', label: 'Right rail' },
-  { value: 'bottom', label: 'Bottom dock' },
-]
-
-const AUTO_TRACK_OPTIONS: ReadonlyArray<{ value: AutoTrackPolicy; label: string; title?: string }> = [
-  { value: 'off', label: 'Off' },
-  { value: 'followed', label: 'On page open', title: 'On page open (local stack)' },
-  { value: 'ask', label: 'Ask first', title: 'Ask first (local stack)' },
-]
-
-function connectionStatusLabel(url: string): string {
-  return connectionTitle(resolveConnectionKind(url))
-}
-
-function segmentClass(active: boolean): string {
-  return active ? 'pulse-segment-btn pulse-segment-btn-active' : 'pulse-segment-btn'
-}
-
-export function PulseSettingsPanel(props: {
-  onBack?: () => void
-  onOpenFullSettings?: () => void
-  onAutoUpdateChange?: (enabled: boolean) => void
-}) {
-  const { onBack, onOpenFullSettings, onAutoUpdateChange } = props
-  const [autoUpdate, setAutoUpdate] = useState(true)
-  const [show7TVLabels, setShow7TVLabels] = useState(true)
-  const [keepCache, setKeepCache] = useState(true)
-  const [backendUrl, setBackendUrlState] = useState('')
-  const [healthStatus, setHealthStatus] = useState<'idle' | 'checking' | 'ok' | 'fail'>('idle')
-  const [healthDetail, setHealthDetail] = useState('')
-  const [accentTheme, setAccentTheme] = useState<ThemePreference>('aurora')
-  const [defaultChartWindow, setDefaultChartWindowState] = useState<DefaultChartWindow>('60m')
-  const [overlayPlacement, setOverlayPlacementState] = useState<OverlayPlacement>('sidebar')
-  const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
-  const [autoTrackPolicy, setAutoTrackPolicyState] = useState<AutoTrackPolicy>('off')
-  const [watchlist, setWatchlist] = useState<string[]>([])
-  const [cacheEntryCount, setCacheEntryCount] = useState(0)
-  const [clearStatus, setClearStatus] = useState<'idle' | 'clearing' | 'done'>('idle')
-
-  const connectionKind = resolveConnectionKind(backendUrl)
-  const isHosted = connectionKind !== 'local'
-  const showEndpoint = connectionKind === 'local'
-
-  const reload = useCallback(async () => {
-    await migrateDefaultChartWindowToRecentV2Once()
-    const [au, dock, cache, url, accent, chartWindow, placement, dockEnabled, trackPolicy, wl] = await Promise.all([
-      getAutoUpdateEnabled(),
-      getPulseDockPreference(),
-      getKeepLocalCache(),
-      getBackendUrl(),
-      getThemePreference(),
-      getDefaultChartWindow(),
-      getOverlayPlacement(),
-      getChatClosedPulseDockEnabled(),
-      getAutoTrackPolicy(),
-      getWatchlist(),
-    ])
-    setAutoUpdate(au)
-    setShow7TVLabels(dock.show7TVSignalLabels)
-    setKeepCache(cache)
-    setBackendUrlState(url)
-    setAccentTheme(accent)
-    applyAccentTheme(accent)
-    setDefaultChartWindowState(chartWindow)
-    setOverlayPlacementState(placement)
-    setChatClosedDockEnabledState(dockEnabled)
-    setAutoTrackPolicyState(trackPolicy)
-    setWatchlist(wl)
-    setCacheEntryCount(await countSessionPulseEntries())
-  }, [])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  const testConnection = async () => {
-    setHealthStatus('checking')
-    setHealthDetail('')
+  async function openHost(section: SettingsHostSection = 'pulse'): Promise<void> {
+    setOpening(true)
+    setOpenError(null)
     try {
-      const res = await sendBackgroundMessage({ type: 'HEALTH' })
-      if ('type' in res && res.type === 'HEALTH' && res.ok) {
-        setHealthStatus('ok')
-        setHealthDetail(res.version ? `v${res.version}` : 'Connected')
-      } else if ('type' in res && res.type === 'HEALTH') {
-        setHealthStatus('fail')
-        setHealthDetail(res.error ?? 'Unreachable')
-      } else {
-        setHealthStatus('fail')
-        setHealthDetail('Unreachable')
-      }
-    } catch (err) {
-      setHealthStatus('fail')
-      setHealthDetail(err instanceof Error ? err.message : 'Unreachable')
-    }
+      const response = await sendBackgroundMessage({ type: 'OPEN_SETTINGS_HOST', section })
+      const failure = backgroundErrorMessage(response, EXTENSION_RECONNECT_MESSAGE)
+      if (failure || !response || !('type' in response) || response.type !== 'OPEN_SETTINGS_HOST') setOpenError(failure ?? EXTENSION_RECONNECT_MESSAGE)
+    } catch {
+      setOpenError(EXTENSION_RECONNECT_MESSAGE)
+    } finally { setOpening(false) }
   }
 
-  const clearCache = async () => {
-    setClearStatus('clearing')
-    await clearSessionPulseCache()
-    setCacheEntryCount(await countSessionPulseEntries())
-    setClearStatus('done')
-    window.setTimeout(() => setClearStatus('idle'), 1500)
-  }
-
-  const removeWatchlistEntry = async (login: string) => {
-    await removeFromWatchlist(login)
-    setWatchlist(prev => prev.filter(entry => entry !== login))
-  }
-
-  const pickAccent = (value: ThemePreference) => {
-    setAccentTheme(value)
-    applyAccentTheme(value)
-    void setThemePreference(value)
-  }
+  const reachable = health?.ok === true
+  const apiStatus = checking ? 'checking' : reachable ? 'connected' : 'unreachable'
+  const sampler = summarizeViewerSampling(reachable ? health?.viewerSampling : undefined)
+  const samplerLabel = reachable ? compactViewerSamplingLabel(sampler) : 'Unknown'
+  const isSidebar = preferences.placement === 'sidebar'
 
   return (
-    <div className="pulse-settings-panel">
-      {(onBack || onOpenFullSettings) && (
-        <div className="pulse-settings-nav">
-          {onBack ? (
-            <button type="button" className="pulse-link-btn" onClick={onBack}>
-              ← Back
-            </button>
-          ) : (
-            <span />
-          )}
-          {onOpenFullSettings ? (
-            <button type="button" className="pulse-link-btn" onClick={onOpenFullSettings}>
-              Full settings
-            </button>
+    <div
+      className={`pulse-settings-panel pulse-settings-overlay-workspace pulse-density-${preferences.density}`}
+      data-overlay-settings-panel="true"
+      data-settings-surface="overlay"
+      data-pulse-density={preferences.density}
+    >
+      <div className="pulse-settings-nav">
+        {onBack ? (
+          <button type="button" className="pulse-link-btn" onClick={onBack}>← Back to Pulse</button>
+        ) : <span />}
+        <h1>Quick settings</h1>
+        {!isSidebar && onBack ? (
+          <button
+            type="button"
+            className="pulse-link-btn"
+            style={{ fontSize: 11, marginLeft: 'auto' }}
+            aria-label="Close settings"
+            onClick={onBack}
+          >
+            ✕
+          </button>
+        ) : null}
+      </div>
+
+      <div className="pulse-settings-connection" data-settings-connection="true">
+        <span className={`pulse-settings-status-dot pulse-settings-status-dot-${apiStatus}`} aria-hidden="true" />
+        <span className="pulse-settings-connection-copy">
+          <strong data-api-status={apiStatus}>
+            {checking ? 'Checking connection' : reachable ? `Connected · v${RELEASE_PREVIEW.version}` : connectionError ? 'Extension disconnected' : 'API unreachable'}
+          </strong>
+          <small data-sampler-status={sampler.state}>Sampler · {samplerLabel}</small>
+        </span>
+        <button
+          type="button"
+          className="pulse-settings-retest"
+          aria-label="Test connection"
+          title="Test connection"
+          disabled={checking}
+          onClick={() => void refresh(true)}
+        >
+          {checking ? '…' : '↻'}
+        </button>
+      </div>
+      {connectionError ? <p className="pulse-settings-hint" role="status">{connectionError}</p> : null}
+
+      <button
+        type="button"
+        className="pulse-settings-open-all"
+        data-settings-host-cta="pulse"
+        disabled={opening}
+        onClick={() => void openHost('pulse')}
+      >
+        <span>{opening ? 'Opening settings…' : 'Open all settings'}</span>
+        <span aria-hidden="true">↗</span>
+      </button>
+      {openError ? <p className="pulse-settings-hint" role="alert">{openError}</p> : null}
+
+      <section className="pulse-settings-quick" aria-label="Extension preferences">
+        <div className="pulse-settings-section-heading">
+          <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: theme.textSecondary }}>
+            Quick controls
+          </span>
+          {preferences.status ? (
+            <span
+              className={preferences.status === 'Saved' ? 'pulse-settings-saved' : 'pulse-settings-status-fail'}
+              role="status"
+            >
+              {preferences.status}
+            </span>
           ) : null}
         </div>
-      )}
 
-      <PulseSectionCard title="Connection" titleTone="muted">
-        <div className="pulse-settings-connection-head">
-          <span style={connectionKind === 'local' ? apiPillLocalStyle : connectionKind === 'custom' ? apiPillCustomStyle : apiPillHostedStyle}>
-            {connectionPillLabel(connectionKind)}
-          </span>
-          <button type="button" className="pulse-secondary-btn" onClick={() => void testConnection()}>
-            {healthStatus === 'checking' ? 'Testing…' : 'Test'}
+        <h2 className="pulse-quick-group-title">Live data</h2>
+        <ToggleRow
+          id="pulse-auto-update"
+          label="Refresh live data automatically"
+          hint="Auto-update activity and viewer counts."
+          checked={preferences.autoUpdate}
+          onChange={preferences.setAutoUpdate}
+        />
+
+        <h2 className="pulse-quick-group-title">Layout</h2>
+        <div className="pulse-settings-field pulse-settings-control-block">
+          <span className="pulse-settings-label">Density</span>
+          <ChoicePicker
+            kind="density"
+            variant="compact"
+            groupLabel="Density"
+            options={DENSITY_OPTIONS}
+            value={preferences.density}
+            onChange={next => void preferences.setDensity(next)}
+          />
+        </div>
+
+        <div className="pulse-settings-field pulse-settings-control-block">
+          <span className="pulse-settings-label">Placement</span>
+          <ChoicePicker
+            kind="placement"
+            variant="compact"
+            groupLabel="Placement"
+            options={PLACEMENT_OPTIONS.map(option => ({
+              ...option,
+              icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,
+            }))}
+            value={preferences.placement}
+            onChange={next => void preferences.setPlacement(next)}
+          />
+        </div>
+
+        <ToggleRow
+          id="pulse-chat-dock"
+          label="Dock when chat is closed"
+          hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking is only available when placement is set to Sidebar.'}
+          checked={preferences.dock}
+          disabled={!isSidebar}
+          onChange={preferences.setDock}
+        />
+
+        <h2 className="pulse-quick-group-title">Appearance</h2>
+        <div className="pulse-settings-field pulse-settings-control-block">
+          <span className="pulse-settings-label">Accent</span>
+          <ChoicePicker
+            kind="accent"
+            variant="compact"
+            groupLabel="Accent"
+            options={ACCENT_THEME_OPTIONS}
+            value={preferences.accent}
+            onChange={next => void preferences.setAccent(next)}
+          />
+        </div>
+        <div className="pulse-settings-field pulse-settings-control-block">
+          <span className="pulse-settings-label">Background &amp; motion</span>
+          <PulseBannerQuickPreview />
+          <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse')}>
+            Edit background in all settings ↗
           </button>
         </div>
-        <div className="pulse-settings-connection-copy">
-          <div className="pulse-settings-connection-title">{connectionStatusLabel(backendUrl)}</div>
-          {showEndpoint ? (
-            <div className="pulse-settings-endpoint" title={backendUrl}>
-              {backendUrl || '—'}
-            </div>
-          ) : null}
-          <div className="pulse-settings-hint">{connectionHint(connectionKind)}</div>
-        </div>
-        {healthStatus === 'ok' ? (
-          <div className="pulse-settings-status-ok">Connected{healthDetail ? ` · ${healthDetail}` : ''}</div>
-        ) : null}
-        {healthStatus === 'fail' ? (
-          <div className="pulse-settings-status-fail">{healthDetail || 'Connection failed'}</div>
-        ) : null}
-      </PulseSectionCard>
 
-      <PulseSectionCard title="Appearance" titleTone="muted">
-        <div className="pulse-settings-field">
-          <label className="pulse-settings-label">Accent theme</label>
-          <div className="pulse-segment-row">
-            {ACCENT_OPTIONS.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                className={segmentClass(accentTheme === option.value)}
-                onClick={() => pickAccent(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+        <div style={{ paddingTop: 6, paddingBottom: 2 }}>
+          <button
+            type="button"
+            className="pulse-link-btn"
+            style={{ fontSize: 10, color: theme.textMuted, cursor: 'pointer', padding: 0 }}
+            onClick={() => void preferences.resetAppearanceAndLayout()}
+          >
+            Reset appearance and layout to defaults
+          </button>
         </div>
-      </PulseSectionCard>
+      </section>
 
-      <PulseSectionCard title="Live data" titleTone="muted">
-        <div className="pulse-settings-field">
-          <ToggleRow
-            label="Auto-update while open"
-            hint="Poll for fresh Pulse data on a timer."
-            checked={autoUpdate}
-            onChange={checked => {
-              setAutoUpdate(checked)
-              void setAutoUpdateEnabled(checked)
-              onAutoUpdateChange?.(checked)
-            }}
-          />
-          <ToggleRow
-            label="7TV signal labels"
-            hint="Show 7TV emote names on the chart overlay."
-            checked={show7TVLabels}
-            onChange={checked => {
-              setShow7TVLabels(checked)
-              void setPulseDockPreference({ show7TVSignalLabels: checked })
-            }}
-          />
-          <PulseThemedSelect
-            label="Default chart range"
-            value={defaultChartWindow}
-            options={CHART_WINDOW_OPTIONS}
-            ariaLabel="Default chart range"
-            fullWidth
-            onChange={value => {
-              setDefaultChartWindowState(value)
-              void setDefaultChartWindow(value)
-            }}
-          />
-          <div className="pulse-settings-hint">
-            Applied when you open a live chart. On live streams, &quot;All&quot; stays at 1h until you pick All in the chart range control.
-          </div>
-        </div>
-      </PulseSectionCard>
+      <button
+        type="button"
+        className="pulse-settings-supporter-cta"
+        data-settings-host-cta="supporter"
+        disabled={opening}
+        onClick={() => void openHost('supporter')}
+      >
+        <PeakMark size={20} stroke={theme.accentSoft} className="pulse-settings-supporter-mark" />
+        <span className="pulse-settings-supporter-text">
+          <strong>Pulse Supporter</strong>
+          <small>Personal finishes. Core tools stay free.</small>
+        </span>
+        <span aria-hidden="true">›</span>
+      </button>
 
-      <PulseSectionCard title="Tracking" titleTone="muted">
-        <div className="pulse-settings-field">
-          <ToggleRow
-            label="Show Pulse dock when chat is closed"
-            hint="Off: no floating panel when the Twitch chat column is hidden. On: a Pulse panel appears in the bottom-right when chat is closed. CHAT/PULSE tabs always show when chat is open."
-            checked={chatClosedDockEnabled}
-            onChange={checked => {
-              setChatClosedDockEnabledState(checked)
-              void setChatClosedPulseDockEnabled(checked)
-            }}
-          />
+      <details className="pulse-settings-release-preview" data-changelog-preview="true">
+        <summary>
+          <span className="pulse-settings-release-version">v{RELEASE_PREVIEW.version}</span>
+          <span className="pulse-settings-release-title">
+            <strong>What&rsquo;s new</strong>
+            <small>{RELEASE_PREVIEW.title}</small>
+          </span>
+          <span className="pulse-settings-release-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div className="pulse-settings-release-body pulse-tab-fade">
+          <ul>
+            {RELEASE_PREVIEW.bullets.slice(0, 3).map(item => <li key={item}>{item}</li>)}
+          </ul>
+          <button
+            type="button"
+            className="pulse-link-btn"
+            data-settings-host-cta="updates"
+            disabled={opening}
+            onClick={() => void openHost('updates')}
+          >
+            View full changelog ↗
+          </button>
         </div>
-        <div className="pulse-settings-field">
-          <label className="pulse-settings-label">Overlay placement</label>
-          <div className="pulse-segment-row">
-            {PLACEMENT_OPTIONS.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                className={segmentClass(overlayPlacement === option.value)}
-                onClick={() => {
-                  setOverlayPlacementState(option.value)
-                  void setOverlayPlacement(option.value)
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="pulse-settings-field">
-          <label className="pulse-settings-label">Auto-track channels</label>
-          <div className="pulse-segment-row">
-            {AUTO_TRACK_OPTIONS.map(option => {
-              const disabled = isHosted
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={segmentClass(autoTrackPolicy === option.value)}
-                  title={option.title}
-                  disabled={disabled}
-                  onClick={() => {
-                    if (disabled) return
-                    setAutoTrackPolicyState(option.value)
-                    void setAutoTrackPolicy(option.value)
-                  }}
-                >
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-          <div className="pulse-settings-hint">
-            {isHosted
-              ? 'Off on hosted — live Pulse in the extension is limited to the active IRC pool. Browse tracked channels on the Analytics hub.'
-              : 'Local stack only — starts IRC when you open a channel (policy above).'}
-          </div>
-        </div>
-        <div className="pulse-settings-field">
-          <label className="pulse-settings-label">{isHosted ? 'Saved channels (Protect)' : 'Watchlist'}</label>
-          {watchlist.length === 0 ? (
-            <div className="pulse-settings-hint">
-              {isHosted
-                ? 'No saved channels. Adding one stores a browser-sync preference only — it does not enable live Pulse or claim server-side Protect on the public API.'
-                : 'No channels saved. Add them in Full settings or use Track in the overlay.'}
-            </div>
-          ) : (
-            <div style={watchlistStyle}>
-              {isHosted ? (
-                <p className="pulse-settings-hint">
-                  Stored in browser sync storage. The public hosted API has no guest Protect credentials — this list does
-                  not enable live Pulse or backfill in the extension.
-                </p>
-              ) : null}
-              {watchlist.map(login => (
-                <div key={login} style={watchlistRowStyle}>
-                  <span>{login}</span>
-                  <button type="button" className="pulse-link-btn" onClick={() => void removeWatchlistEntry(login)}>
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </PulseSectionCard>
+      </details>
 
-      <PulseSectionCard title="Storage" titleTone="muted">
-        <ToggleRow
-          label="Remember recently opened channels"
-          hint="Store a short-lived Pulse snapshot per channel in this browser session only."
-          checked={keepCache}
-          onChange={checked => {
-            setKeepCache(checked)
-            void setKeepLocalCache(checked)
-          }}
-        />
-        <div className="pulse-settings-cache-meta">{cacheStatusLabel(cacheEntryCount, keepCache)}</div>
-        <button type="button" className="pulse-secondary-btn" style={fullWidthBtn} onClick={() => void clearCache()}>
-          {clearStatus === 'clearing' ? 'Clearing…' : clearStatus === 'done' ? 'Cleared' : 'Clear session cache'}
-        </button>
-      </PulseSectionCard>
     </div>
   )
 }
 
-function ToggleRow(props: {
+function ToggleRow({
+  id,
+  label,
+  hint,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  id: string
   label: string
   hint?: string
   checked: boolean
-  onChange: (checked: boolean) => void
+  disabled?: boolean
+  onChange: (checked: boolean) => void | Promise<void>
 }) {
   return (
-    <label className="pulse-settings-toggle-row">
+    <div className={`pulse-settings-toggle-row pulse-settings-control-block${disabled ? ' pulse-settings-control-disabled' : ''}`}>
       <div>
-        <div className="pulse-settings-label">{props.label}</div>
-        {props.hint ? <div className="pulse-settings-hint">{props.hint}</div> : null}
+        <label className="pulse-settings-label" htmlFor={id} style={disabled ? { opacity: 0.6 } : undefined}>{label}</label>
+        {hint ? <span className="pulse-settings-hint" style={disabled ? { opacity: 0.6 } : undefined}>{hint}</span> : null}
       </div>
       <input
+        id={id}
         type="checkbox"
         className="pulse-settings-toggle"
-        checked={props.checked}
-        onChange={event => props.onChange(event.target.checked)}
+        checked={checked}
+        disabled={disabled}
+        onChange={event => void onChange(event.target.checked)}
       />
-    </label>
+    </div>
   )
-}
-
-const fullWidthBtn: CSSProperties = { width: '100%' }
-
-const apiPillHostedStyle: CSSProperties = {
-  background: 'rgba(34, 197, 94, 0.14)',
-  border: '1px solid rgba(34, 197, 94, 0.35)',
-  borderRadius: 999,
-  color: 'rgba(187, 247, 208, 0.95)',
-  display: 'inline-block',
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: '0.04em',
-  padding: '3px 10px',
-  textTransform: 'uppercase',
-}
-
-const apiPillCustomStyle: CSSProperties = {
-  background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.14)',
-  border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35)',
-  borderRadius: 999,
-  color: 'var(--pulse-accent-ink, #ddd6fe)',
-  display: 'inline-block',
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: '0.04em',
-  padding: '3px 10px',
-  textTransform: 'uppercase',
-}
-
-const apiPillLocalStyle: CSSProperties = {
-  background: 'rgba(245, 158, 11, 0.14)',
-  border: '1px solid rgba(245, 158, 11, 0.4)',
-  borderRadius: 999,
-  color: 'rgba(253, 230, 138, 0.95)',
-  display: 'inline-block',
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: '0.04em',
-  padding: '3px 10px',
-  textTransform: 'uppercase',
-}
-
-const watchlistStyle: CSSProperties = {
-  display: 'grid',
-  gap: 6,
-}
-
-const watchlistRowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  fontSize: 12,
-  color: theme.textPrimary,
 }

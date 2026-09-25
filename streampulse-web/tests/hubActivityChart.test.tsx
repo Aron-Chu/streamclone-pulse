@@ -3,6 +3,18 @@ import { describe, expect, it } from 'vitest'
 import { HubActivityChart, viewerTrendDisplayValues } from '../src/ui/components/hub/HubActivityChart'
 
 describe('HubActivityChart chat measurement honesty', () => {
+  it('preserves qualified viewer peaks when another bucket makes the series partial', () => {
+    const points = [400000, 3000000, 450000, 0].map((viewers, index) => ({
+      t: 1789245000000 + index * 360000,
+      viewers, chat: 100, seventv: 20, bucketComplete: true,
+      hasViewerRollup: index < 3,
+      viewerCoverage: index < 3 ? 'complete' : 'unknown',
+      viewerExpectedContributors: index < 3 ? 500 : undefined,
+      viewerContributors: index < 3 ? 80 : undefined,
+    }))
+    expect(viewerTrendDisplayValues(points, 1440)).toEqual([400000, 3000000, 450000, 0])
+  })
+
   it('keeps all provider lanes fixed at the chart footer without toggle buttons', () => {
     const end = Math.floor((Date.now() - 5 * 60_000) / 60_000) * 60_000
     const { container } = render(
@@ -50,6 +62,10 @@ describe('HubActivityChart chat measurement honesty', () => {
     const plot = container.querySelector('.hx-plot-stack__plot--chart')
     expect(plot).not.toBeNull()
     expect(Boolean(plot!.compareDocumentPosition(lanes!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    const interactiveChart = container.querySelector('.hx-chart2')
+    expect(interactiveChart?.getAttribute('role')).toBe('group')
+    expect(interactiveChart?.getAttribute('aria-roledescription')).toBe('interactive activity chart')
+    expect(interactiveChart?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('explains exact unclassified provider counts without adding a fifth lane', () => {

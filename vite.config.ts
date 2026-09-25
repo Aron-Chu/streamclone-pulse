@@ -2,11 +2,10 @@ import { build as viteBuild, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
-import { loadManifestForTarget, resolveExtensionTarget } from './scripts/extension-target.mjs'
-import { extensionResolve, isStoreBuild, sharedOutput } from './vite.shared.ts'
+import { loadManifestForTarget } from './scripts/extension-target.mjs'
+import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
-const extensionTarget = resolveExtensionTarget()
 
 function copyToDist(rootDir: string, relativePath: string): void {
   const src = resolve(rootDir, relativePath)
@@ -28,9 +27,10 @@ function chromeExtensionPlugin() {
       writeFileSync(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2))
       writeFileSync(
         resolve(dist, 'extension-target.json'),
-        JSON.stringify({ target: extensionTarget, version: manifest.version }, null, 2),
+        JSON.stringify({ buildId: extensionBuildId, target: extensionTarget, version: manifest.version }, null, 2),
       )
-      for (const page of ['popup/index.html', 'options/index.html'] as const) {
+      const pages = ['popup/index.html', 'options/index.html'] as const
+      for (const page of pages) {
         copyToDist(__dirname, page)
       }
       mkdirSync(resolve(dist, 'icons'), { recursive: true })
@@ -50,6 +50,8 @@ export default defineConfig({
     __EXTENSION_TARGET_MARKER__: JSON.stringify(
       `streampulse-extension-runtime-target:${extensionTarget}`,
     ),
+    __EXTENSION_BUILD_ID__: JSON.stringify(extensionBuildId),
+    __EXTENSION_RELEASE_PREVIEW__: JSON.stringify(extensionReleasePreview),
   },
   build: {
     outDir: 'dist',
@@ -58,7 +60,10 @@ export default defineConfig({
       input: {
         'background/service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
         'popup/popup': resolve(__dirname, 'src/popup/popup.tsx'),
-        'options/options': resolve(__dirname, 'src/options/options.tsx'),
+        'options/options': resolve(
+          __dirname,
+          isStoreBuild ? 'src/options/storeOptions.tsx' : 'src/options/options.tsx',
+        ),
       },
       output: sharedOutput,
     },

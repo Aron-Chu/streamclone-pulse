@@ -24,19 +24,19 @@
 /* ---- Scroll track + pin -------------------------------------------------- */
 .lsg__scene {
   position: relative;
-  height: 460vh;
+  /* ~5 beats of dwell. Longer reads as a frozen page: the visitor scrolls and
+     nothing appears to move. */
+  height: 220vh;
 }
 .lsg__sticky {
-  /* JS transform-pin (see component): emulates position:sticky because the
-     .sp-landing wrapper is a non-scrolling overflow container that disables it. */
-  position: absolute;
+  /* Native sticky — `.sp-landing` uses `overflow-x: clip`, which is not a
+     scroll container, so this pins against the viewport and stays exactly in
+     step with scroll. (A JS-written transform lands a frame late and drifts.) */
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   min-height: 100vh;
   display: flex;
   align-items: center;
-  will-change: transform;
 }
 .lsg__grid {
   display: grid;
@@ -828,7 +828,7 @@
 /* ---- Responsive ---------------------------------------------------------- */
 @media (max-width: 960px) {
   .lsg__scene {
-    height: 420vh;
+    height: 200vh;
   }
   .lsg__grid {
     grid-template-columns: 1fr;
@@ -847,8 +847,13 @@
   }
 }
 @media (max-width: 560px) {
+  /* Keep adjacent peak labels separate in the compact sample plot. */
+  .lsg__peak:last-child .lsg__peak-callout {
+    bottom: auto;
+    top: calc(100% + 12px);
+  }
   .lsg__scene {
-    height: 380vh;
+    height: 190vh;
   }
   .lsg__kpis {
     gap: 0.4rem;

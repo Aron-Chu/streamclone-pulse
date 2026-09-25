@@ -91,14 +91,17 @@ export default function Terms() {
           <Link to={SUPPORTER_PATH}>Supporter page</Link>; the terms of the offer are:
         </p>
         <ul>
-          <li><strong>Price:</strong> $4.99 per month, plus any applicable tax, shown before you pay.</li>
+          <li>
+            <strong>Price:</strong> $4.99 per month. Stripe checkout shows the final total,
+            including any tax it calculates, before you pay.
+          </li>
           <li><strong>Renewal:</strong> it renews automatically each month until you cancel.</li>
           <li>
             <strong>Cancellation:</strong> you can cancel at any time. Cancelling stops future
             charges and keeps your access until the end of the month you already paid for.
           </li>
           <li>
-            <strong>What you get:</strong> an original Pulse profile banner, three decorative overlay
+            <strong>What you get:</strong> a private Pulse header accent, three private overlay
             finishes, and private support recognition. Nothing else is promised.
           </li>
           <li>

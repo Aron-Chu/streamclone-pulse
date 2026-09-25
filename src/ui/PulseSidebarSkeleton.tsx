@@ -11,7 +11,7 @@ export function pulseSidebarSkeletonStatusCopy(hostedBackend: boolean): {
     title: 'Loading Pulse',
     detail: hostedBackend
       ? 'Fetching live analytics from StreamPulse…'
-      : 'Waiting for Pulse data from your Streamclone stack…',
+      : 'Waiting for Pulse data from your StreamPulse stack…',
   }
 }
 

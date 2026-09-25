@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   formatMomentTimeLabel,
   mergeRecapMoments,
@@ -13,19 +13,37 @@ import type {
 } from "../../apiTypes.ts";
 import type { ReplayHeatmapPoint } from "../../types/heatmap.ts";
 import { resolveMomentEmotesForOffset } from "../../utils/recapEmoteEnrich.ts";
-import { resolveMomentRowStats } from "../../utils/momentRowDisplay.ts";
+import {
+  resolveMomentRowStats,
+  resolveMomentRowRollup,
+  resolveRollupDisplayEmotes,
+} from "../../utils/momentRowDisplay.ts";
 import {
   CollapseListFooter,
   enrichRecapMomentsFromHeatmap,
-  momentRankAccent,
-  momentReasonChipTone,
-  momentScoreTone,
   MOMENTS_INITIAL_VISIBLE,
   MOMENTS_MAX_VISIBLE,
   useCollapsedList,
 } from "../../utils/momentListDisplay.tsx";
-import { count, getEmoteImageUrl } from "../../utils/consoleFormat.ts";
-import { ConsoleEmoteImg } from "./ConsoleEmoteImg.tsx";
+import { count } from "../../utils/consoleFormat.ts";
+import {
+  MomentListLegend,
+  MomentRow,
+  type MomentRowEmote,
+  type MomentRowModel,
+} from "./MomentRow.tsx";
+
+function momentStatsLine(stats: {
+  viewers: number | null | undefined;
+  chatPerMin: number | null | undefined;
+  emotesPerMin: number | null | undefined;
+}): string {
+  return [
+    stats.viewers == null ? "viewer sample unavailable" : `${count(stats.viewers)} viewers`,
+    stats.chatPerMin == null ? "chat unavailable" : `${count(stats.chatPerMin)} chat/min`,
+    stats.emotesPerMin == null ? "emotes unavailable" : `${count(stats.emotesPerMin)} emotes/min`,
+  ].join(" · ");
+}
 
 export function SessionRecapMomentsStrip({
   recap,
@@ -37,6 +55,7 @@ export function SessionRecapMomentsStrip({
   rollups = [],
   heatmapPoints,
   topEmotesCatalog,
+  selectedDetail,
 }: {
   recap: PulseStreamRecap;
   streamStartedAt?: string;
@@ -47,6 +66,7 @@ export function SessionRecapMomentsStrip({
   rollups?: AnalyticsMinuteRollup[];
   heatmapPoints?: ReplayHeatmapPoint[];
   topEmotesCatalog?: AnalyticsTopEmote[];
+  selectedDetail?: ReactNode;
 }) {
   const hasReactionCoverage = useMemo(() => {
     const moments = [
@@ -100,7 +120,6 @@ export function SessionRecapMomentsStrip({
     selectedOffsetSeconds ?? null,
   );
   const stripSelectedOffset = useRef<number | null>(null);
-  const didAutoSelect = useRef(false);
 
   useEffect(() => {
     if (selectedOffsetSeconds == null) return;
@@ -118,22 +137,12 @@ export function SessionRecapMomentsStrip({
 
   useEffect(() => {
     stripSelectedOffset.current = null;
-    didAutoSelect.current = false;
+    setSelectedOffset(null);
   }, [recap.streamId]);
 
-  // Sync first Pulse Moment into Selected Moment once — do not highlight a row
-  // that the chart panel has not actually selected (that made emotes look "wrong").
-  useEffect(() => {
-    if (didAutoSelect.current) return;
-    if (selectedOffsetSeconds != null || selectedOffset != null) return;
-    const first = moments[0];
-    if (!first) return;
-    didAutoSelect.current = true;
-    const firstOffset = recapMomentAnalyticalOffset(first);
-    stripSelectedOffset.current = firstOffset;
-    setSelectedOffset(firstOffset);
-    onSelectOffset(firstOffset);
-  }, [moments, onSelectOffset, selectedOffset, selectedOffsetSeconds]);
+  // Deliberately no auto-select. Pre-pinning moment #1 dropped the user into a
+  // playhead they never set — on a live session, hours behind the live edge —
+  // and left an "Esc to release" hint for a selection they never made.
 
   const highlightOffset = selectedOffset ?? selectedOffsetSeconds ?? null;
   const highlightedMoment = useMemo(() => {
@@ -152,6 +161,63 @@ export function SessionRecapMomentsStrip({
     return bestDelta <= 90 ? best : null;
   }, [highlightOffset, moments]);
 
+  // Scale the intensity bars against the loudest moment in the full list, not
+  // the visible slice, so expanding the list never rescales the top rows.
+  const topScore = useMemo(
+    () => moments.reduce((max, moment) => Math.max(max, moment.score ?? 0), 0),
+    [moments],
+  );
+
+  const rows = useMemo((): MomentRowModel[] =>
+    visibleMoments.map((moment, index) => {
+      const momentOffsetSeconds = recapMomentAnalyticalOffset(moment);
+      const time = formatMomentTimeLabel({
+        startedAtIso: streamStartedAt,
+        offsetSeconds: momentOffsetSeconds,
+      });
+      const stats = resolveMomentRowStats({ moment, rollups, streamStartedAt });
+      const exactRollup = resolveMomentRowRollup({ moment, rollups, streamStartedAt });
+      const emotes: MomentRowEmote[] = exactRollup
+        ? resolveRollupDisplayEmotes({ rollup: exactRollup, topEmotesCatalog }).map(
+            (emote) => ({
+              name: emote.name,
+              count: emote.count,
+              provider: emote.provider,
+              imageUrl: emote.image_url,
+              key: emote.key,
+            }),
+          )
+        : resolveMomentEmotesForOffset({
+            moment,
+            rollups: [],
+            streamStartedAt,
+            topEmotesCatalog,
+            limit: 3,
+          }).map((emote) => ({
+            name: emote.code,
+            count: emote.count,
+            provider: emote.provider,
+            id: emote.id,
+            imageUrl: emote.imageUrl,
+          }));
+      const reasonLabel = recapMomentReasonLabel(moment);
+
+      return {
+        key: `${momentOffsetSeconds}:${moment.score}:${index}`,
+        rank: index + 1,
+        primaryTime: time.primary,
+        secondaryTime: time.secondary,
+        score: moment.score,
+        scoreRatio: topScore > 0 ? moment.score / topScore : 0,
+        reasonLabel,
+        reasonCode: moment.reasons?.[0] ?? reasonLabel,
+        statsLine: momentStatsLine(stats),
+        snapshotOnly: !exactRollup,
+        emotes,
+      };
+    }),
+  [rollups, streamStartedAt, topEmotesCatalog, topScore, visibleMoments]);
+
   if (moments.length === 0) return null;
 
   function selectMoment(moment: PulseRecapMoment) {
@@ -162,6 +228,9 @@ export function SessionRecapMomentsStrip({
   }
 
   const isRightRail = layout === "rightRail";
+  const highlightedOffset = highlightedMoment
+    ? recapMomentAnalyticalOffset(highlightedMoment)
+    : null;
 
   return (
     <section
@@ -173,118 +242,42 @@ export function SessionRecapMomentsStrip({
       <div className="absolute left-0 right-0 top-0 h-0.5 bg-gradient-to-r from-amber-500/20 via-amber-400/50 to-amber-500/20" />
 
       <div className="shrink-0 px-3 pb-2 pt-3">
-        <h3 className="text-[11px] font-black uppercase text-zinc-400">
+        <h3 className="text-xs font-black uppercase text-zinc-400">
           Pulse Moments
         </h3>
-        <p className="mt-0.5 text-[10px] font-semibold text-zinc-600">
-          Select a row — stats and emotes below the chart update
-        </p>
+        <div className="mt-0.5">
+          <MomentListLegend />
+        </div>
       </div>
+
+      {/* The review card is pinned above the list instead of injected between
+          rows. Expanding in place shoved every lower-ranked row down and
+          changed the scroll height on each click, so the ranking stopped being
+          a stable thing to scan. */}
+      {selectedDetail ? (
+        <div className="shrink-0 border-t border-white/[0.07] px-2 pb-2 pt-2" data-moment-review-pinned>
+          {selectedDetail}
+        </div>
+      ) : null}
 
       <div className="sc-console-scroll min-h-0 flex-1 overflow-y-auto border-y border-white/[0.07]">
         <div className="flex flex-col gap-0.5 p-1">
-          {visibleMoments.map((moment, index) => {
+          {rows.map((row, index) => {
+            const moment = visibleMoments[index]!;
             const momentOffsetSeconds = recapMomentAnalyticalOffset(moment);
-            const time = formatMomentTimeLabel({
-              startedAtIso: streamStartedAt,
-              offsetSeconds: momentOffsetSeconds,
-            });
-            const selected = highlightedMoment
-              ? recapMomentAnalyticalOffset(highlightedMoment) === momentOffsetSeconds
-              : false;
-            const stats = resolveMomentRowStats({
-              moment,
-              rollups,
-              streamStartedAt,
-            });
-            const rowEmotes = resolveMomentEmotesForOffset({
-              moment,
-              rollups,
-              streamStartedAt,
-              heatmapPoints,
-              topEmotesCatalog,
-              limit: 3,
-            });
-            const reasonLabel = recapMomentReasonLabel(moment);
-            const reasonCode = moment.reasons?.[0] ?? reasonLabel;
-            const rankAccent = momentRankAccent(index);
-            const scoreTone = momentScoreTone(moment.score);
-            const reasonTone = momentReasonChipTone(reasonCode);
-            const rowBorder = selected
-              ? "border-amber-500/25 bg-amber-500/10 ring-1 ring-amber-400/15"
-              : "border-white/[0.07] bg-white/[0.028] hover:bg-white/[0.04]";
-            const rowMotion = selected ? " sc-moment-row-selected" : "";
-
             return (
-              <button
-                key={`${momentOffsetSeconds}:${moment.score}:${index}`}
-                type="button"
-                onClick={() => selectMoment(moment)}
-                onMouseEnter={() => onPreviewOffset?.(momentOffsetSeconds)}
-                onMouseLeave={() => onPreviewOffset?.(null)}
-                className={`flex w-full flex-col gap-0.5 rounded border px-2 py-1 text-left text-xs transition ${rowBorder}${rowMotion}`}
-              >
-                <div className="flex min-w-0 items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span
-                      className={`inline-flex h-4 min-w-[1.25rem] shrink-0 items-center justify-center rounded px-1 text-[9px] font-black tabular-nums ${rankAccent.badge}`}
-                    >
-                      #{index + 1}
-                    </span>
-                    <span className="font-mono text-[10px] font-bold tabular-nums text-zinc-300">
-                      {time.primary}
-                    </span>
-                    {time.secondary ? (
-                      <span className="truncate text-[9px] font-semibold text-zinc-600">
-                        {time.secondary}
-                      </span>
-                    ) : null}
-                  </div>
-                  <span
-                    className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-black tabular-nums ${scoreTone.badge} ${scoreTone.text}`}
-                  >
-                    {moment.score}
-                  </span>
-                </div>
-
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span
-                    className={`inline-flex max-w-full truncate rounded border px-1.5 py-0.5 text-[9px] font-black uppercase ${reasonTone.chip}`}
-                  >
-                    {reasonLabel}
-                  </span>
-                  <span className="min-w-0 truncate text-[9px] font-semibold tabular-nums text-zinc-500">
-                    {stats.viewers == null ? "viewer sample unavailable" : `${count(stats.viewers)} viewers`} · {count(stats.chatPerMin)}
-                    /min · {count(stats.emotesPerMin)} emotes
-                  </span>
-                </div>
-
-                {rowEmotes.length > 0 ? (
-                  <div className="flex items-center gap-0.5 pt-0.5">
-                    {rowEmotes.map((emote, emoteIndex) => {
-                      const emoteImageUrl = getEmoteImageUrl(emote);
-                      const emoteLabel = `${emote.code}: ${count(emote.count)} uses`;
-                      return (
-                        <span
-                          key={`${momentOffsetSeconds}-${emote.code}-${emote.provider ?? ""}-${emoteIndex}`}
-                          title={emoteLabel}
-                          aria-label={emoteLabel}
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/10 bg-black/25 p-0.5"
-                        >
-                          <ConsoleEmoteImg
-                            src={emoteImageUrl}
-                            name={emote.code}
-                            width={14}
-                            height={14}
-                            className="h-3.5 w-3.5 object-contain"
-                            fallbackClassName="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-white/[0.06] text-[7px] font-black text-zinc-500"
-                          />
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </button>
+              <MomentRow
+                key={row.key}
+                model={row}
+                selected={highlightedOffset === momentOffsetSeconds}
+                expanded={
+                  highlightedOffset === momentOffsetSeconds && Boolean(selectedDetail)
+                }
+                onSelect={() => selectMoment(moment)}
+                onPreview={(hovering) =>
+                  onPreviewOffset?.(hovering ? momentOffsetSeconds : null)
+                }
+              />
             );
           })}
         </div>
@@ -295,8 +288,8 @@ export function SessionRecapMomentsStrip({
         canExpand={canExpandMoments}
         hiddenCount={hiddenMomentCount}
         onToggle={toggleMomentsExpanded}
-        expandLabel={(count) =>
-          `Show ${count} more moment${count === 1 ? "" : "s"}`
+        expandLabel={(hidden) =>
+          `Show ${hidden} more moment${hidden === 1 ? "" : "s"}`
         }
         collapseLabel="Show fewer moments"
       />

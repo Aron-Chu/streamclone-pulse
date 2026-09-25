@@ -33,8 +33,36 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Source package version is **0.1.3** (reliability / live-player / emote-picker repair track).
+Working-tree source version is **0.2.1** (selected-minute clarity / viewer honesty / complete
+settings track). Manifests, `package.json`, and `src/shared/release-notes.json`
+all read `0.2.1`. The public Chrome Web Store listing also reported **0.2.1**
+on 2026-09-24 (its "Updated" date read as 2026-08-31 or 2026-09-01 in separate
+checks; only the publisher dashboard is authoritative), so these newer
+working-tree changes cannot be submitted under that same version.
+
+**The source revision of the published Store 0.2.1 is unverified.** On
+2026-09-24 no commit, tag, or branch in this repository set version 0.2.1 (the
+last tag is `v0.1.3`, `origin/master` reads `0.1.3`, and the local branch head
+reads `0.2.0`), and no attested 0.2.x artifact exists. The local
+`streampulse-extension-cws-0.2.1.zip` was built on 2026-09-21 from a dirty
+working tree (its embedded build id ends in `-dirty-…`), after the listing
+update, and its size (314,509 bytes) does not match the listing's reported
+269 KiB, so it is not evidence of what the Store serves. Do not describe any
+commit or ZIP as the published 0.2.1 unless the publisher dashboard package is
+matched to it.
+
+Do not bump the version yet. Select a higher version (for example `0.2.2`) only
+after the publisher dashboard version and the candidate scope are both
+confirmed and a new candidate is accepted.
+The default chart range is **Full stream**
+(`DEFAULT_DEFAULT_CHART_WINDOW = 'full'`, migration key
+`defaultChartWindowMigratedToFullV3`). The earlier `60m` default and its
+migration are historical and no longer describe shipped behaviour.
 **Candidate acceptance: pending** — local closure WIP only; no store upload, tag, or hosted migrate in this pass.
+
+The prior `0.1.3` reliability candidate was never uploaded. Its status record in
+[`v0.1.3-reliability-status.md`](./v0.1.3-reliability-status.md) and the
+`docs/evidence/` files remain historical provenance and are not rewritten.
 
 **Do not upload attested `v0.1.2` / `v0.1.2-store` ZIPs** — they remain immutable
 evidence only and include known player-jump defects. Never upload the older
@@ -46,9 +74,19 @@ Historical 0.1.2 assurance pointers (attested but unshipped):
 - Evidence: `docs/evidence/RPR-9-0.1.2-assurance-20260726.md`,
   `docs/evidence/CWS-screenshot-provenance-v0.1.2.md`
 
-Owner must confirm live CWS dashboard is behind **0.1.3** and that Support URL is
-`https://streampulse.stream/support` before any 0.1.3 upload. Stop before tags/
-releases unless separately authorized; stop again before CWS/Edge upload.
+Owner must confirm the live CWS dashboard version and that the dashboard Support
+URL is `https://streampulse.stream/support/` before any new upload. The public
+[listing](https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg)
+reported **0.2.1** and linked Support to Twitch on 2026-09-24; only the
+publisher dashboard is authoritative for the configured field. Stop before
+tags/releases unless separately authorized; stop again before CWS/Edge upload.
+
+Before candidate acceptance, retain evidence for all of the following instead
+of inferring readiness from source state: local gates and executed remote CI on
+the same release SHA, a reviewed store-target ZIP, a real unpacked-extension
+Twitch smoke, publisher-dashboard version and Support URL checks, and an
+owner-dispatched attested artifact. Mocked browser screenshots and a locally
+built `dist/` do not satisfy the live or publisher-account gates.
 
 Owner-dispatched attested packaging: `.github/workflows/release-artifacts.yml`
 (inputs: exact `v<package-version>` tag + expected full SHA + completed same-SHA
@@ -67,6 +105,17 @@ artifact attestations are the cryptographic provenance for final ZIPs.
 - `file:` dependencies outside this repository (store targets; RPR-6 package-distribution acceptance covers clean-clone + tarball consumers)
 - Remote executable code / unapproved archive entries
 - Local origins (`localhost`, `127.0.0.1`, any port) in **store** packages
+- A release-notes entry for the packaged version that is not marked released with a
+  `releasedAt` date. `package:cws` / `package:edge` / `package:firefox` check this
+  before building, so a rejected run leaves `dist/` and earlier ZIPs untouched.
+
+CI proves store targets still build and validate on branches whose notes are
+unreleased through the **CI package probe** (`STREAMPULSE_CI_PACKAGE_PROBE=1`,
+set only on the CI workflow's store-packaging step). It is refused outside
+GitHub Actions, outside `.github/workflows/ci.yml`, and on tag refs. Its ZIPs are
+named `*-ci-probe-not-for-upload.zip` and their validation reports say
+`"uploadable": false`; they are never store candidates. `Release artifacts`
+refuses the probe and fails if any probe artifact is present.
 
 Portal production scanning must reject `localhost` and `127.0.0.1` on **every** port
 (including 8081) in shipped JS/HTML.
@@ -79,7 +128,9 @@ metadata for operator verification, but do **not** claim self-generated
 checksums or local build metadata as cryptographic provenance.
 
 CWS screenshot evidence in this repository remains the historical v0.1.2 set;
-this release policy does not claim regenerated v0.1.3 screenshots.
+this release policy does not claim regenerated v0.2.1 screenshots. The tracked
+CWS screenshots under `store/cws/screenshots/` are regenerated as a side effect of
+the mocked Playwright suite and must be reviewed before they are committed.
 
 ---
 
@@ -89,11 +140,14 @@ this release policy does not claim regenerated v0.1.3 screenshots.
 - [ ] `npm test`, `npm run typecheck`, `npm run build`, mocked Playwright as applicable
 - [ ] Remote CI green on that SHA (jobs actually executed)
 - [ ] `npm run package:cws` (or `validate:package:cws`) for the store target; no localhost
+- [ ] `src/shared/release-notes.json` marks the new version released with `releasedAt`; no `*-ci-probe-not-for-upload` ZIP is ever a candidate
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
-- [ ] Owner authorizes upload; version exceeds last published / confirmed dashboard version
+- [ ] Every portal route linked by the extension returns the intended live page (including `/supporter`, account, policy, and changelog routes)
+- [ ] Owner confirms the publisher-dashboard version and Support URL, selects a higher version than the published release, then authorizes upload
+- [ ] Real unpacked-extension smoke on Twitch recorded for the release SHA
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
 - [ ] Do **not** upload until owner confirms dashboard Support URL + version gates in `docs/evidence/RPR-9-0.1.2-assurance-20260726.md`
-- [ ] Upload digest must match the **attested** CWS ZIP from `Release artifacts` for the owner-approved `v0.1.3` tag (not a historical asset)
+- [ ] Upload digest must match the **attested** CWS ZIP from `Release artifacts` for the owner-approved `v<new-version>` tag (not a historical asset)
 
 ---
 
@@ -109,4 +163,4 @@ hash only as a historical audit record. It is not the current candidate.
 
 - Store: halt rollout / unpublish only via publisher console (owner).
 - Portal: prior Pages deployment via private ops runbooks.
-- Extension prefs: chart migration v2 is one-way for legacy values; post-v2 user `Full` choice is preserved.
+- Extension prefs: chart migration v3 is one-way for legacy values; a post-migration explicit user window choice is preserved.

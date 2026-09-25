@@ -6,12 +6,31 @@ import {
   fetchPublicHubBase,
   fetchPublicHubStatsFallback,
   fetchHistoricalHubMoments,
+  hasPublicHubResponseShape,
   HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   normalizePublicHubMoments,
   resolveHubTopMovers,
+  sanitizeHubProfileImageUrl,
 } from '../src/lib/publicHub'
-import { coverageMeta } from '../src/ui/components/analytics/hubFormat'
+import { coverageMeta, formatStreamUptime } from '../src/ui/components/analytics/hubFormat'
+import { loadedCategories } from '../src/ui/components/moments/MomentCategoryBrowser'
+
+it('rejects future and sentinel starts and peaks instead of fabricating a zero uptime', () => {
+  for (const time of ['2099-01-01T00:00:00Z', '0001-01-01T00:00:00Z']) {
+    const hub = normalizePublicHub({ activity: { peakViewersAt: time }, featuredSession: { state: 'ready', startedAt: time }, liveChannels: [{ login: 'example', startedAt: time }] } as unknown as Parameters<typeof normalizePublicHub>[0])
+    expect(hub.activity.peakViewersAt).toBeUndefined()
+    expect(hub.featuredSession?.startedAt).toBeUndefined()
+    expect(hub.liveChannels[0].startedAt).toBeUndefined()
+    expect(formatStreamUptime(time)).toBe('')
+  }
+})
+
+it('preserves the explicit live-session scope without confusing it with the activity chart window', () => {
+  const hub = normalizePublicHub({ activity: { points: [], windowMinutes: 30, channelCount: 0 }, livePulseMomentsScope: 'current_live_session_peaks' })
+  expect(hub.livePulseMomentsScope).toBe('current_live_session_peaks')
+  expect(hub.activity.windowMinutes).toBe(30)
+})
 
 const apiClient = vi.fn()
 
@@ -28,15 +47,148 @@ vi.mock('../src/lib/backendSource', () => ({
 }))
 
 describe('normalizePublicHub', () => {
+  it('keeps only allowlisted recent-moment archive artwork with numeric 6–20 digit VOD IDs', () => {
+    const artwork = { vodId: '123456', kind: 'archive_thumbnail' as const, url: 'https://static-cdn.jtvnw.net/cf_vods/archive/thumb/test.jpg' }
+    const moment = { offsetSeconds: 60, score: 80, label: 'peak', login: 'creator', streamId: 'stream-a' }
+    expect(normalizePublicHub({ livePulseMoments: [{ ...moment, archiveArtwork: artwork }] }).livePulseMoments[0].archiveArtwork).toEqual(artwork)
+    expect(normalizePublicHub({ livePulseMoments: [{ ...moment, vodId: '', archiveArtwork: artwork }] }).livePulseMoments[0].archiveArtwork).toEqual(artwork)
+    for (const vodId of ['654321', '12345', 'malformed']) {
+      expect(normalizePublicHub({ livePulseMoments: [{ ...moment, vodId, archiveArtwork: artwork }] }).livePulseMoments[0].archiveArtwork).toBeUndefined()
+    }
+    for (const archiveArtwork of [
+      { ...artwork, vodId: '12345' },
+      { ...artwork, vodId: '123456789012345678901' },
+      { ...artwork, vodId: 'not-numeric' },
+      { ...artwork, kind: 'live_thumbnail' },
+      { ...artwork, url: 'https://untrusted.invalid/cf_vods/archive/thumb/test.jpg' },
+    ]) {
+      const input = { livePulseMoments: [{ ...moment, archiveArtwork }] } as unknown as Parameters<typeof normalizePublicHub>[0]
+      const normalized = normalizePublicHub(input)
+      expect(normalized.livePulseMoments).toHaveLength(1)
+      expect(normalized.livePulseMoments[0].archiveArtwork).toBeUndefined()
+    }
+  })
+  it('keeps only exact allowlisted category artwork tied to a numeric category ID', () => {
+    // Synthetic contract fixture; this does not assert the real category identity of Wuthering Waves.
+    const moment = { offsetSeconds: 60, score: 80, label: 'peak', login: 'creator', streamId: 'stream-a', category: 'Wuthering Waves' }
+    const categoryId = '213490846'
+    const artwork144 = `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-144x192.jpg`
+    const artwork210 = `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-210x280.jpg`
+    const artworkIgdb = `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}_IGDB-144x192.jpg`
+    for (const boxArtUrl of [artwork144, artwork210, artworkIgdb]) {
+      expect(normalizePublicHub({ livePulseMoments: [{ ...moment, categoryId, boxArtUrl }] }).livePulseMoments[0]).toMatchObject({ categoryId, boxArtUrl })
+    }
+    for (const boxArtUrl of [
+      `http://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-144x192.jpg`,
+      `https://other.invalid/ttv-boxart/${categoryId}-144x192.jpg`,
+      `https://user:pass@static-cdn.jtvnw.net/ttv-boxart/${categoryId}-144x192.jpg`,
+      `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-144x192.jpg?width=144`,
+      `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-144x192.jpg#art`,
+      `https://static-cdn.jtvnw.net/previews-ttv/live_user_creator-144x192.jpg`,
+      `https://static-cdn.jtvnw.net/ttv-boxart/404_boxart-144x192.jpg`,
+      `https://static-cdn.jtvnw.net/ttv-boxart/livechannel-${categoryId}-144x192.jpg`,
+      `https://static-cdn.jtvnw.net/ttv-boxart/999-144x192.jpg`,
+    ]) {
+      const normalized = normalizePublicHub({ livePulseMoments: [{ ...moment, categoryId, boxArtUrl }] })
+      expect(normalized.livePulseMoments).toHaveLength(1)
+      expect(normalized.livePulseMoments[0].categoryId).toBe(categoryId)
+      expect(normalized.livePulseMoments[0].boxArtUrl).toBeUndefined()
+    }
+    for (const invalidId of ['abc', '123456789012345678901']) {
+      const normalized = normalizePublicHub({ livePulseMoments: [{ ...moment, categoryId: invalidId, boxArtUrl: artwork144 }] })
+      expect(normalized.livePulseMoments).toHaveLength(1)
+      expect(normalized.livePulseMoments[0].categoryId).toBeUndefined()
+      expect(normalized.livePulseMoments[0].boxArtUrl).toBeUndefined()
+      expect(normalized.livePulseMoments[0].categoryMetadataRejected).toBe(true)
+    }
+  })
+  it('applies the same category contract to historical hub moments', () => {
+    const categoryId = '213490846'
+    const boxArtUrl = `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}_IGDB-210x280.jpg`
+    const response = normalizePublicHubMoments({
+      moments: [{ login: 'creator', streamId: 'stream-a', offsetSeconds: 60, score: 80, label: 'Peak', category: 'Wuthering Waves', categoryId, boxArtUrl }],
+    })
+    expect(response.moments[0]).toMatchObject({ categoryId, boxArtUrl })
+
+    const rejected = normalizePublicHubMoments({
+      moments: [{ login: 'creator', streamId: 'stream-a', offsetSeconds: 60, score: 80, label: 'Peak', category: 'Minecraft', categoryId: 'malformed', boxArtUrl }],
+    })
+    expect(rejected.moments[0].categoryId).toBeUndefined()
+    expect(rejected.moments[0].boxArtUrl).toBeUndefined()
+    expect(rejected.moments[0].categoryMetadataRejected).toBe(true)
+  })
+  it('keeps rejected live category metadata neutral across repeated hub normalization', () => {
+    const once = normalizePublicHub({ livePulseMoments: [{
+      login: 'creator', streamId: 'stream-a', offsetSeconds: 60, score: 80, label: 'Peak', category: 'Minecraft',
+      categoryId: 'malformed', boxArtUrl: 'https://untrusted.invalid/box.jpg',
+    }] })
+    const twice = normalizePublicHub(once)
+    expect(twice.livePulseMoments[0].categoryMetadataRejected).toBe(true)
+    expect(loadedCategories(twice.livePulseMoments)).toEqual([{ name: 'Minecraft', count: 1 }])
+  })
+  it('keeps rejected bucket category metadata neutral across repeated normalization', () => {
+    const once = normalizePublicHubMoments({ moments: [{
+      login: 'creator', streamId: 'stream-a', offsetSeconds: 60, score: 80, label: 'Peak', category: 'Minecraft',
+      categoryId: 'malformed', boxArtUrl: 'https://untrusted.invalid/box.jpg',
+    }] })
+    const twice = normalizePublicHubMoments(once)
+    expect(twice.moments[0].categoryMetadataRejected).toBe(true)
+    expect(loadedCategories(twice.moments)).toEqual([{ name: 'Minecraft', count: 1 }])
+  })
+  it('allowlists hub profile image URLs before they reach image components', () => {
+    const twitch = 'https://static-cdn.jtvnw.net/jtv_user_pictures/xqc-profile_image-300x300.png'
+    expect(sanitizeHubProfileImageUrl(twitch)).toBe(twitch)
+    expect(sanitizeHubProfileImageUrl('https://evil.example/avatar.png')).toBeUndefined()
+    expect(sanitizeHubProfileImageUrl('javascript:alert(1)')).toBeUndefined()
+    expect(sanitizeHubProfileImageUrl('https://static-cdn.jtvnw.net/jtv_user_pictures/x.png?track=1')).toBeUndefined()
+    expect(sanitizeHubProfileImageUrl('https://user:pass@static-cdn.jtvnw.net/jtv_user_pictures/x.png')).toBeUndefined()
+
+    const normalized = normalizePublicHub({
+      topMovers: [{ login: 'evil', profileImageUrl: 'https://evil.example/avatar.png' }],
+      liveChannels: [{ login: 'evil', profileImageUrl: 'https://evil.example/avatar.png' }],
+      livePulseMoments: [{ login: 'evil', profileImageUrl: 'https://evil.example/avatar.png', offsetSeconds: 1, score: 1, label: 'peak' }],
+    } as unknown as Parameters<typeof normalizePublicHub>[0])
+    expect(normalized.topMovers[0]?.profileImageUrl).toBeUndefined()
+    expect(normalized.liveChannels[0]?.profileImageUrl).toBeUndefined()
+    expect(normalized.livePulseMoments[0]?.profileImageUrl).toBeUndefined()
+  })
+
+  it('preserves same-backend avatar proxy URLs without allowing a different origin', () => {
+    const backendProxy = 'https://api.streampulse.stream/v1/channels/xqc/avatar'
+    expect(sanitizeHubProfileImageUrl('/v1/channels/xqc/avatar')).toBe(backendProxy)
+    expect(sanitizeHubProfileImageUrl('https://api.streampulse.stream/v1/channels/xqc/avatar?cache=1')).toBeUndefined()
+    expect(sanitizeHubProfileImageUrl('https://api.streampulse.stream.evil.example/v1/channels/xqc/avatar')).toBeUndefined()
+  })
+
+  it('drops invalid activity clocks without shifting the measured chart into the future', () => {
+    const points = [0, 1, Date.parse('0001-01-01'), Date.parse('2099-01-01'), Date.UTC(2026, 7, 1)]
+      .map(t => ({ t, chat: 1, seventv: 1, viewers: 1 }))
+    const hub = normalizePublicHub({ activity: { points, windowMinutes: 30, channelCount: 1 } })
+    expect(hub.activity.points.map(point => point.t)).toEqual([Date.UTC(2026, 7, 1)])
+  })
+  it.each(['0001-01-01T00:00:00Z', '2099-01-01T00:00:00Z'])('rejects invalid upstream generation times: %s', generatedAt => {
+    const normalized = normalizePublicHub({ generatedAt, corpusPipeline: { generatedAt } })
+    expect(normalized.generatedAt).toBe('')
+    expect(normalized.corpusPipeline.generatedAt).toBe('')
+  })
+  it('keeps a missing hub projection unknown without fabricating receipt time or health', () => {
+    const normalized = normalizePublicHub(null)
+    expect(normalized.generatedAt).toBe('')
+    expect(normalized.coverage.databaseOk).toBe(false)
+    expect(normalized.coverage.state).not.toBe('operational')
+    expect(normalized.corpusPipeline.available).toBe(false)
+    expect(normalized.corpusPipeline.state).toBe('unknown')
+    expect(normalized.corpusPipeline.generatedAt).toBe('')
+  })
   it('preserves true, false, and absent chat rollup states', () => {
     const hub = normalizePublicHub({
       activity: {
         windowMinutes: 30,
         channelCount: 1,
         points: [
-          { t: 1, chat: 0, seventv: 0, viewers: 1000, hasChatRollup: true },
-          { t: 2, chat: 0, seventv: 0, viewers: 1000, hasChatRollup: false },
-          { t: 3, chat: 0, seventv: 0, viewers: 1000 },
+          { t: Date.UTC(2026, 7, 1) + 1, chat: 0, seventv: 0, viewers: 1000, hasChatRollup: true },
+          { t: Date.UTC(2026, 7, 1) + 2, chat: 0, seventv: 0, viewers: 1000, hasChatRollup: false },
+          { t: Date.UTC(2026, 7, 1) + 3, chat: 0, seventv: 0, viewers: 1000 },
         ],
       },
     })
@@ -61,7 +213,7 @@ describe('normalizePublicHub', () => {
         state: 'healthy',
         points: [
           {
-            t: 1,
+            t: Date.UTC(2026, 7, 1) + 1,
             chat: 0,
             seventv: 0,
             viewers: 0,
@@ -83,7 +235,7 @@ describe('normalizePublicHub', () => {
       activity: {
         windowMinutes: 30,
         channelCount: 1,
-        points: [{ t: 1, chat: 100, emotes: 0, seventv: 37, viewers: 1000 }],
+        points: [{ t: Date.UTC(2026, 7, 1) + 1, chat: 100, emotes: 0, seventv: 37, viewers: 1000 }],
       },
     })
 
@@ -95,7 +247,7 @@ describe('normalizePublicHub', () => {
       activity: {
         windowMinutes: 30,
         channelCount: 1,
-        points: [{ t: 1, chat: 100, seventv: 37, viewers: 1000 }],
+        points: [{ t: Date.UTC(2026, 7, 1) + 1, chat: 100, seventv: 37, viewers: 1000 }],
       },
     })
 
@@ -109,8 +261,8 @@ describe('normalizePublicHub', () => {
         channelCount: 1,
         providerTotalsComplete: true,
         points: [
-          { t: 1, chat: 1, seventv: 1, viewers: 1 },
-          { t: 2, chat: 1, seventv: 1, twitch: 0, bttv: 0, ffz: 0, viewers: 1 },
+          { t: Date.UTC(2026, 7, 1) + 1, chat: 1, seventv: 1, viewers: 1 },
+          { t: Date.UTC(2026, 7, 1) + 2, chat: 1, seventv: 1, twitch: 0, bttv: 0, ffz: 0, viewers: 1 },
         ],
       },
     })
@@ -130,7 +282,7 @@ describe('normalizePublicHub', () => {
         channelCount: 3,
         points: [
           {
-            t: 1,
+            t: Date.UTC(2026, 7, 1) + 1,
             chat: 1,
             seventv: 1,
             viewers: 100,
@@ -139,7 +291,7 @@ describe('normalizePublicHub', () => {
             viewerCoverage: ' PARTIAL ',
           },
           {
-            t: 2,
+            t: Date.UTC(2026, 7, 1) + 2,
             chat: 1,
             seventv: 1,
             viewers: 100,
@@ -320,9 +472,63 @@ describe('fetchPublicHub performance', () => {
     apiClient.mockReset()
   })
 
+  it('requires a real hub envelope before declaring HTTP 200 healthy', async () => {
+    const validEmptyHub = {
+      generatedAt: new Date().toISOString(),
+      poolSize: 0,
+      corpus: { streamsTracked: 0, momentsDetected: 0, chatMessagesProcessed: 0, emotesIndexed: 0, vodsAnalyzed: 0 },
+      coverage: { databaseOk: true, state: 'operational' },
+      activity: { points: [], windowMinutes: 30, channelCount: 0 },
+      liveChannels: [], moments: [], topEmotes: [], topMovers: [],
+    }
+    expect(hasPublicHubResponseShape(validEmptyHub)).toBe(true)
+    apiClient.mockResolvedValueOnce({ data: validEmptyHub, status: 200 })
+    expect((await fetchPublicHubBase()).hubEndpointOk).toBe(true)
+
+    for (const payload of [null, {}, { error: 'upstream failed' },
+      { ...validEmptyHub, coverage: null },
+      { ...validEmptyHub, activity: { points: null, windowMinutes: 30, channelCount: 0 } },
+      { ...validEmptyHub, generatedAt: '0001-01-01T00:00:00Z' },
+    ]) {
+      expect(hasPublicHubResponseShape(payload)).toBe(false)
+      apiClient.mockResolvedValueOnce({ data: payload, status: 200 })
+      await expect(fetchPublicHubBase()).rejects.toMatchObject({
+        kind: 'server', status: 200, code: 'invalid_hub_response',
+      })
+    }
+  })
+
+  it('preserves rate limits without attempting a hub fallback', async () => {
+    const rateLimit = { kind: 'rate_limited', status: 429, message: 'slow down', retryAfterMs: 3000 }
+    apiClient.mockRejectedValueOnce(rateLimit)
+    await expect(fetchPublicHubBase()).rejects.toBe(rateLimit)
+    expect(apiClient).toHaveBeenCalledTimes(1)
+  })
+
+  it('requests and accepts a bounded Moments projection', async () => {
+    apiClient.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        generatedAt: new Date().toISOString(),
+        poolSize: 1,
+        corpus: { streamsTracked: 1, momentsDetected: 1, chatMessagesProcessed: 1, emotesIndexed: 1, vodsAnalyzed: 0 },
+        coverage: { databaseOk: true, state: 'operational' },
+        activity: { points: [], windowMinutes: 30, channelCount: 1 },
+        liveChannels: [], moments: [], topEmotes: [], topMovers: [],
+        livePulseMoments: [{ login: 'xqc', streamId: 'stream', offsetSeconds: 30, score: 80, label: 'Peak' }],
+        livePulseMomentsStatus: 'ready',
+      },
+    })
+    const result = await fetchPublicHubBase(undefined, '30m', 'moments')
+    expect(result.hubEndpointOk).toBe(true)
+    expect(result.data.livePulseMoments).toHaveLength(1)
+    expect(apiClient.mock.calls[0]?.[0]).toBe('/v1/public/hub?activityWindow=30m&include=livePulseMoments')
+  })
+
   it('returns base hub without readiness fan-out', async () => {
     apiClient.mockResolvedValueOnce({
       data: normalizePublicHub({
+        generatedAt: new Date().toISOString(),
         poolSize: 12,
         liveChannels: [{ login: 'rubius', viewers: 1000, chatPerMin: 10, seventvPerMin: 2, coverageState: 'synced', trendPct: 0 }],
         corpusPipeline: {
@@ -401,7 +607,7 @@ describe('fetchPublicHub performance', () => {
 
   it('fetchPublicHubBase never calls readiness endpoints', async () => {
     apiClient.mockResolvedValueOnce({
-      data: normalizePublicHub({ poolSize: 1, liveChannels: [{ login: 'xqc', viewers: 1, chatPerMin: 1, seventvPerMin: 0, coverageState: 'synced', trendPct: 0 }] }),
+      data: normalizePublicHub({ generatedAt: new Date().toISOString(), poolSize: 1, liveChannels: [{ login: 'xqc', viewers: 1, chatPerMin: 1, seventvPerMin: 0, coverageState: 'synced', trendPct: 0 }] }),
       status: 200,
     })
 

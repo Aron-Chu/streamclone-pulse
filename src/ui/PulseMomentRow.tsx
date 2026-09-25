@@ -2,7 +2,8 @@ import type { CSSProperties } from 'react'
 import {
   LIVE_HEAT_COLLECTING_LABEL,
   displayMomentReasonLabel,
-  formatHeatOffset,
+  momentClockDisplay,
+  reactionAnalyticalOffset,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
@@ -27,7 +28,9 @@ export function PulseMomentRow({
   onHighlight,
   scrollRef,
 }: PulseMomentRowProps) {
-  const offsetLabel = formatHeatOffset(point.offsetSeconds)
+  const clock = momentClockDisplay(point)
+  const offsetLabel = clock.text
+  const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
   const body = (
     <div
@@ -45,10 +48,10 @@ export function PulseMomentRow({
     >
       {!collecting ? (
         <span
-          style={{
-            ...styles.momentAccent,
-            ...(selected ? styles.momentAccentSelected : {}),
-          }}
+          // Colour lives in CSS so hover can ease it; an inline background here
+          // would outrank the stylesheet and snap.
+          className={`pulse-moment-accent${selected ? ' pulse-moment-accent-selected' : ''}`}
+          style={styles.momentAccent}
           aria-hidden="true"
         />
       ) : null}
@@ -71,7 +74,7 @@ export function PulseMomentRow({
         {point.topEmotes.length > 0 ? (
           <div style={styles.emoteStack}>
             {point.topEmotes.slice(0, 3).map(emote => (
-              <span key={emote.key} style={styles.emoteItem} title={emote.name}>
+              <span key={emote.key} style={styles.emoteItem} aria-label={emote.name}>
                 <PulseEmoteImg
                   emote={emote}
                   backendUrl={backendUrl}
@@ -97,16 +100,22 @@ export function PulseMomentRow({
       type="button"
       className="pulse-moment-row-button"
       style={styles.momentButton}
+      // Selecting a moment row pins the chart bucket, so the row belongs to the
+      // chart even though it sits outside the plot boundary. Without this marker
+      // the chart's document-level pointerdown clears the current inspector
+      // first; removing that card shifts this row before pointer-up and the
+      // browser never dispatches the click, losing the selection entirely.
+      data-chart-action="true"
       onClick={event => {
         onSelect(point)
         event.currentTarget.blur()
       }}
-      onMouseEnter={() => onHighlight(point.offsetSeconds)}
+      onMouseEnter={() => onHighlight(analyticalOffset)}
       onMouseLeave={() => onHighlight(null)}
-      onFocus={() => onHighlight(point.offsetSeconds)}
+      onFocus={() => onHighlight(analyticalOffset)}
       onBlur={() => onHighlight(null)}
       aria-pressed={selected}
-      aria-label={`Select ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}
+      aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}`}
     >
       {body}
     </button>
@@ -125,13 +134,14 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'left',
     width: '100%',
   },
+  // Transitions live with the hover rule in theme.ts so background, ring and
+  // accent stay on one timing.
   momentRow: {
     alignItems: 'stretch',
     borderRadius: 6,
     display: 'flex',
     gap: 8,
     padding: '6px 8px',
-    transition: 'background 0.15s ease',
   },
   momentRowSelected: { background: 'rgba(255, 255, 255, 0.04)' },
   momentRowCollecting: {
@@ -139,12 +149,10 @@ const styles: Record<string, CSSProperties> = {
     opacity: 0.6,
   },
   momentAccent: {
-    background: 'rgba(255, 255, 255, 0.12)',
     borderRadius: 999,
     flexShrink: 0,
     width: 2,
   },
-  momentAccentSelected: { background: theme.accentSoft },
   momentRowInner: {
     alignItems: 'center',
     display: 'flex',

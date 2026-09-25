@@ -132,3 +132,27 @@ export function emoteDisplaySrc(url: string | undefined, cssPx = 28): string | u
         : emoteUrlForScale(url, '1x') ?? absolutizeEmoteAssetUrl(url)
   return sanitizeEmoteImageUrl(scaled)
 }
+
+/**
+ * Rebuild a provider CDN URL from a stored (provider, id) pair. Saved moments
+ * deliberately persist no media URLs; only well-formed provider IDs qualify.
+ */
+export function emoteImageUrlFromIdentity(provider: string | undefined, id: string | undefined): string | undefined {
+  const value = id?.trim()
+  if (!value) return undefined
+  switch ((provider ?? '').trim().toLowerCase()) {
+    case 'seventv':
+    case '7tv':
+      return /^(?:[0-9A-HJKMNP-TV-Z]{26}|[0-9a-f]{24})$/i.test(value) ? `https://cdn.7tv.app/emote/${value}/1x.webp` : undefined
+    case 'twitch':
+      return /^(?:emotesv2_[0-9a-f]{32}|\d{1,12})$/.test(value) ? `https://static-cdn.jtvnw.net/emoticons/v2/${value}/default/dark/1.0` : undefined
+    case 'ffz':
+    case 'frankerfacez':
+      return /^\d{1,10}$/.test(value) ? `https://cdn.frankerfacez.com/emoticon/${value}/1` : undefined
+    case 'bttv':
+    case 'betterttv':
+      return /^[0-9a-f]{24}$/.test(value) ? `https://cdn.betterttv.net/emote/${value}/1x` : undefined
+    default:
+      return undefined
+  }
+}

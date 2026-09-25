@@ -5,7 +5,7 @@ export interface EvidenceSummaryProps {
   resolvedReason?: NewsroomResolvedReason
 }
 
-function evidenceHeadline(evidence: NewsroomEvidence, resolvedReason?: NewsroomResolvedReason): string {
+export function evidenceHeadline(evidence: NewsroomEvidence, resolvedReason?: NewsroomResolvedReason): string {
   if (
     evidence.ircBound && evidence.eventRollupAvailable && evidence.streamIdentityMatched &&
     evidence.rollupChatSource === 'irc' && evidence.rollupSourceConfidence === 'verified'

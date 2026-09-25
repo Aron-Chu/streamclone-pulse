@@ -21,7 +21,9 @@ run(
     'tests/e2e/specs/quality.mocked.spec.ts',
     '--project=extension-mocked',
     '--grep',
-    'no uncaught page or service-worker errors on live-ready path',
+    process.platform === 'win32'
+      ? '"no uncaught page or service-worker errors on live-ready path"'
+      : 'no uncaught page or service-worker errors on live-ready path',
   ],
   { ...process.env, PULSE_EXTENSION_BROWSER_CHANNEL: 'msedge' },
 )

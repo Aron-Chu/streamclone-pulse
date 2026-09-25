@@ -22,6 +22,7 @@ function coverageStateLabel(state: string): string {
 }
 
 function coverageStateSentence(pipeline: HubCorpusPipeline, ingest?: HubIngest): string {
+  if (pipeline.available === false) return 'Coverage state is unknown because no hub projection was received.'
   const chat5m = ingest?.chatActive5m
   if (pipeline.state === 'healthy') {
     if (chat5m != null && ingest?.activeCollectors) {
@@ -69,7 +70,9 @@ export function HubCoverageTrustStrip({
   const collectorPct =
     ircMax > 0 ? Math.min(100, Math.round((ircActive / ircMax) * 100)) : 0
   const tone =
-    !consistent
+    pipeline.available === false
+      ? 'partial'
+      : !consistent
       ? 'critical'
       : pipeline.state === 'critical'
         ? 'critical'
@@ -87,7 +90,9 @@ export function HubCoverageTrustStrip({
       <div className="hub-coverage-trust__strip">
         <div className="hub-coverage-trust__summary">
           <span className={`hub-coverage-trust__pill hub-coverage-trust__pill--${tone}`}>
-            {consistent ? coverageStateLabel(pipeline.state) : 'coverage data inconsistent'}
+            {pipeline.available === false
+              ? 'coverage unknown'
+              : consistent ? coverageStateLabel(pipeline.state) : 'coverage data inconsistent'}
           </span>
           <span>
             <strong>IRC collectors:</strong>{' '}

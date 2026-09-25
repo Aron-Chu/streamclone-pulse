@@ -1,4 +1,7 @@
 import { lazy, Suspense } from 'react'
+import { useParams } from 'react-router-dom'
+import { isChannelRouteLogin } from '../../lib/channelRoute'
+import NotFound from '../public/NotFound'
 import { useRecordHubRecentLogin } from '../../hooks/useRecordHubRecentLogin'
 import { AnalyticsRouteFallback } from '../AnalyticsRouteFallback'
 
@@ -12,6 +15,11 @@ const ConsoleChannelView = lazy(() => import('./ConsoleChannelView'))
  * cannot reactivate a retired analytics stack.
  */
 export default function ChannelAnalyticsPage() {
+  const { login = '' } = useParams<{ login: string }>()
+  return isChannelRouteLogin(login) ? <ValidChannelAnalyticsPage /> : <NotFound />
+}
+
+function ValidChannelAnalyticsPage() {
   useRecordHubRecentLogin()
 
   return (

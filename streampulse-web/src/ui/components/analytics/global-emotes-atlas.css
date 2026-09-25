@@ -51,7 +51,7 @@
 .atlas-pill {
   border: 1px solid hsl(var(--sc-border));
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   padding: 0.22rem 0.6rem;
   color: hsl(var(--sc-muted-foreground));
@@ -86,7 +86,7 @@
 
 .atlas-eyebrow {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -121,7 +121,7 @@
 
 .atlas-hero__kpis dt {
   color: var(--atlas-muted);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -232,7 +232,7 @@
 
 .atlas-tag {
   justify-self: start;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: hsl(var(--sc-primary-foreground));

@@ -25,6 +25,7 @@ describe('mergePulsePayload', () => {
 
   it('keeps fullRollups when a recent poll returns fewer points', () => {
     const previous = basePayload({
+      streamId: 'stream-a',
       rollups: [
         { offsetSeconds: 3480, chatCount: 20, sevenTvEmoteCount: 2 },
         { offsetSeconds: 3540, chatCount: 40, sevenTvEmoteCount: 5 },
@@ -44,6 +45,7 @@ describe('mergePulsePayload', () => {
       },
     })
     const incoming = basePayload({
+      streamId: 'stream-a',
       rollups: [{ offsetSeconds: 3540, chatCount: 55, sevenTvEmoteCount: 8 }],
       peaks: [{ offsetSeconds: 3540, score: 12, reasons: ['chat_spike'], dominantSignal: 'chat' }],
     })
@@ -53,6 +55,199 @@ describe('mergePulsePayload', () => {
     expect(merged.rollups).toHaveLength(2)
     expect(merged.rollups[1]?.chatCount).toBe(55)
     expect(merged.coverage?.hasFullStreamCoverage).toBe(true)
+  })
+
+  it('lets Full enrich same-stream rollups without downgrading recent live truth', () => {
+    const previous = basePayload({
+      streamId: 'stream-a',
+      isLive: true,
+      tracking: true,
+      mode: 'live_dvr',
+      resolutionState: 'live_stream_validated',
+      currentOffsetSeconds: 3600,
+      fullRollups: [{ offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 }],
+    })
+    const incoming = basePayload({
+      streamId: 'stream-a',
+      isLive: false,
+      tracking: false,
+      mode: 'vod',
+      resolutionState: 'ended',
+      currentOffsetSeconds: 1,
+      endedAt: '2026-08-24T00:00:00.000Z',
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 2, sevenTvEmoteCount: 1 },
+        { offsetSeconds: 3600, chatCount: 8, sevenTvEmoteCount: 3 },
+      ],
+    })
+
+    const merged = mergePulsePayload(previous, incoming, { source: 'full' })
+
+    expect(merged.isLive).toBe(true)
+    expect(merged.tracking).toBe(true)
+    expect(merged.mode).toBe('live_dvr')
+    expect(merged.resolutionState).toBe('live_stream_validated')
+    expect(merged.currentOffsetSeconds).toBe(3600)
+    expect(merged.endedAt).toBeUndefined()
+    expect(merged.fullRollups).toEqual(incoming.fullRollups)
+  })
+
+  it('keeps the newer recent tail when a Full enrichment resolves late', () => {
+    const previous = basePayload({
+      streamId: 'stream-a',
+      currentOffsetSeconds: 7200,
+      rollups: [{ offsetSeconds: 7140, chatCount: 90, sevenTvEmoteCount: 30, viewerCount: 42_000 }],
+    })
+    const incoming = basePayload({
+      streamId: 'stream-a',
+      currentOffsetSeconds: 3600,
+      rollups: [{ offsetSeconds: 3540, chatCount: 10, sevenTvEmoteCount: 2, viewerCount: 40_000 }],
+      fullRollups: [{ offsetSeconds: 0, chatCount: 4, sevenTvEmoteCount: 1 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming, { source: 'full' })
+
+    expect(merged.currentOffsetSeconds).toBe(7200)
+    expect(merged.rollups.at(-1)).toMatchObject({
+      offsetSeconds: 7140,
+      chatCount: 90,
+      sevenTvEmoteCount: 30,
+      viewerCount: 42_000,
+    })
+  })
+
+  it('preserves same-stream Full rollups when a recent response includes an empty field', () => {
+    const fullRollups = [
+      { offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 },
+      { offsetSeconds: 60, chatCount: 4, sevenTvEmoteCount: 2 },
+    ]
+    const previous = basePayload({ streamId: 'stream-a', fullRollups })
+    const recent = basePayload({ streamId: 'stream-a', fullRollups: [], currentOffsetSeconds: 3660 })
+
+    const merged = mergePulsePayload(previous, recent, { source: 'recent' })
+
+    expect(merged.fullRollups).toBe(previous.fullRollups)
+    expect(merged.fullRollups).toEqual(fullRollups)
+    expect(merged.currentOffsetSeconds).toBe(3660)
+  })
+
+  it('replaces an explicitly supplied full timeline, even when it is shorter or empty', () => {
+    const previous = basePayload({
+      streamId: 'stream-a',
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 },
+        { offsetSeconds: 60, chatCount: 2, sevenTvEmoteCount: 0 },
+      ],
+    })
+    const shorter = basePayload({
+      streamId: 'stream-a',
+      fullRollups: [{ offsetSeconds: 60, chatCount: 9, sevenTvEmoteCount: 1 }],
+    })
+    expect(mergePulsePayload(previous, shorter).fullRollups).toEqual(shorter.fullRollups)
+
+    const empty = basePayload({ streamId: 'stream-a', fullRollups: [] })
+    expect(mergePulsePayload(previous, empty).fullRollups).toEqual([])
+  })
+
+  it('does not carry full history across a stream activation change', () => {
+    const previous = basePayload({
+      login: 'streamer_a',
+      streamId: 'stream-a',
+      fullRollups: [{ offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 }],
+    })
+    const incoming = basePayload({ login: 'streamer_b', streamId: 'stream-b' })
+    expect(mergePulsePayload(previous, incoming).fullRollups).toBeUndefined()
+  })
+
+  it('does not retain peaks or full history when a reused stream ID changes start time', () => {
+    const previous = basePayload({
+      login: 'xqc',
+      streamId: 'reused-stream',
+      startedAt: '2026-08-25T06:00:00.000Z',
+      fullRollups: [{ offsetSeconds: 0, chatCount: 100, sevenTvEmoteCount: 20 }],
+      peaks: [{ offsetSeconds: 0, score: 90, reasons: ['chat_spike'], dominantSignal: 'chat' }],
+    })
+    const incoming = basePayload({
+      login: 'xqc',
+      streamId: 'reused-stream',
+      startedAt: '2026-08-25T06:01:00.000Z',
+      rollups: [{ offsetSeconds: 0, chatCount: 2, sevenTvEmoteCount: 1 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged.fullRollups).toBeUndefined()
+    expect(merged.peaks).toBeUndefined()
+    expect(merged.rollups).toEqual(incoming.rollups)
+  })
+
+  it('does not carry omitted live fields across a different streamer', () => {
+    const previous = basePayload({
+      login: 'streamer_a',
+      streamId: 'stream-a',
+      rollups: [{ offsetSeconds: 900, chatCount: 90, sevenTvEmoteCount: 9 }],
+      peaks: [{ offsetSeconds: 900, score: 90, reasons: ['chat_spike'], dominantSignal: 'chat' }],
+      games: [{ gameName: 'Old game', offsetSeconds: 0, durationSeconds: 900 }],
+      coverage: {
+        state: 'live',
+        coverageStartOffsetSeconds: 0,
+        coverageEndOffsetSeconds: 900,
+        hasFullStreamCoverage: true,
+        hasGaps: false,
+        canBackfill: false,
+        message: 'old stream',
+      },
+      topEmotes: [{ id: 'old', name: 'OLD', count: 99 }],
+      peakViewers: 99_000,
+    })
+    const incoming = basePayload({
+      login: 'streamer_b',
+      streamId: 'stream-b',
+      rollups: [{ offsetSeconds: 0, chatCount: 1, sevenTvEmoteCount: 0 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged.rollups).toEqual(incoming.rollups)
+    expect(merged.peaks).toBeUndefined()
+    expect(merged.games).toBeUndefined()
+    expect(merged.coverage).toBeUndefined()
+    expect(merged.topEmotes).toBeUndefined()
+    expect(merged.peakViewers).toBeUndefined()
+  })
+
+  it('allows explicit empty peaks and games to clear stale activation data', () => {
+    const previous = basePayload({
+      peaks: [{ offsetSeconds: 60, score: 8, reasons: ['chat_spike'], dominantSignal: 'chat' }],
+      games: [{ gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 60 }],
+    })
+    const incoming = basePayload({ peaks: [], games: [] })
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged.peaks).toEqual([])
+    expect(merged.games).toEqual([])
+  })
+
+  it('treats keyword-count changes as meaningful rollup changes', () => {
+    const previous = basePayload({
+      rollups: [{ offsetSeconds: 60, chatCount: 10, sevenTvEmoteCount: 2, keywordCount: 1 }],
+    })
+    const incoming = basePayload({
+      rollups: [{ offsetSeconds: 60, chatCount: 10, sevenTvEmoteCount: 2, keywordCount: 4 }],
+    })
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged).not.toBe(previous)
+    expect(merged.rollups[0]?.keywordCount).toBe(4)
+  })
+
+  it('treats a newly observed viewer sample as a meaningful rollup change', () => {
+    const previous = basePayload({
+      rollups: [{ offsetSeconds: 60, chatCount: 10, sevenTvEmoteCount: 2 }],
+    })
+    const incoming = basePayload({
+      rollups: [{ offsetSeconds: 60, chatCount: 10, sevenTvEmoteCount: 2, viewerSamples: 1 }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged).not.toBe(previous)
+    expect(merged.rollups[0]?.viewerSamples).toBe(1)
   })
 
   it('keeps games when a recent poll omits them', () => {
@@ -67,7 +262,7 @@ describe('mergePulsePayload', () => {
     expect(merged.games?.[0]?.gameName).toBe('Just Chatting')
   })
 
-  it('merges partial games by segment key and keeps richer lists', () => {
+  it('replaces games with a shorter corrected timeline instead of unioning stale segments', () => {
     const previous = basePayload({
       games: [
         { gameName: 'A', offsetSeconds: 0, durationSeconds: 600 },
@@ -75,6 +270,8 @@ describe('mergePulsePayload', () => {
         { gameName: 'C', offsetSeconds: 1200, durationSeconds: 600 },
       ],
     })
+    // Corrected backend response for the same activation supplies fewer,
+    // current-stream-only segments; stale C must not be resurrected.
     const incoming = basePayload({
       games: [
         { gameName: 'A', offsetSeconds: 0, durationSeconds: 900 },
@@ -82,9 +279,9 @@ describe('mergePulsePayload', () => {
       ],
     })
     const merged = mergePulsePayload(previous, incoming)
-    expect(merged.games).toHaveLength(3)
+    expect(merged.games).toHaveLength(2)
     expect(merged.games?.find(game => game.gameName === 'A')?.durationSeconds).toBe(900)
-    expect(merged.games?.find(game => game.gameName === 'C')?.offsetSeconds).toBe(1200)
+    expect(merged.games?.find(game => game.gameName === 'C')).toBeUndefined()
   })
 
   it('preserves rollup/fullRollup/peak/game array refs when content is unchanged', () => {
@@ -148,5 +345,33 @@ describe('mergePulsePayload', () => {
     })
     const merged = mergePulsePayload(previous, incoming)
     expect(merged).toBe(previous)
+  })
+
+  it('does not discard newly hydrated emote or game identity metadata', () => {
+    const previous = basePayload({
+      topEmotes: [{ id: 'local-1', name: 'LO', provider: 'seventv', count: 4 }],
+      games: [{ gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 60 }],
+    })
+    const incoming = basePayload({
+      topEmotes: [{
+        id: 'local-1',
+        name: 'LO',
+        provider: 'seventv',
+        providerEmoteId: 'provider-1',
+        imageUrl: 'https://cdn.streampulse.stream/emotes/provider-1.webp',
+        count: 4,
+      }],
+      games: [{
+        gameName: 'Just Chatting',
+        categoryId: '509658',
+        boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/509658_IGDB-210x280.jpg',
+        offsetSeconds: 0,
+        durationSeconds: 60,
+      }],
+    })
+
+    const merged = mergePulsePayload(previous, incoming)
+    expect(merged.topEmotes?.[0]?.providerEmoteId).toBe('provider-1')
+    expect(merged.games?.[0]?.categoryId).toBe('509658')
   })
 })

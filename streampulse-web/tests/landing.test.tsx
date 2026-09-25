@@ -92,6 +92,22 @@ describe('landing page', () => {
     expect(install.getAttribute('rel')).toBe('noopener noreferrer')
   })
 
+  it('restores the ungated demo sequence and preserves working in-page navigation', async () => {
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const samples = container.querySelectorAll('details.sl-optional-demo')
+    expect(samples).toHaveLength(0)
+    expect(container.querySelector('.sl-fx')).not.toBeNull()
+    expect(container.querySelector('.sl-chatbg')).not.toBeNull()
+    expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
+    expect(container.querySelector('main > section:nth-child(3)')?.id).toBe('analysis')
+    expect(container.querySelectorAll('.lsg')).toHaveLength(1)
+    for (const anchor of container.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
+      expect(container.querySelector(anchor.getAttribute('href')!)).not.toBeNull()
+    }
+    expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href')).toBe('#landing-main')
+  })
+
   it('does not expose legacy /setup or /login nav CTAs', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })

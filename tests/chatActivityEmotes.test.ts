@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { SPARKLINE_MAX_POINTS } from '@streampulse/pulse-core'
 import {
   aggregateSevenTvEmotes,
   activityAxisBounds,
@@ -21,21 +22,30 @@ import {
   densifyRollupsForTimeline,
   resolveFullChartDensifyFromOffset,
   fullRollupsMissingStreamPrefix,
-  FULL_CHART_DEAD_ZONE_CLIP_SEC,
-  resolveFullChartFromOffset,
+  hasFullTimelineRollups,
   resolvePayloadCoverageStartOffset,
+  resolveChartCoverageStartSeconds,
   FULL_CHART_STREAM_START_TOLERANCE_SEC,
   rollupSeries,
   sevenTvEmotesFromRollup,
   sparklineIndexFromClick,
   toggleEmotePlotKeys,
   MAX_PLOTTED_EMOTES,
+  DEFAULT_CHART_TIMELINE_WINDOW,
+  CHART_WINDOW_OPTIONS,
 } from '../src/ui/chatActivityEmotes.ts'
+import { makeFullHistoryActivation } from '../src/shared/fullHistoryAuth.ts'
 import { emoteSyncDotColor } from '../src/ui/emoteSync.ts'
 import type { PulsePayload } from '../src/shared/messages.ts'
 import { downsampleRollupsForChart } from '../src/ui/extensionChartPoints.ts'
 
 describe('chatActivityEmotes', () => {
+  it('uses Full stream as the shared fresh-chart default', () => {
+    expect(DEFAULT_CHART_TIMELINE_WINDOW).toBe('full')
+    expect(CHART_WINDOW_OPTIONS.find(option => option.value === '60m')?.label).toBe('1 hour')
+    expect(CHART_WINDOW_OPTIONS.at(-1)?.label).toBe('Full stream')
+  })
+
   it('detects 7TV providers', () => {
     expect(isSevenTvProvider('7TV')).toBe(true)
     expect(isSevenTvProvider('seventv')).toBe(true)
@@ -174,6 +184,186 @@ describe('chatActivityEmotes', () => {
     expect(rollupSeries(payload, 'full')).toHaveLength(3)
   })
 
+  it('keeps an explicitly finalized quiet minute in the recent chart', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      rollups: [
+        { offsetSeconds: 0, finalized: true, chatCount: 0, totalEmoteCount: 0 },
+        { offsetSeconds: 60, finalized: false, chatCount: 0, totalEmoteCount: 0 },
+        { offsetSeconds: 120, chatCount: 4 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+    expect(rollupSeries(payload, 'recent').map(rollup => rollup.offsetSeconds)).toEqual([0, 120])
+  })
+
+  it('keeps a validated live full fallback nonempty while preserving its missing gap', () => {
+    const activation = makeFullHistoryActivation({ login: 'xqc', streamId: '320977139673', vodId: '2852444512' })
+    const fullRollups = Array.from({ length: 226 }, (_, index) => index * 60)
+      .filter(offsetSeconds => offsetSeconds < 60 || offsetSeconds >= 180)
+      .map(offsetSeconds => ({ offsetSeconds, chatCount: offsetSeconds > 180 ? 12 : 0, sevenTvEmoteCount: 2 }))
+    const payload: PulsePayload = {
+      login: 'xqc',
+      streamId: activation.streamId,
+      vodId: activation.vodId,
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 13_540,
+      coverageStartOffsetSeconds: 0,
+      rollups: [{ offsetSeconds: 13_500, chatCount: 12, sevenTvEmoteCount: 2 }],
+      fullRollups,
+      coverage: {
+        state: 'missing_ranges_detected',
+        coverageStartOffsetSeconds: 0,
+        coverageEndOffsetSeconds: 13_440,
+        hasFullStreamCoverage: false,
+        trackedFromStart: true,
+        hasGaps: true,
+        missingRanges: [{ fromOffsetSeconds: 60, toOffsetSeconds: 180 }],
+        canBackfill: true,
+        message: 'Missing chat data from 00:01:00 to 00:03:00',
+      },
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+
+    expect(hasFullTimelineRollups(payload, activation)).toBe(true)
+    const prepared = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: payload.currentOffsetSeconds,
+      activation,
+    })
+
+    expect(prepared.length).toBeGreaterThan(0)
+    expect(prepared.some(rollup => rollup.missing && rollup.offsetSeconds === 60)).toBe(true)
+    expect(prepared.some(rollup => rollup.missing && rollup.offsetSeconds === 120)).toBe(true)
+    expect(prepared.some(rollup => !rollup.missing && (rollup.chatCount ?? 0) > 0)).toBe(true)
+
+    const wrongActivation = makeFullHistoryActivation({ login: 'xqc', streamId: 'different-stream' })
+    const wrongActivationPrepared = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: payload.currentOffsetSeconds,
+      activation: wrongActivation,
+    })
+    expect(wrongActivationPrepared).toHaveLength(SPARKLINE_MAX_POINTS)
+    expect(wrongActivationPrepared[0]).toMatchObject({ offsetSeconds: 0, missing: true })
+    expect(wrongActivationPrepared.some(rollup => (rollup.chatCount ?? 0) > 0)).toBe(true)
+  })
+
+  it('keeps recent rollups visible while a full-history response is unavailable', () => {
+    const activation = makeFullHistoryActivation({ login: 'jynxzi', streamId: 'live-stream' })
+    const payload: PulsePayload = {
+      login: 'jynxzi',
+      streamId: activation.streamId,
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 20_000,
+      rollups: [
+        { offsetSeconds: 19_880, chatCount: 4 },
+        { offsetSeconds: 19_940, chatCount: 9 },
+        { offsetSeconds: 20_000, chatCount: 12 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+
+    const prepared = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: payload.currentOffsetSeconds,
+      activation,
+    })
+
+    expect(prepared).toHaveLength(SPARKLINE_MAX_POINTS)
+    expect(prepared[0]).toMatchObject({ offsetSeconds: 0, missing: true })
+    expect(prepared.some(rollup => (rollup.chatCount ?? 0) > 0)).toBe(true)
+  })
+
+  it('preserves recent viewer samples when full history omits the tail viewer lane', () => {
+    const activation = makeFullHistoryActivation({ login: 'jynxzi', streamId: 'viewer-tail' })
+    const payload: PulsePayload = {
+      login: 'jynxzi',
+      streamId: activation.streamId,
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 120,
+      rollups: [
+        { offsetSeconds: 120, chatCount: 12, viewerCount: 42_000 },
+      ],
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 2 },
+        { offsetSeconds: 60, chatCount: 4 },
+        { offsetSeconds: 120, chatCount: 12 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+
+    const prepared = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: payload.currentOffsetSeconds,
+      activation,
+    })
+
+    expect(prepared.find(rollup => rollup.offsetSeconds === 120)?.viewerCount).toBe(42_000)
+  })
+
+  it('extends retained Full history with the recurring recent chat and emote tail', () => {
+    const activation = makeFullHistoryActivation({ login: 'xqc', streamId: 'live-tail' })
+    const payload: PulsePayload = {
+      login: 'xqc',
+      streamId: activation.streamId,
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 240,
+      rollups: [{
+        offsetSeconds: 180,
+        chatCount: 298,
+        sevenTvEmoteCount: 229,
+        totalEmoteCount: 244,
+        viewerCount: 21_800,
+        topEmotes: [{ id: 'tail-emote', name: 'TAIL', count: 24 }],
+      }],
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 20, sevenTvEmoteCount: 4 },
+        { offsetSeconds: 60, chatCount: 30, sevenTvEmoteCount: 5 },
+        { offsetSeconds: 120, chatCount: 40, sevenTvEmoteCount: 6 },
+      ],
+      coverage: {
+        state: 'live',
+        coverageStartOffsetSeconds: 0,
+        coverageEndOffsetSeconds: 120,
+        hasFullStreamCoverage: true,
+        hasGaps: false,
+        canBackfill: false,
+      },
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+    }
+
+    const prepared = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: payload.currentOffsetSeconds,
+      activation,
+    })
+    const tail = prepared.find(rollup => rollup.offsetSeconds === 180)
+
+    expect(tail).toMatchObject({
+      chatCount: 298,
+      sevenTvEmoteCount: 229,
+      totalEmoteCount: 244,
+      viewerCount: 21_800,
+    })
+    expect(tail?.topEmotes?.[0]?.name).toBe('TAIL')
+  })
+
   it('chartRollupSeries uses full stream rollups and keeps quiet minutes', () => {
     const payload: PulsePayload = {
       login: 'test',
@@ -217,6 +407,15 @@ describe('chatActivityEmotes', () => {
         currentOffsetSeconds: 7200,
       }),
     ).toContain('no rollups')
+
+    expect(chartEmptyMessage({
+      rollupCount: 59,
+      visibleRollupCount: 0,
+      chartWindow: 'full',
+      hasFullRollups: false,
+      confidence: 'Collecting',
+      currentOffsetSeconds: 25_200,
+    })).toContain('available outside this view')
   })
 
   it('slices rollups for the 2h chart window', () => {
@@ -281,6 +480,81 @@ describe('chatActivityEmotes', () => {
     expect(firstBucket?.viewerCount).toBe(10_000)
   })
 
+  it('preserves hosted rollups whose minute phase is offset from :00', () => {
+    const densified = densifyRollupsForTimeline([
+      { offsetSeconds: 0, chatCount: 228, totalEmoteCount: 200 },
+      { offsetSeconds: 21, chatCount: 325, totalEmoteCount: 392 },
+      { offsetSeconds: 81, chatCount: 532, totalEmoteCount: 465 },
+      { offsetSeconds: 141, chatCount: 615, totalEmoteCount: 314 },
+    ], {
+      fromOffset: 0,
+      toOffset: 180,
+      maxPoints: 480,
+    })
+
+    expect(densified.find(rollup => rollup.offsetSeconds === 21)?.chatCount).toBe(325)
+    expect(densified.find(rollup => rollup.offsetSeconds === 81)?.chatCount).toBe(532)
+    expect(densified.find(rollup => rollup.offsetSeconds === 141)?.totalEmoteCount).toBe(314)
+    expect(densified.filter(rollup => (rollup.chatCount ?? 0) > 0)).toHaveLength(4)
+  })
+
+  it('does not flatten phase-shifted rollups when aggregating a long timeline', () => {
+    const densified = densifyRollupsForTimeline(
+      Array.from({ length: 12 }, (_, index) => ({
+        offsetSeconds: index === 0 ? 0 : 21 + (index - 1) * 60,
+        chatCount: 100 + index,
+        totalEmoteCount: 200 + index,
+      })),
+      {
+        fromOffset: 0,
+        toOffset: 12 * 60 * 60,
+        maxPoints: 120,
+      },
+    )
+
+    expect(densified.some(rollup => (rollup.chatCount ?? 0) > 0 && !rollup.missing)).toBe(true)
+    expect(densified.reduce((sum, rollup) => sum + (rollup.chatCount ?? 0), 0)).toBeGreaterThan(0)
+  })
+
+  it('preserves recent viewer samples when full buckets are offset by a few seconds', () => {
+    const payload: PulsePayload = {
+      login: 'test',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 660,
+      coverageStartOffsetSeconds: 0,
+      rollups: [
+        { offsetSeconds: 541, chatCount: 8, viewerCount: 12_340 },
+        { offsetSeconds: 601, chatCount: 9, viewerCount: 12_510 },
+      ],
+      fullRollups: [
+        { offsetSeconds: 0, chatCount: 1 },
+        { offsetSeconds: 540, chatCount: 2 },
+        { offsetSeconds: 600, chatCount: 3 },
+        { offsetSeconds: 660, chatCount: 4 },
+      ],
+      lanes: { composite: [], chat: [], seventv: [] },
+      peaks: [],
+      recap: null,
+      coverage: {
+        state: 'full_stream_tracked',
+        coverageStartOffsetSeconds: 0,
+        coverageEndOffsetSeconds: 660,
+        trackedFromStart: true,
+        hasFullStreamCoverage: true,
+        hasGaps: false,
+        canBackfill: false,
+      },
+    }
+    const rollups = prepareChartRollups(payload, {
+      chartWindow: 'full',
+      currentOffsetSeconds: 660,
+    })
+    expect(rollups.find(rollup => rollup.offsetSeconds === 540)?.viewerCount).toBe(12_340)
+    expect(rollups.find(rollup => rollup.offsetSeconds === 600)?.viewerCount).toBe(12_510)
+    expect(rollups.find(rollup => rollup.offsetSeconds === 0)?.viewerCount).toBeUndefined()
+  })
+
   describe('late-start full-timeline honesty (P1-008)', () => {
     const coverage45m = 45 * 60
 
@@ -297,6 +571,7 @@ describe('chatActivityEmotes', () => {
           { offsetSeconds: coverage45m + 60, chatCount: 18 },
           { offsetSeconds: coverage45m + 120, chatCount: 9 },
           { offsetSeconds: coverage45m + 180, chatCount: 22 },
+          { offsetSeconds: coverage45m + 900, chatCount: 5 },
         ],
         lanes: { composite: [], chat: [], seventv: [] },
         peaks: [],
@@ -305,7 +580,7 @@ describe('chatActivityEmotes', () => {
       }
     }
 
-    it('starts full-window densification at coverage start when first rollup is ~45 minutes', () => {
+    it('shows the true full-stream domain and marks the untracked prefix missing', () => {
       const payload = lateStartPayload()
       const rollups = prepareChartRollups(payload, {
         chartWindow: 'full',
@@ -313,10 +588,9 @@ describe('chatActivityEmotes', () => {
         coverageStartOffsetSeconds: coverage45m,
       })
       expect(rollups.length).toBeGreaterThan(0)
-      expect(rollups[0]?.offsetSeconds).toBeGreaterThanOrEqual(coverage45m)
-      expect(rollups.every(r => r.offsetSeconds >= coverage45m)).toBe(true)
-      expect(rollups.some(r => r.offsetSeconds < coverage45m && (r.chatCount ?? 0) === 0 && !r.missing)).toBe(false)
-      expect(rollups[0]?.chatCount).toBeGreaterThan(0)
+      expect(rollups[0]?.offsetSeconds).toBe(0)
+      expect(rollups.filter(r => r.offsetSeconds < coverage45m).every(r => r.missing)).toBe(true)
+      expect(rollups.some(r => r.offsetSeconds >= coverage45m && (r.chatCount ?? 0) > 0)).toBe(true)
     })
 
     it('does not synthesize quiet chat for 00:00 through pre-coverage minutes', () => {
@@ -326,7 +600,8 @@ describe('chatActivityEmotes', () => {
         currentOffsetSeconds: payload.currentOffsetSeconds ?? 0,
       })
       const preCoverage = rollups.filter(r => r.offsetSeconds < coverage45m)
-      expect(preCoverage).toHaveLength(0)
+      expect(preCoverage.length).toBeGreaterThan(0)
+      expect(preCoverage.every(r => r.missing)).toBe(true)
     })
 
     it('reads coverage start from nested payload.coverage when top-level field is absent', () => {
@@ -346,7 +621,8 @@ describe('chatActivityEmotes', () => {
         chartWindow: 'full',
         currentOffsetSeconds: payload.currentOffsetSeconds ?? 0,
       })
-      expect(rollups[0]?.offsetSeconds).toBeGreaterThanOrEqual(coverage45m)
+      expect(rollups[0]?.offsetSeconds).toBe(0)
+      expect(rollups.filter(r => r.offsetSeconds < coverage45m).every(r => r.missing)).toBe(true)
     })
 
     it('honors explicit coverageStartOffsetSeconds override over payload defaults', () => {
@@ -356,68 +632,59 @@ describe('chatActivityEmotes', () => {
         currentOffsetSeconds: payload.currentOffsetSeconds ?? 0,
         coverageStartOffsetSeconds: coverage45m,
       })
-      expect(rollups.every(r => r.offsetSeconds >= coverage45m)).toBe(true)
+      expect(rollups[0]?.offsetSeconds).toBe(0)
+      expect(rollups.filter(r => r.offsetSeconds < coverage45m).every(r => r.missing)).toBe(true)
     })
   })
 
-  describe('resolveFullChartFromOffset', () => {
-    it('aligns at 00:00 when coverage start is within the 120-second tolerance', () => {
-      expect(FULL_CHART_STREAM_START_TOLERANCE_SEC).toBe(120)
-      expect(resolveFullChartFromOffset(90, 90)).toBe(0)
-      expect(resolveFullChartFromOffset(120, 120)).toBe(0)
+  describe('resolveChartCoverageStartSeconds', () => {
+    it('keeps the rail at stream start when full coverage is authoritative', () => {
+      expect(resolveChartCoverageStartSeconds({
+        coverageStartOffsetSeconds: 18 * 60,
+        coverage: {
+          state: 'full_stream_tracked',
+          coverageStartOffsetSeconds: 0,
+          coverageEndOffsetSeconds: 3600,
+          trackedFromStart: true,
+          hasFullStreamCoverage: true,
+          hasGaps: false,
+          canBackfill: false,
+        },
+      }, 18 * 60, 18 * 60)).toBe(0)
     })
 
-    it('aligns at coverage start for true late joins with a missing prefix', () => {
-      const coverage45m = 45 * 60
-      expect(resolveFullChartFromOffset(coverage45m, coverage45m)).toBe(coverage45m)
-      expect(
-        resolveFullChartFromOffset(coverage45m, coverage45m, {
+    it('retains an explicit missing prefix for a late join', () => {
+      expect(resolveChartCoverageStartSeconds({
+        coverageStartOffsetSeconds: 45 * 60,
+        coverage: {
           state: 'missing_ranges_detected',
-          coverageStartOffsetSeconds: coverage45m,
-          coverageEndOffsetSeconds: coverage45m + 900,
+          coverageStartOffsetSeconds: 45 * 60,
+          coverageEndOffsetSeconds: 60 * 60,
           hasFullStreamCoverage: false,
           hasGaps: true,
-          missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: coverage45m - 60 }],
           canBackfill: false,
-          message: '',
-        }),
-      ).toBe(coverage45m)
+          missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: 45 * 60 }],
+        },
+      }, undefined, 46 * 60)).toBe(45 * 60)
     })
 
-    it('still spans from 00:00 for quiet openings before the first chat minute', () => {
-      expect(resolveFullChartFromOffset(240, 240)).toBe(0)
-      expect(
-        resolveFullChartFromOffset(240, 240, {
+    it('does not infer a missing prefix from a quiet first rollup', () => {
+      expect(resolveChartCoverageStartSeconds({
+        coverageStartOffsetSeconds: 0,
+        coverage: {
           state: 'partial_tracking',
-          coverageStartOffsetSeconds: 240,
+          coverageStartOffsetSeconds: 0,
           coverageEndOffsetSeconds: 3600,
           hasFullStreamCoverage: false,
           hasGaps: false,
           canBackfill: false,
-          message: '',
-        }),
-      ).toBe(0)
-    })
-
-    it('uses the earlier of coverage start and first rollup offset for late joins', () => {
-      const coverage45m = 45 * 60
-      const lateCoverage = {
-        state: 'missing_ranges_detected' as const,
-        coverageStartOffsetSeconds: coverage45m,
-        coverageEndOffsetSeconds: coverage45m + 900,
-        hasFullStreamCoverage: false,
-        hasGaps: true,
-        missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: coverage45m - 60 }],
-        canBackfill: false,
-        message: '',
-      }
-      expect(resolveFullChartFromOffset(coverage45m, 3540, lateCoverage)).toBe(coverage45m)
-      expect(resolveFullChartFromOffset(coverage45m, 3660, lateCoverage)).toBe(coverage45m)
+        },
+      }, undefined, 18 * 60)).toBe(0)
     })
   })
 
   describe('resolveFullChartDensifyFromOffset', () => {
-    it('clips long dead zones before the first active rollup minute', () => {
+    it('keeps long unavailable prefixes on the full-stream domain', () => {
       const payload: PulsePayload = {
         login: 'test',
         isLive: true,
@@ -426,17 +693,58 @@ describe('chatActivityEmotes', () => {
         coverageStartOffsetSeconds: 240,
         rollups: [],
         fullRollups: [
+          { offsetSeconds: 240, chatCount: 0, sevenTvEmoteCount: 0, viewerCount: 0 },
           { offsetSeconds: 2400, chatCount: 12, sevenTvEmoteCount: 4, viewerCount: 18_000 },
           { offsetSeconds: 2460, chatCount: 18, sevenTvEmoteCount: 6, viewerCount: 18_400 },
         ],
         lanes: { composite: [], chat: [], seventv: [] },
         peaks: [],
         recap: null,
+        coverage: {
+          state: 'partial_tracking',
+          coverageStartOffsetSeconds: 240,
+          coverageEndOffsetSeconds: 2460,
+          hasFullStreamCoverage: false,
+          hasGaps: false,
+          canBackfill: false,
+        },
       }
-      expect(FULL_CHART_DEAD_ZONE_CLIP_SEC).toBe(600)
-      expect(resolveFullChartDensifyFromOffset(payload, payload.fullRollups!)).toBe(2400)
+      expect(resolveFullChartDensifyFromOffset(payload, payload.fullRollups!)).toBe(0)
       const rollups = prepareChartRollups(payload, { chartWindow: 'full', currentOffsetSeconds: 7200 })
-      expect(rollups[0]?.offsetSeconds).toBe(2400)
+      expect(rollups[0]?.offsetSeconds).toBe(0)
+    })
+
+    it('keeps zero-filled quiet history aligned to the left edge when full coverage is authoritative', () => {
+      const payload: PulsePayload = {
+        login: 'test',
+        isLive: true,
+        tracking: true,
+        currentOffsetSeconds: 2400,
+        coverageStartOffsetSeconds: 0,
+        rollups: [],
+        fullRollups: [
+          { offsetSeconds: 0, chatCount: 0, sevenTvEmoteCount: 0 },
+          { offsetSeconds: 1200, chatCount: 0, sevenTvEmoteCount: 0 },
+          { offsetSeconds: 1800, chatCount: 12, sevenTvEmoteCount: 4 },
+          { offsetSeconds: 2400, chatCount: 5, sevenTvEmoteCount: 2 },
+        ],
+        lanes: { composite: [], chat: [], seventv: [] },
+        peaks: [],
+        recap: null,
+        coverage: {
+          state: 'full_stream_tracked',
+          coverageStartOffsetSeconds: 0,
+          coverageEndOffsetSeconds: 2400,
+          trackedFromStart: true,
+          hasFullStreamCoverage: true,
+          hasGaps: false,
+          canBackfill: false,
+        },
+      }
+      expect(resolveFullChartDensifyFromOffset(payload, payload.fullRollups!)).toBe(0)
+      const rollups = prepareChartRollups(payload, { chartWindow: 'full', currentOffsetSeconds: 2400 })
+      expect(rollups[0]?.offsetSeconds).toBe(0)
+      expect(rollups.some(rollup => rollup.offsetSeconds >= 1200 && rollup.offsetSeconds < 1800 && (rollup.chatCount ?? 0) === 0)).toBe(true)
     })
   })
 
@@ -457,6 +765,14 @@ describe('chatActivityEmotes', () => {
         lanes: { composite: [], chat: [], seventv: [] },
         peaks: [],
         recap: null,
+        coverage: {
+          state: 'partial_tracking',
+          coverageStartOffsetSeconds: 0,
+          coverageEndOffsetSeconds: 52 * 60 + 479 * 60,
+          hasFullStreamCoverage: false,
+          hasGaps: false,
+          canBackfill: false,
+        },
       }
       expect(fullRollupsMissingStreamPrefix(payload)).toBe(true)
     })
@@ -477,6 +793,14 @@ describe('chatActivityEmotes', () => {
         lanes: { composite: [], chat: [], seventv: [] },
         peaks: [],
         recap: null,
+        coverage: {
+          state: 'partial_tracking',
+          coverageStartOffsetSeconds: 0,
+          coverageEndOffsetSeconds: 479 * 60,
+          hasFullStreamCoverage: false,
+          hasGaps: false,
+          canBackfill: false,
+        },
       }
       expect(fullRollupsMissingStreamPrefix(payload)).toBe(false)
     })

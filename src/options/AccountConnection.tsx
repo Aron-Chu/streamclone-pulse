@@ -71,11 +71,11 @@ export function AccountConnection() {
       {notice ? <p>{notice}</p> : null}
     </div>
     <div className="pulse-account-link-actions">
-      {account?.state === 'pending' ? <><a href={productLink('linkDevice', portalOrigin)} target="_blank" rel="noopener noreferrer">Open account page</a><button disabled={busy} onClick={() => void request('cancel')}>Cancel connection</button></>
-        : account?.state === 'linked' ? <button disabled={busy} onClick={() => void request('disconnect')}>Disconnect extension</button>
-          : account?.state === 'error' && account.revocationPending ? <button disabled={busy} onClick={() => void request('disconnect')}>Retry disconnect</button>
-          : account ? <button disabled={busy} onClick={() => void request('start')}>{busy ? 'Connecting…' : 'Link extension'}</button> : null}
-      {account?.state === 'error' ? <button disabled={busy} onClick={() => void request('status')}>Check connection</button> : null}
+      {account?.state === 'pending' ? <><a href={productLink('linkDevice', portalOrigin)} target="_blank" rel="noopener noreferrer">Open account page</a><button type="button" disabled={busy} onClick={() => void request('cancel')}>Cancel connection</button></>
+        : account?.state === 'linked' ? <button type="button" disabled={busy} onClick={() => void request('disconnect')}>Disconnect extension</button>
+          : account?.state === 'error' && account.revocationPending ? <button type="button" disabled={busy} onClick={() => void request('disconnect')}>Retry disconnect</button>
+          : account ? <button type="button" disabled={busy} onClick={() => void request('start')}>{busy ? 'Connecting…' : 'Link extension'}</button> : null}
+      {account?.state === 'error' ? <button type="button" disabled={busy} onClick={() => void request('status')}>Check connection</button> : null}
     </div>
   </PulseSectionCard>
 }

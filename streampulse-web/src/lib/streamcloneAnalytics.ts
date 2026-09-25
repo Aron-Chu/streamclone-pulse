@@ -1,7 +1,7 @@
 import {
   configureAnalyticsApi,
   configureEmoteAssetBase,
-  minuteRollupSpanSeconds,
+  minuteRollupEndOffsetSeconds,
   type AnalyticsApi,
   type AnalyticsStreamOptions,
   type PulseBookmarkQuery,
@@ -20,17 +20,19 @@ import type {
   SyncStatus,
 } from '@streampulse/analytics-console'
 import { apiClient, getBackendUrl } from './apiClient'
+import { verifiedArchiveMapping } from './verifiedArchiveMapping'
 import { resolveBackendSource } from './backendSource'
 import { hasBetaKey } from './auth'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { downsampleTimeline, PORTAL_MINUTES_TIMEOUT_MS, rollupChartActivityScore } from './timelineDownsample'
+import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
 
 /**
  * Portal analytics adapter — reshapes hosted `/v1/portal/analytics/*` for
  * `@streampulse/analytics-console`.
  *
  * - **Chart minutes:** `downsampleTimeline()` to ~240 points on hosted API (prod).
- *   Local `:8090` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
+ *   Local `:8081` is opt-in only (`npm run dev:local`); channel emote catalog fetch is skipped on local.
  * - **Top emotes:** `mergePortalTopEmotes()` — stream summary totals win over
  *   per-minute bucket catalog counts; channel emote identity (`/channels/{login}/emotes`)
  *   fills imageUrl/id gaps for recap-only or low-usage emotes.
@@ -58,11 +60,57 @@ interface PortalStreamRecord {
   gamesSummary?: string
   startedAt: string
   endedAt?: string | null
+  lifecycleState?: 'unknown' | 'confirmed_ended' | 'confirmed_live'
+  lifecycleObservedAt?: string
+  lifecycleDetectedAt?: string
+  measuredStartAt?: string
+  measuredEndAt?: string
+  measuredSpanSeconds?: number
   currentViewers?: number
   peakViewers?: number
   viewerSamples?: number
   chatMessages?: number
-  vodId?: string | null
+  vodId?: string
+}
+
+export function portalLifecycleDetailState(
+  stream: PortalStreamRecord | undefined,
+  legacyState: AnalyticsStreamDetail['state'],
+): AnalyticsStreamDetail['state'] {
+  if (!stream) return legacyState === 'live' || legacyState === 'historical' ? 'unknown' : legacyState
+  const start = measurementTimeMs(stream.startedAt)
+  const observed = measurementTimeMs(stream.lifecycleObservedAt)
+  const detected = measurementTimeMs(stream.lifecycleDetectedAt)
+  const now = Date.now()
+  if (stream.lifecycleState === 'confirmed_live') {
+    return start != null && observed != null && observed >= start && observed <= now && now - observed <= 120_000 ? 'live' : 'unknown'
+  }
+  if (stream.lifecycleState === 'confirmed_ended') {
+    return start != null && observed != null && detected != null
+      && observed >= start && detected >= observed && detected <= now
+      ? 'historical' : 'unknown'
+  }
+  // A legacy EndedAt can be the time a worker noticed an old row, not the end
+  // of the broadcast. Only the exact authoritative lifecycle contract can end it.
+  return 'unknown'
+}
+
+function portalLifecycleFields(stream: PortalStreamRecord) {
+  return {
+    startedAt: measurementTimeIso(stream.startedAt) ?? '',
+    // Mutable legacy ends must not reach downstream chart/VOD/sidebar code as
+    // authoritative boundaries. Offline evidence is an interval, not EndedAt.
+    endedAt: undefined,
+    lifecycleState: portalLifecycleDetailState(stream, 'unknown') === 'live' ? 'confirmed_live' as const
+      : portalLifecycleDetailState(stream, 'unknown') === 'historical' ? 'confirmed_ended' as const : 'unknown' as const,
+    lifecycleObservedAt: measurementTimeIso(stream.lifecycleObservedAt),
+    lifecycleDetectedAt: measurementTimeIso(stream.lifecycleDetectedAt),
+    measuredStartAt: measurementTimeIso(stream.measuredStartAt),
+    measuredEndAt: measurementTimeIso(stream.measuredEndAt),
+    measuredSpanSeconds: Number.isFinite(stream.measuredSpanSeconds) && stream.measuredSpanSeconds! >= 0
+      ? stream.measuredSpanSeconds
+      : undefined,
+  }
 }
 
 interface PortalSignalObservation {
@@ -105,7 +153,7 @@ interface PortalSessionAvailability {
   coverageMessage?: string
   liveDvrState?: string
   vodState?: string
-  vodId?: string | null
+  vodId?: string
   vodMessage?: string
   backfillState?: string
   corpusState?: string
@@ -128,6 +176,8 @@ interface PortalStreamDetail {
   updatedAt: number
   vodId?: string
   vodAlignSeconds?: number
+  vodDurationSeconds?: number
+  vodTiming?: { state?: string }
   syncPhase?: string
   chatCoveragePct?: number
   chatCoverage?: PortalChatCoverageSummary
@@ -275,7 +325,7 @@ export function deriveClientGameSegments(
   const category = detail?.stream?.category?.trim() ?? ''
   if (!category || PLACEHOLDER_CATEGORIES.test(category)) return []
   const timeline = detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups ?? []
-  const durationSeconds = minuteRollupSpanSeconds(timeline)
+  const durationSeconds = minuteRollupEndOffsetSeconds(timeline, detail?.stream?.startedAt)
   if (durationSeconds <= 0) return []
   return [
     {
@@ -452,14 +502,6 @@ async function fetchPortalChannelEmotesCatalog(login: string): Promise<Analytics
   return pending
 }
 
-/** @internal exported for unit tests — accepts only non-empty numeric IDs (5–20 digits). */
-export function normalizePortalVodId(raw: unknown): string | undefined {
-  if (typeof raw !== 'string') return undefined
-  const trimmed = raw.trim()
-  if (trimmed === '') return undefined
-  return /^\d{5,20}$/.test(trimmed) ? trimmed : undefined
-}
-
 function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {
   return {
     ...emote,
@@ -468,7 +510,7 @@ function absolutizeRecapEmote(emote: PulseRecapEmote): PulseRecapEmote {
 }
 
 function isValidTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value))
+  return typeof value === 'string' && measurementTimeMs(value) != null
 }
 
 function isValidProvenanceNumber(value: unknown): value is number {
@@ -567,8 +609,8 @@ export function portalMinutesToRollups(
   startedAt: string,
   minutes: PortalMinutePoint[],
 ): { rollups: AnalyticsMinuteRollup[]; catalog: AnalyticsTopEmote[] } {
-  const startMs = Date.parse(startedAt)
-  if (!Number.isFinite(startMs)) return { rollups: [], catalog: [] }
+  const startMs = measurementTimeMs(startedAt)
+  if (startMs == null) return { rollups: [], catalog: [] }
   const catalogByKey = new Map<string, AnalyticsTopEmote>()
   // Defensive guard: a corrupted payload can repeat the same minute offset
   // (up to thousands of copies stamped offset 0). A bare 1:1 map would stack
@@ -731,8 +773,7 @@ function mergePortalSourceRows(
   return Array.from(bySource.values())
 }
 
-/** @internal exported for unit tests — maps a live portal response without inventing VOD data. */
-export function portalLiveResponseToAnalytics(
+function portalLiveResponseToAnalytics(
   data: PortalChannelLiveResponse,
   channelEmotes?: AnalyticsTopEmote[],
 ): AnalyticsStreamDetail {
@@ -752,7 +793,7 @@ export function portalLiveResponseToAnalytics(
     : rollups
   return {
     channel: data.channel,
-    state: data.state,
+    state: portalLifecycleDetailState(stream, data.state),
     stream: stream
       ? {
           streamId: stream.streamId,
@@ -760,13 +801,12 @@ export function portalLiveResponseToAnalytics(
           displayName: stream.displayName,
           title: stream.title,
           category: stream.category,
-          startedAt: stream.startedAt,
-          endedAt: stream.endedAt,
           currentViewers: stream.currentViewers,
           peakViewers: stream.peakViewers,
           viewerSamples: stream.viewerSamples,
           chatMessages: stream.chatMessages,
-          vodId: normalizePortalVodId(stream.vodId) ?? normalizePortalVodId(data.vodId),
+          vodId: stream.vodId ?? data.vodId,
+          ...portalLifecycleFields(stream),
         }
       : undefined,
     rollups: chartRollups,
@@ -777,11 +817,8 @@ export function portalLiveResponseToAnalytics(
       state: source.state,
       label: source.label,
     })),
-    updatedAt: data.updatedAt,
-    vodId:
-      normalizePortalVodId(data.availability?.vodId) ??
-      normalizePortalVodId(data.vodId) ??
-      normalizePortalVodId(stream?.vodId),
+    updatedAt: measurementTimeMs(data.updatedAt) ?? 0,
+    vodId: data.vodId ?? stream?.vodId,
     syncPhase: data.syncPhase,
     viewerSource: data.viewerSource,
     coverageStartOffsetSeconds: data.coverageStartOffsetSeconds,
@@ -806,7 +843,7 @@ export function portalLiveResponseToAnalytics(
           coverageMessage: data.availability.coverageMessage,
           liveDvrState: data.availability.liveDvrState,
           vodState: data.availability.vodState,
-          vodId: normalizePortalVodId(data.availability.vodId) ?? normalizePortalVodId(data.vodId) ?? normalizePortalVodId(stream?.vodId),
+          vodId: data.availability.vodId ?? data.vodId ?? stream?.vodId,
           vodMessage: data.availability.vodMessage,
           backfillState: data.availability.backfillState,
           corpusState: data.availability.corpusState,
@@ -818,14 +855,14 @@ export function portalLiveResponseToAnalytics(
       : {}),
   } as AnalyticsStreamDetail
 }
-/** @internal exported for unit tests — maps a stream detail without inventing VOD data. */
-export function portalDetailToAnalytics(
+function portalDetailToAnalytics(
   detail: PortalStreamDetail,
   minutes: PortalStreamMinutesResponse | null,
   summary: PortalStreamSummary | null,
   opts?: { includeMinutes?: boolean; minutesFetchFailed?: boolean; channelEmotes?: AnalyticsTopEmote[] },
 ): AnalyticsStreamDetail {
   const stream = detail.stream
+  const archive = verifiedArchiveMapping(detail)
   const minutesResult =
     minutes && stream?.startedAt ? portalMinutesToRollups(stream.startedAt, minutes.minutes ?? []) : null
   const rawMinuteCount = minutes?.minutes?.length ?? minutesResult?.rollups.length ?? 0
@@ -845,7 +882,7 @@ export function portalDetailToAnalytics(
   )
   return {
     channel: detail.channel,
-    state: detail.state,
+    state: portalLifecycleDetailState(stream, detail.state),
     stream: stream
       ? {
           streamId: stream.streamId,
@@ -853,13 +890,12 @@ export function portalDetailToAnalytics(
           displayName: stream.displayName,
           title: stream.title,
           category: stream.category,
-          startedAt: stream.startedAt,
-          endedAt: stream.endedAt,
           currentViewers: stream.currentViewers,
           peakViewers: stream.peakViewers,
           viewerSamples: stream.viewerSamples,
           chatMessages: stream.chatMessages,
-          vodId: normalizePortalVodId(stream.vodId) ?? normalizePortalVodId(detail.vodId),
+          vodId: archive?.vodId,
+          ...portalLifecycleFields(stream),
         }
       : undefined,
     rollups,
@@ -870,14 +906,10 @@ export function portalDetailToAnalytics(
       state: source.state,
       label: source.label,
     })),
-    updatedAt: detail.updatedAt,
-    vodId:
-      normalizePortalVodId(detail.availability?.vodId) ??
-      normalizePortalVodId(detail.vodId) ??
-      normalizePortalVodId(stream?.vodId),
-    vodAlignSeconds: typeof detail.vodAlignSeconds === 'number' && Number.isFinite(detail.vodAlignSeconds)
-      ? detail.vodAlignSeconds
-      : undefined,
+    updatedAt: measurementTimeMs(detail.updatedAt) ?? 0,
+    vodId: archive?.vodId,
+    vodAlignSeconds: archive?.alignment,
+    vodDurationSeconds: archive?.duration,
     syncPhase: detail.syncPhase,
     chatCoveragePct: detail.chatCoveragePct,
     chatCoverage: detail.chatCoverage
@@ -904,7 +936,7 @@ export function portalDetailToAnalytics(
           coverageMessage: detail.availability.coverageMessage,
           liveDvrState: detail.availability.liveDvrState,
           vodState: detail.availability.vodState,
-          vodId: normalizePortalVodId(detail.availability.vodId) ?? normalizePortalVodId(detail.vodId) ?? normalizePortalVodId(stream?.vodId),
+          vodId: archive?.vodId,
           vodMessage: detail.availability.vodMessage,
           backfillState: detail.availability.backfillState,
           corpusState: detail.availability.corpusState,
@@ -947,11 +979,6 @@ export const portalAnalyticsApi: AnalyticsApi = {
     }).then((res) => res.data)
   },
 
-  async getChannelEmoteCatalog(login: string) {
-    if (usesLocalAnalyticsRoutes()) return []
-    return fetchPortalChannelEmotesCatalog(login)
-  },
-
   async getAnalyticsStream(streamId: string, opts?: AnalyticsStreamOptions) {
     if (!streamId) return null
     if (usesLocalAnalyticsRoutes()) {
@@ -989,13 +1016,40 @@ export const portalAnalyticsApi: AnalyticsApi = {
         syncPhase?: string
         streamId?: string
         vodId?: string
+        vodAlignSeconds?: number
+        vodDurationSeconds?: number
+        vodTiming?: { state?: string }
         analyticsQuality?: string
         dataCoveragePct?: number
         chatCoveragePct?: number
         updatedAt?: number
         availability?: PortalSessionAvailability
       }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`))
-      return data
+        if (data.streamId !== streamId) return null
+        const sourceUpdated = Object.prototype.hasOwnProperty.call(data, 'vodId')
+          || Object.prototype.hasOwnProperty.call(data, 'vodTiming')
+        const archive = verifiedArchiveMapping(data)
+        // Legacy status uses EndedAt for lifecycle. Do not overwrite the full
+        // detail's authoritative lifecycle with that inference.
+        const availability = data.availability ? { ...data.availability } : undefined
+        if (availability) {
+          delete availability.liveDvrState
+          if (!sourceUpdated) {
+            // A status cache miss is not a failed source recheck.
+            delete availability.vodId
+            delete availability.vodState
+            delete availability.vodMessage
+          } else {
+            availability.vodId = archive?.vodId ?? ''
+          }
+          if (sourceUpdated && !archive && availability.vodState === 'linked') {
+            availability.vodState = 'request_failed'
+            availability.vodMessage = 'Archive identity or timing could not be verified. Recheck the source.'
+          }
+        }
+        return { ...data, state: data.state === 'live' || data.state === 'historical' ? undefined : data.state,
+          ...(sourceUpdated ? { vodId: archive?.vodId ?? '', vodAlignSeconds: archive?.alignment,
+            vodDurationSeconds: archive?.duration } : {}), availability }
     } catch {
       // The hosted deploy does not register /streams/{id}/status (go 404). Treat an
       // unavailable status endpoint as "no status" rather than a hard query failure,
@@ -1013,7 +1067,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
       { timeoutMs: PORTAL_MINUTES_TIMEOUT_MS },
     )
     if (!data?.minutes?.length || !data.startedAt) {
-      return { channel: data?.channel ?? '', state: 'live', rollups: [], topEmotes: [], sources: [], updatedAt: data?.updatedAt ?? Date.now() }
+      return { channel: data?.channel ?? '', state: 'unknown', rollups: [], topEmotes: [], sources: [], updatedAt: measurementTimeMs(data?.updatedAt) ?? 0 }
     }
     const converted = portalMinutesToRollups(data.startedAt, data.minutes)
     return {
@@ -1022,7 +1076,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
       rollups: converted.rollups,
       topEmotes: converted.catalog,
       sources: [],
-      updatedAt: data.updatedAt,
+      updatedAt: measurementTimeMs(data.updatedAt) ?? 0,
     } as AnalyticsStreamDetail
   },
 
@@ -1031,7 +1085,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
       ? analyticsPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
       : portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
     const { data } = await apiClient<AnalyticsStreamsResponse>(path)
-    return data
+    return { ...data, items: usesLocalAnalyticsRoutes() ? data.items : (data.items ?? []).map(item => ({ ...item, ...portalLifecycleFields(item) })), updatedAt: measurementTimeMs(data.updatedAt) ?? 0 }
   },
 
   async getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
@@ -1046,11 +1100,11 @@ export const portalAnalyticsApi: AnalyticsApi = {
       } catch {
         return {
           channel: login,
-          state: 'not_collected',
+          state: 'unknown',
           rollups: [],
           topEmotes: [],
           sources: [],
-          updatedAt: Date.now(),
+          updatedAt: 0,
         }
       }
     }
@@ -1064,11 +1118,11 @@ export const portalAnalyticsApi: AnalyticsApi = {
     } catch {
       return {
         channel: login,
-        state: 'not_collected',
+        state: 'unknown',
         rollups: [],
         topEmotes: [],
         sources: [],
-        updatedAt: Date.now(),
+        updatedAt: 0,
       }
     }
   },
@@ -1095,7 +1149,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
         } else {
           analyticsQuality = 'limited'
         }
-        return { metrics, analyticsQuality, updatedAt: data.updatedAt }
+        return { metrics, analyticsQuality, updatedAt: measurementTimeMs(data.updatedAt) ?? undefined }
       } catch {
         return null
       }
@@ -1159,6 +1213,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
         (res) => res.data,
       )
     }
+    // The hosted endpoint has no cursor: "all" is still a bounded recent sample.
     const limit = period === 'all' ? 100 : 50
     const { data } = await apiClient<{
       channel: string
@@ -1173,27 +1228,21 @@ export const portalAnalyticsApi: AnalyticsApi = {
         displayName: item.displayName ?? item.login,
         title: item.title,
         category: item.category,
-        startedAt: item.startedAt,
-        endedAt: item.endedAt,
         peakViewers: item.peakViewers,
         viewerSamples: item.viewerSamples,
         chatMessages: item.chatMessages,
         vodId: item.vodId,
+        ...portalLifecycleFields(item),
       })),
-      updatedAt: data.updatedAt,
+      updatedAt: measurementTimeMs(data.updatedAt) ?? 0,
     }
   },
 
   async watchAnalyticsChannel(login: string) {
-    try {
-      await apiClient(analyticsPath(`/channels/${encodeURIComponent(login)}/watch`), {
-        method: 'POST',
-        gated: true,
-      })
-    } catch {
-      // Public portal reads do not require watch registration.
-    }
-    return { ok: true }
+    // Public navigation is read-only. Collection admission is an explicit,
+    // authorized backend workflow and must never be triggered by viewing a page.
+    void login
+    return { ok: false, reason: 'explicit_authorization_required' as const }
   },
 
   async getSyncStatus(streamId: string): Promise<SyncStatus | null> {
@@ -1202,17 +1251,20 @@ export const portalAnalyticsApi: AnalyticsApi = {
         const { data } = await apiClient<SyncStatus & { phase?: string }>(
           analyticsPath(`/streams/${encodeURIComponent(streamId)}/sync/status`),
         )
-        if (data.phase === 'idle') return null
-        return { ...data, streamId }
+        if (data.phase === 'idle' || measurementTimeMs(data.updatedAt) == null) return null
+        return { ...data, streamId, updatedAt: measurementTimeIso(data.updatedAt)! }
       }
       const { data } = await apiClient<PortalSyncStatus>(
         portalPath(`/streams/${encodeURIComponent(streamId)}/sync/status`),
       )
+      // Missing source time means the status cannot be placed on a trustworthy
+      // timeline; do not manufacture a client-side "updated now" value.
+      if (data.phase === 'idle' || measurementTimeMs(data.updatedAt) == null) return null
       return {
         streamId,
         phase: data.phase,
         message: data.message,
-        updatedAt: data.updatedAt ?? new Date().toISOString(),
+        updatedAt: measurementTimeIso(data.updatedAt)!,
         stale: data.stale,
       }
     } catch {
@@ -1250,7 +1302,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
     const params = new URLSearchParams({ window: String(window) })
     if (channel) params.set('channel', channel)
     try {
-      return apiClient(
+      return await apiClient(
         portalPath(`/streams/${encodeURIComponent(streamId)}/replay-heatmap?${params.toString()}`),
       ).then((res) => res.data)
     } catch {
@@ -1262,7 +1314,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
     const params = new URLSearchParams({ window: String(window), detail: 'true' })
     if (channel) params.set('channel', channel)
     try {
-      return apiClient(
+      return await apiClient(
         portalPath(`/streams/${encodeURIComponent(streamId)}/replay-heatmap?${params.toString()}`),
       ).then((res) => res.data)
     } catch {
@@ -1299,17 +1351,18 @@ export const portalAnalyticsApi: AnalyticsApi = {
 
 let configured = false
 
-/** Session-scoped: avoid re-hitting /summary when detail+summaryQuery overlap on live ticks. */
+/** Deduplicate overlapping reads; successful caching belongs to the query layer. */
 const portalStreamSummaryInflight = new Map<string, Promise<PortalStreamSummary | null>>()
 
 export async function fetchPortalStreamSummary(streamId: string): Promise<PortalStreamSummary | null> {
   if (!streamId.trim()) return null
-  const key = streamId.trim()
+  const normalizedId = streamId.trim()
+  const key = JSON.stringify([getBackendUrl(), normalizedId])
   const existing = portalStreamSummaryInflight.get(key)
   if (existing) return existing
   const pending = (async () => {
     try {
-      const { data } = await apiClient<PortalStreamSummary>(portalPath(`/streams/${encodeURIComponent(streamId)}/summary`))
+      const { data } = await apiClient<PortalStreamSummary>(portalPath(`/streams/${encodeURIComponent(normalizedId)}/summary`))
       if (!data.topEmotes?.length) return data
       return {
         ...data,
@@ -1319,12 +1372,15 @@ export async function fetchPortalStreamSummary(streamId: string): Promise<Portal
         })),
       }
     } catch {
-      portalStreamSummaryInflight.delete(key)
       return null
     }
   })()
   portalStreamSummaryInflight.set(key, pending)
-  return pending
+  try {
+    return await pending
+  } finally {
+    if (portalStreamSummaryInflight.get(key) === pending) portalStreamSummaryInflight.delete(key)
+  }
 }
 
 export async function fetchPortalStreamRecap(streamId: string): Promise<PortalStreamRecapResponse | null> {
@@ -1337,14 +1393,7 @@ export async function fetchPortalStreamRecap(streamId: string): Promise<PortalSt
   }
 }
 
-export function formatStreamOffset(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds))
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+export { formatStreamOffset } from './formatStreamOffset'
 
 export function setupStreamcloneAnalyticsApi(): void {
   if (configured) return

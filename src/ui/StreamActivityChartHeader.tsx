@@ -4,6 +4,7 @@ import { theme } from './theme.ts'
 
 export interface StreamActivityChartHeaderProps {
   rightControl?: ReactNode
+  leadingControl?: ReactNode
   expandControl?: ReactNode
   overlayLegend?: ReactNode
   focusedSeriesKey?: string | null
@@ -31,6 +32,7 @@ function legendChipStyle(focused: boolean, dimmed: boolean): CSSProperties {
 
 export function StreamActivityChartHeader({
   rightControl,
+  leadingControl,
   expandControl,
   overlayLegend,
   focusedSeriesKey = null,
@@ -62,6 +64,7 @@ export function StreamActivityChartHeader({
         key={`${seriesKey}-${label}`}
         type="button"
         className={legendChipClassName(isFocused, isDimmed)}
+        data-chart-action="true"
         style={chipStyle}
         aria-pressed={isFocused}
         title={isFocused ? 'Click to show all series' : `Highlight ${label}`}
@@ -78,9 +81,14 @@ export function StreamActivityChartHeader({
       <div style={styles.headerTop}>
         <div style={styles.titleRow}>
           <span style={styles.title}>Stream activity</span>
-          {expandControl ? <div style={styles.expandSlot}>{expandControl}</div> : null}
         </div>
-        {rightControl ? <div style={styles.controls}>{rightControl}</div> : null}
+        {leadingControl || expandControl || rightControl ? (
+          <div style={styles.controls}>
+            {leadingControl ? <div style={styles.leadingSlot}>{leadingControl}</div> : null}
+            {expandControl ? <div style={styles.expandSlot}>{expandControl}</div> : null}
+            {rightControl}
+          </div>
+        ) : null}
       </div>
       <div style={styles.chartLegend} aria-label="Chart series legend">
         {showViewerLegend
@@ -105,16 +113,6 @@ export function StreamActivityChartHeader({
           'Emotes',
           <span style={{ ...styles.chartLegendDot, background: CHART_LANE.emoteBar }} />,
         )}
-        {renderLegendItem(
-          'chat',
-          'Chat trend',
-          <span style={styles.chartLegendStroke} />,
-        )}
-        {renderLegendItem(
-          'emotes',
-          'Emote trend',
-          <span style={{ ...styles.chartLegendStroke, borderColor: CHART_LANE.emoteBar }} />,
-        )}
       </div>
       {overlayLegend ? <div style={styles.overlayLegendRow}>{overlayLegend}</div> : null}
     </div>
@@ -124,27 +122,38 @@ export function StreamActivityChartHeader({
 const styles: Record<string, CSSProperties> = {
   header: { display: 'grid', gap: 6, minWidth: 0, overflow: 'visible' },
   headerTop: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     display: 'flex',
     gap: 8,
     justifyContent: 'space-between',
+    minHeight: 16,
     minWidth: 0,
   },
   titleRow: {
     alignItems: 'center',
-    display: 'inline-flex',
-    flexWrap: 'wrap',
+    display: 'flex',
+    flex: '1 1 auto',
     gap: 8,
     minWidth: 0,
+    overflow: 'hidden',
   },
   title: {
     color: theme.textMuted,
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: '0.04em',
+    lineHeight: '12px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
   },
   expandSlot: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    flexShrink: 0,
+  },
+  leadingSlot: {
     alignItems: 'center',
     display: 'inline-flex',
     flexShrink: 0,
@@ -156,9 +165,11 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
   },
   chartLegend: {
+    alignItems: 'center',
     display: 'flex',
     flexWrap: 'wrap',
     gap: 4,
+    minHeight: 14,
     minWidth: 0,
   },
   chartLegendItem: {

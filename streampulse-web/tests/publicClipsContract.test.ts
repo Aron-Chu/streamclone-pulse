@@ -10,8 +10,8 @@ const valid = {
   id: 'clip-1',
   login: 'xqc',
   title: 'Peak moment',
-  thumbnailUrl: 'https://cdn.example/thumb.jpg',
-  playbackUrl: 'https://cdn.example/play.mp4',
+  thumbnailUrl: 'https://cdn.streampulse.stream/clips/clip-1/thumb.jpg',
+  playbackUrl: 'https://cdn.streampulse.stream/clips/clip-1/play.mp4',
   durationSeconds: 42,
   publishedAt: '2026-07-10T12:00:00Z',
 }
@@ -30,7 +30,7 @@ describe('publicClipsContract', () => {
     expect(normalizeHubPublicClip({ ...valid, durationSeconds: -1 })).toBeNull()
   })
 
-  it('rejects non-http media URLs and hostile shapes', () => {
+  it('rejects unapproved, credentialed, local, and non-HTTPS media URLs', () => {
     expect(normalizeHubPublicClip(null)).toBeNull()
     expect(normalizeHubPublicClip([])).toBeNull()
     expect(
@@ -39,6 +39,12 @@ describe('publicClipsContract', () => {
     expect(
       normalizeHubPublicClip({ ...valid, playbackUrl: 'file:///tmp/clip.mp4' }),
     ).toBeNull()
+    expect(normalizeHubPublicClip({ ...valid, playbackUrl: 'http://cdn.streampulse.stream/play.mp4' })).toBeNull()
+    expect(normalizeHubPublicClip({ ...valid, playbackUrl: 'https://cdn.example/play.mp4' })).toBeNull()
+    expect(normalizeHubPublicClip({ ...valid, playbackUrl: 'https://user:pass@cdn.streampulse.stream/play.mp4' })).toBeNull()
+    expect(normalizeHubPublicClip({ ...valid, playbackUrl: 'https://localhost/play.mp4' })).toBeNull()
+    expect(normalizeHubPublicClip({ ...valid, playbackUrl: 'https://127.0.0.1/play.mp4' })).toBeNull()
+    expect(normalizeHubPublicClip({ ...valid, playbackUrl: 'https://10.0.0.4/play.mp4' })).toBeNull()
     expect(normalizeHubPublicClip({ ...valid, topReaction: 'KEKW' })).toBeNull()
   })
 

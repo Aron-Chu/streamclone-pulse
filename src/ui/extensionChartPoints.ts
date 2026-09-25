@@ -1,9 +1,13 @@
 import type { ExtensionRollup } from '../shared/messages.ts'
-import { chartViewerValue, minuteEmoteTotal } from './chartRollupUtils.ts'
 import { rollupActivityScore } from './segmentedBarChart.ts'
 
 export const EXTENSION_CHART_MAX_POINTS = 120
 
+/**
+ * Legacy normalized point shape. Viewer geometry is owned by
+ * `buildViewerGeometry` in `@streampulse/pulse-charts`; nothing in the extension
+ * builds these points any more.
+ */
 export interface ExtensionChartPoint {
   offsetSeconds: number
   chatNorm: number
@@ -13,11 +17,6 @@ export interface ExtensionChartPoint {
   chatCount: number
   emoteCount: number
   viewerCount: number
-}
-
-function normalizeChartValue(value: number, max: number): number {
-  if (max <= 0) return 0
-  return Math.max(0, Math.min(100, Math.round((value / max) * 100)))
 }
 
 /** Bucket index ranges used by downsampleRollupsForChart (for emote trace aggregation). */
@@ -41,7 +40,14 @@ export function chartBucketRanges(
   return ranges
 }
 
-/** Spike-preserving downsample: uniform stride flattens peaks on long sessions. */
+/**
+ * Spike-preserving downsample: uniform stride flattens peaks on long sessions.
+ *
+ * The bucket representative is a REAL minute, returned unmodified. An earlier
+ * version overrode `viewerCount` with the bucket maximum, which paired one
+ * minute's chat with another minute's viewer sample and made the viewer line
+ * spiky at long windows.
+ */
 export function downsampleRollupsForChart(
   rollups: ExtensionRollup[],
   maxPoints = EXTENSION_CHART_MAX_POINTS,
@@ -58,7 +64,6 @@ export function downsampleRollupsForChart(
 
     let best = rollups[start]!
     let bestScore = rollupActivityScore(best)
-    let peakViewers = chartViewerValue(best)
     for (let i = start + 1; i < end; i += 1) {
       const rollup = rollups[i]!
       const score = rollupActivityScore(rollup)
@@ -66,46 +71,10 @@ export function downsampleRollupsForChart(
         best = rollup
         bestScore = score
       }
-      peakViewers = Math.max(peakViewers, chartViewerValue(rollup))
     }
-    if (peakViewers > chartViewerValue(best)) {
-      out.push({ ...best, viewerCount: peakViewers })
-    } else {
-      out.push(best)
-    }
+    out.push(best)
   }
   return out
-}
-
-export function chartPointsFromExtensionRollups(
-  rollups: ExtensionRollup[],
-  options?: { maxPoints?: number },
-): ExtensionChartPoint[] {
-  const sampled = downsampleRollupsForChart(rollups, options?.maxPoints)
-  if (sampled.length === 0) return []
-
-  const maxChat = Math.max(...sampled.map(rollup => rollup.chatCount ?? 0), 1)
-  const maxViewers = Math.max(...sampled.map(rollup => chartViewerValue(rollup)), 1)
-  const maxEmotes = Math.max(...sampled.map(rollup => minuteEmoteTotal(rollup)), 1)
-
-  return sampled.map(rollup => {
-    const chatCount = rollup.chatCount ?? 0
-    const emoteCount = minuteEmoteTotal(rollup)
-    const viewerCount = chartViewerValue(rollup)
-    const chatNorm = normalizeChartValue(chatCount, maxChat)
-    const viewersNorm = normalizeChartValue(viewerCount, maxViewers)
-    const emotesNorm = normalizeChartValue(emoteCount, maxEmotes)
-    return {
-      offsetSeconds: rollup.offsetSeconds,
-      chatNorm,
-      viewersNorm,
-      emotesNorm,
-      heat: Math.min(100, Math.round(chatNorm * 0.35 + emotesNorm * 0.5 + viewersNorm * 0.15)),
-      chatCount,
-      emoteCount,
-      viewerCount,
-    }
-  })
 }
 
 export function nearestRollupForOffset(
@@ -131,14 +100,41 @@ export function nearestChartPointIndex(
   offsetSeconds: number,
 ): number {
   if (points.length === 0 || !Number.isFinite(offsetSeconds)) return -1
-  let best = 0
-  let bestDist = Math.abs(points[0]!.offsetSeconds - offsetSeconds)
-  for (let i = 1; i < points.length; i += 1) {
-    const dist = Math.abs(points[i]!.offsetSeconds - offsetSeconds)
-    if (dist < bestDist || (dist === bestDist && points[i]!.offsetSeconds < points[best]!.offsetSeconds)) {
-      best = i
-      bestDist = dist
-    }
+  let lo = 0
+  let hi = points.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (points[mid]!.offsetSeconds < offsetSeconds) lo = mid + 1
+    else hi = mid
   }
-  return best
+  if (lo === 0) return 0
+  const before = points[lo - 1]!
+  const after = points[lo]!
+  return offsetSeconds - before.offsetSeconds <= after.offsetSeconds - offsetSeconds
+    ? lo - 1
+    : lo
+}
+
+/**
+ * Binary-search the nearest ordered rollup.  Chart hover uses this instead of
+ * scanning every raw minute, so a long stream keeps pointer work bounded.
+ */
+export function nearestRollupIndex(
+  rollups: readonly Pick<ExtensionRollup, 'offsetSeconds'>[],
+  offsetSeconds: number,
+): number {
+  if (rollups.length === 0 || !Number.isFinite(offsetSeconds)) return -1
+  let lo = 0
+  let hi = rollups.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (rollups[mid]!.offsetSeconds < offsetSeconds) lo = mid + 1
+    else hi = mid
+  }
+  if (lo === 0) return 0
+  const before = rollups[lo - 1]!
+  const after = rollups[lo]!
+  return offsetSeconds - before.offsetSeconds <= after.offsetSeconds - offsetSeconds
+    ? lo - 1
+    : lo
 }

@@ -32,6 +32,7 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   ),
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
+  DataQualityDisclosure: () => null,
   ChatCoverageBadge: () => null,
   StatCard: () => null,
   ViewerSourceBadge: () => null,

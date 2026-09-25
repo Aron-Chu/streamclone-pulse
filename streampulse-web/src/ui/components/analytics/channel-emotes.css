@@ -213,7 +213,7 @@
   padding: 0.25rem 0.5rem;
   background: hsl(var(--sc-secondary));
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: capitalize;
 }
@@ -272,7 +272,7 @@
 
 .emote-trust-list dt {
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 .emote-trust-list dd {
@@ -319,7 +319,7 @@
 .emote-history-day small {
   overflow: hidden;
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   text-align: center;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -395,7 +395,7 @@
 
 .emote-thumb-fallback {
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 800;
 }
 
@@ -405,7 +405,7 @@
   border-radius: 999px;
   border: 1px solid hsl(var(--sc-border));
   padding: 0.05rem 0.45rem;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;

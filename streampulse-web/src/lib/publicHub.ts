@@ -1,7 +1,6 @@
-import { verifiedArchiveArtwork, type ArchiveArtwork } from './archiveArtwork'
-import { apiClient as momentsApiClient } from './momentsApiClient'
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
-import { apiClient, getBackendUrl, isApiError } from './apiClient'
+import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
+import { apiClient, getBackendUrl, isApiError, type ApiError } from './apiClient'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
@@ -20,6 +19,7 @@ import {
   normalizeLiveWireMomentComparison,
   type LiveWireMomentComparison,
 } from './liveWire'
+import { verifiedArchiveArtwork, type ArchiveArtwork } from './archiveArtwork'
 
 /**
  * Mirrors PublicHubResponse from streampulse-backend/internal/analytics/hub_overview.go.
@@ -224,6 +224,8 @@ export interface HubIngest {
  * Aggregate counts — never per-channel rows, logins, stream IDs, or job errors.
  */
 export interface HubCorpusPipeline {
+  /** False when this is only the defensive empty shape, not a backend projection. */
+  available?: boolean
   generatedAt: string
   state: 'healthy' | 'degraded' | 'critical' | string
   topN: number
@@ -258,6 +260,7 @@ export type HubViewerCoverageState = 'complete' | 'partial' | 'unknown' | string
 
 export interface HubViewerCoverage {
   contributors?: number
+  sampledContributors?: number
   expectedContributors?: number
   coveragePct?: number
   state?: HubViewerCoverageState
@@ -293,8 +296,12 @@ export interface HubActivityPoint {
   /** Exact count for provider IDs that are not 7TV/Twitch/BTTV/FFZ. */
   other?: number
   viewers: number
+  /** Client compatibility marker: corpus viewers cannot join a roster snapshot timeline. */
+  viewerSourceMismatch?: boolean
   /** Number of distinct channels contributing the viewer sum in this bucket. */
   viewerContributors?: number
+  /** Number of channels successfully sampled in this bucket, including offline channels. */
+  viewerSampledContributors?: number
   /** Historical eligible/live denominator for the viewer sum, when known. */
   viewerExpectedContributors?: number
   /** Backend classification: complete, partial, or unknown. */
@@ -358,6 +365,7 @@ export interface HubActivity {
    */
   state?: 'healthy' | 'ok' | 'degraded' | 'empty' | string
   source?: 'historical_projection' | 'live_pool_fallback' | string
+  projectionGeneration?: string
   reason?: 'historical_projection_unavailable' | string
   availableWindowMinutes?: number
   measuredWindowMinutes?: number
@@ -371,6 +379,10 @@ export interface HubActivity {
 }
 
 export interface HubEmoteIntel {
+  scope?: 'tracked_live_pool'
+  windowMinutes?: number
+  asOf?: string
+  biggestPeakUnit?: 'emote_uses_per_channel_minute'
   emotesPerMin: number
   topEmoteSharePct: number
   uniqueEmotes: number
@@ -386,6 +398,7 @@ export interface HubProviderShare {
 }
 
 export interface HubEmote {
+  /** Provider-qualified emote identity. Display names are not stable identifiers. */
   id?: string
   name: string
   provider?: string
@@ -479,19 +492,14 @@ export interface HubFeaturedMoment {
   topEmotes?: HubEmote[]
   confidence?: number
   vodState?: string
-  /** Qualified event-minute comparison against earlier history in this stream. */
-  comparison?: LiveWireMomentComparison
 }
 
 /** Network-wide live IRC peak row for Pulse Moments Live (multi-channel). */
 export interface HubLivePulseMoment extends HubFeaturedMoment {
-  handoffRef?: string
-  categoryId?: string
-  boxArtUrl?: string
-  categoryMetadataRejected?: true
-  archiveArtwork?: ArchiveArtwork
   /** Stable public detector-event identity used by Newsroom story references. */
   publicMomentId?: string
+  /** Opaque server-issued reference for eligible ReplayForge handoff. */
+  handoffRef?: string
   login?: string
   displayName?: string
   profileImageUrl?: string
@@ -500,10 +508,17 @@ export interface HubLivePulseMoment extends HubFeaturedMoment {
   /** Wall-clock peak time (unix ms). */
   at?: number
   category?: string
+  /** Exact backend category segment identity and allowlisted display artwork. */
+  categoryId?: string
+  boxArtUrl?: string
+  /** Frontend-only fail-closed signal; prevents legacy name artwork after rejected explicit metadata. */
+  categoryMetadataRejected?: true
   streamStartedAt?: number
   activityTag?: string
   /** Same-stream history strictly before this event; absent until qualified. */
   comparison?: LiveWireMomentComparison
+  /** Verified archive display metadata. Never grants replay or media access. */
+  archiveArtwork?: ArchiveArtwork
 }
 
 export interface HubFeaturedChartPoint {
@@ -571,7 +586,10 @@ export interface PublicHub {
   topMovers: HubMover[]
   liveChannels: HubLiveChannel[]
   moments: HubMoment[]
+  liveActivity?: HubLiveActivity
   livePulseMoments: HubLivePulseMoment[]
+  /** Network moments cover detected peaks in currently live sessions, independent of the chart range. */
+  livePulseMomentsScope?: 'current_live_session_peaks'
   livePulseMomentsStatus?: 'ready' | 'fallback' | 'no_peaks' | string
   livePulseMomentsReason?: string
   featuredSession: HubFeaturedSession
@@ -621,6 +639,38 @@ export interface PublicHubMomentsResponse {
   moments: HubLivePulseMoment[]
 }
 
+export interface HubLifecycleEvent {
+  id: string
+  kind: 'went_live' | 'went_offline'
+  channel: { id: string; login: string; displayName?: string; avatarUrl?: string }
+  streamId: string
+  occurredAt: string
+  detectedAt: string
+  lastSeenLiveAt?: string | null
+  timestampPrecision: 'twitch_started_at' | 'observed_after_confirmation'
+  category?: string
+}
+
+export interface HubLiveActivity {
+  status: 'ready' | 'stale' | 'unavailable'
+  asOf: string
+  events: HubLifecycleEvent[]
+}
+
+export function normalizeHubLiveActivity(input: HubLiveActivity | undefined): HubLiveActivity | undefined {
+  if (!input) return undefined
+  const asOf = Date.parse(input.asOf)
+  const events = new Map<string, HubLifecycleEvent>()
+  for (const event of Array.isArray(input.events) ? input.events : []) {
+    const at = Date.parse(event.occurredAt)
+    const detected = Date.parse(event.detectedAt)
+    if (!event.id || !event.streamId || !event.channel?.login || !Number.isFinite(at) || !Number.isFinite(asOf) || !Number.isFinite(detected) || detected < at || detected > asOf || at > asOf || at < asOf - 3_600_000) continue
+    if (event.kind === 'went_live' ? event.timestampPrecision !== 'twitch_started_at' : event.kind !== 'went_offline' || event.timestampPrecision !== 'observed_after_confirmation' || !event.lastSeenLiveAt || !Number.isFinite(Date.parse(event.lastSeenLiveAt)) || Date.parse(event.lastSeenLiveAt) > at) continue
+    events.set(event.id, event)
+  }
+  return { status: input.status === 'ready' || input.status === 'stale' ? input.status : 'unavailable', asOf: input.asOf, events: [...events.values()].sort((a,b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt) || a.id.localeCompare(b.id)).slice(0,20) }
+}
+
 export interface FetchPublicHubResult {
   data: PublicHub
   loadSource: PublicHubLoadSource
@@ -629,9 +679,12 @@ export interface FetchPublicHubResult {
   status: number
 }
 
-function publicHubPath(activityWindow?: PublicHubActivityWindow): string {
-  if (!activityWindow) return '/v1/public/hub?activityWindow=24h'
-  const params = new URLSearchParams({ activityWindow })
+export type PublicHubProjection = 'moments' | 'tickers'
+
+function publicHubPath(activityWindow?: PublicHubActivityWindow, projection?: PublicHubProjection): string {
+  const params = new URLSearchParams({ activityWindow: activityWindow ?? '24h' })
+  if (projection === 'moments') params.set('include', 'livePulseMoments')
+  if (projection === 'tickers') params.set('include', 'topEmotes,topMovers')
   return `/v1/public/hub?${params.toString()}`
 }
 
@@ -651,20 +704,31 @@ function publicHubMomentsPath(
 export function normalizePublicHubMoments(
   input: Partial<PublicHubMomentsResponse> | null | undefined,
 ): PublicHubMomentsResponse {
-  const moments = (input?.moments ?? []).map((moment) => ({
-    ...moment,
-    topEmotes: (moment.topEmotes ?? []).map((emote) => ({
-      ...emote,
-      imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
-    })),
-  }))
+  const moments = (input?.moments ?? []).map((moment) => {
+    const categoryId = normalizeCategoryId(moment.categoryId)
+    const boxArtUrl = normalizeCategoryBoxArt(moment.boxArtUrl, categoryId)
+    const categoryMetadataRejected = moment.categoryMetadataRejected === true
+      || rejectedCategoryMetadata(moment.categoryId, moment.boxArtUrl, categoryId, boxArtUrl)
+    return {
+      ...moment,
+      categoryId,
+      boxArtUrl,
+      categoryMetadataRejected: categoryMetadataRejected || undefined,
+      archiveArtwork: normalizeHubArchiveArtwork(moment.archiveArtwork, moment.vodId),
+      profileImageUrl: sanitizeHubProfileImageUrl(moment.profileImageUrl),
+      topEmotes: (moment.topEmotes ?? []).map((emote) => ({
+        ...emote,
+        imageUrl: absolutizeEmoteAssetUrl(emote.imageUrl),
+      })),
+    }
+  })
   return {
     bucketT: input?.bucketT ?? 0,
     bucketStart: input?.bucketStart ?? '',
     bucketEnd: input?.bucketEnd ?? '',
     hubGeneratedAt: input?.hubGeneratedAt ?? '',
     source: input?.source ?? 'corpus_historical',
-    status: input?.status ?? 'empty',
+    status: input?.status ?? 'unavailable',
     reason: input?.reason,
     activityWindowMinutes: input?.activityWindowMinutes ?? 0,
     moments,
@@ -689,13 +753,45 @@ function normalizeUrl(url: string): string {
   return url.trim().replace(/\/+$/, '')
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+/** Required fields in the public hub wire contract. Optional lanes remain additive. */
+export function hasPublicHubResponseShape(raw: unknown): raw is PublicHubInput {
+  if (!isRecord(raw) || !measurementTimeIso(raw.generatedAt) || !isNonNegativeNumber(raw.poolSize)) return false
+  if (!isRecord(raw.corpus) || ![
+    raw.corpus.streamsTracked,
+    raw.corpus.momentsDetected,
+    raw.corpus.chatMessagesProcessed,
+    raw.corpus.emotesIndexed,
+    raw.corpus.vodsAnalyzed,
+  ].every(isNonNegativeNumber)) return false
+  if (!isRecord(raw.coverage) || typeof raw.coverage.databaseOk !== 'boolean' ||
+    typeof raw.coverage.state !== 'string' || !raw.coverage.state.trim()) return false
+  if (!isRecord(raw.activity) || !Array.isArray(raw.activity.points) ||
+    !isNonNegativeNumber(raw.activity.channelCount) ||
+    typeof raw.activity.windowMinutes !== 'number' ||
+    !Number.isFinite(raw.activity.windowMinutes) || raw.activity.windowMinutes <= 0) return false
+  return Array.isArray(raw.liveChannels) && Array.isArray(raw.moments) &&
+    Array.isArray(raw.topEmotes) && Array.isArray(raw.topMovers)
+}
+
 /** Primary hub fetch only — no Top-500 readiness fan-out. */
 export async function fetchPublicHubBase(
   signal?: AbortSignal,
   activityWindow?: PublicHubActivityWindow,
+  projection?: PublicHubProjection,
 ): Promise<FetchPublicHubResult> {
   try {
-    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow), { signal })
+    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow, projection), { signal })
+    if (!hasPublicHubResponseShape(primary.data)) {
+      throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
+    }
     return {
       data: normalizePublicHub(primary.data),
       loadSource: 'full',
@@ -730,7 +826,7 @@ export async function fetchPublicHubStatsFallback(
   if (stats || status) {
     return {
       data: normalizePublicHub({
-        generatedAt: stats?.updatedAt ?? status?.updatedAt ?? new Date().toISOString(),
+        generatedAt: stats?.updatedAt ?? status?.updatedAt ?? '',
         backendVersion: status?.backendVersion ?? status?.version,
         corpus: stats
           ? {
@@ -755,10 +851,10 @@ export async function fetchPublicHubStatsFallback(
               ? status.components.api === 'up'
               : status?.api != null
                 ? status.api === 'up'
-                : true,
+                : false,
           state:
             status?.components?.coverage ??
-            (status?.degraded ? 'degraded' : (status?.status ?? 'operational')),
+            (status?.degraded ? 'degraded' : (status?.status ?? 'unknown')),
         },
       }),
       loadSource: 'stats-fallback',
@@ -823,11 +919,40 @@ function coverageStateWithPipeline(
  * Resolve a backend-relative asset path (e.g. "/emotes/<id>/1x.webp" or a
  * "/v1/..." avatar proxy) to an absolute URL against the configured backend.
  * The hub is served from the portal origin (5173 in dev, streampulse.stream in
- * prod) but emote/avatar assets live on the backend (8090 / api.streampulse.stream),
+ * prod) but emote/avatar assets live on the backend (8081 / api.streampulse.stream),
  * so relative paths would otherwise 404 against the portal and fall back to text.
  */
 function absoluteAssetUrl(url: string | undefined): string | undefined {
   return absolutizeEmoteAssetUrl(url)
+}
+
+/**
+ * Profile images come from an unauthenticated payload, so never bind the raw
+ * value to an <img>. Keep the first-party Twitch CDN shape and the optional
+ * same-backend avatar proxy, while dropping arbitrary origins and URL
+ * components that can carry credentials, tracking parameters, or fragments.
+ */
+export function sanitizeHubProfileImageUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim() || value.length > 2048) return undefined
+  const trimmed = value.trim()
+  try {
+    const backend = new URL(getBackendUrl())
+    const url = new URL(trimmed, backend)
+    if (url.username || url.password || url.search || url.hash) return undefined
+    if (
+      url.protocol === 'https:' &&
+      url.origin === 'https://static-cdn.jtvnw.net' &&
+      url.pathname.startsWith('/jtv_user_pictures/')
+    ) {
+      return url.href
+    }
+    if (url.origin === backend.origin && url.pathname.startsWith('/v1/')) {
+      return url.href
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
 }
 
 function absolutizeEmotes(emotes: HubEmote[] | undefined): HubEmote[] {
@@ -837,7 +962,7 @@ function absolutizeEmotes(emotes: HubEmote[] | undefined): HubEmote[] {
 
 function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   if (!movers) return []
-  return movers.map((mover) => ({ ...mover, profileImageUrl: absoluteAssetUrl(mover.profileImageUrl) }))
+  return movers.map((mover) => ({ ...mover, profileImageUrl: sanitizeHubProfileImageUrl(mover.profileImageUrl) }))
 }
 
 /** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
@@ -915,7 +1040,8 @@ function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLive
     const screener = normalizeHubChannelScreenerFields(channel.screener)
     return {
       ...channel,
-      profileImageUrl: absoluteAssetUrl(channel.profileImageUrl),
+      startedAt: measurementTimeIso(channel.startedAt),
+      profileImageUrl: sanitizeHubProfileImageUrl(channel.profileImageUrl),
       screener: screener ?? undefined,
     }
   })
@@ -933,8 +1059,14 @@ function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
 export function normalizePublicHub(raw: PublicHubInput | null | undefined): PublicHub {
   const corpusPipeline = normalizeCorpusPipeline(raw?.corpusPipeline, raw?.generatedAt)
   const hasAuthoritativeRosterLive = raw?.corpusPipeline?.roster?.live != null
+  const activityPoints = normalizeHistoricalViewerPopulation(raw?.activity)
+  const rejectedPeak = activityPoints.some(p => p.viewerSourceMismatch && p.t === measurementTimeMs(raw?.activity?.peakViewersAt))
+  const compatiblePeak = rejectedPeak
+    ? activityPoints.filter(p => p.hasViewerRollup)
+      .reduce<HubActivityPoint | undefined>((peak, p) => !peak || p.viewers > peak.viewers ? p : peak, undefined)
+    : undefined
   return {
-    generatedAt: raw?.generatedAt ?? new Date().toISOString(),
+    generatedAt: measurementTimeIso(raw?.generatedAt) ?? '',
     backendVersion:
       typeof raw?.backendVersion === 'string'
         ? raw.backendVersion
@@ -961,13 +1093,13 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
       backfillMax: raw?.coverage?.backfillMax ?? 0,
       syncActive: raw?.coverage?.syncActive ?? 0,
       emotesIndexed: raw?.coverage?.emotesIndexed ?? 0,
-      databaseOk: raw?.coverage?.databaseOk ?? true,
-      state: coverageStateWithPipeline(raw?.coverage?.state ?? 'operational', corpusPipeline.state),
+      databaseOk: raw?.coverage?.databaseOk ?? false,
+      state: coverageStateWithPipeline(raw?.coverage?.state ?? 'unknown', corpusPipeline.state),
     },
     corpusPipeline,
     ingest: normalizeIngest(raw?.ingest),
     activity: {
-      points: normalizeActivityPoints(raw?.activity?.points),
+      points: activityPoints,
       windowMinutes: raw?.activity?.windowMinutes ?? 7 * 24 * 60,
       bucketMinutes: normalizePositiveInt(raw?.activity?.bucketMinutes),
       requestedWindowMinutes:
@@ -977,10 +1109,11 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
         normalizePositiveInt(raw?.activity?.servedWindowMinutes) ??
         normalizePositiveInt(raw?.activity?.availableWindowMinutes),
       channelCount: raw?.activity?.channelCount ?? 0,
-      peakViewersAt: raw?.activity?.peakViewersAt,
+      peakViewersAt: rejectedPeak ? compatiblePeak?.t : measurementTimeMs(raw?.activity?.peakViewersAt) ?? undefined,
       livePoolViewerSum: raw?.activity?.livePoolViewerSum,
       state: raw?.activity?.state,
       source: raw?.activity?.source,
+      projectionGeneration: raw?.activity?.projectionGeneration,
       reason: raw?.activity?.reason,
       availableWindowMinutes: normalizePositiveInt(raw?.activity?.availableWindowMinutes),
       measuredWindowMinutes: normalizePositiveInt(raw?.activity?.measuredWindowMinutes),
@@ -993,6 +1126,11 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
           : undefined,
     },
     emoteIntel: {
+      scope: raw?.emoteIntel?.scope === 'tracked_live_pool' ? 'tracked_live_pool' : undefined,
+      windowMinutes: normalizePositiveInt(raw?.emoteIntel?.windowMinutes),
+      asOf: measurementTimeIso(raw?.emoteIntel?.asOf),
+      biggestPeakUnit: raw?.emoteIntel?.biggestPeakUnit === 'emote_uses_per_channel_minute'
+        ? 'emote_uses_per_channel_minute' : undefined,
       emotesPerMin: raw?.emoteIntel?.emotesPerMin ?? 0,
       topEmoteSharePct: raw?.emoteIntel?.topEmoteSharePct ?? 0,
       uniqueEmotes: raw?.emoteIntel?.uniqueEmotes ?? 0,
@@ -1004,7 +1142,9 @@ export function normalizePublicHub(raw: PublicHubInput | null | undefined): Publ
     topMovers: absolutizeMovers(raw?.topMovers),
     liveChannels: absolutizeLiveChannels(raw?.liveChannels),
     moments: absolutizeMoments(raw?.moments),
+    liveActivity: normalizeHubLiveActivity(raw?.liveActivity),
     livePulseMoments: normalizeLivePulseMoments(raw?.livePulseMoments),
+    livePulseMomentsScope: raw?.livePulseMomentsScope === 'current_live_session_peaks' ? raw.livePulseMomentsScope : undefined,
     livePulseMomentsStatus: raw?.livePulseMomentsStatus,
     livePulseMomentsReason: raw?.livePulseMomentsReason,
     featuredSession: normalizeFeaturedSession(raw?.featuredSession),
@@ -1039,7 +1179,7 @@ function normalizeIngest(raw: Partial<HubIngest> | undefined): HubIngest | undef
   }
 }
 
-export function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLivePulseMoment[] {
+function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLivePulseMoment[] {
   if (!raw?.length) return []
   return raw.map((moment) => {
     const categoryId = normalizeCategoryId(moment.categoryId)
@@ -1052,10 +1192,40 @@ export function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined)
       boxArtUrl,
       categoryMetadataRejected: categoryMetadataRejected || undefined,
       archiveArtwork: normalizeHubArchiveArtwork(moment.archiveArtwork, moment.vodId),
+      profileImageUrl: sanitizeHubProfileImageUrl(moment.profileImageUrl),
       topEmotes: absolutizeEmotes(moment.topEmotes),
       comparison: normalizeLiveWireMomentComparison(moment.comparison) ?? undefined,
     }
   })
+}
+
+function normalizeCategoryId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^\d{1,20}$/.test(value) ? value : undefined
+}
+
+function normalizeCategoryBoxArt(value: unknown, categoryId: string | undefined): string | undefined {
+  if (typeof value !== 'string' || !categoryId || value.length > 2048) return undefined
+  try {
+    const url = new URL(value)
+    if (url.origin !== 'https://static-cdn.jtvnw.net' || url.username || url.password || url.search || url.hash) return undefined
+    if (!new RegExp(`^/ttv-boxart/${categoryId}(?:_IGDB)?-\\d+x\\d+\\.(?:jpe?g|png|webp)$`, 'i').test(url.pathname)) return undefined
+    if (/\/404|livechannel/i.test(url.pathname)) return undefined
+    return url.href
+  } catch { return undefined }
+}
+
+function rejectedCategoryMetadata(rawId: unknown, rawUrl: unknown, id: string | undefined, url: string | undefined): boolean {
+  const suppliedId = rawId !== undefined && rawId !== null && rawId !== ''
+  const suppliedUrl = rawUrl !== undefined && rawUrl !== null && rawUrl !== ''
+  return (suppliedId && !id) || (suppliedUrl && !url)
+}
+
+function normalizeHubArchiveArtwork(value: unknown, expectedVodId?: string): ArchiveArtwork | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const vodId = (value as Record<string, unknown>).vodId
+  if (typeof vodId !== 'string' || !/^\d{6,20}$/.test(vodId)) return undefined
+  if (typeof expectedVodId === 'string' && expectedVodId !== '' && expectedVodId !== vodId) return undefined
+  return verifiedArchiveArtwork(value, vodId)
 }
 
 function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined): HubFeaturedSession {
@@ -1067,7 +1237,7 @@ function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined):
     displayName: raw.displayName,
     streamId: raw.streamId,
     category: raw.category,
-    startedAt: raw.startedAt,
+    startedAt: measurementTimeIso(raw.startedAt),
     vodId: raw.vodId,
     viewers: raw.viewers,
     chatPerMin: raw.chatPerMin,
@@ -1077,7 +1247,6 @@ function normalizeFeaturedSession(raw: Partial<HubFeaturedSession> | undefined):
     topMoments: (raw.topMoments ?? []).map((moment) => ({
       ...moment,
       topEmotes: absolutizeEmotes(moment.topEmotes),
-      comparison: normalizeLiveWireMomentComparison(moment.comparison) ?? undefined,
     })),
     chartPoints: raw.chartPoints ?? [],
     topEmoteBursts: (raw.topEmoteBursts ?? []).map((burst) => ({
@@ -1101,9 +1270,31 @@ function normalizeNonNegativeInt(value: unknown): number | undefined {
     : undefined
 }
 
+function normalizeHistoricalViewerPopulation(activity: Partial<HubActivity> | undefined): HubActivityPoint[] {
+  const points = normalizeActivityPoints(activity?.points)
+  // This generation overlays deduplicated roster snapshots on corpus scalars.
+  // Older servers retain corpus viewers in missing snapshot buckets. Only this
+  // explicit mixed-source signature is rejected; size alone proves nothing.
+  const snapshotTimeline = activity?.source === 'historical_projection'
+    && activity.projectionGeneration === 'hub_activity_scalar'
+    && points.some(p => p.hasViewerRollup === true
+      && (p.viewerCoverage === 'complete' || p.viewerCoverage === 'partial')
+      && p.viewerExpectedContributors != null && p.viewerExpectedContributors > 0
+      && p.viewerContributors != null && p.viewerContributors <= p.viewerExpectedContributors)
+  if (!snapshotTimeline) return points
+  return points.map(p => {
+    const corpusOnly = p.hasViewerRollup === true
+      && (p.viewerCoverage == null || p.viewerCoverage === 'unknown')
+      && p.viewerContributors == null && p.viewerSampledContributors == null
+      && p.viewerExpectedContributors == null && p.viewerCoveragePct == null
+      && p.viewerComplete == null && p.viewerCoverageDetail == null
+    return corpusOnly ? { ...p, viewers: 0, hasViewerRollup: false, viewerCoverage: 'unknown', viewerSourceMismatch: true } : p
+  })
+}
+
 function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubActivityPoint[] {
   if (!points) return []
-  return points.map((point) => {
+  return points.filter(point => measurementTimeMs(point.t) != null).map((point) => {
     const providerFallback = Math.max(point.seventv ?? 0, point.twitch ?? 0, point.bttv ?? 0, point.ffz ?? 0)
     const emotes =
       typeof point.emotes === 'number' && Number.isFinite(point.emotes)
@@ -1125,6 +1316,7 @@ function normalizeActivityPoints(points: HubActivityPoint[] | undefined): HubAct
       ffz: normalizeActivityMetric(point.ffz),
       other: normalizeActivityMetric(point.other),
       viewerContributors: normalizeNonNegativeInt(point.viewerContributors),
+      viewerSampledContributors: normalizeNonNegativeInt(point.viewerSampledContributors),
       viewerExpectedContributors: normalizeNonNegativeInt(point.viewerExpectedContributors),
       viewerCoverage:
         typeof point.viewerCoverage === 'string' && point.viewerCoverage.trim().length > 0
@@ -1174,6 +1366,7 @@ function normalizeViewerCoverageDetail(value: unknown): HubViewerCoverage | unde
   const raw = value as Partial<HubViewerCoverage>
   const out: HubViewerCoverage = {
     contributors: normalizeNonNegativeInt(raw.contributors),
+    sampledContributors: normalizeNonNegativeInt(raw.sampledContributors),
     expectedContributors: normalizeNonNegativeInt(raw.expectedContributors),
     coveragePct: normalizeCoveragePercent(raw.coveragePct),
     state:
@@ -1257,8 +1450,9 @@ function normalizeCorpusPipeline(
   generatedAt: string | undefined,
 ): HubCorpusPipeline {
   return {
-    generatedAt: raw?.generatedAt ?? generatedAt ?? new Date().toISOString(),
-    state: raw?.state ?? 'healthy',
+    available: raw != null,
+    generatedAt: measurementTimeIso(raw?.generatedAt) ?? measurementTimeIso(generatedAt) ?? '',
+    state: raw?.state ?? 'unknown',
     topN: raw?.topN ?? 500,
     liveAdmissionEnabled: raw?.liveAdmissionEnabled ?? false,
     liveAdmissionTopN: raw?.liveAdmissionTopN ?? raw?.topN ?? 500,
@@ -1415,107 +1609,4 @@ export function validatePublicHubInvariants(hub: PublicHub): HubValidationIssue[
   }
 
   return issues
-}
-
-export interface PublicHubRecentMomentsResponse {
-  hubGeneratedAt: string
-  source: string
-  status: 'ready' | 'fallback' | 'no_peaks' | 'unknown' | string
-  reason?: string
-  limit: number
-  hasMore: boolean
-  moments: HubLivePulseMoment[]
-}
-
-export interface FetchPublicHubRecentMomentsResult {
-  data: PublicHubRecentMomentsResponse
-  loadSource: 'bounded' | 'legacy_full_hub'
-  cache?: 'HIT' | 'MISS' | 'BYPASS'
-  status: number
-}
-
-function publicHubRecentMomentsPath(limit = 10): string {
-  const params = new URLSearchParams({ limit: String(Math.min(10, Math.max(1, Math.floor(limit)))) })
-  return `/v1/public/hub/moments/recent?${params.toString()}`
-}
-
-export function normalizePublicHubRecentMoments(
-  input: Partial<PublicHubRecentMomentsResponse> | null | undefined,
-): PublicHubRecentMomentsResponse {
-  const limit = Math.min(10, Math.max(1, normalizePositiveInt(input?.limit) ?? 10))
-  const supplied = Array.isArray(input?.moments) ? input.moments : []
-  return {
-    hubGeneratedAt: typeof input?.hubGeneratedAt === 'string' ? input.hubGeneratedAt : '',
-    source: typeof input?.source === 'string' && input.source.trim() ? input.source.trim() : 'public_hub_live_pulse_moments',
-    status: typeof input?.status === 'string' && input.status.trim() ? input.status.trim() : 'unknown',
-    reason: typeof input?.reason === 'string' && input.reason.trim() ? input.reason.trim() : undefined,
-    limit,
-    hasMore: input?.hasMore === true || supplied.length > limit,
-    moments: normalizeLivePulseMoments(supplied).slice(0, limit),
-  }
-}
-
-export async function fetchPublicHubRecentMoments(
-  signal?: AbortSignal,
-  limit = 10,
-): Promise<FetchPublicHubRecentMomentsResult> {
-  try {
-    const response = await momentsApiClient<PublicHubRecentMomentsResponse>(
-      publicHubRecentMomentsPath(limit),
-      { signal, maxResponseBytes: 512 * 1024 },
-    )
-    return {
-      data: normalizePublicHubRecentMoments(response.data),
-      loadSource: 'bounded',
-      cache: response.cache,
-      status: response.status,
-    }
-  } catch (error) {
-    if (!isApiError(error) || error.status !== 404) throw error
-    const legacy = await fetchPublicHubBase(signal, '30m')
-    const moments = legacy.data.livePulseMoments.slice(0, Math.min(10, Math.max(1, Math.floor(limit))))
-    return {
-      data: normalizePublicHubRecentMoments({
-        hubGeneratedAt: legacy.data.generatedAt,
-        source: 'legacy_full_hub',
-        status: legacy.data.livePulseMomentsStatus ?? (moments.length ? 'ready' : 'unknown'),
-        reason: legacy.data.livePulseMomentsReason,
-        limit,
-        hasMore: legacy.data.livePulseMoments.length > moments.length,
-        moments,
-      }),
-      loadSource: 'legacy_full_hub',
-      cache: legacy.cache,
-      status: legacy.status,
-    }
-  }
-}
-
-export function normalizeCategoryId(value: unknown): string | undefined {
-  return typeof value === 'string' && /^\d{1,20}$/.test(value) ? value : undefined
-}
-
-export function normalizeCategoryBoxArt(value: unknown, categoryId: string | undefined): string | undefined {
-  if (typeof value !== 'string' || !categoryId || value.length > 2048) return undefined
-  try {
-    const url = new URL(value)
-    if (url.origin !== 'https://static-cdn.jtvnw.net' || url.username || url.password || url.search || url.hash) return undefined
-    if (!new RegExp(`^/ttv-boxart/${categoryId}(?:_IGDB)?-\\d+x\\d+\\.(?:jpe?g|png|webp)$`, 'i').test(url.pathname)) return undefined
-    if (/\/404|livechannel/i.test(url.pathname)) return undefined
-    return url.href
-  } catch { return undefined }
-}
-
-export function rejectedCategoryMetadata(rawId: unknown, rawUrl: unknown, id: string | undefined, url: string | undefined): boolean {
-  const suppliedId = rawId !== undefined && rawId !== null && rawId !== ''
-  const suppliedUrl = rawUrl !== undefined && rawUrl !== null && rawUrl !== ''
-  return (suppliedId && !id) || (suppliedUrl && !url)
-}
-
-function normalizeHubArchiveArtwork(value: unknown, expectedVodId?: string): ArchiveArtwork | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const vodId = (value as Record<string, unknown>).vodId
-  if (typeof vodId !== 'string' || !/^\d{6,20}$/.test(vodId)) return undefined
-  if (typeof expectedVodId === 'string' && expectedVodId !== '' && expectedVodId !== vodId) return undefined
-  return verifiedArchiveArtwork(value, vodId)
 }

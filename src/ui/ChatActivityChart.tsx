@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streampulse/pulse-core'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
-import { findChartIndexByOffset, mapPeakOffsetsToBucketedChartIndices, mapPeakOffsetsToChartIndices, sparklineIndexFromClick, type EmoteOverlaySeries } from './chatActivityEmotes.ts'
+import { DEFAULT_CHART_TIMELINE_WINDOW, findChartIndexByOffset, mapPeakOffsetsToBucketedChartIndices, mapPeakOffsetsToChartIndices, sparklineIndexFromClick, type EmoteOverlaySeries } from './chatActivityEmotes.ts'
 import {
   alignSeriesToChartPoints,
   chatAreaFillAlpha,
@@ -111,7 +111,7 @@ export function ChatActivityChart({
   highlightOffsetSeconds = null,
   onSelectIndex,
   maxPoints = SPARKLINE_MAX_POINTS,
-  chartWindow = '60m',
+  chartWindow = DEFAULT_CHART_TIMELINE_WINDOW,
   isLive = false,
   emptyMessage,
   alignFromStart = false,

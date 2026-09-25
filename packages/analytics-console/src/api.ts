@@ -31,12 +31,6 @@ export async function ensureChannelEmotes(login: string, twitchId: string, provi
   return api().ensureChannelEmotes(login, twitchId, providers)
 }
 
-export async function getChannelEmoteCatalog(login: string) {
-  const fn = api().getChannelEmoteCatalog
-  if (!fn) return []
-  return fn(login)
-}
-
 export async function getAnalyticsStream(
   streamId: string,
   opts?: { sparse?: boolean; channel?: string },
@@ -50,6 +44,8 @@ export async function getStreamStatus(streamId: string): Promise<{
   syncPhase?: string
   streamId?: string
   vodId?: string
+  vodAlignSeconds?: number
+  vodDurationSeconds?: number
   analyticsQuality?: string
   dataCoveragePct?: number
   chatCoveragePct?: number

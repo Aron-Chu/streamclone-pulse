@@ -1,0 +1,501 @@
+/* Compact, flat Live Wire cards for the independent discovery rail. */
+.figma-analytics__right-rail:has(.analytics-discovery-layout__wire > .hub-live-wire--rail) {
+  padding: 0;
+}
+
+.hub-live-wire.hub-live-wire--rail {
+  container-type: inline-size;
+  gap: 0.625rem;
+  padding: 1rem;
+  border: 0;
+  background: var(--sp-surface-2, var(--fma-panel));
+  box-shadow: none;
+}
+
+/* Chrome earns its height: one state line, then detections. */
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__follow-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__follow-controls button {
+  min-height: 26px;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--sp-border, var(--fma-border));
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--fma-text);
+  font-size: 0.75rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__display-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__display-count button {
+  min-height: 26px;
+  padding: 0.15rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--sp-accent, var(--fma-accent-text));
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__display-count button:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__display-count button:focus-visible {
+  outline: 2px solid var(--sp-accent, var(--fma-accent-text));
+  outline-offset: 2px;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__detections {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-list {
+  gap: 0;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__arrivals {
+  position: sticky;
+  bottom: 0.75rem;
+  z-index: 2;
+  justify-self: center;
+  min-height: 44px;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--fma-accent-text);
+  border-radius: 999px;
+  background: var(--fma-panel);
+  color: var(--fma-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__arrivals:focus-visible {
+  outline: 2px solid var(--sp-accent, var(--fma-accent-text));
+  outline-offset: 2px;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--sp-border, var(--fma-border));
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Only a row the parent proved resolves to a loaded bucket is a click target. */
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-card.is-inspectable {
+  cursor: pointer;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-list > li:first-child .hub-live-wire__rail-card {
+  border-top: 1px solid var(--sp-border, var(--fma-border));
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-card:hover,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-card.is-selected {
+  border-color: var(--sp-border, var(--fma-border));
+  background: var(--sp-surface-3, var(--fma-dim));
+  box-shadow: none;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-card:focus-within {
+  outline: 1px solid color-mix(in srgb, var(--sp-accent) 55%, var(--fma-border));
+  outline-offset: -1px;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-head {
+  grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-av {
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--sp-border, var(--fma-border));
+  background: var(--sp-surface-3, var(--fma-dim));
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-name {
+  font-size: 0.8125rem;
+  line-height: 1.15;
+}
+
+.hub-live-wire__rail-timing {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-category {
+  display: block;
+  min-width: 0;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-age {
+  flex: none;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-new {
+  align-self: start;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-signal {
+  display: flex;
+  min-width: 0;
+  flex-flow: row wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.4rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--fma-sub);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* The measured multiplier is the headline. A value under 1× is a dip: it keeps
+   the same slot and the same title, and loses every spike affordance. */
+.hub-live-wire__magnitude {
+  flex: none;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--sp-accent, var(--fma-accent-text)) 40%, transparent);
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--sp-accent, var(--fma-accent-text)) 12%, transparent);
+  color: var(--sp-accent, var(--fma-accent-text));
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.hub-live-wire__magnitude[data-below='true'] {
+  border-color: var(--sp-border, var(--fma-border));
+  background: transparent;
+  color: var(--fma-muted);
+  font-weight: 500;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-comparison {
+  margin: 0;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-metrics {
+  display: flex;
+  flex: none;
+  flex-flow: row nowrap;
+  gap: 0.25rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  padding: 0.12rem 0.35rem;
+  border: 1px solid var(--sp-border, var(--fma-border));
+  border-radius: 0.25rem;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__metric strong {
+  color: var(--fma-text);
+  font-size: 0.75rem;
+  /* The signal row uppercases its label; a rate must stay "853/m", not "853/M". */
+  text-transform: none;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-emotes {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.3rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-emote {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  height: 1.5rem;
+  flex: 0 1 auto;
+  gap: 0.25rem;
+  padding: 0.08rem 0.3rem;
+  border: 1px solid var(--sp-border, var(--fma-border));
+  border-radius: 0.25rem;
+  background: transparent;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-emote img {
+  width: 1rem;
+  height: 1rem;
+  object-fit: contain;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-emote-count {
+  flex: none;
+  color: var(--fma-text);
+  font-family: var(--fma-mono);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-emote-label {
+  min-width: 0;
+  max-width: min(5rem, calc(100% - 1.25rem));
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--fma-sub);
+  font-size: 0.75rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The primary action spans the bottom of the card; the repeated secondary
+   actions sit to its right. */
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-footer {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 1fr) auto;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-height: 44px;
+  margin-top: auto;
+  border-top: 1px solid var(--sp-border, var(--fma-border));
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0.15rem;
+  margin-left: 0;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control button,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__stream-link {
+  min-height: 44px;
+  padding: 0.35rem 0.4rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action--primary {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  /* Keep the arrow beside its label; the link still spans the full hit area. */
+  justify-content: flex-start;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--sp-accent, var(--fma-accent-text));
+  font-weight: 600;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action--primary::after {
+  content: none;
+  margin-left: 0.25rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action--secondary,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control button {
+  color: var(--fma-muted);
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action:hover,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control button:hover {
+  background: transparent;
+  color: var(--fma-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action:disabled,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action:disabled:hover {
+  background: transparent;
+  color: var(--fma-muted);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__action--primary:hover {
+  background: var(--sp-surface-3, var(--fma-dim));
+  color: var(--sp-accent, var(--fma-accent-text));
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control,
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-message {
+  margin: 0;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-tier {
+  margin: 0.15rem 0 -0.1rem;
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* One footer, not a disclosure stacked above a stray link. */
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-footer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--sp-border, var(--fma-border));
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__about {
+  color: var(--fma-muted);
+  font-size: 0.75rem;
+}
+
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__about summary {
+  cursor: pointer;
+}
+
+.hub-live-wire__stream-link { display: inline-flex; align-items: center; color: var(--fma-muted); font-size: 0.75rem; text-decoration: none; }
+.hub-live-wire__stream-link:hover { color: var(--fma-text); text-decoration: underline; text-underline-offset: 3px; }
+.hub-live-wire__stream-link:focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 2px; }
+.hub-live-wire.hub-live-wire--rail .hub-live-wire__about p {
+  margin: 0.35rem 0 0;
+  line-height: 1.4;
+}
+
+/* Touch pointers get the full target back; the compact row is a desktop
+   density decision, not a reason to shrink what a finger has to hit. */
+@media (max-width: 599px), (pointer: coarse) {
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__action,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__stream-link,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__follow-controls button,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__display-count button,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control button {
+    min-height: 44px;
+  }
+
+  /* Four independent 44px targets cannot share one narrow line: the primary
+     keeps its own row and the rest divide the one below it. */
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+    min-height: 44px;
+  }
+
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.2rem;
+    justify-content: stretch;
+  }
+
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions > *,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions :is(a, button),
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__action--primary {
+    justify-content: center;
+  }
+}
+
+/* At the narrowest rail even three columns cannot hold a readable label, so
+   the secondary actions pair up. This follows the viewport rule so the
+   container-specific reflow wins. */
+@container (max-width: 300px) {
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.2rem;
+  }
+
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions > *,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions .moment-save-control button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-actions :is(a, button) {
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__rail-card,
+  .hub-live-wire.hub-live-wire--rail .hub-live-wire__action {
+    transition: none;
+  }
+}

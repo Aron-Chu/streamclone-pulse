@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { AnalyticsTopNav, type AnalyticsTopNavItem } from '../src/ui/components/analytics/AnalyticsTopNav'
@@ -50,5 +50,27 @@ describe('AnalyticsTopNav', () => {
 
     expect(screen.queryByRole('navigation', { name: 'Analytics navigation' })).toBeNull()
     expect(screen.getByLabelText('StreamPulse analytics home')).toBeTruthy()
+  })
+
+  it('opens, dismisses on outside click, and restores focus on Escape', () => {
+    render(
+      <MemoryRouter>
+        <AnalyticsTopNav items={navItems} />
+      </MemoryRouter>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Support and account' })
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement
+    expect(panel?.getAttribute('data-state')).toBe('open')
+
+    fireEvent.keyDown(screen.getByRole('link', { name: 'Support' }), { key: 'Escape' })
+    expect(document.activeElement).toBe(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(trigger)
+    fireEvent.pointerDown(document.body)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
   })
 })

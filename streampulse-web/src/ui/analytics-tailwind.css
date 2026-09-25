@@ -1,11 +1,12 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
-@import '@fontsource/inter/800.css';
-@import '@fontsource/inter/900.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
+/* UI Latin subset; other scripts retain the existing system-font fallback. */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/inter/latin-800.css';
+@import '@fontsource/inter/latin-900.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
 
 /*
  * Scoped Tailwind preflight for `.sc-analytics-console` only.
@@ -67,6 +68,110 @@
   letter-spacing: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Header badges share one baseline, including the quality disclosure. */
+.sc-analytics-console [data-session-header-badges] > :is(a, span),
+.sc-analytics-console [data-session-header-badges] > details > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.sc-analytics-console [data-session-header-actions] button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+@media (min-width: 1024px) {
+  .sc-analytics-console [data-session-header-actions] {
+    flex-wrap: nowrap !important;
+  }
+}
+
+/* Portal session controls: keep visible actions touch-sized without changing
+ * the shared analytics-console package or extension surfaces. */
+.sc-analytics-console .analytics-console[data-analytics-console-shell] header :is(a, button),
+.sc-analytics-console [data-session-details-tabs] [role='tab'],
+.sc-analytics-console [data-chart-focus-bar] button,
+.sc-analytics-console [data-chart-position-rail] button,
+.sc-analytics-console [data-chart-data-alternative] button,
+.sc-analytics-console .sc-moment-list button,
+.sc-analytics-console .sc-console-scroll button {
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
+
+.sc-analytics-console [data-chart-data-alternative] > summary,
+.sc-analytics-console details[data-chart-data-alternative] summary,
+.sc-analytics-console [data-analytics-stream-column] > summary,
+.sc-analytics-console [data-analytics-right-column] > summary {
+  min-height: 44px !important;
+  display: flex;
+  align-items: center;
+}
+
+.sc-analytics-console [data-chart-focus-top-row],
+.sc-analytics-console [data-chart-focus-utilities],
+.sc-analytics-console [data-chart-overlay-focus-row],
+.sc-analytics-console [data-chart-data-alternative] > div:first-of-type,
+.sc-analytics-console .analytics-console[data-analytics-console-shell] header > div:last-child {
+  flex-wrap: wrap;
+  height: auto;
+}
+
+/* Keep the overlaid range controls in one locally scrollable row. */
+.sc-analytics-console [data-chart-viewport-controls] {
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+/* Keep every range action usable by touch and keyboard at every viewport. */
+.sc-analytics-console [data-chart-viewport-controls] button {
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
+
+.sc-analytics-console [data-chart-data-alternative] button:focus-visible,
+.sc-analytics-console [data-chart-focus-bar] button:focus-visible,
+.sc-analytics-console [data-chart-viewport-controls] button:focus-visible,
+.sc-analytics-console .analytics-console[data-analytics-console-shell] header :is(a, button):focus-visible {
+  outline: 2px solid rgb(196 181 253);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .sc-analytics-console [data-chart-focus-top-row] {
+    align-items: stretch;
+  }
+
+  .sc-analytics-console [data-chart-focus-utilities] {
+    border-left-width: 0;
+    padding-left: 0;
+  }
+}
+
+/* A hidden-scrollbar row clipped the Chat/Emotes focus chips below tablet width
+   (by about 4px at 641px). Let the chips and Spikes/Expand share one wrapping
+   row; the utilities keep the right edge. */
+@media (max-width: 767px) {
+  .sc-analytics-console [data-chart-focus-top-row] {
+    flex-wrap: wrap;
+  }
+
+  .sc-analytics-console [data-chart-primary-focus-row] {
+    display: contents;
+  }
+
+  .sc-analytics-console [data-chart-focus-utilities] {
+    margin-left: auto;
+  }
 }
 
 .sc-analytics-console img,
@@ -156,7 +261,7 @@
   border-style: solid;
   border-radius: 0.25rem;
   padding: 0.125rem 0.375rem;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
   text-transform: uppercase;

@@ -1,16 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getBackendUrl } from '../lib/momentsApiClient'
-import { getCachedNewsroomProfile, loadNewsroomProfiles, newsroomProfileUrl } from '../lib/newsroomProfiles'
+import { getBackendUrl } from '../lib/apiClient'
+import { loadNewsroomProfiles, newsroomProfileUrl } from '../lib/newsroomProfiles'
 import { isPlausibleTwitchLogin, normalizeTwitchLogin } from '../lib/normalizeTwitchLogin'
-
-function hydrateFromCache(logins: string[]): Record<string, string> {
-  const result: Record<string, string> = {}
-  for (const login of logins) {
-    const cached = getCachedNewsroomProfile(login)
-    if (cached) result[login] = cached
-  }
-  return result
-}
 
 /** Cosmetic identity only. Bounded requests reuse the existing exact-login cache. */
 export function useMomentProfiles<T extends { login?: string; profileImageUrl?: string }>(items: readonly T[]): T[] {
@@ -23,23 +14,15 @@ export function useMomentProfiles<T extends { login?: string; profileImageUrl?: 
   }
   const logins = [...chosenLogins].sort()
   const key = JSON.stringify([getBackendUrl(), logins])
-  const [state, setState] = useState<{ key: string; profiles: Record<string, string> }>(() => ({
-    key,
-    profiles: hydrateFromCache(logins),
-  }))
+  const [state, setState] = useState<{ key: string; profiles: Record<string, string> }>({ key, profiles: {} })
   useEffect(() => {
     const controller = new AbortController()
-    setState(previous => ({
-      key,
-      profiles: { ...previous.profiles, ...hydrateFromCache(logins) },
-    }))
+    setState({ key, profiles: {} })
     void loadNewsroomProfiles(logins, controller.signal, (login, url) => {
       const normalizedLogin = normalizeTwitchLogin(login)
       if (!isPlausibleTwitchLogin(normalizedLogin)) return
-      if (!controller.signal.aborted) setState(previous => ({
-        ...previous,
-        profiles: { ...previous.profiles, [normalizedLogin]: url },
-      }))
+      if (!controller.signal.aborted) setState(previous => previous.key === key
+        ? { key, profiles: { ...previous.profiles, [normalizedLogin]: url } } : previous)
     })
     return () => controller.abort()
     // The ordered, bounded login set and API origin are encoded in key.
@@ -47,7 +30,7 @@ export function useMomentProfiles<T extends { login?: string; profileImageUrl?: 
   }, [key])
   return useMemo(() => items.map(item => {
     const login = typeof item.login === 'string' ? normalizeTwitchLogin(item.login) : ''
-    const url = newsroomProfileUrl(item.profileImageUrl) || (isPlausibleTwitchLogin(login) ? (state.profiles[login] ?? getCachedNewsroomProfile(login)) : undefined)
+    const url = newsroomProfileUrl(item.profileImageUrl) || (state.key === key && isPlausibleTwitchLogin(login) ? state.profiles[login] : undefined)
     return url === item.profileImageUrl ? item : { ...item, profileImageUrl: url }
-  }), [items, state.profiles, key])
+  }), [items, state, key])
 }

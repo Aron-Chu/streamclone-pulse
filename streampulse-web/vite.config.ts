@@ -131,6 +131,10 @@ export default defineConfig({
         pulseRoot,
         'packages/analytics-console/analytics-chart-motion.css',
       ),
+      '@streampulse/analytics-console/session-signal-tape.css': resolve(
+        pulseRoot,
+        'packages/analytics-console/session-signal-tape.css',
+      ),
       '@streampulse/pulse-charts/pulse-chart-motion.css': resolve(
         pulseRoot,
         'packages/pulse-charts/pulse-chart-motion.css',

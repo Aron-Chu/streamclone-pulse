@@ -103,7 +103,7 @@ describe('buildSelectedMomentDisplay pulse parity', () => {
     },
   }
 
-  it('uses Pulse Moment score and shared emote resolver when matched', () => {
+  it('uses Pulse Moment score and measured minute emotes when matched', () => {
     const display = buildSelectedMomentDisplay({
       rollup,
       rollups: [rollup],
@@ -125,10 +125,36 @@ describe('buildSelectedMomentDisplay pulse parity', () => {
     expect(display.scoreModel.estimated).toBe(false)
     expect(display.scoreModel.reasonLabel.toLowerCase()).toContain('viewer')
     expect(display.momentEmotes.map((emote) => emote.name)).toEqual([
+      'seventv:SON',
+      'seventv:LOL',
+      'twitch:LUL',
+    ])
+    expect(display.gameName).toBe('Clash Royale')
+  })
+
+  it('uses recap emotes when the selected minute has no measured emotes', () => {
+    const rollupWithoutEmotes = { ...rollup, emotes: undefined }
+    const display = buildSelectedMomentDisplay({
+      rollup: rollupWithoutEmotes,
+      rollups: [rollupWithoutEmotes],
+      startedAt,
+      vodLinkState,
+      recapMoment: {
+        offsetSeconds: 11580,
+        score: 36,
+        reasons: ['viewer_spike'],
+        topEmotes: [
+          { code: 'geeg', count: 24, provider: 'seventv' },
+          { code: 'WW', count: 24, provider: 'seventv' },
+          { code: 'jynxziVapeBreak', count: 21, provider: 'twitch' },
+        ],
+      },
+      gameName: 'Clash Royale',
+    })
+    expect(display.momentEmotes.map((emote) => emote.name)).toEqual([
       'geeg',
       'WW',
       'jynxziVapeBreak',
     ])
-    expect(display.gameName).toBe('Clash Royale')
   })
 })

@@ -24,6 +24,7 @@ export function isSyncPrefetchPlaceholder(stream?: AnalyticsStream) {
 }
 
 export function isActiveLiveCollectorStream(stream?: AnalyticsStream, state?: string) {
+  if (stream?.lifecycleState) return stream.lifecycleState === 'confirmed_live' && !isSyncPrefetchPlaceholder(stream)
   return state === 'live' && !isSyncPrefetchPlaceholder(stream)
 }
 
@@ -41,7 +42,9 @@ function rollupHasActivity(rollup: AnalyticsMinuteRollup): boolean {
 
 /** True when the channel detail reflects an actively tracked live collector session. */
 export function resolveChannelActuallyLive(detail?: AnalyticsStreamDetail | null): boolean {
-  if (!detail || detail.state !== 'live') return false
+  if (!detail) return false
+  if (detail.stream?.lifecycleState) return detail.stream.lifecycleState === 'confirmed_live'
+  if (detail.state !== 'live') return false
   if ((detail.stream?.currentViewers ?? 0) > 0) return true
   if ((detail.rollups ?? []).some(rollupHasActivity)) return true
   const startedAt = detail.stream?.startedAt

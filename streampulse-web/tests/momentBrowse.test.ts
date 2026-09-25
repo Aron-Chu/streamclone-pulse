@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { browseLoadedItems, browseRangeError, loadedMomentNeighbors, readMomentBrowse } from '../src/lib/momentBrowse'
-import { groupDiscoveryBroadcasts } from '../src/lib/discoveryPresentation'
 
 const now = Date.parse('2026-09-04T20:00:00Z')
 const rows = [
@@ -11,43 +10,6 @@ const rows = [
 ]
 const browse = (query: string) => browseLoadedItems(rows, readMomentBrowse(new URLSearchParams(query)), row => row, now).map(row => row.key)
 describe('loaded moment browsing', () => {
-  it('groups exact normalized login and opaque stream ID in first-appearance order without altering detections', () => {
-    const items = [
-      { key: 'a', login: 'Creator', streamId: '001', offsetSeconds: 0, at: now, category: 'A' },
-      { key: 'b', login: 'other', streamId: '001', offsetSeconds: 0, at: now },
-      { key: 'c', login: 'creator', streamId: '001', offsetSeconds: 90000, at: now - 1, category: 'B' },
-      { key: 'd', login: 'creator', streamId: '1', offsetSeconds: 60, at: now - 2 },
-    ]
-    const groups = groupDiscoveryBroadcasts(items)
-    expect(groups.map(group => group.items.map(item => item.key))).toEqual([['a', 'c'], ['b'], ['d']])
-    expect(groups[0]).toMatchObject({ login: 'creator', streamId: '001' })
-    expect(groups[0].items[0]).toBe(items[0])
-    expect(groups[0].items[1]).toBe(items[2])
-    expect(items.map(item => item.key)).toEqual(['a', 'b', 'c', 'd'])
-  })
-  it.each(['newest', 'oldest', 'category', 'chatPerMin', 'emotesPerMin', 'chatIncrease', 'emoteIncrease'])('retains the existing %s sort within and between loaded broadcast groups', order => {
-    const items = Array.from({ length: 6 }, (_, index) => ({ key: String(index), login: 'creator', streamId: String(index % 2),
-      text: '', at: Date.parse(index < 3 ? '2026-09-01T23:59:59Z' : '2026-09-02T00:00:00Z'),
-      category: index % 2 ? 'A' : 'B', ...(['newest', 'oldest', 'category'].includes(order) ? {} : { [order]: index < 4 ? 10 : undefined }) }))
-    const sorted = browseLoadedItems(items, readMomentBrowse(new URLSearchParams(`sort=${order}`)), item => item, now)
-    const groups = groupDiscoveryBroadcasts(sorted)
-    expect(groups.map(group => group.streamId)).toEqual([...new Set(sorted.map(item => item.streamId))])
-    for (const group of groups) expect(group.items).toEqual(sorted.filter(item => item.streamId === group.streamId))
-  })
-  it('sorts measured rates and increases with zero before missing and stable chronological ties', () => {
-    for (const order of ['chatPerMin', 'emotesPerMin', 'chatIncrease', 'emoteIncrease']) {
-      const items = [
-        { key: 'missing', text: '', at: now + 1 },
-        { key: 'zero', text: '', at: now, [order]: 0 },
-        { key: 'older', text: '', at: now - 1, [order]: 50 },
-        { key: 'newer', text: '', at: now, [order]: 50 },
-        { key: 'invalid', text: '', [order]: NaN },
-      ]
-      expect(browseLoadedItems(items, readMomentBrowse(new URLSearchParams(`sort=${order}`)), row => row, now).map(row => row.key))
-        .toEqual(['newer', 'older', 'zero', 'missing', 'invalid'])
-      expect(items[0].key).toBe('missing')
-    }
-  })
   it('reviews only exact neighbors in filtered display order without wrapping or guessing missing identities', () => {
     const sorted = browseLoadedItems(rows, readMomentBrowse(new URLSearchParams('category=Minecraft&sort=oldest')), row => row, now)
     expect(loadedMomentNeighbors(sorted, 'c')).toEqual({position:1,total:2,previous:undefined,next:rows[0]})

@@ -33,7 +33,7 @@ export function isDeviceCredentialLive(credential: DeviceCredential | null): cre
 
 export function isDeviceCredentialInvalidatedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '')
-  return /(?:\b401\b|\b403\b|invalid_authorization|device_authorization_required|device_identity_mismatch)/i.test(message)
+  return /(?:\b401\b|\b403\b|invalid_authorization|device_authorization_required|device_identity_mismatch|account_authorization_required|account_identity_changed)/i.test(message)
 }
 
 export function classifyDeviceAuthError(error: unknown): DeviceAuthState {

@@ -1,4 +1,4 @@
-import { apiClient } from './momentsApiClient'
+import { apiClient } from './apiClient'
 import { normalizeDiscoveryCatalogue, type DiscoveryDay } from './discoveryCatalogue'
 
 export interface DiscoveryYear {

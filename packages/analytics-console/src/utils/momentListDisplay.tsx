@@ -9,11 +9,6 @@ export const EMOTES_INITIAL_VISIBLE = 3
 
 const MOMENT_DEDUPE_TOLERANCE_SECONDS = 60
 
-export interface MomentScoreTone {
-  badge: string
-  text: string
-}
-
 export interface MomentRankAccent {
   badge: string
 }
@@ -22,24 +17,11 @@ export interface MomentReasonChipTone {
   chip: string
 }
 
-export function momentScoreTone(score: number): MomentScoreTone {
-  if (score >= 80) {
-    return {
-      badge: 'border-emerald-400/25 bg-emerald-500/15',
-      text: 'text-emerald-200',
-    }
-  }
-  if (score >= 60) {
-    return {
-      badge: 'border-cyan-400/25 bg-cyan-500/15',
-      text: 'text-cyan-200',
-    }
-  }
-  return {
-    badge: 'border-amber-400/25 bg-amber-500/15',
-    text: 'text-amber-200',
-  }
-}
+// `momentScoreTone` used to colour a `score/100` badge green above 80 and amber
+// below 60. That framed a stream's loudest minute as a failing grade whenever
+// the absolute Pulse score was modest. Moment rows now show intensity relative
+// to the stream's own top moment (see `MomentRow`), so the absolute tone ramp
+// is gone rather than left around to be reused.
 
 export function momentRankAccent(index: number): MomentRankAccent {
   if (index === 0) {
@@ -190,7 +172,7 @@ export function CollapseListFooter({
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="w-full border-t border-white/[0.07] px-3 py-2 text-center text-[10px] font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200"
+      className="w-full border-t border-white/[0.07] px-3 py-2 text-center text-xs font-black uppercase tracking-wide text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200"
     >
       {expanded ? collapseLabel : expandLabel(hiddenCount)}
     </button>

@@ -10,6 +10,23 @@ const rollup: AnalyticsMinuteRollup = {
 }
 
 describe('buildSelectedMomentDisplay', () => {
+  it('uses measured minute emotes instead of an older detection snapshot', () => {
+    const display = buildSelectedMomentDisplay({
+      rollup,
+      rollups: [rollup],
+      startedAt: '2026-07-04T00:00:00.000Z',
+      vodLinkState: { status: 'linked', label: 'Open VOD', vodId: '123456789', detail: '' },
+      recapMoment: {
+        offsetSeconds: 14_700, score: 27, reasons: ['emote_spike'],
+        chatCount: 416, emoteCount: 22,
+        topEmotes: [{ code: 'StaleSnapshot', count: 71 }],
+      },
+    })
+    expect(display.activityLine).toBe('589 chat · 115 emotes')
+    expect(display.momentEmotes.map(emote => emote.name)).toEqual(['KEKW', 'PepeHands'])
+    expect(display.scoreModel.score).toBe(27)
+  })
+
   it('formats activity line and offset without ?t= when alignment is unverified', () => {
     const display = buildSelectedMomentDisplay({
       rollup,

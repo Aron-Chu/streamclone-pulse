@@ -2,7 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnalyticsConsole } from './AnalyticsConsole.tsx'
+import { AnalyticsConsole, type AnalyticsConsoleProps } from './AnalyticsConsole.tsx'
+import type { ReactNode } from 'react'
+import type { AnalyticsMinuteRollup } from '../api.ts'
 
 const api = vi.hoisted(() => ({
   getAnalyticsStream: vi.fn(),
@@ -26,9 +28,10 @@ vi.mock('../hooks/useAnalyticsLive.ts', () => ({
   }),
 }))
 vi.mock('./analytics/AnalyticsChart.tsx', () => ({
-  default: () => <div data-testid="analytics-chart">Chart</div>,
+  default: ({ selectedDetail, onSelectRollup }: { selectedDetail?: ReactNode; onSelectRollup: (row: AnalyticsMinuteRollup | null) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button>{selectedDetail}</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
+  DataQualityDisclosure: () => <span>Data quality</span>,
   ChatCoverageBadge: () => <span>Coverage</span>,
   StatCard: () => null,
   ViewerSourceBadge: () => <span>Viewer source</span>,
@@ -84,10 +87,7 @@ function detail() {
 }
 
 function renderConsole(
-  props: {
-    enableLayoutControls?: boolean
-    layer2LoadMode?: 'eager' | 'staged'
-  } = {},
+  props: AnalyticsConsoleProps = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -132,6 +132,17 @@ afterEach(() => {
 })
 
 describe('AnalyticsConsole opt-in layout controls', () => {
+  it('supplies host actions only for an explicitly selected minute on the resolved broadcast', async () => {
+    const actions = vi.fn(() => <button>Save selected minute</button>)
+    renderConsole({ renderSelectedMomentActions: actions })
+    await screen.findByTestId('analytics-chart')
+    expect(actions).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Choose measured minute' }))
+    expect(await screen.findByRole('button', { name: 'Save selected minute' })).toBeTruthy()
+    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({ login: 'xqc', streamId, offsetSeconds: 60, chatPerMin: 10, emotesPerMin: 2, at: Date.parse(minuteTs) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selected moment' }))
+    expect(screen.queryByRole('button', { name: 'Save selected minute' })).toBeNull()
+  })
   it('keeps package defaults unchanged when layout controls are omitted', async () => {
     renderConsole()
     expect(await screen.findByRole('heading', { name: 'Layout fixture' })).not.toBeNull()
@@ -186,6 +197,19 @@ describe('AnalyticsConsole opt-in layout controls', () => {
     expect(document.querySelector('details#analytics-console-streams')).toBeNull()
     expect(screen.getByTestId('stream-sidebar')).not.toBeNull()
   })
+
+  it('exposes one keyboard-operable tab set for session details', async () => {
+    renderConsole()
+    await screen.findByRole('heading', { name: 'Layout fixture' })
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map(tab => tab.textContent)).toEqual(['Moments', 'Emotes', 'Status'])
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true')
+    fireEvent.keyDown(tabs[0]!, { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: 'Emotes' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe('session-tab-emotes')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Emotes' }), { key: 'End' })
+    expect(screen.getByRole('tab', { name: 'Status' }).getAttribute('aria-selected')).toBe('true')
+  })
 })
 
 describe('AnalyticsConsole data skeleton', () => {
@@ -201,5 +225,21 @@ describe('AnalyticsConsole data skeleton', () => {
     expect(status.className).toMatch(/min-h-96/)
     expect(screen.getByRole('heading', { level: 1 })).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('does not leak the latest session title or totals into an invalid stream ID', async () => {
+    api.getAnalyticsStream.mockRejectedValue({ status: 404, message: 'not found' })
+    renderConsole()
+    expect(await screen.findByRole('heading', { name: 'Session layout-stream not found' })).not.toBeNull()
+    expect(screen.getByText(/Session not found for/)).not.toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Layout fixture' })).toBeNull()
+  })
+
+  it('does not mislabel a service failure as a nonexistent session', async () => {
+    api.getAnalyticsStream.mockRejectedValue({ status: 503, message: 'store unavailable' })
+    renderConsole()
+    expect(await screen.findByRole('heading', { name: 'Unable to load xqc session' })).toBeTruthy()
+    expect(screen.queryByText(/Session not found for/)).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Layout fixture' })).toBeNull()
   })
 })

@@ -3,7 +3,6 @@ import {
   livePulseMomentsFromPublicHub,
 } from '../src/lib/figmaSessionAnalytics'
 import {
-  buildChannelFilterOptions,
   filterMomentsByBucket,
   filterPulseMoments,
   isBucketWithinLiveHorizon,
@@ -14,8 +13,8 @@ import {
   resolveMomentEmote,
   resolveMomentEmotesPerMin,
   resolveMomentViewers,
+  resolveMomentWallClockAt,
   ROLLUP_CONFIDENCE_LABEL,
-  sortPulseMoments,
   sourceLabel,
   vodStateLabel,
   buildEmoteLookup,
@@ -158,17 +157,25 @@ describe('filterMomentsByBucket', () => {
     expect(filtered[0]?.label).toBe('in bucket')
   })
 
-  it('derives wall-clock time from channel startedAt when at is missing', () => {
+  it('derives wall-clock time only from an exact matching stream when at is missing', () => {
     const startedAt = '2024-01-01T12:00:00.000Z'
     const startMs = Date.parse(startedAt)
     const bucketT = startMs + 5 * 60_000
     const moments = [
-      { offsetSeconds: 300, score: 90, label: 'derived', login: 'xqc' },
+      { offsetSeconds: 300, score: 90, label: 'derived', login: 'xqc', streamId: '123' },
     ]
     const filtered = filterMomentsByBucket(moments, bucketT, 1440, [
-      { login: 'xqc', startedAt },
+      { login: 'xqc', startedAt, streamId: '123' },
     ])
     expect(filtered).toHaveLength(1)
+  })
+
+  it('rejects future/sentinel clocks and does not borrow another broadcast start', () => {
+    const moment = { offsetSeconds: 300, label: 'test', login: 'xqc', streamId: '123' }
+    expect(resolveMomentWallClockAt({ ...moment, at: Date.parse('2099-01-01') }, [])).toBeUndefined()
+    expect(resolveMomentWallClockAt({ ...moment, streamStartedAt: 1 }, [])).toBeUndefined()
+    expect(resolveMomentWallClockAt(moment, [{ login: 'xqc', streamId: '456', startedAt: '2026-08-01T12:00:00Z' }])).toBeUndefined()
+    expect(resolveMomentWallClockAt(moment, [{ login: 'xqc', startedAt: '2026-08-01T12:00:00Z' }])).toBeUndefined()
   })
 })
 
@@ -400,13 +407,13 @@ describe('resolveMomentViewers', () => {
     ).toBe(8420)
   })
 
-  it('falls back to live pool viewers for the channel', () => {
+  it('does not substitute a current live-pool value for a historical minute', () => {
     expect(
       resolveMomentViewers(
         { offsetSeconds: 60, score: 80, label: 'Chat spike', login: 'caseoh' },
         [{ login: 'caseoh', viewers: 18500 }],
       ),
-    ).toBe(18500)
+    ).toBeUndefined()
   })
 })
 
@@ -422,96 +429,14 @@ describe('resolveMomentViewerTableCell', () => {
     expect(cell.muted).toBe(false)
   })
 
-  it('falls back to live pool with muted styling when minute CCU is missing', async () => {
+  it('shows historical viewer count as unavailable when minute CCU is missing', async () => {
     const { resolveMomentViewerTableCell } = await import('../src/lib/pulseMomentsUtils')
     const cell = resolveMomentViewerTableCell(
       { offsetSeconds: 60, score: 80, label: 'Emote spike', login: 'forsen', viewerDelta: '+67' },
       [{ login: 'forsen', viewers: 12000 }],
     )
-    expect(cell.text).toBe('12K')
+    expect(cell.text).toBe('—')
     expect(cell.muted).toBe(true)
-    expect(cell.title).toContain('live pool snapshot')
-  })
-})
-
-describe('sortPulseMoments', () => {
-  function moment(overrides: Record<string, unknown> & { offsetSeconds: number; score: number; label: string }) {
-    return { login: 'test', displayName: 'Test', streamId: 's1', ...overrides } as any
-  }
-
-  it('sorts newest-first by wall-clock at descending, then score descending', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'A', at: 1000 })
-    const m2 = moment({ offsetSeconds: 60, score: 90, label: 'B', at: 1000 })
-    const m3 = moment({ offsetSeconds: 60, score: 70, label: 'C', at: 2000 })
-    const sorted = sortPulseMoments([m1, m2, m3], 'newest')
-    expect(sorted.map((m: any) => m.label)).toEqual(['C', 'B', 'A'])
-  })
-
-  it('sorts oldest-first by wall-clock at ascending, then score descending', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'A', at: 2000 })
-    const m2 = moment({ offsetSeconds: 60, score: 90, label: 'B', at: 1000 })
-    const m3 = moment({ offsetSeconds: 60, score: 70, label: 'C', at: 1000 })
-    const sorted = sortPulseMoments([m1, m2, m3], 'oldest')
-    expect(sorted.map((m: any) => m.label)).toEqual(['B', 'C', 'A'])
-  })
-
-  it('sorts strongest-first by score descending, then wall-clock descending', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'A', at: 1000 })
-    const m2 = moment({ offsetSeconds: 60, score: 90, label: 'B', at: 1000 })
-    const m3 = moment({ offsetSeconds: 60, score: 90, label: 'C', at: 2000 })
-    const sorted = sortPulseMoments([m1, m2, m3], 'strongest')
-    expect(sorted.map((m: any) => m.label)).toEqual(['C', 'B', 'A'])
-  })
-
-  it('pushes undated moments after timestamped ones in newest mode', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'dated', at: 1000 })
-    const m2 = moment({ offsetSeconds: 60, score: 80, label: 'undated', at: undefined })
-    const sorted = sortPulseMoments([m1, m2], 'newest')
-    expect(sorted.map((m: any) => m.label)).toEqual(['dated', 'undated'])
-  })
-
-  it('pushes undated moments after timestamped ones in oldest mode', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'dated', at: 1000 })
-    const m2 = moment({ offsetSeconds: 60, score: 80, label: 'undated', at: undefined })
-    const sorted = sortPulseMoments([m1, m2], 'oldest')
-    expect(sorted.map((m: any) => m.label)).toEqual(['dated', 'undated'])
-  })
-
-  it('pushes undated moments after timestamped ones in strongest mode', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'dated', at: 1000 })
-    const m2 = moment({ offsetSeconds: 60, score: 80, label: 'undated', at: undefined })
-    const sorted = sortPulseMoments([m1, m2], 'strongest')
-    expect(sorted.map((m: any) => m.label)).toEqual(['dated', 'undated'])
-  })
-
-  it('does not fabricate timestamps for moments with undefined at', () => {
-    const m1 = moment({ offsetSeconds: 60, score: 80, label: 'no-at' })
-    const sorted = sortPulseMoments([m1], 'newest')
-    expect(sorted[0].at).toBeUndefined()
-  })
-})
-
-describe('buildChannelFilterOptions', () => {
-  it('returns one entry per unique normalized login', () => {
-    const m1 = { login: 'xqc', displayName: 'xQc', streamId: 's1', offsetSeconds: 60, score: 80, label: 'A' } as any
-    const m2 = { login: 'XQC', displayName: 'xQc (alt)', streamId: 's2', offsetSeconds: 60, score: 80, label: 'B' } as any
-    const m3 = { login: 'sodapoppin', displayName: 'sodapoppin', streamId: 's3', offsetSeconds: 60, score: 80, label: 'C' } as any
-    const options = buildChannelFilterOptions([m1, m2, m3])
-    expect(options).toHaveLength(2)
-    expect(options[0].login).toBe('xqc')
-    expect(options[0].displayName).toBe('xQc')
-    expect(options[1].login).toBe('sodapoppin')
-  })
-
-  it('uses the first-seen display name when login collides', () => {
-    const m1 = { login: 'XQC', displayName: 'First Name', streamId: 's1', offsetSeconds: 60, score: 80, label: 'A' } as any
-    const m2 = { login: 'xqc', displayName: 'Second Name', streamId: 's2', offsetSeconds: 60, score: 80, label: 'B' } as any
-    const options = buildChannelFilterOptions([m1, m2])
-    expect(options).toHaveLength(1)
-    expect(options[0].displayName).toBe('First Name')
-  })
-
-  it('returns empty array for empty moments', () => {
-    expect(buildChannelFilterOptions([])).toEqual([])
+    expect(cell.title).toContain('unavailable')
   })
 })

@@ -7,10 +7,13 @@ import type {
   PastVodRow,
   PulseBackfillJob,
   PulseBookmark,
+  PulseBookmarkPage,
   PulsePayload,
 } from '../shared/messages.ts'
+import { parseBookmarkPage, validBookmarkCursor, validBookmarkPageLimit } from '../shared/bookmarkPage.ts'
+import { supporterAccount } from './supporterAccountRuntime.ts'
 import type { ExtensionDiagnosticPayload } from '../shared/diagnosticsConsent.ts'
-import { clipWindowBounds, pickTopClip } from '../shared/clips.ts'
+import { pickTopClip, selectStreamClips } from '../shared/clips.ts'
 import {
   mergePastVodRows,
   type AnalyticsStreamListItem,
@@ -89,11 +92,23 @@ async function beginRequest(
   }
   context.onUpstreamAbort = onUpstreamAbort
   if (upstreamSignal) {
-    if (upstreamSignal.aborted) controller.abort()
+    if (upstreamSignal.aborted) onUpstreamAbort()
     else upstreamSignal.addEventListener('abort', onUpstreamAbort, { once: true })
   }
   try {
-    const response = await fetchImpl(input, { ...init, signal: controller.signal })
+    // Pulse and coverage responses are live data. Prevent the browser/network
+    // cache from replaying a previous stream snapshot after a route change or
+    // extension reload; the service-worker session cache owns the explicit
+    // short TTL/SWR policy instead.
+    const response = await fetchImpl(input, {
+      ...init,
+      // API authentication is explicit. Never forward enrollment headers to a
+      // redirect destination or attach ambient browser cookies.
+      redirect: 'error',
+      credentials: 'omit',
+      cache: init?.cache ?? 'no-store',
+      signal: controller.signal,
+    })
     responseContexts.set(response, context)
     return response
   } catch (err) {
@@ -226,6 +241,7 @@ export async function fetchExtensionHealth(baseUrl?: string): Promise<ExtensionH
   await pulseDebug('vod.helix.health', 'extension health', {
     ok: health.ok,
     helixEnabled: health.helixEnabled ?? null,
+    viewerSampling: health.viewerSampling ?? null,
     version: health.version,
   })
   return health
@@ -416,16 +432,33 @@ export async function fetchPulseChannel(
   options?: { window?: 'recent' | 'full'; baseUrl?: string; streamId?: string },
 ): Promise<PulsePayload> {
   const root = options?.baseUrl ?? await getBackendUrl()
+  const normalizedLogin = login.trim().toLowerCase()
   const streamId = options?.streamId?.trim()
-  const exactStream = options?.window === 'full'
+  const exactStreamId = options?.window === 'full'
     && streamId
     && /^[A-Za-z0-9_-]{1,64}$/.test(streamId)
-  const url = exactStream
-    ? `${root}/v1/extension/pulse/streams/${encodeURIComponent(streamId)}?login=${encodeURIComponent(login)}&allowLiveBridge=true&window=full`
-    : `${root}/v1/extension/pulse/channels/${encodeURIComponent(login)}${options?.window === 'full' ? '?window=full' : ''}`
-  const res = await fetchWithTimeout(url, {
+    ? streamId
+    : undefined
+  const exactStreamRequest = Boolean(exactStreamId)
+  const channelUrl = `${root}/v1/extension/pulse/channels/${encodeURIComponent(normalizedLogin)}${options?.window === 'full' ? '?window=full' : ''}`
+  const url = exactStreamRequest
+    ? `${root}/v1/extension/pulse/streams/${encodeURIComponent(exactStreamId!)}?login=${encodeURIComponent(normalizedLogin)}&allowLiveBridge=true&window=full`
+    : channelUrl
+  let res = await fetchWithTimeout(url, {
     headers: await pulseRequestHeaders(false, root),
   })
+  let usedChannelFallback = false
+  // A hosted deployment may reject the exact-stream route while the channel
+  // Full route remains healthy. Treat 409 as an identity conflict, but never
+  // trust that fallback until the returned login and stream id are validated
+  // against this request below.
+  if (!res.ok && exactStreamRequest && (res.status === 404 || res.status === 405 || res.status === 409)) {
+    await releaseResponse(res)
+    res = await fetchWithTimeout(channelUrl, {
+      headers: await pulseRequestHeaders(false, root),
+    })
+    usedChannelFallback = true
+  }
   if (!res.ok) {
     await releaseResponse(res)
     throw new Error(`pulse ${res.status}`)
@@ -438,13 +471,13 @@ export async function fetchPulseChannel(
   if (typeof pulse.login !== 'string') {
     throw new Error('extension_api_invalid_pulse_payload')
   }
-  if (pulse.login.trim().toLowerCase() !== login.trim().toLowerCase()) {
+  if (pulse.login.trim().toLowerCase() !== normalizedLogin) {
     throw new Error('pulse_login_mismatch')
   }
   if (!Array.isArray(pulse.rollups)) {
     throw new Error('extension_api_invalid_pulse_payload')
   }
-  if (exactStream && String(pulse.streamId ?? '').trim() !== streamId) {
+  if (exactStreamRequest && String(pulse.streamId ?? '').trim() !== exactStreamId) {
     throw new Error('pulse_stream_mismatch')
   }
   const typedPayload = pulse as unknown as PulsePayload
@@ -452,7 +485,8 @@ export async function fetchPulseChannel(
   await pulseDebug('vod.pulse.api', 'pulse payload received', {
     login,
     window: options?.window ?? 'recent',
-    exactStream: Boolean(exactStream),
+    exactStream: exactStreamRequest,
+    channelFallback: usedChannelFallback,
     streamId: typedPayload.streamId ?? null,
     vodId: typedPayload.vodId ?? null,
     tracking: typedPayload.tracking,
@@ -618,55 +652,83 @@ export async function postWatchChannel(login: string, baseUrl?: string): Promise
   await releaseResponse(res)
 }
 
+async function bookmarkRequest<T>(root: string, path: string, init: RequestInit, consume: (response: Response) => Promise<T>, accountId?: string): Promise<T> {
+  // No account bearer may follow a developer override or a redirect. Never
+  // fall back to Protect's legacy device credential after account disconnect.
+  if (root !== DEFAULT_BACKEND_URL || await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
+  const result = await supporterAccount.withCredential(async token => {
+    if (await getBackendUrl() !== root) throw new Error('account_hosted_only')
+    const response = await fetchWithTimeout(`${root}${path}`, {
+      ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      credentials: 'omit', redirect: 'error', cache: 'no-store',
+    })
+    if (response.status === 401) { await releaseResponse(response); return { status: 401 } }
+    const value = await consume(response)
+    if (await getBackendUrl() !== root) throw new Error('account_identity_changed')
+    return { status: response.status, value }
+  }, accountId)
+  return result.value as T
+}
+
 export async function fetchPulseBookmarks(
-  params: { login?: string; streamId?: string; vodId?: string },
+  params: { login?: string; streamId?: string; vodId?: string; limit?: number; cursor?: string; signal?: AbortSignal },
   baseUrl?: string,
-): Promise<PulseBookmark[]> {
+  accountId?: string,
+): Promise<PulseBookmarkPage> {
+  if (params.limit !== undefined && !validBookmarkPageLimit(params.limit)) throw new Error('invalid_bookmark_limit')
+  if (params.cursor !== undefined && !validBookmarkCursor(params.cursor)) throw new Error('invalid_bookmark_cursor')
   const root = baseUrl ?? await getBackendUrl()
   const qs = new URLSearchParams()
   if (params.login) qs.set('login', params.login)
   if (params.streamId) qs.set('streamId', params.streamId)
   if (params.vodId) qs.set('vodId', params.vodId)
+  if (params.limit !== undefined) qs.set('limit', String(params.limit))
+  if (params.cursor !== undefined) qs.set('cursor', params.cursor)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const res = await fetchWithTimeout(`${root}/v1/pulse/bookmarks${suffix}`, {
-    headers: await pulseRequestHeaders(false, root),
-  })
-  if (!res.ok) {
-    await releaseResponse(res)
-    throw new Error(`bookmarks ${res.status}`)
-  }
-  const body = await readJson<{ items?: PulseBookmark[] }>(res)
-  return body.items ?? []
+  return bookmarkRequest(root, `/v1/pulse/bookmarks${suffix}`, {
+    signal: params.signal,
+  }, async res => {
+    if (!res.ok) {
+      await releaseResponse(res)
+      throw new Error(`bookmarks ${res.status}`)
+    }
+    const page = parseBookmarkPage(await readJson<unknown>(res), params.limit ?? 50)
+    if ((page.nextCursor && page.nextCursor === params.cursor) || page.items.some(item =>
+      (params.login && item.login !== params.login) || (params.streamId && item.streamId !== params.streamId)
+      || (params.vodId && item.vodId !== params.vodId))) throw new Error('invalid_bookmark_page')
+    return page
+  }, accountId)
 }
 
 export async function createPulseBookmark(
   bookmark: CreatePulseBookmarkInput,
   baseUrl?: string,
+  accountId?: string,
 ): Promise<PulseBookmark> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetchWithTimeout(`${root}/v1/pulse/bookmarks`, {
+  return bookmarkRequest(root, '/v1/pulse/bookmarks', {
     method: 'POST',
-    headers: await pulseRequestHeaders(true, root),
     body: JSON.stringify(bookmark),
-  })
-  if (!res.ok) {
-    await releaseResponse(res)
-    throw new Error(`bookmark ${res.status}`)
-  }
-  return readJson<PulseBookmark>(res)
+  }, async res => {
+    if (!res.ok) {
+      await releaseResponse(res)
+      throw new Error(`bookmark ${res.status}`)
+    }
+    return readJson<PulseBookmark>(res)
+  }, accountId)
 }
 
-export async function deletePulseBookmark(id: string, baseUrl?: string): Promise<void> {
+export async function deletePulseBookmark(id: string, baseUrl?: string, accountId?: string): Promise<void> {
   const root = baseUrl ?? await getBackendUrl()
-  const res = await fetchWithTimeout(`${root}/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
+  return bookmarkRequest(root, `/v1/pulse/bookmarks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: await pulseRequestHeaders(false, root),
-  })
-  if (!res.ok) {
+  }, async res => {
+    if (!res.ok) {
+      await releaseResponse(res)
+      throw new Error(`delete_bookmark ${res.status}`)
+    }
     await releaseResponse(res)
-    throw new Error(`delete_bookmark ${res.status}`)
-  }
-  await releaseResponse(res)
+  }, accountId)
 }
 
 export type AlwaysTrackedWriteResult =
@@ -777,6 +839,12 @@ export async function fetchPastVodRows(
   ])
   const history = historyResult.status === 'fulfilled' ? historyResult.value : undefined
   const analytics = analyticsResult.status === 'fulfilled' ? analyticsResult.value : undefined
+  if (history === undefined && analytics === undefined) {
+    const errors = [historyResult, analyticsResult]
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason))
+    throw new Error(errors.join(' · ') || 'past_vods_unavailable')
+  }
   return mergePastVodRows(history, analytics, options)
 }
 
@@ -786,21 +854,46 @@ export async function fetchTopClip(
   options?: { startedAt?: string; isLive?: boolean },
   baseUrl?: string,
 ): Promise<ExtensionClip | null> {
+  try { return pickTopClip(await fetchStreamClips(login, options, baseUrl)) } catch { return null }
+}
+
+export async function fetchStreamClips(
+  login: string,
+  options?: { startedAt?: string; endedAt?: string; streamId?: string; vodId?: string; isLive?: boolean },
+  baseUrl?: string,
+): Promise<ExtensionClip[]> {
   try {
     const root = baseUrl ?? await getBackendUrl()
-    const { startedAt, endedAt } = clipWindowBounds(options?.startedAt, options?.isLive)
+    let startedAt = options?.startedAt
+    let endedAt = options?.isLive ? new Date().toISOString() : options?.endedAt
+    // Live metadata can arrive in stages; never fill its gap with a past broadcast.
+    if (options?.isLive && !startedAt) return []
+    if (!startedAt || !endedAt) {
+      const history = await fetchChannelStreamHistory(login, '30d', root)
+      const candidates = history.filter(item => item.startedAt && item.endedAt)
+        .sort((a, b) => Date.parse(b.startedAt!) - Date.parse(a.startedAt!))
+      const stream = candidates.find(item =>
+        (!options?.streamId || item.id === options.streamId)
+        && (!options?.vodId || item.videoId === options.vodId)
+        && (!startedAt || Date.parse(item.startedAt!) === Date.parse(startedAt)),
+      )
+      if (!stream) return []
+      startedAt = stream.startedAt
+      endedAt = stream.endedAt
+    }
+    if (!startedAt || !endedAt || !Number.isFinite(Date.parse(startedAt)) || !Number.isFinite(Date.parse(endedAt)) || Date.parse(endedAt) <= Date.parse(startedAt)) return []
     const qs = new URLSearchParams({ startedAt, endedAt, cursor: '' })
-     const res = await fetchWithTimeout(`${root}/v1/channels/${encodeURIComponent(login)}/clips?${qs}`, {
-       headers: await pulseRequestHeaders(false, root),
-     })
-      if (!res.ok) {
-        await releaseResponse(res)
-        return null
-      }
-      const body = await readJson<ClipsResponseBody>(res)
-    return pickTopClip(body.items ?? [])
+    const res = await fetchWithTimeout(`${root}/v1/channels/${encodeURIComponent(login)}/clips?${qs}`, {
+      headers: await pulseRequestHeaders(false, root),
+    })
+    if (!res.ok) {
+      await releaseResponse(res)
+      throw new Error(`clips ${res.status}`)
+    }
+    const body = await readJson<ClipsResponseBody>(res)
+    return selectStreamClips(body.items ?? [], startedAt, endedAt)
   } catch {
-    return null
+    throw new Error('stream_clips_unavailable')
   }
 }
 

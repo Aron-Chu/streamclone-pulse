@@ -87,4 +87,83 @@ describe('AnalyticsChart position rail', () => {
     expect(zoomedWidth).toBeGreaterThan(fullWidth)
     expect(zoomedWidth).toBeLessThan(2.5)
   })
+
+  it('moves the plotted x-axis and viewer path, not just the readout', () => {
+    const { container } = renderChart(91)
+    const axis = () =>
+      [...container.querySelectorAll('[data-chart-x-axis-label]')].map(node => node.textContent)
+    const viewerPath = () =>
+      container.querySelector('[data-viewer-layer="idle"]')?.getAttribute('d')
+
+    const fullAxis = axis()
+    const fullPath = viewerPath()
+    expect(fullAxis.length).toBeGreaterThan(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '15m' }))
+
+    // The readout updating is not enough — a range control that reports a new
+    // window while the plot stays put is worse than no control at all.
+    expect(container.querySelector('[data-chart-viewport-readout]')?.textContent).toBe('15m')
+    expect(axis()).not.toEqual(fullAxis)
+    expect(viewerPath()).not.toBe(fullPath)
+  })
+
+  it('offers a VOD jump beside the pinned minute', () => {
+    const detail = detailWithMinutes(91)
+    const selected = detail.rollups[20]!
+    const { container, rerender } = render(
+      <AnalyticsChart
+        detail={detail}
+        selectedEmotes={new Set()}
+        onSelectEmote={vi.fn()}
+        selectedRollup={null}
+        onSelectRollup={vi.fn()}
+        viewMode="overview"
+        onViewModeChange={vi.fn()}
+        vodJump={{ url: 'https://www.twitch.tv/videos/9?t=20m0s', offsetStr: '20m0s', seekOffsetSeconds: 1200 }}
+      />,
+    )
+    // Nothing pinned yet, so no jump is offered.
+    expect(container.querySelector('[data-chart-vod-jump]')).toBeNull()
+
+    rerender(
+      <AnalyticsChart
+        detail={detail}
+        selectedEmotes={new Set()}
+        onSelectEmote={vi.fn()}
+        selectedRollup={selected}
+        onSelectRollup={vi.fn()}
+        viewMode="overview"
+        onViewModeChange={vi.fn()}
+        vodJump={{ url: 'https://www.twitch.tv/videos/9?t=20m0s', offsetStr: '20m0s', seekOffsetSeconds: 1200 }}
+      />,
+    )
+    const jump = container.querySelector<HTMLAnchorElement>('[data-chart-vod-jump]')
+    expect(jump?.getAttribute('href')).toBe('https://www.twitch.tv/videos/9?t=20m0s')
+    expect(jump?.textContent).toContain('20m0s')
+  })
+
+  it('places selected detail after the graph and before measured data', () => {
+    const detail = detailWithMinutes(91)
+    const { container } = render(
+      <AnalyticsChart
+        detail={detail}
+        selectedEmotes={new Set()}
+        onSelectEmote={vi.fn()}
+        selectedRollup={detail.rollups[20]!}
+        onSelectRollup={vi.fn()}
+        viewMode="overview"
+        onViewModeChange={vi.fn()}
+        selectedDetail={<a href="https://www.twitch.tv/videos/9?t=20m0s">Jump to VOD</a>}
+        vodJump={{ url: 'https://www.twitch.tv/videos/9?t=20m0s', offsetStr: '20m0s', seekOffsetSeconds: 1200 }}
+      />,
+    )
+    const graph = container.querySelector('[data-session-chart-stack]')!
+    const selected = container.querySelector('[data-chart-selected-detail]')!
+    const data = container.querySelector('[data-chart-data-alternative]')!
+    expect(graph.compareDocumentPosition(selected) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(selected.compareDocumentPosition(data) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: 'Jump to VOD' })).toHaveLength(1)
+    expect(container.querySelector('[data-chart-vod-jump]')).toBeNull()
+  })
 })

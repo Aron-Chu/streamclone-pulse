@@ -13,6 +13,7 @@ import { LiveStatsBand } from '../src/ui/LiveStatsBand.tsx'
 import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
 import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
 import { shadowStyles } from '../src/ui/theme.ts'
+import { ChartViewportControls } from '../src/ui/ChartViewportControls.tsx'
 
 interface ProbeProps {
   identity: string
@@ -233,6 +234,57 @@ describe('useChartExpansion', () => {
 })
 
 describe('chart shells and controls', () => {
+  it('keeps the recap viewer lane for explicit zero samples', () => {
+    const html = renderToStaticMarkup(
+      <RecapTimelineChart
+        payload={makePayload({
+          isLive: false,
+          vodId: 'vod-zero-viewers',
+          rollups: [
+            { offsetSeconds: 0, viewerCount: 0, chatCount: 10, sevenTvEmoteCount: 2 },
+            { offsetSeconds: 60, viewerCount: 0, chatCount: 12, sevenTvEmoteCount: 3 },
+          ],
+          currentOffsetSeconds: 120,
+        })}
+        backendUrl="https://api.example.test"
+        peakOffsets={[]}
+        catalog={[]}
+        onSelectPoint={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('data-chart-series="viewers"')
+    expect(html).toContain('data-chart-viewer-axis-min="0"')
+  })
+
+  it('reserves the recap viewer lane when capability exists but samples are unavailable', () => {
+    const payload = makePayload({
+      isLive: false,
+      vodId: 'vod-viewer-late',
+      helixEnabled: true,
+      peakViewers: 20_300,
+      rollups: [
+        { offsetSeconds: 0, chatCount: 10, sevenTvEmoteCount: 2 },
+        { offsetSeconds: 60, chatCount: 12, sevenTvEmoteCount: 3 },
+      ],
+      currentOffsetSeconds: 120,
+    })
+    expect(payload.helixEnabled).toBe(true)
+    const html = renderToStaticMarkup(
+      <RecapTimelineChart
+        payload={payload}
+        backendUrl="https://api.example.test"
+        peakOffsets={[]}
+        catalog={[]}
+        onSelectPoint={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('data-chart-viewer-lane="true"')
+    expect(html).toContain('data-chart-viewer-strip-share="0.28"')
+    expect(html).toContain('Unavailable')
+  })
+
   it('keeps populated, loading, and empty shells at the same animated height', () => {
     const loading = renderToStaticMarkup(
       <PulseOverviewChart rollups={[]} loading height={216} chartRegionId="chart-region" />,
@@ -281,8 +333,14 @@ describe('chart shells and controls', () => {
     expect(intermediate.height).toBeLessThan(expanded.height)
     expect(intermediate.y).not.toBe(collapsed.y)
     expect(intermediate.y).not.toBe(expanded.y)
-    expect(intermediate.y).toBeGreaterThan(Math.min(collapsed.y, expanded.y))
-    expect(intermediate.y).toBeLessThan(Math.max(collapsed.y, expanded.y))
+
+    const shareAt = (progress: number) => {
+      const html = renderAt(progress)
+      return html.match(/data-chart-viewer-strip-share="([0-9.]+)"/)?.[1]
+    }
+    expect(shareAt(0)).toBe('0.28')
+    expect(shareAt(0.5)).toBe('0.25')
+    expect(shareAt(1)).toBe('0.22')
   })
 
   it('keeps both live and recap controls native, focusable, and ARIA-linked', () => {
@@ -310,6 +368,49 @@ describe('chart shells and controls', () => {
       expect(controlledId).toBeDefined()
       expect(html).toContain(`id="${controlledId}"`)
     }
+  })
+
+  it('keeps shared zoom targets compact and stable at different zoom levels', () => {
+    const charts = [600, 1800].map(endSeconds => (
+      <ChartViewportControls
+        key={endSeconds}
+        viewport={{ startSeconds: 0, endSeconds }}
+        durationSeconds={3600}
+        rangeLabel="Viewing range"
+        onViewportChange={() => undefined}
+        onZoomIn={() => undefined}
+        onZoomOut={() => undefined}
+        onReset={() => undefined}
+      />
+    ))
+
+    for (const chart of charts) {
+      const container = document.createElement('div')
+      container.innerHTML = renderToStaticMarkup(chart)
+      for (const action of ['in', 'out', 'reset']) {
+        const button = container.querySelector<HTMLButtonElement>(`[data-chart-zoom-${action}]`)
+        if (!button) throw new Error(`chart zoom ${action} control did not render`)
+        expect(button.tagName).toBe('BUTTON')
+        expect(button.classList.contains('pulse-chart-zoom-button')).toBe(true)
+        expect(button.style.height).toBe('24px')
+        if (action === 'reset') {
+          expect(button.classList.contains('pulse-chart-zoom-reset')).toBe(true)
+        } else {
+          expect(button.style.width).toBe('24px')
+        }
+      }
+    }
+  })
+
+  it('limits rail hover feedback to enabled controls and removes transitions for reduced motion', () => {
+    expect(shadowStyles).toContain('.pulse-chart-rail-track:hover:not([aria-disabled="true"])')
+    expect(shadowStyles).toContain('.pulse-chart-rail-track:focus-visible')
+    const reducedMotionStyles = shadowStyles.slice(shadowStyles.indexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(reducedMotionStyles).toMatch(/\.pulse-chart-zoom-button\s*\{\s*transition: none !important;/)
+    expect(reducedMotionStyles).toMatch(/\.pulse-chart-zoom-controls\s*\{\s*animation: none !important;/)
+    expect(reducedMotionStyles).toMatch(
+      /\.pulse-chart-rail-track,\s*\.pulse-chart-rail-thumb\s*\{\s*transition: none !important;/,
+    )
   })
 
   it('provides a visible two-pixel focus treatment for Expand and Reset', () => {

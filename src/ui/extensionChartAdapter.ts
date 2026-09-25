@@ -11,6 +11,31 @@ import type { ExtensionEmote, ExtensionGameSegment, ExtensionRollup } from '../s
 import type { GamesPlayedVisibleRange } from './GamesPlayedStrip.tsx'
 import { emoteSelectionKey } from './chatActivityEmotes.ts'
 
+/** Normalize runtime viewer values without collapsing missing data into zero. */
+export function extensionViewerCount(value: unknown): number | undefined {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    ? value
+    : undefined
+}
+
+export function extensionRollupViewerCount(
+  rollup: Pick<ExtensionRollup, 'viewerCount' | 'viewerSamples' | 'missing'>,
+): number | undefined {
+  if (rollup.missing) return undefined
+  const value = extensionViewerCount(rollup.viewerCount)
+  if (value !== undefined) return value
+  return (rollup.viewerSamples ?? 0) > 0 ? 0 : undefined
+}
+
+/** True only when at least one real, non-missing viewer sample exists. */
+export function hasExtensionViewerSamples(
+  rollups: Array<Pick<ExtensionRollup, 'viewerCount' | 'viewerSamples' | 'missing'>>,
+): boolean {
+  return rollups.some(rollup => extensionRollupViewerCount(rollup) !== undefined)
+}
+
 function minuteTsFromOffset(startedAt: string | undefined, offsetSeconds: number): string {
   if (startedAt) {
     const startMs = Date.parse(startedAt)
@@ -32,31 +57,106 @@ export function extensionRollupsToChartMinutes(
       if (!key) continue
       emotes[key] = (emotes[key] ?? 0) + (emote.count ?? 0)
     }
-    const viewerCount = rollup.viewerCount ?? 0
-    return {
+    const viewerCount = extensionRollupViewerCount(rollup)
+    const chartMinute: ChartMinuteRollup = {
       minuteTs: minuteTsFromOffset(startedAt, rollup.offsetSeconds),
-      viewerAvg: viewerCount,
-      viewerMax: viewerCount,
-      viewerLatest: viewerCount,
-      viewerSamples: viewerCount > 0 ? 1 : 0,
+      finalized: rollup.finalized,
       chatCount: rollup.chatCount ?? 0,
       totalEmoteCount: rollup.totalEmoteCount ?? rollup.sevenTvEmoteCount ?? 0,
       seventvEmoteCount: rollup.sevenTvEmoteCount ?? 0,
       emotes,
       missing: rollup.missing,
     }
+    if (viewerCount === undefined) return chartMinute
+    return {
+      ...chartMinute,
+      viewerAvg: viewerCount,
+      viewerMax: viewerCount,
+      viewerLatest: viewerCount,
+      viewerSamples: 1,
+    }
   })
 }
 
-/** Live overlay chart: show current category when backend omits games (rc15 live gap). */
+/** Tolerance (seconds) a game timeline may overrun the known stream duration before it is treated as cross-stream stale data. */
+export const GAME_TIMELINE_TOLERANCE_SECONDS = 120
+
+const PLACEHOLDER_GAME_NAME_PATTERN = /^(?:live|unknown|syncing(?:\.\.\.)?|loading|unavailable|n\/?a|none|-)$/i
+
+/** Placeholder categories are transport/status values, not games users played. */
+export function isRenderableGameName(gameName: string | null | undefined): boolean {
+  const normalized = String(gameName ?? '').trim().replace(/…/g, '...')
+  return normalized.length > 0 && !PLACEHOLDER_GAME_NAME_PATTERN.test(normalized)
+}
+
+/** Compatibility alias for existing callers that use the older terminology. */
+export const isDisplayableGameName = isRenderableGameName
+
+function filterRenderableGameSegments(
+  games: ExtensionGameSegment[] | undefined,
+): ExtensionGameSegment[] {
+  return (games ?? []).filter(game => isRenderableGameName(game.gameName))
+}
+
+/**
+ * Coherence guard for backend-supplied game timelines: rejects the ENTIRE array
+ * when it cannot belong to the current stream — any segment starting at/beyond
+ * the stream duration, any segment ending more than the tolerance beyond it, or
+ * segments whose total covered time overruns the stream by more than the
+ * tolerance. Unknown/zero durations never reject (nothing to compare against).
+ */
+export function rejectIncoherentGameTimeline(
+  games: ExtensionGameSegment[],
+  durationSeconds: number,
+): boolean {
+  if (!games.length) return false
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false
+
+  let totalCoveredSeconds = 0
+  for (const game of games) {
+    if (!Number.isFinite(game.offsetSeconds) || !Number.isFinite(game.durationSeconds)) continue
+    if (game.offsetSeconds >= durationSeconds) return true
+    const covered = Math.max(0, game.durationSeconds)
+    totalCoveredSeconds += covered
+    if (game.offsetSeconds + covered > durationSeconds + GAME_TIMELINE_TOLERANCE_SECONDS) {
+      return true
+    }
+  }
+  return totalCoveredSeconds > durationSeconds + GAME_TIMELINE_TOLERANCE_SECONDS
+}
+
+/**
+ * Sanitized game timeline for recap/VOD surfaces: returns the array only when
+ * it coherently belongs to the given duration, otherwise undefined so callers
+ * render an honest empty/fallback state instead of a stale cross-stream list.
+ */
+export function safeGameTimeline(
+  games: ExtensionGameSegment[] | undefined,
+  durationSeconds: number,
+): ExtensionGameSegment[] | undefined {
+  if (!games?.length) return undefined
+  const renderableGames = filterRenderableGameSegments(games)
+  if (renderableGames.length === 0) return undefined
+  return rejectIncoherentGameTimeline(renderableGames, durationSeconds) ? undefined : renderableGames
+}
+
+/**
+ * Live overlay chart: show current category when backend omits games (rc15 live gap)
+ * or supplies an incoherent cross-stream timeline (stale game segments).
+ */
 export function extensionGamesForOverviewChart(
   games: ExtensionGameSegment[] | undefined,
   category: string | undefined,
   durationSeconds: number,
 ): ExtensionGameSegment[] {
-  if (games?.length) return games
+  const renderableGames = filterRenderableGameSegments(games)
+  const suppliedGames =
+    renderableGames.length > 0 && !rejectIncoherentGameTimeline(renderableGames, durationSeconds)
+      ? renderableGames
+      : undefined
+  if (suppliedGames?.length) return suppliedGames
   const gameName = String(category ?? '').trim()
-  if (!gameName || durationSeconds <= 0) return []
+  if (!isRenderableGameName(gameName) || durationSeconds <= 0) return []
   return [{
     gameName,
     offsetSeconds: 0,
@@ -69,9 +169,10 @@ export function extensionGamesToChartGames(
   durationSeconds: number,
 ): ChartGameSegment[] {
   const normalized = normalizeGameSegments(
-    (games ?? []).map(game => ({
+    filterRenderableGameSegments(games).map(game => ({
       gameName: game.gameName,
       boxArtUrl: game.boxArtUrl,
+      categoryId: game.categoryId,
       offsetSeconds: game.offsetSeconds,
       durationSeconds: game.durationSeconds,
     })),

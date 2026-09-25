@@ -1,18 +1,4 @@
 export type DiscoveryMeasure = 'detections' | 'chatMessages' | 'emoteUses'
-
-/** Input is already filtered and sorted. Broadcasts follow first appearance. */
-export function groupDiscoveryBroadcasts<T extends { login: string; streamId: string }>(items: readonly T[]) {
-  const groups = new Map<string, { key: string; login: string; streamId: string; items: T[] }>()
-  for (const item of items) {
-    const login = item.login.trim().toLowerCase()
-    const key = JSON.stringify([login, item.streamId])
-    const group = groups.get(key)
-    if (group) group.items.push(item)
-    else groups.set(key, { key, login, streamId: item.streamId, items: [item] })
-  }
-  return [...groups.values()]
-}
-
 export interface DiscoveryPresentation {
   mode: 'month' | 'year'
   year: string

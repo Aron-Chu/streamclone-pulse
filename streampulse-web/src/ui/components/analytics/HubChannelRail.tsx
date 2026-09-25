@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { formatCoveragePercent } from '@streampulse/pulse-core'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
 import { ResilientImage } from '../ResilientImage'
 
@@ -159,8 +160,8 @@ export function HubChannelRail({
                         role="progressbar"
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuenow={Math.round(coverage)}
-                        aria-label={`Coverage ${Math.round(coverage)} percent`}
+                        aria-valuenow={Math.floor(coverage * 10) / 10}
+                        aria-label={`Coverage ${formatCoveragePercent(coverage)}`}
                       >
                         <span style={{ width: `${coverage}%` }} />
                       </span>

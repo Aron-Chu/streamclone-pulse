@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveEmoteImageUrl, safeConsoleEmoteImageUrl } from './emoteImageUrl.ts'
+import { getEmoteImageUrl } from './consoleFormat.ts'
+import { emoteDisplaySources, resolveEmoteImageUrl } from './emoteImageUrl.ts'
 
 describe('resolveEmoteImageUrl', () => {
   it('uses a console-sized 7TV asset for provider IDs', () => {
@@ -17,22 +18,32 @@ describe('resolveEmoteImageUrl', () => {
     })).toBe('https://cdn.7tv.app/emote/62a3bf572b964d6cc2766004/4x.webp')
   })
 
-  it('does not fabricate a backend path from a legacy display-name key', () => {
-    expect(resolveEmoteImageUrl({
-      provider: 'unknown',
-      id: 'Clap',
-    })).toBe('')
-  })
-
-
-  it('allows only provider CDNs and backend-relative emote assets', () => {
-    expect(safeConsoleEmoteImageUrl('/emotes/11111111-1111-4111-8111-111111111111/1x.webp')).toBe(
-      '/emotes/11111111-1111-4111-8111-111111111111/1x.webp',
-    )
-    expect(safeConsoleEmoteImageUrl('https://cdn.betterttv.net/emote/abc/3x')).toBe(
-      'https://cdn.betterttv.net/emote/abc/3x',
-    )
-    expect(safeConsoleEmoteImageUrl('javascript:alert(1)')).toBe('')
-    expect(safeConsoleEmoteImageUrl('https://example.com/emote.webp')).toBe('')
+  it('does not request a hosted emote path from a name-only portal key', () => {
+    expect(resolveEmoteImageUrl({ provider: 'unknown', id: 'Clap' })).toBe('')
+    expect(resolveEmoteImageUrl({ provider: '7tv', id: 'Clap' })).toBe('')
+    expect(resolveEmoteImageUrl({ provider: '7tv', id: 'Clap', imageUrl: '/emotes/Clap/1x.webp' })).toBe('')
+    expect(getEmoteImageUrl({ key: '7tv:Clap:Clap' })).toBeUndefined()
   })
 })
+
+describe('emoteDisplaySources', () => {
+  it('requests 1x with a 2x candidate for provider CDN scales', () => {
+    expect(emoteDisplaySources('https://cdn.7tv.app/emote/01J9SW1G38000124YQG75TYD8M/4x.webp')).toEqual({
+      src: 'https://cdn.7tv.app/emote/01J9SW1G38000124YQG75TYD8M/1x.webp',
+      srcSet: 'https://cdn.7tv.app/emote/01J9SW1G38000124YQG75TYD8M/1x.webp 1x, https://cdn.7tv.app/emote/01J9SW1G38000124YQG75TYD8M/2x.webp 2x',
+    })
+    expect(emoteDisplaySources('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/2.0').src)
+      .toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/1.0')
+    expect(emoteDisplaySources('https://cdn.frankerfacez.com/emoticon/12345/4').srcSet)
+      .toBe('https://cdn.frankerfacez.com/emoticon/12345/1 1x, https://cdn.frankerfacez.com/emoticon/12345/2 2x')
+    expect(emoteDisplaySources('https://cdn.betterttv.net/emote/5e76d338d6581c3724c0f0b2/3x.webp').src)
+      .toBe('https://cdn.betterttv.net/emote/5e76d338d6581c3724c0f0b2/1x.webp')
+  })
+
+  it('leaves relative, proxy and unknown URLs unchanged', () => {
+    expect(emoteDisplaySources('/emotes/295e06df-204b-49c6-8204-b6fd84c01221/1x.webp')).toEqual({ src: '/emotes/295e06df-204b-49c6-8204-b6fd84c01221/1x.webp' })
+    expect(emoteDisplaySources('https://api.streampulse.stream/emotes/295e06df-204b-49c6-8204-b6fd84c01221/1x.webp').srcSet).toBeUndefined()
+    expect(emoteDisplaySources('https://cdn.example/emote/4x.webp')).toEqual({ src: 'https://cdn.example/emote/4x.webp' })
+  })
+})
+

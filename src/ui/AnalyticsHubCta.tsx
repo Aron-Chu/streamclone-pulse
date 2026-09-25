@@ -11,12 +11,13 @@ export function AnalyticsHubCta({ backendUrl, compact = false }: AnalyticsHubCta
     <button
       type="button"
       className="pulse-analytics-hub-cta"
+      data-pulse-hub-cta="true"
       style={compact ? styles.compact : styles.default}
+      aria-label="Open analytics hub"
       title="Browse full stream history, tracked channels, and deeper analytics"
       onClick={() => openHubAnalytics(backendUrl)}
     >
       <span style={styles.label}>Open Analytics Hub →</span>
-      <small style={styles.subtitle}>Full history, tracked channels, and deeper analytics</small>
     </button>
   )
 }
@@ -36,15 +37,7 @@ const styles: Record<string, CSSProperties> = {
     display: 'block',
     fontSize: 12,
     fontWeight: 900,
-    letterSpacing: '0.03em',
+    letterSpacing: 0,
     lineHeight: 1.25,
-  },
-  subtitle: {
-    color: 'var(--pulse-accent-soft, rgba(161, 161, 178, 0.9))',
-    display: 'block',
-    fontSize: 10,
-    fontWeight: 600,
-    lineHeight: 1.35,
-    marginTop: 3,
   },
 }

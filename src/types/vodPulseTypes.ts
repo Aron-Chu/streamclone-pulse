@@ -30,6 +30,16 @@ export interface VodMoment {
   label: string
   reason?: string
   score?: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
   chatPerMin?: number
   emotesPerMin?: number
   topEmotes?: ExtensionEmote[]
@@ -42,6 +52,16 @@ export interface VodClipCandidate {
   label: string
   reason: string
   score?: number
+  compositeScore?: number
+  reactionScore?: number
+  viewerMomentumScore?: number
+  reactionOnsetOffsetSeconds?: number
+  reactionApexOffsetSeconds?: number
+  seekOffsetSeconds?: number
+  precisionSeconds?: number
+  refinementStatus?: string
+  refinementConfidence?: number
+  reactionScoringVersion?: string
   chatPerMin?: number
   emotesPerMin?: number
   topEmotes?: ExtensionEmote[]

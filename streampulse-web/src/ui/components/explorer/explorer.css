@@ -656,8 +656,13 @@
 
 .explorer-inspector__summary small {
   color: var(--sp-text-faint);
-  font-size: 0.57rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
+}
+
+.explorer-inspector__summary .explorer-inspector__summary-detail {
+  color: var(--sp-text-muted);
+  text-transform: none;
 }
 
 .explorer-inspector__summary strong {

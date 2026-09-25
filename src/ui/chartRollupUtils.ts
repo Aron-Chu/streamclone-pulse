@@ -26,12 +26,29 @@ export function barDisplayAxisMax(values: Array<number | null>): number {
   return Math.max(Math.ceil(p85 * 1.15), max * 0.55, 1)
 }
 
+export function widthDerivedBucketCount(
+  plotWidth: number,
+  viewportMinutes: number,
+  maxBuckets = 260,
+): number {
+  if (plotWidth <= 0 || viewportMinutes <= 0 || maxBuckets <= 0) return 0
+  const readableBuckets = Math.max(24, Math.round(plotWidth / 1.2))
+  return Math.min(viewportMinutes, maxBuckets, readableBuckets)
+}
+
 export function minuteEmoteTotal(point: ExtensionRollup): number {
   const total = point.totalEmoteCount ?? 0
   if (total > 0) return total
   return point.sevenTvEmoteCount ?? 0
 }
 
+/**
+ * Presence check only — coerces an unsampled minute to 0.
+ *
+ * Do NOT use this for chart geometry: collapsing "not sampled" to 0 drags the
+ * viewer line to the floor. Geometry uses `viewerObservedValue` from
+ * `@streampulse/pulse-charts`, which keeps unobserved minutes as nulls.
+ */
 export function chartViewerValue(point: ExtensionRollup): number {
   return Math.max(0, point.viewerCount ?? 0)
 }
@@ -42,6 +59,7 @@ export function rollupHasMinuteData(point: ExtensionRollup): boolean {
     (point.chatCount ?? 0) > 0
     || minuteEmoteTotal(point) > 0
     || chartViewerValue(point) > 0
+    || (point.viewerSamples ?? 0) > 0
   )
 }
 
@@ -177,34 +195,15 @@ export function firstViewerOffsetSeconds(
 ): number {
   let earliest = -1
   for (const rollup of rollups) {
-    if ((rollup.viewerCount ?? 0) <= 0) continue
+    const hasViewerSample = (rollup.viewerSamples ?? 0) > 0
+      || (typeof rollup.viewerCount === 'number' && Number.isFinite(rollup.viewerCount) && rollup.viewerCount > 0)
+    if (!hasViewerSample) continue
     if (earliest < 0 || rollup.offsetSeconds < earliest) {
       earliest = rollup.offsetSeconds
     }
   }
   if (earliest >= 0) return earliest
   return Math.max(0, fallback)
-}
-
-/**
- * Chart-only: carry the first Helix viewer sample backward across earlier chat minutes
- * so the viewer lane does not leave a multi-minute dead zone before samples arrive.
- */
-export function extendViewerSeriesToLeadingEdge(
-  rollups: ExtensionRollup[],
-  values: Array<number | null>,
-): Array<number | null> {
-  const firstIndex = values.findIndex(value => value != null && value > 0)
-  if (firstIndex <= 0) return values
-  const anchor = values[firstIndex]!
-  const out = [...values]
-  for (let i = 0; i < firstIndex; i += 1) {
-    const rollup = rollups[i]
-    if (!rollup) continue
-    const hasActivity = (rollup.chatCount ?? 0) > 0 || minuteEmoteTotal(rollup) > 0
-    if (hasActivity) out[i] = anchor
-  }
-  return out
 }
 
 /**
@@ -554,22 +553,33 @@ export function areaPath(
   let d = ''
   let started = false
   let firstX = padLeft
+  let lastX = padLeft
+  const closeSegment = () => {
+    if (!started) return
+    d += ` L ${lastX} ${baseline} L ${firstX} ${baseline} Z`
+    started = false
+  }
   for (let i = 0; i < n; i += 1) {
     const value = values[i]
-    if (value === null || value < 0) continue
+    if (value === null || value < 0) {
+      // Keep unsupported viewer intervals visibly unsupported. Do not fill an
+      // area from the last known sample across an unmeasured gap.
+      closeSegment()
+      continue
+    }
     const x = plotXForIndex(i, n, padLeft, plotWidth)
     const y = plotY(value, max, height, padTop, padBottom, min)
     if (!started) {
       firstX = x
-      d = `M ${x} ${baseline} L ${x} ${y}`
+      d += `${d ? ' ' : ''}M ${x} ${baseline} L ${x} ${y}`
       started = true
     } else {
       d += ` L ${x} ${y}`
     }
+    lastX = x
   }
-  if (!started) return ''
-  const lastX = plotXForIndex(n - 1, n, padLeft, plotWidth)
-  return `${d} L ${lastX} ${baseline} L ${firstX} ${baseline} Z`
+  closeSegment()
+  return d
 }
 
 /** Plot a filled area inside a vertical band (matches linePathInBand). */
@@ -607,7 +617,7 @@ export function chartBarBucketOpacity(args: {
   const PAST_SCALE = 0.78
   const FUTURE_SCALE = 0.14
   const HIGHLIGHT_CAP = 0.95
-  const HIGHLIGHT_BOOST = 1.12
+  const HIGHLIGHT_BOOST = 1.5
 
   if (activeIndex == null) {
     return baseOpacity * REST_SCALE

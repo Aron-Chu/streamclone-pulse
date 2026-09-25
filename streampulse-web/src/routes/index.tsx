@@ -31,17 +31,23 @@ const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage
 function SessionAliasRedirect() {
   const { login = '', streamId = '' } = useParams<{ login: string; streamId: string }>()
   const { search, hash } = useLocation()
-  return <Navigate to={`/analytics/${login}/${streamId}${search}${hash}`} replace />
+  if (!validShareRouteParams(login, streamId)) return <Navigate to="/analytics" replace />
+  return <Navigate to={`/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}${search}${hash}`} replace />
 }
 
 /** Short `/s/:login` and `/s/:login/:streamId` → canonical analytics (preserve query/hash). */
 function ShortSessionRedirect() {
   const { login = '', streamId } = useParams<{ login: string; streamId?: string }>()
   const { search, hash } = useLocation()
+  if (!validShareRouteParams(login, streamId)) return <Navigate to="/analytics" replace />
   const target = streamId
-    ? `/analytics/${login}/${streamId}${search}${hash}`
-    : `/analytics/${login}${search}${hash}`
+    ? `/analytics/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}${search}${hash}`
+    : `/analytics/${encodeURIComponent(login)}${search}${hash}`
   return <Navigate to={target} replace />
+}
+
+function validShareRouteParams(login: string, streamId?: string) {
+  return /^[a-z0-9_]{1,25}$/i.test(login) && (streamId === undefined || /^[a-z0-9_-]{1,128}$/i.test(streamId))
 }
 
 /** Fixed compatibility aliases preserve useful selection/search fragments too. */
@@ -50,8 +56,8 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
-/** Retired Newsroom URLs keep their identifier and query/hash on Pulse Explorer. */
-function NewsroomAliasRedirect() {
+/** Keep old Newsroom links on the working Explorer route, preserving filters and story identity. */
+function NewsroomCompatibilityRedirect() {
   const { storyId } = useParams<{ storyId?: string }>()
   const { search, hash } = useLocation()
   const path = storyId ? `/analytics/explore/${encodeURIComponent(storyId)}` : '/analytics/explore'
@@ -98,11 +104,12 @@ export function AppRoutes() {
 
         {/* Fixed discovery routes must precede dynamic channel routes. */}
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
-        {/* Pulse Explorer and its retired Newsroom aliases must precede dynamic channel routes. */}
+        <Route path="/analytics/newsroom" element={<NewsroomCompatibilityRedirect />} />
+        <Route path="/analytics/newsroom/:storyId" element={<NewsroomCompatibilityRedirect />} />
+        {/* Keep the production Explorer workflow while its replacement is unavailable.
+            Fixed routes must precede /analytics/:login. */}
         <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
         <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
-        <Route path="/analytics/newsroom" element={<NewsroomAliasRedirect />} />
-        <Route path="/analytics/newsroom/:storyId" element={<NewsroomAliasRedirect />} />
 
         {/* Public read-only channel analytics — one console; legacy ?figma flags do not select another product. */}
         <Route path="/analytics/:login" element={<ChannelAnalyticsPage />} />

@@ -110,7 +110,14 @@ describe('session viewer morph chart', () => {
     expect(container.querySelectorAll('[data-viewer-layer="after-cursor"]')).toHaveLength(1)
     expect(container.querySelectorAll('[data-viewer-layer="cursor"]')).toHaveLength(1)
     const detailD = before?.getAttribute('d')
-    const clipRects = Array.from(container.querySelectorAll('[data-viewer-clip]')) as SVGRectElement[]
+    // HTML DOM parsing lowercases SVG element names in jsdom, while browsers
+    // preserve the SVG namespace casing. Scope by the renderer-owned IDs so
+    // the assertion checks the actual clip geometry in both environments.
+    const clipRects = Array.from(
+      container.querySelectorAll(
+        '[id$="-viewer-before-clip"] > rect, [id$="-viewer-after-clip"] > rect',
+      ),
+    ) as SVGRectElement[]
     const restWidths = clipRects.map(rect => rect.getAttribute('width'))
 
     fireEvent.mouseMove(overlay, { clientX: 680, clientY: 120 })
@@ -122,7 +129,11 @@ describe('session viewer morph chart', () => {
     expect(Number(after?.getAttribute('opacity'))).toBeLessThan(0.85)
     expect(Number(after?.getAttribute('opacity'))).toBeGreaterThan(0.2)
     expect(container.querySelector('[data-activity-future-fade="true"]')).not.toBeNull()
-    expect(Array.from(container.querySelectorAll('[data-viewer-clip]')).map(rect => rect.getAttribute('width'))).not.toEqual(restWidths)
+    expect(Array.from(
+      container.querySelectorAll(
+        '[id$="-viewer-before-clip"] > rect, [id$="-viewer-after-clip"] > rect',
+      ),
+    ).map(rect => rect.getAttribute('width'))).not.toEqual(restWidths)
 
     for (const clientX of [140, 820, 460]) {
       fireEvent.mouseMove(overlay, { clientX, clientY: 120 })
@@ -188,13 +199,13 @@ describe('session viewer morph chart', () => {
     const detailD = before?.getAttribute('d')
 
     dispatchPointer(overlay, 'pointerdown', { pointerId: 4, pointerType: 'touch', button: 0, clientX: 0, clientY: 120 })
-    dispatchPointer(overlay, 'pointermove', { pointerId: 4, pointerType: 'touch', clientX: 720, clientY: 122 })
+    dispatchPointer(overlay, 'pointermove', { pointerId: 4, pointerType: 'touch', clientX: 680, clientY: 122 })
     await waitFor(() => expect(svg.getAttribute('data-viewer-state')).toBe('scrub'))
     expect(before?.getAttribute('d')).toBe(detailD)
-    dispatchPointer(overlay, 'pointerup', { pointerId: 4, pointerType: 'touch', clientX: 720, clientY: 122 })
+    dispatchPointer(overlay, 'pointerup', { pointerId: 4, pointerType: 'touch', clientX: 680, clientY: 122 })
     await waitFor(() => expect(svg.getAttribute('data-viewer-state')).toBe('locked'))
     expect(before?.getAttribute('d')).toBe(detailD)
-    fireEvent.click(overlay, { clientX: 720, clientY: 122 })
+    fireEvent.click(overlay, { clientX: 680, clientY: 122 })
     expect(svg.getAttribute('data-viewer-state')).toBe('locked')
   })
 

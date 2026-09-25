@@ -38,7 +38,7 @@ const STEPS: readonly TourStep[] = [
   },
 ] as const
 
-export function ExtensionShowcase() {
+export function ExtensionShowcase({ compact = false }: { compact?: boolean }) {
   const portRef = useRef<HTMLDivElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const tourRootRef = useRef<HTMLDivElement | null>(null)
@@ -135,6 +135,21 @@ export function ExtensionShowcase() {
       applyProgress(smoothed, raw)
     },
     [applyProgress, cardsRef],
+  )
+
+  if (compact) return (
+    <div className="sl-compact-demo" data-static="">
+      <div className="sl-compact-demo__steps" role="group" aria-label="Sample sections">
+        {STEPS.map((step, index) => <button
+          key={step.kicker}
+          type="button"
+          aria-pressed={activeStep === index + 1}
+          onClick={() => setActiveStep(index + 1)}
+        >{step.kicker}</button>)}
+      </div>
+      <p>{STEPS[activeStep - 1]!.body}</p>
+      <PulseLandingPanel activeStep={activeStep} tourActive={false} showTourHint={false} />
+    </div>
   )
 
   return (

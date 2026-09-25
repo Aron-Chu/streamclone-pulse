@@ -1,13 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail, GameSegment } from '../../api.ts'
-import type { PulseRecapMoment } from '../../apiTypes.ts'
 import { formatHeatOffset } from '@streampulse/pulse-core'
 import {
   ChartPositionRail,
   PulseMultiSignalChartInner,
   analyzeViewerCoverage,
   buildChartSeries,
+  chartViewportPresets,
   count,
   formatVodClock,
   fullChartViewport,
@@ -24,8 +24,10 @@ import {
   viewerSourceLabel,
   viewerReadoutValue,
   viewerValue,
+  viewportCenterSeconds,
   viewportDurationSeconds,
   vodClock,
+  zoomChartViewport,
 } from '@streampulse/pulse-charts'
 import type { ChartReactionPoint, ChartViewport } from '@streampulse/pulse-charts'
 import { classifyLiveEmptyState } from '../../utils/liveEmptyState.ts'
@@ -34,14 +36,12 @@ import { usePlayheadStore } from '../../stores/playheadStore.ts'
 import { CoreMinuteChartsNotice } from '../CoreMinuteChartsNotice.tsx'
 import LiveCollectionWarmup from './LiveCollectionWarmup.tsx'
 import { PlotOnChartStrip } from './PlotOnChartStrip.tsx'
-import { SelectedMomentPanel } from './SelectedMomentPanel.tsx'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
-import type { AnalyticsTopEmote } from '../../apiTypes.ts'
-import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../../types/heatmap.ts'
-import type { VodLinkState } from '../../utils/twitchVodUrl.ts'
+import type { ReplayHeatmapPoint } from '../../types/heatmap.ts'
+import type { MomentVodJump } from '../../utils/selectedMomentDisplay.ts'
 import {
   clampGamesDurationSeconds,
-  minuteRollupSpanSeconds,
+  minuteRollupEndOffsetSeconds,
   resolveGamesTimelineDurationSeconds,
   streamWallDurationSeconds,
   trimRollupsToWallDuration,
@@ -62,6 +62,14 @@ function chartVisibleRangeFromRollups(
     startOffset: Math.max(0, Math.round((first - startMs) / 1000)),
     endOffset: Math.max(0, Math.round((last - startMs) / 1000)),
   }
+}
+
+function formatViewportDuration(seconds: number): string {
+  const totalMinutes = Math.max(0, Math.round(seconds / 60))
+  if (totalMinutes < 60) return `${totalMinutes}m`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
 }
 
 function selectedMinuteRangeLabel(
@@ -128,6 +136,7 @@ function AnalyticsChart({
   syncNotice = null,
   onSync = () => {},
   onRefresh = () => {},
+  showRefreshControl = true,
   refreshing = false,
   loading = false,
   games = [],
@@ -142,15 +151,10 @@ function AnalyticsChart({
   syncViewerStatus,
   viewMode,
   onViewModeChange,
-  vodLinkState,
-  topEmotesCatalog,
-  heatmapPoint,
-  heatmapDetail,
   heatmapPoints,
   reactionMoments,
-  recapMoment,
-  selectedGameName,
-  onOpenAnalytics: _onOpenAnalytics,
+  vodJump = null,
+  selectedDetail,
 }: {
   detail?: AnalyticsStreamDetail
   selectedEmotes: Set<string>
@@ -170,6 +174,8 @@ function AnalyticsChart({
   syncNotice?: string | null
   onSync?: () => void
   onRefresh?: () => void
+  /** The console shell already owns refresh; disable this to avoid duplicate controls. */
+  showRefreshControl?: boolean
   refreshing?: boolean
   loading?: boolean
   games?: GameSegment[]
@@ -184,16 +190,12 @@ function AnalyticsChart({
   syncViewerStatus?: string
   viewMode: AnalyticsViewMode
   onViewModeChange: (mode: AnalyticsViewMode) => void
-  vodLinkState?: VodLinkState
-  topEmotesCatalog?: AnalyticsTopEmote[]
-  heatmapPoint?: ReplayHeatmapPoint | null
-  heatmapDetail?: ReplayHeatmapDetailPoint | null
   heatmapPoints?: ReplayHeatmapPoint[]
   /** Canonical merged reaction windows; heatmap points are only the fallback. */
   reactionMoments?: ChartReactionPoint[]
-  recapMoment?: PulseRecapMoment | null
-  selectedGameName?: string | null
-  onOpenAnalytics?: () => void
+  /** VOD deep link for the pinned minute; null when alignment is unverified. */
+  vodJump?: MomentVodJump | null
+  selectedDetail?: ReactNode
 }) {
   const showSpikes = viewMode === 'spikes'
   // Keep the activity lanes collapsed on first paint.  `auto` emote plotting
@@ -211,13 +213,25 @@ function AnalyticsChart({
   useEffect(() => {
     if (!selectedRollup) return
     function handlePointerDown(event: PointerEvent) {
-      const boundary = chartInteractionRef.current
-      if (!boundary || boundary.contains(event.target as Node)) return
       if (event.defaultPrevented) return
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('button, a, input, select, [data-chart-action="true"], .pulse-multi-signal-svg, [data-multi-signal-chart]')) {
+        return
+      }
       onSelectRollup(null)
     }
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onSelectRollup(null)
+      }
+    }
     document.addEventListener('pointerdown', handlePointerDown)
-    return () => document.removeEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [onSelectRollup, selectedRollup])
 
   const allRollups = detail?.rollups ?? []
@@ -282,10 +296,11 @@ function AnalyticsChart({
   }, [onViewModeChange, plottedEmoteKeys, viewMode])
 
   const chartDurationSeconds = useMemo(() => {
-    const fromRollups = minuteRollupSpanSeconds(rollups)
-    const rollupSpan = fromRollups > 0 ? fromRollups : Math.max(rollups.length * 60, 60)
-    return clampGamesDurationSeconds(rollupSpan, wallDurationSeconds)
-  }, [rollups, wallDurationSeconds])
+    // The viewport is in broadcast offsets: end at the last measured minute, not after the span.
+    const fromRollups = minuteRollupEndOffsetSeconds(rollups, streamStartedAt)
+    const rollupEnd = fromRollups > 0 ? fromRollups : Math.max(rollups.length * 60, 60)
+    return clampGamesDurationSeconds(rollupEnd, wallDurationSeconds)
+  }, [rollups, streamStartedAt, wallDurationSeconds])
   const gamesDurationSeconds = useMemo(
     () => resolveGamesTimelineDurationSeconds(games, chartDurationSeconds, wallDurationSeconds, isLive),
     [chartDurationSeconds, games, isLive, wallDurationSeconds],
@@ -336,6 +351,7 @@ function AnalyticsChart({
     [playheadOffsetSeconds, playheadPlaying, playheadStreamId],
   )
   const [railInteracting, setRailInteracting] = useState(false)
+  const [dataPage, setDataPage] = useState(0)
   const selectedChartOffsetSeconds = useMemo(() => {
     const explicitOffset = typeof selectedOffsetSeconds === 'number' && Number.isFinite(selectedOffsetSeconds)
       ? selectedOffsetSeconds
@@ -351,6 +367,14 @@ function AnalyticsChart({
   }, [chartDurationSeconds, selectedOffsetSeconds, selectedRollup, streamStartedAt])
   const chartDurationRef = useRef(chartDurationSeconds)
   const [chartViewport, setChartViewport] = useState<ChartViewport | null>(null)
+  // The table lists every measured minute when the full-resolution series is loaded;
+  // `rollups` is the chart's downsampled series.
+  const tableRollups = detailRollups ?? rollups
+  const dataPageCount = Math.max(1, Math.ceil(tableRollups.length / 120))
+  const boundedDataPage = Math.min(dataPage, dataPageCount - 1)
+  const dataPageEnd = tableRollups.length - boundedDataPage * 120
+  const pagedDataRows = tableRollups.slice(Math.max(0, dataPageEnd - 120), dataPageEnd)
+  const selectedOutsideDataPage = selectedRollup != null && !pagedDataRows.some(row => row.minuteTs === selectedRollup.minuteTs)
   const chartDomainStartSeconds = useMemo(() => {
     if (!streamStartedAt) return 0
     const firstAttested = focusedSeriesKey === 'viewers'
@@ -433,7 +457,57 @@ function AnalyticsChart({
     )
   }, [chartDomainStartSeconds, chartDurationSeconds, effectiveChartViewport, handleViewportChange, selectedChartOffsetSeconds])
 
-  const hoverPoint = hoverRollup ?? rollups[rollups.length - 1] ?? null
+  // Zoom anchors on whatever the user is already looking at: the pinned moment,
+  // else the live edge, else the centre of the visible window.
+  const zoomAnchorSeconds = useMemo(() => {
+    if (selectedChartOffsetSeconds != null) return selectedChartOffsetSeconds
+    if (isLive) return chartDurationSeconds
+    return viewportCenterSeconds(effectiveChartViewport)
+  }, [chartDurationSeconds, effectiveChartViewport, isLive, selectedChartOffsetSeconds])
+
+  const zoomByFactor = useCallback((factor: number) => {
+    if (chartDurationSeconds <= 0) return
+    handleViewportChange(zoomChartViewport({
+      viewport: effectiveChartViewport,
+      durationSeconds: chartDurationSeconds,
+      zoomSeconds: viewportDurationSeconds(effectiveChartViewport) * factor,
+      anchorSeconds: zoomAnchorSeconds,
+      domainStartSeconds: chartDomainStartSeconds,
+    }))
+  }, [chartDomainStartSeconds, chartDurationSeconds, effectiveChartViewport, handleViewportChange, zoomAnchorSeconds])
+
+  const zoomToPreset = useCallback((seconds: number | 'full') => {
+    if (chartDurationSeconds <= 0) return
+    if (seconds === 'full') {
+      handleViewportChange(fullChartViewport(chartDurationSeconds, chartDomainStartSeconds))
+      return
+    }
+    handleViewportChange(zoomChartViewport({
+      viewport: effectiveChartViewport,
+      durationSeconds: chartDurationSeconds,
+      zoomSeconds: seconds,
+      anchorSeconds: zoomAnchorSeconds,
+      domainStartSeconds: chartDomainStartSeconds,
+    }))
+  }, [chartDomainStartSeconds, chartDurationSeconds, effectiveChartViewport, handleViewportChange, zoomAnchorSeconds])
+
+  const viewportPresets = useMemo(
+    () => chartViewportPresets(chartDurationSeconds),
+    [chartDurationSeconds],
+  )
+  const showRangeControls = chartDurationSeconds >= 10 * 60
+
+  // At rest the readout names the pinned minute, else the last complete minute:
+  // a live stream's newest minute is still filling and reads like a collapse.
+  const lastCompleteRollup = useMemo(() => {
+    const measuredThrough = detail?.updatedAt
+    for (let index = rollups.length - 1; index >= 0; index -= 1) {
+      const minuteEnd = Date.parse(rollups[index].minuteTs) + 60_000
+      if (!measuredThrough || !Number.isFinite(minuteEnd) || minuteEnd <= measuredThrough) return rollups[index]
+    }
+    return null
+  }, [detail?.updatedAt, rollups])
+  const hoverPoint = hoverRollup ?? selectedRollup ?? lastCompleteRollup ?? rollups[rollups.length - 1] ?? null
   const toggleActivityExpanded = useCallback(() => {
     setActivityExpanded(value => !value)
   }, [])
@@ -483,14 +557,14 @@ function AnalyticsChart({
             <div className="mt-1 text-sm font-semibold text-zinc-500 max-w-md">
               The IRC collector is running but has not written chart minutes for this session. Past synced streams are in the left rail — pick one for full charts, or wait and refresh.
             </div>
-            <button
+            {showRefreshControl ? <button
               type="button"
               onClick={onRefresh}
               disabled={refreshing}
               className="mt-5 rounded-lg border border-white/10 bg-white/[0.05] px-5 py-2.5 text-xs font-black uppercase tracking-wider text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
             >
               {refreshing ? 'Refreshing…' : 'Refresh data'}
-            </button>
+            </button> : null}
           </div>
         </div>
       )
@@ -523,7 +597,7 @@ function AnalyticsChart({
               : 'Analytics start collecting when this channel is viewed in Streamclone.'}
           </div>
           {notInAnalyticsDb ? (
-            <div className="mt-2 text-[11px] font-semibold text-zinc-600">
+            <div className="mt-2 text-xs font-semibold text-zinc-600">
               Stream not in analytics DB yet — sync will create it.
             </div>
           ) : null}
@@ -557,7 +631,21 @@ function AnalyticsChart({
   }
 
   return (
-    <div className="sc-chart-root rounded border border-white/10 bg-[#0d0d12] p-3" data-view-mode={viewMode}>
+    <div
+      className="sc-chart-root rounded border border-white/10 bg-[#0d0d12] p-3"
+      data-view-mode={viewMode}
+      role="region"
+      aria-label="Session activity chart"
+      aria-describedby="analytics-chart-help"
+    >
+      <p id="analytics-chart-help" className="sr-only">
+        Viewer, chat, and emote measurements over the selected session. Use the chart controls to change the view; hover or focus a minute to inspect it and select it to pin details.
+      </p>
+      <p className="sr-only" aria-live="polite" aria-atomic="true" data-chart-selection-announcement>
+        {selectedRollup
+          ? `Selected ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}: viewers ${count(viewerReadoutValue(selectedRollup))}, chat ${count(selectedRollup.chatCount)} per minute, emotes ${count(minuteEmoteTotal(selectedRollup))} per minute.`
+          : 'No chart minute selected.'}
+      </p>
       {needsViewerResync ? (
         <div className="mb-3 rounded border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100">
           Viewer timeline is incomplete for this sync. Click <span className="font-black">Re-sync viewers</span> to pull the TwitchTracker viewer chart (fast — chat/7TV stay as-is).
@@ -575,7 +663,7 @@ function AnalyticsChart({
             type="button"
             onClick={() => onViewModeChange(viewMode === 'viewers' ? 'overview' : 'viewers')}
             aria-pressed={viewMode === 'viewers'}
-            className="shrink-0 rounded border border-cyan-300/30 bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-cyan-100 transition hover:bg-cyan-400/20"
+            className="shrink-0 rounded border border-cyan-300/30 bg-cyan-400/10 px-2 py-1 text-xs font-black uppercase tracking-wide text-cyan-100 transition hover:bg-cyan-400/20"
           >
             {viewMode === 'viewers' ? 'Show full timeline' : 'Focus viewer samples'}
           </button>
@@ -612,7 +700,7 @@ function AnalyticsChart({
           />
           <div className="flex shrink-0 items-center gap-2">
             {detail?.viewerSource ? (
-              <span className="hidden text-[10px] font-bold uppercase tracking-wide text-zinc-500 sm:inline">
+              <span className="hidden text-xs font-bold uppercase tracking-wide text-zinc-500 sm:inline">
                 Viewers: {viewerSourceLabel(detail.viewerSource) || detail.viewerSource}
               </span>
             ) : null}
@@ -621,33 +709,47 @@ function AnalyticsChart({
                 type="button"
                 onClick={onSync}
                 disabled={syncing}
-                className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-black uppercase text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
+                className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-black uppercase text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
               >
                 {syncing ? 'Syncing…' : needsViewerResync ? 'Re-sync viewers' : 'Sync chat/emotes'}
               </button>
             ) : null}
-            <button
+            {showRefreshControl ? <button
               type="button"
               onClick={onRefresh}
               disabled={refreshing}
               aria-label={refreshing ? 'Refreshing chart and stats' : 'Refresh chart and stats'}
               title="Reload chart and stats from server"
-              className="shrink-0 rounded border border-white/10 px-2 py-1 text-[10px] font-black uppercase text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
+              className="shrink-0 rounded border border-white/10 px-2 py-1 text-xs font-black uppercase text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
             >
               {refreshing ? '…' : '↻'}
-            </button>
+            </button> : null}
           </div>
         </div>
 
-        <p
-          className="truncate text-[10px] font-bold leading-4 text-zinc-600"
-          data-chart-selection-hint
-          title="Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection."
-        >
-          {selectedRollup
-            ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
-            : 'Hover to preview a minute · click to select · press Esc to clear'}
-        </p>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <p
+            className="min-w-0 truncate text-xs font-bold leading-4 text-zinc-600"
+            data-chart-selection-hint
+            title="Hover previews a minute. Click to select it. Press Escape or use Clear to release the selection."
+          >
+            {selectedRollup
+              ? `Pinned minute ${selectedMinuteRangeLabel(selectedRollup.minuteTs, streamStartedAt)}${Number.isFinite(selectedOffsetSeconds) ? ` · exact moment ${formatHeatOffset(selectedOffsetSeconds!)}` : ''}${selectedOutsideViewport ? ' · outside visible range · Return below' : ''} · Esc or Clear to release`
+              : 'Hover to preview a minute · click to select · press Esc to clear'}
+          </p>
+          {selectedRollup && vodJump && !selectedDetail ? (
+            <a
+              href={vodJump.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-chart-vod-jump
+              className="shrink-0 whitespace-nowrap rounded border border-violet-400/25 bg-violet-500/10 px-2 py-1 text-xs font-black uppercase text-violet-100 transition hover:border-violet-300/40 hover:bg-violet-500/20"
+              title={vodJump.offsetStr ? `Open the Twitch VOD at ${vodJump.offsetStr}` : 'Open the Twitch VOD'}
+            >
+              {vodJump.offsetStr ? `Jump to VOD · ${vodJump.offsetStr}` : 'Open VOD'}
+            </a>
+          ) : null}
+        </div>
 
         <GamesPlayedStrip
           games={chartGames}
@@ -673,7 +775,7 @@ function AnalyticsChart({
               type="button"
               onClick={() => onViewModeChange('overview')}
               aria-pressed={viewMode === 'overview'}
-              className={`shrink-0 rounded px-2.5 py-1.5 text-[10px] font-black uppercase transition ${
+              className={`shrink-0 rounded px-2.5 py-1.5 text-xs font-black uppercase transition ${
                 viewMode === 'overview'
                   ? 'bg-white text-zinc-950'
                   : 'text-zinc-500 hover:bg-white/10 hover:text-zinc-200'
@@ -692,7 +794,7 @@ function AnalyticsChart({
                   aria-pressed={focused}
                   aria-label={`${focused ? 'Clear' : 'Focus'} ${item.label} peak ${count(item.max)}`}
                   title={focused ? 'Return to overview' : `Focus ${item.label} and fade the other series`}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-1.5 text-[10px] font-black uppercase transition ${
+                  className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-1.5 text-xs font-black uppercase transition ${
                     focused
                       ? 'bg-white/[0.12] text-zinc-100 ring-1 ring-inset ring-white/25'
                       : 'text-zinc-500 hover:bg-white/[0.07] hover:text-zinc-200'
@@ -717,7 +819,7 @@ function AnalyticsChart({
               onClick={() => toggleFocusMode('spikes')}
               aria-pressed={showSpikes}
               aria-label={showSpikes ? 'Hide chart spikes' : 'Show chart spikes'}
-              className={`shrink-0 rounded px-2.5 py-1.5 text-[10px] font-black uppercase transition ${
+              className={`shrink-0 rounded px-2.5 py-1.5 text-xs font-black uppercase transition ${
                 showSpikes
                   ? 'bg-amber-400/15 text-amber-200 ring-1 ring-inset ring-amber-300/25'
                   : 'text-zinc-500 hover:bg-white/[0.07] hover:text-zinc-200'
@@ -730,7 +832,7 @@ function AnalyticsChart({
               onClick={toggleActivityExpanded}
               aria-pressed={activityExpanded}
               aria-label={activityExpanded ? 'Collapse activity detail' : 'Expand activity detail'}
-              className={`shrink-0 rounded border px-2.5 py-1.5 text-[10px] font-black uppercase transition ${
+              className={`shrink-0 rounded border px-2.5 py-1.5 text-xs font-black uppercase transition ${
                 activityExpanded
                   ? 'border-violet-300/25 bg-violet-400/10 text-violet-200'
                   : 'border-white/10 text-zinc-500 hover:border-white/20 hover:text-zinc-200'
@@ -745,7 +847,7 @@ function AnalyticsChart({
             className="flex min-w-0 items-center gap-1.5 border-t border-white/10 bg-slate-400/[0.025] px-1.5 py-1"
             data-chart-overlay-focus-row
           >
-            <span className="shrink-0 px-1 text-[8px] font-black uppercase tracking-wide text-slate-500">
+            <span className="shrink-0 px-1 text-xs font-black uppercase tracking-wide text-slate-500">
               Overlay focus
             </span>
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:thin]">
@@ -760,7 +862,7 @@ function AnalyticsChart({
                     aria-pressed={focused}
                     aria-label={`${focused ? 'Clear' : 'Focus'} ${item.label} peak ${count(item.max)}`}
                     title={focused ? 'Return to overview' : `Focus ${item.label} and fade the other series`}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[9px] font-black uppercase transition ${
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-black uppercase transition ${
                       focused
                         ? 'bg-slate-300/15 text-slate-100 ring-1 ring-inset ring-slate-300/25'
                         : 'text-slate-500 hover:bg-slate-300/[0.08] hover:text-slate-200'
@@ -779,7 +881,67 @@ function AnalyticsChart({
           </div>
         ) : null}
       </div>
-      <div data-session-chart-stack>
+      <div className="relative" data-session-chart-stack>
+        {showRangeControls ? (
+          <div
+            className="absolute right-2 top-2 z-20 max-w-full"
+            data-chart-range-row
+          >
+            <div
+              className="flex max-w-full items-center gap-1 overflow-x-auto rounded border border-white/10 bg-zinc-950/80 p-1 text-xs font-black uppercase text-zinc-400 shadow-lg backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              data-chart-viewport-controls
+              role="group"
+              aria-label="Chart range"
+               title="Scroll over the graph to zoom, or use + / − / 0 when the chart has focus. Alt + arrow keys pan."
+            >
+              {/* The pressed "Full" preset already says when the whole stream is shown. */}
+              {isChartZoomed ? (
+                <span
+                  className="shrink-0 px-1 tabular-nums text-zinc-500"
+                  data-chart-viewport-readout
+                >
+                  {formatViewportDuration(viewportDurationSeconds(effectiveChartViewport))}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => zoomByFactor(1.333333)}
+                aria-label="Zoom chart out"
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
+                style={{ minWidth: 44, minHeight: 44 }}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => zoomByFactor(0.75)}
+                aria-label="Zoom chart in"
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200"
+                style={{ minWidth: 44, minHeight: 44 }}
+              >
+                +
+              </button>
+              {viewportPresets.map(preset => {
+                // Phones keep 1h · 4h · Full so the whole control fits without hidden scrolling.
+                const pressed = preset.seconds === 'full'
+                  ? !isChartZoomed
+                  : Math.abs(viewportDurationSeconds(effectiveChartViewport) - preset.seconds) < 1
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => zoomToPreset(preset.seconds)}
+                    aria-pressed={pressed}
+                    className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-xs transition hover:bg-white/10 hover:text-zinc-200 aria-[pressed=true]:bg-violet-400/15 aria-[pressed=true]:text-violet-200${preset.label === '15m' || preset.label === '2h' ? ' max-sm:hidden' : ''}`}
+                    style={{ minWidth: 44, minHeight: 44 }}
+                  >
+                    {preset.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
         <PulseMultiSignalChartInner
           chromeless
           variant="console"
@@ -816,7 +978,8 @@ function AnalyticsChart({
            onViewportChange={handleViewportChange}
            viewportMotionEnabled={!railInteracting}
            layoutMode="equal-signals"
-          dragPanMode="zoomed"
+           dragPanMode="zoomed"
+           wheelZoomMode="direct"
           lineWeightMode="viewport-adaptive"
         />
 
@@ -834,7 +997,7 @@ function AnalyticsChart({
               plotInsetRight="3.4%"
             />
             <div
-              className="flex min-w-0 items-center justify-between gap-2 pt-1 text-[9px] font-bold tabular-nums text-zinc-500"
+              className="flex min-w-0 items-center justify-between gap-2 pt-1 text-xs font-bold tabular-nums text-zinc-500"
               style={{ marginLeft: '9%', marginRight: '3.4%' }}
               data-session-chart-range
               data-chart-range-state={isChartZoomed ? 'zoomed' : 'full'}
@@ -851,7 +1014,7 @@ function AnalyticsChart({
                   <button
                     type="button"
                     onClick={returnToSelected}
-                    className="shrink-0 rounded border border-amber-300/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-200 transition hover:bg-amber-400/20"
+                    className="shrink-0 rounded border border-amber-300/30 bg-amber-400/10 px-1.5 py-0.5 text-xs font-black uppercase tracking-wide text-amber-200 transition hover:bg-amber-400/20"
                     aria-label="Return to selected minute"
                     data-chart-return-to-selection="true"
                   >
@@ -872,22 +1035,49 @@ function AnalyticsChart({
         onReset={onResetEmotePlots}
       />
 
-      {selectedRollup && vodLinkState ? (
-        <SelectedMomentPanel
-          rollup={selectedRollup}
-          rollups={detail?.momentRollups?.length ? detail.momentRollups : allRollups}
-          startedAt={streamStartedAt}
-          vodLinkState={vodLinkState}
-          topEmotesCatalog={topEmotesCatalog ?? detail?.topEmotes}
-          heatmapPoint={heatmapPoint}
-          heatmapDetail={heatmapDetail}
-          heatmapPoints={heatmapPoints}
-          recapMoment={recapMoment}
-          gameName={selectedGameName}
-          vodAlignSeconds={detail?.vodAlignSeconds}
-          onClear={() => onSelectRollup(null)}
-        />
-      ) : null}
+      <div className="mt-3 min-h-[116px]" data-chart-selected-detail-slot>
+        {selectedDetail ? <div data-chart-selected-detail data-chart-action="true">{selectedDetail}</div> : null}
+      </div>
+
+      <details className="mt-3 rounded border border-white/10 bg-black/20 px-3 py-2" data-chart-data-alternative data-chart-action="true">
+        <summary className="cursor-pointer text-xs font-bold text-zinc-300">
+          View measured minute data ({pagedDataRows.length} of {tableRollups.length} minutes)
+        </summary>
+        {tableRollups.length > 120 ? (
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-zinc-400">
+            <button type="button" disabled={boundedDataPage >= dataPageCount - 1} onClick={() => setDataPage(page => Math.min(dataPageCount - 1, page + 1))}>Earlier minutes</button>
+            <span>Page {boundedDataPage + 1} of {dataPageCount}</span>
+            <button type="button" disabled={boundedDataPage === 0} onClick={() => setDataPage(page => Math.max(0, page - 1))}>Later minutes</button>
+          </div>
+        ) : null}
+        <div className="mt-2 max-h-72 overflow-auto">
+          <table className="w-full text-left text-xs tabular-nums">
+            <caption className="sr-only">Measured session minutes corresponding to the activity chart, 120 rows per page.</caption>
+            <thead>
+              <tr className="text-zinc-500">
+                <th scope="col">Stream time</th><th scope="col">Viewers</th><th scope="col">Chat/min</th><th scope="col">Emotes/min</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedOutsideDataPage ? (
+                <tr className="border-t border-amber-300/20" data-chart-selected-data-row>
+                  <th scope="row">{vodClock(selectedRollup.minuteTs, streamStartedAt)} (pinned)</th>
+                  <td>{count(viewerReadoutValue(selectedRollup))}</td><td>{count(selectedRollup.chatCount)}</td><td>{count(minuteEmoteTotal(selectedRollup))}</td>
+                </tr>
+              ) : null}
+              {pagedDataRows.map((rollup) => (
+                <tr key={rollup.minuteTs} className="border-t border-white/5">
+                  <th scope="row">{vodClock(rollup.minuteTs, streamStartedAt)}</th>
+                  <td>{count(viewerReadoutValue(rollup))}</td>
+                  <td>{count(rollup.chatCount)}</td>
+                  <td>{count(minuteEmoteTotal(rollup))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+
       </div>
     </div>
   )

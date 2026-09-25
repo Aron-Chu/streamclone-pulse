@@ -41,6 +41,7 @@ export function PastVodsSection({
   const [loading, setLoading] = useState(!demoRows)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [requestNonce, setRequestNonce] = useState(0)
 
   useEffect(() => {
     if (demoRows) {
@@ -77,11 +78,11 @@ export function PastVodsSection({
     return () => {
       mounted = false
     }
-  }, [login, liveStreamId, isLive, demoRows])
+  }, [login, liveStreamId, isLive, demoRows, requestNonce])
 
   const subtitle = channelOffline
     ? 'Recent broadcasts'
-    : 'Pulse in Streamclone · Twitch VOD for playback'
+    : 'Stream history · Twitch VOD for playback'
 
   const visibleRows = expanded ? rows : rows.slice(0, MAX_PAST_STREAM_ROWS)
   const hiddenCount = Math.max(0, rows.length - MAX_PAST_STREAM_ROWS)
@@ -115,13 +116,20 @@ export function PastVodsSection({
       ) : null}
 
       {!loading && rows.length === 0 ? (
-        <div style={styles.emptyBlock}>
-          <strong style={styles.emptyTitle}>No stream history yet</strong>
+        <div style={styles.emptyBlock} data-past-vods-state={error ? 'error' : 'empty'}>
+          <strong style={styles.emptyTitle}>
+            {error ? "Couldn't load stream history" : 'No stream history yet'}
+          </strong>
           <p style={styles.emptyText}>
             {error
-              ? 'Could not load stream history from Streamclone.'
-              : 'Open full analytics to sync historical sessions when available.'}
+              ? 'Could not load stream history from StreamPulse.'
+              : 'No past streams recorded for this channel.'}
           </p>
+          {error ? (
+            <button type="button" className="pulse-past-vod-footer" style={styles.emptyAction} onClick={() => setRequestNonce(value => value + 1)}>
+              Retry stream history
+            </button>
+          ) : null}
           <button type="button" className="pulse-past-vod-footer" style={styles.emptyAction} onClick={openAllAnalytics}>
             Open full analytics →
           </button>
@@ -129,7 +137,7 @@ export function PastVodsSection({
       ) : null}
 
       {!loading && rows.length > 0 ? (
-        <div className="pulse-past-vod-shell">
+        <div className="pulse-past-vod-shell" data-past-vods-state="ready">
           <div role="list" style={styles.list}>
             {visibleRows.map(row => (
                 <PastVodRowCard
@@ -269,11 +277,11 @@ const styles: Record<string, CSSProperties> = {
     width: 72,
   },
   thumb: { display: 'block', height: '100%', objectFit: 'cover', width: '100%' },
-  thumbFallback: { color: theme.textMuted, fontSize: 8, fontWeight: 900, textTransform: 'uppercase' },
+  thumbFallback: { color: theme.textMuted, fontSize: 10, fontWeight: 900, textTransform: 'uppercase' },
   rowCopy: { display: 'grid', gap: 4, minWidth: 0, flex: 1 },
   rowTitle: {
     display: '-webkit-box',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 800,
     lineHeight: 1.35,
     overflow: 'hidden',
@@ -285,7 +293,7 @@ const styles: Record<string, CSSProperties> = {
     color: theme.textMuted,
     display: 'flex',
     flexWrap: 'wrap',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 600,
     gap: 6,
     lineHeight: 1.3,
@@ -293,7 +301,7 @@ const styles: Record<string, CSSProperties> = {
   statusBadge: {
     display: 'inline-block',
     flexShrink: 0,
-    fontSize: 8,
+    fontSize: 10,
     maxWidth: '100%',
     overflow: 'hidden',
     padding: '2px 6px',

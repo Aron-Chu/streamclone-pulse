@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { getAnalyticsLive, type AnalyticsStreamDetail } from '../api.ts'
 import { LIVE_REQUEST_TIMEOUT_MS } from '@streampulse/pulse-core'
+import { resolveChannelActuallyLive } from '../utils/analyticsStreamRow.ts'
 
 export function analyticsLiveQueryKey(login: string) {
   return ['analytics-live', login] as const
@@ -39,9 +40,9 @@ export function useAnalyticsLive(login: string, options: UseAnalyticsLiveOptions
     queryKey: analyticsLiveQueryKey(login),
     queryFn: () => (withTimeout ? fetchLiveWithTimeout(login) : getAnalyticsLive(login)),
     enabled: Boolean(login) && enabled,
-    staleTime: 15_000,
+    staleTime: 30_000,
     retry: false,
     refetchInterval: refetchInterval ?? (query =>
-      query.state.data?.state === 'live' ? 15_000 : 60_000),
+      resolveChannelActuallyLive(query.state.data) ? 30_000 : 60_000),
   })
 }

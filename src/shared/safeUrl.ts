@@ -2,6 +2,7 @@ const TRUSTED_IMAGE_HOSTS = new Set([
   'cdn.7tv.app',
   'cdn.betterttv.net',
   'cdn.frankerfacez.com',
+  'cdn.streampulse.stream',
   'static-cdn.jtvnw.net',
   'clips-media-assets2.twitch.tv',
 ])

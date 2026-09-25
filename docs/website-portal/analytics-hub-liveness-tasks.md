@@ -131,13 +131,13 @@ curl -fsS "https://api.streampulse.stream/v1/public/hub/moments?activityWindow=2
 - Area: portal / analytics hub UI
 - Priority: P1
 - Depends on: MOVERS-01 (soft — share the motion helper; can proceed independently)
-- Status: `- [x]` done
+- Status: `- [x]` done — **superseded by the 2026-08 right-rail rework** (see [`analytics-command-center-layout.md`](analytics-command-center-layout.md)): the feed is no longer an in-flow `SectionReveal` list but the single sticky **right-rail "catch-moment radar"** mounted via `AnalyticsFigmaShell`'s `rightRail` slot (`layout="rail"`), with tiered Live-now/Older disclosure and sibling Analytics + VOD actions per card. The notes below describe the original MVP; treat any mention of `SectionReveal id="section-live-wire"`, `layout="lane"`, or shell restructuring as stale.
 
 **Files likely touched**
 
 - `streampulse-web/src/ui/components/analytics/HubLiveWireFeed.tsx` (new component).
 - `streampulse-web/src/ui/components/analytics/figma-analytics.css` (new `.hub-live-wire*` block).
-- `streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx` (render the feed in a new `SectionReveal id="section-live-wire"`, placed after `section-live-rail` and before `section-network`).
+- `streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx` (render the feed via the shell `rightRail` prop: `rightRail={<HubLiveWireFeed {...liveWireFeedProps} layout="rail" />}`; the pre-2026-08 placement as a `SectionReveal id="section-live-wire"` after `section-live-rail` is superseded).
 - `streampulse-web/tests/hubLiveWireFeed.test.tsx` (new unit test).
 
 **Data available**
@@ -151,17 +151,17 @@ curl -fsS "https://api.streampulse.stream/v1/public/hub/moments?activityWindow=2
 
 - New self-contained component `HubLiveWireFeed` that takes the resolved feed (reuse `resolveLivePulseMoments(hub)` or accept a `feed` prop like `PulseMomentsLivePanel`) and renders a vertical list of moment cards, newest first (sort by `at` desc; fall back to `offsetSeconds`).
 - Card contents: `kind` chip with an icon (chat spike / emote spike / just went live — map `stream_opening` → "Just went live"), avatar + display name + category, a one-line headline from `label` plus the strongest metric (`chatPerMin` or `emotesPerMin`), up to ~3 `topEmotes` rendered as images, and a **relative timestamp** ("12s ago") derived from `at` that re-renders on a 1s interval (single `setInterval`, cleared on unmount).
-- Each card is a link → `buildAnalyticsHref({ login, streamId, offsetSeconds })` (use the same helper `mapHubPulseMoment` already uses) so it deep-links into the VOD moment.
+- Each card is a non-interactive `article` with **sibling** actions (never wrap the whole card in a link and nest another link): an Analytics action → `resolveMomentActions(moment)` preferring `moment.href`, else canonical `buildAnalyticsHref({ login, streamId })`; and a VOD action → `buildVodTimestampUrl(vodId, offsetSeconds)` (`target="_blank" rel="noreferrer"`), only when `vodId` exists. No `href="#"`: render a disabled state ("Live tracking only") when neither action is available.
 - **New-item animation:** keep a ref of previously-seen `momentRowKey`s. On each poll, entries whose key was not seen before animate in at the top (`gsap.from(el, { height: 0, opacity: 0, y: -8, duration: 0.4, ease: 'power3.out' })`) with a brief "NEW" pulse. Cap the visible list (e.g. 8–10) and let old rows drop off.
 - **Noise control:** de-duplicate by `login` within a short window if the same channel produces repeated peaks, and cap how many new cards animate per poll (e.g. 3) so the feed never floods/flickers.
 - **Empty / warming state:** when there are no network moments, show the honest reason (reuse the `EMPTY_REASONS`-style copy pattern from `PulseMomentsLivePanel.tsx`), not a blank box.
 - **Reduced motion:** when `motionEnabled === false`, render the list in final order with no enter animation and no "NEW" pulse; the relative-time ticker may remain (it's text, not motion) or update on poll only.
 - Honesty label in the header: e.g. "Live wire · detected in the last {activityWindow}" — never "real-time".
-- Placement: render inside `AnalyticsLandingPage.tsx` as its own `SectionReveal`. Do **not** restructure `AnalyticsFigmaShell`. (Optional enhancement, only if trivial: on wide viewports, a `position: sticky` wrapper — but do not add a new shell grid column in this task.)
+- Placement (2026-08 rework): single **right rail** mounted through the new shell `rightRail?: ReactNode` slot on the landing only — a third `figma-analytics__frame--with-right-rail` grid column at ≥ 1440px, in-flow below the center column below that. **Single mount:** one `<aside class="figma-analytics__right-rail">` repositioned by grid-area across breakpoints — never mounted twice. Channel/session routes do not pass `rightRail`, so the default frame layout is unaffected. The Live Wire sidebar entry is **action-only** (excluded from the scroll-spy; it scrolls the rail into view).
 
 **Acceptance criteria**
 
-- A "Live Wire" feed section renders on `/analytics` with moment cards sourced from `hub.livePulseMoments`, newest first, each deep-linking to the channel/VOD moment.
+- A "Live Wire" rail renders once on `/analytics` (right rail ≥ 1440px, in-flow below the center column below that) with moment cards sourced from the resolved hub feed, newest first, each exposing sibling Analytics + VOD actions (deep-linking to the channel/VOD moment).
 - On a poll that introduces a new moment, that card animates in at the top; unchanged cards do not re-animate.
 - With `prefers-reduced-motion: reduce`, the feed renders correct content and order with no enter animation / no auto-motion.
 - When the resolved feed `source !== 'network'` (fallback) or is empty, the component shows the appropriate static / empty-reason state and does not imply live cadence.
@@ -183,7 +183,7 @@ curl -fsS "https://api.streampulse.stream/v1/public/hub/moments?activityWindow=2
 - [x] e2e honesty+parity: all 17 specs pass (parity uses `#section-live-wire`; `fetchPriority` warning removed).
 - [x] Stats-fallback/degraded hub state visible on canonical `/analytics` via `HubDataHealthBanner`; Live Wire gated when `hubEndpointOk === false` or `loadSource === 'stats-fallback'`.
 - [x] Hosted `/v1/public/hub/moments` smoke run 2026-07-06 — endpoint requires `bucketT`; sample returned `status: empty`, `reason: no_corpus_peaks_in_bucket` (healthy empty, not 5xx).
-- [ ] Manual check at `/analytics`: movers reorder with motion; new moments slide into the Live Wire; both degrade to static under `prefers-reduced-motion`.
+- [ ] Manual check at `/analytics`: movers reorder with motion; genuinely new network moments slide into the Live Wire rail from the right with a `NEW` badge (max 3 per poll, baselined on the first healthy snapshot so there is no initial-load burst); both degrade to static under `prefers-reduced-motion` (semantic `NEW` preserved).
 - [ ] Manual fallback check: mock or force `hubEndpointOk: false` / `loadSource: 'stats-fallback'` in browser devtools (unit tests cover this path).
 - [x] Diff is scoped to the files listed; no unrelated refactors; "Pulse Wire" scope not reintroduced.
 

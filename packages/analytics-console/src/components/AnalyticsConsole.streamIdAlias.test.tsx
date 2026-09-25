@@ -35,6 +35,7 @@ vi.mock('./analytics/AnalyticsChart.tsx', () => ({
   default: () => <div data-testid="analytics-chart" />,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
+  DataQualityDisclosure: () => null,
   ChatCoverageBadge: () => null,
   StatCard: () => null,
   ViewerSourceBadge: () => null,
@@ -177,6 +178,16 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+})
+
+it('does not treat a date outside the bounded stream sample as a nonexistent broadcast', async () => {
+  api.getAnalyticsStreams.mockResolvedValue({ items: Array.from({ length: 100 }, (_, i) => ({
+    streamId: `stored-${i}`, login: 'denims', startedAt: firstMinute,
+  })) })
+  renderConsole('/analytics/denims/2025-01-01')
+  expect(await screen.findByText(/Older broadcasts may exist outside this sample/)).toBeTruthy()
+  expect(api.getAnalyticsStreams).toHaveBeenCalledWith('denims', 100)
+  expect(api.getAnalyticsStream).not.toHaveBeenCalled()
 })
 
 describe('AnalyticsConsole hosted stream-id alias', () => {

@@ -7,7 +7,7 @@ describe('needsEmoteImageProxy', () => {
       value: { location: { protocol: 'https:' } },
       configurable: true,
     })
-    expect(needsEmoteImageProxy('http://localhost:8081/emotes/uuid/1x.webp')).toBe(true)
+    expect(needsEmoteImageProxy('http://localhost:8081/emotes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1x.webp')).toBe(true)
   })
 
   it('does not proxy https cdn urls', () => {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatActivityWindowLabel } from '../../../lib/hubActivitySummary'
 import {
   formatHubActivityServedLabel,
@@ -9,7 +9,7 @@ import {
   selectHubChartActivityInputs,
 } from '../../../lib/hubChartActivityModel'
 import { formatHubTrustLine, resolveHubTrustFreshness } from '../../../lib/hubTrustLine'
-import type { PublicHub } from '../../../lib/publicHub'
+import type { PublicHub, PublicHubLoadSource } from '../../../lib/publicHub'
 import type { PoolWireEvent } from '../../../lib/poolWireReducer'
 import { useCommandCenterLabels } from '../../providers/AnalyticsThemeProvider'
 import { compact } from './hubFormat'
@@ -18,9 +18,12 @@ import { useAnimatedNumber } from './useAnimatedNumber'
 
 export interface HubCommandHeaderProps {
   hub: PublicHub
+  measurementAvailable?: boolean
   loading?: boolean
   lastSuccessfulPollAt?: number | null
   hubEndpointOk?: boolean
+  /** Source of the displayed snapshot; cache is truthful but not a live poll. */
+  loadSource?: PublicHubLoadSource | null
   error?: string | null
   poolWireEvents?: PoolWireEvent[]
   poolWireInitialized?: boolean
@@ -36,9 +39,11 @@ function AnimatedCompact({ value, loading }: { value: number; loading?: boolean 
 
 export function HubCommandHeader({
   hub,
+  measurementAvailable = true,
   loading,
   lastSuccessfulPollAt = null,
   hubEndpointOk = true,
+  loadSource = null,
   error = null,
   poolWireEvents = [],
   poolWireInitialized = false,
@@ -65,19 +70,32 @@ export function HubCommandHeader({
   const liveViewersNow = chartInputs.livePoolViewerSum
   const collectorActive = hub.corpusPipeline.collectorActive
   const collectorMax = hub.corpusPipeline.collectorMax
+  const snapshotIsNotLive = loadSource != null && loadSource !== 'full'
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (lastSuccessfulPollAt == null) return
+    setNowMs(Date.now())
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [lastSuccessfulPollAt])
 
   const freshness = resolveHubTrustFreshness({
     lastSuccessfulPollAt,
     hubEndpointOk,
-    hasError: Boolean(error),
+    // Cache and stats fallback snapshots are useful for continuity, but they
+    // are not proof of a currently healthy network poll. Keep the command
+    // trust line from upgrading either snapshot to LIVE.
+    hasError: Boolean(error) || snapshotIsNotLive,
+    nowMs,
   })
   const trustLine = formatHubTrustLine({
     collectorActive,
     collectorMax,
     lastSuccessfulPollAt,
     freshness,
+    nowMs,
   })
-
   return (
     <header
       className="hub-command-header hub-command-header--surface"
@@ -116,7 +134,7 @@ export function HubCommandHeader({
                 className="hub-command-header__primary-value hub-command-header__primary-value--accent"
                 data-testid="live-pool-size"
               >
-                <AnimatedCompact value={trackedPoolSize} loading={loading} />
+                {!loading && !measurementAvailable ? 'Unknown' : <AnimatedCompact value={trackedPoolSize} loading={loading} />}
               </strong>
             </div>
             <div
@@ -125,11 +143,13 @@ export function HubCommandHeader({
             >
               <span className="hub-command-header__primary-label">Tracked live viewers</span>
               <strong className="hub-command-header__primary-value hub-command-header__primary-value--viewers">
-                <AnimatedCompact value={liveViewersNow} loading={loading} />
+                {!loading && !measurementAvailable ? 'Unknown' : <AnimatedCompact value={liveViewersNow} loading={loading} />}
               </strong>
             </div>
           </div>
 
+          <details className="hub-audit-disclosure" data-window-peak-disclosure open>
+          <summary>{measurementAvailable || loading ? 'Window peak measurements' : 'Window peaks unavailable'}</summary>
           <section
             className="hub-command-header__peaks"
             aria-label={
@@ -138,7 +158,7 @@ export function HubCommandHeader({
                 : `Activity peaks in the last ${windowLabel}`
             }
           >
-            <h2 className="hub-command-header__peaks-label">{peaksLabel}</h2>
+            <h2 className="hub-command-header__peaks-label">{measurementAvailable ? peaksLabel : 'No measured snapshot available'}</h2>
             <div className="hub-command-header__peaks-row">
               <div
                 className="hub-command-header__peak"
@@ -169,6 +189,7 @@ export function HubCommandHeader({
               </div>
             </div>
           </section>
+          </details>
         </div>
 
         <div className="hub-command-header__wire">
@@ -176,6 +197,8 @@ export function HubCommandHeader({
             events={poolWireEvents}
             loading={loading}
             initialized={poolWireInitialized}
+            unavailable={!measurementAvailable}
+            stale={!hubEndpointOk || Boolean(error) || snapshotIsNotLive}
           />
         </div>
       </div>

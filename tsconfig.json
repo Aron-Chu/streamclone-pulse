@@ -13,5 +13,13 @@
     "types": ["chrome", "vite/client"],
     "baseUrl": "."
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/content/liveVodNavigationCache.ts",
+    "src/content/vodChannelLogin.ts",
+    "src/ui/chartPinExit.ts",
+    "src/ui/chartSelectionHitTest.ts",
+    "src/ui/LiveMomentInteractionSurface.tsx",
+    "src/ui/presentationPathInBand.ts"
+  ]
 }

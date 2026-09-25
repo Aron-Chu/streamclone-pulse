@@ -49,10 +49,10 @@ export function PlotOnChartStrip({
         aria-label={`Emote overlays, ${plottedCount} active, ${Math.max(0, maxPlotted - plottedCount)} slots left, ${expanded ? 'collapse' : 'manage'}`}
         className="flex min-h-9 w-full items-center gap-2 rounded border border-slate-400/15 bg-slate-400/[0.04] px-2.5 py-1.5 text-left transition hover:border-slate-300/25 hover:bg-slate-400/[0.07]"
       >
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-slate-300">
+        <span className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-300">
           Emote overlays
         </span>
-        <span className="shrink-0 rounded bg-slate-300/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-400">
+        <span className="shrink-0 rounded bg-slate-300/10 px-1.5 py-0.5 text-xs font-black uppercase tracking-wide text-slate-400">
           {plottedCount} active
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
@@ -71,19 +71,19 @@ export function PlotOnChartStrip({
                   src={getEmoteImageUrl(emote)}
                   name={emote.name}
                   className="h-4 w-4 object-contain"
-                  fallbackClassName="inline-flex h-4 w-4 items-center justify-center text-[8px] font-black text-slate-400"
+                  fallbackClassName="inline-flex h-4 w-4 items-center justify-center text-xs font-black text-slate-400"
                 />
               </span>
             )
           })}
           {plottedCount === 0 ? (
-            <span className="truncate text-[10px] font-semibold text-slate-500">Aggregate Emotes/min only</span>
+            <span className="truncate text-xs font-semibold text-slate-500">Aggregate Emotes/min only</span>
           ) : null}
         </span>
-        <span className="shrink-0 text-[9px] font-black uppercase text-slate-300">
+        <span className="shrink-0 text-xs font-black uppercase text-slate-300">
           {expanded ? 'Collapse' : 'Manage'}
         </span>
-        <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-500">{expanded ? '−' : '+'}</span>
+        <span aria-hidden="true" className="shrink-0 text-xs text-slate-500">{expanded ? '−' : '+'}</span>
       </button>
       {expanded ? (
         <div
@@ -91,7 +91,7 @@ export function PlotOnChartStrip({
           className="mt-1 rounded border border-slate-400/15 bg-slate-950/75 p-2.5 shadow-lg"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-slate-400">
+            <span className="text-xs font-bold text-slate-400">
               Individual traces use the compact lane · up to {maxPlotted}
             </span>
             <div className="flex items-center gap-1">
@@ -101,7 +101,7 @@ export function PlotOnChartStrip({
                   onClick={onClear}
                   aria-label="Clear emote lanes"
                   disabled={plottedCount === 0}
-                  className="rounded border border-slate-400/15 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -111,7 +111,7 @@ export function PlotOnChartStrip({
                   type="button"
                   onClick={onReset}
                   aria-label="Restore default emote lanes"
-                  className="rounded border border-slate-400/15 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300"
                 >
                   Restore defaults
                 </button>
@@ -136,7 +136,7 @@ export function PlotOnChartStrip({
                   ? `Max ${maxPlotted} emotes on chart`
                   : `${emote.name}: ${count(emote.count)} total uses — click to ${isPlotted ? 'hide' : 'show'} on chart`
               }
-              className="inline-flex min-w-0 max-w-40 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-w-0 max-w-40 items-center gap-1 rounded-full border px-2 py-1 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-45"
               style={{
                 borderColor: chipStyle.borderColor,
                 backgroundColor: chipStyle.backgroundColor,
@@ -153,7 +153,7 @@ export function PlotOnChartStrip({
                 src={imageUrl}
                 name={emote.name}
                 className="h-4 w-4 shrink-0 object-contain"
-                fallbackClassName="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-white/10 text-[8px] font-black text-zinc-400"
+                fallbackClassName="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-white/10 text-xs font-black text-zinc-400"
               />
               <span className="truncate">{emote.name}</span>
               <span
@@ -165,7 +165,7 @@ export function PlotOnChartStrip({
             </button>
           )
         }) : (
-          <span className="px-0.5 py-1 text-[10px] font-semibold text-slate-500">
+          <span className="px-0.5 py-1 text-xs font-semibold text-slate-500">
             No individual emotes are available for this stream.
           </span>
         )}

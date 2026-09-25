@@ -9,11 +9,4 @@ description: Review tracking pool caps, always-track eviction, rate limits, and 
 
 Use the canonical skill in **streampulse-backend** for the full checklist, live-cap probe guidance, and escalation rules.
 
-This stub exists so Cursor discovers the skill from the streamclone-pulse checkout. Live caps are operator-configured on hosted-production-vps — probe via hosted API only:
-
-```bash
-curl -s https://api.streampulse.stream/v1/extension/health
-curl -s https://api.streampulse.stream/v1/public/hub
-```
-
-Do not use `http://localhost:8090` probes here. For tunnel/Caddy/compose changes escalate to the ops-diagnostics-reviewer (now in **streampulse-ops**).
+This discovery stub delegates capacity decisions, probes, and escalation to the canonical backend skill.

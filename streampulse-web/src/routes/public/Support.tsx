@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { buttonClass } from '../../ui/primitives'
+import { apiClient, isApiError } from '../../lib/apiClient'
+import { PUBLIC_SUPPORT_URL } from '../../lib/externalLinks'
+import { supportDiagnostics } from '../../lib/supportDiagnostics'
 import {
   SUPPORT_CATEGORIES,
   createSupportIdempotencyKey,
   ensureTurnstileScript,
-  supportBackendRoot,
   supportFormAvailability,
   validateSupportForm,
   type SupportCategory,
@@ -71,11 +73,18 @@ export default function Support() {
   const idempotencyKeyRef = useRef<string>(createSupportIdempotencyKey())
   const widgetHostRef = useRef<HTMLDivElement | null>(null)
   const widgetIdRef = useRef<string | null>(null)
+  const submitControllerRef = useRef<AbortController | null>(null)
+  const [diagnostics, setDiagnostics] = useState('')
+  const [copyStatus, setCopyStatus] = useState('')
+  useEffect(() => () => submitControllerRef.current?.abort(), [])
 
-  const backendRoot = useMemo(
-    () => supportBackendRoot(import.meta.env.VITE_BACKEND_URL as string | undefined),
-    [],
-  )
+  async function copyDiagnostics() {
+    const summary = supportDiagnostics({ userAgent: navigator.userAgent, online: navigator.onLine,
+      width: window.innerWidth, height: window.innerHeight })
+    setDiagnostics(summary)
+    try { await navigator.clipboard.writeText(summary); setCopyStatus('Diagnostics copied. Review before sharing.') }
+    catch { setCopyStatus('Copy was unavailable. Select and copy the summary below.') }
+  }
 
   useEffect(() => {
     if (availability !== 'ready' || !siteKey) {
@@ -120,6 +129,7 @@ export default function Support() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
+    if (submitControllerRef.current) return
     if (availability === 'unavailable') {
       setState({ kind: 'unavailable' })
       return
@@ -157,14 +167,27 @@ export default function Support() {
         })
         return
       }
-      setState({ kind: 'validation', message: `Please fix the form (${validation.error}).` })
+      const messages: Record<string, string> = {
+        invalid_category: 'Choose a support category.', consent_required: 'Please consent to submitting this report.',
+        invalid_subject: 'Add a subject of at most 120 characters.', invalid_description: 'Add a description of at most 4,000 characters.',
+        invalid_email: 'Enter a valid reply email or leave it blank.', contact_consent_required: 'Please allow a reply to this email or leave it blank.',
+        invalid_twitch_login: 'Enter a Twitch channel login, not a URL, or leave it blank.',
+      }
+      setState({ kind: 'validation', message: messages[validation.error] ?? 'Please check the required fields.' })
       return
     }
 
     setState({ kind: 'loading' })
+    const controller = new AbortController()
+    submitControllerRef.current = controller
     try {
-      const res = await fetch(`${backendRoot}/v1/portal/support/cases`, {
+      const { data: body } = await apiClient<{ case_id?: string }>('/v1/portal/support/cases', {
         method: 'POST',
+        sensitive: true,
+        signal: controller.signal,
+        timeoutMs: 12_000,
+        maxResponseBytes: 64 * 1024,
+        // Keep manual retries idempotent without automatically replaying a bot challenge.
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKeyRef.current,
@@ -180,40 +203,27 @@ export default function Support() {
           turnstile_token: turnstileToken,
         }),
       })
-      if (res.status === 429) {
-        setState({ kind: 'rate_limit' })
-        return
-      }
-      if (res.status === 503) {
-        setState({ kind: 'unavailable' })
-        return
-      }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        setState({
-          kind: 'validation',
-          message: body?.error ? `Request rejected (${body.error}).` : 'Request rejected.',
-        })
-        if (window.turnstile && widgetIdRef.current) {
-          window.turnstile.reset(widgetIdRef.current)
-          setTurnstileToken('')
-        }
-        return
-      }
-      const body = (await res.json()) as { case_id?: string }
-      if (!body.case_id) {
+      if (!body?.case_id) {
         setState({ kind: 'unavailable' })
         return
       }
       setState({ kind: 'success', caseId: body.case_id })
       // Next logical submission gets a fresh idempotency key.
       idempotencyKeyRef.current = createSupportIdempotencyKey()
-    } catch {
-      setState({ kind: 'unavailable' })
+    } catch (error) {
+      if (controller.signal.aborted) return
+      if (isApiError(error) && error.status === 429) setState({ kind: 'rate_limit' })
+      else if (isApiError(error) && error.status >= 400 && error.status < 500) {
+        setState({ kind: 'validation', message: 'The report could not be accepted. Check the fields and complete the verification again.' })
+      } else setState({ kind: 'unavailable' })
+      if (window.turnstile && widgetIdRef.current) window.turnstile.reset(widgetIdRef.current)
+      setTurnstileToken('')
+    } finally {
+      submitControllerRef.current = null
     }
   }
 
-  const formVisible = availability === 'ready' && state.kind !== 'unavailable'
+  const formVisible = typeof window !== 'undefined' && availability === 'ready' && state.kind !== 'unavailable'
 
   return (
     <PublicLayout>
@@ -231,30 +241,13 @@ export default function Support() {
           </p>
         </header>
 
-        {/* Self-Help / Quick Diagnostics Grid */}
-        <div className="feature-grid">
-          <div className="feature-card">
-            <span className="feature-card__badge text-cyan-300">Quick Fix 01</span>
-            <h3>Extension Not Appearing?</h3>
-            <p>
-              Open <code>chrome://extensions</code>, confirm StreamPulse is enabled, select <strong>Reload</strong>, and hard-refresh your Twitch tab.
-            </p>
-          </div>
-          <div className="feature-card">
-            <span className="feature-card__badge text-amber-300">Quick Fix 02</span>
-            <h3>Limited Coverage / Warming?</h3>
-            <p>
-              New streams take 1–3 minutes to warm up IRC collectors. Check the <Link to="/status" className="text-violet-400 hover:underline">live system status</Link> for telemetry.
-            </p>
-          </div>
-          <div className="feature-card">
-            <span className="feature-card__badge text-emerald-300">Install Guide</span>
-            <h3>Official Chrome Listing</h3>
-            <p>
-              Install the verified Manifest V3 build directly from the official Chrome Web Store.
-            </p>
-          </div>
-        </div>
+        <section aria-labelledby="public-help-title">
+          <h2 id="public-help-title">Report a bug or suggest an improvement</h2>
+          <p><a href={PUBLIC_SUPPORT_URL} target="_blank" rel="noopener noreferrer">Open a public issue on GitHub</a>. A GitHub account is required to post. Reports are public: do not include security vulnerabilities, personal details, or access keys.</p>
+          <button type="button" className="btn btn-outline" onClick={() => void copyDiagnostics()}>Copy safe diagnostics</button>
+          <p role="status">{copyStatus}</p>
+          {diagnostics ? <pre aria-label="Diagnostics to review">{diagnostics}</pre> : null}
+        </section>
 
         <section id="install" className="mt-6">
           <h2>Install StreamPulse</h2>
@@ -271,7 +264,7 @@ export default function Support() {
               Open <code className="font-mono text-violet-300">chrome://extensions</code> and confirm StreamPulse is enabled.
             </li>
             <li>
-              Select <strong>Reload</strong> for StreamPulse.
+              Turn StreamPulse off and on again, or select <strong>Reload</strong> if that control is available.
             </li>
             <li>Hard-refresh the Twitch channel or VOD tab (<kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-mono">Ctrl+F5</kbd> / <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-mono">Cmd+Shift+R</kbd>).</li>
             <li>
@@ -293,8 +286,7 @@ export default function Support() {
         <section className="mt-10 rounded-xl border border-white/[0.08] bg-black/40 p-6">
           <h2 className="!mt-0">Contact form</h2>
           <p className="muted text-sm">
-            The hosted support form stays unavailable until operators enable backend acceptance and configure
-            bot protection. This page does not claim the form is live.
+            Use this form when available. For non-sensitive product questions, you can also use the public GitHub issues page above.
           </p>
 
           {!formVisible ? (
@@ -310,26 +302,15 @@ export default function Support() {
           {formVisible ? (
             <form data-testid="support-form" onSubmit={onSubmit} className="support-form mt-6 space-y-4" aria-busy={state.kind === 'loading'}>
               <div className="form-group">
-                <label className="field-label">
+                <label className="field-label" htmlFor="support-category">
                   Category
                 </label>
-                <div className="category-pills" role="radiogroup" aria-label="Support Category">
-                  {SUPPORT_CATEGORIES.map(value => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setCategory(value)}
-                      className={`category-pill${category === value ? ' is-selected' : ''}`}
-                    >
-                      {CATEGORY_LABELS[value]}
-                    </button>
-                  ))}
-                </div>
                 <select
+                  id="support-category"
                   value={category}
                   onChange={e => setCategory(e.target.value as SupportCategory)}
                   aria-required="true"
-                  className="field-input hidden"
+                  className="field-input"
                 >
                   {SUPPORT_CATEGORIES.map(value => (
                     <option key={value} value={value}>
@@ -340,10 +321,11 @@ export default function Support() {
               </div>
 
               <div className="form-group">
-                <label className="field-label">
+                <label className="field-label" htmlFor="support-subject">
                   Subject
                 </label>
                 <input
+                  id="support-subject"
                   value={subject}
                   maxLength={120}
                   onChange={e => setSubject(e.target.value)}
@@ -355,10 +337,11 @@ export default function Support() {
               </div>
 
               <div className="form-group">
-                <label className="field-label">
+                <label className="field-label" htmlFor="support-description">
                   Description
                 </label>
                 <textarea
+                  id="support-description"
                   value={description}
                   maxLength={4000}
                   rows={5}
@@ -372,10 +355,11 @@ export default function Support() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="form-group">
-                  <label className="field-label">
+                  <label className="field-label" htmlFor="support-channel">
                     Twitch login (optional, typed manually)
                   </label>
                   <input
+                    id="support-channel"
                     value={twitchLogin}
                     onChange={e => setTwitchLogin(e.target.value)}
                     autoComplete="off"
@@ -384,10 +368,11 @@ export default function Support() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="field-label">
+                  <label className="field-label" htmlFor="support-email">
                     Reply email (optional)
                   </label>
                   <input
+                    id="support-email"
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
@@ -484,10 +469,8 @@ export default function Support() {
             Email <a href="mailto:privacy@streampulse.stream" className="text-violet-400 font-bold hover:underline">privacy@streampulse.stream</a> for privacy or
             legal questions only. It is not a routine product-support mailbox.
           </p>
-          <p className="muted text-xs">
-            Dedicated product-support and security channels are not published yet. Do not invent or use
-            unverified addresses.
-          </p>
+          <h3 id="security">Security reports</h3>
+          <p className="muted text-xs">A private security-reporting channel has not been published yet. Do not post vulnerability details in public issues or in this form. A verified private contact is required before sending sensitive details.</p>
           <p className="text-xs text-zinc-400 mt-2">
             You can also review the <Link to="/docs#extension" className="text-violet-400 hover:underline">extension setup guide</Link> or the{' '}
             <Link to="/privacy" className="text-violet-400 hover:underline">privacy policy</Link>.

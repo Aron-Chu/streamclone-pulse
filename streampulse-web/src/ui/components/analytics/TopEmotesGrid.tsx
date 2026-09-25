@@ -3,6 +3,7 @@ import { Smile } from 'lucide-react'
 import type { HubEmote } from '../../../lib/publicHub'
 import { Skeleton } from '../../primitives'
 import { compact } from './hubFormat'
+import { sanitizeEmoteImageUrl } from '../../../lib/emoteAssetUrl'
 
 interface TopEmotesGridProps {
   emotes: HubEmote[]
@@ -11,14 +12,9 @@ interface TopEmotesGridProps {
 
 function EmoteThumb({ imageUrl, name }: { imageUrl?: string; name: string }) {
   const [broken, setBroken] = useState(false)
-  if (!imageUrl?.trim() || broken) {
-    return <Smile size={22} aria-hidden="true" />
-  }
-  return <img src={imageUrl} alt="" loading="lazy" onError={() => setBroken(true)} />
-}
-
-function sparkBars(seed: number): number[] {
-  return Array.from({ length: 7 }, (_, j) => 30 + Math.round(Math.abs(Math.sin(seed + j * 0.9)) * 70))
+  const safeSrc = sanitizeEmoteImageUrl(imageUrl)
+  if (!safeSrc || broken) return <Smile size={22} aria-hidden="true" />
+  return <img src={safeSrc} alt="" loading="lazy" onError={() => setBroken(true)} />
 }
 
 export function TopEmotesGrid({ emotes, loading = false }: TopEmotesGridProps) {
@@ -56,12 +52,7 @@ export function TopEmotesGrid({ emotes, loading = false }: TopEmotesGridProps) {
             <div className="hub-emote__m">
               <b>{compact(emote.count)}</b>
               <small>uses</small>
-              {emote.sharePct > 0 ? <span className="tr hub-up">{emote.sharePct.toFixed(1)}%</span> : null}
-            </div>
-            <div className="hub-spark" aria-hidden="true">
-              {sparkBars(index).map((h, j) => (
-                <i key={j} style={{ height: `${h}%` }} />
-              ))}
+              {emote.sharePct > 0 ? <span className="tr hub-up">{emote.sharePct.toFixed(1)}% of measured sends</span> : null}
             </div>
           </div>
         </div>

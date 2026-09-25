@@ -6,12 +6,37 @@ import Docs from '../src/routes/public/Docs'
 import NotFound from '../src/routes/public/NotFound'
 import Privacy from '../src/routes/public/Privacy'
 import Support from '../src/routes/public/Support'
+import DashboardShell from '../src/routes/dashboard/DashboardShell'
+import { supportDiagnostics } from '../src/lib/supportDiagnostics'
 
 function renderRoute(node: ReactNode) {
   return render(<MemoryRouter>{node}</MemoryRouter>)
 }
 
 describe('public release routes', () => {
+  it('documents real portal routes, version meaning and every compatibility anchor', () => {
+    renderRoute(<Docs />)
+    expect(screen.getByText('GET https://api.streampulse.stream/v1/portal/analytics/streams/:streamId')).toBeTruthy()
+    expect(screen.getByText(/extension version shown in the store listing/)).toBeTruthy()
+    for (const id of ['extension', 'coverage', 'api', 'analytics']) expect(document.getElementById(id)).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/public API.*coming soon/i)
+  })
+
+  it('describes local beta keys as an interface gate, not API authorization', () => {
+    renderRoute(<DashboardShell />)
+    expect(screen.getByRole('note').textContent).toContain('the server checks access for each request')
+    expect(screen.getByRole('note').textContent).toContain('local storage')
+    expect(screen.getByRole('note').textContent).toContain('scripts on this origin')
+  })
+
+  it('offers a public issue path and keeps diagnostics strictly allowlisted', () => {
+    renderRoute(<Support />)
+    expect(screen.getByRole('link', { name: 'Open a public issue on GitHub' }).getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/issues')
+    const diagnostic = supportDiagnostics({ userAgent: 'Chrome/125 token=private email=private', online: true, width: 390, height: 844 })
+    expect(diagnostic).toContain('Chrome/125')
+    expect(diagnostic).not.toContain('private')
+    expect(diagnostic).not.toContain('token=')
+  })
   it('provides a real extension install target from the homepage CTA', () => {
     renderRoute(<Docs />)
     const heading = screen.getByRole('heading', { name: /install the streampulse extension/i })

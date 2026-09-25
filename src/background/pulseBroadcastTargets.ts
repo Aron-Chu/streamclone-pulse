@@ -51,12 +51,13 @@ export function isTrustedTwitchTopFrameSender(sender: RuntimeSenderLike, extensi
  * - `twitch-channel`: extension pages, or a top-frame Twitch tab whose URL
  *   matches the requested login.
  * - `twitch-any`: extension pages, or any top-frame Twitch tab.
+ * - `twitch-channel-or-vod`: same channel rule, or an exact requested VOD URL.
  *
  * Exhaustive Record, not a set with a permissive fallback. Adding a message
  * type without classifying it is a type error, not a silent grant to the
  * content script.
  */
-export type MessageSenderScope = 'extension-page' | 'twitch-channel' | 'twitch-any'
+export type MessageSenderScope = 'extension-page' | 'twitch-channel' | 'twitch-channel-or-vod' | 'twitch-any'
 
 export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSenderScope> = {
   SUPPORTER_ACCOUNT: 'extension-page',
@@ -72,6 +73,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   REMOVE_WATCHLIST: 'extension-page',
   SYNC_WATCHLIST: 'extension-page',
   DELETE_BOOKMARK: 'extension-page',
+  MY_MOMENTS: 'extension-page',
+  MOMENT_CAPTURE: 'twitch-any',
   GET_PULSE_DEBUG_LOG: 'extension-page',
   CLEAR_PULSE_DEBUG_LOG: 'extension-page',
   TRACK: 'twitch-channel',
@@ -79,16 +82,18 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   GET_PULSE: 'twitch-channel',
   GET_COVERAGE: 'twitch-channel',
   GET_ALWAYS_TRACKED: 'twitch-channel',
-  GET_CLIP: 'twitch-channel',
+  GET_CLIP: 'twitch-channel-or-vod',
   HINT_VOD: 'twitch-channel',
   DISCOVER_LIVE_VOD: 'twitch-channel',
   LOAD_MISSED_MOMENTS: 'twitch-channel',
   GET_PULSE_BACKFILL_STATUS: 'twitch-channel',
   LIST_PAST_VODS: 'twitch-channel',
-  LIST_BOOKMARKS: 'twitch-channel',
-  SAVE_BOOKMARK: 'twitch-channel',
+  LIST_BOOKMARKS: 'twitch-channel-or-vod',
+  SAVE_BOOKMARK: 'twitch-channel-or-vod',
   HEALTH: 'twitch-any',
-  OPEN_OPTIONS: 'twitch-any',
+  GET_UPDATE_CHECK_CAPABILITY: 'twitch-any',
+  CHECK_FOR_UPDATE: 'twitch-any',
+  OPEN_SETTINGS_HOST: 'twitch-any',
   REPORT_EXTENSION_DIAGNOSTIC: 'twitch-any',
   EMIT_EXTENSION_ANALYTICS: 'twitch-any',
   SET_AUTO_UPDATE: 'twitch-any',
@@ -109,16 +114,21 @@ export function isSenderAuthorizedForMessage(
   login: string | undefined,
   sender: RuntimeSenderLike,
   extensionId: string,
+  vodId?: string,
 ): boolean {
   if (!sender.id || sender.id !== extensionId) return false
   // Own-property lookup only. Plain indexing would resolve `__proto__` and
   // `toString` to inherited values and authorize an unclassified type.
   const scope = SCOPE_BY_MESSAGE_TYPE.get(messageType)
-  if (scope !== 'extension-page' && scope !== 'twitch-channel' && scope !== 'twitch-any') return false
+  if (scope !== 'extension-page' && scope !== 'twitch-channel' && scope !== 'twitch-channel-or-vod' && scope !== 'twitch-any') return false
   if (scope === 'extension-page') return isExtensionPageSender(sender, extensionId)
   if (isExtensionPageSender(sender, extensionId)) return true
   if (!isTrustedTwitchTopFrameSender(sender, extensionId)) return false
   if (scope === 'twitch-any') return true
+  if (scope === 'twitch-channel-or-vod' && login && vodId && /^\d+$/.test(vodId)) {
+    const path = new URL(sender.tab!.url!).pathname
+    if (path === `/videos/${vodId}` || path === `/videos/${vodId}/`) return true
+  }
   return Boolean(login && tabUrlMatchesPulseLogin(sender.tab?.url, login))
 }
 

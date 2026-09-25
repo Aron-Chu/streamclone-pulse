@@ -6,6 +6,7 @@ import {
   normalizeChartValue,
   prepareRecapChartRollups,
   rollupChartActivityScore,
+  zeroFillRollupsForRecap,
 } from '../src/ui/recapChartPrep.ts'
 
 function minuteRollup(offsetSeconds: number, chatCount: number, emotes = 0): ExtensionRollup {
@@ -55,6 +56,27 @@ describe('prepareRecapChartRollups', () => {
     const prepared = prepareRecapChartRollups(sparse, 24_000, 120)
     expect(prepared.length).toBeLessThanOrEqual(122)
     expect(prepared.some(rollup => rollup.chatCount === 800)).toBe(true)
+  })
+})
+
+describe('zeroFillRollupsForRecap', () => {
+  it('keeps the full VOD domain while marking the untracked prefix missing', () => {
+    const filled = zeroFillRollupsForRecap([minuteRollup(1800, 20)], 0, 1860, 1800)
+    expect(filled[0]).toMatchObject({ offsetSeconds: 0, missing: true })
+    expect(filled.find(rollup => rollup.offsetSeconds === 1800)?.missing).not.toBe(true)
+  })
+
+  it('marks a declared IRC tail gap unavailable instead of drawing zero activity', () => {
+    const filled = zeroFillRollupsForRecap(
+      [minuteRollup(0, 20), minuteRollup(3600, 12)],
+      0,
+      7200,
+      0,
+      [{ fromOffsetSeconds: 3660, toOffsetSeconds: 7140 }],
+    )
+    expect(filled.find(rollup => rollup.offsetSeconds === 3600)?.missing).toBe(false)
+    expect(filled.find(rollup => rollup.offsetSeconds === 3660)?.missing).toBe(true)
+    expect(filled.find(rollup => rollup.offsetSeconds === 7140)?.missing).toBe(true)
   })
 })
 

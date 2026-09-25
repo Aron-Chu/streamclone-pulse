@@ -160,9 +160,15 @@ export function useNewsroomData(options: UseNewsroomDataOptions = {}): UseNewsro
       setAnnouncement(announcementFor(baselineRef.current, stories))
       baselineRef.current = storyMap(stories)
     }
-    if (envelope.status !== 'unavailable') cacheRef.current.set(key, envelope)
+    if (envelope.status !== 'unavailable') {
+      cacheRef.current.set(key, envelope)
+      setError(null)
+    } else {
+      // An HTTP 200 unavailable envelope is still a failed read. Keep it
+      // visible so the page can offer recovery instead of a false empty state.
+      setError(envelope.reason ?? 'Newsroom history is temporarily unavailable')
+    }
     setData(envelope)
-    setError(null)
   }, [])
 
   const load = useCallback(async () => {

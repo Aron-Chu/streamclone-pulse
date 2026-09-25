@@ -1,5 +1,5 @@
 import { createRoot, type Root } from 'react-dom/client'
-import { Overlay } from '../ui/Overlay.tsx'
+import { Overlay, type SidebarTabChangeSource } from '../ui/Overlay.tsx'
 import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
 import { resolveOverlayErrorState } from '../shared/pulseError.ts'
 import type { ExtensionCoverageTierResponse, PulsePayload, PulseUpdateMessage } from '../shared/messages.ts'
@@ -23,14 +23,16 @@ import {
 } from '../shared/storage.ts'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
 import { PulsePortalContext } from '../ui/pulsePortalContext.ts'
-import { shadowStyles, theme } from '../ui/theme.ts'
+import { overlayStyles as BASE_STYLE } from '../ui/overlayStyles.ts'
 import {
   observeChatSnapLayout,
   buildSidebarBodyRect,
+  scheduleNativeChatFocusHandoff,
   SIDEBAR_MINI_PANEL_HEIGHT,
   SIDEBAR_COLLAPSED_PILL_HEIGHT,
   resolveChatDockBottomY,
   type ChatRectSnapshot,
+  type NativeChatFocusHandoff,
   type SidebarSnapLayout,
 } from './twitchChat.ts'
 import {
@@ -42,6 +44,7 @@ import { applyTwitchSidebarChromeHides } from './twitchSidebarChrome.ts'
 import type { TwitchPageContext } from './twitch.ts'
 import { detectTwitchChannelLive } from './twitch.ts'
 import { installContentDiagnosticsEmitters } from '../shared/extensionDiagnostics.ts'
+import type { LivePollController } from './livePoll.ts'
 
 const TAB_HOST_ID = 'streamclone-pulse-tabs'
 const PANEL_HOST_ID = 'streamclone-pulse-root'
@@ -71,6 +74,7 @@ export interface OverlayMountOptions {
   coverageTier?: ExtensionCoverageTierResponse | null
   onPulseRefresh?: () => Promise<void>
   onLivePollWindowChange?: (window: PulseCacheWindow) => void
+  livePollStore?: Pick<LivePollController, 'getSnapshot' | 'subscribe'>
   softStaleRefreshWarning?: boolean
 }
 
@@ -88,123 +92,6 @@ export function applyOverlayPayloadUpdate(
   return previous ? mergePulsePayload(previous, incoming) : incoming
 }
 
-const BASE_STYLE = `
-  :host {
-    display: block;
-    font-family: ${theme.font};
-    color: ${theme.textPrimary};
-    pointer-events: none;
-    position: fixed;
-    z-index: 2147483000;
-    isolation: isolate;
-    box-sizing: border-box;
-  }
-  * { box-sizing: border-box; }
-  button, input, select, textarea { font: inherit; }
-  button:focus, button:focus-visible { outline: none !important; }
-  .pulse-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
-  .pulse-no-scrollbar::-webkit-scrollbar { display: none; }
-  .pulse-emote-picker-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.35);
-    border-radius: 999px;
-  }
-  .pulse-emote-picker-scroll::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.55);
-    border-radius: 999px;
-  }
-  .pulse-root {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    pointer-events: none;
-    font-family: ${theme.font};
-    color: ${theme.textPrimary};
-  }
-  .pulse-shell {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    pointer-events: auto;
-    width: 100%;
-    min-height: 0;
-    overflow: auto;
-    background: ${theme.panelGlass};
-    border: 1px solid ${theme.borderAccent};
-    border-radius: ${theme.radiusPanel}px;
-    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-    backdrop-filter: blur(14px);
-    color: ${theme.textPrimary};
-    font-family: ${theme.font};
-    animation: pulse-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .placement-right {
-    position: fixed;
-    top: 50%;
-    right: 12px;
-    transform: translateY(-50%);
-    width: min(392px, calc(100vw - 24px));
-    max-height: min(82vh, 760px);
-    height: auto;
-    flex: 0 0 auto;
-  }
-  .placement-bottom {
-    position: fixed;
-    left: 50%;
-    bottom: 16px;
-    transform: translateX(-50%);
-    width: min(860px, calc(100vw - 32px));
-    max-height: min(52vh, 560px);
-    height: auto;
-    flex: 0 0 auto;
-  }
-  .placement-sidebar.pulse-shell {
-    height: 100%;
-    min-height: 100%;
-  }
-  .mode-mini.placement-right {
-    top: auto;
-    bottom: 88px;
-    right: 12px;
-    transform: none;
-    width: min(420px, calc(100vw - 24px));
-    max-height: 72px;
-    overflow: hidden;
-  }
-  .mode-mini.placement-bottom {
-    max-height: 72px;
-    overflow: hidden;
-  }
-  .mode-collapsed.placement-right {
-    top: auto;
-    bottom: 24px;
-    right: 12px;
-    transform: none;
-    width: auto;
-    max-height: none;
-    border-radius: 999px;
-    overflow: visible;
-  }
-  .mode-collapsed.placement-bottom { bottom: 16px; }
-  .pulse-hidden { display: none !important; }
-  .pulse-sidebar-panel.pulse-shell {
-    background: ${theme.bgCanvas};
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-  ${shadowStyles}
-`
 
 let tabsRoot: Root | null = null
 let panelRoot: Root | null = null
@@ -226,22 +113,70 @@ let sidebarLayout: SidebarSnapLayout | null = null
 let storedPlacement: OverlayPlacement = DEFAULT_OVERLAY_PLACEMENT
 let placementResolved = false
 let sidebarFallbackToFloat = false
-let sidebarFallbackTimer: ReturnType<typeof setTimeout> | null = null
+let sidebarFallbackTimer: number | null = null
 let chatClosedPulseDockEnabled = false
 let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
+let overlayHostObserver: MutationObserver | null = null
+let overlayHostReconcileTimer: ReturnType<typeof setTimeout> | null = null
+let nativeChatFocusHandoff: NativeChatFocusHandoff | null = null
 
 function installOverlayDiagnosticsOnce(): void {
   if (overlayDiagnosticsInstalled) return
   overlayDiagnosticsInstalled = true
   installContentDiagnosticsEmitters({ feature: 'overlay' })
 }
+
+function cancelChatFocusSchedule(): void {
+  nativeChatFocusHandoff?.cancel()
+  nativeChatFocusHandoff = null
+}
+
+/** Tell chart/rail surfaces to release pointer capture before Chat owns the body. */
+function cancelPulseInteractions(): void {
+  cancelChatFocusSchedule()
+  document.dispatchEvent(new CustomEvent('streampulse:deactivate-interactions'))
+  const activeElements = [
+    tabsShadowRoot?.activeElement,
+    panelShadowRoot?.activeElement,
+    document.activeElement,
+  ]
+  for (const element of activeElements) {
+    if (element instanceof HTMLElement) element.blur()
+  }
+}
+
+function scheduleNativeChatFocus(): void {
+  cancelChatFocusSchedule()
+  nativeChatFocusHandoff = scheduleNativeChatFocusHandoff({ doc: document })
+}
+
 let currentSidebarTab: SidebarTab = 'pulse'
 let currentOverlayMode: OverlayMode = 'expanded'
 let currentPayload: PulsePayload | null = null
 let currentError: string | undefined
 let currentCoverageTier: ExtensionCoverageTierResponse | null = null
 let displayPreferenceRequestId = 0
+
+/**
+ * The mount owns the split CHAT/PULSE tab state. Keep these handlers outside
+ * renderOverlay so React's tab-shell effects do not restart on every payload
+ * poll and race a user's click with a second storage hydration.
+ */
+function handleSidebarTabChange(
+  tab: SidebarTab,
+  source: SidebarTabChangeSource = 'sync',
+): void {
+  if (tab !== currentSidebarTab || source === 'user') cancelPulseInteractions()
+  currentSidebarTab = tab
+  renderOverlay(currentPayload, currentError)
+  if (tab === 'chat' && source === 'user') scheduleNativeChatFocus()
+}
+
+function handleOverlayModeChange(mode: OverlayMode): void {
+  currentOverlayMode = mode
+  renderOverlay(currentPayload, currentError)
+}
 
 function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
   // Do not use `#id` selectors — browsers may collapse duplicate IDs to one match.
@@ -252,6 +187,15 @@ function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
     doomed.push(node)
   }
   for (const node of doomed) node.remove()
+}
+
+function containsOverlayHost(node: Node): boolean {
+  if (!(node instanceof Element)) return false
+  if (node.id === TAB_HOST_ID || node.id === PANEL_HOST_ID) return true
+  for (const descendant of node.querySelectorAll('*')) {
+    if (descendant.id === TAB_HOST_ID || descendant.id === PANEL_HOST_ID) return true
+  }
+  return false
 }
 
 function reconcileOverlayHosts(): void {
@@ -278,16 +222,51 @@ export function ensureUniqueOverlayHosts(): void {
   reconcileOverlayHosts()
 }
 
+function installOverlayHostObserver(): void {
+  if (overlayHostObserver || typeof MutationObserver === 'undefined' || !document.documentElement) return
+  overlayHostObserver = new MutationObserver(mutations => {
+    // Twitch and extension reinjection can append a second host without changing
+    // the route. Reconcile that mutation immediately instead of waiting for the
+    // debounced route scheduler, while ignoring normal chat/page churn.
+    if (!mutations.some(mutation => Array.from(mutation.addedNodes).some(containsOverlayHost))) return
+    if (overlayHostReconcileTimer != null) return
+    overlayHostReconcileTimer = setTimeout(() => {
+      overlayHostReconcileTimer = null
+      reconcileOverlayHosts()
+    }, 50)
+  })
+  overlayHostObserver.observe(document.documentElement, { childList: true, subtree: true })
+}
+
 function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; root: Root } {
   const host = document.createElement('div')
   host.id = id
+  host.dataset.streampulseBuild = typeof __EXTENSION_BUILD_ID__ !== 'undefined' ? __EXTENSION_BUILD_ID__ : 'unknown'
+  host.dataset.streampulseTarget = typeof __EXTENSION_TARGET__ !== 'undefined' ? __EXTENSION_TARGET__ : 'unknown'
   document.documentElement.appendChild(host)
   // Development builds keep the existing inspection hook for mocked E2E tests.
   // Store targets use a closed root so Twitch page scripts cannot inspect controls.
   const shadow = host.attachShadow({ mode: __EXTENSION_STORE_BUILD__ ? 'closed' : 'open' })
   const style = document.createElement('style')
   style.textContent = BASE_STYLE
-  shadow.appendChild(style)
+  const componentStyles = document.createElement('link')
+  componentStyles.rel = 'stylesheet'
+  componentStyles.href = chrome.runtime.getURL('content/shadow.css')
+  host.dataset.streampulseStyles = 'loading'
+  host.style.visibility = 'hidden'
+  componentStyles.addEventListener('load', () => {
+    host.dataset.streampulseStyles = 'loaded'
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        host.style.visibility = ''
+      })
+    })
+  }, { once: true })
+  componentStyles.addEventListener('error', () => {
+    host.dataset.streampulseStyles = 'error'
+    host.style.visibility = ''
+  }, { once: true })
+  shadow.append(style, componentStyles)
   const mountPoint = document.createElement('div')
   mountPoint.className = 'pulse-root'
   shadow.appendChild(mountPoint)
@@ -364,14 +343,27 @@ function buildDockHostRect(
 function applySidebarSnapLayout(): void {
   if (!sidebarLayout) return
 
-  applyTwitchSidebarChromeHides(true, currentSidebarTab === 'pulse')
+  const pulseTabActive = currentSidebarTab === 'pulse'
+  // Pulse owns the body, so hide Twitch's native message chrome while it is
+  // active. Chat owns the body, so remove the style entirely and restore all
+  // native banners/messages when the user switches back.
+  applyTwitchSidebarChromeHides(pulseTabActive, pulseTabActive)
   applyFixedRect(tabsHostEl, sidebarLayout.header, true)
 
-  const showPanel = currentSidebarTab === 'pulse'
+  const showPanel = pulseTabActive
   if (!showPanel) {
     applyFixedRect(panelHostEl, null, false)
-    if (panelHostEl) panelHostEl.style.overflow = ''
+    if (panelHostEl) {
+      panelHostEl.style.overflow = ''
+      panelHostEl.setAttribute('aria-hidden', 'true')
+      ;(panelHostEl as HTMLElement & { inert?: boolean }).inert = true
+    }
     return
+  }
+
+  if (panelHostEl) {
+    panelHostEl.removeAttribute('aria-hidden')
+    ;(panelHostEl as HTMLElement & { inert?: boolean }).inert = false
   }
 
   const bodyRect = buildSidebarBodyRect(sidebarLayout)
@@ -409,11 +401,19 @@ function applyHostVisibility(visibility: OverlayHostVisibility): void {
 
   if (visibility.mode === 'floating') {
     applyFloatingHost(panelHostEl)
+    panelHostEl?.removeAttribute('aria-hidden')
+    if (panelHostEl) {
+      (panelHostEl as HTMLElement & { inert?: boolean }).inert = false
+    }
     return
   }
 
   applyFixedRect(tabsHostEl, null, false)
   applyFixedRect(panelHostEl, null, false)
+  panelHostEl?.removeAttribute('aria-hidden')
+  if (panelHostEl) {
+    (panelHostEl as HTMLElement & { inert?: boolean }).inert = false
+  }
   if (panelHostEl) panelHostEl.style.overflow = ''
 }
 
@@ -447,15 +447,16 @@ function installMountStorageListener(): void {
   mountStorageListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return
-    if (changes.overlayPlacement || changes.overlayMode || changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY]) {
+    if (changes.overlayPlacement || changes.overlayMode || changes[CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY] || changes.sidebarTab) {
       // Initial hydration performs a coherent read after legacy migrations. Let it
       // finish instead of allowing the migration's own storage event to cancel it.
       if (!placementResolved) return
       const requestId = ++displayPreferenceRequestId
-      void Promise.all([getOverlayDisplayPreferences(), getChatClosedPulseDockEnabled()]).then(([display, dockEnabled]) => {
+      void Promise.all([getOverlayDisplayPreferences(), getChatClosedPulseDockEnabled(), getSidebarTab()]).then(([display, dockEnabled, tab]) => {
         if (requestId !== displayPreferenceRequestId) return
         storedPlacement = display.placement
         currentOverlayMode = display.mode
+        currentSidebarTab = tab
         chatClosedPulseDockEnabled = dockEnabled
         if (!dockEnabled) {
           resetSidebarFallback()
@@ -465,6 +466,16 @@ function installMountStorageListener(): void {
       })
     }
   })
+  if (chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener((message: unknown) => {
+      if (message && typeof message === 'object' && 'type' in message && message.type === 'OPEN_PULSE_SIDEBAR') {
+        currentSidebarTab = 'pulse'
+        currentOverlayMode = 'expanded'
+        syncSidebarObserver()
+        renderOverlay(currentPayload, currentError)
+      }
+    })
+  }
 }
 
 function renderOverlay(payload: PulsePayload | null, error?: string): void {
@@ -488,19 +499,14 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     panelHostWidth: sidebarLayout?.panel.width ?? sidebarLayout?.column.width ?? 0,
     sidebarTab: currentSidebarTab,
     overlayMode: currentOverlayMode,
-    onSidebarTabChange: (tab: SidebarTab) => {
-      currentSidebarTab = tab
-      renderOverlay(currentPayload, currentError)
-    },
-    onOverlayModeChange: (mode: OverlayMode) => {
-      currentOverlayMode = mode
-      renderOverlay(currentPayload, currentError)
-    },
+    onSidebarTabChange: handleSidebarTabChange,
+    onOverlayModeChange: handleOverlayModeChange,
     onPulseRefresh: currentOptions.onPulseRefresh,
     onPulsePayloadUpdate: (message: PulseUpdateMessage) => {
       updateOverlayPayload(message.payload, message.error, message.coverageTier ?? null, { authoritative: true })
     },
     onLivePollWindowChange: currentOptions.onLivePollWindowChange,
+    livePollStore: currentOptions.livePollStore,
     softStaleRefreshWarning: currentOptions.softStaleRefreshWarning ?? false,
     vodPulse: currentVodPulse,
     vodPulseLoading: currentVodPulseLoading,
@@ -600,6 +606,7 @@ export function mountOverlay(
     panelShadowRoot = panel.shadow
     panelRoot = panel.root
   }
+  installOverlayHostObserver()
 
   installThemeSyncListener()
   installMountStorageListener()
@@ -711,7 +718,14 @@ export function updateOverlayVodState(input: {
 }
 
 export function unmountOverlay(): void {
+  cancelChatFocusSchedule()
   displayPreferenceRequestId += 1
+  overlayHostObserver?.disconnect()
+  overlayHostObserver = null
+  if (overlayHostReconcileTimer != null) {
+    clearTimeout(overlayHostReconcileTimer)
+    overlayHostReconcileTimer = null
+  }
   stopObserve?.()
   stopObserve = null
   sidebarLayout = null

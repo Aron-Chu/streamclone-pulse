@@ -1,4 +1,5 @@
 import type { PublicHub } from "../../../lib/publicHub";
+import { formatCoveragePercent } from "@streampulse/pulse-core";
 import type { ActivitySummary } from "../../../lib/hubActivitySummary";
 import { formatActivityWindowLabel } from "../../../lib/hubActivitySummary";
 import {
@@ -44,9 +45,7 @@ export function FigmaMakeHero({
     {
       label: "Global activity",
       value:
-        activitySummary.coveragePct > 0
-          ? `${Math.round(activitySummary.coveragePct)}%`
-          : "-",
+        formatCoveragePercent(activitySummary.coveragePct),
       color: "var(--fma-green)",
     },
     {

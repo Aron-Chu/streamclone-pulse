@@ -38,11 +38,7 @@ export function StorySparkline({ points = [], signal, compact = false, eventAt }
   const height = compact ? 84 : 150
   const pad = compact ? 6 : 10
   if (points.length < 2) {
-    return (
-      <div className="newsroom-sparkline newsroom-sparkline--empty" role="status">
-        Trend appears after two measured minutes.
-      </div>
-    )
+    return null
   }
   const firstAt = points[0].at
   const lastAt = points[points.length - 1].at

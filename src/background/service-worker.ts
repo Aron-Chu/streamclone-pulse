@@ -1,3 +1,4 @@
+import { handleMyMoments } from './myMoments.ts'
 import {
   addPulseWatchlist,
   createPulseBookmark,
@@ -14,7 +15,7 @@ import {
   fetchPulseChannel,
   fetchPulseWatchlist,
   fetchPulseVod,
-  fetchTopClip,
+  fetchStreamClips,
   postPulseBackfill,
   postVodHint,
   postWatchChannel,
@@ -35,6 +36,8 @@ import { fetchEmoteImageBytes } from './emoteImageFetch.ts'
 import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracking.ts'
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
+import { openSettingsHost } from './settingsHost.ts'
+import { supporterAccount } from './supporterAccountRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
   isDiagnosticsConsentEnabled,
@@ -66,7 +69,6 @@ import {
   pulseDebug,
 } from '../shared/pulseDebug.ts'
 import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
 import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
@@ -90,11 +92,14 @@ import {
   emitAnalyticsEvents,
   type AnalyticsEmitEventName,
 } from '../shared/extensionAnalytics.ts'
+import { createExtensionHealthCache } from './extensionHealthCache.ts'
+import { getUpdateCheckCapability, requestBrowserUpdateCheck } from './extensionUpdateCheck.ts'
 
 void initPulseDebug()
 
 const pulseCoord = createPulseCoordinatorState()
 const watchCoord = createWatchCoordinatorState()
+const extensionHealthCache = createExtensionHealthCache()
 /** Soft stale-refresh notice for content overlays (non-fatal). */
 const softStaleFailureByLogin = new Map<string, number>()
 /** Suppress storage-listener sync while message handlers own the mutation. */
@@ -477,20 +482,6 @@ function senderIsTwitchPage(sender: chrome.runtime.MessageSender): boolean {
   return isTrustedTwitchTopFrameSender(sender, chrome.runtime.id)
 }
 
-const EXTENSION_PAGE_ONLY_MESSAGES = new Set<BackgroundRequest['type']>([
-  'ENROLL_DEVICE',
-  'GET_DEVICE_AUTH_STATUS',
-  'ROTATE_DEVICE',
-  'REVOKE_DEVICE',
-  'LIST_WATCHLIST',
-  'ADD_WATCHLIST',
-  'REMOVE_WATCHLIST',
-  'SYNC_WATCHLIST',
-  'DELETE_BOOKMARK',
-  'GET_PULSE_DEBUG_LOG',
-  'CLEAR_PULSE_DEBUG_LOG',
-])
-
 function messageLogin(message: BackgroundRequest): string | undefined {
   switch (message.type) {
     case 'TRACK':
@@ -514,24 +505,11 @@ function messageLogin(message: BackgroundRequest): string | undefined {
   }
 }
 
-const CHANNEL_BOUND_MESSAGES = new Set<BackgroundRequest['type']>([
-  'TRACK',
-  'UNTRACK',
-  'GET_PULSE',
-  'GET_COVERAGE',
-  'GET_ALWAYS_TRACKED',
-  'GET_CLIP',
-  'HINT_VOD',
-  'DISCOVER_LIVE_VOD',
-  'LOAD_MISSED_MOMENTS',
-  'GET_PULSE_BACKFILL_STATUS',
-  'LIST_PAST_VODS',
-  'LIST_BOOKMARKS',
-  'SAVE_BOOKMARK',
-])
-
 function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
-  return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id)
+  const vodId = message.type === 'SAVE_BOOKMARK' ? message.bookmark.vodId
+    : message.type === 'LIST_BOOKMARKS' ? message.contextVodId ?? message.vodId
+      : message.type === 'GET_CLIP' ? message.vodId : undefined
+  return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id, vodId)
 }
 
 function broadcastPulse(
@@ -699,12 +677,14 @@ async function listPastVods(
   return rows
 }
 
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  // autoUpdateEnabled is read by content livePoll; SW does not own recurring timers.
-  if (areaName !== 'sync' || !changes.watchlist) return
-  if (suppressWatchlistStorageSync) return
-  void syncWatchlistStorageDelta(changes.watchlist.oldValue, changes.watchlist.newValue)
-})
+if (chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    // autoUpdateEnabled is read by content livePoll; SW does not own recurring timers.
+    if (areaName !== 'sync' || !changes.watchlist) return
+    if (suppressWatchlistStorageSync) return
+    void syncWatchlistStorageDelta(changes.watchlist.oldValue, changes.watchlist.newValue)
+  })
+}
 
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   void (async () => {
@@ -907,21 +887,53 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'GET_CLIP': {
-          const clip = await fetchTopClip(message.login, {
+          const clips = await fetchStreamClips(message.login, {
             startedAt: message.startedAt,
+            endedAt: message.endedAt,
+            streamId: message.streamId,
+            vodId: message.vodId,
             isLive: message.isLive,
           })
-          sendResponse({ type: 'CLIP', clip } satisfies BackgroundResponse)
+          sendResponse({ type: 'CLIP', clip: clips[0] ?? null, clips } satisfies BackgroundResponse)
           return
         }
         case 'HEALTH': {
-          const health = await fetchExtensionHealth()
+          const backendUrl = await getBackendUrl()
+          const result = await extensionHealthCache.read(
+            backendUrl,
+            () => fetchExtensionHealth(backendUrl),
+            { force: message.force },
+          )
+          if (!result.ok) {
+            sendResponse({
+              type: 'HEALTH',
+              ok: false,
+              checkedAt: result.checkedAt,
+              cached: result.cached,
+              error: result.error,
+            } satisfies BackgroundResponse)
+            return
+          }
+          const health = result.value
           sendResponse({
             type: 'HEALTH',
             ok: health.ok,
             version: health.version,
+            hostedMode: health.hostedMode,
             helixEnabled: health.helixEnabled,
+            identityComplete: health.identityComplete,
+            viewerSampling: health.viewerSampling,
+            checkedAt: result.checkedAt,
+            cached: result.cached,
           } satisfies BackgroundResponse)
+          return
+        }
+        case 'GET_UPDATE_CHECK_CAPABILITY': {
+          sendResponse(getUpdateCheckCapability() satisfies BackgroundResponse)
+          return
+        }
+        case 'CHECK_FOR_UPDATE': {
+          sendResponse(await requestBrowserUpdateCheck() satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_ENTITLEMENT': {
@@ -940,6 +952,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_ACCOUNT': {
           sendResponse({ type: 'SUPPORTER_ACCOUNT', account: await supporterAccount.run(message.action) } satisfies BackgroundResponse)
+          return
+        }
+        case 'OPEN_SETTINGS_HOST': {
+          try {
+            await openSettingsHost(chrome.tabs, path => chrome.runtime.getURL(path), message.section)
+            sendResponse({ type: 'OPEN_SETTINGS_HOST', ok: true } satisfies BackgroundResponse)
+          } catch {
+            sendResponse({ type: 'OPEN_SETTINGS_HOST', ok: false, error: 'settings_host_open_failed' } satisfies BackgroundResponse)
+          }
           return
         }
         case 'GET_DEVICE_AUTH_STATUS': {
@@ -1049,11 +1070,6 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ ok: true } satisfies BackgroundResponse)
           return
         }
-        case 'OPEN_OPTIONS': {
-          chrome.runtime.openOptionsPage()
-          sendResponse({ ok: true })
-          return
-        }
         case 'LIST_WATCHLIST': {
           const channels = await getWatchlist()
           const state = await getProtectSyncState()
@@ -1088,13 +1104,20 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SYNC_WATCHLIST', channels, sync: statusFromStorageState(state, channels) } satisfies BackgroundResponse)
           return
         }
+        case 'MY_MOMENTS':
+        case 'MOMENT_CAPTURE': {
+          sendResponse(await handleMyMoments(message, sender))
+          return
+        }
         case 'LIST_BOOKMARKS': {
-          const items = await fetchPulseBookmarks({
+          const page = await fetchPulseBookmarks({
             login: message.login,
             streamId: message.streamId,
             vodId: message.vodId,
+            limit: message.limit,
+            cursor: message.cursor,
           })
-          sendResponse({ type: 'BOOKMARKS', items } satisfies BackgroundResponse)
+          sendResponse({ type: 'BOOKMARKS', ...page } satisfies BackgroundResponse)
           return
         }
         case 'SAVE_BOOKMARK': {
@@ -1202,6 +1225,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
       }
     }
   })()
+  // The handler performs async work before every response. Keep Chrome's
+  // response channel open while tabs.create/fetch/storage operations finish.
   return true
 })
 

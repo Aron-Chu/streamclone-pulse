@@ -1,33 +1,81 @@
 import { createRoot } from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { sendBackgroundMessage } from '../content/bridge.ts'
-import { openHubAnalytics } from '../shared/analyticsLinks.ts'
-import {
-  getBackendUrl,
-  getChatClosedPulseDockEnabled,
-  setChatClosedPulseDockEnabled,
-} from '../shared/storage.ts'
+import { getBackendUrl, getThemePreference, setOverlayMode, setSidebarTab } from '../shared/storage.ts'
 import { extensionBackendSourceCaption } from '../shared/backendSource.ts'
+import { installedExtensionVersion } from '../shared/releaseManifest.ts'
+import { applyAccentTheme } from '../ui/overlayTheme.ts'
+import { AnalyticsHubCta } from '../ui/AnalyticsHubCta.tsx'
+import { injectStyles, theme } from '../ui/theme.ts'
+
+const TWITCH_RESERVED_ROUTES = new Set([
+  'directory',
+  'downloads',
+  'drops',
+  'friends',
+  'inventory',
+  'jobs',
+  'messages',
+  'p',
+  'payments',
+  'popout',
+  'prime',
+  'search',
+  'settings',
+  'subscriptions',
+  'turbo',
+  'videos',
+  'wallet',
+])
 
 function PopupApp() {
   const [backendUrl, setBackendUrl] = useState('')
   const [backendCaption, setBackendCaption] = useState('Hosted · api.streampulse.stream')
-  const [chatClosedDockEnabled, setChatClosedDockEnabledState] = useState(false)
   const [healthOk, setHealthOk] = useState<boolean | null>(null)
   const [healthLabel, setHealthLabel] = useState('Checking connection…')
+  const [checking, setChecking] = useState(false)
+  const [activeChannel, setActiveChannel] = useState<string | null>(null)
+  const [activeTabId, setActiveTabId] = useState<number | null>(null)
 
   useEffect(() => {
+    void getThemePreference().then(applyAccentTheme).catch(() => null)
     void refresh()
+    void detectActiveTwitchTab()
+
+    const storageChanged = globalThis.chrome?.storage?.onChanged
+    if (!storageChanged?.addListener) return
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if (changes.themePreference) {
+        void getThemePreference().then(applyAccentTheme).catch(() => null)
+      }
+    }
+    storageChanged.addListener(listener)
+    return () => storageChanged.removeListener(listener)
   }, [])
 
+  async function detectActiveTwitchTab(): Promise<void> {
+    try {
+      if (!chrome.tabs?.query) return
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.url) return
+      if (typeof tab.id === 'number') setActiveTabId(tab.id)
+      const parsed = new URL(tab.url)
+      if (parsed.hostname === 'www.twitch.tv' || parsed.hostname === 'twitch.tv') {
+        const seg = parsed.pathname.split('/').filter(Boolean)[0]
+        if (seg && !TWITCH_RESERVED_ROUTES.has(seg.toLowerCase())) {
+          setActiveChannel(seg)
+        }
+      }
+    } catch {
+      // Ignore tab query issues in restricted contexts
+    }
+  }
+
   async function refresh(): Promise<void> {
-    const [url, dockEnabled] = await Promise.all([
-      getBackendUrl(),
-      getChatClosedPulseDockEnabled(),
-    ])
+    setChecking(true)
+    const url = await getBackendUrl()
     setBackendUrl(url)
     setBackendCaption(extensionBackendSourceCaption(url))
-    setChatClosedDockEnabledState(dockEnabled)
     try {
       const res = await sendBackgroundMessage({ type: 'HEALTH' })
       if ('type' in res && res.type === 'HEALTH' && res.ok) {
@@ -40,11 +88,33 @@ function PopupApp() {
     } catch {
       setHealthOk(false)
       setHealthLabel('Can’t reach StreamPulse')
+    } finally {
+      setChecking(false)
     }
   }
 
-  function openHub(): void {
-    openHubAnalytics(backendUrl)
+  async function handlePrimaryAction(): Promise<void> {
+    if (activeChannel && activeTabId !== null) {
+      try {
+        await Promise.all([
+          setSidebarTab('pulse').catch(() => null),
+          setOverlayMode('expanded').catch(() => null),
+        ])
+        if (typeof chrome !== 'undefined' && chrome.tabs?.sendMessage) {
+          try {
+            await chrome.tabs.sendMessage(activeTabId, { type: 'OPEN_PULSE_SIDEBAR' })
+          } catch {
+            // Content script may not be injected or listening yet; storage was already updated
+          }
+        }
+        await chrome.tabs.update(activeTabId, { active: true })
+        window.close()
+        return
+      } catch {
+        // Fall back to opening channel tab
+      }
+    }
+    await openTwitch()
   }
 
   async function openTwitch(): Promise<void> {
@@ -55,9 +125,11 @@ function PopupApp() {
     }
   }
 
-  async function toggleChatClosedDock(enabled: boolean): Promise<void> {
-    await setChatClosedPulseDockEnabled(enabled)
-    setChatClosedDockEnabledState(enabled)
+  async function openSettings(section: 'moments' | 'pulse' = 'pulse'): Promise<void> {
+    const request = section === 'moments'
+      ? { type: 'OPEN_SETTINGS_HOST' as const, section: 'moments' as const }
+      : { type: 'OPEN_SETTINGS_HOST' as const, section: 'pulse' as const }
+    await sendBackgroundMessage(request).catch(() => null)
   }
 
   return (
@@ -82,34 +154,53 @@ function PopupApp() {
         />
       </header>
 
-      <p style={styles.health}>{healthLabel}</p>
-      <p style={styles.caption}>{backendCaption}</p>
-
-      <label style={styles.toggleCard}>
-        <span style={styles.toggleCopy}>
-          <span style={styles.toggleLabel}>Dock when chat is closed</span>
-          <span style={styles.toggleHint}>
-            CHAT / PULSE tabs still appear when chat is open. This only adds a corner dock if the chat column is hidden.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          checked={chatClosedDockEnabled}
-          onChange={event => void toggleChatClosedDock(event.target.checked)}
-          style={styles.checkbox}
-        />
-      </label>
-
-      <div style={styles.actions}>
-        <button type="button" style={styles.primaryButton} onClick={() => void openTwitch()}>
-          Open Twitch
-        </button>
-        <button type="button" style={styles.secondaryButton} onClick={openHub}>
-          Analytics hub
-        </button>
+      <div style={styles.statusCard}>
+        <p style={styles.health}>{healthLabel}</p>
+        <p style={styles.caption}>{backendCaption}</p>
+        <p style={styles.version}>Extension v{installedExtensionVersion()}</p>
+        {healthOk === false ? (
+          <button
+            type="button"
+            style={styles.retryButton}
+            disabled={checking}
+            onClick={() => void refresh()}
+          >
+            {checking ? 'Checking…' : 'Retry connection'}
+          </button>
+        ) : null}
       </div>
 
-      <p style={styles.footer}>Settings live in the Pulse sidebar gear on Twitch.</p>
+      <div style={styles.actions}>
+        <button
+          type="button"
+          className="pulse-action-chip pulse-action-chip-primary pulse-popup-primary-action"
+          style={styles.primaryButton}
+          data-popup-action="open-pulse"
+          onClick={() => void handlePrimaryAction()}
+        >
+          {activeChannel ? `Open Pulse on ${activeChannel}` : 'Open Twitch'}
+        </button>
+        {/* Analytics hub stays a shared CTA so popup and overlay use one route. */}
+        <AnalyticsHubCta backendUrl={backendUrl} />
+        <button
+          type="button"
+          className="pulse-action-chip pulse-popup-secondary-action"
+          style={styles.secondaryButton}
+          data-popup-action="open-moments"
+          onClick={() => void openSettings('moments')}
+        >
+          My Moments
+        </button>
+        <button
+          type="button"
+          className="pulse-action-chip pulse-popup-settings-action"
+          style={styles.settingsButton}
+          data-popup-action="open-settings"
+          onClick={() => void openSettings()}
+        >
+          <span>Open settings</span><span aria-hidden="true">↗</span>
+        </button>
+      </div>
     </main>
   )
 }
@@ -118,8 +209,8 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     background: '#0e1016',
     boxSizing: 'border-box',
-    color: '#f4f5f8',
-    fontFamily: '"Segoe UI", ui-sans-serif, system-ui, sans-serif',
+    color: theme.textPrimary,
+    fontFamily: theme.font,
     margin: 0,
     minHeight: '100%',
     overflow: 'hidden',
@@ -129,7 +220,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   atmosphere: {
     background:
-      'radial-gradient(120% 80% at 0% 0%, rgba(34, 211, 238, 0.14), transparent 55%), radial-gradient(90% 70% at 100% 10%, rgba(45, 212, 191, 0.08), transparent 50%)',
+      'radial-gradient(120% 80% at 0% 0%, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.15), transparent 55%), radial-gradient(90% 70% at 100% 10%, rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.08), transparent 50%)',
     inset: 0,
     pointerEvents: 'none',
     position: 'absolute',
@@ -142,7 +233,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   brandBlock: { display: 'grid', gap: 2 },
   brand: {
-    color: '#67e8f9',
+    color: 'var(--pulse-accent, #8b5cf6)',
     fontSize: 11,
     fontWeight: 800,
     letterSpacing: '0.14em',
@@ -166,9 +257,9 @@ const styles: Record<string, React.CSSProperties> = {
     width: 10,
   },
   statusBad: {
-    background: '#f97316',
+    background: '#f87171',
     borderRadius: 999,
-    boxShadow: '0 0 0 4px rgba(249, 115, 22, 0.16)',
+    boxShadow: '0 0 0 4px rgba(248, 113, 113, 0.16)',
     flexShrink: 0,
     height: 10,
     marginTop: 8,
@@ -186,64 +277,94 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#e2e8f0',
     fontSize: 13,
     fontWeight: 700,
-    margin: '12px 0 2px',
+    margin: 0,
     position: 'relative',
   },
   caption: {
     color: '#94a3b8',
     fontSize: 11,
     fontWeight: 600,
-    margin: '0 0 14px',
+    margin: '2px 0 0',
     position: 'relative',
   },
-  toggleCard: {
-    alignItems: 'flex-start',
+  version: {
+    color: '#64748b',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontSize: 10,
+    fontWeight: 700,
+    margin: '8px 0 0',
+    position: 'relative',
+  },
+  statusCard: {
     background: 'rgba(255, 255, 255, 0.03)',
-    border: '1px solid rgba(103, 232, 249, 0.12)',
+    border: '1px solid var(--pulse-accent-border, rgba(139, 92, 246, 0.25))',
     borderRadius: 12,
-    cursor: 'pointer',
-    display: 'flex',
-    gap: 12,
-    marginBottom: 14,
+    margin: '14px 0',
     padding: '11px 12px',
     position: 'relative',
   },
-  toggleCopy: { display: 'grid', flex: 1, gap: 4, minWidth: 0 },
-  toggleLabel: { color: '#f8fafc', fontSize: 13, fontWeight: 700, lineHeight: 1.25 },
-  toggleHint: { color: '#94a3b8', fontSize: 11, fontWeight: 500, lineHeight: 1.4 },
-  checkbox: { accentColor: '#22d3ee', flexShrink: 0, height: 16, marginTop: 2, width: 16 },
+  retryButton: {
+    background: 'rgba(248, 113, 113, 0.12)',
+    border: '1px solid rgba(248, 113, 113, 0.3)',
+    borderRadius: 8,
+    color: '#fca5a5',
+    cursor: 'pointer',
+    minHeight: 36,
+    fontSize: 11,
+    fontWeight: 700,
+    marginTop: 8,
+    padding: '7px 10px',
+  },
   actions: { display: 'grid', gap: 8, position: 'relative' },
   primaryButton: {
-    background: 'linear-gradient(180deg, #2dd4bf 0%, #0891b2 100%)',
-    border: 0,
+    background: 'var(--pulse-accent-strong, #7c3aed)',
+    border: '1px solid transparent',
     borderRadius: 10,
-    color: '#041016',
+    color: 'var(--pulse-on-accent, #ffffff)',
     cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontSize: 13,
     fontWeight: 800,
+    lineHeight: 1.2,
+    minHeight: 44,
     padding: '11px 12px',
     width: '100%',
   },
   secondaryButton: {
     background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(103, 232, 249, 0.16)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
     borderRadius: 10,
     color: '#f8fafc',
     cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontSize: 13,
     fontWeight: 700,
+    lineHeight: 1.2,
+    minHeight: 42,
     padding: '10px 12px',
     width: '100%',
   },
-  footer: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: 600,
-    lineHeight: 1.4,
-    margin: '12px 0 0',
-    position: 'relative',
-    textAlign: 'center',
+  settingsButton: {
+    alignItems: 'center',
+    background: 'transparent',
+    border: '1px solid transparent',
+    borderRadius: 8,
+    color: '#94a3b8',
+    cursor: 'pointer',
+    display: 'flex',
+    fontSize: 11,
+    fontWeight: 700,
+    justifyContent: 'space-between',
+    lineHeight: 1.2,
+    minHeight: 36,
+    padding: '7px 8px',
+    width: '100%',
   },
 }
 
+injectStyles()
 createRoot(document.getElementById('root')!).render(<PopupApp />)

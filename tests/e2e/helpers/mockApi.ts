@@ -23,6 +23,7 @@ export type ApiScenario =
 
 export interface MockApiController {
   setScenario: (scenario: ApiScenario) => void
+  setVodDelayMs: (delayMs: number) => void
   requests: () => Request[]
   pulseChannelRequestCount: () => number
   resetRequestLog: () => void
@@ -98,6 +99,7 @@ export async function installMockApi(
   initial: ApiScenario = 'live-ready',
 ): Promise<MockApiController> {
   let scenario: ApiScenario = initial
+  let vodDelayMs = 0
   const requestLog: Request[] = []
 
   const handler = async (route: Route) => {
@@ -146,7 +148,16 @@ export async function installMockApi(
     }
 
     if (/^\/v1\/extension\/pulse\/vods\/[^/]+$/.test(pathname)) {
-      await json(route, 200, readJson(files.vod))
+      if (vodDelayMs > 0) await new Promise(resolve => setTimeout(resolve, vodDelayMs))
+      const vod = readJson(files.vod)
+      const requestedStreamId = url.searchParams.get('streamId')?.trim()
+      // The bridge test models a backend response that confirms the same
+      // stream assertion instead of returning an unrelated archive identity.
+      if (requestedStreamId && vod && typeof vod === 'object' && !Array.isArray(vod)) {
+        await json(route, 200, { ...vod, streamId: requestedStreamId })
+      } else {
+        await json(route, 200, vod)
+      }
       return
     }
 
@@ -175,6 +186,9 @@ export async function installMockApi(
   return {
     setScenario(next) {
       scenario = next
+    },
+    setVodDelayMs(delayMs) {
+      vodDelayMs = Math.max(0, delayMs)
     },
     requests: () => [...requestLog],
     pulseChannelRequestCount: () =>

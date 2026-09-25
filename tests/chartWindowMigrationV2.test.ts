@@ -3,11 +3,11 @@ import {
   CHART_WINDOW_MIGRATION_KEYS,
   DEFAULT_DEFAULT_CHART_WINDOW,
   getDefaultChartWindow,
-  migrateDefaultChartWindowToRecentV2Once,
+  migrateDefaultChartWindowToFullV3Once,
   setDefaultChartWindow,
 } from '../src/shared/storage.ts'
 
-describe('chart window migration v2', () => {
+describe('chart window migration v3', () => {
   let syncStore: Record<string, unknown>
 
   beforeEach(() => {
@@ -40,66 +40,75 @@ describe('chart window migration v2', () => {
     vi.unstubAllGlobals()
   })
 
-  it('product default is 60m', () => {
-    expect(DEFAULT_DEFAULT_CHART_WINDOW).toBe('60m')
+  it('product default is Full stream', () => {
+    expect(DEFAULT_DEFAULT_CHART_WINDOW).toBe('full')
   })
 
-  it('migrates every pre-v2 value including Full to 60m once', async () => {
+  it.each([undefined, null, 'invalid', 60])('initializes missing or invalid range %s to Full stream', async value => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = value
+    await migrateDefaultChartWindowToFullV3Once()
+    expect(await getDefaultChartWindow()).toBe('full')
+    expect(syncStore[CHART_WINDOW_MIGRATION_KEYS.v3]).toBe(true)
+  })
+
+  it('marks migration complete without replacing subsequent choices', async () => {
     syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = 'full'
     syncStore[CHART_WINDOW_MIGRATION_KEYS.v1] = true
-    await migrateDefaultChartWindowToRecentV2Once()
-    expect(await getDefaultChartWindow()).toBe('60m')
-    expect(syncStore[CHART_WINDOW_MIGRATION_KEYS.v2]).toBe(true)
+    await migrateDefaultChartWindowToFullV3Once()
+    expect(await getDefaultChartWindow()).toBe('full')
+    expect(syncStore[CHART_WINDOW_MIGRATION_KEYS.v3]).toBe(true)
 
     syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '15m'
-    await migrateDefaultChartWindowToRecentV2Once()
+    await migrateDefaultChartWindowToFullV3Once()
     expect(await getDefaultChartWindow()).toBe('15m')
   })
 
   it.each(['15m', '30m', '60m', '2h', '4h', 'full'] as const)(
-    'migrates legacy chart value %s to 60m when v2 marker missing',
+    'preserves legacy chart value %s when v3 marker is missing',
     async value => {
       syncStore = { [CHART_WINDOW_MIGRATION_KEYS.value]: value }
-      await migrateDefaultChartWindowToRecentV2Once()
-      expect(await getDefaultChartWindow()).toBe('60m')
-      expect(syncStore[CHART_WINDOW_MIGRATION_KEYS.v2]).toBe(true)
+      await migrateDefaultChartWindowToFullV3Once()
+      expect(await getDefaultChartWindow()).toBe(value)
+      expect(syncStore[CHART_WINDOW_MIGRATION_KEYS.v3]).toBe(true)
     },
   )
 
-  it('treats missing v2 marker as needing migration', async () => {
+  it('treats missing v3 marker as needing migration', async () => {
     syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = 'full'
-    delete syncStore[CHART_WINDOW_MIGRATION_KEYS.v2]
-    await migrateDefaultChartWindowToRecentV2Once()
-    expect(await getDefaultChartWindow()).toBe('60m')
-  })
-
-  it('treats malformed v2 marker as needing migration', async () => {
-    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '2h'
-    syncStore[CHART_WINDOW_MIGRATION_KEYS.v2] = 'yes'
-    await migrateDefaultChartWindowToRecentV2Once()
-    expect(await getDefaultChartWindow()).toBe('60m')
-  })
-
-  it('treats false v2 marker as needing migration', async () => {
-    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '4h'
-    syncStore[CHART_WINDOW_MIGRATION_KEYS.v2] = false
-    await migrateDefaultChartWindowToRecentV2Once()
-    expect(await getDefaultChartWindow()).toBe('60m')
-  })
-
-  it('is idempotent when v2 marker is already set', async () => {
-    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = 'full'
-    syncStore[CHART_WINDOW_MIGRATION_KEYS.v2] = true
-    await migrateDefaultChartWindowToRecentV2Once()
+    delete syncStore[CHART_WINDOW_MIGRATION_KEYS.v3]
+    await migrateDefaultChartWindowToFullV3Once()
     expect(await getDefaultChartWindow()).toBe('full')
   })
 
-  it('preserves an explicit Full selection after v2 via setDefaultChartWindow', async () => {
-    await migrateDefaultChartWindowToRecentV2Once()
+  it('preserves the range with a malformed migration marker', async () => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '2h'
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.v3] = 'yes'
+    await migrateDefaultChartWindowToFullV3Once()
+    expect(await getDefaultChartWindow()).toBe('2h')
+  })
+
+  it('preserves the range with a false migration marker', async () => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = '4h'
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.v3] = false
+    await migrateDefaultChartWindowToFullV3Once()
+    expect(await getDefaultChartWindow()).toBe('4h')
+  })
+
+  it('is idempotent when v3 marker is already set', async () => {
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.value] = 'full'
+    syncStore[CHART_WINDOW_MIGRATION_KEYS.v3] = true
+    await migrateDefaultChartWindowToFullV3Once()
+    expect(await getDefaultChartWindow()).toBe('full')
+  })
+
+  it('preserves an explicit range after v3 via setDefaultChartWindow', async () => {
+    await migrateDefaultChartWindowToFullV3Once()
+    expect(await getDefaultChartWindow()).toBe('full')
+    await setDefaultChartWindow('60m')
     expect(await getDefaultChartWindow()).toBe('60m')
     await setDefaultChartWindow('full')
     expect(await getDefaultChartWindow()).toBe('full')
-    await migrateDefaultChartWindowToRecentV2Once()
+    await migrateDefaultChartWindowToFullV3Once()
     expect(await getDefaultChartWindow()).toBe('full')
   })
 })

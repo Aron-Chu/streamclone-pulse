@@ -192,11 +192,21 @@ jobs:
       - name: Install and build store packages
         run: |
           set -euo pipefail
+          # Release artifacts must pass the real release-notes gate; the CI
+          # package probe is never allowed here.
+          if [[ -n "${STREAMPULSE_CI_PACKAGE_PROBE:-}" ]]; then
+            echo "::error::STREAMPULSE_CI_PACKAGE_PROBE must not be set when building release artifacts"
+            exit 1
+          fi
           npm ci
           npm run ensure:packages
           npm run package:cws
           npm run package:edge
           npm run package:firefox
+          if compgen -G '*-ci-probe-not-for-upload*' >/dev/null; then
+            echo "::error::CI probe artifacts are present; refusing to continue"
+            exit 1
+          fi
 
       - name: Collect digests and verification report
         id: digests

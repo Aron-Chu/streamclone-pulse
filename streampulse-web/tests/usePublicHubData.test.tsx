@@ -22,7 +22,8 @@ vi.mock('../src/lib/publicHub', async () => {
     fetchPublicHubBase: (
       signal?: AbortSignal,
       activityWindow?: import('../src/lib/publicHub').PublicHubActivityWindow,
-    ) => fetchPublicHubBase(signal, activityWindow),
+      projection?: import('../src/lib/publicHub').PublicHubProjection,
+    ) => fetchPublicHubBase(signal, activityWindow, projection),
     fetchPublicHubStatsFallback: (signal?: AbortSignal) => fetchPublicHubStatsFallback(signal),
     fetchPublicHub: (
       signal?: AbortSignal,
@@ -122,6 +123,17 @@ describe('usePublicHubData', () => {
     expect(fetchPublicHub).not.toHaveBeenCalled()
   })
 
+  it('keeps a projected Moments response out of the full-hub cache', async () => {
+    writePublicHubCache(getBackendUrl(), '30m', sampleHub(42))
+    fetchPublicHubBase.mockResolvedValue(hubResult(7))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'moments' }))
+    expect(result.current.data).toBeNull()
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(7))
+    expect(fetchPublicHubBase.mock.calls[0]?.[2]).toBe('moments')
+    expect(readPublicHubCache(getBackendUrl(), '30m')?.data.poolSize).toBe(42)
+    expect(readPublicHubCache(getBackendUrl(), '30m', 'moments')?.data.poolSize).toBe(7)
+  })
+
   it('replaces a legacy coarse long-window fallback with the canonical 30m feed', async () => {
     const longWindow = normalizePublicHub({
       generatedAt: '2026-06-30T12:00:00.000Z',
@@ -169,6 +181,98 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.activity.windowMinutes).toBe(1440)
     expect(result.current.data?.activity.servedWindowMinutes).toBe(30)
     expect(result.current.data?.activity.points.map((point) => point.chat)).toEqual([12, 18])
+  })
+
+  it.each(['server', 'timeout', 'unreachable'])('recovers a typed %s history failure with explicitly scoped live health', async (kind) => {
+    const recent = hubResult(500)
+    recent.data.activity.windowMinutes = 30
+    fetchPublicHubBase.mockRejectedValueOnce({ kind, status: 503, message: 'history unavailable' })
+      .mockResolvedValueOnce(recent)
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchPublicHubBase.mock.calls.map(call => call[1])).toEqual(['24h', '30m'])
+    expect(result.current.data?.poolSize).toBe(500)
+    expect(result.current.data?.activity).toMatchObject({
+      windowMinutes: 1440, requestedWindowMinutes: 1440, servedWindowMinutes: 30,
+      source: 'live_pool_fallback', state: 'degraded',
+    })
+    expect(result.current.hubEndpointOk).toBe(true)
+    expect(result.current.loadSource).toBe('full')
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    expect(readPublicHubCache(getBackendUrl(), '30m')).toBeNull()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.servedWindowMinutes).toBe(30)
+  })
+
+  it('uses totals only when both historical and recent reads fail without a prior snapshot', async () => {
+    fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(0))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+    expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
+    expect(result.current.loadSource).toBe('stats-fallback')
+    expect(result.current.hubEndpointOk).toBe(false)
+  })
+
+  it('preserves a prior measured snapshot when both window reads fail', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(42))
+    fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.error).toBe('unavailable'))
+    expect(result.current.data?.poolSize).toBe(42)
+    expect(result.current.hubEndpointOk).toBe(false)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+  })
+
+  it.each(['rate_limited', 'unauthorized', 'bad_request', 'aborted'])('never bypasses %s via a recovery request', async (kind) => {
+    fetchPublicHubBase.mockRejectedValue({ kind, status: 429, message: 'stop' })
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+  })
+
+  it.each(['invalid_json_response', 'invalid_hub_response'])('shows an error for %s instead of treating another window as healthy', async (code) => {
+    fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 200, code, message: 'Invalid hub response' })
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBe('Invalid hub response')
+    expect(result.current.hubEndpointOk).toBe(false)
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+  })
+
+  it('does not apply a late recovery result after switching ranges', async () => {
+    let resolveRecent!: (value: ReturnType<typeof hubResult>) => void
+    fetchPublicHubBase.mockRejectedValueOnce({ kind: 'server', status: 503, message: 'history unavailable' })
+      .mockImplementationOnce(() => new Promise(resolve => { resolveRecent = resolve }))
+      .mockResolvedValueOnce(hubResult(7))
+    const { result, rerender } = renderHook(
+      ({ range }: { range: PublicHubActivityWindow }) => usePublicHubData({ pollMs: 0, activityWindow: range }),
+      { initialProps: { range: '24h' as PublicHubActivityWindow } },
+    )
+    await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(2))
+    rerender({ range: '7d' })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(7))
+    await act(async () => { resolveRecent(hubResult(500)) })
+    expect(result.current.data?.poolSize).toBe(7)
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+  })
+
+  it('stops the range-loading skeleton after both reads fail and retains measured data', async () => {
+    fetchPublicHubBase.mockResolvedValueOnce(hubResult(42))
+      .mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
+    const { result, rerender } = renderHook(
+      ({ range }: { range: PublicHubActivityWindow }) => usePublicHubData({ pollMs: 0, activityWindow: range }),
+      { initialProps: { range: '24h' as PublicHubActivityWindow } },
+    )
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    rerender({ range: '7d' })
+    await waitFor(() => expect(result.current.error).toBe('unavailable'))
+    expect(result.current.data?.poolSize).toBe(42)
+    expect(result.current.refreshing).toBe(false)
+    expect(result.current.activityRefreshing).toBe(false)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
   })
 
   it('restarts an aborted initial load during StrictMode effect replay', async () => {
@@ -429,6 +533,7 @@ describe('usePublicHubData', () => {
     expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
     expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
     expect(fetchPublicHub).not.toHaveBeenCalled()
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
   })
 
   it('does not call stats fallback after a successful base hub fetch', async () => {
@@ -615,6 +720,24 @@ describe('usePublicHubData', () => {
         await Promise.resolve()
       })
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+    })
+
+    it('honors an initial Retry-After across refresh and visibility without fallback fan-out', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase.mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 75_000 })
+        .mockResolvedValue(hubResult(5))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0.5 }))
+      await act(async () => { await Promise.resolve() })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        result.current.refresh()
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+      expect(result.current.data?.poolSize).toBe(5)
     })
 
     it('floors short Retry-After at healthy cadence', async () => {

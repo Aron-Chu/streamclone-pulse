@@ -4,6 +4,7 @@ import {
   capNewKeysPerPoll,
   classifyMomentWindow,
   dedupeMomentsByLogin,
+  formatMomentDateTime,
   normalizeLiveWireMomentComparison,
   normalizeRatePct,
   partitionMomentWindow,
@@ -24,6 +25,21 @@ describe('resolveMomentAtMs', () => {
     expect(resolveMomentAtMs(Infinity)).toBeNull()
     expect(resolveMomentAtMs(0)).toBeNull()
     expect(resolveMomentAtMs(-5)).toBeNull()
+  })
+})
+
+describe('formatMomentDateTime', () => {
+  it('formats valid seconds and millisecond timestamps', () => {
+    expect(formatMomentDateTime(1_700_000_000)).toBe('2023-11-14T22:13:20.000Z')
+    expect(formatMomentDateTime(1_700_000_000_000)).toBe('2023-11-14T22:13:20.000Z')
+  })
+
+  it('fails closed for malformed and out-of-range timestamps', () => {
+    expect(formatMomentDateTime(undefined)).toBeUndefined()
+    expect(formatMomentDateTime(Number.NaN)).toBeUndefined()
+    expect(formatMomentDateTime(Infinity)).toBeUndefined()
+    expect(formatMomentDateTime(0)).toBeUndefined()
+    expect(formatMomentDateTime(Number.MAX_VALUE)).toBeUndefined()
   })
 })
 
@@ -124,6 +140,12 @@ describe('normalizeRatePct', () => {
 })
 
 describe('dedupeMomentsByLogin', () => {
+  it('preserves separate detections in newest-first order and caps anonymous rows', () => {
+    const items = [{ login: 'xqc', at: 30000 }, { login: 'xqc', at: 25000 }, { login: 'xqc', at: 1000 }]
+    expect(dedupeMomentsByLogin(items, 12, 10000)).toEqual([items[0], items[2]])
+    expect(dedupeMomentsByLogin([{}, {}, {}], 2, 10000)).toHaveLength(2)
+    expect(dedupeMomentsByLogin(items, 0, 10000)).toEqual([])
+  })
   it('drops a login within the window and honors cap', () => {
     const items = [
       { login: 'a', at: 1000 },
@@ -138,15 +160,6 @@ describe('dedupeMomentsByLogin', () => {
     const items = [
       { login: 'a', at: 1000 },
       { login: 'a', at: 1_000 + 20_000 }, // > 10s window -> kept
-    ]
-    const out = dedupeMomentsByLogin(items, 10, 10_000)
-    expect(out).toHaveLength(2)
-  })
-
-  it('keeps an older re-surge outside the window when moments are newest-first', () => {
-    const items = [
-      { login: 'a', at: 30_000 },
-      { login: 'a', at: 1_000 },
     ]
     const out = dedupeMomentsByLogin(items, 10, 10_000)
     expect(out).toHaveLength(2)

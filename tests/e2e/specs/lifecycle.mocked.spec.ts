@@ -119,6 +119,47 @@ test.describe('extension lifecycle', () => {
     assertNoUncaughtErrors(evidence)
   })
 
+  test('revisiting the same VOD while recap is loading keeps the request alive', async ({
+    extension,
+    prepare,
+    api,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+
+    api.setScenario('vod-ready')
+    api.setVodDelayMs(900)
+    await extension.serviceWorker.evaluate(() => {
+      void chrome.storage.local.set({
+        'sp.vodAnalyticsBridge.v1': {
+          vodId: '2806037629',
+          login: 'fixturechan',
+          streamId: 'stream-fixture-1',
+          savedAtMs: Date.now(),
+        },
+      })
+    })
+    await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
+
+    await expect
+      .poll(
+        async () => api.requests().filter(request => request.url().includes('/v1/extension/pulse/vods/')).length,
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThan(0)
+    expect(
+      api.requests().find(request => request.url().includes('/v1/extension/pulse/vods/'))?.url(),
+    ).toContain('streamId=stream-fixture-1')
+
+    // Twitch can emit another route-sync signal for the same VOD while the
+    // first recap request is still pending. This must not cancel that request.
+    await spaNavigate(extension.page, { kind: 'vod', vodId: '2806037629' }, 'vod')
+    await assertPulseShadowContains(extension.page, /Replay ready/i)
+    assertNoUncaughtErrors(evidence)
+  })
+
   test('exactly one Pulse host pair after repeated SPA hops', async ({
     extension,
     prepare,

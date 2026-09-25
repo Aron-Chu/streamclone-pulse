@@ -10,7 +10,7 @@ async function install(page: Parameters<typeof installHubUxMock>[0], mode: Explo
 }
 
 test.describe('Pulse Explorer routes', () => {
-  test('stays separate from the overview and opens from Live Wire without an overview request', async ({ page }) => {
+  test('stays separate from the overview and opens from top navigation without an overview request', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
     let explorerRequests = 0
     page.on('request', (request) => {
@@ -19,11 +19,8 @@ test.describe('Pulse Explorer routes', () => {
     await install(page)
     await page.goto('/analytics')
 
-    const activity = page.getByRole('region', { name: 'Global activity' })
-    const rail = activity.locator('.activity-context-rail')
-    await expect(rail.locator('.hub-live-wire--rail')).toBeVisible()
     expect(explorerRequests).toBe(0)
-    const link = rail.getByRole('link', { name: /Pulse Explorer/i })
+    const link = page.getByRole('link', { name: 'Pulse Explorer', exact: true })
     await expect(link).toHaveAttribute('href', '/analytics/explore')
     await link.click()
     await expect(page).toHaveURL(/\/analytics\/explore$/)
@@ -32,7 +29,7 @@ test.describe('Pulse Explorer routes', () => {
     await assertNoConsoleErrors(page, errors)
   })
 
-  test('defaults to 24h strongest and presents the desktop broadcast workspace', async ({ page }) => {
+  test('defaults to live strongest and presents the desktop broadcast workspace', async ({ page }) => {
     const requested: URL[] = []
     page.on('request', (request) => {
       if (/\/v1\/public\/explorer\?/.test(request.url())) requested.push(new URL(request.url()))
@@ -44,7 +41,7 @@ test.describe('Pulse Explorer routes', () => {
     await expect(page.getByRole('heading', { name: 'Qualified moments' })).toBeVisible()
     await expect(page.getByText('Network context')).toBeVisible()
     await expect.poll(() => requested.length).toBeGreaterThan(0)
-    expect(requested[0].searchParams.get('window')).toBe('24h')
+    expect(requested[0].searchParams.get('window')).toBe('live')
     expect(requested[0].searchParams.get('sort')).toBe('strongest')
 
     const presentation = await page.evaluate(() => {
@@ -163,7 +160,7 @@ test.describe('Pulse Explorer routes', () => {
     })
   }
 
-  test('filters and search are canonical URL state, while old Newsroom links redirect intact', async ({ page }) => {
+  test('filters and search are canonical URL state, while old Newsroom links keep the Explorer workflow', async ({ page }) => {
     const requested: URL[] = []
     page.on('request', (request) => {
       if (/\/v1\/public\/explorer\?/.test(request.url())) requested.push(new URL(request.url()))
@@ -178,7 +175,9 @@ test.describe('Pulse Explorer routes', () => {
     await expect(page).toHaveURL(/q=xqc/)
     await expect.poll(() => requested.some((url) => url.searchParams.get('q') === 'xqc' && url.searchParams.get('sort') === 'moments')).toBe(true)
 
-    await page.goto('/analytics/newsroom/pulse-xqc-session-1?window=7d&sort=recent#evidence')
-    await expect(page).toHaveURL('/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent#evidence')
+    await page.goto('/analytics/newsroom?window=live&signal=chat#evidence')
+    await expect(page).toHaveURL('/analytics/explore?window=live&signal=chat#evidence')
+    await page.goto('/analytics/newsroom/pulse-xqc-session-1?window=live&signal=chat#evidence')
+    await expect(page).toHaveURL('/analytics/explore/pulse-xqc-session-1?window=live&signal=chat#evidence')
   })
 })

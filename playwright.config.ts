@@ -5,7 +5,9 @@ import { defineConfig } from '@playwright/test'
  * Default project is fully mocked (PR gate). Live Twitch is a separate tagged project.
  *
  * Timing notes:
- * - globalTimeout 5m caps hung Chromium/SW from consuming the full CI job budget.
+ * - globalTimeout 15m caps hung Chromium/SW well inside the 40m CI extension job.
+ *   The mocked suite is 25 specs / ~117 tests: ~5m locally, slower headed under xvfb,
+ *   plus one CI retry for failures; the old 5m cap left 60 tests unrun.
  * - per-test timeout 60s matches current suite (extension launch + SPA hops).
  * - expect timeout 20s covers Pulse root mount against mocked BFF.
  * Do not raise these without documenting a new timing requirement.
@@ -16,7 +18,7 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  globalTimeout: 5 * 60 * 1000,
+  globalTimeout: 15 * 60 * 1000,
   timeout: 60_000,
   expect: { timeout: 20_000 },
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report/extension' }]],

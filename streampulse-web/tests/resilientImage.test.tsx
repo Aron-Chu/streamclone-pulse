@@ -32,4 +32,20 @@ describe('ResilientImage', () => {
       'https://example.test/new.png',
     )
   })
+
+  it('tries the fallback source before the fallback content', () => {
+    render(<ResilientImage src="https://example.test/small.png" fallbackSrc="https://example.test/original.png" fallback={<span>SC</span>} alt="Streamer" />)
+
+    fireEvent.error(screen.getByRole('img', { name: 'Streamer' }))
+    expect(screen.getByRole('img', { name: 'Streamer' }).getAttribute('src')).toBe('https://example.test/original.png')
+
+    fireEvent.error(screen.getByRole('img', { name: 'Streamer' }))
+    expect(screen.getByText('SC')).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
+  })
+
+  it('uses the fallback source when the primary source is absent', () => {
+    render(<ResilientImage fallbackSrc="https://example.test/original.png" fallback={<span>SC</span>} alt="Streamer" />)
+    expect(screen.getByRole('img', { name: 'Streamer' }).getAttribute('src')).toBe('https://example.test/original.png')
+  })
 })

@@ -60,7 +60,7 @@ function oneOf<T extends string>(value: string | null, values: readonly T[], fal
 
 function queryFromParams(params: URLSearchParams): ExplorerQuery {
   return {
-    window: oneOf(params.get('window'), ['live', '24h', '7d'] as const, '24h'),
+    window: oneOf(params.get('window'), ['live', '24h', '7d'] as const, 'live'),
     signal: oneOf(params.get('signal'), ['all', 'chat', 'emotes', 'mixed'] as const, 'all'),
     category: params.get('category')?.trim() || undefined,
     state: oneOf(params.get('state'), ['all', 'live', 'ended'] as const, 'all'),
@@ -71,7 +71,7 @@ function queryFromParams(params: URLSearchParams): ExplorerQuery {
 
 function paramsFromQuery(query: ExplorerQuery): URLSearchParams {
   const params = new URLSearchParams()
-  if (query.window !== '24h') params.set('window', query.window)
+  if (query.window !== 'live') params.set('window', query.window)
   if (query.signal !== 'all') params.set('signal', query.signal)
   if (query.category) params.set('category', query.category)
   if (query.state !== 'all') params.set('state', query.state)
@@ -301,7 +301,13 @@ function BroadcastInspector({
         <span><small>Strongest</small><strong>{broadcast.strongestScore}</strong></span>
         <span><small>Verified moments</small><strong>{broadcast.momentCount}</strong></span>
         <span><small>Latest activity</small><strong>{formatRelativeTime(broadcast.lastActivityAt)}</strong></span>
-        <span><small>Coverage</small><strong>{Math.round(broadcast.strongestMoment.evidence.baselineCoveragePct)}%</strong></span>
+        <span>
+          <small>Baseline coverage</small>
+          <strong>{Math.round(broadcast.strongestMoment.evidence.baselineCoveragePct)}%</strong>
+          <small className="explorer-inspector__summary-detail">
+            {broadcast.strongestMoment.evidence.baselineMeasuredMinutes}/{broadcast.strongestMoment.evidence.baselineExpectedMinutes} min measured
+          </small>
+        </span>
       </div>
       <BroadcastActions broadcast={broadcast} query={query} />
       {unavailable ? (

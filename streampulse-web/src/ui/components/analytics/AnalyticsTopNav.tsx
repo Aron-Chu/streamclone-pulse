@@ -1,4 +1,6 @@
-import { Link, NavLink } from 'react-router-dom'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Menu } from 'lucide-react'
 import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
 
@@ -26,6 +28,35 @@ export function AnalyticsTopNav({
   status,
   navigationLabel = 'Analytics navigation',
 }: AnalyticsTopNavProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
+  const location = useLocation()
+
+  useEffect(() => {
+    setIsOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (panelRef.current) panelRef.current.inert = !isOpen
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setIsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true)
+  }, [isOpen])
+
+  const closeMenu = (restoreFocus = false) => {
+    setIsOpen(false)
+    if (restoreFocus) triggerRef.current?.focus()
+  }
+
   return (
     <header className="analytics-topnav" data-analytics-build="command-center-cws-2026-07-22">
       <a href="#analytics-main" className="analytics-topnav__skip">
@@ -48,6 +79,31 @@ export function AnalyticsTopNav({
               {item.label}
             </NavLink>
           ))}
+          <div className="analytics-topnav__more" ref={menuRef} onKeyDown={event => {
+            if (event.key === 'Escape' && isOpen) {
+              event.preventDefault()
+              event.stopPropagation()
+              closeMenu(true)
+            }
+          }} onBlur={event => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeMenu()
+          }}>
+            <button ref={triggerRef} type="button" className="analytics-topnav__more-trigger" aria-label="Support and account" aria-expanded={isOpen} aria-controls={panelId} title="Support and account" onClick={() => setIsOpen(value => !value)}>
+              <Menu size={18} aria-hidden="true" />
+            </button>
+            <div ref={panelRef} id={panelId} className="analytics-topnav__more-links" data-state={isOpen ? 'open' : 'closed'} aria-hidden={!isOpen}>
+              <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
+              <Link to="/support" onClick={() => closeMenu()}>Support</Link>
+              <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
+              <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
+              <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>
+              <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
+              <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
+              <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
+              <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
+              <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
+            </div>
+          </div>
         </nav>
       ) : null}
 

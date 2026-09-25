@@ -83,10 +83,11 @@ describe('hubChartActivityModel', () => {
   })
 
   it('keeps healthy 24h projection and degraded 30m fallback on separate domains', () => {
+    const baseTime = Date.UTC(2026, 7, 1)
     const healthyHub = normalizePublicHub({
       activity: {
         points: Array.from({ length: 60 }, (_, i) => ({
-          t: i * 60_000,
+          t: baseTime + i * 60_000,
           chat: 20 + i,
           seventv: 2,
           viewers: 100 + i,
@@ -104,7 +105,7 @@ describe('hubChartActivityModel', () => {
     const degradedHub = normalizePublicHub({
       activity: {
         points: Array.from({ length: 30 }, (_, i) => ({
-          t: i * 60_000,
+          t: baseTime + i * 60_000,
           chat: 20 + i,
           seventv: 2,
           viewers: 100 + i,

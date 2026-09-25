@@ -104,7 +104,9 @@ describe('viewer static inspection layers', () => {
       />,
     )
 
-    expect(markup).toContain('>927<')
+    // The 900 spike exists only in the full-resolution detail rows; the label
+    // reports that measured peak rather than the padded axis bound.
+    expect(markup).toContain('>900<')
   })
 })
 

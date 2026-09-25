@@ -33,9 +33,12 @@ function toneFromPayload(payload: PublicStatusPayload): {
   degraded: boolean
 } {
   const status = typeof payload.status === 'string' ? payload.status : null
-  const degraded = payload.degraded === true || (status != null && status !== 'operational')
+  const normalized = status?.trim().toLowerCase() ?? ''
+  const operational = ['operational', 'up', 'ok', 'healthy'].includes(normalized)
+  const explicitlyUnavailable = ['down', 'offline', 'failed', 'unavailable'].includes(normalized)
+  const degraded = payload.degraded === true || (!operational && !explicitlyUnavailable)
   return {
-    tone: degraded ? 'degraded' : 'ready',
+    tone: explicitlyUnavailable ? 'offline' : degraded ? 'degraded' : 'ready',
     status,
     degraded,
   }

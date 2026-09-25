@@ -48,7 +48,7 @@
 }
 .dash-side-brand .env {
   margin-left: auto;
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: hsl(var(--sc-muted-foreground));
   border: 1px solid hsl(var(--sc-border));
@@ -63,7 +63,7 @@
   margin-bottom: 0.9rem;
 }
 .dash-side-group .lbl {
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: hsl(var(--sc-muted-foreground));
@@ -101,7 +101,7 @@
 }
 .dash-side-link .count {
   margin-left: auto;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: hsl(var(--sc-muted-foreground));
   background: hsl(var(--sc-muted));
   border-radius: 9999px;
@@ -139,7 +139,7 @@
   display: block;
   font-weight: 400;
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.68rem;
+  font-size: 0.75rem;
 }
 
 /* -------------------------------------------------------------- main */
@@ -187,7 +187,7 @@
   border: 1px solid transparent;
   background: hsl(var(--sc-secondary));
   padding: 0.12rem 0.55rem;
-  font-size: 0.71rem;
+  font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -233,7 +233,7 @@
   border-radius: 9999px;
   border: 1px solid hsl(var(--sc-border));
   padding: 0.12rem 0.55rem;
-  font-size: 0.71rem;
+  font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -393,7 +393,7 @@
 }
 .dash-sum .sub {
   padding: 0.15rem 1.1rem 1.05rem;
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   color: hsl(var(--sc-muted-foreground));
 }
 
@@ -437,7 +437,7 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.2rem 1rem 0;
-  font-size: 0.74rem;
+  font-size: 0.75rem;
 }
 .dash-kpi .delta {
   font-weight: 600;
@@ -520,9 +520,39 @@
   background: transparent;
   cursor: pointer;
   font-family: inherit;
+  min-height: 44px;
+}
+
+.dash-tabs button:focus-visible,
+.dash-tbl th.sortable button:focus-visible,
+.dash-pagination button:focus-visible {
+  outline: 2px solid hsl(var(--sc-primary));
+  outline-offset: 2px;
+}
+
+.dash-tbl th.sortable button,
+.dash-pagination button {
+  min-height: 44px;
+}
+
+.dash-tbl th.sortable button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dash-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem 1.1rem;
 }
 .dash-tabs button .n {
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   background: hsl(var(--sc-background) / 0.6);
   border-radius: 9999px;
   padding: 0 0.35rem;
@@ -540,7 +570,7 @@
 .dash-tbl thead th {
   text-align: left;
   padding: 0.55rem 0.7rem;
-  font-size: 0.69rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: hsl(var(--sc-muted-foreground));
   border-bottom: 1px solid hsl(var(--sc-border));
@@ -585,7 +615,7 @@
   display: grid;
   place-items: center;
   font-weight: 800;
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   flex-shrink: 0;
   color: hsl(240 5.9% 10%);
 }
@@ -596,7 +626,7 @@
 }
 .dash-tbl .ch small {
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.69rem;
+  font-size: 0.75rem;
   display: block;
   max-width: 17ch;
   overflow: hidden;
@@ -622,7 +652,7 @@
   border-radius: 9999px;
   border: 1px solid hsl(var(--sc-border));
   padding: 0.12rem 0.5rem;
-  font-size: 0.71rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 .dash-stbadge .dot {
@@ -692,7 +722,7 @@
   display: grid;
   place-items: center;
   font-weight: 800;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: hsl(240 5.9% 10%);
   flex-shrink: 0;
 }
@@ -702,7 +732,7 @@
 }
 .dash-chan small {
   margin-left: auto;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: hsl(var(--sc-muted-foreground));
 }
 .dash-mover {
@@ -717,7 +747,7 @@
 }
 .dash-mover .rk {
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   width: 1rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -730,7 +760,7 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   font-weight: 800;
   color: hsl(240 6% 10%);
 }
@@ -759,7 +789,7 @@
   background: linear-gradient(135deg, hsl(var(--sc-chart-2)), hsl(var(--sc-chart-1)));
   display: grid;
   place-items: center;
-  font-size: 0.56rem;
+  font-size: 0.75rem;
   font-weight: 800;
   color: hsl(240 6% 10%);
   flex-shrink: 0;
@@ -793,7 +823,7 @@
   border: 1px solid hsl(var(--sc-border));
   border-radius: 999px;
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.55rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -896,7 +926,7 @@
 }
 .dash-donut .ring .lbl small {
   display: block;
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   color: hsl(var(--sc-muted-foreground));
 }
 .dash-donut .leg {
@@ -936,7 +966,7 @@
   background: hsl(var(--sc-secondary));
   display: grid;
   place-items: center;
-  font-size: 0.55rem;
+  font-size: 0.75rem;
   font-weight: 800;
   flex-shrink: 0;
 }
@@ -988,7 +1018,7 @@
   font-weight: 600;
 }
 .dash-feed .ev .body .tm {
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: hsl(var(--sc-muted-foreground));
   margin-top: 0.1rem;
   font-variant-numeric: tabular-nums;
@@ -1014,7 +1044,7 @@
   border: 1px solid hsl(var(--sc-border));
   border-radius: 999px;
   background: hsl(var(--sc-muted) / 0.45);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   color: hsl(var(--sc-foreground));
 }
 .dash-feed__emote img {

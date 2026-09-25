@@ -6,18 +6,9 @@ import {
   enrichRecapMomentsFromHeatmap,
   momentRankAccent,
   momentReasonChipTone,
-  momentScoreTone,
   MOMENTS_INITIAL_VISIBLE,
   MOMENTS_MAX_VISIBLE,
 } from '@streampulse/analytics-console/utils/momentListDisplay'
-
-describe('momentScoreTone', () => {
-  it('maps score tiers to emerald, cyan, and amber', () => {
-    expect(momentScoreTone(85).text).toContain('emerald')
-    expect(momentScoreTone(65).text).toContain('cyan')
-    expect(momentScoreTone(40).text).toContain('amber')
-  })
-})
 
 describe('momentRankAccent', () => {
   it('gives distinct accents for top three ranks', () => {

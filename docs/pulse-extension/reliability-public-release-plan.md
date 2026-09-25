@@ -27,7 +27,7 @@ Companion ledgers: [`tasks.md`](./tasks.md) (`RPR-*`), [`requirements.md`](./req
 ## Locked product decisions
 
 1. **Chart range migration v2 (R14 landed):** Existing chart preferences (including `Full`) migrate once to `60m` under a v2 marker. A user who selects `Full` after v2 keeps it.
-2. **Full history fetch (R14 landed):** Only after explicit user action (“Load full history”). Recurring polling always uses recent windows.
+2. **Full history fetch (R14 landed):** After recent data establishes a stable stream/VOD activation, issue at most one activation-scoped full-history request; expose explicit retry after failure. Recurring polling always uses recent windows, and missing coverage remains honest.
 3. **Polling ownership (R14 landed):** Content scripts own tab-scoped polling. Service worker brokers, caches, and coalesces (`pulseGetCoordinator`). Do **not** add `chrome.alarms` unless no-tab durable polling becomes an explicit requirement.
 4. **Twitch hosts:** Preserve the two Twitch hosts. Remote master already routes `sidebarPart="tabs"` to lightweight `OverlayTabsShell`; do not recreate obsolete dual-effect-controller fixes.
 5. **Consent (R15 / RPR-3–5):** Extension diagnostics and product analytics have separate versioned, **default-off** consent. No durable install/session identifier. Portal Sentry (when `VITE_SENTRY_DSN` is set) is a separate, existing website path — not extension consent. Code may exist while hosted routes remain **activation pending** and must not be claimed as active.

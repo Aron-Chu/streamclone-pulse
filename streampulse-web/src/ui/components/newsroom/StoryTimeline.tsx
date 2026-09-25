@@ -1,6 +1,6 @@
 import { Clock3 } from 'lucide-react'
 import type { LiveWireMetricComparison } from '../../../lib/liveWire'
-import type { NewsroomSignal, NewsroomUpdate } from '../../../lib/newsroom'
+import { newsroomReasonCopy, type NewsroomSignal, type NewsroomUpdate } from '../../../lib/newsroom'
 import { compact } from '../analytics/hubFormat'
 
 export interface StoryTimelineProps {
@@ -16,7 +16,7 @@ function updateLabel(update: NewsroomUpdate): string {
 
 function metricContext(metric: LiveWireMetricComparison): string {
   if (metric.state === 'new_activity') return 'New activity · 0/min earlier'
-  if (metric.state !== 'ready') return metric.reason || 'Comparison unavailable'
+  if (metric.state !== 'ready') return newsroomReasonCopy(metric.reason) || 'Comparison unavailable'
   if (metric.multiplier != null) {
     return `${metric.multiplier.toFixed(metric.multiplier >= 10 ? 0 : 1)}× earlier`
   }

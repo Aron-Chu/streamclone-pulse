@@ -23,7 +23,7 @@ describe('recapMomentMetrics', () => {
     expect(metrics).toEqual({ chatCount: 42, emoteCount: 15, viewerCount: 9000 })
   })
 
-  it('falls back to rollup and peak data by offset', () => {
+  it('uses canonical rollup bucket metrics when rollup is present', () => {
     const metrics = resolveRecapMomentMetrics(
       { offsetSeconds: 300, score: 34, reasons: ['viewer_spike'] },
       [
@@ -32,9 +32,31 @@ describe('recapMomentMetrics', () => {
       ],
       [{ offsetSeconds: 300, score: 34, reasons: ['viewer_spike'], dominantSignal: 'viewers', chatCount: 99, emoteCount: 20 }],
     )
+    expect(metrics.chatCount).toBe(88)
+    expect(metrics.emoteCount).toBe(12)
+    expect(metrics.viewerCount).toBe(53600)
+  })
+
+  it('falls back to peak data when rollup is missing', () => {
+    const metrics = resolveRecapMomentMetrics(
+      { offsetSeconds: 300, score: 34, reasons: ['viewer_spike'] },
+      [],
+      [{ offsetSeconds: 300, score: 34, reasons: ['viewer_spike'], dominantSignal: 'viewers', chatCount: 99, emoteCount: 20 }],
+    )
     expect(metrics.chatCount).toBe(99)
     expect(metrics.emoteCount).toBe(20)
-    expect(metrics.viewerCount).toBe(53600)
+  })
+
+  it('ensures recap metrics agree with chart bucket instead of independently maximizing', () => {
+    const rollup = { offsetSeconds: 5160, chatCount: 689, totalEmoteCount: 617, viewerCount: 24433 }
+    const metrics = resolveRecapMomentMetrics(
+      { offsetSeconds: 5160, score: 100, reasons: ['emote_spike'], chatCount: 895, emoteCount: 769 },
+      [rollup],
+      [{ offsetSeconds: 5220, score: 100, chatCount: 895, emoteCount: 769, reasons: ['emote_spike'] }],
+    )
+    expect(metrics.chatCount).toBe(689)
+    expect(metrics.emoteCount).toBe(617)
+    expect(metrics.viewerCount).toBe(24433)
   })
 
   it('merges rollup chat and emotes when moment only has viewerCount', () => {

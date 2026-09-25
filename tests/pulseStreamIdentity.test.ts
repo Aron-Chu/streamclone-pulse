@@ -26,4 +26,26 @@ describe('content stream identity acceptance', () => {
     const next = payload('stream-b')
     expect(applyOverlayPayloadUpdate(payload('stream-a'), next, { allowStreamChange: true })).toBe(next)
   })
+
+  it('keeps the activation full source when a recent poll follows it', () => {
+    const previous = payload('stream-a')
+    previous.fullRollups = [
+      { offsetSeconds: 0, chatCount: 3, sevenTvEmoteCount: 1 },
+      { offsetSeconds: 60, chatCount: 9, sevenTvEmoteCount: 4 },
+    ]
+    const incoming = {
+      ...payload('stream-a'),
+      currentOffsetSeconds: 180,
+      rollups: [{ offsetSeconds: 180, chatCount: 15, sevenTvEmoteCount: 6 }],
+    }
+
+    const merged = applyOverlayPayloadUpdate(previous, incoming)
+
+    expect(merged?.currentOffsetSeconds).toBe(180)
+    expect(merged?.fullRollups).toEqual(previous.fullRollups)
+    expect(merged?.rollups).toEqual([
+      ...previous.rollups,
+      ...incoming.rollups,
+    ])
+  })
 })

@@ -1,4 +1,4 @@
-import { apiClient, getBackendUrl } from './momentsApiClient'
+import { apiClient, getBackendUrl } from './apiClient'
 import { isPlausibleTwitchLogin, normalizeTwitchLogin } from './normalizeTwitchLogin'
 
 const MAX_PROFILES = 20
@@ -68,19 +68,9 @@ export function newsroomProfileUrl(value: unknown): string | undefined {
   try {
     const url = new URL(value)
     return url.origin === 'https://static-cdn.jtvnw.net'
-      && (url.pathname.startsWith('/jtv_user_pictures/') || url.pathname.startsWith('/user-default-pictures'))
-      && !url.username && !url.password
+      && url.pathname.startsWith('/jtv_user_pictures/') && !url.username && !url.password
       && !url.search && !url.hash ? url.href : undefined
   } catch { return undefined }
-}
-
-export function getCachedNewsroomProfile(login: string): string | undefined {
-  const norm = normalizeTwitchLogin(login)
-  if (!norm) return undefined
-  const key = `${getBackendUrl()}|${norm}`
-  const cached = cache.get(key)
-  if (cached && cached.expires > Date.now()) return cached.url
-  return undefined
 }
 
 export async function loadNewsroomProfiles(

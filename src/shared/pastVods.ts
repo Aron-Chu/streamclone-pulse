@@ -58,10 +58,11 @@ export function resolvePastVodAnalyticsStatus(
   streamId: string,
   analyticsStreams: AnalyticsStreamListItem[] | undefined,
   liveStreamId?: string | null,
+  isLive = true,
 ): PastVodAnalyticsStatus {
   const stream = analyticsStreams?.find(item => item.streamId === streamId)
   if (!stream) return 'unknown'
-  if (liveStreamId && stream.streamId === liveStreamId) return 'current-live'
+  if (isLive && liveStreamId && stream.streamId === liveStreamId.trim()) return 'current-live'
   if ((stream.viewerSamples ?? 0) > 0 || (stream.chatMessages ?? 0) > 0) return 'synced'
   return 'stats-only'
 }
@@ -138,6 +139,8 @@ export function mergePastVodRows(
   const analyticsById = new Map((analytics ?? []).map(item => [item.streamId, item]))
   const seen = new Set<string>()
   const rows: PastVodRow[] = []
+  const isLive = Boolean(options?.isLive)
+  const activeLiveStreamId = isLive ? options?.liveStreamId?.trim() || undefined : undefined
 
   for (const item of history ?? []) {
     if (!item.id) continue
@@ -153,7 +156,7 @@ export function mergePastVodRows(
       durationMinutes: item.durationMinutes ?? durationMinutesFromAnalytics(analyticsItem ?? { streamId: item.id }),
       avgViewers: item.avgViewers ?? analyticsItem?.avgViewers,
       peakViewers: item.peakViewers ?? analyticsItem?.peakViewers,
-      analyticsStatus: resolvePastVodAnalyticsStatus(item.id, analytics, options?.liveStreamId),
+      analyticsStatus: resolvePastVodAnalyticsStatus(item.id, analytics, activeLiveStreamId, isLive),
     })
   }
 
@@ -169,15 +172,14 @@ export function mergePastVodRows(
       durationMinutes: durationMinutesFromAnalytics(item),
       avgViewers: item.avgViewers,
       peakViewers: item.peakViewers,
-      analyticsStatus: resolvePastVodAnalyticsStatus(item.streamId, analytics, options?.liveStreamId),
+      analyticsStatus: resolvePastVodAnalyticsStatus(item.streamId, analytics, activeLiveStreamId, isLive),
     })
   }
 
   const sorted = sortByStartedAtDesc(rows)
-  const liveStreamId = options?.isLive ? options.liveStreamId?.trim() : undefined
-  if (!liveStreamId) return sorted
+  if (!activeLiveStreamId) return sorted
 
-  const liveIdx = sorted.findIndex(row => row.streamId === liveStreamId)
+  const liveIdx = sorted.findIndex(row => row.streamId === activeLiveStreamId)
   if (liveIdx < 0) return sorted
 
   const liveRow: PastVodRow = {
@@ -187,5 +189,5 @@ export function mergePastVodRows(
   if (liveIdx === 0) {
     return [liveRow, ...sorted.slice(1)]
   }
-  return [liveRow, ...sorted.filter(row => row.streamId !== liveStreamId)]
+  return [liveRow, ...sorted.filter(row => row.streamId !== activeLiveStreamId)]
 }

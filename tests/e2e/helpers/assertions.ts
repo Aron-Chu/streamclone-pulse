@@ -16,6 +16,8 @@ export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting'] as const
 export const EXPECTED_HOST_PERMISSIONS = [
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
+  'https://cdn.betterttv.net/*',
+  'https://cdn.streampulse.stream/*',
   'https://static-cdn.jtvnw.net/*',
   'https://cdn.frankerfacez.com/*',
   'https://*.twitch.tv/*',
@@ -231,8 +233,7 @@ export async function clickFullStreamChip(page: Page): Promise<void> {
     const host = document.getElementById(rootId)
     const root = host?.shadowRoot
     if (!root) return false
-    const buttons = [...root.querySelectorAll('button')]
-    const chip = buttons.find(btn => (btn.textContent ?? '').trim() === 'Full stream')
+    const chip = root.querySelector<HTMLButtonElement>('[data-testid="show-full-stream"]')
     if (!chip) return false
     chip.click()
     return true
