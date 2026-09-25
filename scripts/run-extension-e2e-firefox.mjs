@@ -89,21 +89,22 @@ try {
   const hostname = await extensionHostname(driver)
   if (!hostname) throw new Error(`Could not resolve moz-extension hostname for ${ADDON_ID}`)
 
-  await driver.get(`moz-extension://${hostname}/options/index.html`)
+  // The settings host opens on My Moments; each settings section is addressed by
+  // its hash (see src/options/SettingsHostShell.tsx).
+  const waitForText = (expected, label) => driver.wait(async () => {
+    const text = await driver.executeScript(`return document.body?.textContent || ''`)
+    return expected.every(item => text.includes(item))
+  }, timeoutMs, `Firefox shared settings host did not finish rendering ${label}`)
+
+  await driver.get(`moz-extension://${hostname}/options/index.html#pulse`)
   await driver.wait(until.titleIs(EXPECTED_TITLE), timeoutMs)
   await driver.wait(until.elementLocated(By.css('[data-settings-workspace="true"]')), timeoutMs)
-  await driver.wait(until.elementLocated(By.css('[data-settings-section="general"]')), timeoutMs)
-  await driver.wait(until.elementLocated(By.css('[data-settings-section="about"]')), timeoutMs)
-  const expectedOptionsText = [
-    'StreamPulse settings',
-    'General',
-    'Changelog & About',
-    'Updates are managed by this browser',
-  ]
-  await driver.wait(async () => {
-    const text = await driver.executeScript(`return document.body?.textContent || ''`)
-    return expectedOptionsText.every(expected => text.includes(expected))
-  }, timeoutMs, 'Firefox shared settings host did not finish rendering expected copy')
+  await driver.wait(until.elementLocated(By.css('[data-settings-section="pulse"]')), timeoutMs)
+  await waitForText(['StreamPulse', 'Extension settings', 'Pulse on Twitch'], 'the Pulse on Twitch section')
+
+  await driver.get(`moz-extension://${hostname}/options/index.html#updates`)
+  await driver.wait(until.elementLocated(By.css('[data-settings-section="updates"]')), timeoutMs)
+  await waitForText(['Updates & Changelog', 'Updates are managed by this browser'], 'the Updates & Changelog section')
   const updateButtons = await driver.findElements(By.xpath("//button[contains(normalize-space(.), 'Check now')]"))
   if (updateButtons.length !== 0) {
     throw new Error('Firefox must not render a manual update-check button')
