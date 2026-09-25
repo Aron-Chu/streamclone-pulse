@@ -58,6 +58,7 @@ async function renderWith(
     link: () => host.querySelector<HTMLAnchorElement>('a[data-supporter-action="billing"]'),
     resolve: (response: EntitlementResponse) => resolveResponse?.(response),
     hrefs: () => [...host.querySelectorAll('a')].map(anchor => anchor.getAttribute('href') ?? ''),
+    buttons: () => [...host.querySelectorAll('button')].map(button => button.textContent ?? ''),
     cleanup: () => {
       act(() => root.unmount())
       host.remove()
@@ -73,7 +74,7 @@ describe('supporter offer', () => {
     try {
       expect(view.text()).toContain('Not a Supporter yet')
       // One honest offer: price, cadence, cancellation and what you get.
-      expect(view.text()).toContain('$4.99 / month')
+      expect(view.text()).toContain('US$4.99 / month')
       expect(view.text()).toContain('Monthly, until you cancel')
       expect(view.text()).toContain('access runs to the end of the paid month')
       expect(view.text()).toContain('Taxes, if any, are shown before you pay')
@@ -211,7 +212,59 @@ describe('supporter offer', () => {
     try {
       expect(view.text()).toContain('Could not reach StreamPulse')
       expect(view.text()).not.toContain('Supporter active')
-      expect(view.link()?.textContent).toContain('Become a Supporter')
+      // An unknown status is not an offer: no purchase or billing link, only a re-read.
+      expect(view.link()).toBeNull()
+      expect(view.text()).not.toContain('Become a Supporter')
+      expect(view.buttons()).toEqual(['Check again'])
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  // UI-1: the purchase link appears only when the server says there is no
+  // current membership. Every other state either manages an existing one or
+  // cannot know, and must not send anyone to buy.
+  it.each<[string, SupporterEntitlement, string | null, string[]]>([
+    ['ready none', { state: 'ready', status: 'none', supportPeriods: 0, features: [] }, 'https://streampulse.stream/supporter', ['Refresh status']],
+    ['ready expired', { state: 'ready', status: 'expired', supportPeriods: 1, features: [] }, 'https://streampulse.stream/account/billing', ['Refresh status']],
+    ['not linked', { state: 'not_linked' }, null, []],
+    ['not deployed', { state: 'unavailable', reason: 'not_deployed' }, null, ['Check again']],
+    // Also what a linked installation reports while its credential renewal waits.
+    ['temporarily unavailable', { state: 'unavailable', reason: 'temporarily_unavailable' }, null, ['Check again']],
+    ['environment mismatch', { state: 'unavailable', reason: 'environment_mismatch' }, null, ['Check again']],
+    ['error', { state: 'error' }, null, ['Check again']],
+  ])('gates the offer link for %s', async (_, entitlement, href, buttons) => {
+    const view = await renderWith(entitlement)
+    try {
+      expect(view.link()?.href ?? null).toBe(href)
+      expect(view.buttons()).toEqual(buttons)
+      if (entitlement.state === 'ready' && entitlement.status === 'none') {
+        expect(view.link()?.textContent).toContain('Become a Supporter')
+      } else {
+        expect(view.text()).not.toContain('Become a Supporter')
+      }
+      if (entitlement.state !== 'ready') {
+        expect(view.text()).not.toContain('US$4.99 / month')
+        expect(view.hrefs()).not.toContain('https://streampulse.stream/supporter')
+        expect(view.hrefs()).not.toContain('https://streampulse.stream/account/billing')
+      }
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it('re-reads status from the Check again action', async () => {
+    const view = await renderWith({ state: 'unavailable', reason: 'temporarily_unavailable' })
+    try {
+      view.sendMessage.mockResolvedValueOnce({
+        type: 'SUPPORTER_ENTITLEMENT',
+        entitlement: { state: 'ready', status: 'active', supportPeriods: 1, features: ['supporter.banner.v1'] },
+      })
+      await act(async () => view.host.querySelector<HTMLButtonElement>('button')!.click())
+      expect(view.sendMessage).toHaveBeenCalledTimes(2)
+      expect(view.text()).toContain('Supporter active')
+      expect(view.link()?.textContent).toContain('Manage your membership')
+      expect(view.buttons()).toEqual(['Refresh status'])
     } finally {
       view.cleanup()
     }

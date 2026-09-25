@@ -59,6 +59,10 @@ export function AccountConnection() {
     return () => { requestId.current++; inFlight.current = false; storage?.removeListener(changed) }
   }, [request])
   const unrenewedLink = account?.state === 'unavailable' && account.linked === true
+  // Linking is not deployed on this server, so offering "Link extension" would
+  // only repeat the same failure. Show the explanation alone; reopening settings
+  // checks again.
+  const linkingNotDeployed = account?.state === 'unavailable' && account.reason === 'not_deployed' && !account.linked
   useEffect(() => {
     if (account?.state !== 'pending' || busy) return
     const timer = window.setTimeout(() => {
@@ -76,12 +80,12 @@ export function AccountConnection() {
               : <p>{account.state === 'error' && account.revocationPending ? 'Account access is stopped on this extension. Server revocation is pending; retry disconnect when connected.' : descriptions[account.state]}</p>}
       {notice ? <p>{notice}</p> : null}
     </div>
-    <div className="pulse-account-link-actions">
+    {linkingNotDeployed ? null : <div className="pulse-account-link-actions">
       {account?.state === 'pending' ? <><a href={productLink('linkDevice', portalOrigin)} target="_blank" rel="noopener noreferrer">Open account page</a><button type="button" disabled={busy} onClick={() => void request('cancel')}>Cancel connection</button></>
         : account?.state === 'linked' || unrenewedLink ? <button type="button" disabled={busy} onClick={() => void request('disconnect')}>Disconnect extension</button>
           : account?.state === 'error' && account.revocationPending ? <button type="button" disabled={busy} onClick={() => void request('disconnect')}>Retry disconnect</button>
           : account ? <button type="button" disabled={busy} onClick={() => void request('start')}>{busy ? 'Connecting…' : 'Link extension'}</button> : null}
       {account?.state === 'error' || unrenewedLink ? <button type="button" disabled={busy} onClick={() => void request('status')}>Check connection</button> : null}
-    </div>
+    </div>}
   </PulseSectionCard>
 }

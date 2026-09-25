@@ -183,17 +183,17 @@ test.describe('packaged supporter offer', () => {
       const action = page.locator('a[data-supporter-action="billing"]')
       if (status === 'active' || status === 'grace') {
         await expect(action).toHaveText(/Manage your membership/)
-        await expect(page.getByText('$4.99 / month')).toHaveCount(0)
+        await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
       } else if (status === 'none') {
         await expect(action).toHaveText(/Become a Supporter/)
-        await expect(page.getByText('$4.99 / month')).toBeVisible()
+        await expect(page.getByText('US$4.99 / month')).toBeVisible()
       } else {
         const label = status === 'pending' ? 'Check payment status on streampulse.stream'
           : status === 'review' ? 'Review membership on streampulse.stream'
             : 'Review your membership on streampulse.stream'
         await expect(action).toHaveText(label)
-        if (status === 'expired') await expect(page.getByText('$4.99 / month')).toBeVisible()
-        else await expect(page.getByText('$4.99 / month')).toHaveCount(0)
+        if (status === 'expired') await expect(page.getByText('US$4.99 / month')).toBeVisible()
+        else await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
       }
       await expect(action).toHaveAttribute('href', `https://streampulse.stream${status === 'none' ? '/supporter' : '/account/billing'}`)
       for (const policy of ['/privacy', '/terms', '/refunds']) {
@@ -228,11 +228,40 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByText('free tools are unaffected')).toBeVisible()
     // Never claim membership when the server could not answer.
     await expect(page.getByText('Supporter active')).toHaveCount(0)
+    // An unknown status is not an offer (UI-1): no purchase or billing link, only a re-read.
+    await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
+    await expect(page.getByText('Become a Supporter')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
     await page.screenshot({
       path: join(CAPTURE_DIR, 'supporter-unavailable.png'),
       animations: 'disabled',
       fullPage: true,
     })
+  })
+
+  test('a billing service that is not deployed offers no purchase link', async ({ extension, prepare }) => {
+    await prepare({ scenario: 'live-ready' })
+    await linkDevice(extension)
+    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route =>
+      route.fulfill({ status: 404, json: { error: 'not_found' } }))
+
+    const page = extension.page
+    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+    await expect(page.getByText('Supporter is not available on the server yet.', { exact: false })).toBeVisible()
+    await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
+    await expect(page.getByText('Become a Supporter')).toHaveCount(0)
+    await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
+  })
+
+  test('an unlinked install offers no purchase link', async ({ extension, prepare }) => {
+    await prepare({ scenario: 'live-ready' })
+    const page = extension.page
+    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+    await expect(page.getByText('Connect this extension to your Pulse account above to see Supporter status.', { exact: true })).toBeVisible()
+    await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
+    await expect(page.getByText('Become a Supporter')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Link extension', exact: true })).toBeVisible()
   })
 
   test('a remotely revoked device clears the connection and can link again', async ({ extension, prepare }) => {
