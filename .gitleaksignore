@@ -1,0 +1,37 @@
+# Reviewed gitleaks false positives (one fingerprint per line: commit:file:rule:line).
+# docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json maps tracked file paths to
+# their SHA-256 content hashes. Paths such as src/background/api.ts and src/lib/sentry.ts
+# make generic-api-key and sentry-access-token match the hashes. All 32 lines were checked
+# to be "path": "<64 hex>" entries (2026-09-24).
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1012
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1043
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1044
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1105
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1108
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1110
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1234
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1317
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1339
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1374
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1383
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1392
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:1415
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:239
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:240
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:283
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:416
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:431
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:487
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:503
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:504
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:552
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:634
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:645
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:65
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:712
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:714
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:762
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:772
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:generic-api-key:783
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:1269
+bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json:sentry-access-token:787
