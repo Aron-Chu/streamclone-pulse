@@ -19,9 +19,14 @@ test('popup hub motion is loaded and respects reduced motion', async ({ extensio
   await expect(hub).toHaveCSS('outline-style', 'solid')
   // Chromium rounds outline widths to device pixels on scaled displays.
   expect(await hub.evaluate(element => parseFloat(getComputedStyle(element).outlineWidth))).toBeGreaterThanOrEqual(1.5)
+  // Measure once the entrance animation settles (mid-slide heights come out as
+  // 43.99998px). The sheen pseudo-element is clipped decoration that still counts
+  // toward the button's scrollWidth, so text fit is checked on the label itself.
+  await hub.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
   const box = await hub.boundingBox()
-  expect(box!.height).toBeGreaterThanOrEqual(44)
-  expect(await hub.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  expect(Math.round(box!.height)).toBeGreaterThanOrEqual(44)
+  const label = hub.locator('span').first()
+  expect(await label.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 
   await page.emulateMedia({ reducedMotion: 'reduce' })
