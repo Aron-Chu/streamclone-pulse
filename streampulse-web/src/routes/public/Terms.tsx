@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, PUBLIC_SUPPORT_URL, REFUNDS_PATH, SUPPORTER_PATH } from '../../lib/externalLinks'
+import { PrelaunchNotice } from './PrelaunchNotice'
 
 /**
  * Terms of use for the portal, the Chrome extension and the Supporter
@@ -23,19 +24,22 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: September 11, 2026 · Applies to{' '}
+            Last updated: September 25, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             Chrome extension, and the Pulse Supporter subscription.
           </p>
         </header>
 
+        <PrelaunchNotice />
+
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an
-            optional $4.99/month subscription that funds development and adds cosmetics — it does not
-            unlock analytics. You can cancel at any time and keep access until the end of the month
-            you paid for. The service is provided as-is, with no uptime guarantee.
+            optional subscription of US$4.99 per month that funds development and adds cosmetics — it
+            does not unlock analytics. Paid sign-ups are not open yet. Once they are, you will be able
+            to cancel at any time and keep access until the end of the period you paid for. The
+            service is provided as-is, with no uptime guarantee.
           </p>
         </section>
 
@@ -87,25 +91,27 @@ export default function Terms() {
 
         <h2>Pulse Supporter</h2>
         <p>
-          Supporter is optional. Full details are on the{' '}
-          <Link to={SUPPORTER_PATH}>Supporter page</Link>; the terms of the offer are:
+          Supporter is optional, and paid sign-ups are not open yet. Full details are on the{' '}
+          <Link to={SUPPORTER_PATH}>Supporter page</Link>. Once sign-ups open, the terms of the offer
+          are:
         </p>
         <ul>
           <li>
-            <strong>Price:</strong> $4.99 per month. Stripe checkout shows the final total,
-            including any tax it calculates, before you pay.
+            <strong>Price:</strong> US$4.99 per month, charged in US dollars. Taxes are handled as
+            stated at checkout, and Stripe checkout shows the total before you pay.
           </li>
           <li><strong>Renewal:</strong> it renews automatically each month until you cancel.</li>
           <li>
-            <strong>Cancellation:</strong> you can cancel at any time. Cancelling stops future
-            charges and keeps your access until the end of the month you already paid for.
+            <strong>Cancellation:</strong> you can cancel at any time in the Stripe Customer Portal,
+            reachable from account billing. Cancelling stops future charges and takes effect at the
+            end of the period you already paid for; your access continues until then.
           </li>
           <li>
             <strong>What you get:</strong> a private Pulse header accent, three private overlay
             finishes, and private support recognition. Nothing else is promised.
           </li>
           <li>
-            <strong>What you do not get:</strong> no public Twitch chat badge (designed, not shipped),
+            <strong>What you do not get:</strong> no public Twitch chat badge — it is not included —
             and no analytics, coverage or rate-limit changes of any kind.
           </li>
         </ul>
@@ -116,27 +122,48 @@ export default function Terms() {
           extension claims.
         </p>
         <p>
-          If a payment fails, Supporter features stay active for a short grace period while the
-          payment is retried, then lapse. Lapsing never deletes your saved settings or free features.
+          While Stripe finalizes a renewal, your membership may show as active for up to 72 hours
+          after the paid period ends. If a renewal payment fails, Supporter features stay active for
+          a 7-day grace period, counted from the end of the last paid period, while the payment is
+          retried. If it is still unpaid after those 7 days, the features lapse. Lapsing never
+          deletes your saved settings or free features.
         </p>
         <p>
-          Cancellation and refunds are covered in the{' '}
+          A full refund, or a payment dispute that reverses the charge, ends Supporter access for the
+          period that charge paid for. A partial refund keeps that access. While a dispute is open,
+          access is suspended until it is resolved. Cancellation and refunds are covered in the{' '}
           <Link to={REFUNDS_PATH}>cancellation and refund policy</Link>.
         </p>
 
+        {/* PENDING OWNER INPUT (audit LG-1, memo L-1): the selling entity, its legal
+            address, the governing law and the statutory rights are facts only the owner
+            can supply, with a legal professional. Never fill them in from anywhere else.
+            They must be stated here before paid sign-ups open. */}
         <h2>Selling entity and applicable law</h2>
         <p>
-          Paid sign-ups are not open. No sale is offered through this site today, and the Supporter
-          page says so. The selling entity, the governing law and any consumer-specific cancellation
-          rights that apply to you will be stated on this page before paid sign-ups open. Nothing on
-          this page limits rights you have under consumer law that cannot be waived.
+          Paid sign-ups are not open, and no sale is offered through this site today. The following
+          will be stated on this page before paid sign-ups open:
         </p>
+        <dl
+          className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-[14rem_minmax(0,1fr)]"
+          data-testid="terms-pending-owner-input"
+        >
+          <dt className="text-sm font-bold text-zinc-400">Selling entity</dt>
+          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
+          <dt className="text-sm font-bold text-zinc-400">Legal address</dt>
+          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
+          <dt className="text-sm font-bold text-zinc-400">Governing law</dt>
+          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
+          <dt className="text-sm font-bold text-zinc-400">Consumer cancellation rights</dt>
+          <dd className="m-0 text-sm text-zinc-200">Pending — not yet stated.</dd>
+        </dl>
+        <p>Nothing on this page limits rights you have under consumer law that cannot be waived.</p>
 
         <h2>Price and term changes</h2>
         <p>
-          If the Supporter price changes, existing members will be notified by email before the change
-          takes effect and will be able to cancel before being charged the new amount. A price change
-          is never applied retroactively to a month you already paid for.
+          If the Supporter price changes after sign-ups open, members will be notified by email before
+          the change takes effect and will be able to cancel before being charged the new amount. A
+          price change is never applied retroactively to a month already paid for.
         </p>
 
         <h2>Availability</h2>
@@ -157,9 +184,8 @@ export default function Terms() {
           or stop visiting the site. Uninstalling removes that installation's browser storage.
         </p>
         <p>
-          Access may be suspended or ended for the conduct listed under "Using the service", or where
-          required by law or by a payment provider. Where a paid membership is ended for something
-          other than your own conduct, the unused part of the paid month is refunded.
+          If StreamPulse ends a Supporter membership, the current month is refunded in full and
+          Supporter access ends. Your account, saved settings and free features are not affected.
         </p>
 
         <h2>Liability</h2>
@@ -178,6 +204,9 @@ export default function Terms() {
         </p>
 
         <h2>Contact</h2>
+        {/* MERGE GATE (memo T1-6): before this page is published, the owner confirms
+            that this mailbox is monitored for billing email, who answers it and the
+            response time. If it is not monitored, replace the address everywhere. */}
         <p data-testid="terms-contact">
           Billing, account and legal questions:{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Product

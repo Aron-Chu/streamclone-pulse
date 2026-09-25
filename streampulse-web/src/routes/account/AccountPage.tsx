@@ -19,6 +19,8 @@ export default function AccountPage() {
   </section></PublicLayout>
 }
 
+const PILOT_SIGN_IN_NOTE = 'During the private pilot, sign-in emails are sent only to invited testers. If you’re not on the list, you won’t receive an email.'
+
 function SignIn() {
   const returnTo = accountBillingReturnFromSearch(useLocation().search)
   const [email, setEmail] = useState('')
@@ -36,9 +38,11 @@ function SignIn() {
     catch (error) { setError(accountErrorText(error)) }
     finally { setBusy(false) }
   }
+  // The pilot notice is the same static text for every address, before and after
+  // sending, so it never reveals whether a given address is on the tester list.
   return <><p className="pulse-account-kicker">StreamPulse account</p><h1>Sign in to Pulse</h1>
-    {sent ? <div role="status"><h2>Check your email</h2><p>Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p><button onClick={() => setSent(false)}>Use another email</button></div>
-      : <form onSubmit={submit}><p>We’ll email you a link. No password needed.</p><label htmlFor="account-email">Email address</label>
+    {sent ? <div role="status"><h2>Check your email</h2><p>Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p><p data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><button onClick={() => setSent(false)}>Use another email</button></div>
+      : <form onSubmit={submit}><p>We’ll email you a link. No password needed.</p><p data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><label htmlFor="account-email">Email address</label>
         <input id="account-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
         <button className="pulse-account-primary" disabled={busy}>{busy ? 'Sending…' : 'Send sign-in link'}</button>
         {/* The policy has to be reachable where the address is actually asked
