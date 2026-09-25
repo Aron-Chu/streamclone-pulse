@@ -35,3 +35,8 @@ docs/pulse-extension/cws-screenshots/
 
 # Ad-hoc command logs written at the repo root (archive under .artifacts/)
 /*.log
+# Local agent plans and nested worktrees. They can hold private operator notes
+# and copies of other branches; never publish them from this public repo.
+/.claude/plans/
+/.claude/worktrees/
+/.worktrees/

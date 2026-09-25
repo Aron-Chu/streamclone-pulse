@@ -99,6 +99,10 @@ jobs:
         run: bash scripts/ci-context-contract.sh
 
       - name: Public topology scan
+        env:
+          # Exact private deny-list, supplied by ops. Absent on fork PRs; the
+          # scan then runs its generic value-free rules and says so.
+          STREAMPULSE_PRIVATE_TOPOLOGY_PATTERN: ${{ secrets.STREAMPULSE_PRIVATE_TOPOLOGY_PATTERN }}
         run: bash scripts/ci-public-topology-scan.sh
 
       # actions/upload-artifact@v4 — classification only (tiny)
