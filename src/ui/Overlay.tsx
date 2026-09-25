@@ -16,7 +16,7 @@ import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
-import { supporterFinish } from './supporterFinish.ts'
+import { useSupporterAppearance } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
@@ -1955,34 +1955,7 @@ function StreamPulseHeader({
   onHide: () => void
 }) {
   const headerStyle = sidebarFill ? streamPulseHeaderChromeSidebar : streamPulseHeaderChrome
-  const [finish, setFinish] = useState<keyof typeof supporterFinish | null>(null)
-  useEffect(() => {
-    let alive = true
-    let running = false
-    let expiry: number | undefined
-    const refresh = async () => {
-      if (running) return
-      running = true
-      window.clearTimeout(expiry)
-      setFinish(null)
-      const started = performance.now()
-      try {
-        const result = await sendBackgroundMessage({ type: 'SUPPORTER_APPEARANCE' })
-        if (alive && result && 'type' in result && result.type === 'SUPPORTER_APPEARANCE') {
-          const remaining = Math.min(60_000, result.validForMs) - (performance.now() - started)
-          if (Number.isFinite(remaining) && remaining > 0) {
-            setFinish(result.finish)
-            expiry = window.setTimeout(() => setFinish(null), remaining)
-          }
-        }
-      } catch { /* Unverified appearance stays inactive. */ }
-      finally { running = false }
-    }
-    void refresh()
-    const timer = window.setInterval(refresh, 60_000)
-    window.addEventListener('focus', refresh)
-    return () => { alive = false; window.clearTimeout(expiry); window.clearInterval(timer); window.removeEventListener('focus', refresh) }
-  }, [])
+  const finish = useSupporterAppearance()
   const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
   const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
   const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton
