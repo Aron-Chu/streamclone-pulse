@@ -34,6 +34,7 @@ import {
 } from './stage-extension-attribution.mjs'
 import { textContainsHostedApiOrigin } from './lib/hosted-api-origin.mjs'
 import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
+import { evaluateReleaseNotesGate, resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -307,8 +308,8 @@ function validateDistContents(store, target) {
   return packable
 }
 
-async function validateZipBytes(target, packable, version) {
-  const names = targetArtifactNames(target, version)
+async function validateZipBytes(target, packable, version, releaseGate) {
+  const names = targetArtifactNames(target, version, { ciProbe: releaseGate.ciProbe })
   const zipPath = join(root, names.zipName)
   const checksumPath = join(root, names.checksumName)
   const store = isStoreTarget(target)
@@ -418,7 +419,9 @@ async function validateZipBytes(target, packable, version) {
     zipName: names.zipName,
     version,
     validatedAt: new Date().toISOString(),
-    note: 'not uploaded',
+    uploadable: releaseGate.uploadable,
+    ...(releaseGate.ciProbe ? { ciPackageProbe: true } : {}),
+    note: releaseGate.ciProbe ? 'CI package probe — NOT FOR UPLOAD' : 'not uploaded',
   }
   writeFileSync(join(root, names.reportName), JSON.stringify(report, null, 2))
   ok(`wrote validation report ${names.reportName}`)
@@ -430,48 +433,43 @@ async function validateZipBytes(target, packable, version) {
  * both "Installed" and "Unreleased" on the same entry, which is fine locally but
  * is a factual error in a published listing. Fail closed rather than masking the
  * badge in the UI, so the manifest and the notes are reconciled before upload.
+ * Only the CI package probe (scripts/lib/release-notes-gate.mjs) may continue
+ * past an unreleased entry, and its artifacts are marked not uploadable.
  */
-function validateReleaseNotes(manifest, target) {
+function validateReleaseNotes(manifest, target, ciProbe) {
+  const notReady = { uploadable: false, ciProbe }
   const notesPath = join(root, 'src/shared/release-notes.json')
   if (!existsSync(notesPath)) {
     fail('src/shared/release-notes.json missing — the in-product changelog cannot be verified')
-    return
+    return notReady
   }
   let notes
   try {
     notes = JSON.parse(readFileSync(notesPath, 'utf8'))
   } catch (err) {
     fail(`src/shared/release-notes.json is not valid JSON: ${err.message}`)
-    return
+    return notReady
   }
 
-  if (notes.currentVersion !== manifest.version) {
-    fail(`release-notes currentVersion=${JSON.stringify(notes.currentVersion)} != manifest version ${JSON.stringify(manifest.version)}`)
-  } else {
-    ok(`REQUIRED: release-notes currentVersion matches manifest ${manifest.version}`)
-  }
-
-  const entry = (notes.releases ?? []).find((release) => release.version === manifest.version)
-  if (!entry) {
-    fail(`release-notes has no entry for packaged version ${manifest.version}`)
-    return
-  }
-
-  if (isStoreTarget(target)) {
-    if (entry.status === 'unreleased') {
-      fail(`store target ${target}: release-notes entry ${manifest.version} is still status="unreleased" — set it to "released" with a releasedAt date before upload`)
-    } else if (!entry.releasedAt) {
-      fail(`store target ${target}: release-notes entry ${manifest.version} has status="${entry.status}" but no releasedAt date`)
-    } else {
-      ok(`REQUIRED: release-notes entry ${manifest.version} is publishable (status=${entry.status})`)
-    }
-  } else {
-    note(`release-notes entry ${manifest.version} status=${entry.status} (development target does not require a publishable status)`)
-  }
+  const gate = evaluateReleaseNotesGate({
+    notes,
+    version: manifest.version,
+    storeTarget: isStoreTarget(target),
+    probe: ciProbe,
+  })
+  for (const message of gate.oks) ok(`REQUIRED: ${message}`)
+  for (const message of gate.notices) note(message)
+  for (const message of gate.failures) fail(`${target}: ${message}`)
+  return { uploadable: gate.uploadable, ciProbe }
 }
 
 async function main() {
   const target = parseTargetArg()
+  const ciProbe = resolveCiPackageProbe()
+  if (ciProbe.error) {
+    fail(ciProbe.error)
+    process.exit(1)
+  }
   if (!existsSync(join(dist, 'manifest.json'))) {
     fail('dist/manifest.json missing — run npm run build / package:* first')
     process.exit(process.exitCode ?? 1)
@@ -491,7 +489,7 @@ async function main() {
   }
 
   validateManifest(manifest, target)
-  validateReleaseNotes(manifest, target)
+  const releaseGate = validateReleaseNotes(manifest, target, ciProbe.enabled)
 
   // Attribution is mandatory — stage if a local dist was built without zip-dist,
   // then require exact byte match to repo LICENSE / NOTICE / packages/NOTICE.
@@ -509,7 +507,7 @@ async function main() {
       fail(`REQUIRED: packable set missing attribution file ${required}`)
     }
   }
-  await validateZipBytes(target, packable, manifest.version)
+  await validateZipBytes(target, packable, manifest.version, releaseGate)
 
   const rpr6 = findSiblingFileDependencies()
   if (rpr6.length) {

@@ -36,9 +36,24 @@ Do **not** upload until RPR-9.
 Working-tree source version is **0.2.1** (selected-minute clarity / viewer honesty / complete
 settings track). Manifests, `package.json`, and `src/shared/release-notes.json`
 all read `0.2.1`. The public Chrome Web Store listing also reported **0.2.1**
-on 2026-09-24 (updated 2026-09-01), so these newer working-tree changes cannot
-be submitted under that same version. Select a higher version only after the
-publisher dashboard version is confirmed and a new candidate is accepted.
+on 2026-09-24 (its "Updated" date read as 2026-08-31 or 2026-09-01 in separate
+checks; only the publisher dashboard is authoritative), so these newer
+working-tree changes cannot be submitted under that same version.
+
+**The source revision of the published Store 0.2.1 is unverified.** On
+2026-09-24 no commit, tag, or branch in this repository set version 0.2.1 (the
+last tag is `v0.1.3`, `origin/master` reads `0.1.3`, and the local branch head
+reads `0.2.0`), and no attested 0.2.x artifact exists. The local
+`streampulse-extension-cws-0.2.1.zip` was built on 2026-09-21 from a dirty
+working tree (its embedded build id ends in `-dirty-…`), after the listing
+update, and its size (314,509 bytes) does not match the listing's reported
+269 KiB, so it is not evidence of what the Store serves. Do not describe any
+commit or ZIP as the published 0.2.1 unless the publisher dashboard package is
+matched to it.
+
+Do not bump the version yet. Select a higher version (for example `0.2.2`) only
+after the publisher dashboard version and the candidate scope are both
+confirmed and a new candidate is accepted.
 The default chart range is **Full stream**
 (`DEFAULT_DEFAULT_CHART_WINDOW = 'full'`, migration key
 `defaultChartWindowMigratedToFullV3`). The earlier `60m` default and its
@@ -90,6 +105,17 @@ artifact attestations are the cryptographic provenance for final ZIPs.
 - `file:` dependencies outside this repository (store targets; RPR-6 package-distribution acceptance covers clean-clone + tarball consumers)
 - Remote executable code / unapproved archive entries
 - Local origins (`localhost`, `127.0.0.1`, any port) in **store** packages
+- A release-notes entry for the packaged version that is not marked released with a
+  `releasedAt` date. `package:cws` / `package:edge` / `package:firefox` check this
+  before building, so a rejected run leaves `dist/` and earlier ZIPs untouched.
+
+CI proves store targets still build and validate on branches whose notes are
+unreleased through the **CI package probe** (`STREAMPULSE_CI_PACKAGE_PROBE=1`,
+set only on the CI workflow's store-packaging step). It is refused outside
+GitHub Actions, outside `.github/workflows/ci.yml`, and on tag refs. Its ZIPs are
+named `*-ci-probe-not-for-upload.zip` and their validation reports say
+`"uploadable": false`; they are never store candidates. `Release artifacts`
+refuses the probe and fails if any probe artifact is present.
 
 Portal production scanning must reject `localhost` and `127.0.0.1` on **every** port
 (including 8081) in shipped JS/HTML.
@@ -114,6 +140,7 @@ the mocked Playwright suite and must be reviewed before they are committed.
 - [ ] `npm test`, `npm run typecheck`, `npm run build`, mocked Playwright as applicable
 - [ ] Remote CI green on that SHA (jobs actually executed)
 - [ ] `npm run package:cws` (or `validate:package:cws`) for the store target; no localhost
+- [ ] `src/shared/release-notes.json` marks the new version released with `releasedAt`; no `*-ci-probe-not-for-upload` ZIP is ever a candidate
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
 - [ ] Every portal route linked by the extension returns the intended live page (including `/supporter`, account, policy, and changelog routes)
 - [ ] Owner confirms the publisher-dashboard version and Support URL, selects a higher version than the published release, then authorizes upload

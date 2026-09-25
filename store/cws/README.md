@@ -26,7 +26,13 @@ Canonical process docs:
 **Owner dashboard gates (open):**
 
 - Confirm the live CWS version in the publisher dashboard. The public listing
-  reported `0.1.1` on 2026-09-20; that observation is not dashboard evidence.
+  reported `0.1.1` on 2026-09-20 and **`0.2.1`** on 2026-09-24; neither
+  observation is dashboard evidence.
+- The source revision of the published `0.2.1` is **unverified**: no commit or
+  tag in this repository sets 0.2.1, no attested 0.2.x artifact exists, and the
+  local `streampulse-extension-cws-0.2.1.zip` (built 2026-09-21 from a dirty
+  tree) is not evidence of the published package. See
+  [`docs/pulse-extension/release.md`](../../docs/pulse-extension/release.md).
 - Change and confirm the CWS **Support URL** field as
   `https://streampulse.stream/support/`. The public listing was observed linking
   Support to Twitch on 2026-09-20, but the public scrape is not authoritative
@@ -155,9 +161,12 @@ npm run validate:package
 ```
 
 Extension source manifests are **0.2.1**. This is a source target, not an
-accepted or uploaded candidate. Owner must confirm the publisher-dashboard
-version is behind 0.2.1 and the Support URL is
-`https://streampulse.stream/support/` before upload. Stop before upload.
+accepted or uploaded candidate, and it cannot be uploaded as-is: the public
+listing already reported `0.2.1` on 2026-09-24, and the published package's
+source revision is unverified. Owner must confirm the publisher-dashboard
+version, confirm the next candidate's scope, choose a higher version, and set
+the Support URL to `https://streampulse.stream/support/` before upload. Stop
+before upload.
 
 Do not upload ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`.
 

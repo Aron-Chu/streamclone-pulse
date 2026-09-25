@@ -12,13 +12,19 @@ Last updated: 2026-09-24 UTC (v0.2.1 source target and Moments readiness recheck
 
 Website install CTAs use `streampulse-web/src/lib/publicSiteConfig.ts` only.
 **Manual account gate (open):** confirm the publisher-dashboard version (the
-public listing reported `0.1.1` on 2026-09-20) and change the dashboard Support
-URL to `https://streampulse.stream/support/` before any 0.2.1 upload. The public
-listing was observed linking Support to Twitch on that date. Public-page and
-source checks are not publisher-dashboard evidence; this repository does not
-claim the configured field has changed.
+public listing reported `0.1.1` on 2026-09-20 and `0.2.1` on 2026-09-24) and
+change the dashboard Support URL to `https://streampulse.stream/support/` before
+any new upload. The public listing was observed linking Support to Twitch on
+both dates. Public-page and source checks are not publisher-dashboard evidence;
+this repository does not claim the configured field has changed.
 
-## v0.2.1 source target (not published)
+**Published 0.2.1 source revision: unverified.** No commit or tag in this
+repository sets 0.2.1 and no attested 0.2.x artifact exists, so no commit or
+local ZIP may be described as the published package. The next upload needs a
+higher version, chosen only after the dashboard version and candidate scope are
+confirmed.
+
+## v0.2.1 working-tree source target (not the published package)
 
 The `0.1.3` reliability candidate was never uploaded; its records remain
 historical provenance and are not rewritten.
@@ -42,7 +48,7 @@ portal GA, Cloudflare Access apply, soak completion, capacity raise, or marketin
 | Public site + analytics | **SOURCE GREEN / LIVE RECHECK OPEN** | Source tests cover Command Center, CWS CTA, Privacy, Support, robots, and sitemap. A current hosted route smoke must be recorded separately. |
 | `moments-readiness` | **BLOCKED** | Local mocked browser checks pass, but the real-data gate has no approved reconciliation manifest, hosted ranked volume is 404, and discovery activity is 503. Do not interpret an unavailable History or Explore panel as a quiet day. |
 | Portal GA | **HOLD** | CSP/HSTS/CWV + Access + soak remain |
-| Extension / Chrome Web Store | **LIVE LISTING / v0.2.1 HOLD** | An older listing is public; the pending source manifests are `0.2.1`, but no 0.2.1 candidate acceptance or upload is claimed. Owner must verify the publisher-dashboard version and Support URL. |
+| Extension / Chrome Web Store | **LIVE LISTING / v0.2.1 HOLD** | The public listing reported `0.2.1` on 2026-09-24, but that package's source revision is unverified. The working-tree manifests also read `0.2.1`; no candidate acceptance or upload is claimed, and the next candidate needs a higher version. Owner must verify the publisher-dashboard version and Support URL. |
 | Marketing / creator blast | **NO-GO** | HOLD_AT_300 + Access + soak first |
 | Collector capacity | **HOLD_AT_300 / NO_GO_350** | Unchanged |
 

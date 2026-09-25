@@ -55,7 +55,8 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] Every route linked by the extension returns the intended live portal page, including supporter, account, policy, and changelog routes
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
-- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (working-tree manifests are `0.2.1`, and the public listing reported `0.2.1` on 2026-09-24; verify the dashboard before choosing a new version)
+- [ ] Owner authorizes upload; version exceeds confirmed dashboard version (working-tree manifests are `0.2.1`, and the public listing reported `0.2.1` on 2026-09-24; verify the dashboard and the candidate scope before choosing a new version)
+- [ ] Published `0.2.1` source revision is **unverified** (no commit or tag sets 0.2.1; no attested 0.2.x artifact). Do not present any commit or local ZIP as that package
 - [ ] Support URL / dashboard state rechecked by owner (do not claim dashboard changes from this checklist)
 - [ ] Real unpacked-extension Twitch smoke recorded for the release SHA (mocked Playwright is not live evidence)
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`

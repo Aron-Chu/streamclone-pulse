@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
 const outDir = join(root, '.artifacts')
 const outPath = join(outDir, 'extension-build-provenance.json')
 const targetPath = join(dist, 'extension-target.json')
-const buildInputs = [
+export const buildInputs = [
   'src',
   'public',
   'manifest.json',
@@ -28,15 +29,16 @@ const buildInputs = [
   'scripts/archive-byte-scan.mjs',
   'scripts/validate-extension-package.mjs',
   'scripts/extension-package-lib.mjs',
+  'scripts/lib/release-notes-gate.mjs',
   'scripts/extension-permission-allowlists.mjs',
   'scripts/remote-code-scan.mjs',
   'scripts/zip-byte-validate.mjs',
   'scripts/write-extension-build-provenance.mjs',
 ]
 
-function buildInputState() {
+export function buildInputState(inputRoot = root) {
   const status = spawnSync('git', ['status', '--porcelain=v1', '--untracked-files=all', '--', ...buildInputs], {
-    cwd: root,
+    cwd: inputRoot,
     encoding: 'utf8',
   })
   if (status.status !== 0) {
@@ -55,7 +57,7 @@ function buildInputState() {
     '--',
     ...buildInputs,
   ], {
-    cwd: root,
+    cwd: inputRoot,
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
   })
@@ -66,7 +68,7 @@ function buildInputState() {
     digest.update(relativePath)
     digest.update('\0')
     try {
-      digest.update(readFileSync(join(root, relativePath)))
+      digest.update(readFileSync(join(inputRoot, relativePath)))
     } catch {
       // A file may disappear between discovery and the read; the git state
       // remains captured above for this provenance record.
@@ -80,7 +82,7 @@ function buildInputState() {
   }
 }
 
-function builtExtensionId() {
+function builtExtensionId(inputState, packageBuildCommit) {
   try {
     const target = JSON.parse(readFileSync(targetPath, 'utf8'))
     if (typeof target.buildId === 'string' && target.buildId.length > 0) return target.buildId
@@ -114,28 +116,34 @@ function sha256(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex')
 }
 
-const inputState = buildInputState()
-const packageBuildCommit = gitHead()
-const files = Object.fromEntries(
-  distFiles().map(filePath => [relative(dist, filePath).replaceAll('\\', '/'), sha256(filePath)]),
-)
+function writeProvenance() {
+  const inputState = buildInputState()
+  const packageBuildCommit = gitHead()
+  const files = Object.fromEntries(
+    distFiles().map(filePath => [relative(dist, filePath).replaceAll('\\', '/'), sha256(filePath)]),
+  )
 
-mkdirSync(outDir, { recursive: true })
-writeFileSync(
-  outPath,
-  `${JSON.stringify(
-    {
-      schema: 'streampulse.extension-build-provenance/v1',
-      kind: 'local-dist-build',
-      packageBuildCommit,
-      buildId: builtExtensionId(),
-      worktreeState: inputState.dirty ? 'dirty' : 'clean',
-      inputStatusDigest: inputState.digest,
-      files,
-    },
-    null,
-    2,
-  )}\n`,
-  'utf8',
-)
-console.log(`Wrote local dist build provenance for ${packageBuildCommit} (${inputState.dirty ? 'dirty' : 'clean'} inputs)`)
+  mkdirSync(outDir, { recursive: true })
+  writeFileSync(
+    outPath,
+    `${JSON.stringify(
+      {
+        schema: 'streampulse.extension-build-provenance/v1',
+        kind: 'local-dist-build',
+        packageBuildCommit,
+        buildId: builtExtensionId(inputState, packageBuildCommit),
+        worktreeState: inputState.dirty ? 'dirty' : 'clean',
+        inputStatusDigest: inputState.digest,
+        files,
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
+  console.log(`Wrote local dist build provenance for ${packageBuildCommit} (${inputState.dirty ? 'dirty' : 'clean'} inputs)`)
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  writeProvenance()
+}
