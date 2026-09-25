@@ -16,7 +16,7 @@ vi.mock('../src/shared/emoteImageProxy.ts', () => ({
   }),
 }))
 
-import { PulseEmoteImg } from '../src/ui/PulseEmoteImg.tsx'
+import { PulseEmoteImg, fallbackLabelLength } from '../src/ui/PulseEmoteImg.tsx'
 
 const AWARE = {
   id: '01FFWH9WV80000JT8GHDKHJNZC',
@@ -117,5 +117,15 @@ describe('PulseEmoteImg', () => {
     })
 
     expect(container.querySelector('img')?.getAttribute('loading')).toBe('lazy')
+  })
+})
+
+describe('fallbackLabelLength', () => {
+  it('keeps a failed emote label inside its box instead of spilling over the count', () => {
+    expect(fallbackLabelLength(20)).toBe(2)
+    expect(fallbackLabelLength(22)).toBe(2)
+    expect(fallbackLabelLength(28)).toBe(3)
+    expect(fallbackLabelLength(48)).toBe(6)
+    expect(fallbackLabelLength(8)).toBe(1)
   })
 })

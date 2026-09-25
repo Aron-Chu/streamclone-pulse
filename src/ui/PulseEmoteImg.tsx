@@ -8,6 +8,14 @@ import { theme } from './theme.ts'
 
 export const EMOTE_TOOLTIP_DELAY_MS = 300
 
+/**
+ * Letters of the emote name that fit the fallback box (about 6.5px each at 10px bold,
+ * inside 2px side padding): 2 in a 20-22px chip, 3 at 28px, capped at 6.
+ */
+export function fallbackLabelLength(width: number): number {
+  return Math.min(6, Math.max(1, Math.floor((width - 4) / 6.5)))
+}
+
 export interface PulseEmoteImgProps {
   emote: Pick<ExtensionEmote, 'id' | 'name' | 'imageUrl' | 'provider' | 'providerEmoteId' | 'count'>
   backendUrl: string
@@ -136,7 +144,7 @@ export function PulseEmoteImg({
       style={{ ...styles.fallback, boxSizing: 'border-box', height, minWidth: width, width }}
       aria-hidden={previewFocusable && showHoverPreview ? true : undefined}
     >
-      {emote.name.slice(0, 6)}
+      {emote.name.slice(0, fallbackLabelLength(width))}
     </span>
   )
 
@@ -200,7 +208,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 700,
     justifyContent: 'center',
-    padding: '0 4px',
+    overflow: 'hidden',
+    padding: '0 2px',
+    whiteSpace: 'nowrap',
   },
   previewTrigger: {
     alignItems: 'center',
