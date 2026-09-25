@@ -110,7 +110,10 @@ export function PulseBannerQuickPreview() {
 }
 
 const BANNER_CSS = `
-.pulse-personal-panel { position: relative; isolation: isolate; }
+.pulse-personal-panel { isolation: isolate; }
+/* Previews need a containing block for the art layer. The overlay shell already has one:
+   relative in the sidebar, fixed in right/bottom placement, which must stay fixed. */
+.pulse-personal-panel:not(.placement-right):not(.placement-bottom) { position: relative; }
 .pulse-background-preview { background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); overflow: hidden; }
 .pulse-banner-quick-preview { align-items: center; background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); color: var(--pulse-banner-text); display: flex; gap: 8px; min-height: 48px; min-width: 0; overflow: hidden; padding: 8px 10px; }
 .pulse-banner-quick-preview strong { flex: 1 1 auto; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

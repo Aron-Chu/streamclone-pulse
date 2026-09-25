@@ -227,6 +227,11 @@ export function PulseThemedSelect<T extends string>({
           closeMenu(true)
         }
         break
+      case 'Tab':
+        // Keyboard focus is leaving; let it move on. Pointer picks keep focus on the
+        // trigger (options cancel pointerdown), so blur itself does not close the menu.
+        if (open) closeMenu(false)
+        break
       default:
         break
     }

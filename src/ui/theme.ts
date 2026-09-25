@@ -453,6 +453,10 @@ export const shadowStyles = `
   .pulse-analytics-hub-cta:focus-visible::before {
     animation: pulse-hub-cta-sheen 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+  .pulse-analytics-hub-cta:focus-visible {
+    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
+    outline-offset: 2px;
+  }
   .pulse-analytics-hub-cta:hover:not(:disabled) {
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.7) !important;

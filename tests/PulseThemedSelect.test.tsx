@@ -50,6 +50,12 @@ it('keyboard navigation skips paid disabled options and Escape returns focus wit
     expect(document.querySelector('[role="listbox"]')).toBeNull()
     expect(document.activeElement).toBe(trigger)
     expect(changed).toHaveBeenCalledTimes(1)
+    await key('ArrowDown')
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    await key('Tab')
+    expect(document.querySelector('[role="listbox"]')).toBeNull()
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(changed).toHaveBeenCalledTimes(1)
   } finally {
     await act(async () => root.unmount())
     host.remove()
