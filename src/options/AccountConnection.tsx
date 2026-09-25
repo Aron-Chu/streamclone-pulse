@@ -7,12 +7,16 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
 
 const descriptions: Record<string, string> = {
   signed_out: 'Connect this extension to your Pulse account.',
-  unavailable: 'Account linking is not available on the server yet. Your free tools still work.',
   denied: 'The connection was declined. You can start again when ready.',
   expired: 'This code expired. Start again to get a new code.',
   relink_required: 'Your connection needs to be renewed. Link this extension again.',
   error: 'The account service could not be reached. Check your connection and try again.',
 }
+const unavailable: Record<Extract<SupporterAccountState, { state: 'unavailable' }>['reason'], string> = {
+  not_deployed: 'Account linking is not available on the server yet. Your free tools still work.',
+  temporarily_unavailable: 'The account service is temporarily unavailable. Your free tools still work; try again in a moment.',
+}
+const unrenewed = 'This extension is still connected, but the account service is temporarily unavailable. Your free tools still work; check again in a moment.'
 
 /** The worker owns credentials and network requests; this page receives a safe projection. */
 export function AccountConnection() {
@@ -54,6 +58,7 @@ export function AccountConnection() {
     storage?.addListener(changed)
     return () => { requestId.current++; inFlight.current = false; storage?.removeListener(changed) }
   }, [request])
+  const unrenewedLink = account?.state === 'unavailable' && account.linked === true
   useEffect(() => {
     if (account?.state !== 'pending' || busy) return
     const timer = window.setTimeout(() => {
@@ -67,15 +72,16 @@ export function AccountConnection() {
       {!account ? <p>Checking account connection…</p>
         : account.state === 'linked' ? <><p>This extension is connected.</p><p className="pulse-supporter-detail">This connection does not confirm a subscription or link your Twitch identity.</p></>
           : account.state === 'pending' ? <><p>Enter this code on the Pulse account page, then review the extension request.</p><p className="pulse-account-link-code">{account.code}</p><p className="pulse-supporter-detail">Waiting for your approval. The code expires at {new Date(account.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p></>
-            : <p>{account.state === 'error' && account.revocationPending ? 'Account access is stopped on this extension. Server revocation is pending; retry disconnect when connected.' : descriptions[account.state]}</p>}
+            : account.state === 'unavailable' ? <p>{account.linked ? unrenewed : unavailable[account.reason]}</p>
+              : <p>{account.state === 'error' && account.revocationPending ? 'Account access is stopped on this extension. Server revocation is pending; retry disconnect when connected.' : descriptions[account.state]}</p>}
       {notice ? <p>{notice}</p> : null}
     </div>
     <div className="pulse-account-link-actions">
       {account?.state === 'pending' ? <><a href={productLink('linkDevice', portalOrigin)} target="_blank" rel="noopener noreferrer">Open account page</a><button disabled={busy} onClick={() => void request('cancel')}>Cancel connection</button></>
-        : account?.state === 'linked' ? <button disabled={busy} onClick={() => void request('disconnect')}>Disconnect extension</button>
+        : account?.state === 'linked' || unrenewedLink ? <button disabled={busy} onClick={() => void request('disconnect')}>Disconnect extension</button>
           : account?.state === 'error' && account.revocationPending ? <button disabled={busy} onClick={() => void request('disconnect')}>Retry disconnect</button>
           : account ? <button disabled={busy} onClick={() => void request('start')}>{busy ? 'Connecting…' : 'Link extension'}</button> : null}
-      {account?.state === 'error' ? <button disabled={busy} onClick={() => void request('status')}>Check connection</button> : null}
+      {account?.state === 'error' || unrenewedLink ? <button disabled={busy} onClick={() => void request('status')}>Check connection</button> : null}
     </div>
   </PulseSectionCard>
 }
