@@ -1,6 +1,7 @@
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterStatus, SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
 
+type Environment = SupporterScope['environment']
 type Pending = { kind: 'pending'; secret: string; code: string; expiresAt: string; nextPoll: number }
 type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string }
 type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revoking'; token: string } | null
@@ -9,10 +10,11 @@ type Ports = {
   write: (value: PrivateState) => Promise<void>
   request: (path: string, body?: Record<string, unknown>, bearer?: string) => Promise<{ status: number; body: unknown }>
   now?: () => number
-  environment?: 'sandbox' | 'live'
+  /** Billing environments whose entitlements this build honours; live only unless stated. */
+  environments?: readonly Environment[]
   identityChanged?: () => Promise<void>
 }
-const secret = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+const secret =(value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
 const date = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value))
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -22,15 +24,38 @@ function linked(value: unknown): Linked | null {
     ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt } : null
 }
 
+/** Thrown by a request port that refused before any network I/O. */
+export class AccountRequestNotSent extends Error {}
+
+/**
+ * How long to wait before renewing again when the refresh response proves the
+ * server rotated nothing, so the stored credentials are still the valid ones.
+ * Zero means the refresh may have rotated them, which is never replayed.
+ */
+function unattemptedRefreshRetryMs(result: { status: number; body: unknown }): number {
+  // Only the peer limiter answers 429 on this route, before the store is read.
+  if (result.status === 429) return 60_000
+  // No refresh route is deployed.
+  if (result.status === 404) return 30_000
+  if (result.status === 503 && object(result.body).error === 'refresh_not_attempted') return 30_000
+  return 0
+}
+
+const renewalWaiting = (): SupporterAccountState => ({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+
 const STATUSES: ReadonlySet<string> = new Set(['none', 'active', 'grace', 'pending', 'expired', 'review'])
 
 /** Accept only a well-formed snapshot; an unrecognised shape is not access. */
-function projectEntitlement(result: { status: number; body: unknown }, scope: SupporterScope, elapsedMs: number): SupporterEntitlement {
-  if (result.status === 404 || result.status === 503) return { state: 'unavailable' }
+function projectEntitlement(result: { status: number; body: unknown }, accountId: string, environments: readonly Environment[], elapsedMs: number): SupporterEntitlement {
+  if (result.status === 404) return { state: 'unavailable', reason: 'not_deployed' }
+  if (result.status === 503) return { state: 'unavailable', reason: 'temporarily_unavailable' }
   if (result.status === 401) return { state: 'not_linked' }
   if (result.status !== 200) return { state: 'error' }
   const body = object(result.body)
-  if (!STATUSES.has(String(body.status)) || body.schemaVersion !== 1 || body.accountId !== scope.accountId || body.environment !== scope.environment || !Number.isSafeInteger(body.revision) || Number(body.revision) < 0) return { state: 'error' }
+  if (!STATUSES.has(String(body.status)) || body.schemaVersion !== 1 || body.accountId !== accountId || (body.environment !== 'sandbox' && body.environment !== 'live') || !Number.isSafeInteger(body.revision) || Number(body.revision) < 0) return { state: 'error' }
+  // A sandbox server behind a store build is expected, not a fault, and never access.
+  if (!environments.includes(body.environment)) return { state: 'unavailable', reason: 'environment_mismatch' }
+  const scope: SupporterScope = { accountId, environment: body.environment }
   const features = SUPPORTER_FEATURES.filter(feature => supporterAccess(body, scope, feature, elapsedMs, feature !== 'supporter.chat_badge.v1') === 'allowed')
   const remaining = Math.min(Date.parse(String(body.cacheUntil)), Date.parse(String(body.accessUntil))) - Date.parse(String(body.serverTime)) - elapsedMs
   const preferences = object(body.cosmetics)
@@ -51,6 +76,8 @@ export class SupporterAccountCoordinator {
   private queue: Promise<unknown> = Promise.resolve()
   private generation = 0
   private revocationUnconfirmed = false
+  /** Worker-memory pause after a refresh the server did not attempt; not persisted. */
+  private renewalPause: { deviceId: string; until: number } | null = null
   private now: () => number
   constructor(private ports: Ports) { this.now = ports.now ?? Date.now }
 
@@ -68,6 +95,8 @@ export class SupporterAccountCoordinator {
     const task = this.queue.then(async () => {
       const account = await this.perform('status', generation)
       if (generation !== this.generation) throw new Error('account_identity_changed')
+      // Still connected, so callers must not ask the user to link again.
+      if (account.state === 'unavailable') throw new Error('account_temporarily_unavailable')
       if (account.state !== 'linked') throw new Error('account_authorization_required')
       if (accountId !== undefined && account.accountId !== accountId) throw new Error('account_identity_changed')
       const credentials = linked(await this.ports.read())
@@ -98,7 +127,7 @@ export class SupporterAccountCoordinator {
         const account = await this.perform('status', generation)
         if (generation !== this.generation) return { state: 'not_linked' }
         if (account.state !== 'linked') {
-          return account.state === 'unavailable' ? { state: 'unavailable' } : { state: 'not_linked' }
+          return account.state === 'unavailable' ? { state: 'unavailable', reason: account.reason } : { state: 'not_linked' }
         }
         const raw = object(await this.ports.read())
         const credentials = raw.kind === 'linked' ? linked(raw) : null
@@ -110,7 +139,7 @@ export class SupporterAccountCoordinator {
           await this.clear('relink_required')
           return { state: 'not_linked' }
         }
-        return projectEntitlement(result, { accountId: credentials.accountId, environment: this.ports.environment ?? 'live' }, performance.now() - started)
+        return projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], performance.now() - started)
       })
       .catch((): SupporterEntitlement => ({ state: 'error' }))
     this.queue = task
@@ -181,15 +210,20 @@ export class SupporterAccountCoordinator {
     if (credentials) {
       if (Date.parse(credentials.refreshExpiresAt) <= this.now()) return this.clear('relink_required')
       if (Date.parse(credentials.expiresAt) > this.now() + 60_000) return this.project(credentials)
+      if (this.renewalPause?.deviceId === credentials.deviceId && this.now() < this.renewalPause.until) return renewalWaiting()
       await this.ports.write({ kind: 'refreshing' })
       let result
       try { result = await this.ports.request('/v1/account/devices/refresh', { refreshToken: credentials.refreshToken }) }
-      catch {
+      catch (error) {
+        if (error instanceof AccountRequestNotSent) return this.keepUnrenewed(credentials, 30_000)
         if (generation !== this.generation) this.revocationUnconfirmed = true
         return this.clear('relink_required')
       }
+      const retryMs = unattemptedRefreshRetryMs(result)
+      if (retryMs) return this.keepUnrenewed(credentials, retryMs)
       const next = linked(result.body)
       if (result.status !== 200 || !next || next.accountId !== credentials.accountId || next.deviceId !== credentials.deviceId) return this.clear('relink_required')
+      this.renewalPause = null
       if (generation !== this.generation) return this.discardCredential(next)
       await this.ports.write(next)
       return this.project(next)
@@ -221,7 +255,8 @@ export class SupporterAccountCoordinator {
     if (action === 'start') {
       const result = await this.ports.request('/v1/account/device-links', { label: 'StreamPulse extension' })
       if (generation !== this.generation) return this.clear('signed_out')
-      if (result.status === 404 || result.status === 503) return { state: 'unavailable' }
+      if (result.status === 404) return { state: 'unavailable', reason: 'not_deployed' }
+      if (result.status === 503) return { state: 'unavailable', reason: 'temporarily_unavailable' }
       const body = object(result.body)
       if (result.status !== 201 || !secret(body.pollingSecret) || typeof body.code !== 'string' || !/^[A-F0-9]{5}-[A-F0-9]{5}$/.test(body.code) || !date(body.expiresAt) || Date.parse(body.expiresAt) <= this.now() || Date.parse(body.expiresAt) > this.now() + 11 * 60_000) return { state: 'error' }
       const pending: Pending = { kind: 'pending', secret: body.pollingSecret, code: body.code, expiresAt: body.expiresAt, nextPoll: this.now() + 5000 }
@@ -229,6 +264,18 @@ export class SupporterAccountCoordinator {
       return this.projectPending(pending)
     }
     return { state: 'signed_out' }
+  }
+
+  /**
+   * Restore the credentials a refresh left untouched. The refreshing marker
+   * would otherwise force a relink on the next read; a disconnect queued
+   * meanwhile finds these and revokes them. The access token may already be
+   * expired, so report the connection as waiting rather than linked.
+   */
+  private async keepUnrenewed(credentials: Linked, retryMs: number): Promise<SupporterAccountState> {
+    this.renewalPause = { deviceId: credentials.deviceId, until: this.now() + retryMs }
+    await this.ports.write(credentials)
+    return renewalWaiting()
   }
 
   private project(value: Linked): SupporterAccountState { return { state: 'linked', accountId: value.accountId, expiresAt: value.expiresAt } }

@@ -1,5 +1,5 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
-import { SupporterAccountCoordinator } from './supporterAccount.ts'
+import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 
 // Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
 // move this record to sync storage or send it through a UI message.
@@ -26,11 +26,14 @@ async function access(write: boolean, value?: unknown): Promise<unknown> {
 export const supporterAccount = new SupporterAccountCoordinator({
   // Only an invalidation signal is public, never an account ID or credential.
   identityChanged: async () => { await chrome.storage.local.set({ pulseAccountRevision: crypto.randomUUID() }) },
+  // Store builds honour only live billing, so a sandbox purchase never unlocks
+  // anything for real users; development builds may test against either.
+  environments: typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? ['live'] : ['live', 'sandbox'],
   read: () => access(false),
   write: async value => { await access(true, value) },
   request: async (path, body, bearer) => {
     // Account credentials cannot follow a developer-selected backend address.
-    if (await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new Error('account_hosted_only')
+    if (await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     // The installation credential is a bearer, never a cookie: this request
     // sends credentials: 'omit', so no ambient browser session is involved.

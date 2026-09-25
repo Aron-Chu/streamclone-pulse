@@ -170,7 +170,9 @@ describe('supporter offer', () => {
       [{ state: 'ready', status: 'expired', supportPeriods: 1, features: [] }, 'Supporter ended'],
       [{ state: 'ready', status: 'review', supportPeriods: 1, features: [] }, 'needs review'],
       [{ state: 'not_linked' }, 'Connect this extension'],
-      [{ state: 'unavailable' }, 'not available on the server yet'],
+      [{ state: 'unavailable', reason: 'not_deployed' }, 'not available on the server yet'],
+      [{ state: 'unavailable', reason: 'temporarily_unavailable' }, 'temporarily unavailable'],
+      [{ state: 'unavailable', reason: 'environment_mismatch' }, 'not open in this build yet'],
       [{ state: 'error' }, 'Could not reach StreamPulse'],
     ]
     for (const [entitlement, expected] of cases) {

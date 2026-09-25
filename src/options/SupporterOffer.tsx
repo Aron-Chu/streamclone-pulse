@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import { POLICY_LINKS, productLink } from '../shared/portalLinks.ts'
-import type { SupporterEntitlement } from '../shared/supporterAccount.ts'
+import type { SupporterEntitlement, SupporterUnavailableReason } from '../shared/supporterAccount.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 
@@ -44,6 +44,14 @@ const STATUS_COPY: Record<string, { title: string; detail: string }> = {
     title: 'Membership needs review',
     detail: 'Something about this payment needs checking. Nothing is lost; support can help.',
   },
+}
+
+// An outage is not a missing deployment, and a billing environment this build
+// does not honour (a store build facing a sandbox server) is neither.
+const UNAVAILABLE_COPY: Record<SupporterUnavailableReason, string> = {
+  not_deployed: 'Supporter is not available on the server yet.',
+  temporarily_unavailable: 'Supporter status is temporarily unavailable. Check again in a moment.',
+  environment_mismatch: 'Supporter is not open in this build yet.',
 }
 
 export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: SupporterEntitlement | null) => void } = {}) {
@@ -122,7 +130,7 @@ export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: Supp
         ) : null}
 
         {entitlement?.state === 'unavailable' ? (
-          <p>Supporter is not available on the server yet. Your free tools are unaffected.</p>
+          <p>{UNAVAILABLE_COPY[entitlement.reason]} Your free tools are unaffected.</p>
         ) : null}
 
         {entitlement?.state === 'error' ? (
