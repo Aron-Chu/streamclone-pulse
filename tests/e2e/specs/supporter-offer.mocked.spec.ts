@@ -222,7 +222,9 @@ test.describe('packaged supporter offer', () => {
 
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('not available on the server yet')).toBeVisible()
+    // An outage is not a missing deployment; say which one it is.
+    await expect(page.getByText('temporarily unavailable')).toBeVisible()
+    await expect(page.getByText('not available on the server yet')).toHaveCount(0)
     await expect(page.getByText('free tools are unaffected')).toBeVisible()
     // Never claim membership when the server could not answer.
     await expect(page.getByText('Supporter active')).toHaveCount(0)

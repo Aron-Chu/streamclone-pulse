@@ -69,3 +69,32 @@ it('offers revocation retry after reopening settings with a pending disconnect',
     expect(send).toHaveBeenLastCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'disconnect' })
   } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
 })
+
+it('keeps a connection waiting on renewal distinct from a missing or unreachable service', async () => {
+  const send = vi.fn().mockResolvedValue({ type: 'SUPPORTER_ACCOUNT', account: { state: 'unavailable', reason: 'temporarily_unavailable', linked: true } })
+  vi.stubGlobal('chrome', { runtime: { sendMessage: send } })
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  const buttons = () => [...host.querySelectorAll('button')].map(button => button.textContent)
+  try {
+    await act(async () => root.render(<AccountConnection />))
+    expect(host.textContent).toContain('still connected')
+    expect(host.textContent).not.toContain('not available on the server yet')
+    expect(buttons()).toEqual(['Disconnect extension', 'Check connection'])
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Check connection')!.click())
+    expect(send).toHaveBeenLastCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'status' })
+  } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
+
+  for (const [reason, copy] of [['not_deployed', 'not available on the server yet'], ['temporarily_unavailable', 'temporarily unavailable']] as const) {
+    const unlinked = vi.fn().mockResolvedValue({ type: 'SUPPORTER_ACCOUNT', account: { state: 'unavailable', reason } })
+    vi.stubGlobal('chrome', { runtime: { sendMessage: unlinked } })
+    const page = document.createElement('div'); document.body.append(page)
+    const view = createRoot(page)
+    try {
+      await act(async () => view.render(<AccountConnection />))
+      expect(page.textContent).toContain(copy)
+      expect(page.textContent).not.toContain('still connected')
+      expect([...page.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Link extension'])
+    } finally { act(() => view.unmount()); page.remove(); vi.unstubAllGlobals() }
+  }
+})

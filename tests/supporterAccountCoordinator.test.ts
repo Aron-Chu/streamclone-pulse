@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
+import { AccountRequestNotSent, SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 
 const now = Date.parse('2026-09-09T12:00:00Z')
 const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString()
 const creds = { kind: 'linked', state: 'approved', token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), deviceId: '11111111-1111-4111-8111-111111111111', accountId: '22222222-2222-4222-8222-222222222222', expiresAt: iso(10000), refreshExpiresAt: iso(90000) }
-function fixture(initial: unknown = null) {
+function fixture(initial: unknown = null, environments?: readonly ('sandbox' | 'live')[]) {
   let value = initial
   let clock = now
   const request = vi.fn<(_: string, body?: Record<string, unknown>) => Promise<{ status: number; body: unknown }>>()
   const identityChanged = vi.fn(async () => {})
-  const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock, identityChanged })
+  const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock, identityChanged, environments })
   return { coordinator, request, identityChanged, stored: () => value, advance: (ms: number) => { clock += ms } }
 }
 describe('private supporter account coordinator', () => {
@@ -76,11 +76,18 @@ describe('private supporter account coordinator', () => {
       f.request.mockResolvedValue({ status: 200, body: { ...body, ...change } })
       expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', features: expected })
     }
-    for (const change of [{ accountId: 'another-account' }, { environment: 'sandbox' }, { schemaVersion: 2 }, { revision: -1 }]) {
+    for (const change of [{ accountId: 'another-account' }, { environment: 'test' }, { environment: undefined }, { schemaVersion: 2 }, { revision: -1 }]) {
       const f = fixture(creds)
       f.request.mockResolvedValue({ status: 200, body: { ...body, ...change } })
       expect(await f.coordinator.entitlement()).toEqual({ state: 'error' })
     }
+    const live = fixture(creds)
+    live.request.mockResolvedValue({ status: 200, body: { ...body, environment: 'sandbox' } })
+    expect(await live.coordinator.entitlement()).toEqual({ state: 'unavailable', reason: 'environment_mismatch' })
+    expect(live.stored()).toEqual(creds)
+    const development = fixture(creds, ['live', 'sandbox'])
+    development.request.mockResolvedValue({ status: 200, body: { ...body, environment: 'sandbox' } })
+    expect(await development.coordinator.entitlement()).toMatchObject({ state: 'ready', features: ['supporter.banner.v1'] })
   })
   it('clears remotely revoked credentials and permits an immediate new device link', async () => {
     const f = fixture(creds)
@@ -98,7 +105,8 @@ describe('private supporter account coordinator', () => {
   it.each([403, 404, 429, 500, 503])('preserves the connection after entitlement status %s', async status => {
     const f = fixture(creds)
     f.request.mockResolvedValueOnce({ status, body: null })
-    expect(await f.coordinator.entitlement()).toEqual({ state: status === 404 || status === 503 ? 'unavailable' : 'error' })
+    expect(await f.coordinator.entitlement()).toEqual(status === 404 ? { state: 'unavailable', reason: 'not_deployed' }
+      : status === 503 ? { state: 'unavailable', reason: 'temporarily_unavailable' } : { state: 'error' })
     expect(f.stored()).toEqual(creds)
     expect(f.identityChanged).not.toHaveBeenCalled()
     expect(await f.coordinator.run('status')).toMatchObject({ state: 'linked' })
@@ -196,6 +204,73 @@ describe('private supporter account coordinator', () => {
     expect((await restarted.coordinator.run('disconnect')).state).toBe('signed_out')
     expect(restarted.request).toHaveBeenCalledWith('/v1/account/devices/disconnect', { token: creds.token })
     expect(restarted.stored()).toBeNull()
+  })
+  it.each([
+    ['refresh_not_attempted', 503, { error: 'refresh_not_attempted' }, 30_000],
+    ['limiter refusal', 429, { error: 'try_later' }, 60_000],
+    ['missing route', 404, { error: 'not_found' }, 30_000],
+  ] as const)('keeps credentials the server proves it did not rotate (%s)', async (_, status, body, pauseMs) => {
+    const f = fixture({ ...creds, expiresAt: iso(0) })
+    f.request.mockImplementationOnce(async () => { expect(f.stored()).toEqual({ kind: 'refreshing' }); return { status, body } })
+    const waiting = { state: 'unavailable', reason: 'temporarily_unavailable', linked: true }
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: creds.token, refreshToken: creds.refreshToken, deviceId: creds.deviceId })
+    expect(f.identityChanged).not.toHaveBeenCalled()
+    // Every surface reports the pause without renewing again or asking for a relink.
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(await f.coordinator.entitlement()).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable' })
+    const operation = vi.fn(async () => ({ status: 200 }))
+    await expect(f.coordinator.withCredential(operation)).rejects.toThrow('account_temporarily_unavailable')
+    expect(operation).not.toHaveBeenCalled()
+    f.advance(pauseMs - 1)
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(f.request).toHaveBeenCalledTimes(1)
+    f.advance(1)
+    const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
+    f.request.mockResolvedValueOnce({ status: 200, body: next })
+    expect(await f.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: creds.accountId })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/devices/refresh', { refreshToken: creds.refreshToken })
+    expect(f.stored()).toMatchObject({ token: next.token, refreshToken: next.refreshToken })
+  })
+  it.each([
+    ['generic outage', 503, { error: 'request_unavailable' }],
+    ['unlabelled outage', 503, null],
+    ['server error', 500, null],
+    ['bad gateway', 502, null],
+  ] as const)('never replays a refresh that may have rotated (%s)', async (_, status, body) => {
+    const f = fixture({ ...creds, expiresAt: iso(0) })
+    f.request.mockResolvedValueOnce({ status, body })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    expect(f.stored()).toBeNull()
+    expect(await f.coordinator.run('status')).toEqual({ state: 'signed_out' })
+    expect(f.request).toHaveBeenCalledTimes(1)
+  })
+  it('keeps credentials when the request port refuses before sending', async () => {
+    const f = fixture({ ...creds, expiresAt: iso(0) })
+    f.request.mockRejectedValueOnce(new AccountRequestNotSent('account_hosted_only'))
+    expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+    expect(f.stored()).toMatchObject({ kind: 'linked', token: creds.token, refreshToken: creds.refreshToken })
+  })
+  it('revokes the kept credentials when disconnect races an unattempted refresh', async () => {
+    const f = fixture({ ...creds, expiresAt: iso(0) })
+    let finish!: (value: { status: number; body: unknown }) => void
+    f.request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const status = f.coordinator.run('status')
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(1))
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    const disconnect = f.coordinator.run('disconnect')
+    finish({ status: 503, body: { error: 'refresh_not_attempted' } })
+    await status
+    expect(await disconnect).toEqual({ state: 'signed_out' })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/devices/disconnect', { token: creds.token })
+    expect(f.stored()).toBeNull()
+  })
+  it('reports a missing deployment separately from an outage when linking starts', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 404, body: null }).mockResolvedValueOnce({ status: 503, body: null })
+    expect(await f.coordinator.run('start')).toEqual({ state: 'unavailable', reason: 'not_deployed' })
+    expect(await f.coordinator.run('start')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable' })
+    expect(f.stored()).toBeNull()
   })
   it('rejects UI attempts to submit tokens, origins, or unknown actions', () => {
     expect(parseBackgroundRequest({ type: 'SUPPORTER_ACCOUNT', action: 'status' })).toEqual({ type: 'SUPPORTER_ACCOUNT', action: 'status' })
