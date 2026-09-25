@@ -21,13 +21,15 @@ import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes } from './hosted-analytics-route-smoke.mjs'
-import { assertEdgeFreeze } from './check-edge-freeze.mjs'
+import { EXCEPTION_FILE, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
 const repoRoot = join(webRoot, '..')
 // No environment override: an edge architecture exception needs explicit review.
-assertEdgeFreeze(webRoot)
+// The source check fails fast; the full check on the built dist/ runs again
+// immediately before the upload.
+console.log(describeEdgeFreeze(assertEdgeFreeze(webRoot, { sourceOnly: true })))
 const localWrangler = join(
   webRoot,
   process.platform === 'win32' ? 'node_modules/.bin/wrangler.cmd' : 'node_modules/.bin/wrangler',
@@ -86,6 +88,25 @@ function assertCleanGitTree() {
   }
 }
 
+// ALLOW_DIRTY_PAGES_DEPLOY never covers the edge: the Worker, its routes, the
+// pin, the gate, and Pages Functions must match the committed tree.
+const EDGE_PATHS = ['public/_worker.js', 'public/_routes.json', EXCEPTION_FILE, 'scripts/check-edge-freeze.mjs', 'functions']
+function assertEdgeFilesCommitted() {
+  const result = spawnSync('git', ['status', '--porcelain', '--untracked-files=all', '--', ...EDGE_PATHS], {
+    cwd: webRoot,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  })
+  if (result.status !== 0) {
+    console.error('pages:deploy:prod could not inspect git status for edge files')
+    process.exit(1)
+  }
+  if ((result.stdout || '').trim()) {
+    console.error(`pages:deploy:prod refuses uncommitted edge files (${EDGE_PATHS.join(', ')}); no override exists`)
+    process.exit(1)
+  }
+}
+
 function deleteMapFiles(dir) {
   if (!existsSync(dir)) return 0
   let n = 0
@@ -121,6 +142,7 @@ const sentryAuth = process.env.SENTRY_AUTH_TOKEN?.trim() || ''
 
 console.log(`Deploying git SHA ${sha}`)
 assertCleanGitTree()
+assertEdgeFilesCommitted()
 
 if (viteSentryDsn && !sentryAuth) {
   console.error('pages:deploy:prod: VITE_SENTRY_DSN is set but SENTRY_AUTH_TOKEN is missing')
@@ -180,6 +202,13 @@ if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
   console.warn(
     'pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler may deploy the ASU app.* project instead of apex — set the Gmail account id that owns streampulse.stream',
   )
+}
+
+try {
+  console.log(describeEdgeFreeze(assertEdgeFreeze(webRoot)))
+} catch (error) {
+  console.error(`pages:deploy:prod: ${error instanceof Error ? error.message : String(error)}`)
+  process.exit(1)
 }
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)

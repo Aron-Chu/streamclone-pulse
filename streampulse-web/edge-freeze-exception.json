@@ -1,0 +1,13 @@
+{
+  "sha256": "ac764ea3083a7450f78e053db9be45c4496d781147f1bfb033d44d7680571e01",
+  "routes": {
+    "version": 1,
+    "include": [
+      "/v1/account/*",
+      "/v1/billing/*"
+    ],
+    "exclude": []
+  },
+  "expires": "2026-12-24",
+  "approval": "pending: streampulse-sdlc edge-freeze amendment v1"
+}
