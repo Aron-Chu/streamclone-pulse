@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { PrelaunchNotice } from './PrelaunchNotice'
 
 /** Public privacy policy for StreamPulse (portal + Chrome extension). Current behavior only. */
 export default function Privacy() {
@@ -19,9 +20,11 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: September 24, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: September 25, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
+
+        <PrelaunchNotice />
 
         <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
           <h2 className="!mt-0">Summary</h2>
@@ -33,17 +36,19 @@ export default function Privacy() {
           </p>
           <p className="text-zinc-300">
             An account is optional and needs only an email address. Pulse Supporter is an optional paid
-            subscription; card details go to Stripe and never to StreamPulse. Neither an account nor a
-            subscription is required to use the extension or the public analytics.
+            subscription, and paid sign-ups are not open yet; once they are, card details go to Stripe
+            and never to StreamPulse. Neither an account nor a subscription is required to use the
+            extension or the public analytics.
           </p>
         </section>
 
         <h2>Your account, if you create one</h2>
         <p>
           An account is optional. You need one only to link the extension to a Pulse account or to
-          hold a <Link to={SUPPORTER_PATH}>Supporter</Link> subscription. Creating one stores your
-          email address, an internal account identifier, and timestamps for creation and sign-in.
-          There is no password, no name field, and no profile.
+          hold a <Link to={SUPPORTER_PATH}>Supporter</Link> subscription, and paid Supporter sign-ups
+          are not open yet. Creating an account stores your email address, an internal account
+          identifier, and timestamps for creation and sign-in. There is no password, no name field,
+          and no profile.
         </p>
         <p>
           Sign-in works by emailed link. When you request one, StreamPulse stores a hash of a
@@ -65,6 +70,10 @@ export default function Privacy() {
         </p>
 
         <h2>Payment data, if you subscribe</h2>
+        <p>
+          This section describes what happens once paid sign-ups open. Until then, no payment is
+          taken through StreamPulse.
+        </p>
         <p>
           Payments are processed by <strong>Stripe</strong>. Card numbers, CVC and billing address are
           entered on Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores
@@ -95,10 +104,14 @@ export default function Privacy() {
           StreamPulse does not use advertising, tracking or analytics cookies, and there is no consent
           banner because there is nothing optional to consent to.
         </p>
+        {/* The portal reaches the account API same-origin, through the account routes on
+            the apex, so these host-only cookies belong to streampulse.stream rather than
+            to the API host. The extension never uses them; it holds a device credential. */}
         <p>
-          Three cookies exist, all strictly necessary, all set by the StreamPulse API at{' '}
-          <code>https://api.streampulse.stream</code> and all carrying the{' '}
-          <code>__Host-</code> prefix, which locks each one to that exact HTTPS origin:
+          Three cookies exist, all strictly necessary. They are set when you use the account pages
+          on <code>https://streampulse.stream</code>, which pass your requests to the StreamPulse
+          API, and all carry the <code>__Host-</code> prefix, which locks each one to that exact
+          HTTPS origin:
         </p>
         <ul>
           <li>
@@ -310,6 +323,9 @@ export default function Privacy() {
         </p>
 
         <h2>Contact</h2>
+        {/* MERGE GATE (memo T1-6): before publication the owner confirms that this
+            mailbox is monitored for privacy, account-deletion and billing email, who
+            answers it and the response time. If it is not monitored, replace it everywhere. */}
         <p data-testid="privacy-contact">
           For privacy or legal questions, email{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}

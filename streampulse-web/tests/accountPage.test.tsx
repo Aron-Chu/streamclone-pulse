@@ -18,6 +18,26 @@ beforeEach(() => {
   vi.mocked(clearAccountConfirmation).mockClear()
 })
 
+describe('private pilot sign-in copy', () => {
+  const note = 'During the private pilot, sign-in emails are sent only to invited testers. If you’re not on the list, you won’t receive an email.'
+
+  it('shows the same neutral pilot note for every address, before and after sending', async () => {
+    const seen: string[] = []
+    for (const email of ['listed@example.com', 'unlisted@example.org']) {
+      const view = render(<MemoryRouter initialEntries={['/account/sign-in']}><AccountPage /></MemoryRouter>)
+      seen.push(screen.getByTestId('pilot-sign-in-note').textContent ?? '')
+      fireEvent.change(screen.getByLabelText('Email address'), { target: { value: email } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send sign-in link' }))
+      expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeTruthy()
+      seen.push(screen.getByTestId('pilot-sign-in-note').textContent ?? '')
+      // The confirmation never echoes the address, so it cannot differ per address.
+      expect(document.body.textContent).not.toContain(email)
+      view.unmount()
+    }
+    expect(new Set(seen)).toEqual(new Set([note]))
+  })
+})
+
 describe('billing sign-in continuation', () => {
   it('remembers billing only after a sign-in email is accepted', async () => {
     render(<MemoryRouter initialEntries={[accountBillingSignInHref(returnPath)]}><AccountPage /></MemoryRouter>)

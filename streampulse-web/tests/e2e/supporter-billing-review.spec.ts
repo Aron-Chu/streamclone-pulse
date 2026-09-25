@@ -123,6 +123,15 @@ for (const width of [1440, 390]) {
         if (status !== 'active') await expect(page.getByText('New Supporter sign-ups are not open yet.', { exact: false })).toBeVisible()
       }
     }
+    // No environment in the snapshot proves nothing, so no test-mode banner.
+    await expect(page.getByTestId('billing-sandbox-banner')).toHaveCount(0)
+    await page.unroute('**/v1/billing/supporter')
+    await page.route('**/v1/billing/supporter', route => route.fulfill({ json: { schemaVersion: 1, status: 'none', checkoutEnabled: true, environment: 'sandbox' } }))
+    await page.goto('/account/billing')
+    await expect(page.getByTestId('billing-sandbox-banner')).toContainText('Sandbox — test mode, no real charge.')
+    await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toBeEnabled()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+    await page.screenshot({ path: info.outputPath(`billing-sandbox-${width}.png`), fullPage: true, animations: 'disabled' })
     await page.unroute('**/v1/billing/supporter')
     await page.route('**/v1/billing/supporter', route => route.fulfill({ status: 503, json: { error: 'unavailable' } }))
     await page.goto('/account/billing')

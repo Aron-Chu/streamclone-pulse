@@ -6,7 +6,7 @@ import Supporter from '../src/routes/public/Supporter'
 import { accountBillingSignInHref } from '../src/lib/accountBillingReturn'
 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
-const membership = (status: string, checkoutEnabled = false) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled }))
+const membership = (status: string, checkoutEnabled = false, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({ schemaVersion: 1, status, checkoutEnabled, ...extra }))
 
 function renderNavigableBilling(path: string) {
   render(<MemoryRouter initialEntries={[path]}>
@@ -19,12 +19,85 @@ function renderNavigableBilling(path: string) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('public Supporter handoff', () => {
-  it('states that paid sign-ups are closed and links existing members to account billing', () => {
+  it('states that paid sign-ups are closed and links to account billing without implying past sales', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const link = screen.getByRole('link', { name: 'Open account billing' })
     expect(link.getAttribute('href')).toBe('/account/billing')
-    expect(screen.getByText(/Paid sign-ups are not open yet/)).toBeTruthy()
-    expect(screen.getByText(/including any tax it calculates/)).toBeTruthy()
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Paid sign-ups are not open yet/)
+    expect(screen.getByText('US$4.99 per month, charged in US dollars')).toBeTruthy()
+    expect(screen.getByText(/Handled as stated at checkout/)).toBeTruthy()
+    const body = screen.getByTestId('supporter-offer').textContent ?? ''
+    expect(body).not.toMatch(/including any tax it calculates/i)
+    expect(body).not.toMatch(/existing members/i)
+  })
+})
+
+describe('billing sandbox banner', () => {
+  it('shows a test-mode banner only when the billing snapshot says sandbox', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('none', true, { environment: 'sandbox' })))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'No subscription' })).toBeTruthy()
+    const banner = screen.getByTestId('billing-sandbox-banner')
+    expect(banner.textContent).toContain('Sandbox — test mode, no real charge.')
+    expect(banner.getAttribute('role')).toBe('note')
+    expect(screen.getByRole('button', { name: 'Continue to Stripe checkout' })).toBeTruthy()
+  })
+
+  it.each([
+    ['live', { environment: 'live' }],
+    ['missing', {}],
+    ['unrecognised', { environment: 'test' }],
+  ] as const)('shows no banner when the environment is %s', async (_, extra) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('active', false, extra)))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    expect(screen.queryByTestId('billing-sandbox-banner')).toBeNull()
+  })
+
+  it.each([401, 503])('shows no banner when billing returns HTTP %s', async status => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ environment: 'sandbox' }), { status })))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByText(status === 401 ? 'Sign in to view your membership.' : /Billing status is unavailable/)).toBeTruthy()
+    expect(screen.queryByTestId('billing-sandbox-banner')).toBeNull()
+  })
+})
+
+describe('billing membership copy', () => {
+  it('states the USD price and leaves tax to checkout when checkout is enabled', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('none', true)))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByText(/US\$4\.99 per month, charged in US dollars/)).toBeTruthy()
+    expect(screen.getByText(/Taxes are handled as stated at checkout/)).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/Taxes, if any/)
+  })
+
+  it.each(['none', 'expired'])('says sign-ups are closed for %s without implying existing members', async status => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership(status)))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByText('New Supporter sign-ups are not open yet.')).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/existing members/i)
+  })
+
+  it('describes the 7-day grace period for a failed renewal', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('grace', false, { accessUntil: '2026-10-19T00:00:00Z' })))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Payment needs attention' })).toBeTruthy()
+    expect(screen.getByText(/7-day grace period from the end of the paid period/)).toBeTruthy()
+    expect(screen.getByText(/^Access through /)).toBeTruthy()
+  })
+
+  it('says access is suspended while a membership is under review', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('review')))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Membership needs review' })).toBeTruthy()
+    expect(screen.getByText(/access is suspended while this payment is under review/)).toBeTruthy()
+    expect(screen.queryByText(/^Access through /)).toBeNull()
+  })
+
+  it('points cancellation at the Customer Portal and the end of the paid period', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('active')))
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    expect(await screen.findByText(/Stripe Customer Portal\. Cancellation takes effect at the end of the paid period/)).toBeTruthy()
   })
 })
 
@@ -77,7 +150,8 @@ describe('billing lifecycle view', () => {
     vi.stubGlobal('fetch', fetch)
     render(<MemoryRouter><BillingPage /></MemoryRouter>)
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to Stripe checkout' }))
-    await waitFor(() => expect(screen.getByText(/New purchases are paused/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/Checkout is not open right now/)).toBeTruthy())
+    expect(document.body.textContent).not.toMatch(/existing members/i)
     expect(fetch.mock.calls[1][0]).toBe('/v1/billing/checkout')
     expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST', credentials: 'same-origin', redirect: 'error', body: '{}' })
   })

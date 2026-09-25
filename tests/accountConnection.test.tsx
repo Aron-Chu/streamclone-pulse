@@ -85,7 +85,11 @@ it('keeps a connection waiting on renewal distinct from a missing or unreachable
     expect(send).toHaveBeenLastCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'status' })
   } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
 
-  for (const [reason, copy] of [['not_deployed', 'not available on the server yet'], ['temporarily_unavailable', 'temporarily unavailable']] as const) {
+  // UI-11: linking that is not deployed is explained, never offered.
+  for (const [reason, copy, actions] of [
+    ['not_deployed', 'Account linking is not available on the server yet. Your free tools still work.', []],
+    ['temporarily_unavailable', 'temporarily unavailable', ['Link extension']],
+  ] as const) {
     const unlinked = vi.fn().mockResolvedValue({ type: 'SUPPORTER_ACCOUNT', account: { state: 'unavailable', reason } })
     vi.stubGlobal('chrome', { runtime: { sendMessage: unlinked } })
     const page = document.createElement('div'); document.body.append(page)
@@ -94,7 +98,24 @@ it('keeps a connection waiting on renewal distinct from a missing or unreachable
       await act(async () => view.render(<AccountConnection />))
       expect(page.textContent).toContain(copy)
       expect(page.textContent).not.toContain('still connected')
-      expect([...page.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Link extension'])
+      expect([...page.querySelectorAll('button')].map(button => button.textContent)).toEqual(actions)
+      expect(page.querySelectorAll('a')).toHaveLength(0)
+      if (reason === 'not_deployed') expect(page.querySelector('.pulse-account-link-actions')).toBeNull()
     } finally { act(() => view.unmount()); page.remove(); vi.unstubAllGlobals() }
   }
+})
+
+it('hides Link extension once a start attempt finds linking not deployed', async () => {
+  const send = vi.fn().mockResolvedValueOnce({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } })
+    .mockResolvedValueOnce({ type: 'SUPPORTER_ACCOUNT', account: { state: 'unavailable', reason: 'not_deployed' } })
+  vi.stubGlobal('chrome', { runtime: { sendMessage: send } })
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<AccountConnection />))
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Link extension')!.click())
+    expect(send).toHaveBeenLastCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'start' })
+    expect(host.textContent).toContain('Account linking is not available on the server yet.')
+    expect(host.querySelectorAll('button')).toHaveLength(0)
+  } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
 })
