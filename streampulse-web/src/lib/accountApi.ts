@@ -8,6 +8,11 @@ export async function accountRequest(path: AccountPath, body?: Record<string, un
 export async function billingRequest(path: '/supporter' | '/checkout' | '/portal' | `/checkout/${string}`, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   return sessionRequest('/v1/billing' + path, body)
 }
+// The edge relay allows billing POSTs 30 s (Stripe session creation) and
+// everything else 12 s; the client waits slightly longer so the edge answers first.
+export const ACCOUNT_REQUEST_TIMEOUT_MS = 12_000
+export const BILLING_POST_TIMEOUT_MS = 35_000
+const SLOW_BILLING_POSTS = new Set(['/v1/billing/checkout', '/v1/billing/portal'])
 async function sessionRequest(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   // Validate URL-derived IDs at runtime, including calls from JavaScript.
   const allowed = /^\/v1\/(?:account\/(?:auth\/(?:start|complete|logout)|me|devices(?:\?cursor=[0-9a-fA-F-]{36}|\/revoke)?|device-links\/(?:inspect|approve))|billing\/(?:supporter|portal|checkout(?:\/[0-9a-fA-F-]{36})?))$/
@@ -15,7 +20,8 @@ async function sessionRequest(path: string, body?: Record<string, unknown>): Pro
   const csrf = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length)
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
-    referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(12_000),
+    referrerPolicy: 'no-referrer',
+    signal: AbortSignal.timeout(body && SLOW_BILLING_POSTS.has(path) ? BILLING_POST_TIMEOUT_MS : ACCOUNT_REQUEST_TIMEOUT_MS),
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(csrf && /^[a-f0-9]{64}$/.test(csrf) ? { 'X-Pulse-CSRF': csrf } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   })

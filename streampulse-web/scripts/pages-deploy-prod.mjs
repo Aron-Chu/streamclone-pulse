@@ -21,13 +21,42 @@ import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes } from './hosted-analytics-route-smoke.mjs'
-import { assertEdgeFreeze } from './check-edge-freeze.mjs'
+import { assertDeploySourceIsOriginMaster, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
 const repoRoot = join(webRoot, '..')
 // No environment override: an edge architecture exception needs explicit review.
-assertEdgeFreeze(webRoot)
+// The source check fails fast; the full check on the built dist/ runs again
+// immediately before the upload.
+function edgeCheck(check) {
+  try {
+    return check()
+  } catch (error) {
+    console.error(`pages:deploy:prod: ${error instanceof Error ? error.message : String(error)}`)
+    process.exit(1)
+  }
+}
+
+// A second same-named Pages project on another account serves app.* only, and
+// the edge-freeze amendment forbids a Worker there. Without an explicit account
+// wrangler may reuse a cached or interactive one, so an admitted Worker needs
+// CLOUDFLARE_ACCOUNT_ID and the apex project name. The account ID is never printed.
+const APEX_PAGES_PROJECT = 'streampulse-web'
+function requireApexTargetForWorker(gate, project) {
+  if (!gate.admitted) return
+  if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
+    console.error('pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID is required when a Pages Worker is admitted; set it to the account that owns apex streampulse.stream')
+    process.exit(1)
+  }
+  if (project !== APEX_PAGES_PROJECT) {
+    console.error(`pages:deploy:prod: a Pages Worker may be deployed only to the apex project ${APEX_PAGES_PROJECT}`)
+    process.exit(1)
+  }
+}
+
+const sourceGate = edgeCheck(() => assertEdgeFreeze(webRoot, { sourceOnly: true }))
+console.log(describeEdgeFreeze(sourceGate))
 const localWrangler = join(
   webRoot,
   process.platform === 'win32' ? 'node_modules/.bin/wrangler.cmd' : 'node_modules/.bin/wrangler',
@@ -38,7 +67,8 @@ if (!backendUrl.includes('api.streampulse.stream')) {
   console.error(`pages:deploy:prod requires VITE_BACKEND_URL=https://api.streampulse.stream (got ${backendUrl})`)
   process.exit(1)
 }
-const projectName = process.env.CLOUDFLARE_PAGES_PROJECT?.trim() || 'streampulse-web'
+const projectName = process.env.CLOUDFLARE_PAGES_PROJECT?.trim() || APEX_PAGES_PROJECT
+requireApexTargetForWorker(sourceGate, projectName)
 
 function run(cmd, args, env = {}) {
   const result = spawnSync(cmd, args, {
@@ -121,6 +151,9 @@ const sentryAuth = process.env.SENTRY_AUTH_TOKEN?.trim() || ''
 
 console.log(`Deploying git SHA ${sha}`)
 assertCleanGitTree()
+// ALLOW_DIRTY_PAGES_DEPLOY never covers this: HEAD must be a freshly fetched
+// origin/master and every edge path must match it by content.
+edgeCheck(() => assertDeploySourceIsOriginMaster(webRoot))
 
 if (viteSentryDsn && !sentryAuth) {
   console.error('pages:deploy:prod: VITE_SENTRY_DSN is set but SENTRY_AUTH_TOKEN is missing')
@@ -181,6 +214,11 @@ if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
     'pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler may deploy the ASU app.* project instead of apex — set the Gmail account id that owns streampulse.stream',
   )
 }
+
+const builtGate = edgeCheck(() => assertEdgeFreeze(webRoot))
+console.log(describeEdgeFreeze(builtGate))
+requireApexTargetForWorker(builtGate, projectName)
+edgeCheck(() => assertDeploySourceIsOriginMaster(webRoot))
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)
 run(localWrangler, deployArgs)

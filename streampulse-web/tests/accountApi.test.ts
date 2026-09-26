@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
-import { accountRequest, billingRequest } from '../src/lib/accountApi'
+import { ACCOUNT_REQUEST_TIMEOUT_MS, BILLING_POST_TIMEOUT_MS, accountRequest, billingRequest } from '../src/lib/accountApi'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -25,4 +25,26 @@ it('rejects extra query parameters in pagination', async () => {
   vi.stubGlobal('fetch', fetch)
   await expect(accountRequest('/devices?cursor=123e4567-e89b-12d3-a456-426614174000&other=1')).rejects.toMatchObject({ status: 400 })
   expect(fetch).not.toHaveBeenCalled()
+})
+
+it('gives only the checkout and portal POSTs the long billing timeout', async () => {
+  const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
+  vi.stubGlobal('fetch', fetch)
+  const timeout = vi.spyOn(AbortSignal, 'timeout')
+  try {
+    const id = '123e4567-e89b-12d3-a456-426614174000'
+    await billingRequest('/checkout', {})
+    await billingRequest('/portal', {})
+    await billingRequest('/supporter')
+    await billingRequest(`/checkout/${id}`)
+    await accountRequest('/auth/start', { email: 'fixture@example.invalid' })
+    await accountRequest('/me')
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([
+      BILLING_POST_TIMEOUT_MS, BILLING_POST_TIMEOUT_MS,
+      ACCOUNT_REQUEST_TIMEOUT_MS, ACCOUNT_REQUEST_TIMEOUT_MS, ACCOUNT_REQUEST_TIMEOUT_MS, ACCOUNT_REQUEST_TIMEOUT_MS,
+    ])
+    expect([BILLING_POST_TIMEOUT_MS, ACCOUNT_REQUEST_TIMEOUT_MS]).toEqual([35_000, 12_000])
+  } finally {
+    timeout.mockRestore()
+  }
 })

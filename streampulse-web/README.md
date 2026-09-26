@@ -51,9 +51,34 @@ npm run pages:deploy:prod   # requires CLOUDFLARE_API_TOKEN (and optionally CLOU
 `pages:deploy:prod` builds locally with `VITE_BACKEND_URL=https://api.streampulse.stream`
 (it **rejects** any non-prod backend), runs `check:backend-url` (fails the deploy if
 `localhost`/`127.0.0.1`/`laptopworker` appears in the bundle or HTML shells), then
-uploads the prebuilt `dist/` with `wrangler pages deploy`. The public site is fully
-static + the hosted API, so it works with your local PC off and never depends on
-`localhost:5173`.
+uploads the prebuilt `dist/` with `wrangler pages deploy`. The public site is
+static + the hosted API (plus the pinned account relay below), so it works with
+your local PC off and never depends on `localhost:5173`.
+
+**Edge freeze gate.** `pages:deploy:prod` runs `scripts/check-edge-freeze.mjs` on
+`public/` before building and on the built `dist/` right before uploading. A
+deploy is either worker-free or carries exactly one Pages Worker:
+`public/_worker.js` (copied to `dist/`) whose SHA-256 matches the pin in
+`edge-freeze-exception.json`, with `_routes.json` byte-for-byte equal to
+`JSON.stringify(pinned routes)` plus a newline, before the pinned `expires` date
+(00:00 UTC, at most 90 days out). `functions/`, any other `_worker*` entry, a
+one-byte change, an expired pin, or a `wrangler.json` / `wrangler.jsonc` /
+`wrangler.toml` / `.wrangler/deploy/config.json` in `streampulse-web/` or any
+parent directory (wrangler would upload its bindings) fails the deploy.
+
+The deploy also fetches `origin master` and requires HEAD to equal
+`origin/master`, with every edge file (Worker, routes, pin, gate, deploy script,
+Functions, wrangler config) byte-identical to it. With an admitted Worker it
+requires `CLOUDFLARE_ACCOUNT_ID` (never printed) and the apex project name.
+There is no environment override, and `ALLOW_DIRTY_PAGES_DEPLOY` never covers
+these edge checks. Changing the Worker needs a new pin and a new edge-freeze
+approval.
+
+The Worker relays only the reviewed `/v1/account/*` and `/v1/billing/*` browser
+routes to `https://api.streampulse.stream` and signs the visitor IP (edge
+contract `pulse-edge-v1`). It needs the Pages secret binding
+`PULSE_EDGE_SECRET` (at least 32 bytes, shared with the API, no leading or
+trailing whitespace); without it every relayed request returns 503.
 
 **Cloudflare Git builds:** packages resolve from in-repo `file:../packages/*`.
 A single-repo clone is enough for package resolution after `npm run build:packages`.
