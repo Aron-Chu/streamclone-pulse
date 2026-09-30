@@ -13,7 +13,7 @@ import { HubActivityBarSeries } from '../analytics/HubActivityBarSeries'
 import { HubActivityRhythmLines } from '../analytics/HubActivityRhythmLines'
 import { HubActivityMomentAnnotations } from '../analytics/HubActivityMomentAnnotations'
 import { classifyMomentMarker, resolveAnnotationCollisions, type HubChartAnnotation } from '../../../lib/hubChartMarkers'
-import { HubChartNavigator, zoomNavigatorRange, type HubChartNavigatorPreset, type HubChartNavigatorRange } from './HubChartNavigator'
+import { HubChartNavigator, type HubChartNavigatorPreset, type HubChartNavigatorRange } from './HubChartNavigator'
 import './hub-public-audit.css'
 
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
@@ -615,7 +615,6 @@ export function HubActivityChart({
   emoteImages,
 }: HubActivityChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const headerZoomButtonRef = useRef<HTMLButtonElement>(null)
   const compactAnnotations = useHubChartCompact()
   const [hover, setHover] = useState<number | null>(null)
   const coarsePointer = useCoarsePointer()
@@ -689,18 +688,26 @@ export function HubActivityChart({
     startIndex: 0,
     endIndex: 1,
   })
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
+  const resetNavigator = () => {
+    setScrollZoomEnabled(false)
+    setNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) })
+  }
 
-  const previousGrid = useRef<{ window: number; times: number[] }>({ window: windowMinutes, times: [] });
+  const requestedRange = rangeControl?.active
+  const previousGrid = useRef<{ window: number; requestedRange: string | undefined; times: number[] }>({ window: windowMinutes, requestedRange, times: [] });
   // Preserve the inspected timestamps; only a viewport at the latest edge follows.
   // A requested-range change resets to the full loaded
   // domain. Value-only refreshes preserve the user's local viewport.
   useEffect(() => {
     const previous = previousGrid.current;
     const times = chartPoints.map(point => point.t);
-    previousGrid.current = { window: windowMinutes, times };
+    previousGrid.current = { window: windowMinutes, requestedRange, times };
+    const rangeChanged = previous.window !== windowMinutes || previous.requestedRange !== requestedRange;
+    if (rangeChanged) setScrollZoomEnabled(false);
     setNavigatorRange(current => {
       const last = Math.max(0, times.length - 1);
-      if (previous.window !== windowMinutes || previous.times.length === 0 || times.length < 2) return { startIndex: 0, endIndex: last };
+      if (rangeChanged || previous.times.length === 0 || times.length < 2) return { startIndex: 0, endIndex: last };
       const oldLast = previous.times.length - 1;
       if (current.startIndex === 0 && current.endIndex >= oldLast) return { startIndex: 0, endIndex: last };
       const span = current.endIndex - current.startIndex;
@@ -709,7 +716,7 @@ export function HubActivityChart({
       const startIndex = Math.min(last - 1, nearest(previous.times[current.startIndex]));
       return { startIndex: Math.max(0, startIndex), endIndex: Math.max(startIndex + 1, nearest(previous.times[current.endIndex])) };
     });
-  }, [chartPointWindowKey, windowMinutes]);
+  }, [chartPointWindowKey, windowMinutes, requestedRange]);
 
   const navigatorBounds = useMemo(() => {
     const maxIndex = Math.max(0, chartPoints.length - 1)
@@ -1532,39 +1539,8 @@ export function HubActivityChart({
       <div className="hx-chart-header">
         {rangeControl ? (
           <div className="hx-chart-header__window">
+            <span className="hx-chart-header__window-label">Time window</span>
             {rangeTabs}
-            <button
-              type="button"
-              className="hx-chart-header__zoom"
-              ref={headerZoomButtonRef}
-              disabled={viewportEndIndex - viewportStartIndex < 2}
-              onClick={() => setNavigatorRange(zoomNavigatorRange(
-                chartPoints.length,
-                { startIndex: viewportStartIndex, endIndex: viewportEndIndex },
-                selectedIndex >= 0 ? selectedIndex : accentIndex >= 0 ? accentIndex : null,
-                'in',
-              ))}
-            >
-              Zoom graph
-            </button>
-            <span className="hx-chart-header__zoom-status" role="status" aria-live="polite">
-              {chartIsZoomed ? `${viewportEndIndex - viewportStartIndex + 1} of ${chartPoints.length} buckets` : ''}
-            </span>
-            {chartIsZoomed ? (
-              <button
-                type="button"
-                className="hx-chart-header__zoom hx-chart-header__zoom--reset"
-                onClick={(event) => {
-                  // This button unmounts when the view resets. Stop the native
-                  // document click-away listener from treating it as outside.
-                  event.stopPropagation()
-                  headerZoomButtonRef.current?.focus()
-                  setNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) })
-                }}
-              >
-                Show full range
-              </button>
-            ) : null}
           </div>
         ) : null}
         <div className="hx-chart-actions" aria-label="Chart series toggles">
@@ -1675,6 +1651,7 @@ export function HubActivityChart({
             <div
               ref={wrapRef}
               data-hub-chart-wheel-surface
+              data-hub-chart-scroll-zoom={scrollZoomEnabled ? 'on' : 'off'}
               data-chart-layout="viewer-lane"
               data-hover={hover != null ? 'true' : undefined}
               data-selected={selectedIndex >= 0 || accentIndex >= 0 ? 'true' : undefined}
@@ -1682,7 +1659,7 @@ export function HubActivityChart({
               role="group"
               aria-roledescription="interactive activity chart"
               aria-label={chartAriaLabel}
-              tabIndex={onSelectMomentKey || bucketSelectEnabled ? 0 : undefined}
+              tabIndex={onSelectMomentKey || bucketSelectEnabled || scrollZoomEnabled ? 0 : undefined}
               onMouseMove={handleMove}
               onMouseLeave={handleLeave}
               onPointerLeave={handleLeave}
@@ -1694,6 +1671,12 @@ export function HubActivityChart({
               onPointerUp={bucketSelectEnabled || chartIsZoomed ? handlePointerUp : undefined}
               onPointerCancel={bucketSelectEnabled || chartIsZoomed ? handlePointerCancel : undefined}
               onKeyDown={(event) => {
+                if (event.key === 'Escape' && scrollZoomEnabled) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  resetNavigator()
+                  return
+                }
                 const fromMarker = (event.target as HTMLElement | null)?.closest?.('[data-chart-marker-key]')
                 if (event.key === 'Escape' && selectedMomentKey) {
                   event.preventDefault()
@@ -1959,8 +1942,10 @@ export function HubActivityChart({
           )}
           presets={navigatorPresets}
           wheelSurfaceRef={wrapRef}
+          scrollZoomEnabled={scrollZoomEnabled}
+          onScrollZoomChange={setScrollZoomEnabled}
           onChange={setNavigatorRange}
-          onReset={() => setNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) })}
+          onReset={resetNavigator}
         />
         <div className="hx-provider-lanes" role="group" aria-label="Emote provider sparklines">
           {shownProviders.map((key) => {

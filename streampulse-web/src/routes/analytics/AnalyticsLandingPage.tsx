@@ -91,6 +91,10 @@ const ACTIVITY_WINDOW_MINUTES: Record<string, number> = {
   "1y": 365 * 24 * 60,
 };
 
+// The hook normalizes network and cached snapshots. Reuse that typed result
+// rather than cloning every lane again on each successful poll.
+const EMPTY_PUBLIC_HUB = normalizePublicHub(null);
+
 function compactWindowLabel(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
   if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`;
@@ -143,7 +147,7 @@ function AnalyticsLandingContent() {
   }, []);
   const hub = usePublicHubData({ enabled: true, activityWindow });
   const recentLogins = useHubRecentLogins();
-  const data = useMemo(() => normalizePublicHub(hub.data), [hub.data]);
+  const data = hub.data ?? EMPTY_PUBLIC_HUB;
   // Requested range drives the endpoint/range tab; served range owns all bucket
   // geometry so a bounded fallback cannot select or prefetch invented history.
   const servedActivityWindowMinutes = resolveHubActivityChartWindowMinutes(data.activity);

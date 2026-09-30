@@ -187,6 +187,8 @@ export function FigmaMomentInspector({
   const reviewMoment = fromHubMoment({ ...moment, vodId: moment.vodId ?? vodId })
   const reviewHref = reviewMoment ? discoveryMomentHref(reviewMoment) : undefined
   const openMomentHref = momentHref ?? moment.href
+  const actionCount = Number(Boolean(reviewHref)) + Number(Boolean(openMomentHref || sessionHref))
+    + Number(Boolean(moment.login?.trim() && moment.streamId?.trim()))
   const vodStateDisplay = vodStateLabel(moment.vodState, channelLive)
   const timeLabel = momentWallClockLabel(moment, liveChannels)
   const category = moment.category?.trim()
@@ -237,7 +239,7 @@ export function FigmaMomentInspector({
         </dl>
       ) : null}
 
-      <div className={`figma-inspector__actions${isLive ? ' pulse-moments__inspector-actions--compact' : ''}`}>
+      <div className={`figma-inspector__actions moment-inspector-actions${isLive ? ' pulse-moments__inspector-actions--compact' : ''}`} data-action-count={Math.max(1, actionCount)} role="group" aria-label="Moment actions">
         {reviewHref ? (
           <Link className="hub-openbtn" to={reviewHref}>
             Review moment
@@ -253,8 +255,8 @@ export function FigmaMomentInspector({
             {channelLive === true ? 'Moment identity pending' : 'Moment unavailable'}
           </span>
         ) : null}
+        <MomentHandoffActions key={`${moment.login}:${moment.streamId}:${moment.offsetSeconds}`} moment={moment} />
       </div>
-      <MomentHandoffActions key={`${moment.streamId}:${moment.offsetSeconds}`} moment={moment} />
     </aside>
   )
 }

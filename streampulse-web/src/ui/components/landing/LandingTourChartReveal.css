@@ -10,7 +10,7 @@
   position: relative;
 }
 
-.pulse-landing-chart-reveal .pulse-sparkline-wrap::after {
+:where(.pulse-landing-panel[data-tour-active]) .pulse-landing-chart-reveal .pulse-sparkline-wrap::after {
   content: '';
   position: absolute;
   inset: 0 auto 0 calc(var(--chart-wipe, 0) * 100%);
@@ -21,6 +21,11 @@
 }
 
 .pulse-landing-chart-reveal .pulse-sparkline-wrap svg {
+  /* Static and compact samples have no scroll progress to drive a wipe. */
+  clip-path: inset(0 0 0 0);
+}
+
+:where(.pulse-landing-panel[data-tour-active]) .pulse-landing-chart-reveal .pulse-sparkline-wrap svg {
   clip-path: inset(0 calc((1 - var(--chart-wipe, 0)) * 100%) 0 0);
   will-change: clip-path;
 }

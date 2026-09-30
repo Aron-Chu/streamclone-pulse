@@ -30,7 +30,7 @@ export interface PublicHubState {
   data: PublicHub | null
   loading: boolean
   refreshing: boolean
-  /** True while fetching a new activity window but shell data may still be visible. */
+  /** True while fetching or repairing activity; verified shell data may already be visible. */
   activityRefreshing: boolean
   error: string | null
   loadSource: PublicHubLoadSource | null
@@ -122,6 +122,22 @@ function replaceWithCanonicalRecentActivity(requested: PublicHub, recent: Public
   }
 }
 
+function withUnavailableActivity(hub: PublicHub): PublicHub {
+  return {
+    ...hub,
+    activity: {
+      ...hub.activity,
+      points: [],
+      servedWindowMinutes: 30,
+      availableWindowMinutes: 30,
+      bucketMinutes: 1,
+      state: 'degraded',
+      source: 'live_pool_fallback',
+      reason: 'historical_projection_unavailable',
+    },
+  }
+}
+
 export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubState {
   const { pollMs = DEFAULT_POLL_MS, enabled = true, activityWindow = '24h', projection, random = Math.random } = options
   // Mount-only cache hydrate — do not re-read localStorage on every render (P4-L01).
@@ -130,6 +146,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const [data, setData] = useState<PublicHub | null>(() => initial.data)
   const [loading, setLoading] = useState(() => initial.loading)
   const [refreshing, setRefreshing] = useState(false)
+  const [activityRepairing, setActivityRepairing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(() => initial.loadSource)
   const [hubEndpointOk, setHubEndpointOk] = useState(() => initial.hubEndpointOk)
@@ -181,6 +198,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     const controller = new AbortController()
     controllerRef.current = controller
     inFlightRef.current = true
+    setActivityRepairing(false)
 
     if (hasDataRef.current) setRefreshing(true)
     else setLoading(true)
@@ -227,24 +245,24 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         // claiming a 30m fallback. Fetch the canonical 30m endpoint so the
         // chart never presents repeated aggregates as minute activity.
         if (activityWindow !== '30m' && hubActivityNeedsRecentFallback(base.data.activity)) {
+          // The primary response already verified the independent live lanes.
+          // Publish them without invalid activity while its repair is pending;
+          // only the final snapshot advances freshness, sequence, and cache.
+          const withheld = withUnavailableActivity(base.data)
+          setData(withheld)
+          setLoadSource(base.loadSource)
+          setHubEndpointOk(true)
+          setError(null)
+          setCachedAt(null)
+          setLoading(false)
+          setActivityRepairing(true)
+          hasDataRef.current = true
           try {
             const recent = await fetchPublicHubBase(controller.signal, '30m', projection)
             if (recent.hubEndpointOk) {
               next = replaceWithCanonicalRecentActivity(base.data, recent.data)
             } else {
-              next = {
-                ...base.data,
-                activity: {
-                  ...base.data.activity,
-                  points: [],
-                  servedWindowMinutes: 30,
-                  availableWindowMinutes: 30,
-                  bucketMinutes: 1,
-                  state: 'degraded',
-                  source: 'live_pool_fallback',
-                  reason: 'historical_projection_unavailable',
-                },
-              }
+              next = withheld
             }
           } catch (repairError) {
             if (isApiError(repairError) && ['aborted', 'rate_limited', 'unauthorized'].includes(repairError.kind)) {
@@ -252,19 +270,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
             }
             // Never paint a known-invalid coarse payload if the repair request
             // is unavailable; keep the shell and expose an honest empty chart.
-            next = {
-              ...base.data,
-              activity: {
-                ...base.data.activity,
-                points: [],
-                servedWindowMinutes: 30,
-                availableWindowMinutes: 30,
-                bucketMinutes: 1,
-                state: 'degraded',
-                source: 'live_pool_fallback',
-                reason: 'historical_projection_unavailable',
-              },
-            }
+            next = withheld
           }
         }
         if (controller.signal.aborted || !mountedRef.current) return
@@ -312,6 +318,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         if (mountedRef.current) {
           setLoading(false)
           setRefreshing(false)
+          setActivityRepairing(false)
         }
       }
     }
@@ -346,8 +353,10 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
 
   useEffect(() => {
     mountedRef.current = true
+    setActivityRepairing(false)
     if (!enabled) {
       setLoading(false)
+      setRefreshing(false)
       return () => {
         mountedRef.current = false
         const controller = controllerRef.current
@@ -407,9 +416,9 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const activityRefreshing = useMemo(
     () =>
       Boolean(
-        refreshing && data && loadedActivityWindow != null && loadedActivityWindow !== activityWindow,
+        activityRepairing || (refreshing && data && loadedActivityWindow !== activityWindow),
       ),
-    [activityWindow, data, loadedActivityWindow, refreshing],
+    [activityRepairing, activityWindow, data, loadedActivityWindow, refreshing],
   )
 
   return {

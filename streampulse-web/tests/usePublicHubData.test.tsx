@@ -95,6 +95,31 @@ function statsFallbackResult(poolSize: number) {
   }
 }
 
+function repairHubResult(poolSize = 3, windowMinutes = 1440) {
+  const result = hubResult(poolSize)
+  result.data.activity = {
+    ...result.data.activity,
+    windowMinutes,
+    requestedWindowMinutes: windowMinutes,
+    servedWindowMinutes: 30,
+    availableWindowMinutes: 30,
+    bucketMinutes: 6,
+    state: 'degraded',
+    source: 'live_pool_fallback',
+    reason: 'historical_projection_unavailable',
+  }
+  result.data.livePulseMoments = [{ login: 'creator', offsetSeconds: 60, score: 42, label: 'Measured live peak' }]
+  result.data.livePulseMomentsStatus = 'ready'
+  return result
+}
+
+function deferredHub() {
+  let resolve!: (value: ReturnType<typeof hubResult>) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<ReturnType<typeof hubResult>>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
 describe('usePublicHubData', () => {
   beforeEach(() => {
     clearPublicHubCacheForTests()
@@ -181,6 +206,194 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.activity.windowMinutes).toBe(1440)
     expect(result.current.data?.activity.servedWindowMinutes).toBe(30)
     expect(result.current.data?.activity.points.map((point) => point.chat)).toEqual([12, 18])
+  })
+
+  describe('independent live lanes during activity repair', () => {
+    afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+    it('publishes verified live moments before repair, accepting and caching exactly one final snapshot', async () => {
+      const primary = repairHubResult()
+      const repair = deferredHub()
+      const persist = vi.spyOn(publicHubCache, 'writePublicHubCacheForCurrentBackend')
+      fetchPublicHubBase.mockResolvedValueOnce(primary).mockReturnValueOnce(repair.promise)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
+
+      expect(result.current.loading).toBe(false)
+      expect(result.current.loadSource).toBe('full')
+      expect(result.current.hubEndpointOk).toBe(true)
+      expect(result.current.data?.livePulseMoments).toEqual(primary.data.livePulseMoments)
+      expect(result.current.data?.activity.points).toEqual([])
+      expect(result.current.data?.generatedAt).toBe(primary.data.generatedAt)
+      expect(result.current.lastSuccessfulPollAt).toBeNull()
+      expect(result.current.pollSequence).toBe(0)
+      expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+      expect(persist).not.toHaveBeenCalled()
+
+      const recent = hubResult(99)
+      recent.data.generatedAt = '2026-06-30T12:01:00.000Z'
+      recent.data.activity.windowMinutes = 30
+      recent.data.activity.points = [{ t: 1_700_001_000_000, chat: 12, emotes: 3, seventv: 3, viewers: 1200 }]
+      await act(async () => { repair.resolve(recent) })
+
+      expect(result.current.activityRefreshing).toBe(false)
+      expect(result.current.pollSequence).toBe(1)
+      expect(result.current.lastSuccessfulPollAt).not.toBeNull()
+      expect(result.current.data?.poolSize).toBe(primary.data.poolSize)
+      expect(result.current.data?.livePulseMoments).toEqual(primary.data.livePulseMoments)
+      expect(result.current.data?.activity.points).toEqual(recent.data.activity.points)
+      expect(result.current.data?.activity).toMatchObject({ requestedWindowMinutes: 1440, servedWindowMinutes: 30 })
+      expect(result.current.data?.generatedAt).toBe(recent.data.generatedAt)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.points).toEqual(recent.data.activity.points)
+      expect(persist).toHaveBeenCalledTimes(1)
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    })
+
+    it('does not overwrite the prior cache or freshness during a repair refresh', async () => {
+      writePublicHubCache(getBackendUrl(), '24h', sampleHub(42))
+      const repair = deferredHub()
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult(7)).mockReturnValueOnce(repair.promise)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      const priorTimestamp = result.current.lastSuccessfulPollAt
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
+      expect(result.current.data?.poolSize).toBe(7)
+      expect(result.current.data?.activity.points).toEqual([])
+      expect(result.current.pollSequence).toBe(1)
+      expect(result.current.lastSuccessfulPollAt).toBe(priorTimestamp)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(42)
+      await act(async () => { repair.resolve(hubResult(99)) })
+      expect(result.current.pollSequence).toBe(2)
+      expect(result.current.activityRefreshing).toBe(false)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(7)
+    })
+
+    it.each(['server', 'timeout', 'unreachable', 'unhealthy'])('accepts an honest empty activity projection after %s repair failure', async kind => {
+      const repair = deferredHub()
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult()).mockReturnValueOnce(repair.promise)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
+      await act(async () => {
+        if (kind === 'unhealthy') repair.resolve(hubDown())
+        else repair.reject({ kind, status: 503, message: 'repair unavailable' })
+      })
+      expect(result.current.activityRefreshing).toBe(false)
+      expect(result.current.pollSequence).toBe(1)
+      expect(result.current.hubEndpointOk).toBe(true)
+      expect(result.current.error).toBeNull()
+      expect(result.current.data?.livePulseMomentsStatus).toBe('ready')
+      expect(result.current.data?.activity).toMatchObject({ points: [], state: 'degraded', reason: 'historical_projection_unavailable' })
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.points).toEqual([])
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    })
+
+    it.each(['unauthorized', 'aborted'])('does not accept provisional lanes as a successful poll after %s repair refusal', async kind => {
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult())
+        .mockRejectedValueOnce({ kind, status: 401, message: 'stop' })
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+      expect(result.current.loading).toBe(false)
+      expect(result.current.pollSequence).toBe(0)
+      expect(result.current.lastSuccessfulPollAt).toBeNull()
+      expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+      expect(result.current.data?.activity.points).toEqual([])
+      expect(result.current.error).toBe(kind === 'aborted' ? null : 'stop')
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    })
+
+    it('honors repair Retry-After without accepting provisional data or refreshing early', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult())
+        .mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 75_000 })
+        .mockResolvedValue(hubResult(9))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0.5 }))
+      await act(async () => { await Promise.resolve() })
+      expect(result.current.activityRefreshing).toBe(false)
+      expect(result.current.error).toBe('wait')
+      expect(result.current.hubEndpointOk).toBe(false)
+      expect(result.current.pollSequence).toBe(0)
+      expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(74_999)
+        result.current.refresh()
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+      expect(result.current.data?.poolSize).toBe(9)
+      expect(result.current.pollSequence).toBe(1)
+    })
+
+    it('keeps the new repair loading state when a superseded range repair finishes late', async () => {
+      const oldRepair = deferredHub()
+      const newRepair = deferredHub()
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult(3))
+        .mockReturnValueOnce(oldRepair.promise)
+        .mockResolvedValueOnce(repairHubResult(7, 10080))
+        .mockReturnValueOnce(newRepair.promise)
+      const { result, rerender } = renderHook(
+        ({ range }: { range: PublicHubActivityWindow }) => usePublicHubData({ pollMs: 0, activityWindow: range }),
+        { initialProps: { range: '24h' as PublicHubActivityWindow } },
+      )
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
+      const oldSignal = fetchPublicHubBase.mock.calls[1]?.[0] as AbortSignal
+      rerender({ range: '7d' })
+      await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(4))
+      expect(oldSignal.aborted).toBe(true)
+      expect(result.current.data?.poolSize).toBe(7)
+      await act(async () => { oldRepair.resolve(hubResult(500)) })
+      expect(result.current.data?.poolSize).toBe(7)
+      expect(result.current.activityRefreshing).toBe(true)
+      expect(result.current.pollSequence).toBe(0)
+      expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+      await act(async () => { newRepair.resolve(hubResult(99)) })
+      expect(result.current.activityRefreshing).toBe(false)
+      expect(result.current.pollSequence).toBe(1)
+      expect(result.current.data?.activity.requestedWindowMinutes).toBe(10080)
+      expect(readPublicHubCache(getBackendUrl(), '7d')?.data.poolSize).toBe(7)
+    })
+
+    it('does not let a superseded repair override a manual refresh', async () => {
+      const repair = deferredHub()
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult())
+        .mockReturnValueOnce(repair.promise).mockResolvedValueOnce(hubResult(9))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
+      const signal = fetchPublicHubBase.mock.calls[1]?.[0] as AbortSignal
+      await act(async () => { result.current.refresh() })
+      expect(signal.aborted).toBe(true)
+      expect(result.current.data?.poolSize).toBe(9)
+      expect(result.current.activityRefreshing).toBe(false)
+      await act(async () => { repair.resolve(hubResult(500)) })
+      expect(result.current.data?.poolSize).toBe(9)
+      expect(result.current.pollSequence).toBe(1)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(9)
+    })
+
+    it('clears repair loading on disable and does not cache a late result', async () => {
+      writePublicHubCache(getBackendUrl(), '24h', sampleHub(42))
+      const repair = deferredHub()
+      fetchPublicHubBase.mockResolvedValueOnce(hubResult(42))
+        .mockResolvedValueOnce(repairHubResult(7, 10080)).mockReturnValueOnce(repair.promise)
+      const { result, rerender } = renderHook(
+        ({ enabled, range }: { enabled: boolean; range: PublicHubActivityWindow }) => usePublicHubData({ pollMs: 0, enabled, activityWindow: range }),
+        { initialProps: { enabled: true, range: '24h' as PublicHubActivityWindow } },
+      )
+      await waitFor(() => expect(result.current.pollSequence).toBe(2))
+      rerender({ enabled: true, range: '7d' })
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(true))
+      await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(3))
+      const signal = fetchPublicHubBase.mock.calls[2]?.[0] as AbortSignal
+      rerender({ enabled: false, range: '7d' })
+      expect(signal.aborted).toBe(true)
+      expect(result.current.activityRefreshing).toBe(false)
+      await act(async () => { repair.resolve(hubResult(99)) })
+      expect(result.current.pollSequence).toBe(2)
+      expect(readPublicHubCache(getBackendUrl(), '7d')).toBeNull()
+    })
   })
 
   it.each(['server', 'timeout', 'unreachable'])('recovers a typed %s history failure with explicitly scoped live health', async (kind) => {

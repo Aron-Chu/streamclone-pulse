@@ -436,6 +436,11 @@ test.describe('hub audit regression', () => {
 
   test('HUB-AUDIT-051 pulse moments live visual baseline', async ({ page }) => {
     const errors = attachConsoleErrorGuard(page)
+    // Keep cosmetic profile enrichment out of this geometry baseline. A live
+    // avatar can otherwise appear between captures of the fixed hub fixture.
+    await page.route(/\/v1\/channels\/(?:xqc|sodapoppin)(?:\?.*)?$/, route => route.fulfill({
+      json: { login: new URL(route.request().url()).pathname.split('/').pop() },
+    }))
     await page.goto('/analytics')
     await expect(page.locator('.pulse-moments-live')).toBeVisible()
     await expect(page.locator('.pulse-moments-live')).toHaveScreenshot('pulse-moments-live-shell.png', {

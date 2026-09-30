@@ -637,15 +637,21 @@ Shared sidecar of network activity chart (300–360px only when its query contai
 
 The chart owns a client-side `HubChartNavigator` between the time axis and the fixed provider lanes. It changes only the visible subset of the already-loaded 30m / 24h / 7d response; it never changes the requested server range, coverage totals, Newsroom/Live Wire selection, or provider ordering.
 
-- Purple capsule selection with no boxed end handles; invisible 44px handle targets expose visible focus indicators.
+- Purple selection with visible end grips and 44px resize targets; keyboard focus stays visible.
 - Drag the full-range track or outside a zoomed selection to create a brush. Drag the selected window to pan. Drag either handle to resize with a minimum two-bucket span.
-- Ordinary vertical wheel scrolling over the plot or navigator moves the page and is never consumed. Alt+wheel zooms around the cursor; Shift+wheel or horizontal trackpad motion pans the hub navigator's zoomed view. Ctrl/Meta+wheel remains available to browser zoom. The shared `PulseMultiSignalChart` uses the same explicit Alt+wheel zoom rule, while the hub navigator also handles horizontal panning. `preventDefault()` happens only when a surface actually changes its view. Touch surfaces keep `touch-action: pan-y` for the same reason.
-- A Zoom graph action is visible beside the range selector above the plot. It uses the same halving rule and locked-bucket focus as the navigator's Zoom in button below the plot, so zoom remains discoverable without an accidental wheel gesture.
-- While zoomed, the chart header shows the visible-versus-loaded bucket count and a Show full range action. Resetting the view keeps the selected bucket and its moments filter; the persistent count makes the local zoom clear even when the navigator is below the fold.
-- Arrow keys adjust a focused handle, Shift+Arrow moves five buckets, Home/End clamp to the domain, and Reset or a double-click on the navigator track restores the full loaded range.
+- Scroll zoom is off by default: ordinary vertical wheel motion over the plot or navigator scrolls the page. The explicit Scroll zoom toggle enables cursor-anchored wheel zoom on those surfaces; Alt+wheel also works while the toggle is off. Shift+wheel or horizontal trackpad motion pans a zoomed view. Ctrl/Meta+wheel remains available to browser zoom. The shared `PulseMultiSignalChart` retains its Alt+wheel rule. `preventDefault()` happens only when a surface actually changes its view. Touch surfaces keep `touch-action: pan-y` for the same reason.
+- The header contains the Time window selector and series controls. A single toolbar below the time axis groups Zoom in, Zoom out, Reset zoom and Scroll zoom, beside the visible time span and visible-versus-loaded bucket count. Reset keeps the selected bucket and its moments filter.
+- Arrow keys adjust a focused handle, Shift+Arrow moves five buckets, and Home/End clamp to the domain. Reset, a double-click on the track, or Escape on a slider restores the full loaded range and turns Scroll zoom off. While Scroll zoom is on, Escape from the focused plot or navigator controls does the same. Requested range changes turn the mode off; polling preserves the current viewport and mode.
 - Panning can leave a locked bucket outside the visible span without clearing its investigation. In that state, Show selected bucket recenters the current span around the locked bucket.
 - Pointer cancellation restores the last committed range. All mutations clamp indices and prevent inverted handles.
 - The navigator exposes two ARIA sliders, a concise interaction hint, and a polite visible-range announcement.
+
+### Responsive inspector and initial loading (2026-09-30)
+
+- Moment Inspector Review moment, Open analytics and Copy link actions share one responsive group. Clipboard feedback occupies a row only after an attempted copy, and resets when the selected moment changes.
+- Selected minute emotes use four columns: rank, emote, count and share. Counts and shares have separate space; estimated shares retain their qualifier. Session emote tables keep their existing provider column and share bars.
+- When a successful hub response needs a canonical recent-activity repair, verified live moments and other independent lanes appear immediately while the chart remains loading. Invalid coarse chart points stay withheld. Only final acceptance advances freshness, poll sequence and persistent cache; this does not shorten failed-request budgets or change the default server range.
+- The homepage demonstration's static mode places its overview above the centered sample panel. Narrow screens remove duplicate horizontal padding. Chart wiping applies only during an active animated tour, so static and compact demos show their complete sample traces, including after a resize from animated mode; reduced-motion still forces full reveal.
 
 ## Verification
 
