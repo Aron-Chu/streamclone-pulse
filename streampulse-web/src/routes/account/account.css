@@ -1,2 +1,182 @@
-.pulse-account{max-width:480px;margin:56px auto 80px;padding:28px;background:#18181b;border:1px solid #3f3f50;border-radius:14px;color:#fafafc;font-family:Inter,system-ui,sans-serif}.pulse-account h1{font-size:26px;letter-spacing:-.03em;line-height:1.2;margin:8px 0 22px;font-weight:600}.pulse-account h2{font-size:18px;margin:0 0 12px;font-weight:600}.pulse-account p{font-size:13px;line-height:1.65;margin:12px 0;color:#b6b6c5}.pulse-account .pulse-account-kicker{font-size:12px;color:#c4b5fd}.pulse-account form{display:grid;gap:12px}.pulse-account label{font-size:12px;font-weight:500}.pulse-account input{min-width:0;width:100%;min-height:44px;border:1px solid #555565;border-radius:9px;background:#111117;padding:10px 12px;color:#fafafc;font:inherit}.pulse-account button,.pulse-account-button{display:inline-flex;justify-content:center;align-items:center;min-height:44px;padding:10px 15px;border:1px solid #555565;border-radius:9px;background:#262633;color:#fafafc;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none}.pulse-account .pulse-account-primary{background:#7c3aed;border-color:#7c3aed;color:white}.pulse-account button:disabled{opacity:.6;cursor:wait}.pulse-account-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.pulse-account :focus-visible{outline:2px solid #c4b5fd;outline-offset:4px}.pulse-account [role=alert]{color:#fca5a5}.pulse-account .pulse-account-device{padding:12px;background:#262633;border-radius:9px;color:#fafafc;overflow-wrap:anywhere}.pulse-account .pulse-account-note{border-top:1px solid #3f3f50;padding-top:18px;margin-top:24px;font-size:12px}.pulse-account a:not(.pulse-account-button){color:#c4b5fd;font-size:12px}@media(max-width:540px){.pulse-account{margin:24px 0;padding:22px}.pulse-account h1{font-size:24px}}@media(prefers-reduced-motion:no-preference){.pulse-account button{transition:background-color 120ms ease}}
-.pulse-account .pulse-account-sandbox{margin:0 0 18px;padding:12px 14px;border:1px solid #d97706;border-radius:9px;background:#2a1f0b;color:#fde68a}.pulse-account .pulse-account-sandbox strong{color:#fef3c7}
+.pulse-account {
+  max-width: 640px;
+  margin: 40px auto 56px;
+  padding: 40px;
+  border: 1px solid #353540;
+  border-radius: 20px;
+  background: #15151b;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 16%);
+  color: #fafafc;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.pulse-account h1 {
+  margin: 16px 0 20px;
+  font-size: clamp(28px, 3vw, 34px);
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: 1.2;
+}
+
+.pulse-account h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; line-height: 1.4; }
+.pulse-account p { margin: 12px 0; color: #b6b6c5; font-size: 15px; line-height: 1.65; }
+
+.pulse-account .pulse-account-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #c4b5fd;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pulse-account .pulse-account-intro { margin: 0 0 24px; color: #d4d4de; font-size: 16px; }
+.pulse-account form { display: grid; gap: 12px; }
+.pulse-account form .pulse-account-intro { margin-bottom: 4px; }
+.pulse-account .pulse-account-code-help { margin: 0 0 12px; font-size: 14px; }
+
+.pulse-account .pulse-account-pilot {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid #34313f;
+  border-radius: 12px;
+  background: #1c1a25;
+  font-size: 14px;
+}
+
+.pulse-account label { color: #e4e4ed; font-size: 14px; font-weight: 500; }
+
+.pulse-account input {
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid #727286;
+  border-radius: 10px;
+  background: #0f0f14;
+  color: #fafafc;
+  font: inherit;
+}
+
+.pulse-account input::placeholder { color: #9595a6; }
+
+.pulse-account button,
+.pulse-account-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid #4b4b5a;
+  border-radius: 10px;
+  background: #23232d;
+  color: #fafafc;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pulse-account button:hover:not(:disabled),
+.pulse-account-button:hover { background: #30303d; }
+.pulse-account .pulse-account-primary { border-color: #7c3aed; background: #7c3aed; color: white; }
+.pulse-account .pulse-account-primary:hover:not(:disabled) { border-color: #6d28d9; background: #6d28d9; }
+.pulse-account button:disabled { opacity: .6; cursor: wait; }
+.pulse-account :focus-visible { outline: 2px solid #c4b5fd; outline-offset: 4px; }
+
+.pulse-account [role=alert] {
+  padding: 12px 14px;
+  border: 1px solid #75404a;
+  border-radius: 10px;
+  background: #2b1a22;
+  color: #fca5a5;
+}
+
+.pulse-account-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.pulse-account a:not(.pulse-account-button) { color: #c4b5fd; font-size: inherit; text-underline-offset: 3px; }
+.pulse-account a:not(.pulse-account-button):hover { color: #ddd6fe; }
+.pulse-account .pulse-account-privacy { margin: 6px 0 0; font-size: 13px; }
+.pulse-account-footer { margin-top: 32px; padding-top: 24px; border-top: 1px solid #353540; }
+.pulse-account-footer p { margin: 0 0 16px; font-size: 14px; }
+.pulse-account-footer nav { display: flex; flex-wrap: wrap; column-gap: 20px; row-gap: 12px; font-size: 14px; }
+
+.pulse-account-review {
+  padding: 20px;
+  border: 1px solid #454052;
+  border-radius: 14px;
+  background: #1c1a25;
+}
+
+.pulse-account .pulse-account-device {
+  padding: 12px 14px;
+  border: 1px solid #3e394c;
+  border-radius: 10px;
+  background: #262331;
+  color: #fafafc;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.pulse-account .pulse-account-code-check { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 16px 0; font-size: 14px; }
+.pulse-account-code-check samp { color: #e9ddff; font-size: 18px; font-weight: 600; letter-spacing: .06em; }
+
+.pulse-account-settings { max-width: 760px; }
+.pulse-account-error { margin-bottom: 24px; }
+
+.pulse-account-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #353540;
+}
+
+.pulse-account-session p { margin: 0; }
+.pulse-account-session button { flex-shrink: 0; }
+.pulse-account-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.pulse-account-section-heading h2 { margin: 0; }
+.pulse-account-section-heading a { font-size: 14px; }
+.pulse-account-devices { display: grid; gap: 12px; margin: 0 0 20px; padding: 0; list-style: none; }
+
+.pulse-account-devices li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #353540;
+  border-radius: 12px;
+  background: #1c1c24;
+}
+
+.pulse-account-device-details { min-width: 0; }
+.pulse-account-device-details strong { font-size: 15px; overflow-wrap: anywhere; }
+.pulse-account-device-details p { margin: 6px 0 0; font-size: 13px; }
+.pulse-account-device-status { color: #b6b6c5; }
+.pulse-account .pulse-account-revoke { flex-shrink: 0; border-color: #75404a; background: transparent; color: #fda4af; }
+.pulse-account .pulse-account-revoke:hover:not(:disabled) { background: #361f29; }
+.pulse-account .pulse-account-empty { padding: 20px; border: 1px dashed #454052; border-radius: 12px; }
+.pulse-account-explainer { margin-top: 28px; }
+.pulse-account-explainer h2 { font-size: 15px; }
+.pulse-account-explainer p { font-size: 14px; }
+.pulse-account .pulse-account-sandbox { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #d97706; border-radius: 10px; background: #2a1f0b; color: #fde68a; }
+.pulse-account .pulse-account-sandbox strong { color: #fef3c7; }
+
+@media (max-width: 540px) {
+  .pulse-account { margin: 8px 0 24px; padding: 24px 20px; border-radius: 16px; }
+  .pulse-account h1 { font-size: 28px; }
+  .pulse-account-devices li { align-items: flex-start; flex-wrap: wrap; }
+  .pulse-account-review { padding: 16px; }
+  .pulse-account-actions > * { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-account button,
+  .pulse-account-button { transition: background-color 120ms ease, border-color 120ms ease; }
+}

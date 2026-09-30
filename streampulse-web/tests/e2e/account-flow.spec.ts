@@ -29,8 +29,10 @@ test('email link stays private and requires explicit confirmation', async ({ pag
 
 test('device connection shows the installation before a separate decision', async ({ page }, info) => {
   let approvals = 0
+  let inspections = 0
   await page.route('**/v1/account/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"accountId":"test-account"}' }))
   await page.route('**/v1/account/device-links/inspect', route => {
+    inspections++
     expect(route.request().postDataJSON()).toEqual({ code: 'ABCDE12345' })
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ label: 'StreamPulse · Chrome on this PC', expiresAt: new Date(Date.now() + 600000).toISOString() }) })
   })
@@ -39,12 +41,18 @@ test('device connection shows the installation before a separate decision', asyn
     expect(route.request().postDataJSON()).toEqual({ code: 'ABCDE12345', approve: false })
     return route.fulfill({ status: 204 })
   })
-  await page.goto('/account/link-device')
-  await page.getByLabel('Extension code').fill('ABCDE-12345')
+  await page.goto('/account/link-device#code=ABCDE12345')
+  await expect(page.getByLabel('Extension code')).toHaveValue('ABCDE12345')
+  expect(new URL(page.url()).hash).toBe('')
+  expect(inspections).toBe(0)
+  expect(approvals).toBe(0)
   await page.getByRole('button', { name: 'Review extension' }).click()
   await expect(page.getByRole('heading', { name: 'Allow this extension?' })).toBeFocused()
   await expect(page.getByText('StreamPulse · Chrome on this PC')).toBeVisible()
+  await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
+  await expect(page.getByText(/Check that this code matches the code currently shown in your extension/)).toBeVisible()
   expect(approvals).toBe(0)
+  expect(inspections).toBe(1)
   await page.screenshot({ path: info.outputPath('device-review.png'), fullPage: true })
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 900 })

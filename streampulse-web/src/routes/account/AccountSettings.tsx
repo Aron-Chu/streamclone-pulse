@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LogOut, Trash2 } from 'lucide-react'
+import { LogOut, Monitor, Trash2 } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import './account.css'
 
@@ -49,23 +50,24 @@ export default function AccountSettings() {
     } catch (e) { setError(accountErrorText(e)) }
     finally { setBusy(false) }
   }
-  return <PublicLayout><section className="pulse-account" aria-label="Account settings">
+  return <PublicLayout><section className="pulse-account pulse-account-settings" aria-label="Account settings">
+    <p className="pulse-account-kicker"><Monitor size={16} aria-hidden="true" /> StreamPulse account</p>
     <h1>Account &amp; devices</h1>
-    {identity ? <><p>Signed in as <strong>{identity}</strong></p><button disabled={busy} onClick={() => void logout()}><LogOut size={16} aria-hidden="true" /> Sign out</button></> : null}
+    {identity ? <div className="pulse-account-session"><p>You’re signed in to StreamPulse.</p><button disabled={busy} onClick={() => void logout()}><LogOut size={16} aria-hidden="true" /> Sign out</button></div> : null}
     {signedOut ? <Link to="/account/sign-in">Sign in to Pulse</Link> : null}
     {busy ? <p role="status">Updating account...</p> : null}
-    {error ? <><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></> : null}
-    {identity && !signedOut ? <><h2>Linked extensions</h2>
-      {!busy && !devices.length && !error ? <p>No linked extensions.</p> : null}
-      <ul>{devices.map(device => <li key={device.id}><strong>{device.label}</strong>
-        <p>{device.revokedAt ? 'Revoked' : `Credential expires ${new Date(device.expiresAt).toLocaleDateString()}`}</p>
-        {!device.revokedAt ? <button disabled={busy} aria-label={`Revoke ${device.label}`} onClick={() => setConfirm(device.id)}><Trash2 size={16} aria-hidden="true" /> Revoke</button> : null}
+    {error ? <div className="pulse-account-error"><p role="alert">{error}</p><button disabled={busy} onClick={() => void load()}>Retry</button></div> : null}
+    {identity && !signedOut ? <><div className="pulse-account-section-heading"><h2>Linked extensions</h2><Link to="/account/link-device">Link extension</Link></div>
+      {!busy && !devices.length && !error ? <p className="pulse-account-empty">No linked extensions. Link your extension to use this account on Twitch.</p> : null}
+      <ul className="pulse-account-devices">{devices.map(device => <li key={device.id}><div className="pulse-account-device-details"><strong>{device.label}</strong>
+        <p>{device.revokedAt ? <span className="pulse-account-device-status">Revoked</span> : `Credential expires ${new Date(device.expiresAt).toLocaleDateString()}`}</p></div>
+        {!device.revokedAt ? <button className="pulse-account-revoke" disabled={busy} aria-label={`Revoke ${device.label}`} onClick={() => setConfirm(device.id)}><Trash2 size={16} aria-hidden="true" /> Revoke</button> : null}
       </li>)}</ul>
-      {confirm ? <div role="group" aria-label="Confirm device revocation"><p>This extension will lose account access. Its local records are not deleted.</p><button disabled={busy} onClick={() => void revoke()}>Confirm revocation</button><button disabled={busy} onClick={() => setConfirm('')}>Cancel</button></div> : null}
+      {confirm ? <div className="pulse-account-review" role="group" aria-label="Confirm device revocation"><h2>Revoke this extension?</h2><p>This extension will lose account access. Its local records are not deleted.</p><div className="pulse-account-actions"><button className="pulse-account-revoke" disabled={busy} onClick={() => void revoke()}>Confirm revocation</button><button disabled={busy} onClick={() => setConfirm('')}>Cancel</button></div></div> : null}
       {cursor ? <button disabled={busy} onClick={() => { setBusy(true); void list(cursor).catch(e => setError(accountErrorText(e))).finally(() => setBusy(false)) }}>More devices</button> : null}
     </> : null}
-    <p>Website saves stay in this browser. They are separate from extension bookmarks and are not moved or merged when you sign in.</p>
-    <p>Signing out here ends this website session. Revoke a linked extension separately to stop its account access.</p>
-    <p><Link to="/account/link-device">Link extension</Link> · <Link to="/account/billing">Membership &amp; billing</Link></p>
+    <div className="pulse-account-explainer"><h2>Your account and this browser</h2><p>Website saves stay in this browser. They are separate from extension bookmarks and are not moved or merged when you sign in.</p>
+    <p>Signing out here ends this website session. Revoke a linked extension separately to stop its account access.</p></div>
+    <AccountFooter current="settings" />
   </section></PublicLayout>
 }

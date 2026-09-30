@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountPage from '../src/routes/account/AccountPage'
 import { accountRequest, AccountError } from '../src/lib/accountApi'
 import { clearAccountConfirmation, getAccountConfirmation } from '../src/lib/accountConfirmation'
+import { captureAccountDeviceCode, clearAccountDeviceCode, getAccountDeviceCode } from '../src/lib/accountDeviceCode'
 import { accountBillingSignInHref, readAccountBillingReturn, rememberAccountBillingReturn } from '../src/lib/accountBillingReturn'
 
 vi.mock('../src/lib/accountApi', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/accountApi')>(), accountRequest: vi.fn() }))
@@ -13,9 +14,57 @@ vi.mock('../src/ui/components/PublicLayout', () => ({ PublicLayout: ({ children 
 const returnPath = '/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc'
 
 beforeEach(() => {
+  clearAccountDeviceCode()
   vi.mocked(accountRequest).mockReset().mockResolvedValue({})
   vi.mocked(getAccountConfirmation).mockReturnValue('a'.repeat(64))
   vi.mocked(clearAccountConfirmation).mockClear()
+})
+
+describe('prepared extension code', () => {
+  it('prefills a human code without inspecting or approving until separate user actions', async () => {
+    window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345')
+    captureAccountDeviceCode()
+    vi.mocked(accountRequest).mockImplementation(async path => {
+      if (path === '/me') return { accountId: 'account-a' }
+      if (path === '/device-links/inspect') return { label: 'My extension', expiresAt: new Date(Date.now() + 600000).toISOString() }
+      return {}
+    })
+    render(<MemoryRouter initialEntries={['/account/link-device']}><AccountPage /></MemoryRouter>)
+    expect((await screen.findByLabelText('Extension code') as HTMLInputElement).value).toBe('ABCDE12345')
+    expect(getAccountDeviceCode()).toBe('')
+    expect(accountRequest).not.toHaveBeenCalledWith('/device-links/inspect', expect.anything())
+    expect(accountRequest).not.toHaveBeenCalledWith('/device-links/approve', expect.anything())
+    fireEvent.click(screen.getByRole('button', { name: 'Review extension' }))
+    expect(await screen.findByRole('heading', { name: 'Allow this extension?' })).toBeTruthy()
+    expect(screen.getByText('ABCDE-12345')).toBeTruthy()
+    expect(screen.getByText(/Check that this code matches the code currently shown in your extension/)).toBeTruthy()
+    expect(accountRequest).toHaveBeenCalledWith('/device-links/inspect', { code: 'ABCDE12345' })
+    expect(accountRequest).not.toHaveBeenCalledWith('/device-links/approve', expect.anything())
+    fireEvent.click(screen.getByRole('button', { name: 'Approve extension' }))
+    expect(await screen.findByRole('heading', { name: 'Extension approved' })).toBeTruthy()
+    expect(accountRequest).toHaveBeenCalledWith('/device-links/approve', { code: 'ABCDE12345', approve: true })
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('keeps a blank manual fallback when no code was handed off', async () => {
+    render(<MemoryRouter initialEntries={['/account/link-device']}><AccountPage /></MemoryRouter>)
+    expect((await screen.findByLabelText('Extension code') as HTMLInputElement).value).toBe('')
+    expect(screen.getByRole('button', { name: 'Review extension' })).toBeTruthy()
+  })
+
+  it('requires sign-in without persisting or forwarding the prepared code', async () => {
+    window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345')
+    captureAccountDeviceCode()
+    vi.mocked(accountRequest).mockRejectedValue(new AccountError(401))
+    render(<MemoryRouter initialEntries={['/account/link-device']}><AccountPage /></MemoryRouter>)
+    expect((await screen.findByRole('link', { name: 'Sign in' })).getAttribute('href')).toBe('/account/sign-in')
+    expect(screen.queryByLabelText('Extension code')).toBeNull()
+    expect(getAccountDeviceCode()).toBe('')
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('ABCDE12345')
+    expect(accountRequest).not.toHaveBeenCalledWith('/device-links/inspect', expect.anything())
+    expect(accountRequest).not.toHaveBeenCalledWith('/device-links/approve', expect.anything())
+    window.history.replaceState(null, '', '/')
+  })
 })
 
 describe('private pilot sign-in copy', () => {

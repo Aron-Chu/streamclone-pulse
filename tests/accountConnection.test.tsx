@@ -8,7 +8,7 @@ import { AccountConnection } from '../src/options/AccountConnection.tsx'
 
 it('links through the worker, polls at the requested interval, and stops on unmount', async () => {
   vi.useFakeTimers()
-  const pending = { state: 'pending', code: 'ABCDE-12345', expiresAt: new Date(Date.now() + 600000).toISOString(), retryAfterSeconds: 5 }
+  const pending = { state: 'pending', code: 'ABCDE-12345', expiresAt: new Date(Date.now() + 600000).toISOString(), retryAfterSeconds: 5, pollingSecret: 'c'.repeat(64), unknownField: 'must-stay-out-of-the-link' }
   const send = vi.fn().mockResolvedValueOnce({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } })
     .mockResolvedValue({ type: 'SUPPORTER_ACCOUNT', account: pending })
   vi.stubGlobal('chrome', { runtime: { sendMessage: send } })
@@ -21,7 +21,11 @@ it('links through the worker, polls at the requested interval, and stops on unmo
     await act(async () => host.querySelector('button')!.click())
     expect(send).toHaveBeenLastCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'start' })
     expect(host.textContent).toContain('ABCDE-12345')
-    expect(host.querySelector('a')?.href).toBe('https://streampulse.stream/account/link-device')
+    expect(host.querySelector('a')?.href).toBe('https://streampulse.stream/account/link-device#code=ABCDE12345')
+    expect(host.textContent).toContain('Review extension and Approve extension')
+    expect(host.textContent).toContain('enter the code yourself')
+    expect(host.innerHTML).not.toContain(pending.pollingSecret)
+    expect(host.innerHTML).not.toContain(pending.unknownField)
     await act(async () => { await vi.advanceTimersByTimeAsync(4999) })
     expect(send).toHaveBeenCalledTimes(2)
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
