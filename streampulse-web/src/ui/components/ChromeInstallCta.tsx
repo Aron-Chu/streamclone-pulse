@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
+import { capturePublicCta } from '../../lib/productAnalytics'
 
 export type ChromeInstallCtaProps = {
   className?: string
@@ -26,6 +27,7 @@ export function ChromeInstallCta({
       rel="noopener noreferrer"
       data-cta={dataCta}
       data-cws-listing={CHROME_WEB_STORE_LISTING_URL}
+      onClick={() => capturePublicCta('install_extension')}
     >
       {children}
     </a>

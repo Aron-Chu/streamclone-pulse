@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from 'react'
+import { StrictMode, useEffect, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
@@ -19,6 +19,7 @@ import './ui/public-utilities.css'
 import './ui/global.css'
 import { captureAccountConfirmation } from './lib/accountConfirmation'
 import { captureAccountDeviceCode } from './lib/accountDeviceCode'
+import { setProductAnalyticsRoute } from './lib/productAnalytics'
 
 captureAccountConfirmation()
 captureAccountDeviceCode()
@@ -65,6 +66,12 @@ function AuthRejectedListener() {
   return null
 }
 
+function ProductAnalyticsRouteObserver() {
+  const { pathname } = useLocation()
+  useLayoutEffect(() => { setProductAnalyticsRoute() }, [pathname])
+  return null
+}
+
 /**
  * Dev-only: `?spBackend=<origin>` sets the session backend override so a local
  * shim (e.g. scripts/dev-discovery-fixture.mjs) is reachable from a single
@@ -102,6 +109,7 @@ async function bootstrap() {
           <BrowserRouter>
             <PageMetadata />
             <AuthRejectedListener />
+            <ProductAnalyticsRouteObserver />
             <AppRoutes />
           </BrowserRouter>
         </QueryClientProvider>

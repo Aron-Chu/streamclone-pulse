@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { BrandMark } from './BrandMark'
 import { ChromeInstallCta } from './ChromeInstallCta'
+import { capturePublicCta } from '../../lib/productAnalytics'
+import { AnalyticsPreferences } from './AnalyticsPreferences'
 import {
   GITHUB_REPO_URL,
   PRIVACY_PATH,
@@ -42,6 +44,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           }}>
           <NavLink
             to="/analytics"
+            onClick={() => capturePublicCta('open_analytics')}
             className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
           >
             Analytics
@@ -96,7 +99,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               contrast floor for small text. */}
           <nav className="app-footer__nav" aria-label="Footer">
             <div className="app-footer__links">
-              <Link to="/analytics">Analytics Hub</Link>
+              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics Hub</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>
@@ -109,6 +112,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <Link to={PRIVACY_PATH}>Privacy Policy</Link>
               <Link to={TERMS_PATH}>Terms of Use</Link>
               <Link to={REFUNDS_PATH}>Cancellation &amp; Refunds</Link>
+              <AnalyticsPreferences />
             </div>
           </nav>
         </div>

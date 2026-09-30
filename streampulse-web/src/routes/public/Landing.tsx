@@ -16,7 +16,9 @@ import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
+import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
 import { GITHUB_REPO_URL } from '../../lib/externalLinks'
+import { capturePublicCta } from '../../lib/productAnalytics'
 
 const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
 
@@ -52,7 +54,7 @@ function TopNav() {
         </div>
         <div className="sl-nav__right">
           <ChromeInstallCta className={buttonClass('outline', 'sm')} data-cta="chrome-install-nav" />
-          <Link to="/analytics" className={buttonClass('outline', 'sm')}>
+          <Link to="/analytics" className={buttonClass('outline', 'sm')} onClick={() => capturePublicCta('open_analytics')}>
             Open Analytics
           </Link>
         </div>
@@ -72,7 +74,7 @@ function Hero({
   return (
     <section className="sl-hero sl-hero--stage" aria-labelledby="hero-headline">
       <div className="sl-stage">
-        <Link to="/analytics" className="sl-announce">
+        <Link to="/analytics" className="sl-announce" onClick={() => capturePublicCta('open_analytics')}>
           <span className="sl-announce__new">Explore</span>
           Public analytics — no account needed
           <ArrowRight size={13} aria-hidden="true" />
@@ -89,7 +91,7 @@ function Hero({
             <PanelTopOpen size={17} aria-hidden="true" />
             Add StreamPulse to Chrome
           </ChromeInstallCta>
-          <Link to="/analytics" className={buttonClass('outline', 'lg')}>
+          <Link to="/analytics" className={buttonClass('outline', 'lg')} onClick={() => capturePublicCta('open_analytics')}>
             <LineChart size={17} aria-hidden="true" />
             Open Analytics
             <ArrowRight size={16} aria-hidden="true" />
@@ -187,9 +189,10 @@ function Footer() {
         <div className="sl-foot__links">
           <Link to="/docs">Docs</Link>
           <Link to="/status">Status</Link>
-          <Link to="/analytics">Analytics</Link>
+          <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics</Link>
           <Link to="/support">Support</Link>
           <Link to="/privacy">Privacy</Link>
+          <AnalyticsPreferences />
           <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
         </div>
         <small>Public analytics for StreamPulse. Aggregate-first, coverage-honest, and Twitch-native.</small>

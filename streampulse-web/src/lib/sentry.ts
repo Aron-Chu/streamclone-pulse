@@ -69,6 +69,29 @@ function scrubRecord(input: Record<string, unknown> | undefined): Record<string,
   return out
 }
 
+function scrubAssetFilename(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 2048) return undefined
+  return value.match(/(?:^|\/)(assets\/[\w.-]{1,128}\.js)(?:[?#].*)?$/)?.[1]
+}
+
+function scrubSourceMapMetadata(
+  metadata: Sentry.ErrorEvent['debug_meta'],
+  frameFilenames: Set<string>,
+): Sentry.ErrorEvent['debug_meta'] {
+  if (!Array.isArray(metadata?.images)) return undefined
+  const images: Array<{ type: 'sourcemap'; code_file: string; debug_id: string }> = []
+  const seenAssets = new Set<string>()
+  for (const image of metadata.images.slice(0, 50)) {
+    if (image?.type !== 'sourcemap' || typeof image.debug_id !== 'string'
+      || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(image.debug_id)) continue
+    const codeFile = scrubAssetFilename(image.code_file)
+    if (!codeFile || !frameFilenames.has(codeFile) || seenAssets.has(codeFile)) continue
+    seenAssets.add(codeFile)
+    images.push({ type: 'sourcemap', code_file: codeFile, debug_id: image.debug_id.toLowerCase() })
+  }
+  return images.length ? { images } : undefined
+}
+
 export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
   if (typeof window !== 'undefined' && import.meta.env.PROD) {
     const host = window.location.hostname
@@ -82,9 +105,30 @@ export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | 
   tags.role = 'portal'
   tags.release = portalRelease()
   const safeNumber = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+  const exception: Sentry.ErrorEvent['exception'] = event.exception?.values ? {
+    values: event.exception.values.slice(0, 5).map(ex => ({
+      type: /^(?:Error|TypeError|RangeError|ReferenceError|SyntaxError|URIError|EvalError|AggregateError)$/.test(ex.type ?? '') ? ex.type : 'Error',
+      value: ex.value ? scrubDiagnosticText(ex.value) : undefined,
+      stacktrace: ex.stacktrace?.frames ? { frames: ex.stacktrace.frames.slice(-50).map(frame => ({
+        // Asset/line/column plus Debug IDs retain debugging value without
+        // accepting dynamic function names as another free-text sink.
+        filename: scrubAssetFilename(frame.filename),
+        lineno: safeNumber(frame.lineno), colno: safeNumber(frame.colno),
+        in_app: typeof frame.in_app === 'boolean' ? frame.in_app : undefined,
+      })) } : undefined,
+      mechanism: ex.mechanism ? { type: 'generic', handled: typeof ex.mechanism.handled === 'boolean' ? ex.mechanism.handled : undefined } : undefined,
+    })),
+  } : undefined
+  const frameFilenames = new Set<string>()
+  for (const ex of exception?.values ?? []) {
+    for (const frame of ex.stacktrace?.frames ?? []) {
+      if (frame.filename) frameFilenames.add(frame.filename)
+    }
+  }
   // Construct an allowlist rather than mutating the SDK event: future SDK
-  // fields, raw_stacktrace, debug metadata and arbitrary exception extras must
-  // not silently become a second diagnostics upload path.
+  // fields, raw_stacktrace and arbitrary exception extras must not silently
+  // become a second diagnostics upload path. Only matching source-map Debug
+  // IDs survive; beforeSend runs after the SDK's Debug ID enrichment.
   return {
     type: undefined,
     event_id: /^[a-f0-9]{32}$/i.test(event.event_id ?? '') ? event.event_id : undefined,
@@ -96,20 +140,8 @@ export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | 
     tags,
     transaction: event.transaction ? sanitizePortalPath(event.transaction) : undefined,
     message: event.message ? scrubDiagnosticText(event.message) : undefined,
-    exception: event.exception?.values ? {
-      values: event.exception.values.slice(0, 5).map(ex => ({
-        type: /^(?:Error|TypeError|RangeError|ReferenceError|SyntaxError|URIError|EvalError|AggregateError)$/.test(ex.type ?? '') ? ex.type : 'Error',
-        value: ex.value ? scrubDiagnosticText(ex.value) : undefined,
-        stacktrace: ex.stacktrace?.frames ? { frames: ex.stacktrace.frames.slice(-50).map(frame => ({
-          // Asset/line/column plus release source maps retain debugging value
-          // without accepting dynamic function names as another free-text sink.
-          filename: frame.filename?.match(/(?:^|\/)(assets\/[\w.-]+\.js)(?:[?#].*)?$/)?.[1],
-          lineno: safeNumber(frame.lineno), colno: safeNumber(frame.colno),
-          in_app: typeof frame.in_app === 'boolean' ? frame.in_app : undefined,
-        })) } : undefined,
-        mechanism: ex.mechanism ? { type: 'generic', handled: typeof ex.mechanism.handled === 'boolean' ? ex.mechanism.handled : undefined } : undefined,
-      })),
-    } : undefined,
+    exception,
+    debug_meta: scrubSourceMapMetadata(event.debug_meta, frameFilenames),
   }
 }
 

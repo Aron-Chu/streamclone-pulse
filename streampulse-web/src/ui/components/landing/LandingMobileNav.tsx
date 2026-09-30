@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Menu, X } from 'lucide-react'
 import { buttonClass } from '../../primitives'
+import { capturePublicCta } from '../../../lib/productAnalytics'
 
 type LandingMobileNavProps = {
   analyticsHref?: string
@@ -117,7 +118,7 @@ export function LandingMobileNav({
               <Link
                 to={analyticsHref}
                 className={buttonClass('default', 'sm')}
-                onClick={() => setOpen(false)}
+                onClick={() => { if (analyticsHref === '/analytics') capturePublicCta('open_analytics'); setOpen(false) }}
               >
                 Open Analytics
               </Link>
