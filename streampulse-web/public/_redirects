@@ -40,18 +40,20 @@
 # Hosted Explorer links must reach the SPA so the client can map broadcastId and
 # window onto the canonical Moments session view. A static 301 cannot carry that
 # mapping, so this is a rewrite, not a redirect.
-/analytics/explore /analytics/index.html 200
-/analytics/explore/ /analytics/index.html 200
-/analytics/explore/:broadcastId /analytics/index.html 200
-/analytics/explore/:broadcastId/ /analytics/index.html 200
+# Use the canonical asset URL: Pages redirects /analytics/index.html to
+# /analytics/, which would otherwise discard the requested deep-link path.
+/analytics/explore /analytics/ 200
+/analytics/explore/ /analytics/ 200
+/analytics/explore/:broadcastId /analytics/ 200
+/analytics/explore/:broadcastId/ /analytics/ 200
 
 # Channel/session deep links must SPA-fallback — prerender only covers /analytics/.
 # Without these, Cloudflare Pages serves 404.html for /analytics/:login/:streamId.
-/analytics/:login /analytics/index.html 200
-/analytics/:login/ /analytics/index.html 200
-/analytics/:login/:streamId /analytics/index.html 200
-/analytics/:login/:streamId/ /analytics/index.html 200
-/analytics/:login/s/:streamId /analytics/index.html 200
-/analytics/:login/s/:streamId/ /analytics/index.html 200
-/s/:login /analytics/index.html 200
-/s/:login/:streamId /analytics/index.html 200
+/analytics/:login /analytics/ 200
+/analytics/:login/ /analytics/ 200
+/analytics/:login/:streamId /analytics/ 200
+/analytics/:login/:streamId/ /analytics/ 200
+/analytics/:login/s/:streamId /analytics/ 200
+/analytics/:login/s/:streamId/ /analytics/ 200
+/s/:login /analytics/ 200
+/s/:login/:streamId /analytics/ 200

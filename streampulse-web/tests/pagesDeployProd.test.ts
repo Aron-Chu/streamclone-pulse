@@ -60,13 +60,20 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(redirects).toMatch(/\/analytics\/streams\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/analytics\/hub\s+\/analytics\s+301/)
     expect(redirects).toMatch(/\/atlas\s+\/analytics\s+301/)
-    expect(redirects).toMatch(/\/analytics\/:login\/:streamId\s+\/analytics\/index\.html\s+200/)
-    expect(redirects).toMatch(/\/s\/:login\s+\/analytics\/index\.html\s+200/)
-    expect(redirects).toMatch(/\/s\/:login\/:streamId\s+\/analytics\/index\.html\s+200/)
     // Explorer must reach the SPA (rewrite, not 301) so the client can map
     // broadcastId/window onto Moments instead of dropping them at the edge.
-    expect(redirects).toMatch(/\/analytics\/explore\s+\/analytics\/index\.html\s+200/)
-    expect(redirects).toMatch(/\/analytics\/explore\/:broadcastId\s+\/analytics\/index\.html\s+200/)
+    for (const path of [
+      '/analytics/explore', '/analytics/explore/',
+      '/analytics/explore/:broadcastId', '/analytics/explore/:broadcastId/',
+      '/analytics/:login', '/analytics/:login/',
+      '/analytics/:login/:streamId', '/analytics/:login/:streamId/',
+      '/analytics/:login/s/:streamId', '/analytics/:login/s/:streamId/',
+      '/s/:login', '/s/:login/:streamId',
+    ]) {
+      // Pages must serve the canonical asset internally while retaining the
+      // requested URL; an .html target produces a browser redirect instead.
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics/ 200`)
+    }
   })
 
   it('rewrites every account deep link to the private SPA entry', () => {
