@@ -86,8 +86,8 @@ if (existsSync(join(dist, '_redirects'))) {
     '/docs/getting-started /docs#extension 301',
     '/docs/coverage /docs#coverage 301',
     '/docs/api /docs#api 301',
-    '/analytics/:login/:streamId /analytics/index.html 200',
-    '/s/:login /analytics/index.html 200',
+    '/analytics/:login/:streamId /analytics/ 200',
+    '/s/:login /analytics/ 200',
   ]) {
     if (!redirects.includes(rule)) failures.push(`_redirects: missing ${rule}`)
   }

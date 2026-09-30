@@ -20,7 +20,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { verifyHostedAnalyticsRoutes } from './hosted-analytics-route-smoke.mjs'
+import { verifyHostedAnalyticsRoutes, verifyHostedAccountRoutes } from './hosted-analytics-route-smoke.mjs'
 import { assertDeploySourceIsOriginMaster, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -227,6 +227,8 @@ if (process.env.SKIP_HOSTED_ROUTE_SMOKE !== '1') {
   console.log('Verifying hosted analytics deep route')
   try {
     await verifyHostedAnalyticsRoutes()
+    console.log('Verifying hosted account routes without redirects')
+    await verifyHostedAccountRoutes()
   } catch (error) {
     console.error(`pages:deploy:prod: hosted route smoke failed: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(1)
