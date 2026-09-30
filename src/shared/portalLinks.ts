@@ -51,3 +51,10 @@ export function portalOriginOrCanonical(portalOrigin?: string | null): string {
 export function productLink(name: ProductLinkName, portalOrigin?: string | null): string {
   return `${portalOriginOrCanonical(portalOrigin)}${PRODUCT_PATHS[name]}`
 }
+
+/** Prefill only the worker's human-readable code; no credentials belong in this link. */
+export function deviceLinkWithCode(code: unknown, portalOrigin?: string | null): string {
+  const link = productLink('linkDevice', portalOrigin)
+  if (typeof code !== 'string' || code.length !== 11 || !/^[A-F0-9]{5}-[A-F0-9]{5}$/.test(code)) return link
+  return `${link}#code=${code.replace('-', '')}`
+}

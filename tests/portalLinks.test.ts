@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   CANONICAL_PORTAL_ORIGIN,
+  deviceLinkWithCode,
   POLICY_LINKS,
   portalOriginOrCanonical,
   productLink,
@@ -60,6 +61,38 @@ describe('portal link registry', () => {
     ]) {
       expect(portalOriginOrCanonical(hostile)).toBe(CANONICAL_PORTAL_ORIGIN)
       expect(productLink('supporter', hostile)).toBe(`${CANONICAL_PORTAL_ORIGIN}/supporter`)
+    }
+  })
+
+  it('prefills only a valid human code in the fragment, without sending it as a query', () => {
+    const link = new URL(deviceLinkWithCode('ABCDE-12345'))
+    expect(link.origin).toBe(CANONICAL_PORTAL_ORIGIN)
+    expect(link.pathname).toBe('/account/link-device')
+    expect(link.search).toBe('')
+    expect(link.hash).toBe('#code=ABCDE12345')
+  })
+
+  it('omits malformed codes, polling secrets, and objects with additional fields', () => {
+    for (const code of [
+      'abcde-12345', 'ABCDE12345', 'ABCDE-1234G', 'ABCDE-12345&token=secret',
+      ' ABCDE-12345', 'ABCDE-12345\n', 'A'.repeat(64), '', null, undefined,
+      { code: 'ABCDE-12345', pollingSecret: 'A'.repeat(64) },
+    ]) {
+      expect(deviceLinkWithCode(code)).toBe(productLink('linkDevice'))
+    }
+  })
+
+  it('keeps the existing product-origin guard when prefilling a code', () => {
+    for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+      expect(deviceLinkWithCode('ABCDE-12345', origin)).toBe(`${origin}/account/link-device#code=ABCDE12345`)
+    }
+    for (const origin of [
+      'https://streampulse.stream.evil.test', 'http://streampulse.stream',
+      'https://streampulse.stream:8443', 'https://user:pass@streampulse.stream',
+      'http://localhost:5173/account/link-device', 'https://streampulse.stream?token=secret',
+      'javascript:alert(1)', 'not a url', '',
+    ]) {
+      expect(deviceLinkWithCode('ABCDE-12345', origin)).toBe(`${CANONICAL_PORTAL_ORIGIN}/account/link-device#code=ABCDE12345`)
     }
   })
 

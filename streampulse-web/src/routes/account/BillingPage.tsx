@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { AccountFooter } from './AccountFooter'
 import { AccountError, billingRequest } from '../../lib/accountApi'
 import { accountBillingReturnPath, accountBillingSignInHref } from '../../lib/accountBillingReturn'
 import './account.css'
@@ -114,15 +115,15 @@ export default function BillingPage() {
             ? <p>This checkout expired without a confirmed payment. Your current membership is shown below.</p>
             : null}
       {['none', 'expired'].includes(status) ? checkoutEnabled
-        ? <><p>US$4.99 per month, charged in US dollars, renewing automatically until you cancel. Taxes are handled as stated at checkout.</p><p>Includes a private Pulse header accent, three private finishes, and private support recognition.</p><button type="button" disabled={busy} onClick={() => void open('checkout')}>Continue to Stripe checkout</button></>
+        ? <><p>US$4.99 per month, charged in US dollars, renewing automatically until you cancel. Taxes are handled as stated at checkout.</p><p>Includes a private Pulse header accent, three private finishes, and private support recognition.</p><button className="pulse-account-primary" type="button" disabled={busy} onClick={() => void open('checkout')}>Continue to Stripe checkout</button></>
         : <p>New Supporter sign-ups are not open yet.</p>
         : null}
-      {status !== 'none' ? <><button type="button" disabled={busy} onClick={() => void open('portal')}>Manage membership</button>
+      {status !== 'none' ? <><button className="pulse-account-primary" type="button" disabled={busy} onClick={() => void open('portal')}>Manage membership</button>
       <p>Manage payment details, invoices and cancellation in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period, and access continues until then.</p></> : null}
     </> : null}
     <button type="button" disabled={busy} onClick={() => void refresh()}>Refresh status</button>
     <p><Link to="/account/link-device">Link your extension</Link></p>
-    <p><Link to="/account/settings">Account &amp; devices</Link></p>
     <p><Link to="/terms">Supporter terms</Link> · <Link to="/refunds">Cancellation and refunds</Link> · <Link to="/support">Support</Link></p>
+    <AccountFooter current="billing" />
   </section></PublicLayout>
 }

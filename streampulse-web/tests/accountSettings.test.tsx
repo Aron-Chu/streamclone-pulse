@@ -7,14 +7,15 @@ vi.mock('../src/lib/accountApi', async importOriginal => ({ ...await importOrigi
 vi.mock('../src/ui/components/PublicLayout', () => ({ PublicLayout: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 
 describe('account settings', () => {
- it('shows identity, requires revoke confirmation, and retains retry on failure', async () => {
+ it('shows signed-in status without an internal ID, requires revoke confirmation, and retains retry on failure', async () => {
   vi.mocked(accountRequest).mockImplementation(async (path) => {
    if (path === '/me') return { accountId: 'account-a' }
    if (path === '/devices/revoke') throw new Error('offline')
    return { devices: [{ id: 'device-a', label: 'My extension', expiresAt: '2027-01-01T00:00:00Z' }] }
   })
   render(<MemoryRouter><AccountSettings /></MemoryRouter>)
-  expect(await screen.findByText('account-a')).toBeTruthy()
+  expect(await screen.findByText('You’re signed in to StreamPulse.')).toBeTruthy()
+  expect(screen.queryByText('account-a')).toBeNull()
   fireEvent.click(await screen.findByRole('button', { name: 'Revoke My extension' }))
   expect(accountRequest).not.toHaveBeenCalledWith('/devices/revoke', expect.anything())
   fireEvent.click(screen.getByRole('button', { name: 'Confirm revocation' }))

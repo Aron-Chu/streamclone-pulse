@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import type { SupporterAccountAction, SupporterAccountState } from '../shared/supporterAccount.ts'
-import { productLink } from '../shared/portalLinks.ts'
+import { deviceLinkWithCode } from '../shared/portalLinks.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 
@@ -75,13 +75,13 @@ export function AccountConnection() {
     <div role="status" aria-live="polite">
       {!account ? <p>Checking account connection…</p>
         : account.state === 'linked' ? <><p>This extension is connected.</p><p className="pulse-supporter-detail">This connection does not confirm a subscription or link your Twitch identity.</p></>
-          : account.state === 'pending' ? <><p>Enter this code on the Pulse account page, then review the extension request.</p><p className="pulse-account-link-code">{account.code}</p><p className="pulse-supporter-detail">Waiting for your approval. The code expires at {new Date(account.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p></>
+          : account.state === 'pending' ? <><p>Open the Pulse account page with this code prepared, then choose Review extension and Approve extension. You can also enter the code yourself.</p><p className="pulse-account-link-code">{account.code}</p><p className="pulse-supporter-detail">Waiting for your approval. The code expires at {new Date(account.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p></>
             : account.state === 'unavailable' ? <p>{account.linked ? unrenewed : unavailable[account.reason]}</p>
               : <p>{account.state === 'error' && account.revocationPending ? 'Account access is stopped on this extension. Server revocation is pending; retry disconnect when connected.' : descriptions[account.state]}</p>}
       {notice ? <p>{notice}</p> : null}
     </div>
     {linkingNotDeployed ? null : <div className="pulse-account-link-actions">
-      {account?.state === 'pending' ? <><a href={productLink('linkDevice', portalOrigin)} target="_blank" rel="noopener noreferrer">Open account page</a><button type="button" disabled={busy} onClick={() => void request('cancel')}>Cancel connection</button></>
+      {account?.state === 'pending' ? <><a href={deviceLinkWithCode(account.code, portalOrigin)} target="_blank" rel="noopener noreferrer">Open account page</a><button type="button" disabled={busy} onClick={() => void request('cancel')}>Cancel connection</button></>
         : account?.state === 'linked' || unrenewedLink ? <button type="button" disabled={busy} onClick={() => void request('disconnect')}>Disconnect extension</button>
           : account?.state === 'error' && account.revocationPending ? <button type="button" disabled={busy} onClick={() => void request('disconnect')}>Retry disconnect</button>
           : account ? <button type="button" disabled={busy} onClick={() => void request('start')}>{busy ? 'Connecting…' : 'Link extension'}</button> : null}

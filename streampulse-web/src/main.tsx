@@ -18,8 +18,10 @@ import './ui/portal-fonts.css'
 import './ui/public-utilities.css'
 import './ui/global.css'
 import { captureAccountConfirmation } from './lib/accountConfirmation'
+import { captureAccountDeviceCode } from './lib/accountDeviceCode'
 
 captureAccountConfirmation()
+captureAccountDeviceCode()
 if (!window.location.pathname.startsWith('/account/')) initPortalSentry()
 
 const queryClient = new QueryClient({
