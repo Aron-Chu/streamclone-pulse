@@ -315,7 +315,7 @@ test.describe('packaged supporter offer', () => {
     await page.getByRole('button', { name: 'Link extension', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Open account page', exact: true }))
-      .toHaveAttribute('href', 'https://streampulse.stream/account/link-device')
+      .toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
   })
 
   test('the page never creates a checkout session itself', async ({ extension, prepare }) => {

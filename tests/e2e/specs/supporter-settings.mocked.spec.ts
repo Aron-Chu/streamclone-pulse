@@ -53,7 +53,7 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await page.getByRole('button', { name: 'Link extension', exact: true }).click()
   await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Open account page' })).toHaveAttribute('href', 'https://streampulse.stream/account/link-device')
+  await expect(page.getByRole('link', { name: 'Open account page' })).toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
   expect(await page.locator('body').innerText()).not.toContain('c'.repeat(64))
   await expect(page.getByText('This extension is connected.', { exact: true })).toBeVisible({ timeout: 12000 })
   await expect(page.getByText('This connection does not confirm a subscription or link your Twitch identity.')).toBeVisible()
