@@ -20,7 +20,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: September 25, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: September 29, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
 
@@ -101,8 +101,9 @@ export default function Privacy() {
 
         <h2>Cookies</h2>
         <p>
-          StreamPulse does not use advertising, tracking or analytics cookies, and there is no consent
-          banner because there is nothing optional to consent to.
+          StreamPulse does not use advertising, tracking or analytics cookies. Optional website
+          analytics are off by default; you can choose to allow them through <strong>Analytics
+          preferences</strong> in the website footer. Your choice is saved in localStorage, not a cookie.
         </p>
         {/* The portal reaches the account API same-origin, through the account routes on
             the apex, so these host-only cookies belong to streampulse.stream rather than
@@ -136,6 +137,35 @@ export default function Privacy() {
         <p>
           Signing out clears all three. No cookie is set for browsing the public site, the analytics
           hub, or the documentation.
+        </p>
+
+        <h2>Optional website analytics</h2>
+        <p>
+          Website product analytics are separate from Twitch reaction analytics and from the Chrome
+          extension. They are <strong>off by default</strong>. If you opt in through <strong>Analytics
+          preferences</strong> in the footer, the website sends PostHog a fixed event for a public page
+          category and for clicks on Install or Open Analytics. These events help us understand which
+          public pages and product links are useful.
+        </p>
+        <p>
+          Events use a random identifier held only in page memory, replaced when the page reloads.
+          No person profile is created, and no analytics identifier is saved in cookies or browser
+          storage. Events do not include full URLs, query strings, URL fragments, form entries,
+          email addresses, account or payment identifiers, Twitch channel names, viewing history,
+          searched channels or saved moments. Account pages, dashboard activity and individual
+          channel or stream pages are excluded. Automatic click collection and session replay are off.
+        </p>
+        <p>
+          PostHog processes these optional events in its United States region. As with any direct
+          network request, your IP address is visible during transmission to the processor; these
+          events are configured not to retain the IP address or collect GeoIP location information.
+        </p>
+        <p>
+          You can turn analytics off at any time in the footer. This stops future events and clears
+          the in-memory analytics identifier, but cannot recall events already transmitted. Browser
+          Global Privacy Control or Do Not Track signals keep analytics off. Clearing website data
+          removes your saved choice and returns analytics to its default-off state. This policy does
+          not promise a fixed retention period for events already sent to PostHog.
         </p>
 
         <h2>What the Chrome extension observes on Twitch</h2>
@@ -221,7 +251,8 @@ export default function Privacy() {
             backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
             10 minutes), browser-saved moments and any notes you add to them
             (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
-            migration), and an optional beta key (<code>sp.betaKey</code>) when a gated portal feature is
+            migration), your optional website analytics choice, and an optional beta key
+            (<code>sp.betaKey</code>) when a gated portal feature is
             used. Saved moments and notes are not synced to your account and remain on this browser after
             sign-out. Clearing site data for streampulse.stream removes these keys.
           </li>
@@ -258,6 +289,11 @@ export default function Privacy() {
           <li>
             <strong>Emote CDNs</strong> — image assets from providers such as 7TV, Twitch CDN, BetterTTV,
             and FrankerFaceZ when the overlay displays emote art in the browser.
+          </li>
+          <li>
+            <strong>PostHog (optional website analytics)</strong> — receives the minimal public website
+            events described above only after you opt in. Processing is in the United States; no
+            session replay or person profiles are enabled.
           </li>
           <li>
             <strong>PostHog (product analytics processor, planned)</strong> — only after StreamPulse

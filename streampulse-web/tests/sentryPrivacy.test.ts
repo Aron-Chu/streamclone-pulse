@@ -53,4 +53,54 @@ describe('Sentry privacy boundary', () => {
     expect(scrubDiagnosticText('Failed to fetch')).toBe('Failed to fetch')
     expect(scrubDiagnosticText('Failed to fetch PRIVATE')).toBe('Diagnostic text omitted')
   })
+  it('preserves only source-map UUIDs paired with a surviving normalized asset frame', () => {
+    const clean = scrubPortalEvent({
+      exception: { values: [{ stacktrace: { frames: [{
+        filename: 'https://streampulse.stream/assets/index-ABC123.js?token=private#private', lineno: 1, colno: 23,
+      }] } }] },
+      debug_meta: { private: 'private', images: [
+        { type: 'sourcemap', code_file: 'https://streampulse.stream/assets/index-ABC123.js?token=private#private',
+          debug_id: 'ABCDEF01-2345-4678-8ABC-DEF012345678', debug_file: 'private', extra: 'private' },
+        { type: 'sourcemap', code_file: 'assets/index-ABC123.js', debug_id: 'abcdef01-2345-4678-8abc-def012345678' },
+        { type: 'wasm', code_file: 'assets/index-ABC123.js', debug_id: 'abcdef01-2345-4678-8abc-def012345678' },
+        { type: 'sourcemap', code_file: 'assets/not-in-stack.js', debug_id: 'abcdef01-2345-4678-8abc-def012345678' },
+      ] },
+    } as unknown as ErrorEvent)!
+    expect(clean.debug_meta).toEqual({ images: [{
+      type: 'sourcemap', code_file: 'assets/index-ABC123.js', debug_id: 'abcdef01-2345-4678-8abc-def012345678',
+    }] })
+    expect(clean.debug_meta?.images?.[0]?.code_file).toBe(clean.exception?.values?.[0]?.stacktrace?.frames?.[0]?.filename)
+    expect(JSON.stringify(clean)).not.toContain('private')
+    expect(JSON.stringify(clean)).not.toContain('https://')
+  })
+  it('rejects opaque IDs, invalid UUIDs, unmatched images and oversized asset references', () => {
+    const frame = { filename: 'assets/main.js' }
+    for (const debugId of ['private', 'abcdef01234546788abcdef012345678',
+      'abcdef01-2345-4678-8abc-def012345678private', 'zzzzzzzz-2345-4678-8abc-def012345678']) {
+      const clean = scrubPortalEvent({ type: undefined, exception: { values: [{ stacktrace: { frames: [frame] } }] },
+        debug_meta: { images: [{ type: 'sourcemap', code_file: frame.filename, debug_id: debugId }] },
+      })!
+      expect(clean.debug_meta).toBeUndefined()
+    }
+    for (const filename of ['assets/' + 'a'.repeat(129) + '.js', 'assets/main.js?private=' + 'a'.repeat(2048),
+      '/account/private', 'assets/../private.js']) {
+      const clean = scrubPortalEvent({ type: undefined, exception: { values: [{ stacktrace: { frames: [{ filename }] } }] },
+        debug_meta: { images: [{ type: 'sourcemap', code_file: filename, debug_id: 'abcdef01-2345-4678-8abc-def012345678' }] },
+      })!
+      expect(clean.debug_meta).toBeUndefined()
+      expect(clean.exception?.values?.[0]?.stacktrace?.frames?.[0]?.filename).toBeUndefined()
+    }
+    expect(scrubPortalEvent({ type: undefined, debug_meta: { images: [] } })!.debug_meta).toBeUndefined()
+  })
+  it('bounds source-map metadata and drops images for stack frames removed by the frame limit', () => {
+    const filenames = Array.from({ length: 51 }, (_, index) => `assets/chunk-${index}.js`)
+    const clean = scrubPortalEvent({ type: undefined, exception: { values: [{ stacktrace: { frames: filenames.map(filename => ({ filename })) } }] },
+      debug_meta: { images: filenames.map(code_file => ({ type: 'sourcemap', code_file, debug_id: 'abcdef01-2345-4678-8abc-def012345678' })) },
+    })!
+    expect(clean.debug_meta?.images).toHaveLength(49)
+    expect(clean.debug_meta?.images?.some(image => image.code_file === 'assets/chunk-0.js')).toBe(false)
+    expect(clean.debug_meta?.images?.some(image => image.code_file === 'assets/chunk-50.js')).toBe(false)
+    const retainedFrames = clean.exception!.values![0]!.stacktrace!.frames!.map(frame => frame.filename)
+    expect(clean.debug_meta?.images?.every(image => retainedFrames.includes(image.code_file))).toBe(true)
+  })
 })
