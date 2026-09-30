@@ -20,12 +20,14 @@
 /account/settings/ /account/settings 301
 /account/billing/ /account/billing 301
 /account/billing/return/ /account/billing/return 301
-/account/sign-in /index.html 200
-/account/confirm /index.html 200
-/account/link-device /index.html 200
-/account/settings /index.html 200
-/account/billing /index.html 200
-/account/billing/return /index.html 200
+# Pages canonicalizes /index.html to /. Rewrite to the canonical asset URL so
+# the browser retains the requested account path instead of following a 308.
+/account/sign-in / 200
+/account/confirm / 200
+/account/link-device / 200
+/account/settings / 200
+/account/billing / 200
+/account/billing/return / 200
 
 # Known documentation aliases resolve at the edge even without JavaScript.
 /docs/getting-started /docs#extension 301
