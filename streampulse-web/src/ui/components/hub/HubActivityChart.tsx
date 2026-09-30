@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Activity } from 'lucide-react'
 import type { HubActivityPoint } from '../../../lib/publicHub'
 import { activityBucketMs, internalGapCount, maxConnectedGapMs, chartActivityPoints, hubActivityEmoteCount, activityAxisTickIndices, formatActivityAxisTick, resolveChartBucketSelection, hasMeasuredActivitySignal, isMeasuredActivityPoint, resolveHubActivityChartState, assessViewerCoverage, hasViewerSample, isViewerCoverageQualified, isViewerCoveragePartial, hasProviderSample, type HubProviderLaneKey } from '../../../lib/hubActivitySummary'
 import { isActivityGapMarker, isAttestedActivityGap } from '../../../lib/hubActivityHonesty'
-import { hubBucketBarRect, hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
+import { hubTimeDomain, hubTimeXPercent } from '../../../lib/hubTimeScale'
 import { useAnalyticsMotion } from '../../motion/useAnalyticsMotion'
 import { CHART_MOTION } from '../../../lib/chartMotion'
 import { compact, getProviderColor } from '../analytics/hubFormat'
@@ -18,6 +18,63 @@ import './hub-public-audit.css'
 
 export type { HubActivityRangeOption, HubActivityRangeControl } from './HubRangeMenu'
 import type { HubActivityRangeControl } from './HubRangeMenu'
+
+/** One visual viewport for the plot and navigator; input always updates its target immediately. */
+function useNavigatorViewport(target: HubChartNavigatorRange, gridKey: string, motionEnabled: boolean, reducedMotion: boolean) {
+  const [viewport, setViewport] = useState(target)
+  const current = useRef(target)
+  const latest = useRef(target)
+  const frame = useRef<number | null>(null)
+  const lastFrame = useRef(0)
+  const lastInput = useRef(0)
+  const previousGrid = useRef(gridKey)
+
+  const stop = useCallback((range: HubChartNavigatorRange) => {
+    if (frame.current != null) window.cancelAnimationFrame(frame.current)
+    frame.current = null
+    current.current = range
+    latest.current = range
+    setViewport(range)
+  }, [])
+
+  useLayoutEffect(() => {
+    latest.current = target
+    const gridChanged = previousGrid.current !== gridKey
+    previousGrid.current = gridKey
+    const reduced = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (gridChanged || !motionEnabled || reducedMotion || reduced || typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      stop(target)
+      return
+    }
+    if (current.current.startIndex === target.startIndex && current.current.endIndex === target.endIndex) return
+    lastInput.current = performance.now()
+    // Retarget the running easing instead of restarting it for every wheel event.
+    if (frame.current != null) return
+    lastFrame.current = lastInput.current
+    const tick = (now: number) => {
+      const elapsed = Math.max(0, now - lastFrame.current)
+      lastFrame.current = now
+      const alpha = 1 - Math.exp(-elapsed / 36)
+      const destination = latest.current
+      const settled = now - lastInput.current >= 180
+      const next = settled ? destination : {
+        startIndex: current.current.startIndex + (destination.startIndex - current.current.startIndex) * alpha,
+        endIndex: current.current.endIndex + (destination.endIndex - current.current.endIndex) * alpha,
+      }
+      current.current = next
+      setViewport(next)
+      frame.current = settled ? null : window.requestAnimationFrame(tick)
+    }
+    frame.current = window.requestAnimationFrame(tick)
+  }, [target.startIndex, target.endIndex, gridKey, motionEnabled, reducedMotion, stop])
+
+  useEffect(() => () => {
+    if (frame.current != null) window.cancelAnimationFrame(frame.current)
+    frame.current = null
+  }, [])
+
+  return { viewport, jumpTo: stop }
+}
 
 /** Map a chart moment marker to a renderable annotation in chart % space. */
 function markerToAnnotation(marker: HubActivityMomentMarker, xPercent: number): HubChartAnnotation {
@@ -614,6 +671,7 @@ export function HubActivityChart({
   providerTotalsComplete = false,
   emoteImages,
 }: HubActivityChartProps) {
+  const plotClipId = useId()
   const wrapRef = useRef<HTMLDivElement>(null)
   const compactAnnotations = useHubChartCompact()
   const [hover, setHover] = useState<number | null>(null)
@@ -639,6 +697,7 @@ export function HubActivityChart({
   const [pressDragging, setPressDragging] = useState(false)
   const keyboardIndexRef = useRef<number | null>(null)
   const suppressClickUntilRef = useRef(0)
+  const pointerClickBucketTRef = useRef<number | null>(null)
   const chartPanRef = useRef<{
     pointerId: number
     pointerType: string
@@ -684,14 +743,27 @@ export function HubActivityChart({
     [points, windowMinutes, livePoolViewerSum],
   )
   const chartPointWindowKey = `${windowMinutes}:${chartPoints.length}:${chartPoints[0]?.t ?? 0}:${chartPoints[chartPoints.length - 1]?.t ?? 0}`
+  const { motionEnabled } = useAnalyticsMotion()
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReducedMotion(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
   const [navigatorRange, setNavigatorRange] = useState<HubChartNavigatorRange>({
     startIndex: 0,
     endIndex: 1,
   })
+  const navigatorTargetRef = useRef(navigatorRange)
   const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
   const resetNavigator = () => {
     setScrollZoomEnabled(false)
-    setNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) })
+    changeNavigatorRange({ startIndex: 0, endIndex: Math.max(0, chartPoints.length - 1) }, false)
   }
 
   const requestedRange = rangeControl?.active
@@ -705,7 +777,8 @@ export function HubActivityChart({
     previousGrid.current = { window: windowMinutes, requestedRange, times };
     const rangeChanged = previous.window !== windowMinutes || previous.requestedRange !== requestedRange;
     if (rangeChanged) setScrollZoomEnabled(false);
-    setNavigatorRange(current => {
+    const current = navigatorTargetRef.current;
+    const next = (() => {
       const last = Math.max(0, times.length - 1);
       if (rangeChanged || previous.times.length === 0 || times.length < 2) return { startIndex: 0, endIndex: last };
       const oldLast = previous.times.length - 1;
@@ -715,7 +788,8 @@ export function HubActivityChart({
       const nearest = (t: number) => times.reduce((best, value, i) => Math.abs(value - t) < Math.abs(times[best] - t) ? i : best, 0);
       const startIndex = Math.min(last - 1, nearest(previous.times[current.startIndex]));
       return { startIndex: Math.max(0, startIndex), endIndex: Math.max(startIndex + 1, nearest(previous.times[current.endIndex])) };
-    });
+    })();
+    changeNavigatorRange(next, false);
   }, [chartPointWindowKey, windowMinutes, requestedRange]);
 
   const navigatorBounds = useMemo(() => {
@@ -728,7 +802,26 @@ export function HubActivityChart({
     )
     return { startIndex, endIndex }
   }, [chartPoints.length, navigatorRange.endIndex, navigatorRange.startIndex])
-  const chartIsZoomed = navigatorBounds.startIndex > 0 || navigatorBounds.endIndex < Math.max(0, chartPoints.length - 1)
+  const { viewport, jumpTo } = useNavigatorViewport(navigatorBounds, `${requestedRange ?? ''}:${chartPointWindowKey}`, motionEnabled, reducedMotion)
+  const changeNavigatorRange = (next: HubChartNavigatorRange, animate = true) => {
+    if (!animate) jumpTo(next)
+    navigatorTargetRef.current = next
+    setNavigatorRange(next)
+  }
+  const beginNavigatorDrag = () => {
+    const next = {
+      startIndex: Math.round(viewport.startIndex),
+      endIndex: Math.round(viewport.endIndex),
+    }
+    changeNavigatorRange(next, false)
+    return next
+  }
+  const viewportBounds = useMemo(() => {
+    const maxIndex = Math.max(0, chartPoints.length - 1)
+    const endIndex = Math.max(Math.min(1, maxIndex), Math.min(maxIndex, viewport.endIndex))
+    return { startIndex: Math.max(0, Math.min(Math.max(0, endIndex - 1), viewport.startIndex)), endIndex }
+  }, [chartPoints.length, viewport.startIndex, viewport.endIndex])
+  const chartIsZoomed = viewportBounds.startIndex > 0 || viewportBounds.endIndex < Math.max(0, chartPoints.length - 1)
   const navigatorPresets = useMemo(
     () => hubNavigatorPresets(windowMinutes, chartPoints.length),
     [chartPoints.length, windowMinutes],
@@ -784,10 +877,10 @@ export function HubActivityChart({
     const n = chartPoints.length
     const visibleStartIndex = n === 0
       ? 0
-      : Math.min(Math.max(0, Math.floor(navigatorBounds.startIndex)), n - 1)
+      : Math.min(Math.max(0, Math.floor(viewportBounds.startIndex)), n - 1)
     const visibleEndIndex = n === 0
       ? -1
-      : Math.min(n - 1, Math.max(visibleStartIndex, Math.floor(navigatorBounds.endIndex)))
+      : Math.min(n - 1, Math.max(visibleStartIndex, Math.ceil(viewportBounds.endIndex)))
     const viewerSampleMask = chartPoints.map(
       (point) => hasViewerSample(point) && !isAttestedActivityGap(point),
     )
@@ -835,8 +928,13 @@ export function HubActivityChart({
       endExclusive: lastT + bucketDurationMs,
       bucketDurationMs,
     }
-    const viewportStartT = chartPoints[visibleStartIndex]?.t ?? fullTimeDomain.start
-    const viewportEndT = chartPoints[visibleEndIndex]?.t ?? lastT
+    const timeAtIndex = (index: number) => {
+      const before = chartPoints[Math.floor(index)]?.t ?? fullTimeDomain.start
+      const after = chartPoints[Math.min(n - 1, Math.ceil(index))]?.t ?? before
+      return before + (after - before) * (index - Math.floor(index))
+    }
+    const viewportStartT = timeAtIndex(viewportBounds.startIndex)
+    const viewportEndT = timeAtIndex(viewportBounds.endIndex)
     const timeDomain = {
       start: viewportStartT,
       endExclusive: Math.max(viewportStartT + bucketDurationMs, viewportEndT + bucketDurationMs),
@@ -925,11 +1023,12 @@ export function HubActivityChart({
     let chatGapAttested = false
     const flushChatGap = (endIndex: number) => {
       if (chatGapStart < 0 || endIndex < chatGapStart) return
-      const startRect = timeDomain ? hubBucketBarRect(chartPoints[chatGapStart]?.t ?? 0, timeDomain) : null
-      const endRect = timeDomain ? hubBucketBarRect(chartPoints[endIndex]?.t ?? 0, timeDomain) : null
-      const left = startRect?.left ?? 0
-      const right = endRect ? endRect.left + endRect.width : 100
-      chatGapBands.push({ left, width: Math.max(0.5, right - left), attested: chatGapAttested })
+      // A bucket can partially intersect an eased viewport. Clip its interval;
+      // an off-screen bucket start must never turn a small gap into a full shade.
+      const span = Math.max(bucketDurationMs, timeDomain.endExclusive - timeDomain.start)
+      const left = Math.max(0, Math.min(100, (((chartPoints[chatGapStart]?.t ?? 0) - timeDomain.start) / span) * 100))
+      const right = Math.max(0, Math.min(100, (((chartPoints[endIndex]?.t ?? 0) + bucketDurationMs - timeDomain.start) / span) * 100))
+      if (right > left) chatGapBands.push({ left, width: right - left, attested: chatGapAttested })
       chatGapStart = -1
       chatGapAttested = false
     }
@@ -1046,7 +1145,7 @@ export function HubActivityChart({
         return formatActivityAxisTick(chartPoints[idx]?.t ?? 0, windowMinutes)
       })(),
     }
-  }, [chartPoints, navigatorBounds.endIndex, navigatorBounds.startIndex, viewerSeriesPartial, windowMinutes])
+  }, [chartPoints, viewportBounds.endIndex, viewportBounds.startIndex, viewerSeriesPartial, windowMinutes])
 
   // Destructure before any early return so hook order stays stable across
   // loading → data transitions (React hook rules).
@@ -1070,11 +1169,11 @@ export function HubActivityChart({
   }, [momentMarkers, timeDomain, selectedMomentKey])
 
   const ticks = useMemo(() => {
-    const visibleCount = Math.max(0, navigatorBounds.endIndex - navigatorBounds.startIndex + 1)
+    const visibleCount = Math.max(0, model.viewportEndIndex - model.viewportStartIndex + 1)
     return activityAxisTickIndices(visibleCount, compactAnnotations ? 3 : 8).map((index) =>
-      formatActivityAxisTick(chartPoints[navigatorBounds.startIndex + index]?.t ?? 0, windowMinutes),
+      formatActivityAxisTick(chartPoints[model.viewportStartIndex + index]?.t ?? 0, windowMinutes),
     )
-  }, [chartPoints, compactAnnotations, navigatorBounds.endIndex, navigatorBounds.startIndex, windowMinutes])
+  }, [chartPoints, compactAnnotations, model.viewportEndIndex, model.viewportStartIndex, windowMinutes])
 
   // The footer always reserves one lane for each provider in a stable order.
   // Provider rows without samples render an explicit empty state instead of a
@@ -1096,20 +1195,6 @@ export function HubActivityChart({
     [chartPoints],
   )
   const hasExactProviderEvidence = providerTotalsComplete && chartPoints.some((p) => p.providerCountsComplete === true)
-
-  const { motionEnabled } = useAnalyticsMotion()
-
-  // The spike-glow pulse and trailing-bucket sweep sit on CSS/SMIL animation;
-  // honor OS-level reduced motion by gating the pulse element itself.
-  const [reducedMotion, setReducedMotion] = useState(false)
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    setReducedMotion(mq.matches)
-    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
 
   const crosshairTargets = useMemo(() => {
     if (hover == null) {
@@ -1300,6 +1385,7 @@ export function HubActivityChart({
   }
 
   function handleLeave() {
+    pointerClickBucketTRef.current = null
     if (hoverRafRef.current != null) {
       cancelAnimationFrame(hoverRafRef.current)
       hoverRafRef.current = null
@@ -1315,8 +1401,11 @@ export function HubActivityChart({
     // preserves the lock. Treat a rapid double-click as one bucket selection.
     if (event.detail > 1) return
     setFocusedSeriesKey(null)
-    const best = nearestPointIndex(event.clientX)
-    const point = chartPoints[best]
+    const capturedBucketT = pointerClickBucketTRef.current
+    pointerClickBucketTRef.current = null
+    const point = capturedBucketT == null
+      ? chartPoints[nearestPointIndex(event.clientX)]
+      : chartPoints.find(point => point.t === capturedBucketT)
     const next = resolveChartBucketSelection(point, selectedBucketT)
     if (next === undefined) return
     onBucketSelect(next)
@@ -1326,13 +1415,15 @@ export function HubActivityChart({
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== undefined && event.button !== 0) return
     const best = nearestPointIndex(event.clientX)
+    if (event.pointerType === 'mouse') pointerClickBucketTRef.current = chartPoints[best]?.t ?? null
     if (chartIsZoomed) {
+      const startRange = { startIndex: Math.round(viewportBounds.startIndex), endIndex: Math.round(viewportBounds.endIndex) }
       chartPanRef.current = {
         pointerId: event.pointerId,
         pointerType: event.pointerType,
         startX: event.clientX,
         startY: event.clientY,
-        startRange: navigatorBounds,
+        startRange,
         index: best,
         active: false,
       }
@@ -1359,6 +1450,8 @@ export function HubActivityChart({
       }
       if (!pan.active && Math.abs(dx) >= 6 && Math.abs(dx) > Math.abs(dy)) {
         pan.active = true
+        pan.startRange = beginNavigatorDrag()
+        pointerClickBucketTRef.current = null
         setPressDragging(true)
         try {
           wrapRef.current?.setPointerCapture(event.pointerId)
@@ -1375,7 +1468,7 @@ export function HubActivityChart({
           0,
           Math.min(Math.max(0, chartPoints.length - visibleCount), pan.startRange.startIndex + delta),
         )
-        setNavigatorRange({ startIndex: nextStart, endIndex: nextStart + visibleCount - 1 })
+        changeNavigatorRange({ startIndex: nextStart, endIndex: nextStart + visibleCount - 1 }, false)
       }
       return
     }
@@ -1459,9 +1552,10 @@ export function HubActivityChart({
   }
 
   function handlePointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
+    pointerClickBucketTRef.current = null
     const pan = chartPanRef.current
     if (pan && pan.pointerId === event.pointerId) {
-      if (pan.active) setNavigatorRange(pan.startRange)
+      if (pan.active) changeNavigatorRange(pan.startRange, false)
       chartPanRef.current = null
       setPressDragging(false)
       flushHover(null)
@@ -1688,6 +1782,8 @@ export function HubActivityChart({
               }}
             >
               <svg key={windowMinutes} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <defs><clipPath id={plotClipId}><rect width="100" height="100" /></clipPath></defs>
+          <g clipPath={`url(#${plotClipId})`}>
           <g className="grid">
             {[56, 72, ACTIVITY_LANE_BOTTOM].map((y) => (
               <line key={y} x1="0" y1={y} x2="100" y2={y} vectorEffect="non-scaling-stroke" />
@@ -1697,6 +1793,7 @@ export function HubActivityChart({
           <HubActivityBarSeries
             points={chartPoints}
             timeDomain={timeDomain}
+            clipPartialBuckets
             height={100}
             paddingTop={ACTIVITY_LANE_TOP}
             paddingBottom={100 - ACTIVITY_LANE_BOTTOM}
@@ -1794,6 +1891,7 @@ export function HubActivityChart({
               </g>
             ))
             : null}
+          </g>
           <HubActivityMomentAnnotations
             annotations={chartAnnotations}
             height={100}
@@ -1928,6 +2026,8 @@ export function HubActivityChart({
           pointCount={chartPoints.length}
           startIndex={viewportStartIndex}
           endIndex={viewportEndIndex}
+          controlRange={navigatorBounds}
+          visualRange={viewportBounds}
           focusIndex={selectedIndex >= 0 ? selectedIndex : accentIndex >= 0 ? accentIndex : null}
           selectedIndex={selectedIndex >= 0 ? selectedIndex : null}
           startLabel={formatNavigatorTick(
@@ -1944,7 +2044,8 @@ export function HubActivityChart({
           wheelSurfaceRef={wrapRef}
           scrollZoomEnabled={scrollZoomEnabled}
           onScrollZoomChange={setScrollZoomEnabled}
-          onChange={setNavigatorRange}
+          onChange={changeNavigatorRange}
+          onDragStart={beginNavigatorDrag}
           onReset={resetNavigator}
         />
         <div className="hx-provider-lanes" role="group" aria-label="Emote provider sparklines">

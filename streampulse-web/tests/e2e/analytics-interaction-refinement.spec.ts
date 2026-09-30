@@ -223,10 +223,13 @@ test('horizontal trackpad motion pans a zoomed chart while vertical scrolling re
   const navigator = page.locator('[data-hub-chart-navigator]')
   await expect(chart).toBeVisible()
   await navigator.getByRole('button', { name: 'Zoom in' }).click()
+  await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', '60:179')
   const zoomedWindow = await navigator.getAttribute('data-hub-chart-navigator-window')
   await chart.hover()
   await page.mouse.wheel(400, 0)
   await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', zoomedWindow!)
+  // Finish the intended pan easing before testing that vertical wheel leaves it unchanged.
+  await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', '90:209')
 
   const pannedWindow = await navigator.getAttribute('data-hub-chart-navigator-window')
   const scrollBefore = await page.evaluate(() => scrollY)

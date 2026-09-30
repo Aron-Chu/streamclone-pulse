@@ -62,6 +62,20 @@ describe('HubActivityBarSeries', () => {
     expect(container.querySelectorAll('rect.hx-chat-bar')).toHaveLength(0)
   })
 
+  it('clips intersecting fractional edge buckets only when the viewport opts in', () => {
+    const fractionalDomain = { start: 20_000, endExclusive: 100_000, bucketDurationMs: 60_000 }
+    const { container, rerender } = render(<svg><HubActivityBarSeries points={points} timeDomain={fractionalDomain} height={100} paddingBottom={0} chatMax={20} clipPartialBuckets /></svg>)
+    const bars = Array.from(container.querySelectorAll<SVGRectElement>('rect.hx-chat-bar'))
+    expect(bars).toHaveLength(2)
+    expect(bars[0].getAttribute('x')).toBe('0%')
+    expect(Number.parseFloat(bars[0].getAttribute('width')!)).toBeCloseTo(39.5)
+    expect(Number.parseFloat(bars[1].getAttribute('x')!) + Number.parseFloat(bars[1].getAttribute('width')!)).toBe(100)
+    rerender(<svg><HubActivityBarSeries points={points} timeDomain={fractionalDomain} height={100} paddingBottom={0} chatMax={20} /></svg>)
+    expect(container.querySelectorAll('rect.hx-chat-bar')).toHaveLength(1)
+    rerender(<svg><HubActivityBarSeries points={[{ ...points[0], hasChatRollup: false }, { ...points[1], chat: 0 }]} timeDomain={fractionalDomain} height={100} paddingBottom={0} chatMax={20} clipPartialBuckets /></svg>)
+    expect(container.querySelectorAll('rect.hx-chat-bar')).toHaveLength(0)
+  })
+
   it('marks the live trailing bucket when its t equals the last in-progress point', () => {
     // Domain must span the trailing bucket too — otherwise it renders no bar at all.
     const pts: HubActivityPoint[] = [

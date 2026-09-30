@@ -20,6 +20,8 @@ export interface HubActivityBarSeriesProps {
   trailingBucketT?: number | null
   onBarClick?: (bucketT: number) => void
   onBarHover?: (bucketT: number | null) => void
+  /** Include the intersecting edge of a bucket during a fractional local viewport transition. */
+  clipPartialBuckets?: boolean
 }
 
 const FOCUS_DIM_FACTOR = 0.14
@@ -43,6 +45,7 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
   trailingBucketT,
   onBarClick,
   onBarHover,
+  clipPartialBuckets = false,
 }: HubActivityBarSeriesProps) {
   const widthPct = barWidthPercent(timeDomain)
   // Keep a small gutter between buckets so the chat bars remain legible as
@@ -61,9 +64,14 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
       onMouseLeave={() => onBarHover?.(null)}
     >
       {points.map((p) => {
-        const x = barXPercent(p.t, timeDomain)
+        const x = clipPartialBuckets && p.t < timeDomain.endExclusive && p.t + timeDomain.bucketDurationMs > timeDomain.start
+          ? ((p.t - timeDomain.start) / (timeDomain.endExclusive - timeDomain.start)) * 100
+          : barXPercent(p.t, timeDomain)
         if (x == null) return null
         const visualX = x + visualInsetPct
+        const paintedX = clipPartialBuckets ? Math.max(0, visualX) : visualX
+        const paintedWidth = clipPartialBuckets ? Math.max(0, Math.min(100, visualX + visualWidthPct) - paintedX) : visualWidthPct
+        if (paintedWidth <= 0) return null
         const isLive = trailingBucketT != null && p.t === trailingBucketT
         const opacity = isLive ? 0.4 : 1
         if (p.hasChatRollup === false || p.chat <= 0 || widthPct <= 0 || usableHeight <= 0) return null
@@ -83,9 +91,9 @@ export const HubActivityBarSeries = memo(function HubActivityBarSeries({
           >
             <rect
               className={`hx-chat-bar hx-bar-segment hx-bar-segment--chat ${isHighlighted ? 'is-selected' : ''}`}
-              x={`${visualX}%`}
+              x={`${paintedX}%`}
               y={y}
-              width={`${visualWidthPct}%`}
+              width={`${paintedWidth}%`}
               height={barHeight}
               fillOpacity={focusedOpacity(focusedSeriesKey, 'chat')}
             />
