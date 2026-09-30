@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -23,6 +24,10 @@ export interface HubChartNavigatorProps {
   pointCount: number
   startIndex: number
   endIndex: number
+  /** Latest input target; repeated wheel/key events compose without waiting for easing. */
+  controlRange?: HubChartNavigatorRange
+  /** Shared fractional viewport rendered by the plot during a short transition. */
+  visualRange?: HubChartNavigatorRange
   startLabel: string
   endLabel: string
   /** Bucket to keep in the viewport when the user presses Zoom in. */
@@ -33,7 +38,8 @@ export interface HubChartNavigatorProps {
   wheelSurfaceRef?: RefObject<HTMLElement | null>
   scrollZoomEnabled: boolean
   onScrollZoomChange: (enabled: boolean) => void
-  onChange: (range: HubChartNavigatorRange) => void
+  onChange: (range: HubChartNavigatorRange, animate?: boolean) => void
+  onDragStart?: () => HubChartNavigatorRange
   onReset: () => void
 }
 
@@ -96,6 +102,8 @@ export function HubChartNavigator({
   pointCount,
   startIndex,
   endIndex,
+  controlRange,
+  visualRange,
   startLabel,
   endLabel,
   focusIndex = null,
@@ -105,13 +113,22 @@ export function HubChartNavigator({
   scrollZoomEnabled,
   onScrollZoomChange,
   onChange,
+  onDragStart,
   onReset,
 }: HubChartNavigatorProps) {
   const maxIndex = Math.max(0, pointCount - 1)
   const range = normalizedRange(pointCount, startIndex, endIndex)
+  const inputRangeRef = useRef(controlRange ?? range)
+  useLayoutEffect(() => {
+    inputRangeRef.current = controlRange ?? range
+  }, [controlRange?.startIndex, controlRange?.endIndex, range.startIndex, range.endIndex])
+  const emitRange = (next: HubChartNavigatorRange, animate = true) => {
+    inputRangeRef.current = next
+    onChange(next, animate)
+  }
   const span = Math.max(1, maxIndex)
-  const left = (range.startIndex / span) * 100
-  const right = (range.endIndex / span) * 100
+  const left = ((visualRange ?? range).startIndex / span) * 100
+  const right = ((visualRange ?? range).endIndex / span) * 100
   const width = Math.max(1, right - left)
   const isFullRange = range.startIndex === 0 && range.endIndex === maxIndex
   const visibleCount = range.endIndex - range.startIndex + 1
@@ -166,13 +183,13 @@ export function HubChartNavigator({
       )
       next = { startIndex: nextStart, endIndex: nextStart + currentSpan }
     }
-    if (next.startIndex !== range.startIndex || next.endIndex !== range.endIndex) onChange(next)
+    if (next.startIndex !== range.startIndex || next.endIndex !== range.endIndex) emitRange(next, false)
   }
 
   const finishPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
     const drag = dragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
-    if (cancelled) onChange({ startIndex: drag.startIndex, endIndex: drag.endIndex })
+    if (cancelled) emitRange({ startIndex: drag.startIndex, endIndex: drag.endIndex }, false)
     else {
       emitFromPointer(event)
       if (drag.mode === 'brush' && !drag.hasMoved) {
@@ -181,7 +198,7 @@ export function HubChartNavigator({
         const nextCount = clamp(isFullRange ? defaultCount : currentCount, 2, pointCount)
         let nextStart = Math.round(drag.anchorIndex - (nextCount - 1) / 2)
         nextStart = clamp(nextStart, 0, Math.max(0, pointCount - nextCount))
-        onChange({ startIndex: nextStart, endIndex: nextStart + nextCount - 1 })
+        emitRange({ startIndex: nextStart, endIndex: nextStart + nextCount - 1 })
       }
     }
     dragRef.current = null
@@ -202,12 +219,14 @@ export function HubChartNavigator({
     if (!rect || rect.width <= 0) return
     event.preventDefault()
     event.stopPropagation()
+    const dragRange = onDragStart?.() ?? range
+    inputRangeRef.current = dragRange
     dragRef.current = {
       pointerId: event.pointerId,
       mode,
       startClientX: event.clientX,
-      startIndex: range.startIndex,
-      endIndex: range.endIndex,
+      startIndex: dragRange.startIndex,
+      endIndex: dragRange.endIndex,
       anchorIndex: globalPointerIndex(event.clientX, rect.left, rect.width),
       hasMoved: false,
       trackLeft: rect.left,
@@ -223,17 +242,18 @@ export function HubChartNavigator({
   }
 
   const moveHandleByKeyboard = (handle: 'start' | 'end', delta: number) => {
+    const inputRange = inputRangeRef.current
     if (handle === 'start') {
-      onChange({
-        startIndex: clamp(range.startIndex + delta, 0, Math.max(0, range.endIndex - 1)),
-        endIndex: range.endIndex,
+      emitRange({
+        startIndex: clamp(inputRange.startIndex + delta, 0, Math.max(0, inputRange.endIndex - 1)),
+        endIndex: inputRange.endIndex,
       })
     } else {
-      onChange({
-        startIndex: range.startIndex,
+      emitRange({
+        startIndex: inputRange.startIndex,
         endIndex: clamp(
-          range.endIndex + delta,
-          Math.min(maxIndex, range.startIndex + 1),
+          inputRange.endIndex + delta,
+          Math.min(maxIndex, inputRange.startIndex + 1),
           maxIndex,
         ),
       })
@@ -241,20 +261,22 @@ export function HubChartNavigator({
   }
 
   const zoomFromCenter = (direction: 'in' | 'out') => {
-    const next = zoomNavigatorRange(pointCount, range, focusIndex, direction)
-    if (next.startIndex !== range.startIndex || next.endIndex !== range.endIndex) onChange(next)
+    const inputRange = inputRangeRef.current
+    const next = zoomNavigatorRange(pointCount, inputRange, focusIndex, direction)
+    if (next.startIndex !== inputRange.startIndex || next.endIndex !== inputRange.endIndex) emitRange(next)
   }
 
   const showSelectedBucket = () => {
     if (!selectedOutsideView || selectedIndex == null) return
     const nextStart = clamp(Math.round(selectedIndex - (visibleCount - 1) / 2), 0, pointCount - visibleCount)
-    onChange({ startIndex: nextStart, endIndex: nextStart + visibleCount - 1 })
+    emitRange({ startIndex: nextStart, endIndex: nextStart + visibleCount - 1 })
   }
 
   const handleKeyDown = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
     handle: 'start' | 'end',
   ) => {
+    const inputRange = inputRangeRef.current
     const step = event.shiftKey ? 5 : 1
     if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
       event.preventDefault()
@@ -264,12 +286,12 @@ export function HubChartNavigator({
       moveHandleByKeyboard(handle, step)
     } else if (event.key === 'Home') {
       event.preventDefault()
-      if (handle === 'start') onChange({ startIndex: 0, endIndex: range.endIndex })
-      else onChange({ startIndex: range.startIndex, endIndex: Math.min(maxIndex, range.startIndex + 1) })
+      if (handle === 'start') emitRange({ startIndex: 0, endIndex: inputRange.endIndex })
+      else emitRange({ startIndex: inputRange.startIndex, endIndex: Math.min(maxIndex, inputRange.startIndex + 1) })
     } else if (event.key === 'End') {
       event.preventDefault()
-      if (handle === 'start') onChange({ startIndex: Math.max(0, range.endIndex - 1), endIndex: range.endIndex })
-      else onChange({ startIndex: range.startIndex, endIndex: maxIndex })
+      if (handle === 'start') emitRange({ startIndex: Math.max(0, inputRange.endIndex - 1), endIndex: inputRange.endIndex })
+      else emitRange({ startIndex: inputRange.startIndex, endIndex: maxIndex })
     } else if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
@@ -280,6 +302,7 @@ export function HubChartNavigator({
   // Plain scrolling stays available until the user explicitly enables Scroll
   // zoom. Alt+wheel works without that mode; Ctrl/Meta remain browser shortcuts.
   const handleWheel = (event: WheelEvent, surface: HTMLElement) => {
+    const inputRange = inputRangeRef.current
     if (maxIndex <= 1 || event.ctrlKey || event.metaKey) return
     const rect = surface.getBoundingClientRect()
     if (!rect || rect.width <= 0) return
@@ -291,39 +314,39 @@ export function HubChartNavigator({
     if (!scrollZoomEnabled && !event.altKey && !event.shiftKey && !horizontalIntent) return
     const panDelta = event.shiftKey ? (deltaY || deltaX) : deltaX
     const shouldPan = event.shiftKey || horizontalIntent
-    let next = range
+    let next = inputRange
 
     if (shouldPan) {
-      if (panDelta === 0 || isFullRange) return
-      const bucketCount = range.endIndex - range.startIndex + 1
+      if (panDelta === 0 || (inputRange.startIndex === 0 && inputRange.endIndex === maxIndex)) return
+      const bucketCount = inputRange.endIndex - inputRange.startIndex + 1
       const panBuckets = Math.sign(panDelta) * Math.max(
         1,
         Math.round(bucketCount * clamp(Math.abs(panDelta) / 800, 0.02, 0.25)),
       )
       const nextStart = clamp(
-        range.startIndex + panBuckets,
+        inputRange.startIndex + panBuckets,
         0,
         Math.max(0, pointCount - bucketCount),
       )
       next = { startIndex: nextStart, endIndex: nextStart + bucketCount - 1 }
     } else {
       if (deltaY === 0) return
-      const bucketCount = range.endIndex - range.startIndex + 1
+      const bucketCount = inputRange.endIndex - inputRange.startIndex + 1
       const scale = Math.exp(deltaY * 0.0025)
       let nextBucketCount = clamp(Math.round(bucketCount * scale), 2, pointCount)
       if (nextBucketCount === bucketCount) {
         nextBucketCount = clamp(bucketCount + Math.sign(deltaY), 2, pointCount)
       }
       const anchorRatio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1)
-      const anchorIndex = range.startIndex + anchorRatio * Math.max(0, bucketCount - 1)
+      const anchorIndex = inputRange.startIndex + anchorRatio * Math.max(0, bucketCount - 1)
       let nextStart = Math.round(anchorIndex - anchorRatio * (nextBucketCount - 1))
       nextStart = clamp(nextStart, 0, Math.max(0, pointCount - nextBucketCount))
       next = { startIndex: nextStart, endIndex: nextStart + nextBucketCount - 1 }
     }
 
-    if (next.startIndex === range.startIndex && next.endIndex === range.endIndex) return
+    if (next.startIndex === inputRange.startIndex && next.endIndex === inputRange.endIndex) return
     event.preventDefault()
-    onChange(next)
+    emitRange(next)
   }
 
   useEffect(() => {

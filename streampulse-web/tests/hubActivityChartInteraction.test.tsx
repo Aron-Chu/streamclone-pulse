@@ -1,4 +1,5 @@
-import { fireEvent, render, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { HubActivityChart } from '../src/ui/components/hub/HubActivityChart'
 
@@ -47,6 +48,28 @@ function dispatchWheelEvent(target: HTMLElement, init: WheelEventInit): WheelEve
   const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init })
   fireEvent(target, event)
   return event
+}
+
+function controlAnimationFrames() {
+  let now = 0
+  let nextId = 1
+  const pending = new Map<number, FrameRequestCallback>()
+  vi.spyOn(performance, 'now').mockImplementation(() => now)
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+    const id = nextId++
+    pending.set(id, callback)
+    return id
+  })
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => { pending.delete(id) })
+  return {
+    pending,
+    step(elapsed: number) {
+      now += elapsed
+      const callbacks = [...pending.values()]
+      pending.clear()
+      act(() => { callbacks.forEach(callback => callback(now)) })
+    },
+  }
 }
 
 describe('HubActivityChart interaction contract', () => {
@@ -340,7 +363,7 @@ describe('HubActivityChart interaction contract', () => {
     expect(chart.getAttribute('data-hover')).toBeNull()
   })
 
-  it('provides a flush keyboard navigator that resets without changing the server range', () => {
+  it('provides a flush keyboard navigator that resets without changing the server range', async () => {
     const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({
       ...points[0],
       t: firstBucketT + index * 60_000,
@@ -359,19 +382,19 @@ describe('HubActivityChart interaction contract', () => {
     />)
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     const start = navigator.querySelector('[role="slider"][aria-label="Chart view start"]') as HTMLButtonElement
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
     expect(navigator.querySelector('.hx-chart-navigator__controls')).toBeNull()
     expect(navigator.querySelector('[data-hub-chart-preset]')).toBeNull()
     fireEvent.keyDown(start, { key: 'ArrowRight' })
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:5'))
     expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('1')
     expect(onRangeSelect).not.toHaveBeenCalled()
     fireEvent.keyDown(start, { key: 'Escape' })
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
     expect(onRangeSelect).not.toHaveBeenCalled()
   })
 
-  it('offers visible centered zoom controls without changing the server range', () => {
+  it('offers visible centered zoom controls without changing the server range', async () => {
     const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({
       ...points[0],
       t: firstBucketT + index * 60_000,
@@ -399,21 +422,21 @@ describe('HubActivityChart interaction contract', () => {
     expect(navigator.textContent).toContain('16 of 16 buckets')
     expect(zoomOut.hasAttribute('disabled')).toBe(true)
     fireEvent.click(zoomIn)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
     expect(navigator.textContent).toContain('8 of 16 buckets')
     expect(chatBars().map(bar => Number(bar.getAttribute('data-bar-t')))).toEqual(navigatorPoints.slice(4, 12).map(point => point.t))
     expect(Number.parseFloat(chatBars()[0].querySelector('rect')!.getAttribute('width')!)).toBeCloseTo(fullBarWidth * 2)
     fireEvent.click(zoomIn)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('6:9')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('6:9'))
     fireEvent.click(zoomOut)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
     fireEvent.click(reset)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
     expect(onRangeSelect).not.toHaveBeenCalled()
     expect(onBucketSelect).not.toHaveBeenCalled()
   })
 
-  it('zooms toward a selected bucket at the edge of the loaded range', () => {
+  it('zooms toward a selected bucket at the edge of the loaded range', async () => {
     const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({
       ...points[0],
       t: firstBucketT + index * 60_000,
@@ -426,7 +449,7 @@ describe('HubActivityChart interaction contract', () => {
     />)
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     fireEvent.click(getByRole('button', { name: 'Zoom in' }))
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:7')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:7'))
     expect(container.querySelector('.hx-hover-status')?.textContent).not.toContain('outside the zoomed view')
   })
 
@@ -465,7 +488,7 @@ describe('HubActivityChart interaction contract', () => {
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:2')
   })
 
-  it('zooms around the cursor and pans with Shift+wheel from chart and navigator surfaces', () => {
+  it('zooms around the cursor and pans with Shift+wheel from chart and navigator surfaces', async () => {
     const navigatorPoints = Array.from({ length: 6 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
     const { container, getByRole } = render(<HubActivityChart points={navigatorPoints} windowMinutes={6} channelCount={1} />)
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
@@ -476,27 +499,27 @@ describe('HubActivityChart interaction contract', () => {
     Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
     const plain = dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 })
     expect(plain.defaultPrevented).toBe(false)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
     const zoom = dispatchWheelEvent(chart, { deltaY: -120, deltaX: 0, deltaMode: 0, clientX: 250, altKey: true })
     expect(zoom.defaultPrevented).toBe(true)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4'))
     const pan = dispatchWheelEvent(track, { deltaY: 120, deltaX: 0, deltaMode: 0, shiftKey: true, clientX: 250 })
     expect(pan.defaultPrevented).toBe(true)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5'))
     const browserZoom = dispatchWheelEvent(chart, { deltaY: -120, ctrlKey: true, clientX: 250 })
     expect(browserZoom.defaultPrevented).toBe(false)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:5'))
 
     dispatchPointerEvent(chart, 'pointerdown', { pointerId: 31, pointerType: 'mouse', clientX: 250, clientY: 40 })
     dispatchPointerEvent(chart, 'pointermove', { pointerId: 31, pointerType: 'mouse', clientX: 375, clientY: 40 })
     dispatchPointerEvent(chart, 'pointerup', { pointerId: 31, pointerType: 'mouse', clientX: 375, clientY: 40 })
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('1:4'))
 
     fireEvent.click(getByRole('button', { name: 'Reset zoom' }))
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:5'))
   })
 
-  it('enables plain wheel zoom only by choice and restores page scrolling with reset or Escape', () => {
+  it('enables plain wheel zoom only by choice and restores page scrolling with reset or Escape', async () => {
     const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
     const onBucketSelect = vi.fn()
     const { container, getByRole } = render(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} selectedBucketT={navigatorPoints[5].t} onBucketSelect={onBucketSelect} />)
@@ -509,50 +532,50 @@ describe('HubActivityChart interaction contract', () => {
     const toggle = getByRole('button', { name: 'Scroll zoom' })
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
     expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(false)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
 
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
     expect(navigator.querySelector('.hx-chart-navigator__hint')?.textContent).toContain('Scroll zoom is on')
     expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('2:13'))
     expect(dispatchWheelEvent(getByRole('slider', { name: 'Chart view end' }), { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:12')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:12'))
     expect(dispatchWheelEvent(chart, { deltaY: -120, metaKey: true, clientX: 250 }).defaultPrevented).toBe(false)
     fireEvent.keyDown(chart, { key: 'Escape' })
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
     expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(false)
 
     fireEvent.click(toggle)
     fireEvent.click(getByRole('button', { name: 'Reset zoom' }))
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
     fireEvent.click(toggle)
     dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 })
     fireEvent.keyDown(toggle, { key: 'Escape' })
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15'))
     expect(onBucketSelect).not.toHaveBeenCalled()
   })
 
-  it('turns scroll zoom off when the requested range changes, while refreshes preserve the chosen viewport', () => {
+  it('turns scroll zoom off when the requested range changes, while refreshes preserve the chosen viewport', async () => {
     const navigatorPoints = Array.from({ length: 16 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
     const { container, getByRole, rerender } = render(<HubActivityChart points={navigatorPoints} windowMinutes={16} channelCount={1} />)
     const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
     fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     fireEvent.click(getByRole('button', { name: 'Zoom in' }))
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
     rerender(<HubActivityChart points={navigatorPoints.map(point => ({ ...point, viewers: point.viewers + 10 }))} windowMinutes={16} channelCount={1} />)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11')
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('4:11'))
     expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('true')
     rerender(<HubActivityChart points={navigatorPoints} windowMinutes={30} channelCount={1} />)
     expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('false')
     const end = Number(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-end'))
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`0:${end}`)
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`0:${end}`))
   })
 
-  it('resets the local view when requested ranges share the same served fallback grid', () => {
+  it('resets the local view when requested ranges share the same served fallback grid', async () => {
     const fallbackPoints = Array.from({ length: 30 }, (_, index) => ({ ...points[0], t: firstBucketT - (29 - index) * 60_000 }))
     const rangeControl = { active: '24h', options: [{ key: '24h', label: '24h' }, { key: '7d', label: '7d' }], onSelect: vi.fn() }
     const { container, getByRole, rerender } = render(<HubActivityChart points={fallbackPoints} windowMinutes={30} channelCount={1} rangeControl={rangeControl} />)
@@ -560,17 +583,145 @@ describe('HubActivityChart interaction contract', () => {
     const fullWindow = navigator.getAttribute('data-hub-chart-navigator-window')
     fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
     fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('8:22'))
     const zoomedWindow = navigator.getAttribute('data-hub-chart-navigator-window')
     expect(zoomedWindow).not.toBe(fullWindow)
 
     rerender(<HubActivityChart points={fallbackPoints.map(point => ({ ...point, chat: point.chat + 1 }))} windowMinutes={30} channelCount={1} rangeControl={{ ...rangeControl }} />)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(zoomedWindow)
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(zoomedWindow))
     expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('true')
 
     rerender(<HubActivityChart points={fallbackPoints} windowMinutes={30} channelCount={1} rangeControl={{ ...rangeControl, active: '7d' }} />)
-    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(fullWindow)
+    await waitFor(() => expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(fullWindow))
     expect(getByRole('button', { name: 'Scroll zoom' }).getAttribute('aria-pressed')).toBe('false')
     expect(rangeControl.onSelect).not.toHaveBeenCalled()
+  })
+})
+
+describe('HubActivityChart viewport motion', () => {
+  const motionPoints = Array.from({ length: 16 }, (_, index) => ({ ...points[0], t: firstBucketT + index * 60_000 }))
+  const rect = { left: 0, right: 500, top: 0, bottom: 200, width: 500, height: 200, x: 0, y: 0, toJSON: () => ({}) }
+
+  it('retargets rapid wheel inputs from the latest target and moves plot and bar together', () => {
+    const frames = controlAnimationFrames()
+    const onRangeSelect = vi.fn()
+    const onBucketSelect = vi.fn()
+    const { container, getByRole } = render(<StrictMode><HubActivityChart points={motionPoints} windowMinutes={16} channelCount={1} selectedBucketT={motionPoints[5].t} onBucketSelect={onBucketSelect} rangeControl={{ active: '24h', options: [{ key: '24h', label: '24h' }], onSelect: onRangeSelect }} /></StrictMode>)
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
+    expect(dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 }).defaultPrevented).toBe(true)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    frames.step(16)
+    const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    const visualSpan = Number.parseFloat(window.style.width) / 100 * 15
+    const bar = container.querySelector(`[data-bar-t="${motionPoints[5].t}"] .hx-chat-bar`) as SVGRectElement
+    expect(Number.parseFloat(bar.getAttribute('width')!)).toBeCloseTo(72 / (visualSpan + 1))
+    const stack = container.querySelector('.hx-plot-stack')!
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`${stack.getAttribute('data-hub-chart-viewport-start')}:${stack.getAttribute('data-hub-chart-viewport-end')}`)
+    expect(Number.parseFloat(window.style.left)).toBeGreaterThan(0)
+    expect(Number.parseFloat(window.style.width)).toBeGreaterThan(11 / 15 * 100)
+    act(() => {
+      chart.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: 250 }))
+      chart.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: 250 }))
+    })
+    expect(frames.pending.size).toBe(1)
+    frames.step(180)
+    // 16 -> 12 -> 9 -> 7 buckets. Composing against the still-moving visual
+    // span would incorrectly repeat the first step.
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('5:11')
+    expect(frames.pending.size).toBe(0)
+    expect(onRangeSelect).not.toHaveBeenCalled()
+    expect(onBucketSelect).not.toHaveBeenCalled()
+    expect(container.querySelector('.hx-hover-status')?.textContent).not.toContain('outside the zoomed view')
+  })
+
+  it('cancels easing at the visible interval for a direct drag, reset and range change', () => {
+    const frames = controlAnimationFrames()
+    const { container, getByRole, rerender } = render(<HubActivityChart points={motionPoints} windowMinutes={16} channelCount={1} />)
+    const navigator = container.querySelector('[data-hub-chart-navigator]') as HTMLElement
+    const track = navigator.querySelector('.hx-chart-navigator__track') as HTMLElement
+    Object.defineProperty(track, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    frames.step(16)
+    const window = navigator.querySelector('.hx-chart-navigator__window') as HTMLElement
+    const visualStart = Number.parseFloat(window.style.left) / 100 * 15
+    const start = Math.round(visualStart)
+    const end = Math.round(visualStart + Number.parseFloat(window.style.width) / 100 * 15)
+    dispatchPointerEvent(window, 'pointerdown', { pointerId: 71, pointerType: 'mouse', clientX: 250, clientY: 10 })
+    expect(frames.pending.size).toBe(0)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`${start}:${end}`)
+    dispatchPointerEvent(navigator, 'pointermove', { pointerId: 71, pointerType: 'mouse', clientX: 280, clientY: 10 })
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`${start + 1}:${end + 1}`)
+    dispatchPointerEvent(navigator, 'pointercancel', { pointerId: 71, pointerType: 'mouse', clientX: 280, clientY: 10 })
+    fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    frames.step(16)
+    fireEvent.click(getByRole('button', { name: 'Reset zoom' }))
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:15')
+    expect(frames.pending.size).toBe(0)
+    fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    frames.step(16)
+    rerender(<HubActivityChart points={motionPoints} windowMinutes={30} channelCount={1} />)
+    expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe(`0:${container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-end')}`)
+    expect(frames.pending.size).toBe(0)
+  })
+
+  it('uses the final viewport immediately when reduced motion is requested', () => {
+    const frames = controlAnimationFrames()
+    const original = window.matchMedia
+    vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ ...original(query), matches: query === '(prefers-reduced-motion: reduce)' }))
+    const { container, getByRole } = render(<HubActivityChart points={motionPoints} windowMinutes={16} channelCount={1} />)
+    fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    expect(container.querySelector('[data-hub-chart-navigator]')?.getAttribute('data-hub-chart-navigator-window')).toBe('4:11')
+    expect(container.querySelector('.hx-plot-stack')?.getAttribute('data-hub-chart-viewport-start')).toBe('4')
+    expect(frames.pending.size).toBe(0)
+  })
+
+  it('keeps a partially visible leading missing bucket shaded only over its intersecting interval', () => {
+    const frames = controlAnimationFrames()
+    const { container, getByRole } = render(<HubActivityChart points={motionPoints.map((point, index) => index === 0 ? { ...point, hasChatRollup: false } : point)} windowMinutes={16} channelCount={1} />)
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    fireEvent.click(getByRole('button', { name: 'Scroll zoom' }))
+    dispatchWheelEvent(chart, { deltaY: -120, clientX: 250 })
+    frames.step(16)
+    const band = container.querySelector('.gap-fill--chat-rollup') as HTMLElement
+    expect(band.style.left).toBe('0%')
+    expect(Number.parseFloat(band.style.width)).toBeGreaterThan(0)
+    expect(Number.parseFloat(band.style.width)).toBeLessThan(5)
+    expect(container.querySelector(`[data-bar-t="${motionPoints[0].t}"]`)).toBeNull()
+  })
+
+  it('selects the bucket hit on mouse down while a viewport transition finishes', () => {
+    const frames = controlAnimationFrames()
+    const onBucketSelect = vi.fn()
+    const { container, getByRole } = render(<HubActivityChart points={motionPoints} windowMinutes={16} channelCount={1} onBucketSelect={onBucketSelect} />)
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    frames.step(16)
+    dispatchPointerEvent(chart, 'pointerdown', { pointerId: 81, pointerType: 'mouse', clientX: 140, clientY: 40 })
+    expect(frames.pending.size).toBe(1)
+    frames.step(180)
+    dispatchPointerEvent(chart, 'pointerup', { pointerId: 81, pointerType: 'mouse', clientX: 140, clientY: 40 })
+    fireEvent.click(chart, { clientX: 140 })
+    expect(onBucketSelect).toHaveBeenCalledExactlyOnceWith(motionPoints[5].t)
+  })
+
+  it('preserves the captured minute identity when polling shifts the grid between mouse down and click', () => {
+    const frames = controlAnimationFrames()
+    const onBucketSelect = vi.fn()
+    const { container, getByRole, rerender } = render(<HubActivityChart points={motionPoints} windowMinutes={16} channelCount={1} onBucketSelect={onBucketSelect} />)
+    const chart = container.querySelector('[data-hub-chart-wheel-surface]') as HTMLElement
+    Object.defineProperty(chart, 'getBoundingClientRect', { configurable: true, value: () => rect })
+    fireEvent.click(getByRole('button', { name: 'Zoom in' }))
+    frames.step(16)
+    dispatchPointerEvent(chart, 'pointerdown', { pointerId: 82, pointerType: 'mouse', clientX: 140, clientY: 40 })
+    rerender(<HubActivityChart points={[...motionPoints.slice(1), { ...motionPoints[15], t: motionPoints[15].t + 60_000 }]} windowMinutes={16} channelCount={1} onBucketSelect={onBucketSelect} />)
+    dispatchPointerEvent(chart, 'pointerup', { pointerId: 82, pointerType: 'mouse', clientX: 140, clientY: 40 })
+    fireEvent.click(chart, { clientX: 140 })
+    expect(onBucketSelect).toHaveBeenCalledExactlyOnceWith(motionPoints[5].t)
   })
 })
 
@@ -584,6 +735,8 @@ it('preserves inspected timestamps when polling advances the grid', async () => 
   fireEvent.keyDown(start, { key: 'ArrowRight' })
   fireEvent.keyDown(finish, { key: 'ArrowLeft' })
   const stack = view.container.querySelector('.hx-plot-stack')!
+  await waitFor(() => expect(Number(stack.getAttribute('data-hub-chart-viewport-start'))).toBe(1))
+  await waitFor(() => expect(Number(stack.getAttribute('data-hub-chart-viewport-end'))).toBe(28))
   const beforeStart = Number(stack.getAttribute('data-hub-chart-viewport-start'))
   const beforeEnd = Number(stack.getAttribute('data-hub-chart-viewport-end'))
   view.rerender(<HubActivityChart points={[...samples.slice(1), { ...samples[29], t: end + 60000 }]} windowMinutes={30} channelCount={1} />)

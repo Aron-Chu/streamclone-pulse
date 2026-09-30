@@ -161,11 +161,36 @@
   color: hsl(var(--muted-foreground));
 }
 .hubx .hx-chart-navigator .hx-chart-navigator__handle::after {
+  opacity: 0.65;
+  width: 7px;
+  height: 7px;
+  top: 50%;
+  bottom: auto;
+  border-radius: 50%;
+  background: hsl(var(--chart-2));
+  box-shadow: none;
+  filter: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms ease-out, width 120ms ease-out, height 120ms ease-out;
+}
+.hubx .hx-chart-navigator.is-full-range .hx-chart-navigator__handle::after {
+  opacity: 0;
+}
+.hubx .hx-chart-navigator .hx-chart-navigator__handle:hover::after,
+.hubx .hx-chart-navigator .hx-chart-navigator__handle:focus-visible::after {
   opacity: 1;
-  width: 4px;
-  top: 13px;
-  bottom: 13px;
-  box-shadow: 0 0 0 2px hsl(var(--background));
+  width: 9px;
+  height: 9px;
+}
+.hubx .hx-chart-navigator .hx-chart-navigator__handle:focus-visible::after {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 3px;
+  background: hsl(var(--ring));
+}
+@media (prefers-reduced-motion: reduce) {
+  .hubx .hx-chart-navigator .hx-chart-navigator__handle::after {
+    transition: none;
+  }
 }
 .hubx .hx-chart-navigator .hx-chart-navigator__hint {
   margin-top: 0.65rem;
