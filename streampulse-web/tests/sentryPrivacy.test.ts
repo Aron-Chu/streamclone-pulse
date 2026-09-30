@@ -77,24 +77,24 @@ describe('Sentry privacy boundary', () => {
     const frame = { filename: 'assets/main.js' }
     for (const debugId of ['private', 'abcdef01234546788abcdef012345678',
       'abcdef01-2345-4678-8abc-def012345678private', 'zzzzzzzz-2345-4678-8abc-def012345678']) {
-      const clean = scrubPortalEvent({ exception: { values: [{ stacktrace: { frames: [frame] } }] },
+      const clean = scrubPortalEvent({ type: undefined, exception: { values: [{ stacktrace: { frames: [frame] } }] },
         debug_meta: { images: [{ type: 'sourcemap', code_file: frame.filename, debug_id: debugId }] },
       })!
       expect(clean.debug_meta).toBeUndefined()
     }
     for (const filename of ['assets/' + 'a'.repeat(129) + '.js', 'assets/main.js?private=' + 'a'.repeat(2048),
       '/account/private', 'assets/../private.js']) {
-      const clean = scrubPortalEvent({ exception: { values: [{ stacktrace: { frames: [{ filename }] } }] },
+      const clean = scrubPortalEvent({ type: undefined, exception: { values: [{ stacktrace: { frames: [{ filename }] } }] },
         debug_meta: { images: [{ type: 'sourcemap', code_file: filename, debug_id: 'abcdef01-2345-4678-8abc-def012345678' }] },
       })!
       expect(clean.debug_meta).toBeUndefined()
       expect(clean.exception?.values?.[0]?.stacktrace?.frames?.[0]?.filename).toBeUndefined()
     }
-    expect(scrubPortalEvent({ debug_meta: { images: [] } })!.debug_meta).toBeUndefined()
+    expect(scrubPortalEvent({ type: undefined, debug_meta: { images: [] } })!.debug_meta).toBeUndefined()
   })
   it('bounds source-map metadata and drops images for stack frames removed by the frame limit', () => {
     const filenames = Array.from({ length: 51 }, (_, index) => `assets/chunk-${index}.js`)
-    const clean = scrubPortalEvent({ exception: { values: [{ stacktrace: { frames: filenames.map(filename => ({ filename })) } }] },
+    const clean = scrubPortalEvent({ type: undefined, exception: { values: [{ stacktrace: { frames: filenames.map(filename => ({ filename })) } }] },
       debug_meta: { images: filenames.map(code_file => ({ type: 'sourcemap', code_file, debug_id: 'abcdef01-2345-4678-8abc-def012345678' })) },
     })!
     expect(clean.debug_meta?.images).toHaveLength(49)

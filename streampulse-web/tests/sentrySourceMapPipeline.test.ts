@@ -1,17 +1,18 @@
-import { BrowserClient, Scope, type Envelope, type ErrorEvent } from '@sentry/react'
+import { BrowserClient, Scope, type ErrorEvent } from '@sentry/react'
 import { describe, expect, it, vi } from 'vitest'
 import { scrubPortalEvent } from '../src/lib/sentry'
+
+type TransportEnvelope = Parameters<NonNullable<ReturnType<BrowserClient['getTransport']>>['send']>[0]
 
 describe('Sentry source-map event pipeline', () => {
   it('keeps SDK-enriched Debug IDs through beforeSend into the fake transport envelope', async () => {
     const filename = 'https://streampulse.stream/assets/index-PIPELINE.js'
     const debugId = '11111111-2222-4333-8444-555555555555'
     vi.stubGlobal('_sentryDebugIds', { 'source-map pipeline injection fixture': debugId })
-    const envelopes: Envelope[] = []
+    const envelopes: TransportEnvelope[] = []
     const beforeSend = vi.fn(scrubPortalEvent)
     const client = new BrowserClient({
       dsn: 'https://public@example.invalid/1',
-      defaultIntegrations: false,
       integrations: [],
       stackParser: () => [{ filename, lineno: 1, colno: 20 }],
       beforeSend,
