@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FigmaMomentRow } from '../../../lib/figmaSessionAnalytics'
 import { buildAnalyticsHref } from '../../../lib/analyticsLinks'
+import './moment-inspector-layout.css'
 
 export function MomentHandoffActions({ moment }: { moment: FigmaMomentRow }) {
   const [copyMessage, setCopyMessage] = useState('')
@@ -13,8 +14,8 @@ export function MomentHandoffActions({ moment }: { moment: FigmaMomentRow }) {
     catch { setCopyMessage(`Copy this link: ${url}`) }
   }
   if (!canonicalPath) return null
-  return <div className="moment-handoff-actions">
-    <button className="hub-openbtn hub-openbtn--ghost" type="button" onClick={() => void copy()}>Copy moment link</button>
-    <span role="status">{copyMessage}</span>
-  </div>
+  return <>
+    <button className="hub-openbtn hub-openbtn--ghost" type="button" aria-label="Copy moment link" onClick={() => void copy()}>Copy link</button>
+    {copyMessage ? <span className="moment-inspector-actions__status" role="status">{copyMessage}</span> : null}
+  </>
 }

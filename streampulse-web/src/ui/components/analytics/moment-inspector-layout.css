@@ -1,0 +1,90 @@
+.figma-panel--inspector .figma-inspector__actions.moment-inspector-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0.4rem;
+  margin: 0.65rem;
+  container: moment-actions / inline-size;
+}
+
+.figma-panel--inspector .figma-inspector__actions.moment-inspector-actions[data-action-count='1'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.figma-panel--inspector .figma-inspector__actions.moment-inspector-actions[data-action-count='2'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.moment-inspector-actions.figma-inspector__actions > .hub-openbtn {
+  box-sizing: border-box;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.4rem 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+}
+
+.moment-inspector-actions__status {
+  grid-column: 1 / -1;
+  color: var(--fma-sub);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@container moment-actions (max-width: 14rem) {
+  .moment-inspector-actions > .hub-openbtn {
+    grid-column: 1 / -1;
+  }
+}
+
+.moment-inspector-emotes .pulse-moments__burst-table-wrap {
+  overflow-x: visible;
+}
+
+/* Live rows have four cells: rank, emote, count and share; no provider column. */
+.moment-inspector-emotes .pulse-moments__burst-table-head.emote-rank-row,
+.moment-inspector-emotes .pulse-moments__burst-list .emote-rank-row[data-rank='true'] {
+  grid-template-columns: 1rem minmax(0, 1fr) 3.2rem 3.5rem;
+  column-gap: 0.4rem;
+  min-width: 0;
+  padding-inline: 0.5rem;
+}
+
+.moment-inspector-emotes .pulse-moments__burst-list > li.moment-inspector-emotes__plot-item {
+  display: block;
+  min-width: 0;
+  padding: 0;
+}
+
+.moment-inspector-emotes .emote-rank-row__emote {
+  gap: 0.35rem;
+}
+
+.moment-inspector-emotes .emote-rank-row__emote img,
+.moment-inspector-emotes .emote-rank-row__fallback {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.moment-inspector-emotes .emote-rank-row__share-cell {
+  min-width: 0;
+}
+
+.moment-inspector-emotes .emote-rank-row__share {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  line-height: 1.25;
+}
+
+.moment-inspector-emotes .figma-burst-list__share-est {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}

@@ -3,6 +3,7 @@ import type { HubEmote } from '../../../lib/publicHub'
 import { withComputedBurstShare } from '../../../lib/emoteShare'
 import { resolveBurstEmote } from '../../../lib/pulseMomentsUtils'
 import { EmoteRankRow, emoteRankRowProps } from './EmoteRankRow'
+import './moment-inspector-layout.css'
 
 export interface TopEmoteBurstsPanelProps {
   bursts: FigmaEmoteBurst[]
@@ -37,13 +38,13 @@ export function TopEmoteBurstsPanel({
 
   return (
     <section
-      className={`figma-panel figma-panel--bursts${isLive ? ' pulse-moments__bursts figma-panel--scope-minute' : ''}${className ? ` ${className}` : ''}`}
+      className={`figma-panel figma-panel--bursts${isLive ? ' pulse-moments__bursts figma-panel--scope-minute moment-inspector-emotes' : ''}${className ? ` ${className}` : ''}`}
       aria-label={title}
     >
       <header>
         <h3>{title}</h3>
         {isLive && ranked.length > 0 ? (
-          <p className="pulse-moments__bursts-subtitle">{ranked.some(row => row.shareEstimated) ? 'Share among listed emotes' : 'Share of measured emote sends'}</p>
+          <p className="pulse-moments__bursts-subtitle">{ranked.some(row => row.shareEstimated) ? 'Estimated shares use available counts' : 'Share of measured emote sends'}</p>
         ) : null}
       </header>
       {ranked.length === 0 ? (
@@ -85,14 +86,14 @@ export function TopEmoteBurstsPanel({
                   count={burst.count}
                   sharePct={burst.sharePct}
                   shareEstimated={burst.shareEstimated}
-                  barPct={(burst.count / maxCount) * 100}
+                  barPct={isLive ? undefined : (burst.count / maxCount) * 100}
                   suffix={!isLive && burst.peakOffset ? <small>@ {burst.peakOffset}</small> : null}
                 />
               )
 
               if (plotEnabled) {
                 return (
-                  <li key={rowKey}>
+                  <li key={rowKey} className={isLive ? 'moment-inspector-emotes__plot-item' : undefined}>
                     <button
                       type="button"
                       data-rank="true"

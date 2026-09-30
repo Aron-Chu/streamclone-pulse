@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import { MemoryRouter } from 'react-router-dom'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { FigmaMomentInspector, MomentContextSpans } from '../src/ui/components/analytics/FigmaMomentInspector'
 
@@ -60,6 +60,19 @@ describe('MomentContextSpans', () => {
 
 
 describe('FigmaMomentInspector pulse-live hero', () => {
+
+  it('keeps replay, analytics and copy controls together and resets copy feedback on a new moment', async () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    const moment = { offsetSeconds: 60, label: 'Spike', login: 'xqc', streamId: 'stream-exact', href: '/analytics/xqc/stream-exact#t=60' }
+    const { rerender } = render(<MemoryRouter><FigmaMomentInspector variant="pulse-live" moment={moment} /></MemoryRouter>)
+    const actions = screen.getByRole('group', { name: 'Moment actions' })
+    expect(within(actions).getByRole('link', { name: 'Review moment' })).toBeTruthy()
+    expect(within(actions).getByRole('link', { name: 'Open analytics' })).toBeTruthy()
+    fireEvent.click(within(actions).getByRole('button', { name: 'Copy moment link' }))
+    await waitFor(() => expect(within(actions).getByRole('status').textContent).toBe('Moment link copied'))
+    rerender(<MemoryRouter><FigmaMomentInspector variant="pulse-live" moment={{ ...moment, offsetSeconds: 120 }} /></MemoryRouter>)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
 
   it('renders KPI tiles and time badge without legacy summary line', () => {
 

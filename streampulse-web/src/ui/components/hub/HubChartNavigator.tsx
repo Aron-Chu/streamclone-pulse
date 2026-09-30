@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
+import { LocateFixed, Minus, Mouse, Plus, RotateCcw } from 'lucide-react'
 
 export interface HubChartNavigatorRange {
   startIndex: number
@@ -30,6 +31,8 @@ export interface HubChartNavigatorProps {
   selectedIndex?: number | null
   presets?: HubChartNavigatorPreset[]
   wheelSurfaceRef?: RefObject<HTMLElement | null>
+  scrollZoomEnabled: boolean
+  onScrollZoomChange: (enabled: boolean) => void
   onChange: (range: HubChartNavigatorRange) => void
   onReset: () => void
 }
@@ -63,7 +66,7 @@ function normalizedRange(
   return { startIndex: start, endIndex: end }
 }
 
-/** Keep the chart-header shortcut and navigator buttons on the same zoom rule. */
+/** Zoom the loaded viewport without changing the requested server range. */
 export function zoomNavigatorRange(
   pointCount: number,
   currentRange: HubChartNavigatorRange,
@@ -99,6 +102,8 @@ export function HubChartNavigator({
   selectedIndex = null,
   presets = [],
   wheelSurfaceRef,
+  scrollZoomEnabled,
+  onScrollZoomChange,
   onChange,
   onReset,
 }: HubChartNavigatorProps) {
@@ -113,6 +118,7 @@ export function HubChartNavigator({
   const selectedOutsideView = selectedIndex != null && selectedIndex >= 0 && selectedIndex < pointCount &&
     (selectedIndex < range.startIndex || selectedIndex > range.endIndex)
   const trackRef = useRef<HTMLDivElement>(null)
+  const navigatorRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [draggingMode, setDraggingMode] = useState<DragState['mode'] | null>(null)
   const hintId = useId()
@@ -266,24 +272,13 @@ export function HubChartNavigator({
       else onChange({ startIndex: range.startIndex, endIndex: maxIndex })
     } else if (event.key === 'Escape') {
       event.preventDefault()
+      event.stopPropagation()
       onReset()
     }
   }
 
-  /**
-   * Zooming is an explicit gesture, never ordinary scrolling.
-   *
-   * Alt+wheel zooms around the cursor, Shift+wheel (or horizontal wheel intent)
-   * pans, and a plain wheel is left untouched so the page scrolls instead of
-   * stalling under the pointer. Ctrl/Meta stay reserved for browser page zoom.
-   *
-   * This is the contract in `docs/website-portal/analytics-command-center-layout.md`
-   * ("Ordinary vertical wheel scrolling over the plot or navigator moves the
-   * page and is never consumed"). The explicit Alt zoom rule also appears in
-   * `isChartZoomWheelGesture` in the shared `PulseMultiSignalChart`; horizontal
-   * panning is specific to this hub navigator. Keep bare vertical wheel zoom
-   * out of this chart so ordinary page scrolling remains available.
-  */
+  // Plain scrolling stays available until the user explicitly enables Scroll
+  // zoom. Alt+wheel works without that mode; Ctrl/Meta remain browser shortcuts.
   const handleWheel = (event: WheelEvent, surface: HTMLElement) => {
     if (maxIndex <= 1 || event.ctrlKey || event.metaKey) return
     const rect = surface.getBoundingClientRect()
@@ -293,7 +288,7 @@ export function HubChartNavigator({
     const deltaX = event.deltaX * deltaUnit
     const deltaY = event.deltaY * deltaUnit
     const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY)
-    if (!event.altKey && !event.shiftKey && !horizontalIntent) return
+    if (!scrollZoomEnabled && !event.altKey && !event.shiftKey && !horizontalIntent) return
     const panDelta = event.shiftKey ? (deltaY || deltaX) : deltaX
     const shouldPan = event.shiftKey || horizontalIntent
     let next = range
@@ -332,13 +327,13 @@ export function HubChartNavigator({
   }
 
   useEffect(() => {
-    const track = trackRef.current
-    if (!track) return
-    const surfaces = [track, wheelSurfaceRef?.current]
+    const navigator = navigatorRef.current
+    if (!navigator) return
+    const surfaces = [navigator, wheelSurfaceRef?.current]
       .filter((surface): surface is HTMLElement => surface != null)
       .filter((surface, index, all) => all.indexOf(surface) === index)
     const listeners = surfaces.map((surface) => {
-      const onWheel = (event: WheelEvent) => handleWheel(event, surface)
+      const onWheel = (event: WheelEvent) => handleWheel(event, surface === navigator ? trackRef.current ?? surface : surface)
       surface.addEventListener('wheel', onWheel, { passive: false })
       return { surface, onWheel }
     })
@@ -347,6 +342,7 @@ export function HubChartNavigator({
 
   return (
     <div
+      ref={navigatorRef}
       className={`hx-chart-navigator${draggingMode ? ' is-dragging' : ''}${isFullRange ? ' is-full-range' : ''}`}
       data-hub-chart-navigator
       data-hub-chart-navigator-window={`${range.startIndex}:${range.endIndex}`}
@@ -358,6 +354,13 @@ export function HubChartNavigator({
       onPointerUp={(event) => finishPointerDrag(event)}
       onPointerCancel={(event) => finishPointerDrag(event, true)}
       onLostPointerCapture={(event) => finishPointerDrag(event, true)}
+      onKeyDownCapture={(event) => {
+        if (event.key === 'Escape' && scrollZoomEnabled) {
+          event.preventDefault()
+          event.stopPropagation()
+          onReset()
+        }
+      }}
     >
       <div className="hx-chart-navigator__bar">
         <div className="hx-chart-navigator__track-shell">
@@ -425,21 +428,32 @@ export function HubChartNavigator({
         </span>
       </div>
       <div className="hx-chart-navigator__actions">
-        <div className="hx-chart-navigator__readout">
+        <div className="hx-chart-navigator__readout" role="status" aria-live="polite">
           <strong>{isFullRange ? 'Full loaded range' : 'Zoomed view'}</strong>
-          <span>{startLabel} – {endLabel}</span>
-          <span>{visibleCount} of {pointCount} buckets</span>
+          <span className="hx-chart-navigator__time-range">{startLabel} – {endLabel}</span>
+          <span className="hx-chart-navigator__bucket-count">{visibleCount} of {pointCount} buckets</span>
         </div>
         <div className="hx-chart-navigator__toolbar" role="group" aria-label="Chart view controls">
-          {selectedOutsideView ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}>Show selected bucket</button> : null}
-          <button type="button" disabled={visibleCount <= 2} onClick={() => zoomFromCenter('in')}>Zoom in</button>
-          <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}>Zoom out</button>
-          <button type="button" disabled={isFullRange} onClick={onReset}>Reset zoom</button>
+          {selectedOutsideView ? <button type="button" onClick={(event) => { event.stopPropagation(); showSelectedBucket() }}><LocateFixed size={15} aria-hidden="true" />Show selected bucket</button> : null}
+          <div className="hx-chart-navigator__zoom-buttons">
+            <button type="button" disabled={visibleCount <= 2} onClick={() => zoomFromCenter('in')}><Plus size={15} aria-hidden="true" />Zoom in</button>
+            <button type="button" disabled={isFullRange} onClick={() => zoomFromCenter('out')}><Minus size={15} aria-hidden="true" />Zoom out</button>
+            <button type="button" disabled={isFullRange && !scrollZoomEnabled} onClick={onReset}><RotateCcw size={15} aria-hidden="true" />Reset zoom</button>
+          </div>
+          <button
+            type="button"
+            className="hx-chart-navigator__scroll-toggle"
+            aria-pressed={scrollZoomEnabled}
+            disabled={pointCount <= 2}
+            onClick={() => onScrollZoomChange(!scrollZoomEnabled)}
+          ><Mouse size={15} aria-hidden="true" />Scroll zoom<span className="hx-chart-navigator__scroll-state" aria-hidden="true">{scrollZoomEnabled ? 'On' : 'Off'}</span></button>
         </div>
       </div>
-      <small className="hx-chart-navigator__hint">Drag the purple bar to choose a time span · Alt + scroll to zoom · Shift + scroll or swipe sideways to pan</small>
+      <small className="hx-chart-navigator__hint">{scrollZoomEnabled
+        ? 'Scroll zoom is on · Scroll over the chart to zoom · Escape or Reset zoom restores page scrolling'
+        : 'Drag the purple bar to select a time span · Turn on Scroll zoom or hold Alt to zoom with the wheel'} · Shift + scroll to pan</small>
       <span id={hintId} className="sr-only">
-        Drag the purple track to select a loaded time span. Drag the selected window to pan, or use its start and end sliders to resize. Alt plus mouse wheel zooms; Shift plus wheel or a horizontal trackpad swipe pans a zoomed view. Double-click the track, use Reset zoom, or press Escape on either slider to restore the full loaded range.
+        Drag the purple track to select a loaded time span. Drag the selected window to pan, or use its start and end sliders to resize. Enable Scroll zoom to zoom with the mouse wheel over this chart; otherwise hold Alt while scrolling. Shift plus wheel or a horizontal trackpad swipe pans a zoomed view. Double-click the track, use Reset zoom, or press Escape on either slider to restore the full loaded range and turn Scroll zoom off. Ctrl and Meta wheel gestures remain available for browser zoom.
       </span>
     </div>
   )

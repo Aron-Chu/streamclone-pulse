@@ -776,6 +776,24 @@
   min-height: 0;
   transform: none !important;
 }
+/* A static panel shows every section and is taller than its overview. Keep
+   that overview in normal flow above the panel instead of vertically
+   centering a short rail beside a long, right-aligned sample. */
+.sl-xtour[data-static] .sl-xtour__grid {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 48rem;
+  gap: 1.5rem;
+  padding-inline: 0;
+  align-items: start;
+}
+.sl-xtour[data-static] .sl-xtour__steps {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+.sl-xtour[data-static] .sl-xtour__step[data-step] {
+  border-left-color: hsl(var(--sc-chart-2) / 0.35);
+  opacity: 1;
+}
 .sl-xtour[data-static] .sl-ext__scrollport,
 .sl-xtour[data-static] .sl-ext__scrollport.is-playing {
   overflow-y: auto;
@@ -844,7 +862,7 @@
   .sl-fx { opacity: 0.5; }
   /* Match LiveSignalScrollGraph: keep tall scene + sticky pin; only [data-static] collapses. */
   .sl-xtour:not([data-static]) .sl-xtour__scene { height: 220vh; }
-  .sl-xtour__grid { grid-template-columns: 1fr; }
+  .sl-xtour__grid { grid-template-columns: minmax(0, 1fr); padding-inline: 0; }
   .sl-xtour__rail { display: none; }
   .pulse-landing-panel.sl-ext { height: min(72vh, 640px); max-height: 78vh; }
   .sl-featgrid,

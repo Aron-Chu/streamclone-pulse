@@ -98,6 +98,10 @@ export type HubUxMockOptions = {
   firstMomentHandoffRef?: string
   diurnal7d?: boolean
   matchActivityWindow?: boolean
+  /** Opt-in legacy successful 24h reply that requires a canonical minute repair. */
+  legacySuccessfulCoarseFallback?: boolean
+  /** Holds only the canonical 30m reply, so tests can inspect independent live lanes. */
+  recentHubGate?: Promise<void>
 }
 
 export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<void> {
@@ -182,8 +186,9 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   await page.route(/\/v1\/public\/hub(\?.*)?$/, async (route) => {
     const requestedWindow = new URL(route.request().url()).searchParams.get('activityWindow') ?? '24h'
     const servingRecent = requestedWindow === '30m'
+    const legacyCoarse = options.legacySuccessfulCoarseFallback && !servingRecent
     const requestedMinutes = ({ '30m': 30, '24h': 1440, '7d': 10080, '1m': 43200, '3m': 129600, '1y': 525600 } as Record<string, number>)[requestedWindow] ?? 1440
-    const servedWindowMinutes = options.matchActivityWindow ? requestedMinutes : servingRecent ? 30 : options.diurnal7d ? 10080 : 1440
+    const servedWindowMinutes = legacyCoarse ? 30 : options.matchActivityWindow ? requestedMinutes : servingRecent ? 30 : options.diurnal7d ? 10080 : 1440
     const bucketMinutes = options.matchActivityWindow ? Math.max(1, servedWindowMinutes / 240) : servingRecent ? 1 : options.diurnal7d ? 10 : 6
     const recoveringRecent = options.historyUnavailable && servingRecent
     if (options.historyUnavailable && !recoveringRecent) {
@@ -206,6 +211,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
     if (hubDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, hubDelayMs))
     }
+    if (servingRecent && options.recentHubGate) await options.recentHubGate
     if (mode === 'error') {
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'unavailable' }) })
       return
@@ -256,7 +262,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
         },
         activity: {
           points: servedPoints,
-          windowMinutes: servedWindowMinutes,
+          windowMinutes: legacyCoarse ? requestedMinutes : servedWindowMinutes,
           servedWindowMinutes,
           bucketMinutes,
           channelCount: liveChannels.length,
@@ -268,8 +274,9 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
           // Healthy historical projection contract — without these, the honest
           // chart window resolver clamps the 24h series to 30m (legacy path),
           // leaving every point an unmeasured placeholder and the chart empty.
-          source: recoveringRecent ? 'live_pool' : 'historical_projection',
-          state: 'healthy',
+          source: legacyCoarse ? 'live_pool_fallback' : recoveringRecent ? 'live_pool' : 'historical_projection',
+          state: legacyCoarse ? 'degraded' : 'healthy',
+          ...(legacyCoarse ? { requestedWindowMinutes: requestedMinutes, reason: 'historical_projection_unavailable' } : {}),
            availableWindowMinutes: servedWindowMinutes,
            accountedWindowMinutes: servedWindowMinutes,
            measuredWindowMinutes: servedWindowMinutes,
