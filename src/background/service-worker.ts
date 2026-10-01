@@ -37,7 +37,7 @@ import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracki
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
+import { resumePendingLink, supporterAccount, watchPendingLink } from './supporterAccountRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
   isDiagnosticsConsentEnabled,
@@ -951,7 +951,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_ACCOUNT': {
-          sendResponse({ type: 'SUPPORTER_ACCOUNT', account: await supporterAccount.run(message.action) } satisfies BackgroundResponse)
+          const account = await supporterAccount.run(message.action)
+          if (account.state === 'pending') watchPendingLink()
+          sendResponse({ type: 'SUPPORTER_ACCOUNT', account } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_FINISH_INTENT': {
+          const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
+          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
           return
         }
         case 'OPEN_SETTINGS_HOST': {
@@ -1229,6 +1236,9 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   // response channel open while tabs.create/fetch/storage operations finish.
   return true
 })
+
+// A worker restarted while a link request waited picks the wait back up.
+void resumePendingLink()
 
 chrome.runtime.onStartup.addListener(() => {
   void (async () => {

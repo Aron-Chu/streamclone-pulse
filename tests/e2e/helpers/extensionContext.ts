@@ -72,6 +72,12 @@ export async function launchExtensionContext(
       `--disable-extensions-except=${EXTENSION_DIST_DIR}`,
       `--load-extension=${EXTENSION_DIST_DIR}`,
       '--disable-blink-features=AutomationControlled',
+      // A tab the extension opens with chrome.tabs.create starts navigating
+      // before Playwright can route it, so a fixture run would otherwise load
+      // the real website. Specs still stub it with context.route; this only
+      // guarantees the exact website host can never be reached (the API host
+      // is a different name and stays mocked as before).
+      '--host-resolver-rules=MAP streampulse.stream ~NOTFOUND',
     ],
     viewport,
     deviceScaleFactor,

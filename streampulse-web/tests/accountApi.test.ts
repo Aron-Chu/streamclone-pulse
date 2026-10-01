@@ -48,3 +48,17 @@ it('gives only the checkout and portal POSTs the long billing timeout', async ()
     timeout.mockRestore()
   }
 })
+
+it('carries a bounded Retry-After and a well-formed attempt ID on errors', async () => {
+  const attempt = '123e4567-e89b-42d3-a456-426614174000'
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'try_later' }), { status: 429, headers: { 'Retry-After': '20' } }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'checkout_pending', attemptId: attempt }), { status: 409 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'checkout_pending', attemptId: '../portal' }), { status: 409, headers: { 'Retry-After': '99999' } }))
+  vi.stubGlobal('fetch', fetch)
+  await expect(billingRequest('/supporter')).rejects.toMatchObject({ status: 429, code: 'try_later', retryAfterSeconds: 20 })
+  await expect(billingRequest('/checkout', {})).rejects.toMatchObject({ status: 409, code: 'checkout_pending', attemptId: attempt })
+  const error = await billingRequest('/checkout', {}).catch(value => value)
+  expect(error.attemptId).toBeUndefined()
+  expect(error.retryAfterSeconds).toBe(900)
+})

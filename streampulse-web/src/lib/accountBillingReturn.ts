@@ -18,19 +18,31 @@ export function accountBillingReturnPath(value: unknown): string | null {
   return `${url.pathname}?${query}`
 }
 
+/** The extension-link flow, which continues in the tab that holds the code. */
+export const ACCOUNT_LINK_DEVICE_PATH = '/account/link-device'
+
+/**
+ * Every destination a sign-in may continue to: billing (including a validated
+ * Stripe return) or the extension-link page. A fixed allowlist, never an
+ * arbitrary return URL; the link page continuation carries no code.
+ */
+export function accountContinuationPath(value: unknown): string | null {
+  return value === ACCOUNT_LINK_DEVICE_PATH ? ACCOUNT_LINK_DEVICE_PATH : accountBillingReturnPath(value)
+}
+
 export function accountBillingReturnFromSearch(search: string): string | null {
   const values = new URLSearchParams(search).getAll('returnTo')
-  return values.length === 1 ? accountBillingReturnPath(values[0]) : null
+  return values.length === 1 ? accountContinuationPath(values[0]) : null
 }
 
 export function accountBillingSignInHref(returnTo: unknown): string {
-  const path = accountBillingReturnPath(returnTo)
+  const path = accountContinuationPath(returnTo)
   return path ? `/account/sign-in?${new URLSearchParams({ returnTo: path })}` : '/account/sign-in'
 }
 
 // This navigation hint is shared across same-origin tabs. Never store identity or email-link secrets.
 export function rememberAccountBillingReturn(returnTo: unknown): void {
-  const path = accountBillingReturnPath(returnTo)
+  const path = accountContinuationPath(returnTo)
   try {
     if (path) localStorage.setItem(STORAGE_KEY, JSON.stringify({ path, expiresAt: Date.now() + MAX_AGE_MS }))
     else localStorage.removeItem(STORAGE_KEY)
@@ -44,7 +56,7 @@ export function readAccountBillingReturn(): string | null {
       const { path, expiresAt } = value as { path?: unknown; expiresAt?: unknown }
       const now = Date.now()
       if (typeof expiresAt === 'number' && expiresAt > now && expiresAt <= now + MAX_AGE_MS) {
-        const destination = accountBillingReturnPath(path)
+        const destination = accountContinuationPath(path)
         if (destination) return destination
       }
     }

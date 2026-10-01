@@ -1,4 +1,5 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
+import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 
 // Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
@@ -11,13 +12,17 @@ async function database(): Promise<IDBDatabase> {
     request.onerror = () => reject(new Error('account_storage_unavailable'))
   })
 }
-async function access(write: boolean, value?: unknown): Promise<unknown> {
+// The pre-purchase finish choice is not a credential, but a Twitch page must not
+// be able to set it, so it lives beside the account record rather than in
+// storage that content scripts can write.
+const FINISH_INTENT_KEY = 'supporter-finish-intent'
+async function access(write: boolean, value?: unknown, key: string = DEFAULT_BACKEND_URL): Promise<unknown> {
   const db = await database()
   try {
     return await new Promise((resolve, reject) => {
       const transaction = db.transaction('account', write ? 'readwrite' : 'readonly')
       const store = transaction.objectStore('account')
-      const request = write ? value == null ? store.delete(DEFAULT_BACKEND_URL) : store.put(value, DEFAULT_BACKEND_URL) : store.get(DEFAULT_BACKEND_URL)
+      const request = write ? value == null ? store.delete(key) : store.put(value, key) : store.get(key)
       transaction.oncomplete = () => resolve(request.result)
       transaction.onerror = transaction.onabort = () => reject(new Error('account_storage_unavailable'))
     })
@@ -25,7 +30,10 @@ async function access(write: boolean, value?: unknown): Promise<unknown> {
 }
 export const supporterAccount = new SupporterAccountCoordinator({
   // Only an invalidation signal is public, never an account ID or credential.
-  identityChanged: async () => { await chrome.storage.local.set({ pulseAccountRevision: crypto.randomUUID() }) },
+  identityChanged: async () => { await chrome.storage.local.set({ [ACCOUNT_REVISION_KEY]: crypto.randomUUID() }) },
+  projectionChanged: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
+  readIntent: () => access(false, undefined, FINISH_INTENT_KEY),
+  writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
   // Store builds honour only live billing, so a sandbox purchase never unlocks
   // anything for real users; development builds may test against either.
   environments: typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? ['live'] : ['live', 'sandbox'],
@@ -50,3 +58,27 @@ export const supporterAccount = new SupporterAccountCoordinator({
     return { status: response.status, body: data }
   },
 })
+
+/**
+ * While a link request waits, the worker collects the approval itself, so it
+ * does not depend on settings or a Twitch tab being open when the user approves
+ * on the website. Bounded by the request's own ten-minute life: it stops as soon
+ * as the request is approved, declined, expired or cancelled. The extension API
+ * call each tick keeps the MV3 worker alive for that bounded wait only.
+ */
+const LINK_WATCH_MS = 5_000
+let linkWatch: ReturnType<typeof setTimeout> | undefined
+export function watchPendingLink(): void {
+  if (linkWatch !== undefined) return
+  const tick = async () => {
+    const state = await supporterAccount.run('status').catch(() => null)
+    if (state?.state !== 'pending') { linkWatch = undefined; return }
+    await chrome.runtime.getPlatformInfo().catch(() => undefined)
+    linkWatch = setTimeout(() => { void tick() }, LINK_WATCH_MS)
+  }
+  linkWatch = setTimeout(() => { void tick() }, LINK_WATCH_MS)
+}
+/** A worker that restarted mid-link resumes collecting it. */
+export async function resumePendingLink(): Promise<void> {
+  if (await supporterAccount.hasPendingLink().catch(() => false)) watchPendingLink()
+}

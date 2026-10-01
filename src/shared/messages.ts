@@ -5,6 +5,7 @@ export type MessageType =
   | 'SUPPORTER_ENTITLEMENT'
   | 'SUPPORTER_COSMETICS'
   | 'SUPPORTER_APPEARANCE'
+  | 'SUPPORTER_FINISH_INTENT'
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
@@ -238,6 +239,8 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_ENTITLEMENT' }
   | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
   | { type: 'SUPPORTER_APPEARANCE' }
+  /** Omit `finish` to read; null clears the pre-purchase choice. */
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -728,6 +731,7 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   | ({ type: 'BOOKMARKS'; error?: string } & PulseBookmarkPage)

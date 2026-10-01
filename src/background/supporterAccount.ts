@@ -2,9 +2,17 @@ import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlemen
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
 
 type Environment = SupporterScope['environment']
+type Finish = SupporterCosmetics['finish']
 type Pending = { kind: 'pending'; secret: string; code: string; expiresAt: string; nextPoll: number }
 type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string }
 type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revoking'; token: string } | null
+/**
+ * A finish the user explicitly chose before their membership was verified.
+ * Bound to the account linked when it was chosen, if any, and short-lived, so
+ * it never equips an unsolicited cosmetic long after the choice was made.
+ */
+export type FinishIntent = { finish: Finish; setAt: number; accountId?: string }
+export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
 type Ports = {
   read: () => Promise<unknown>
   write: (value: PrivateState) => Promise<void>
@@ -13,6 +21,11 @@ type Ports = {
   /** Billing environments whose entitlements this build honours; live only unless stated. */
   environments?: readonly Environment[]
   identityChanged?: () => Promise<void>
+  /** A non-secret signal that the verified Supporter projection changed. */
+  projectionChanged?: () => Promise<void>
+  /** Worker-private storage for the optional pre-purchase finish choice. */
+  readIntent?: () => Promise<unknown>
+  writeIntent?: (value: FinishIntent | null) => Promise<void>
 }
 const secret =(value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
@@ -68,7 +81,23 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     features,
     validForMs: features.length && Number.isFinite(remaining) ? Math.max(0, Math.min(60_000, remaining)) : 0,
     cosmetics: { enabled: preferences.enabled === true, finish },
+    // Only a literal true opens a purchase path; anything else is closed.
+    checkoutEnabled: body.checkoutEnabled === true,
   }
+}
+
+const FINISHES: ReadonlySet<string> = new Set(['glass', 'etched', 'halo'])
+function finishIntent(value: unknown, now: number): FinishIntent | null {
+  const r = object(value)
+  if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
+  if (r.accountId !== undefined && !id(r.accountId)) return null
+  return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}) }
+}
+
+/** What a settings or Twitch surface would render differently. Revision alone is not a change. */
+function fingerprint(accountId: string, value: SupporterEntitlement): string {
+  if (value.state !== 'ready') return `${accountId}:${value.state}`
+  return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true])
 }
 
 /** One coordinator per worker; serialize rotation and never replay uncertain refreshes. */
@@ -139,11 +168,97 @@ export class SupporterAccountCoordinator {
           await this.clear('relink_required')
           return { state: 'not_linked' }
         }
-        return projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], performance.now() - started)
+        const projected = projectEntitlement(result, credentials.accountId, this.ports.environments ?? ['live'], performance.now() - started)
+        const value = await this.applyFinishIntent(projected, credentials, generation)
+        await this.noteProjection(credentials.accountId, value)
+        return value
       })
       .catch((): SupporterEntitlement => ({ state: 'error' }))
     this.queue = task
     return task
+  }
+
+  /**
+   * Signal open surfaces when what they would render changed, so a verified
+   * purchase, cosmetic save or revocation reaches settings and Twitch without a
+   * reload. Failed reads are not a change: they must not clear a live accent
+   * before its own bounded validity ends.
+   */
+  private lastProjection: string | undefined
+  private async noteProjection(accountId: string, value: SupporterEntitlement): Promise<void> {
+    if (value.state === 'error' || value.state === 'unavailable') return
+    const next = fingerprint(accountId, value)
+    const previous = this.lastProjection
+    this.lastProjection = next
+    if (previous !== undefined && previous !== next) await this.ports.projectionChanged?.().catch(() => undefined)
+  }
+
+  /** The optional finish chosen before purchase, or null. Never a credential. */
+  async finishIntent(): Promise<Finish | null> {
+    return finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())?.finish ?? null
+  }
+
+  /** Record or clear the explicit pre-purchase finish choice for this installation. */
+  setFinishIntent(finish: Finish | null): Promise<Finish | null> {
+    const generation = this.generation
+    const task = this.queue.then(async () => {
+      if (!this.ports.writeIntent) return null
+      if (finish === null) { await this.ports.writeIntent(null); return null }
+      const credentials = linked(await this.ports.read())
+      if (generation !== this.generation) return null
+      await this.ports.writeIntent({ finish, setAt: this.now(), ...(credentials ? { accountId: credentials.accountId } : {}) })
+      return finish
+    }).catch(() => null)
+    this.queue = task
+    return task
+  }
+
+  /**
+   * Apply an explicit pre-purchase finish once paid access is verified for this
+   * account. The server re-checks ownership; a refused save keeps the choice
+   * for the next verified read rather than equipping anything locally.
+   */
+  /** Worker-memory pause after a failed apply, so a refused save is not retried on every read. */
+  private intentRetry: { failures: number; until: number } = { failures: 0, until: 0 }
+  private async applyFinishIntent(value: SupporterEntitlement, credentials: Linked, generation: number): Promise<SupporterEntitlement> {
+    if (value.state !== 'ready' || !value.features.includes('supporter.banner.v1') || !value.features.includes('supporter.finish.v1') || !this.ports.readIntent || !this.ports.writeIntent) return value
+    // Applying is an extra; whatever goes wrong, the verified read still stands.
+    try {
+      const raw = await this.ports.readIntent().catch(() => null)
+      const intent = finishIntent(raw, this.now())
+      // An account that already has a finish equipped keeps it: a later
+      // explicit choice (perhaps on another browser) outranks this earlier one.
+      if (!intent || (intent.accountId && intent.accountId !== credentials.accountId) || value.cosmetics?.enabled) {
+        if (raw) await this.ports.writeIntent(null)
+        return value
+      }
+      if (this.now() < this.intentRetry.until) return value
+      const cosmetics: SupporterCosmetics = { enabled: true, finish: intent.finish }
+      const result = await this.ports.request('/v1/billing/cosmetics', cosmetics, credentials.token)
+      if (generation !== this.generation) return { state: 'not_linked' }
+      if (result.status === 401) {
+        await this.clear('relink_required')
+        return { state: 'not_linked' }
+      }
+      if (result.status !== 200) throw new Error('finish_intent_refused')
+      this.intentRetry = { failures: 0, until: 0 }
+      await this.ports.writeIntent(null)
+      return { ...value, cosmetics }
+    } catch {
+      // Back off 1, 2, 4… minutes (capped at an hour) and give up after five tries.
+      const failures = this.intentRetry.failures + 1
+      this.intentRetry = { failures, until: this.now() + Math.min(60, 2 ** (failures - 1)) * 60_000 }
+      if (failures >= 5) {
+        this.intentRetry = { failures: 0, until: 0 }
+        await this.ports.writeIntent?.(null).catch(() => undefined)
+      }
+      return value
+    }
+  }
+
+  /** Whether a link request is waiting, without touching credentials or the network. */
+  async hasPendingLink(): Promise<boolean> {
+    return object(await this.ports.read().catch(() => null)).kind === 'pending'
   }
 
   private async clear(state: SupporterAccountState['state']): Promise<SupporterAccountState> {
@@ -179,7 +294,15 @@ export class SupporterAccountCoordinator {
       const result = await this.ports.request('/v1/billing/cosmetics', value, credentials.token)
       if (generation !== this.generation) return false
       if (result.status === 401) await this.clear('relink_required')
-      return result.status === 200
+      if (result.status !== 200) return false
+      // An explicit choice supersedes any earlier pre-purchase choice, and open
+      // Twitch tabs apply it now instead of at their next scheduled check.
+      await this.ports.writeIntent?.(null)
+      // Surfaces re-read on this signal; the next read sets a fresh baseline
+      // rather than announcing the same change a second time.
+      this.lastProjection = undefined
+      await this.ports.projectionChanged?.().catch(() => undefined)
+      return true
     }).catch(() => false)
     this.queue = task
     return task
@@ -194,6 +317,9 @@ export class SupporterAccountCoordinator {
       return { state: 'error', revocationPending: true }
     }
     if (action === 'disconnect') {
+      // Deliberately leaving an account also abandons a pending finish choice.
+      await this.ports.writeIntent?.(null)
+      this.lastProjection = undefined
       if (credentials) return this.revoke(credentials.token)
       if (raw.kind === 'refreshing') this.revocationUnconfirmed = true
       // Clear before network I/O so a failed request cannot keep local access.
@@ -231,17 +357,27 @@ export class SupporterAccountCoordinator {
     if (raw.kind === 'pending' && secret(raw.secret) && typeof raw.code === 'string' && /^[A-F0-9]{5}-[A-F0-9]{5}$/.test(raw.code) && date(raw.expiresAt) && typeof raw.nextPoll === 'number') {
       const pending: Pending = { kind: 'pending', secret: raw.secret, code: raw.code, expiresAt: raw.expiresAt, nextPoll: raw.nextPoll }
       if (Date.parse(pending.expiresAt) <= this.now()) return this.clear('expired')
-      if (action !== 'poll' || pending.nextPoll > this.now()) return this.projectPending(pending)
+      // Any status read may consume a due approval, so the worker finishes the
+      // link even after settings closed: a Twitch tab's routine appearance check
+      // or reopening settings completes it. The stored schedule keeps this at
+      // the server's interval however many surfaces ask.
+      if ((action !== 'poll' && action !== 'status') || pending.nextPoll > this.now()) return this.projectPending(pending)
       pending.nextPoll = this.now() + 5000
       await this.ports.write(pending)
-      const result = await this.ports.request('/v1/account/device-links/poll', { pollingSecret: pending.secret })
+      let result
+      try { result = await this.ports.request('/v1/account/device-links/poll', { pollingSecret: pending.secret }) }
+      catch (error) {
+        // A background status read keeps the request waiting; the next due read retries.
+        if (action === 'status' && generation === this.generation) return this.projectPending(pending)
+        throw error
+      }
       if (generation !== this.generation) {
         const approved = object(result.body).state === 'approved' ? linked(result.body) : null
         return approved ? this.discardCredential(approved) : this.clear('signed_out')
       }
       if (result.status === 429) return this.projectPending(pending)
       if (result.status === 401) return this.clear('relink_required')
-      if (result.status !== 200) return { state: 'error' }
+      if (result.status !== 200) return action === 'status' ? this.projectPending(pending) : { state: 'error' }
       const body = object(result.body)
       if (body.state === 'pending') return this.projectPending(pending)
       if (body.state === 'denied' || body.state === 'expired') return this.clear(body.state)

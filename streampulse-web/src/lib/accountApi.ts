@@ -1,6 +1,7 @@
 type AccountPath = '/auth/start' | '/auth/complete' | '/auth/logout' | '/me' | '/devices' | `/devices?cursor=${string}` | '/devices/revoke' | '/device-links/inspect' | '/device-links/approve'
 export class AccountError extends Error {
-  constructor(public status: number, public code?: string) { super('Account request failed') }
+  /** Seconds from a Retry-After header, when the server sent a usable one. */
+  constructor(public status: number, public code?: string, public retryAfterSeconds?: number, public attemptId?: string) { super('Account request failed') }
 }
 export async function accountRequest(path: AccountPath, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   return sessionRequest('/v1/account' + path, body)
@@ -27,11 +28,16 @@ async function sessionRequest(path: string, body?: Record<string, unknown>): Pro
   })
   if (!response.ok) {
     let code: string | undefined
+    let attemptId: string | undefined
     try {
       const errorBody: unknown = await response.json()
       if (errorBody && typeof errorBody === 'object' && !Array.isArray(errorBody) && typeof (errorBody as { error?: unknown }).error === 'string') code = (errorBody as { error: string }).error
+      // A pending or expired checkout names its own attempt so the page can follow it.
+      const attempt = errorBody && typeof errorBody === 'object' ? (errorBody as { attemptId?: unknown }).attemptId : undefined
+      if (typeof attempt === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(attempt)) attemptId = attempt
     } catch { /* Generic status handling is intentional for malformed provider responses. */ }
-    throw new AccountError(response.status, code)
+    const retryAfter = Number(response.headers?.get?.('Retry-After'))
+    throw new AccountError(response.status, code, Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 900) : undefined, attemptId)
   }
   if (response.status === 204) return {}
   const data: unknown = await response.json()

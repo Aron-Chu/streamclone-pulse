@@ -1,5 +1,13 @@
 export type SupporterAccountAction = 'status' | 'start' | 'poll' | 'cancel' | 'disconnect'
 export type SupporterCosmetics = { enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
+export type SupporterFinish = SupporterCosmetics['finish']
+
+/**
+ * Non-secret storage keys whose changes tell open surfaces to re-read through
+ * the worker. Neither carries an account ID, credential or projection.
+ */
+export const ACCOUNT_REVISION_KEY = 'pulseAccountRevision'
+export const SUPPORTER_REVISION_KEY = 'pulseSupporterRevision'
 
 /** Server-reconciled entitlement statuses, mirrored from the BFF projection. */
 export type SupporterStatus = 'none' | 'active' | 'grace' | 'pending' | 'expired' | 'review'
@@ -29,6 +37,8 @@ export type SupporterEntitlement =
       supportPeriods: number
       features: string[]
       cosmetics?: SupporterCosmetics
+      /** Whether the server would open Checkout for this account now. */
+      checkoutEnabled?: boolean
     }
 
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */
