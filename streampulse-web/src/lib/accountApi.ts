@@ -9,6 +9,11 @@ export async function accountRequest(path: AccountPath, body?: Record<string, un
 export async function billingRequest(path: '/supporter' | '/checkout' | '/portal' | `/checkout/${string}`, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   return sessionRequest('/v1/billing' + path, body)
 }
+/** Recovery approval is authorized by its single-use secret, never a cookie. */
+export async function restoreRequest(path: '/inspect' | '/approve', body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (path !== '/inspect' && path !== '/approve') throw new AccountError(400, 'invalid_request_path')
+  return requestJson('/v1/account/restores' + path, body, 'omit', false)
+}
 // The edge relay allows billing POSTs 30 s (Stripe session creation) and
 // everything else 12 s; the client waits slightly longer so the edge answers first.
 export const ACCOUNT_REQUEST_TIMEOUT_MS = 12_000
@@ -18,9 +23,12 @@ async function sessionRequest(path: string, body?: Record<string, unknown>): Pro
   // Validate URL-derived IDs at runtime, including calls from JavaScript.
   const allowed = /^\/v1\/(?:account\/(?:auth\/(?:start|complete|logout)|me|devices(?:\?cursor=[0-9a-fA-F-]{36}|\/revoke)?|device-links\/(?:inspect|approve))|billing\/(?:supporter|portal|checkout(?:\/[0-9a-fA-F-]{36})?))$/
   if (!allowed.test(path) || path.includes('\n') || path.includes('\r')) throw new AccountError(400, 'invalid_request_path')
-  const csrf = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length)
+  return requestJson(path, body, 'same-origin', true)
+}
+async function requestJson(path: string, body: Record<string, unknown> | undefined, credentials: RequestCredentials, withCsrf: boolean): Promise<Record<string, unknown>> {
+  const csrf = withCsrf ? document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length) : undefined
   const response = await fetch(path, {
-    method: body ? 'POST' : 'GET', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
+    method: body ? 'POST' : 'GET', credentials, redirect: 'error', cache: 'no-store',
     referrerPolicy: 'no-referrer',
     signal: AbortSignal.timeout(body && SLOW_BILLING_POSTS.has(path) ? BILLING_POST_TIMEOUT_MS : ACCOUNT_REQUEST_TIMEOUT_MS),
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(csrf && /^[a-f0-9]{64}$/.test(csrf) ? { 'X-Pulse-CSRF': csrf } : {}) },

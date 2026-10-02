@@ -1,5 +1,5 @@
 {
-  "sha256": "ac764ea3083a7450f78e053db9be45c4496d781147f1bfb033d44d7680571e01",
+  "sha256": "63e54b491a5d8f5a5493b628a71652077f056e946a0b408e6e2ab6dc4d1e8a3b",
   "routes": {
     "version": 1,
     "include": [
@@ -9,5 +9,5 @@
     "exclude": []
   },
   "expires": "2026-12-24",
-  "approval": "streampulse-sdlc docs/superpowers/specs/2026-09-25-edge-freeze-amendment-v1.md@5150949cc6606973d7067a0cd10710f09b1ddada"
+  "approval": "PENDING OWNER: supporter-pay-first-20261001 restore inspect/approve relay expansion"
 }

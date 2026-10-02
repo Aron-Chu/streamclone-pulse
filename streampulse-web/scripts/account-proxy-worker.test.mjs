@@ -64,6 +64,7 @@ test('only the exact account and billing browser routes reach the fixed API host
   const postPaths = [
     '/v1/account/auth/start', '/v1/account/auth/complete', '/v1/account/auth/logout',
     '/v1/account/device-links/inspect', '/v1/account/device-links/approve',
+    '/v1/account/restores/inspect', '/v1/account/restores/approve',
     '/v1/account/devices/revoke', '/v1/billing/checkout', '/v1/billing/portal',
   ]
   const seen = []
@@ -77,6 +78,33 @@ test('only the exact account and billing browser routes reach the fixed API host
     ...getPaths.map(path => ['GET', api + path]),
     ...postPaths.map(path => ['POST', api + path]),
   ])
+})
+
+test('restore inspect and explicit approval remain secret-only, same-origin and non-ambient', async () => {
+  for (const path of ['/v1/account/restores/inspect', '/v1/account/restores/approve']) {
+    const body = JSON.stringify({ secret: 'a'.repeat(64), ...(path.endsWith('/approve') ? { confirmed: true } : {}) })
+    let seen
+    const result = await handleRequest(post(path, { body, headers: {
+      Cookie: '__Host-pulse_account=ambient; __Host-pulse_csrf=ambient',
+      'X-Pulse-CSRF': 'ambient', Authorization: 'Bearer forged',
+    } }), env, async request => {
+      seen = request
+      return new Response('{}', { headers: { 'Set-Cookie': '__Host-pulse_account=unexpected; Secure; HttpOnly; Path=/' } })
+    })
+    assert.equal(result.status, 200)
+    assert.equal(seen.headers.get('cookie'), null)
+    assert.equal(seen.headers.get('x-pulse-csrf'), null)
+    assert.equal(seen.headers.get('authorization'), null)
+    assert.equal(seen.headers.get('origin'), portal)
+    assert.equal(await seen.text(), body)
+    assert.equal(result.headers.get('set-cookie'), null)
+    assertEdgeHeaders(seen.headers, { method: 'POST', pathname: path })
+    assert.equal((await handleRequest(get(path), env, noFetch)).status, 405)
+    assert.equal((await handleRequest(post(path, { headers: { Origin: 'https://evil.invalid' } }), env, noFetch)).status, 403)
+  }
+  for (const path of ['/v1/account/restores', '/v1/account/restores/poll', '/v1/account/restores/approve/extra']) {
+    assert.equal((await handleRequest(post(path), env, noFetch)).status, 404)
+  }
 })
 
 test('unknown, encoded, broad, webhook, entitlement, native device, and malformed ID paths stay local', async () => {

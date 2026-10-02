@@ -24,7 +24,7 @@ export default function Terms() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: September 25, 2026 · Applies to{' '}
+            Last updated: October 1, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             Chrome extension, and the Pulse Supporter subscription.
           </p>
@@ -61,7 +61,7 @@ export default function Terms() {
           You may use StreamPulse if you are at least 13 years old. To subscribe you must also be old
           enough to enter into a contract where you live, or have a parent or guardian do it for you.
         </p>
-        <p>An account is optional and free. You need one only to link the extension or to subscribe.</p>
+        <p>Core Pulse is free and does not require an account. Website accounts are optional. Once paid sign-ups open, you can start Supporter in the extension without a website sign-in; it creates an installation account for your membership.</p>
         <p>Please do not:</p>
         <ul>
           <li>Attempt to access another person's account or a device credential you were not given.</li>
@@ -103,7 +103,8 @@ export default function Terms() {
           <li><strong>Renewal:</strong> it renews automatically each month until you cancel.</li>
           <li>
             <strong>Cancellation:</strong> you can cancel at any time in the Stripe Customer Portal,
-            reachable from account billing. Cancelling stops future charges and takes effect at the
+            reachable through Manage membership in the extension or from account billing for website
+            accounts. Cancelling stops future charges and takes effect at the
             end of the period you already paid for; your access continues until then.
           </li>
           <li>
@@ -117,9 +118,16 @@ export default function Terms() {
         </ul>
         <p>
           Payments are processed by Stripe. Your card details go to Stripe, not to StreamPulse —
-          StreamPulse stores only identifiers for your customer, subscription and invoices. Entitlement
+          StreamPulse stores identifiers for your customer, subscription and invoices and a keyed
+          hash of your checkout email for requested recovery. Entitlement
           is granted from confirmed payment records on the server, never from anything your browser or
           extension claims.
+        </p>
+        <p>
+          The email you give Stripe at checkout is used for receipts and, if you ask, membership recovery.
+          Keep that mailbox secure. To restore on another browser or after a reinstall, request a
+          recovery link from the extension and confirm the requesting extension in that link. A
+          restore does not combine accounts with their own billing history.
         </p>
         <p>
           While Stripe finalizes a renewal, your membership may show as active for up to 72 hours

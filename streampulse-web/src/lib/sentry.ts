@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react'
+import { isPrivateSupporterRoute } from './accountRestore'
 
 const ALLOWED_TAGS = new Set([
   'service',
@@ -93,6 +94,7 @@ function scrubSourceMapMetadata(
 }
 
 export function scrubPortalEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
+  if (typeof window !== 'undefined' && isPrivateSupporterRoute(window.location.pathname)) return null
   if (typeof window !== 'undefined' && import.meta.env.PROD) {
     const host = window.location.hostname
     if (host && !PRODUCTION_HOSTS.has(host) && host !== 'localhost' && host !== '127.0.0.1') {

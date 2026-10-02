@@ -19,9 +19,9 @@ function renderNavigableBilling(path: string) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('public Supporter handoff', () => {
-  it('states that paid sign-ups are closed and links to account billing without implying past sales', () => {
+  it('states that paid sign-ups are closed, starts with the extension and preserves website account billing', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const link = screen.getByRole('link', { name: 'Open account billing' })
+    const link = screen.getByRole('link', { name: 'Use a StreamPulse website account' })
     expect(link.getAttribute('href')).toBe('/account/billing')
     expect(screen.getByTestId('supporter-availability').textContent).toMatch(/Paid sign-ups are not open yet/)
     expect(screen.getByText('US$4.99 per month, charged in US dollars')).toBeTruthy()
@@ -353,29 +353,31 @@ describe('automatic payment confirmation', () => {
   afterEach(() => { vi.useRealTimers() })
 
   it('confirms a delayed webhook on a bounded backoff without blanking the card', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.useFakeTimers()
     let settled = false
     const fetch = serve(
       () => new Response(JSON.stringify({ state: settled ? 'active' : 'open' })),
       () => membership(settled ? 'active' : 'none', true, { accessUntil: '2026-11-01T00:00:00Z', accountId: '11111111-1111-4111-8111-111111111111' }),
     )
-    render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    // Flush the read and its React effects before advancing an exact fake clock.
+    // An auto-advancing clock under parallel load can schedule the first timer
+    // after findByRole has already observed the confirming heading.
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
     // Uncertain payment never offers another checkout.
     expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull()
     const first = reads(fetch)
-    // Windows keep at least half a second of margin either side of each step.
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_400) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(CONFIRM_DELAYS_S[0] * 1000 - 1) })
     expect(reads(fetch)).toBe(first)
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_100) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
     expect(reads(fetch)).toBe(first + 1)
     // Still unsettled: the heading never disappears between reads.
     expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(CONFIRM_DELAYS_S[1] * 1000 - 1) })
     expect(reads(fetch)).toBe(first + 1)
     settled = true
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_500) })
-    expect(await screen.findByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.getByRole('heading', { name: 'You’re a Supporter' })).toBeTruthy()
     expect(screen.getByText('Pulse account')).toBeTruthy()
     expect(screen.getByText('··111111')).toBeTruthy()
     const done = fetch.mock.calls.length

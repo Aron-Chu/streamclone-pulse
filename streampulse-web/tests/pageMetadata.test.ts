@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { resolvePageMetadata } from '../src/lib/pageMetadata'
 
 describe('public page metadata', () => {
+  it('excludes recovery and payment-return routes from indexing', () => {
+    expect(resolvePageMetadata('/account/restore')).toMatchObject({ title: 'Restore Supporter — StreamPulse', robots: 'noindex,nofollow' })
+    expect(resolvePageMetadata('/supporter/thanks', '?attempt=private')).toMatchObject({ canonicalPath: '/supporter/thanks', robots: 'noindex,nofollow' })
+  })
   it('publishes indexable metadata for public release routes', () => {
     for (const path of ['/', '/analytics', '/docs', '/status', '/privacy', '/support', '/supporter', '/terms', '/refunds']) {
       const metadata = resolvePageMetadata(path)

@@ -20,6 +20,7 @@
 
 .pulse-account h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; line-height: 1.4; }
 .pulse-account p { margin: 12px 0; color: #b6b6c5; font-size: 15px; line-height: 1.65; }
+.pulse-account-installation-label { overflow-wrap: anywhere; color: #fafafc !important; }
 
 .pulse-account .pulse-account-kicker {
   display: flex;
