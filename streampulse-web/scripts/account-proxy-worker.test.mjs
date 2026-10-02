@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Miniflare } from 'miniflare'
 import worker, { handleRequest } from '../public/_worker.js'
-import { assertEdgeFreeze } from './check-edge-freeze.mjs'
+import { assertEdgeFreezeStructural } from './check-edge-freeze.mjs'
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const portal = 'https://streampulse.stream'
@@ -433,9 +433,9 @@ test('_routes.json invokes the Worker only for account and billing paths', () =>
   assert.deepEqual(JSON.parse(raw), { version: 1, include: ['/v1/account/*', '/v1/billing/*'], exclude: [] })
 })
 
-test('static routes fall through to Pages assets and the committed pin admits exactly this Worker', async () => {
+test('static routes fall through to Pages assets and the prepared pin structurally matches this Worker', async () => {
   assert.equal(await (await worker.fetch(new Request(portal + '/supporter'), env)).text(), 'asset:/supporter')
   const digest = createHash('sha256').update(readFileSync(join(webRoot, 'public/_worker.js'))).digest('hex')
-  const result = assertEdgeFreeze(webRoot, { sourceOnly: true, now: new Date('2026-09-25T12:00:00Z') })
+  const result = assertEdgeFreezeStructural(webRoot, { sourceOnly: true, now: new Date('2026-09-25T12:00:00Z') })
   assert.equal(result.admitted.sha256, digest)
 })

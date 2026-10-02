@@ -10,6 +10,8 @@
 //     /v1/billing/*;
 //   - the current UTC time is before 00:00Z on the pinned `expires` date, and
 //     that date is at most 90 days away;
+//   - its approval references an immutable policy document already merged in
+//     the canonical SDLC repo; that document binds this exact hash/routes/date;
 //   - there is no Pages Functions directory and no other `_worker*` or
 //     `_routes*` entry.
 // A wrangler config (wrangler.json, wrangler.jsonc, wrangler.toml, or the
@@ -35,6 +37,8 @@ const ROUTES = '_routes.json'
 const PIN_FIELDS = ['approval', 'expires', 'routes', 'sha256']
 const ROUTE_CEILING = new Set(['/v1/account/*', '/v1/billing/*'])
 const MAX_EXCEPTION_MS = 90 * 24 * 60 * 60 * 1000
+export const APPROVAL_DOCUMENT = 'docs/superpowers/specs/2026-10-01-cloudflare-edge-freeze-amendment-v2.md'
+const APPROVAL_REFERENCE = new RegExp(`^streampulse-sdlc@([0-9a-f]{40}):${APPROVAL_DOCUMENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 export const WRANGLER_CONFIG_FILES = ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml', '.wrangler/deploy/config.json']
 // Paths (relative to streampulse-web/) that decide what reaches the edge. The
 // production deploy requires each to match origin/master exactly.
@@ -128,12 +132,10 @@ function inspectDirectory(webRoot, dir) {
 }
 
 /**
- * Throws EDGE_FREEZE_APPROVAL_REQUIRED unless the Pages output is worker-free
- * or carries exactly the pinned Worker and routes before the pin expires.
- * `sourceOnly` skips dist/ for the pre-build check; the deploy always runs the
- * full check on the built dist/ before uploading.
+ * Local source/build proof only: checks the prepared Worker, routes and expiry.
+ * This does not authorize a deployment. Production must use assertEdgeFreeze.
  */
-export function assertEdgeFreeze(webRoot, { now = new Date(), sourceOnly = false } = {}) {
+export function assertEdgeFreezeStructural(webRoot, { now = new Date(), sourceOnly = false } = {}) {
   if (existsSync(join(webRoot, 'functions'))) fail('functions (Pages Functions are never admitted)')
   assertNoWranglerConfig(webRoot)
   const dirs = sourceOnly ? ['public'] : ['public', 'dist']
@@ -162,6 +164,65 @@ export function assertEdgeFreeze(webRoot, { now = new Date(), sourceOnly = false
     }
   }
   return { admitted: { sha256: pin.sha256, routes: pin.routes, expires: pin.expires, approval: pin.approval, checked: dirs } }
+}
+
+function approvalGit(args, cwd) {
+  const result = spawnSync('git', ['--no-pager', '--no-replace-objects', ...args], { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 })
+  if (result.error) fail('the read-only SDLC approval check could not run git')
+  return result
+}
+
+function assertNoGitAuthorityEnvironment() {
+  // Inspect names only. Git author/committer identity cannot select a repo or
+  // rewrite its authority; GIT_PAGER is inert because approvalGit always uses
+  // --no-pager. Every other GIT_* override is denied, including future
+  // config/object/repository-selection controls. Never inspect values.
+  const identity = /^GIT_(?:AUTHOR|COMMITTER)_(?:NAME|EMAIL|DATE)$/i
+  if (Object.keys(process.env).some(name => /^GIT_/i.test(name) && !identity.test(name) && name.toUpperCase() !== 'GIT_PAGER')) {
+    fail('Git authority or configuration environment overrides are not permitted')
+  }
+}
+
+/** Read only immutable Git objects and local remote-tracking ancestry. Never fetch. */
+function assertMergedApproval(webRoot, admitted) {
+  const reference = APPROVAL_REFERENCE.exec(admitted.approval)
+  if (!reference) fail('approval must reference an immutable merged streampulse-sdlc document')
+  const revision = reference[1]
+  const common = approvalGit(['rev-parse', '--path-format=absolute', '--git-common-dir'], webRoot)
+  if (common.status !== 0 || !common.stdout.trim()) fail('the canonical SDLC checkout cannot be resolved from this product checkout')
+  // Linked worktrees resolve through the primary product .git directory, not
+  // through a caller-selected folder or an environment/config override.
+  const sdlcRoot = join(dirname(resolve(common.stdout.trim())), '..', 'streampulse-sdlc')
+  // `remote get-url` applies insteadOf rewriting and is not an identity check.
+  // Read only the one raw URL in this repo's own config, ignoring includes.
+  const remote = approvalGit(['config', '--local', '--no-includes', '--get-all', 'remote.origin.url'], sdlcRoot)
+  const urls = remote.stdout?.replace(/\r?\n$/, '').split(/\r?\n/) ?? []
+  const canonicalRemote = /^(?:https:\/\/github\.com\/Aron-Chu\/streampulse-sdlc(?:\.git)?|git@github\.com:Aron-Chu\/streampulse-sdlc(?:\.git)?|ssh:\/\/git@github\.com\/Aron-Chu\/streampulse-sdlc(?:\.git)?)$/
+  if (remote.status !== 0 || urls.length !== 1 || !canonicalRemote.test(urls[0])) fail('approval requires the canonical streampulse-sdlc origin without embedded credentials')
+  const object = approvalGit(['rev-parse', '--verify', `${revision}^{commit}`], sdlcRoot)
+  const master = approvalGit(['rev-parse', '--verify', 'refs/remotes/origin/master^{commit}'], sdlcRoot)
+  if (object.status !== 0 || object.stdout.trim() !== revision || master.status !== 0) fail('approval commit and SDLC origin/master must exist locally')
+  if (approvalGit(['merge-base', '--is-ancestor', revision, 'refs/remotes/origin/master'], sdlcRoot).status !== 0) fail('approval commit is not merged into SDLC origin/master')
+  const immutable = approvalGit(['show', `${revision}:${APPROVAL_DOCUMENT}`], sdlcRoot)
+  const current = approvalGit(['show', `refs/remotes/origin/master:${APPROVAL_DOCUMENT}`], sdlcRoot)
+  if (immutable.status !== 0 || current.status !== 0 || immutable.stdout !== current.stdout) fail('approval document is missing or has been superseded on SDLC origin/master')
+  const blocks = [...immutable.stdout.matchAll(/```edge-approval-json\r?\n([\s\S]*?)\r?\n```/g)]
+  if (blocks.length !== 1) fail('approval document must contain exactly one edge-approval-json block')
+  let policy
+  try { policy = JSON.parse(blocks[0][1]) } catch { fail('approval document contains invalid edge-approval-json') }
+  if (!isPlainObject(policy) || !isDeepStrictEqual(Object.keys(policy).sort(), ['expires', 'routes', 'status', 'version', 'workerSha256'])
+    || policy.version !== 2 || policy.status !== 'approved') fail('approval document must be approved amendment version 2')
+  if (policy.workerSha256 !== admitted.sha256 || policy.expires !== admitted.expires || !isDeepStrictEqual(policy.routes, admitted.routes)) {
+    fail('approval document does not bind the exact Worker SHA-256, routes and expiry')
+  }
+}
+
+/** Production approval gate. No CLI flag or environment override admits a draft. */
+export function assertEdgeFreeze(webRoot, options = {}) {
+  assertNoGitAuthorityEnvironment()
+  const result = assertEdgeFreezeStructural(webRoot, options)
+  if (result.admitted) assertMergedApproval(webRoot, result.admitted)
+  return result
 }
 
 export function describeEdgeFreeze(result) {

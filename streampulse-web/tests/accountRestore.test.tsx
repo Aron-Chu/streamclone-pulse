@@ -8,7 +8,7 @@ import { captureAccountRestore, clearAccountRestore, getAccountRestore, isPrivat
 
 vi.mock('../src/lib/accountApi', async original => ({ ...await original<typeof import('../src/lib/accountApi')>(), restoreRequest: vi.fn() }))
 const secret = 'a'.repeat(64)
-const inspect = { label: 'Desktop extension', expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() }
+const inspect = { label: 'Chrome extension', comparisonCode: 'A4C8E2', expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() }
 function capture(hash = secret) { window.history.replaceState({}, '', `/account/restore?ignored=1#${hash}`); captureAccountRestore() }
 function restore() { return render(<MemoryRouter initialEntries={['/account/restore']}><AccountRestore /></MemoryRouter>) }
 
@@ -40,13 +40,35 @@ describe('restore secret custody', () => {
 })
 
 describe('restore confirmation', () => {
+  it('requires visual comparison with the requesting extension before approval', async () => {
+    capture(); restore()
+    const confirm = await screen.findByRole('button', { name: 'Confirm restore' })
+    expect(screen.getByText('A4C8E2')).toBeTruthy()
+    expect(confirm.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(confirm)
+    expect(restoreRequest).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('checkbox', { name: /code matches the extension/i }))
+    expect(confirm.hasAttribute('disabled')).toBe(false)
+  })
+  it('does not describe an approval timeout as an expired link or invite another request', async () => {
+    capture(); restore()
+    await screen.findByRole('button', { name: 'Confirm restore' })
+    fireEvent.click(screen.getByRole('checkbox', { name: /code matches the extension/i }))
+    vi.mocked(restoreRequest).mockRejectedValueOnce(new DOMException('timeout', 'TimeoutError'))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }))
+    await screen.findByRole('heading', { name: 'Check your extension for the result' })
+    expect(screen.getByText(/confirmation may have completed/i)).toBeTruthy()
+    expect(screen.queryByText(/request a new restore link/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Confirm restore' })).toBeNull()
+  })
   it('inspects the waiting installation but never approves before a deliberate click', async () => {
     capture(); restore()
     await screen.findByRole('button', { name: 'Confirm restore' })
-    expect(screen.getByText('Desktop extension')).toBeTruthy()
+    expect(screen.getByText('Chrome extension')).toBeTruthy()
     expect(restoreRequest).toHaveBeenCalledTimes(1)
     expect(restoreRequest).toHaveBeenCalledWith('/inspect', { secret })
     vi.mocked(restoreRequest).mockResolvedValueOnce({})
+    fireEvent.click(screen.getByRole('checkbox', { name: /code matches the extension/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }))
     await screen.findByRole('heading', { name: 'Restore confirmed' })
     expect(restoreRequest).toHaveBeenLastCalledWith('/approve', { secret, confirmed: true })
@@ -66,6 +88,7 @@ describe('restore confirmation', () => {
   it('refuses to confirm an installation with its own paid history', async () => {
     capture(); restore(); await screen.findByRole('button', { name: 'Confirm restore' })
     vi.mocked(restoreRequest).mockRejectedValueOnce(new AccountError(409, 'restore_conflict'))
+    fireEvent.click(screen.getByRole('checkbox', { name: /code matches the extension/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }))
     await screen.findByRole('heading', { name: 'These memberships cannot be combined' })
     expect(screen.getByRole('link', { name: 'Contact billing support' }).getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
@@ -78,17 +101,25 @@ describe('restore confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await screen.findByRole('button', { name: 'Confirm restore' })
   })
-  it('renders an installation label as plain text and does not accept malformed expiry', async () => {
-    capture(); vi.mocked(restoreRequest).mockResolvedValueOnce({ ...inspect, label: '<img onerror=evil()>' }); const view = restore()
-    await screen.findByText('<img onerror=evil()>'); expect(view.container.querySelector('img[onerror]')).toBeNull()
-    view.unmount(); capture(); vi.mocked(restoreRequest).mockResolvedValueOnce({ label: 'Desktop', expiresAt: 'not a date' }); restore()
+  it.each([{ label: '<img onerror=evil()>' }, { expiresAt: 'not a date' }, { comparisonCode: 'aaaaaa' }, { comparisonCode: null }, { comparisonCode: 'A4C8E2<script>' }])('rejects misleading labels, malformed expiry or comparison codes: %j', async invalid => {
+    capture(); vi.mocked(restoreRequest).mockResolvedValueOnce({ ...inspect, ...invalid }); const view = restore()
     await screen.findByRole('button', { name: 'Try again' })
+    expect(view.container.querySelector('img[onerror]')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Confirm restore' })).toBeNull()
   })
   it('rechecks in-memory expiry on confirm and avoids sending a stale secret', async () => {
     capture(); restore(); await screen.findByRole('button', { name: 'Confirm restore' }); clearAccountRestore()
+    fireEvent.click(screen.getByRole('checkbox', { name: /code matches the extension/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'This restore link is unavailable' })).toBeTruthy())
+    expect(restoreRequest).toHaveBeenCalledTimes(1)
+  })
+  it('honors a rate-limit Retry-After before allowing another read-only inspection', async () => {
+    capture(); vi.mocked(restoreRequest).mockRejectedValueOnce(new AccountError(429, 'rate_limited', 90)); restore()
+    const retry = await screen.findByRole('button', { name: 'Try again' })
+    expect(retry.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('Wait 90 seconds before checking again.')).toBeTruthy()
+    fireEvent.click(retry)
     expect(restoreRequest).toHaveBeenCalledTimes(1)
   })
 })
