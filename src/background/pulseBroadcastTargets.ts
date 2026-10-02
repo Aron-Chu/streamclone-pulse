@@ -63,6 +63,7 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_ACCOUNT: 'extension-page',
   SUPPORTER_BILLING: 'extension-page',
   SUPPORTER_RESTORE: 'extension-page',
+  SUPPORTER_DEVICES: 'extension-page',
   SUPPORTER_ENTITLEMENT: 'extension-page',
   SUPPORTER_COSMETICS: 'extension-page',
   SUPPORTER_APPEARANCE: 'twitch-any',

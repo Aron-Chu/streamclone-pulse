@@ -41,6 +41,8 @@ export type SupporterEntitlement =
       checkoutEnabled?: boolean
       /** Server capability; absent on older deployments. Never opens Checkout itself. */
       installationAccountsEnabled?: boolean
+      accountKind?: 'email' | 'installation'
+      restoreEligible?: boolean
     }
 
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */
@@ -54,8 +56,13 @@ export type SupporterAccountState =
 
 /** Worker-owned purchase state: provider URLs and all credentials stay private. */
 export type SupporterBillingState =
-  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' }
+  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
   | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string }
 export type SupporterRestoreState =
-  | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'unavailable' | 'error' }
-  | { state: 'pending'; expiresAt: string }
+  | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'unavailable' | 'error' | 'ineligible' }
+  | { state: 'pending'; expiresAt: string; comparisonCode: string }
+  | { state: 'uncertain' }
+
+export type SupporterDevicesState =
+  | { state: 'unavailable' | 'error' | 'revoked' }
+  | { state: 'ready'; currentDeviceId: string; nextCursor?: string; devices: Array<{ id: string; label: string; createdAt: string; expiresAt: string; revokedAt?: string }> }

@@ -13,6 +13,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_FINISH_INTENT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
+  'SUPPORTER_DEVICES',
   'TRACK',
   'UNTRACK',
   'GET_PULSE',
@@ -263,13 +264,19 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'SUPPORTER_BILLING':
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
-      return raw.action === 'status' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' ? { type, action: raw.action } : null
+      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' ? { type, action: raw.action } : null
     case 'SUPPORTER_RESTORE': {
       if (Object.keys(raw).some(key => !['type', 'action', 'email'].includes(key))) return null
-      if (raw.action === 'status' || raw.action === 'cancel') return 'email' in raw ? null : { type, action: raw.action }
+      if (raw.action === 'status' || raw.action === 'check' || raw.action === 'cancel') return 'email' in raw ? null : { type, action: raw.action }
       if (raw.action !== 'start' || typeof raw.email !== 'string') return null
       const email = raw.email.trim()
       return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? { type, action: 'start', email } : null
+    }
+    case 'SUPPORTER_DEVICES': {
+      const deviceId = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
+      if (raw.action === 'list' && Object.keys(raw).every(key => ['type', 'action', 'cursor'].includes(key)) && (raw.cursor === undefined || deviceId(raw.cursor))) return { type, action: 'list', ...(typeof raw.cursor === 'string' ? { cursor: raw.cursor } : {}) }
+      if (raw.action === 'revoke' && Object.keys(raw).every(key => ['type', 'action', 'deviceId'].includes(key)) && deviceId(raw.deviceId)) return { type, action: 'revoke', deviceId: raw.deviceId }
+      return null
     }
     case 'SUPPORTER_COSMETICS':
       if (Object.keys(raw).some(key => !['type', 'enabled', 'finish'].includes(key))) return null

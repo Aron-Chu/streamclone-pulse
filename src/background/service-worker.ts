@@ -968,6 +968,11 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SUPPORTER_RESTORE', restore } satisfies BackgroundResponse)
           return
         }
+        case 'SUPPORTER_DEVICES': {
+          const devices = await supporterPayFirst.devices(message.action, message.action === 'revoke' ? message.deviceId : undefined, message.action === 'list' ? message.cursor : undefined)
+          sendResponse({ type: 'SUPPORTER_DEVICES', devices } satisfies BackgroundResponse)
+          return
+        }
         case 'SUPPORTER_FINISH_INTENT': {
           const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
           sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)

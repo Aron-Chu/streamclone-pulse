@@ -11,7 +11,7 @@ const attemptId = '33333333-3333-4333-8333-333333333333'
 const restoreId = '44444444-4444-4444-8444-444444444444'
 function fixture() {
   let account: unknown = null, key: unknown = null, journey: unknown = null, clock = now
-  let membership: Record<string, unknown> = { schemaVersion: 1, accountId: credentials.accountId, environment: 'live', revision: 1, status: 'none', serverTime: iso(0), accessFrom: iso(-1000), accessUntil: iso(3_600_000), cacheUntil: iso(60_000), features: {}, checkoutEnabled: true, installationAccountsEnabled: true }
+  let membership: Record<string, unknown> = { schemaVersion: 1, accountId: credentials.accountId, environment: 'live', revision: 1, status: 'none', serverTime: iso(0), accessFrom: iso(-1000), accessUntil: iso(3_600_000), cacheUntil: iso(60_000), features: {}, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: true }
   const request = vi.fn(async (path: string, _body?: Record<string, unknown>, _bearer?: string): Promise<{status: number; body: unknown}> => {
     if (path === '/v1/account/installations') return { status: 201, body: credentials }
     return { status: 404, body: null }
@@ -72,10 +72,10 @@ describe('worker-private pay-first journey', () => {
     expect(f.stored().key).toBeNull()
     f.request.mockImplementation(async (path, body) => {
       if (path === '/v1/account/installations') return body?.installationKey === rejectedKey ? { status: 409, body: { error: 'installation_initialized' } } : { status: 201, body: credentials }
-      if (path === '/v1/account/restores') return { status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } }
+      if (path === '/v1/account/restores') return { status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } }
       return { status: 404, body: null }
     })
-    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'pending', expiresAt: iso(900_000) })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'pending', expiresAt: iso(900_000), comparisonCode: 'A3B4C5' })
     expect(f.stored().key).not.toBe(rejectedKey)
   })
   it('retries a lost restore bootstrap with the same pending key', async () => {
@@ -84,13 +84,13 @@ describe('worker-private pay-first journey', () => {
     expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'unavailable' })
     const pendingKey = f.stored().key
     expect(f.stored().bootstrap).toMatchObject({ state: 'pending' })
-    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } })
-    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'pending', expiresAt: iso(900_000) })
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'pending', expiresAt: iso(900_000), comparisonCode: 'A3B4C5' })
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/installations').map(([, body]) => body?.installationKey)).toEqual([pendingKey, pendingKey])
   })
   it('resumes persisted Checkout and restore waits when the worker coordinator is reconstructed', async () => {
     const payment = fixture()
-    payment.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/cs_test_local' } })
+    payment.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/cs_test_local', expiresAt: iso(86_400_000) } })
     await payment.pay.billing('checkout')
     const restartedPayment = payment.recreate()
     expect(await restartedPayment.hasPending()).toBe(true)
@@ -100,7 +100,7 @@ describe('worker-private pay-first journey', () => {
     payment.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'active' } })
     expect(await restartedPayment.billing('status')).toEqual({ state: 'active' })
     const recovery = fixture()
-    recovery.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } })
+    recovery.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
     await recovery.pay.restore('start', 'payer@example.test')
     const restartedRecovery = recovery.recreate()
     expect(await restartedRecovery.hasPending()).toBe(true)
@@ -111,15 +111,15 @@ describe('worker-private pay-first journey', () => {
   })
   it('retains an unexpired restore through an explicitly unattempted credential refresh', async () => {
     const f = fixture()
-    f.request.mockResolvedValueOnce({ status: 201, body: { ...credentials, expiresAt: iso(61_000) } }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } })
-    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'pending', expiresAt: iso(900_000) })
+    f.request.mockResolvedValueOnce({ status: 201, body: { ...credentials, expiresAt: iso(61_000) } }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'pending', expiresAt: iso(900_000), comparisonCode: 'A3B4C5' })
     f.advance(5000)
     f.request.mockResolvedValueOnce({ status: 503, body: { error: 'refresh_not_attempted' } })
-    expect(await f.pay.restore('status')).toEqual({ state: 'pending', expiresAt: iso(900_000) })
+    expect(await f.pay.restore('status')).toEqual({ state: 'pending', expiresAt: iso(900_000), comparisonCode: 'A3B4C5' })
     expect(f.stored().journey).toMatchObject({ restore: { restoreId, accountId: credentials.accountId, secret: 'c'.repeat(64) } })
     expect(await f.pay.hasPending()).toBe(true)
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores/poll')).toHaveLength(0)
-    expect(await f.pay.restore('status')).toEqual({ state: 'pending', expiresAt: iso(900_000) })
+    expect(await f.pay.restore('status')).toEqual({ state: 'pending', expiresAt: iso(900_000), comparisonCode: 'A3B4C5' })
     f.advance(31_000)
     const renewed = { ...credentials, token: 'f'.repeat(64), refreshToken: 'e'.repeat(64) }
     const restored = { ...credentials, accountId: '55555555-5555-4555-8555-555555555555', deviceId: '66666666-6666-4666-8666-666666666666', token: 'd'.repeat(64), refreshToken: 'e'.repeat(64) }
@@ -130,16 +130,16 @@ describe('worker-private pay-first journey', () => {
   })
   it('retains the uncertain payment barrier after credentials are revoked', async () => {
     const f = fixture()
-    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/cs_test_local' } })
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/cs_test_local', expiresAt: iso(86_400_000) } })
     await f.pay.billing('checkout')
     await expect(f.supporter.withCredential(async () => ({ status: 401 }))).rejects.toThrow('account_authorization_required')
-    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'still_confirming', attemptId })
+    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'reconnect_required' })
     expect(await f.pay.hasPending()).toBe(false)
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
   })
   it('revokes a newly minted restore family when approval races disconnect, without adopting it', async () => {
     const f = fixture()
-    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } })
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
     await f.pay.restore('start', 'payer@example.test')
     f.advance(5000)
     let resolve!: (value: { status: number; body: unknown }) => void
@@ -156,28 +156,29 @@ describe('worker-private pay-first journey', () => {
   })
   it('manages the restored current account without discarding an older account payment barrier', async () => {
     const f = fixture()
-    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/cs_test_local' } })
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/cs_test_local', expiresAt: iso(86_400_000) } })
     await f.pay.billing('checkout')
     const restored = { state: 'approved', ...credentials, accountId: '55555555-5555-4555-8555-555555555555', token: 'd'.repeat(64), refreshToken: 'e'.repeat(64) }
     await f.supporter.adoptRestoredCredentials(restored, credentials.accountId)
+    f.setMembership({ accountId: restored.accountId, status: 'active' })
     f.request.mockResolvedValueOnce({ status: 200, body: { url: 'https://billing.stripe.com/p/session/restored' } })
     expect(await f.pay.billing('portal')).toEqual({ state: 'idle' })
     expect(f.open).toHaveBeenLastCalledWith('https://billing.stripe.com/p/session/restored')
     expect(f.request).toHaveBeenLastCalledWith('/v1/billing/portal', {}, restored.token)
-    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'still_confirming', attemptId })
+    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'active' })
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
   })
   it.each(['https://checkout.stripe.com.evil.test/a', 'http://checkout.stripe.com/a', 'https://u:p@checkout.stripe.com/a', 'https://checkout.stripe.com:444/a', 'https://billing.stripe.com/a'])('refuses checkout URL %s', async url => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url } })
-    expect(await f.pay.billing('checkout')).toEqual({ state: 'error' })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'still_confirming', attemptId })
     expect(f.open).not.toHaveBeenCalled()
   })
   it('keeps uncertain POST bounded and persisted; never automatically POSTs checkout again', async () => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('lost response'))
     expect(await f.pay.billing('checkout')).toEqual({ state: 'confirming' })
-    expect(await f.pay.hasPending()).toBe(true)
+    expect(await f.pay.hasPending()).toBe(false)
     f.advance(PAY_FIRST_WATCH_MS + 1)
     expect(await f.pay.billing('status')).toEqual({ state: 'still_confirming' })
     expect(await f.pay.hasPending()).toBe(false)
@@ -205,9 +206,9 @@ describe('worker-private pay-first journey', () => {
   })
   it('restores with private polling secret, requires target credentials, and wakes without a settings page', async () => {
     const f = fixture()
-    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } })
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
     const response = await f.pay.restore('start', 'payer@example.test')
-    expect(response).toEqual({ state: 'pending', expiresAt: iso(900_000) })
+    expect(response).toEqual({ state: 'pending', expiresAt: iso(900_000), comparisonCode: 'A3B4C5' })
     expect(JSON.stringify(response)).not.toMatch(/cccc|payer|restoreId/)
     f.advance(5000)
     const recovered = { ...credentials, accountId: '55555555-5555-4555-8555-555555555555', token: 'd'.repeat(64), refreshToken: 'e'.repeat(64) }
@@ -220,12 +221,12 @@ describe('worker-private pay-first journey', () => {
   it('restore conflicts and expiry are terminal; never leaks email matches', async () => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 409, body: { error: 'restore_conflict' } })
-    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'conflict' })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'ineligible' })
     expect(await f.pay.hasPending()).toBe(false)
   })
   it('expires a pending restore at its deadline without polling or retaining a secret', async () => {
     const f = fixture()
-    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5 } })
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
     await f.pay.restore('start', 'payer@example.test')
     f.advance(900_000)
     expect(await f.pay.restore('status')).toEqual({ state: 'expired' })
@@ -249,7 +250,7 @@ describe('worker-private pay-first journey', () => {
   it.each([{ checkoutEnabled: false }, { environment: 'sandbox' }, { installationAccountsEnabled: false }])('keeps Checkout closed for %j', async changes => {
     const f = fixture(); f.setMembership(changes)
     const result = await f.pay.billing('checkout')
-    expect(result.state).toBe(changes.environment ? 'unavailable' : changes.installationAccountsEnabled === false ? 'fallback' : 'closed')
+    expect(result.state).toBe(changes.environment ? 'unavailable' : changes.installationAccountsEnabled === false ? 'unavailable' : 'closed')
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(0)
     expect(f.open).not.toHaveBeenCalled()
   })

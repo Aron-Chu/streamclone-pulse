@@ -8,7 +8,7 @@ const RESTORE = '44444444-4444-4444-8444-444444444444'
 const credential = (accountId = ACCOUNT, token = 'a'.repeat(64)) => ({ accountId, token, refreshToken: 'b'.repeat(64), deviceId: '22222222-2222-4222-8222-222222222222', expiresAt: new Date(Date.now() + 20 * 86_400_000).toISOString(), refreshExpiresAt: new Date(Date.now() + 80 * 86_400_000).toISOString() })
 function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: false, finish: 'glass' }, accountId = ACCOUNT) {
   const paid = status === 'active'
-  return { schemaVersion: 1, accountId, environment: 'live', revision: paid ? 2 : 1, status, checkoutEnabled: true, installationAccountsEnabled: true, serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(), accessUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 60_000).toISOString(), supportPeriods: paid ? 1 : 0, features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid }, cosmetics }
+  return { schemaVersion: 1, accountId, environment: 'live', revision: paid ? 2 : 1, status, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: status === 'none', serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(), accessUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 60_000).toISOString(), supportPeriods: paid ? 1 : 0, features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid }, cosmetics }
 }
 // Controlled fixture worker only. Real provider destinations are resolver-blocked.
 async function recordTabs(worker: Worker) {
@@ -97,7 +97,7 @@ test('worker confirms a payment with settings closed and no Twitch page', async 
   await prepare()
   let paid = false, polls = 0
   await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
-  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => route.fulfill({ json: { attemptId: ATTEMPT, url: 'https://checkout.stripe.com/c/pay/cs_test_closed_fixture' } }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => route.fulfill({ json: { attemptId: ATTEMPT, url: 'https://checkout.stripe.com/c/pay/cs_test_closed_fixture', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }))
   await extension.context.route(`https://api.streampulse.stream/v1/billing/checkout/${ATTEMPT}`, route => { polls++; return route.fulfill({ json: { attemptId: ATTEMPT, state: paid ? 'active' : 'open' } }) })
   await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot(paid ? 'active' : 'none') }))
   const page = extension.page
@@ -125,7 +125,7 @@ test('a fresh profile restores privately after email approval even when settings
   await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
     posts.push(route.request().postDataJSON())
     expect(route.request().headers().authorization).toBe(`Bearer ${credential().token}`)
-    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), intervalSeconds: 5 } })
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
   })
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => {
     polls++
@@ -139,7 +139,7 @@ test('a fresh profile restores privately after email approval even when settings
   await page.getByLabel('Email used at checkout').fill('payer@example.test')
   await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
   await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
-  expect(posts).toEqual([{ email: 'payer@example.test' }])
+  expect(posts).toEqual([{ email: 'payer@example.test', restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) }])
   expect(await page.locator('body').innerText()).not.toMatch(/cccc|dddd|payer@example/)
   const safe = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'status' }))
   expect(JSON.stringify(safe)).not.toMatch(/cccc|restoreId|token/)
@@ -201,7 +201,7 @@ for (const lost of ['revoked', 'uncertain-refresh'] as const) test(`explicit Res
   }
   await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
     expect(route.request().headers().authorization).toBe(`Bearer ${fresh.token}`)
-    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5 } })
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
   })
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } }))
   await expect(page.getByRole('button', { name: 'Restore my Supporter', exact: true })).toBeVisible()
@@ -212,4 +212,133 @@ for (const lost of ['revoked', 'uncertain-refresh'] as const) test(`explicit Res
   expect(installations).toBe(2)
   approved = true
   await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
+})
+
+test('slow Checkout and Portal responses survive the former twelve-second deadline', async ({ extension, prepare }) => {
+  test.setTimeout(100_000)
+  await prepare()
+  let paid = false
+  const tabs = await recordTabs(extension.serviceWorker)
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot(paid ? 'active' : 'none') }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', async route => {
+    await new Promise(resolve => setTimeout(resolve, 13_000))
+    await route.fulfill({ json: { attemptId: ATTEMPT, url: 'https://checkout.stripe.com/c/pay/slow-fixture', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } })
+  })
+  await extension.context.route(`https://api.streampulse.stream/v1/billing/checkout/${ATTEMPT}`, route => route.fulfill({ json: { attemptId: ATTEMPT, state: paid ? 'active' : 'open', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/portal', async route => {
+    expect(route.request().headers().cookie).toBeUndefined()
+    await new Promise(resolve => setTimeout(resolve, 13_000))
+    await route.fulfill({ json: { url: 'https://billing.stripe.com/p/session/slow-fixture' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await expect(page.locator('[data-journey-state="stripe-open"]')).toBeVisible({ timeout: 30_000 })
+  paid = true
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'check' }))
+  await page.reload()
+  await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Manage membership', exact: true }).click()
+  await expect.poll(tabs, { timeout: 30_000 }).toContain('https://billing.stripe.com/p/session/slow-fixture')
+})
+
+test('lost restore start resumes its matching code without resending an email', async ({ extension, prepare }) => {
+  test.setTimeout(100_000)
+  await prepare()
+  let initialKey = '', writes = 0
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot('none') }))
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores', async route => {
+    const body = route.request().postDataJSON()
+    writes++
+    if (body.email) {
+      initialKey = body.restoreKey
+      expect(initialKey).toMatch(/^[a-f0-9]{64}$/)
+      return route.abort('failed')
+    }
+    expect(body).toEqual({ restoreKey: initialKey })
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+  await page.getByLabel('Email used at checkout').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-uncertain"]')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('The request may have reached the server and sent an email.', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Check restore request', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
+  await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+  expect(writes).toBe(2)
+  const privateRecord = await extension.serviceWorker.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
+    try { return await new Promise<unknown>((resolve, reject) => { const r = db.transaction('account').objectStore('account').get('supporter-pay-first'); r.onsuccess = () => resolve(r.result); r.onerror = reject }) } finally { db.close() }
+  })
+  expect(JSON.stringify(privateRecord)).not.toMatch(/payer@example|restoreKey/)
+})
+
+test('a successful slow restore response outlasts the former twelve-second deadline', async ({ extension, prepare }) => {
+  test.setTimeout(60_000)
+  await prepare()
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot('none') }))
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores', async route => {
+    await new Promise(resolve => setTimeout(resolve, 13_000))
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+  await page.getByLabel('Email used at checkout').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+})
+
+test('lost Checkout response recovers on explicit check without a second provider navigation', async ({ extension, prepare }) => {
+  await prepare()
+  let posts = 0
+  const tabs = await recordTabs(extension.serviceWorker)
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot('none') }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => {
+    posts++
+    expect(route.request().headers().authorization).toBe(`Bearer ${credential().token}`)
+    return posts === 1 ? route.abort('failed') : route.fulfill({ json: { attemptId: ATTEMPT, url: 'https://checkout.stripe.com/c/pay/recovered-fixture#fidkdWx-local', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } })
+  })
+  await extension.context.route(`https://api.streampulse.stream/v1/billing/checkout/${ATTEMPT}`, route => route.fulfill({ json: { attemptId: ATTEMPT, state: 'open', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Check payment status', exact: true })).toBeVisible()
+  expect(posts).toBe(1)
+  await page.getByRole('button', { name: 'Check payment status', exact: true }).click()
+  await expect(page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+  expect(posts).toBe(2)
+  expect(await tabs()).toEqual([])
+  await page.getByRole('button', { name: 'Return to Stripe checkout', exact: true }).click()
+  await expect.poll(tabs).toEqual(['https://checkout.stripe.com/c/pay/recovered-fixture#fidkdWx-local'])
+})
+
+test('owned device list has an explicit peer-revocation confirmation', async ({ extension, prepare }) => {
+  await prepare()
+  const peer = '55555555-5555-4555-8555-555555555555'
+  const revocations: unknown[] = []
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot('active') }))
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations/devices', route => route.fulfill({ json: { currentDeviceId: credential().deviceId, devices: [{ id: credential().deviceId, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: credential().expiresAt }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: credential().expiresAt }] } }))
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations/devices/revoke', route => { revocations.push(route.request().postDataJSON()); return route.fulfill({ status: 204 }) })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
+  await page.getByText('Connected extensions', { exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Revoke connection', exact: true })).toHaveCount(1)
+  await page.getByRole('button', { name: 'Revoke connection', exact: true }).click()
+  expect(revocations).toEqual([])
+  await page.getByRole('button', { name: 'Confirm revoke', exact: true }).click()
+  await expect.poll(() => revocations).toEqual([{ deviceId: peer }])
 })

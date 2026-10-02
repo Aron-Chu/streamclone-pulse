@@ -1,12 +1,15 @@
-import type { SupporterBillingState, SupporterRestoreState } from '../shared/supporterAccount.ts'
+import type { SupporterBillingState, SupporterRestoreState, SupporterDevicesState } from '../shared/supporterAccount.ts'
 import type { SupporterAccountCoordinator } from './supporterAccount.ts'
 
 export const PAY_FIRST_WATCH_MS = 15 * 60_000
 const POLL_MS = 5_000
+const ATTEMPT_MAX_MS = 24 * 60 * 60_000
+const RETRY_MAX_MS = 24 * 60 * 60_000
 type Billing = { accountId: string; attemptId?: string; phase: 'waiting' | 'confirming'; until: number; nextPoll: number; url?: string }
-type Restore = { accountId: string; restoreId: string; secret: string; expiresAt: string; nextPoll: number; interval: number }
-type PrivateJourney = { billing?: Billing; restore?: Restore; restoreResult?: 'restored' | 'expired' | 'conflict' }
-type Result = { status: number; body: unknown }
+type Restore = { accountId: string; restoreId: string; secret: string; expiresAt: string; comparisonCode: string; nextPoll: number; interval: number }
+type RestoreStart = { accountId: string; key: string; until: number; nextRetry: number }
+type PrivateJourney = { billing?: Billing; billingRetryUntil?: number; restoreRetryUntil?: number; restore?: Restore; restoreStart?: RestoreStart; unresolvedAccounts?: string[]; restoreResult?: 'restored' | 'expired' | 'conflict' }
+type Result = { status: number; body: unknown; retryAfterMs?: number }
 type Ports = {
   account: SupporterAccountCoordinator
   request: (path: string, body?: Record<string, unknown>, bearer?: string) => Promise<Result>
@@ -19,20 +22,24 @@ type Ports = {
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
 const secret = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+const code = (value: unknown): value is string => typeof value === 'string' && /^[A-F0-9]{6}$/.test(value)
+const emailAddress = (value: unknown): value is string => typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+const randomKey = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
+async function accountHash(accountId: string): Promise<string> { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`supporter-payment-account-v1:${accountId}`))), byte => byte.toString(16).padStart(2, '0')).join('') }
+const retryMs = (result: Result) => Math.max(POLL_MS, Math.min(RETRY_MAX_MS, Number.isFinite(result.retryAfterMs) ? result.retryAfterMs! : 60_000))
 
 /** Provider navigation is performed by the worker only, never by a content page. */
 export function validatedStripeUrl(value: unknown, action: 'checkout' | 'portal'): string | null {
   if (typeof value !== 'string' || value.length > 4096) return null
   try {
     const url = new URL(value)
-    // Stripe's hosted Checkout URLs carry an opaque #fidkdWx… fragment. Keep
-    // the provider URL intact after exact-host validation; it stays private.
+    // Hosted Checkout's opaque fragment remains private and intact.
     if (url.protocol !== 'https:' || url.hostname !== (action === 'checkout' ? 'checkout.stripe.com' : 'billing.stripe.com') || url.username || url.password || url.port || action === 'portal' && url.hash) return null
     return url.href
   } catch { return null }
 }
 
-/** A single serialized worker owns payment/restore waits, including when settings closes. */
+/** One serialized worker owns waits and explicit recovery across settings restarts. */
 export class SupporterPayFirstCoordinator {
   private queue: Promise<unknown> = Promise.resolve()
   private now: () => number
@@ -43,184 +50,272 @@ export class SupporterPayFirstCoordinator {
     return task
   }
   private async read(): Promise<PrivateJourney> {
-    const raw = object(await this.ports.read())
-    const b = object(raw.billing), r = object(raw.restore)
+    const raw = object(await this.ports.read()), b = object(raw.billing), r = object(raw.restore), start = object(raw.restoreStart)
     const value: PrivateJourney = {}
     if (id(b.accountId) && (b.attemptId === undefined || id(b.attemptId)) && (b.phase === 'waiting' || b.phase === 'confirming') && typeof b.until === 'number' && Number.isFinite(b.until) && typeof b.nextPoll === 'number' && Number.isFinite(b.nextPoll)) value.billing = { ...b, url: validatedStripeUrl(b.url, 'checkout') ?? undefined } as Billing
-    if (id(r.accountId) && id(r.restoreId) && secret(r.secret) && typeof r.expiresAt === 'string' && Number.isFinite(Date.parse(r.expiresAt)) && typeof r.nextPoll === 'number' && Number.isFinite(r.nextPoll) && typeof r.interval === 'number' && r.interval >= POLL_MS && r.interval <= 60_000) value.restore = r as unknown as Restore
+    if (id(r.accountId) && id(r.restoreId) && secret(r.secret) && code(r.comparisonCode) && typeof r.expiresAt === 'string' && Number.isFinite(Date.parse(r.expiresAt)) && typeof r.nextPoll === 'number' && Number.isFinite(r.nextPoll) && typeof r.interval === 'number' && r.interval >= POLL_MS && r.interval <= 60_000) value.restore = r as unknown as Restore
+    if (id(start.accountId) && secret(start.key) && typeof start.until === 'number' && Number.isFinite(start.until) && typeof start.nextRetry === 'number' && Number.isFinite(start.nextRetry)) value.restoreStart = { accountId: start.accountId, key: start.key, until: start.until, nextRetry: start.nextRetry }
+    if (Array.isArray(raw.unresolvedAccounts)) value.unresolvedAccounts = [...new Set(raw.unresolvedAccounts.filter(secret))]
+    if (typeof raw.billingRetryUntil === 'number' && Number.isFinite(raw.billingRetryUntil) && raw.billingRetryUntil > this.now() && raw.billingRetryUntil <= this.now() + RETRY_MAX_MS) value.billingRetryUntil = raw.billingRetryUntil
+    if (typeof raw.restoreRetryUntil === 'number' && Number.isFinite(raw.restoreRetryUntil) && raw.restoreRetryUntil > this.now() && raw.restoreRetryUntil <= this.now() + RETRY_MAX_MS) value.restoreRetryUntil = raw.restoreRetryUntil
     if (raw.restoreResult === 'restored' || raw.restoreResult === 'expired' || raw.restoreResult === 'conflict') value.restoreResult = raw.restoreResult
     return value
   }
-  async hasPending(): Promise<boolean> {
+  /** Called after a worker-owned identity mutation, before its public revision signal. */
+  async reconcileIdentity(): Promise<void> {
     const value = await this.read()
     const current = await this.ports.account.localAccountId()
-    return Boolean(value.billing && value.billing.accountId === current && value.billing.until > this.now() || value.restore && value.restore.accountId === current && Date.parse(value.restore.expiresAt) > this.now())
+    if (value.billing && value.billing.accountId !== current) {
+      value.unresolvedAccounts = [...new Set([...(value.unresolvedAccounts ?? []), await accountHash(value.billing.accountId)])]
+      // A clock or disconnect cannot prove a lost payment failed. Drop all
+      // navigation/attempt identifiers; keep only its non-authorizing account hash.
+      delete value.billing
+    }
+    if (value.restore?.accountId !== current) delete value.restore
+    if (value.restoreStart?.accountId !== current) delete value.restoreStart
+    await this.ports.write(value)
   }
-  billing(action: 'status' | 'checkout' | 'resume' | 'portal'): Promise<SupporterBillingState> {
+  async hasPending(): Promise<boolean> {
+    const value = await this.read(), current = await this.ports.account.localAccountId()
+    return Boolean(value.billing?.attemptId && value.billing.accountId === current && value.billing.until > this.now() || value.restore && value.restore.accountId === current && Date.parse(value.restore.expiresAt) > this.now())
+  }
+  billing(action: 'status' | 'check' | 'checkout' | 'resume' | 'portal'): Promise<SupporterBillingState> {
     return this.serialize(() => this.performBilling(action), { state: 'unavailable' })
   }
-  restore(action: 'status' | 'start' | 'cancel', email?: string): Promise<SupporterRestoreState> {
+  restore(action: 'status' | 'start' | 'check' | 'cancel', email?: string): Promise<SupporterRestoreState> {
     return this.serialize(() => this.performRestore(action, email), { state: 'unavailable' })
   }
-  /** Watch scheduling is private and resumes from IndexedDB after worker restart. */
+  devices(action: 'list' | 'revoke', deviceId?: string, cursor?: string): Promise<SupporterDevicesState> {
+    return this.serialize(async (): Promise<SupporterDevicesState> => {
+      const current = await this.identity()
+      if (!current) return { state: 'unavailable' }
+      const capability = await this.ports.account.entitlement()
+      if (capability.state !== 'ready' || capability.accountKind !== 'installation' || capability.installationAccountsEnabled !== true) return { state: 'unavailable' }
+      if (action === 'revoke') {
+        if (!id(deviceId) || deviceId === await this.ports.account.localDeviceId()) return { state: 'error' }
+        const result = await this.ports.account.withCredential(token => this.ports.request('/v1/account/installations/devices/revoke', { deviceId }, token), current)
+        return { state: result.status === 204 ? 'revoked' : 'error' }
+      }
+      if (cursor !== undefined && !id(cursor)) return { state: 'error' }
+      const result = await this.ports.account.withCredential(token => this.ports.request(`/v1/account/installations/devices${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, undefined, token), current)
+      const body = object(result.body)
+      if (result.status !== 200 || !id(body.currentDeviceId) || !Array.isArray(body.devices) || body.devices.length > 50 || body.nextCursor !== undefined && !id(body.nextCursor)) return { state: 'error' }
+      const devices = body.devices.map(item => {
+        const value = object(item)
+        if (!id(value.id) || typeof value.label !== 'string' || value.label.length > 80 || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.expiresAt !== 'string' || !Number.isFinite(Date.parse(value.expiresAt)) || value.revokedAt !== undefined && (typeof value.revokedAt !== 'string' || !Number.isFinite(Date.parse(value.revokedAt)))) return null
+        return { id: value.id, label: value.label, createdAt: value.createdAt, expiresAt: value.expiresAt, ...(typeof value.revokedAt === 'string' ? { revokedAt: value.revokedAt } : {}) }
+      })
+      if (devices.some(item => !item)) return { state: 'error' }
+      return { state: 'ready', devices: devices.filter(item => item !== null), currentDeviceId: body.currentDeviceId, ...(typeof body.nextCursor === 'string' ? { nextCursor: body.nextCursor } : {}) }
+    }, { state: 'unavailable' })
+  }
   async tick(): Promise<void> { await this.restore('status'); await this.billing('status') }
   private async identity(): Promise<string | null> {
     const state = await this.ports.account.run('status')
     return state.state === 'linked' ? state.accountId : null
   }
-  private async performBilling(action: 'status' | 'checkout' | 'resume' | 'portal'): Promise<SupporterBillingState> {
+  private async performBilling(action: 'status' | 'check' | 'checkout' | 'resume' | 'portal'): Promise<SupporterBillingState> {
+    await this.reconcileIdentity()
     const value = await this.read()
-    if (action === 'status' && !value.billing) return { state: 'idle' }
+    if (action !== 'status' && value.billingRetryUntil && value.billingRetryUntil > this.now()) return value.billing ? { state: 'still_confirming', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) } : { state: 'unavailable' }
     if (value.billing) {
-      if (await this.identity() !== value.billing.accountId && action !== 'portal') return { state: 'still_confirming', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) }
+      if (await this.identity() !== value.billing.accountId) { await this.reconcileIdentity(); return { state: 'reconnect_required' } }
       if (action === 'resume' && value.billing.phase === 'waiting' && value.billing.url && value.billing.until > this.now()) {
         await this.ports.open(value.billing.url)
         return { state: 'waiting', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) }
       }
-      // A new click while a payment is unresolved is a status read, never a second POST.
-      if (action !== 'portal') return this.pollBilling(value)
+      if (action !== 'portal') {
+        if (action === 'check' && !value.billing.url) {
+          const recovered = await this.createOrRecoverCheckout(value, value.billing.accountId, false)
+          // A named expired/pending result also has an owned read that may
+          // establish terminal proof. An explicit recovery never loops POSTs.
+          return recovered.state !== 'waiting' && value.billing?.attemptId && (recovered.state === 'confirming' || recovered.state === 'still_confirming') ? this.pollBilling(value, true) : recovered
+        }
+        return this.pollBilling(value, action === 'check')
+      }
     }
-    if (action === 'resume') return { state: 'idle' }
+    if (action === 'status' && !value.unresolvedAccounts?.length) return { state: 'idle' }
+    if (action === 'resume') return { state: value.unresolvedAccounts?.length ? 'reconnect_required' : 'idle' }
+    if (value.unresolvedAccounts?.length) {
+      const current = await this.identity()
+      if (!current) return { state: 'reconnect_required' }
+      const membership = await this.ports.account.entitlement()
+      if (membership.state === 'ready' && (membership.status === 'active' || membership.status === 'grace')) {
+        // Verified access resolves this account's earlier uncertain payment;
+        // unrelated old-account fingerprints remain untouched.
+        const currentHash = await accountHash(current)
+        if (value.unresolvedAccounts.includes(currentHash)) await this.resolveBilling(value, current)
+        if (action !== 'portal') return { state: 'active' }
+      } else {
+        if (action !== 'check' || !value.unresolvedAccounts.includes(await accountHash(current))) return { state: 'reconnect_required' }
+        value.billing = { accountId: current, phase: 'confirming', until: this.now() + ATTEMPT_MAX_MS, nextPoll: this.now() }
+        await this.ports.write(value)
+        return this.createOrRecoverCheckout(value, current, false)
+      }
+    }
+    if (action === 'status' || action === 'check') return { state: 'idle' }
     const installation = await this.ports.account.ensureInstallation()
     if (installation.state === 'fallback') return { state: 'fallback' }
     if (installation.state !== 'linked') return { state: 'unavailable' }
+    const capability = await this.ports.account.entitlement()
+    if (capability.state !== 'ready') return { state: 'unavailable' }
+    // An email account keeps its fresh-signin website journey. Configuration
+    // skew on a created installation must never switch to a different cookie account.
+    if (capability.accountKind === 'email') return { state: 'fallback' }
+    if (capability.accountKind === undefined && capability.installationAccountsEnabled !== true && !await this.ports.account.isInstallationIdentity()) return { state: 'fallback' }
+    if (capability.accountKind !== 'installation' || capability.installationAccountsEnabled !== true) return { state: 'unavailable' }
     if (action === 'portal') {
       const result = await this.ports.account.withCredential(token => this.ports.request('/v1/billing/portal', {}, token), installation.accountId)
-      if (result.status === 404) return { state: 'fallback' }
+      if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); await this.ports.write(value) }
       const url = result.status === 200 ? validatedStripeUrl(object(result.body).url, 'portal') : null
-      if (!url) return { state: result.status === 503 || result.status === 429 ? 'unavailable' : 'error' }
+      if (!url) return { state: result.status === 404 || result.status === 503 || result.status === 429 ? 'unavailable' : 'error' }
       if (await this.identity() !== installation.accountId) return { state: 'error' }
       await this.ports.open(url)
       return { state: 'idle' }
     }
-    const beforePayment = await this.ports.account.entitlement()
-    // A store build refuses sandbox projections and an unknown capability is
-    // the legacy website flow. Neither a missing field nor a failed read opens
-    // Checkout. The server still authoritatively rechecks every POST.
-    if (beforePayment.state !== 'ready') return { state: 'unavailable' }
-    if (beforePayment.installationAccountsEnabled !== true) return { state: 'fallback' }
-    if (beforePayment.status === 'active' || beforePayment.status === 'grace') return { state: 'active' }
-    if (beforePayment.status === 'review') return { state: 'review' }
-    if (beforePayment.status === 'pending') return { state: 'confirming' }
-    if (beforePayment.checkoutEnabled !== true) return { state: 'closed' }
-    // Persist uncertainty before POST: a lost response or worker restart cannot
-    // invite another payment. Only an owned terminal attempt clears this barrier.
-    value.billing = { accountId: installation.accountId, phase: 'confirming', until: this.now() + PAY_FIRST_WATCH_MS, nextPoll: this.now() + POLL_MS }
+    if (capability.status === 'active' || capability.status === 'grace') return { state: 'active' }
+    if (capability.status === 'review') return { state: 'review' }
+    if (capability.status === 'pending') return { state: 'confirming' }
+    if (!capability.checkoutEnabled) return { state: 'closed' }
+    value.billing = { accountId: installation.accountId, phase: 'confirming', until: this.now() + ATTEMPT_MAX_MS, nextPoll: this.now() + POLL_MS }
     await this.ports.write(value)
+    return this.createOrRecoverCheckout(value, installation.accountId, true)
+  }
+  private async resolveBilling(value: PrivateJourney, accountId: string): Promise<void> {
+    delete value.billing
+    const hash = await accountHash(accountId)
+    value.unresolvedAccounts = value.unresolvedAccounts?.filter(item => item !== hash)
+    if (!value.unresolvedAccounts?.length) delete value.unresolvedAccounts
+    await this.ports.write(value)
+  }
+  private async createOrRecoverCheckout(value: PrivateJourney, accountId: string, navigate: boolean): Promise<SupporterBillingState> {
     let result: Result
-    try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/billing/checkout', {}, token), installation.accountId) }
+    try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/billing/checkout', {}, token), accountId) }
     catch { return { state: 'confirming' } }
-    const body = object(result.body)
-    // Error responses can still name the server's retained owned attempt.
-    // Follow it instead of turning a provider timeout into an invitation to pay.
-    if (id(body.attemptId)) value.billing.attemptId = body.attemptId
-    if (typeof body.expiresAt === 'string' && Number.isFinite(Date.parse(body.expiresAt))) value.billing.until = Math.min(value.billing.until, Date.parse(body.expiresAt))
+    if (await this.ports.account.localAccountId() !== accountId) { await this.reconcileIdentity(); return { state: 'reconnect_required' } }
+    const body = object(result.body), pending = value.billing!
+    if (id(body.attemptId)) pending.attemptId = body.attemptId
+    this.updateExpiry(pending, body)
     await this.ports.write(value)
-    if (result.status === 403 && body.error === 'checkout_disabled') { delete value.billing; await this.ports.write(value); return { state: 'closed' } }
-    if (result.status === 404) { delete value.billing; await this.ports.write(value); return { state: 'fallback' } }
+    if (result.status === 403 && body.error === 'checkout_disabled') {
+      // During explicit recovery, closure cannot prove an earlier lost payment
+      // absent. Keep its barrier until an owned terminal attempt is observed.
+      if (!navigate) return { state: 'still_confirming' }
+      await this.resolveBilling(value, accountId); return { state: 'closed' }
+    }
     if (result.status === 409 && body.error === 'subscription_exists') {
       const membership = await this.ports.account.entitlement()
-      if (membership.state === 'ready' && (membership.status === 'active' || membership.status === 'grace')) { delete value.billing; await this.ports.write(value); return { state: 'active' } }
+      if (membership.state === 'ready' && (membership.status === 'active' || membership.status === 'grace')) { await this.resolveBilling(value, accountId); return { state: 'active' } }
       return { state: 'confirming' }
     }
-    if (result.status === 409 && id(body.attemptId) && (body.error === 'checkout_pending' || body.error === 'checkout_expired')) {
-      value.billing.attemptId = body.attemptId
-      await this.ports.write(value)
-      return { state: 'confirming', attemptId: body.attemptId }
-    }
+    if (result.status === 409 && id(body.attemptId) && (body.error === 'checkout_pending' || body.error === 'checkout_expired')) return { state: 'confirming', attemptId: body.attemptId }
     if (result.status !== 200 && result.status !== 201) {
-      // Only definitive input/precondition failures prove no payment was opened.
-      if (result.status === 400 || result.status === 403 || result.status === 429) { delete value.billing; await this.ports.write(value); return { state: result.status === 429 ? 'unavailable' : 'error' } }
-      return { state: 'confirming' }
+      if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); pending.nextPoll = value.billingRetryUntil; await this.ports.write(value) }
+      if (navigate && (result.status === 400 || result.status === 403 || result.status === 429)) { await this.resolveBilling(value, accountId); return { state: result.status === 429 ? 'unavailable' : 'error' } }
+      return { state: 'confirming', ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) }
     }
     const url = validatedStripeUrl(body.url, 'checkout')
-    if (!id(body.attemptId) || !url) {
-      // A malformed navigation response can still represent an open provider
-      // session. Keep uncertainty; never offer another payment because of it.
-      if (id(body.attemptId)) value.billing.attemptId = body.attemptId
-      await this.ports.write(value)
-      return { state: 'error' }
-    }
-    value.billing.attemptId = body.attemptId
-    value.billing.phase = 'waiting'
-    value.billing.url = url
-    if (typeof body.expiresAt === 'string' && Number.isFinite(Date.parse(body.expiresAt))) value.billing.until = Math.min(value.billing.until, Date.parse(body.expiresAt))
+    if (!id(body.attemptId) || !url || typeof body.expiresAt !== 'string' || !Number.isFinite(Date.parse(body.expiresAt))) return { state: 'still_confirming', ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) }
+    pending.attemptId = body.attemptId; pending.phase = 'waiting'; pending.url = url
     await this.ports.write(value)
-    // Re-check after network I/O: a concurrent disconnect must not open a tab.
-    if (await this.identity() !== installation.accountId) return { state: 'error' }
-    await this.ports.open(url)
+    if (navigate) await this.ports.open(url)
     return { state: 'waiting', attemptId: body.attemptId }
   }
-  private async pollBilling(value: PrivateJourney): Promise<SupporterBillingState> {
+  private updateExpiry(pending: Billing, body: Record<string, unknown>): void {
+    const deadline = typeof body.expiresAt === 'string' ? Date.parse(body.expiresAt) : NaN
+    // Provider-owned expiry replaces the old fifteen-minute UI watch. It may
+    // stop navigation, but only server terminal state clears payment uncertainty.
+    if (Number.isFinite(deadline) && deadline <= this.now() + ATTEMPT_MAX_MS) pending.until = deadline
+  }
+  private async pollBilling(value: PrivateJourney, explicit = false): Promise<SupporterBillingState> {
     const pending = value.billing!
-    const projection = (): SupporterBillingState => ({ state: this.now() >= pending.until ? 'still_confirming' : pending.phase, ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) })
-    if (pending.nextPoll > this.now()) return projection()
+    const projection = (): SupporterBillingState => ({ state: this.now() >= pending.until || !pending.attemptId ? 'still_confirming' : pending.phase, ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) })
+    if (value.billingRetryUntil && value.billingRetryUntil > this.now() || !explicit && pending.nextPoll > this.now()) return projection()
     pending.nextPoll = this.now() + POLL_MS
     await this.ports.write(value)
     if (pending.attemptId) {
       const result = await this.ports.account.withCredential(token => this.ports.request(`/v1/billing/checkout/${pending.attemptId}`, undefined, token), pending.accountId)
       const body = object(result.body)
+      if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); pending.nextPoll = value.billingRetryUntil; await this.ports.write(value); return projection() }
       if (result.status === 200 && body.attemptId === pending.attemptId) {
-        if (body.state === 'expired' || body.state === 'review') { delete value.billing; await this.ports.write(value); return { state: body.state } }
-        // No current writer establishes `failed` as proof that Stripe can no
-        // longer settle the payment. Preserve its barrier conservatively.
-        if (body.state === 'failed') pending.phase = 'confirming'
-        if (body.state === 'active' || body.state === 'complete' || body.state === 'completed' || body.state === 'pending') pending.phase = 'confirming'
+        this.updateExpiry(pending, body)
+        if (body.state === 'expired' || body.state === 'review') { await this.resolveBilling(value, pending.accountId); return { state: body.state } }
+        if (body.state === 'failed' || body.state === 'active' || body.state === 'complete' || body.state === 'completed' || body.state === 'pending') pending.phase = 'confirming'
       }
     }
     const membership = await this.ports.account.entitlement()
     if (membership.state === 'ready' && (membership.status === 'active' || membership.status === 'grace' || membership.status === 'review')) {
-      delete value.billing; await this.ports.write(value)
+      await this.resolveBilling(value, pending.accountId)
       await this.ports.changed?.().catch(() => undefined)
       return { state: membership.status === 'review' ? 'review' : 'active' }
     }
     await this.ports.write(value)
     return projection()
   }
-  private async performRestore(action: 'status' | 'start' | 'cancel', email?: string): Promise<SupporterRestoreState> {
+  private async performRestore(action: 'status' | 'start' | 'check' | 'cancel', email?: string): Promise<SupporterRestoreState> {
+    await this.reconcileIdentity()
     const value = await this.read()
-    if (action === 'cancel') { delete value.restore; delete value.restoreResult; await this.ports.write(value); return { state: 'idle' } }
+    if (action === 'cancel') { delete value.restore; delete value.restoreStart; delete value.restoreResult; await this.ports.write(value); return { state: 'idle' } }
     if (value.restore) {
       const pending = value.restore
+      const projection = (): SupporterRestoreState => ({ state: 'pending', expiresAt: pending.expiresAt, comparisonCode: pending.comparisonCode })
       if (Date.parse(pending.expiresAt) <= this.now()) { delete value.restore; value.restoreResult = 'expired'; await this.ports.write(value); return { state: 'expired' } }
-      // A refresh pause preserves the private identity. Only an actual account
-      // change or deletion abandons this unexpired, installation-bound request.
-      if (await this.ports.account.localAccountId() !== pending.accountId) { delete value.restore; await this.ports.write(value); return { state: 'idle' } }
-      if (pending.nextPoll > this.now()) return { state: 'pending', expiresAt: pending.expiresAt }
+      if (pending.nextPoll > this.now()) return projection()
       pending.nextPoll = this.now() + pending.interval
       await this.ports.write(value)
       let result: Result
       try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/account/restores/poll', { restoreId: pending.restoreId, pollingSecret: pending.secret }, token), pending.accountId, async response => { await this.ports.account.discardRestoredCredentials(response.body) }) }
       catch (error) {
-        if (error instanceof Error && error.message === 'account_temporarily_unavailable') return { state: 'pending', expiresAt: pending.expiresAt }
+        if (error instanceof Error && error.message === 'account_temporarily_unavailable') return projection()
         throw error
       }
       const body = object(result.body)
+      if (result.status === 429) { pending.nextPoll = this.now() + retryMs(result); await this.ports.write(value); return projection() }
       if (result.status === 200 && body.state === 'approved') {
         if (!await this.ports.account.adoptRestoredCredentials(body, pending.accountId)) return { state: 'error' }
         delete value.restore; value.restoreResult = 'restored'; await this.ports.write(value)
+        await this.reconcileIdentity()
         await this.ports.changed?.().catch(() => undefined)
         return { state: 'restored' }
       }
       if (result.status === 401 || body.state === 'expired' || body.state === 'restore_conflict') {
         delete value.restore; value.restoreResult = body.state === 'restore_conflict' ? 'conflict' : 'expired'; await this.ports.write(value); return { state: value.restoreResult }
       }
-      return { state: 'pending', expiresAt: pending.expiresAt }
+      return projection()
     }
-    if (action === 'status') return { state: value.restoreResult ?? 'idle' }
-    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { state: 'error' }
+    if (value.restoreStart) {
+      if (value.restoreStart.until <= this.now()) { delete value.restoreStart; value.restoreResult = 'expired'; await this.ports.write(value); return { state: 'expired' } }
+      if (action !== 'check' || value.restoreStart.nextRetry > this.now()) return { state: 'uncertain' }
+      return this.startOrRecoverRestore(value)
+    }
+    if (action === 'status' || action === 'check') return { state: value.restoreResult ?? 'idle' }
+    if (value.restoreRetryUntil && value.restoreRetryUntil > this.now()) return { state: 'unavailable' }
+    if (!emailAddress(email)) return { state: 'error' }
     const installation = await this.ports.account.ensureInstallation('restore')
     if (installation.state === 'fallback') return { state: 'fallback' }
     if (installation.state !== 'linked') return { state: 'unavailable' }
-    const result = await this.ports.account.withCredential(token => this.ports.request('/v1/account/restores', { email }, token), installation.accountId)
-    const body = object(result.body)
-    if (result.status === 404) return { state: 'fallback' }
-    if (result.status === 409 && body.error === 'restore_conflict') return { state: 'conflict' }
-    if (result.status === 429 || result.status === 503) return { state: 'unavailable' }
-    if (result.status !== 201 || !id(body.restoreId) || !secret(body.pollingSecret) || typeof body.expiresAt !== 'string' || !Number.isFinite(Date.parse(body.expiresAt)) || Date.parse(body.expiresAt) <= this.now() || Date.parse(body.expiresAt) > this.now() + PAY_FIRST_WATCH_MS || typeof body.intervalSeconds !== 'number' || body.intervalSeconds < 5 || body.intervalSeconds > 60) return { state: 'error' }
-    value.restore = { accountId: installation.accountId, restoreId: body.restoreId, secret: body.pollingSecret, expiresAt: body.expiresAt, nextPoll: this.now() + body.intervalSeconds * 1000, interval: body.intervalSeconds * 1000 }
+    const capability = await this.ports.account.entitlement()
+    if (capability.state !== 'ready') return { state: 'unavailable' }
+    if (capability.accountKind !== 'installation' || capability.installationAccountsEnabled !== true || capability.restoreEligible !== true) return { state: 'ineligible' }
+    value.restoreStart = { accountId: installation.accountId, key: randomKey(), until: this.now() + PAY_FIRST_WATCH_MS, nextRetry: this.now() }
     delete value.restoreResult
     await this.ports.write(value)
-    return { state: 'pending', expiresAt: body.expiresAt }
+    return this.startOrRecoverRestore(value, email)
+  }
+  private async startOrRecoverRestore(value: PrivateJourney, email?: string): Promise<SupporterRestoreState> {
+    const start = value.restoreStart!
+    let result: Result
+    try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/account/restores', { restoreKey: start.key, ...(email ? { email } : {}) }, token), start.accountId) }
+    catch { return { state: 'uncertain' } }
+    if (await this.ports.account.localAccountId() !== start.accountId) { await this.reconcileIdentity(); return { state: 'ineligible' } }
+    const body = object(result.body)
+    if (result.status === 429 || result.status === 503) { start.nextRetry = this.now() + retryMs(result); value.restoreRetryUntil = start.nextRetry; await this.ports.write(value); return { state: 'uncertain' } }
+    if (result.status === 404 && body.error === 'restore_request_not_found') { delete value.restoreStart; await this.ports.write(value); return { state: 'error' } }
+    if (result.status === 409 || result.status === 400 || result.status === 401) { delete value.restoreStart; await this.ports.write(value); return { state: result.status === 401 ? 'expired' : 'ineligible' } }
+    if (result.status !== 201 || !id(body.restoreId) || !secret(body.pollingSecret) || !code(body.comparisonCode) || typeof body.expiresAt !== 'string' || !Number.isFinite(Date.parse(body.expiresAt)) || Date.parse(body.expiresAt) <= this.now() || Date.parse(body.expiresAt) > this.now() + PAY_FIRST_WATCH_MS || typeof body.intervalSeconds !== 'number' || body.intervalSeconds < 5 || body.intervalSeconds > 60) return { state: 'uncertain' }
+    value.restore = { accountId: start.accountId, restoreId: body.restoreId, secret: body.pollingSecret, expiresAt: body.expiresAt, comparisonCode: body.comparisonCode, nextPoll: this.now() + body.intervalSeconds * 1000, interval: body.intervalSeconds * 1000 }
+    delete value.restoreStart
+    await this.ports.write(value)
+    return { state: 'pending', expiresAt: body.expiresAt, comparisonCode: body.comparisonCode }
   }
 }

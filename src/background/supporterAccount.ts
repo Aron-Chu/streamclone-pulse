@@ -5,7 +5,7 @@ type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
 type Pending = { kind: 'pending'; secret: string; code: string; expiresAt: string; nextPoll: number }
 type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string }
-type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revoking'; token: string } | null
+type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revoking'; token: string } | { kind: 'relink_required' } | null
 /**
  * A finish the user explicitly chose before their membership was verified.
  * Bound to the account linked when it was chosen, if any, and short-lived, so
@@ -13,7 +13,7 @@ type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revokin
  */
 export type FinishIntent = { finish: Finish; setAt: number; accountId?: string }
 export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
-export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed' }
+export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed'; accountId?: string }
 type Ports = {
   read: () => Promise<unknown>
   write: (value: PrivateState) => Promise<void>
@@ -87,6 +87,8 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     // Only a literal true opens a purchase path; anything else is closed.
     checkoutEnabled: body.checkoutEnabled === true,
     installationAccountsEnabled: body.installationAccountsEnabled === true,
+    accountKind: body.accountKind === 'email' || body.accountKind === 'installation' ? body.accountKind : undefined,
+    restoreEligible: body.restoreEligible === true,
   }
 }
 
@@ -140,7 +142,7 @@ export class SupporterAccountCoordinator {
       if ((result.status !== 200 && result.status !== 201) || !credentials || Date.parse(credentials.expiresAt) <= this.now() || Date.parse(credentials.refreshExpiresAt) <= this.now()) return { state: 'error' } as const
       if (generation !== this.generation) return this.discardCredential(credentials)
       await this.ports.write(credentials)
-      await this.ports.writeInstallationKey({ key: key as string, state: 'claimed' })
+      await this.ports.writeInstallationKey({ key: key as string, state: 'claimed', accountId: credentials.accountId })
       await this.ports.identityChanged?.()
       return this.project(credentials)
     }).catch((): SupporterAccountState => ({ state: 'error' }))
@@ -329,9 +331,18 @@ export class SupporterAccountCoordinator {
   async localAccountId(): Promise<string | null> {
     return linked(await this.ports.read().catch(() => null))?.accountId ?? null
   }
+  async localDeviceId(): Promise<string | null> {
+    return linked(await this.ports.read().catch(() => null))?.deviceId ?? null
+  }
+  /** Distinguish a bootstrap-created identity from an older email-linked account. */
+  async isInstallationIdentity(): Promise<boolean> {
+    const bootstrap = object(await this.ports.readInstallationKey?.().catch(() => null))
+    const current = await this.localAccountId()
+    return Boolean(current && bootstrap.state === 'claimed' && secret(bootstrap.key) && (bootstrap.accountId === undefined || bootstrap.accountId === current))
+  }
 
   private async clear(state: SupporterAccountState['state']): Promise<SupporterAccountState> {
-    await this.ports.write(null)
+    await this.ports.write(state === 'relink_required' ? { kind: 'relink_required' } : null)
     if (state === 'relink_required') await this.ports.writeInstallationKey?.(null)
     await this.ports.identityChanged?.()
     return { state } as SupporterAccountState
@@ -404,6 +415,7 @@ export class SupporterAccountCoordinator {
       return this.clear('signed_out')
     }
     if (raw.kind === 'refreshing') return this.clear('relink_required')
+    if (raw.kind === 'relink_required' && (action === 'status' || action === 'poll')) return { state: 'relink_required' }
     if (credentials) {
       if (Date.parse(credentials.refreshExpiresAt) <= this.now()) return this.clear('relink_required')
       if (Date.parse(credentials.expiresAt) > this.now() + 60_000) return this.project(credentials)

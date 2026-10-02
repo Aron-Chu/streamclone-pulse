@@ -33,7 +33,7 @@ async function access(write: boolean, value?: unknown, key: string = DEFAULT_BAC
 }
 export const supporterAccount = new SupporterAccountCoordinator({
   // Only an invalidation signal is public, never an account ID or credential.
-  identityChanged: async () => { await chrome.storage.local.set({ [ACCOUNT_REVISION_KEY]: crypto.randomUUID() }) },
+  identityChanged: async () => { await supporterPayFirst.reconcileIdentity(); await chrome.storage.local.set({ [ACCOUNT_REVISION_KEY]: crypto.randomUUID() }) },
   projectionChanged: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
   readIntent: () => access(false, undefined, FINISH_INTENT_KEY),
   writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
@@ -46,7 +46,12 @@ export const supporterAccount = new SupporterAccountCoordinator({
   write: async value => { await access(true, value) },
   request: accountRequest,
 })
-export async function accountRequest(path: string, body?: Record<string, unknown>, bearer?: string): Promise<{ status: number; body: unknown }> {
+/** Network budget includes the deliberately indistinguishable restore response. */
+export function accountRequestDeadlineMs(path: string): number {
+  return path === '/v1/billing/checkout' || path === '/v1/billing/portal' ? 40_000
+    : path === '/v1/account/restores' ? 25_000 : 12_000
+}
+export async function accountRequest(path: string, body?: Record<string, unknown>, bearer?: string): Promise<{ status: number; body: unknown; retryAfterMs?: number }> {
     // Account credentials cannot follow a developer-selected backend address.
     if (await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -56,13 +61,15 @@ export async function accountRequest(path: string, body?: Record<string, unknown
     const response = await fetch(`${DEFAULT_BACKEND_URL}${path}`, {
       method: body ? 'POST' : 'GET', headers,
       body: body ? JSON.stringify(body) : undefined, credentials: 'omit', redirect: 'error', cache: 'no-store',
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(accountRequestDeadlineMs(path)),
     })
     const text = await response.text()
     if (text.length > 16_384) throw new Error('account_response_invalid')
     let data: unknown = null
     try { data = text ? JSON.parse(text) : null } catch { /* HTTP status still conveys unavailability. */ }
-    return { status: response.status, body: data }
+    const retry = response.headers.get('Retry-After')
+    const retryAfterMs = retry && /^\d+$/.test(retry) ? Math.min(86_400_000, Math.max(5000, Number(retry) * 1000)) : retry ? Math.min(86_400_000, Math.max(5000, Date.parse(retry) - Date.now())) : undefined
+    return { status: response.status, body: data, ...(Number.isFinite(retryAfterMs) ? { retryAfterMs } : {}) }
 }
 export const supporterPayFirst = new SupporterPayFirstCoordinator({
   account: supporterAccount,

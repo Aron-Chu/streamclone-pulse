@@ -93,6 +93,11 @@ const hostStyles = `
   .pulse-journey-restore label { font-size: 12px; color: ${theme.textSecondary}; }
   .pulse-journey-restore input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.panel}; color: ${theme.textPrimary}; padding: 10px 12px; font: inherit; }
   .pulse-journey-restore input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
+  .pulse-journey-devices { border-top: 1px solid ${theme.border}; padding-top: 8px; min-width: 0; }
+  .pulse-journey-devices summary { box-sizing: border-box; min-height: 44px; padding: 10px 0; cursor: pointer; color: ${theme.textSecondary}; }
+  .pulse-journey-devices summary:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; border-radius: 4px; }
+  .pulse-journey-devices ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .pulse-journey-devices li { display: grid; gap: 6px; min-width: 0; padding: 10px; border: 1px solid ${theme.border}; border-radius: 8px; overflow-wrap: anywhere; }
   @media (max-width: 420px) {
     .pulse-journey-actions > * { flex: 1 1 100%; }
   }

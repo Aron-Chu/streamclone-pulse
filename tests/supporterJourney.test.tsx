@@ -11,19 +11,20 @@ const ACCOUNT_ID = '11111111-1111-4111-8111-1111111a1b2c'
 const linked: SupporterAccountState = { state: 'linked', accountId: ACCOUNT_ID, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
 const pendingLink = (overrides: Record<string, unknown> = {}) => ({ state: 'pending', code: 'ABCDE-12345', expiresAt: new Date(Date.now() + 600_000).toISOString(), retryAfterSeconds: 5, ...overrides }) as SupporterAccountState
 const ready = (status: string, extra: Partial<Extract<SupporterEntitlement, { state: 'ready' }>> = {}): SupporterEntitlement =>
-  ({ state: 'ready', status, supportPeriods: status === 'none' ? 0 : 2, features: [], checkoutEnabled: true, ...extra }) as SupporterEntitlement
+  ({ state: 'ready', status, supportPeriods: status === 'none' ? 0 : 2, features: [], checkoutEnabled: true, ...(extra.installationAccountsEnabled ? { accountKind: 'installation', restoreEligible: true } : {}), ...extra }) as SupporterEntitlement
 
 type Worker = {
   account: (action: SupporterAccountAction) => SupporterAccountState | Promise<SupporterAccountState> | Error
   entitlement: () => SupporterEntitlement | Promise<SupporterEntitlement> | Error
   billing?: (action: string) => SupporterBillingState
   restore?: (action: string, email?: string) => SupporterRestoreState
+  devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
 }
 
 async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void) {
   const write = vi.fn()
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
-  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string }) => {
+  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string; deviceId?: string }) => {
     if (message.type === 'SUPPORTER_ACCOUNT') {
       const account = await worker.account(message.action as SupporterAccountAction)
       if (account instanceof Error) throw account
@@ -34,8 +35,9 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
       if (entitlement instanceof Error) throw entitlement
       return { type: 'SUPPORTER_ENTITLEMENT', entitlement }
     }
-    if (message.type === 'SUPPORTER_BILLING' && worker.billing) return { type: 'SUPPORTER_BILLING', billing: worker.billing(message.action!) }
+    if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: worker.billing?.(message.action!) ?? { state: 'fallback' } }
     if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: worker.restore(message.action!, message.email) }
+    if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
     return undefined
   })
   const create = vi.fn(async () => ({}))
@@ -74,6 +76,58 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
 describe('pay-first settings', () => {
+  it('requires explicit confirmation to revoke another connected extension and never offers peer revoke for this browser', async () => {
+    const peer = '55555555-5555-4555-8555-555555555555'
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), devices: action => action === 'revoke' ? { state: 'revoked' } : { state: 'ready', currentDeviceId: ACCOUNT_ID, devices: [{ id: ACCOUNT_ID, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }] } })
+    try {
+      const details = view.host.querySelector('details')!
+      await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
+      expect(view.buttons().filter(name => name === 'Revoke connection')).toHaveLength(1)
+      await view.click('Revoke connection')
+      expect(view.calls('SUPPORTER_DEVICES', 'revoke')).toBe(0)
+      await view.click('Confirm revoke')
+      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_DEVICES', action: 'revoke', deviceId: peer })
+      expect(view.text()).toContain('connection was revoked')
+    } finally { view.cleanup() }
+  })
+  it('makes recovery primary after relink, with a separate explicit new-membership confirmation', async () => {
+    const view = await mount({ account: () => ({ state: 'relink_required' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }) })
+    try {
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Restore my Supporter')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      await view.click('Start a new membership')
+      expect(view.text()).toContain('separate subscription')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it.each([{ accountKind: 'email' as const, installationAccountsEnabled: true, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: false, restoreEligible: true }, { accountKind: 'installation' as const, installationAccountsEnabled: true, restoreEligible: false }])('hides restore when server capability refuses this account: %s', async capability => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', capability), billing: () => ({ state: 'idle' }) })
+    try { expect(view.buttons()).not.toContain('Restore my Supporter') } finally { view.cleanup() }
+  })
+  it.each(['active', 'grace', 'expired', 'review'])('never sends a known installation to an unrelated website cookie account when billing capability is off: %s', async status => {
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: false }), billing: () => ({ state: 'idle' }) })
+    try {
+      expect(view.host.querySelector('a[data-supporter-action="billing"]')).toBeNull()
+      expect(view.text()).toContain('Membership changes are temporarily unavailable')
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it('checks a lost payment explicitly through the worker and shows a comparison code during restore', async () => {
+    let restore: SupporterRestoreState = { state: 'idle' }
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: true }), billing: () => ({ state: 'still_confirming' }), restore: () => restore })
+    try {
+      await view.click('Check payment status')
+      expect(view.calls('SUPPORTER_BILLING', 'check')).toBe(1)
+      restore = { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }
+      await view.change({ pulseAccountRevision: { newValue: 'restore' } })
+      expect(view.text()).toContain('A3B4C5')
+      expect(view.text()).toContain('matches')
+    } finally { view.cleanup() }
+  })
+  it('does not disguise an unrelated outage as an existing payment status', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none'), billing: () => ({ state: 'unavailable' }) })
+    try { expect(view.buttons()).not.toContain('Check payment status'); expect(view.buttons()).toContain('Try again') } finally { view.cleanup() }
+  })
   it.each(['billing-review', 'restore-conflict'])('offers safe support for %s instead of another payment', async state => {
     const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: () => state === 'billing-review' ? { state: 'review' } : { state: 'idle' }, restore: () => state === 'restore-conflict' ? { state: 'conflict' } : { state: 'idle' } })
     try {
@@ -129,7 +183,7 @@ describe('pay-first settings', () => {
   })
   it('shows one primary restore action and generic recovery copy without persisting email', async () => {
     let restore: SupporterRestoreState = { state: 'idle' }
-    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), restore: action => action === 'start' ? (restore = { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString() }) : restore })
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), restore: action => action === 'start' ? (restore = { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString(), comparisonCode: 'A3B4C5' }) : restore })
     try {
       await view.click('Restore my Supporter')
       expect(view.state()).toBe('restore-email')
@@ -391,7 +445,7 @@ describe('connection states', () => {
       account = { state: 'signed_out' }
       await view.change({ pulseAccountRevision: { newValue: 'revoked' } })
       expect(view.text()).toContain('was disconnected from your Pulse account')
-      expect(view.buttons()).toContain('Become a Supporter')
+      expect(view.buttons()).toContain('Restore my Supporter')
       await view.change({ pulseAccountRevision: { newValue: 'again' } })
       expect(view.text()).toContain('was disconnected from your Pulse account')
     } finally { view.cleanup() }
@@ -413,7 +467,7 @@ describe('connection states', () => {
     const view = await mount({ account: () => ({ state }), entitlement: () => ({ state: 'not_linked' }) })
     try {
       expect(view.text()).toContain(copy)
-      expect(view.buttons()).toContain('Become a Supporter')
+      expect(view.buttons()).toContain(state === 'relink_required' ? 'Restore my Supporter' : 'Become a Supporter')
     } finally { view.cleanup() }
   })
 })

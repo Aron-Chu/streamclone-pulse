@@ -298,14 +298,14 @@ test.describe('packaged supporter offer', () => {
       try {
         return await new Promise<boolean>((resolve, reject) => {
           const request = db.transaction('account').objectStore('account').get('https://api.streampulse.stream')
-          request.onsuccess = () => resolve(request.result != null)
+          request.onsuccess = () => resolve(Boolean(request.result?.token || request.result?.refreshToken))
           request.onerror = () => reject(new Error('read failed'))
         })
       } finally { db.close() }
     })
     expect(hasCredential).toBe(false)
     const status = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
-    expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } })
+    expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'relink_required' } })
 
     await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
