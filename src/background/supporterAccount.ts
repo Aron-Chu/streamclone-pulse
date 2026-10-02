@@ -13,6 +13,7 @@ type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revokin
  */
 export type FinishIntent = { finish: Finish; setAt: number; accountId?: string }
 export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
+export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed' }
 type Ports = {
   read: () => Promise<unknown>
   write: (value: PrivateState) => Promise<void>
@@ -26,6 +27,8 @@ type Ports = {
   /** Worker-private storage for the optional pre-purchase finish choice. */
   readIntent?: () => Promise<unknown>
   writeIntent?: (value: FinishIntent | null) => Promise<void>
+  readInstallationKey?: () => Promise<unknown>
+  writeInstallationKey?: (value: InstallationBootstrap | null) => Promise<void>
 }
 const secret =(value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
@@ -83,6 +86,7 @@ function projectEntitlement(result: { status: number; body: unknown }, accountId
     cosmetics: { enabled: preferences.enabled === true, finish },
     // Only a literal true opens a purchase path; anything else is closed.
     checkoutEnabled: body.checkoutEnabled === true,
+    installationAccountsEnabled: body.installationAccountsEnabled === true,
   }
 }
 
@@ -110,6 +114,67 @@ export class SupporterAccountCoordinator {
   private now: () => number
   constructor(private ports: Ports) { this.now = ports.now ?? Date.now }
 
+  /** First explicit Supporter interaction only; never called from appearance reads. */
+  ensureInstallation(purpose: 'purchase' | 'restore' = 'purchase'): Promise<SupporterAccountState | { state: 'fallback' }> {
+    const generation = this.generation
+    const task = this.queue.then(async () => {
+      const current = await this.perform('status', generation)
+      if (current.state === 'linked' || current.state === 'unavailable' || current.state === 'pending' || current.state === 'error') return current
+      if (!this.ports.readInstallationKey || !this.ports.writeInstallationKey) return { state: 'fallback' } as const
+      const storedKey = await this.ports.readInstallationKey()
+      const bootstrap = object(storedKey)
+      let key: unknown = secret(bootstrap.key) && (bootstrap.state === 'pending' || bootstrap.state === 'claimed') ? bootstrap.key : secret(storedKey) ? storedKey : null
+      // Restore deliberately bootstraps an empty waiting installation. A key
+      // whose credentials were lost/claimed cannot recover a token family by
+      // replaying anonymous enrollment, and must not strand recovery forever.
+      if (purpose === 'restore' && bootstrap.state !== 'pending') key = null
+      if (!secret(key)) {
+        key = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
+        await this.ports.writeInstallationKey({ key: key as string, state: 'pending' })
+      }
+      const result = await this.ports.request('/v1/account/installations', { installationKey: key, label: 'StreamPulse extension' })
+      if (result.status === 404) return { state: 'fallback' } as const
+      if (result.status === 409 && object(result.body).error === 'installation_initialized') { await this.ports.writeInstallationKey(null); return { state: 'error' } as const }
+      if (result.status === 429 || result.status === 503) return { state: 'unavailable', reason: 'temporarily_unavailable' } as const
+      const credentials = linked(result.body)
+      if ((result.status !== 200 && result.status !== 201) || !credentials || Date.parse(credentials.expiresAt) <= this.now() || Date.parse(credentials.refreshExpiresAt) <= this.now()) return { state: 'error' } as const
+      if (generation !== this.generation) return this.discardCredential(credentials)
+      await this.ports.write(credentials)
+      await this.ports.writeInstallationKey({ key: key as string, state: 'claimed' })
+      await this.ports.identityChanged?.()
+      return this.project(credentials)
+    }).catch((): SupporterAccountState => ({ state: 'error' }))
+    this.queue = task
+    return task
+  }
+
+  /** Restore credential adoption is worker-only and bound to the waiting identity. */
+  adoptRestoredCredentials(value: unknown, waitingAccountId: string): Promise<boolean> {
+    const generation = this.generation
+    const task = this.queue.then(async () => {
+      const previous = linked(await this.ports.read())
+      const next = linked(value)
+      if (!previous || previous.accountId !== waitingAccountId || !next || Date.parse(next.expiresAt) <= this.now() || Date.parse(next.refreshExpiresAt) <= this.now() || generation !== this.generation) {
+        if (next) await this.discardRestoredCredentials(value)
+        return false
+      }
+      await this.ports.write(next)
+      await this.ports.writeIntent?.(null)
+      this.lastProjection = undefined
+      await this.ports.identityChanged?.()
+      return true
+    }).catch(() => false)
+    this.queue = task
+    return task
+  }
+
+  /** Best-effort disposal of a stale approved response, without touching a newer identity. */
+  async discardRestoredCredentials(value: unknown): Promise<void> {
+    const next = object(value).state === 'approved' ? linked(value) : null
+    if (!next) return
+    await this.ports.request('/v1/account/devices/disconnect', { token: next.token }).catch(() => undefined)
+  }
+
   run(action: SupporterAccountAction): Promise<SupporterAccountState> {
     if (action === 'cancel' || action === 'disconnect') this.generation++
     const generation = this.generation
@@ -119,7 +184,7 @@ export class SupporterAccountCoordinator {
   }
 
   /** Worker-only operation: serialize the complete request with rotation and disconnect. */
-  withCredential<T extends { status: number }>(operation: (token: string) => Promise<T>, accountId?: string): Promise<T> {
+  withCredential<T extends { status: number }>(operation: (token: string) => Promise<T>, accountId?: string, discardStale?: (result: T) => Promise<void>): Promise<T> {
     const generation = this.generation
     const task = this.queue.then(async () => {
       const account = await this.perform('status', generation)
@@ -131,7 +196,7 @@ export class SupporterAccountCoordinator {
       const credentials = linked(await this.ports.read())
       if (!credentials || credentials.accountId !== account.accountId || generation !== this.generation) throw new Error('account_identity_changed')
       const result = await operation(credentials.token)
-      if (generation !== this.generation) throw new Error('account_identity_changed')
+      if (generation !== this.generation) { await discardStale?.(result).catch(() => undefined); throw new Error('account_identity_changed') }
       if (result.status === 401) {
         await this.clear('relink_required')
         throw new Error('account_authorization_required')
@@ -260,9 +325,14 @@ export class SupporterAccountCoordinator {
   async hasPendingLink(): Promise<boolean> {
     return object(await this.ports.read().catch(() => null)).kind === 'pending'
   }
+  /** Worker lifecycle hint only; never rotates a token or sends a request. */
+  async localAccountId(): Promise<string | null> {
+    return linked(await this.ports.read().catch(() => null))?.accountId ?? null
+  }
 
   private async clear(state: SupporterAccountState['state']): Promise<SupporterAccountState> {
     await this.ports.write(null)
+    if (state === 'relink_required') await this.ports.writeInstallationKey?.(null)
     await this.ports.identityChanged?.()
     return { state } as SupporterAccountState
   }
@@ -317,6 +387,7 @@ export class SupporterAccountCoordinator {
       return { state: 'error', revocationPending: true }
     }
     if (action === 'disconnect') {
+      await this.ports.writeInstallationKey?.(null)
       // Deliberately leaving an account also abandons a pending finish choice.
       await this.ports.writeIntent?.(null)
       this.lastProjection = undefined

@@ -35,11 +35,13 @@ test('Twitch content scripts cannot invoke the account transport', async ({ exte
       account: await chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }),
       entitlement: await chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }),
       equip: await chrome.runtime.sendMessage({ type: 'SUPPORTER_COSMETICS', enabled: true, finish: 'halo' }),
+      checkout: await chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }),
+      restore: await chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' }),
       appearance: await chrome.runtime.sendMessage({ type: 'SUPPORTER_APPEARANCE' }),
     }) })
     return results[0]?.result
   })
-  expect(response).toEqual({ account: { error: 'unauthorized_sender' }, entitlement: { error: 'unauthorized_sender' }, equip: { error: 'unauthorized_sender' }, appearance: { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0 } })
+  expect(response).toEqual({ account: { error: 'unauthorized_sender' }, entitlement: { error: 'unauthorized_sender' }, equip: { error: 'unauthorized_sender' }, checkout: { error: 'unauthorized_sender' }, restore: { error: 'unauthorized_sender' }, appearance: { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0 } })
 })
 
 test('packaged disconnect keeps private retry authority across settings reload', async ({ extension, prepare }) => {

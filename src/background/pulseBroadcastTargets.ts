@@ -61,6 +61,8 @@ export type MessageSenderScope = 'extension-page' | 'twitch-channel' | 'twitch-c
 
 export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSenderScope> = {
   SUPPORTER_ACCOUNT: 'extension-page',
+  SUPPORTER_BILLING: 'extension-page',
+  SUPPORTER_RESTORE: 'extension-page',
   SUPPORTER_ENTITLEMENT: 'extension-page',
   SUPPORTER_COSMETICS: 'extension-page',
   SUPPORTER_APPEARANCE: 'twitch-any',

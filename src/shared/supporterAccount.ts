@@ -39,6 +39,8 @@ export type SupporterEntitlement =
       cosmetics?: SupporterCosmetics
       /** Whether the server would open Checkout for this account now. */
       checkoutEnabled?: boolean
+      /** Server capability; absent on older deployments. Never opens Checkout itself. */
+      installationAccountsEnabled?: boolean
     }
 
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */
@@ -49,3 +51,11 @@ export type SupporterAccountState =
   | { state: 'error'; revocationPending?: boolean }
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
   | { state: 'linked'; accountId: string; expiresAt: string }
+
+/** Worker-owned purchase state: provider URLs and all credentials stay private. */
+export type SupporterBillingState =
+  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' }
+  | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string }
+export type SupporterRestoreState =
+  | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'unavailable' | 'error' }
+  | { state: 'pending'; expiresAt: string }

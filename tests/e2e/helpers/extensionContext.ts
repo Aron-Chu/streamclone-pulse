@@ -75,9 +75,10 @@ export async function launchExtensionContext(
       // A tab the extension opens with chrome.tabs.create starts navigating
       // before Playwright can route it, so a fixture run would otherwise load
       // the real website. Specs still stub it with context.route; this only
-      // guarantees the exact website host can never be reached (the API host
-      // is a different name and stays mocked as before).
-      '--host-resolver-rules=MAP streampulse.stream ~NOTFOUND',
+      // guarantees the exact website and Stripe destination hosts can never
+      // be reached (the API host remains mocked separately). No test purchase
+      // or Customer Portal request may reach a provider from this harness.
+      '--host-resolver-rules=MAP streampulse.stream ~NOTFOUND, MAP checkout.stripe.com ~NOTFOUND, MAP billing.stripe.com ~NOTFOUND',
     ],
     viewport,
     deviceScaleFactor,

@@ -66,7 +66,7 @@ test('account settings connect through the packaged worker and disconnect', asyn
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   const openedTabs = await recordOpenedTabs(page)
   const opened = extension.context.waitForEvent('page')
-  await page.getByRole('button', { name: 'Already a Supporter? Connect', exact: true }).click()
+  await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
   await opened
   // The worker's code reaches the website in the fragment only; no second click is needed.
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])

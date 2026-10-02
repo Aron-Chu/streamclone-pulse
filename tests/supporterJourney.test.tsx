@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MEMBERSHIP_WATCH_DELAYS_MS, MEMBERSHIP_WATCH_MS, SupporterJourney, accountReference } from '../src/options/SupporterJourney.tsx'
-import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement } from '../src/shared/supporterAccount.ts'
+import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from '../src/shared/supporterAccount.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -16,14 +16,16 @@ const ready = (status: string, extra: Partial<Extract<SupporterEntitlement, { st
 type Worker = {
   account: (action: SupporterAccountAction) => SupporterAccountState | Promise<SupporterAccountState> | Error
   entitlement: () => SupporterEntitlement | Promise<SupporterEntitlement> | Error
+  billing?: (action: string) => SupporterBillingState
+  restore?: (action: string, email?: string) => SupporterRestoreState
 }
 
 async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlement | null) => void) {
   const write = vi.fn()
   const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
-  const sendMessage = vi.fn(async (message: { type: string; action?: SupporterAccountAction }) => {
+  const sendMessage = vi.fn(async (message: { type: string; action?: string; email?: string }) => {
     if (message.type === 'SUPPORTER_ACCOUNT') {
-      const account = await worker.account(message.action!)
+      const account = await worker.account(message.action as SupporterAccountAction)
       if (account instanceof Error) throw account
       return { type: 'SUPPORTER_ACCOUNT', account }
     }
@@ -32,6 +34,8 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
       if (entitlement instanceof Error) throw entitlement
       return { type: 'SUPPORTER_ENTITLEMENT', entitlement }
     }
+    if (message.type === 'SUPPORTER_BILLING' && worker.billing) return { type: 'SUPPORTER_BILLING', billing: worker.billing(message.action!) }
+    if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: worker.restore(message.action!, message.email) }
     return undefined
   })
   const create = vi.fn(async () => ({}))
@@ -69,6 +73,79 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
+describe('pay-first settings', () => {
+  it.each(['billing-review', 'restore-conflict'])('offers safe support for %s instead of another payment', async state => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: () => state === 'billing-review' ? { state: 'review' } : { state: 'idle' }, restore: () => state === 'restore-conflict' ? { state: 'conflict' } : { state: 'idle' } })
+    try {
+      const help = view.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')!
+      expect(help.textContent).toBe('Contact support')
+      expect(help.href).toBe('https://streampulse.stream/support')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('opens payment through the worker and waits without a second purchase action', async () => {
+    let account: SupporterAccountState = { state: 'signed_out' }
+    let membership: SupporterEntitlement = { state: 'not_linked' }
+    let billing: SupporterBillingState = { state: 'idle' }
+    const view = await mount({ account: () => account, entitlement: () => membership, billing: action => {
+      if (action === 'checkout') { account = linked; membership = ready('none', { installationAccountsEnabled: true }); billing = { state: 'waiting', attemptId: 'safe-local-attempt' } }
+      return billing
+    } })
+    try {
+      await view.click('Become a Supporter')
+      expect(view.state()).toBe('stripe-open')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.buttons()).toContain('Return to Stripe checkout')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      billing = { state: 'confirming' }
+      await view.change({ pulseSupporterRevision: { newValue: 'pending' } })
+      expect(view.state()).toBe('payment-pending')
+      expect(view.text()).toContain('Do not pay again')
+      expect(view.buttons()).not.toContain('Return to Stripe checkout')
+      membership = ready('active', { installationAccountsEnabled: true }); billing = { state: 'idle' }
+      await view.change({ pulseSupporterRevision: { newValue: 'active' } })
+      expect(view.state()).toBe('active')
+      expect(view.text()).toContain('You are a Supporter')
+    } finally { view.cleanup() }
+  })
+  it('does not render an offer when a worker wait survives a settings reload', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: () => ({ state: 'still_confirming' }) })
+    try {
+      expect(view.state()).toBe('still-confirming')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      expect(view.buttons()).toContain('Check payment status')
+    } finally { view.cleanup() }
+  })
+  it('uses bearer Portal management through the worker for installation-capable accounts', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
+    try {
+      await view.click('Manage membership')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it('shows one primary restore action and generic recovery copy without persisting email', async () => {
+    let restore: SupporterRestoreState = { state: 'idle' }
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), restore: action => action === 'start' ? (restore = { state: 'pending', expiresAt: new Date(Date.now() + 900_000).toISOString() }) : restore })
+    try {
+      await view.click('Restore my Supporter')
+      expect(view.state()).toBe('restore-email')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      const email = view.host.querySelector<HTMLInputElement>('#supporter-restore-email')!
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'payer@example.test'); email.dispatchEvent(new Event('input', { bubbles: true })) })
+      await view.click('Send restore link')
+      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' })
+      expect(view.state()).toBe('restore-pending')
+      expect(view.text()).toContain('If that email has a recoverable membership')
+      expect(view.text()).not.toContain('payer@example.test')
+      expect(view.write).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+})
+
 describe('one Supporter entry point', () => {
   it('starts linking for a purchase, opens the website with the prepared request, and shows one primary action', async () => {
     let account: SupporterAccountState = { state: 'signed_out' }
@@ -77,7 +154,7 @@ describe('one Supporter entry point', () => {
       expect(view.state()).toBe('unlinked')
       expect(view.text()).toContain('Become a Pulse Supporter')
       expect(view.text()).toContain('US$4.99 / month')
-      expect(view.text()).toContain('approve this extension on streampulse.stream')
+      expect(view.text()).toContain('Stripe asks for your email and payment details')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       await view.click('Become a Supporter')
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_ACCOUNT', action: 'start' })
@@ -97,7 +174,7 @@ describe('one Supporter entry point', () => {
     let account: SupporterAccountState = { state: 'signed_out' }
     const view = await mount({ account: action => action === 'start' ? (account = pendingLink()) : account, entitlement: () => ({ state: 'not_linked' }) })
     try {
-      await view.click('Already a Supporter? Connect')
+      await view.click('Use a StreamPulse website account')
       expect(view.create).toHaveBeenCalledExactlyOnceWith({ url: 'https://streampulse.stream/account/link-device#code=ABCDE12345' })
       expect(view.text()).toContain('This page updates by itself')
     } finally { view.cleanup() }

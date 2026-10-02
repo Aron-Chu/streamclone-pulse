@@ -37,7 +37,7 @@ import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracki
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
-import { resumePendingLink, supporterAccount, watchPendingLink } from './supporterAccountRuntime.ts'
+import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
   isDiagnosticsConsentEnabled,
@@ -954,6 +954,18 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           const account = await supporterAccount.run(message.action)
           if (account.state === 'pending') watchPendingLink()
           sendResponse({ type: 'SUPPORTER_ACCOUNT', account } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_BILLING': {
+          const billing = await supporterPayFirst.billing(message.action)
+          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          sendResponse({ type: 'SUPPORTER_BILLING', billing } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_RESTORE': {
+          const restore = await supporterPayFirst.restore(message.action, message.email)
+          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          sendResponse({ type: 'SUPPORTER_RESTORE', restore } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_FINISH_INTENT': {

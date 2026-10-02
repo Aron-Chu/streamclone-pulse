@@ -89,6 +89,10 @@ const hostStyles = `
   .pulse-journey-connection button:hover:not(:disabled) { border-color: ${theme.accentSoft}; color: ${theme.textPrimary}; }
   .pulse-journey-connection button:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .pulse-journey-restore { display: grid; gap: 8px; min-width: 0; }
+  .pulse-journey-restore label { font-size: 12px; color: ${theme.textSecondary}; }
+  .pulse-journey-restore input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.panel}; color: ${theme.textPrimary}; padding: 10px 12px; font: inherit; }
+  .pulse-journey-restore input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
   @media (max-width: 420px) {
     .pulse-journey-actions > * { flex: 1 1 100%; }
   }
@@ -147,8 +151,9 @@ const hostStyles = `
     padding-top: 10px;
     border-top: 1px solid ${theme.border};
   }
-  .pulse-supporter-policies a { color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-supporter-policies a { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-supporter-policies a:hover { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-supporter-policies a:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-supporter-chat-preview {
     display: grid; gap: 8px; min-height: 82px; padding: 14px; background: #18181b; border: 1px solid ${theme.border}; border-radius: 8px;
     transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;

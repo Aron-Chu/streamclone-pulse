@@ -35,7 +35,7 @@ describe('supporter settings', () => {
       expect(host.textContent).toContain('nothing is equipped, published, or injected into Twitch chat')
       // Status comes from the server. An unlinked install must say how it
       // would connect rather than implying the preview grants anything.
-      expect(host.textContent).toContain('approve this extension on streampulse.stream')
+      expect(host.textContent).toContain('Stripe asks for your email and payment details')
       expect(host.textContent).toContain('remain free')
       // The chat badge must never be presented as included.
       expect(host.textContent).toContain('Not included yet')
@@ -48,6 +48,8 @@ describe('supporter settings', () => {
       expect(sent).toEqual([
         { type: 'SUPPORTER_ACCOUNT', action: 'status' },
         { type: 'SUPPORTER_ENTITLEMENT' },
+        { type: 'SUPPORTER_BILLING', action: 'status' },
+        { type: 'SUPPORTER_RESTORE', action: 'status' },
         // Reading the optional pre-purchase finish choice; no `finish` field, so no write.
         { type: 'SUPPORTER_FINISH_INTENT' },
       ])
@@ -85,7 +87,7 @@ describe('supporter settings', () => {
       expect(host.querySelector('.pulse-supporter-chat-preview [data-supporter-badge="24m"]')).not.toBeNull()
       // The membership is active but grants no finish here, so the saved
       // pre-purchase choice is read once; nothing is written.
-      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_FINISH_INTENT' }])
+      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }, { type: 'SUPPORTER_RESTORE', action: 'status' }, { type: 'SUPPORTER_FINISH_INTENT' }])
     } finally {
       act(() => root.unmount())
       host.remove()

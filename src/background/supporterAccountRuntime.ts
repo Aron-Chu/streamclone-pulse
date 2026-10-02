@@ -1,6 +1,7 @@
 import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
+import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
 // Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
 // move this record to sync storage or send it through a UI message.
@@ -16,6 +17,8 @@ async function database(): Promise<IDBDatabase> {
 // be able to set it, so it lives beside the account record rather than in
 // storage that content scripts can write.
 const FINISH_INTENT_KEY = 'supporter-finish-intent'
+const INSTALLATION_KEY = 'supporter-installation-key'
+const JOURNEY_KEY = 'supporter-pay-first'
 async function access(write: boolean, value?: unknown, key: string = DEFAULT_BACKEND_URL): Promise<unknown> {
   const db = await database()
   try {
@@ -34,12 +37,16 @@ export const supporterAccount = new SupporterAccountCoordinator({
   projectionChanged: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
   readIntent: () => access(false, undefined, FINISH_INTENT_KEY),
   writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
+  readInstallationKey: () => access(false, undefined, INSTALLATION_KEY),
+  writeInstallationKey: async value => { await access(true, value, INSTALLATION_KEY) },
   // Store builds honour only live billing, so a sandbox purchase never unlocks
   // anything for real users; development builds may test against either.
   environments: typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? ['live'] : ['live', 'sandbox'],
   read: () => access(false),
   write: async value => { await access(true, value) },
-  request: async (path, body, bearer) => {
+  request: accountRequest,
+})
+export async function accountRequest(path: string, body?: Record<string, unknown>, bearer?: string): Promise<{ status: number; body: unknown }> {
     // Account credentials cannot follow a developer-selected backend address.
     if (await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -56,7 +63,14 @@ export const supporterAccount = new SupporterAccountCoordinator({
     let data: unknown = null
     try { data = text ? JSON.parse(text) : null } catch { /* HTTP status still conveys unavailability. */ }
     return { status: response.status, body: data }
-  },
+}
+export const supporterPayFirst = new SupporterPayFirstCoordinator({
+  account: supporterAccount,
+  request: accountRequest,
+  read: () => access(false, undefined, JOURNEY_KEY),
+  write: async value => { await access(true, value, JOURNEY_KEY) },
+  open: async url => { await chrome.tabs.create({ url }) },
+  changed: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
 })
 
 /**
@@ -72,7 +86,8 @@ export function watchPendingLink(): void {
   if (linkWatch !== undefined) return
   const tick = async () => {
     const state = await supporterAccount.run('status').catch(() => null)
-    if (state?.state !== 'pending') { linkWatch = undefined; return }
+    await supporterPayFirst.tick().catch(() => undefined)
+    if (state?.state !== 'pending' && !await supporterPayFirst.hasPending().catch(() => false)) { linkWatch = undefined; return }
     await chrome.runtime.getPlatformInfo().catch(() => undefined)
     linkWatch = setTimeout(() => { void tick() }, LINK_WATCH_MS)
   }
@@ -80,5 +95,5 @@ export function watchPendingLink(): void {
 }
 /** A worker that restarted mid-link resumes collecting it. */
 export async function resumePendingLink(): Promise<void> {
-  if (await supporterAccount.hasPendingLink().catch(() => false)) watchPendingLink()
+  if (await supporterAccount.hasPendingLink().catch(() => false) || await supporterPayFirst.hasPending().catch(() => false)) watchPendingLink()
 }

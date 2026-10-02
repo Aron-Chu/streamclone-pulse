@@ -1,4 +1,4 @@
-import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement } from './supporterAccount.ts'
+import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState } from './supporterAccount.ts'
 
 export type MessageType =
   | 'SUPPORTER_ACCOUNT'
@@ -6,6 +6,8 @@ export type MessageType =
   | 'SUPPORTER_COSMETICS'
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
+  | 'SUPPORTER_BILLING'
+  | 'SUPPORTER_RESTORE'
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
@@ -236,6 +238,8 @@ export interface DeleteBookmarkMessage {
 export type BackgroundRequest =
   | import('./myMoments.ts').MyMomentsRequest
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
+  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'checkout' | 'resume' | 'portal' }
+  | { type: 'SUPPORTER_RESTORE'; action: 'status' | 'start' | 'cancel'; email?: string }
   | { type: 'SUPPORTER_ENTITLEMENT' }
   | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
   | { type: 'SUPPORTER_APPEARANCE' }
@@ -728,6 +732,8 @@ export type BackgroundResponse =
     }
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
+  | { type: 'SUPPORTER_BILLING'; billing: SupporterBillingState }
+  | { type: 'SUPPORTER_RESTORE'; restore: SupporterRestoreState }
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
