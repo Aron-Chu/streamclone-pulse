@@ -466,7 +466,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     state = 'account-unavailable'
     title = 'Account service unavailable'
     body = <p className="pulse-supporter-detail">The account service could not be reached. Your free tools still work; check again in a moment.</p>
-    secondary = [<button key="check" type="button" disabled={accountBusy || checking} onClick={() => void checkAgain()}>Check again</button>]
+    primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || checking} onClick={() => void checkAgain()}>Check again</button>
   } else if (pending) {
     state = 'link-pending'
     steps = ['current', 'current', 'todo']
@@ -506,7 +506,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     state = 'connection-waiting'
     title = 'Connected, but the account service is unavailable'
     body = <p className="pulse-supporter-detail">This extension is still connected. Your free tools still work; check again in a moment.</p>
-    secondary = [<button key="check" type="button" disabled={accountBusy || checking} onClick={() => void checkAgain()}>Check again</button>]
+    primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || checking} onClick={() => void checkAgain()}>Check again</button>
   } else if (!entitlement || entitlement.state === 'not_linked') {
     state = 'membership-loading'
     title = 'Checking Supporter status…'
@@ -515,13 +515,14 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     state = 'membership-unknown'
     title = 'Supporter status unavailable'
     body = <p className="pulse-supporter-detail">{entitlement.state === 'unavailable' && 'reason' in entitlement ? UNAVAILABLE_COPY[entitlement.reason] : 'Could not reach StreamPulse to check Supporter status.'} Your free tools are unaffected.</p>
-    secondary = [<button key="check" type="button" disabled={checking} onClick={() => void checkAgain()}>{checking ? 'Checking…' : 'Check again'}</button>]
+    primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain()}>{checking ? 'Checking…' : 'Check again'}</button>
   } else if (status === 'none') {
     steps = ['done', 'done', 'current']
     if (!checkoutOpen) {
       state = 'checkout-closed'
       title = 'Supporter sign-ups are not open yet'
       body = <p>Your account is connected. The offer appears here when sign-ups open.</p>
+      primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readJourney)}>Check sign-up status</button>
       terms = true
     } else if (entitlement.installationAccountsEnabled === true) {
       state = 'offer'; title = 'Become a Pulse Supporter'
@@ -550,7 +551,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     state = 'active'
     title = intent === 'purchase' ? 'You are a Supporter' : 'Supporter active'
     body = <p>{intent === 'purchase' ? 'Thank you. Your Supporter finishes are unlocked below.' : 'Thank you for supporting Pulse.'}</p>
-    primary = <a className="pulse-journey-secondary-link" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">Manage membership</a>
+    primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer">Manage membership</a>
   } else if (status === 'grace') {
     state = 'grace'
     title = 'Payment needs attention'
@@ -561,7 +562,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     title = 'Supporter ended'
     body = <p className="pulse-supporter-detail">Saved Supporter preferences are kept but inactive. Your free settings and data are untouched.</p>
     terms = checkoutOpen
-    primary = <a className={checkoutOpen ? 'pulse-journey-primary' : 'pulse-journey-secondary-link'} data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer" onClick={checkoutOpen ? openBilling : undefined}>{checkoutOpen ? 'Rejoin Supporter' : 'Review membership'}</a>
+    primary = <a className="pulse-journey-primary" data-supporter-action="billing" href={billingHref} target="_blank" rel="noopener noreferrer" onClick={checkoutOpen ? openBilling : undefined}>{checkoutOpen ? 'Rejoin Supporter' : 'Review membership'}</a>
   } else {
     state = 'review'
     title = 'Membership needs review'
@@ -579,7 +580,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
       title = billing.state === 'confirming' ? 'Confirming your payment' : 'Still confirming your payment'
       body = <p>Your payment status is not confirmed yet. Do not pay again. {billing.state === 'still_confirming' ? 'Check status when you return, or contact support if it stays unresolved.' : 'Supporter turns on here after the server confirms it.'}</p>
       primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>
-    } else if (billing.state === 'closed') { state = 'checkout-closed'; title = 'Supporter sign-ups are not open yet'; body = <p>Your free tools still work. Return when paid sign-ups open.</p> }
+    } else if (billing.state === 'closed') { state = 'checkout-closed'; title = 'Supporter sign-ups are not open yet'; body = <p>Your free tools still work. Return when paid sign-ups open.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readJourney)}>Check sign-up status</button> }
     else if (billing.state === 'expired') { state = 'checkout-expired'; title = 'Checkout expired'; body = <p>The checkout session ended before completion. You can start a new checkout when ready.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Start checkout again</button> }
     else if (billing.state === 'review') { state = 'review'; title = 'Membership needs review'; body = <p>A payment needs checking. Do not pay again; contact support for help.</p>; primary = <a className="pulse-journey-primary" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a> }
     else if (billing.state === 'unavailable' || billing.state === 'error') { state = 'billing-unavailable'; title = 'Checkout is unavailable'; body = <p>The service could not prepare checkout. Your free tools still work.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { setBilling({ state: 'idle' }); void checkAgain() }}>Try again</button> }
@@ -592,10 +593,10 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   }
   if (entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled === true && (isSupporter || status === 'expired' || status === 'review')) {
     primary = status === 'expired' && checkoutOpen ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Rejoin Supporter</button>
-      : <button className={status === 'active' ? 'pulse-journey-secondary-link' : 'pulse-journey-primary'} type="button" disabled={payBusy} onClick={() => void manage()}>{status === 'grace' ? 'Update payment method' : 'Manage membership'}</button>
+      : <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void manage()}>{status === 'grace' ? 'Update payment method' : 'Manage membership'}</button>
   }
   if (entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled !== true) {
-    primary = null; secondary = [<button key="capability" type="button" disabled={checking} onClick={() => void checkAgain()}>Check again</button>]
+    primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain()}>Check again</button>; secondary = []
     terms = false
     body = <><p>Membership changes are temporarily unavailable for this extension’s account. Try again later.</p>{isSupporter ? <p>Your currently verified Supporter access still applies.</p> : null}</>
   }
@@ -604,6 +605,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     steps = null; terms = false; primary = null; secondary = []
     state = `restore-${restore.state}`
     title = restore.state === 'pending' ? 'Check your email' : restore.state === 'uncertain' ? 'Checking your restore request' : restore.state === 'expired' ? 'Restore link expired' : restore.state === 'conflict' || restore.state === 'ineligible' ? 'Restore is unavailable for this connection' : 'Restore could not be prepared'
+    if (restore.state === 'pending') primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkRestore()}>Check restore status</button>
     body = <>{restore.state === 'pending' ? <><p>If that email has a recoverable membership, we sent a link. Confirm only when the code on that page matches this extension:</p><p className="pulse-account-link-code">{restore.comparisonCode}</p><p>This extension updates by itself. Never confirm a restore you did not request.</p></> : <p>{restore.state === 'uncertain' ? 'The request may have reached the server and sent an email. Check this same request to collect its confirmation code; do not request another link yet.' : restore.state === 'conflict' || restore.state === 'ineligible' ? 'This connection cannot restore another membership. A website account uses its normal sign-in and extension link; a connection with payment history cannot be combined. Contact support if you are unsure.' : restore.state === 'expired' ? 'Request a new link when you are ready.' : restore.state === 'error' ? 'The server has no recoverable request. Enter your email again to start a new request.' : 'Try again when the account service is available.'}</p>}</>
     if (restore.state === 'expired' || restore.state === 'unavailable' || restore.state === 'error') primary = <button className="pulse-journey-primary" type="button" onClick={() => { setRestore({ state: 'idle' }); setRestoreForm(true) }}>Try restore again</button>
     if (restore.state === 'uncertain') primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkRestore()}>Check restore request</button>

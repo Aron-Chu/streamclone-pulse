@@ -109,6 +109,8 @@ describe('pay-first settings', () => {
     try {
       expect(view.host.querySelector('a[data-supporter-action="billing"]')).toBeNull()
       expect(view.text()).toContain('Membership changes are temporarily unavailable')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check again')
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })
@@ -176,9 +178,33 @@ describe('pay-first settings', () => {
   it('uses bearer Portal management through the worker for installation-capable accounts', async () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
     try {
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage membership')
       await view.click('Manage membership')
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it.each(['idle', 'closed'] as const)('checks closed sign-ups through a read, with one primary action: %s', async billing => {
+    let membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: false })
+    let currentBilling: SupporterBillingState = { state: billing }
+    const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => currentBilling })
+    try {
+      expect(view.state()).toBe('checkout-closed')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check sign-up status')
+      await view.click('Check sign-up status')
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
+      expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.write).not.toHaveBeenCalled()
+      expect(view.text()).toContain('Supporter sign-ups are not open yet')
+      membership = ready('none', { installationAccountsEnabled: true, checkoutEnabled: true })
+      currentBilling = { state: 'idle' }
+      await view.click('Check sign-up status')
+      expect(view.state()).toBe('offer')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
   })
   it('shows one primary restore action and generic recovery copy without persisting email', async () => {
@@ -193,8 +219,18 @@ describe('pay-first settings', () => {
       await view.click('Send restore link')
       expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'start', email: 'payer@example.test' })
       expect(view.state()).toBe('restore-pending')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check restore status')
       expect(view.text()).toContain('If that email has a recoverable membership')
       expect(view.text()).not.toContain('payer@example.test')
+      await view.click('Check restore status')
+      expect(view.sendMessage).toHaveBeenCalledWith({ type: 'SUPPORTER_RESTORE', action: 'check' })
+      expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(1)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
+      expect(view.state()).toBe('restore-pending')
+      expect(view.text()).toContain('A3B4C5')
+      expect(view.create).not.toHaveBeenCalled()
       expect(view.write).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })
@@ -344,7 +380,7 @@ describe('membership states', () => {
       expect(view.state()).toBe(state)
       expect(view.link()?.href ?? null).toBe(href)
       if (label) expect(view.link()?.textContent).toBe(label)
-      expect(view.host.querySelectorAll('.pulse-journey-primary').length).toBeLessThanOrEqual(1)
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       if (state === 'checkout-closed') {
         expect(view.text()).toContain('Supporter sign-ups are not open yet')
         expect(view.hrefs()).not.toContain('https://streampulse.stream/account/billing')
@@ -382,6 +418,8 @@ describe('membership states', () => {
       expect(view.text()).not.toContain('Become a Supporter')
       expect(view.text()).not.toContain('US$4.99 / month')
       expect(view.buttons()).toContain('Check again')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check again')
     } finally { view.cleanup() }
   })
 
@@ -419,6 +457,7 @@ describe('connection states', () => {
     try {
       expect(waiting.text()).toContain('still connected')
       expect(waiting.buttons()).toEqual(['Check again', 'Disconnect extension'])
+      expect(waiting.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
     } finally { waiting.cleanup(); vi.unstubAllGlobals() }
 
     const missing = await mount({ account: () => ({ state: 'unavailable', reason: 'not_deployed' }), entitlement: () => ({ state: 'unavailable', reason: 'not_deployed' }) })
@@ -433,6 +472,7 @@ describe('connection states', () => {
     try {
       expect(down.text()).toContain('could not be reached')
       expect(down.buttons()).toEqual(['Check again'])
+      expect(down.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
       expect(down.text()).not.toContain('Become a Supporter')
     } finally { down.cleanup() }
   })

@@ -5,6 +5,8 @@ import type { CDPSession, Worker } from '@playwright/test'
 const ACCOUNT = '11111111-1111-4111-8111-1111111a1b2c'
 const ATTEMPT = '33333333-3333-4333-8333-333333333333'
 const RESTORE = '44444444-4444-4444-8444-444444444444'
+const CLOSED_PENDING_MS = 35_000
+const STOPPED_POLL_PROOF_MS = 11_000 // More than two five-second worker ticks.
 const credential = (accountId = ACCOUNT, token = 'a'.repeat(64)) => ({ accountId, token, refreshToken: 'b'.repeat(64), deviceId: '22222222-2222-4222-8222-222222222222', expiresAt: new Date(Date.now() + 20 * 86_400_000).toISOString(), refreshExpiresAt: new Date(Date.now() + 80 * 86_400_000).toISOString() })
 function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: false, finish: 'glass' }, accountId = ACCOUNT) {
   const paid = status === 'active'
@@ -93,33 +95,57 @@ test('pay first opens only Stripe, delayed payment activates a chosen finish on 
   await cdp.detach()
 })
 
-test('worker confirms a payment with settings closed and no Twitch page', async ({ extension, prepare }) => {
+test('worker confirms a payment with settings closed and no Twitch page', async ({ extension, prepare }, info) => {
+  test.setTimeout(90_000)
   await prepare()
-  let paid = false, polls = 0
+  let paid = false, activeProjectedAt = 0
+  const pollTimes: number[] = [], pendingPollTimes: number[] = []
   await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
   await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => route.fulfill({ json: { attemptId: ATTEMPT, url: 'https://checkout.stripe.com/c/pay/cs_test_closed_fixture', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }))
-  await extension.context.route(`https://api.streampulse.stream/v1/billing/checkout/${ATTEMPT}`, route => { polls++; return route.fulfill({ json: { attemptId: ATTEMPT, state: paid ? 'active' : 'open' } }) })
-  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot(paid ? 'active' : 'none') }))
+  await extension.context.route(`https://api.streampulse.stream/v1/billing/checkout/${ATTEMPT}`, route => {
+    pollTimes.push(Date.now())
+    if (!paid) pendingPollTimes.push(Date.now())
+    return route.fulfill({ json: { attemptId: ATTEMPT, state: paid ? 'active' : 'open' } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => {
+    if (paid) activeProjectedAt = Date.now()
+    return route.fulfill({ json: snapshot(paid ? 'active' : 'none') })
+  })
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
   await expect(page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+  // Keep only a blank stand-in: closing Chromium's final window also kills its
+  // worker. The resolver-blocked Stripe tab is not a settings or Twitch page.
+  const standIn = await extension.context.newPage()
+  await standIn.goto('about:blank')
+  for (const other of extension.context.pages()) if (other !== page && other !== standIn) await other.close()
   await page.close()
+  const closedAt = Date.now()
+  expect(extension.context.pages().map(open => open.url())).toEqual(['about:blank'])
+  // These reads inspect only Node-side route callbacks. No worker evaluation,
+  // extension page, Chrome message or browser interaction can sustain the wait.
+  await expect.poll(() => pendingPollTimes.some(at => at - closedAt >= CLOSED_PENDING_MS), { timeout: 45_000 }).toBe(true)
+  const completedAt = Date.now()
   paid = true
-  await expect.poll(() => polls, { timeout: 15_000 }).toBeGreaterThan(0)
-  await expect.poll(() => extension.serviceWorker.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
-    try { return await new Promise<boolean>((resolve, reject) => { const r = db.transaction('account').objectStore('account').get('supporter-pay-first'); r.onsuccess = () => resolve(!r.result?.billing); r.onerror = reject }) } finally { db.close() }
-  }), { timeout: 15_000 }).toBe(true)
+  await expect.poll(() => activeProjectedAt >= completedAt, { timeout: 15_000 }).toBe(true)
+  const completedPollCount = pollTimes.length
+  await new Promise(resolve => setTimeout(resolve, STOPPED_POLL_PROOF_MS))
+  expect(pollTimes).toHaveLength(completedPollCount)
+  const reopenedAt = Date.now()
+  await info.attach('settings-closed-payment-timing', { body: JSON.stringify({ closedAt, pendingPollTimes, completedAt, activeProjectedAt, pollTimes, reopenedAt, stoppedPollProofMs: STOPPED_POLL_PROOF_MS }), contentType: 'application/json' })
   const reopened = await extension.context.newPage()
   await reopened.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await expect(reopened.getByText('Supporter active', { exact: true })).toBeVisible()
+  expect(pollTimes).toHaveLength(completedPollCount)
 })
 
-test('a fresh profile restores privately after email approval even when settings closes', async ({ extension, prepare }) => {
+test('a fresh profile restores privately after email approval even when settings closes', async ({ extension, prepare }, info) => {
+  test.setTimeout(90_000)
   await prepare()
   const recoveredAccount = '55555555-5555-4555-8555-555555555555'
-  let approved = false, polls = 0
+  let approved = false, approvalCollectedAt = 0
+  const pollTimes: number[] = [], pendingPollTimes: number[] = []
   const posts: unknown[] = []
   await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
   await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
@@ -128,7 +154,9 @@ test('a fresh profile restores privately after email approval even when settings
     return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
   })
   await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => {
-    polls++
+    pollTimes.push(Date.now())
+    if (approved) approvalCollectedAt = Date.now()
+    else pendingPollTimes.push(Date.now())
     expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64) })
     return route.fulfill({ json: approved ? { state: 'approved', ...credential(recoveredAccount, 'd'.repeat(64)) } : { state: 'pending' } })
   })
@@ -143,19 +171,48 @@ test('a fresh profile restores privately after email approval even when settings
   expect(await page.locator('body').innerText()).not.toMatch(/cccc|dddd|payer@example/)
   const safe = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'status' }))
   expect(JSON.stringify(safe)).not.toMatch(/cccc|restoreId|token/)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const primary = page.locator('[data-journey-state="restore-pending"] .pulse-journey-primary')
+  await expect(primary).toHaveCount(1)
+  await expect(primary).toHaveText('Check restore status')
+  for (const width of [320, 360, 380]) {
+    await page.setViewportSize({ width, height: 900 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const target = await primary.boundingBox()
+    expect(target?.height).toBeGreaterThanOrEqual(44)
+    await page.screenshot({ path: info.outputPath(`restore-pending-${width}-reduced-motion.png`), fullPage: true, animations: 'disabled' })
+  }
+  let keyboardReached = false
+  for (let index = 0; index < 60 && !keyboardReached; index++) {
+    await page.keyboard.press('Tab')
+    keyboardReached = await primary.evaluate(button => document.activeElement === button)
+  }
+  expect(keyboardReached).toBe(true)
+  expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true)
   // Email approval happens in another tab. Keep a blank fixture stand-in so
   // closing settings does not close Chromium's final window and stop its worker.
   const emailTab = await extension.context.newPage()
   await emailTab.goto('about:blank')
   await page.close()
+  const closedAt = Date.now()
+  expect(extension.context.pages().map(open => open.url())).toEqual(['about:blank'])
+  // Observe only the mock server while the request is pending beyond MV3 idle.
+  await expect.poll(() => pendingPollTimes.some(at => at - closedAt >= CLOSED_PENDING_MS), { timeout: 45_000 }).toBe(true)
+  const approvedAt = Date.now()
   approved = true
-  await expect.poll(() => polls, { timeout: 15_000 }).toBeGreaterThan(0)
+  await expect.poll(() => approvalCollectedAt >= approvedAt, { timeout: 15_000 }).toBe(true)
+  const completedPollCount = pollTimes.length
+  await new Promise(resolve => setTimeout(resolve, STOPPED_POLL_PROOF_MS))
+  expect(pollTimes).toHaveLength(completedPollCount)
+  const reopenedAt = Date.now()
+  await info.attach('settings-closed-restore-timing', { body: JSON.stringify({ closedAt, pendingPollTimes, approvedAt, approvalCollectedAt, pollTimes, reopenedAt, stoppedPollProofMs: STOPPED_POLL_PROOF_MS, keyboardReached, widths: [320, 360, 380], reducedMotion: true }), contentType: 'application/json' })
   const reopened = await extension.context.newPage()
   await reopened.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await expect(reopened.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 15_000 })
   const state = await reopened.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
   expect(state.account.accountId).toBe(recoveredAccount)
   expect(JSON.stringify(state)).not.toMatch(/cccc|dddd|token/)
+  expect(pollTimes).toHaveLength(completedPollCount)
 })
 
 for (const lost of ['revoked', 'uncertain-refresh'] as const) test(`explicit Restore replaces a ${lost} bootstrap identity instead of replaying a claimed key`, async ({ extension, prepare }) => {
