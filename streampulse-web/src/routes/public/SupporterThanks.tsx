@@ -12,6 +12,6 @@ export default function SupporterThanks() {
     <p className="pulse-account-intro">{cancelled ? 'You returned from Checkout.' : 'Checkout returned.'} Your extension will check its status and update by itself.</p>
     <p>Open StreamPulse settings to see your membership. You can close this tab.</p>
     <p>This page does not confirm a payment or grant Supporter access.</p>
-    <footer className="pulse-account-footer"><p>Your free Pulse tools stay available.</p><nav aria-label="Checkout help"><Link to="/support">Help &amp; support</Link><Link to="/refunds">Cancellation &amp; refunds</Link></nav></footer>
+    <footer className="pulse-account-footer"><p>Your free Pulse tools stay available.</p><nav aria-label="Checkout help"><Link className="pulse-account-button pulse-account-primary" to="/support">Help &amp; support</Link><Link to="/refunds">Cancellation &amp; refunds</Link></nav></footer>
   </section></PublicLayout>
 }

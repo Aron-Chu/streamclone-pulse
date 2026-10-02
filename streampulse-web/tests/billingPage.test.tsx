@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { Link, MemoryRouter, useLocation } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import BillingPage, { CONFIRM_DELAYS_S, stripeDestination } from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
@@ -108,6 +108,34 @@ describe('billing membership copy', () => {
 })
 
 describe('billing lifecycle view', () => {
+  it.each([false, undefined])('makes read-only refresh the sole primary when checkout availability is %s', async checkoutEnabled => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ schemaVersion: 1, status: 'none', ...(checkoutEnabled === undefined ? {} : { checkoutEnabled }) })))
+    vi.stubGlobal('fetch', fetch)
+    render(<MemoryRouter><BillingPage /></MemoryRouter>)
+    const refresh = await screen.findByRole('button', { name: 'Refresh status' })
+    expect(refresh.classList.contains('pulse-account-primary')).toBe(true)
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+    fireEvent.click(refresh)
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    expect(fetch.mock.calls.every(([path, options]) => path === '/v1/billing/supporter' && options.method === 'GET' && options.credentials === 'same-origin')).toBe(true)
+  })
+  it('keeps a cancelled checkout closed with only a read-only primary action', async () => {
+    const fetch = vi.fn((path: string, _options?: RequestInit) => Promise.resolve(path.includes('/checkout/') ? new Response(JSON.stringify({ state: 'open' })) : membership('none')))
+    vi.stubGlobal('fetch', fetch)
+    render(<MemoryRouter initialEntries={[`${returnPath}&cancelled=1`]}><BillingPage /></MemoryRouter>)
+    await screen.findByRole('heading', { name: 'Checkout cancelled' })
+    expect(screen.getByRole('button', { name: 'Refresh status' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull()
+    expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
+  })
+  it('makes existing membership management the sole primary on a confirmed return', async () => {
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve(path.includes('/checkout/') ? new Response(JSON.stringify({ state: 'active' })) : membership('active'))))
+    render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>)
+    await screen.findByRole('heading', { name: 'You’re a Supporter' })
+    expect(screen.getByRole('button', { name: 'Manage membership' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+  })
   it('never trusts a success query parameter as payment', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(membership('pending')))
     render(<MemoryRouter initialEntries={['/account/billing/return?success=true']}><BillingPage /></MemoryRouter>)
@@ -221,6 +249,8 @@ describe('billing lifecycle view', () => {
     expect((await screen.findByRole('link', { name: 'Sign in again' })).getAttribute('href')).toBe(accountBillingSignInHref('/account/billing'))
     expect(screen.getByRole('alert').textContent).toMatch(/sign-in from the last 10 minutes\. Nothing was charged/)
     expect(screen.getByRole('heading', { name: status === 'active' ? 'Supporter active' : 'Become a Pulse Supporter' })).toBeTruthy()
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name })).toBeNull()
   })
 
   it.each(['expired', 'missing'])('keeps current membership manageable for an %s checkout attempt', async state => {
@@ -351,6 +381,318 @@ describe('automatic payment confirmation', () => {
   }
   const reads = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls.filter(([path]) => path === '/v1/billing/supporter').length
   afterEach(() => { vi.useRealTimers() })
+
+  it('offers one safe primary status check during initial confirmation', async () => {
+    vi.useFakeTimers()
+    serve(() => new Response(JSON.stringify({ state: 'open' })), () => membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    const check = screen.getByRole('button', { name: 'Check again' })
+    expect(check.classList.contains('pulse-account-primary')).toBe(true)
+    expect(document.querySelectorAll('.pulse-membership .pulse-account-primary')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull()
+  })
+
+  it('honours an absolute Retry-After deadline for manual, wake and automatic reads', async () => {
+    vi.useFakeTimers()
+    let limited = false
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'open' })), () => limited ? new Response('{}', { status: 429, headers: { 'Retry-After': '90' } }) : membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    limited = true
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    const limitedCount = fetch.mock.calls.length
+    const check = screen.getByRole('button', { name: /Check again|Checking/ })
+    expect(check.hasAttribute('disabled')).toBe(true)
+    await act(async () => { fireEvent.click(check); window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(89_999) })
+    expect(fetch.mock.calls.length).toBe(limitedCount)
+    limited = false
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(reads(fetch)).toBe(3)
+    expect(screen.getByRole('button', { name: 'Check again' }).hasAttribute('disabled')).toBe(false)
+    expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
+  })
+
+  it('does not restart automatic confirmation when checking again after its bound', async () => {
+    vi.useFakeTimers()
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    for (const delay of CONFIRM_DELAYS_S) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    const bounded = reads(fetch)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
+    expect(reads(fetch)).toBe(bounded + 1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
+    expect(reads(fetch)).toBe(bounded + 1)
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+  })
+
+  it('counts manual status checks within the existing automatic confirmation budget', async () => {
+    vi.useFakeTimers()
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    for (let index = 0; index < CONFIRM_DELAYS_S.length; index++) {
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
+    expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+  })
+
+  it('never overlaps a manual status check with the automatic timer', async () => {
+    vi.useFakeTimers()
+    let resolve!: (response: Response) => void
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    fetch.mockImplementationOnce(() => new Promise<Response>(done => { resolve = done }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
+    const during = fetch.mock.calls.length
+    expect(screen.getByRole('button', { name: 'Checking…' }).hasAttribute('disabled')).toBe(true)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Checking…' })); await vi.advanceTimersByTimeAsync(2_000) })
+    expect(fetch.mock.calls.length).toBe(during)
+    await act(async () => { resolve(new Response(JSON.stringify({ state: 'pending' }))) })
+    expect(fetch.mock.calls.length).toBe(during + 1)
+    expect(screen.getByRole('button', { name: 'Check again' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('ends the same automatic budget when wake reads consume its last slots', async () => {
+    vi.useFakeTimers()
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    // At this point the next automatic read is still thirty seconds away.
+    for (const delay of CONFIRM_DELAYS_S.slice(0, 6)) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
+    for (let index = 0; index < 3; index++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
+    }
+    expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
+    expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
+    expect(reads(fetch)).toBe(2 + CONFIRM_DELAYS_S.length)
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
+    expect(reads(fetch)).toBe(2 + CONFIRM_DELAYS_S.length)
+  })
+
+  it('guards the exhausted budget before React commits its slow projection', async () => {
+    vi.useFakeTimers()
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('none', true))
+    await act(async () => { render(<MemoryRouter initialEntries={[returnPath]}><BillingPage /></MemoryRouter>) })
+    for (const delay of CONFIRM_DELAYS_S.slice(0, -1)) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
+    let awakeAt = performance.now()
+    vi.spyOn(performance, 'now').mockImplementation(() => awakeAt)
+    await act(async () => {
+      awakeAt += 5_000; window.dispatchEvent(new Event('focus'))
+      for (let index = 0; index < 20; index++) await Promise.resolve()
+      expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
+      // A second same-turn wake notification arrives after the read settles,
+      // while React is still batching the slow-state transition from this turn.
+      awakeAt += 5_000; window.dispatchEvent(new Event('focus'))
+      for (let index = 0; index < 20; index++) await Promise.resolve()
+      expect(reads(fetch)).toBe(1 + CONFIRM_DELAYS_S.length)
+    })
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check again' })) })
+    expect(reads(fetch)).toBe(2 + CONFIRM_DELAYS_S.length)
+  })
+
+  it.each([
+    ['none', 'Continue to Stripe checkout', '/account/billing'],
+    ['active', 'Manage membership', '/account/billing'],
+    ['pending', 'Manage membership', returnPath],
+  ])('keeps held %s billing requests independent from ordinary wake and timer reads', async (status, label, path) => {
+    vi.useFakeTimers()
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    const fetch = vi.fn((url: string, options?: RequestInit) => options?.method === 'POST' ? held : Promise.resolve(url.includes('/checkout/') ? new Response(JSON.stringify({ state: 'pending' })) : membership(status, status === 'none')))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter initialEntries={[path]}><BillingPage /></MemoryRouter>) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: label })) })
+    const during = fetch.mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
+    expect(fetch.mock.calls.length).toBe(during)
+    await act(async () => { resolve(new Response('{}', { status: 503 })) })
+    expect(screen.getByText('Billing could not open. Check your connection and try again.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: label }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('invalidates a held billing mutation on a session change and ignores its late response', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    let changed = false
+    const fetch = vi.fn((_url: string, options?: RequestInit) => options?.method === 'POST' ? held : Promise.resolve(membership(changed ? 'active' : 'none', !changed, { accountId: changed ? 'account-b' : 'account-a' })))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter initialEntries={['/account/billing']}><BillingPage /></MemoryRouter>) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' })) })
+    changed = true
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: String(Date.now()) })) })
+    expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    await act(async () => { resolve(new Response('{}', { status: 401 })) })
+    expect(screen.queryByRole('link', { name: 'Sign in again' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Manage membership' }).hasAttribute('disabled')).toBe(false)
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  })
+
+  it.each(['membership', 'attempt'])('queues one fresh read without overlap when a session changes during a held %s GET', async stage => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    const fetch = stage === 'attempt'
+      ? vi.fn().mockReturnValueOnce(held).mockResolvedValueOnce(new Response('{}', { status: 401 }))
+      : vi.fn().mockResolvedValueOnce(membership('active', false, { accountId: 'account-a' })).mockReturnValueOnce(held).mockResolvedValueOnce(new Response('{}', { status: 401 }))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter initialEntries={[stage === 'attempt' ? returnPath : '/account/billing']}><BillingPage /></MemoryRouter>) })
+    if (stage === 'membership') {
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
+    }
+    if (stage === 'membership') expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    const during = stage === 'attempt' ? 1 : 2
+    expect(fetch).toHaveBeenCalledTimes(during)
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null }))
+      window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null }))
+    })
+    expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
+    expect(fetch).toHaveBeenCalledTimes(during)
+    await act(async () => { resolve(stage === 'attempt' ? new Response(JSON.stringify({ state: 'pending' })) : membership('active', false, { accountId: 'account-a' })) })
+    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+    expect(fetch).toHaveBeenCalledTimes(during + 1)
+    expect(fetch.mock.calls.at(-1)?.[0]).toBe(stage === 'attempt' ? attemptPath : '/v1/billing/supporter')
+    expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage membership' })).toBeNull()
+    expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
+  })
+
+  it('keeps a queued session refresh behind the existing absolute Retry-After deadline', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '90' } }))
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter><BillingPage /></MemoryRouter>) })
+    expect(screen.getByRole('heading', { name: 'Billing status is unavailable right now' })).toBeTruthy()
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(89_999) })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('heading', { name: 'Sign in to see your membership' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_001) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+  })
+
+  it('honours an invalidated read’s Retry-After before its queued session refresh', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    const fetch = vi.fn().mockResolvedValueOnce(membership('active')).mockReturnValueOnce(held).mockResolvedValueOnce(new Response('{}', { status: 401 }))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter><BillingPage /></MemoryRouter>) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null })) })
+    await act(async () => { resolve(new Response('{}', { status: 429, headers: { 'Retry-After': '2' } })) })
+    expect(screen.queryByRole('heading', { name: 'Supporter active' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_999) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_001) })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+  })
+
+  it('cancels a queued session refresh after leaving the billing page', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    const fetch = vi.fn().mockResolvedValueOnce(membership('active')).mockReturnValueOnce(held)
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter><Link to="/elsewhere">Leave billing</Link><Routes><Route path="/" element={<BillingPage />} /><Route path="/elsewhere" element={<h1>Elsewhere</h1>} /></Routes></MemoryRouter>) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null })) })
+    await act(async () => { fireEvent.click(screen.getByRole('link', { name: 'Leave billing' })) })
+    await act(async () => { resolve(membership('active')); await vi.advanceTimersByTimeAsync(600_000) })
+    expect(screen.getByRole('heading', { name: 'Elsewhere' })).toBeTruthy()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears the prior account’s arrival approval note as soon as its session changes', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    const fetch = vi.fn().mockResolvedValueOnce(membership('active')).mockReturnValueOnce(held).mockResolvedValueOnce(new Response('{}', { status: 401 }))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter initialEntries={[{ pathname: '/account/billing', state: { connected: true } }]}><BillingPage /></MemoryRouter>) })
+    expect(screen.getByTestId('billing-connected-note')).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); window.dispatchEvent(new Event('focus')) })
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: null })) })
+    expect(screen.queryByTestId('billing-connected-note')).toBeNull()
+    await act(async () => { resolve(membership('active')) })
+    expect(screen.getByRole('heading', { name: 'Sign in to see your membership' })).toBeTruthy()
+  })
+
+  it('keeps the same account confirmation budget after checking a session hint', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('pending', false, { accountId: 'account-a' }))
+    await act(async () => { render(<MemoryRouter><BillingPage /></MemoryRouter>) })
+    for (const delay of CONFIRM_DELAYS_S) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: String(Date.now()) })) })
+    expect(reads(fetch)).toBe(2 + CONFIRM_DELAYS_S.length)
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
+    expect(reads(fetch)).toBe(2 + CONFIRM_DELAYS_S.length)
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+  })
+
+  it('starts a new account confirmation budget only after its different identity is read', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('BroadcastChannel', undefined)
+    let accountId = 'account-a'
+    const fetch = serve(() => new Response(JSON.stringify({ state: 'pending' })), () => membership('pending', false, { accountId }))
+    await act(async () => { render(<MemoryRouter><BillingPage /></MemoryRouter>) })
+    for (const delay of CONFIRM_DELAYS_S) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
+    accountId = 'account-b'
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: 'pulse.account.signedInAt.v1', newValue: String(Date.now()) })) })
+    expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    for (const delay of CONFIRM_DELAYS_S) await act(async () => { await vi.advanceTimersByTimeAsync(delay * 1000) })
+    expect(reads(fetch)).toBe(2 + 2 * CONFIRM_DELAYS_S.length)
+    expect(screen.getByRole('heading', { name: 'Still confirming your payment' })).toBeTruthy()
+  })
+
+  it('ignores an old route cooldown after the new route has successfully read membership', async () => {
+    vi.useFakeTimers()
+    let resolve!: (response: Response) => void
+    const held = new Promise<Response>(done => { resolve = done })
+    const fetch = vi.fn().mockReturnValueOnce(held).mockImplementation(() => Promise.resolve(membership('active')))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { renderNavigableBilling(returnPath) })
+    await act(async () => { fireEvent.click(screen.getByRole('link', { name: 'Current billing' })) })
+    expect(screen.getByRole('heading', { name: 'Supporter active' })).toBeTruthy()
+    await act(async () => { resolve(new Response('{}', { status: 429, headers: { 'Retry-After': '90' } })) })
+    expect(screen.queryByText('Wait 90 seconds before checking again.')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Refresh status' }).hasAttribute('disabled')).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([undefined, null])('retains a pending payment when a refresh cannot identify a different account: %s', async accountId => {
+    vi.useFakeTimers()
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(membership('none', true, { accountId: 'account-a' }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'checkout_pending', attemptId: '12345678-1234-4234-8234-123456789abc' }), { status: 409 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ state: 'pending' })))
+      .mockResolvedValueOnce(membership('none', true, { accountId }))
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => { render(<MemoryRouter><BillingPage /></MemoryRouter>) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue to Stripe checkout' })) })
+    expect(screen.getByRole('heading', { name: 'Confirming your payment' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Continue to Stripe checkout' })).toBeNull()
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  })
 
   it('confirms a delayed webhook on a bounded backoff without blanking the card', async () => {
     vi.useFakeTimers()

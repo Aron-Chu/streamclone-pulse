@@ -53,7 +53,7 @@ export default function BillingPage() {
   const navigate = useNavigate()
   // The approval note belongs to the moment of arrival, not to reloads or
   // back navigation, so it is read once and removed from history.
-  const [connected] = useState(() => (location.state as { connected?: unknown } | null)?.connected === true)
+  const [connected, setConnected] = useState(() => (location.state as { connected?: unknown } | null)?.connected === true)
   useEffect(() => {
     if ((location.state as { connected?: unknown } | null)?.connected === true) navigate(location.pathname + location.search, { replace: true, state: null })
   }, [location, navigate])
@@ -66,27 +66,43 @@ export default function BillingPage() {
   const [watch, setWatch] = useState<Watch>('idle')
   const [busy, setBusy] = useState(false)
   const [opening, setOpening] = useState(false)
+  const openingRef = useRef(false)
   const [notice, setNotice] = useState('')
   const [reauth, setReauth] = useState(false)
   const [pendingAttempt, setPendingAttempt] = useState<string | null>(null)
   const requestID = useRef(0)
   const inFlight = useRef(false)
+  const readOwner = useRef(0)
+  const pendingSessionRead = useRef(false)
+  const sessionRound = useRef<{ accountId: unknown; watch: Watch; step: number; hadSnapshot: boolean } | null>(null)
   const lastRead = useRef(Number.NEGATIVE_INFINITY)
   const accountID = useRef<unknown>(undefined)
   const snapshotRef = useRef<Snapshot | null>(null)
-  const retryAfter = useRef(0)
+  const retryUntil = useRef(0)
+  const [retrySeconds, setRetrySeconds] = useState(0)
+  const step = useRef(0)
+  const watchRef = useRef(watch)
+  watchRef.current = watch
   const activeAttempt = attempt ?? pendingAttempt
   const returnPath = accountBillingReturnPath(location.pathname + location.search) ?? '/account/billing'
   const signInHref = accountBillingSignInHref(returnPath)
 
-  // One read of the attempt (if any) and the membership. A quiet read keeps
-  // the last confirmed snapshot on screen instead of blanking the card.
-  const read = useCallback(async (quiet: boolean): Promise<void> => {
-    if (inFlight.current) return
+  // One read of the attempt (if any) and membership, keeping the last confirmed
+  // snapshot visible instead of blanking the card during a refresh.
+  const read = useCallback(async (): Promise<void> => {
+    if (openingRef.current || inFlight.current || Date.now() < retryUntil.current) return
+    if (watchRef.current === 'confirming' && step.current >= CONFIRM_DELAYS_S.length) {
+      // React may still be batching the transition after the last read settled.
+      // A second same-turn notification must not spend an extra automatic slot.
+      setWatch('slow'); return
+    }
     inFlight.current = true
+    // Every deliberate read during confirmation uses the existing round's budget.
+    if (watchRef.current === 'confirming') step.current++
     const request = ++requestID.current
+    readOwner.current = request
     lastRead.current = performance.now()
-    if (!quiet) setBusy(true)
+    setBusy(true)
     try {
       let nextAttempt = ''
       let missing = false
@@ -104,7 +120,21 @@ export default function BillingPage() {
       if (request !== requestID.current) return
       if (result.schemaVersion !== 1 || !STATUSES.includes(String(result.status))) throw new Error('Invalid membership')
       // A different account in this browser makes the earlier attempt foreign.
-      if (accountID.current !== undefined && result.accountId !== accountID.current) setPendingAttempt(null)
+      if (typeof accountID.current === 'string' && accountID.current && typeof result.accountId === 'string' && result.accountId && result.accountId !== accountID.current) setPendingAttempt(null)
+      if (sessionRound.current) {
+        const previous = sessionRound.current
+        sessionRound.current = null
+        const changedIdentity = typeof previous.accountId === 'string' && previous.accountId && typeof result.accountId === 'string' && result.accountId && previous.accountId !== result.accountId
+        if (previous.hadSnapshot && !changedIdentity) {
+          // A fresh session read for this same account must not restart polling.
+          step.current = previous.step + (previous.watch === 'confirming' ? 1 : 0)
+          const resumed = previous.watch === 'confirming' && step.current >= CONFIRM_DELAYS_S.length ? 'slow' : previous.watch
+          watchRef.current = resumed; setWatch(resumed)
+        } else {
+          step.current = 0; watchRef.current = 'idle'; setWatch('idle')
+          if (changedIdentity) setPendingAttempt(null)
+        }
+      }
       accountID.current = result.accountId
       snapshotRef.current = result as Snapshot
       setSnapshot(result as Snapshot)
@@ -112,37 +142,63 @@ export default function BillingPage() {
       setAttemptMissing(missing)
       setLoad('ready')
       setStale(null)
+      retryUntil.current = 0; setRetrySeconds(0)
     } catch (error) {
+      // Even an invalidated request can report a cooldown for this endpoint.
+      if (readOwner.current === request && error instanceof AccountError && error.retryAfterSeconds) {
+        retryUntil.current = Math.max(retryUntil.current, Date.now() + error.retryAfterSeconds * 1000)
+        setRetrySeconds(Math.ceil((retryUntil.current - Date.now()) / 1000))
+      }
       if (request !== requestID.current) return
       if (error instanceof AccountError && error.status === 401) {
         snapshotRef.current = null
         setSnapshot(null); setLoad('signed_out'); setWatch('idle'); setStale(null)
+        setPendingAttempt(null); sessionRound.current = null; step.current = 0; watchRef.current = 'idle'
         accountID.current = undefined
         return
       }
       // Keep the last confirmed membership visible and say it may be out of date.
       if (snapshotRef.current) setStale(Date.now())
       else setLoad('error')
-      if (error instanceof AccountError && error.retryAfterSeconds) retryAfter.current = error.retryAfterSeconds
     } finally {
-      if (request === requestID.current) { inFlight.current = false; setBusy(false) }
+      if (readOwner.current === request) {
+        readOwner.current = 0; inFlight.current = false; setBusy(false)
+        // Wake and session reads can consume the final slot too. Stop the
+        // armed automatic timer as soon as any read finishes that budget.
+        if (request === requestID.current && watchRef.current === 'confirming' && step.current >= CONFIRM_DELAYS_S.length) setWatch('slow')
+        drainSessionRead()
+      }
     }
   }, [activeAttempt])
 
   const readRef = useRef(read)
   readRef.current = read
 
+  function drainSessionRead() {
+    if (!pendingSessionRead.current || inFlight.current || openingRef.current || Date.now() < retryUntil.current) return
+    pendingSessionRead.current = false
+    void readRef.current()
+  }
+
+  useEffect(() => {
+    if (retrySeconds <= 0) { drainSessionRead(); return }
+    const timer = window.setTimeout(() => setRetrySeconds(Math.max(0, Math.ceil((retryUntil.current - Date.now()) / 1000))), 1000)
+    return () => window.clearTimeout(timer)
+  }, [retrySeconds])
+
   // Fresh state for each billing route, then the first read.
   useEffect(() => {
     snapshotRef.current = null
     setSnapshot(null); setLoad('loading'); setStale(null); setAttemptState(''); setAttemptMissing(false); setNotice(''); setReauth(false); setPendingAttempt(null)
     accountID.current = undefined
-    inFlight.current = false
-    void readRef.current(false)
-    return () => { requestID.current++; inFlight.current = false }
+    readOwner.current = 0; inFlight.current = false; pendingSessionRead.current = false; sessionRound.current = null
+    openingRef.current = false; setOpening(false)
+    retryUntil.current = 0; setRetrySeconds(0); step.current = 0
+    void readRef.current()
+    return () => { requestID.current++; readOwner.current = 0; inFlight.current = false; pendingSessionRead.current = false; sessionRound.current = null }
   }, [location.pathname, location.search])
   // A checkout found pending mid-page is read at once under its own attempt.
-  useEffect(() => { if (pendingAttempt) void readRef.current(true) }, [pendingAttempt])
+  useEffect(() => { if (pendingAttempt) void readRef.current() }, [pendingAttempt])
 
   const status = snapshot?.status ?? ''
   const confirmed = status === 'active' || status === 'grace'
@@ -161,18 +217,15 @@ export default function BillingPage() {
   }, [uncertain])
 
   // Bounded confirmation reads with backoff; paused while hidden.
-  const step = useRef(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (watch !== 'confirming') { step.current = 0; return }
+    if (watch !== 'confirming') { if (watch === 'idle') step.current = 0; return }
     if (step.current >= CONFIRM_DELAYS_S.length) { setWatch('slow'); return }
     // A rate-limited read waits as long as the server asked before the next.
-    const delay = Math.max(CONFIRM_DELAYS_S[step.current], retryAfter.current) * 1000
-    retryAfter.current = 0
+    const delay = Math.max(CONFIRM_DELAYS_S[step.current] * 1000, retryUntil.current - Date.now())
     const timer = window.setTimeout(() => {
       if (document.hidden) { setTick(value => value + 1); return }
-      step.current++
-      void readRef.current(true).finally(() => setTick(value => value + 1))
+      void readRef.current().finally(() => setTick(value => value + 1))
     }, delay)
     return () => window.clearTimeout(timer)
   }, [watch, tick])
@@ -181,9 +234,21 @@ export default function BillingPage() {
   useEffect(() => {
     const wake = () => {
       if (document.hidden || load === 'loading') return
-      if (performance.now() - lastRead.current >= BILLING_WAKE_DEBOUNCE_MS) void readRef.current(true)
+      if (performance.now() - lastRead.current >= BILLING_WAKE_DEBOUNCE_MS) void readRef.current()
     }
-    const unsubscribe = onAccountSessionSignal(() => { void readRef.current(false) })
+    const unsubscribe = onAccountSessionSignal(() => {
+      // A session hint makes the previous identity's projection untrusted now.
+      // Keep a held GET physically owned until it settles, then read once for
+      // the current session; late results cannot render or open Stripe.
+      sessionRound.current ??= { accountId: accountID.current, watch: watchRef.current, step: step.current, hadSnapshot: snapshotRef.current !== null }
+      requestID.current++; openingRef.current = false; setOpening(false)
+      snapshotRef.current = null
+      setSnapshot(null); setLoad('loading'); setStale(null); setConnected(false)
+      setAttemptState(''); setAttemptMissing(false); setNotice(''); setReauth(false)
+      watchRef.current = 'idle'; setWatch('idle')
+      pendingSessionRead.current = true
+      drainSessionRead()
+    })
     window.addEventListener('focus', wake)
     document.addEventListener('visibilitychange', wake)
     return () => {
@@ -194,16 +259,13 @@ export default function BillingPage() {
   }, [load])
 
   async function checkAgain() {
-    step.current = 0
-    await read(false)
-    // A slow confirmation gets one more bounded round, not an endless loop.
-    setWatch(current => current === 'slow' ? 'confirming' : current)
+    await read()
   }
 
   async function open(kind: 'checkout' | 'portal') {
-    if (opening || busy) return
+    if (openingRef.current || inFlight.current || busy) return
     const request = ++requestID.current
-    inFlight.current = false
+    openingRef.current = true
     setOpening(true); setNotice(''); setReauth(false)
     try {
       const result = await billingRequest(kind === 'checkout' ? '/checkout' : '/portal', {})
@@ -213,7 +275,7 @@ export default function BillingPage() {
       window.location.assign(destination)
     } catch (error) {
       if (request !== requestID.current) return
-      setOpening(false)
+      openingRef.current = false; setOpening(false)
       if (error instanceof AccountError && error.status === 401) {
         // Changing billing needs a sign-in from the last ten minutes; the
         // membership read does not, so the page stays as it is.
@@ -226,7 +288,7 @@ export default function BillingPage() {
         if (error.attemptId && error.attemptId !== pendingAttempt) setPendingAttempt(error.attemptId)
         else {
           if (!error.attemptId) setNotice('A checkout for this account is still being confirmed. You don’t need to pay again.')
-          void readRef.current(true)
+          void readRef.current()
         }
         return
       }
@@ -234,7 +296,7 @@ export default function BillingPage() {
         : error instanceof AccountError && error.code === 'checkout_expired' ? 'The previous checkout expired without a purchase. Nothing was charged; you can start a new checkout.'
         : error instanceof AccountError && (error.code === 'checkout_disabled' || error.code === 'checkout_not_available') ? 'Checkout is not open for this account right now.'
         : 'Billing could not open. Check your connection and try again.')
-      if (error instanceof AccountError && (error.code === 'subscription_exists' || error.code === 'checkout_disabled' || error.code === 'checkout_not_available')) void read(true)
+      if (error instanceof AccountError && (error.code === 'subscription_exists' || error.code === 'checkout_disabled' || error.code === 'checkout_not_available')) void read()
     }
   }
 
@@ -247,6 +309,7 @@ export default function BillingPage() {
   // A welcome belongs to this purchase only: not to a stale or foreign return link.
   const returnedFromStripe = Boolean(attempt) && !cancelled && !attemptMissing && attemptState !== 'expired'
   const actionBusy = opening || busy
+  const readBusy = actionBusy || retrySeconds > 0
 
   let state = 'loading'
   let title = 'Checking your membership…'
@@ -258,6 +321,7 @@ export default function BillingPage() {
 
   const portal = (label: string, emphasis = true) => <button className={emphasis ? 'pulse-account-primary' : undefined} type="button" disabled={actionBusy} onClick={() => void open('portal')}>{opening ? 'Opening…' : label}</button>
   const checkout = (label: string) => <button className="pulse-account-primary" type="button" disabled={actionBusy} onClick={() => void open('checkout')}>{opening ? 'Opening Stripe…' : label}</button>
+  const refresh = (label: string) => <button className="pulse-account-primary" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : label}</button>
 
   if (load === 'loading') {
     showRefresh = false
@@ -271,7 +335,7 @@ export default function BillingPage() {
     state = 'unavailable'
     title = 'Billing status is unavailable right now'
     body = <p>{attempt ? 'If you just paid, your payment is safe and will appear here once confirmed. Don’t start another checkout.' : 'Your membership is unchanged. Try again in a moment.'}</p>
-    primary = <button className="pulse-account-primary" type="button" disabled={busy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Check again'}</button>
+    primary = refresh('Check again')
     showRefresh = false
   } else if (uncertain) {
     // Chosen from `uncertain` itself, so no frame can offer checkout first.
@@ -280,7 +344,7 @@ export default function BillingPage() {
     body = watch === 'slow'
       ? <p>Some payments take a few minutes to confirm. Don’t start another checkout; this page and your extension update once Stripe confirms. If nothing changes within an hour, <Link to="/support">contact support</Link>.</p>
       : <p className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Stripe has your payment details. This usually takes a few seconds, and you don’t need to pay again. Your extension updates by itself.</p>
-    primary = watch === 'slow' ? <button className="pulse-account-primary" type="button" disabled={busy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Check again'}</button> : null
+    primary = refresh('Check again')
     // A pending membership already has a subscription: invoices and the
     // payment method stay one click away, never a second checkout.
     secondary = status === 'pending' ? portal('Manage membership', false) : null
@@ -289,7 +353,7 @@ export default function BillingPage() {
     state = 'welcome'
     title = 'You’re a Supporter'
     body = <p>Thank you. Supporter finishes unlock in any StreamPulse extension connected to this account, and a connected extension updates by itself.</p>
-    secondary = portal('Manage membership', false)
+    primary = portal('Manage membership')
   } else if (status === 'active') {
     state = 'active'
     title = 'Supporter active'
@@ -316,9 +380,10 @@ export default function BillingPage() {
   } else if (cancelled && attempt && OPEN_ATTEMPT.has(attemptState)) {
     state = 'checkout-cancelled'
     title = 'Checkout cancelled'
-    body = <p>You left Stripe checkout before paying. Nothing was charged.</p>
+    body = <><p>You left Stripe checkout before paying. Nothing was charged.</p>{!checkoutEnabled && <p>New Supporter sign-ups are not open yet.</p>}</>
     terms = checkoutEnabled
-    primary = checkoutEnabled ? checkout('Return to checkout') : <p>New Supporter sign-ups are not open yet.</p>
+    primary = checkoutEnabled ? checkout('Return to checkout') : refresh('Refresh status')
+    if (!checkoutEnabled) showRefresh = false
   } else {
     state = checkoutEnabled ? 'offer' : 'closed'
     title = attempt && attemptState === 'expired' ? 'This checkout expired' : checkoutEnabled ? 'Become a Pulse Supporter' : 'Supporter sign-ups are not open yet'
@@ -327,7 +392,8 @@ export default function BillingPage() {
       : checkoutEnabled ? <p>Supporter funds Pulse development and adds a few original cosmetics. Every analytics feature stays free.</p>
       : <p>New Supporter sign-ups are not open yet. Your account and free tools are unaffected.</p>
     terms = true
-    primary = checkoutEnabled ? checkout(attempt && attemptState === 'expired' ? 'Start a new checkout' : 'Continue to Stripe checkout') : null
+    primary = checkoutEnabled ? checkout(attempt && attemptState === 'expired' ? 'Start a new checkout' : 'Continue to Stripe checkout') : refresh('Refresh status')
+    if (!checkoutEnabled) showRefresh = false
   }
 
   const facts: Array<[string, string]> = []
@@ -351,9 +417,10 @@ export default function BillingPage() {
       {facts.length ? <dl className="pulse-membership-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
       {terms ? <dl className="pulse-membership-terms"><dt>Price</dt><dd>US$4.99 per month, charged in US dollars</dd><dt>Renews</dt><dd>Monthly, automatically, until you cancel</dd><dt>Includes</dt><dd>A private Pulse header accent, three private finishes and private support recognition</dd><dt>Taxes</dt><dd>Handled as stated at checkout</dd></dl> : null}
       {reauth ? <div className="pulse-account-note" role="alert"><p>For your security, changing billing needs a sign-in from the last 10 minutes. Nothing was charged.</p><Link className="pulse-account-button pulse-account-primary" to={signInHref}>Sign in again</Link></div> : null}
-      {primary || secondary ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
+      {!reauth && (primary || secondary) ? <div className="pulse-account-actions">{primary}{secondary}</div> : null}
+      {retrySeconds > 0 && <p role="status">Wait {retrySeconds} seconds before checking again.</p>}
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
-      {showRefresh ? <button className="pulse-account-text-button" type="button" disabled={busy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
+      {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
     <p className="pulse-account-links"><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span><Link to="/terms">Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link><span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
     <AccountFooter current="billing" />

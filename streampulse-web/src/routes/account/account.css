@@ -100,7 +100,7 @@
 }
 
 .pulse-account-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-.pulse-account a:not(.pulse-account-button) { color: #c4b5fd; font-size: inherit; text-underline-offset: 3px; }
+.pulse-account a:not(.pulse-account-button) { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; max-width: 100%; overflow-wrap: anywhere; color: #c4b5fd; font-size: inherit; text-underline-offset: 3px; }
 .pulse-account a:not(.pulse-account-button):hover { color: #ddd6fe; }
 .pulse-account .pulse-account-privacy { margin: 6px 0 0; font-size: 13px; }
 .pulse-account-footer { margin-top: 32px; padding-top: 24px; border-top: 1px solid #353540; }
