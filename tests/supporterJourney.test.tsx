@@ -76,6 +76,103 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
 describe('pay-first settings', () => {
+  it.each(['none', 'expired'] as const)('keeps an expired Checkout session read-only when the %s membership cannot open Checkout', async status => {
+    for (const checkoutEnabled of [false, undefined]) {
+      const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: 'expired' }) })
+      try {
+        expect(view.state()).toBe('checkout-closed')
+        expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+        expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check sign-up status')
+        expect(view.text()).toContain('Return when paid sign-ups open')
+        expect(view.buttons()).not.toContain('Start checkout again')
+        expect(view.buttons()).not.toContain('Rejoin Supporter')
+        await view.click('Check sign-up status')
+        expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
+        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+        expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
+        expect(view.create).not.toHaveBeenCalled()
+      } finally { view.cleanup() }
+    }
+  })
+  it.each(['none', 'expired'] as const)('allows one fresh Checkout after confirmed session expiry when the %s membership can open Checkout', async status => {
+    let billing: SupporterBillingState = { state: 'expired' }
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled: true }), billing: action => action === 'checkout' ? (billing = { state: 'confirming' }) : billing })
+    try {
+      expect(view.state()).toBe('checkout-expired')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Start checkout again')
+      await view.click('Start checkout again')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      expect(view.state()).toBe('payment-pending')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check payment status')
+      expect(view.text()).toContain('Do not pay again')
+      expect(view.buttons()).not.toContain('Start checkout again')
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it.each([
+    ['waiting', 'stripe-open', 'Return to Stripe checkout', 'resume'],
+    ['confirming', 'payment-pending', 'Check payment status', 'check'],
+    ['still_confirming', 'still-confirming', 'Check payment status', 'check'],
+    ['reconnect_required', 'previous-payment-unresolved', 'Restore my Supporter', 'restore'],
+    ['review', 'review', 'Contact support', 'support'],
+    ['closed', 'checkout-closed', 'Check sign-up status', 'read'],
+    ['unavailable', 'billing-unavailable', 'Try again', 'read'],
+    ['error', 'billing-unavailable', 'Try again', 'read'],
+  ] as const)('keeps the %s action above an ended installation membership', async (billingState, journeyState, label, action) => {
+    for (const checkoutEnabled of [true, false]) {
+      const view = await mount({ account: () => linked, entitlement: () => ready('expired', { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }) })
+      try {
+        expect(view.state()).toBe(journeyState)
+        expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+        expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(label)
+        expect(view.buttons()).not.toContain('Rejoin Supporter')
+        expect(view.buttons()).not.toContain('Manage membership')
+        expect(view.text()).not.toContain('US$4.99 / month')
+        if (billingState === 'confirming' || billingState === 'still_confirming' || billingState === 'review') expect(view.text()).toContain('Do not pay again')
+        if (action === 'support') {
+          expect(view.host.querySelector<HTMLAnchorElement>('a.pulse-journey-primary')?.href).toBe('https://streampulse.stream/support')
+        } else {
+          await view.click(label)
+          if (action === 'resume' || action === 'check') expect(view.calls('SUPPORTER_BILLING', action)).toBe(1)
+          if (action === 'read') expect(view.calls('SUPPORTER_ENTITLEMENT')).toBeGreaterThan(1)
+          if (action === 'restore') expect(view.state()).toBe('restore-email')
+        }
+        expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+        expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
+        expect(view.calls('SUPPORTER_ACCOUNT', 'start')).toBe(0)
+        expect(view.create).not.toHaveBeenCalled()
+      } finally { view.cleanup() }
+    }
+  })
+  it.each(['confirming', 'review'] as const)('keeps payment %s recovery above installation membership review', async billingState => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('review', { installationAccountsEnabled: true }), billing: () => ({ state: billingState }) })
+    try {
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(billingState === 'review' ? 'Contact support' : 'Check payment status')
+      expect(view.text()).toContain('Do not pay again')
+      expect(view.buttons()).not.toContain('Manage membership')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it.each([
+    ['active', true, 'confirming', 'Manage membership', 'portal'],
+    ['grace', true, 'still_confirming', 'Update payment method', 'portal'],
+    ['expired', true, 'idle', 'Rejoin Supporter', 'checkout'],
+    ['expired', false, 'idle', 'Manage membership', 'portal'],
+    ['review', true, 'fallback', 'Manage membership', 'portal'],
+  ] as const)('keeps the ordinary %s installation action with Checkout %s and billing %s', async (status, checkoutEnabled, billingState, label, action) => {
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }) })
+    try {
+      expect(view.state()).toBe(status)
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(label)
+      await view.click(label)
+      expect(view.calls('SUPPORTER_BILLING', action)).toBe(1)
+      if (billingState === 'fallback') expect(view.create).toHaveBeenCalledWith({ url: 'https://streampulse.stream/account/billing' })
+      else expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
   it('requires explicit confirmation to revoke another connected extension and never offers peer revoke for this browser', async () => {
     const peer = '55555555-5555-4555-8555-555555555555'
     const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), devices: action => action === 'revoke' ? { state: 'revoked' } : { state: 'ready', currentDeviceId: ACCOUNT_ID, devices: [{ id: ACCOUNT_ID, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }] } })
