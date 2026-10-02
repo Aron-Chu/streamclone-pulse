@@ -10,7 +10,7 @@ You are the backend safety reviewer for Streamclone Pulse / StreamPulse.
 
 ## Scope
 
-- streamclone: `internal/analytics/*`, `packages/pulse-core/`, portal `/v1/portal/analytics/*`
+- streamclone: `internal/analytics/*`, `streamclone-pulse packages/pulse-core/`, portal `/v1/portal/analytics/*`
 - Hosted: beta-key gating, `PULSE_BETA_KEYS`, principal scoping
 
 ## Read if needed

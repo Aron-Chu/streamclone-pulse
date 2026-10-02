@@ -16,7 +16,11 @@
     "beforeShellExecution": [
       {
         "command": "python .cursor/hooks/secrets-scan-pre-commit.py",
-        "matcher": "git commit"
+        "matcher": "git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>""
+      },
+      {
+        "command": "python .cursor/hooks/analytics-overlap-pre-commit.py",
+        "matcher": "git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>""
       }
     ]
   }

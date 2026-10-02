@@ -57,3 +57,12 @@ if [[ -f ../streampulse-sdlc/scripts/context-contract-check.py ]]; then
 fi
 
 echo "pulse owner-local context-contract OK"
+
+# Wrong always-on backend routing must stay fixed.
+if grep -nE 'Backend changes →.*twitch-7tv-clone|implement Go APIs there' .cursor/rules/streamclone.mdc 2>/dev/null; then
+  fail "streamclone.mdc still routes Go backend work to twitch-7tv-clone"
+fi
+grep -q 'streampulse-backend' .cursor/rules/streamclone.mdc \
+  || fail "streamclone.mdc must name streampulse-backend for Go/BFF work"
+grep -q 'redacted' .cursor/hooks/secrets-scan-pre-commit.py \
+  || fail "secrets hook must document redaction"
