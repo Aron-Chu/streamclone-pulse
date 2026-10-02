@@ -579,7 +579,11 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   // closes or reloads. A failed return page is never evidence of payment.
   if (!isSupporter && billing.state !== 'idle' && billing.state !== 'fallback') {
     steps = null; terms = false; primary = null; secondary = []
-    if (billing.state === 'waiting') { state = 'stripe-open'; title = 'Stripe checkout is open'; body = <p>Complete payment in the Stripe tab. This extension updates by itself; you do not need to refresh.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { void chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'resume' }).then(() => readJourney()).catch(() => setNotice('Could not reopen Stripe. Check status before trying another payment.')) }}>Return to Stripe checkout</button> }
+    if (billing.state === 'active') {
+      state = 'membership-loading'; title = 'Checking Supporter status…'
+      body = <p>Check your current membership before starting another payment. Your free tools still work.</p>
+      primary = <button className="pulse-journey-primary" type="button" disabled={checking} onClick={() => void checkAgain().then(readJourney)}>Check again</button>
+    } else if (billing.state === 'waiting') { state = 'stripe-open'; title = 'Stripe checkout is open'; body = <p>Complete payment in the Stripe tab. This extension updates by itself; you do not need to refresh.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { void chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'resume' }).then(() => readJourney()).catch(() => setNotice('Could not reopen Stripe. Check status before trying another payment.')) }}>Return to Stripe checkout</button> }
     else if (billing.state === 'confirming' || billing.state === 'still_confirming') {
       state = billing.state === 'confirming' ? 'payment-pending' : 'still-confirming'
       title = billing.state === 'confirming' ? 'Confirming your payment' : 'Still confirming your payment'

@@ -76,6 +76,71 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
 describe('pay-first settings', () => {
+  it.each([
+    ['unavailable', { state: 'unavailable', reason: 'temporarily_unavailable' }],
+    ['error', { state: 'error' }],
+    ['not_linked', { state: 'not_linked' }],
+    ['none', ready('none', { installationAccountsEnabled: true })],
+    ['expired', ready('expired', { installationAccountsEnabled: true })],
+    ['review', ready('review', { installationAccountsEnabled: true })],
+  ] as Array<[string, SupporterEntitlement]>)('refreshes a %s UI projection after worker payment confirmation without another checkout', async (_name, initial) => {
+    let membership = initial
+    const onEntitlement = vi.fn()
+    const view = await mount({ account: () => linked, entitlement: () => membership, billing: () => ({ state: 'active' }) }, onEntitlement)
+    try {
+      expect(view.state()).toBe('membership-loading')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check again')
+      expect(view.text()).toContain('Check your current membership before starting another payment')
+      expect(view.text()).not.toContain('Supporter active')
+      expect(view.text()).not.toContain('Your Supporter finishes are unlocked')
+      expect(view.buttons()).not.toContain('Rejoin Supporter')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+      expect(view.buttons()).not.toContain('Manage membership')
+      expect(onEntitlement.mock.calls.some(([value]) => value?.state === 'ready' && (value.status === 'active' || value.status === 'grace'))).toBe(false)
+      membership = ready('active', { installationAccountsEnabled: true })
+      await view.click('Check again')
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(2)
+      expect(view.calls('SUPPORTER_BILLING', 'status')).toBe(2)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
+      expect(view.create).not.toHaveBeenCalled()
+      expect(view.state()).toBe('active')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage membership')
+      expect(onEntitlement).toHaveBeenLastCalledWith(membership)
+    } finally { view.cleanup() }
+  })
+  it('keeps read-only recovery when a confirmed worker payment cannot refresh the UI entitlement', async () => {
+    const onEntitlement = vi.fn()
+    const view = await mount({ account: () => linked, entitlement: () => ({ state: 'error' }), billing: () => ({ state: 'active' }) }, onEntitlement)
+    try {
+      await view.click('Check again')
+      expect(view.state()).toBe('membership-loading')
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check again')
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(2)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(0)
+      expect(onEntitlement).toHaveBeenLastCalledWith({ state: 'error' })
+      expect(view.text()).not.toContain('Supporter active')
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it.each([
+    ['active', 'Manage membership'],
+    ['grace', 'Update payment method'],
+  ] as const)('keeps verified %s membership management above worker payment confirmation', async (status, label) => {
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true }), billing: () => ({ state: 'active' }) })
+    try {
+      expect(view.state()).toBe(status)
+      expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(label)
+      await view.click(label)
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
   it.each(['none', 'expired'] as const)('keeps an expired Checkout session read-only when the %s membership cannot open Checkout', async status => {
     for (const checkoutEnabled of [false, undefined]) {
       const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: 'expired' }) })
