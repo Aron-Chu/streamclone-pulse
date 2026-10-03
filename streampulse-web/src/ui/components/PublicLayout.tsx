@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { AccountEntry } from './AccountEntry'
 import { BrandMark } from './BrandMark'
 import { DiscordMark } from './DiscordMark'
 import { discordInviteUrl } from '../../lib/discord'
@@ -101,6 +102,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           ) : null}
           <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
+        <AccountEntry variant="public" />
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
       <footer className="app-footer">
