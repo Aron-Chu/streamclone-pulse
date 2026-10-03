@@ -61,7 +61,7 @@ export default function AccountRestore() {
     if (!secret || expiresAt <= Date.now()) { clearAccountRestore(); setState('expired'); return }
     confirming.current = true; setState('confirming')
     try {
-      await restoreRequest('/approve', { secret, confirmed: true })
+      await restoreRequest('/approve', { secret, comparisonCode, confirmed: true })
       clearAccountRestore(); setState('confirmed')
     } catch (error) {
       // A missing response cannot tell us whether the one-time approval ran.

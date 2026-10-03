@@ -35,7 +35,7 @@ for (const width of [1440, 390]) {
       return route.fulfill({ json: { label: 'Chrome extension', comparisonCode: 'A4C8E2', expiresAt: new Date(Date.now() + 900_000).toISOString() } })
     })
     await page.route('**/v1/account/restores/approve', route => {
-      expect(route.request().postDataJSON()).toEqual({ secret, confirmed: true })
+      expect(route.request().postDataJSON()).toEqual({ secret, comparisonCode: 'A4C8E2', confirmed: true })
       approvals += 1; return route.fulfill({ status: 204 })
     })
     await page.goto(`/account/restore?ignored=1#${secret}`)
@@ -79,6 +79,7 @@ for (const width of [1440, 390]) {
     let approvals = 0
     await page.route('**/v1/account/restores/inspect', route => route.fulfill({ json: { label: 'Chrome extension', comparisonCode: 'A4C8E2', expiresAt: new Date(Date.now() + 900_000).toISOString() } }))
     await page.route('**/v1/account/restores/approve', async route => {
+      expect(route.request().postDataJSON()).toEqual({ secret, comparisonCode: 'A4C8E2', confirmed: true })
       approvals += 1
       await route.abort('timedout')
     })
