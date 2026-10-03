@@ -12,6 +12,8 @@ import Supporter from './public/Supporter'
 import SupporterThanks from './public/SupporterThanks'
 import Support from './public/Support'
 import NotFound from './public/NotFound'
+import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
+import { accountMomentsEnabled } from '../lib/accountMoments'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
@@ -23,6 +25,8 @@ const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
 const AccountRestore = lazy(() => import('./account/AccountRestore'))
+const AccountTwitchCallback = lazy(() => import('./account/AccountTwitchCallback'))
+const AccountMoments = lazy(() => import('./account/AccountMoments'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 
 /**
@@ -93,6 +97,11 @@ export function AppRoutes() {
         <Route path="/account/link-device" element={<AccountPage />} />
         <Route path="/account/billing" element={<BillingPage />} />
         <Route path="/account/billing/return" element={<BillingPage />} />
+        {/* Sign in with Twitch (VITE_TWITCH_SIGNIN=1). While off, the path is
+            the ordinary 404; main.tsx still strips any token from its URL. */}
+        {twitchSignInEnabled() ? <Route path="/account/twitch/callback" element={<AccountTwitchCallback />} /> : null}
+        {/* My Moments (VITE_ACCOUNT_MOMENTS=1); while off, the ordinary 404. */}
+        {accountMomentsEnabled() ? <Route path="/account/moments" element={<AccountMoments />} /> : null}
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
