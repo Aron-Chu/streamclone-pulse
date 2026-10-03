@@ -1,4 +1,5 @@
 import { normalizeLogin } from './login.ts'
+import { SUPPORTER_PAINT_KEY, normalizeSupporterPaintStyle, type SupporterPaintStyle } from './supporterPaint.ts'
 import type {
   ProtectChannelSyncStatus,
   ProtectSyncOperation,
@@ -624,6 +625,15 @@ export function normalizePulseBanner(value: unknown): PulseBannerPreference {
       ? Math.min(70, Math.max(10, Math.round(raw.intensity))) : DEFAULT_PULSE_BANNER.intensity,
     title: typeof raw.title === 'string' ? raw.title.trim().slice(0, 40) : '',
   }
+}
+
+export async function getSupporterPaintStyle(): Promise<SupporterPaintStyle> {
+  const stored = await syncStorageGet(SUPPORTER_PAINT_KEY)
+  return normalizeSupporterPaintStyle(stored[SUPPORTER_PAINT_KEY])
+}
+
+export async function setSupporterPaintStyle(value: SupporterPaintStyle): Promise<void> {
+  await syncStorageSet({ [SUPPORTER_PAINT_KEY]: normalizeSupporterPaintStyle(value) })
 }
 
 export async function getPulseBanner(): Promise<PulseBannerPreference> {

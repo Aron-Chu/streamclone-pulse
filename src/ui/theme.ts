@@ -1,3 +1,5 @@
+import { supporterPaintCss } from './supporterPaintStyles.ts'
+
 /** Streamclone obsidian theme tokens (matches web app + Figma handoff). */
 export const accentTokens = {
   accent: 'var(--pulse-accent, #8b5cf6)',
@@ -38,8 +40,8 @@ export const theme = {
   accentInk: accentTokens.accentInk,
 } as const
 
-// The Supporter destination mark draws once beside its title; reduced motion
-// shows the finished stroke. Keep explanatory comments out of the shipped CSS.
+// The Supporter card's crest and paint animate from supporterPaintStyles.ts;
+// reduced motion shows a still frame. Keep explanatory comments out of the shipped CSS.
 export const shadowStyles = `
   @keyframes pulse-in {
     from { opacity: 0; transform: translateY(8px) scale(0.98); }
@@ -1148,34 +1150,25 @@ export const shadowStyles = `
     padding: 8px 10px;
     width: 100%;
   }
-   .pulse-settings-supporter-cta {
-    align-items: flex-start;
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.18);
-    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.6);
-    border-radius: 8px;
+  .pulse-settings-supporter-cta {
+    background: linear-gradient(180deg, #17171e 0%, #0e0e13 100%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    color: ${theme.textPrimary};
     cursor: pointer;
-    display: flex;
-    gap: 9px;
-    padding: 12px 10px;
+    display: grid;
+    gap: 4px;
+    padding: 11px 12px 10px;
     text-align: left;
-     width: 100%;
-   }
-   .pulse-settings-supporter-mark {
-     flex: none;
-     margin-top: 1px;
-   }
-   .pulse-settings-supporter-mark path {
-     animation: pulse-peak-draw 420ms ease-out 1 both;
-     stroke-dasharray: 40;
-     stroke-dashoffset: 40;
-   }
-   @keyframes pulse-peak-draw {
-     to { stroke-dashoffset: 0; }
-   }
-  .pulse-settings-supporter-text { display: grid; gap: 2px; min-width: 0; }
-  .pulse-settings-supporter-text strong { color: ${theme.textPrimary}; font-size: 13px; }
-  .pulse-settings-supporter-text small { color: ${theme.textSecondary}; font-size: 10px; line-height: 1.4; }
-  .pulse-settings-supporter-cta > [aria-hidden]:last-child { align-self: center; color: var(--pulse-accent-ink, #ddd6fe); margin-left: auto; }
+    width: 100%;
+  }
+  .pulse-supporter-cta-head { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
+  .pulse-supporter-cta-head strong { font-size: 13px; }
+  .pulse-supporter-cta-head span { color: var(--pulse-accent-ink, #ddd6fe); font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+  .pulse-settings-supporter-cta > small { color: ${theme.textSecondary}; font-size: 10.5px; line-height: 1.4; }
+  .pulse-supporter-line { align-items: center; background: ${theme.bgCanvas}; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; display: flex; gap: 7px; margin-top: 4px; min-width: 0; padding: 7px 9px; }
+  .pulse-supporter-line .pulse-paint { font-size: 15px; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+  ${/* @__PURE__ */ supporterPaintCss()}
   .pulse-settings-panel button:not(:disabled):hover,.pulse-settings-release-preview>summary:hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
   .pulse-settings-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--pulse-accent-light,#a78bfa);outline-offset:3px}
   .pulse-settings-toggle-row {
@@ -1547,10 +1540,6 @@ export const shadowStyles = `
     .pulse-settings-bottom-bar {
       transform: none !important;
       transition: none !important;
-    }
-    .pulse-settings-supporter-mark path {
-      animation: none !important;
-      stroke-dashoffset: 0 !important;
     }
   }
   /* Density layout tokens and adjustments */

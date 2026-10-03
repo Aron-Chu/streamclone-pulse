@@ -1,3 +1,4 @@
+import type { SupporterPaintStyle, SupporterTenure } from './supporterPaint.ts'
 import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState, SupporterDevicesState } from './supporterAccount.ts'
 
 export type MessageType =
@@ -740,7 +741,7 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_DEVICES'; devices: SupporterDevicesState }
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
-  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
+  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle }
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }

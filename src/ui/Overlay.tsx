@@ -16,7 +16,7 @@ import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
 import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
-import { useSupporterAppearance } from './useSupporterAppearance.ts'
+import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
@@ -1955,7 +1955,8 @@ function StreamPulseHeader({
   onHide: () => void
 }) {
   const headerStyle = sidebarFill ? streamPulseHeaderChromeSidebar : streamPulseHeaderChrome
-  const finish = useSupporterAppearance()
+  const appearance = useSupporterAppearanceDetails()
+  const finish = appearance?.finish ?? null
   const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
   const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
   const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton
@@ -1975,6 +1976,8 @@ function StreamPulseHeader({
         <StreamPulseTitleBlock
           title={personalTitle || undefined}
           finish={finish}
+          tenure={appearance?.tenure}
+          paint={appearance?.paint}
           statusLabel={hostedBackend ? statusLabel : 'Local dev API'}
           statusTone={hostedBackend ? (isLive ? 'live' : 'idle') : 'local'}
         />

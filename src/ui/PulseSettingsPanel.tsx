@@ -1,4 +1,3 @@
-import { PeakMark } from './PeakMark.tsx'
 import { PulseBannerQuickPreview } from './PulseBanner.tsx'
 import { theme } from './theme.ts'
 import { compactViewerSamplingLabel, summarizeViewerSampling } from '../shared/viewerSamplingStatus.ts'
@@ -196,12 +195,14 @@ export function PulseSettingsPanel({ onBack }: { onBack?: () => void }) {
         disabled={opening}
         onClick={() => void openHost('supporter')}
       >
-        <PeakMark size={20} stroke={theme.accentSoft} className="pulse-settings-supporter-mark" />
-        <span className="pulse-settings-supporter-text">
-          <strong>Pulse Supporter</strong>
-          <small>Personal finishes. Core tools stay free.</small>
+        <span className="pulse-supporter-cta-head"><strong>Pulse Supporter</strong><span aria-hidden="true">Explore ›</span></span>
+        <small>Paint your panel title and earn a crest that grows. Core tools stay free.</small>
+        {/* The real header perk: a crest beside a painted title, shown climbing
+            the tenure stages and trying each finish. Pure CSS once rendered. */}
+        <span className="pulse-supporter-line" aria-hidden="true">
+          <i className="pulse-crest pulse-crest-climb" data-tenure="12m" />
+          <b className="pulse-paint pulse-paint-try" data-finish="etched" data-text="Stream Pulse">Stream Pulse</b>
         </span>
-        <span aria-hidden="true">›</span>
       </button>
 
       <details className="pulse-settings-release-preview" data-changelog-preview="true">

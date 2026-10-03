@@ -5,9 +5,12 @@ import { supporterFinish, SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish
 import { StreamPulseTitleBlock, streamPulseHeaderChromeSidebar } from '../ui/StreamPulseTitleBlock.tsx'
 import { theme } from '../ui/theme.ts'
 import { PulseBannerBackdrop, usePulseBanner } from '../ui/PulseBanner.tsx'
+import { supporterTenureForMonths } from '../shared/supporterPaint.ts'
+import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
 /**
- * The finish colours the small Peak signature beside the title.
+ * The finish paints the panel title, wave and sheen choose how that paint
+ * moves, and the tenure crest sits beside it.
  * The preview reproduces that header rather than a
  * decorative plate: an earlier version previewed a tinted banner that the
  * overlay no longer draws, so the preview promised something the extension did
@@ -18,6 +21,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   onSaved?: (cosmetics: SupporterCosmetics) => void
 }) {
   const banner = usePulseBanner()
+  const paint = useSupporterPaintStyle()
   const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>('glass')
   const [appliedFinish, setAppliedFinish] = useState<SupporterCosmetics['finish'] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -36,6 +40,7 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   const entitlementState = entitlement?.state
   const entitlementStatus = entitlement?.state === 'ready' ? entitlement.status : undefined
   const cosmetics = entitlement?.state === 'ready' ? entitlement.cosmetics : undefined
+  const tenure = entitlement?.state === 'ready' ? supporterTenureForMonths(entitlement.supportPeriods) : 'new'
   // Loading, or a background read that could not confirm the last status: the
   // controls pause rather than switching to the pre-purchase mode, and the
   // user's selection is kept.
@@ -147,14 +152,14 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
       }
     }
   }
-  return <PulseSectionCard title="Pulse signature" headingLevel={3} subtitle="A personal colour for the Pulse mark beside your title.">
+  return <PulseSectionCard title="Paint & crest" headingLevel={3} subtitle="Your finish paints your panel title. Choose how it moves; your tenure crest sits beside it.">
     {/* True sidebar width on the real panel colour, rendering the same
         component the overlay renders, so this cannot promise a header the
         extension does not draw. */}
     <div className="pulse-supporter-finish-preview" aria-label={`${selectedLabel} sidebar header preview`} data-preview-finish={finish ?? 'default'} style={{ background: theme.bgCanvas, maxWidth: '100%', width: 'min(340px, 100%)' }}>
       <div className="pulse-personal-panel pulse-background-preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 180 }}>
         <PulseBannerBackdrop value={banner.value} paused />
-        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={banner.value.title || undefined} finish={finish} statusLabel="Live chart" statusTone="live" /></div>
+        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={banner.value.title || undefined} finish={finish} tenure={tenure} paint={paint.style} statusLabel="Live chart" statusTone="live" /></div>
       </div>
     </div>
     <p className="pulse-supporter-detail" data-supporter-accent-state={unchanged ? 'equipped' : 'preview'}>
@@ -179,6 +184,8 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
         <span className="pulse-supporter-finish-choice"><strong>{option.label}</strong><small>{option.description}</small></span>
       </label>)}
     </fieldset>
+    <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
+    <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
     <div className="pulse-account-link-actions">
       {unknown ? (
         <button type="button" disabled>Checking Supporter status…</button>
