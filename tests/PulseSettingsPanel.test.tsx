@@ -96,23 +96,23 @@ describe('PulseSettingsPanel quick workspace', () => {
       .toBeLessThan(html.indexOf('aria-label="Extension preferences"'))
   })
 
-  it('draws the Supporter card as a decorative neon tube and loads no emotes until someone shows interest', () => {
-    const html = renderToStaticMarkup(<SupporterHero finish={null} onOpen={() => {}} />)
-    expect(html).toMatch(/<span class="pulse-settings-supporter-sign" aria-hidden="true"><svg/)
-    expect(html.match(/class="pulse-sign-(glass|bloom|neon|beam|spark)"/g)).toHaveLength(5)
+  it('shows the header perk as a CSS-only crest climb and paint try-on, with no emotes', () => {
+    const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
+    expect(html).toMatch(/<span class="pulse-supporter-line" aria-hidden="true"><i class="pulse-crest pulse-crest-climb" data-tenure="12m"><\/i><b class="pulse-paint pulse-paint-try" data-finish="etched" data-text="Stream Pulse">Stream Pulse<\/b>/)
     expect(html).not.toContain('<img')
     expect(html).not.toContain('cdn.7tv.app')
-    expect(html).not.toContain('data-finish')
+    expect(html).not.toContain('data-supporter-verified')
   })
-
-  it('acknowledges a worker-verified finish and otherwise stays neutral', () => {
-    const verified = renderToStaticMarkup(<SupporterHero finish="etched" onOpen={() => {}} />)
+  it('shows a verified Supporter their own crest and paint, and otherwise stays neutral', () => {
+    const verified = renderToStaticMarkup(<SupporterHero appearance={{ finish: 'etched', tenure: '24m', paint: { wave: 'chrome', sheen: 'glint' } }} onOpen={() => {}} />)
     expect(verified).toContain('data-supporter-verified="true"')
-    expect(verified).toContain('data-finish="etched"')
-    expect(verified).toContain('Etched finish equipped')
+    expect(verified).toContain('Etched paint equipped')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    const neutral = renderToStaticMarkup(<SupporterHero finish={null} onOpen={() => {}} />)
+    expect(verified).toContain('<i class="pulse-crest" data-tenure="24m">')
+    expect(verified).toContain('data-wave="chrome" data-sheen="glint"')
+    expect(verified).not.toContain('pulse-paint-try')
+    const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
     expect(neutral).not.toContain('equipped')
   })

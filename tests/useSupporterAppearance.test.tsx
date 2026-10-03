@@ -8,11 +8,18 @@ import {
   APPEARANCE_WAKE_DEBOUNCE_MS,
   resetSupporterAppearanceForTests,
   useSupporterAppearance,
+  useSupporterAppearanceDetails,
 } from '../src/ui/useSupporterAppearance.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-type Reply = { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
+type Reply = {
+  type: 'SUPPORTER_APPEARANCE'
+  finish: 'glass' | 'etched' | 'halo' | null
+  validForMs: number
+  tenure?: '12m' | '24m'
+  paint?: { wave: 'smooth' | 'aurora'; sheen: 'sweep' | 'glint' }
+}
 const accent = (validForMs = 60_000): Reply => ({ type: 'SUPPORTER_APPEARANCE', finish: 'halo', validForMs })
 const none: Reply = { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0 }
 
@@ -248,6 +255,31 @@ describe('worker change signals', () => {
     await advance(0)
     expect(view.finish()).toBe('none')
     view.unmount()
+  })
+
+  it('carries the crest and paint style with the finish, and re-checks when the synced paint style changes', async () => {
+    const painted = (sheen: 'sweep' | 'glint'): Reply => ({ ...accent(), tenure: '12m', paint: { wave: 'aurora', sheen } })
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(painted('sweep')).mockResolvedValue(painted('glint'))
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    function Probe() {
+      const appearance = useSupporterAppearanceDetails(request as never)
+      return <span data-tenure={appearance?.tenure} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} />
+    }
+    act(() => root.render(<Probe />))
+    await advance(0)
+    const probe = () => host.querySelector('span')!.dataset
+    expect(probe()).toMatchObject({ tenure: '12m', wave: 'aurora', sheen: 'sweep' })
+    // A wave or sheen saved in settings is a synced preference, not an account signal.
+    await signal('supporterPaintStyle', 'sync')
+    await advance(0)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(probe()).toMatchObject({ sheen: 'glint' })
+    await signal('supporterPaintStyle', 'local')
+    expect(request).toHaveBeenCalledTimes(2)
+    act(() => root.unmount())
+    host.remove()
   })
 
   it('ignores unrelated keys and other storage areas, and coalesces a signal during a check', async () => {

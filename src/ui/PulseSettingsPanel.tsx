@@ -8,8 +8,8 @@ import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
-import { useSupporterAppearance } from './useSupporterAppearance.ts'
-import { SUPPORTER_FINISH_OPTIONS, type SupporterFinishId } from './supporterFinish.ts'
+import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSupporterAppearance.ts'
+import { SUPPORTER_FINISH_OPTIONS } from './supporterFinish.ts'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
@@ -97,7 +97,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
   const preferences = usePulsePreferences()
   // The header owns this poll on the Pulse tab and is unmounted while settings
   // are open, so reading it here does not double the worker round trips.
-  const finish = useSupporterAppearance()
+  const appearance = useSupporterAppearanceDetails()
   const { health, checking, refresh, error: connectionError } = usePulseHealth()
   const { error: openError, opening, open: openHost } = useSettingsHostOpener()
 
@@ -170,7 +170,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
       </div>
       {connectionError ? <p className="pulse-settings-hint" role="status">{connectionError}</p> : null}
 
-      <SupporterHero finish={finish} disabled={opening} onOpen={() => void openHost('supporter')} />
+      <SupporterHero appearance={appearance} disabled={opening} onOpen={() => void openHost('supporter')} />
       {openError ? <p className="pulse-settings-hint" role="alert">{openError}</p> : null}
 
       <section className="pulse-settings-quick" aria-label="Extension preferences">
@@ -307,27 +307,16 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
   )
 }
 
-/** The Pulse Peak as a neon tube: the shape of the brand mark, scaled to run across the card. */
-const SUPPORTER_TUBE = 'M-8 41H54l7-15.75 5.25 8.75 7-29.75 7 29.75 5.25-8.75 7 15.75H1000'
-const SUPPORTER_TUBE_LAYERS = ['glass', 'bloom', 'neon', 'beam', 'spark']
-/** wideSpeedNod and wideReacting on 7TV; `x` is each one's resting spot on the tube. */
-const SUPPORTER_EMOTES = [
-  { id: '01K6YP3JPX47KY68B19S6MY6DY', x: 104 },
-  { id: '01HMM8VG3R0007GXBD883VP2YY', x: 186 },
-]
-
 /**
- * The Supporter entry, drawn as a neon sign. Hover or focus switches the tube
- * on, runs a laser pulse along it and lets two 7TV emotes rush in; the emote
- * images load only once someone shows interest. The overlay cannot read the
- * full entitlement, but a non-null finish is one the worker verified, so only
- * then does the card say so, and only then is the sign lit at rest in that
- * finish's colour. Without one it stays neutral: no price, no purchase wording.
+ * The Supporter entry. Its line is the real header perk: a tenure crest beside
+ * a painted title. Without a verified finish the crest climbs all five stages
+ * while the title tries each finish, once when quick settings opens and on a
+ * loop while hovered; all of it is CSS. With one, the line shows the
+ * Supporter's own crest and paint. No price, no purchase wording.
  */
-export function SupporterHero({ finish, disabled, onOpen }: { finish: SupporterFinishId | null; disabled?: boolean; onOpen: () => void }) {
-  const [armed, setArmed] = useState(false)
+export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
+  const finish = appearance?.finish ?? null
   const finishLabel = finish ? SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label : undefined
-  const arm = () => { if (!armed) setArmed(true) }
   return (
     <button
       type="button"
@@ -337,35 +326,16 @@ export function SupporterHero({ finish, disabled, onOpen }: { finish: SupporterF
       data-finish={finish ?? undefined}
       disabled={disabled}
       onClick={onOpen}
-      onPointerEnter={arm}
-      onFocus={arm}
     >
-      <span className="pulse-settings-supporter-head">
+      <span className="pulse-supporter-cta-head">
         <strong>Pulse Supporter</strong>
-        <span className="pulse-settings-supporter-action">{finish ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
+        <span>{finish ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <small>{finishLabel ? `${finishLabel} finish equipped. Thanks for backing Pulse.` : 'Light up your panel with a personal finish. Core tools stay free.'}</small>
-      <span className="pulse-settings-supporter-sign" aria-hidden="true">
-        <svg width="1000" height="48" viewBox="0 0 1000 48" focusable="false">
-          {SUPPORTER_TUBE_LAYERS.map(layer => <path key={layer} className={`pulse-sign-${layer}`} d={SUPPORTER_TUBE} />)}
-          <circle className="pulse-sign-flare" cx="73.25" cy="4.25" r="6" />
-        </svg>
-        {armed ? SUPPORTER_EMOTES.map((emote, index) => (
-          <picture key={emote.id}>
-            <source media="(prefers-reduced-motion: reduce)" srcSet={`https://cdn.7tv.app/emote/${emote.id}/2x_static.webp`} />
-            <source type="image/avif" srcSet={`https://cdn.7tv.app/emote/${emote.id}/1x.avif`} />
-            <img
-              alt=""
-              draggable={false}
-              decoding="async"
-              referrerPolicy="no-referrer"
-              src={`https://cdn.7tv.app/emote/${emote.id}/1x.webp`}
-              style={{ '--i': index, left: emote.x } as CSSProperties}
-              onLoad={event => { event.currentTarget.dataset.ready = '' }}
-              onError={event => { event.currentTarget.style.visibility = 'hidden' }}
-            />
-          </picture>
-        )) : null}
+      <small>{finishLabel ? `${finishLabel} paint equipped. Thanks for backing Pulse.` : 'Paint your panel title and earn a crest that grows. Core tools stay free.'}</small>
+      <span className="pulse-supporter-line" aria-hidden="true">
+        {finish
+          ? <><i className="pulse-crest" data-tenure={appearance?.tenure ?? 'new'} /><b className="pulse-paint" data-finish={finish} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text="Stream Pulse">Stream Pulse</b></>
+          : <><i className="pulse-crest pulse-crest-climb" data-tenure="12m" /><b className="pulse-paint pulse-paint-try" data-finish="etched" data-text="Stream Pulse">Stream Pulse</b></>}
       </span>
     </button>
   )

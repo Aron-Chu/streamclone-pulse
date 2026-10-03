@@ -54,8 +54,9 @@ import {
   trackDiagnosticsWork,
   trustedDiagnosticsBuildMeta,
 } from '../shared/extensionDiagnostics.ts'
-import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
+import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, getSupporterPaintStyle, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
+import { DEFAULT_SUPPORTER_PAINT, supporterTenureForMonths } from '../shared/supporterPaint.ts'
 import {
   addToWatchlist,
   getWatchlist,
@@ -949,7 +950,12 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         case 'SUPPORTER_APPEARANCE': {
           const entitlement = await supporterAccount.entitlement()
           const finish = entitlement.state === 'ready' && entitlement.features.includes('supporter.banner.v1') && entitlement.features.includes('supporter.finish.v1') && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
-          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0 } satisfies BackgroundResponse)
+          // The crest follows the server's support count; wave and sheen are
+          // this profile's presentation choice and only travel with a verified finish.
+          const crestAndPaint = finish && entitlement.state === 'ready'
+            ? { tenure: supporterTenureForMonths(entitlement.supportPeriods), paint: await getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT) }
+            : {}
+          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0, ...crestAndPaint } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_ACCOUNT': {

@@ -1,3 +1,5 @@
+import { supporterPaintCss } from './supporterPaintStyles.ts'
+
 /** Streamclone obsidian theme tokens (matches web app + Figma handoff). */
 export const accentTokens = {
   accent: 'var(--pulse-accent, #8b5cf6)',
@@ -1214,84 +1216,25 @@ export const shadowStyles = `
   .pulse-settings-status-dot[data-tone="wait"] { background: ${theme.warning}; }
   .pulse-settings-status-dot[data-tone="bad"] { background: ${theme.error}; }
   .pulse-settings-supporter-cta {
-    --pulse-sign-tube: #2dd4bf; --pulse-sign-rgb: 45, 212, 191; --pulse-sign-core: #ccfbf1;
-    align-content: start;
-    background: linear-gradient(180deg, #16161d 0%, #0d0d12 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, #17171e 0%, #0e0e13 100%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 12px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    box-sizing: border-box;
     color: ${theme.textPrimary};
     cursor: pointer;
     display: grid;
-    gap: 3px;
-    isolation: isolate;
-    min-height: 120px;
-    overflow: hidden;
-    padding: 12px 14px 52px;
-    position: relative;
+    gap: 4px;
+    padding: 11px 13px 11px;
     text-align: left;
-    transition: border-color 320ms ease;
     width: 100%;
   }
-  .pulse-settings-supporter-cta[data-finish="glass"] { --pulse-sign-tube: #78dce8; --pulse-sign-rgb: 120, 220, 232; --pulse-sign-core: #e3f8fb; }
-  .pulse-settings-supporter-cta[data-finish="etched"] { --pulse-sign-tube: #efc96a; --pulse-sign-rgb: 239, 201, 106; --pulse-sign-core: #fdf4dc; }
-  .pulse-settings-supporter-cta[data-finish="halo"] { --pulse-sign-tube: #e6a9d6; --pulse-sign-rgb: 230, 169, 214; --pulse-sign-core: #fbeaf6; }
-  .pulse-settings-supporter-cta::before {
-    background: radial-gradient(70% 90% at 24% 100%, rgba(var(--pulse-sign-rgb), 0.16), transparent 70%);
-    content: ""; inset: 0; opacity: 0.35; pointer-events: none; position: absolute; transition: opacity 320ms ease; z-index: -1;
-  }
-  .pulse-settings-supporter-head { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
-  .pulse-settings-supporter-head strong { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 18px; }
-  .pulse-settings-supporter-action { color: var(--pulse-sign-tube); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; transition: color 320ms ease; }
-  .pulse-settings-supporter-cta > small { color: rgba(250, 250, 252, 0.72); font-size: 11.5px; line-height: 16px; text-wrap: pretty; }
-  .pulse-settings-supporter-sign { bottom: 0; height: 48px; left: 0; pointer-events: none; position: absolute; right: 0; z-index: -1; }
-  .pulse-settings-supporter-sign svg { bottom: 0; left: 0; overflow: visible; position: absolute; }
-  .pulse-settings-supporter-sign path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-  .pulse-sign-glass { stroke: rgba(255, 255, 255, 0.07); stroke-width: 4.5; }
-  .pulse-sign-neon { opacity: 0.42; stroke: var(--pulse-sign-tube); stroke-width: 1.8; transition: opacity 320ms ease, stroke 320ms ease; }
-  .pulse-sign-bloom { opacity: 0; stroke: rgba(var(--pulse-sign-rgb), 0.22); stroke-width: 8; transition: opacity 320ms ease; }
-  .pulse-sign-beam, .pulse-sign-spark { stroke-dasharray: 18 1100; stroke-dashoffset: 24; }
-  .pulse-sign-beam { stroke: rgba(var(--pulse-sign-rgb), 0.55); stroke-width: 6; }
-  .pulse-sign-spark { stroke: #fff; stroke-width: 2; }
-  .pulse-sign-flare { fill: none; opacity: 0; stroke: var(--pulse-sign-tube); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; }
-  .pulse-settings-supporter-sign img {
-    bottom: 9px; height: 24px; opacity: 0; position: absolute; transform-origin: 0 100%; translate: 0 4px; width: auto;
-    transition: opacity 180ms ease-in, translate 180ms ease-in;
-    transition-delay: calc((1 - var(--i)) * 30ms);
-  }
-  .pulse-settings-supporter-cta[data-finish] .pulse-sign-neon { opacity: 1; }
-  .pulse-settings-supporter-cta[data-finish] .pulse-sign-bloom { opacity: 0.55; }
-  .pulse-settings-supporter-cta[data-finish]::before { opacity: 0.6; }
-  .pulse-settings-panel .pulse-settings-supporter-cta[data-settings-host-cta]:is(:hover, :focus-visible) { border-color: rgba(var(--pulse-sign-rgb), 0.45); filter: none; transition-duration: 200ms; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible)::before { opacity: 1; transition: opacity 240ms ease-out 40ms; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) .pulse-settings-supporter-action { color: var(--pulse-sign-core); transition-duration: 120ms; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) :is(.pulse-sign-neon, .pulse-sign-bloom) { animation: pulse-sign-strike 220ms steps(1, end) backwards; opacity: 1; transition: none; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) .pulse-sign-neon { stroke: var(--pulse-sign-core); }
-  .pulse-settings-supporter-cta[data-finish]:is(:hover, :focus-visible) :is(.pulse-sign-neon, .pulse-sign-bloom) { animation: none; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) :is(.pulse-sign-beam, .pulse-sign-spark) { animation: pulse-sign-beam 760ms linear 160ms backwards, pulse-sign-beam-idle 2600ms linear 1520ms 4; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) .pulse-sign-flare { animation: pulse-sign-flare 360ms cubic-bezier(0.2, 0.7, 0.3, 1) 212ms backwards; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) .pulse-settings-supporter-sign img[data-ready] {
-    animation: pulse-sign-rush 560ms calc(300ms + var(--i) * 90ms) backwards, pulse-sign-hop 2600ms ease-out calc(1772ms + var(--i) * 60ms) 4;
-    opacity: 1; transition: none; translate: 0 0;
-  }
   .pulse-settings-supporter-cta:disabled { cursor: progress; }
-  @keyframes pulse-sign-strike { 0% { opacity: 0; } 20% { opacity: 1; } 40% { opacity: 0.4; } 62%, 100% { opacity: 1; } }
-  @keyframes pulse-sign-beam { from { stroke-dashoffset: 24; } 85% { opacity: 1; } to { opacity: 0; stroke-dashoffset: -580; } }
-  @keyframes pulse-sign-beam-idle { 0% { opacity: 0.55; stroke-dashoffset: 24; } 26% { opacity: 0.55; } 30%, 100% { opacity: 0; stroke-dashoffset: -580; } }
-  @keyframes pulse-sign-flare { from { opacity: 0; scale: 0.4; } 30% { opacity: 1; scale: 1; } to { opacity: 0; scale: 1.6; } }
-  @keyframes pulse-sign-rush {
-    0% { animation-timing-function: cubic-bezier(0.12, 0.9, 0.25, 1); filter: blur(1.5px); opacity: 0; scale: 1.9 0.8; translate: 272px 0; }
-    8% { opacity: 1; }
-    58% { animation-timing-function: ease-in-out; filter: blur(0.01px); scale: 1.06 0.95; translate: -4px 0; }
-    80% { scale: 0.98 1.02; translate: 1px 0; }
-    100% { filter: none; opacity: 1; scale: 1; translate: 0 0; }
-  }
-  @keyframes pulse-sign-hop { 0%, 7%, 100% { transform: none; } 2.5% { transform: translateY(-3px); } }
-  @media (prefers-reduced-motion: reduce) {
-    .pulse-settings-supporter-cta, .pulse-settings-supporter-cta *, .pulse-settings-supporter-cta::before { animation: none !important; transition: none !important; }
-  }
-  @media (forced-colors: active) { .pulse-settings-supporter-sign { display: none; } }
+  .pulse-supporter-cta-head { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
+  .pulse-supporter-cta-head strong { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 18px; }
+  .pulse-supporter-cta-head span { color: var(--pulse-accent-ink, #ddd6fe); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
+  .pulse-settings-supporter-cta > small { color: rgba(250, 250, 252, 0.72); font-size: 11.5px; line-height: 16px; text-wrap: pretty; }
+  .pulse-supporter-line { align-items: center; background: ${theme.bgCanvas}; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; display: flex; gap: 7px; margin-top: 4px; min-width: 0; padding: 7px 9px; }
+  .pulse-supporter-line .pulse-paint { font-size: 15px; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+  ${/* @__PURE__ */ supporterPaintCss()}
   .pulse-settings-panel button:not(:disabled):hover,.pulse-settings-release-preview>summary:hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
   .pulse-settings-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--pulse-accent-light,#a78bfa);outline-offset:3px}
   .pulse-settings-toggle-row {

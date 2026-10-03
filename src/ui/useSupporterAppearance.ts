@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
+import { SUPPORTER_PAINT_KEY, type SupporterPaintStyle, type SupporterTenure } from '../shared/supporterPaint.ts'
 import type { supporterFinish } from './supporterFinish.ts'
 
 type Finish = keyof typeof supporterFinish
+/** A verified finish, the crest it earns and how this profile wants the paint to move. */
+export interface SupporterAppearance { finish: Finish; tenure?: SupporterTenure; paint?: SupporterPaintStyle }
 type AppearanceReply = Awaited<ReturnType<typeof sendBackgroundMessage>> | null | undefined
 
 /** With no verified accent, check again at most once a minute. */
@@ -22,11 +25,11 @@ const requestAppearance = () => sendBackgroundMessage({ type: 'SUPPORTER_APPEARA
  * The header and quick settings take turns being mounted, so without this each
  * switch started blank and asked the worker again.
  */
-let lastVerified: { finish: Finish; until: number } | null = null
+let lastVerified: { appearance: SupporterAppearance; until: number } | null = null
 
-function verifiedNow(): { finish: Finish; remaining: number } | null {
+function verifiedNow(): { appearance: SupporterAppearance; remaining: number } | null {
   const remaining = lastVerified ? lastVerified.until - performance.now() : 0
-  return lastVerified && remaining > 0 ? { finish: lastVerified.finish, remaining } : null
+  return lastVerified && remaining > 0 ? { appearance: lastVerified.appearance, remaining } : null
 }
 
 /** Tests only: forget the shared verified finish. */
@@ -34,17 +37,24 @@ export function resetSupporterAppearanceForTests(): void {
   lastVerified = null
 }
 
+/** The equipped Supporter finish alone, for callers that only colour by it. */
+export function useSupporterAppearance(request: () => Promise<AppearanceReply> = requestAppearance): Finish | null {
+  return useSupporterAppearanceDetails(request)?.finish ?? null
+}
+
 /**
- * The equipped Supporter finish for the header, verified by the worker.
+ * The equipped Supporter finish for the header, verified by the worker, with
+ * the crest it earns and the profile's wave and sheen.
  *
  * A verified accent stays until its validity lapses: refreshing never clears
  * it first, and a failed refresh leaves it to its own expiry. Hidden tabs do
  * not poll; they check again when shown. The worker's non-secret change
  * signals (a verified purchase, a saved finish, a revoked or switched account)
- * trigger an immediate check, so an open Twitch tab never needs a reload.
+ * trigger an immediate check, so an open Twitch tab never needs a reload. So
+ * does a new wave or sheen saved in settings.
  */
-export function useSupporterAppearance(request: () => Promise<AppearanceReply> = requestAppearance): Finish | null {
-  const [finish, setFinish] = useState<Finish | null>(() => verifiedNow()?.finish ?? null)
+export function useSupporterAppearanceDetails(request: () => Promise<AppearanceReply> = requestAppearance): SupporterAppearance | null {
+  const [appearance, setAppearance] = useState<SupporterAppearance | null>(() => verifiedNow()?.appearance ?? null)
   useEffect(() => {
     let alive = true
     let running = false
@@ -75,13 +85,16 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
           const remaining = Math.min(60_000, result.validForMs) - (performance.now() - started)
           window.clearTimeout(expiry)
           if (result.finish && Number.isFinite(remaining) && remaining > 0) {
-            lastVerified = { finish: result.finish, until: performance.now() + remaining }
-            setFinish(result.finish)
-            expiry = window.setTimeout(() => setFinish(null), remaining)
+            const finish = result.finish
+            const { tenure, paint } = result
+            const next = { finish, tenure, paint }
+            lastVerified = { appearance: next, until: performance.now() + remaining }
+            setAppearance(current => current?.finish === finish && current.tenure === tenure && current.paint?.wave === paint?.wave && current.paint?.sheen === paint?.sheen ? current : next)
+            expiry = window.setTimeout(() => setAppearance(null), remaining)
             delay = Math.max(APPEARANCE_MIN_RENEW_MS, remaining - APPEARANCE_RENEW_LEAD_MS)
           } else {
             lastVerified = null
-            setFinish(null)
+            setAppearance(null)
           }
         }
       } catch { /* Keep a verified accent only until its own expiry. */ }
@@ -92,8 +105,11 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
       }
     }
     const signalled = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
-      if (area && area !== 'local') return
-      if (!(ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)) return
+      // Account signals live in local storage; a new wave or sheen is a synced setting.
+      const changed = area === 'sync'
+        ? SUPPORTER_PAINT_KEY in changes
+        : (!area || area === 'local') && (ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)
+      if (!changed) return
       // A hidden tab catches up as soon as it is shown, without the wake debounce.
       if (document.hidden) signalledWhileHidden = true
       else void refresh()
@@ -112,8 +128,8 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
     const inherited = verifiedNow()
     const renewIn = inherited ? inherited.remaining - APPEARANCE_RENEW_LEAD_MS : 0
     if (inherited) {
-      setFinish(inherited.finish)
-      expiry = window.setTimeout(() => setFinish(null), inherited.remaining)
+      setAppearance(inherited.appearance)
+      expiry = window.setTimeout(() => setAppearance(null), inherited.remaining)
     }
     if (inherited && renewIn >= APPEARANCE_MIN_RENEW_MS) {
       lastStart = performance.now()
@@ -133,5 +149,5 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
       document.removeEventListener('visibilitychange', wake)
     }
   }, [request])
-  return finish
+  return appearance
 }

@@ -511,6 +511,8 @@ test.describe('extension mocked states', () => {
 
     await expect(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
       animations: 'disabled',
+      // The Supporter banner's emote pile is physics-driven, so it never settles identically.
+      mask: [host.locator('.pulse-supporter-banner-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
@@ -520,6 +522,8 @@ test.describe('extension mocked states', () => {
     await host.evaluate(() => window.scrollTo(0, 0))
     await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',
+      // The Supporter banner's emote pile is physics-driven, so it never settles identically.
+      mask: [host.locator('.pulse-supporter-banner-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
@@ -527,6 +531,8 @@ test.describe('extension mocked states', () => {
     await expect.poll(() => sectionNav.evaluate(element => getComputedStyle(element).position)).toBe('static')
     await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
       animations: 'disabled',
+      // The Supporter banner's emote pile is physics-driven, so it never settles identically.
+      mask: [host.locator('.pulse-supporter-banner-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
