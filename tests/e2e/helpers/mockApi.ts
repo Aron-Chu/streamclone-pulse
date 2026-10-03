@@ -179,6 +179,8 @@ export async function installMockApi(
     // Fixtures default to the existing deployment with installation accounts
     // disabled. Pay-first specs install their own explicit route above this.
     if (pathname === '/v1/account/installations') { await json(route, 404, {}); return }
+    // History sync is not deployed either; its spec routes it explicitly.
+    if (pathname.startsWith('/v1/account/history/')) { await json(route, 404, { error: 'not_found' }); return }
     // Default: empty OK so unexpected BFF calls do not hard-fail the page.
     await json(route, 200, {})
   }

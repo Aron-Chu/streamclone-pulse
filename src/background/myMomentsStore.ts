@@ -1,6 +1,19 @@
 import { parseBookmarkPage } from '../shared/bookmarkPage.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
-import type { LibraryMoment, LibraryPreferences } from '../ui/library/model.ts'
+import type { LibraryMoment, LibraryPreferences, MomentReference } from '../ui/library/model.ts'
+import type { AccountHistorySync } from './historySync.ts'
+
+/**
+ * Pulse offsets count from go-live; Twitch's `?t=` counts from the archive
+ * start. They agree when the archive starts with the stream, the mapping every
+ * VOD path uses when the backend reports no origin delta (completed VOD pages,
+ * the channel's open-in-VOD jump, the portal's bookmark link). Saved references
+ * never carry a delta, so a numeric VOD id is required to address the second;
+ * a stream-only reference stays unresolved and keeps its analytics link.
+ */
+export function replayAvailability(m: Pick<MomentReference, 'vodId' | 'offsetSeconds'>): MomentReference['availability'] {
+  return m.vodId && /^\d{6,20}$/.test(m.vodId) && m.offsetSeconds !== null && Number.isFinite(m.offsetSeconds) && m.offsetSeconds >= 0 ? 'available' : 'unresolved'
+}
 
 export interface PersonalData {
   preferences: LibraryPreferences
@@ -13,6 +26,8 @@ export interface PersonalData {
    * as-is. Account scopes leave this empty.
    */
   bookmarks: PulseBookmark[]
+  /** Account scopes only: this browser's side of the account's synced history. */
+  accountSync?: AccountHistorySync
 }
 export const emptyPersonalData = (): PersonalData => ({ preferences: { captureHistory: false, retentionDays: 30 }, epoch: 0, history: [], notes: {}, bookmarks: [] })
 export const momentIdentity = (m: { channel: string; vodId: string | null; streamId?: string; offsetSeconds: number | null }) => `${m.channel}:${m.streamId || m.vodId}:${m.offsetSeconds}`
@@ -38,7 +53,11 @@ export function recordWatched(data: PersonalData, moment: LibraryMoment, epoch: 
   const next = prunePersonalData(data, now)
   if (!data.preferences.captureHistory || data.epoch !== epoch) return next
   const entry = { ...moment, jumpedAt: now, historyExpiresAt: now + data.preferences.retentionDays * 86400000 }
-  return { ...next, history: [...next.history.filter(m => m.id !== entry.id), entry].slice(-1000) }
+  const sync = next.accountSync
+  // While the account syncs, the jump waits in the queue until it is sent.
+  const key = `${entry.channel}:${entry.streamId || entry.vodId}:${Math.floor(entry.offsetSeconds ?? 0)}`
+  return { ...next, history: [...next.history.filter(m => m.id !== entry.id), entry].slice(-1000),
+    ...(sync?.enabled ? { accountSync: { ...sync, pending: [...sync.pending.filter(k => k !== key), key] } } : {}) }
 }
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
