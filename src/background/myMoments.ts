@@ -6,6 +6,7 @@ import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapsh
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, SaveBookmarkMessage } from '../shared/messages.ts'
 import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
+import { clearAccountHistory, historySyncView, refreshHistorySync, setAccountRetention, setHistorySync, syncHistoryNow } from './historySync.ts'
 
 export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
@@ -73,9 +74,23 @@ async function snapshot(scope: string): Promise<MyMomentsSnapshot> {
     if (bookmark) Object.assign(bookmark, { jumpedAt: h.jumpedAt, historyExpiresAt: h.historyExpiresAt })
     else moments.push({ ...h, availability: replayAvailability(h), note: data.notes[h.id] ?? h.note })
   }
+  const historySync = historySyncView(!!scopeAccount(scope), data)
   return { scope, production: true, bookmarksState, bookmarksAvailable: bookmarksState === 'ready', localNotes: data.notes, moments,
     deviceBookmarks: device?.bookmarks.map(b => ({ ...b, notes: device.notes[b.id] ?? '' })) ?? [], collections: [], membership: 'free', preferences: data.preferences,
-    sync: { kind: 'local' }, storage: { usedBytes: new TextEncoder().encode(JSON.stringify(data)).length, limitBytes: 2 * 1048576, persistence: 'unknown' } }
+    sync: historySync.state !== 'on' ? { kind: 'local' } : historySync.failed ? { kind: 'offline', pending: historySync.pending }
+      : historySync.syncedAt ? { kind: 'synced', at: historySync.syncedAt } : { kind: 'syncing', pending: historySync.pending },
+    historySync, storage: { usedBytes: new TextEncoder().encode(JSON.stringify(data)).length, limitBytes: 2 * 1048576, persistence: 'unknown' } }
+}
+/** Waits for a sync only so long; a slow one finishes in the background. */
+async function within(work: Promise<void>, ms: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try { await Promise.race([work, new Promise<void>(resolve => { timer = setTimeout(resolve, ms) })]) } finally { clearTimeout(timer) }
+}
+let syncTimer: ReturnType<typeof setTimeout> | undefined
+/** Batches the jumps of a viewing session into one push shortly after. */
+function syncSoon(scope: string, accountId: string, delayMs = 20_000) {
+  clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => { void syncHistoryNow(scope, accountId).catch(() => undefined) }, delayMs)
 }
 const privateBrowsing = (sender: chrome.runtime.MessageSender) => !!(sender.tab?.incognito || chrome.extension?.inIncognitoContext)
 /**
@@ -133,10 +148,19 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
       const path = new URL(sender.tab?.url ?? 'https://invalid/').pathname
       if (path !== `/videos/${ref.vodId}` && path !== `/${ref.channel}`) throw new Error('Source changed')
       await assertScope(scope)
-      await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, Date.now()))
+      const saved = await personalTransaction(scope, data => recordWatched(data, { ...ref, id: identity(ref), note: '' }, message.epoch, Date.now()))
+      const account = scopeAccount(scope)
+      if (account && saved.accountSync?.enabled && saved.accountSync.pending.length) syncSoon(scope, account)
       return { ok: true }
     }
-    if (message.action === 'recent') return { type: 'MY_MOMENTS_RECENT', recent: await recent(scope) }
+    if (message.action === 'recent') {
+      const account = scopeAccount(scope)
+      const sync = account ? (await personalTransaction(scope)).accountSync : undefined
+      // The popup reads this device's copy; a stale one refreshes for next time.
+      if (account && sync?.enabled && Date.now() - (sync.syncedAt ?? 0) > 120_000) syncSoon(scope, account, 0)
+      return { type: 'MY_MOMENTS_RECENT', recent: await recent(scope) }
+    }
+    if (message.action === 'load' && scopeAccount(scope)) await within(refreshHistorySync(scope, scopeAccount(scope)!), 6000)
     if (message.action === 'mutate') {
       if (message.scope !== scope) throw new Error('Device connection changed. Reload My Moments.')
       const command = message.command
@@ -175,9 +199,21 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
           else delete notes[command.id]
           return { ...data, notes, bookmarks: command.kind === 'unsave' ? data.bookmarks.filter(b => b.id !== command.id) : data.bookmarks }
         })
+      } else if (command.kind === 'history-sync') {
+        const account = scopeAccount(scope)
+        if (!account) throw new Error('Connect a Pulse account to sync history.')
+        await setHistorySync(scope, account, command.enabled)
       } else {
+        // While the account syncs, its copy changes first so a failure changes nothing here.
+        const account = scopeAccount(scope)
+        const current = await personalTransaction(scope)
+        if (account && current.accountSync?.enabled) {
+          if (command.kind === 'clear-history') await clearAccountHistory(account)
+          else if (command.value.retentionDays !== current.preferences.retentionDays) await setAccountRetention(account, command.value.retentionDays)
+          await assertScope(scope)
+        }
         await personalTransaction(scope, data => command.kind === 'clear-history'
-          ? { ...data, epoch: Math.max(Date.now(), data.epoch + 1), history: [] }
+          ? { ...data, epoch: Math.max(Date.now(), data.epoch + 1), history: [], ...(data.accountSync ? { accountSync: { ...data.accountSync, pending: [] } } : {}) }
           : { ...data, epoch: Math.max(Date.now(), data.epoch + 1), preferences: command.value,
             history: data.history.map(m => ({ ...m, historyExpiresAt: Math.min(m.historyExpiresAt!, m.jumpedAt! + command.value.retentionDays * 86400000) })) })
       }
