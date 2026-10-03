@@ -179,7 +179,8 @@ test('a fresh profile restores privately after email approval even when settings
     await page.setViewportSize({ width, height: 900 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     const target = await primary.boundingBox()
-    expect(target?.height).toBeGreaterThanOrEqual(44)
+    // min-height is 44px; a box that starts on a fractional pixel can measure 43.999998.
+    expect(target?.height).toBeGreaterThanOrEqual(43.99)
     await page.screenshot({ path: info.outputPath(`restore-pending-${width}-reduced-motion.png`), fullPage: true, animations: 'disabled' })
   }
   let keyboardReached = false
