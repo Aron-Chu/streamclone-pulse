@@ -80,7 +80,7 @@ test('VOD buckets beside a spike remain independently selectable', async ({ exte
   await plot.press('ArrowLeft')
   await plot.press('Enter')
   await expect(root.locator('[data-chart-active-offset]').first()).toHaveAttribute('data-chart-active-offset', '180')
-  await expect(root.locator('[data-moment-save-state="ready"]')).toHaveAttribute('aria-label', 'Save moment at 00:03:00')
+  await expect(root.locator('[data-moment-save-state="ready"]')).toHaveAttribute('aria-label', 'Bookmark moment at 00:03:00')
   await plot.press('ArrowLeft')
   await plot.press('Enter')
   await expect(root.locator('[data-chart-active-offset]').first()).toHaveAttribute('data-chart-active-offset', '120')

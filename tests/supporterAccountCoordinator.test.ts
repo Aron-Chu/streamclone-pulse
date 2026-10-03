@@ -90,6 +90,14 @@ describe('private supporter account coordinator', () => {
     development.request.mockResolvedValue({ status: 200, body: { ...body, environment: 'sandbox' } })
     expect(await development.coordinator.entitlement()).toMatchObject({ state: 'ready', features: ['supporter.banner.v1'] })
   })
+  it('carries the per-account Checkout flag only when the server reports exactly true', async () => {
+    const body = { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 2, status: 'none', serverTime: iso(0), cacheUntil: iso(900), supportPeriods: 0, features: {} }
+    for (const [checkoutEnabled, expected] of [[true, true], [false, false], [undefined, false], ['true', false]] as const) {
+      const f = fixture(creds)
+      f.request.mockResolvedValue({ status: 200, body: { ...body, checkoutEnabled } })
+      expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', status: 'none', checkoutEnabled: expected })
+    }
+  })
   it('clears remotely revoked credentials and permits an immediate new device link', async () => {
     const f = fixture(creds)
     f.request.mockResolvedValueOnce({ status: 401, body: { error: 'unauthorized' } })

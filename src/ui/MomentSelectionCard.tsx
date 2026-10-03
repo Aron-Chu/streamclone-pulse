@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { formatCount } from './mostReacted.ts'
 import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
@@ -26,7 +26,11 @@ export interface MomentSelectionCardProps {
   onAnalytics?: () => void
   onClose?: () => void
   className?: string
-  bodyClassName?: string
+  /**
+   * Identity of the selection shown. When it changes the details fade in place
+   * instead of the card remounting and sliding in again.
+   */
+  contentKey?: string
   ariaLabel: string
   style?: CSSProperties
 }
@@ -48,10 +52,13 @@ export function MomentSelectionCard({
   onAnalytics,
   onClose,
   className,
-  bodyClassName,
+  contentKey,
   ariaLabel,
   style,
 }: MomentSelectionCardProps) {
+  const [firstContentKey] = useState(contentKey)
+  const swappedRef = useRef(false)
+  if (contentKey !== firstContentKey) swappedRef.current = true
   return (
     <div
       className={['pulse-moment-selection-card', className].filter(Boolean).join(' ')}
@@ -65,7 +72,7 @@ export function MomentSelectionCard({
       onPointerDown={event => event.stopPropagation()}
       onClick={event => event.stopPropagation()}
     >
-      <div className={bodyClassName}>
+      <div key={contentKey} className={swappedRef.current ? 'pulse-moment-card-swap' : undefined}>
         <div style={styles.header}>
           <span style={styles.kicker}>{label}</span>
           <span style={styles.offset} data-moment-inspector-clock="true">{timeLabel}</span>

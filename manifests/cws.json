@@ -24,7 +24,7 @@
       "matches": ["https://*.twitch.tv/*"]
     }
   ],
-  "permissions": ["storage", "scripting"],
+  "permissions": ["storage", "scripting", "identity"],
   "host_permissions": [
     "https://api.streampulse.stream/*",
     "https://cdn.7tv.app/*",

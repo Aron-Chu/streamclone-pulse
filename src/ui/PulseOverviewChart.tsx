@@ -36,6 +36,7 @@ import {
   trendSmoothingWindow,
 } from './chartRollupUtils.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
+import { eventPathIncludesNode, onOutsidePointerDown, usePulsePortalRoot } from './pulsePortalContext.ts'
 import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
 import { panDeltaSecondsFromPointer } from './chartPanMath.ts'
 import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, viewportBuckets, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
@@ -410,6 +411,7 @@ function PulseOverviewChartImpl({
 }: PulseOverviewChartProps) {
   const chartId = useId().replace(/:/g, '')
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const portalRoot = usePulsePortalRoot()
   const internalViewport: ChartViewport = externalViewport ?? { startSeconds: 0, endSeconds: Math.max(0, durationSeconds) }
   // Without an external viewport the chart owns sampling: cap the raw timeline so
   // full-range rendering stays bounded while zoom (external viewport) can recover
@@ -552,25 +554,20 @@ function PulseOverviewChartImpl({
     // recreated during polling, but that must not clear an active hover.
   }, [interactionResetKey])
 
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent): void {
+  useEffect(() => onOutsidePointerDown(
+    portalRoot,
+    event => {
       const boundary = clearSelectionBoundaryRef?.current ?? containerRef.current
-      if (!boundary) return
-      const composedPath = typeof event.composedPath === 'function' ? event.composedPath() : []
-      const isInsideBoundary = composedPath.length > 0
-        ? composedPath.includes(boundary)
-        : boundary.contains(event.target as Node)
-      if (isInsideBoundary) return
       // Portaled dropdown menus and chart-owned controls may sit outside the
       // boundary in the composed tree. They preserve the committed selection.
-      if (isChartActionPointerTarget(event)) return
+      return !boundary || eventPathIncludesNode(event, boundary) || isChartActionPointerTarget(event)
+    },
+    event => {
       if (event.defaultPrevented) return
       clearHoverPreview()
       onClearSelection?.()
-    }
-    document.addEventListener('pointerdown', handlePointerDown)
-    return () => document.removeEventListener('pointerdown', handlePointerDown)
-  }, [clearSelectionBoundaryRef, onClearSelection, onHoverOffsetChange])
+    },
+  ), [clearSelectionBoundaryRef, onClearSelection, onHoverOffsetChange, portalRoot])
 
   useEffect(() => {
     const cancel = () => {

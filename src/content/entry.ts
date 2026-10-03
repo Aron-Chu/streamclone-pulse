@@ -46,7 +46,7 @@ import { getWatchlist } from '../shared/watchlist.ts'
 import { isPulseRosterEligible } from '../ui/pulseEligibility.ts'
 
 import { vodPulseToChannelPayload } from '../vod/vodPulseToChannelPayload.ts'
-import { isSupportedTwitchUrl } from '../background/pulseBroadcastTargets.ts'
+import { isSupportedTwitchUrl } from '../shared/twitchUrl.ts'
 import { readVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
 
 if (isSupportedTwitchUrl(window.location.href)) {

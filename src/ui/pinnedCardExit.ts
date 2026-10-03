@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-/** Same duration as `.pulse-moment-card-enter`. */
+/** Same duration as `.pulse-moment-slot-exit`. */
 export const SELECTED_MOMENT_CARD_EXIT_MS = 180
 
 export function nextPinnedCardHold<T>(args: {
