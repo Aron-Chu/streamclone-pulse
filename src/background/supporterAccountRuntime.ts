@@ -11,17 +11,24 @@ async function database(): Promise<IDBDatabase> {
     request.onerror = () => reject(new Error('account_storage_unavailable'))
   })
 }
-async function access(write: boolean, value?: unknown): Promise<unknown> {
+async function access(write: boolean, value?: unknown, key: string = DEFAULT_BACKEND_URL): Promise<unknown> {
   const db = await database()
   try {
     return await new Promise((resolve, reject) => {
       const transaction = db.transaction('account', write ? 'readwrite' : 'readonly')
       const store = transaction.objectStore('account')
-      const request = write ? value == null ? store.delete(DEFAULT_BACKEND_URL) : store.put(value, DEFAULT_BACKEND_URL) : store.get(DEFAULT_BACKEND_URL)
+      const request = write ? value == null ? store.delete(key) : store.put(value, key) : store.get(key)
       transaction.oncomplete = () => resolve(request.result)
       transaction.onerror = transaction.onabort = () => reject(new Error('account_storage_unavailable'))
     })
   } finally { db.close() }
+}
+
+/** Sign in with Twitch markers (never credentials) share the private store under their own key. */
+const TWITCH_SIGN_IN_META_KEY = `twitch-signin-meta-v1:${DEFAULT_BACKEND_URL}`
+export const twitchSignInMetaRecord = {
+  read: () => access(false, undefined, TWITCH_SIGN_IN_META_KEY),
+  write: async (value: unknown) => { await access(true, value, TWITCH_SIGN_IN_META_KEY) },
 }
 export const supporterAccount = new SupporterAccountCoordinator({
   // Only an invalidation signal is public, never an account ID or credential.

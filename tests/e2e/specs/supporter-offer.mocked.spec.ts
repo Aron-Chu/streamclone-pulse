@@ -93,13 +93,15 @@ async function linkDevice(extension: { serviceWorker: import('@playwright/test')
   expect(stored, 'linked credential was not seeded into the worker').toBe('linked')
 }
 
-function supporterBody(status: string, supportPeriods: number) {
+// The backend reports Checkout per account; these fixtures default to open.
+function supporterBody(status: string, supportPeriods: number, checkoutEnabled = true) {
   return {
     schemaVersion: 1,
     accountId: LINKED_DEVICE.accountId,
     environment: 'live',
     revision: 4,
     status,
+    checkoutEnabled,
     serverTime: new Date().toISOString(),
     accessFrom: new Date(Date.now() - 86_400_000).toISOString(),
     accessUntil: new Date(Date.now() + 20 * 86_400_000).toISOString(),
@@ -316,6 +318,20 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Open account page', exact: true }))
       .toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
+  })
+
+  test('a non-member sees no price or purchase link while sign-ups are closed', async ({ extension, prepare }) => {
+    await prepare({ scenario: 'live-ready' })
+    await linkDevice(extension)
+    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route =>
+      route.fulfill({ json: supporterBody('none', 0, false), status: 200 }))
+    const page = extension.page
+    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+    await expect(page.getByText('Paid sign-ups are not open yet.', { exact: false })).toBeVisible()
+    await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
+    await expect(page.getByText('Become a Supporter')).toHaveCount(0)
+    await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
+    await page.screenshot({ animations: 'disabled', fullPage: true, path: join(CAPTURE_DIR, 'supporter-signups-closed.png') })
   })
 
   test('the page never creates a checkout session itself', async ({ extension, prepare }) => {

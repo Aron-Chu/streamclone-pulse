@@ -1,18 +1,8 @@
 import { normalizeLogin } from '../shared/login.ts'
 import type { BackgroundRequest } from '../shared/messages.ts'
+import { isSupportedTwitchUrl } from '../shared/twitchUrl.ts'
 
-/** True when a Twitch tab URL is for this channel (multi-tab same login still matches). */
-export function isSupportedTwitchUrl(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol !== 'https:') return false
-    const host = parsed.hostname.toLowerCase()
-    return host === 'twitch.tv' || host === 'www.twitch.tv'
-  } catch {
-    return false
-  }
-}
+export { isSupportedTwitchUrl }
 
 export interface RuntimeSenderLike {
   id?: string
@@ -61,6 +51,9 @@ export type MessageSenderScope = 'extension-page' | 'twitch-channel' | 'twitch-c
 
 export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSenderScope> = {
   SUPPORTER_ACCOUNT: 'extension-page',
+  // Opens the Twitch auth window and stores credentials: never from a Twitch
+  // content script, which also runs on id.twitch.tv.
+  TWITCH_SIGN_IN: 'extension-page',
   SUPPORTER_ENTITLEMENT: 'extension-page',
   SUPPORTER_COSMETICS: 'extension-page',
   SUPPORTER_APPEARANCE: 'twitch-any',
@@ -74,6 +67,7 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SYNC_WATCHLIST: 'extension-page',
   DELETE_BOOKMARK: 'extension-page',
   MY_MOMENTS: 'extension-page',
+  HUB_SNAPSHOT: 'extension-page',
   MOMENT_CAPTURE: 'twitch-any',
   GET_PULSE_DEBUG_LOG: 'extension-page',
   CLEAR_PULSE_DEBUG_LOG: 'extension-page',

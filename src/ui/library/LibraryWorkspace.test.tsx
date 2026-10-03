@@ -145,7 +145,8 @@ describe('My Moments frontend', () => {
     }
 
     await render(withState('not_linked'))
-    expect(container.textContent).toContain('Bookmarks need your Pulse account')
+    expect(container.textContent).toContain('Bookmarks are saved on this device')
+    expect(container.textContent).toContain('saved here stay on this device')
     expect(container.querySelector('a[href="#supporter"]')?.textContent).toBe('Connect account')
 
     await act(async () => root?.unmount())
@@ -164,8 +165,14 @@ describe('My Moments frontend', () => {
     await act(async () => root?.unmount())
     document.body.replaceChildren()
     await render(withState('ready'))
-    expect(container.textContent).not.toContain('Bookmarks need your Pulse account')
+    expect(container.textContent).not.toContain('Bookmarks are saved on this device')
     expect(container.textContent).not.toContain('Could not reach StreamPulse')
+    expect(container.textContent).not.toContain('saved without an account')
+  })
+  it('says where pre-account device saves are while an account is linked', async () => {
+    const snapshot = { ...createDemoSnapshot('new', 0), bookmarksState: 'ready', bookmarksAvailable: true, deviceBookmarks: [{ id: 'local:a' }, { id: 'local:b' }] }
+    await render({ load: async () => snapshot as unknown as LibrarySnapshot, execute: async () => snapshot as unknown as LibrarySnapshot, export: async () => '' })
+    expect(container.textContent).toContain('2 bookmarks saved without an account are kept on this device, not in your account.')
   })
   it('ignores stale completion after repository/account changes', async () => {
     let finish!: (snapshot: LibrarySnapshot) => void

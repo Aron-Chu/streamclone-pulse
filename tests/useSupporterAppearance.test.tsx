@@ -6,6 +6,7 @@ import {
   APPEARANCE_RECHECK_MS,
   APPEARANCE_RENEW_LEAD_MS,
   APPEARANCE_WAKE_DEBOUNCE_MS,
+  resetSupporterAppearanceForTests,
   useSupporterAppearance,
 } from '../src/ui/useSupporterAppearance.ts'
 
@@ -40,10 +41,64 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] })
   hidden = false
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+  resetSupporterAppearanceForTests()
 })
 afterEach(() => { vi.useRealTimers() })
 
 describe('supporter header appearance', () => {
+  it('lets the next mount start from a still-verified finish without asking again', async () => {
+    const first = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent())
+    const header = mount(first)
+    await advance(0)
+    expect(header.finish()).toBe('halo')
+    header.unmount()
+    // Quick settings replaces the header a moment later.
+    await advance(5_000)
+    const second = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent())
+    const settings = mount(second)
+    expect(settings.finish()).toBe('halo')
+    await advance(0)
+    expect(second).not.toHaveBeenCalled()
+    // It still renews before the inherited window lapses.
+    await advance(60_000 - 5_000 - APPEARANCE_RENEW_LEAD_MS)
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(settings.finish()).toBe('halo')
+    settings.unmount()
+  })
+
+  it('renews at once when the inherited finish is about to lapse, without blinking off', async () => {
+    const first = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent())
+    const header = mount(first)
+    await advance(0)
+    header.unmount()
+    // Only about 10 s of the verified window is left when settings mount.
+    await advance(50_000)
+    let finishRenewal!: (value: Reply) => void
+    const second = vi.fn<() => Promise<Reply>>().mockImplementation(() => new Promise(resolve => { finishRenewal = resolve }))
+    const settings = mount(second)
+    expect(settings.finish()).toBe('halo')
+    await advance(0)
+    expect(second).toHaveBeenCalledTimes(1)
+    await act(async () => { finishRenewal(accent()) })
+    await advance(11_000)
+    expect(settings.finish()).toBe('halo')
+    settings.unmount()
+  })
+
+  it('starts blank again once the shared finish has lapsed', async () => {
+    const first = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent(10_000))
+    const header = mount(first)
+    await advance(0)
+    header.unmount()
+    await advance(11_000)
+    const second = vi.fn<() => Promise<Reply>>().mockResolvedValue(none)
+    const settings = mount(second)
+    expect(settings.finish()).toBe('none')
+    await advance(0)
+    expect(second).toHaveBeenCalledTimes(1)
+    settings.unmount()
+  })
+
   it('keeps a verified accent through its renewal instead of blinking off', async () => {
     let finishSecond!: (value: Reply) => void
     const request = vi.fn<() => Promise<Reply>>()

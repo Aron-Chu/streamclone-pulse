@@ -29,12 +29,13 @@ test('the overlay offers Supporter as a destination and opens that section', asy
   await expect(cta).toContainText('Pulse Supporter')
   await expect(cta).toContainText('Core tools stay free')
 
-  // The destination stays available after the controls people use on stream.
+  // The destination sits right under the channel card, above every control.
   const box = await cta.boundingBox()
   expect(box!.width).toBeGreaterThan(120)
   expect(box!.height).toBeGreaterThanOrEqual(36)
+  await expect(cta).toBeInViewport()
   const preferences = await page.getByRole('region', { name: 'Extension preferences' }).boundingBox()
-  expect(preferences!.y + preferences!.height).toBeLessThanOrEqual(box!.y)
+  expect(box!.y + box!.height).toBeLessThanOrEqual(preferences!.y)
 
   await page.screenshot({
     animations: 'disabled',

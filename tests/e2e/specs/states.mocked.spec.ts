@@ -253,7 +253,8 @@ test.describe('extension mocked states', () => {
     const settings = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settings).toBeVisible()
     await expect(settings.locator('[data-api-status]')).toBeVisible()
-    await expect(settings.locator('[data-sampler-status]')).toBeVisible()
+    // Backend sampler health lives in full settings, not on the channel card.
+    await expect(settings.locator('[data-sampler-status]')).toHaveCount(0)
     await expect(settings.getByText('Remember recently opened channels')).toHaveCount(0)
     await expect(settings.locator('[data-settings-section]')).toHaveCount(0)
     await expect(settings.locator('input[type="password"]')).toHaveCount(0)

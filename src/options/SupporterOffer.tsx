@@ -117,8 +117,12 @@ export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: Supp
   // is waiting, or a failed read), the extension cannot know whether an offer
   // applies, so it never shows a purchase link. A purchase offer itself appears
   // only for `ready` + none (public offer) or expired (billing, which can also
-  // restart a membership).
-  const showWebsiteLink = status !== null
+  // restart a membership), and only while the server reports Checkout open.
+  // The server decides per account whether Checkout is open. While it is not,
+  // a price and a purchase link would promise a sale the website refuses.
+  const checkoutOpen = entitlement?.state === 'ready' && entitlement.checkoutEnabled === true
+  const signupsClosed = status === 'none' && !checkoutOpen
+  const showWebsiteLink = status !== null && !signupsClosed
   // Every other non-ready state means a linked installation's status could not
   // be read, or the worker did not answer, so the only honest action is to read
   // again. not_linked has no action here: the account card above owns linking,
@@ -155,6 +159,11 @@ export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: Supp
           <>
             <p><strong>{STATUS_COPY[status].title}</strong></p>
             <p className="pulse-supporter-detail">{STATUS_COPY[status].detail}</p>
+            {signupsClosed ? (
+              <p className="pulse-supporter-detail" data-supporter-signups="closed">
+                Paid sign-ups are not open yet. Use Refresh status to check again.
+              </p>
+            ) : null}
             {entitlement?.state === 'ready' && entitlement.accessUntil && isSupporter ? (
               <p className="pulse-supporter-detail">
                 Access through {new Date(entitlement.accessUntil).toLocaleDateString()}.
@@ -169,7 +178,7 @@ export function SupporterOffer({ onEntitlement }: { onEntitlement?: (value: Supp
         ) : null}
       </div>
 
-      {status === 'none' || status === 'expired' ? (
+      {(status === 'none' || status === 'expired') && checkoutOpen ? (
         <>
           <dl className="pulse-supporter-terms">
             <dt>Price</dt><dd>{PRICE_DISPLAY}</dd>

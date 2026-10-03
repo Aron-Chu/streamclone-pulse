@@ -7,6 +7,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'MY_MOMENTS',
   'MOMENT_CAPTURE',
   'SUPPORTER_ACCOUNT',
+  'TWITCH_SIGN_IN',
   'SUPPORTER_ENTITLEMENT',
   'SUPPORTER_COSMETICS',
   'SUPPORTER_APPEARANCE',
@@ -17,6 +18,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'GET_ALWAYS_TRACKED',
   'GET_CLIP',
   'HEALTH',
+  'HUB_SNAPSHOT',
   'GET_UPDATE_CHECK_CAPABILITY',
   'CHECK_FOR_UPDATE',
   'OPEN_SETTINGS_HOST',
@@ -238,6 +240,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'HEALTH':
       return { type, force: optionalBoolean(raw.force) }
+    case 'HUB_SNAPSHOT':
     case 'GET_UPDATE_CHECK_CAPABILITY':
     case 'CHECK_FOR_UPDATE':
       return { type }
@@ -257,6 +260,16 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       const action = raw.action
       return action === 'status' || action === 'start' || action === 'poll' || action === 'cancel' || action === 'disconnect'
         ? { type, action } : null
+    }
+    case 'TWITCH_SIGN_IN': {
+      // Exact shapes only: no URL, redirect, token or surface ever comes from a page.
+      const keys = Object.keys(raw)
+      if (raw.action === 'status') return keys.length === 2 ? { type, action: 'status' } : null
+      if (raw.action !== 'sign_in' || keys.some(key => !['type', 'action', 'mode', 'forceVerify'].includes(key))) return null
+      if (raw.mode !== 'interactive' && raw.mode !== 'silent') return null
+      if (raw.forceVerify === undefined || raw.forceVerify === false) return { type, action: 'sign_in', mode: raw.mode }
+      // Choosing another account always needs the window.
+      return raw.forceVerify === true && raw.mode === 'interactive' ? { type, action: 'sign_in', mode: 'interactive', forceVerify: true } : null
     }
     case 'SUPPORTER_COSMETICS':
       if (Object.keys(raw).some(key => !['type', 'enabled', 'finish'].includes(key))) return null

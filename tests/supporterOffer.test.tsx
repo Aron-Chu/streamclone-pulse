@@ -70,7 +70,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('supporter offer', () => {
   it('shows the honest monthly terms to a non-supporter', async () => {
-    const view = await renderWith({ state: 'ready', status: 'none', supportPeriods: 0, features: [] })
+    const view = await renderWith({ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true })
     try {
       expect(view.text()).toContain('Not a Supporter yet')
       // One honest offer: price, cadence, cancellation and what you get.
@@ -99,6 +99,37 @@ describe('supporter offer', () => {
     }
   })
 
+  it.each<[string, SupporterEntitlement]>([
+    ['closed', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: false }],
+    // An older server that does not send the flag has not opened Checkout either.
+    ['not reported', { state: 'ready', status: 'none', supportPeriods: 0, features: [] }],
+  ])('offers no price or purchase link while Checkout is %s for the account', async (_, entitlement) => {
+    const view = await renderWith(entitlement)
+    try {
+      expect(view.text()).toContain('Not a Supporter yet')
+      expect(view.text()).toContain('Paid sign-ups are not open yet')
+      expect(view.text()).not.toContain('US$4.99 / month')
+      expect(view.text()).not.toContain('Taxes, if any')
+      expect(view.text()).not.toContain('Become a Supporter')
+      expect(view.link()).toBeNull()
+      expect(view.hrefs()).not.toContain('https://streampulse.stream/supporter')
+      expect(view.buttons()).toEqual(['Refresh status'])
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it('keeps billing review but drops the restart price for an expired membership while Checkout is closed', async () => {
+    const view = await renderWith({ state: 'ready', status: 'expired', supportPeriods: 1, features: [], checkoutEnabled: false })
+    try {
+      expect(view.link()?.href).toBe('https://streampulse.stream/account/billing')
+      expect(view.text()).not.toContain('US$4.99 / month')
+      expect(view.text()).not.toContain('Paid sign-ups are not open yet')
+    } finally {
+      view.cleanup()
+    }
+  })
+
   it('shows active membership and links to management instead of purchase', async () => {
     const accessUntil = new Date(Date.now() + 20 * 24 * 3600_000).toISOString()
     const view = await renderWith({ state: 'ready', status: 'active', accessUntil, supportPeriods: 3, features: ['supporter.banner.v1'] })
@@ -115,14 +146,14 @@ describe('supporter offer', () => {
   })
 
   it('does not expose a billing link while entitlement is still loading', async () => {
-    const view = await renderWith({ state: 'ready', status: 'none', supportPeriods: 0, features: [] }, undefined, { waitForResponse: true })
+    const view = await renderWith({ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }, undefined, { waitForResponse: true })
     try {
       expect(view.text()).toContain('Checking Supporter status')
       expect(view.link()).toBeNull()
       expect(view.host.querySelector('[data-supporter-action="billing"]')?.getAttribute('aria-disabled')).toBe('true')
 
       await act(async () => {
-        view.resolve({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'ready', status: 'none', supportPeriods: 0, features: [] } })
+        view.resolve({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true } })
       })
       expect(view.link()?.href).toBe('https://streampulse.stream/supporter')
       expect(view.link()?.textContent).toContain('Become a Supporter')
@@ -144,7 +175,7 @@ describe('supporter offer', () => {
   )
 
   it('keeps a first-time visitor on the public offer route', async () => {
-    const view = await renderWith({ state: 'ready', status: 'none', supportPeriods: 0, features: [] })
+    const view = await renderWith({ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true })
     try {
       expect(view.link()?.href).toBe('https://streampulse.stream/supporter')
       expect(view.link()?.textContent).toContain('Become a Supporter')
@@ -225,7 +256,8 @@ describe('supporter offer', () => {
   // current membership. Every other state either manages an existing one or
   // cannot know, and must not send anyone to buy.
   it.each<[string, SupporterEntitlement, string | null, string[]]>([
-    ['ready none', { state: 'ready', status: 'none', supportPeriods: 0, features: [] }, 'https://streampulse.stream/supporter', ['Refresh status']],
+    ['ready none', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }, 'https://streampulse.stream/supporter', ['Refresh status']],
+    ['ready none, sign-ups closed', { state: 'ready', status: 'none', supportPeriods: 0, features: [] }, null, ['Refresh status']],
     ['ready expired', { state: 'ready', status: 'expired', supportPeriods: 1, features: [] }, 'https://streampulse.stream/account/billing', ['Refresh status']],
     ['not linked', { state: 'not_linked' }, null, []],
     ['not deployed', { state: 'unavailable', reason: 'not_deployed' }, null, ['Check again']],
@@ -238,13 +270,15 @@ describe('supporter offer', () => {
     try {
       expect(view.link()?.href ?? null).toBe(href)
       expect(view.buttons()).toEqual(buttons)
-      if (entitlement.state === 'ready' && entitlement.status === 'none') {
+      if (entitlement.state === 'ready' && entitlement.status === 'none' && entitlement.checkoutEnabled) {
         expect(view.link()?.textContent).toContain('Become a Supporter')
       } else {
         expect(view.text()).not.toContain('Become a Supporter')
       }
-      if (entitlement.state !== 'ready') {
+      if (entitlement.state !== 'ready' || !entitlement.checkoutEnabled) {
         expect(view.text()).not.toContain('US$4.99 / month')
+      }
+      if (entitlement.state !== 'ready') {
         expect(view.hrefs()).not.toContain('https://streampulse.stream/supporter')
         expect(view.hrefs()).not.toContain('https://streampulse.stream/account/billing')
       }

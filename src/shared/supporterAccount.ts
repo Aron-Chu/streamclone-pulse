@@ -29,6 +29,8 @@ export type SupporterEntitlement =
       supportPeriods: number
       features: string[]
       cosmetics?: SupporterCosmetics
+      /** Per account: whether the website would start a Checkout for it now. */
+      checkoutEnabled?: boolean
     }
 
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */

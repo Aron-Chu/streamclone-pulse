@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import { isSenderAuthorizedForMessage } from '../src/background/pulseBroadcastTargets.ts'
-import { emptyPersonalData, prunePersonalData, recordWatched } from '../src/background/myMomentsStore.ts'
+import { emptyPersonalData, prunePersonalData, recordWatched, type PersonalData } from '../src/background/myMomentsStore.ts'
 import { watchedProgress } from '../src/content/momentPlayback.ts'
 
 const reference = { id:'moment',channel:'streamer',title:'Moment',vodId:'12345678',offsetSeconds:100,availability:'unresolved' as const }
@@ -43,5 +43,9 @@ describe('My Moments trust and capture', () => {
     const one = recordWatched(recordWatched(on,m,2,1000),m,2,2000)
     expect(one.history).toHaveLength(1)
     expect(prunePersonalData(one,8*86400000)).toMatchObject({history:[],notes:{bookmark:'keep me'}})
+  })
+  it('reads records stored before device bookmarks existed', () => {
+    const legacy = {preferences:{captureHistory:true,retentionDays:7},epoch:3,history:[],notes:{a:'b'}} as unknown as PersonalData
+    expect(prunePersonalData(legacy,0)).toMatchObject({epoch:3,notes:{a:'b'},bookmarks:[]})
   })
 })

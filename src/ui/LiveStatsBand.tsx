@@ -25,6 +25,7 @@ import { PulseOverviewChart } from './PulseOverviewChart.tsx'
 import { ChartReadoutBand, type ChartReadoutMode } from './ChartReadoutBand.tsx'
 import { ChartMinuteInspectCard } from './ChartMinuteInspectCard.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
+import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { SavedMoments } from './SavedMoments.tsx'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
@@ -1460,14 +1461,16 @@ export function LiveStatsBand({
             />
           </div>
           {inspectorHold.point ? (
-            <div
-              className={inspectorHold.exiting ? 'pulse-moment-card-exit' : undefined}
+            <MomentCardSlot
+              exiting={inspectorHold.exiting}
               style={styles.chartInspector}
               data-chart-inspector-owner="activity-chart"
               data-chart-inspector-kind={inspectorHold.point.moment ? 'moment' : 'minute'}
               data-chart-inspector-exiting={inspectorHold.exiting ? 'true' : undefined}
               aria-live="polite"
             >
+              {/* The gap above the card grows and collapses with it, so a press below never drifts. */}
+              <div style={styles.chartInspectorGap}>
               {inspectorHold.point.moment ? (
                 <SelectedMomentCard
                   point={inspectorHold.point.moment}
@@ -1490,7 +1493,8 @@ export function LiveStatsBand({
                   viewerUnavailableDetail={viewerUnavailableDetail}
                 />
               )}
-            </div>
+              </div>
+            </MomentCardSlot>
           ) : null}
         </div>
         {chartRailVisible ? (
@@ -1559,7 +1563,15 @@ export function LiveStatsBand({
             }
           />
         ) : null}
-        {!demoMode ? <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={selectedMomentPoint} /> : null}
+        {!demoMode ? (
+          <SavedMoments
+            login={payload.login}
+            streamId={payload.streamId}
+            vodId={payload.vodId ?? undefined}
+            selected={selectedMomentPoint}
+            minuteOffsetSeconds={inspectorInput && !inspectorInput.moment ? inspectorInput.rollup.offsetSeconds : null}
+          />
+        ) : null}
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <div data-chart-action="true">
@@ -1657,10 +1669,10 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
   },
   chartInspector: {
-    marginTop: 8,
     minWidth: 0,
     width: '100%',
   },
+  chartInspectorGap: { paddingTop: 8 },
   chartLeadIn: {
     display: 'grid',
     gap: 4,

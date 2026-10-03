@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BackgroundResponse } from '../shared/messages.ts'
-import type { SupporterAccountAction, SupporterAccountState } from '../shared/supporterAccount.ts'
+import type { SupporterAccountState } from '../shared/supporterAccount.ts'
 import { deviceLinkWithCode } from '../shared/portalLinks.ts'
+import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
+import { TwitchAccountConnection } from './TwitchAccountConnection.tsx'
+import { useAccountConnection, type AccountConnectionModel } from './useAccountConnection.ts'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 
 const descriptions: Record<string, string> = {
@@ -18,58 +19,27 @@ const unavailable: Record<Extract<SupporterAccountState, { state: 'unavailable' 
 }
 const unrenewed = 'This extension is still connected, but the account service is temporarily unavailable. Your free tools still work; check again in a moment.'
 
-/** The worker owns credentials and network requests; this page receives a safe projection. */
-export function AccountConnection() {
-  const [account, setAccount] = useState<SupporterAccountState | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState('')
-  const requestId = useRef(0)
-  const inFlight = useRef(false)
+/**
+ * The "Pulse account" card. With Sign in with Twitch off (the build default)
+ * it is the device-code card; with it on, the Twitch card, which falls back to
+ * the device-code card where the browser has no identity API.
+ */
+export function AccountConnection({ twitchSignIn = TWITCH_SIGNIN_ENABLED }: { twitchSignIn?: boolean } = {}) {
+  const connection = useAccountConnection()
+  return twitchSignIn
+    ? <TwitchAccountConnection connection={connection} fallback={<DeviceLinkCard connection={connection} />} />
+    : <DeviceLinkCard connection={connection} />
+}
+
+/** Device-code linking: the original account card. */
+export function DeviceLinkCard({ connection }: { connection: AccountConnectionModel }) {
+  const { account, busy, notice, request } = connection
   const portalOrigin = usePortalOrigin()
-  const request = useCallback(async (action: SupporterAccountAction) => {
-    if (inFlight.current) return
-    inFlight.current = true
-    const id = ++requestId.current
-    setBusy(true)
-    setNotice('')
-    try {
-      const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action })
-      if (id !== requestId.current) return
-      if (!response || !('type' in response) || response.type !== 'SUPPORTER_ACCOUNT') throw new Error('Account worker unavailable')
-      setAccount(response.account)
-      if (action === 'disconnect' && response.account.state === 'error') {
-        setNotice('Disconnect did not finish cleanly; server revocation could not be confirmed. Check the connection before trying again.')
-      }
-    } catch {
-      if (id === requestId.current) {
-        setAccount({ state: 'error' })
-        if (action === 'disconnect') setNotice('Disconnect could not be confirmed. Try again when the extension is available.')
-      }
-    } finally {
-      if (id === requestId.current) { inFlight.current = false; setBusy(false) }
-    }
-  }, [])
-  useEffect(() => {
-    void request('status')
-    const changed = (changes: Record<string, chrome.storage.StorageChange>) => {
-      if ('pulseAccountRevision' in changes) void request('status')
-    }
-    const storage = globalThis.chrome?.storage?.onChanged
-    storage?.addListener(changed)
-    return () => { requestId.current++; inFlight.current = false; storage?.removeListener(changed) }
-  }, [request])
   const unrenewedLink = account?.state === 'unavailable' && account.linked === true
   // Linking is not deployed on this server, so offering "Link extension" would
   // only repeat the same failure. Show the explanation alone; reopening settings
   // checks again.
   const linkingNotDeployed = account?.state === 'unavailable' && account.reason === 'not_deployed' && !account.linked
-  useEffect(() => {
-    if (account?.state !== 'pending' || busy) return
-    const timer = window.setTimeout(() => {
-      void request(document.hidden ? 'status' : 'poll')
-    }, Math.max(5, account.retryAfterSeconds) * 1000)
-    return () => window.clearTimeout(timer)
-  }, [account, busy, request])
 
   return <PulseSectionCard title="Pulse account" headingLevel={3}>
     <div role="status" aria-live="polite">
