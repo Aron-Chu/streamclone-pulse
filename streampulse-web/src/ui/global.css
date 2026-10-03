@@ -683,6 +683,10 @@ select {
 .public-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; min-height: 44px; color: #fff; background: #352447; border: 2px solid #c4b5fd; transform: translateY(-200%); }
 .public-skip-link:focus { transform: translateY(0); }
 .app-nav__menu { display: none; }
+/* Navigation and account entry share the right edge; the account entry sits
+   closer to the install button than the brand-to-navigation gap. */
+.app-nav__links { margin-left: auto; }
+.app-nav > .account-entry { margin-left: -0.75rem; }
 .public-toc { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; }
 .public-toc a { padding-block: .5rem; }
 .moment-handoff-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding-top: .5rem; }
@@ -698,7 +702,15 @@ select {
   }
   .app-nav__links { display: none; flex-basis: 100%; }
   .app-nav__links.is-open { display: flex; }
+  /* Menu and account entry stay on the brand row; the open menu drops below. */
+  .app-nav__menu { margin-left: auto; }
+  .app-nav > .account-entry { margin-left: 0; }
+  .app-nav__links { order: 1; }
   .app-nav__links :is(a, button) { min-height: 44px; align-content: center; }
+}
+/* Brand, menu button and account entry keep one row down to 320px. */
+@media (max-width: 360px) {
+  .app-nav { gap: .5rem; padding-inline: .75rem; }
 }
 @media (max-width: 560px) {
   .app-main { padding: 1.5rem .75rem 3rem; }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { AccountEntry } from './AccountEntry'
 import { BrandMark } from './BrandMark'
 import { ChromeInstallCta } from './ChromeInstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
@@ -84,6 +85,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </a>
           <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
+        <AccountEntry variant="public" />
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
       <footer className="app-footer">

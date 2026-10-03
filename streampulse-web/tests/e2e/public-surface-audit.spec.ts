@@ -52,6 +52,15 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   expect(dimensions.body, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1)
 }
 
+/** The build under test has Sign in with Twitch on (npm run test:e2e:audit inherits VITE_TWITCH_SIGNIN). */
+const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1'
+
+/** The signed-out sign-in page leads with Twitch when the flag is on, else with the email form. */
+async function expectSignedOutSignInPage(page: Page): Promise<void> {
+  if (TWITCH_SIGNIN) await expect(page.getByRole('button', { name: 'Sign in with Twitch' })).toBeVisible()
+  else await expect(page.getByLabel('Email address')).toBeVisible()
+}
+
 const widths = [360, 390, 720, 768, 1024, 1440]
 const coldPages = [
   ['/', /Find the Twitch moments people actually reacted to/i],
@@ -199,5 +208,243 @@ test.describe('public surface audit', () => {
     await expect(page.getByText('Reported Services Operational')).toHaveCount(0)
     await expect(page.getByText('Status Unavailable')).toBeVisible()
     await expect(page.getByText('Operational', { exact: true })).toHaveCount(0)
+  })
+
+  for (const width of [1440, 375]) {
+    test(`anonymous visitors get a sign-in link and no account request at ${width}px`, async ({ page }, testInfo) => {
+      const accountReads: string[] = []
+      page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/v1/account/')) accountReads.push(request.url()) })
+      await page.setViewportSize({ width, height: 900 })
+      for (const [path, header] of [['/docs', 'header.app-nav'], ['/analytics', 'header.analytics-topnav']] as const) {
+        await page.goto(path)
+        const signIn = page.locator(header).getByRole('link', { name: 'Sign in', exact: true })
+        await expect(signIn).toBeVisible()
+        await expect(signIn).toHaveAttribute('href', '/account/sign-in')
+        await expect(page.locator(header).getByRole('button', { name: 'Account', exact: true })).toHaveCount(0)
+        await expectNoHorizontalOverflow(page)
+        await page.screenshot({ path: testInfo.outputPath(`account-entry-signed-out${path.replace('/', '-')}-${width}.png`) })
+      }
+      await page.goto('/account/sign-in')
+      await expectSignedOutSignInPage(page)
+      expect(accountReads).toEqual([])
+    })
+
+    test(`signed-in visitors get an account menu at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      const csrf = 'ab'.repeat(32)
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: csrf, domain: new URL(baseURL!).hostname, path: '/', secure: true, sameSite: 'Strict' }])
+      let accountReads = 0
+      const logouts: Array<string | null> = []
+      await page.route('**/v1/account/me', route => {
+        accountReads++
+        return route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111', expiresAt: '2027-01-01T00:00:00Z' } })
+      })
+      await page.route('**/v1/account/auth/logout', route => {
+        logouts.push(route.request().method() === 'POST' ? route.request().headers()['x-pulse-csrf'] ?? null : 'wrong-method')
+        return route.fulfill({ status: 204 })
+      })
+      await page.setViewportSize({ width, height: 900 })
+
+      await page.goto('/analytics')
+      const analyticsHeader = page.locator('header.analytics-topnav')
+      const trigger = analyticsHeader.getByRole('button', { name: 'Account', exact: true })
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      await expect(analyticsHeader.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0)
+      await trigger.focus()
+      await page.keyboard.press('Enter')
+      const menu = page.getByRole('menu', { name: 'Account' })
+      await expect(menu.getByRole('menuitem', { name: 'Account & devices' })).toBeFocused()
+      await expect(menu.getByRole('menuitem', { name: 'Account & devices' })).toHaveAttribute('href', '/account/settings')
+      await expect(menu.getByRole('menuitem', { name: 'Membership & billing' })).toHaveAttribute('href', '/account/billing')
+      await page.keyboard.press('ArrowDown')
+      await expect(menu.getByRole('menuitem', { name: 'Membership & billing' })).toBeFocused()
+      const box = await page.locator('.account-entry__panel').boundingBox()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`account-entry-menu-analytics-${width}.png`), animations: 'disabled' })
+      await page.keyboard.press('Escape')
+      await expect(menu).toHaveCount(0)
+      await expect(trigger).toBeFocused()
+
+      // The support menu points signed-in visitors at their account, not the email form.
+      await analyticsHeader.getByRole('button', { name: 'Support and account', exact: true }).click()
+      const support = analyticsHeader.locator('.analytics-topnav__more-links')
+      await expect(support.getByRole('link', { name: 'Account & devices' })).toHaveAttribute('href', '/account/settings')
+      await expect(support.getByRole('link', { name: 'Sign in' })).toHaveCount(0)
+      await page.keyboard.press('Escape')
+
+      await page.goto('/docs')
+      const publicHeader = page.locator('header.app-nav')
+      const publicTrigger = publicHeader.getByRole('button', { name: 'Account', exact: true })
+      await publicTrigger.click()
+      await expect(page.getByRole('menu', { name: 'Account' })).toBeVisible()
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`account-entry-menu-public-${width}.png`), animations: 'disabled' })
+      // The answer lasts for the page: client navigation does not ask again.
+      if (width <= 960) await publicHeader.getByRole('button', { name: 'Menu', exact: true }).click()
+      await publicHeader.getByRole('link', { name: 'Analytics', exact: true }).click()
+      await expect(page).toHaveURL(/\/analytics$/)
+      await expect(analyticsHeader.getByRole('button', { name: 'Account', exact: true })).toBeVisible()
+      expect(accountReads).toBe(2)
+
+      await analyticsHeader.getByRole('button', { name: 'Account', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Sign out' }).click()
+      await expect(analyticsHeader.getByRole('link', { name: 'Sign in', exact: true })).toBeFocused()
+      expect(logouts).toEqual([csrf])
+    })
+
+    test(`the sign-in page offers next steps instead of the form when signed in at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: 'cd'.repeat(32), domain: new URL(baseURL!).hostname, path: '/', secure: true, sameSite: 'Strict' }])
+      await page.route('**/v1/account/me', route => route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111' } }))
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/account/sign-in')
+      await expect(page.getByRole('heading', { level: 1, name: 'You’re signed in' })).toBeVisible()
+      await expect(page.getByLabel('Email address')).toHaveCount(0)
+      const actions = page.locator('.pulse-account-actions')
+      await expect(actions.getByRole('link', { name: 'Account & devices' })).toHaveAttribute('href', '/account/settings')
+      await expect(actions.getByRole('link', { name: 'Membership & billing' })).toHaveAttribute('href', '/account/billing')
+      await expect(actions.getByRole('button', { name: 'Sign out' })).toBeEnabled()
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`account-sign-in-signed-in-${width}.png`), fullPage: true })
+    })
+  }
+
+  test('a rejected session check falls back to the signed-out entry and the email form', async ({ page, baseURL }) => {
+    await page.context().addCookies([{ name: '__Host-pulse_csrf', value: 'ef'.repeat(32), domain: new URL(baseURL!).hostname, path: '/', secure: true, sameSite: 'Strict' }])
+    await page.route('**/v1/account/me', route => route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+    await page.goto('/account/sign-in')
+    await expectSignedOutSignInPage(page)
+    await expect(page.locator('header.app-nav').getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
+  })
+})
+
+// Sign in with Twitch, mocked end to end: the API start/complete routes and
+// Twitch's authorize page are intercepted; nothing leaves the machine. Run with
+// the flag on:  VITE_TWITCH_SIGNIN=1 npm run test:e2e:audit -- --grep "Twitch"
+test.describe('Sign in with Twitch', () => {
+  const FLOW_ID = '0123456789abcdef0123456789abcdef'
+  const FLOW_SECRET = 'f'.repeat(64)
+  const ID_TOKEN = /* A stand-in, built at runtime so secret scanners see no token literal. */ [{ alg: 'RS256' }, { sub: '42424242' }].map(part => btoa(JSON.stringify(part))).concat(btoa('mocked-signature')).map(part => part.replace(/=+$/, '')).join('.')
+  const AVATAR = 'https://static-cdn.jtvnw.net/jtv_user_pictures/pulse-profile_image-300x300.png'
+
+  /** Stands in for Twitch: approve and come back with the ID token in the fragment. */
+  function twitchApproves(origin: string): string {
+    const target = `${origin}/account/twitch/callback#id_token=${ID_TOKEN}&scope=openid&state=${FLOW_ID}`
+    return `<!doctype html><title>Twitch (mock)</title><script>location.replace(${JSON.stringify(target)})</script>`
+  }
+
+  function startReply(origin: string) {
+    const authorize = new URLSearchParams({
+      client_id: 'mockedclientid0000000000000000', redirect_uri: `${origin}/account/twitch/callback`,
+      response_type: 'id_token', scope: 'openid', nonce: 'n'.repeat(64), state: FLOW_ID, force_verify: 'false',
+    })
+    return {
+      flowId: FLOW_ID, flowSecret: FLOW_SECRET, authorizeUrl: `https://id.twitch.tv/oauth2/authorize?${authorize}`,
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    }
+  }
+
+  test('is absent and the callback path is an ordinary 404 while VITE_TWITCH_SIGNIN is off', async ({ page }) => {
+    test.skip(TWITCH_SIGNIN, 'this build has Sign in with Twitch on')
+    const twitchCalls: string[] = []
+    page.on('request', request => { if (request.url().includes('/twitch/')) twitchCalls.push(request.url()) })
+    await page.goto('/account/sign-in')
+    await expect(page.getByLabel('Email address')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign in with Twitch' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Use email instead' })).toHaveCount(0)
+    // Even with the flag off, a token that lands on the callback is stripped and never used.
+    await page.goto(`/account/twitch/callback#id_token=${ID_TOKEN}&state=${FLOW_ID}`)
+    await expect(page.getByTestId('not-found')).toBeVisible()
+    expect(await page.evaluate(() => window.location.href)).not.toContain(ID_TOKEN)
+    expect(twitchCalls.filter(url => url.includes('/v1/'))).toEqual([])
+  })
+
+  for (const width of [1440, 375]) {
+    test(`signed out → Sign in with Twitch → Twitch → callback → signed in at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
+      const origin = new URL(baseURL!).origin
+      const host = new URL(baseURL!).hostname
+      const urls: string[] = []
+      const starts: Array<{ body: unknown; origin?: string }> = []
+      const completes: Array<{ body: unknown; origin?: string }> = []
+      let signedIn = false
+      page.on('request', request => urls.push(request.url()))
+
+      // Hermetic: unknown API paths answer 404 and other origins are refused.
+      // Routes registered later take precedence over this one.
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url())
+        if (url.origin === origin && url.pathname.startsWith('/v1/')) return route.fulfill({ status: 404, json: { error: 'not_found' } })
+        return url.origin === origin ? route.continue() : route.abort('blockedbyclient')
+      })
+      await page.route('https://static-cdn.jtvnw.net/**', route => route.fulfill({ contentType: 'image/png', body: transparentPng }))
+      await page.route('**/v1/account/me', route => signedIn
+        ? route.fulfill({ json: { accountId: '11111111-1111-4111-8111-111111111111', expiresAt: '2027-01-01T00:00:00Z' } })
+        : route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+      await page.route('**/v1/account/devices', route => route.fulfill({ json: { devices: [] } }))
+      await page.route('**/v1/account/auth/twitch/start', route => {
+        starts.push({ body: route.request().postDataJSON(), origin: route.request().headers().origin })
+        return route.fulfill({ status: 201, json: startReply(origin) })
+      })
+      await page.route('https://id.twitch.tv/oauth2/authorize**', route => route.fulfill({ contentType: 'text/html', body: twitchApproves(origin) }))
+      await page.route('**/v1/account/auth/twitch/complete', async route => {
+        completes.push({ body: route.request().postDataJSON(), origin: route.request().headers().origin })
+        // The API sets the session cookies on this response.
+        await page.context().addCookies([{ name: '__Host-pulse_csrf', value: '34'.repeat(32), domain: host, path: '/', secure: true, sameSite: 'Strict' }])
+        signedIn = true
+        return route.fulfill({ json: { status: 'signed_in', created: false, profile: { displayName: 'PulseTester', picture: AVATAR } } })
+      })
+
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/account/sign-in')
+      const header = page.locator('header.app-nav')
+      await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
+      const twitch = page.getByRole('button', { name: 'Sign in with Twitch' })
+      await expect(twitch).toBeVisible()
+      await expect(twitch).toHaveCSS('background-color', 'rgb(145, 70, 255)')
+      await expect(page.getByLabel('Email address')).toHaveCount(0)
+      const disclosure = page.getByRole('button', { name: 'Use email instead' })
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+      expect((await twitch.boundingBox())!.y).toBeLessThan((await disclosure.boundingBox())!.y)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`twitch-sign-in-${width}.png`), fullPage: true })
+
+      await twitch.click()
+      await page.waitForURL(`${origin}/account/settings`)
+
+      const account = header.getByRole('button', { name: 'Account: PulseTester', exact: true })
+      await expect(account).toBeVisible()
+      await expect(account.locator('img')).toHaveAttribute('src', 'https://static-cdn.jtvnw.net/jtv_user_pictures/pulse-profile_image-70x70.png')
+      await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0)
+      await expect(page.getByTestId('twitch-account-row')).toContainText('Connected as PulseTester')
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: testInfo.outputPath(`twitch-signed-in-settings-${width}.png`), fullPage: true })
+
+      expect(starts).toEqual([{ body: { purpose: 'signin' }, origin }])
+      expect(completes).toEqual([{ body: { flowId: FLOW_ID, flowSecret: FLOW_SECRET, idToken: ID_TOKEN }, origin }])
+      // The token and flow secret never ride in a request URL, and the flow does not linger.
+      expect(urls.filter(url => url.includes(ID_TOKEN) || url.includes(FLOW_SECRET))).toEqual([])
+      expect(await page.evaluate(() => [window.location.href, sessionStorage.getItem('pulse.account.twitchFlow.v1')]))
+        .toEqual([`${origin}/account/settings`, null])
+    })
+  }
+
+  test('explains a pilot refusal on the callback and offers email', async ({ page, baseURL }, testInfo) => {
+    test.skip(!TWITCH_SIGNIN, 'needs a VITE_TWITCH_SIGNIN=1 build')
+    const origin = new URL(baseURL!).origin
+    await page.route('**/v1/account/me', route => route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
+    await page.route('**/v1/account/auth/twitch/start', route => route.fulfill({ status: 201, json: startReply(origin) }))
+    await page.route('https://id.twitch.tv/oauth2/authorize**', route => route.fulfill({ contentType: 'text/html', body: twitchApproves(origin) }))
+    await page.route('**/v1/account/auth/twitch/complete', route => route.fulfill({ status: 403, json: { error: 'pilot_only' } }))
+    await page.setViewportSize({ width: 375, height: 900 })
+    await page.goto('/account/sign-in')
+    await page.getByRole('button', { name: 'Sign in with Twitch' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Twitch sign-in is invite-only for now' })).toBeVisible()
+    expect(page.url()).toBe(`${origin}/account/twitch/callback`)
+    await expectNoHorizontalOverflow(page)
+    await page.screenshot({ path: testInfo.outputPath('twitch-callback-pilot-only-375.png'), fullPage: true })
+    await page.getByRole('link', { name: 'Sign in with email' }).click()
+    await expect(page.getByLabel('Email address')).toBeVisible()
+    await expectNoHorizontalOverflow(page)
   })
 })
