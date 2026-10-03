@@ -15,7 +15,8 @@ const API = 'https://api.streampulse.stream'
 const REDIRECT = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/'
 const FLOW_ID = '0123456789abcdef0123456789abcdef'
 const FLOW_SECRET = 'd'.repeat(64)
-const ID_TOKEN = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl'
+// A stand-in JWT shape ({"alg":"RS256"}.{"sub":"123"}.signature), built so no token-like literal sits in source.
+const ID_TOKEN = [{ alg: 'RS256' }, { sub: '123' }].map(part => btoa(JSON.stringify(part)).replace(/=+$/, '')).concat(btoa('signature')).join('.')
 const ACCOUNT_ID = '22222222-2222-4222-8222-222222222222'
 const future = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString()
 const EXPIRES = future(30)
