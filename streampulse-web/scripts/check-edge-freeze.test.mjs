@@ -72,11 +72,11 @@ test('the committed pin covers the committed Worker and routes with a 90-day exp
   assert.deepEqual(committed.pin.routes, { version: 1, include: ['/v1/account/*', '/v1/billing/*'], exclude: [] })
   assert.equal(committed.pin.expires, '2026-12-24')
   assert.equal(typeof committed.pin.approval, 'string')
-  assert.ok(committed.pin.approval.trim())
+  assert.match(committed.pin.approval, new RegExp(`^streampulse-sdlc@[0-9a-f]{40}:${escape(APPROVAL_DOCUMENT)}$`))
 })
 
 test('production rejects the unapproved prepared relay and arbitrary approval text', t => {
-  for (const approval of [committed.pin.approval, 'Owner approved this relay', 'streampulse-sdlc@' + 'a'.repeat(40) + ':../other.md']) {
+  for (const approval of ['PENDING OWNER: synthetic unapproved relay', 'Owner approved this relay', 'streampulse-sdlc@' + 'a'.repeat(40) + ':../other.md']) {
     assert.throws(() => assertEdgeFreeze(fixture(t, { pin: { ...committed.pin, approval } }), { now }), /approval must reference an immutable merged streampulse-sdlc document/)
   }
 })
