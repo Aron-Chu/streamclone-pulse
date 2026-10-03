@@ -24,6 +24,14 @@ export type SyncState =
   | { kind: 'syncing'; pending: number }
   | { kind: 'synced'; at: number }
   | { kind: 'error'; message: string }
+/**
+ * Watched history synced through the signed-in account. `unavailable`: the
+ * server does not offer it. `on` is the account's choice, shared by every
+ * browser signed in to it.
+ */
+export type HistorySyncView =
+  | { state: 'signed_out' | 'unavailable' | 'off' }
+  | { state: 'on'; syncedAt: number | null; pending: number; failed: boolean }
 export interface LibrarySnapshot {
   moments: readonly LibraryMoment[]
   collections: readonly LibraryCollection[]
@@ -31,6 +39,7 @@ export interface LibrarySnapshot {
   membership: 'free' | 'supporter' | 'expired'
   storage: { usedBytes: number; limitBytes: number; persistence: 'granted' | 'not-granted' | 'unknown' }
   sync: SyncState
+  historySync?: HistorySyncView
 }
 export type MomentInteraction =
   | { kind: 'selected' | 'opened-link' | 'seek-failed'; reference: MomentReference }
@@ -41,6 +50,7 @@ export type LibraryCommand =
   | { kind: 'edit'; id: string; note: string; collectionId?: string }
   | { kind: 'clear-history' }
   | { kind: 'preferences'; value: LibraryPreferences }
+  | { kind: 'history-sync'; enabled: boolean }
   | { kind: 'create-collection'; name: string }
   | { kind: 'interaction'; event: MomentInteraction }
 export interface LibraryRepository {
