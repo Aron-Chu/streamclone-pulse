@@ -217,12 +217,15 @@ test.describe('emote picker redesign (mocked MV3)', () => {
     await waitForPulseRoot(extension.page)
 
     const panel = extension.page.locator(`#${PULSE_ROOT_ID}`)
+    await expect(panel.locator('.pulse-seven-tv-toggle')).toBeVisible()
 
-    // Collapse-closed chrome (toggle row) — scroll into view so the shot is not chart-only.
-    await extension.page.evaluate(rootId => {
-      const root = document.getElementById(rootId)?.shadowRoot
-      root?.querySelector('.pulse-seven-tv-toggle')?.scrollIntoView({ block: 'center' })
-    }, PULSE_ROOT_ID)
+    // The existing initial panel golden starts at the top. Wait for the picker
+    // to hydrate, then set that frame explicitly: an optional scrollIntoView
+    // before hydration was a no-op, while the same call after hydration scrolled
+    // the panel to the picker and produced a different, stable screenshot.
+    const body = panel.locator('.pulse-panel-body')
+    await body.evaluate(element => { element.scrollTop = 0 })
+    await expect.poll(() => body.evaluate(element => element.scrollTop)).toBe(0)
     // Soft: one run reports (and writes actuals for) every narrow snapshot, not just the first.
     await expect.soft(panel).toHaveScreenshot('emote-picker-initial-narrow.png', {
       maxDiffPixelRatio: 0.04,
