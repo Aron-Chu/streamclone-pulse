@@ -27,6 +27,24 @@ const ROUTER_ADVISORY = Object.freeze({
   severity: 'high',
   range: '>=7.12.0 <8.3.0',
 })
+const BRACES_ADVISORY = Object.freeze({
+  source: 1240992,
+  name: 'braces',
+  dependency: 'braces',
+  title: 'braces vulnerable to stack-exhaustion denial of service through deeply nested patterns',
+  url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm',
+  severity: 'high',
+  range: '<=3.0.3',
+})
+
+// This is the reviewed build-only chain, not a package-wide advisory waiver.
+const BRACES_BUILD_CHAIN = Object.freeze({
+  braces: { version: '3.0.3', parents: [] },
+  chokidar: { version: '3.6.0', parents: ['braces'] },
+  'fast-glob': { version: '3.3.3', parents: ['micromatch'] },
+  micromatch: { version: '4.0.8', parents: ['braces'] },
+  tailwindcss: { version: '3.4.19', parents: ['chokidar', 'fast-glob', 'micromatch'] },
+})
 
 /** @type {ReadonlyArray<{ name: string, ghsa: string, reason: string, parent?: string, advisory: Readonly<Record<string, unknown>> }>} */
 export const DISPOSITIONED_HIGHS = Object.freeze([
@@ -45,6 +63,13 @@ export const DISPOSITIONED_HIGHS = Object.freeze([
     reason:
       'Same advisory as react-router (npm often lists react-router-dom via as the parent package name only). No RSC surface in portal.',
   },
+  ...Object.keys(BRACES_BUILD_CHAIN).map((name) => ({
+    name,
+    ghsa: 'GHSA-vfj7-8cjw-p6xm',
+    advisory: BRACES_ADVISORY,
+    reason:
+      'Exact locked Tailwind 3 development-only chain; repository-controlled build globs, no affected module in emitted browser chunks or dependency-free Pages Worker. No patched braces release exists. See docs/evidence/npm-audit-rpr6-2026-07.md.',
+  })),
 ])
 
 function isRecord(value) {
@@ -177,6 +202,55 @@ function auditHasExactGhsa(vulns, name, ghsa, parent, severity, advisory) {
   return false
 }
 
+/**
+ * Follow only the reviewed graph. Every via entry must belong to this exact
+ * advisory; a second advisory, changed version, production node, missing node,
+ * redirected dependency, or cycle requires a new disposition review.
+ */
+export function auditHasExactBuildOnlyBracesGhsa(vulns, name, lock) {
+  // The extension/root package has no reviewed occurrence of this advisory.
+  if (!Object.hasOwn(BRACES_BUILD_CHAIN, name) || lock?.name !== 'streampulse-web' || lock?.packages?.['']?.name !== 'streampulse-web') return false
+  function matchesNode(nodeName, visited) {
+    const expected = Object.hasOwn(BRACES_BUILD_CHAIN, nodeName) ? BRACES_BUILD_CHAIN[nodeName] : undefined
+    const info = vulns[nodeName]
+    const node = `node_modules/${nodeName}`
+    const installed = lock.packages[node]
+    if (
+      !expected || visited.has(nodeName) || !isRecord(info) || info.severity !== 'high' ||
+      !Array.isArray(info.nodes) || info.nodes.length !== 1 || info.nodes[0] !== node ||
+      installed?.dev !== true || installed?.version !== expected.version ||
+      !Array.isArray(info.via)
+    ) return false
+    const nextVisited = new Set(visited).add(nodeName)
+    if (nodeName === 'braces') {
+      return info.via.length === 1 && advisoryMetadataMatches(
+        info.via[0], { ...BRACES_ADVISORY, ghsa: 'GHSA-vfj7-8cjw-p6xm' }, 'high',
+      )
+    }
+    if (info.via.length !== expected.parents.length || new Set(info.via).size !== info.via.length) return false
+    return info.via.every((entry) =>
+      typeof entry === 'string' && expected.parents.includes(entry) && matchesNode(entry, nextVisited),
+    )
+  }
+  // Require the complete reviewed graph even for the leaf package entry.
+  return matchesNode('tailwindcss', new Set())
+}
+
+/** Fail the production build if any reviewed build tool reaches a browser chunk. */
+export function assertBuildOnlyBracesRuntimeBoundary(bundle) {
+  const forbidden = new Set()
+  for (const chunk of Object.values(bundle)) {
+    if (chunk.type !== 'chunk') continue
+    for (const id of Object.keys(chunk.modules)) {
+      const normalized = id.replaceAll('\\', '/')
+      if (Object.keys(BRACES_BUILD_CHAIN).some((name) => normalized.includes(`/node_modules/${name}/`))) {
+        forbidden.add(id)
+      }
+    }
+  }
+  if (forbidden.size) throw new Error(`Build-only audit dependency in browser output:\n${[...forbidden].join('\n')}`)
+}
+
 function parseArgs(argv) {
   let auditExitCode
   let path
@@ -227,6 +301,11 @@ function main() {
   }
 
   const allowed = new Map(DISPOSITIONED_HIGHS.map((d) => [d.name, d]))
+  // npm audit is invoked from the package directory in both existing CI jobs.
+  // Read its lock only when the build-only disposition is actually needed.
+  const buildOnlyLock = highs.some((hit) => Object.hasOwn(BRACES_BUILD_CHAIN, hit.name))
+    ? JSON.parse(readFileSync('package-lock.json', 'utf8'))
+    : undefined
   /** @type {string[]} */
   const unexpected = []
   for (const hit of highs) {
@@ -235,7 +314,10 @@ function main() {
       unexpected.push(`${hit.severity} ${hit.name} (no disposition)`)
       continue
     }
-    if (!auditHasExactGhsa(vulns, hit.name, disp.ghsa, disp.parent, hit.severity, disp.advisory)) {
+    const matches = Object.hasOwn(BRACES_BUILD_CHAIN, hit.name)
+      ? auditHasExactBuildOnlyBracesGhsa(vulns, hit.name, buildOnlyLock)
+      : auditHasExactGhsa(vulns, hit.name, disp.ghsa, disp.parent, hit.severity, disp.advisory)
+    if (!matches) {
       unexpected.push(
         `${hit.severity} ${hit.name} (disposition requires exact ${disp.ghsa} with matching advisory metadata)`,
       )
