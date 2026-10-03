@@ -490,6 +490,12 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moment-vod-preview__fallback--primary a,
 .moments-empty-saved button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 12px 18px; background: #a0f0df; color: #10221e; border: 0; border-radius: 8px; font-weight: 700; text-decoration: none; }
 .moments-empty-saved { padding-block: 16px; }
+/* Below 481px the account entry rides the brand row at no height cost; above
+   that it would be the only item left on the hidden utilities row. The
+   navigation menu still carries the account link. */
+@media (min-width: 481px) and (max-width: 600px) {
+  .figma-analytics:has(.moments-workspace) .analytics-topnav > .account-entry { display: none; }
+}
 @media (max-width: 600px) {
   .figma-analytics:has(.moments-workspace) .analytics-topnav__actions { display: none; }
   .moments-heading { margin-bottom: 12px; }

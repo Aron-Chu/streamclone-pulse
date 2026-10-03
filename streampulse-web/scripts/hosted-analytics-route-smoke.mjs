@@ -25,6 +25,8 @@ export const HOSTED_ACCOUNT_PATHS = [
   '/account/billing',
   '/account/billing/return',
   '/supporter/thanks',
+  '/account/twitch/callback',
+  '/account/moments',
 ]
 
 function assertSpaDocument(response, route, surface) {

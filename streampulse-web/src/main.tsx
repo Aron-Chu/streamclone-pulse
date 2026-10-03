@@ -1,3 +1,6 @@
+// Must stay the first import: it strips a Twitch ID token from the callback URL
+// before any other module (Sentry, analytics, the router) is evaluated.
+import './lib/twitchCallbackBoot'
 import { StrictMode, useEffect, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'

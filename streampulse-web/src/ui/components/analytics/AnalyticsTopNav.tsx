@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { AccountEntry } from '../AccountEntry'
 import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
+import { useAccountSession } from '../../../lib/accountSession'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -34,6 +36,7 @@ export function AnalyticsTopNav({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelId = useId()
   const location = useLocation()
+  const signedOut = useAccountSession().status === 'signed_out'
 
   useEffect(() => {
     setIsOpen(false)
@@ -96,7 +99,9 @@ export function AnalyticsTopNav({
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
-              <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>
+              {signedOut
+                ? <Link to="/account/sign-in" onClick={() => closeMenu()}>Sign in</Link>
+                : <Link to="/account/settings" onClick={() => closeMenu()}>Account &amp; devices</Link>}
               <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
               <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
@@ -122,6 +127,7 @@ export function AnalyticsTopNav({
           </div>
         ) : null}
       </div>
+      <AccountEntry variant="analytics" />
     </header>
   )
 }
