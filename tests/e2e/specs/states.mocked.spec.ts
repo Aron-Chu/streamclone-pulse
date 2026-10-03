@@ -155,10 +155,11 @@ test.describe('extension mocked states', () => {
     }
     const fullStart = await readStart()
     await selectChartRangeOption(extension.page, '1 hour')
-    const oneHourStart = await readStart()
-    expect(oneHourStart).toBeGreaterThan(fullStart)
+    // The selected label commits before the viewport preset effect. Observe the
+    // rail geometry, as above, rather than reading the preceding render once.
+    await expect.poll(readStart).toBeGreaterThan(fullStart)
     await selectChartRangeOption(extension.page, 'Full stream')
-    expect(await readStart()).toBe(fullStart)
+    await expect.poll(readStart).toBe(fullStart)
   })
 
   test('chart range supports keyboard selection and restores trigger focus', async ({

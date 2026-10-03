@@ -19,10 +19,12 @@ export const HOSTED_ANALYTICS_DEEP_PATHS = [
 export const HOSTED_ACCOUNT_PATHS = [
   '/account/sign-in',
   '/account/confirm',
+  '/account/restore',
   '/account/link-device',
   '/account/settings',
   '/account/billing',
   '/account/billing/return',
+  '/supporter/thanks',
 ]
 
 function assertSpaDocument(response, route, surface) {

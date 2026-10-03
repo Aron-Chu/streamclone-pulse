@@ -52,7 +52,7 @@ it('revokes local access on 401, does not retry writes, and distinguishes a temp
   expect(stored).toMatchObject({ accountId })
   fetcher.mockResolvedValue(new Response(null, { status: 401 }))
   await expect(deletePulseBookmark('one')).rejects.toThrow('account_authorization_required')
-  expect(stored).toBeNull()
+  expect(stored).toEqual({ kind: 'relink_required' })
   await expect(fetchPulseBookmarks({})).rejects.toThrow('account_authorization_required')
   expect(fetcher).toHaveBeenCalledTimes(2)
 })

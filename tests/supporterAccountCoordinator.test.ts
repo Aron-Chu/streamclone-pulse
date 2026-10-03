@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
+import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
 
 const now = Date.parse('2026-09-09T12:00:00Z')
 const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString()
@@ -33,7 +34,7 @@ describe('private supporter account coordinator', () => {
     const f = fixture(creds)
     const write = vi.fn(async () => ({ status: 401 }))
     await expect(f.coordinator.withCredential(write)).rejects.toThrow('account_authorization_required')
-    expect(f.stored()).toBeNull()
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
     expect(write).toHaveBeenCalledTimes(1)
     await expect(f.coordinator.withCredential(write)).rejects.toThrow('account_authorization_required')
     expect(write).toHaveBeenCalledTimes(1)
@@ -101,10 +102,10 @@ describe('private supporter account coordinator', () => {
     const f = fixture(creds)
     f.request.mockResolvedValueOnce({ status: 401, body: { error: 'unauthorized' } })
     expect(await f.coordinator.entitlement()).toEqual({ state: 'not_linked' })
-    expect(f.stored()).toBeNull()
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
     expect(f.identityChanged).toHaveBeenCalledTimes(1)
-    expect(await f.coordinator.run('status')).toEqual({ state: 'signed_out' })
-    expect(await fixture(f.stored()).coordinator.run('status')).toEqual({ state: 'signed_out' })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    expect(await fixture(f.stored()).coordinator.run('status')).toEqual({ state: 'relink_required' })
     f.request.mockResolvedValueOnce({ status: 201, body: { pollingSecret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: iso(600) } })
     expect(await f.coordinator.run('start')).toMatchObject({ state: 'pending', code: 'ABCDE-12345' })
     expect(f.request).toHaveBeenCalledTimes(2)
@@ -130,7 +131,7 @@ describe('private supporter account coordinator', () => {
     const f = fixture(creds)
     f.request.mockResolvedValueOnce({ status: 401, body: null })
     expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'halo' })).toBe(false)
-    expect(f.stored()).toBeNull()
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
     expect(f.identityChanged).toHaveBeenCalledTimes(1)
     expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'halo' })).toBe(false)
     expect(f.request).toHaveBeenCalledTimes(1)
@@ -196,7 +197,7 @@ describe('private supporter account coordinator', () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     f.request.mockResolvedValueOnce({ status: 200, body: { ...creds, accountId: '33333333-3333-4333-8333-333333333333' } })
     expect((await f.coordinator.run('status')).state).toBe('relink_required')
-    expect(f.stored()).toBeNull()
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
   })
   it('clears local access even when remote disconnect fails', async () => {
     const f = fixture(creds)
@@ -249,8 +250,8 @@ describe('private supporter account coordinator', () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     f.request.mockResolvedValueOnce({ status, body })
     expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
-    expect(f.stored()).toBeNull()
-    expect(await f.coordinator.run('status')).toEqual({ state: 'signed_out' })
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
     expect(f.request).toHaveBeenCalledTimes(1)
   })
   it('keeps credentials when the request port refuses before sending', async () => {
@@ -284,5 +285,204 @@ describe('private supporter account coordinator', () => {
     expect(parseBackgroundRequest({ type: 'SUPPORTER_ACCOUNT', action: 'status' })).toEqual({ type: 'SUPPORTER_ACCOUNT', action: 'status' })
     for (const field of ['token', 'refreshToken', 'url', 'accountId']) expect(parseBackgroundRequest({ type: 'SUPPORTER_ACCOUNT', action: 'start', [field]: 'attacker' })).toBeNull()
     expect(parseBackgroundRequest({ type: 'SUPPORTER_ACCOUNT', action: 'refresh' })).toBeNull()
+  })
+})
+
+describe('worker-owned journey completion', () => {
+  const snapshot = (status: string, extra: Record<string, unknown> = {}) => ({ status: 200, body: { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 3, status, serverTime: iso(0), accessFrom: iso(-100), accessUntil: iso(3600), cacheUntil: iso(900), supportPeriods: 1, features: { 'supporter.banner.v1': true, 'supporter.finish.v1': true }, cosmetics: { enabled: false, finish: 'glass' }, ...extra } })
+  function journey(initial: unknown = null, intent: unknown = null) {
+    let value = initial
+    let saved = intent
+    let clock = now
+    const request = vi.fn<(_: string, body?: Record<string, unknown>, bearer?: string) => Promise<{ status: number; body: unknown }>>()
+    const projectionChanged = vi.fn(async () => {})
+    const coordinator = new SupporterAccountCoordinator({
+      read: async () => value, write: async next => { value = next }, request, now: () => clock,
+      identityChanged: async () => {}, projectionChanged,
+      readIntent: async () => saved, writeIntent: async next => { saved = next },
+    })
+    return { coordinator, request, projectionChanged, stored: () => value, intent: () => saved, advance: (ms: number) => { clock += ms } }
+  }
+  const pending = { kind: 'pending', secret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: iso(600), nextPoll: now + 5000 }
+
+  it('consumes a due approval on an ordinary status read, so a closed settings page does not lose it', async () => {
+    const f = journey(pending)
+    expect(await f.coordinator.run('status')).toMatchObject({ state: 'pending' })
+    expect(f.request).not.toHaveBeenCalled()
+    f.advance(5001)
+    f.request.mockResolvedValueOnce({ status: 200, body: creds })
+    expect(await f.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: creds.accountId })
+    expect(f.request).toHaveBeenCalledExactlyOnceWith('/v1/account/device-links/poll', { pollingSecret: 'c'.repeat(64) })
+  })
+
+  it('lets a Twitch appearance read finish the link and then read membership', async () => {
+    const f = journey({ ...pending, nextPoll: now - 1 })
+    f.request.mockResolvedValueOnce({ status: 200, body: creds }).mockResolvedValueOnce(snapshot('active'))
+    expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', status: 'active' })
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/account/device-links/poll', '/v1/billing/supporter'])
+  })
+
+  it('keeps a request waiting when a background status read cannot reach the server', async () => {
+    for (const failure of [{ status: 503, body: null }, new Error('offline')]) {
+      const f = journey({ ...pending, nextPoll: now - 1 })
+      if (failure instanceof Error) f.request.mockRejectedValueOnce(failure)
+      else f.request.mockResolvedValueOnce(failure)
+      expect(await f.coordinator.run('status')).toMatchObject({ state: 'pending', code: 'ABCDE-12345' })
+      expect(f.stored()).toMatchObject({ kind: 'pending' })
+    }
+  })
+
+  it('never polls faster than the stored schedule however many surfaces ask', async () => {
+    const f = journey({ ...pending, nextPoll: now - 1 })
+    f.request.mockResolvedValue({ status: 200, body: { state: 'pending' } })
+    await Promise.all([f.coordinator.run('status'), f.coordinator.entitlement(), f.coordinator.run('poll'), f.coordinator.run('status')])
+    expect(f.request).toHaveBeenCalledTimes(1)
+  })
+
+  it('signals open surfaces only when the rendered projection changes', async () => {
+    const f = journey(creds)
+    f.request.mockResolvedValueOnce(snapshot('none', { features: {} }))
+      .mockResolvedValueOnce(snapshot('none', { features: {}, revision: 9 }))
+      .mockResolvedValueOnce({ status: 503, body: null })
+      .mockResolvedValueOnce(snapshot('active'))
+    await f.coordinator.entitlement()
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).not.toHaveBeenCalled()
+    await f.coordinator.entitlement()
+    // An outage is not a change; it must not clear a live accent early.
+    expect(f.projectionChanged).not.toHaveBeenCalled()
+    await f.coordinator.entitlement()
+    expect(f.projectionChanged).toHaveBeenCalledOnce()
+  })
+
+  it('passes Checkout availability through only as a literal true', async () => {
+    for (const [value, expected] of [[true, true], ['true', false], [1, false], [undefined, false]] as const) {
+      const f = journey(creds)
+      f.request.mockResolvedValueOnce(snapshot('none', { checkoutEnabled: value, features: {} }))
+      expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', checkoutEnabled: expected })
+    }
+  })
+
+  it('applies an explicit pre-purchase finish once access is verified, then forgets it', async () => {
+    const f = journey(creds, { finish: 'halo', setAt: now - 1000 })
+    f.request.mockResolvedValueOnce(snapshot('active')).mockResolvedValueOnce({ status: 200, body: { enabled: true, finish: 'halo' } })
+    expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', cosmetics: { enabled: true, finish: 'halo' } })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/billing/cosmetics', { enabled: true, finish: 'halo' }, creds.token)
+    expect(f.intent()).toBeNull()
+    f.request.mockResolvedValueOnce(snapshot('active', { cosmetics: { enabled: true, finish: 'halo' } }))
+    await f.coordinator.entitlement()
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/cosmetics')).toHaveLength(1)
+  })
+
+  it('never equips a choice without verified paid access, for another account, or long after it was made', async () => {
+    const cases: Array<[unknown, ReturnType<typeof snapshot>, unknown]> = [
+      [{ finish: 'halo', setAt: now - 1000 }, snapshot('none', { features: {} }), 'kept'],
+      [{ finish: 'halo', setAt: now - 1000 }, snapshot('active', { cacheUntil: iso(-1) }), 'kept'],
+      [{ finish: 'halo', setAt: now - 1000, accountId: '33333333-3333-4333-8333-333333333333' }, snapshot('active'), null],
+      [{ finish: 'halo', setAt: now - 8 * 86_400_000 }, snapshot('active'), null],
+      [{ finish: 'chrome', setAt: now - 1000 }, snapshot('active'), null],
+    ]
+    for (const [intent, body, expected] of cases) {
+      const f = journey(creds, intent)
+      f.request.mockResolvedValueOnce(body)
+      await f.coordinator.entitlement()
+      expect(f.request.mock.calls.map(([path]) => path), JSON.stringify(intent)).toEqual(['/v1/billing/supporter'])
+      expect(f.intent()).toEqual(expected === 'kept' ? intent : expected)
+    }
+  })
+
+  it('keeps the choice when the server refuses the save, and relinks on a rejected credential', async () => {
+    const f = journey(creds, { finish: 'etched', setAt: now - 1000 })
+    f.request.mockResolvedValueOnce(snapshot('active')).mockResolvedValueOnce({ status: 403, body: { error: 'supporter_required' } })
+    expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', cosmetics: { enabled: false } })
+    expect(f.intent()).toMatchObject({ finish: 'etched' })
+    // A refused save is not retried on every read.
+    f.request.mockResolvedValueOnce(snapshot('active'))
+    await f.coordinator.entitlement()
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/cosmetics')).toHaveLength(1)
+    f.advance(61_000)
+    f.request.mockResolvedValueOnce(snapshot('active')).mockResolvedValueOnce({ status: 401, body: null })
+    expect(await f.coordinator.entitlement()).toEqual({ state: 'not_linked' })
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
+  })
+
+  it('binds a choice to the linked account, clears it on an explicit save or disconnect, and signals the save', async () => {
+    const f = journey(creds)
+    expect(await f.coordinator.setFinishIntent('halo')).toBe('halo')
+    expect(f.intent()).toMatchObject({ finish: 'halo', accountId: creds.accountId })
+    expect(await f.coordinator.finishIntent()).toBe('halo')
+    f.request.mockResolvedValueOnce({ status: 200, body: { enabled: true, finish: 'glass' } })
+    expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'glass' })).toBe(true)
+    expect(f.intent()).toBeNull()
+    expect(f.projectionChanged).toHaveBeenCalledOnce()
+    await f.coordinator.setFinishIntent('etched')
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    await f.coordinator.run('disconnect')
+    expect(f.intent()).toBeNull()
+    const unlinked = journey()
+    await unlinked.coordinator.setFinishIntent('halo')
+    expect(unlinked.intent()).toEqual({ finish: 'halo', setAt: now })
+  })
+
+  it('accepts the finish-choice message only in its exact shapes, from extension pages', () => {
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT' })).toEqual({ type: 'SUPPORTER_FINISH_INTENT' })
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo' })).toEqual({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo' })
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', finish: null })).toEqual({ type: 'SUPPORTER_FINISH_INTENT', finish: null })
+    for (const invalid of [{ finish: 'aurora' }, { finish: 'halo', enabled: true }, { finish: 'halo', accountId: creds.accountId }, { finish: 1 }]) {
+      expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', ...invalid })).toBeNull()
+    }
+    expect(MESSAGE_SENDER_SCOPE.SUPPORTER_FINISH_INTENT).toBe('extension-page')
+  })
+})
+
+describe('pre-purchase finish choice failures', () => {
+  const snapshot = (extra: Record<string, unknown> = {}) => ({ status: 200, body: { schemaVersion: 1, accountId: creds.accountId, environment: 'live', revision: 3, status: 'active', serverTime: iso(0), accessFrom: iso(-100), accessUntil: iso(3600), cacheUntil: iso(900), supportPeriods: 1, features: { 'supporter.banner.v1': true, 'supporter.finish.v1': true }, cosmetics: { enabled: false, finish: 'glass' }, ...extra } })
+  function setup(intent: unknown) {
+    // Long-lived so simulated hours of backoff never reach credential renewal.
+    let value: unknown = { ...creds, expiresAt: iso(30 * 86_400), refreshExpiresAt: iso(60 * 86_400) }
+    let saved = intent
+    let clock = now
+    const request = vi.fn<(_: string, body?: Record<string, unknown>, bearer?: string) => Promise<{ status: number; body: unknown }>>()
+    const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock, readIntent: async () => saved, writeIntent: async next => { saved = next } })
+    return { coordinator, request, intent: () => saved, advance: (ms: number) => { clock += ms } }
+  }
+
+  it('keeps the verified membership when applying the choice fails in transit', async () => {
+    const f = setup({ finish: 'halo', setAt: now - 1000 })
+    f.request.mockResolvedValueOnce(snapshot()).mockRejectedValueOnce(new Error('offline'))
+    expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', status: 'active', cosmetics: { enabled: false } })
+    expect(f.intent()).toMatchObject({ finish: 'halo' })
+  })
+
+  it('never overrides a finish the account already has equipped', async () => {
+    const f = setup({ finish: 'halo', setAt: now - 1000 })
+    f.request.mockResolvedValueOnce(snapshot({ cosmetics: { enabled: true, finish: 'etched' } }))
+    expect(await f.coordinator.entitlement()).toMatchObject({ cosmetics: { enabled: true, finish: 'etched' } })
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/billing/supporter'])
+    expect(f.intent()).toBeNull()
+  })
+
+  it('backs off between failed applies and gives up after five', async () => {
+    const f = setup({ finish: 'halo', setAt: now - 1000 })
+    f.request.mockImplementation(async path => path === '/v1/billing/cosmetics' ? { status: 503, body: null } : snapshot())
+    const posts = () => f.request.mock.calls.filter(([path]) => path === '/v1/billing/cosmetics').length
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await f.coordinator.entitlement()
+      expect(posts()).toBe(attempt)
+      await f.coordinator.entitlement()
+      expect(posts()).toBe(attempt)
+      f.advance(61 * 60_000)
+    }
+    expect(f.intent()).toBeNull()
+    await f.coordinator.entitlement()
+    expect(posts()).toBe(5)
+  })
+
+  it('reports a waiting link without touching credentials or the network', async () => {
+    const f = setup(null)
+    expect(await f.coordinator.hasPendingLink()).toBe(false)
+    const waiting = new SupporterAccountCoordinator({ read: async () => ({ kind: 'pending', secret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: iso(600), nextPoll: now }), write: async () => {}, request: f.request })
+    expect(await waiting.hasPendingLink()).toBe(true)
+    expect(f.request).not.toHaveBeenCalled()
   })
 })

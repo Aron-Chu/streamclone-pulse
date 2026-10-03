@@ -33,9 +33,9 @@ describe('supporter settings', () => {
       act(() => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
       expect(sample.querySelector('svg')).toBeNull()
       expect(host.textContent).toContain('nothing is equipped, published, or injected into Twitch chat')
-      // Status comes from the server. An unlinked install must say so rather
-      // than implying the preview grants anything.
-      expect(host.textContent).toContain('Connect this extension to your Pulse account')
+      // Status comes from the server. An unlinked install must say how it
+      // would connect rather than implying the preview grants anything.
+      expect(host.textContent).toContain('Stripe asks for your email and payment details')
       expect(host.textContent).toContain('remain free')
       // The chat badge must never be presented as included.
       expect(host.textContent).toContain('Not included yet')
@@ -48,6 +48,10 @@ describe('supporter settings', () => {
       expect(sent).toEqual([
         { type: 'SUPPORTER_ACCOUNT', action: 'status' },
         { type: 'SUPPORTER_ENTITLEMENT' },
+        { type: 'SUPPORTER_BILLING', action: 'status' },
+        { type: 'SUPPORTER_RESTORE', action: 'status' },
+        // Reading the optional pre-purchase finish choice; no `finish` field, so no write.
+        { type: 'SUPPORTER_FINISH_INTENT' },
       ])
       // Both are reads. Nothing here may carry an action that mutates billing.
       for (const message of sent) {
@@ -81,7 +85,9 @@ describe('supporter settings', () => {
       expect(host.textContent).toContain('exact tenure still needs ledger reconciliation')
       act(() => (stage('24m')?.querySelector('input') as HTMLInputElement).click())
       expect(host.querySelector('.pulse-supporter-chat-preview [data-supporter-badge="24m"]')).not.toBeNull()
-      expect(sendMessage.mock.calls.map(([message]) => message.type)).toEqual(['SUPPORTER_ACCOUNT', 'SUPPORTER_ENTITLEMENT'])
+      // The membership is active but grants no finish here, so the saved
+      // pre-purchase choice is read once; nothing is written.
+      expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([{ type: 'SUPPORTER_ACCOUNT', action: 'status' }, { type: 'SUPPORTER_ENTITLEMENT' }, { type: 'SUPPORTER_BILLING', action: 'status' }, { type: 'SUPPORTER_RESTORE', action: 'status' }, { type: 'SUPPORTER_FINISH_INTENT' }])
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -119,7 +125,8 @@ describe('supporter settings', () => {
       expect(button.disabled).toBe(true)
       expect(button.textContent).toContain('Default active')
       expect(host.textContent).toContain('Equipping an accent requires an active linked Supporter membership')
-      expect(sendMessage).not.toHaveBeenCalled()
+      // Only a read of the optional saved choice; never a save.
+      expect(sendMessage.mock.calls).toEqual([[{ type: 'SUPPORTER_FINISH_INTENT' }]])
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -198,6 +205,72 @@ describe('supporter settings', () => {
       expect(host.textContent).toContain('Etched active')
       expect(host.textContent).not.toContain('Halo accent equipped.')
       expect((host.querySelector('input[value="finish-etched"]') as HTMLInputElement).checked).toBe(true)
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('cosmetics while membership is unknown', () => {
+  it('pauses instead of switching to pre-purchase mode, and keeps the selection', async () => {
+    const sendMessage = vi.fn()
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const active: SupporterEntitlement = {
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'],
+      cosmetics: { enabled: true, finish: 'glass' },
+    }
+    const render = (value: SupporterEntitlement | null) => act(async () => root.render(<SupporterCosmeticControls entitlement={value} />))
+    const radio = (value: string) => host.querySelector(`input[value="finish-${value}"]`) as HTMLInputElement
+    try {
+      await render(null)
+      expect(host.textContent).toContain('Checking Supporter status…')
+      expect(host.textContent).not.toContain('when Supporter starts')
+      await render(active)
+      act(() => radio('halo').click())
+      // A background read that cannot confirm the status, then the same status again.
+      await render(null)
+      expect(radio('halo').checked).toBe(true)
+      expect((host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).disabled).toBe(true)
+      await render({ ...active })
+      expect(radio('halo').checked).toBe(true)
+      expect(host.textContent).toContain('Preview: Halo / Active: Glass')
+      // Active members never had the pre-purchase choice read for them.
+      expect(sendMessage).not.toHaveBeenCalled()
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('cosmetic save races', () => {
+  it('keeps its confirmation when the refresh it caused arrives before its own response', async () => {
+    let respond!: (value: unknown) => void
+    const sendMessage = vi.fn(() => new Promise(resolve => { respond = resolve }))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const active = (finish: 'glass' | 'halo', enabled: boolean): SupporterEntitlement => ({
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled, finish },
+    })
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active('glass', false)} />))
+      act(() => (host.querySelector('input[value="finish-halo"]') as HTMLInputElement).click())
+      await act(async () => (host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).click())
+      // The worker's change signal made settings re-read first.
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
+      await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
+      expect(host.textContent).toContain('Halo accent equipped.')
+      expect(host.textContent).toContain('Halo active')
     } finally {
       act(() => root.unmount())
       host.remove()

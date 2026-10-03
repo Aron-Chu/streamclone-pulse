@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  accountContinuationPath,
   accountBillingReturnFromSearch,
   accountBillingReturnPath,
   accountBillingSignInHref,
@@ -107,5 +108,33 @@ describe('allowlisted account billing return', () => {
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('denied') })
     expect(() => rememberAccountBillingReturn(returnPath)).not.toThrow()
     expect(consumeAccountBillingReturn()).toBeNull()
+  })
+})
+
+describe('extension-link continuation', () => {
+  it('allows exactly the link page as a sign-in continuation, without any code', () => {
+    expect(accountContinuationPath('/account/link-device')).toBe('/account/link-device')
+    const href = accountBillingSignInHref('/account/link-device')
+    expect(accountBillingReturnFromSearch(href.slice(href.indexOf('?')))).toBe('/account/link-device')
+    rememberAccountBillingReturn('/account/link-device')
+    expect(consumeAccountBillingReturn()).toBe('/account/link-device')
+    expect(readAccountBillingReturn()).toBeNull()
+  })
+
+  it.each([
+    '/account/link-device#code=ABCDE12345',
+    '/account/link-device?code=ABCDE12345',
+    '/account/link-device/',
+    '/account/settings',
+    'https://evil.test/account/link-device',
+    '//evil.test/account/link-device',
+  ])('rejects %s', value => {
+    expect(accountContinuationPath(value)).toBeNull()
+    // A Stripe return is still validated strictly on its own.
+    expect(accountBillingReturnPath(value)).toBeNull()
+  })
+
+  it('never treats the link page as a billing return', () => {
+    expect(accountBillingReturnPath('/account/link-device')).toBeNull()
   })
 })

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { captureAccountDeviceCode, clearAccountDeviceCode, getAccountDeviceCode } from '../src/lib/accountDeviceCode'
+import { captureAccountDeviceCode, clearAccountDeviceCode, getAccountDeviceCode, getAccountDeviceContinuation } from '../src/lib/accountDeviceCode'
 
 afterEach(() => {
   clearAccountDeviceCode()
@@ -27,6 +27,10 @@ describe('human device code handoff', () => {
     '#code=ABCDE123456',
     '#code=GGGGG12345',
     '#code=ABCDE12345&approve=true',
+    '#code=ABCDE12345&then=https://evil.test',
+    '#code=ABCDE12345&then=billing&then=billing',
+    '#code=ABCDE12345&then=Billing',
+    '#then=billing',
     '#code=ABCDE12345&pollingSecret=' + 'a'.repeat(64),
     '#code=' + 'a'.repeat(64),
     '#pollingSecret=' + 'a'.repeat(64),
@@ -65,5 +69,30 @@ describe('human device code handoff', () => {
     expect(getAccountDeviceCode()).toBe('ABCDE12345')
     vi.advanceTimersByTime(1)
     expect(getAccountDeviceCode()).toBe('')
+  })
+})
+
+describe('allowlisted continuation after approval', () => {
+  it('keeps only the fixed billing flow name beside the code, in memory', () => {
+    window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345&then=billing')
+    captureAccountDeviceCode()
+    expect(window.location.hash).toBe('')
+    expect(getAccountDeviceCode()).toBe('ABCDE12345')
+    expect(getAccountDeviceContinuation()).toBe('billing')
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toMatch(/ABCDE12345|billing/)
+    clearAccountDeviceCode()
+    expect(getAccountDeviceContinuation()).toBeNull()
+  })
+
+  it('has no continuation without a code, or after the code expires', () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345&then=billing')
+    captureAccountDeviceCode()
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(getAccountDeviceCode()).toBe('')
+    expect(getAccountDeviceContinuation()).toBeNull()
+    window.history.replaceState(null, '', '/account/link-device#code=ABCDE12345')
+    captureAccountDeviceCode()
+    expect(getAccountDeviceContinuation()).toBeNull()
   })
 })

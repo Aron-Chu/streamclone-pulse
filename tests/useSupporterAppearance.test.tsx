@@ -212,3 +212,76 @@ describe('supporter header appearance', () => {
     expect(request).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('worker change signals', () => {
+  type Listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => void
+  const listeners = new Set<Listener>()
+  beforeEach(() => {
+    listeners.clear()
+    vi.stubGlobal('chrome', { storage: { onChanged: {
+      addListener: (listener: Listener) => listeners.add(listener),
+      removeListener: (listener: Listener) => listeners.delete(listener),
+    } } })
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+  const signal = (key: string, area = 'local') => act(async () => { for (const listener of listeners) listener({ [key]: { newValue: 'x' } }, area) })
+
+  it('applies a verified purchase or saved finish at once instead of at the next minute check', async () => {
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(none).mockResolvedValue(accent())
+    const view = mount(request)
+    await advance(0)
+    expect(view.finish()).toBe('none')
+    await signal('pulseSupporterRevision')
+    await advance(0)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(view.finish()).toBe('halo')
+    view.unmount()
+    expect(listeners.size).toBe(0)
+  })
+
+  it('removes an equipped accent promptly after revocation or an account switch', async () => {
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(accent()).mockResolvedValue(none)
+    const view = mount(request)
+    await advance(0)
+    expect(view.finish()).toBe('halo')
+    await signal('pulseAccountRevision')
+    await advance(0)
+    expect(view.finish()).toBe('none')
+    view.unmount()
+  })
+
+  it('ignores unrelated keys and other storage areas, and coalesces a signal during a check', async () => {
+    let finish!: (value: Reply) => void
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(none)
+    const view = mount(request)
+    await advance(0)
+    await signal('themePreference')
+    await signal('pulseSupporterRevision', 'sync')
+    expect(request).toHaveBeenCalledTimes(1)
+    request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockResolvedValue(accent())
+    await signal('pulseSupporterRevision')
+    await signal('pulseSupporterRevision')
+    expect(request).toHaveBeenCalledTimes(2)
+    await act(async () => { finish(none) })
+    await advance(0)
+    // One follow-up for the signals that arrived mid-check, not one per signal.
+    expect(request).toHaveBeenCalledTimes(3)
+    expect(view.finish()).toBe('halo')
+    view.unmount()
+  })
+
+  it('defers a signal while hidden and checks as soon as the tab is shown, without the wake debounce', async () => {
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(none).mockResolvedValue(accent())
+    const view = mount(request)
+    await advance(0)
+    setHidden(true)
+    await signal('pulseSupporterRevision')
+    expect(request).toHaveBeenCalledTimes(1)
+    await advance(APPEARANCE_WAKE_DEBOUNCE_MS / 2)
+    setHidden(false)
+    await advance(0)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(view.finish()).toBe('halo')
+    view.unmount()
+  })
+})

@@ -38,7 +38,7 @@ import { isTracked, listTrackedLogins, trackLogin, untrackLogin } from './tracki
 import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, ExtensionCoverageTierResponse, PastVodRow, PulseUpdateMessage, ProtectChannelSyncStatus, ProtectSyncOperation, ProtectSyncState, VodPulseUpdateMessage, WatchlistSyncStatus } from '../shared/messages.ts'
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
-import { supporterAccount } from './supporterAccountRuntime.ts'
+import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -956,7 +956,31 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           // Every disconnect is a user sign-out: silent Twitch sign-in must not
           // undo it. The marker never blocks the disconnect itself.
           if (message.action === 'disconnect') await twitchSignIn.markSignedOutByUser().catch(() => undefined)
-          sendResponse({ type: 'SUPPORTER_ACCOUNT', account: await supporterAccount.run(message.action) } satisfies BackgroundResponse)
+          const account = await supporterAccount.run(message.action)
+          if (account.state === 'pending') watchPendingLink()
+          sendResponse({ type: 'SUPPORTER_ACCOUNT', account } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_BILLING': {
+          const billing = await supporterPayFirst.billing(message.action)
+          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          sendResponse({ type: 'SUPPORTER_BILLING', billing } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_RESTORE': {
+          const restore = await supporterPayFirst.restore(message.action, message.email)
+          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          sendResponse({ type: 'SUPPORTER_RESTORE', restore } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_DEVICES': {
+          const devices = await supporterPayFirst.devices(message.action, message.action === 'revoke' ? message.deviceId : undefined, message.action === 'list' ? message.cursor : undefined)
+          sendResponse({ type: 'SUPPORTER_DEVICES', devices } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_FINISH_INTENT': {
+          const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
+          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
           return
         }
         case 'TWITCH_SIGN_IN': {
@@ -1252,6 +1276,9 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   // response channel open while tabs.create/fetch/storage operations finish.
   return true
 })
+
+// A worker restarted while a link request waited picks the wait back up.
+void resumePendingLink()
 
 chrome.runtime.onStartup.addListener(() => {
   void (async () => {

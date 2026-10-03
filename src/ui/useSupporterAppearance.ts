@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sendBackgroundMessage } from '../content/bridge.ts'
+import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 import type { supporterFinish } from './supporterFinish.ts'
 
 type Finish = keyof typeof supporterFinish
@@ -38,13 +39,17 @@ export function resetSupporterAppearanceForTests(): void {
  *
  * A verified accent stays until its validity lapses: refreshing never clears
  * it first, and a failed refresh leaves it to its own expiry. Hidden tabs do
- * not poll; they check again when shown.
+ * not poll; they check again when shown. The worker's non-secret change
+ * signals (a verified purchase, a saved finish, a revoked or switched account)
+ * trigger an immediate check, so an open Twitch tab never needs a reload.
  */
 export function useSupporterAppearance(request: () => Promise<AppearanceReply> = requestAppearance): Finish | null {
   const [finish, setFinish] = useState<Finish | null>(() => verifiedNow()?.finish ?? null)
   useEffect(() => {
     let alive = true
     let running = false
+    let again = false
+    let signalledWhileHidden = false
     let lastStart = Number.NEGATIVE_INFINITY
     let expiry: number | undefined
     let next: number | undefined
@@ -53,7 +58,8 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
       next = window.setTimeout(() => { next = undefined; void refresh() }, delay)
     }
     const refresh = async (initial = false) => {
-      if (!alive || running) return
+      if (!alive) return
+      if (running) { again = true; return }
       window.clearTimeout(next)
       next = undefined
       // A hidden tab stops polling here and waits for `wake`. The first check
@@ -81,13 +87,22 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
       } catch { /* Keep a verified accent only until its own expiry. */ }
       finally {
         running = false
-        if (alive) schedule(delay)
+        if (alive && again) { again = false; void refresh() }
+        else if (alive) schedule(delay)
       }
     }
+    const signalled = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
+      if (area && area !== 'local') return
+      if (!(ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)) return
+      // A hidden tab catches up as soon as it is shown, without the wake debounce.
+      if (document.hidden) signalledWhileHidden = true
+      else void refresh()
+    }
+    const storage = typeof chrome === 'undefined' ? undefined : chrome.storage?.onChanged
     const wake = () => {
       if (document.hidden) return
       const since = performance.now() - lastStart
-      if (since >= APPEARANCE_WAKE_DEBOUNCE_MS) void refresh()
+      if (signalledWhileHidden || since >= APPEARANCE_WAKE_DEBOUNCE_MS) { signalledWhileHidden = false; void refresh() }
       else if (next === undefined && !running) schedule(APPEARANCE_WAKE_DEBOUNCE_MS - since)
     }
     // A mount that inherits a still-valid finish waits for its renewal instead
@@ -108,8 +123,10 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
     }
     window.addEventListener('focus', wake)
     document.addEventListener('visibilitychange', wake)
+    storage?.addListener(signalled)
     return () => {
       alive = false
+      storage?.removeListener(signalled)
       window.clearTimeout(expiry)
       window.clearTimeout(next)
       window.removeEventListener('focus', wake)

@@ -9,6 +9,7 @@ import Privacy from './public/Privacy'
 import Terms from './public/Terms'
 import Refunds from './public/Refunds'
 import Supporter from './public/Supporter'
+import SupporterThanks from './public/SupporterThanks'
 import Support from './public/Support'
 import NotFound from './public/NotFound'
 
@@ -21,6 +22,7 @@ const ClipsPage = lazy(() => import('./dashboard/Clips'))
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
+const AccountRestore = lazy(() => import('./account/AccountRestore'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 
 /**
@@ -82,10 +84,12 @@ export function AppRoutes() {
         {/* Public offer page. The extension's Supporter card links here, so it
             must stay a real route — never a redirect into a gated surface. */}
         <Route path="/supporter" element={<Supporter />} />
+        <Route path="/supporter/thanks" element={<SupporterThanks />} />
         <Route path="/support" element={<Support />} />
         <Route path="/account/sign-in" element={<AccountPage />} />
         <Route path="/account/settings" element={<AccountSettings />} />
         <Route path="/account/confirm" element={<AccountPage />} />
+        <Route path="/account/restore" element={<AccountRestore />} />
         <Route path="/account/link-device" element={<AccountPage />} />
         <Route path="/account/billing" element={<BillingPage />} />
         <Route path="/account/billing/return" element={<BillingPage />} />

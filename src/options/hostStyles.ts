@@ -53,7 +53,6 @@ const hostStyles = `
     .pulse-settings-supporter-banner-copy { flex: 1; }
     .pulse-settings-supporter-banner-arrow { margin-left: 38px; }
   }
-  .pulse-account-link-code { font-size: 22px; font-weight: 600; letter-spacing: .12em; user-select: all; padding: 12px 0; }
   .pulse-account-link-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .pulse-account-link-actions button, .pulse-account-link-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease; }
   .pulse-account-link-actions button:hover:not(:disabled), .pulse-account-link-actions a:hover { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; color: ${theme.textPrimary}; transform: translateY(-1px); }
@@ -78,6 +77,44 @@ const hostStyles = `
   .pulse-supporter-settings { max-width: 720px; }
   .pulse-supporter-settings .pulse-section-card { grid-template-columns: minmax(0, 1fr); }
   .pulse-supporter-settings p { margin: 0; line-height: 1.6; }
+  /* One Supporter journey card: progress, status, facts, one primary action. */
+  .pulse-journey { display: grid; gap: 12px; min-width: 0; min-height: 72px; }
+  .pulse-journey-status { display: grid; gap: 6px; min-width: 0; }
+  .pulse-journey-title { font-size: 15px; }
+  .pulse-journey-notice { padding: 8px 10px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.bgCanvas}; color: ${theme.textSecondary}; font-size: 12px; }
+  .pulse-journey-steps { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: ${theme.textMuted}; }
+  .pulse-journey-steps li { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; }
+  .pulse-journey-step-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid ${theme.border}; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pulse-journey-steps li[data-step="current"] { color: ${theme.textPrimary}; font-weight: 600; }
+  .pulse-journey-steps li[data-step="current"] .pulse-journey-step-mark { border-color: var(--pulse-accent-soft, #c4b5fd); color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-journey-steps li[data-step="done"] { color: ${theme.textSecondary}; }
+  .pulse-journey-steps li[data-step="done"] .pulse-journey-step-mark { border-color: ${theme.live}; background: rgba(34, 197, 94, 0.14); color: ${theme.liveSoft}; }
+  .pulse-journey-facts { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; font-size: 13px; }
+  .pulse-journey-facts div { display: grid; gap: 1px; min-width: 0; }
+  .pulse-journey-facts dt { color: ${theme.textMuted}; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pulse-journey-facts dd { margin: 0; color: ${theme.textPrimary}; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .pulse-account-link-actions .pulse-journey-primary { border-color: var(--pulse-accent, #8b5cf6); background: var(--pulse-accent, #8b5cf6); color: var(--pulse-on-accent, #fff); text-decoration: none; }
+  .pulse-account-link-actions .pulse-journey-primary:hover:not(:disabled) { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); }
+  .pulse-account-link-actions .pulse-journey-secondary-link { text-decoration: none; }
+  .pulse-account-link-code { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .08em; color: ${theme.textPrimary}; user-select: all; }
+  .pulse-journey-connection { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-top: 10px; border-top: 1px solid ${theme.border}; color: ${theme.textSecondary}; font-size: 12px; }
+  .pulse-journey-connection span { flex: 1 1 220px; min-width: 0; }
+  .pulse-journey-connection button { min-height: 44px; padding: 8px 14px; border: 1px solid ${theme.border}; border-radius: 8px; background: transparent; color: ${theme.textSecondary}; font: inherit; font-weight: 600; cursor: pointer; }
+  .pulse-journey-connection button:hover:not(:disabled) { border-color: ${theme.accentSoft}; color: ${theme.textPrimary}; }
+  .pulse-journey-connection button:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  .pulse-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .pulse-journey-restore { display: grid; gap: 8px; min-width: 0; }
+  .pulse-journey-restore label { font-size: 12px; color: ${theme.textSecondary}; }
+  .pulse-journey-restore input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.panel}; color: ${theme.textPrimary}; padding: 10px 12px; font: inherit; }
+  .pulse-journey-restore input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
+  .pulse-journey-devices { border-top: 1px solid ${theme.border}; padding-top: 8px; min-width: 0; }
+  .pulse-journey-devices summary { box-sizing: border-box; min-height: 44px; padding: 10px 0; cursor: pointer; color: ${theme.textSecondary}; }
+  .pulse-journey-devices summary:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; border-radius: 4px; }
+  .pulse-journey-devices ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .pulse-journey-devices li { display: grid; gap: 6px; min-width: 0; padding: 10px; border: 1px solid ${theme.border}; border-radius: 8px; overflow-wrap: anywhere; }
+  @media (max-width: 420px) {
+    .pulse-journey-actions > * { flex: 1 1 100%; }
+  }
   .pulse-supporter-settings .pulse-settings-workspace-heading { margin-bottom: 20px; }
   .pulse-supporter-settings h2 { font-size: 20px; margin: 0 0 6px; }
   .pulse-supporter-detail { color: ${theme.textSecondary}; font-size: 12px; }
@@ -133,8 +170,9 @@ const hostStyles = `
     padding-top: 10px;
     border-top: 1px solid ${theme.border};
   }
-  .pulse-supporter-policies a { color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-supporter-policies a { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-supporter-policies a:hover { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-supporter-policies a:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-supporter-chat-preview {
     display: grid; gap: 8px; min-height: 82px; padding: 14px; background: #18181b; border: 1px solid ${theme.border}; border-radius: 8px;
     transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;

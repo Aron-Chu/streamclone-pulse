@@ -51,7 +51,7 @@ describe('public product analytics consent boundary', () => {
     expect(transport.clients).toHaveLength(0)
   })
 
-  it.each(['/account/sign-in', '/account/confirm', '/account/link-device', '/account/billing', '/analytics', '/analytics/private/stream', '/dashboard', '/s/private', '/unknown', '/docs/private'])('does not start capture on excluded path %s even with consent', async path => {
+  it.each(['/account/sign-in', '/account/confirm', '/account/link-device', '/account/billing', '/account/restore', '/supporter/thanks', '/analytics', '/analytics/private/stream', '/dashboard', '/s/private', '/unknown', '/docs/private'])('does not start capture on excluded path %s even with consent', async path => {
     window.history.replaceState({}, '', path + '?token=private#private')
     analytics.setAnalyticsPreference('allowed')
     await Promise.resolve()

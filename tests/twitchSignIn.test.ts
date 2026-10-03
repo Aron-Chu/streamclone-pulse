@@ -386,10 +386,11 @@ describe('step-up', () => {
     }
   })
 
-  it('drops a device bearer the server refuses', async () => {
+  it('drops a device bearer the server refuses and marks the link for relinking', async () => {
     const f = fixture({ stored: linkedRecord, routes: { '/v1/account/auth/twitch/start-device': () => json(401, { error: 'sign_in_required' }) } })
     expect(await f.signIn.stepUp()).toEqual({ ok: false, error: 'sign_in_required' })
-    expect(f.stored()).toBeNull()
+    // The account store keeps no credential, only the pay-first relink marker.
+    expect(f.stored()).toEqual({ kind: 'relink_required' })
     expect(f.launch).not.toHaveBeenCalled()
   })
 

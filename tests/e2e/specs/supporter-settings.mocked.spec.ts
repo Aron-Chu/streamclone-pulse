@@ -42,6 +42,17 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
 })
 
+/** Record what the page asks the browser to open, then open it as usual. */
+async function recordOpenedTabs(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const original = chrome.tabs.create.bind(chrome.tabs)
+    const opened: string[] = []
+    ;(window as unknown as { __openedTabs: string[] }).__openedTabs = opened
+    chrome.tabs.create = ((properties: chrome.tabs.CreateProperties) => { opened.push(String(properties.url)); return original(properties) }) as typeof chrome.tabs.create
+  })
+  return () => page.evaluate(() => (window as unknown as { __openedTabs: string[] }).__openedTabs)
+}
+
 test('account settings connect through the packaged worker and disconnect', async ({ extension, prepare }) => {
   await prepare()
   await extension.context.route('https://api.streampulse.stream/v1/account/device-links', route => route.fulfill({ json: { pollingSecret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: new Date(Date.now() + 600000).toISOString() }, status: 201 }))
@@ -49,25 +60,32 @@ test('account settings connect through the packaged worker and disconnect', asyn
     state: 'approved', token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), accountId: '11111111-1111-1111-1111-111111111111', deviceId: '22222222-2222-2222-2222-222222222222', expiresAt: new Date(Date.now() + 86400000).toISOString(), refreshExpiresAt: new Date(Date.now() + 172800000).toISOString(),
   } }))
   await extension.context.route('https://api.streampulse.stream/v1/account/devices/disconnect', route => route.fulfill({ status: 204 }))
+  // Opening the website must never reach the real site from a fixture run.
+  await extension.context.route('https://streampulse.stream/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>portal fixture</title>' }))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await page.getByRole('button', { name: 'Link extension', exact: true }).click()
+  const openedTabs = await recordOpenedTabs(page)
+  const opened = extension.context.waitForEvent('page')
+  await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
+  await opened
+  // The worker's code reaches the website in the fragment only; no second click is needed.
+  expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
   await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Open account page' })).toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
+  await expect(page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
   expect(await page.locator('body').innerText()).not.toContain('c'.repeat(64))
-  await expect(page.getByText('This extension is connected.', { exact: true })).toBeVisible({ timeout: 12000 })
-  await expect(page.getByText('This connection does not confirm a subscription or link your Twitch identity.')).toBeVisible()
+  await expect(page.getByText('This extension is connected to your Pulse account.', { exact: false })).toBeVisible({ timeout: 12000 })
+  await expect(page.getByText('Connecting does not link your Twitch identity.', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Disconnect extension' }).click()
-  await expect(page.getByRole('button', { name: 'Link extension', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
 })
 
 test('unmounted account backend produces a clear unavailable state', async ({ extension, prepare }) => {
   await prepare()
   await extension.context.route('https://api.streampulse.stream/v1/account/device-links', route => route.fulfill({ status: 404 }))
   await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  await extension.page.getByRole('button', { name: 'Link extension', exact: true }).click()
+  await extension.page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
   await expect(extension.page.getByText('Account linking is not available on the server yet. Your free tools still work.')).toBeVisible()
-  await expect(extension.page.getByRole('link', { name: 'Open account page' })).toHaveCount(0)
+  await expect(extension.page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveCount(0)
   // UI-11: linking that is not deployed is explained, not offered again.
-  await expect(extension.page.getByRole('button', { name: 'Link extension', exact: true })).toHaveCount(0)
+  await expect(extension.page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
 })

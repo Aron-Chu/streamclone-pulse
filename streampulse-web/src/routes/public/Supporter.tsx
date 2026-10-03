@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { PRIVACY_PATH, REFUNDS_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
+import { CHROME_WEB_STORE_LISTING_URL } from '../../lib/publicSiteConfig'
 
 /**
  * Public Supporter offer. One honest monthly price, stated once.
@@ -9,7 +10,7 @@ import { PrelaunchNotice } from './PrelaunchNotice'
  * This is the destination the extension's Supporter card links to, and the page
  * whose terms that card summarizes — so the two must agree on price, cadence and
  * cancellation. Checkout availability remains server-controlled on the
- * authenticated billing page; this public page must not guess deployment state.
+ * extension; this public page must not guess deployment state.
  *
  * USD only at launch: Checkout charges in US dollars, so the price says so. Tax
  * wording stays general until Checkout calculates tax itself.
@@ -98,24 +99,26 @@ export default function Supporter() {
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-6" data-testid="supporter-availability">
           <p className="!mt-0">
             <strong>Paid sign-ups are not open yet.</strong> Supporter cannot be bought on this site
-            today. When sign-ups open, account billing will show the Stripe checkout option.
+            today. When sign-ups open, get the extension and choose <strong>Become a Supporter</strong>
+            in its settings. You pay on Stripe, then the extension checks your membership automatically.
           </p>
           <p className="mb-0">
-            <Link className="btn btn-primary" to="/account/billing">
-              Open account billing
-            </Link>
+            <a className="btn btn-primary" href={CHROME_WEB_STORE_LISTING_URL} target="_blank" rel="noopener noreferrer">Get the extension</a>
           </p>
+          <p>Website accounts are optional. <Link to="/account/billing">Use a StreamPulse website account</Link> if you already have one.</p>
         </div>
 
         <h2>Managing a membership</h2>
         <p>
           Once sign-ups open, payment method, invoice history and cancellation are handled in the
-          Stripe Customer Portal, reachable from account billing. Cancelling takes effect at the end of
+          Stripe Customer Portal, reachable through <strong>Manage membership</strong> in the extension
+          or through account billing for website accounts. Cancelling takes effect at the end of
           the period you have already paid for, and billing history stays available after access
           ends. While Stripe finalizes a renewal, a membership may show as active for up to 72 hours
           after the paid period ends. See <Link to={REFUNDS_PATH}>cancellation and refunds</Link> for
           the details.
         </p>
+        <p>If you reinstall or use another browser, choose <strong>Restore my Supporter</strong> in the extension. Request a restore link using the email you paid with, then confirm that link.</p>
 
         <h2>Before you subscribe</h2>
         <p>

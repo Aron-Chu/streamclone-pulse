@@ -54,9 +54,13 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   // Opens the Twitch auth window and stores credentials: never from a Twitch
   // content script, which also runs on id.twitch.tv.
   TWITCH_SIGN_IN: 'extension-page',
+  SUPPORTER_BILLING: 'extension-page',
+  SUPPORTER_RESTORE: 'extension-page',
+  SUPPORTER_DEVICES: 'extension-page',
   SUPPORTER_ENTITLEMENT: 'extension-page',
   SUPPORTER_COSMETICS: 'extension-page',
   SUPPORTER_APPEARANCE: 'twitch-any',
+  SUPPORTER_FINISH_INTENT: 'extension-page',
   ENROLL_DEVICE: 'extension-page',
   GET_DEVICE_AUTH_STATUS: 'extension-page',
   ROTATE_DEVICE: 'extension-page',

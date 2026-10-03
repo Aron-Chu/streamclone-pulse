@@ -1,5 +1,13 @@
 export type SupporterAccountAction = 'status' | 'start' | 'poll' | 'cancel' | 'disconnect'
 export type SupporterCosmetics = { enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
+export type SupporterFinish = SupporterCosmetics['finish']
+
+/**
+ * Non-secret storage keys whose changes tell open surfaces to re-read through
+ * the worker. Neither carries an account ID, credential or projection.
+ */
+export const ACCOUNT_REVISION_KEY = 'pulseAccountRevision'
+export const SUPPORTER_REVISION_KEY = 'pulseSupporterRevision'
 
 /** Server-reconciled entitlement statuses, mirrored from the BFF projection. */
 export type SupporterStatus = 'none' | 'active' | 'grace' | 'pending' | 'expired' | 'review'
@@ -29,8 +37,12 @@ export type SupporterEntitlement =
       supportPeriods: number
       features: string[]
       cosmetics?: SupporterCosmetics
-      /** Per account: whether the website would start a Checkout for it now. */
+      /** Whether the server would open Checkout for this account now. */
       checkoutEnabled?: boolean
+      /** Server capability; absent on older deployments. Never opens Checkout itself. */
+      installationAccountsEnabled?: boolean
+      accountKind?: 'email' | 'installation'
+      restoreEligible?: boolean
     }
 
 /** Safe settings projection. Bearer, refresh and polling secrets never belong here. */
@@ -41,3 +53,16 @@ export type SupporterAccountState =
   | { state: 'error'; revocationPending?: boolean }
   | { state: 'pending'; code: string; expiresAt: string; retryAfterSeconds: number }
   | { state: 'linked'; accountId: string; expiresAt: string }
+
+/** Worker-owned purchase state: provider URLs and all credentials stay private. */
+export type SupporterBillingState =
+  | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
+  | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string }
+export type SupporterRestoreState =
+  | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'unavailable' | 'error' | 'ineligible' }
+  | { state: 'pending'; expiresAt: string; comparisonCode: string }
+  | { state: 'uncertain' }
+
+export type SupporterDevicesState =
+  | { state: 'unavailable' | 'error' | 'revoked' }
+  | { state: 'ready'; currentDeviceId: string; nextCursor?: string; devices: Array<{ id: string; label: string; createdAt: string; expiresAt: string; revokedAt?: string }> }

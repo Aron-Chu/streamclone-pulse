@@ -1,12 +1,18 @@
 type AccountPath = '/auth/start' | '/auth/complete' | '/auth/logout' | '/me' | '/devices' | `/devices?cursor=${string}` | '/devices/revoke' | '/device-links/inspect' | '/device-links/approve'
 export class AccountError extends Error {
-  constructor(public status: number, public code?: string) { super('Account request failed') }
+  /** Seconds from a Retry-After header, when the server sent a usable one. */
+  constructor(public status: number, public code?: string, public retryAfterSeconds?: number, public attemptId?: string) { super('Account request failed') }
 }
 export async function accountRequest(path: AccountPath, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   return sessionRequest('/v1/account' + path, body)
 }
 export async function billingRequest(path: '/supporter' | '/checkout' | '/portal' | `/checkout/${string}`, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
   return sessionRequest('/v1/billing' + path, body)
+}
+/** Recovery approval is authorized by its single-use secret, never a cookie. */
+export async function restoreRequest(path: '/inspect' | '/approve', body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (path !== '/inspect' && path !== '/approve') throw new AccountError(400, 'invalid_request_path')
+  return requestJson('/v1/account/restores' + path, body, 'omit', false)
 }
 // The edge relay allows billing POSTs 30 s (Stripe session creation) and
 // everything else 12 s; the client waits slightly longer so the edge answers first.
@@ -17,9 +23,12 @@ async function sessionRequest(path: string, body?: Record<string, unknown>): Pro
   // Validate URL-derived IDs at runtime, including calls from JavaScript.
   const allowed = /^\/v1\/(?:account\/(?:auth\/(?:start|complete|logout)|me|devices(?:\?cursor=[0-9a-fA-F-]{36}|\/revoke)?|device-links\/(?:inspect|approve))|billing\/(?:supporter|portal|checkout(?:\/[0-9a-fA-F-]{36})?))$/
   if (!allowed.test(path) || path.includes('\n') || path.includes('\r')) throw new AccountError(400, 'invalid_request_path')
-  const csrf = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length)
+  return requestJson(path, body, 'same-origin', true)
+}
+async function requestJson(path: string, body: Record<string, unknown> | undefined, credentials: RequestCredentials, withCsrf: boolean): Promise<Record<string, unknown>> {
+  const csrf = withCsrf ? document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length) : undefined
   const response = await fetch(path, {
-    method: body ? 'POST' : 'GET', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
+    method: body ? 'POST' : 'GET', credentials, redirect: 'error', cache: 'no-store',
     referrerPolicy: 'no-referrer',
     signal: AbortSignal.timeout(body && SLOW_BILLING_POSTS.has(path) ? BILLING_POST_TIMEOUT_MS : ACCOUNT_REQUEST_TIMEOUT_MS),
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(csrf && /^[a-f0-9]{64}$/.test(csrf) ? { 'X-Pulse-CSRF': csrf } : {}) },
@@ -27,11 +36,16 @@ async function sessionRequest(path: string, body?: Record<string, unknown>): Pro
   })
   if (!response.ok) {
     let code: string | undefined
+    let attemptId: string | undefined
     try {
       const errorBody: unknown = await response.json()
       if (errorBody && typeof errorBody === 'object' && !Array.isArray(errorBody) && typeof (errorBody as { error?: unknown }).error === 'string') code = (errorBody as { error: string }).error
+      // A pending or expired checkout names its own attempt so the page can follow it.
+      const attempt = errorBody && typeof errorBody === 'object' ? (errorBody as { attemptId?: unknown }).attemptId : undefined
+      if (typeof attempt === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(attempt)) attemptId = attempt
     } catch { /* Generic status handling is intentional for malformed provider responses. */ }
-    throw new AccountError(response.status, code)
+    const retryAfter = Number(response.headers?.get?.('Retry-After'))
+    throw new AccountError(response.status, code, Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 900) : undefined, attemptId)
   }
   if (response.status === 204) return {}
   const data: unknown = await response.json()

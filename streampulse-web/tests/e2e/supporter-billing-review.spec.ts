@@ -44,14 +44,15 @@ for (const width of [1440, 390]) {
       failingStage = stage
       failed = true
       await page.goto('/account/billing/return?attempt=12345678-1234-4234-8234-123456789abc')
-      await expect(page.getByRole('status')).toContainText('Billing status is unavailable right now. Refresh status before trying another checkout.')
+      await expect(page.getByRole('heading', { name: 'Billing status is unavailable right now', exact: true })).toBeVisible()
+      await expect(page.getByRole('status')).toContainText('Don’t start another checkout.')
       await expect(page.getByText('No purchase has been started.', { exact: false })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toHaveCount(0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
       failed = false
-      await page.getByRole('button', { name: 'Refresh status', exact: true }).click()
-      await expect(page.getByRole('heading', { name: 'Supporter active', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: 'Check again', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'You’re a Supporter', exact: true })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toBeEnabled()
     }
     expect(writes).toEqual([])
@@ -89,8 +90,8 @@ for (const width of [1440, 390]) {
     let checkoutEnabled: boolean | undefined = true
     await page.route('**/v1/billing/supporter', route => route.fulfill({ json: { schemaVersion: 1, status: state, checkoutEnabled, supportPeriods: 2, accessUntil: '2026-10-19T00:00:00Z' } }))
     const headings = {
-      none: 'No subscription',
-      pending: 'Payment pending',
+      none: 'Become a Pulse Supporter',
+      pending: 'Confirming your payment',
       active: 'Supporter active',
       grace: 'Payment needs attention',
       expired: 'Supporter ended',
@@ -100,15 +101,18 @@ for (const width of [1440, 390]) {
       state = status
       await page.goto('/account/billing')
       await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Refresh status' })).toBeEnabled()
-      const manage = page.getByRole('button', { name: 'Manage membership', exact: true })
-      if (status === 'none') await expect(manage).toHaveCount(0)
-      else await expect(manage).toBeEnabled()
+      // Routine states keep a quiet recovery refresh; a payment being confirmed refreshes itself.
+      if (status === 'pending') await expect(page.getByRole('button', { name: 'Refresh status' })).toHaveCount(0)
+      else await expect(page.getByRole('button', { name: 'Refresh status' })).toBeEnabled()
+      const portal = page.getByRole('button', { name: status === 'grace' ? 'Update payment method' : status === 'expired' ? 'Billing history' : 'Manage membership', exact: true })
+      if (status === 'none') await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toHaveCount(0)
+      else await expect(portal).toBeEnabled()
       await expect(page.getByRole('link', { name: 'Sign in to Pulse', exact: true })).toHaveCount(0)
-      const checkout = page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })
+      const checkout = page.getByRole('button', { name: status === 'expired' ? 'Rejoin Supporter' : 'Continue to Stripe checkout', exact: true })
       if (['none', 'expired'].includes(status)) await expect(checkout).toBeEnabled()
-      else await expect(checkout).toHaveCount(0)
-      await expect(page.getByText(/^Access through /)).toHaveCount(['active', 'grace'].includes(status) ? 1 : 0)
+      else await expect(page.getByRole('button', { name: /Stripe checkout|Rejoin/ })).toHaveCount(0)
+      await expect(page.getByText('Access through', { exact: true })).toHaveCount(status === 'active' ? 1 : 0)
+      await expect(page.getByText('Access until', { exact: true })).toHaveCount(status === 'grace' ? 1 : 0)
       await page.screenshot({ path: info.outputPath(`billing-${state}-${width}.png`), fullPage: true, animations: 'disabled' })
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     }
@@ -117,9 +121,9 @@ for (const width of [1440, 390]) {
       for (const status of ['none', 'expired', 'active']) {
         state = status
         await page.goto('/account/billing')
-        await expect(page.getByRole('heading', { name: headings[status as keyof typeof headings], exact: true })).toBeVisible()
-        await expect(page.getByRole('button', { name: 'Continue to Stripe checkout', exact: true })).toHaveCount(0)
-        if (status !== 'none') await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toBeEnabled()
+        await expect(page.getByRole('heading', { name: status === 'none' ? 'Supporter sign-ups are not open yet' : headings[status as keyof typeof headings], exact: true })).toBeVisible()
+        await expect(page.getByRole('button', { name: /Stripe checkout|Rejoin/ })).toHaveCount(0)
+        if (status !== 'none') await expect(page.getByRole('button', { name: status === 'expired' ? 'Billing history' : 'Manage membership', exact: true })).toBeEnabled()
         if (status !== 'active') await expect(page.getByText('New Supporter sign-ups are not open yet.', { exact: false })).toBeVisible()
       }
     }
@@ -135,8 +139,8 @@ for (const width of [1440, 390]) {
     await page.unroute('**/v1/billing/supporter')
     await page.route('**/v1/billing/supporter', route => route.fulfill({ status: 503, json: { error: 'unavailable' } }))
     await page.goto('/account/billing')
-    await expect(page.getByRole('status')).toContainText('Billing status is unavailable right now. Refresh status before trying another checkout.')
-    await expect(page.getByRole('button', { name: 'Refresh status' })).toBeEnabled()
+    await expect(page.getByRole('heading', { name: 'Billing status is unavailable right now', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled()
     await expect(page.getByRole('button', { name: /checkout/i })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toHaveCount(0)
     await page.screenshot({ path: info.outputPath(`billing-unavailable-${width}.png`), fullPage: true })

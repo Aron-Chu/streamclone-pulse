@@ -25,3 +25,18 @@ describe('account settings', () => {
   expect(screen.getByText(/Website saves stay in this browser/)).toBeTruthy()
  })
 })
+
+describe('signing out', () => {
+  it('tells other open account tabs to re-check', async () => {
+    localStorage.setItem('pulse.account.signedInAt.v1', String(Date.now()))
+    vi.mocked(accountRequest).mockImplementation(async path => path === '/me' ? { accountId: 'account-a' } : path === '/devices' ? { devices: [] } : {})
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    try {
+      render(<MemoryRouter><AccountSettings /></MemoryRouter>)
+      fireEvent.click(await screen.findByRole('button', { name: /Sign out/ }))
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/account/sign-in'))
+      expect(localStorage.getItem('pulse.account.signedInAt.v1')).toBeNull()
+    } finally { vi.unstubAllGlobals() }
+  })
+})
