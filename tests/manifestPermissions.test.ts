@@ -16,7 +16,7 @@ function loadManifest(name: string) {
   }
 }
 
-const EXPECTED_PERMISSIONS = ['storage', 'scripting']
+const EXPECTED_PERMISSIONS = ['storage', 'scripting', 'identity']
 const EXPECTED_HOST_PERMISSIONS = [
   'https://api.streampulse.stream/*',
   'https://cdn.7tv.app/*',
@@ -64,6 +64,17 @@ describe('manifest targets', () => {
     const rootManifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'))
     const development = loadManifest('development.json')
     expect(rootManifest).toEqual(development)
+  })
+
+  it('adds identity for Sign in with Twitch without identity.email, external messaging or a store key', () => {
+    for (const name of ['development.json', 'cws.json', 'edge.json', 'firefox.json'] as const) {
+      const manifest = JSON.parse(readFileSync(join(root, 'manifests', name), 'utf8')) as Record<string, unknown> & { permissions?: string[] }
+      expect(manifest.permissions).toContain('identity')
+      // identity.email is the variant Chrome warns about; the flow never needs it.
+      expect(manifest.permissions).not.toContain('identity.email')
+      expect(manifest).not.toHaveProperty('externally_connectable')
+      if (name !== 'development.json') expect(manifest).not.toHaveProperty('key')
+    }
   })
 
   it('matches content scripts on HTTPS Twitch only', () => {

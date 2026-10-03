@@ -14,12 +14,11 @@ import {
   getSidebarTab,
   getChatClosedPulseDockEnabled,
   getThemePreference,
+  themeFromStorageChange,
   CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY,
-  THEME_PREFERENCE_KEY,
   type OverlayMode,
   type OverlayPlacement,
   type SidebarTab,
-  type ThemePreference,
 } from '../shared/storage.ts'
 import { applyAccentTheme } from '../ui/overlayTheme.ts'
 import { PulsePortalContext } from '../ui/pulsePortalContext.ts'
@@ -44,6 +43,7 @@ import { applyTwitchSidebarChromeHides } from './twitchSidebarChrome.ts'
 import type { TwitchPageContext } from './twitch.ts'
 import { detectTwitchChannelLive } from './twitch.ts'
 import { installContentDiagnosticsEmitters } from '../shared/extensionDiagnostics.ts'
+import { EXTENSION_DIAGNOSTICS_INGEST_ENABLED } from '../shared/diagnosticsConsent.ts'
 import type { LivePollController } from './livePoll.ts'
 
 const TAB_HOST_ID = 'streamclone-pulse-tabs'
@@ -52,6 +52,11 @@ const PANEL_HOST_ID = 'streamclone-pulse-root'
 export const PULSE_TABS_HOST_ID = TAB_HOST_ID
 export const PULSE_ROOT_HOST_ID = PANEL_HOST_ID
 
+/** Twitch marks <html> with its theme; the tab row is transparent over Twitch's header. */
+export function twitchTheme(root: Element): 'light' | 'dark' {
+  return root.classList.contains('tw-root--theme-light') ? 'light' : 'dark'
+}
+
 let themeListenerInstalled = false
 
 function installThemeSyncListener(): void {
@@ -59,11 +64,8 @@ function installThemeSyncListener(): void {
   if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return
   themeListenerInstalled = true
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes[THEME_PREFERENCE_KEY]) return
-    const next = changes[THEME_PREFERENCE_KEY].newValue
-    if (next === 'aurora' || next === 'volt' || next === 'azure') {
-      applyAccentTheme(next as ThemePreference)
-    }
+    const next = area === 'sync' ? themeFromStorageChange(changes) : undefined
+    if (next) applyAccentTheme(next)
   })
 }
 
@@ -119,10 +121,19 @@ let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
 let overlayHostObserver: MutationObserver | null = null
 let overlayHostReconcileTimer: ReturnType<typeof setTimeout> | null = null
+let twitchThemeObserver: MutationObserver | null = null
 let nativeChatFocusHandoff: NativeChatFocusHandoff | null = null
 
+/** The panel host carries the theme too, ready for a later light panel. */
+function syncTwitchTheme(): void {
+  const theme = twitchTheme(document.documentElement)
+  for (const host of [tabsHostEl, panelHostEl]) if (host) host.dataset.twitchTheme = theme
+}
+
 function installOverlayDiagnosticsOnce(): void {
-  if (overlayDiagnosticsInstalled) return
+  // While ingest is compiled off every emitter is a no-op, so the bundle can
+  // drop the listeners and everything they pull in.
+  if (!EXTENSION_DIAGNOSTICS_INGEST_ENABLED || overlayDiagnosticsInstalled) return
   overlayDiagnosticsInstalled = true
   installContentDiagnosticsEmitters({ feature: 'overlay' })
 }
@@ -607,6 +618,12 @@ export function mountOverlay(
     panelRoot = panel.root
   }
   installOverlayHostObserver()
+  if (!twitchThemeObserver) {
+    // <html> class only, never the subtree: Twitch toggles it on theme switch.
+    twitchThemeObserver = new MutationObserver(syncTwitchTheme)
+    twitchThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  }
+  syncTwitchTheme()
 
   installThemeSyncListener()
   installMountStorageListener()
@@ -722,6 +739,8 @@ export function unmountOverlay(): void {
   displayPreferenceRequestId += 1
   overlayHostObserver?.disconnect()
   overlayHostObserver = null
+  twitchThemeObserver?.disconnect()
+  twitchThemeObserver = null
   if (overlayHostReconcileTimer != null) {
     clearTimeout(overlayHostReconcileTimer)
     overlayHostReconcileTimer = null

@@ -14,11 +14,12 @@ import { LiveStatsBand } from './LiveStatsBand.tsx'
 import { MostReactedSection } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
-import { PulseSettingsPanel } from './PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton, PulseSettingsPanel } from './PulseSettingsPanel.tsx'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
+import { useKeepPressedInPlace } from './keepPressedInPlace.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
 import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog } from './recapEmotes.ts'
@@ -30,6 +31,7 @@ import {
   DEFAULT_BACKEND_URL,
   getAutoUpdateEnabled,
   getBackendUrl,
+  densityFromStorageChange,
   getDensityPreference,
   getVodJumpChartPinEnabled,
   getOverlayDisplayPreferences,
@@ -299,6 +301,7 @@ function OverlayMain({
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [density, setDensityState] = useState<DensityPreference>('comfortable')
   const banner = usePulseBanner()
+  const keepPressedInPlace = useKeepPressedInPlace()
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
   const controlledSidebarTab = sidebarTabProp != null
   const [backendUrl, setBackendUrlState] = useState(DEFAULT_BACKEND_URL)
@@ -600,9 +603,8 @@ function OverlayMain({
       if (changes.overlayMode || changes.overlayPlacement) {
         refreshDisplay()
       }
-      if (changes.density) {
-        setDensityState(changes.density.newValue === 'compact' ? 'compact' : 'comfortable')
-      }
+      const nextDensity = densityFromStorageChange(changes)
+      if (nextDensity) setDensityState(nextDensity)
       if (changes.sidebarTab && !controlledSidebarTab) {
         const requestId = ++tabRequestId
         void getSidebarTab().then(tab => {
@@ -1627,6 +1629,7 @@ function OverlayMain({
       ) : null}
 
       <div
+        ref={keepPressedInPlace}
         className={`pulse-panel-body ${showSidebarTabs ? 'pulse-tab-fade' : ''}`}
         style={{
           ...(sidebarChatOnly ? styles.panelHidden : undefined),
@@ -1642,7 +1645,18 @@ function OverlayMain({
       <PanelErrorBoundary>
       {panelView === 'settings' ? (
         <div key="settings" className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack">
-          <PulseSettingsPanel onBack={() => setPanelView('pulse')} />
+          <PulseSettingsPanel
+            onBack={() => setPanelView('pulse')}
+            channel={{
+              login,
+              displayName: coverageTierState?.displayName,
+              isLive: uiIsLive,
+              category: payload?.category ?? coverageTierState?.liveMetadata?.category,
+              viewerCount: currentViewerCount(payload, uiIsLive),
+              startedAt: payload?.startedAt ?? coverageTierState?.liveMetadata?.startedAt,
+              surface: panelSurfaceState,
+            }}
+          />
         </div>
       ) : (
         <div
@@ -1917,8 +1931,24 @@ function OverlayMain({
           </button>
         </div>
       ) : null}
+      {panelView === 'settings' && !sidebarChatOnly ? (
+        <div className="pulse-settings-footer" style={styles.settingsFooter}>
+          <OpenAllSettingsButton style={styles.settingsBottomBar} />
+        </div>
+      ) : null}
     </section>
   )
+}
+
+/** Latest sampled viewer count within five minutes of the live edge, if any. */
+function currentViewerCount(payload: PulsePayload | null, isLive: boolean): number | null {
+  if (!payload || !isLive) return null
+  for (let index = payload.rollups.length - 1; index >= 0; index--) {
+    const rollup = payload.rollups[index]!
+    if (rollup.offsetSeconds < payload.currentOffsetSeconds - 300) return null
+    if ((rollup.viewerSamples ?? 0) > 0 && rollup.viewerCount != null) return rollup.viewerCount
+  }
+  return null
 }
 
 function StreamPulseHeader({
@@ -2152,7 +2182,7 @@ export function ClipSpikeCard({ clip, backendUrl, onSelect }: { clip: ExtensionC
         style={styles.clipSpikeCard}
         aria-label={`Clip spike: ${clip.title}`}
       >
-        <div style={styles.clipThumbWrap}>
+        <div className="pulse-clip-thumb" style={styles.clipThumbWrap}>
           {thumbnailUrl ? (
             <img
               src={thumbnailUrl}

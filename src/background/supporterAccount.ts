@@ -185,6 +185,56 @@ export class SupporterAccountCoordinator {
     return task
   }
 
+  /**
+   * Identity generation. Work that leaves the queue (an auth window) records
+   * it first; a cancel or disconnect since then makes `adopt` refuse.
+   */
+  get identityGeneration(): number { return this.generation }
+
+  /**
+   * Store a device pair issued outside the device-link poll (Sign in with
+   * Twitch). Serialized with refresh and disconnect, so every existing path
+   * then uses it unchanged. A cancel or disconnect since `generation` revokes
+   * the new pair instead, and a connection that appeared meanwhile is kept.
+   */
+  adopt(body: unknown, generation: number): Promise<{ adopted: boolean; account: SupporterAccountState }> {
+    const task = this.queue.then(async (): Promise<{ adopted: boolean; account: SupporterAccountState }> => {
+      const next = object(body).state === 'approved' ? linked(body) : null
+      if (!next) return { adopted: false, account: { state: 'error' } }
+      const raw = object(await this.ports.read())
+      const current = raw.kind === 'linked' ? linked(raw) : null
+      if (current) {
+        await this.revokeUnstored(next.token)
+        return { adopted: false, account: generation === this.generation ? this.project(current) : { state: 'signed_out' } }
+      }
+      if (raw.kind === 'revoking') {
+        // Never overwrite a tombstone whose revocation is still unconfirmed.
+        if (generation !== this.generation || !secret(raw.token) || !await this.revokeUnstored(raw.token)) {
+          await this.revokeUnstored(next.token)
+          return { adopted: false, account: { state: 'error', revocationPending: true } }
+        }
+      } else if (generation !== this.generation) {
+        // Signed out while the window was open: the tombstone retries revocation.
+        return { adopted: false, account: await this.discardCredential(next) }
+      }
+      this.revocationUnconfirmed = false
+      this.renewalPause = null
+      await this.ports.write(next)
+      await this.ports.identityChanged?.()
+      return { adopted: true, account: this.project(next) }
+    }).catch(() => ({ adopted: false, account: { state: 'error' } as SupporterAccountState }))
+    this.queue = task
+    return task
+  }
+
+  /** Best-effort server revocation of a credential that is not stored. */
+  private async revokeUnstored(token: string): Promise<boolean> {
+    try {
+      const result = await this.ports.request('/v1/account/devices/disconnect', { token })
+      return result.status === 204 || result.status === 401
+    } catch { return false }
+  }
+
   /** Worker-only operation: serialize the complete request with rotation and disconnect. */
   withCredential<T extends { status: number }>(operation: (token: string) => Promise<T>, accountId?: string, discardStale?: (result: T) => Promise<void>): Promise<T> {
     const generation = this.generation

@@ -13,7 +13,12 @@
  * scripting coverage for non-www Twitch hosts used by channel and mobile
  * surfaces; keep the wildcard until product confirms www-only injection.
  */
-export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting'])
+/**
+ * `identity` is for Sign in with Twitch (identity.launchWebAuthFlow only).
+ * Chrome shows no install warning for it (only `identity.email` warns), so an
+ * update does not disable the extension. Never add `identity.email`.
+ */
+export const ALLOWED_PERMISSIONS = Object.freeze(['storage', 'scripting', 'identity'])
 
 export const ALLOWED_HOST_PERMISSIONS_STORE = Object.freeze([
   'https://api.streampulse.stream/*',

@@ -20,6 +20,23 @@ export const APPEARANCE_WAKE_DEBOUNCE_MS = 10_000
 
 const requestAppearance = () => sendBackgroundMessage({ type: 'SUPPORTER_APPEARANCE' })
 
+/**
+ * The last finish the worker verified, shared by every mount until it lapses.
+ * The header and quick settings take turns being mounted, so without this each
+ * switch started blank and asked the worker again.
+ */
+let lastVerified: { appearance: SupporterAppearance; until: number } | null = null
+
+function verifiedNow(): { appearance: SupporterAppearance; remaining: number } | null {
+  const remaining = lastVerified ? lastVerified.until - performance.now() : 0
+  return lastVerified && remaining > 0 ? { appearance: lastVerified.appearance, remaining } : null
+}
+
+/** Tests only: forget the shared verified finish. */
+export function resetSupporterAppearanceForTests(): void {
+  lastVerified = null
+}
+
 /** The equipped Supporter finish alone, for callers that only colour by it. */
 export function useSupporterAppearance(request: () => Promise<AppearanceReply> = requestAppearance): Finish | null {
   return useSupporterAppearanceDetails(request)?.finish ?? null
@@ -33,10 +50,11 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
  * it first, and a failed refresh leaves it to its own expiry. Hidden tabs do
  * not poll; they check again when shown. The worker's non-secret change
  * signals (a verified purchase, a saved finish, a revoked or switched account)
- * trigger an immediate check, so an open Twitch tab never needs a reload.
+ * trigger an immediate check, so an open Twitch tab never needs a reload. So
+ * does a new wave or sheen saved in settings.
  */
 export function useSupporterAppearanceDetails(request: () => Promise<AppearanceReply> = requestAppearance): SupporterAppearance | null {
-  const [appearance, setAppearance] = useState<SupporterAppearance | null>(null)
+  const [appearance, setAppearance] = useState<SupporterAppearance | null>(() => verifiedNow()?.appearance ?? null)
   useEffect(() => {
     let alive = true
     let running = false
@@ -69,10 +87,13 @@ export function useSupporterAppearanceDetails(request: () => Promise<AppearanceR
           if (result.finish && Number.isFinite(remaining) && remaining > 0) {
             const finish = result.finish
             const { tenure, paint } = result
-            setAppearance(current => current?.finish === finish && current.tenure === tenure && current.paint?.wave === paint?.wave && current.paint?.sheen === paint?.sheen ? current : { finish, tenure, paint })
+            const next = { finish, tenure, paint }
+            lastVerified = { appearance: next, until: performance.now() + remaining }
+            setAppearance(current => current?.finish === finish && current.tenure === tenure && current.paint?.wave === paint?.wave && current.paint?.sheen === paint?.sheen ? current : next)
             expiry = window.setTimeout(() => setAppearance(null), remaining)
             delay = Math.max(APPEARANCE_MIN_RENEW_MS, remaining - APPEARANCE_RENEW_LEAD_MS)
           } else {
+            lastVerified = null
             setAppearance(null)
           }
         }
@@ -100,7 +121,22 @@ export function useSupporterAppearanceDetails(request: () => Promise<AppearanceR
       if (signalledWhileHidden || since >= APPEARANCE_WAKE_DEBOUNCE_MS) { signalledWhileHidden = false; void refresh() }
       else if (next === undefined && !running) schedule(APPEARANCE_WAKE_DEBOUNCE_MS - since)
     }
-    void refresh(true)
+    // A mount that inherits a still-valid finish waits for its renewal instead
+    // of asking again right away.
+    // Too close to lapsing to wait for the usual renewal: renew now, still
+    // showing the inherited finish, since a refresh never clears it first.
+    const inherited = verifiedNow()
+    const renewIn = inherited ? inherited.remaining - APPEARANCE_RENEW_LEAD_MS : 0
+    if (inherited) {
+      setAppearance(inherited.appearance)
+      expiry = window.setTimeout(() => setAppearance(null), inherited.remaining)
+    }
+    if (inherited && renewIn >= APPEARANCE_MIN_RENEW_MS) {
+      lastStart = performance.now()
+      schedule(renewIn)
+    } else {
+      void refresh(true)
+    }
     window.addEventListener('focus', wake)
     document.addEventListener('visibilitychange', wake)
     storage?.addListener(signalled)

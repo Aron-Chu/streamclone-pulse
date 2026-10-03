@@ -615,7 +615,7 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
 
 export const PULSE_BANNER_KEY = 'pulseBanner'
 export type PulseBannerPreference = { mode: 'off' | 'still' | 'rain'; intensity: number; title: string }
-export const DEFAULT_PULSE_BANNER: PulseBannerPreference = { mode: 'rain', intensity: 35, title: '' }
+export const DEFAULT_PULSE_BANNER: PulseBannerPreference = { mode: 'off', intensity: 35, title: '' }
 
 export function normalizePulseBanner(value: unknown): PulseBannerPreference {
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -889,6 +889,20 @@ function normalizeThemePreference(value: unknown): ThemePreference {
 
 export function normalizeDensityPreference(value: unknown): DensityPreference {
   return value === 'compact' || value === 'comfortable' ? value : DEFAULT_DENSITY_PREFERENCE
+}
+
+type StorageChanges = Record<string, { newValue?: unknown }>
+
+/** The accent a sync storage change carries, or undefined when it did not change. */
+export function themeFromStorageChange(changes: StorageChanges): ThemePreference | undefined {
+  const change = changes[THEME_PREFERENCE_KEY]
+  return change ? normalizeThemePreference(change.newValue) : undefined
+}
+
+/** The density a sync storage change carries, or undefined when it did not change. */
+export function densityFromStorageChange(changes: StorageChanges): DensityPreference | undefined {
+  const change = changes[DENSITY_PREFERENCE_KEY]
+  return change ? normalizeDensityPreference(change.newValue) : undefined
 }
 
 function normalizeDefaultChartWindow(value: unknown): DefaultChartWindow {

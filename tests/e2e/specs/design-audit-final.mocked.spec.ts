@@ -239,7 +239,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     // Look for unreachable status and retry button
     const statusEl = settings.locator('[data-api-status="unreachable"]')
     await expect(statusEl).toBeVisible()
-    await expect(statusEl).toHaveText('API unreachable')
+    await expect(statusEl).toHaveText('Can’t reach StreamPulse. Try again.')
 
     const retryBtn = settings.getByRole('button', { name: 'Test connection' })
     await expect(retryBtn).toBeVisible()
