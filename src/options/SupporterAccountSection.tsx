@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AccountConnection } from './AccountConnection.tsx'
-import { SupporterOffer } from './SupporterOffer.tsx'
+import { SupporterJourney } from './SupporterJourney.tsx'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import {
   SUPPORTER_BADGE_TENURES,
@@ -60,8 +59,7 @@ export function SupporterAccountSection() {
         <h2>Account &amp; Supporter</h2>
         <p>Your account, membership, and private Pulse appearance.</p>
       </div>
-      <AccountConnection />
-      <SupporterOffer onEntitlement={setEntitlement} />
+      <SupporterJourney onEntitlement={setEntitlement} />
       <SupporterCosmeticControls entitlement={entitlement} onSaved={savedCosmetics} />
       <PulseSectionCard
         title="Badge preview"

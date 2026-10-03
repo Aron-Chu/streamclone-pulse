@@ -60,13 +60,15 @@ describe('hosted account route smoke', () => {
   const canonicalPaths = [
     '/account/sign-in',
     '/account/confirm',
+    '/account/restore',
     '/account/link-device',
     '/account/settings',
     '/account/billing',
     '/account/billing/return',
+    '/supporter/thanks',
   ]
 
-  it('checks all six account entrypoints directly without following redirects', async () => {
+  it('checks all account and static payment-return entrypoints directly without following redirects', async () => {
     const fetchImpl = vi.fn(async () => response(200, '<!doctype html><html><title>StreamPulse</title></html>'))
 
     const results = await verifyHostedAccountRoutes({ fetchImpl, origin: 'https://example.test' })

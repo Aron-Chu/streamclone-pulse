@@ -194,6 +194,15 @@ select {
   line-height: 1.65;
 }
 
+[data-testid="supporter-offer"] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .public-document h1 {
   margin-top: 0;
   font-size: 2rem;

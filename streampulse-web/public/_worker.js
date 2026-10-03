@@ -20,8 +20,8 @@ const DEVICE_CURSOR = new RegExp(`^\\?cursor=${UUID}$`)
 const CORRELATION_ID = /^[0-9a-f]{32}$/
 const IPV4 = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
 
-function route(method, name, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  return { method, name, timeoutMs }
+function route(method, name, timeoutMs = DEFAULT_TIMEOUT_MS, secretOnly = false) {
+  return { method, name, timeoutMs, secretOnly }
 }
 
 const ROUTES = new Map([
@@ -32,6 +32,8 @@ const ROUTES = new Map([
   ['/v1/account/auth/logout', route('POST', 'account.auth.logout')],
   ['/v1/account/device-links/inspect', route('POST', 'account.device_link.inspect')],
   ['/v1/account/device-links/approve', route('POST', 'account.device_link.approve')],
+  ['/v1/account/restores/inspect', route('POST', 'account.restore.inspect', DEFAULT_TIMEOUT_MS, true)],
+  ['/v1/account/restores/approve', route('POST', 'account.restore.approve', DEFAULT_TIMEOUT_MS, true)],
   ['/v1/account/devices/revoke', route('POST', 'account.device.revoke')],
   ['/v1/billing/supporter', route('GET', 'billing.supporter')],
   ['/v1/billing/checkout', route('POST', 'billing.checkout', BILLING_POST_TIMEOUT_MS)],
@@ -173,7 +175,7 @@ async function relay(request, env, upstream, url, matched, correlationId) {
   if (query && !(url.pathname === '/v1/account/devices' && DEVICE_CURSOR.test(query))) return reject(400, correlationId)
   if (matched.method === 'POST' && request.headers.get('origin') !== PORTAL_ORIGIN) return reject(403, correlationId)
 
-  const cookies = selectedCookies(request.headers.get('cookie') ?? '')
+  const cookies = matched.secretOnly ? '' : selectedCookies(request.headers.get('cookie') ?? '')
   if (cookies === null) return reject(400, correlationId)
 
   // Fail closed: without the edge secret or a visitor IP, the API could not
@@ -192,7 +194,7 @@ async function relay(request, env, upstream, url, matched, correlationId) {
     headers.set('Content-Type', request.headers.get('content-type'))
     headers.set('Origin', PORTAL_ORIGIN)
   }
-  const csrf = request.headers.get('x-pulse-csrf')
+  const csrf = matched.secretOnly ? null : request.headers.get('x-pulse-csrf')
   if (csrf) headers.set('X-Pulse-CSRF', csrf)
   if (cookies) headers.set('Cookie', cookies)
   headers.set('X-Correlation-ID', correlationId)
@@ -215,7 +217,7 @@ async function relay(request, env, upstream, url, matched, correlationId) {
     return reject(502, responseCorrelationId)
   }
 
-  const setCookies = upstreamSetCookies(response.headers)
+  const setCookies = matched.secretOnly ? [] : upstreamSetCookies(response.headers)
   if (setCookies === null) return reject(502, responseCorrelationId)
   if (setCookies.some(cookie => ALLOWED_SET_COOKIE.test(cookie) && /(?:^|;)\s*domain\s*=/i.test(cookie))) {
     return reject(502, responseCorrelationId)

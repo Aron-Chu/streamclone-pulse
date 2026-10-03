@@ -3,6 +3,13 @@ import type { ErrorEvent } from '@sentry/react'
 import { scrubDiagnosticText, scrubPortalEvent } from '../src/lib/sentry'
 
 describe('Sentry privacy boundary', () => {
+  it('drops diagnostics on account restore and Checkout-return routes even after SPA navigation', () => {
+    for (const path of ['/account/restore', '/supporter/thanks?attempt=private', '/account/sign-in']) {
+      window.history.replaceState({}, '', path)
+      expect(scrubPortalEvent({ type: undefined, message: 'Failed to fetch' })).toBeNull()
+    }
+    window.history.replaceState({}, '', '/')
+  })
   it('removes signed media URLs and credential assignments from diagnostic text', () => {
     const clean = scrubDiagnosticText('Failed https://media.example/secret-id.mp4?signature=private token=private Bearer private')
     expect(clean).not.toContain('private')

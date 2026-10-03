@@ -74,6 +74,25 @@ There is no environment override, and `ALLOW_DIRTY_PAGES_DEPLOY` never covers
 these edge checks. Changing the Worker needs a new pin and a new edge-freeze
 approval.
 
+For this prepared relay change, `approval` must be exactly
+`streampulse-sdlc@<40-lowercase-hex-commit>:docs/superpowers/specs/2026-10-01-cloudflare-edge-freeze-amendment-v2.md`.
+The gate reads immutable Git objects in the canonical sibling SDLC checkout,
+requires that commit to be an ancestor of local `origin/master`, and requires
+the same document still to be current there. Its sole `edge-approval-json`
+block must say `version: 2`, `status: "approved"`, and bind the exact Worker
+SHA-256, routes and expiry. `PENDING OWNER`, arbitrary approval text, drafts,
+unmerged commits, wrong origins, and mismatched bindings fail before any build
+or upload. The SDLC check is read-only; the operator must refresh its canonical
+remote-tracking branch during the separately approved publication workflow.
+Git repository, object, namespace and configuration environment overrides are
+rejected by variable name before any authority check; values are never read.
+Only author/committer identity variables and the disabled pager are harmless.
+The origin check reads exactly one raw local `remote.origin.url` with config
+includes disabled, so `insteadOf` rewriting cannot disguise a foreign repo.
+Local tests may use `assertEdgeFreezeStructural` to verify prepared source/build
+shape, but that function grants no deployment approval. The production command
+and the edge-check CLI always use the approval gate.
+
 The Worker relays only the reviewed `/v1/account/*` and `/v1/billing/*` browser
 routes to `https://api.streampulse.stream` and signs the visitor IP (edge
 contract `pulse-edge-v1`). It needs the Pages secret binding

@@ -111,7 +111,7 @@ describe('website analytics privacy disclosure', () => {
   it('discloses voluntary US processing, event limits, withdrawal limits and separate extension plans', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const policy = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(policy).toContain('Last updated: September 29, 2026')
+    expect(policy).toContain('Last updated: October 1, 2026')
     expect(policy).toContain('Optional website analytics')
     expect(policy).toContain('off by default')
     expect(policy).toContain('United States region')

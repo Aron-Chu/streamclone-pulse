@@ -25,35 +25,87 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
   const generation = useRef(0)
   const pending = useRef(false)
   const savedCosmetics = useRef<SupporterCosmetics | null>(null)
+  // An explicit choice made before membership is verified. The worker keeps it
+  // privately and applies it once the server grants Supporter access.
+  const [intent, setIntent] = useState<SupporterCosmetics['finish'] | null>(null)
+  const [intentBusy, setIntentBusy] = useState(false)
   const allowed = entitlement?.state === 'ready'
     && (entitlement.status === 'active' || entitlement.status === 'grace')
     && entitlement.features.includes('supporter.banner.v1')
     && entitlement.features.includes('supporter.finish.v1')
   const entitlementState = entitlement?.state
   const entitlementStatus = entitlement?.state === 'ready' ? entitlement.status : undefined
-  const entitlementPeriods = entitlement?.state === 'ready' ? entitlement.supportPeriods : undefined
-  const entitlementAccessUntil = entitlement?.state === 'ready' ? entitlement.accessUntil : undefined
   const cosmetics = entitlement?.state === 'ready' ? entitlement.cosmetics : undefined
+  // Loading, or a background read that could not confirm the last status: the
+  // controls pause rather than switching to the pre-purchase mode, and the
+  // user's selection is kept.
+  const unknown = entitlement === null
+  // Settings re-read membership by themselves now (after a purchase, a save or
+  // a signal), so only a change to access or the applied finish may replace an
+  // unsaved selection; a refreshed date, a support count or a brief unknown
+  // read must not.
+  const appliedKey = unknown ? null : JSON.stringify([entitlementState, entitlementStatus, allowed, cosmetics?.enabled ?? null, cosmetics?.finish ?? null])
+  const lastAppliedKey = useRef<string | null>(null)
   useEffect(() => {
+    if (appliedKey === null) return
     savedCosmetics.current = null
-  }, [entitlementState, entitlementStatus, entitlementPeriods, entitlementAccessUntil, allowed])
+  }, [entitlementState, entitlementStatus, allowed])
   useEffect(() => {
-    generation.current++
-    pending.current = false
-    setBusy(false)
+    if (appliedKey === null || appliedKey === lastAppliedKey.current) return
+    lastAppliedKey.current = appliedKey
     const activeFinish = allowed && cosmetics?.enabled ? cosmetics.finish : null
     setAppliedFinish(activeFinish)
     const acknowledgment = savedCosmetics.current
+    // Our own save, seen here before or after its response arrives (the
+    // worker's change signal can win that race), keeps its confirmation and
+    // its in-flight result.
+    if (acknowledgment && acknowledgment.enabled === cosmetics?.enabled && acknowledgment.finish === cosmetics?.finish) return
+    // A remote change replaces both the draft and the applied preview, and an
+    // in-flight save from before it no longer applies.
     savedCosmetics.current = null
-    // An acknowledgment of our save keeps its confirmation. A remote change
-    // replaces both the draft and the applied preview.
-    if (!acknowledgment || acknowledgment.enabled !== cosmetics?.enabled || acknowledgment.finish !== cosmetics?.finish) {
-      setFinish(cosmetics ? activeFinish : 'glass')
-      setNotice('')
+    generation.current++
+    pending.current = false
+    setBusy(false)
+    setFinish(cosmetics ? activeFinish : 'glass')
+    setNotice('')
+  }, [appliedKey])
+  // A save in flight belongs to this view only.
+  useEffect(() => () => { generation.current++ }, [])
+  // Read the saved choice only while it could still matter, and only once.
+  const intentRead = useRef(false)
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useEffect(() => {
+    if (allowed || unknown || intentRead.current) return
+    intentRead.current = true
+    void Promise.resolve(globalThis.chrome?.runtime?.sendMessage?.({ type: 'SUPPORTER_FINISH_INTENT' }))
+      .then(response => {
+        if (!mounted.current || response?.type !== 'SUPPORTER_FINISH_INTENT') return
+        setIntent(response.finish)
+        if (response.finish) setFinish(current => current === 'glass' ? response.finish : current)
+      })
+      .catch(() => { /* No saved choice is shown when the worker is unavailable. */ })
+  }, [allowed, unknown])
+  // Once access is verified the worker has applied (and cleared) the choice.
+  useEffect(() => { if (allowed) setIntent(null) }, [allowed])
+  async function chooseForLater(value: SupporterCosmetics['finish'] | null) {
+    if (intentBusy) return
+    setIntentBusy(true)
+    setNotice('')
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT', finish: value })
+      if (response?.type !== 'SUPPORTER_FINISH_INTENT') throw new Error('worker unavailable')
+      setIntent(response.finish)
+      const label = SUPPORTER_FINISH_OPTIONS.find(option => option.id === response.finish)?.label
+      setNotice(response.finish && label ? `${label} will be applied when your Supporter membership is confirmed.` : value === null ? 'Saved choice cleared.' : 'Could not save this choice. Please try again.')
+    } catch {
+      setNotice('Could not save this choice. Please try again.')
+    } finally {
+      setIntentBusy(false)
     }
-    return () => { generation.current++ }
-  }, [entitlementState, entitlementStatus, entitlementPeriods, entitlementAccessUntil, allowed, cosmetics?.enabled, cosmetics?.finish])
+  }
   const selectedLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label ?? 'Default'
+  const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
   const appliedLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === appliedFinish)?.label ?? 'Default'
   const unchanged = finish === appliedFinish
 
@@ -69,10 +121,13 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
     pending.current = true
     setBusy(true)
     setNotice('')
+    // Expect our own acknowledgment before asking, so a refresh it causes is recognised.
+    savedCosmetics.current = cosmetics
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_COSMETICS', ...cosmetics })
       if (current !== generation.current) return
       if (response?.type !== 'SUPPORTER_COSMETICS' || !response.ok) {
+        savedCosmetics.current = null
         setNotice('Could not save. Refresh your Supporter status and try again.')
         return
       }
@@ -81,7 +136,10 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
       savedCosmetics.current = cosmetics
       onSaved?.(cosmetics)
     } catch {
-      if (current === generation.current) setNotice('Could not save. Please try again.')
+      if (current === generation.current) {
+        savedCosmetics.current = null
+        setNotice('Could not save. Please try again.')
+      }
     } finally {
       if (current === generation.current) {
         pending.current = false
@@ -122,11 +180,26 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
       </label>)}
     </fieldset>
     <div className="pulse-account-link-actions">
-      <button type="button" disabled={!allowed || busy || unchanged} aria-busy={busy} onClick={() => void save()}>
-        {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip accent' : 'Use default'}
-      </button>
+      {unknown ? (
+        <button type="button" disabled>Checking Supporter status…</button>
+      ) : allowed ? (
+        <button type="button" disabled={busy || unchanged} aria-busy={busy} onClick={() => void save()}>
+          {busy ? 'Saving...' : unchanged ? (finish ? 'Equipped' : 'Default active') : finish ? 'Equip accent' : 'Use default'}
+        </button>
+      ) : finish && finish !== intent ? (
+        <button type="button" disabled={intentBusy} aria-busy={intentBusy} onClick={() => void chooseForLater(finish)}>
+          {intentBusy ? 'Saving...' : `Use ${selectedLabel} when Supporter starts`}
+        </button>
+      ) : (
+        <button type="button" disabled>{finish ? `${selectedLabel} chosen` : 'Default active'}</button>
+      )}
+      {!allowed && !unknown && intent ? <button type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Clear choice</button> : null}
     </div>
-    {!allowed ? <p className="pulse-supporter-detail">Preview is free. Equipping an accent requires an active linked Supporter membership.</p> : null}
+    {!allowed && !unknown ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
+      {intentLabel
+        ? `${intentLabel} is applied automatically when your Supporter membership is confirmed. Until then, this is only a preview.`
+        : 'Preview is free. Equipping an accent requires an active linked Supporter membership; you can choose one now to apply automatically once it starts.'}
+    </p> : null}
     <p className="pulse-supporter-detail pulse-supporter-save-status" role="status">{notice}</p>
   </PulseSectionCard>
 }

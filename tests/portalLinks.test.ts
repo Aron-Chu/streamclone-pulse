@@ -72,6 +72,13 @@ describe('portal link registry', () => {
     expect(link.hash).toBe('#code=ABCDE12345')
   })
 
+  it('adds only the fixed billing continuation, and never with a malformed code', () => {
+    expect(new URL(deviceLinkWithCode('ABCDE-12345', undefined, 'billing')).hash).toBe('#code=ABCDE12345&then=billing')
+    expect(deviceLinkWithCode('not-a-code', undefined, 'billing')).toBe(productLink('linkDevice'))
+    // A caller cannot smuggle another flow or destination through the parameter.
+    expect(deviceLinkWithCode('ABCDE-12345', undefined, 'https://evil.test' as never)).toBe(`${CANONICAL_PORTAL_ORIGIN}/account/link-device#code=ABCDE12345`)
+  })
+
   it('omits malformed codes, polling secrets, and objects with additional fields', () => {
     for (const code of [
       'abcde-12345', 'ABCDE12345', 'ABCDE-1234G', 'ABCDE-12345&token=secret',

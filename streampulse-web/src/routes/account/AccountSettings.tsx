@@ -4,6 +4,7 @@ import { LogOut, Monitor, Trash2 } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
+import { announceAccountSignedOut } from '../../lib/accountSessionSignal'
 import './account.css'
 
 type Device = { id: string; label: string; expiresAt: string; revokedAt?: string }
@@ -44,6 +45,8 @@ export default function AccountSettings() {
     setBusy(true); setError('')
     try {
       await accountRequest('/auth/logout', {})
+      // Other open account tabs re-check and stop acting for this account.
+      announceAccountSignedOut()
       setIdentity(''); setDevices([]); setConfirm(''); setSignedOut(true)
       // Full navigation drops prior account queries and in-flight page state.
       window.location.assign('/account/sign-in')

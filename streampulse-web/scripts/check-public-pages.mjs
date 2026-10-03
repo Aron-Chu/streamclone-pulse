@@ -16,6 +16,8 @@ const expected = [
   ['terms/index.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
   ['refunds/index.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
   ['supporter/index.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
+  ['supporter/thanks/index.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
+  ['account/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
   ['support/index.html', 'Support — StreamPulse', 'index,follow', 'https://streampulse.stream/support'],
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/'],
 ]
@@ -25,7 +27,7 @@ const manifestPath = join(dist, '.vite', 'manifest.json')
 if (!existsSync(manifestPath)) failures.push('Missing emitted Vite manifest')
 else {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  for (const name of ['AccountPage', 'AccountSettings', 'BillingPage']) {
+  for (const name of ['AccountPage', 'AccountSettings', 'BillingPage', 'AccountRestore']) {
     const chunk = manifest[`src/routes/account/${name}.tsx`]
     if (!chunk?.file || !existsSync(join(dist, chunk.file))) failures.push(`${name}: missing emitted account route`)
   }

@@ -19,11 +19,13 @@ import './ui/public-utilities.css'
 import './ui/global.css'
 import { captureAccountConfirmation } from './lib/accountConfirmation'
 import { captureAccountDeviceCode } from './lib/accountDeviceCode'
+import { captureAccountRestore, isPrivateSupporterRoute } from './lib/accountRestore'
 import { setProductAnalyticsRoute } from './lib/productAnalytics'
 
 captureAccountConfirmation()
 captureAccountDeviceCode()
-if (!window.location.pathname.startsWith('/account/')) initPortalSentry()
+captureAccountRestore()
+if (!isPrivateSupporterRoute(window.location.pathname)) initPortalSentry()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,7 +54,7 @@ function AuthRejectedListener() {
 
   useEffect(() => {
     function onRejected() {
-      if (isPublicAnalyticsPath(location.pathname) || location.pathname.startsWith('/account/')) {
+      if (isPublicAnalyticsPath(location.pathname) || isPrivateSupporterRoute(location.pathname)) {
         return
       }
       clearBetaKey()
@@ -93,7 +95,7 @@ function applyDevBackendQueryOverride(): void {
 async function bootstrap() {
   applyDevBackendQueryOverride()
   clearStaleLocalBackendOverride()
-  if (!window.location.pathname.startsWith('/account/')) await refreshPrincipal()
+  if (!isPrivateSupporterRoute(window.location.pathname)) await refreshPrincipal()
   const style = document.createElement('style')
   style.textContent = shadowStyles
   document.head.appendChild(style)

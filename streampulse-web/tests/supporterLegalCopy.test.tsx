@@ -104,4 +104,18 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/set when you use the account pages on https:\/\/streampulse\.stream/)
     expect(body).not.toMatch(/all set by the StreamPulse API at/)
   })
+
+  it('directs new buyers to the extension and keeps website accounts secondary', () => {
+    render(<MemoryRouter><Supporter /></MemoryRouter>)
+    expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
+    expect(screen.getByText('Become a Supporter')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Use a StreamPulse website account' }).getAttribute('href')).toBe('/account/billing')
+    expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
+  })
+  it.each([['Privacy', Privacy, 'privacy-policy'], ['Terms', Terms, 'terms-of-use']] as const)('%s explains receipts and requested recovery without claiming checkout email is verified', (_, Page, testId) => {
+    const body = textOf(Page, testId)
+    expect(body).toContain('The email you give Stripe at checkout is used for receipts and, if you ask, membership recovery.')
+    expect(body).toMatch(/keyed hash/)
+    expect(body).toMatch(/billing history/)
+  })
 })

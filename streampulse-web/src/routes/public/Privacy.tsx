@@ -20,7 +20,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: September 29, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: October 1, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
 
@@ -35,7 +35,7 @@ export default function Privacy() {
             optional and uses a beta access key once to create a local device credential.
           </p>
           <p className="text-zinc-300">
-            An account is optional and needs only an email address. Pulse Supporter is an optional paid
+            A website account is optional and uses an email address. Pulse Supporter is an optional paid
             subscription, and paid sign-ups are not open yet; once they are, card details go to Stripe
             and never to StreamPulse. Neither an account nor a subscription is required to use the
             extension or the public analytics.
@@ -44,12 +44,12 @@ export default function Privacy() {
 
         <h2>Your account, if you create one</h2>
         <p>
-          An account is optional. You need one only to link the extension to a Pulse account or to
-          hold a <Link to={SUPPORTER_PATH}>Supporter</Link> subscription, and paid Supporter sign-ups
-          are not open yet. Creating an account stores your email address, an internal account
+            A website account is optional. It lets you link the extension to a Pulse account; paid
+            Supporter sign-ups are not open yet. Creating a website account stores your email address, an internal account
           identifier, and timestamps for creation and sign-in. There is no password, no name field,
           and no profile.
         </p>
+          <p>When you first choose Supporter or restore a membership in the extension, it can create an installation account without a website sign-in. That account stores an internal identifier, credential hashes and activity timestamps. Core Pulse stays free and does not require this account.</p>
         <p>
           Sign-in works by emailed link. When you request one, StreamPulse stores a hash of a
           single-use secret — not the secret itself — with a 15-minute expiry, and emails you a link
@@ -79,6 +79,8 @@ export default function Privacy() {
           entered on Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores
           them.
         </p>
+          <p>The email you give Stripe at checkout is used for receipts and, if you ask, membership recovery. Stripe keeps the checkout email. StreamPulse stores only a keyed hash of that email as a recovery reference, not the plaintext checkout email, and does not treat it as verified ownership until you confirm a recovery link.</p>
+          <p>For recovery, the email you enter is sent through the existing transactional mail service to deliver a single-use, 15-minute restore link. The link secret is stored only as a digest on the server, captured in page memory and removed from the browser URL. Opening a link does not approve a restore; you must confirm the requesting extension. Accounts with billing history are never automatically combined.</p>
         <p>
           What StreamPulse stores is the identifiers and state needed to know whether your membership
           is paid: a Stripe customer identifier, subscription and invoice identifiers, paid period
@@ -241,7 +243,7 @@ export default function Privacy() {
           </li>
           <li>
             <strong>Extension IndexedDB</strong> (<code>pulse-account-private-v1</code>) — after you
-            link the extension to a Pulse account, the account device credential is held in an
+             link the extension to a Pulse account or start an installation account for Supporter, the account device credential is held in an
             extension-origin database reachable only from the extension's own trusted contexts, not
             from any Twitch page script. Disconnecting the extension or uninstalling it removes it.
           </li>
@@ -271,7 +273,7 @@ export default function Privacy() {
           </li>
           <li>
             <strong>Resend (transactional email)</strong> — receives your email address and the
-            sign-in message in order to deliver it. Used only for account sign-in links and account
+             sign-in or requested recovery message in order to deliver it. Used only for account sign-in links, requested recovery links and account
             notices, never for marketing. Open and click tracking are switched off, so links in
             StreamPulse email are not rewritten through a tracking domain and opening an email is not
             recorded.

@@ -1,10 +1,14 @@
-import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement } from './supporterAccount.ts'
+import type { SupporterAccountAction, SupporterAccountState, SupporterEntitlement, SupporterBillingState, SupporterRestoreState, SupporterDevicesState } from './supporterAccount.ts'
 
 export type MessageType =
   | 'SUPPORTER_ACCOUNT'
   | 'SUPPORTER_ENTITLEMENT'
   | 'SUPPORTER_COSMETICS'
   | 'SUPPORTER_APPEARANCE'
+  | 'SUPPORTER_FINISH_INTENT'
+  | 'SUPPORTER_BILLING'
+  | 'SUPPORTER_RESTORE'
+  | 'SUPPORTER_DEVICES'
   | 'TRACK'
   | 'UNTRACK'
   | 'GET_PULSE'
@@ -235,9 +239,15 @@ export interface DeleteBookmarkMessage {
 export type BackgroundRequest =
   | import('./myMoments.ts').MyMomentsRequest
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
+  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'checkout' | 'resume' | 'portal' }
+  | { type: 'SUPPORTER_RESTORE'; action: 'status' | 'start' | 'check' | 'cancel'; email?: string }
+  | { type: 'SUPPORTER_DEVICES'; action: 'list'; cursor?: string }
+  | { type: 'SUPPORTER_DEVICES'; action: 'revoke'; deviceId: string }
   | { type: 'SUPPORTER_ENTITLEMENT' }
   | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
   | { type: 'SUPPORTER_APPEARANCE' }
+  /** Omit `finish` to read; null clears the pre-purchase choice. */
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -725,9 +735,13 @@ export type BackgroundResponse =
     }
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
+  | { type: 'SUPPORTER_BILLING'; billing: SupporterBillingState }
+  | { type: 'SUPPORTER_RESTORE'; restore: SupporterRestoreState }
+  | { type: 'SUPPORTER_DEVICES'; devices: SupporterDevicesState }
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   | ({ type: 'BOOKMARKS'; error?: string } & PulseBookmarkPage)

@@ -42,6 +42,20 @@ try {
 
 const routes = [
   {
+    path: 'supporter/thanks',
+    title: 'Return to your extension — StreamPulse',
+    description: 'Return to StreamPulse to check your membership after Checkout.',
+    canonicalPath: '/supporter/thanks',
+    robots: 'noindex,nofollow',
+  },
+  {
+    path: 'account/restore',
+    title: 'Restore Supporter — StreamPulse',
+    description: 'Confirm a requested Supporter restore for your extension.',
+    canonicalPath: '/account/restore',
+    robots: 'noindex,nofollow',
+  },
+  {
     path: '',
     title: 'StreamPulse — Twitch reaction analytics',
     description: 'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.',

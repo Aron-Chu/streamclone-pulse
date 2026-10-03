@@ -1,0 +1,178 @@
+import { describe, expect, it, vi } from 'vitest'
+import { SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
+import { SupporterPayFirstCoordinator } from '../src/background/supporterPayFirst.ts'
+import { accountRequestDeadlineMs } from '../src/background/supporterAccountRuntime.ts'
+import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
+import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
+
+const now = Date.parse('2026-10-01T12:00:00Z')
+const iso = (delta: number) => new Date(now + delta).toISOString()
+const credentials = { accountId: '22222222-2222-4222-8222-222222222222', deviceId: '11111111-1111-4111-8111-111111111111', token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), expiresAt: iso(86_400_000), refreshExpiresAt: iso(90 * 86_400_000) }
+const attemptId = '33333333-3333-4333-8333-333333333333'
+const restoreId = '44444444-4444-4444-8444-444444444444'
+function fixture() {
+  let account: unknown = null, key: unknown = null, journey: unknown = null, clock = now
+  let membership = { schemaVersion: 1, accountId: credentials.accountId, accountKind: 'installation', restoreEligible: true, environment: 'live', revision: 1, status: 'none', serverTime: iso(0), accessFrom: iso(-1000), accessUntil: iso(3_600_000), cacheUntil: iso(60_000), features: {}, checkoutEnabled: true, installationAccountsEnabled: true } as Record<string, unknown>
+  const request = vi.fn(async (path: string, _body?: Record<string, unknown>, _bearer?: string): Promise<{status: number; body: unknown; retryAfterMs?: number}> => path === '/v1/account/installations' ? { status: 201, body: credentials } : { status: 404, body: null })
+  const supporter = new SupporterAccountCoordinator({ read: async () => account, write: async value => { account = value }, readInstallationKey: async () => key, writeInstallationKey: async value => { key = value }, request: async (path, body, bearer) => path === '/v1/billing/supporter' ? { status: 200, body: membership } : request(path, body, bearer), now: () => clock })
+  const open = vi.fn(async (_url: string) => {})
+  const recreate = () => new SupporterPayFirstCoordinator({ account: supporter, request, read: async () => journey, write: async value => { journey = value }, open, now: () => clock })
+  return { supporter, pay: recreate(), recreate, request, open, stored: () => journey, advance: (ms: number) => { clock += ms }, setMembership: (changes: Record<string, unknown>) => { membership = { ...membership, ...changes } } }
+}
+describe('audited pay-first recovery', () => {
+  it('uses route-specific deadlines longer than deliberate restore timing and Stripe creation', () => {
+    expect(accountRequestDeadlineMs('/v1/billing/checkout')).toBeGreaterThanOrEqual(35_000)
+    expect(accountRequestDeadlineMs('/v1/billing/portal')).toBeGreaterThanOrEqual(35_000)
+    expect(accountRequestDeadlineMs('/v1/account/restores')).toBeGreaterThanOrEqual(20_000)
+  })
+  it('resumes an unpaid provider URL past fifteen minutes until its server expiry', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout'); f.advance(16 * 60_000)
+    expect(await f.pay.billing('resume')).toEqual({ state: 'waiting', attemptId })
+    expect(f.open).toHaveBeenCalledTimes(2)
+  })
+  it('recovers a missing attempt only on explicit check and rePOSTs the same owned account', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('lost checkout response'))
+    await f.pay.billing('checkout'); f.advance(5000)
+    await f.pay.billing('status')
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('check')).toEqual({ state: 'waiting', attemptId })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/billing/checkout', {}, credentials.token)
+    expect(f.open).toHaveBeenCalledTimes(0)
+  })
+  it('recovers an owned attempt whose provider URL was lost, without navigating on the check', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 503, body: { attemptId, error: 'checkout_unavailable' } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'confirming', attemptId })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/recovered', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('check')).toEqual({ state: 'waiting', attemptId })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/billing/checkout', {}, credentials.token)
+    expect(f.open).not.toHaveBeenCalled()
+  })
+  it('discards navigation and attempt identifiers after identity loss, retaining only hashed uncertainty', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout')
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    await f.supporter.run('disconnect')
+    expect(await f.pay.billing('status')).toEqual({ state: 'reconnect_required' })
+    expect(JSON.stringify(f.stored())).not.toMatch(/checkout\.stripe|33333333|22222222/)
+    expect(f.stored()).toMatchObject({ unresolvedAccounts: [expect.stringMatching(/^[a-f0-9]{64}$/)] })
+  })
+  it('refuses wrong-account website fallback once an installation has been created', async () => {
+    const f = fixture()
+    f.setMembership({ installationAccountsEnabled: false })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'unavailable' })
+    expect(f.open).not.toHaveBeenCalled()
+  })
+  it('gates restore on the current server-derived empty-installation capability', async () => {
+    const f = fixture(); f.setMembership({ restoreEligible: false })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'ineligible' })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores')).toHaveLength(0)
+  })
+  it('retains uncertain restore-start state and explains delivery without claiming failure', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('restore response lost'))
+    expect(await f.pay.restore('start', 'payer@example.test')).toMatchObject({ state: 'uncertain' })
+    expect(await f.recreate().restore('status')).toMatchObject({ state: 'uncertain' })
+    expect(JSON.stringify(f.stored())).not.toContain('payer@example.test')
+  })
+  it('shows a non-secret server comparison code and backs off a rate-limited restore poll', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5', label: 'Chrome extension' } })
+    expect(await f.pay.restore('start', 'payer@example.test')).toMatchObject({ state: 'pending', comparisonCode: 'A3B4C5' })
+    f.advance(5000); f.request.mockResolvedValueOnce({ status: 429, body: {}, retryAfterMs: 60_000 })
+    await f.pay.restore('status'); f.advance(5000); await f.pay.restore('status')
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores/poll')).toHaveLength(1)
+  })
+  it('lists only owned installation devices, refuses current-device peer revocation and strictly scopes messages', async () => {
+    const f = fixture(); await f.supporter.ensureInstallation()
+    const peer = '55555555-5555-4555-8555-555555555555'
+    f.request.mockResolvedValueOnce({ status: 200, body: { currentDeviceId: credentials.deviceId, devices: [{ id: credentials.deviceId, label: 'This extension', createdAt: iso(-1000), expiresAt: iso(900_000) }, { id: peer, label: 'Chrome extension', createdAt: iso(-1000), expiresAt: iso(900_000) }] } })
+    expect(await f.pay.devices('list')).toMatchObject({ state: 'ready', currentDeviceId: credentials.deviceId, devices: [{ id: credentials.deviceId }, { id: peer }] })
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    expect(await f.pay.devices('revoke', peer)).toEqual({ state: 'revoked' })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/installations/devices/revoke', { deviceId: peer }, credentials.token)
+    const requests = f.request.mock.calls.length
+    expect(await f.pay.devices('revoke', credentials.deviceId)).toEqual({ state: 'error' })
+    expect(f.request.mock.calls).toHaveLength(requests)
+    expect(MESSAGE_SENDER_SCOPE.SUPPORTER_DEVICES).toBe('extension-page')
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_DEVICES', action: 'list', token: credentials.token })).toBeNull()
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_DEVICES', action: 'revoke', deviceId: peer })).toEqual({ type: 'SUPPORTER_DEVICES', action: 'revoke', deviceId: peer })
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_RESTORE', action: 'check', email: 'injected@example.test' })).toBeNull()
+  })
+  it('collects a lost restore challenge by its private key without persisting or resending email', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('response lost after email sent'))
+    await f.pay.restore('start', 'payer@example.test')
+    const initial = f.request.mock.calls.find(([path]) => path === '/v1/account/restores')![1]!
+    expect(initial).toMatchObject({ email: 'payer@example.test', restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
+    expect(JSON.stringify(f.stored())).not.toContain('payer@example.test')
+    f.request.mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+    expect(await f.recreate().restore('check')).toMatchObject({ state: 'pending', comparisonCode: 'A3B4C5' })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/account/restores', { restoreKey: initial.restoreKey }, credentials.token)
+    expect(JSON.stringify(f.stored())).not.toContain(String(initial.restoreKey))
+  })
+  it('does not clear unknown payment uncertainty merely because twenty-four hours passed', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('lost checkout'))
+    await f.pay.billing('checkout'); f.advance(86_400_001)
+    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'reconnect_required' })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
+  })
+  it('clears only the restored current account marker after authoritative active proof and permits its later rejoin', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('lost checkout'))
+    await f.pay.billing('checkout')
+    f.request.mockResolvedValueOnce({ status: 204, body: null }); await f.supporter.run('disconnect')
+    await f.pay.billing('status')
+    const fresh = { ...credentials, accountId: '66666666-6666-4666-8666-666666666666', deviceId: '77777777-7777-4777-8777-777777777777' }
+    f.request.mockResolvedValueOnce({ status: 201, body: fresh }); await f.supporter.ensureInstallation('restore')
+    await f.supporter.adoptRestoredCredentials({ ...credentials, token: 'd'.repeat(64) }, fresh.accountId)
+    f.setMembership({ status: 'active' })
+    expect(await f.pay.billing('status')).toEqual({ state: 'active' })
+    expect(f.stored()).not.toHaveProperty('unresolvedAccounts')
+    f.setMembership({ status: 'expired', restoreEligible: false })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/rejoin', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'waiting', attemptId })
+  })
+  it('uses owned expired proof to clear the barrier, rather than the local clock', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout'); f.advance(5000)
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'expired', expiresAt: iso(4000) } })
+    expect(await f.pay.billing('check')).toEqual({ state: 'expired' })
+    expect(JSON.stringify(f.stored())).not.toContain('checkout.stripe')
+  })
+  it('honors bounded Retry-After on explicit billing checks and repeated purchase clicks', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout'); f.advance(5000)
+    f.request.mockResolvedValueOnce({ status: 429, body: {}, retryAfterMs: 60_000 })
+    await f.pay.billing('check'); f.advance(5000); await f.pay.billing('check'); await f.pay.billing('checkout')
+    expect(f.request.mock.calls.filter(([path]) => path === `/v1/billing/checkout/${attemptId}`)).toHaveLength(1)
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
+    f.advance(55_000); f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'open', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('check')).toMatchObject({ state: 'waiting' })
+  })
+  it('honors a recipient daily backoff beyond the challenge lifetime without persisting email', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 429, body: {}, retryAfterMs: 86_400_000 })
+    await f.pay.restore('start', 'payer@example.test'); f.advance(300_001)
+    await f.pay.restore('check')
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores')).toHaveLength(1)
+    f.advance(600_000); await f.pay.restore('status')
+    expect(await f.pay.restore('start', 'another@example.test')).toMatchObject({ state: 'unavailable' })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores')).toHaveLength(1)
+    expect(JSON.stringify(f.stored())).not.toContain('@example.test')
+  })
+  it('keeps existing email accounts on their fresh-signin website billing flow', async () => {
+    const f = fixture(); f.setMembership({ accountKind: 'email', restoreEligible: false })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'fallback' })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'ineligible' })
+    expect(f.request.mock.calls.filter(([path]) => path.startsWith('/v1/billing/') || path === '/v1/account/restores')).toHaveLength(0)
+  })
+})

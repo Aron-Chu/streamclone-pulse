@@ -6,6 +6,8 @@ import Privacy from './routes/public/Privacy'
 import Terms from './routes/public/Terms'
 import Refunds from './routes/public/Refunds'
 import Supporter from './routes/public/Supporter'
+import SupporterThanks from './routes/public/SupporterThanks'
+import AccountRestore from './routes/account/AccountRestore'
 import Support from './routes/public/Support'
 import Status from './routes/public/Status'
 import NotFound from './routes/public/NotFound'
@@ -20,6 +22,8 @@ export function prerenderPublicPage(path: string): string {
     : path === '/terms' ? <Terms />
     : path === '/refunds' ? <Refunds />
     : path === '/supporter' ? <Supporter />
+    : path === '/supporter/thanks' ? <SupporterThanks />
+    : path === '/account/restore' ? <AccountRestore />
     : path === '/support' ? <Support />
     : path === '/status' ? <Status />
     : ['/analytics', '/setup', '/login'].includes(path)

@@ -24,6 +24,7 @@ function channelTitle(pathname: string): string | null {
 }
 
 function resolveBasePageMetadata(pathname: string): PageMetadata {
+  if (pathname.replace(/\/+$/, '') === '/account/restore') return { title: 'Restore Supporter — StreamPulse', description: 'Confirm a requested Supporter restore for your extension.', canonicalPath: '/account/restore', robots: 'noindex,nofollow' }
   if (pathname.startsWith('/account/')) return { title: 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: pathname.split(/[?#]/)[0], robots: 'noindex,nofollow' }
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
 
@@ -72,6 +73,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       }
     case '/supporter':
       return { title: 'Pulse Supporter — StreamPulse', description: 'Optional monthly membership, cosmetics, pricing, and membership availability.', canonicalPath: normalizedPath, robots: 'index,follow' }
+    case '/supporter/thanks':
+        return { title: 'Return to your extension — StreamPulse', description: 'Return to StreamPulse to check your membership after Checkout.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/terms':
       return { title: 'Supporter Terms — StreamPulse', description: 'StreamPulse Supporter subscription terms and payment conditions.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/refunds':

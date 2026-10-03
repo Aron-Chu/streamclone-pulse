@@ -78,7 +78,7 @@ describe('Cloudflare Pages production deployment hygiene', () => {
 
   it('rewrites every account deep link to the private SPA entry', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
-    for (const path of ['/account/sign-in', '/account/confirm', '/account/link-device', '/account/settings', '/account/billing', '/account/billing/return']) {
+    for (const path of ['/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device', '/account/settings', '/account/billing', '/account/billing/return']) {
       // An .html rewrite target is canonicalized into a browser redirect by
       // Pages; the account URL must retain the requested route.
       expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} / 200`)

@@ -7,10 +7,9 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 /**
  * Packaged proof of the Supporter surface, plus captures of each state.
  *
- * The extension reads entitlement with an installation bearer credential and
- * never creates a Checkout session: `credentials: 'omit'` means it cannot hold
- * the browser session that billing mutations require. These tests assert the
- * page links out for purchase rather than attempting it.
+ * These legacy fixtures omit the installation-accounts capability and keep the
+ * existing website account journey. The pay-first worker path has separate
+ * packaged specs, with bearer billing and no ambient browser session.
  */
 const CAPTURE_DIR = join('test-results', 'supporter-offer')
 
@@ -100,6 +99,7 @@ function supporterBody(status: string, supportPeriods: number) {
     environment: 'live',
     revision: 4,
     status,
+    checkoutEnabled: true,
     serverTime: new Date().toISOString(),
     accessFrom: new Date(Date.now() - 86_400_000).toISOString(),
     accessUntil: new Date(Date.now() + 20 * 86_400_000).toISOString(),
@@ -181,21 +181,13 @@ test.describe('packaged supporter offer', () => {
       expect(sawBearer).not.toContain('pulse_account=')
 
       const action = page.locator('a[data-supporter-action="billing"]')
-      if (status === 'active' || status === 'grace') {
-        await expect(action).toHaveText(/Manage your membership/)
-        await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
-      } else if (status === 'none') {
-        await expect(action).toHaveText(/Become a Supporter/)
-        await expect(page.getByText('US$4.99 / month')).toBeVisible()
-      } else {
-        const label = status === 'pending' ? 'Check payment status on streampulse.stream'
-          : status === 'review' ? 'Review membership on streampulse.stream'
-            : 'Review your membership on streampulse.stream'
-        await expect(action).toHaveText(label)
-        if (status === 'expired') await expect(page.getByText('US$4.99 / month')).toBeVisible()
-        else await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
-      }
-      await expect(action).toHaveAttribute('href', `https://streampulse.stream${status === 'none' ? '/supporter' : '/account/billing'}`)
+      const label = { none: 'Continue to checkout', active: 'Manage membership', grace: 'Update payment method', pending: 'View payment status', review: 'Review membership', expired: 'Rejoin Supporter' }[status]
+      await expect(action).toHaveText(label)
+      if (status === 'none' || status === 'expired') await expect(page.getByText('US$4.99 / month')).toBeVisible()
+      else await expect(page.getByText('US$4.99 / month')).toHaveCount(0)
+      // A linked account goes straight to its own billing page, never the public offer.
+      await expect(action).toHaveAttribute('href', 'https://streampulse.stream/account/billing')
+      await expect(page.getByText('··', { exact: false }).first()).toBeVisible()
       for (const policy of ['/privacy', '/terms', '/refunds']) {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
@@ -254,14 +246,14 @@ test.describe('packaged supporter offer', () => {
     await expect(page.getByRole('button', { name: 'Check again', exact: true })).toBeVisible()
   })
 
-  test('an unlinked install offers no purchase link', async ({ extension, prepare }) => {
+  test('an unlinked install offers one purchase action and secondary recovery choices', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('Connect this extension to your Pulse account above to see Supporter status.', { exact: true })).toBeVisible()
+    await expect(page.getByText('Stripe asks for your email and payment details', { exact: false })).toBeVisible()
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
-    await expect(page.getByText('Become a Supporter')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Link extension', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true })).toBeVisible()
   })
 
   test('a remotely revoked device clears the connection and can link again', async ({ extension, prepare }) => {
@@ -280,6 +272,8 @@ test.describe('packaged supporter offer', () => {
       status: 201,
       json: { pollingSecret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: new Date(Date.now() + 600_000).toISOString(), intervalSeconds: 5 },
     }))
+    // Opening the website must never reach the real site from a fixture run.
+    await extension.context.route('https://streampulse.stream/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>portal fixture</title>' }))
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
     await expect(page.getByText('Supporter active', { exact: true })).toBeVisible()
@@ -287,11 +281,12 @@ test.describe('packaged supporter offer', () => {
 
     revoked = true
     const requestsBeforeRevocation = entitlementRequests
-    await page.getByRole('button', { name: 'Refresh status', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Link extension', exact: true })).toBeVisible()
+    // Returning to settings re-reads by itself; no refresh button is needed.
+    await page.waitForTimeout(5_200)
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(page.getByText('was disconnected from your Pulse account', { exact: false })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Disconnect extension', exact: true })).toHaveCount(0)
     await expect(page.getByText('Supporter active', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('Connect this extension to your Pulse account above to see Supporter status.', { exact: true })).toBeVisible()
     expect(entitlementRequests).toBeGreaterThan(requestsBeforeRevocation)
 
     const hasCredential = await extension.serviceWorker.evaluate(async () => {
@@ -303,22 +298,22 @@ test.describe('packaged supporter offer', () => {
       try {
         return await new Promise<boolean>((resolve, reject) => {
           const request = db.transaction('account').objectStore('account').get('https://api.streampulse.stream')
-          request.onsuccess = () => resolve(request.result != null)
+          request.onsuccess = () => resolve(Boolean(request.result?.token || request.result?.refreshToken))
           request.onerror = () => reject(new Error('read failed'))
         })
       } finally { db.close() }
     })
     expect(hasCredential).toBe(false)
     const status = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
-    expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'signed_out' } })
+    expect(status).toEqual({ type: 'SUPPORTER_ACCOUNT', account: { state: 'relink_required' } })
 
-    await page.getByRole('button', { name: 'Link extension', exact: true }).click()
+    await page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true }).click()
     await expect(page.getByText('ABCDE-12345', { exact: true })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Open account page', exact: true }))
+    await expect(page.getByRole('link', { name: 'Reopen streampulse.stream', exact: true }))
       .toHaveAttribute('href', 'https://streampulse.stream/account/link-device#code=ABCDE12345')
   })
 
-  test('the page never creates a checkout session itself', async ({ extension, prepare }) => {
+  test('an older backend keeps the website purchase flow without bearer writes', async ({ extension, prepare }) => {
     await prepare({ scenario: 'live-ready' })
     await linkDevice(extension)
     const blocked: string[] = []
@@ -333,7 +328,7 @@ test.describe('packaged supporter offer', () => {
 
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.locator('a[data-supporter-action="billing"]')).toHaveText(/Become a Supporter/)
+    await expect(page.locator('a[data-supporter-action="billing"]')).toHaveText('Continue to checkout')
     // Purchase is a link out, so no mutation endpoint may be called from here.
     expect(blocked).toEqual([])
   })
