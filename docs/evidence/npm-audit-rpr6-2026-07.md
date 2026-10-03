@@ -1,7 +1,8 @@
 # npm audit disposition — RPR-6 / public security closeout (2026-07)
 
-Portal (`streampulse-web`) and root workspace audits report **two high**
-findings that resolve to the same advisory:
+At the original disposition, portal (`streampulse-web`) and root workspace
+audits reported **two high** findings that resolved to the same advisory.
+The October 2 build-only disposition below records the newly reviewed finding.
 
 | Package | Severity | Advisory |
 |---------|----------|----------|
@@ -26,8 +27,9 @@ findings that resolve to the same advisory:
 4. **CI enforcement:** `scripts/ci-portal-npm-audit-disposition.mjs` is applied
     to both the root lock and `streampulse-web/package-lock.json`. It requires a
     valid npm v2 vulnerability schema, matching severity metadata, and the exact
-    Router advisory metadata. It allows **only** these two dispositioned package
-    names; any **new** high/critical finding or audit command/report error fails CI.
+    Router advisory metadata. The original exception covers only these two
+    package names; the additional exact build-only graph is documented below.
+    Any unreviewed high/critical finding or audit command/report error fails CI.
 5. **GitHub Dependabot:** alerts dismissed as `vulnerable_code_not_used` with
    this evidence (public security closeout).
 
@@ -41,9 +43,57 @@ the 3.3 line (`3.3.17` / `3.3.18`), so both root and `streampulse-web` pin
 exception. Re-run `npm audit` after lock refresh; do not list nanoid in
 `DISPOSITIONED_HIGHS` unless a future advisory lacks a trivial pin.
 
+## Build-only disposition (2026-10-02): unpatched `braces` stack exhaustion
+
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+was reviewed/updated on October 2 and caused the automatic post-merge portal
+audit to fail. It affects `braces <=3.0.3`: deeply nested brace patterns can
+exhaust the Node.js stack. The advisory lists **no patched release**; the
+official npm registry still reports `braces@3.0.3` as latest. The existing
+Tailwind 3 dependency graph therefore has five high package entries for this
+single advisory:
+
+| Locked development dependency | Exact audit `via` |
+|---|---|
+| `braces@3.0.3` | Exact GHSA metadata (npm source `1240992`, range `<=3.0.3`) |
+| `chokidar@3.6.0` | `braces` |
+| `micromatch@4.0.8` | `braces` |
+| `fast-glob@3.3.3` | `micromatch` |
+| `tailwindcss@3.4.19` | `chokidar`, `fast-glob`, `micromatch` |
+
+**Disposition: no attacker-controlled production reachability.** The build
+does execute these glob tools; this is not a claim that vulnerable code never
+runs. The two Tailwind configurations use shallow repository-controlled
+source globs. Their Node/PostCSS execution generates static CSS from the
+reviewed checkout and receives no customer, account, payment, or fetched
+analytics patterns. Every affected lock node is explicitly `dev: true`.
+
+The portal publishes Vite browser chunks, compiled CSS, and static assets.
+The existing build plugin now refuses any affected module in **any emitted
+browser chunk**, including lazy routes. The copied Pages `_worker.js` was
+separately inspected: it has no imports and only relays approved routes; it
+does not include Node dependency packages. Source maps and the emitted build
+were inspected locally to confirm the affected packages are absent.
+
+The audit exception is limited to the `streampulse-web` lock identity and
+requires this complete five-node graph, locked versions, development flags,
+and advisory metadata. It does not exempt a new root/extension occurrence.
+Additional same-package advisories,
+unknown/changed parents, missing/extra nodes, cycles, critical severity, or
+new versions fail. Existing root and portal audit steps run adversarial policy
+self-tests. The Router exception and audit schema/error checks remain intact.
+
+Build-time denial of service remains possible if someone intentionally changes
+the reviewed source/configuration to feed deeply nested patterns. Treat such
+source changes as untrusted during review. Remove this disposition when a
+compatible patched package is published. npm currently suggests Tailwind 4
+as remediation; its dual-config/CSS compatibility migration needs separate
+product validation, rather than an untested major change to clear this gate.
+
 ## Owner follow-up (optional, separate program)
 
 - Schedule a dedicated React Router major upgrade when product-ready, then
   re-run `npm audit` until highs are zero or newly dispositioned with evidence.
   Do not use `npm audit fix --force` as a release disposition; the current
-  exception is limited to the documented RSC-only, vulnerable-code-not-used case.
+  Router exception remains limited to the documented RSC-only case. The
+  separate unpatched build-only exception requires its complete reviewed graph.
