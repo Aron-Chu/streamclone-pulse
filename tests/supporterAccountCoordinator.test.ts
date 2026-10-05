@@ -6,15 +6,70 @@ import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts
 const now = Date.parse('2026-09-09T12:00:00Z')
 const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString()
 const creds = { kind: 'linked', state: 'approved', token: 'a'.repeat(64), refreshToken: 'b'.repeat(64), deviceId: '11111111-1111-4111-8111-111111111111', accountId: '22222222-2222-4222-8222-222222222222', expiresAt: iso(10000), refreshExpiresAt: iso(90000) }
-function fixture(initial: unknown = null, environments?: readonly ('sandbox' | 'live')[]) {
+function fixture(initial: unknown = null, environments?: readonly ('sandbox' | 'live')[], installationKey: unknown = null) {
   let value = initial
   let clock = now
   const request = vi.fn<(_: string, body?: Record<string, unknown>) => Promise<{ status: number; body: unknown }>>()
   const identityChanged = vi.fn(async () => {})
-  const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, request, now: () => clock, identityChanged, environments })
-  return { coordinator, request, identityChanged, stored: () => value, advance: (ms: number) => { clock += ms } }
+  const coordinator = new SupporterAccountCoordinator({ read: async () => value, write: async next => { value = next }, readInstallationKey: async () => installationKey, writeInstallationKey: async next => { installationKey = next }, request, now: () => clock, identityChanged, environments })
+  return { coordinator, request, identityChanged, stored: () => value, key: () => installationKey, advance: (ms: number) => { clock += ms } }
 }
 describe('private supporter account coordinator', () => {
+  it('keeps a restored installation on the durable refresh path even though its bootstrap belonged to the waiting account', async () => {
+    const key = { state: 'claimed', key: 'c'.repeat(64), accountId: creds.accountId }
+    const f = fixture(creds, undefined, key)
+    const restored = { ...creds, accountId: '55555555-5555-4555-8555-555555555555', deviceId: '66666666-6666-4666-8666-666666666666', token: 'd'.repeat(64), refreshToken: 'e'.repeat(64), expiresAt: iso(100) }
+    expect(await f.coordinator.adoptRestoredCredentials(restored, creds.accountId)).toBe(true)
+    expect(await f.coordinator.isInstallationIdentity()).toBe(true)
+    expect(f.key()).toEqual(key)
+    f.advance(60_000)
+    f.request.mockRejectedValueOnce(new Error('restored refresh response lost'))
+    expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+    expect(f.stored()).toMatchObject({ kind: 'refreshing', installation: true, credentials: { accountId: restored.accountId, refreshToken: restored.refreshToken } })
+    const restarted = fixture(f.stored(), undefined, f.key())
+    restarted.advance(90_000)
+    const successor = { ...restored, token: 'f'.repeat(64), refreshToken: 'a'.repeat(64), expiresAt: iso(3600) }
+    restarted.request.mockResolvedValueOnce({ status: 200, body: successor })
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: restored.accountId })
+    expect(restarted.stored()).toMatchObject({ kind: 'linked', installation: true, token: successor.token })
+    expect(await restarted.coordinator.isInstallationIdentity()).toBe(true)
+  })
+  it('retains installation credentials and its key after a lost refresh response, then retries after a worker restart', async () => {
+    const key = { state: 'claimed', key: 'c'.repeat(64), accountId: creds.accountId }
+    const old = { ...creds, expiresAt: iso(0) }
+    const f = fixture(old, undefined, key)
+    f.request.mockRejectedValueOnce(new Error('network interrupted'))
+    const waiting = { state: 'unavailable', reason: 'temporarily_unavailable', linked: true }
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(f.stored()).toMatchObject({ kind: 'refreshing', installation: true, credentials: { token: old.token, refreshToken: old.refreshToken, deviceId: old.deviceId, accountId: old.accountId } })
+    expect(f.key()).toEqual(key)
+    expect(await f.coordinator.localAccountId()).toBe(creds.accountId)
+    expect(f.identityChanged).not.toHaveBeenCalled()
+    const restarted = fixture(f.stored(), undefined, f.key())
+    expect(await restarted.coordinator.run('status')).toEqual(waiting)
+    expect(restarted.request).not.toHaveBeenCalled()
+    restarted.advance(30_000)
+    const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
+    restarted.request.mockResolvedValueOnce({ status: 200, body: next })
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: creds.accountId })
+    expect(restarted.request).toHaveBeenCalledExactlyOnceWith('/v1/account/devices/refresh', { refreshToken: creds.refreshToken })
+    expect(restarted.stored()).toMatchObject({ kind: 'linked', token: next.token })
+    expect(restarted.key()).toEqual(key)
+  })
+  it('preserves installation identity across server refresh errors, and relinks only after an authoritative rejection', async () => {
+    const key = { state: 'claimed', key: 'c'.repeat(64), accountId: creds.accountId }
+    const f = fixture({ ...creds, expiresAt: iso(0) }, undefined, key)
+    f.request.mockResolvedValueOnce({ status: 502, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+    expect(f.key()).toEqual(key)
+    f.advance(30_000)
+    f.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    expect(f.key()).toEqual(key)
+    expect(f.request).toHaveBeenCalledTimes(2)
+    await f.coordinator.run('disconnect')
+    expect(f.key()).toBeNull()
+  })
   it('serializes bookmark credentials with refresh and binds operations to their account', async () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }

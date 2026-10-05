@@ -215,7 +215,7 @@ test('a fresh profile restores privately after email approval even when settings
   expect(pollTimes).toHaveLength(completedPollCount)
 })
 
-for (const lost of ['revoked', 'uncertain-refresh'] as const) test(`explicit Restore replaces a ${lost} bootstrap identity instead of replaying a claimed key`, async ({ extension, prepare }) => {
+test('explicit Restore replaces a revoked bootstrap identity instead of replaying a claimed key', async ({ extension, prepare }) => {
   await prepare()
   let firstKey = '', installations = 0, approved = false
   const freshAccount = '77777777-7777-4777-8777-777777777777'
@@ -237,25 +237,8 @@ for (const lost of ['revoked', 'uncertain-refresh'] as const) test(`explicit Res
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
   await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
-  if (lost === 'revoked') {
-    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.request().headers().authorization === `Bearer ${credential().token}` ? route.fulfill({ status: 401, json: { error: 'account_authorization_required' } }) : route.fallback())
-    await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
-  } else {
-    await extension.context.route('https://api.streampulse.stream/v1/account/devices/refresh', route => route.abort('failed'))
-    // Expire only this disposable fixture credential to exercise the packaged
-    // worker's uncertain-rotation branch; never inspect an owner profile.
-    await extension.serviceWorker.evaluate(async () => {
-      const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction('account', 'readwrite'), store = tx.objectStore('account'), r = store.get('https://api.streampulse.stream')
-          r.onsuccess = () => store.put({ ...r.result, expiresAt: new Date(Date.now() - 1000).toISOString() }, 'https://api.streampulse.stream')
-          tx.oncomplete = () => resolve(); tx.onerror = reject
-        })
-      } finally { db.close() }
-    })
-    await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
-  }
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.request().headers().authorization === `Bearer ${credential().token}` ? route.fulfill({ status: 401, json: { error: 'account_authorization_required' } }) : route.fallback())
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
   await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
     expect(route.request().headers().authorization).toBe(`Bearer ${fresh.token}`)
     return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
@@ -269,6 +252,93 @@ for (const lost of ['revoked', 'uncertain-refresh'] as const) test(`explicit Res
   expect(installations).toBe(2)
   approved = true
   await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
+})
+
+test('uncertain installation refresh retains its identity and restores after renewal without re-enrollment', async ({ extension, prepare }) => {
+  await prepare()
+  let installationKey = '', installations = 0, refreshes = 0, restoreStarts = 0, networkDown = true, approved = false
+  const restoredAccount = '55555555-5555-4555-8555-555555555555'
+  const renewed = { ...credential(ACCOUNT, 'f'.repeat(64)), refreshToken: 'e'.repeat(64) }
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => {
+    installationKey = route.request().postDataJSON().installationKey
+    installations++
+    return route.fulfill({ status: 201, json: credential() })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/devices/refresh', route => {
+    refreshes++
+    expect(route.request().postDataJSON()).toEqual({ refreshToken: 'b'.repeat(64) })
+    return networkDown ? route.abort('failed') : route.fulfill({ json: renewed })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => {
+    if (approved && route.request().headers().authorization === `Bearer ${'d'.repeat(64)}`) return route.fulfill({ json: snapshot('active', undefined, restoredAccount) })
+    return route.fulfill({ json: { ...snapshot('none'), checkoutEnabled: false } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
+    restoreStarts++
+    expect(route.request().headers().authorization).toBe(`Bearer ${renewed.token}`)
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } }))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
+  // Expire only the disposable fixture credential, never an owner profile.
+  await extension.serviceWorker.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('account', 'readwrite'), store = tx.objectStore('account'), r = store.get('https://api.streampulse.stream')
+        r.onsuccess = () => store.put({ ...r.result, expiresAt: new Date(Date.now() - 1000).toISOString() }, 'https://api.streampulse.stream')
+        tx.oncomplete = () => resolve(); tx.onerror = reject
+      })
+    } finally { db.close() }
+  })
+  const unavailable = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
+  expect(unavailable.account).toMatchObject({ state: 'unavailable', linked: true, reason: 'temporarily_unavailable' })
+  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+  await page.getByLabel('Email used at checkout').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-unavailable"]')).toBeVisible()
+  expect(installations).toBe(1)
+  expect(refreshes).toBe(1)
+  expect(restoreStarts).toBe(0)
+  const retained = await extension.serviceWorker.evaluate(async expectedKey => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
+    try {
+      const tx = db.transaction('account'), store = tx.objectStore('account')
+      const read = (key: string) => new Promise<Record<string, unknown>>((resolve, reject) => { const r = store.get(key); r.onsuccess = () => resolve(r.result); r.onerror = reject })
+      const [account, bootstrap] = await Promise.all([read('https://api.streampulse.stream'), read('supporter-installation-key')])
+      const credentials = (account.credentials ?? {}) as Record<string, unknown>
+      return { kind: account.kind, installation: account.installation, accountId: credentials.accountId, tokenRetained: credentials.token === 'a'.repeat(64), refreshRetained: credentials.refreshToken === 'b'.repeat(64), keyRetained: bootstrap?.key === expectedKey, keyState: bootstrap?.state }
+    } finally { db.close() }
+  }, installationKey)
+  expect(retained).toEqual({ kind: 'refreshing', installation: true, accountId: ACCOUNT, tokenRetained: true, refreshRetained: true, keyRetained: true, keyState: 'claimed' })
+  networkDown = false
+  // Make this fixture's persisted retry due; unit tests cover the real 30s
+  // cooldown. The browser proof exercises the same lost refresh token retry.
+  await extension.serviceWorker.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('account', 'readwrite'), store = tx.objectStore('account'), r = store.get('https://api.streampulse.stream')
+        r.onsuccess = () => store.put({ ...r.result, retryAt: Date.now() - 1000 }, 'https://api.streampulse.stream')
+        tx.oncomplete = () => resolve(); tx.onerror = reject
+      })
+    } finally { db.close() }
+  })
+  const recovered = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
+  expect(recovered.account).toMatchObject({ state: 'linked', accountId: ACCOUNT })
+  expect(refreshes).toBe(2)
+  await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
+  await page.getByLabel('Email used at checkout').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
+  expect(installations).toBe(1)
+  expect(restoreStarts).toBe(1)
+  approved = true
+  await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Manage membership', exact: true })).toBeVisible()
 })
 
 test('slow Checkout and Portal responses survive the former twelve-second deadline', async ({ extension, prepare }) => {

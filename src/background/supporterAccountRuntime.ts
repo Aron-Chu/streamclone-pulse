@@ -3,6 +3,9 @@ import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporte
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
 import { SupporterPayFirstCoordinator } from './supporterPayFirst.ts'
 
+const ACCOUNT_BACKEND_URL = typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__ ? DEFAULT_BACKEND_URL
+  : typeof __SUPPORTER_BACKEND_ORIGIN__ !== 'undefined' ? __SUPPORTER_BACKEND_ORIGIN__ : DEFAULT_BACKEND_URL
+
 // Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
 // move this record to sync storage or send it through a UI message.
 async function database(): Promise<IDBDatabase> {
@@ -20,12 +23,15 @@ const FINISH_INTENT_KEY = 'supporter-finish-intent'
 const INSTALLATION_KEY = 'supporter-installation-key'
 const JOURNEY_KEY = 'supporter-pay-first'
 async function access(write: boolean, value?: unknown, key: string = DEFAULT_BACKEND_URL): Promise<unknown> {
+  // The unpacked local sandbox has no access to the production record or any
+  // bootstrap/restore key kept by a development build with the usual origin.
+  const privateKey = ACCOUNT_BACKEND_URL === DEFAULT_BACKEND_URL ? key : `${ACCOUNT_BACKEND_URL}:${key}`
   const db = await database()
   try {
     return await new Promise((resolve, reject) => {
       const transaction = db.transaction('account', write ? 'readwrite' : 'readonly')
       const store = transaction.objectStore('account')
-      const request = write ? value == null ? store.delete(key) : store.put(value, key) : store.get(key)
+      const request = write ? value == null ? store.delete(privateKey) : store.put(value, privateKey) : store.get(privateKey)
       transaction.oncomplete = () => resolve(request.result)
       transaction.onerror = transaction.onabort = () => reject(new Error('account_storage_unavailable'))
     })
@@ -52,13 +58,14 @@ export function accountRequestDeadlineMs(path: string): number {
     : path === '/v1/account/restores' ? 25_000 : 12_000
 }
 export async function accountRequest(path: string, body?: Record<string, unknown>, bearer?: string): Promise<{ status: number; body: unknown; retryAfterMs?: number }> {
-    // Account credentials cannot follow a developer-selected backend address.
-    if (await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
+    // Account credentials cannot follow a dynamically selected backend. The
+    // isolated local sandbox is an explicit, immutable development build.
+    if (ACCOUNT_BACKEND_URL === DEFAULT_BACKEND_URL && await getBackendUrl() !== DEFAULT_BACKEND_URL) throw new AccountRequestNotSent('account_hosted_only')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     // The installation credential is a bearer, never a cookie: this request
     // sends credentials: 'omit', so no ambient browser session is involved.
     if (bearer) headers.Authorization = `Bearer ${bearer}`
-    const response = await fetch(`${DEFAULT_BACKEND_URL}${path}`, {
+    const response = await fetch(`${ACCOUNT_BACKEND_URL}${path}`, {
       method: body ? 'POST' : 'GET', headers,
       body: body ? JSON.stringify(body) : undefined, credentials: 'omit', redirect: 'error', cache: 'no-store',
       signal: AbortSignal.timeout(accountRequestDeadlineMs(path)),

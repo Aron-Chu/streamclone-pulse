@@ -76,6 +76,48 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
 describe('pay-first settings', () => {
+  it.each(['active', 'pending'] as const)('asks before disconnecting a %s installation and preserves it when canceled', async status => {
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: status === 'pending' ? 'waiting' : 'idle' }) })
+    try {
+      await view.click('Disconnect extension')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
+      expect(view.text()).toContain('does not cancel your subscription')
+      await view.click('Keep connected')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(0)
+      expect(view.buttons()).not.toContain('Confirm disconnect')
+      await view.click('Disconnect extension')
+      await view.click('Confirm disconnect')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
+    } finally { view.cleanup() }
+  })
+  it('keeps an unpaid checkout primary and offers a manual status check when automatic polling has paused', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: () => ({ state: 'waiting', automaticPolling: false }) })
+    try {
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Return to Stripe checkout')
+      expect(view.text()).toContain('Automatic checks have paused')
+      await view.click('Check payment status')
+      expect(view.calls('SUPPORTER_BILLING', 'check')).toBe(1)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it('checks pending installation payments through the worker without opening website cookie billing', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('pending', { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
+    try {
+      expect(view.link()).toBeNull()
+      await view.click('Check payment status')
+      expect(view.calls('SUPPORTER_BILLING', 'check')).toBe(1)
+      expect(view.create).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+  it.each(['ineligible', 'conflict', 'expired', 'error'] as const)('keeps verified membership management above a stale restore %s result', async result => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: false }), restore: () => ({ state: result }), billing: () => ({ state: 'idle' }) })
+    try {
+      expect(view.state()).toBe('active')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Manage membership')
+      await view.click('Manage membership')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+    } finally { view.cleanup() }
+  })
   it.each([
     ['unavailable', { state: 'unavailable', reason: 'temporarily_unavailable' }],
     ['error', { state: 'error' }],
@@ -270,9 +312,11 @@ describe('pay-first settings', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { accountKind: 'installation', installationAccountsEnabled: false }), billing: () => ({ state: 'idle' }) })
     try {
       expect(view.host.querySelector('a[data-supporter-action="billing"]')).toBeNull()
-      expect(view.text()).toContain('Membership changes are temporarily unavailable')
+      expect(view.text()).toContain('New Supporter sign-ups are temporarily unavailable')
       expect(view.host.querySelectorAll('.pulse-journey-primary')).toHaveLength(1)
-      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe('Check again')
+      expect(view.host.querySelector('.pulse-journey-primary')?.textContent).toBe(status === 'grace' ? 'Update payment method' : 'Manage membership')
+      await view.click(status === 'grace' ? 'Update payment method' : 'Manage membership')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
       expect(view.create).not.toHaveBeenCalled()
     } finally { view.cleanup() }
   })

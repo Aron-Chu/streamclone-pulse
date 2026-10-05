@@ -29,7 +29,20 @@ export function manifestPathForTarget(target = resolveExtensionTarget()) {
 }
 
 export function loadManifestForTarget(target = resolveExtensionTarget()) {
-  return JSON.parse(readFileSync(manifestPathForTarget(target), 'utf8'))
+  const manifest = JSON.parse(readFileSync(manifestPathForTarget(target), 'utf8'))
+  const origin = resolveSupporterBackendOrigin(target)
+  if (origin !== 'https://api.streampulse.stream') manifest.host_permissions.push(`${origin}/*`)
+  return manifest
+}
+
+/** A fixed development-only loopback origin; production credentials never follow it. */
+export function resolveSupporterBackendOrigin(target = resolveExtensionTarget(), raw = process.env.PULSE_SUPPORTER_DEV_ORIGIN) {
+  if (!raw) return 'https://api.streampulse.stream'
+  if (target !== 'development') throw new Error('PULSE_SUPPORTER_DEV_ORIGIN is allowed only for development builds')
+  let url
+  try { url = new URL(raw) } catch { throw new Error('Supporter development origin must be a loopback HTTPS origin') }
+  if (url.protocol !== 'https:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash || url.origin !== raw.replace(/\/$/, '')) throw new Error('Supporter development origin must be an exact loopback HTTPS origin')
+  return url.origin
 }
 
 export function isStoreTarget(target = resolveExtensionTarget()) {

@@ -64,12 +64,12 @@ describe('worker-private pay-first journey', () => {
     expect(f.request.mock.calls.map(([, body]) => body?.installationKey)).toEqual([firstKey, firstKey])
     expect(JSON.stringify(one)).not.toContain(String(firstKey))
   })
-  it('abandons a rejected bootstrap key and explicitly restores through a fresh empty installation', async () => {
+  it('keeps the durable installation key on rejection and explicitly restores through a fresh empty installation', async () => {
     const f = fixture()
     await f.supporter.ensureInstallation()
     const rejectedKey = f.stored().key
     await expect(f.supporter.withCredential(async () => ({ status: 401 }))).rejects.toThrow('account_authorization_required')
-    expect(f.stored().key).toBeNull()
+    expect(f.stored().key).toBe(rejectedKey)
     f.request.mockImplementation(async (path, body) => {
       if (path === '/v1/account/installations') return body?.installationKey === rejectedKey ? { status: 409, body: { error: 'installation_initialized' } } : { status: 201, body: credentials }
       if (path === '/v1/account/restores') return { status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } }
@@ -178,11 +178,11 @@ describe('worker-private pay-first journey', () => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('lost response'))
     expect(await f.pay.billing('checkout')).toEqual({ state: 'confirming' })
-    expect(await f.pay.hasPending()).toBe(false)
+    expect(await f.pay.hasPending()).toBe(true)
     f.advance(PAY_FIRST_WATCH_MS + 1)
-    expect(await f.pay.billing('status')).toEqual({ state: 'still_confirming' })
+    expect(await f.pay.billing('status')).toEqual({ state: 'still_confirming', automaticPolling: false })
     expect(await f.pay.hasPending()).toBe(false)
-    expect(await f.pay.billing('checkout')).toEqual({ state: 'still_confirming' })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'still_confirming', automaticPolling: false })
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
   })
   it('expired attempt permits a new deliberate attempt; pending is owned, throttled and never pays twice', async () => {

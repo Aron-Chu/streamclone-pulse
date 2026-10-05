@@ -1,7 +1,32 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "0.2.1",
+  "currentVersion": "0.2.2",
   "releases": [
+    {
+      "version": "0.2.2",
+      "status": "unreleased",
+      "releasedAt": null,
+      "title": "Supporter purchase and recovery",
+      "summary": "Direct Stripe checkout, automatic Supporter activation, and safer membership recovery. Available when Supporter sign-ups open.",
+      "preview": [
+        "Supporter purchase opens Stripe directly when sign-ups are available.",
+        "Confirmed membership updates your open Twitch tab automatically.",
+        "Manage membership in Stripe and use email verification only for recovery."
+      ],
+      "new": [
+        "Supporter purchase starts in the extension without an initial website sign-in or device code.",
+        "Membership management and recovery stay connected to the extension's own account."
+      ],
+      "fixed": [
+        "A temporary connection error no longer immediately discards an installation account's credential.",
+        "Unpaid checkout stays available to reopen, with automatic checks bounded to thirty minutes.",
+        "Old restore notices no longer hide verified membership management."
+      ],
+      "knownIssues": [
+        "Supporter sign-ups are not yet open to everyone."
+      ],
+      "links": { "details": "/changelog", "support": "/support" }
+    },
     {
       "version": "0.2.1",
       "status": "unreleased",

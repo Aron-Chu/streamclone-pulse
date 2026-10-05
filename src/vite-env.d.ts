@@ -3,6 +3,8 @@
 declare const __EXTENSION_DEV_RELOAD__: boolean
 /** True for CWS/Edge store builds — development-only controls are compiled out. */
 declare const __EXTENSION_STORE_BUILD__: boolean
+/** Fixed at build time; only development can target a loopback HTTPS sandbox. */
+declare const __SUPPORTER_BACKEND_ORIGIN__: string
 /** Build-time packaging target: development | cws | edge | firefox. */
 declare const __EXTENSION_TARGET__: 'development' | 'cws' | 'edge' | 'firefox'
 /** Exact runtime/manifest target binding inspected by package validation. */

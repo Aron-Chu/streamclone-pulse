@@ -33,9 +33,11 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Working-tree source version is **0.2.1** (selected-minute clarity / viewer honesty / complete
-settings track). Manifests, `package.json`, and `src/shared/release-notes.json`
-all read `0.2.1`. The public Chrome Web Store listing also reported **0.2.1**
+Working-tree candidate version is **0.2.2** (Supporter purchase and recovery plus
+the earlier selected-minute/settings work). Manifests, `package.json`, and the
+current `src/shared/release-notes.json` entry all read `0.2.2`. It remains unreleased;
+local builds and mocked checks do not prove the owner purchase or Store gates.
+The public Chrome Web Store listing reported **0.2.1**
 on 2026-09-24 (its "Updated" date read as 2026-08-31 or 2026-09-01 in separate
 checks; only the publisher dashboard is authoritative), so these newer
 working-tree changes cannot be submitted under that same version.
@@ -51,9 +53,9 @@ update, and its size (314,509 bytes) does not match the listing's reported
 commit or ZIP as the published 0.2.1 unless the publisher dashboard package is
 matched to it.
 
-Do not bump the version yet. Select a higher version (for example `0.2.2`) only
-after the publisher dashboard version and the candidate scope are both
-confirmed and a new candidate is accepted.
+The owner-reviewed October 5 closeout scope authorizes the `0.2.2` source bump.
+Publisher dashboard version/support checks and candidate acceptance still gate
+Store submission. No Store package is authorized for upload by this source bump.
 The default chart range is **Full stream**
 (`DEFAULT_DEFAULT_CHART_WINDOW = 'full'`, migration key
 `defaultChartWindowMigratedToFullV3`). The earlier `60m` default and its

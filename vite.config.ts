@@ -2,10 +2,11 @@ import { build as viteBuild, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
-import { loadManifestForTarget } from './scripts/extension-target.mjs'
+import { loadManifestForTarget, resolveSupporterBackendOrigin } from './scripts/extension-target.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
+const supporterBackendOrigin = resolveSupporterBackendOrigin(extensionTarget)
 
 function copyToDist(rootDir: string, relativePath: string): void {
   const src = resolve(rootDir, relativePath)
@@ -27,7 +28,7 @@ function chromeExtensionPlugin() {
       writeFileSync(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2))
       writeFileSync(
         resolve(dist, 'extension-target.json'),
-        JSON.stringify({ buildId: extensionBuildId, target: extensionTarget, version: manifest.version }, null, 2),
+        JSON.stringify({ buildId: extensionBuildId, target: extensionTarget, version: manifest.version, supporterBackendOrigin }, null, 2),
       )
       const pages = ['popup/index.html', 'options/index.html'] as const
       for (const page of pages) {
@@ -46,6 +47,7 @@ export default defineConfig({
   resolve: extensionResolve(),
   define: {
     __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
+    __SUPPORTER_BACKEND_ORIGIN__: JSON.stringify(supporterBackendOrigin),
     __EXTENSION_TARGET__: JSON.stringify(extensionTarget),
     __EXTENSION_TARGET_MARKER__: JSON.stringify(
       `streampulse-extension-runtime-target:${extensionTarget}`,

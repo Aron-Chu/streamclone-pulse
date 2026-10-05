@@ -4,8 +4,8 @@ import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../sha
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
 type Pending = { kind: 'pending'; secret: string; code: string; expiresAt: string; nextPoll: number }
-type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string }
-type PrivateState = Pending | Linked | { kind: 'refreshing' } | { kind: 'revoking'; token: string } | { kind: 'relink_required' } | null
+type Linked = { kind: 'linked'; token: string; refreshToken: string; accountId: string; deviceId: string; expiresAt: string; refreshExpiresAt: string; installation?: true }
+type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true; credentials?: Linked; startedAt?: number; retryAt?: number } | { kind: 'revoking'; token: string } | { kind: 'relink_required' } | null
 /**
  * A finish the user explicitly chose before their membership was verified.
  * Bound to the account linked when it was chosen, if any, and short-lived, so
@@ -37,7 +37,7 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 function linked(value: unknown): Linked | null {
   const r = object(value)
   return secret(r.token) && secret(r.refreshToken) && id(r.accountId) && id(r.deviceId) && date(r.expiresAt) && date(r.refreshExpiresAt)
-    ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt } : null
+    ? { kind: 'linked', token: r.token, refreshToken: r.refreshToken, accountId: r.accountId, deviceId: r.deviceId, expiresAt: r.expiresAt, refreshExpiresAt: r.refreshExpiresAt, ...(r.installation === true ? { installation: true } : {}) } : null
 }
 
 /** Thrown by a request port that refused before any network I/O. */
@@ -106,7 +106,7 @@ function fingerprint(accountId: string, value: SupporterEntitlement): string {
   return JSON.stringify([accountId, value.status, value.accessUntil ?? null, value.features, value.supportPeriods, value.cosmetics ?? null, value.checkoutEnabled === true])
 }
 
-/** One coordinator per worker; serialize rotation and never replay uncertain refreshes. */
+/** One coordinator per worker; installation refresh retries use the server's bounded idempotency window. */
 export class SupporterAccountCoordinator {
   private queue: Promise<unknown> = Promise.resolve()
   private generation = 0
@@ -136,12 +136,12 @@ export class SupporterAccountCoordinator {
       }
       const result = await this.ports.request('/v1/account/installations', { installationKey: key, label: 'StreamPulse extension' })
       if (result.status === 404) return { state: 'fallback' } as const
-      if (result.status === 409 && object(result.body).error === 'installation_initialized') { await this.ports.writeInstallationKey(null); return { state: 'error' } as const }
+      if (result.status === 409 && object(result.body).error === 'installation_initialized') return { state: 'error' } as const
       if (result.status === 429 || result.status === 503) return { state: 'unavailable', reason: 'temporarily_unavailable' } as const
       const credentials = linked(result.body)
       if ((result.status !== 200 && result.status !== 201) || !credentials || Date.parse(credentials.expiresAt) <= this.now() || Date.parse(credentials.refreshExpiresAt) <= this.now()) return { state: 'error' } as const
       if (generation !== this.generation) return this.discardCredential(credentials)
-      await this.ports.write(credentials)
+      await this.ports.write({ ...credentials, installation: true })
       await this.ports.writeInstallationKey({ key: key as string, state: 'claimed', accountId: credentials.accountId })
       await this.ports.identityChanged?.()
       return this.project(credentials)
@@ -160,7 +160,7 @@ export class SupporterAccountCoordinator {
         if (next) await this.discardRestoredCredentials(value)
         return false
       }
-      await this.ports.write(next)
+      await this.ports.write({ ...next, installation: true })
       await this.ports.writeIntent?.(null)
       this.lastProjection = undefined
       await this.ports.identityChanged?.()
@@ -329,13 +329,17 @@ export class SupporterAccountCoordinator {
   }
   /** Worker lifecycle hint only; never rotates a token or sends a request. */
   async localAccountId(): Promise<string | null> {
-    return linked(await this.ports.read().catch(() => null))?.accountId ?? null
+    const raw = object(await this.ports.read().catch(() => null))
+    return linked(raw.kind === 'refreshing' && raw.installation === true ? raw.credentials : raw)?.accountId ?? null
   }
   async localDeviceId(): Promise<string | null> {
-    return linked(await this.ports.read().catch(() => null))?.deviceId ?? null
+    const raw = object(await this.ports.read().catch(() => null))
+    return linked(raw.kind === 'refreshing' && raw.installation === true ? raw.credentials : raw)?.deviceId ?? null
   }
   /** Distinguish a bootstrap-created identity from an older email-linked account. */
   async isInstallationIdentity(): Promise<boolean> {
+    const raw = object(await this.ports.read().catch(() => null))
+    if (raw.installation === true && linked(raw.kind === 'refreshing' ? raw.credentials : raw)) return true
     const bootstrap = object(await this.ports.readInstallationKey?.().catch(() => null))
     const current = await this.localAccountId()
     return Boolean(current && bootstrap.state === 'claimed' && secret(bootstrap.key) && (bootstrap.accountId === undefined || bootstrap.accountId === current))
@@ -343,7 +347,8 @@ export class SupporterAccountCoordinator {
 
   private async clear(state: SupporterAccountState['state']): Promise<SupporterAccountState> {
     await this.ports.write(state === 'relink_required' ? { kind: 'relink_required' } : null)
-    if (state === 'relink_required') await this.ports.writeInstallationKey?.(null)
+    // An authoritative credential rejection cannot erase the durable installation
+    // identity. Explicit Disconnect is the only action that discards its key.
     await this.ports.identityChanged?.()
     return { state } as SupporterAccountState
   }
@@ -392,7 +397,7 @@ export class SupporterAccountCoordinator {
   private async perform(action: SupporterAccountAction, generation: number): Promise<SupporterAccountState> {
     if (generation !== this.generation) return { state: 'signed_out' }
     const raw = object(await this.ports.read())
-    const credentials = raw.kind === 'linked' ? linked(raw) : null
+    const credentials = raw.kind === 'linked' ? linked(raw) : raw.kind === 'refreshing' && raw.installation === true ? linked(raw.credentials) : null
     if (raw.kind === 'revoking') {
       if (action === 'disconnect' && secret(raw.token)) return this.revoke(raw.token)
       return { state: 'error', revocationPending: true }
@@ -414,27 +419,33 @@ export class SupporterAccountCoordinator {
       if (credentials) return this.project(credentials)
       return this.clear('signed_out')
     }
-    if (raw.kind === 'refreshing') return this.clear('relink_required')
+    if (raw.kind === 'refreshing' && !credentials) return this.clear('relink_required')
     if (raw.kind === 'relink_required' && (action === 'status' || action === 'poll')) return { state: 'relink_required' }
     if (credentials) {
       if (Date.parse(credentials.refreshExpiresAt) <= this.now()) return this.clear('relink_required')
-      if (Date.parse(credentials.expiresAt) > this.now() + 60_000) return this.project(credentials)
+      if (raw.kind !== 'refreshing' && Date.parse(credentials.expiresAt) > this.now() + 60_000) return this.project(credentials)
+      if (raw.kind === 'refreshing' && typeof raw.retryAt === 'number' && raw.retryAt > this.now()) return renewalWaiting()
       if (this.renewalPause?.deviceId === credentials.deviceId && this.now() < this.renewalPause.until) return renewalWaiting()
-      await this.ports.write({ kind: 'refreshing' })
+      const bootstrap = object(await this.ports.readInstallationKey?.())
+      const installation = raw.installation === true || bootstrap.state === 'claimed' && secret(bootstrap.key) && (bootstrap.accountId === undefined || bootstrap.accountId === credentials.accountId)
+      const refreshing: PrivateState = installation ? { kind: 'refreshing', installation: true, credentials, startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : this.now(), retryAt: this.now() + 30_000 } : { kind: 'refreshing' }
+      await this.ports.write(refreshing)
       let result
       try { result = await this.ports.request('/v1/account/devices/refresh', { refreshToken: credentials.refreshToken }) }
       catch (error) {
         if (error instanceof AccountRequestNotSent) return this.keepUnrenewed(credentials, 30_000)
         if (generation !== this.generation) this.revocationUnconfirmed = true
+        if (installation) return renewalWaiting()
         return this.clear('relink_required')
       }
       const retryMs = unattemptedRefreshRetryMs(result)
       if (retryMs) return this.keepUnrenewed(credentials, retryMs)
+      if (installation && (result.status >= 500 || result.status === 408)) return renewalWaiting()
       const next = linked(result.body)
       if (result.status !== 200 || !next || next.accountId !== credentials.accountId || next.deviceId !== credentials.deviceId) return this.clear('relink_required')
       this.renewalPause = null
       if (generation !== this.generation) return this.discardCredential(next)
-      await this.ports.write(next)
+      await this.ports.write(installation ? { ...next, installation: true } : next)
       return this.project(next)
     }
     if (raw.kind === 'pending' && secret(raw.secret) && typeof raw.code === 'string' && /^[A-F0-9]{5}-[A-F0-9]{5}$/.test(raw.code) && date(raw.expiresAt) && typeof raw.nextPoll === 'number') {
