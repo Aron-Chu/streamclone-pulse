@@ -312,9 +312,9 @@ export class SupporterPayFirstCoordinator {
     if (!emailAddress(email)) return { state: 'error' }
     const installation = await this.ports.account.ensureInstallation('restore')
     if (installation.state === 'fallback') return { state: 'fallback' }
-    if (installation.state !== 'linked') return { state: 'unavailable' }
+    if (installation.state !== 'linked') return { state: 'unavailable', reason: 'connection' }
     const capability = await this.ports.account.entitlement()
-    if (capability.state !== 'ready') return { state: 'unavailable' }
+    if (capability.state !== 'ready') return { state: 'unavailable', reason: capability.state === 'error' ? 'membership_invalid' : capability.state === 'unavailable' && capability.reason === 'environment_mismatch' ? 'environment_mismatch' : 'membership' }
     if (capability.accountKind !== 'installation' || capability.installationAccountsEnabled !== true || capability.restoreEligible !== true) return { state: 'ineligible' }
     value.restoreStart = { accountId: installation.accountId, key: randomKey(), until: this.now() + RESTORE_WATCH_MS, nextRetry: this.now() }
     delete value.restoreResult

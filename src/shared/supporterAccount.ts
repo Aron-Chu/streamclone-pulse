@@ -59,7 +59,8 @@ export type SupporterBillingState =
   | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
   | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string; automaticPolling?: false }
 export type SupporterRestoreState =
-  | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'unavailable' | 'error' | 'ineligible' }
+  | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'error' | 'ineligible' }
+  | { state: 'unavailable'; reason?: 'connection' | 'membership' | 'membership_invalid' | 'environment_mismatch' }
   | { state: 'pending'; expiresAt: string; comparisonCode: string }
   | { state: 'uncertain' }
 
