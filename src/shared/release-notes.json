@@ -23,7 +23,7 @@
         "Old restore notices no longer hide verified membership management."
       ],
       "knownIssues": [
-        "This candidate is not yet published; real purchase, recovery and Store submission checks remain owner gates."
+        "Supporter sign-ups are not yet open to everyone."
       ],
       "links": { "details": "/changelog", "support": "/support" }
     },

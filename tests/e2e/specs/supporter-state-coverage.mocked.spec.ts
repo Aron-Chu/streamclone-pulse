@@ -76,7 +76,7 @@ function snapshot(state: StateCase) {
 async function seedPrivate(worker: Worker, state: StateCase) {
   const account = state.setup === 'unlinked' || state.setup === 'fallback' ? null : credential()
   const journey: Record<string, unknown> = {}
-  if (state.billing) journey.billing = { accountId: ACCOUNT, attemptId: ATTEMPT, phase: state.billing === 'waiting' ? 'waiting' : 'confirming', until: Date.now() + (state.billing === 'still_confirming' ? -1000 : 30 * 60_000), nextPoll: 0, url: 'https://checkout.stripe.com/c/pay/cs_test_state_fixture' }
+  if (state.billing) journey.billing = { accountId: ACCOUNT, attemptId: ATTEMPT, phase: state.billing === 'waiting' ? 'waiting' : 'confirming', until: Date.now() + 24 * 60 * 60_000, watchUntil: Date.now() + (state.billing === 'still_confirming' ? -1000 : 30 * 60_000), nextPoll: 0, url: 'https://checkout.stripe.com/c/pay/cs_test_state_fixture' }
   if (state.restore) journey.restore = { accountId: ACCOUNT, restoreId: RESTORE, secret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), comparisonCode: 'A3B4C5', nextPoll: 0, interval: 60_000 }
   await worker.evaluate(async ({ account, journey, api }) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -289,6 +289,8 @@ for (const state of CASES) {
       let pendingAction: Record<string, unknown> | null = null
       if (CAPTURE_PHASE === 'after' && (state.billing === 'confirming' || state.billing === 'still_confirming' || state.restore === 'pending')) {
         const checkoutPosts = requests.filter(request => request.path === '/v1/billing/checkout' && request.method === 'POST').length
+        const ownedReads = () => requests.filter(request => request.path === `/v1/billing/checkout/${ATTEMPT}` && request.method === 'GET').length
+        const ownedReadsBefore = ownedReads()
         const restorePolls = requests.filter(request => request.path === '/v1/account/restores/poll').length
         const otherPosts = requests.filter(request => request.method === 'POST' && request.path !== '/v1/account/restores/poll').length
         const authorityBefore = state.restore === 'pending' ? await privateRestoreAuthority(extension.serviceWorker) : null
@@ -316,8 +318,11 @@ for (const state of CASES) {
           expect(requests.filter(request => request.method === 'POST' && request.path !== '/v1/account/restores/poll').length).toBe(otherPosts)
           pendingAction = { action: expectedPrincipal, state: 'restore-pending', pollsBefore: restorePolls, pollsAfter, pollingIntervalHonored: true, sameOwnedProjection: projection.restore, authorityBefore, authorityAfter, noNewNavigation: true, noAdditionalStartEmailOrBillingPost: true }
         } else {
-          await expect.poll(() => requests.filter(request => request.path === `/v1/billing/checkout/${ATTEMPT}`).length).toBeGreaterThan(1)
-          pendingAction = { action: expectedPrincipal, state: expectedJourney, noAdditionalCheckoutPosts: true }
+          // A stopped automatic watch may have made no initial owned read.
+          // The manual action must read this attempt, rather than relying on
+          // an earlier poll or creating another checkout.
+          await expect.poll(ownedReads).toBeGreaterThan(ownedReadsBefore)
+          pendingAction = { action: expectedPrincipal, state: expectedJourney, ownedReadsBefore, ownedReadsAfter: ownedReads(), noAdditionalCheckoutPosts: true }
         }
         expect(requests.filter(request => request.path === '/v1/billing/checkout' && request.method === 'POST').length).toBe(checkoutPosts)
         expect(requests.filter(request => request.path === '/v1/account/restores').length).toBe(0)
