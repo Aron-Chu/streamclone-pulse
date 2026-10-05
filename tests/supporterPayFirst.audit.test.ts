@@ -20,6 +20,44 @@ function fixture() {
   return { supporter, pay: recreate(), recreate, request, open, stored: () => journey, advance: (ms: number) => { clock += ms }, setMembership: (changes: Record<string, unknown>) => { membership = { ...membership, ...changes } } }
 }
 describe('audited pay-first recovery', () => {
+  it('expires a disconnected account precaution at the server attempt deadline across worker restarts', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(600_000) } })
+    await f.pay.billing('checkout')
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    await f.supporter.run('disconnect')
+    expect(await f.pay.billing('status')).toEqual({ state: 'reconnect_required' })
+    f.advance(599_999)
+    expect(await f.recreate().billing('status')).toEqual({ state: 'reconnect_required' })
+    f.advance(1)
+    expect(await f.recreate().billing('status')).toEqual({ state: 'idle' })
+    expect(f.stored()).not.toHaveProperty('unresolvedAccounts')
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/retry', expiresAt: iso(1_200_000) } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'waiting', attemptId })
+  })
+  it('keeps an unpaid open session reopenable while stopping automatic polling at thirty minutes', async () => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 200, body: { attemptId, url: 'https://checkout.stripe.com/c/pay/local', expiresAt: iso(86_400_000) } })
+    await f.pay.billing('checkout'); f.advance(5000)
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'open', expiresAt: iso(86_400_000) } })
+    expect(await f.pay.billing('status')).toEqual({ state: 'waiting', attemptId })
+    f.advance(30 * 60_000)
+    const calls = f.request.mock.calls.length
+    expect(await f.recreate().hasPending()).toBe(false)
+    expect(await f.recreate().billing('status')).toEqual({ state: 'waiting', attemptId, automaticPolling: false })
+    expect(f.request).toHaveBeenCalledTimes(calls)
+    expect(await f.pay.billing('resume')).toEqual({ state: 'waiting', attemptId })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'unpaid' } })
+    expect(await f.pay.billing('check')).toEqual({ state: 'expired' })
+    expect(f.stored()).not.toHaveProperty('billing')
+  })
+  it('still manages a known installation when new account creation is switched off', async () => {
+    const f = fixture(); await f.supporter.ensureInstallation()
+    f.setMembership({ status: 'active', installationAccountsEnabled: false, restoreEligible: false })
+    f.request.mockResolvedValueOnce({ status: 200, body: { url: 'https://billing.stripe.com/p/session/local' } })
+    expect(await f.pay.billing('portal')).toEqual({ state: 'idle' })
+    expect(f.request).toHaveBeenLastCalledWith('/v1/billing/portal', {}, credentials.token)
+  })
   it('uses route-specific deadlines longer than deliberate restore timing and Stripe creation', () => {
     expect(accountRequestDeadlineMs('/v1/billing/checkout')).toBeGreaterThanOrEqual(35_000)
     expect(accountRequestDeadlineMs('/v1/billing/portal')).toBeGreaterThanOrEqual(35_000)
@@ -60,7 +98,7 @@ describe('audited pay-first recovery', () => {
     await f.supporter.run('disconnect')
     expect(await f.pay.billing('status')).toEqual({ state: 'reconnect_required' })
     expect(JSON.stringify(f.stored())).not.toMatch(/checkout\.stripe|33333333|22222222/)
-    expect(f.stored()).toMatchObject({ unresolvedAccounts: [expect.stringMatching(/^[a-f0-9]{64}$/)] })
+    expect(f.stored()).toMatchObject({ unresolvedAccounts: [{ hash: expect.stringMatching(/^[a-f0-9]{64}$/), until: now + 86_400_000 }] })
   })
   it('refuses wrong-account website fallback once an installation has been created', async () => {
     const f = fixture()

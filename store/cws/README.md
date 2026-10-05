@@ -160,11 +160,12 @@ npm run package:development
 npm run validate:package
 ```
 
-Extension source manifests are **0.2.1**. This is a source target, not an
-accepted or uploaded candidate, and it cannot be uploaded as-is: the public
+Extension source manifests are **0.2.2**, selected for the owner-reviewed
+October 5 Supporter closeout. This is a source target, not an
+accepted or uploaded candidate: the public
 listing already reported `0.2.1` on 2026-09-24, and the published package's
 source revision is unverified. Owner must confirm the publisher-dashboard
-version, confirm the next candidate's scope, choose a higher version, and set
+version, confirm the candidate's scope and version exceed the live listing, and set
 the Support URL to `https://streampulse.stream/support/` before upload. Stop
 before upload.
 

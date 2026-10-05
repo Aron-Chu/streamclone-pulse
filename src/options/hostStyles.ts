@@ -68,6 +68,8 @@ const hostStyles = `
   .pulse-journey-status { display: grid; gap: 6px; min-width: 0; }
   .pulse-journey-title { font-size: 15px; }
   .pulse-journey-notice { padding: 8px 10px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.bgCanvas}; color: ${theme.textSecondary}; font-size: 12px; }
+  .pulse-journey-confirm { display: grid; gap: 10px; padding: 12px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.bgCanvas}; color: ${theme.textSecondary}; font-size: 12px; }
+  .pulse-journey-confirm p { margin: 0; line-height: 1.5; }
   .pulse-journey-steps { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: ${theme.textMuted}; }
   .pulse-journey-steps li { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; }
   .pulse-journey-step-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid ${theme.border}; border-radius: 999px; font-size: 12px; font-weight: 700; }

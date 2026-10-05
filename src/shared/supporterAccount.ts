@@ -57,7 +57,7 @@ export type SupporterAccountState =
 /** Worker-owned purchase state: provider URLs and all credentials stay private. */
 export type SupporterBillingState =
   | { state: 'idle' | 'fallback' | 'closed' | 'active' | 'expired' | 'review' | 'unavailable' | 'error' | 'reconnect_required' }
-  | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string }
+  | { state: 'waiting' | 'confirming' | 'still_confirming'; attemptId?: string; automaticPolling?: false }
 export type SupporterRestoreState =
   | { state: 'idle' | 'fallback' | 'restored' | 'expired' | 'conflict' | 'unavailable' | 'error' | 'ineligible' }
   | { state: 'pending'; expiresAt: string; comparisonCode: string }
