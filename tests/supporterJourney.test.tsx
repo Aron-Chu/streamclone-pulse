@@ -17,7 +17,7 @@ type Worker = {
   account: (action: SupporterAccountAction) => SupporterAccountState | Promise<SupporterAccountState> | Error
   entitlement: () => SupporterEntitlement | Promise<SupporterEntitlement> | Error
   billing?: (action: string) => SupporterBillingState
-  restore?: (action: string, email?: string) => SupporterRestoreState
+  restore?: (action: string, email?: string) => SupporterRestoreState | Promise<SupporterRestoreState>
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
 }
 
@@ -36,7 +36,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
       return { type: 'SUPPORTER_ENTITLEMENT', entitlement }
     }
     if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: worker.billing?.(message.action!) ?? { state: 'fallback' } }
-    if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: worker.restore(message.action!, message.email) }
+    if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: await worker.restore(message.action!, message.email) }
     if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
     return undefined
   })
@@ -412,6 +412,29 @@ describe('pay-first settings', () => {
       expect(view.state()).toBe('offer')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
     } finally { view.cleanup() }
+  })
+  it('discards a delayed preflight failure after settings unmount and remount', async () => {
+    let release!: (value: SupporterRestoreState) => void
+    const delayed = new Promise<SupporterRestoreState>(resolve => { release = resolve })
+    const worker: Worker = { account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), restore: action => action === 'start' ? delayed : { state: 'idle' } }
+    const previous = await mount(worker)
+    await previous.click('Restore my Supporter')
+    const email = previous.host.querySelector<HTMLInputElement>('#supporter-restore-email')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'payer@example.test'); email.dispatchEvent(new Event('input', { bubbles: true })) })
+    await previous.click('Send restore link')
+    expect(previous.state()).toBe('restore-sending')
+    previous.cleanup()
+    const current = await mount(worker)
+    try {
+      const initialCalls = current.sendMessage.mock.calls.length
+      await act(async () => release({ state: 'unavailable', reason: 'connection' }))
+      expect(current.sendMessage.mock.calls.length).toBe(initialCalls)
+      expect(current.state()).toBe('offer')
+      await current.click('Restore my Supporter')
+      expect(current.host.querySelector<HTMLInputElement>('#supporter-restore-email')!.value).toBe('')
+      expect(current.calls('SUPPORTER_RESTORE', 'start')).toBe(0)
+      expect(current.write).not.toHaveBeenCalled()
+    } finally { current.cleanup() }
   })
   it('shows one primary restore action and generic recovery copy without persisting email', async () => {
     let restore: SupporterRestoreState = { state: 'idle' }

@@ -78,6 +78,13 @@ without mailing again. An absent handle asks for email re-entry to begin a new
 request. A collected challenge deletes the retry key; cancellation, expiry and
 identity changes clear the waiting request. A new request is never sent blindly.
 
+If preparation fails before the worker requests a restore link, **Try restore
+again** retries using the address held only in the open settings screen. The
+address is not written to extension storage or shown on the failure card. Back,
+Use another email, an identity change, a pending request or closing settings
+clears it. Uncertain delivery uses the existing key-only check; it never reuses
+the address to resend mail. Preparing a request has its own visible progress state.
+
 Installation accounts can list their own connected extensions and explicitly
 confirm peer revocation. The current browser uses its existing Disconnect action.
 The server checks ownership and revokes the peer's whole refresh family. Email
