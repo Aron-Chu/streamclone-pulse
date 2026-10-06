@@ -924,6 +924,19 @@ Those peaks can predate the Global Activity chart range; the hub response labels
 the feed `livePulseMomentsScope=current_live_session_peaks` for this reason.
 Saved remains a browser-local shortlist.
 
+**2026-10-06 note (owner request):** History and Explore are hidden while the
+ranked backend is not deployed, so the tab row is Latest → Saved. One
+`/v1/public/discovery/ranked/availability` read per page session decides this:
+HTTP 404 hides both tabs, a ready response brings back all four tabs without a
+redeploy, and a 503, timeout or invalid response keeps them with their existing
+unavailable panels. Tabs stay hidden while the read is pending. Latest's first
+screen makes no discovery read: the check starts about two seconds after that
+screen settles (or after Saved opens), and a ranked view reuses its own
+retention read instead. Bookmarked `view=history`, `view=explore` and
+`collection=history` links keep their selected tab and the not-deployed panel
+with Browse Latest moments. While History is hidden, Latest and Saved creator
+links open `/analytics/:login` (“All … broadcasts”) instead.
+
 History exposes the **Activity calendar** and groups indexed detections by creator
 and immutable broadcast identity. A card opens the existing stream timeline at
 `/analytics/:login/:streamId`; it does not open a second session-detail workspace.

@@ -117,6 +117,8 @@ test('late recap responses cannot overwrite a different selection and failed evi
 test.beforeEach(async ({ page }) => {
   await installHubUxMock(page)
   await installNewsroomMock(page)
+  // Ranked discovery deployed but down keeps History reachable from Latest.
+  await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'discovery_unavailable' } }))
   await page.route('**/v1/portal/analytics/streams/*', async route => {
     const streamId = new URL(route.request().url()).pathname.split('/').pop()
     await route.fulfill({ json: { vodTiming: { state: 'verified' }, vodDurationSeconds: 18000, vodAlignSeconds: 0,

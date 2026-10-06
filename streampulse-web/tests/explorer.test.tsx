@@ -1,11 +1,13 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { explorerReasonCopy, normalizeExplorerEnvelope, type ExplorerEnvelope } from '../src/lib/explorer'
 
-const { mockUseExplorerData } = vi.hoisted(() => ({ mockUseExplorerData: vi.fn() }))
+const { mockUseExplorerData, request } = vi.hoisted(() => ({ mockUseExplorerData: vi.fn(), request: vi.fn() }))
 vi.mock('../src/hooks/useExplorerData', () => ({ useExplorerData: mockUseExplorerData }))
+// Only the selected broadcast's exact-source check reaches the API in these tests.
+vi.mock('../src/lib/apiClient', async (importOriginal) => ({ ...await importOriginal<typeof import('../src/lib/apiClient')>(), apiClient: request }))
 
 import AnalyticsExplorerPage from '../src/routes/analytics/AnalyticsExplorerPage'
 
@@ -130,18 +132,32 @@ function hookResult(data: ExplorerEnvelope | null) {
   }
 }
 
-function renderExplorer(data: ExplorerEnvelope) {
+function renderExplorer(data: ExplorerEnvelope | null, url = '/analytics/explore/pulse-xqc-stream-1') {
   mockUseExplorerData.mockImplementation(() => hookResult(data))
   return render(
-    <MemoryRouter initialEntries={['/analytics/explore/pulse-xqc-stream-1']}>
-      <Routes><Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} /></Routes>
+    <MemoryRouter initialEntries={[url]}>
+      <Routes>
+        <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+        <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+      </Routes>
     </MemoryRouter>,
   )
+}
+
+function endedWithVod(vodId = '2864434763') {
+  const raw = rawEnvelope([Object.assign(moment('m1'), { vodId })])
+  for (const key of ['broadcast', 'broadcasts'] as const) {
+    const value = raw[key]
+    raw[key] = Array.isArray(value) ? value.map((item) => ({ ...item, state: 'ended' })) : { ...(value as object), state: 'ended' }
+  }
+  return normalizeExplorerEnvelope(raw)!
 }
 
 afterEach(() => {
   cleanup()
   mockUseExplorerData.mockReset()
+  request.mockReset()
+  vi.unstubAllEnvs()
 })
 
 describe('Pulse Explorer contract and workspace', () => {
@@ -173,5 +189,45 @@ describe('Pulse Explorer contract and workspace', () => {
     renderExplorer(data)
     expect(screen.getByRole('img', { name: /reaction score trend with 2 measured moments/i })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Qualified moments' })).toBeTruthy()
+  })
+
+  it('disables unconfigured history windows without requesting them', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', '')
+    renderExplorer(null, '/analytics/explore?window=7d&signal=emotes')
+    const options = Array.from(screen.getByLabelText('Range').querySelectorAll('option')).map((option) => [option.textContent, option.disabled])
+    expect(options).toEqual([['Live', false], ['24 hours (unavailable)', true], ['7 days (unavailable)', true]])
+    expect(screen.getByText('7-day history is unavailable')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Show live broadcasts' }).getAttribute('href')).toBe('/analytics/explore?signal=emotes')
+    // Neither the list nor the inspector may fetch or poll a disabled window.
+    expect(mockUseExplorerData.mock.calls.length).toBeGreaterThan(0)
+    expect(mockUseExplorerData.mock.calls.every(([options]) => options.enabled === false)).toBe(true)
+    expect(screen.queryByText('Pulse Explorer is unavailable')).toBeNull()
+  })
+
+  it('offers every window a deployment configures', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    renderExplorer(normalizeExplorerEnvelope(rawEnvelope())!, '/analytics/explore?window=24h')
+    expect(Array.from(screen.getByLabelText('Range').querySelectorAll('option')).every((option) => !option.disabled)).toBe(true)
+    expect(screen.queryByText(/history is unavailable/)).toBeNull()
+    expect(mockUseExplorerData.mock.calls[0][0]).toMatchObject({ window: '24h', enabled: true })
+  })
+
+  it('places Watch VOD at the verified VOD alignment, like the Moments review', async () => {
+    request.mockResolvedValue({ data: { channel: 'xqc', vodId: '2864434763', vodAlignSeconds: -76, vodDurationSeconds: 18000,
+      vodTiming: { state: 'verified' }, stream: { streamId: 'stream-1', vodId: '2864434763' } } })
+    renderExplorer(endedWithVod())
+    expect(screen.getByText('Checking replay…')).toBeTruthy()
+    // Broadcast offset 240s; Twitch's recording started 76s after the tracked start.
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Watch VOD' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/2864434763?t=164s'))
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls[0][0]).toBe('/v1/portal/analytics/streams/stream-1')
+  })
+
+  it('offers no VOD link when the alignment is not verified', async () => {
+    request.mockResolvedValue({ data: { channel: 'xqc', vodId: '2864434763', vodAlignSeconds: -76, vodDurationSeconds: 18000,
+      vodTiming: { state: 'unavailable' }, stream: { streamId: 'stream-1', vodId: '2864434763' } } })
+    renderExplorer(endedWithVod())
+    await waitFor(() => expect(screen.getByText('Replay unavailable')).toBeTruthy())
+    expect(screen.queryByRole('link', { name: 'Watch VOD' })).toBeNull()
   })
 })

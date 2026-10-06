@@ -8,6 +8,8 @@ test.beforeEach(async ({ page }) => {
   // entirely deterministic and fail closed if a new endpoint is introduced.
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
   await installHubUxMock(page)
+  // Production today: ranked discovery is not deployed, so Moments offers Latest and Saved.
+  await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found\n' }))
   await page.route(/\/v1\/channels\/[^/?]+$/, route => {
     const login = new URL(route.request().url()).pathname.split('/').pop()
     return route.fulfill({ json: { login } })

@@ -209,6 +209,7 @@
 .explorer-controls form button,
 .explorer-stale button,
 .explorer-state button,
+.explorer-state a,
 .explorer-load-more,
 .explorer-actions a,
 .explorer-actions button,
@@ -1044,7 +1045,8 @@
   line-height: 1.45;
 }
 
-.explorer-state button {
+.explorer-state button,
+.explorer-state a {
   margin-top: 0.35rem;
 }
 

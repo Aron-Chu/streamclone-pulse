@@ -5,6 +5,7 @@ import LegacyMomentSession from './LegacyMomentSession'
 import { broadcastTimelineHref } from '../../lib/momentsNavigation'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { useRankedDiscovery, useRankedRetention } from '../../hooks/useDiscoveryCatalogue'
+import { useRankedFeatureAvailability } from '../../hooks/useRankedFeatureAvailability'
 import { useMomentProfiles } from '../../hooks/useMomentProfiles'
 import { readRankedScope, readHistoryRankedScope, rankedEmptyMessage, type RankedScope } from '../../lib/discoveryCatalogue'
 import { HistoryExplorerControls } from '../../ui/components/moments/HistoryExplorerControls'
@@ -84,11 +85,14 @@ export function VodOffsetNote({ broadcastSeconds, vodSeconds }: { broadcastSecon
   return <small className="moments-vod-offset-note">{`Twitch's recording started ${formatShortDuration(difference)} ${difference > 0 ? 'before' : 'after'} our tracked start, so this moment is at ${formatStreamOffset(vodSeconds)} in the VOD.`}</small>
 }
 
-function MomentCreator({ moment, onNavigate }: { moment: DiscoveryMoment; onNavigate?: () => void }) {
+function MomentCreator({ moment, historyAvailable, onNavigate }: { moment: DiscoveryMoment; historyAvailable: boolean; onNavigate?: () => void }) {
   const content = <><MomentAvatar moment={moment} /><span><strong>{moment.displayName || moment.login}</strong><small>{moment.category || 'Category unavailable'}</small></span></>
-  const href = creatorHistoryHref(moment.login)
+  const name = moment.displayName || moment.login
+  // While History is hidden, a creator's broadcasts are the same fallback the stream console uses.
+  const href = historyAvailable ? creatorHistoryHref(moment.login)
+    : /^[a-z0-9_]{1,25}$/.test(moment.login) ? `/analytics/${encodeURIComponent(moment.login)}` : null
   return href
-    ? <Link className="moments-creator-link" data-discovery-creator-key={moment.key} aria-label={`Browse ${moment.displayName || moment.login} history`} to={href}
+    ? <Link className="moments-creator-link" data-discovery-creator-key={moment.key} aria-label={historyAvailable ? `Browse ${name} history` : `All ${name} broadcasts`} to={href}
       onClick={event => {
         if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) onNavigate?.()
       }}>{content}</Link>
@@ -326,6 +330,14 @@ function MomentsWorkspace() {
     setCheckedArtwork(previous => Object.fromEntries([...Object.entries(previous).filter(([id]) => id !== key).slice(-199), ...(artwork ? [[key, artwork] as const] : [])]))
   }, [])
   const hub = usePublicHubData({ enabled: view === 'recent' && !historyMode, activityWindow: '30m', projection: 'moments' })
+  // Explore and History stay hidden until the ranked backend answers (owner request).
+  // Ranked views reuse their own retention read; Latest and Saved start one deferred
+  // read per session, after Latest's first screen has settled.
+  const rankedFeature = useRankedFeatureAvailability({
+    start: !rankedMode && !(view === 'recent' && hub.loading),
+    observed: !rankedMode ? undefined : retention.notDeployed ? 'not_deployed' : retention.from ? 'ready' : retention.error ? 'unavailable' : undefined,
+  })
+  const rankedTabsShown = rankedFeature === 'ready' || rankedFeature === 'unavailable'
   const feed = useMemo(() => hub.data ? resolveLivePulseMoments(hub.data) : null, [hub.data])
   const recentArtwork = useMemo(() => new Map((hub.data?.livePulseMoments ?? []).flatMap(moment => {
     const adapted = fromHubMoment(moment)
@@ -521,7 +533,9 @@ function MomentsWorkspace() {
     latestParams.current = nextParams
     setParams(nextParams)
   }
-  const viewTabs = ['explore', 'recent', 'history', 'saved'] as const
+  // A bookmarked ranked view keeps its own tab and honest unavailable panel.
+  const viewTabs = (['explore', 'recent', 'history', 'saved'] as const).filter(tab => rankedTabsShown || tab === view || tab === 'recent' || tab === 'saved')
+  const historyAvailable = viewTabs.includes('history')
   function onViewTabsKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     const current = viewTabs.findIndex(tab => event.target === document.getElementById(`moments-view-tab-${tab}`))
@@ -536,9 +550,9 @@ function MomentsWorkspace() {
   }
   return <AnalyticsFigmaShell hideSidebar><main ref={workspaceRef} id="analytics-main" className={`moments-workspace${chosen ? ' is-reviewing' : ''}`} data-filters-expanded={filtersExpanded} tabIndex={-1}>
     <header className="moments-heading"><div><h1>{historyMode ? 'Moment history' : view === 'saved' ? 'Saved moments' : 'Moments'}</h1><p>{historyMode ? 'Browse recent indexed detections by UTC day and creator.' : view === 'saved' ? 'Your shortlist of reactions to return to.' : 'Catch a reaction. Open its timeline. Keep what matters.'}</p></div><Link to="/analytics">Live activity →</Link></header>
-    <nav aria-label="Moment views"><div className="moments-tabs moments-tabs-four" data-view={view} role="tablist" aria-label="Moment views" onKeyDown={onViewTabsKeyDown}><span className="moments-tab-indicator" aria-hidden="true" />{viewTabs.map(tab => <button type="button" role="tab" id={`moments-view-tab-${tab}`} aria-controls="moments-view-panel" aria-selected={view === tab} tabIndex={view === tab ? 0 : -1} key={tab} onClick={() => changeView(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Latest' : tab === 'explore' ? 'Explore' : 'History'}</button>)}</div></nav>
+    <nav aria-label="Moment views"><div className={`moments-tabs${viewTabs.length === 4 ? ' moments-tabs-four' : viewTabs.length === 2 ? ' moments-tabs-two' : ''}`} data-view={view} role="tablist" aria-label="Moment views" onKeyDown={onViewTabsKeyDown}><span className="moments-tab-indicator" aria-hidden="true" />{viewTabs.map(tab => <button type="button" role="tab" id={`moments-view-tab-${tab}`} aria-controls="moments-view-panel" aria-selected={view === tab} tabIndex={view === tab ? 0 : -1} key={tab} onClick={() => changeView(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Latest' : tab === 'explore' ? 'Explore' : 'History'}</button>)}</div></nav>
     <div id="moments-view-panel" role="tabpanel" aria-labelledby={`moments-view-tab-${view}`} tabIndex={0}>
-    <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? 'Saved in this browser · not synced to the extension or your account.' : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range. For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</>}</p>
+    <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? 'Saved in this browser · not synced to the extension or your account.' : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</>}</p>
     {explore ? <RankedExploreControls params={params} now={certifiedClock} indexedRetentionStart={retention.from} certifiedThroughExclusive={retention.throughExclusive} retentionCheckedAt={retention.checkedAt} data={ranked.data} loading={retention.loading || ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={retention.error || rankedValidation || ranked.error} invalid={Boolean(rankedValidation)} notDeployed={retention.notDeployed}
       onChange={values => update({ ...resetSelection, ...values, view: 'explore', sort: 'volume', q: null }, false)}
       onReset={() => { setRankedClock(new Date()); setParams({ view: 'explore', period: 'latest', sort: 'volume' }) }}
@@ -568,7 +582,7 @@ function MomentsWorkspace() {
         <div className="moments-result-list">{profiledResults.map(moment => {
             const rank = rankedMode ? ranked.data?.items.find(item => item.key === moment.key) : undefined
             return <MomentRow key={moment.key} moment={moment} rank={rank?.rank} ranking={rank} selected={selected?.key === moment.key} artwork={resolveArtwork(moment)} onSelect={select}
-              creator={<MomentCreator moment={moment} onNavigate={() => { creatorReturnFocus.current = { locationKey: location.key, momentKey: moment.key } }} />} />
+              creator={<MomentCreator moment={moment} historyAvailable={historyAvailable} onNavigate={() => { creatorReturnFocus.current = { locationKey: location.key, momentKey: moment.key } }} />} />
           })}</div>
         {rankedMode && ranked.canLoad ? <button type="button" disabled={ranked.loading} onClick={ranked.loadMore}>Load more moments (50)</button> : null}
         {rankedMode && ranked.limited ? <p className="moments-muted" role="status">1,000 results loaded. Choose a narrower date range, creator, or category to see more of this collection.</p> : null}

@@ -45,3 +45,10 @@ not hosted-data evidence. The hosted ranked endpoint still returned 404 at the
 September 23 audit; no production activation or populated History is implied
 by the local candidate. Keep the separate Pulse Explorer route until a working
 replacement has been demonstrated.
+
+**2026-10-06 (owner request):** the History and Explore tabs are hidden while the
+ranked backend is not deployed (`/ranked` and `/ranked/availability` returned
+404 on 2026-10-06). The Moments page reads `/ranked/availability` once per page
+session and shows both tabs again automatically when it reports ready; a 503,
+timeout or invalid response keeps them visible with their unavailable panels.
+Bookmarked History and Explore links still show the not-deployed panel.
