@@ -90,6 +90,21 @@ compatible patched package is published. npm currently suggests Tailwind 4
 as remediation; its dual-config/CSS compatibility migration needs separate
 product validation, rather than an untested major change to clear this gate.
 
+## Patched development tools (2026-10-05)
+
+Root and portal overrides pin `source-map-js@1.2.2` for
+[GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) and
+`tinypool@2.1.2` for [GHSA-5gmw-xhrv-c9v3](https://github.com/advisories/GHSA-5gmw-xhrv-c9v3)
+and [GHSA-85c8-ppgw-ccpr](https://github.com/advisories/GHSA-85c8-ppgw-ccpr).
+These pins remove the new high/critical findings without audit exceptions.
+Tinypool 2 requires Node 20 or 22+, matching the existing Node 22 CI; its
+override is outside Vitest 3's declared range, so both complete test suites
+and production builds must pass before merge. Vitest remains at 3.2.7.
+The portal also pins `postcss-selector-parser@7.1.6` for
+[GHSA-rj75-hqrm-r3gf](https://github.com/advisories/GHSA-rj75-hqrm-r3gf),
+which otherwise adds unexpected advisory paths to the exact Tailwind graph.
+The existing five-node braces disposition remains unchanged.
+
 ## Owner follow-up (optional, separate program)
 
 - Schedule a dedicated React Router major upgrade when product-ready, then
