@@ -81,7 +81,7 @@ describe('worker-private pay-first journey', () => {
   it('retries a lost restore bootstrap with the same pending key', async () => {
     const f = fixture()
     f.request.mockRejectedValueOnce(new Error('installation response lost'))
-    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'unavailable' })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'unavailable', reason: 'connection' })
     const pendingKey = f.stored().key
     expect(f.stored().bootstrap).toMatchObject({ state: 'pending' })
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 201, body: { restoreId, pollingSecret: 'c'.repeat(64), expiresAt: iso(900_000), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })

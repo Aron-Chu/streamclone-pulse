@@ -111,6 +111,16 @@ describe('audited pay-first recovery', () => {
     expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'ineligible' })
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores')).toHaveLength(0)
   })
+  it('reports an unverified membership without issuing a restore or exposing response data', async () => {
+    const f = fixture(); f.setMembership({ revision: 'invalid', diagnostic: 'private-response-value' })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'unavailable', reason: 'membership_invalid' })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores')).toHaveLength(0)
+  })
+  it('distinguishes a billing environment mismatch before requesting a restore link', async () => {
+    const f = fixture(); f.setMembership({ environment: 'sandbox' })
+    expect(await f.pay.restore('start', 'payer@example.test')).toEqual({ state: 'unavailable', reason: 'environment_mismatch' })
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/account/restores')).toHaveLength(0)
+  })
   it('retains uncertain restore-start state and explains delivery without claiming failure', async () => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockRejectedValueOnce(new Error('restore response lost'))

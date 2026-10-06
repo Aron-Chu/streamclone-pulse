@@ -95,6 +95,121 @@ test('pay first opens only Stripe, delayed payment activates a chosen finish on 
   await cdp.detach()
 })
 
+for (const failure of ['connection', 'membership_invalid', 'ineligible'] as const) {
+  test(`restore feedback survives quiet refresh after ${failure} and clears on retry or Back`, async ({ extension, prepare }) => {
+    await prepare()
+    let failing = true, restorePosts = 0
+    await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill(failing && failure === 'connection' ? { status: 503, json: { error: 'request_unavailable' } } : { status: 201, json: credential() }))
+    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: {
+      ...snapshot('none'),
+      ...(failing && failure === 'membership_invalid' ? { revision: 'invalid' } : {}),
+      ...(failing && failure === 'ineligible' ? { restoreEligible: false } : {}),
+    } }))
+    await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
+      restorePosts++
+      return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+    })
+    await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
+    const page = extension.page
+    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+    await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+    await page.getByLabel('Email used at checkout').fill('payer@example.test')
+    await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+    const state = failure === 'ineligible' ? 'restore-ineligible' : 'restore-unavailable'
+    await expect(page.locator(`[data-journey-state="${state}"]`)).toBeVisible()
+    if (failure === 'connection') await expect(page.getByText('This extension’s connection could not be prepared.', { exact: false })).toBeVisible()
+    if (failure === 'membership_invalid') await expect(page.getByText('The membership response could not be verified.', { exact: false })).toBeVisible()
+    // These are the same non-secret revision signals emitted by the real worker.
+    await page.evaluate(async () => {
+      await chrome.storage.local.set({ pulseSupporterRevision: crypto.randomUUID() })
+      window.dispatchEvent(new Event('focus'))
+      await chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'status' })
+    })
+    await expect(page.locator(`[data-journey-state="${state}"]`)).toBeVisible()
+    expect(restorePosts).toBe(0)
+    expect(await page.locator('body').innerText()).not.toContain('payer@example.test')
+    if (failure === 'membership_invalid') {
+      // Delay only a fixture UI message. Its stale conflict must not replace a
+      // retry form or reopen recovery after the email form's Back action.
+      await page.evaluate(() => {
+        const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+        const fixture = window as unknown as { holdRestoreRead?: boolean; releaseRestoreRead?: () => void }
+        chrome.runtime.sendMessage = ((message: { type?: string; action?: string }) => {
+          if (message.type === 'SUPPORTER_RESTORE' && message.action === 'status' && fixture.holdRestoreRead) {
+            fixture.holdRestoreRead = false
+            return new Promise(resolve => { fixture.releaseRestoreRead = () => { delete fixture.releaseRestoreRead; resolve({ type: 'SUPPORTER_RESTORE', restore: { state: 'conflict' } }) } })
+          }
+          return original(message)
+        }) as typeof chrome.runtime.sendMessage
+      })
+      const holdRead = async () => {
+        await page.evaluate(async () => {
+          ;(window as unknown as { holdRestoreRead: boolean }).holdRestoreRead = true
+          await chrome.storage.local.set({ pulseSupporterRevision: crypto.randomUUID() })
+        })
+        await expect.poll(() => page.evaluate(() => typeof (window as unknown as { releaseRestoreRead?: () => void }).releaseRestoreRead)).toBe('function')
+      }
+      const releaseRead = () => page.evaluate(() => (window as unknown as { releaseRestoreRead: () => void }).releaseRestoreRead())
+      await holdRead()
+      await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
+      await releaseRead()
+      await expect(page.getByLabel('Email used at checkout')).toBeVisible()
+      await holdRead()
+      await page.getByRole('button', { name: 'Back', exact: true }).click()
+      await releaseRead()
+      await expect(page.getByLabel('Email used at checkout')).toHaveCount(0)
+      await expect(page.locator('[data-journey-state="restore-conflict"]')).toHaveCount(0)
+    }
+    failing = false
+    if (failure === 'ineligible' || failure === 'membership_invalid') {
+      if (failure === 'ineligible') await page.getByRole('button', { name: 'Back to membership', exact: true }).click()
+      await expect(page.locator('[data-journey-state="restore-ineligible"]')).toHaveCount(0)
+      await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
+      if (failure === 'membership_invalid') await page.getByRole('button', { name: 'Check again', exact: true }).click()
+      await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+    } else await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
+    await page.getByLabel('Email used at checkout').fill('payer@example.test')
+    await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+    await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
+    expect(restorePosts).toBe(1)
+    await page.getByRole('button', { name: 'Back to membership', exact: true }).click()
+    await expect(page.locator('[data-journey-state="restore-pending"]')).toHaveCount(0)
+  })
+}
+
+test('restore feedback ignores a delayed submission for an account that changed meanwhile', async ({ extension, prepare }) => {
+  await prepare()
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: { ...snapshot('none'), checkoutEnabled: false } }))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
+  await expect(page.locator('[data-journey-state="checkout-closed"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+  await page.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    const fixture = window as unknown as { identityChanged?: boolean; releaseSubmission?: () => void }
+    chrome.runtime.sendMessage = ((message: { type?: string; action?: string }) => {
+      if (message.type === 'SUPPORTER_RESTORE' && message.action === 'start') return new Promise(resolve => { fixture.releaseSubmission = () => resolve({ type: 'SUPPORTER_RESTORE', restore: { state: 'unavailable', reason: 'membership_invalid' } }) })
+      if (fixture.identityChanged && message.type === 'SUPPORTER_ACCOUNT' && message.action === 'status') return Promise.resolve({ type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '77777777-7777-4777-8777-777777777777', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } })
+      if (fixture.identityChanged && message.type === 'SUPPORTER_ENTITLEMENT') return Promise.resolve({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'ready', status: 'none', features: [], supportPeriods: 0, validForMs: 0, cosmetics: { enabled: false, finish: 'glass' }, checkoutEnabled: false, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: true } })
+      return original(message)
+    }) as typeof chrome.runtime.sendMessage
+  })
+  await page.getByLabel('Email used at checkout').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Sending…', exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    ;(window as unknown as { identityChanged: boolean }).identityChanged = true
+    await chrome.storage.local.set({ pulseAccountRevision: crypto.randomUUID() })
+  })
+  await expect(page.getByText('··777777', { exact: true })).toBeVisible()
+  await page.evaluate(() => (window as unknown as { releaseSubmission: () => void }).releaseSubmission())
+  await expect(page.getByRole('button', { name: 'Restore my Supporter', exact: true })).toBeEnabled()
+  await expect(page.locator('[data-journey-state="restore-unavailable"]')).toHaveCount(0)
+  await expect(page.getByLabel('Email used at checkout')).toHaveCount(0)
+})
+
 test('worker confirms a payment with settings closed and no Twitch page', async ({ extension, prepare }, info) => {
   test.setTimeout(90_000)
   await prepare()
@@ -303,6 +418,11 @@ test('uncertain installation refresh retains its identity and restores after ren
   expect(installations).toBe(1)
   expect(refreshes).toBe(1)
   expect(restoreStarts).toBe(0)
+  await page.evaluate(async () => {
+    await chrome.storage.local.set({ pulseSupporterRevision: crypto.randomUUID() })
+    window.dispatchEvent(new Event('focus'))
+  })
+  await expect(page.locator('[data-journey-state="restore-unavailable"]')).toBeVisible()
   const retained = await extension.serviceWorker.evaluate(async expectedKey => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('pulse-account-private-v1', 1); r.onsuccess = () => resolve(r.result); r.onerror = reject })
     try {

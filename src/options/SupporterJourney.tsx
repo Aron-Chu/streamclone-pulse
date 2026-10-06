@@ -133,6 +133,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   const deviceRequest = useRef(0)
   const [payBusy, setPayBusy] = useState(false)
   const payInFlight = useRef(false)
+  const restoreInteraction = useRef(0)
   const [intent, setIntentState] = useState<Intent>(storedIntent)
   const setIntent = useCallback((value: Intent) => { storeIntent(value); setIntentState(value) }, [])
   const [watchUntil, setWatchUntil] = useState(0)
@@ -145,6 +146,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   // The membership on screen, for deciding whether a failed quiet read can keep it.
   const shown = useRef<SupporterEntitlement | null>(null)
   const lastAccount = useRef<SupporterAccountState | null>(null)
+  const lastLinkedAccountId = useRef<string | null>(null)
 
   useEffect(() => { onEntitlement?.(stale ? null : entitlement) }, [entitlement, stale, onEntitlement])
 
@@ -192,9 +194,19 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
       // The worker forgets why it cleared a credential, so a connection that
       // vanished without the user asking (revoked on the website, or rejected
       // by the server) is explained here rather than silently becoming an offer.
-      const previous = lastAccount.current?.state
+      const previousAccount = lastAccount.current
+      const previous = previousAccount?.state
       const vanished = (previous === 'linked' || previous === 'relink_required') && response.account.state === 'signed_out' && action !== 'disconnect' && action !== 'cancel'
       const next: SupporterAccountState = vanished ? { state: 'relink_required' } : response.account
+      const identityChanged = next.state === 'linked' ? lastLinkedAccountId.current !== null && next.accountId !== lastLinkedAccountId.current : next.state === 'signed_out' || next.state === 'relink_required' || next.state === 'denied' || next.state === 'expired'
+      if (lastLinkedAccountId.current !== null && identityChanged) {
+        restoreInteraction.current++
+        setRestore({ state: 'idle' }); setRestoreForm(false); setRestoreEmail('')
+      }
+      // An unavailable/error projection can retain the same installation while
+      // refresh is retried. Only an authoritative identity change clears it.
+      if (next.state === 'linked') lastLinkedAccountId.current = next.accountId
+      else if (identityChanged) lastLinkedAccountId.current = null
       lastAccount.current = next
       setAccount(next)
       if (action === 'disconnect' && response.account.state === 'error') {
@@ -214,13 +226,18 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   }, [])
 
   const readJourney = useCallback(async () => {
+    const interaction = restoreInteraction.current
     try {
       const [pay, recovery]: BackgroundResponse[] = await Promise.all([
         chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'status' }),
         chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'status' }),
       ])
       if (pay && 'type' in pay && pay.type === 'SUPPORTER_BILLING') setBilling(pay.billing)
-      if (recovery && 'type' in recovery && recovery.type === 'SUPPORTER_RESTORE') setRestore(recovery.restore)
+      if (interaction === restoreInteraction.current && recovery && 'type' in recovery && recovery.type === 'SUPPORTER_RESTORE') {
+        // Preflight failures have no pending worker journey. A quiet status
+        // read returning idle must not erase the error before it can be read.
+        setRestore(current => recovery.restore.state === 'idle' && (current.state === 'error' || current.state === 'unavailable' || current.state === 'ineligible') ? current : recovery.restore)
+      }
     } catch { /* Older workers retain the existing journey. */ }
   }, [])
   useEffect(() => { if (restore.state === 'restored') setRestoreForm(false) }, [restore.state])
@@ -369,8 +386,13 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   }
 
   async function leaveRestore() {
+    restoreInteraction.current++
     setRestoreForm(false); setRestoreEmail(''); setRestore({ state: 'idle' })
     await chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'cancel' }).catch(() => undefined)
+  }
+  function openRestoreForm() {
+    restoreInteraction.current++
+    setRestore({ state: 'idle' }); setRestoreEmail(''); setRestoreForm(true)
   }
 
   function disconnect() {
@@ -382,6 +404,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   }
 
   async function confirmDisconnection() {
+    await leaveRestore()
     setConfirmDisconnect(false); setIntent(null)
     await run('disconnect')
     await readJourney()
@@ -390,15 +413,17 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   async function startRestore(event: React.FormEvent) {
     event.preventDefault()
     if (payInFlight.current) return
-    payInFlight.current = true; setPayBusy(true); setNotice(''); setIntent(null); setWatchUntil(0)
+    const interaction = ++restoreInteraction.current
+    payInFlight.current = true; setPayBusy(true); setRestore({ state: 'idle' }); setNotice(''); setIntent(null); setWatchUntil(0)
     try {
       const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: restoreEmail.trim() })
+      if (interaction !== restoreInteraction.current) return
       setRestoreEmail('')
       if (!response || !('type' in response) || response.type !== 'SUPPORTER_RESTORE') throw new Error('restore unavailable')
       setRestore(response.restore)
       if (response.restore.state === 'fallback') { setRestoreForm(false); await begin('connect') }
       await run('status'); await readEntitlement(true)
-    } catch { setRestore({ state: 'unavailable' }) }
+    } catch { if (interaction === restoreInteraction.current) setRestore({ state: 'unavailable' }) }
     finally { payInFlight.current = false; setPayBusy(false) }
   }
 
@@ -422,9 +447,11 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
   }
   async function checkRestore() {
     if (payInFlight.current) return
+    const interaction = restoreInteraction.current
     payInFlight.current = true; setPayBusy(true)
     try {
       const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'check' })
+      if (interaction !== restoreInteraction.current) return
       if (response && 'type' in response && response.type === 'SUPPORTER_RESTORE') setRestore(response.restore)
       await run('status'); await readEntitlement(false)
     } finally { payInFlight.current = false; setPayBusy(false) }
@@ -510,11 +537,11 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     </>
     terms = true
     primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || payBusy} onClick={() => void purchase()}>{payBusy ? 'Preparing checkout…' : 'Become a Supporter'}</button>
-    secondary = [<button key="restore" type="button" disabled={accountBusy || payBusy} onClick={() => { setRestoreForm(true); setRestore({ state: 'idle' }) }}>Restore my Supporter</button>, <button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>{accountBusy && intent === 'connect' ? 'Preparing…' : 'Use a StreamPulse website account'}</button>]
+    secondary = [<button key="restore" type="button" disabled={accountBusy || payBusy} onClick={openRestoreForm}>Restore my Supporter</button>, <button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>{accountBusy && intent === 'connect' ? 'Preparing…' : 'Use a StreamPulse website account'}</button>]
     if (account.state === 'relink_required') {
       state = 'relink-required'; title = 'Restore this extension’s connection'; terms = false
       body = <p>This extension was disconnected from your Pulse account. Restore your existing membership or connect your website account before considering another subscription.</p>
-      primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || payBusy} onClick={() => { setRestoreForm(true); setRestore({ state: 'idle' }) }}>Restore my Supporter</button>
+      primary = <button className="pulse-journey-primary" type="button" disabled={accountBusy || payBusy} onClick={openRestoreForm}>Restore my Supporter</button>
       secondary = [<button key="connect" type="button" disabled={accountBusy || payBusy} onClick={() => void begin('connect')}>Use a StreamPulse website account</button>, <button key="new" type="button" disabled={accountBusy || payBusy} onClick={() => setConfirmNewMembership(true)}>Start a new membership</button>]
       if (confirmNewMembership) {
         state = 'confirm-new-membership'; title = 'Start a separate membership?'
@@ -623,7 +650,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     else if (billing.state === 'unavailable' || billing.state === 'error') { state = 'billing-unavailable'; title = 'Checkout is unavailable'; body = <p>The service could not prepare checkout. Your free tools still work.</p>; primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { setBilling({ state: 'idle' }); void checkAgain() }}>Try again</button> }
     else if (billing.state === 'reconnect_required') {
       state = 'previous-payment-unresolved'; title = 'Restore before another payment'; body = <p>A payment from your previous connection is still unresolved. Restore that membership or contact support. Disconnecting does not prove the payment failed.</p>
-      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => { setRestoreForm(true); setRestore({ state: 'idle' }) }}>Restore my Supporter</button>
+      primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={openRestoreForm}>Restore my Supporter</button>
       secondary = [<button key="connect" type="button" onClick={() => void begin('connect')}>Use a StreamPulse website account</button>, <a key="help" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a>]
       if (linked) secondary.push(<button key="check" type="button" disabled={payBusy} onClick={() => void checkPayment()}>Check payment status</button>)
     }
@@ -634,15 +661,16 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     terms = false
     body = <><p>New Supporter sign-ups are temporarily unavailable.</p>{isSupporter ? <p>Your Supporter access and membership management still apply.</p> : null}</>
   }
-  if (linked && restoreEligible && !restoreForm && restore.state === 'idle') secondary.push(<button key="restore-linked" type="button" disabled={payBusy} onClick={() => { setRestoreForm(true); setRestore({ state: 'idle' }) }}>Restore my Supporter</button>)
-  const restoreCanTakeFocus = entitlement?.state !== 'ready' || entitlement.restoreEligible !== false && !isSupporter
+  if (linked && restoreEligible && !restoreForm && restore.state === 'idle') secondary.push(<button key="restore-linked" type="button" disabled={payBusy} onClick={openRestoreForm}>Restore my Supporter</button>)
+  const restoreFailed = restore.state === 'ineligible' || restore.state === 'conflict' || restore.state === 'unavailable' || restore.state === 'error'
+  const restoreCanTakeFocus = entitlement?.state !== 'ready' || !isSupporter && (entitlement.restoreEligible !== false || restoreFailed)
   if (restoreCanTakeFocus && (restore.state === 'pending' || restore.state === 'uncertain' || restore.state === 'expired' || restore.state === 'conflict' || restore.state === 'ineligible' || restore.state === 'unavailable' || restore.state === 'error')) {
     steps = null; terms = false; primary = null; secondary = []
     state = `restore-${restore.state}`
     title = restore.state === 'pending' ? 'Check your email' : restore.state === 'uncertain' ? 'Checking your restore request' : restore.state === 'expired' ? 'Restore link expired' : restore.state === 'conflict' || restore.state === 'ineligible' ? 'Restore is unavailable for this connection' : 'Restore could not be prepared'
     if (restore.state === 'pending') primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkRestore()}>Check restore status</button>
-    body = <>{restore.state === 'pending' ? <><p>If that email has a recoverable membership, we sent a link. Confirm only when the code on that page matches this extension:</p><p className="pulse-account-link-code">{restore.comparisonCode}</p><p>This extension updates by itself. Never confirm a restore you did not request.</p></> : <p>{restore.state === 'uncertain' ? 'The request may have reached the server and sent an email. Check this same request to collect its confirmation code; do not request another link yet.' : restore.state === 'conflict' || restore.state === 'ineligible' ? 'This connection cannot restore another membership. A website account uses its normal sign-in and extension link; a connection with payment history cannot be combined. Contact support if you are unsure.' : restore.state === 'expired' ? 'Request a new link when you are ready.' : restore.state === 'error' ? 'The server has no recoverable request. Enter your email again to start a new request.' : 'Try again when the account service is available.'}</p>}</>
-    if (restore.state === 'expired' || restore.state === 'unavailable' || restore.state === 'error') primary = <button className="pulse-journey-primary" type="button" onClick={() => { setRestore({ state: 'idle' }); setRestoreForm(true) }}>Try restore again</button>
+    body = <>{restore.state === 'pending' ? <><p>If that email has a recoverable membership, we sent a link. Confirm only when the code on that page matches this extension:</p><p className="pulse-account-link-code">{restore.comparisonCode}</p><p>This extension updates by itself. Never confirm a restore you did not request.</p></> : <p>{restore.state === 'uncertain' ? 'The request may have reached the server and sent an email. Check this same request to collect its confirmation code; do not request another link yet.' : restore.state === 'conflict' || restore.state === 'ineligible' ? 'This connection cannot restore another membership. A website account uses its normal sign-in and extension link; a connection with payment history cannot be combined. Contact support if you are unsure.' : restore.state === 'expired' ? 'Request a new link when you are ready.' : restore.state === 'error' ? 'The restore request could not be prepared. Enter your email again to try again.' : restore.state === 'unavailable' && restore.reason === 'connection' ? 'This extension’s connection could not be prepared. Try again when the account service is available.' : restore.state === 'unavailable' && restore.reason === 'membership_invalid' ? 'The membership response could not be verified. No restore link was requested. Try again or contact support if this continues.' : restore.state === 'unavailable' && restore.reason === 'environment_mismatch' ? 'This build cannot restore membership from this billing environment. No restore link was requested.' : restore.state === 'unavailable' && restore.reason === 'membership' ? 'Your membership could not be checked. No restore link was requested. Try again when the account service is available.' : 'Try again when the account service is available.'}</p>}</>
+    if (restore.state === 'expired' || restore.state === 'unavailable' || restore.state === 'error') primary = <button className="pulse-journey-primary" type="button" onClick={openRestoreForm}>Try restore again</button>
     if (restore.state === 'uncertain') primary = <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void checkRestore()}>Check restore request</button>
     if (restore.state === 'conflict' || restore.state === 'ineligible') primary = <a className="pulse-journey-primary" href={POLICY_LINKS.support} target="_blank" rel="noopener noreferrer">Contact support</a>
     secondary = [<button key="back" type="button" onClick={() => void leaveRestore()}>Back to membership</button>]
@@ -674,7 +702,7 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
         {restoreForm && restore.state === 'idle' ? <form onSubmit={event => void startRestore(event)} className="pulse-journey-restore">
           <label htmlFor="supporter-restore-email">Email used at checkout</label>
           <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={restoreEmail} onChange={event => setRestoreEmail(event.target.value)} disabled={payBusy} />
-          <div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-journey-primary" type="submit" disabled={payBusy}>{payBusy ? 'Sending…' : 'Send restore link'}</button><button type="button" disabled={payBusy} onClick={() => { setRestoreEmail(''); setRestoreForm(false) }}>Back</button></div>
+          <div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-journey-primary" type="submit" disabled={payBusy}>{payBusy ? 'Sending…' : 'Send restore link'}</button><button type="button" disabled={payBusy} onClick={() => void leaveRestore()}>Back</button></div>
         </form> : null}
         {linked ? (
           <div className="pulse-journey-connection">
