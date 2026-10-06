@@ -95,18 +95,19 @@ test('pay first opens only Stripe, delayed payment activates a chosen finish on 
   await cdp.detach()
 })
 
-for (const failure of ['connection', 'membership_invalid', 'ineligible'] as const) {
+for (const failure of ['connection', 'membership', 'membership_invalid', 'ineligible'] as const) {
   test(`restore feedback survives quiet refresh after ${failure} and clears on retry or Back`, async ({ extension, prepare }) => {
     await prepare()
     let failing = true, restorePosts = 0
     await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill(failing && failure === 'connection' ? { status: 503, json: { error: 'request_unavailable' } } : { status: 201, json: credential() }))
-    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: {
+    await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill(failing && failure === 'membership' ? { status: 503, json: { error: 'billing_unavailable' } } : { json: {
       ...snapshot('none'),
       ...(failing && failure === 'membership_invalid' ? { revision: 'invalid' } : {}),
       ...(failing && failure === 'ineligible' ? { restoreEligible: false } : {}),
     } }))
     await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
       restorePosts++
+      expect(route.request().postDataJSON().email).toBe('payer@example.test')
       return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
     })
     await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => route.fulfill({ json: { state: 'pending' } }))
@@ -118,6 +119,7 @@ for (const failure of ['connection', 'membership_invalid', 'ineligible'] as cons
     const state = failure === 'ineligible' ? 'restore-ineligible' : 'restore-unavailable'
     await expect(page.locator(`[data-journey-state="${state}"]`)).toBeVisible()
     if (failure === 'connection') await expect(page.getByText('This extension’s connection could not be prepared.', { exact: false })).toBeVisible()
+    if (failure === 'membership') await expect(page.getByText('Your membership could not be checked.', { exact: false })).toBeVisible()
     if (failure === 'membership_invalid') await expect(page.getByText('The membership response could not be verified.', { exact: false })).toBeVisible()
     // These are the same non-secret revision signals emitted by the real worker.
     await page.evaluate(async () => {
@@ -151,9 +153,10 @@ for (const failure of ['connection', 'membership_invalid', 'ineligible'] as cons
       }
       const releaseRead = () => page.evaluate(() => (window as unknown as { releaseRestoreRead: () => void }).releaseRestoreRead())
       await holdRead()
-      await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
+      await page.getByRole('button', { name: 'Use another email', exact: true }).click()
       await releaseRead()
       await expect(page.getByLabel('Email used at checkout')).toBeVisible()
+      await expect(page.getByLabel('Email used at checkout')).toHaveValue('')
       await holdRead()
       await page.getByRole('button', { name: 'Back', exact: true }).click()
       await releaseRead()
@@ -167,13 +170,20 @@ for (const failure of ['connection', 'membership_invalid', 'ineligible'] as cons
       await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
       if (failure === 'membership_invalid') await page.getByRole('button', { name: 'Check again', exact: true }).click()
       await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
-    } else await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
-    await page.getByLabel('Email used at checkout').fill('payer@example.test')
-    await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+      await page.getByLabel('Email used at checkout').fill('payer@example.test')
+      await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+    } else {
+      // A retry after a proven preflight failure actually sends the request;
+      // it must not require another email entry or another form submission.
+      await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
+    }
     await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
     expect(restorePosts).toBe(1)
     await page.getByRole('button', { name: 'Back to membership', exact: true }).click()
     await expect(page.locator('[data-journey-state="restore-pending"]')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+    await expect(page.getByLabel('Email used at checkout')).toHaveValue('')
+    expect(restorePosts).toBe(1)
   })
 }
 
@@ -198,7 +208,7 @@ test('restore feedback ignores a delayed submission for an account that changed 
   })
   await page.getByLabel('Email used at checkout').fill('payer@example.test')
   await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sending…', exact: true })).toBeVisible()
+  await expect(page.getByText('Preparing your restore', { exact: true })).toBeVisible()
   await page.evaluate(async () => {
     ;(window as unknown as { identityChanged: boolean }).identityChanged = true
     await chrome.storage.local.set({ pulseAccountRevision: crypto.randomUUID() })
@@ -451,8 +461,6 @@ test('uncertain installation refresh retains its identity and restores after ren
   expect(recovered.account).toMatchObject({ state: 'linked', accountId: ACCOUNT })
   expect(refreshes).toBe(2)
   await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
-  await page.getByLabel('Email used at checkout').fill('payer@example.test')
-  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
   await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible()
   expect(installations).toBe(1)
   expect(restoreStarts).toBe(1)
@@ -541,8 +549,36 @@ test('a successful slow restore response outlasts the former twelve-second deadl
   await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
   await page.getByLabel('Email used at checkout').fill('payer@example.test')
   await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-sending"]')).toBeVisible()
+  await expect(page.getByText('Preparing your restore', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Email used at checkout')).toHaveCount(0)
   await expect(page.locator('[data-journey-state="restore-pending"]')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+})
+
+test('a restore that may have been sent never reuses the email for a retry', async ({ extension, prepare }) => {
+  await prepare()
+  const bodies: Array<Record<string, unknown>> = []
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot('none') }))
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    bodies.push(body)
+    return body.email ? route.abort('failed') : route.fulfill({ status: 404, json: { error: 'restore_request_not_found' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Restore my Supporter', exact: true }).click()
+  await page.getByLabel('Email used at checkout').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-uncertain"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Use another email', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Check restore request', exact: true }).click()
+  await expect(page.locator('[data-journey-state="restore-error"]')).toBeVisible()
+  expect(bodies).toEqual([{ restoreKey: expect.any(String), email: 'payer@example.test' }, { restoreKey: bodies[0].restoreKey }])
+  await page.getByRole('button', { name: 'Try restore again', exact: true }).click()
+  await expect(page.getByLabel('Email used at checkout')).toHaveValue('')
+  expect(bodies).toHaveLength(2)
 })
 
 test('lost Checkout response recovers on explicit check without a second provider navigation', async ({ extension, prepare }) => {
