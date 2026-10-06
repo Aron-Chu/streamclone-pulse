@@ -105,6 +105,10 @@
 .moments-tabs-four[data-view="recent"] .moments-tab-indicator { transform: translateX(100%); }
 .moments-tabs-four[data-view="history"] .moments-tab-indicator { transform: translateX(200%); }
 .moments-tabs-four[data-view="saved"] .moments-tab-indicator { transform: translateX(300%); }
+/* Latest + Saved only, while ranked Explore and History are not deployed. */
+.moments-tabs.moments-tabs-two { grid-template-columns: repeat(2, minmax(6.5rem, 1fr)); }
+.moments-tabs-two .moments-tab-indicator { width: calc((100% - 8px) / 2); }
+.moments-tabs-two[data-view="saved"] .moments-tab-indicator { transform: translateX(100%); }
 .moments-explore { min-width: 0; }
 .moments-explore-toolbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; padding-block: 12px; }
 .moments-explore-toolbar label { display: grid; min-width: 0; gap: 5px; color: var(--fma-muted); font-size: 12px; }
@@ -436,6 +440,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 
 @media (max-width: 480px) {
   .moments-tabs { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .moments-tabs.moments-tabs-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .moments-tabs > button { padding-inline: 7px; }
   .moments-toolbar { grid-template-columns: minmax(0, 1fr); }
   .moments-date-range { grid-template-columns: minmax(0, 1fr); grid-column: auto; }

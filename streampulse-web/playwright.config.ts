@@ -5,6 +5,7 @@ const MOCKED = process.env.PORTAL_E2E_MOCKED === '1'
 const AUDIT_PREVIEW = process.env.PORTAL_E2E_AUDIT_PREVIEW === '1'
 const MOCKED_BASE_URL = 'http://127.0.0.1:4173'
 const AUDIT_BASE_URL = 'http://127.0.0.1:4174'
+const E2E_NEWSROOM_WINDOWS = process.env.VITE_PUBLIC_NEWSROOM_WINDOWS?.trim() || 'live,24h,7d'
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -46,6 +47,8 @@ export default defineConfig({
             VITE_BACKEND_URL: HOSTED_API_URL,
             // Keep analytics polling short for clock-controlled tests without changing prod defaults.
             VITE_PORTAL_E2E_POLL_MS: '1000',
+            // Mocked Explorer specs exercise every window; production builds opt in per deployment.
+            VITE_PUBLIC_NEWSROOM_WINDOWS: E2E_NEWSROOM_WINDOWS,
           },
         }
       : AUDIT_PREVIEW
@@ -63,6 +66,7 @@ export default defineConfig({
           env: {
             ...process.env,
             VITE_BACKEND_URL: HOSTED_API_URL,
+            VITE_PUBLIC_NEWSROOM_WINDOWS: E2E_NEWSROOM_WINDOWS,
           },
         },
   projects: MOCKED

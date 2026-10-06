@@ -20,9 +20,9 @@ import {
   type ExplorerSort,
   type ExplorerState,
 } from '../../lib/explorer'
-import { buildVodTimestampUrl } from '../../lib/figmaSessionAnalytics'
+import { checkMomentSource, fromHubMoment } from '../../lib/discoveryMoments'
 import { formatApproximate, formatRelativeTime } from '../../lib/formatStats'
-import { newsroomDataThroughAge, type NewsroomExternalSource, type NewsroomUpdate, type NewsroomWindow } from '../../lib/newsroom'
+import { configuredNewsroomWindows, newsroomDataThroughAge, type NewsroomExternalSource, type NewsroomUpdate, type NewsroomWindow } from '../../lib/newsroom'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { Avatar } from '../../ui/components/hub/primitives'
 import { ResilientImage } from '../../ui/components/ResilientImage'
@@ -202,6 +202,19 @@ function ExplorerStatePanel({
   )
 }
 
+/** A build that has not opted into a history window sends no request for it. */
+function ExplorerWindowUnavailablePanel({ range, liveHref }: { range: NewsroomWindow; liveHref: string }) {
+  const label = range === '24h' ? '24-hour' : '7-day'
+  return (
+    <div className="explorer-state explorer-state--unavailable" role="status">
+      <Radio aria-hidden="true" />
+      <strong>{label} history is unavailable</strong>
+      <span>{label} Explorer history is not available from this portal deployment. Live broadcasts remain available.</span>
+      <Link to={liveHref}>Show live broadcasts</Link>
+    </div>
+  )
+}
+
 function BroadcastResult({ broadcast, selected, href }: { broadcast: ExplorerBroadcast; selected: boolean; href: string }) {
   return (
     <Link className="explorer-result" data-selected={selected || undefined} aria-current={selected ? 'page' : undefined} to={href}>
@@ -230,14 +243,41 @@ function BroadcastResult({ broadcast, selected, href }: { broadcast: ExplorerBro
   )
 }
 
+/**
+ * The Explorer row supplies a VOD ID but no alignment, and its offset is from our
+ * tracked start. Like the Moments review, only the exact-source check can place
+ * the VOD timestamp; without a verified mapping there is no replay link.
+ */
+function useVerifiedReplayHref(broadcast: ExplorerBroadcast) {
+  const anchor = broadcast.strongestMoment
+  const key = broadcast.state === 'ended' && anchor.vodId
+    ? JSON.stringify([broadcast.login, broadcast.streamId, anchor.momentRef.offsetSeconds, anchor.momentRef.publicMomentId]) : ''
+  const [result, setResult] = useState<{ key: string; href: string | null } | null>(null)
+  useEffect(() => {
+    if (!key) return
+    const moment = fromHubMoment({ login: broadcast.login, streamId: broadcast.streamId, offsetSeconds: anchor.momentRef.offsetSeconds,
+      publicMomentId: anchor.momentRef.publicMomentId, label: anchor.headline })
+    if (!moment) { setResult({ key, href: null }); return }
+    const controller = new AbortController()
+    void checkMomentSource(moment, controller.signal)
+      .then((source) => { if (!controller.signal.aborted) setResult({ key, href: source.vodHref }) })
+      .catch(() => { if (!controller.signal.aborted) setResult({ key, href: null }) })
+    return () => controller.abort()
+    // The key carries every identity field the check reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  return { checking: Boolean(key) && result?.key !== key, href: result?.key === key ? result.href : null }
+}
+
 function BroadcastActions({ broadcast, query }: { broadcast: ExplorerBroadcast; query: ExplorerQuery }) {
   const [copied, setCopied] = useState(false)
   const anchor = broadcast.strongestMoment
   const analytics = `/analytics/${encodeURIComponent(broadcast.login)}/${encodeURIComponent(broadcast.streamId)}?t=${Math.floor(anchor.momentRef.offsetSeconds)}`
+  const replay = useVerifiedReplayHref(broadcast)
   const watch = broadcast.state === 'live'
     ? { href: `https://www.twitch.tv/${encodeURIComponent(broadcast.login)}`, label: 'Watch live' }
-    : anchor.vodId
-      ? { href: buildVodTimestampUrl(anchor.vodId, anchor.momentRef.offsetSeconds), label: 'Watch VOD' }
+    : replay.href
+      ? { href: replay.href, label: 'Watch VOD' }
       : null
   const copy = async () => {
     const path = withSearch(`/analytics/explore/${encodeURIComponent(broadcast.id)}`, paramsFromQuery(query))
@@ -252,7 +292,7 @@ function BroadcastActions({ broadcast, query }: { broadcast: ExplorerBroadcast; 
   return (
     <div className="explorer-actions" role="group" aria-label="Broadcast actions">
       <Link to={analytics}><BarChart3 aria-hidden="true" />Analytics</Link>
-      {watch ? <a href={watch.href} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />{watch.label}</a> : <span className="explorer-actions__disabled">Replay unavailable</span>}
+      {watch ? <a href={watch.href} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />{watch.label}</a> : <span className="explorer-actions__disabled">{replay.checking ? 'Checking replay…' : 'Replay unavailable'}</span>}
       <button type="button" onClick={copy}>{copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{copied ? 'Copied' : 'Copy link'}</button>
     </div>
   )
@@ -369,10 +409,13 @@ export default function AnalyticsExplorerPage() {
   const navigate = useNavigate()
   const query = useMemo(() => queryFromParams(searchParams), [searchParams])
   const [searchDraft, setSearchDraft] = useState(query.q ?? '')
-  const list = useExplorerData(query)
+  // 24h/7d are opt-in per build (VITE_PUBLIC_NEWSROOM_WINDOWS); live is always available.
+  const configuredWindows = configuredNewsroomWindows()
+  const windowAvailable = configuredWindows.has(query.window)
+  const list = useExplorerData({ ...query, enabled: windowAvailable })
   const defaultBroadcast = list.data?.broadcasts[0] ?? null
   const selectedId = broadcastId || defaultBroadcast?.id
-  const detail = useExplorerData({ ...query, broadcastId: selectedId, enabled: Boolean(selectedId) })
+  const detail = useExplorerData({ ...query, broadcastId: selectedId, enabled: windowAvailable && Boolean(selectedId) })
   const selectedFromList = selectedId
     ? list.data?.broadcasts.find((item) => item.id === selectedId) ?? null
     : defaultBroadcast
@@ -404,21 +447,21 @@ export default function AnalyticsExplorerPage() {
     replaceQuery({ q: searchDraft.trim() || undefined })
   }
   const dataAge = newsroomDataThroughAge(list.data?.dataThrough)
-  const statusTone = list.unavailable ? 'offline' : list.data?.status === 'stale' ? 'degraded' : 'ready'
+  const statusTone = !windowAvailable || list.unavailable ? 'offline' : list.data?.status === 'stale' ? 'degraded' : 'ready'
   const network = list.data?.networkContext
   const hasNetworkComparison = Boolean(network && network.comparableChannels > 0 && (network.chatChangePct != null || network.emoteChangePct != null))
-  const singleWorkspaceState = list.unavailable || list.data?.status === 'empty'
+  const singleWorkspaceState = !windowAvailable || list.unavailable || list.data?.status === 'empty'
 
   return (
     <AnalyticsFigmaShell
       hideSidebar
       backendStatus={{
         label: 'Explorer',
-        value: list.loading ? 'Checking' : list.unavailable ? 'Unavailable' : list.data?.status === 'empty' ? 'Quiet' : list.data?.status === 'stale' ? 'Stale' : 'Ready',
+        value: list.loading ? 'Checking' : !windowAvailable || list.unavailable ? 'Unavailable' : list.data?.status === 'empty' ? 'Quiet' : list.data?.status === 'stale' ? 'Stale' : 'Ready',
         tone: list.loading ? 'checking' : statusTone,
       }}
     >
-      <main id="analytics-main" className={`pulse-explorer${broadcastId ? ' pulse-explorer--detail-route' : ''}`} aria-label="Pulse Explorer">
+      <main id="analytics-main" className={`pulse-explorer${broadcastId && windowAvailable ? ' pulse-explorer--detail-route' : ''}`} aria-label="Pulse Explorer">
         <span className="sr-only" aria-live="polite" aria-atomic="true">{list.announcement}</span>
         <header className="pulse-explorer__hero">
           <div>
@@ -448,7 +491,9 @@ export default function AnalyticsExplorerPage() {
             <input id="explorer-search" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Search channel or category" />
             <button type="submit">Search</button>
           </form>
-          <label><span>Range</span><select aria-label="Range" value={query.window} onChange={(event) => replaceQuery({ window: event.target.value as NewsroomWindow })}>{WINDOWS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label><span>Range</span><select aria-label="Range" value={query.window} onChange={(event) => replaceQuery({ window: event.target.value as NewsroomWindow })}>{WINDOWS.map((item) => configuredWindows.has(item.value)
+            ? <option key={item.value} value={item.value}>{item.label}</option>
+            : <option key={item.value} value={item.value} disabled>{item.label} (unavailable)</option>)}</select></label>
           <label><span>Signal</span><select aria-label="Signal" value={query.signal} onChange={(event) => replaceQuery({ signal: event.target.value as ExplorerSignal })}>{SIGNALS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label><span>Category</span><select aria-label="Category" value={query.category ?? ''} onChange={(event) => replaceQuery({ category: event.target.value || undefined })}><option value="">All categories</option>{list.data?.facets.categories.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select></label>
           <label><span>Stream state</span><select aria-label="Stream state" value={query.state} onChange={(event) => replaceQuery({ state: event.target.value as ExplorerState })}>{STATES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
@@ -464,6 +509,7 @@ export default function AnalyticsExplorerPage() {
               <small>{list.refreshing ? 'Refreshing…' : dataAge}</small>
             </header>
             <div className="explorer-results__scroll analytics-scroll-hidden">
+              {!windowAvailable ? <ExplorerWindowUnavailablePanel range={query.window} liveHref={withSearch('/analytics/explore', paramsFromQuery({ ...query, window: 'live' }))} /> : null}
               {list.loading && !list.data ? <ExplorerStatePanel kind="loading" /> : null}
               {list.unavailable ? <ExplorerStatePanel kind="unavailable" reason={list.error || list.data?.reason} onRetry={list.refresh} /> : null}
               {list.data?.status === 'empty' ? <ExplorerStatePanel kind="empty" reason={list.data.reason} /> : null}

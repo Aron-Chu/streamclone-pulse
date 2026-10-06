@@ -172,6 +172,8 @@ test('tab switches retain each view’s filters and keep the tab row steady', as
 
 test('Moment view tabs support roving keyboard focus and expose the selected panel', async ({ page }) => {
   await installHubUxMock(page)
+  // Deployed but down: all four tabs stay, with their unavailable panels.
+  await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'discovery_unavailable' } }))
   await page.goto('/analytics/moments?view=recent')
   const tabs = page.getByRole('tablist', { name: 'Moment views' })
   await expect(tabs.getByRole('tab')).toHaveCount(4)
@@ -197,6 +199,44 @@ test('Moment view tabs support roving keyboard focus and expose the selected pan
   await expect(explore).toHaveAttribute('aria-selected', 'true')
   await explore.press('ArrowLeft')
   await expect(saved).toBeFocused()
+})
+
+test('Latest hides undeployed ranked views after its first screen; bookmarks keep their panel', async ({ page }, testInfo) => {
+  await page.route('**/v1/**', route => route.fulfill({ json: {} }))
+  await installHubUxMock(page)
+  const availabilityReads: string[] = []
+  await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => {
+    availabilityReads.push(route.request().url())
+    return route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found\n' })
+  })
+  await page.goto('/analytics/moments')
+  const tabs = page.getByRole('tablist', { name: 'Moment views' }).getByRole('tab')
+  await expect(page.locator('.moments-result').first()).toBeVisible()
+  // The first screen is Latest + Saved and makes no discovery read.
+  expect(availabilityReads).toHaveLength(0)
+  await expect(tabs).toHaveText(['Latest', /^Saved/])
+  await expect.poll(() => availabilityReads.length).toBe(1)
+  await expect(tabs).toHaveText(['Latest', /^Saved/])
+  await expect(page.getByRole('link', { name: 'History', exact: true })).toHaveCount(0)
+  await expect(page.locator('.moments-result').first().getByRole('link', { name: /^All .+ broadcasts$/ })).toHaveAttribute('href', /^\/analytics\/[a-z0-9_]+$/)
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`moments-two-tabs-${width}.png`) })
+  }
+  // One read per session: Saved reuses the answer.
+  await tabs.filter({ hasText: /^Saved/ }).click()
+  await page.waitForTimeout(2_500)
+  expect(availabilityReads).toHaveLength(1)
+  await expect(tabs).toHaveText(['Latest', /^Saved/])
+  for (const view of ['explore', 'history']) {
+    await page.goto(`/analytics/moments?view=${view}`)
+    await expect(page.getByText(/not deployed on this server/).first()).toBeVisible()
+    await expect(tabs).toHaveText(view === 'explore' ? ['Explore', 'Latest', /^Saved/] : ['Latest', 'History', /^Saved/])
+    await page.screenshot({ path: testInfo.outputPath(`moments-bookmarked-${view}.png`) })
+    await page.getByRole('link', { name: 'Browse Latest moments' }).first().click()
+    await expect(tabs).toHaveText(['Latest', /^Saved/])
+  }
 })
 
 test('saving a Moment keeps the control under the pointer', async ({ page }) => {

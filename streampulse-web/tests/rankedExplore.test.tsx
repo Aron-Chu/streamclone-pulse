@@ -8,6 +8,7 @@ import { RankedExploreControls } from '../src/ui/components/moments/RankedExplor
 import { normalizeApiError } from '../src/lib/apiClient'
 import { usePublicHubData } from '../src/hooks/usePublicHubData'
 import { useRankedRetention } from '../src/hooks/useDiscoveryCatalogue'
+import { clearRankedFeatureCheckForTests } from '../src/hooks/useRankedFeatureAvailability'
 
 vi.mock('../src/hooks/useMomentProfiles', () => ({ useMomentProfiles: (rows: unknown) => rows }))
 vi.mock('../src/hooks/usePublicHubData', () => ({ usePublicHubData: vi.fn(() => ({ data: null, loading: false })) }))
@@ -35,6 +36,7 @@ function certifiedAvailability(from: string): availabilityTransport.RankedAvaila
 afterEach(async () => {
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
   vi.restoreAllMocks()
+  clearRankedFeatureCheckForTests()
 })
 it('defaults to Latest without requesting undeployed ranked discovery', async () => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
@@ -67,9 +69,8 @@ it('reports undeployed Explore on plain-text 404 and offers a working Latest rou
   fireEvent.click(screen.getByRole('link', { name: 'Browse Latest moments' }))
   expect(screen.getByRole('tab', { name: 'Latest' }).getAttribute('aria-selected')).toBe('true')
   expect(screen.queryByLabelText('Ranked order')).toBeNull()
-  fireEvent.click(screen.getByRole('tab', { name: 'Explore' }))
-  expect(screen.getByRole('tab', { name: 'Explore' }).getAttribute('aria-selected')).toBe('true')
-  await screen.findByText(/Ranked history is not deployed on this server yet/)
+  // The bookmarked view's 404 hides both ranked tabs for the rest of the session.
+  expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Latest', 'Saved (0)'])
 })
 it('hides filters that cannot apply when ranked Explore is not deployed', async () => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})

@@ -298,7 +298,7 @@ export default function Landing() {
             <div className="sl-section-head" data-reveal>
               <h2 id="roadmap-title">Roadmap</h2>
               <p>
-                Available today and the next focused step. ReplayForge access remains gated while the authorized moment-to-clip journey is verified.
+                Available today and the next focused step. ReplayForge is for channel owners clipping their own broadcasts; access remains gated while the authorized moment-to-clip journey is verified.
               </p>
             </div>
             <div data-reveal>

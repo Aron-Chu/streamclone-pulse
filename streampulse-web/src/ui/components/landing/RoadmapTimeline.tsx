@@ -28,7 +28,7 @@ const ITEMS: RoadmapItem[] = [
     tag: 'ReplayForge',
     status: 'Planned',
     state: 'planned',
-    copy: 'Next: an authorized moment-to-clip handoff, preview, focused editing, and download. Access and source permissions are required; no public launch date is promised.',
+    copy: 'Next, for channel owners: an authorized moment-to-clip handoff, preview, focused editing, and download for their own broadcasts. Access and source permissions are required; no public launch date is promised.',
   },
 ]
 

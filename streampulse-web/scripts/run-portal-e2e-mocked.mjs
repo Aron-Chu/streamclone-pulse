@@ -14,6 +14,8 @@ const env = {
   ...process.env,
   PORTAL_E2E_MOCKED: '1',
   VITE_BACKEND_URL: process.env.VITE_BACKEND_URL?.trim() || 'https://api.streampulse.stream',
+  // Mocked Explorer specs exercise 24h/7d; production builds leave them off unless configured.
+  VITE_PUBLIC_NEWSROOM_WINDOWS: process.env.VITE_PUBLIC_NEWSROOM_WINDOWS?.trim() || 'live,24h,7d',
 }
 
 const extra = process.argv.slice(2)
