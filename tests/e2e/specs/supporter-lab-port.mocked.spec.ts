@@ -62,7 +62,7 @@ async function expectCannedChat(stage: Locator) {
   for (const src of await stage.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(EMOTE_SRC)
 }
 
-test('quick settings: non-Supporters get Your Line · Anatomy, injected on demand, with hover labels and a peak', async ({ extension, prepare }, info) => {
+test('quick settings: non-Supporters get Your Line · Anatomy, injected on demand, with no labels over the line and a peak', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
   const page = extension.page
   const root = await openQuickSettingsAt305(page)
@@ -84,11 +84,9 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await page.waitForTimeout(1600)
   await capture(card, info, 'ext-card-anatomy-rest.png')
 
-  // Hover brings your line in last, freezes chat and labels the three parts of it.
+  // Hover brings your line in last and freezes chat; no labels are drawn over it.
   await card.hover()
-  const callouts = stage.locator('.spk-callouts')
-  await expect(callouts).toHaveClass(/spk-on/)
-  await expect(callouts.locator('.spk-co')).toHaveText(['Crest · 12 months', 'Etched paint', 'Signature emote'])
+  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
   await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
   const frozen = await stage.locator('.spk-cl').count()
   await page.waitForTimeout(900)
@@ -98,10 +96,10 @@ test('quick settings: non-Supporters get Your Line · Anatomy, injected on deman
   await expect(stage.locator('.spk-cl').last()).toHaveClass(/spk-sup/)
   await page.mouse.move(5, 5)
 
-  // A peak (the lab's timer: 10 s in): three quick lines, then yours, labelled.
+  // A peak (the lab's timer: 10 s in): three quick lines, then yours.
   await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
   await expect(stage.locator('.spk-cl.spk-sup', { hasText: 'that peak was mine' }).last()).toBeAttached()
-  await expect(callouts).toHaveClass(/spk-on/)
+  await expect(stage.locator('.spk-callouts, .spk-co')).toHaveCount(0)
   await page.waitForTimeout(500)
   await capture(card, info, 'ext-card-anatomy-peak.png')
   await expectCannedChat(stage)

@@ -31,13 +31,8 @@ export const CHAT_STACK_CSS = `${KIT_CSS}
 .spk-cl.spk-sheen::after { animation: spk-sheen 900ms ease-out 1 forwards; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%); background-size: 250% 100%; content: ""; inset: 0; pointer-events: none; position: absolute; }
 @keyframes spk-sheen { from { background-position: 130% 0; } to { background-position: -60% 0; } }
 .spk-chip { align-items: center; background: rgba(13, 13, 18, 0.92); border: 1px solid rgba(var(--spk-fin-rgb), 0.55); border-radius: 999px; color: var(--spk-fin-core); display: flex; font: 800 9.5px/14px ${FONT}; gap: 4px; height: 15px; padding: 0 6px; position: absolute; right: 8px; top: 1.5px; }
-.spk-callouts { inset: 0; pointer-events: none; position: absolute; z-index: 3; }
-.spk-co { background: var(--spk-fin-core); border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); color: #0b0b0f; font: 800 9.5px/1 ${FONT}; left: 0; letter-spacing: 0.01em; opacity: 0; padding: 3px 6px; position: absolute; top: 0; transition: opacity 180ms; white-space: nowrap; }
-.spk-co::after { background: var(--spk-fin-core); content: ""; height: var(--lh, 6px); left: var(--lx, 50%); position: absolute; top: 100%; width: 1px; }
-.spk-co.spk-below::after { bottom: 100%; top: auto; }
-.spk-callouts.spk-on .spk-co { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .spk-cl, .spk-co, .pulse-settings-supporter-cta::before { transition: none; }
+  .spk-cl, .pulse-settings-supporter-cta::before { transition: none; }
   .spk-paint, .spk-cl.spk-sheen::after { animation: none; }
 }
 `

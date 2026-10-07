@@ -156,7 +156,7 @@ describe('quick-settings Supporter card shell (content script)', () => {
 })
 
 describe('Your Line, drawn by content/supporter-card.js', () => {
-  it('Anatomy: the lab sample kit, a spotlight line every sixth, hover labels on the three parts, and chat frozen while hovered', async () => {
+  it('Anatomy: the lab sample kit, a spotlight line every sixth, no labels over the line, and chat frozen while hovered', async () => {
     stubExtension()
     stored = { supporterSignatureEmote: 'PartyParrot' }
     const card = cardStage()
@@ -178,11 +178,10 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
     }
 
     card.host.dispatchEvent(new Event('pointerenter'))
-    const callouts = card.stage.querySelector('.spk-callouts')!
     expect([...card.stage.querySelectorAll('.spk-cl')].at(-1)?.classList.contains('spk-sup')).toBe(true)
     runFrames(1)
-    expect(callouts.classList.contains('spk-on')).toBe(true)
-    expect([...callouts.querySelectorAll('.spk-co')].map(text)).toEqual(['Crest · 12 months', 'Etched paint', 'Signature emote'])
+    // Nothing is drawn over the demo line.
+    expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
     card.added()
     runFrames(200)
     expect(card.added()).toHaveLength(0)
@@ -315,11 +314,11 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
       expect(sevenTv.every(src => src.endsWith('/2x_static.webp'))).toBe(true)
       // A Supporter's still frame shows the crest they hold, not the bottom of the climb.
       if (options.mode === 'tenure') expect(lines.at(-1)!.querySelector('.spk-chip')!.textContent).toBe('Two-year pinnacle · 24 mo')
-      // Hover still labels the parts, without adding anything that moves.
+      // Hover adds nothing that moves, and nothing covers the line.
       const count = lines.length
       card.host.dispatchEvent(new Event('pointerenter'))
       expect(card.stage.querySelectorAll('.spk-cl')).toHaveLength(count)
-      if (options.mode === 'anatomy') expect(card.stage.querySelector('.spk-callouts')!.classList.contains('spk-on')).toBe(true)
+      expect(card.stage.querySelector('.spk-callouts, .spk-co')).toBeNull()
       stop()
       card.remove()
     }

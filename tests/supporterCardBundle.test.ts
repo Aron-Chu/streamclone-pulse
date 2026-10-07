@@ -67,7 +67,7 @@ describe('Supporter card stays out of the Twitch content script', () => {
     const content = readFileSync(contentBundle, 'utf8')
     const card = readFileSync(cardBundle, 'utf8')
     // The stage's own code and data: class names, emote IDs, canned lines, labels, crest stage names.
-    for (const marker of ['spk-chat', 'spk-callouts', '01J7VZYB08000E8DPG2XYMKQYR', '01HMM8VG3R0007GXBD883VP2YY', 'that peak was mine', 'Signature emote', 'Year-one crest', 'supporterSignatureEmote']) {
+    for (const marker of ['spk-chat', '01J7VZYB08000E8DPG2XYMKQYR', '01HMM8VG3R0007GXBD883VP2YY', 'that peak was mine', 'Year-one crest', 'supporterSignatureEmote']) {
       expect(content.includes(marker), `twitch.js must not contain ${marker}`).toBe(false)
       expect(card.includes(marker), `supporter-card.js must contain ${marker}`).toBe(true)
     }

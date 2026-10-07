@@ -1,4 +1,4 @@
-import { FINISHES, LINES, NAME_COLORS, NAMES, TENURES, clamp, finishVars, kitCrest, kitEmote, kitEmoteSrc, kitName, pick, rand, renderWords, tenureIndex, type Kit, type KitEmoteName } from './kit.ts'
+import { LINES, NAME_COLORS, NAMES, TENURES, finishVars, kitCrest, kitEmote, kitEmoteSrc, kitName, pick, rand, renderWords, tenureIndex, type Kit, type KitEmoteName } from './kit.ts'
 import { mountStage, runStage, type StageContext, type StageModel } from './stage.ts'
 import { CHAT_STACK_CSS } from './styles.ts'
 
@@ -8,9 +8,9 @@ import { CHAT_STACK_CSS } from './styles.ts'
  * `ChatStack(stage, o, mode)` in its narrow (sidebar card) form.
  *
  * - `anatomy` (the lab's sidebar pick, for people who are not Supporters):
- *   every sixth line is yours and gets a spotlight; hover labels the crest, the
- *   paint and the signature emote; at a peak, three quick lines then yours,
- *   labelled for a few seconds.
+ *   every sixth line is yours and gets a spotlight; hovering freezes chat so
+ *   your line can be read; at a peak, three quick lines then yours. No labels
+ *   are drawn over the line, so nothing covers the demo.
  * - `tenure` (Tenure Climb, for people who already support): every fourth
  *   line is yours and its crest pops up one stage, with a chip naming the
  *   stage. The lab cycles all five stages; here the climb stops at the stage
@@ -43,10 +43,8 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
   let H = 0
   let W = 0
   let lastYours: HTMLElement | null = null
-  let calloutsUntil = 0
   // A still frame shows the crest the Supporter has, not the bottom of the climb.
   let tenureIdx = still ? top : 0
-  let co: HTMLElement | null = null
   const chatBottom = () => H - 3
 
   function layout() {
@@ -65,7 +63,7 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
   function push(el: HTMLElement) {
     el.style.transform = `translateY(${chatBottom()}px)`
     el.style.opacity = '0'
-    stage.insertBefore(el, co)
+    stage.append(el)
     lines.push(el)
     el.getBoundingClientRect()
     layout()
@@ -110,46 +108,6 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
     el.classList.add('spk-sheen')
     context.later(() => { lines.forEach(ln => ln.classList.remove('spk-dim')); el.classList.remove('spk-sheen') }, 1500)
   }
-  function updateCallouts(show: boolean) {
-    if (!co) {
-      co = document.createElement('div')
-      co.className = 'spk-callouts'
-      co.innerHTML = '<span class="spk-co" data-k="crest"></span><span class="spk-co" data-k="name"></span><span class="spk-co" data-k="emote"></span>'
-      stage.append(co)
-    }
-    const row = lastYours && lastYours.isConnected ? lastYours : null
-    if (!show || !row) { co.classList.remove('spk-on'); return }
-    const sr = stage.getBoundingClientRect()
-    const rr = row.getBoundingClientRect()
-    if (rr.top < sr.top - 1) { co.classList.remove('spk-on'); return }
-    const parts: Record<string, Element | null> = { crest: row.querySelector('.spk-crest'), name: row.querySelector('.spk-name'), emote: row.querySelector('.spk-kit-emote') }
-    const texts: Record<string, string> = {
-      crest: `Crest · ${TENURES[tenureIndex(kit.tenure)].label}`,
-      name: kit.finish ? `${FINISHES[kit.finish].label} paint` : 'Your name',
-      emote: 'Signature emote',
-    }
-    const above = rr.top - sr.top > 24
-    const tierRight = [-1e9, -1e9]
-    for (const k of ['crest', 'name', 'emote']) {
-      const label = co.querySelector<HTMLElement>(`[data-k="${k}"]`)!
-      if (label.textContent !== texts[k]) label.textContent = texts[k]
-      const pr = parts[k]?.getBoundingClientRect()
-      if (!pr) continue
-      const cx = pr.left + pr.width / 2 - sr.left
-      const lw = label.offsetWidth
-      let lx = clamp(cx - lw / 2, 4, W - lw - 4)
-      const tier = lx >= tierRight[0] + 4 ? 0 : 1
-      if (tier === 1 && lx < tierRight[1] + 4) lx = tierRight[1] + 4
-      tierRight[tier] = lx + lw
-      const lh = 5 + tier * 16
-      const ly = above ? rr.top - sr.top - 15 - lh : rr.bottom - sr.top + lh
-      label.style.transform = `translate(${lx}px, ${ly}px)`
-      label.style.setProperty('--lx', `${clamp(cx - lx, 3, lw - 3)}px`)
-      label.style.setProperty('--lh', `${lh}px`)
-      label.classList.toggle('spk-below', !above)
-    }
-    co.classList.add('spk-on')
-  }
   function onHot() {
     if (mode !== 'anatomy' || lastYours !== lines[lines.length - 1]) addYours()
   }
@@ -163,18 +121,17 @@ export function ChatStack(stage: HTMLElement, context: StageContext, kit: Kit, m
       if (count % every === 0) addYours(); else addOther()
       nextAt = t + (1.7 - p * 1.45) * rand(0.6, 1.3)
     }
-    if (mode === 'anatomy') updateCallouts(context.hot() || t < calloutsUntil)
   }
   function peak() {
     for (const d of [0, 140, 280]) context.later(addOther, d)
-    context.later(() => { addYours(mode === 'anatomy' ? 'that peak was mine' : null); calloutsUntil = t + 2.6 }, 420)
+    context.later(() => addYours(mode === 'anatomy' ? 'that peak was mine' : null), 420)
   }
   return {
     tick,
     peak,
     onHot,
     resize: () => { H = 0 },
-    // A still frame always ends on your line, where hover labels it, so it still explains the kit.
+    // A still frame always ends on your line, so it still shows the kit.
     settle: () => { if (lastYours !== lines[lines.length - 1]) addYours() },
     setEmote(name) {
       kit.emote = name
