@@ -3065,7 +3065,10 @@ function PulseMultiSignalChartInnerImpl({
   function handlePlotPointerCancel(event: ReactPointerEvent<SVGRectElement>) {
     flushNavigation();
     const pointer = pointerRef.current;
-    suppressClickRef.current = true;
+    // Touch pointers are captured implicitly, so a plain tap also fires
+    // lostpointercapture once pointerup releases it. Only a real cancel or a
+    // capture lost mid-drag may swallow the click that pins the minute.
+    if (event.type === "pointercancel" || pointer?.dragging) suppressClickRef.current = true;
     setScrubbing(false);
     clearHoverPreview();
   }

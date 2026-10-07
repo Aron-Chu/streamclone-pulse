@@ -21,6 +21,7 @@ const required = [
   '/supporter',
   '/supporter/thanks',
   '/support',
+  '/changelog',
   '/account/sign-in',
   '/account/settings',
   '/account/confirm',

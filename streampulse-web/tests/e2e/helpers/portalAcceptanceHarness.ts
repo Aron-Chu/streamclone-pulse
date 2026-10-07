@@ -106,6 +106,8 @@ export interface PortalHarness {
   setGamesPayload(body: JsonBody): void
   setSummaryPayload(body: JsonBody): void
   setEmotes30dPayload(body: JsonBody): void
+  /** The recap route re-sets its fallback on every request; use this, not recap.setFallback. */
+  setRecapPayload(body: JsonBody): void
   advancePoll(ms?: number): Promise<void>
 }
 
@@ -802,6 +804,10 @@ export async function installPortalAcceptanceHarness(
     setEmotes30dPayload(body) {
       emotes30dPayload = body
       emotes30d.setFallback({ kind: 'json', body })
+    },
+    setRecapPayload(body) {
+      recapPayload = body
+      recap.setFallback({ kind: 'json', body })
     },
     async advancePoll(ms = 30_000) {
       const statusSuffix = `/streams/${PORTAL_STREAM_ID}/status`

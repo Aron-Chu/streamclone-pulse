@@ -99,6 +99,8 @@ describe('ConsoleChannelView Moments return navigation', () => {
     ['/analytics/moments?view=recent#history', 'Latest moments'],
     ['/analytics/moments?view=saved#history', 'Saved moments'],
     ['/analytics/moments?view=history&year=2026&category=VALORANT#evidence', 'Broadcast history'],
+    ['/analytics/explore/pulse-xqc-session-1?window=7d&sort=recent', 'Pulse Explorer'],
+    ['/analytics/explore?window=24h', 'Pulse Explorer'],
   ])('labels %s from its view and preserves its destination', (returnTo, label) => {
     const query = new URLSearchParams({ returnTo })
     render(

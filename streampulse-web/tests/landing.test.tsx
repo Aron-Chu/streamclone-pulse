@@ -76,6 +76,21 @@ describe('landing page', () => {
     expect(screen.getByRole('heading', { name: /^resources$/i })).toBeTruthy()
   })
 
+  it.each(['#%', '#100%', '#%E0%A4%A'])('ignores a malformed %s link fragment instead of crashing', async (hash) => {
+    const original = Element.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    window.history.replaceState(null, '', `/${hash}`)
+    try {
+      renderLanding()
+      expect(await screen.findByRole('heading', { name: /actually reacted to/i })).toBeTruthy()
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    } finally {
+      window.history.replaceState(null, '', '/')
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('routes hero CTAs correctly', async () => {
     renderLanding()
     const heading = await screen.findByRole('heading', { name: /actually reacted to/i })

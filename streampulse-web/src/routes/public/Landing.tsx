@@ -212,7 +212,9 @@ export default function Landing() {
   // target while React is still rendering, finds nothing, and gives up. Without
   // this, a shared or reloaded /#demo link lands at the top of the page.
   useEffect(() => {
-    const id = decodeURIComponent(window.location.hash.slice(1))
+    let id = ''
+    // A malformed fragment (/#%, /#100%) has no target; skip the jump rather than crash.
+    try { id = decodeURIComponent(window.location.hash.slice(1)) } catch { return }
     if (!id) return
     let cancelled = false
     const jump = () => {

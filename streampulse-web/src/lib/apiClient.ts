@@ -143,7 +143,9 @@ export async function apiClient<T = unknown>(path: string, options: ApiClientOpt
       if (response.status === 401) { window.dispatchEvent(new CustomEvent('auth:rejected')); throw normalizeApiError(401, payload, response.headers.get('Retry-After')) }
       if (!response.ok) {
         const error = normalizeApiError(response.status, payload, response.headers.get('Retry-After'))
-        if (response.status >= 500 && retryable && attempt === 0) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
+        // A server that names its own Retry-After has said when to come back; a
+        // second request a few hundred ms later would only repeat its answer.
+        if (response.status >= 500 && retryable && attempt === 0 && error.retryAfterMs === undefined) { lastError = error; await abortableSleep(jitter(250), deadline.signal); continue }
         throw error
       }
       return { data: payload as T, cache, status: response.status }

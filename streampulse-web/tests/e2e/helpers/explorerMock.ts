@@ -105,7 +105,7 @@ function broadcast(id: string, login: string, category: string, score: number, a
   }
 }
 
-function payload(mode: ExplorerMockMode, detailId: string | undefined, requested: URL) {
+export function payload(mode: ExplorerMockMode, detailId: string | undefined, requested: URL) {
   const at = eventAt()
   const xqcCount = mode === 'single-event' ? 1 : 3
   const rows = [
