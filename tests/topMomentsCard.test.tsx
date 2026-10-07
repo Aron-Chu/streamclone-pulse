@@ -72,6 +72,8 @@ const manyPayload = makePayload({
   rollups: Array.from({ length: 30 }, (_, index) => ({ offsetSeconds: index * 60, chatCount: 20 + index })),
   currentOffsetSeconds: 1800,
 })
+/** The next poll of manyPayload: a new 00:18 moment outranks all eight. */
+const outrankedPayload = { ...manyPayload, peaks: [{ ...manyPeaks[0], offsetSeconds: 1080, score: 100 }, ...manyPeaks] }
 
 /**
  * The panel's wiring of the two sections, as Overlay has it: one pinned
@@ -161,6 +163,9 @@ const selectionCards = (host: ParentNode) => [
   ...host.querySelectorAll('[aria-label^="Selected moment at"], [data-chart-minute-card="true"]'),
 ].filter(card => !card.closest('.pulse-moment-slot-exit'))
 const clearButton = (host: ParentNode) => topCard(host)!.querySelector('[aria-label="Clear selected moment"]')
+/** The list's Show more / Show less control. */
+const expander = (host: ParentNode) => [...host.querySelectorAll<HTMLButtonElement>('button')]
+  .find(button => /^Show (less|\d+ more moments?)/.test(button.textContent ?? ''))!
 const click = (element: Element) => act(() => (element as HTMLElement).click())
 const key = (element: Element, value: string) => act(() => {
   element.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true }))
@@ -337,24 +342,56 @@ describe('Top Moments card (live panel)', () => {
     expect(document.activeElement).toBe(row)
   })
 
-  it('keeps showing a pick the fold hides, and × then moves focus to Show more', () => {
+  it('keeps a pick past the fold listed at the end, and × then moves focus to Show more', () => {
     const host = mount(<Panel payload={manyPayload} />)
-    const expander = () => [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find(button => /^Show (less|\d+ more moments?)/.test(button.textContent ?? ''))!
     expect(rows(host)).toHaveLength(5)
-    expect(expander().textContent).toContain('Show 3 more moments')
+    expect(expander(host).textContent).toContain('Show 3 more moments')
 
-    click(expander())
+    click(expander(host))
     click(rows(host)[6])
-    click(expander())
-    // Collapsed again, the picked row is folded away; the card still shows it.
-    expect(rows(host)).toHaveLength(5)
-    expect(expander().textContent).toContain('Show 3 more moments')
+    click(expander(host))
+    // Collapsed again, the picked row stays listed after the first five.
+    expect(rows(host)).toHaveLength(6)
+    expect(rows(host)[5].getAttribute('aria-pressed')).toBe('true')
+    expect(rows(host)[5].getAttribute('aria-label')).toContain('00:14')
+    expect(expander(host).textContent).toContain('Show 2 more moments')
     expect(topCardLabel(host)).toMatch(/^Selected moment at 00:14/)
 
+    // The row leaves with the pick; focus goes on to Show more.
     click(clearButton(host)!)
-    expect(document.activeElement).toBe(expander())
+    expect(rows(host)).toHaveLength(5)
+    expect(expander(host).textContent).toContain('Show 3 more moments')
+    expect(document.activeElement).toBe(expander(host))
     expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+  })
+
+  it('keeps a picked row, its focus and its press when a poll ranks it past the fold', () => {
+    const host = mount(<Panel payload={manyPayload} />)
+    const picked = rows(host)[4]
+    expect(picked.getAttribute('aria-label')).toContain('00:10')
+    act(() => picked.focus())
+    click(picked)
+
+    // The next poll ranks a new, stronger moment first: the pick is sixth.
+    act(() => root!.render(<Panel payload={outrankedPayload} />))
+    expect(rows(host)).toHaveLength(6)
+    expect(rows(host)[0].getAttribute('aria-label')).toContain('00:18')
+    expect(rows(host)[5]).toBe(picked)
+    expect(document.activeElement).toBe(picked)
+    expect(picked.getAttribute('aria-pressed')).toBe('true')
+    expect(expander(host).textContent).toContain('Show 3 more moments')
+    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:10/)
+  })
+
+  it('moves focus to Show more when a poll ranks a focused row past the fold', () => {
+    const host = mount(<Panel payload={manyPayload} />)
+    const row = rows(host)[4]
+    act(() => row.focus())
+
+    act(() => root!.render(<Panel payload={outrankedPayload} />))
+    expect(rows(host)).toHaveLength(5)
+    expect(row.isConnected).toBe(false)
+    expect(document.activeElement).toBe(expander(host))
   })
 
   it('shows no card and announces nothing it controls on the read-only landing rows', () => {
@@ -523,7 +560,7 @@ describe('Stream recap Top moments', () => {
   }
 
   for (const variant of ['recap', 'peaks fallback'] as const) {
-    it(`keeps showing a pick the fold hides, and × then moves focus to Show more (${variant})`, () => {
+    it(`keeps a pick past the fold listed at the end, and × or Escape then moves focus to Show more (${variant})`, () => {
       const moments = manyPeaks.map(({ offsetSeconds, score }) => ({ offsetSeconds, score, reasons: ['chat_spike'], chatCount: 40, emoteCount: 3 }))
       const host = mount(recap({
         ...manyPayload,
@@ -534,19 +571,34 @@ describe('Stream recap Top moments', () => {
           ? { streamId: 'stream-1', login: 'test', durationSeconds: 3600, totalMessages: 4000, peakChatPerMin: 90, topMoments: moments, topEmotes: [], clipCandidates: [] }
           : null,
       }))
-      const expander = () => [...host.querySelectorAll<HTMLButtonElement>('button')]
-        .find(button => /^Show (less|\d+ more moments?)/.test(button.textContent ?? ''))!
       expect(rows(host)).toHaveLength(5)
-      click(expander())
+      click(expander(host))
       click(rows(host)[6])
-      click(expander())
+      click(expander(host))
 
-      expect(rows(host)).toHaveLength(5)
+      // Collapsed again, the picked row stays listed after the first five.
+      expect(rows(host)).toHaveLength(6)
+      expect(rows(host)[5].getAttribute('aria-pressed')).toBe('true')
+      expect(expander(host).textContent).toContain('Show 2 more moments')
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:14/)
       expect(selectionCards(host)).toHaveLength(1)
 
+      // The row leaves with the pick; focus goes on to Show more.
       click(clearButton(host)!)
-      expect(document.activeElement).toBe(expander())
+      expect(rows(host)).toHaveLength(5)
+      expect(document.activeElement).toBe(expander(host))
+      expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
+
+      // Escape on the kept row does the same.
+      click(expander(host))
+      click(rows(host)[6])
+      click(expander(host))
+      const kept = rows(host)[5]
+      act(() => kept.focus())
+      key(kept, 'Escape')
+      expect(kept.isConnected).toBe(false)
+      expect(rows(host)).toHaveLength(5)
+      expect(document.activeElement).toBe(expander(host))
       expect(topCard(host)!.getAttribute('data-top-moment-card')).toBe('strongest')
     })
   }

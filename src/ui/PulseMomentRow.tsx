@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties } from 'react'
 import {
   LIVE_HEAT_COLLECTING_LABEL,
   displayMomentReasonLabel,
@@ -46,6 +46,18 @@ export function PulseMomentRow({
   const offsetLabel = clock.text
   const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
+  const ref = useRef<HTMLButtonElement>(null)
+  // A row that leaves the list while focused (a poll ranks it past the fold,
+  // or the pick it was listed for is cleared) hands focus on to what follows
+  // the list, its Show more control, instead of dropping it.
+  useLayoutEffect(() => {
+    const button = ref.current
+    return () => {
+      if (button && (button.getRootNode() as Document).activeElement === button) {
+        (button.parentElement!.nextElementSibling as HTMLElement | null)?.focus()
+      }
+    }
+  }, [])
   const body = (
     <div
       className={
@@ -110,6 +122,7 @@ export function PulseMomentRow({
 
   return (
     <button
+      ref={ref}
       type="button"
       className="pulse-moment-row-button"
       style={styles.momentButton}

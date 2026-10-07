@@ -254,9 +254,9 @@ function RecapHighlightStrip({
 const RECAP_MOMENTS_COLLAPSED_COUNT = 5
 const RECAP_MOMENTS_MAX_COUNT = 20
 
-/** Collapsed, a list shows its first rows. */
-function foldMoments<T>(items: T[], expanded: boolean): T[] {
-  return expanded ? items : items.slice(0, RECAP_MOMENTS_COLLAPSED_COUNT)
+/** Collapsed, a list shows its first rows, and at the end a picked row past them. */
+function foldMoments<T>(items: T[], expanded: boolean, picked: (item: T) => boolean): T[] {
+  return expanded ? items : items.filter((item, index) => index < RECAP_MOMENTS_COLLAPSED_COUNT || picked(item))
 }
 
 /** Escape in a list whose pick the card shows goes back to the strongest. */
@@ -293,7 +293,7 @@ function RecapMomentsList({
   onHighlight: (offsetSeconds: number | null) => void
 }) {
   if (moments.length === 0) return null
-  const shown = foldMoments(moments, expanded)
+  const shown = foldMoments(moments, expanded, moment => recapMomentKey(payload.streamId, moment) === selectedKey)
   const hiddenCount = moments.length - shown.length
   return (
     <>
@@ -695,7 +695,7 @@ function OfflineFallbackContent({
     onAnalytics,
     onClear: clearOfflineSelection,
   } : null
-  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded)
+  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === selectedKey)
   const hiddenPeakCount = peakPoints.length - shownPeakPoints.length
 
   // As in the recap: a pick of the highlighted first row still renders.

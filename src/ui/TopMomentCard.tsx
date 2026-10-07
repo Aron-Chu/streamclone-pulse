@@ -30,11 +30,11 @@ export function TopMomentCard({ id, point, selected, onClear, ...card }: TopMome
     const next = ref.current!.offsetHeight
     if (next > height) setHeight(next)
   })
-  // Clearing hands focus back to the picked row, or past the list when the
-  // fold hides that row.
+  // Clearing hands focus back to the picked row, which the list keeps listed
+  // while it is picked. A row listed past the fold only for the pick leaves
+  // with it and hands focus on to Show more (PulseMomentRow).
   const clear = (): void => {
-    const list = ref.current!.nextElementSibling!
-    ;(list.querySelector<HTMLElement>('[aria-pressed="true"]') ?? list.nextElementSibling as HTMLElement | null)?.focus()
+    ref.current!.nextElementSibling!.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
     onClear()
   }
   return (

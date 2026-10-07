@@ -88,7 +88,12 @@ export function MostReactedSection({
     ? liveHeatPointKey(payload.streamId, pinnedMomentPoint)
     : null
 
-  const visiblePoints = listExpanded ? sortedPoints : sortedPoints.slice(0, MOST_REACTED_VISIBLE_COUNT)
+  // Collapsed, a picked row that ranks past the fold (a poll can push it
+  // there) stays listed at the end, so its row and its focus stay.
+  const visiblePoints = listExpanded
+    ? sortedPoints
+    : sortedPoints.filter((point, index) => index < MOST_REACTED_VISIBLE_COUNT
+      || liveHeatPointKey(payload.streamId, point) === pinnedMomentKey)
   // The card shows the pinned moment, or else the strongest one.
   const cardPoint = demoMode ? null : pinnedMomentPoint ?? sortLiveHeatPoints(heat.points, 'reaction')[0]
   const hiddenPointCount = sortedPoints.length - visiblePoints.length
