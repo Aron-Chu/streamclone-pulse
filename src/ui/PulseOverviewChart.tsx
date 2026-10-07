@@ -1499,7 +1499,9 @@ function PulseOverviewChartImpl({
       hoverFrameRef.current = null
     }
     clearHoverPreview()
-    if (selectedIndex != null && clickedFullIndex === selectedIndex) {
+    // A Top Moments pick pins any source bucket of the locked point, not only
+    // the one it draws, so the locked column releases by drawn point.
+    if (index === pinIndex) {
       onClearSelection?.()
       return
     }
@@ -2117,7 +2119,8 @@ function PulseOverviewChartImpl({
                 }
                 const fullIndex = fullIndexFromVisible(lockable) ?? lockable
                 clearHoverPreview()
-                if (selectedIndex !== fullIndex) onSelectIndex(fullIndex)
+                // Already locked on this point: keep the pin's own bucket.
+                if (lockable !== pinIndex) onSelectIndex(fullIndex)
               }
               return
             }
