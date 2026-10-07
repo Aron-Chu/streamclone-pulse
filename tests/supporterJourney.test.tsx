@@ -748,6 +748,81 @@ describe('connection states', () => {
   })
 })
 
+/**
+ * The Account card closes the page, far below the card footer, so the outcome
+ * of an action taken there is reported there: in a live region that exists
+ * before the action, never only in the footer's status a screen away.
+ */
+describe('notices beside the action that caused them', () => {
+  const sections = (host: HTMLElement) => {
+    const account = [...host.querySelectorAll('section')].find(section => section.querySelector('h3')?.textContent === 'Account')!
+    return {
+      account,
+      accountStatus: () => account.querySelector<HTMLElement>('[role="status"][data-account-notice]'),
+      footer: () => host.querySelector<HTMLElement>('.pulse-journey-status')!.textContent ?? '',
+    }
+  }
+  const DISCONNECT_UNCONFIRMED = 'server revocation could not be confirmed'
+  const MANAGE_FAILED = 'Could not open membership management'
+
+  it.each([
+    ['returns an error', () => ({ state: 'error' }) as SupporterAccountState, DISCONNECT_UNCONFIRMED],
+    ['throws', () => new Error('worker gone'), 'Disconnect could not be confirmed'],
+  ] as const)('reports a disconnect that %s in the Account card, not the card footer', async (_name, failure, copy) => {
+    const view = await mount({ account: action => action === 'disconnect' ? failure() : linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), billing: () => ({ state: 'idle' }) })
+    try {
+      const page = sections(view.host)
+      // The live region is there, empty, before anything happens.
+      expect(page.accountStatus()?.textContent).toBe('')
+      await view.click('Disconnect extension')
+      await view.click('Confirm disconnect')
+      expect(view.calls('SUPPORTER_ACCOUNT', 'disconnect')).toBe(1)
+      expect(page.accountStatus()?.textContent).toContain(copy)
+      expect(page.footer()).not.toContain(copy)
+    } finally { view.cleanup() }
+  })
+
+  it('reports a failed Manage billing in the Account card, and the footer’s own Manage membership in the footer', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? { state: 'error' } : { state: 'idle' } })
+    try {
+      const page = sections(view.host)
+      await view.click('Manage billing ↗')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
+      expect(page.footer()).not.toContain(MANAGE_FAILED)
+
+      await view.click('Manage membership')
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(2)
+      expect(page.footer()).toContain(MANAGE_FAILED)
+      expect(page.accountStatus()?.textContent).toBe('')
+    } finally { view.cleanup() }
+  })
+
+  it('reports a peer revoke in the Account card that lists the connections', async () => {
+    const peer = '55555555-5555-4555-8555-555555555555'
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { accountKind: 'installation', installationAccountsEnabled: true }), devices: action => action === 'revoke' ? { state: 'error' } : { state: 'ready', currentDeviceId: ACCOUNT_ID, devices: [{ id: ACCOUNT_ID, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }, { id: peer, label: 'Chrome extension', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }] } })
+    try {
+      const page = sections(view.host)
+      const details = view.host.querySelector('details')!
+      await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
+      await view.click('Revoke connection')
+      await view.click('Confirm revoke')
+      expect(page.accountStatus()?.textContent).toContain('Could not revoke that connection')
+      expect(page.footer()).not.toContain('Could not revoke')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps a retry from the footer’s pending revocation in the footer', async () => {
+    const view = await mount({ account: () => ({ state: 'error', revocationPending: true }), entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      const page = sections(view.host)
+      await view.click('Retry disconnect')
+      expect(page.footer()).toContain(DISCONNECT_UNCONFIRMED)
+      expect(page.accountStatus()?.textContent).toBe('')
+    } finally { view.cleanup() }
+  })
+})
+
 const PERKS = ['supporter.banner.v1', 'supporter.finish.v1']
 const HALO = { enabled: true, finish: 'halo' } as const
 function card(host: HTMLElement) {

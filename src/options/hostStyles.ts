@@ -276,6 +276,8 @@ const hostStyles = `
   .pulse-supporter-rows dd small { color: ${theme.textSecondary}; display: block; font-size: 12px; }
   .pulse-supporter-rows .pulse-account-link-actions { gap: 6px; }
   .pulse-supporter-rows .pulse-account-link-actions button { min-height: 44px; padding: 6px 12px; }
+  /* The outcome of an Account action, under its rows; empty, it takes no room. */
+  .pulse-supporter-account-status:not(:empty) { margin-top: 10px; }
   @media (max-width: 620px) {
     .pulse-supporter-rows > div { grid-template-columns: minmax(0, 1fr); }
   }

@@ -44,6 +44,11 @@ export const MEMBERSHIP_WATCH_DELAYS_MS = [5_000, 5_000, 10_000, 10_000, 15_000,
 export const MEMBERSHIP_WAKE_DEBOUNCE_MS = 5_000
 
 type Intent = 'purchase' | 'connect' | null
+/**
+ * Where an action's outcome is reported: the card footer, or the Account card
+ * that closes the page. Each action reports beside the control that started it.
+ */
+type NoticeAt = 'card' | 'account'
 // This tab's journey survives a reload of settings; it is a flow name only.
 const INTENT_KEY = 'pulse.supporterJourneyIntent.v1'
 function storedIntent(): Intent {
@@ -133,7 +138,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
   const [stale, setStale] = useState(false)
   const [accountBusy, setAccountBusy] = useState(false)
   const [checking, setChecking] = useState(false)
-  const [notice, setNotice] = useState('')
+  const [notice, setNoticeState] = useState<{ text: string; at: NoticeAt }>({ text: '', at: 'card' })
+  const setNotice = useCallback((text: string, at: NoticeAt = 'card') => setNoticeState({ text, at }), [])
   const [billing, setBilling] = useState<SupporterBillingState>({ state: 'idle' })
   const [restore, setRestore] = useState<SupporterRestoreState>({ state: 'idle' })
   const [restoreForm, setRestoreForm] = useState(false)
@@ -198,7 +204,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
     }
   }, [])
 
-  const run = useCallback(async (action: SupporterAccountAction): Promise<SupporterAccountState | null> => {
+  const run = useCallback(async (action: SupporterAccountAction, at: NoticeAt = 'card'): Promise<SupporterAccountState | null> => {
     if (accountInFlight.current) return null
     accountInFlight.current = true
     const id = ++accountRequest.current
@@ -228,20 +234,20 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
       lastAccount.current = next
       setAccount(next)
       if (action === 'disconnect' && response.account.state === 'error') {
-        setNotice('Disconnect did not finish cleanly; server revocation could not be confirmed. Check the connection before trying again.')
+        setNotice('Disconnect did not finish cleanly; server revocation could not be confirmed. Check the connection before trying again.', at)
       }
       return response.account
     } catch {
       if (id === accountRequest.current) {
         lastAccount.current = { state: 'error' }
         setAccount({ state: 'error' })
-        if (action === 'disconnect') setNotice('Disconnect could not be confirmed. Try again when the extension is available.')
+        if (action === 'disconnect') setNotice('Disconnect could not be confirmed. Try again when the extension is available.', at)
       }
       return null
     } finally {
       if (id === accountRequest.current) { accountInFlight.current = false; setAccountBusy(false) }
     }
-  }, [])
+  }, [setNotice])
 
   const readJourney = useCallback(async () => {
     const interaction = restoreInteraction.current
@@ -394,15 +400,15 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
     finally { payInFlight.current = false; setPayBusy(false) }
   }
 
-  async function manage() {
+  async function manage(at: NoticeAt) {
     if (payInFlight.current) return
     if (entitlement?.state !== 'ready' || entitlement.accountKind !== 'installation') { openPortal(billingHref); return }
     payInFlight.current = true; setPayBusy(true)
     try {
       const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'portal' })
       if (response && 'type' in response && response.type === 'SUPPORTER_BILLING' && response.billing.state === 'fallback') openPortal(billingHref)
-      else if (!response || !('type' in response) || response.type !== 'SUPPORTER_BILLING' || response.billing.state === 'error' || response.billing.state === 'unavailable') setNotice('Could not open membership management. Try again when the service is available.')
-    } catch { setNotice('Could not open membership management. Try again when the service is available.') }
+      else if (!response || !('type' in response) || response.type !== 'SUPPORTER_BILLING' || response.billing.state === 'error' || response.billing.state === 'unavailable') setNotice('Could not open membership management. Try again when the service is available.', at)
+    } catch { setNotice('Could not open membership management. Try again when the service is available.', at) }
     finally { payInFlight.current = false; setPayBusy(false) }
   }
 
@@ -429,7 +435,8 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
   async function confirmDisconnection() {
     await leaveRestore()
     setConfirmDisconnect(false); setIntent(null)
-    await run('disconnect')
+    // Disconnect lives in the Account card, so its outcome is reported there.
+    await run('disconnect', 'account')
     await readJourney()
   }
 
@@ -507,9 +514,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
     try {
       const response: BackgroundResponse = await chrome.runtime.sendMessage({ type: 'SUPPORTER_DEVICES', action: 'revoke', deviceId })
       if (response && 'type' in response && response.type === 'SUPPORTER_DEVICES' && response.devices.state === 'revoked') {
-        setDevices(null); setNotice('That extension’s connection was revoked.'); setRevokeDevice(null)
-      } else setNotice('Could not revoke that connection. Try again when the service is available.')
-    } catch { setNotice('Could not revoke that connection. Try again when the service is available.') }
+        setDevices(null); setNotice('That extension’s connection was revoked.', 'account'); setRevokeDevice(null)
+      } else setNotice('Could not revoke that connection. Try again when the service is available.', 'account')
+    } catch { setNotice('Could not revoke that connection. Try again when the service is available.', 'account') }
     finally { setDevicesBusy(false) }
   }
 
@@ -657,7 +664,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
 
   if (entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && (isSupporter || status === 'expired' || status === 'review')) {
     primary = status === 'expired' && checkoutOpen && entitlement.installationAccountsEnabled === true ? <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void purchase()}>Rejoin Supporter</button>
-      : <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void manage()}>{status === 'grace' ? 'Update payment method' : 'Manage membership'}</button>
+      : <button className="pulse-journey-primary" type="button" disabled={payBusy} onClick={() => void manage('card')}>{status === 'grace' ? 'Update payment method' : 'Manage membership'}</button>
   }
 
   // Worker-owned uncertainty always outranks the offer, including after settings
@@ -759,7 +766,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
                 <p className="pulse-journey-title"><strong>{title}</strong></p>
                 {body}
                 {stale ? <p className="pulse-supporter-detail" data-journey-stale="true">Could not refresh just now; showing the last confirmed status.</p> : null}
-                {notice ? <p className="pulse-journey-notice">{notice}</p> : null}
+                {notice.text && notice.at === 'card' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
               </div>
               {facts.length ? <dl className="pulse-journey-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
             </div>
@@ -782,31 +789,39 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
       {children}
 
       <PulseSectionCard title="Account" headingLevel={3}>
-        <dl className="pulse-supporter-rows">
-          <div data-row="account">
-            <dt>StreamPulse</dt>
-            <dd>
-              {accountRow[0]}
-              <small>{accountRow[1]}</small>
-            </dd>
-            <dd className="pulse-account-link-actions">{connected ? <button type="button" disabled={accountBusy || payBusy} onClick={disconnect}>Disconnect extension</button> : null}</dd>
+        <div className="pulse-supporter-account-rows">
+          <dl className="pulse-supporter-rows">
+            <div data-row="account">
+              <dt>StreamPulse</dt>
+              <dd>
+                {accountRow[0]}
+                <small>{accountRow[1]}</small>
+              </dd>
+              <dd className="pulse-account-link-actions">{connected ? <button type="button" disabled={accountBusy || payBusy} onClick={disconnect}>Disconnect extension</button> : null}</dd>
+            </div>
+            {isSupporter && entitlement?.state === 'ready' ? <div data-row="billing">
+              <dt>Billing</dt>
+              <dd>Stripe<small>Change card, get receipts, or cancel.</small></dd>
+              <dd className="pulse-account-link-actions"><button type="button" disabled={payBusy} onClick={() => void manage('account')}>Manage billing <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
+            </div> : null}
+            <div data-row="new-browser">
+              <dt>New browser</dt>
+              <dd>Connect the same StreamPulse account there.<small>Or restore your Supporter with the email you used at checkout.</small></dd>
+              <dd />
+            </div>
+            <div data-row="payments">
+              <dt>Payments</dt>
+              <dd>Handled by Stripe.<small>StreamPulse never sees or stores your card number.</small></dd>
+              <dd />
+            </div>
+          </dl>
+          {/* Disconnect, Manage billing and revoke report here, beside their
+              rows, not in the card footer a screen above. Always present, so
+              the outcome is announced when it arrives. */}
+          <div role="status" aria-live="polite" className="pulse-supporter-account-status" data-account-notice>
+            {notice.text && notice.at === 'account' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
           </div>
-          {isSupporter && entitlement?.state === 'ready' ? <div data-row="billing">
-            <dt>Billing</dt>
-            <dd>Stripe<small>Change card, get receipts, or cancel.</small></dd>
-            <dd className="pulse-account-link-actions"><button type="button" disabled={payBusy} onClick={() => void manage()}>Manage billing <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
-          </div> : null}
-          <div data-row="new-browser">
-            <dt>New browser</dt>
-            <dd>Connect the same StreamPulse account there.<small>Or restore your Supporter with the email you used at checkout.</small></dd>
-            <dd />
-          </div>
-          <div data-row="payments">
-            <dt>Payments</dt>
-            <dd>Handled by Stripe.<small>StreamPulse never sees or stores your card number.</small></dd>
-            <dd />
-          </div>
-        </dl>
+        </div>
         {confirmDisconnect ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm disconnection"><p>Disconnect this extension? This does not cancel your subscription or stop a payment already in progress. You will need email recovery to restore membership here.</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={accountBusy || payBusy} onClick={() => void confirmDisconnection()}>Confirm disconnect</button><button type="button" onClick={() => setConfirmDisconnect(false)}>Keep connected</button></div></div> : null}
         {linked && entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled === true ? <details className="pulse-journey-devices" onToggle={event => { if (event.currentTarget.open && devices === null) void listDevices() }}>
           <summary>Connected extensions</summary>
