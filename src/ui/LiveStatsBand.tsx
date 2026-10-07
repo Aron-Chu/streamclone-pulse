@@ -121,6 +121,11 @@ export interface LiveStatsBandProps {
   previewOffsetSeconds?: number | null
   /** Ranked-moment origin for the shared chart inspector; null means a raw chart minute. */
   selectedMomentOffsetSeconds?: number | null
+  /**
+   * The pinned moment was picked in the Top Moments list and its card opens
+   * there, under its row. The chart still marks the minute but opens no card.
+   */
+  cardInList?: boolean
   hasVodContext?: boolean
   coverageTier?: string | null
   liveMetadata?: LiveViewerMetadata | null
@@ -262,6 +267,7 @@ export function LiveStatsBand({
   pinOffsetSeconds = null,
   previewOffsetSeconds = null,
   selectedMomentOffsetSeconds = null,
+  cardInList = false,
   hasVodContext = false,
   coverageTier = null,
   liveMetadata = null,
@@ -553,22 +559,28 @@ export function LiveStatsBand({
     [payload, selectedMomentOffsetSeconds],
   )
 
+  // The list shows the card only while it still lists the moment. Once a poll
+  // drops it, the chart takes the card back for the pinned minute.
+  const listCard = cardInList && selectedMomentPoint != null
+
   // Clearing the pin used to unmount the inspector on the same frame, so it
   // vanished and the content below snapped up. Hold the last contents for one
   // exit window and let CSS fade and collapse them.
   const inspectorInput = useMemo(
-    () => (pinOffsetSeconds != null && selectedRollup
+    () => (pinOffsetSeconds != null && selectedRollup && !listCard
       ? { rollup: selectedRollup, moment: selectedMomentPoint }
       : null),
-    [pinOffsetSeconds, selectedRollup, selectedMomentPoint],
+    [pinOffsetSeconds, selectedRollup, selectedMomentPoint, listCard],
   )
   const inspectorHold = usePinnedCardHold(inspectorInput, prefersReducedMotion())
 
+  // The 7TV panel folds for the card under the chart. A card in the list
+  // leaves it alone, so nothing above the picked row moves.
   useEffect(() => {
-    if (pinChartIndex != null) {
+    if (pinChartIndex != null && !listCard) {
       setEmotePanelExpanded(false)
     }
-  }, [pinChartIndex])
+  }, [pinChartIndex, listCard])
 
   const topEmotesForChips = useMemo(() => {
     const fromRollups = aggregateChartEmotes(rollups, PLOT_PICKER_EMOTE_LIMIT)
@@ -929,6 +941,8 @@ export function LiveStatsBand({
   ])
 
   useEffect(() => {
+    // A cleared pin (from any card's ✕, or Escape) drops a pending return to it.
+    if (pinOffsetSeconds == null) pendingReturnSpanRef.current = null
     if (
       pendingReturnSpanRef.current == null
       || !hasFullRollups

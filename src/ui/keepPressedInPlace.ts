@@ -1,6 +1,14 @@
 import { useCallback, useRef } from 'react'
+import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 
-const SLOT = '.pulse-moment-slot'
+/**
+ * A card a press inside anchors past, holding the content below it still.
+ * A list's inline card, the slot right after its row button, is left out: a
+ * press in it anchors to the pressed control, so the rows above it never
+ * move. It is still tracked, so it is corrected when it closes above a newly
+ * picked row.
+ */
+const SLOT = '.pulse-moment-slot:not(.pulse-moment-row-button+*)'
 /**
  * What may move the pressed element: the moment-card slots, and the 7TV
  * plot panel, which folds shut when a moment is selected. Nothing else is
@@ -35,13 +43,14 @@ function trackedHeightBefore(scroller: Element, anchor: Element): number {
  * Keep whatever the user pressed under the pointer while a moment card opens
  * or closes above it, by scrolling the panel instead of moving the content.
  *
- * A selected-moment card opens above the Top Moments list, which used to push
- * the clicked row down and away from the pointer. Each press records the
- * pressed element's position; every frame until the layout settles, any drift
- * is taken back out of `scrollTop`. Content above the card therefore moves up
- * ("the card expands up"), but the card itself is never scrolled out of view.
- * A press inside a card (its close button) holds the content below the card
- * still instead. Any scroll the user makes ends the correction.
+ * The chart's selected-moment card sits above the Top Moments list, so opening
+ * or closing it moves the rows below. Each press records the pressed element's
+ * position; every frame until the layout settles, any drift is taken back out
+ * of `scrollTop`. Content above the card therefore moves up ("the card expands
+ * up"), but the card itself is never scrolled out of view. A press inside a
+ * card (its close button) holds the content below the card still instead. A
+ * list's own card opens under the picked row, so it moves nothing above it and
+ * needs no correction. Any scroll the user makes ends the correction.
  */
 export function bindKeepPressedInPlace(scroller: HTMLElement): () => void {
   let anchor: Element | null = null
@@ -83,11 +92,28 @@ export function bindKeepPressedInPlace(scroller: HTMLElement): () => void {
       const applied = expected - before
       // The panel clamps at its top and bottom. Whatever it could not absorb is
       // the anchor's new resting place, not something to retry every frame.
-      top += drift - applied
+      // Rounding scrollTop to device pixels is not a clamp: that remainder stays
+      // in the drift for the next frame, or it adds up over the animation.
+      if (Math.abs(drift - applied) >= 1) top += drift - applied
       trackedBase += applied
       if (Math.abs(applied) >= 0.5) until = Math.min(deadline, Math.max(until, now + QUIET_MS))
     }
-    if (now > until) return stop()
+    if (now > until) {
+      // A press on a Top Moments row ended quietly: show the rest of the card
+      // it opened, never scrolling the row out of the panel's top. A wheel,
+      // touch or any scroll the user made has already ended the session, and
+      // a card that opened without a press never had one.
+      const slot = anchor.nextElementSibling
+      const view = scroller.getBoundingClientRect()
+      const rowTop = anchor.getBoundingClientRect().top
+      if (slot?.matches('.pulse-moment-row-button+.pulse-moment-slot') && rowTop < view.bottom) {
+        scroller.scrollBy({
+          top: Math.max(0, Math.min(slot.getBoundingClientRect().bottom - view.bottom + 8, rowTop - view.top - 8)),
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        })
+      }
+      return stop()
+    }
     frame = requestAnimationFrame(tick)
   }
   const start = (target: EventTarget | null): void => {

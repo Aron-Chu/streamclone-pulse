@@ -41,7 +41,7 @@ import type { RecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
 import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
-import { PulseMomentRow } from './PulseMomentRow.tsx'
+import { PulseMomentRow, momentRowKey, type PulseMomentRowCard } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { SavedMoments } from './SavedMoments.tsx'
@@ -260,36 +260,16 @@ function RecapHighlightStrip({
   )
 }
 
-function RecapMomentRow({
-  point,
-  backendUrl,
-  selected,
-  onSelect,
-  onHighlight,
-}: {
-  point: LiveHeatPoint
-  backendUrl: string
-  selected: boolean
-  onSelect: (point: LiveHeatPoint) => void
-  onHighlight: (offsetSeconds: number | null) => void
-}) {
-  return (
-    <PulseMomentRow
-      point={point}
-      backendUrl={backendUrl}
-      selected={selected}
-      onHighlight={onHighlight}
-      onSelect={onSelect}
-    />
-  )
-}
-
 const RECAP_MOMENTS_COLLAPSED_COUNT = 5
 const RECAP_MOMENTS_MAX_COUNT = 20
 
+/** Collapsed, a list shows its first rows plus the row whose card is open. */
+function foldMoments<T>(items: T[], expanded: boolean, open: (item: T) => boolean): T[] {
+  return expanded ? items : items.filter((item, index) => index < RECAP_MOMENTS_COLLAPSED_COUNT || open(item))
+}
+
 function RecapMomentsList({
   moments,
-  visibleMoments,
   expanded,
   onToggleExpanded,
   payload,
@@ -298,11 +278,12 @@ function RecapMomentsList({
   rollups,
   peaks,
   selectedKey,
+  cardKey,
+  card,
   onSelect,
   onHighlight,
 }: {
   moments: PulseRecapMoment[]
-  visibleMoments: PulseRecapMoment[]
   expanded: boolean
   onToggleExpanded: () => void
   payload: PulsePayload
@@ -311,31 +292,36 @@ function RecapMomentsList({
   rollups: ExtensionRollup[]
   peaks: ExtensionPeak[] | undefined
   selectedKey: string | null
+  /** The row picked in this list, whose card opens under it. */
+  cardKey: string | null
+  card: Omit<PulseMomentRowCard, 'open'>
   onSelect: (key: string) => void
   onHighlight: (offsetSeconds: number | null) => void
 }) {
   if (moments.length === 0) return null
-  const hiddenCount = moments.length - RECAP_MOMENTS_COLLAPSED_COUNT
+  const shown = foldMoments(moments, expanded, moment => recapMomentKey(payload.streamId, moment) === cardKey)
+  const hiddenCount = moments.length - shown.length
   return (
     <>
       <span style={styles.listCaption}>Top moments</span>
       <div style={styles.momentList}>
-        {visibleMoments.map(moment => {
+        {shown.map(moment => {
           const key = recapMomentKey(payload.streamId, moment)
           const point = recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, peaks)
           return (
-            <RecapMomentRow
+            <PulseMomentRow
               key={key}
               point={point}
               backendUrl={backendUrl}
               selected={key === selectedKey}
               onHighlight={onHighlight}
               onSelect={() => onSelect(key)}
+              card={{ ...card, open: key === cardKey }}
             />
           )
         })}
       </div>
-      {moments.length > RECAP_MOMENTS_COLLAPSED_COUNT ? (
+      {expanded || hiddenCount > 0 ? (
         <button type="button" className="pulse-secondary-btn" style={styles.momentsExpandButton} data-chart-action="true" onClick={onToggleExpanded}>
           <span>
             {expanded ? 'Show less' : `Show ${hiddenCount} more moment${hiddenCount === 1 ? '' : 's'}`}
@@ -381,9 +367,6 @@ function RecapReadyContent({
   const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
-  const visibleMoments = momentsExpanded
-    ? mergedMoments
-    : mergedMoments.slice(0, RECAP_MOMENTS_COLLAPSED_COUNT)
   const rollups = pickRecapRollups(payload)
   const heroMoment = mergedMoments[0] ?? null
   const [selectedKey, setSelectedKey] = useState<string | null>(
@@ -391,6 +374,8 @@ function RecapReadyContent({
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
   const userSelectedRef = useRef(false)
+  // Picked in the Top moments list: the card opens under that row, not above the list.
+  const [listPick, setListPick] = useState(false)
 
   useEffect(() => {
     userSelectedRef.current = false
@@ -411,6 +396,7 @@ function RecapReadyContent({
   useEffect(() => {
     if (!externalPoint) return
     userSelectedRef.current = true
+    setListPick(false)
     setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
     setOverridePoint(externalPoint)
     setHoveredOffset(null)
@@ -422,7 +408,7 @@ function RecapReadyContent({
   // Hold the card for one exit window so clearing a selection fades and
   // collapses instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current ? selectedPoint : null,
+    userSelectedRef.current && !listPick ? selectedPoint : null,
     prefersReducedMotion(),
   )
 
@@ -466,8 +452,9 @@ function RecapReadyContent({
       ? recapHighlightBurstKey(payload.streamId, recap.funniestEmoteBurst.offsetSeconds)
       : null
 
-  function markUserSelected(): void {
+  function markUserSelected(fromList = false): void {
     userSelectedRef.current = true
+    setListPick(fromList)
   }
 
   function clearRecapSelection(): void {
@@ -615,7 +602,6 @@ function RecapReadyContent({
       </div>
       <RecapMomentsList
         moments={mergedMoments}
-        visibleMoments={visibleMoments}
         expanded={momentsExpanded}
         onToggleExpanded={() => setMomentsExpanded(value => !value)}
         payload={payload}
@@ -624,8 +610,10 @@ function RecapReadyContent({
         rollups={rollups}
         peaks={payload.peaks}
         selectedKey={selectedKey}
+        cardKey={userSelectedRef.current && listPick ? selectedKey : null}
+        card={{ onJump, onAnalytics, onClose: clearRecapSelection }}
         onSelect={key => {
-          markUserSelected()
+          markUserSelected(true)
           setSelectedKey(key)
           setOverridePoint(null)
           setHoveredOffset(null)
@@ -694,15 +682,14 @@ function OfflineFallbackContent({
   const [momentsExpanded, setMomentsExpanded] = useState(false)
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
-  const visiblePeakPoints = momentsExpanded
-    ? peakPoints
-    : peakPoints.slice(0, RECAP_MOMENTS_COLLAPSED_COUNT)
   const heroPoint = peakPoints[0] ?? null
   const [selectedKey, setSelectedKey] = useState<string | null>(
     heroPoint ? offlinePointKey(heroPoint) : null,
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
   const userSelectedRef = useRef(false)
+  // Picked in the Top moments list: the card opens under that row, not above the list.
+  const [listPick, setListPick] = useState(false)
 
   useEffect(() => {
     userSelectedRef.current = false
@@ -727,6 +714,7 @@ function OfflineFallbackContent({
   useEffect(() => {
     if (!externalPoint) return
     userSelectedRef.current = true
+    setListPick(false)
     setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
     setOverridePoint(externalPoint)
     setHoveredOffset(null)
@@ -735,9 +723,12 @@ function OfflineFallbackContent({
   // Hold the card for one exit window so clearing a selection fades and
   // collapses instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current ? selectedPoint : null,
+    userSelectedRef.current && !listPick ? selectedPoint : null,
     prefersReducedMotion(),
   )
+  const cardKey = userSelectedRef.current && listPick ? selectedKey : null
+  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === cardKey)
+  const hiddenPeakCount = peakPoints.length - shownPeakPoints.length
 
   function clearOfflineSelection(): void {
     userSelectedRef.current = true
@@ -812,6 +803,7 @@ function OfflineFallbackContent({
         onClearSelection={clearOfflineSelection}
         onSelectPoint={point => {
           userSelectedRef.current = true
+          setListPick(false)
           setSelectedKey(`bucket:${point.offsetSeconds}`)
           setOverridePoint(point)
           setHoveredOffset(null)
@@ -843,26 +835,33 @@ function OfflineFallbackContent({
         <>
           <span style={styles.listCaption}>Top moments</span>
           <div style={styles.momentList}>
-            {visiblePeakPoints.map(point => {
+            {shownPeakPoints.map(point => {
               const key = offlinePointKey(point)
               return (
-                <RecapMomentRow
-                  key={`${point.offsetSeconds}-${point.reason}-${point.minuteTs}`}
+                <PulseMomentRow
+                  key={momentRowKey(point, peakPoints)}
                   point={point}
                   backendUrl={backendUrl}
                   selected={key === selectedKey}
                   onHighlight={setHoveredOffset}
                   onSelect={next => {
                     userSelectedRef.current = true
+                    setListPick(true)
                     setSelectedKey(offlinePointKey(next))
                     setOverridePoint(null)
                     setHoveredOffset(null)
+                  }}
+                  card={{
+                    open: key === cardKey,
+                    onJump,
+                    onAnalytics,
+                    onClose: clearOfflineSelection,
                   }}
                 />
               )
             })}
           </div>
-          {peakPoints.length > RECAP_MOMENTS_COLLAPSED_COUNT ? (
+          {momentsExpanded || hiddenPeakCount > 0 ? (
             <button
               type="button"
               className="pulse-secondary-btn"
@@ -872,9 +871,7 @@ function OfflineFallbackContent({
               <span>
                 {momentsExpanded
                   ? 'Show less'
-                  : `Show ${peakPoints.length - RECAP_MOMENTS_COLLAPSED_COUNT} more moment${
-                      peakPoints.length - RECAP_MOMENTS_COLLAPSED_COUNT === 1 ? '' : 's'
-                    }`}
+                  : `Show ${hiddenPeakCount} more moment${hiddenPeakCount === 1 ? '' : 's'}`}
               </span>
               <span style={styles.momentsExpandChevron} aria-hidden="true">
                 {momentsExpanded ? '▾' : '▸'}

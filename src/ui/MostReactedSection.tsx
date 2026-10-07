@@ -15,7 +15,7 @@ import {
   sortLiveHeatPoints,
   type MomentSortMode,
 } from './mostReacted.ts'
-import { PulseMomentRow } from './PulseMomentRow.tsx'
+import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { theme } from './theme.ts'
@@ -31,7 +31,13 @@ export interface MostReactedSectionProps {
   onAnalytics: (point: LiveHeatPoint) => void
   onAnalyticsAtOffset?: (offsetSeconds: number) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
-  onPinOffset?: (offsetSeconds: number | null) => void
+  /** `fromList` marks a pick made in this list, whose card then opens here. */
+  onPinOffset?: (offsetSeconds: number | null, fromList?: boolean) => void
+  /**
+   * The pinned moment was picked in this list, so its card opens under its
+   * row. Picked on the chart, the card opens under the chart instead.
+   */
+  cardInList?: boolean
   hasVodContext?: boolean
   demoMode?: boolean
 }
@@ -53,16 +59,13 @@ function resolveJumpLabel(payload: PulsePayload, hasVodContext?: boolean): strin
 export function MostReactedSection({
   payload,
   backendUrl,
-  sidebarFill: _sidebarFill = false,
   pinnedOffsetSeconds = null,
-  chartMinuteSelection: _chartMinuteSelection = null,
-  onJump: _onJump,
-  onJumpToOffset: _onJumpToOffset,
-  onAnalytics: _onAnalytics,
-  onAnalyticsAtOffset: _onAnalyticsAtOffset,
+  onJumpToOffset,
+  onAnalyticsAtOffset,
   onHighlightOffset,
   onPinOffset,
-  hasVodContext: _hasVodContext = false,
+  cardInList = false,
+  hasVodContext = false,
   demoMode = false,
 }: MostReactedSectionProps) {
   const heat = resolveMostReactedHeat(payload)
@@ -86,10 +89,13 @@ export function MostReactedSection({
     ? liveHeatPointKey(payload.streamId, pinnedMomentPoint)
     : null
 
+  // A row with an open card stays listed while it is open, even when a newer
+  // moment outranks it past the fold.
   const visiblePoints = listExpanded
     ? sortedPoints
-    : sortedPoints.slice(0, MOST_REACTED_VISIBLE_COUNT)
-  const hiddenPointCount = Math.max(0, sortedPoints.length - MOST_REACTED_VISIBLE_COUNT)
+    : sortedPoints.filter((point, index) => index < MOST_REACTED_VISIBLE_COUNT
+      || (cardInList && liveHeatPointKey(payload.streamId, point) === pinnedMomentKey))
+  const hiddenPointCount = sortedPoints.length - visiblePoints.length
   const hasExplicitPeaks = payload.peaks !== undefined
   const isCollectingMoments = hasExplicitPeaks && (
     (payload.peaks?.length ?? 0) === 0
@@ -151,13 +157,23 @@ export function MostReactedSection({
             pinnedMomentKey != null && liveHeatPointKey(payload.streamId, point) === pinnedMomentKey
           return (
             <PulseMomentRow
-              key={liveHeatPointKey(payload.streamId, point)}
+              // Stable while the backend refines the moment, so its row (and
+              // its open card and focus) stays mounted through a poll.
+              key={momentRowKey(point, heat.points)}
               point={point}
               backendUrl={backendUrl}
               selected={selected}
               onHighlight={demoMode ? () => undefined : handleHighlight}
               onSelect={demoMode ? () => undefined : next => {
-                if (!selected) onPinOffset?.(reactionAnalyticalOffset(next))
+                if (!selected || !cardInList) onPinOffset?.(reactionAnalyticalOffset(next), true)
+              }}
+              // The same actions as the chart's card for this moment.
+              card={demoMode ? undefined : {
+                open: selected && cardInList,
+                jumpLabel: resolveJumpLabel(payload, hasVodContext),
+                onJump: next => onJumpToOffset?.(reactionAnalyticalOffset(next)),
+                onAnalytics: next => onAnalyticsAtOffset?.(reactionAnalyticalOffset(next)),
+                onClose: () => onPinOffset?.(null),
               }}
             />
           )
@@ -172,7 +188,7 @@ export function MostReactedSection({
           />
         ) : null}
       </div>
-      {hiddenPointCount > 0 ? (
+      {listExpanded || hiddenPointCount > 0 ? (
         <button
           type="button"
           style={styles.expandButton}
