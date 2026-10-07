@@ -118,6 +118,50 @@ describe('long stream with validated Full history', () => {
     expect(visible.every(minute => !minute.missing && (minute.chatCount ?? 0) > 0)).toBe(true)
   })
 
+  it('keeps a tracking hole inside a panned 60m range as missing minutes', () => {
+    // Coverage reports 05:10-05:40 missing and Full history has no rows there.
+    const holeFrom = 5 * 3600 + 10 * 60
+    const holeTo = 5 * 3600 + 40 * 60
+    const base = longStreamPayload()
+    const payload: PulsePayload = {
+      ...base,
+      fullRollups: base.fullRollups!.filter(rollup => rollup.offsetSeconds < holeFrom || rollup.offsetSeconds >= holeTo),
+      coverage: {
+        ...base.coverage!,
+        state: 'missing_ranges_detected',
+        hasFullStreamCoverage: false,
+        hasGaps: true,
+        missingRanges: [{ fromOffsetSeconds: holeFrom, toOffsetSeconds: holeTo }],
+      },
+    }
+    expect(describeRollupGap(prepare(payload, 'full'), true)).not.toBeNull()
+
+    const sixty = prepare(payload, '60m')
+    // The source is a one-minute grid over the whole stream, so the hour from
+    // 05:00 draws one point per minute on a time-true axis.
+    expect(sixty[0]?.offsetSeconds).toBe(0)
+    expect(sixty.every((minute, index) => index === 0 || minute.offsetSeconds - sixty[index - 1]!.offsetSeconds === 60)).toBe(true)
+    const viewport = { startSeconds: 5 * 3600, endSeconds: 6 * 3600 }
+    const visible = viewportBuckets(sixty, viewport, EXTENSION_CHART_MAX_POINTS)
+    expect(visible).toHaveLength(60)
+    expect(visible.filter(minute => minute.missing).map(minute => minute.offsetSeconds))
+      .toEqual(Array.from({ length: 30 }, (_, index) => holeFrom + index * 60))
+    expect(describeRollupGap(sixty, true)).toBe('Missing chat data from 05:10:00 to 05:40:00')
+
+    const markup = renderToStaticMarkup(
+      <PulseOverviewChart rollups={sixty} durationSeconds={CURRENT_OFFSET_SECONDS} viewport={viewport} isLive />,
+    )
+    const bands = [...markup.matchAll(/<rect x="([\d.]+)"[^>]*data-chart-no-data=""/g)].map(match => Number(match[1]))
+    expect(bands).toHaveLength(30)
+    const bandFrom = Math.min(...bands)
+    const bandTo = Math.max(...bands) + (bands[1]! - bands[0]!)
+    // The chat line breaks at the hole instead of joining 05:09 to 05:40.
+    const d = markup.match(/<path[^>]*d="([^"]+)"[^>]*data-chart-path-state="overview"[^>]*data-chart-series="chat"/)?.[1]
+    expect(d?.match(/M/g)).toHaveLength(2)
+    const xs = d!.match(/-?[\d.]+/g)!.map(Number).filter((_, index) => index % 2 === 0)
+    expect(xs.some(x => x > bandFrom && x < bandTo)).toBe(false)
+  })
+
   it('lands a pin on the strongest moment at 00:18:13 in a real bucket', () => {
     const full = prepare(longStreamPayload(), 'full')
     const index = findChartIndexByOffset(

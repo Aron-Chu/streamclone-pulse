@@ -599,9 +599,9 @@ export function prepareChartRollups(
     ? mergeRecentRollupTail(rollupSeries(payload, 'full'), payload.rollups)
     : rollupSeries(payload, 'recent')
   let result: ExtensionRollup[]
+  const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
+  const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
   if (options.chartWindow === 'full' && !hasFull) {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
     result = densifyRollupsForTimeline(raw, {
       fromOffset: 0,
       toOffset,
@@ -609,16 +609,7 @@ export function prepareChartRollups(
       missingRanges: payload.coverage?.missingRanges,
       missingBeforeOffset: raw[0]?.offsetSeconds ?? toOffset,
     })
-  } else if (options.chartWindow !== 'full' && hasFull) {
-    // Once validated full history is present, keep the complete source domain
-    // and let the chart viewport implement 15m/30m/60m/2h/4h presets. The
-    // previous implementation sliced the source here while the rail still
-    // used the stream duration, making a 60-minute plot look like Full stream
-    // and hiding historical viewer samples outside the tail.
-    result = raw
-  } else if (options.chartWindow !== 'full') {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
+  } else if (!hasFull) {
     const fromOffset = Math.max(0, toOffset - chartWindowSeconds(options.chartWindow))
     const windowed = raw.filter(
       rollup => rollup.offsetSeconds >= fromOffset && rollup.offsetSeconds <= toOffset,
@@ -626,27 +617,25 @@ export function prepareChartRollups(
     // Keep latest rollups visible when the window filter is empty but tracking has data.
     const source = windowed.length > 0 ? windowed : raw
     result = source.slice(-chartMaxPoints(payload, options.chartWindow))
-  } else if (!hasFull) {
+  } else if (toOffset <= 60) {
     result = raw
   } else {
-    const lastOffset = raw.length > 0 ? raw[raw.length - 1]!.offsetSeconds : 0
-    const toOffset = Math.max(options.currentOffsetSeconds, lastOffset)
-    if (toOffset <= 60) {
-      result = raw
-    } else {
-      const fromOffset = resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds)
-      const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
-      result = densifyRollupsForTimeline(raw, {
-        fromOffset,
-        toOffset,
-        maxPoints: chartMaxPoints(payload, options.chartWindow, options.activation),
-        missingRanges: payload.coverage?.missingRanges,
-        missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
-          || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
-          ? coverageStart
-          : 0,
-      })
-    }
+    // Validated full history keeps the complete source domain for every range;
+    // the chart viewport implements the 15m/30m/60m/2h/4h presets. Zoomed
+    // ranges get an uncapped one-minute grid, so a tracking hole is a run of
+    // missing minutes (blank lines, no-data band, gap notice, as in Full)
+    // rather than index-spaced points that join straight across it.
+    const coverageStart = resolvePayloadCoverageStartOffset(payload, options.coverageStartOffsetSeconds)
+    result = densifyRollupsForTimeline(raw, {
+      fromOffset: resolveFullChartDensifyFromOffset(payload, raw, options.coverageStartOffsetSeconds),
+      toOffset,
+      maxPoints: options.chartWindow === 'full' ? FULL_TIMELINE_MAX_POINTS : Infinity,
+      missingRanges: payload.coverage?.missingRanges,
+      missingBeforeOffset: hasMissingPrefixFromStreamStart(payload.coverage)
+        || (!payload.coverage && coverageStart > FULL_CHART_STREAM_START_TOLERANCE_SEC)
+        ? coverageStart
+        : 0,
+    })
   }
 
   prepareChartRollupsCache = {

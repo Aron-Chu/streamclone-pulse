@@ -363,7 +363,8 @@ export function LiveStatsBand({
     () => rollups.map(rollup => rollup.offsetSeconds),
     [rollups],
   )
-  const rollupGapNotice = chartWindow === 'full' && hasFullRollups ? describeRollupGap(rollups, true) : null
+  // Validated full history flags missing Full buckets and zoomed-range minutes alike.
+  const rollupGapNotice = hasFullRollups ? describeRollupGap(rollups, true) : null
   const needsFullRollups =
     chartWindowNeedsFullFetch(chartWindow, payload, effectiveCurrentOffsetSeconds, activation)
     && (!hasFullRollups || fullRollupsMissingStreamPrefix(payload, activation))
