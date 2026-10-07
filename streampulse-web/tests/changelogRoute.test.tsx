@@ -63,6 +63,8 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     // The page itself makes no claim about which build the Chrome Web Store lists.
     expect(screen.getByText('What changed in each version of the StreamPulse Chrome extension.')).toBeTruthy()
     expect(document.body.textContent).not.toContain('not on the Chrome Web Store yet')
+    // Nor do the released notes it shows: the Store's current version is not recorded in them.
+    expect(document.body.textContent).not.toMatch(/currently (listed|on the Chrome Web Store)/i)
   })
 
   it('is a prerendered page kept out of search, so a cold load is served without edge rewrites', () => {
