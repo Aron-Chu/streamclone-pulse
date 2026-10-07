@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
@@ -11,7 +11,10 @@ import Refunds from './public/Refunds'
 import Supporter from './public/Supporter'
 import SupporterThanks from './public/SupporterThanks'
 import Support from './public/Support'
+import Changelog from './public/Changelog'
 import NotFound from './public/NotFound'
+import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
+import { PublicLayout } from '../ui/components/PublicLayout'
 
 const AnalyticsLandingPage = lazy(() => import('./analytics/AnalyticsLandingPage'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
@@ -24,6 +27,9 @@ const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
 const AccountRestore = lazy(() => import('./account/AccountRestore'))
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
+const AnalyticsShell = lazy(() =>
+  import('../ui/components/analytics/AnalyticsFigmaShell').then((module) => ({ default: module.AnalyticsFigmaShell })),
+)
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.
@@ -66,7 +72,35 @@ function NewsroomCompatibilityRedirect() {
   return <Navigate to={`${path}${search}${hash}`} replace />
 }
 
+/**
+ * For a page that throws before its own layout renders. Each layout also
+ * catches errors inside its content, so its header stays mounted. Analytics
+ * pages keep the analytics top navigation; a failed module load uses the site
+ * header, which is always loaded.
+ */
+function routeErrorShell(pathname: string, panel: ReactNode, moduleLoadFailed: boolean) {
+  if (moduleLoadFailed || !(pathname === '/analytics' || pathname.startsWith('/analytics/'))) {
+    return <PublicLayout>{panel}</PublicLayout>
+  }
+  return (
+    <Suspense fallback={<AnalyticsRouteFallback />}>
+      <AnalyticsShell hideSidebar>
+        <main id="analytics-main" className="figma-analytics__main" tabIndex={-1}>{panel}</main>
+      </AnalyticsShell>
+    </Suspense>
+  )
+}
+
 export function AppRoutes() {
+  const { pathname } = useLocation()
+  return (
+    <PageErrorBoundary shell={(panel, moduleLoadFailed) => routeErrorShell(pathname, panel, moduleLoadFailed)}>
+      <PortalRoutes />
+    </PageErrorBoundary>
+  )
+}
+
+function PortalRoutes() {
   return (
     <Suspense fallback={<AnalyticsRouteFallback />}>
       <Routes>
@@ -86,6 +120,8 @@ export function AppRoutes() {
         <Route path="/supporter" element={<Supporter />} />
         <Route path="/supporter/thanks" element={<SupporterThanks />} />
         <Route path="/support" element={<Support />} />
+        {/* The extension's "Release details" links open this page. */}
+        <Route path="/changelog" element={<Changelog />} />
         <Route path="/account/sign-in" element={<AccountPage />} />
         <Route path="/account/settings" element={<AccountSettings />} />
         <Route path="/account/confirm" element={<AccountPage />} />

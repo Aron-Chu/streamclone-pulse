@@ -86,6 +86,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
         canonicalPath: '/support',
         robots: 'index,follow',
       }
+    case '/changelog':
+      return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse Chrome extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     default: {
       if (normalizedPath === '/analytics/moments') {
         return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Info, RefreshCw } from 'lucide-react'
 import type { HubCorpusPipeline } from '../../../lib/publicHub'
 import type { PublicHubLoadSource } from '../../../lib/publicHub'
 import { backendSourceCaption, resolveBackendSource } from '../../../lib/backendSource'
@@ -16,6 +16,10 @@ export interface HubDataHealthBannerProps {
   backendUrl?: string
   /** When true, suppress coverage/gap noise until the first hub payload settles. */
   loading?: boolean
+  /** Re-requests the hub now instead of waiting for the next poll. */
+  onRetry?: () => void
+  /** A hub request is already in flight; Try again stays in place but cannot restart it. */
+  retryDisabled?: boolean
 }
 
 type HealthMessage = { tone: 'warn' | 'info'; text: string; detail?: string }
@@ -37,6 +41,8 @@ export function HubDataHealthBanner({
   error,
   backendUrl,
   loading = false,
+  onRetry,
+  retryDisabled = false,
 }: HubDataHealthBannerProps) {
   const [expanded, setExpanded] = useState(false)
   const messages: HealthMessage[] = []
@@ -107,6 +113,7 @@ export function HubDataHealthBanner({
   const primary = messages[0]!
   const extras = messages.slice(1)
   const PrimaryIcon = primary.tone === 'warn' ? AlertTriangle : Info
+  const canRetry = Boolean(onRetry && (error || loadSource === 'stats-fallback'))
 
   return (
     <div className="hx-health-banner" role="status" aria-live="polite">
@@ -118,6 +125,12 @@ export function HubDataHealthBanner({
             <span className="hx-health-banner__detail">{primary.detail}</span>
           ) : null}
         </div>
+        {canRetry ? (
+          <button type="button" className="hx-health-banner__toggle" onClick={onRetry} disabled={loading || retryDisabled}>
+            <RefreshCw size={14} aria-hidden="true" />
+            <span>Try again</span>
+          </button>
+        ) : null}
         {extras.length > 0 ? (
           <button
             type="button"

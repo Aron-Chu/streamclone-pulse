@@ -378,7 +378,14 @@ function MomentsWorkspace() {
     try { rankedScope = historyMode ? readHistoryRankedScope(params, certifiedClock, retention.from, retention.throughExclusive) : readRankedScope(params, certifiedClock, retention.from, retention.throughExclusive) }
     catch (error) { rankedValidation = error instanceof Error ? error.message : 'Choose valid filters.' }
   }
-  const ranked = useRankedDiscovery(rankedMode && Boolean(retention.from && retention.throughExclusive && rankedScope), rankedScope, retention.from, retention.manualVersion, retention.throughExclusive, retention.certificateGeneration)
+  // While History checks a new creator's dates right after a range History showed, the ranking
+  // History was showing stays (marked as retained, with its own range and scope) so the results
+  // below the filters keep their place. Only a range shown in History counts: coming back from
+  // Explore to a History creator shows no rows until that creator's dates are checked.
+  const rangeShown = useRef(false)
+  const keepRanking = historyMode && retention.loading && rangeShown.current
+  rangeShown.current = historyMode && (Boolean(retention.from) || keepRanking)
+  const ranked = useRankedDiscovery(rankedMode && (Boolean(retention.from && retention.throughExclusive && rankedScope) || keepRanking), rankedScope, retention.from, retention.manualVersion, retention.throughExclusive, retention.certificateGeneration)
   const browse = { ...readMomentBrowse(params), period: 'all' as const, from: '', to: '' }
   useEffect(() => {
     if (!historyMode) return
@@ -614,6 +621,10 @@ function MomentsWorkspace() {
     leaveSelection()
     update({ ...values, ...(reviewing ? SELECTION_RESET : {}) }, replace)
   }
+  /** A creator typed into a ranked filter is applied in place; keep the reader's place. */
+  function keepPlaceFor(options?: { replace?: boolean }) {
+    if (options?.replace) skipScrollRestore.current = true
+  }
   function select(moment: DiscoveryMoment) {
     if (whenSettled(() => select(moment))) return
     // A row press is announced by the row's own button; only Previous/Next set one (review).
@@ -745,7 +756,18 @@ function MomentsWorkspace() {
         creatorReturnFocus.current = null
       }
     })
-    return () => { scrollPositions.set(key, window.scrollY); if (scrollPositions.size > 40) scrollPositions.delete(scrollPositions.keys().next().value!) }
+  }, [location.key, requested, view])
+  // Remember the reader's place as this entry is left. A layout cleanup runs in
+  // the commit's mutation phase, before RouteScrollManager's layout effect opens
+  // a pushed page at the top; a passive cleanup would run after that reset and
+  // record 0, so Back would return the reader to the top of the list.
+  useLayoutEffect(() => {
+    const key = location.key
+    return () => {
+      scrollPositions.delete(key)
+      scrollPositions.set(key, window.scrollY)
+      if (scrollPositions.size > 40) scrollPositions.delete(scrollPositions.keys().next().value!)
+    }
   }, [location.key, requested, view])
   const locationUrl = location.pathname + location.search
   useEffect(() => {
@@ -878,12 +900,12 @@ function MomentsWorkspace() {
     <div id="moments-view-panel" role="tabpanel" aria-labelledby={`moments-view-tab-${view}`} tabIndex={0}>
     <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? 'Saved in this browser · not synced to the extension or your account.' : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</>}</p>
     {explore ? <RankedExploreControls params={params} now={certifiedClock} indexedRetentionStart={retention.from} certifiedThroughExclusive={retention.throughExclusive} retentionCheckedAt={retention.checkedAt} data={ranked.data} loading={retention.loading || ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={retention.error || rankedValidation || ranked.error} invalid={Boolean(rankedValidation)} notDeployed={retention.notDeployed}
-      onChange={values => { leaveSelection(); update({ ...resetSelection, ...values, view: 'explore', sort: 'volume', q: null }, false) }}
+      onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, view: 'explore', sort: 'volume', q: null }, options?.replace ?? false) }}
       onReset={() => { leaveSelection(); setRankedClock(new Date()); setParams({ view: 'explore', period: 'latest', sort: 'volume' }) }}
       onRefresh={() => { if (!chosen) setRankedClock(new Date()); retention.refresh() }} /> : null}
     {saved.warning ? <p role="status" className="moments-notice">{saved.warning}</p> : null}
     {historyMode ? <HistoryExplorerControls params={params} now={certifiedClock} indexedRetentionStart={retention.from} certifiedThroughExclusive={retention.throughExclusive} retentionCheckedAt={retention.checkedAt} days={ranked.error ? undefined : retention.days} data={ranked.data} loading={retention.loading || ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={retention.error || rankedValidation || ranked.error} invalid={Boolean(rankedValidation)}
-      onChange={values => { leaveSelection(); update({ ...resetSelection, ...values, calendar: null, month: null, q: null }, false) }}
+      onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, calendar: null, month: null, q: null }, options?.replace ?? false) }}
       onRefresh={() => { if (!chosen) setRankedClock(new Date()); retention.refresh() }} /> : null}
     {!rankedMode && (collection.length > 0 || displayed.length > 0) ? <>
       <button type="button" className="moments-filter-toggle" aria-expanded={filtersExpanded} aria-controls="moments-filters" onClick={() => setFiltersExpanded(value => !value)}>{filtersExpanded ? 'Hide filters' : hasBrowseFilters ? 'Filters · active' : 'Filters'}</button>
@@ -899,7 +921,7 @@ function MomentsWorkspace() {
     {feed?.banner && view === 'recent' ? <p role="status">{feed.banner}</p> : null}
     {/* Outside the results, whose aria-busy can hold back announcements while a page loads. */}
     <span className="sr-only" aria-live="polite" aria-atomic="true" data-review-announcement="">{reviewAnnouncement && reviewAnnouncement.key === chosen?.key ? reviewAnnouncement.text : ''}</span>
-    {(!rankedMode || retention.from || chosen) ? <div className="moments-layout">
+    {(!rankedMode || retention.from || keepRanking || chosen) ? <div className="moments-layout">
       <section ref={arrivalRoot} className="moments-results" aria-label="Moment results" aria-busy={busy}><h2 ref={resultsRef} tabIndex={-1}>{rankedMode ? 'Most active detected moments' : 'Moments'} <small>{busy && !displayed.length ? 'Loading…' : rankedMode && !ranked.data ? '' : `${displayed.length} ${rankedMode ? 'loaded' : 'shown'}`}</small></h2>
         <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{busy && !displayed.length ? 'Loading moments.' : rankedMode && !ranked.data ? '' : `${displayed.length} ${displayed.length === 1 ? 'moment' : 'moments'} ${rankedMode ? 'loaded' : 'shown'}.`}</span>
         {/* A selection with no row in the list leads the results, above any loading or

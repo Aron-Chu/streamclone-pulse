@@ -1,11 +1,19 @@
 import { test, expect } from '../helpers/testFixtures.ts'
 
+const WIDE_EMOTE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="106" height="32" viewBox="0 0 106 32"><rect width="106" height="32" rx="6" fill="#9146ff"/></svg>'
+
 test('packaged supporter settings stay local, accessible and responsive', async ({ extension, prepare }, info) => {
   await prepare()
   const page = extension.page
+  // Serve every 7TV emote locally at the widest real shape (wide emotes run about 3.1-3.3:1), so the
+  // overflow checks below see loaded images on every run instead of depending on live CDN timing.
+  await extension.context.route('https://cdn.7tv.app/emote/**', route => route.fulfill({ contentType: 'image/svg+xml', body: WIDE_EMOTE_SVG }))
   const before = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get(null))
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
+  const signatureImages = page.getByRole('group', { name: 'Signature emote' }).locator('img')
+  await expect(signatureImages).toHaveCount(9)
+  await expect.poll(() => signatureImages.evaluateAll(imgs => imgs.every(img => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0))).toBe(true)
   await expect(page.getByRole('link', { name: 'Account & Supporter' })).toHaveAttribute('aria-current', 'page')
   const choices = page.getByRole('group', { name: 'Tenure preview' })
   await expect(choices.getByRole('radio')).toHaveCount(5)
@@ -26,9 +34,11 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(sample.locator('[data-supporter-badge="new"]')).toBeVisible()
   await expect(page.getByText(/nothing is equipped, published, or injected into Twitch chat/)).toBeVisible()
   await page.screenshot({ path: info.outputPath('supporter-settings.png'), fullPage: true, animations: 'disabled' })
-  for (const width of [320, 390, 768]) {
+  for (const width of [320, 360, 390, 480, 768]) {
     await page.setViewportSize({ width, height: 900 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+    // No choice card may spill its emote name past its own border, even where the page does not scroll.
+    expect(await page.locator('.pulse-supporter-badge-choices label').evaluateAll(labels => labels.filter(label => label.scrollWidth > label.clientWidth + 1).map(label => label.textContent))).toEqual([])
     await page.screenshot({ path: info.outputPath(`supporter-settings-${width}.png`), fullPage: true, animations: 'disabled' })
   }
   await radio.check()

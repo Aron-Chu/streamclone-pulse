@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { hasBetaKey } from '../lib/auth'
+import { routeScrollState } from '../lib/routeScroll'
 
 /**
  * Local preference gate, NOT authentication or authorization. The API must
@@ -9,7 +10,7 @@ import { hasBetaKey } from '../lib/auth'
  */
 export function RequireAuth() {
   if (!hasBetaKey()) {
-    return <Navigate to="/analytics" replace />
+    return <Navigate to="/analytics" replace state={routeScrollState('top')} />
   }
   return <Outlet />
 }

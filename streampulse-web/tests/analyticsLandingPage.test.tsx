@@ -4,22 +4,28 @@
  * Keep mocked hub snapshots stable across renders so effects and charts can
  * settle under the same data identity they receive from the real hub hook.
  */
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DashboardHome from "../src/routes/dashboard/Home";
 import AnalyticsLandingPage from "../src/routes/analytics/AnalyticsLandingPage";
+import { RouteScrollManager } from "../src/ui/RouteScrollManager";
 
 const hubMockOpts = vi.hoisted(() => ({
   loadSource: "full" as "full" | "stats-fallback" | "cache",
   hubEndpointOk: true,
   activityFallback: false,
+  /** First hub request still in flight: no snapshot yet. */
+  pending: false,
   dataByMode: {} as Record<string, unknown>,
+  refresh: vi.fn(),
+  refreshing: false,
+  retryBlocked: false,
 }));
 
 vi.mock("../src/hooks/usePublicHubData", () => ({
   usePublicHubData: () => ({
-    data: hubMockOpts.dataByMode[hubMockOpts.activityFallback ? "fallback" : "full"] ??= {
+    data: hubMockOpts.pending ? null : hubMockOpts.dataByMode[hubMockOpts.activityFallback ? "fallback" : "full"] ??= {
       generatedAt: new Date().toISOString(),
       poolSize: 0,
       corpus: {
@@ -158,14 +164,15 @@ vi.mock("../src/hooks/usePublicHubData", () => ({
       livePulseMoments: [],
       featuredSession: { state: "empty", reason: "no_qualifying_session" },
     },
-    loading: false,
-    refreshing: false,
+    loading: hubMockOpts.pending,
+    refreshing: hubMockOpts.refreshing,
     error: null,
     loadSource: hubMockOpts.loadSource,
     hubEndpointOk: hubMockOpts.hubEndpointOk,
     liveEmpty: true,
     lastUpdated: Date.now(),
-    refresh: vi.fn(),
+    retryBlocked: hubMockOpts.retryBlocked,
+    refresh: hubMockOpts.refresh,
   }),
 }));
 
@@ -192,6 +199,37 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     hubMockOpts.loadSource = "full";
     hubMockOpts.hubEndpointOk = true;
     hubMockOpts.activityFallback = false;
+    hubMockOpts.refresh.mockReset();
+    hubMockOpts.refreshing = false;
+    hubMockOpts.retryBlocked = false;
+    hubMockOpts.pending = false;
+  });
+
+  it("lands a cold #section-* link only after the hub data has rendered (OP1-FUN-001)", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView as unknown as Element["scrollIntoView"];
+    const scrolled = () => scrollIntoView.mock.contexts as Element[];
+    // A fresh element per render, so the page re-reads the mocked hub hook.
+    const tree = () => (
+      <MemoryRouter initialEntries={["/analytics#section-emote-signal"]}>
+        <RouteScrollManager />
+        <AnalyticsLandingPage />
+      </MemoryRouter>
+    );
+    try {
+      hubMockOpts.pending = true;
+      const view = render(tree());
+      // The section exists as a loading skeleton, but its final position is not known yet.
+      expect(document.getElementById("section-emote-signal")).toBeTruthy();
+      await new Promise((done) => setTimeout(done, 120));
+      expect(scrolled()).not.toContain(document.getElementById("section-emote-signal"));
+
+      hubMockOpts.pending = false;
+      view.rerender(tree());
+      await waitFor(() => expect(scrolled()).toContain(document.getElementById("section-emote-signal")));
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
   });
 
   it("renders Pulse Moments Live without the removed Moments feed", async () => {
@@ -331,6 +369,47 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     ).toBeTruthy();
     expect(screen.getAllByText(/live network feed paused/i).length).toBe(1);
     expect(screen.queryByText("NEW")).toBeNull();
+  });
+
+  it("re-requests the hub from the health banner's Try again", async () => {
+    hubMockOpts.loadSource = "stats-fallback";
+    hubMockOpts.hubEndpointOk = false;
+
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/Hub temporarily unavailable/i);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(hubMockOpts.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Try again disabled during a refresh and hides it during a Retry-After window", async () => {
+    hubMockOpts.loadSource = "stats-fallback";
+    hubMockOpts.hubEndpointOk = false;
+    hubMockOpts.refreshing = true;
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/Hub temporarily unavailable/i);
+    expect((screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+
+    hubMockOpts.refreshing = false;
+    hubMockOpts.retryBlocked = true;
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Hub temporarily unavailable/i);
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 });
 

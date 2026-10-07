@@ -4,6 +4,7 @@ import { BrandMark } from './BrandMark'
 import { ChromeInstallCta } from './ChromeInstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import { AnalyticsPreferences } from './AnalyticsPreferences'
+import { PageErrorBoundary } from '../PortalErrorBoundary'
 import {
   GITHUB_REPO_URL,
   PRIVACY_PATH,
@@ -84,7 +85,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
       </header>
-      <main className="app-main" id="public-main" tabIndex={-1}>{children}</main>
+      <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
       <footer className="app-footer">
         <div className="app-footer__inner">
           <div className="flex items-center gap-2">
