@@ -231,3 +231,46 @@ describe('Pulse Explorer contract and workspace', () => {
     expect(screen.queryByRole('link', { name: 'Watch VOD' })).toBeNull()
   })
 })
+
+// OP1-RES-003 / CX-RES-004: a shared broadcast link must stay inspectable when
+// only the list request fails or comes back empty.
+describe('Pulse Explorer detail route with a failed or empty list', () => {
+  type ListResult = Omit<ReturnType<typeof hookResult>, 'error'> & { error: string | null }
+  function renderDetailRoute(list: ListResult, path = '/analytics/explore/pulse-xqc-stream-1') {
+    const data = normalizeExplorerEnvelope(rawEnvelope())!
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? hookResult(data) : list))
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+          <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('keeps the loaded broadcast and reports the list failure in the results column only', () => {
+    const { container } = renderDetailRoute({ ...hookResult(null), unavailable: true, error: 'internal_error' })
+    const inspector = container.querySelector('aside.explorer-inspector')
+    expect(inspector).not.toBeNull()
+    expect(screen.getByRole('heading', { level: 2, name: 'xQc' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Back to broadcasts' })).toBeTruthy()
+    const results = container.querySelector('section.explorer-results') as HTMLElement
+    expect(results.textContent).toContain('Pulse Explorer is unavailable')
+    expect(inspector?.textContent).not.toContain('Pulse Explorer is unavailable')
+    expect(container.querySelector('.pulse-explorer__workspace--single')).toBeNull()
+  })
+
+  it('keeps the loaded broadcast when the list comes back empty', () => {
+    const empty = normalizeExplorerEnvelope({ ...rawEnvelope(), status: 'empty', broadcasts: [], broadcast: undefined, moments: undefined })
+    const { container } = renderDetailRoute(hookResult(empty))
+    expect(screen.getByRole('heading', { level: 2, name: 'xQc' })).toBeTruthy()
+    expect((container.querySelector('section.explorer-results') as HTMLElement).textContent).toContain('No matching broadcasts')
+  })
+
+  it('still uses the single workspace on the index route when the list fails', () => {
+    const { container } = renderDetailRoute({ ...hookResult(null), unavailable: true, error: 'internal_error' }, '/analytics/explore')
+    expect(container.querySelector('aside.explorer-inspector')).toBeNull()
+    expect(container.querySelector('.pulse-explorer__workspace--single')).not.toBeNull()
+  })
+})

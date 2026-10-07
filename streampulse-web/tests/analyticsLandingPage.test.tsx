@@ -4,7 +4,7 @@
  * Keep mocked hub snapshots stable across renders so effects and charts can
  * settle under the same data identity they receive from the real hub hook.
  */
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DashboardHome from "../src/routes/dashboard/Home";
@@ -15,6 +15,9 @@ const hubMockOpts = vi.hoisted(() => ({
   hubEndpointOk: true,
   activityFallback: false,
   dataByMode: {} as Record<string, unknown>,
+  refresh: vi.fn(),
+  refreshing: false,
+  retryBlocked: false,
 }));
 
 vi.mock("../src/hooks/usePublicHubData", () => ({
@@ -159,13 +162,14 @@ vi.mock("../src/hooks/usePublicHubData", () => ({
       featuredSession: { state: "empty", reason: "no_qualifying_session" },
     },
     loading: false,
-    refreshing: false,
+    refreshing: hubMockOpts.refreshing,
     error: null,
     loadSource: hubMockOpts.loadSource,
     hubEndpointOk: hubMockOpts.hubEndpointOk,
     liveEmpty: true,
     lastUpdated: Date.now(),
-    refresh: vi.fn(),
+    retryBlocked: hubMockOpts.retryBlocked,
+    refresh: hubMockOpts.refresh,
   }),
 }));
 
@@ -192,6 +196,9 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     hubMockOpts.loadSource = "full";
     hubMockOpts.hubEndpointOk = true;
     hubMockOpts.activityFallback = false;
+    hubMockOpts.refresh.mockReset();
+    hubMockOpts.refreshing = false;
+    hubMockOpts.retryBlocked = false;
   });
 
   it("renders Pulse Moments Live without the removed Moments feed", async () => {
@@ -331,6 +338,47 @@ describe("/analytics landing (AnalyticsLandingPage)", () => {
     ).toBeTruthy();
     expect(screen.getAllByText(/live network feed paused/i).length).toBe(1);
     expect(screen.queryByText("NEW")).toBeNull();
+  });
+
+  it("re-requests the hub from the health banner's Try again", async () => {
+    hubMockOpts.loadSource = "stats-fallback";
+    hubMockOpts.hubEndpointOk = false;
+
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/Hub temporarily unavailable/i);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(hubMockOpts.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Try again disabled during a refresh and hides it during a Retry-After window", async () => {
+    hubMockOpts.loadSource = "stats-fallback";
+    hubMockOpts.hubEndpointOk = false;
+    hubMockOpts.refreshing = true;
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/Hub temporarily unavailable/i);
+    expect((screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+
+    hubMockOpts.refreshing = false;
+    hubMockOpts.retryBlocked = true;
+    render(
+      <MemoryRouter>
+        <AnalyticsLandingPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Hub temporarily unavailable/i);
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 });
 

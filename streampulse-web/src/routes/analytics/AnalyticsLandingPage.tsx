@@ -604,6 +604,8 @@ function AnalyticsLandingContent() {
           error={hub.error}
           backendUrl={getBackendUrl()}
           loading={loadingInitial || hubUiState === "loading"}
+          onRetry={hub.retryBlocked ? undefined : hub.refresh}
+          retryDisabled={hub.refreshing}
         />
         <HubBackendSourceBanner />
 

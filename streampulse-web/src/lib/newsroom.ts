@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient'
+import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
 import { measurementTimeMs } from '@streampulse/pulse-core'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import {
@@ -633,7 +634,8 @@ export async function fetchNewsroom(options: FetchNewsroomOptions = {}): Promise
     params.set('window', options.window ?? 'live')
     path = `/v1/public/newsroom?${params}`
   }
-  const response = await apiClient<unknown>(path, { signal: options.signal, timeoutMs: 8_000 })
+  // A story is the session detail of the sessions view; the list keeps 8 s.
+  const response = await apiClient<unknown>(path, { signal: options.signal, timeoutMs: storyId ? SLOW_READ_TIMEOUT_MS : 8_000 })
   const envelope = normalizeNewsroomEnvelope(response.data)
   if (!envelope) throw new Error('Malformed newsroom response')
   return envelope

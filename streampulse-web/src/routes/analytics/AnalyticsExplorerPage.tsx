@@ -450,7 +450,10 @@ export default function AnalyticsExplorerPage() {
   const statusTone = !windowAvailable || list.unavailable ? 'offline' : list.data?.status === 'stale' ? 'degraded' : 'ready'
   const network = list.data?.networkContext
   const hasNetworkComparison = Boolean(network && network.comparableChannels > 0 && (network.chatChangePct != null || network.emoteChangePct != null))
-  const singleWorkspaceState = !windowAvailable || list.unavailable || list.data?.status === 'empty'
+  // A shared broadcast link loads its own detail: a failed or empty list stays in
+  // the results column and never hides the inspector on the detail route. A
+  // history window this build has not opted into has no detail to show.
+  const singleWorkspaceState = !windowAvailable || (!broadcastId && (list.unavailable || list.data?.status === 'empty'))
 
   return (
     <AnalyticsFigmaShell

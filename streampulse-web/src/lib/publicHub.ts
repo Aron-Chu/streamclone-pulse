@@ -1,6 +1,7 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
 import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
 import { apiClient, getBackendUrl, isApiError, type ApiError } from './apiClient'
+import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
@@ -786,9 +787,11 @@ export async function fetchPublicHubBase(
   signal?: AbortSignal,
   activityWindow?: PublicHubActivityWindow,
   projection?: PublicHubProjection,
+  // The 24h body is ~1.2 MB decoded; a slow network needs longer than the 8 s default.
+  timeoutMs = SLOW_READ_TIMEOUT_MS,
 ): Promise<FetchPublicHubResult> {
   try {
-    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow, projection), { signal })
+    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow, projection), { signal, timeoutMs })
     if (!hasPublicHubResponseShape(primary.data)) {
       throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
     }

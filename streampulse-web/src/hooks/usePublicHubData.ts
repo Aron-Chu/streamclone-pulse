@@ -51,10 +51,14 @@ export interface PublicHubState {
   pollSequence: number
   /** When data was read from browser cache (ms since epoch). */
   cachedAt: number | null
+  /** A server Retry-After window is active; refresh() waits for it to end. */
+  retryBlocked: boolean
   refresh: () => void
 }
 
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
+/** Viewer copy for a hub read that hit its client deadline (never the raw deadline message). */
+export const HUB_TIMEOUT_MESSAGE = 'The hub took too long to respond.'
 
 function canRecoverHubRead(error: unknown): boolean {
   return isApiError(error) &&
@@ -148,6 +152,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const [refreshing, setRefreshing] = useState(false)
   const [activityRepairing, setActivityRepairing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retryBlocked, setRetryBlocked] = useState(false)
   const [loadSource, setLoadSource] = useState<PublicHubLoadSource | null>(() => initial.loadSource)
   const [hubEndpointOk, setHubEndpointOk] = useState(() => initial.hubEndpointOk)
   const [lastUpdated, setLastUpdated] = useState<number | null>(() => initial.lastUpdated)
@@ -195,6 +200,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const load = useCallback(async (force = false) => {
     if (Date.now() < retryNotBeforeRef.current) return
     if (inFlightRef.current && !force) return
+    setRetryBlocked(false)
 
     controllerRef.current?.abort(new DOMException('superseded by new request', 'AbortError'))
     const controller = new AbortController()
@@ -218,7 +224,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         const minutes = WINDOW_MINUTES[activityWindow]
         if (minutes != null && minutes > 30) {
           try {
-            recent = await fetchPublicHubBase(controller.signal, '30m', projection)
+            // The small 30m body keeps the 8 s default, so a failed cold load reaches its error sooner.
+            recent = await fetchPublicHubBase(controller.signal, '30m', projection, 8_000)
           } catch (recentError) {
             if (!canRecoverHubRead(recentError)) throw recentError
           }
@@ -234,7 +241,11 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         }
         // Keep an existing measured snapshot instead of replacing it with totals.
         if (hasDataRef.current) throw primaryError
-        const fallback = await fetchPublicHubStatsFallback(controller.signal)
+        const fallback = await fetchPublicHubStatsFallback(controller.signal).catch((fallbackError: unknown) => {
+          // When totals are unreachable too, report the slow hub so the timeout stays visible;
+          // a typed fallback error (e.g. a 429 with Retry-After) is kept as is.
+          throw isApiError(primaryError) && primaryError.kind === 'timeout' && !isApiError(fallbackError) ? primaryError : fallbackError
+        })
         if (controller.signal.aborted || !mountedRef.current) return
         applySuccessfulLoad(fallback.data, fallback.loadSource, false)
         return
@@ -260,7 +271,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
           setActivityRepairing(true)
           hasDataRef.current = true
           try {
-            const recent = await fetchPublicHubBase(controller.signal, '30m', projection)
+            // Same short deadline as the recovery read: the 30m body is small.
+            const recent = await fetchPublicHubBase(controller.signal, '30m', projection, 8_000)
             if (recent.hubEndpointOk) {
               next = replaceWithCanonicalRecentActivity(base.data, recent.data)
             } else {
@@ -303,10 +315,11 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
         // Honor server Retry-After when present; never shorten below healthy cadence.
         nextRetryAfterMsRef.current = Math.max(pollMs, err.retryAfterMs)
         retryNotBeforeRef.current = Date.now() + nextRetryAfterMsRef.current
+        setRetryBlocked(true)
       }
       setError(
         isApiError(err)
-          ? err.message
+          ? err.kind === 'timeout' ? HUB_TIMEOUT_MESSAGE : err.message
           : err instanceof Error
             ? err.message
             : 'Failed to load live hub data',
@@ -446,6 +459,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
     lastSuccessfulPollAt: lastUpdated,
     pollSequence,
     cachedAt,
+    retryBlocked,
     refresh,
   }
 }

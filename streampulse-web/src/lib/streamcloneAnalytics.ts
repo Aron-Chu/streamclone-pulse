@@ -20,6 +20,7 @@ import type {
   SyncStatus,
 } from '@streampulse/analytics-console'
 import { apiClient, getBackendUrl } from './apiClient'
+import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
 import { verifiedArchiveMapping } from './verifiedArchiveMapping'
 import { resolveBackendSource } from './backendSource'
 import { hasBetaKey } from './auth'
@@ -689,6 +690,7 @@ async function fetchPortalStreamBundle(
   const includeSummary = opts?.includeSummary !== false && includeMinutes
   const { data: detail } = await apiClient<PortalStreamDetail>(
     portalPath(`/streams/${encodeURIComponent(streamId)}`),
+    { timeoutMs: SLOW_READ_TIMEOUT_MS },
   )
 
   // Resolve identity before starting the expensive minute bundle. A stale
@@ -1095,43 +1097,26 @@ export const portalAnalyticsApi: AnalyticsApi = {
     return { ...data, items: usesLocalAnalyticsRoutes() ? data.items : (data.items ?? []).map(item => ({ ...item, ...portalLifecycleFields(item), ...portalStreamText(item) })), updatedAt: measurementTimeMs(data.updatedAt) ?? 0 }
   },
 
+  // A failed read rejects: an empty channel is a 200 `not_collected` answer, so
+  // an error must reach the console as an error, not as "No recent data".
   async getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
     if (usesLocalAnalyticsRoutes()) {
-      try {
-        // Sparse live status — full minute timelines are loaded via session detail, not polled.
-        const params = new URLSearchParams({ sparse: 'true' })
-        const { data } = await apiClient<AnalyticsStreamDetail>(
-          analyticsPath(`/channels/${encodeURIComponent(login)}/live?${params.toString()}`),
-        )
-        return data
-      } catch {
-        return {
-          channel: login,
-          state: 'unknown',
-          rollups: [],
-          topEmotes: [],
-          sources: [],
-          updatedAt: 0,
-        }
-      }
-    }
-    try {
-      const { data } = await apiClient<PortalChannelLiveResponse>(
-        portalPath(`/channels/${encodeURIComponent(login)}/live`),
+      // Sparse live status — full minute timelines are loaded via session detail, not polled.
+      const params = new URLSearchParams({ sparse: 'true' })
+      const { data } = await apiClient<AnalyticsStreamDetail>(
+        analyticsPath(`/channels/${encodeURIComponent(login)}/live?${params.toString()}`),
       )
-      // Keep the live frame a single request. The channel emote catalog is
-      // enrichment, not required to render the current stream/chart.
-      return portalLiveResponseToAnalytics(data)
-    } catch {
-      return {
-        channel: login,
-        state: 'unknown',
-        rollups: [],
-        topEmotes: [],
-        sources: [],
-        updatedAt: 0,
-      }
+      return data
     }
+    // The hosted live frame carries the latest session's minute timeline: the
+    // channel page's session detail, so it gets the same longer deadline.
+    const { data } = await apiClient<PortalChannelLiveResponse>(
+      portalPath(`/channels/${encodeURIComponent(login)}/live`),
+      { timeoutMs: SLOW_READ_TIMEOUT_MS },
+    )
+    // Keep the live frame a single request. The channel emote catalog is
+    // enrichment, not required to render the current stream/chart.
+    return portalLiveResponseToAnalytics(data)
   },
 
   async getStreamSummary(streamId: string, channel?: string) {
