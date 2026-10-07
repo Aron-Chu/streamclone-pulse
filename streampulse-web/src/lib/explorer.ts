@@ -256,9 +256,12 @@ export function normalizeExplorerEnvelope(value: unknown): ExplorerEnvelope | nu
   }
 }
 
+/** The most broadcasts one Explorer list read returns (streampulse-backend's explorerMaxLimit). */
+export const EXPLORER_MAX_LIMIT = 50
+
 function boundedLimit(value: number | undefined): number {
   if (!Number.isFinite(value)) return 25
-  return Math.max(1, Math.min(50, Math.floor(value ?? 25)))
+  return Math.max(1, Math.min(EXPLORER_MAX_LIMIT, Math.floor(value ?? 25)))
 }
 
 export async function fetchExplorer(options: FetchExplorerOptions = {}): Promise<ExplorerEnvelope> {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isApiError } from '../lib/apiClient'
 import {
+  EXPLORER_MAX_LIMIT,
   fetchExplorer,
   normalizeExplorerEnvelope,
   type ExplorerEnvelope,
@@ -15,8 +16,6 @@ export interface UseExplorerDataOptions extends ExplorerQuery {
 }
 
 const cache = new Map<string, ExplorerEnvelope>()
-/** Lists the reader has extended with Load more. */
-const extended = new WeakSet<ExplorerEnvelope>()
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
 /** A detail read (which does not poll) tries again this many times while its window warms. */
 export const EXPLORER_WARMING_RETRIES = 1
@@ -42,21 +41,30 @@ function keyFor(options: UseExplorerDataOptions): string {
 }
 
 /**
- * A poll reads only the first page. On a list the reader extended with Load
- * more, the fresh first page leads and the deeper rows, with the cursor past
- * them, stay, so the rows the reader scrolled to do not disappear. A first page
- * with no cursor is the whole list and replaces it.
+ * How many rows a list read asks for. A list the reader extended with Load more
+ * is read again as deep as they reached, up to what one read can return, so a
+ * poll refreshes those rows instead of only the first page.
  */
-function withFirstPage(list: ExplorerEnvelope, first: ExplorerEnvelope): ExplorerEnvelope {
-  if (!first.nextCursor) return first
-  const fresh = new Set(first.broadcasts.map((broadcast) => broadcast.id))
-  const merged = {
-    ...first,
-    broadcasts: [...first.broadcasts, ...list.broadcasts.filter((broadcast) => !fresh.has(broadcast.id))],
+function readDepth(list: ExplorerEnvelope | undefined, limit: number): number {
+  return Math.min(EXPLORER_MAX_LIMIT, Math.max(limit, list?.broadcasts.length ?? 0))
+}
+
+/**
+ * The list after a read of its first `depth` rows. When the read covered every
+ * row on the list, or returned the whole result set, it is the list: rows that
+ * left are gone, and its cursor follows the last row it returned, so a row
+ * pushed further down comes back with Load more. On a list longer than one read
+ * returns, the rows below the read stay as they were loaded, with the cursor
+ * past them, and a row within the read that it did not return is dropped.
+ */
+function withFreshRead(list: ExplorerEnvelope, fresh: ExplorerEnvelope, depth: number): ExplorerEnvelope {
+  if (!fresh.nextCursor || list.broadcasts.length <= depth) return fresh
+  const read = new Set(fresh.broadcasts.map((broadcast) => broadcast.id))
+  return {
+    ...fresh,
+    broadcasts: [...fresh.broadcasts, ...list.broadcasts.slice(depth).filter((broadcast) => !read.has(broadcast.id))],
     nextCursor: list.nextCursor,
   }
-  extended.add(merged)
-  return merged
 }
 
 function staleCopy(envelope: ExplorerEnvelope): ExplorerEnvelope {
@@ -110,6 +118,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     const controller = new AbortController()
     controllerRef.current = controller
     const previous = cache.get(queryKey)
+    const depth = broadcastId ? limit : readDepth(previous, limit)
     if (previous) {
       show(previous)
       setRefreshing(true)
@@ -117,7 +126,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
       setLoading(true)
     }
     try {
-      const envelope = await fetchExplorer({ ...query, broadcastId, limit, abortSignal: controller.signal })
+      const envelope = await fetchExplorer({ ...query, broadcastId, limit: depth, abortSignal: controller.signal })
       if (controller.signal.aborted || request !== requestRef.current) return
       const before = previous?.summary.broadcastCount ?? 0
       if (!broadcastId && envelope.status === 'ready' && envelope.summary.broadcastCount > before && before > 0) {
@@ -128,8 +137,8 @@ export function useExplorerData(options: UseExplorerDataOptions) {
       }
       // Merged onto the list as it is now: a Load more may have landed during this read.
       const current = cache.get(queryKey)
-      const next = !broadcastId && envelope.status !== 'unavailable' && current && extended.has(current)
-        ? withFirstPage(current, envelope)
+      const next = !broadcastId && envelope.status !== 'unavailable' && current
+        ? withFreshRead(current, envelope, depth)
         : envelope
       if (next.status !== 'unavailable') cache.set(queryKey, next)
       show(next)
@@ -166,31 +175,42 @@ export function useExplorerData(options: UseExplorerDataOptions) {
   }, [broadcastId, clearRetryBlock, enabled, limit, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey, show])
 
   const loadMore = useCallback(async () => {
-    const from = dataRef.current
-    if (!from?.nextCursor || loadMoreRef.current || broadcastId) return
-    const cursor = from.nextCursor
+    if (!dataRef.current?.nextCursor || loadMoreRef.current || broadcastId) return
     const controller = new AbortController()
     loadMoreRef.current = controller
     setLoadingMore(true)
     try {
-      const page = await fetchExplorer({ ...query, cursor, limit, abortSignal: controller.signal })
-      if (controller.signal.aborted) return
-      // A poll may have replaced the list meanwhile: add this page to the list as
-      // it is now, keeping the poll's fresher rows and summary.
-      const list = dataRef.current
-      if (!list || list.status === 'unavailable') return
-      const polled = list !== from
-      const byId = new Map(list.broadcasts.map((broadcast) => [broadcast.id, broadcast]))
-      for (const broadcast of page.broadcasts) if (!polled || !byId.has(broadcast.id)) byId.set(broadcast.id, broadcast)
-      const merged = {
-        ...list,
-        broadcasts: [...byId.values()],
-        nextCursor: page.nextCursor,
-        ...(polled ? {} : { generatedAt: page.generatedAt, dataThrough: page.dataThrough }),
+      // A poll that lands while a page is in flight can read the list again and
+      // move its cursor. The page then continues the old list and could skip a
+      // row the poll pushed down, so the next page is read once more after the
+      // list as it is now.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const from = dataRef.current
+        const cursor = from?.nextCursor
+        if (!from || !cursor || from.status === 'unavailable') return
+        const page = await fetchExplorer({ ...query, cursor, limit, abortSignal: controller.signal })
+        if (controller.signal.aborted) return
+        const list = dataRef.current
+        if (!list || list.status === 'unavailable') return
+        if (list.nextCursor !== cursor) {
+          if (attempt === 0) continue
+          return
+        }
+        // A poll that kept the cursor (or a failed one) may still have replaced the
+        // list: add this page to it, keeping the poll's fresher rows and summary.
+        const polled = list !== from
+        const byId = new Map(list.broadcasts.map((broadcast) => [broadcast.id, broadcast]))
+        for (const broadcast of page.broadcasts) if (!polled || !byId.has(broadcast.id)) byId.set(broadcast.id, broadcast)
+        const merged = {
+          ...list,
+          broadcasts: [...byId.values()],
+          nextCursor: page.nextCursor,
+          ...(polled ? {} : { generatedAt: page.generatedAt, dataThrough: page.dataThrough }),
+        }
+        cache.set(queryKey, merged)
+        show(merged)
+        return
       }
-      extended.add(merged)
-      cache.set(queryKey, merged)
-      show(merged)
     } catch (caught) {
       if (controller.signal.aborted) return
       setError(isApiError(caught) ? caught.message : 'Could not load more broadcasts')
