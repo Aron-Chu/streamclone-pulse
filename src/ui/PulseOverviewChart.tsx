@@ -626,14 +626,17 @@ function PulseOverviewChartImpl({
   )
 
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
+  // The stream-start ramp sees the bucket flags so it never draws over
+  // missing buckets; those stay blank under the no-data band below.
   const chatTrendValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(
           smoothNullableSeriesValues(chat, trendWindow),
         ),
+        rollups,
       ),
-    [chat, trendWindow],
+    [chat, trendWindow, rollups],
   )
   const emoteTrendValues = useMemo(
     () =>
@@ -641,22 +644,25 @@ function PulseOverviewChartImpl({
         extendSeriesToTrailingEdge(
           smoothNullableSeriesValues(emotes, trendWindow),
         ),
+        rollups,
       ),
-    [emotes, trendWindow],
+    [emotes, trendWindow, rollups],
   )
   const chatDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(chat),
+        rollups,
       ),
-    [chat],
+    [chat, rollups],
   )
   const emoteDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(emotes),
+        rollups,
       ),
-    [emotes],
+    [emotes, rollups],
   )
 
   const chatMax = useMemo(() => seriesMax(chat), [chat])
@@ -1078,9 +1084,11 @@ function PulseOverviewChartImpl({
       const smoothed = smoothSeriesValues(series.values, 3)
       const smoothValues = rampNullableSeriesFromStreamStart(
         smoothed.map(value => (value > 0 ? value : null)),
+        rollups,
       )
       const detailValues = rampNullableSeriesFromStreamStart(
         series.values.map(value => (value > 0 ? value : null)),
+        rollups,
       )
       const normalizedAxisMax = overlaySeriesAxisMax(detailValues, true, traceAxis.max)
       const axisMax = interpolateNumber(traceAxis.max, normalizedAxisMax, normalizationProgress)
@@ -1113,6 +1121,7 @@ function PulseOverviewChartImpl({
     })
   }, [
     dashedOverlays,
+    rollups,
     normalizationProgress,
     traceAxis,
     width,
@@ -1748,6 +1757,20 @@ function PulseOverviewChartImpl({
             height={activityBottom - activityTop}
             fill={CHART_INTERACTION.activityFill}
           />
+          {/* Missing buckets get a dim no-data column so a hole never reads as a
+              quiet minute (their bars are 1px at near-zero opacity). */}
+          {rollups.map((point, index) => point.missing ? (
+            <rect
+              key={index}
+              x={plotXForIndex(index - 0.5, n, PAD_LEFT, plotWidth)}
+              y={activityTop}
+              width={plotWidth / Math.max(1, n - 1)}
+              height={activityBottom - activityTop}
+              fill={CHART_INTERACTION.gridLine}
+              opacity={0.5}
+              data-chart-no-data=""
+            />
+          ) : null)}
           {pinColumn ? (
             <rect
               x={pinColumn.x}

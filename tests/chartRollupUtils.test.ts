@@ -13,6 +13,7 @@ import {
   smoothLinePathInBand,
   smoothNullableSeriesValues,
   smoothSeriesValues,
+  STREAM_START_RAMP_MAX_BUCKETS,
   trendSmoothingWindow,
   valueYInBand,
 } from '../src/ui/chartRollupUtils.ts'
@@ -304,5 +305,19 @@ describe('viewer gap honesty', () => {
     // Interior nulls are never filled by the ramp.
     expect(rampNullableSeriesFromStreamStart([5, null, null, 6])[1]).toBeNull()
     expect(rampNullableSeriesFromStreamStart([5, null, null, 6])[2]).toBeNull()
+  })
+
+  it('never ramps over a missing bucket in the opening', () => {
+    const values = [null, null, 5, 6]
+    const points = [{ missing: true }, {}, {}, {}]
+    expect(rampNullableSeriesFromStreamStart(values, points)).toEqual(values)
+    // Real quiet buckets still ramp.
+    expect(rampNullableSeriesFromStreamStart(values, [{}, {}, {}, {}])[0]).toBe(0)
+  })
+
+  it('leaves an opening longer than the ramp limit blank', () => {
+    const values = [...Array<null>(STREAM_START_RAMP_MAX_BUCKETS + 1).fill(null), 5]
+    expect(rampNullableSeriesFromStreamStart(values)).toEqual(values)
+    expect(rampNullableSeriesFromStreamStart(values.slice(1))[0]).toBe(0)
   })
 })
