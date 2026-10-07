@@ -221,6 +221,24 @@ describe('apiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('does not repeat a 503 that names its own Retry-After', async () => {
+    const body = JSON.stringify({ schemaVersion: 1, status: 'unavailable', reason: 'snapshot_warming' })
+    const fetchMock = vi.fn(async () => new Response(body, { status: 503, headers: { 'Retry-After': '60' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiClient('/v1/public/explorer?window=7d')).rejects.toMatchObject({ kind: 'server', status: 503, retryAfterMs: 60_000 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still retries a 503 once when Retry-After is absent or hidden from the page', async () => {
+    // Cross-origin, the browser hides Retry-After unless the API exposes it through CORS.
+    const fetchMock = vi.fn(async () => new Response('{"error":"unavailable"}', { status: 503 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const error = await apiClient('/v1/public/explorer?window=7d').catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ kind: 'server', status: 503 })
+    expect((error as { retryAfterMs?: number }).retryAfterMs).toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('refuses to attach credentials outside the configured origin or API paths', async () => {
     await setBetaKey('secret-one')
     const fetchMock = vi.fn()

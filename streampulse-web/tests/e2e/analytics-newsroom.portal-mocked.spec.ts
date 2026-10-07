@@ -91,7 +91,7 @@ test.describe('Pulse Newsroom and independent Live Wire', () => {
     await expect(page.getByRole('heading', { name: 'xQc' })).toBeVisible()
     const actions = page.getByRole('group', { name: 'Broadcast actions' })
     const analytics = actions.getByRole('link', { name: 'Analytics' })
-    await expect(analytics).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240$/)
+    await expect(analytics).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240&returnTo=%2Fanalytics%2Fexplore%2Fpulse-xqc-session-1%3Fwindow%3D7d%26sort%3Drecent$/)
     await expect(actions.getByRole('link', { name: 'Watch live' })).toHaveAttribute('href', 'https://www.twitch.tv/xqc')
     await expect(actions.getByRole('button', { name: 'Copy link' })).toBeVisible()
     await expect(page.locator('.explorer-moments li')).toHaveCount(3)

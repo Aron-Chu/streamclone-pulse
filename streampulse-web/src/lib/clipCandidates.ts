@@ -110,13 +110,50 @@ function queryString(query: ClipCandidateQuery): string {
   return value ? `?${value}` : ''
 }
 
+const CANDIDATE_TEXT_FIELDS = ['vodId', 'streamTitle', 'streamCategory', 'pickReason', 'statusCopy', 'coverageState'] as const
+/** Shown on the card as text: a number or string renders, an object or array would crash it. */
+const CANDIDATE_COUNT_FIELDS = ['score', 'chatCount', 'emoteCount'] as const
+
+function isStructured(value: unknown): boolean {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * One malformed candidate must not take the inbox down: drop rows without a
+ * text identity, clear wrong-typed text and counts, and keep only named emotes
+ * with a readable count. Status-like fields (sourceStatus, inboxState,
+ * renderabilityStatus, state.status) are only compared, so any value is safe.
+ */
+function normalizeClipCandidates(items: ClipCandidate[]): ClipCandidate[] {
+  return items.flatMap((item: ClipCandidate | null): ClipCandidate[] => {
+    if (!item || typeof item.id !== 'string' || typeof item.login !== 'string' || typeof item.streamId !== 'string') return []
+    const next: ClipCandidate = {
+      ...item,
+      reason: typeof item.reason === 'string' ? item.reason : '',
+      topEmotes: Array.isArray(item.topEmotes)
+        ? item.topEmotes.filter((emote) => typeof emote?.name === 'string' && !isStructured(emote.count))
+        : undefined,
+      state: item.state && typeof item.state === 'object'
+        ? { ...item.state, titleOverride: typeof item.state.titleOverride === 'string' ? item.state.titleOverride : undefined }
+        : undefined,
+      job: item.job && typeof item.job === 'object' && typeof item.job.status === 'string' ? item.job : undefined,
+    }
+    for (const key of CANDIDATE_TEXT_FIELDS) if (next[key] !== undefined && typeof next[key] !== 'string') next[key] = undefined
+    const counts = next as unknown as Record<(typeof CANDIDATE_COUNT_FIELDS)[number], unknown>
+    for (const key of CANDIDATE_COUNT_FIELDS) if (isStructured(counts[key])) counts[key] = undefined
+    return [next]
+  })
+}
+
 export async function fetchClipCandidates(
   query: ClipCandidateQuery = {},
 ): Promise<ClipCandidateListResponse> {
   const result = await apiClient<ClipCandidateListResponse>(`${clipPath()}${queryString(query)}`, {
     gated: true,
   })
-  return result.data
+  // A reply without a candidate list is a failed read, not an empty inbox.
+  if (!Array.isArray(result.data?.items)) throw new Error('Failed to load clip candidates')
+  return { ...result.data, items: normalizeClipCandidates(result.data.items) }
 }
 
 export async function updateClipCandidateState(

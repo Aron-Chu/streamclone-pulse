@@ -143,6 +143,7 @@ the mocked Playwright suite and must be reviewed before they are committed.
 - [ ] Remote CI green on that SHA (jobs actually executed)
 - [ ] `npm run package:cws` (or `validate:package:cws`) for the store target; no localhost
 - [ ] `src/shared/release-notes.json` marks the new version released with `releasedAt`; no `*-ci-probe-not-for-upload` ZIP is ever a candidate
+- [ ] Portal deployed from a commit with that released entry **before** the Store publishes: `/changelog` reads `release-notes.json` at portal build time and describes only released versions, so until then the extension's "Release details" link tells users the new version "has not been released yet"
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
 - [ ] Every portal route linked by the extension returns the intended live page (including `/supporter`, account, policy, and changelog routes)
 - [ ] Owner confirms the publisher-dashboard version and Support URL, selects a higher version than the published release, then authorizes upload

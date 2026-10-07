@@ -138,6 +138,68 @@ describe('ClipsPage', () => {
     expect(await screen.findByText(/no clip candidates yet/i)).toBeTruthy()
   })
 
+  it('keeps the inbox when one candidate has a wrong-typed field', async () => {
+    const candidate = {
+      id: 'cc_ok', login: 'xqc', streamId: 'stream-1', streamTitle: 'Kept candidate', offsetSeconds: 120,
+      startSeconds: 100, endSeconds: 160, score: 90, reason: 'chat_spike', sourceKind: 'recap', sourceStatus: 'available',
+      state: { status: 'new' },
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      items: [
+        { ...candidate, id: 'cc_login', login: { hostile: true }, streamTitle: 'Dropped candidate' },
+        { ...candidate, id: 'cc_emotes', streamTitle: 'Emotes as text', topEmotes: 'abc', streamCategory: 7 },
+        candidate,
+      ],
+    }), { status: 200 })))
+
+    render(
+      <MemoryRouter>
+        <ClipsPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Kept candidate')).toBeTruthy()
+    expect(screen.getByText('Emotes as text')).toBeTruthy()
+    expect(screen.queryByText('Dropped candidate')).toBeNull()
+    expect(screen.queryByLabelText('Top emotes')).toBeNull()
+  })
+
+  it('keeps the card when its title override, counts, emote count or job status has the wrong type', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      items: [{
+        id: 'cc_odd', login: 'xqc', streamId: 'stream-1', streamTitle: 'Odd candidate', offsetSeconds: 120,
+        startSeconds: 100, endSeconds: 160, score: { hostile: true }, reason: 'chat_spike', sourceKind: 'recap',
+        sourceStatus: 'available', chatCount: [3], emoteCount: { hostile: true },
+        topEmotes: [{ name: 'KEKW', count: { hostile: true } }, { name: 'OMEGALUL', count: 12 }],
+        state: { status: 'new', titleOverride: { hostile: true } },
+        job: { id: 'ccj_odd', candidateId: 'cc_odd', status: { hostile: true } },
+      }],
+    }), { status: 200 })))
+
+    render(
+      <MemoryRouter>
+        <ClipsPage />
+      </MemoryRouter>,
+    )
+
+    const card = (await screen.findByText('Odd candidate')).closest('article') as HTMLElement
+    expect(within(card).getByText('OMEGALUL')).toBeTruthy()
+    expect(within(card).queryByText('KEKW')).toBeNull()
+    expect(within(card).getByRole('button', { name: /send to replayforge|replayforge blocked/i })).toBeTruthy()
+  })
+
+  it('shows the load error when the reply has no candidate list', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ items: 'abc' }), { status: 200 })))
+
+    render(
+      <MemoryRouter>
+        <ClipsPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Failed to load clip candidates')).toBeTruthy()
+  })
+
   it('hydrates persisted ReplayForge job state from candidates', async () => {
     vi.stubGlobal(
       'fetch',
