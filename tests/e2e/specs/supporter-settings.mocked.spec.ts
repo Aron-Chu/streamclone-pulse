@@ -1,4 +1,5 @@
 import { test, expect } from '../helpers/testFixtures.ts'
+import { linkDevice, serveMembership, supporterBody } from '../helpers/supporterMembership.ts'
 
 test('packaged supporter settings stay local, accessible and responsive', async ({ extension, prepare }, info) => {
   await prepare()
@@ -101,4 +102,39 @@ test('unmounted account backend produces a clear unavailable state', async ({ ex
   await expect(extension.page.getByRole('link', { name: 'Reopen streampulse.stream' })).toHaveCount(0)
   // UI-11: linking that is not deployed is explained, not offered again.
   await expect(extension.page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+})
+
+test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {
+  await prepare()
+  await linkDevice(extension.serviceWorker)
+  await serveMembership(extension.context, () => supporterBody('active', 2))
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  const rain = page.getByRole('group', { name: 'Emote rain' })
+  await expect(rain).toHaveAttribute('data-supporter-perks', 'on')
+  const status = rain.getByRole('status')
+  await expect(status).toHaveText('')
+  // Hold each write long enough for Chromium to run its focus fixup, as a slow sync write would.
+  await page.evaluate(() => {
+    const original = chrome.storage.sync.set.bind(chrome.storage.sync)
+    chrome.storage.sync.set = ((items: Record<string, unknown>) => new Promise(resolve => setTimeout(resolve, 400)).then(() => original(items))) as typeof chrome.storage.sync.set
+  })
+  const focused = () => page.evaluate(() => document.activeElement?.tagName === 'BUTTON' ? document.activeElement.textContent : document.activeElement?.tagName)
+  for (const [name, previous] of [['Still', 'Off'], ['Rain', 'Still']] as const) {
+    await rain.getByRole('button', { name: previous, exact: true }).focus()
+    await page.keyboard.press('Tab')
+    expect(await focused()).toBe(name)
+    await page.keyboard.press('Space')
+    // While it saves: nothing is disabled, focus stays put, and the old result is cleared.
+    await expect(rain).toHaveAttribute('aria-busy', 'true')
+    await expect(status).toHaveText('')
+    // Read at once, not retried: a row disabled for the save is enabled again once it ends.
+    expect(await rain.evaluate(group => group.querySelectorAll('button:disabled').length)).toBe(0)
+    expect(await focused()).toBe(name)
+    await expect(status).toHaveText('Emote rain saved.')
+    await expect(rain.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(await focused()).toBe(name)
+  }
+  const stored = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))
+  expect(stored).toMatchObject({ pulseBanner: { mode: 'rain' } })
 })

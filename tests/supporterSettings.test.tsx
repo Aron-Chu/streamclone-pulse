@@ -430,4 +430,68 @@ describe('cosmetic save races', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it('keeps the emote rain choice enabled and focused through its save, and announces each save afresh', async () => {
+    // Each storage write waits for the test to settle it.
+    const writes: Array<{ settle: (ok: boolean) => void }> = []
+    const set = vi.fn(() => new Promise<void>((resolve, reject) => { writes.push({ settle: ok => ok ? resolve() : reject(new Error('quota exceeded')) }) }))
+    vi.stubGlobal('chrome', {
+      runtime: { id: 'test-extension', sendMessage: vi.fn() },
+      storage: { sync: { get: vi.fn(async () => ({})), set }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
+    })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const entitlement: SupporterEntitlement = {
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'glass' },
+    }
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} />))
+      const group = host.querySelector<HTMLFieldSetElement>('[data-supporter-perks="on"]')!
+      expect(group.querySelector('legend')?.textContent).toBe('Emote rain')
+      const choice = (name: string) => [...group.querySelectorAll('button')].find(button => button.textContent === name)!
+      // One live region, present and empty before any save, so each result is announced.
+      const status = group.querySelector<HTMLElement>('[role="status"]')!
+      expect(status.textContent).toBe('')
+
+      choice('Still').focus()
+      await act(async () => choice('Still').click())
+      expect(set).toHaveBeenCalledTimes(1)
+      // Saving locks nothing: a disabled fieldset would drop focus to the body in Chromium.
+      expect(group.disabled).toBe(false)
+      expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
+      expect(group.getAttribute('aria-busy')).toBe('true')
+      expect(document.activeElement).toBe(choice('Still'))
+      // A second press while the first save runs is ignored.
+      await act(async () => choice('Rain').click())
+      expect(set).toHaveBeenCalledTimes(1)
+      await act(async () => writes[0].settle(true))
+      expect(group.querySelector('[role="status"]')).toBe(status)
+      expect(status.textContent).toBe('Emote rain saved.')
+      expect(choice('Still').getAttribute('aria-pressed')).toBe('true')
+      expect(group.hasAttribute('aria-busy')).toBe(false)
+      expect(document.activeElement).toBe(choice('Still'))
+
+      // The next save clears the last confirmation while it runs, then reports its own result.
+      choice('Rain').focus()
+      await act(async () => choice('Rain').click())
+      expect(set).toHaveBeenCalledTimes(2)
+      expect(status.textContent).toBe('')
+      expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
+      await act(async () => writes[1].settle(false))
+      expect(status.textContent).toBe('Could not save emote rain. Please try again.')
+      expect(document.activeElement).toBe(choice('Rain'))
+
+      // And a later success is announced again, not left as the old text.
+      await act(async () => choice('Rain').click())
+      expect(status.textContent).toBe('')
+      await act(async () => writes[2].settle(true))
+      expect(status.textContent).toBe('Emote rain saved.')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
 })

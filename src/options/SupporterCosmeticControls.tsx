@@ -4,6 +4,7 @@ import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { usePulseBanner } from '../ui/PulseBanner.tsx'
+import type { PulseBannerPreference } from '../shared/storage.ts'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
 /**
@@ -233,12 +234,30 @@ export function SupporterCosmeticControls({ entitlement, onSaved, onDraft }: {
  * on the same rule as the backdrop editor: without one it is locked and the
  * saved choice stays as it was; while membership is unknown it waits, neutral.
  * A Supporter's choice saves at once.
+ *
+ * A save never disables the row: the pressed button would lose keyboard focus
+ * to the page. Presses while one saves are ignored instead, and one live region,
+ * always present, is cleared when a save starts and then states its result.
  */
 function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseBanner>; perks: boolean | undefined }) {
-  const [touched, setTouched] = useState(false)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
   // Locked, the row shows the sample look's rain.
   const shown = perks === false ? 'rain' : banner.value.mode
-  return <fieldset className="pulse-supporter-look-row" disabled={!perks || !banner.ready || banner.saving} aria-busy={perks === undefined || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
+  // The shared hook reports the result once its write settles (status and
+  // saving change together), so this row reads only the save it started.
+  useEffect(() => {
+    if (!saving || banner.saving) return
+    setSaving(false)
+    setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : 'Could not save emote rain. Please try again.')
+  }, [saving, banner.saving, banner.status])
+  function choose(mode: PulseBannerPreference['mode']) {
+    if (!perks || !banner.ready || saving || banner.saving) return
+    setMessage('')
+    setSaving(true)
+    void banner.save({ ...banner.value, mode })
+  }
+  return <fieldset className="pulse-supporter-look-row" disabled={!perks || !banner.ready} aria-busy={perks === undefined || saving || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
     <legend>Emote rain</legend>
     <div>
       <div className="pulse-supporter-seg">
@@ -247,12 +266,13 @@ function EmoteRainField({ banner, perks }: { banner: ReturnType<typeof usePulseB
           type="button"
           aria-pressed={shown === mode}
           title={perks === false ? 'Supporter perk' : undefined}
-          onClick={() => { setTouched(true); void banner.save({ ...banner.value, mode }) }}
+          onClick={() => choose(mode)}
         >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
       </div>
       {perks === false
         ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain, still or falling, is a Supporter perk. Only you see it.</p>
-        : touched && banner.status ? <p className="pulse-supporter-detail" role="status">{banner.status === 'Saved' ? 'Emote rain saved.' : 'Could not save emote rain. Please try again.'}</p> : null}
+        : null}
+      <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
     </div>
   </fieldset>
 }
