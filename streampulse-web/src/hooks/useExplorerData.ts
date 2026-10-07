@@ -15,6 +15,8 @@ export interface UseExplorerDataOptions extends ExplorerQuery {
 }
 
 const cache = new Map<string, ExplorerEnvelope>()
+/** Lists the reader has extended with Load more. */
+const extended = new WeakSet<ExplorerEnvelope>()
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
 /** A detail read (which does not poll) tries again this many times while its window warms. */
 export const EXPLORER_WARMING_RETRIES = 1
@@ -39,6 +41,24 @@ function keyFor(options: UseExplorerDataOptions): string {
   })
 }
 
+/**
+ * A poll reads only the first page. On a list the reader extended with Load
+ * more, the fresh first page leads and the deeper rows, with the cursor past
+ * them, stay, so the rows the reader scrolled to do not disappear. A first page
+ * with no cursor is the whole list and replaces it.
+ */
+function withFirstPage(list: ExplorerEnvelope, first: ExplorerEnvelope): ExplorerEnvelope {
+  if (!first.nextCursor) return first
+  const fresh = new Set(first.broadcasts.map((broadcast) => broadcast.id))
+  const merged = {
+    ...first,
+    broadcasts: [...first.broadcasts, ...list.broadcasts.filter((broadcast) => !fresh.has(broadcast.id))],
+    nextCursor: list.nextCursor,
+  }
+  extended.add(merged)
+  return merged
+}
+
 function staleCopy(envelope: ExplorerEnvelope): ExplorerEnvelope {
   return envelope.status === 'unavailable'
     ? envelope
@@ -55,6 +75,12 @@ export function useExplorerData(options: UseExplorerDataOptions) {
   } = options
   const queryKey = keyFor(options)
   const [data, setData] = useState<ExplorerEnvelope | null>(() => cache.get(queryKey) ?? null)
+  // The list as last shown, for a read that lands after others have replaced it.
+  const dataRef = useRef(data)
+  const show = useCallback((next: ExplorerEnvelope | null) => {
+    dataRef.current = next
+    setData(next)
+  }, [])
   const [loading, setLoading] = useState(enabled && !cache.has(queryKey))
   const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -85,7 +111,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     controllerRef.current = controller
     const previous = cache.get(queryKey)
     if (previous) {
-      setData(previous)
+      show(previous)
       setRefreshing(true)
     } else {
       setLoading(true)
@@ -100,8 +126,13 @@ export function useExplorerData(options: UseExplorerDataOptions) {
       } else {
         setAnnouncement('')
       }
-      if (envelope.status !== 'unavailable') cache.set(queryKey, envelope)
-      setData(envelope)
+      // Merged onto the list as it is now: a Load more may have landed during this read.
+      const current = cache.get(queryKey)
+      const next = !broadcastId && envelope.status !== 'unavailable' && current && extended.has(current)
+        ? withFirstPage(current, envelope)
+        : envelope
+      if (next.status !== 'unavailable') cache.set(queryKey, next)
+      show(next)
       setError(null)
       clearRetryBlock()
     } catch (caught) {
@@ -116,13 +147,13 @@ export function useExplorerData(options: UseExplorerDataOptions) {
       }
       if (previous) {
         const stale = staleCopy(previous)
-        setData(stale)
+        show(stale)
         setError(unavailable?.reason ?? (isApiError(caught) ? caught.message : caught instanceof Error ? caught.message : 'Explorer refresh failed'))
       } else if (unavailable) {
-        setData(unavailable)
+        show(unavailable)
         setError(unavailable.reason ?? 'Explorer unavailable')
       } else {
-        setData(null)
+        show(null)
         setError(isApiError(caught) ? caught.message : caught instanceof Error ? caught.message : 'Explorer unavailable')
       }
       return { reason: unavailable?.reason, retryAfterMs }
@@ -132,22 +163,34 @@ export function useExplorerData(options: UseExplorerDataOptions) {
         setRefreshing(false)
       }
     }
-  }, [broadcastId, clearRetryBlock, enabled, limit, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey])
+  }, [broadcastId, clearRetryBlock, enabled, limit, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey, show])
 
   const loadMore = useCallback(async () => {
-    if (!data?.nextCursor || loadingMore || broadcastId) return
-    const cursor = data.nextCursor
+    const from = dataRef.current
+    if (!from?.nextCursor || loadMoreRef.current || broadcastId) return
+    const cursor = from.nextCursor
     const controller = new AbortController()
     loadMoreRef.current = controller
     setLoadingMore(true)
     try {
       const page = await fetchExplorer({ ...query, cursor, limit, abortSignal: controller.signal })
       if (controller.signal.aborted) return
-      const byId = new Map(data.broadcasts.map((broadcast) => [broadcast.id, broadcast]))
-      for (const broadcast of page.broadcasts) byId.set(broadcast.id, broadcast)
-      const merged = { ...data, broadcasts: [...byId.values()], nextCursor: page.nextCursor, generatedAt: page.generatedAt, dataThrough: page.dataThrough }
+      // A poll may have replaced the list meanwhile: add this page to the list as
+      // it is now, keeping the poll's fresher rows and summary.
+      const list = dataRef.current
+      if (!list || list.status === 'unavailable') return
+      const polled = list !== from
+      const byId = new Map(list.broadcasts.map((broadcast) => [broadcast.id, broadcast]))
+      for (const broadcast of page.broadcasts) if (!polled || !byId.has(broadcast.id)) byId.set(broadcast.id, broadcast)
+      const merged = {
+        ...list,
+        broadcasts: [...byId.values()],
+        nextCursor: page.nextCursor,
+        ...(polled ? {} : { generatedAt: page.generatedAt, dataThrough: page.dataThrough }),
+      }
+      extended.add(merged)
       cache.set(queryKey, merged)
-      setData(merged)
+      show(merged)
     } catch (caught) {
       if (controller.signal.aborted) return
       setError(isApiError(caught) ? caught.message : 'Could not load more broadcasts')
@@ -157,11 +200,11 @@ export function useExplorerData(options: UseExplorerDataOptions) {
         setLoadingMore(false)
       }
     }
-  }, [broadcastId, data, limit, loadingMore, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey])
+  }, [broadcastId, limit, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey, show])
 
   useEffect(() => {
     const cached = cache.get(queryKey)
-    setData(cached ?? null)
+    show(cached ?? null)
     setLoading(enabled && !cached)
     setLoadingMore(false)
     setError(null)
@@ -210,7 +253,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
       loadMoreRef.current?.abort(new DOMException('superseded', 'AbortError'))
       loadMoreRef.current = null
     }
-  }, [clearRetryBlock, enabled, load, pollMs, queryKey])
+  }, [clearRetryBlock, enabled, load, pollMs, queryKey, show])
 
   useEffect(() => () => window.clearTimeout(unblockTimerRef.current), [])
 
