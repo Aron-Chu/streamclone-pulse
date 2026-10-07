@@ -18,14 +18,25 @@ describe('personal Pulse banner', () => {
     expect(normalizePulseBanner({ intensity: -5, title: 'x'.repeat(100) })).toMatchObject({ intensity: 10, title: 'x'.repeat(40) })
   })
   it('off renders no image requests; rain stays bounded and uses static frames', () => {
-    const off = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode: 'off' }} />)
+    const off = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode: 'off' }} perks />)
     expect(off).not.toContain('<img')
-    const rain = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode: 'rain' }} />)
+    const rain = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode: 'rain' }} perks />)
     expect(rain.match(/<img/g)).toHaveLength(6)
     expect(rain.match(/2x_static.webp/g)).toHaveLength(6)
     // The backdrop's styles, reduced motion included, ship in the shared shadow stylesheet.
     expect(rain).not.toContain('<style')
     expect(shadowStyles).toMatch(/prefers-reduced-motion: reduce\) \{ \.pulse-banner-art\[data-mode="rain"\] img \{ animation: none/)
+  })
+  it('draws emote rain, still or falling, only for verified Supporter perks', () => {
+    for (const mode of ['rain', 'still'] as const) {
+      // A lapsed or non-Supporter profile may still hold an older saved choice.
+      const locked = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode }} perks={false} />)
+      expect(locked, mode).toContain('data-mode="off"')
+      expect(locked, mode).not.toContain('<img')
+      const supporter = renderToStaticMarkup(<PulseBannerBackdrop value={{ ...DEFAULT_PULSE_BANNER, mode }} perks />)
+      expect(supporter, mode).toContain(`data-mode="${mode}"`)
+      expect(supporter.match(/<img/g), mode).toHaveLength(6)
+    }
   })
   it('renders personal titles as text, never markup', () => {
     const html = renderToStaticMarkup(<StreamPulseTitleBlock title={'<script>hello</script>'} statusLabel="Live chart" />)

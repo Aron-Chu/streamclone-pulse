@@ -39,6 +39,8 @@ import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, Extension
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
+import { supporterAppearanceReply } from './supporterAppearance.ts'
+import { injectSupporterCard } from './supporterCardScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -56,7 +58,7 @@ import {
 } from '../shared/extensionDiagnostics.ts'
 import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, getSupporterPaintStyle, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
-import { DEFAULT_SUPPORTER_PAINT, supporterTenureForMonths } from '../shared/supporterPaint.ts'
+import { DEFAULT_SUPPORTER_PAINT } from '../shared/supporterPaint.ts'
 import {
   addToWatchlist,
   getWatchlist,
@@ -949,13 +951,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_APPEARANCE': {
           const entitlement = await supporterAccount.entitlement()
-          const finish = entitlement.state === 'ready' && entitlement.features.includes('supporter.banner.v1') && entitlement.features.includes('supporter.finish.v1') && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
-          // The crest follows the server's support count; wave and sheen are
-          // this profile's presentation choice and only travel with a verified finish.
-          const crestAndPaint = finish && entitlement.state === 'ready'
-            ? { tenure: supporterTenureForMonths(entitlement.supportPeriods), paint: await getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT) }
-            : {}
-          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0, ...crestAndPaint } satisfies BackgroundResponse)
+          sendResponse(await supporterAppearanceReply(entitlement, () => getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT)) satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_ACCOUNT': {
@@ -987,6 +983,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         case 'SUPPORTER_FINISH_INTENT': {
           const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
           sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_CARD_SCRIPT': {
+          sendResponse({ type: 'SUPPORTER_CARD_SCRIPT', ok: await injectSupporterCard(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
         }
         case 'TWITCH_SIGN_IN': {

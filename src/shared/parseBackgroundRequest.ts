@@ -12,6 +12,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_COSMETICS',
   'SUPPORTER_APPEARANCE',
   'SUPPORTER_FINISH_INTENT',
+  'SUPPORTER_CARD_SCRIPT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
   'SUPPORTER_DEVICES',
@@ -300,6 +301,8 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       return raw.finish === null || raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo' ? { type, finish: raw.finish } : null
     case 'SUPPORTER_ENTITLEMENT':
     case 'SUPPORTER_APPEARANCE':
+    // No file, tab or frame comes from the caller: the worker injects one fixed script into the sender's own frame.
+    case 'SUPPORTER_CARD_SCRIPT':
       return Object.keys(raw).length === 1 ? { type } : null
     case 'GET_DEVICE_AUTH_STATUS':
     case 'ROTATE_DEVICE':

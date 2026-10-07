@@ -96,25 +96,33 @@ describe('PulseSettingsPanel quick workspace', () => {
       .toBeLessThan(html.indexOf('aria-label="Extension preferences"'))
   })
 
-  it('shows the header perk as a CSS-only crest climb and paint try-on, with no emotes', () => {
+  it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
-    expect(html).toMatch(/<span class="pulse-supporter-line" aria-hidden="true"><i class="pulse-crest pulse-crest-climb" data-tenure="12m"><\/i><b class="pulse-paint pulse-paint-try" data-finish="etched" data-text="Stream Pulse">Stream Pulse<\/b>/)
+    expect(html).toContain('Explore Supporter')
+    expect(html).toContain('<small>Your crest, paint and emote on your line. Only you see them. Core tools stay free.</small>')
+    expect(html).toContain('<span class="pulse-supporter-stage" aria-hidden="true"></span>')
     expect(html).not.toContain('<img')
     expect(html).not.toContain('cdn.7tv.app')
     expect(html).not.toContain('data-supporter-verified')
   })
-  it('shows a verified Supporter their own crest and paint, and otherwise stays neutral', () => {
-    const verified = renderToStaticMarkup(<SupporterHero appearance={{ finish: 'etched', tenure: '24m', paint: { wave: 'chrome', sheen: 'glint' } }} onOpen={() => {}} />)
+  it('gives a verified Supporter the Tenure Climb copy and Manage Supporter, and otherwise stays neutral', () => {
+    const verified = renderToStaticMarkup(<SupporterHero appearance={{ finish: 'etched', tenure: '24m', paint: { wave: 'chrome', sheen: 'glint' }, perks: true }} onOpen={() => {}} />)
     expect(verified).toContain('data-supporter-verified="true"')
-    expect(verified).toContain('Etched paint equipped')
+    expect(verified).toContain('data-finish="etched"')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    expect(verified).toContain('<i class="pulse-crest" data-tenure="24m">')
-    expect(verified).toContain('data-wave="chrome" data-sheen="glint"')
-    expect(verified).not.toContain('pulse-paint-try')
+    expect(verified).toContain('<small>A crest that levels up the longer you support. Only you see it. Core tools stay free.</small>')
     const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
-    expect(neutral).not.toContain('equipped')
+    expect(neutral).not.toContain('levels up')
+  })
+  it('treats a verified Supporter on the default accent as a Supporter, not as someone to pitch', () => {
+    const member = renderToStaticMarkup(<SupporterHero appearance={{ finish: null, tenure: '3m', perks: true }} onOpen={() => {}} />)
+    expect(member).toContain('data-supporter-verified="true"')
+    expect(member).toContain('Manage Supporter')
+    expect(member).toContain('A crest that levels up the longer you support.')
+    expect(member).not.toContain('Explore Supporter')
+    expect(member).not.toContain('data-finish')
   })
 
   it('groups quick controls into titled cards', () => {

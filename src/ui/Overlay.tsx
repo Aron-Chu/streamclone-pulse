@@ -317,6 +317,9 @@ function OverlayMain({
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [density, setDensityState] = useState<DensityPreference>('comfortable')
   const banner = usePulseBanner()
+  // Emote rain is a Supporter perk. The header owns the membership check on the
+  // Pulse view, where the backdrop draws, and reports it here.
+  const [supporterPerks, setSupporterPerks] = useState(false)
   const keepPressedInPlace = useKeepPressedInPlace()
   const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('pulse')
   const controlledSidebarTab = sidebarTabProp != null
@@ -1649,7 +1652,7 @@ function OverlayMain({
       style={{ ...styles.panel, overflow: 'hidden', boxSizing: 'border-box', height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 12 }}
       aria-label="StreamPulse overlay"
     >
-      {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} />}
+      {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} perks={supporterPerks} />}
       {showSidebarTabs ? (
         <div className="pulse-sidebar-tabs-wrap" style={styles.sidebarTabsWrap}>
           <PulseSidebarTabs active={resolvedSidebarTab} onChange={tab => void persistSidebarTab(tab)} />
@@ -1711,6 +1714,7 @@ function OverlayMain({
         onTrack={localStackBackend ? () => void startTracking() : undefined}
         onMini={() => void persistMode('mini')}
         onHide={() => void hideOverlay()}
+        onSupporterPerks={setSupporterPerks}
       />
 
       {panelView === 'pulse' && !sidebarChatOnly ? (
@@ -2006,6 +2010,7 @@ function StreamPulseHeader({
   onTrack,
   onMini,
   onHide,
+  onSupporterPerks,
 }: {
   personalTitle: string
   isLive: boolean
@@ -2022,10 +2027,13 @@ function StreamPulseHeader({
   onTrack?: () => void
   onMini: () => void
   onHide: () => void
+  onSupporterPerks: (perks: boolean) => void
 }) {
   const headerStyle = sidebarFill ? streamPulseHeaderChromeSidebar : streamPulseHeaderChrome
   const appearance = useSupporterAppearanceDetails()
   const finish = appearance?.finish ?? null
+  const perks = appearance?.perks === true
+  useEffect(() => onSupporterPerks(perks), [perks, onSupporterPerks])
   const actionsStyle = sidebarFill ? styles.streamPulseHeaderActionsSidebar : styles.streamPulseHeaderActions
   const trackButtonStyle = sidebarFill ? styles.trackingButtonFull : styles.trackingButton
   const trackStreamerStyle = sidebarFill ? styles.trackStreamerButtonFull : styles.trackStreamerButton

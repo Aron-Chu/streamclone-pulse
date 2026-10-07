@@ -1,5 +1,5 @@
 import { PulseBannerQuickPreview } from './PulseBanner.tsx'
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
@@ -9,11 +9,11 @@ import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSupporterAppearance.ts'
-import { SUPPORTER_FINISH_OPTIONS } from './supporterFinish.ts'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
 import type { SettingsHostSection } from '../shared/messages.ts'
+import type { SupporterCardOptions } from '../supporter/cardContract.ts'
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
@@ -236,7 +236,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           </div>
           <div className="pulse-settings-field pulse-settings-control-block">
             <span className="pulse-settings-label">Background &amp; motion</span>
-            <PulseBannerQuickPreview />
+            <PulseBannerQuickPreview perks={appearance?.perks === true} />
             <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse')}>
               Edit background in all settings ↗
             </button>
@@ -308,37 +308,55 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 }
 
 /**
- * The Supporter entry. Its line is the real header perk: a tenure crest beside
- * a painted title. Without a verified finish the crest climbs all five stages
- * while the title tries each finish, once when quick settings opens and on a
- * loop while hovered; all of it is CSS. With one, the line shows the
- * Supporter's own crest and paint. No price, no purchase wording.
+ * The Supporter entry, with the design lab's "Your Line" card: Anatomy for
+ * someone who is not a Supporter (their would-be line, with hover labels for
+ * the crest, the paint and the signature emote), and Tenure Climb for a
+ * verified Supporter, whatever their finish, climbing to the crest the server
+ * reports. No price, no purchase wording.
  */
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
-  const finishLabel = finish ? SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label : undefined
   return (
     <button
       type="button"
       className="pulse-settings-supporter-cta"
       data-settings-host-cta="supporter"
-      data-supporter-verified={finish ? 'true' : undefined}
+      data-supporter-verified={appearance ? 'true' : undefined}
       data-finish={finish ?? undefined}
       disabled={disabled}
       onClick={onOpen}
     >
       <span className="pulse-supporter-cta-head">
         <strong>Pulse Supporter</strong>
-        <span>{finish ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
+        <span>{appearance ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
       </span>
-      <small>{finishLabel ? `${finishLabel} paint equipped. Thanks for backing Pulse.` : 'Paint your panel title and earn a crest that grows. Core tools stay free.'}</small>
-      <span className="pulse-supporter-line" aria-hidden="true">
-        {finish
-          ? <><i className="pulse-crest" data-tenure={appearance?.tenure ?? 'new'} /><b className="pulse-paint" data-finish={finish} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text="Stream Pulse">Stream Pulse</b></>
-          : <><i className="pulse-crest pulse-crest-climb" data-tenure="12m" /><b className="pulse-paint pulse-paint-try" data-finish="etched" data-text="Stream Pulse">Stream Pulse</b></>}
-      </span>
+      <small>{appearance ? 'A crest that levels up the longer you support. Only you see it. Core tools stay free.' : 'Your crest, paint and emote on your line. Only you see them. Core tools stay free.'}</small>
+      <SupporterCardStage mode={appearance ? 'tenure' : 'anatomy'} tenure={appearance?.tenure} finish={finish} paint={appearance?.paint} />
     </button>
   )
+}
+
+/**
+ * The card's moving stage. Its drawing code is not part of this content
+ * script: the worker injects content/supporter-card.js into this tab the first
+ * time the card is shown, and the stage runs what it registers. Until then, or
+ * if it cannot load, the stage is an empty strip of the same height.
+ */
+function SupporterCardStage(card: SupporterCardOptions) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const key = JSON.stringify(card)
+  useEffect(() => {
+    let live = true
+    let stop: (() => void) | undefined
+    const start = () => {
+      const mount = globalThis.__pulseSupporterCard
+      if (live && mount && ref.current) stop = mount(ref.current, JSON.parse(key))
+    }
+    if (globalThis.__pulseSupporterCard) start()
+    else sendBackgroundMessage({ type: 'SUPPORTER_CARD_SCRIPT' }).then(start, () => {})
+    return () => { live = false; stop?.() }
+  }, [key])
+  return <span ref={ref} className="pulse-supporter-stage" aria-hidden="true" />
 }
 
 function QuickGroup({ title, children }: { title: string; children: ReactNode }) {

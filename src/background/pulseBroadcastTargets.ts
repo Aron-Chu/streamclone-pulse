@@ -61,6 +61,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_COSMETICS: 'extension-page',
   SUPPORTER_APPEARANCE: 'twitch-any',
   SUPPORTER_FINISH_INTENT: 'extension-page',
+  // A Twitch tab's quick settings asks for the card script in its own frame only.
+  SUPPORTER_CARD_SCRIPT: 'twitch-any',
   ENROLL_DEVICE: 'extension-page',
   GET_DEVICE_AUTH_STATUS: 'extension-page',
   ROTATE_DEVICE: 'extension-page',

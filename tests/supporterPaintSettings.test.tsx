@@ -3,7 +3,6 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SupporterPaintStyleFields } from '../src/options/SupporterPaintStyleFields.tsx'
-import { SupporterBannerPile } from '../src/options/SupporterBannerPile.tsx'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -30,20 +29,6 @@ describe('supporter paint settings', () => {
     expect(onChoose).toHaveBeenCalledWith({ wave: 'chrome', sheen: 'glint' })
     act(() => (view.host.querySelector('input[aria-label="Aurora wave"]') as HTMLInputElement).click())
     expect(onChoose).toHaveBeenLastCalledWith({ wave: 'aurora', sheen: 'sweep' })
-    view.unmount()
-  })
-
-  it('settles one still pile of static emotes and crests under reduced motion, and cleans up', () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), addEventListener() {}, removeEventListener() {} }))
-    const raf = vi.fn()
-    vi.stubGlobal('requestAnimationFrame', raf)
-    const view = mount(<button type="button"><SupporterBannerPile /></button>)
-    const pile = view.host.querySelector('.pulse-supporter-banner-pile')!
-    expect(pile.getAttribute('aria-hidden')).toBe('true')
-    expect(pile.querySelectorAll('.pulse-pile-body')).toHaveLength(14)
-    expect(pile.querySelectorAll('.pulse-crest').length).toBeGreaterThan(0)
-    expect([...pile.querySelectorAll('img')].every(img => img.src.includes('1x_static.webp'))).toBe(true)
-    expect(raf).not.toHaveBeenCalled()
     view.unmount()
   })
 })

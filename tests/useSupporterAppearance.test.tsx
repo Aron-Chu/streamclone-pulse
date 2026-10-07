@@ -19,6 +19,8 @@ type Reply = {
   validForMs: number
   tenure?: '12m' | '24m'
   paint?: { wave: 'smooth' | 'aurora'; sheen: 'sweep' | 'glint' }
+  perks?: true
+  unverified?: true
 }
 const accent = (validForMs = 60_000): Reply => ({ type: 'SUPPORTER_APPEARANCE', finish: 'halo', validForMs })
 const none: Reply = { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0 }
@@ -315,5 +317,51 @@ describe('worker change signals', () => {
     expect(request).toHaveBeenCalledTimes(2)
     expect(view.finish()).toBe('halo')
     view.unmount()
+  })
+
+  it('verifies a Supporter with no equipped finish, so emote rain follows the same membership check', async () => {
+    const perksOnly: Reply = { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 30_000, perks: true }
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(perksOnly).mockRejectedValue(new Error('worker unavailable'))
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    function Probe() {
+      const appearance = useSupporterAppearanceDetails(request as never)
+      return <span data-perks={appearance?.perks ? 'on' : 'off'} data-finish={appearance?.finish ?? 'none'} />
+    }
+    act(() => root.render(<Probe />))
+    await advance(0)
+    const probe = () => host.querySelector('span')!.dataset
+    expect(probe()).toMatchObject({ perks: 'on', finish: 'none' })
+    // Like a finish, the perks stay only for the verified window.
+    await advance(30_000)
+    expect(probe()).toMatchObject({ perks: 'off', finish: 'none' })
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it('keeps verified paint and perks through an unverified read, until their own expiry', async () => {
+    const verified: Reply = { type: 'SUPPORTER_APPEARANCE', finish: 'halo', validForMs: 60_000, perks: true }
+    // The worker could not read the account (server error, timeout or a paused renewal).
+    const unverified: Reply = { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0, unverified: true }
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(verified).mockResolvedValue(unverified)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    function Probe() {
+      const appearance = useSupporterAppearanceDetails(request as never)
+      return <span data-perks={appearance?.perks ? 'on' : 'off'} data-finish={appearance?.finish ?? 'none'} />
+    }
+    act(() => root.render(<Probe />))
+    await advance(0)
+    const probe = () => host.querySelector('span')!.dataset
+    expect(probe()).toMatchObject({ perks: 'on', finish: 'halo' })
+    await advance(60_000 - APPEARANCE_RENEW_LEAD_MS)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(probe()).toMatchObject({ perks: 'on', finish: 'halo' })
+    await advance(APPEARANCE_RENEW_LEAD_MS)
+    expect(probe()).toMatchObject({ perks: 'off', finish: 'none' })
+    act(() => root.unmount())
+    host.remove()
   })
 })

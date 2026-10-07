@@ -8,6 +8,7 @@ export type MessageType =
   | 'SUPPORTER_COSMETICS'
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
+  | 'SUPPORTER_CARD_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
@@ -252,6 +253,8 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_APPEARANCE' }
   /** Omit `finish` to read; null clears the pre-purchase choice. */
   | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
+  /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
+  | { type: 'SUPPORTER_CARD_SCRIPT' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -748,8 +751,13 @@ export type BackgroundResponse =
   | { type: 'SUPPORTER_DEVICES'; devices: SupporterDevicesState }
   | { type: 'SUPPORTER_ENTITLEMENT'; entitlement: SupporterEntitlement }
   | { type: 'SUPPORTER_COSMETICS'; ok: boolean }
-  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle }
+  /**
+   * `perks`: Supporter perks such as emote rain are on, with or without an equipped finish.
+   * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
+   */
+  | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
   | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
+  | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */

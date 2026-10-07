@@ -12,57 +12,53 @@ import { theme } from '../ui/theme.ts'
  * top-level page, not a ~320px panel embedded in someone else's layout.
  */
 const hostStyles = `
+  /* The Supporter banner: the design lab's full-settings banner with its
+     Emote Pile stage on the right (44% to 150 px from the edge), fading in
+     behind the copy. --spk-fin* is the shown kit's paint. */
   .pulse-settings-supporter-banner {
     align-items: center;
-    background: linear-gradient(100deg, #17171e 0%, #15151c 55%, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16) 100%);
-    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45);
-    border-radius: 8px;
-    isolation: isolate;
-    overflow: hidden;
-    position: relative;
-    color: ${theme.textPrimary};
+    background: #15151c;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    color: #fafafc;
     cursor: pointer;
     display: flex;
     font-family: inherit;
-    gap: 10px;
+    gap: 14px;
+    height: 108px;
+    isolation: isolate;
     letter-spacing: 0;
     margin: 0 0 18px;
-    min-height: 76px;
-    padding: 13px 14px;
+    overflow: hidden;
+    padding: 0 18px;
+    position: relative;
     text-align: left;
+    transition: border-color 300ms;
     width: 100%;
   }
-  .pulse-settings-supporter-banner:hover { border-color: var(--pulse-accent-light, #a78bfa); filter: brightness(1.08); }
-  .pulse-settings-supporter-banner:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 3px; }
-  .pulse-settings-supporter-banner-mark {
-    align-items: center;
-    background: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.2);
-    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.42);
-    border-radius: 7px;
-    color: var(--pulse-accent-ink, #ddd6fe);
-    display: inline-flex;
-    flex: none;
-    font-size: 15px;
-    height: 28px;
-    justify-content: center;
-    width: 28px;
-  }
+  .pulse-settings-supporter-banner:hover, .pulse-settings-supporter-banner:focus-visible { border-color: rgba(var(--spk-fin-rgb), 0.5); }
+  .pulse-settings-supporter-banner:focus-visible { outline: 2px solid var(--spk-fin); outline-offset: 3px; }
+  .pulse-settings-supporter-banner::before { background: linear-gradient(90deg, #15151c 0%, #15151c 42%, rgba(21, 21, 28, 0) 46%); content: ""; inset: 0; pointer-events: none; position: absolute; z-index: -1; }
+  .pulse-supporter-pile { bottom: 0; left: 44%; pointer-events: none; position: absolute; right: 150px; top: 0; z-index: -2; }
+  .pulse-settings-supporter-banner-plate { align-items: center; display: flex; gap: 14px; max-width: min(400px, 41%); min-width: 0; }
+  .pulse-settings-supporter-banner-mark { align-items: center; background: rgba(var(--spk-fin-rgb), 0.12); border: 1px solid rgba(var(--spk-fin-rgb), 0.35); border-radius: 9px; display: flex; flex: none; height: 36px; justify-content: center; width: 36px; }
+  .pulse-settings-supporter-banner-mark path { stroke: var(--spk-fin); }
   .pulse-settings-supporter-banner-copy { display: grid; gap: 2px; min-width: 0; }
-  .pulse-supporter-banner-pile { bottom: 0; left: 46%; pointer-events: none; position: absolute; right: 150px; top: 0; z-index: -1; }
-  .pulse-pile-body { height: 26px; left: 0; position: absolute; top: 0; width: 26px; will-change: transform; }
-  .pulse-pile-inner { align-items: center; display: flex; height: 100%; justify-content: center; width: 100%; }
-  .pulse-pile-inner img { height: 26px; max-width: none; width: auto; }
-  .pulse-pile-inner .pulse-crest { filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25)); height: 24px; width: 24px; }
-  @media (min-width: 641px) { .pulse-settings-supporter-banner-copy { max-width: 42%; } }
-  @media (max-width: 640px) { .pulse-supporter-banner-pile { display: none; } }
-  .pulse-settings-supporter-banner-copy strong { font-size: 14px; font-weight: 800; }
-  .pulse-settings-supporter-banner-copy small { color: ${theme.textSecondary}; font-size: 12px; line-height: 1.4; }
-  .pulse-settings-supporter-banner-arrow { align-items: center; color: var(--pulse-accent-ink, #ddd6fe); display: inline-flex; font-size: 12px; font-weight: 700; gap: 6px; margin-left: auto; white-space: nowrap; }
-  @media (max-width: 480px) {
-    .pulse-settings-supporter-banner { flex-wrap: wrap; }
-    .pulse-settings-supporter-banner-copy { flex: 1; }
-    .pulse-settings-supporter-banner-arrow { margin-left: 38px; }
+  .pulse-settings-supporter-banner-copy strong { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
+  .pulse-settings-supporter-banner-copy small { color: rgba(250, 250, 252, 0.72); font-size: 12px; line-height: 16px; }
+  .pulse-settings-supporter-banner-arrow { background: rgba(13, 13, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 999px; color: var(--spk-fin-core); flex: none; font-size: 12px; font-weight: 700; margin-left: auto; padding: 6px 11px; white-space: nowrap; }
+  .pulse-banner-customize [data-supporter-perk] a { color: var(--pulse-accent-ink, #ddd6fe); font-weight: 700; }
+  @media (max-width: 560px) {
+    .pulse-settings-supporter-banner { display: block; height: auto; padding: 14px 14px 100px; }
+    .pulse-settings-supporter-banner-plate { align-items: flex-start; max-width: none; }
+    /* Here the pile spans the whole banner: clip sideways at its edge, as the banner would, so nothing scrolls. */
+    .pulse-supporter-pile { height: 88px; left: 0; overflow-x: clip; right: 0; top: auto; }
+    .pulse-settings-supporter-banner::before { display: none; }
+    .pulse-settings-supporter-banner-arrow { bottom: 8px; position: absolute; right: 10px; z-index: 1; }
   }
+  .pulse-supporter-signature-choices { margin-top: 12px; }
+  .pulse-supporter-signature-choices img { flex: none; height: 24px; max-width: 76px; object-fit: contain; width: auto; }
+  .pulse-supporter-badge-choices.pulse-supporter-signature-choices:disabled label { cursor: not-allowed; opacity: 0.6; }
   .pulse-account-link-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .pulse-account-link-actions button, .pulse-account-link-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease; }
   .pulse-account-link-actions button:hover:not(:disabled), .pulse-account-link-actions a:hover { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; color: ${theme.textPrimary}; transform: translateY(-1px); }

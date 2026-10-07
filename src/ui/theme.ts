@@ -1216,24 +1216,28 @@ export const shadowStyles = `
   .pulse-settings-status-dot[data-tone="wait"] { background: ${theme.warning}; }
   .pulse-settings-status-dot[data-tone="bad"] { background: ${theme.error}; }
   .pulse-settings-supporter-cta {
-    background: linear-gradient(180deg, #17171e 0%, #0e0e13 100%);
-    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: linear-gradient(180deg, #16161d 0%, #0d0d12 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     color: ${theme.textPrimary};
     cursor: pointer;
     display: grid;
-    gap: 4px;
-    padding: 11px 13px 11px;
+    gap: 3px;
+    isolation: isolate;
+    overflow: hidden;
+    padding: 12px 14px 0;
+    position: relative;
     text-align: left;
+    transition: border-color 300ms;
     width: 100%;
   }
   .pulse-settings-supporter-cta:disabled { cursor: progress; }
   .pulse-supporter-cta-head { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
   .pulse-supporter-cta-head strong { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 18px; }
-  .pulse-supporter-cta-head span { color: var(--pulse-accent-ink, #ddd6fe); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
+  .pulse-supporter-cta-head span { color: var(--spk-fin, #efc96a); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
   .pulse-settings-supporter-cta > small { color: rgba(250, 250, 252, 0.72); font-size: 11.5px; line-height: 16px; text-wrap: pretty; }
-  .pulse-supporter-line { align-items: center; background: ${theme.bgCanvas}; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; display: flex; gap: 7px; margin-top: 4px; min-width: 0; padding: 7px 9px; }
-  .pulse-supporter-line .pulse-paint { font-size: 15px; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+  .pulse-supporter-stage { display: block; height: 60px; margin: 6px -14px 0; position: relative; }
   ${/* @__PURE__ */ supporterPaintCss()}
   .pulse-settings-panel button:not(:disabled):hover,.pulse-settings-release-preview>summary:hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
   .pulse-settings-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--pulse-accent-light,#a78bfa);outline-offset:3px}

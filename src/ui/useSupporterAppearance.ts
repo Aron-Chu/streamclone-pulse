@@ -5,8 +5,11 @@ import { SUPPORTER_PAINT_KEY, type SupporterPaintStyle, type SupporterTenure } f
 import type { supporterFinish } from './supporterFinish.ts'
 
 type Finish = keyof typeof supporterFinish
-/** A verified finish, the crest it earns and how this profile wants the paint to move. */
-export interface SupporterAppearance { finish: Finish; tenure?: SupporterTenure; paint?: SupporterPaintStyle }
+/**
+ * A verified membership: its equipped finish (if any), the crest it earns, how
+ * this profile wants the paint to move, and whether perks such as emote rain are on.
+ */
+export interface SupporterAppearance { finish: Finish | null; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true }
 type AppearanceReply = Awaited<ReturnType<typeof sendBackgroundMessage>> | null | undefined
 
 /** With no verified accent, check again at most once a minute. */
@@ -44,7 +47,9 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
 
 /**
  * The equipped Supporter finish for the header, verified by the worker, with
- * the crest it earns and the profile's wave and sheen.
+ * the crest it earns and the profile's wave and sheen. A Supporter who equips
+ * no finish still verifies here, with `perks` and no finish, so emote rain
+ * follows the same membership check as the paint.
  *
  * A verified accent stays until its validity lapses: refreshing never clears
  * it first, and a failed refresh leaves it to its own expiry. Hidden tabs do
@@ -81,15 +86,15 @@ export function useSupporterAppearanceDetails(request: () => Promise<AppearanceR
       let delay = APPEARANCE_RECHECK_MS
       try {
         const result = await request()
-        if (alive && result && 'type' in result && result.type === 'SUPPORTER_APPEARANCE') {
+        // An unverified read is handled like a failed one: the last verified state keeps its own expiry.
+        if (alive && result && 'type' in result && result.type === 'SUPPORTER_APPEARANCE' && !result.unverified) {
           const remaining = Math.min(60_000, result.validForMs) - (performance.now() - started)
           window.clearTimeout(expiry)
-          if (result.finish && Number.isFinite(remaining) && remaining > 0) {
-            const finish = result.finish
-            const { tenure, paint } = result
-            const next = { finish, tenure, paint }
+          if ((result.finish || result.perks) && Number.isFinite(remaining) && remaining > 0) {
+            const { finish, tenure, paint, perks } = result
+            const next = { finish, tenure, paint, perks }
             lastVerified = { appearance: next, until: performance.now() + remaining }
-            setAppearance(current => current?.finish === finish && current.tenure === tenure && current.paint?.wave === paint?.wave && current.paint?.sheen === paint?.sheen ? current : next)
+            setAppearance(current => current?.finish === finish && current.perks === perks && current.tenure === tenure && current.paint?.wave === paint?.wave && current.paint?.sheen === paint?.sheen ? current : next)
             expiry = window.setTimeout(() => setAppearance(null), remaining)
             delay = Math.max(APPEARANCE_MIN_RENEW_MS, remaining - APPEARANCE_RENEW_LEAD_MS)
           } else {

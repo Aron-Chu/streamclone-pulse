@@ -9,13 +9,9 @@ import { SUPPORTER_TENURES, supporterCrestCssUrl } from '../shared/supporterPain
  * The sheen draws on a copy of the text (`data-text`), so a drifting wave and a
  * sweeping light never fight over the same background position. The copy has
  * empty alt text, so screen readers announce the title once.
- *
- * The Supporter card tries on all three paints while its crest climbs the five
- * stages: once when quick settings opens, and on a loop while hovered.
  */
 export function supporterPaintCss(): string {
   const crests = SUPPORTER_TENURES.map(({ id }) => `.pulse-crest[data-tenure="${id}"]{background-image:${supporterCrestCssUrl(id)}}`).join('\n')
-  const climb = SUPPORTER_TENURES.map(({ id }, index) => `${index * 20}%{background-image:${supporterCrestCssUrl(id)}}`).join('')
   return `
   .pulse-crest { background: center / contain no-repeat; display: inline-block; flex: none; height: 20px; width: 20px; }
   ${crests}
@@ -60,16 +56,6 @@ export function supporterPaintCss(): string {
   @keyframes pulse-paint-glint { 0% { background-position: 150% 0; } 8%, 100% { background-position: -50% 0; } }
   @keyframes pulse-paint-beat { 0%, 60%, 100% { opacity: 0; } 12% { opacity: 0.55; } 30% { opacity: 0; } 42% { opacity: 0.35; } }
 
-  .pulse-crest-climb { animation: pulse-crest-climb 10s step-end 1 both, pulse-crest-pop 2s ease-out 5; }
-  .pulse-paint-try { animation: pulse-paint-try 10s step-end 1 both; }
-  .pulse-settings-supporter-cta:is(:hover, :focus-visible) :is(.pulse-crest-climb, .pulse-paint-try) { animation-iteration-count: infinite; }
-  @keyframes pulse-crest-climb { ${climb} 100%{background-image:${supporterCrestCssUrl('24m')}} }
-  @keyframes pulse-crest-pop { 0% { filter: brightness(1.8); transform: scale(1.7) rotate(-12deg); } 22%, 100% { filter: none; transform: none; } }
-  @keyframes pulse-paint-try {
-    0% { --pulse-paint-base: #78dce8; --pulse-paint-lift: #a5b4fc; --pulse-paint-deep: #2fa4b8; --pulse-paint-core: #e3f8fb; }
-    33% { --pulse-paint-base: #efc96a; --pulse-paint-lift: #fff1c2; --pulse-paint-deep: #a87420; --pulse-paint-core: #fdf4dc; }
-    66%, 100% { --pulse-paint-base: #e6a9d6; --pulse-paint-lift: #c4b5fd; --pulse-paint-deep: #fcb69f; --pulse-paint-core: #fbeaf6; }
-  }
   @media (prefers-reduced-motion: reduce) {
     .pulse-paint, .pulse-paint::after, .pulse-crest { animation: none !important; }
   }

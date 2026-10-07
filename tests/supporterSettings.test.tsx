@@ -277,4 +277,63 @@ describe('cosmetic save races', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it('keeps its confirmation when a quiet re-check fails and recovers while the save is in flight', async () => {
+    let respond!: (value: unknown) => void
+    const sendMessage = vi.fn(() => new Promise(resolve => { respond = resolve }))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const active = (finish: 'glass' | 'halo', enabled: boolean): SupporterEntitlement => ({
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled, finish },
+    })
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active('glass', false)} />))
+      act(() => (host.querySelector('input[value="finish-halo"]') as HTMLInputElement).click())
+      await act(async () => (host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).click())
+      // The re-read the save triggered could not confirm the status, then did, with the same access.
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={null} />))
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
+      await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Halo accent equipped.')
+      expect(host.textContent).toContain('Halo active')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps a finish chosen while the status is still checking when the first answer arrives', async () => {
+    vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn() } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const active = (cosmetics: { enabled: boolean; finish: 'glass' | 'halo' }): SupporterEntitlement => ({
+      state: 'ready', status: 'active', supportPeriods: 3,
+      features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics,
+    })
+    const radio = (value: string) => host.querySelector(`input[value="finish-${value}"]`) as HTMLInputElement
+    const button = () => host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={null} />))
+      // Nothing is presumed chosen while checking.
+      expect(radio('default').checked).toBe(true)
+      act(() => radio('glass').click())
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: false, finish: 'glass' })} />))
+      expect(radio('glass').checked).toBe(true)
+      expect(host.textContent).toContain('Preview: Glass / Active: Default')
+      expect(button().textContent).toBe('Equip accent')
+      // After that, a change to the applied finish still replaces the draft.
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: true, finish: 'halo' })} />))
+      expect(radio('halo').checked).toBe(true)
+      expect(host.textContent).toContain('Halo active')
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
 })

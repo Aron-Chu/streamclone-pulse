@@ -46,7 +46,13 @@ export function usePulseBanner() {
   return { value, ready, saving, status, save }
 }
 
-export function PulseBannerBackdrop({ value, paused = false }: { value: PulseBannerPreference; paused?: boolean }) {
+/**
+ * The 7TV backdrop, Still or Rain, is a Supporter perk. Without verified perks
+ * it draws nothing, whatever an older preference saved, and leaves that choice
+ * stored so it returns if the person supports again.
+ */
+export function PulseBannerBackdrop({ value, perks, paused = false }: { value: PulseBannerPreference; perks: boolean; paused?: boolean }) {
+  const mode = perks ? value.mode : 'off'
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   useEffect(() => {
@@ -60,8 +66,8 @@ export function PulseBannerBackdrop({ value, paused = false }: { value: PulseBan
     return () => { observer.disconnect(); document.removeEventListener('visibilitychange', visibility) }
   }, [])
   return <>
-    <div ref={ref} className="pulse-banner-art" data-mode={value.mode} data-running={visible && !paused} aria-hidden="true" style={{ opacity: value.intensity / 100 }}>
-      {value.mode !== 'off' && EMOTES.map((id, index) => <img key={id} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer"
+    <div ref={ref} className="pulse-banner-art" data-mode={mode} data-running={visible && !paused} aria-hidden="true" style={{ opacity: value.intensity / 100 }}>
+      {mode !== 'off' && EMOTES.map((id, index) => <img key={id} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer"
         src={`https://cdn.7tv.app/emote/${id}/2x_static.webp`}
         onError={event => { event.currentTarget.style.visibility = 'hidden' }}
         style={{ '--i': index, left: `${5 + index * 16}%`, top: `${8 + (index * 17) % 78}%`, animationDelay: `${-index * 5.7}s`, animationDuration: `${24 + index % 3 * 6}s` } as CSSProperties} />)}
@@ -69,40 +75,54 @@ export function PulseBannerBackdrop({ value, paused = false }: { value: PulseBan
   </>
 }
 
-export function PulseBannerControls({ expanded = false }: { expanded?: boolean }) {
+/**
+ * Panel title and the 7TV backdrop. The title is free; Still and Rain are a
+ * Supporter perk, so without one they stay locked and the saved choice is kept,
+ * untouched (Reset included), for when the person supports again. `perks` is
+ * undefined until the membership check answers: the perk controls wait, neutral,
+ * rather than flashing the lock at a Supporter.
+ */
+export function PulseBannerControls({ expanded = false, perks }: { expanded?: boolean; perks: boolean | undefined }) {
   const banner = usePulseBanner()
   const [draft, setDraft] = useState(banner.value)
   const id = useId()
   useEffect(() => setDraft(banner.value), [banner.value])
-  return <details className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables}>
+  // Without perks, Reset clears only what this person may change: the title.
+  const reset = perks ? DEFAULT_PULSE_BANNER : { ...DEFAULT_PULSE_BANNER, mode: banner.value.mode, intensity: banner.value.intensity }
+  return <details className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
     <summary>Background &amp; motion</summary>
     <form onSubmit={event => { event.preventDefault(); void banner.save(draft) }}>
       <div className="pulse-personal-panel pulse-background-preview" data-appearance-preview="true" aria-label="Appearance preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 112 }}>
-        <PulseBannerBackdrop value={draft} />
+        <PulseBannerBackdrop value={draft} perks={perks === true} />
         <div className="pulse-banner-copy"><StreamPulseTitleBlock title={draft.title || undefined} statusLabel="Preview" /></div>
       </div>
       <fieldset disabled={!banner.ready || banner.saving}>
         <label htmlFor={`${id}-title`}>Panel title</label>
         <input id={`${id}-title`} maxLength={40} placeholder="Stream Pulse" value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
         <span id={`${id}-mode`}>7TV backdrop</span>
-        <div className="pulse-banner-modes" role="group" aria-labelledby={`${id}-mode`}>
-          {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
+        <div className="pulse-banner-modes" role="group" aria-labelledby={`${id}-mode`} aria-busy={perks === undefined || undefined}>
+          {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} disabled={!perks && mode !== 'off'} title={!perks && mode !== 'off' ? 'Supporter perk' : undefined} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
         </div>
+        {perks !== false ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
+          Emote rain, still or falling, is a Supporter perk. Only you see it.{' '}
+          <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>View Supporter benefits →</a>
+        </p>}
         <label htmlFor={`${id}-intensity`}>Intensity <output>{draft.intensity}%</output></label>
-        <input id={`${id}-intensity`} type="range" min={10} max={70} step={5} disabled={draft.mode === 'off'} value={draft.intensity} onChange={event => setDraft({ ...draft, intensity: Number(event.target.value) })} />
-        <div className="pulse-banner-save"><button type="submit">{banner.saving ? 'Saving...' : 'Save background'}</button><button type="button" onClick={() => setDraft(DEFAULT_PULSE_BANNER)}>Reset</button></div>
+        <input id={`${id}-intensity`} type="range" min={10} max={70} step={5} disabled={!perks || draft.mode === 'off'} value={draft.intensity} onChange={event => setDraft({ ...draft, intensity: Number(event.target.value) })} />
+        <div className="pulse-banner-save"><button type="submit">{banner.saving ? 'Saving...' : 'Save background'}</button><button type="button" onClick={() => setDraft(reset)}>Reset</button></div>
       </fieldset>
       <span role="status">{banner.status}</span>
     </form>
   </details>
 }
 
-/** The overlay shows the saved appearance without turning quick settings into an editor. */
-export function PulseBannerQuickPreview() {
+/** The overlay shows what it draws without turning quick settings into an editor. */
+export function PulseBannerQuickPreview({ perks }: { perks: boolean }) {
   const banner = usePulseBanner()
-  const mode = banner.value.mode === 'off' ? 'Backdrop off' : banner.value.mode === 'still' ? 'Still 7TV' : '7TV rain'
-  return <div className="pulse-personal-panel pulse-banner-quick-preview" data-appearance-preview="true" data-preview-mode={banner.value.mode} role="img" aria-label={`Appearance preview: ${banner.value.title || 'Stream Pulse'}, ${mode}`} style={bannerThemeVariables}>
-    <PulseBannerBackdrop value={banner.value} />
+  const shown = perks ? banner.value.mode : 'off'
+  const mode = shown === 'off' ? 'Backdrop off' : shown === 'still' ? 'Still 7TV' : '7TV rain'
+  return <div className="pulse-personal-panel pulse-banner-quick-preview" data-appearance-preview="true" data-preview-mode={shown} role="img" aria-label={`Appearance preview: ${banner.value.title || 'Stream Pulse'}, ${mode}`} style={bannerThemeVariables}>
+    <PulseBannerBackdrop value={banner.value} perks={perks} />
     <strong>{banner.value.title || 'Stream Pulse'}</strong>
     <small>{mode}</small>
   </div>
