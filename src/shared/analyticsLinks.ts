@@ -97,9 +97,12 @@ export function buildAnalyticsUrl(args: {
     path = `/analytics/${encodeURIComponent(login)}`
   }
 
+  // A minute belongs only on a stream route: the channel route opens the live
+  // or latest stream, so `#t` there would select a minute of a different
+  // stream. Offset 0 is a real minute ("from stream start"), not "no offset".
   const offset = args.offsetSeconds
-  if (Number.isFinite(offset) && (offset ?? 0) > 0) {
-    return `${base}${path}#t=${Math.trunc(offset!)}`
+  if (streamId && typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) {
+    return `${base}${path}#t=${Math.trunc(offset)}`
   }
 
   return `${base}${path}`

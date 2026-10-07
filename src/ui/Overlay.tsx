@@ -1316,7 +1316,8 @@ function OverlayMain({
       apiBaseUrl: backendUrl,
       channelLogin: login,
       streamId: payload?.streamId,
-      offsetSeconds: offsetSeconds ?? 0,
+      // Undefined opens the stream itself; 0 is its first minute.
+      offsetSeconds,
     })
   }
 
