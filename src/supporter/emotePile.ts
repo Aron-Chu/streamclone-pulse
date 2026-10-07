@@ -1,18 +1,23 @@
-import { AMBIENT, LINE_EMOTE, emoteAspect, emoteImg, finishVars, kitCrest, lineEmote, pick, rand, type Kit, type KitEmoteName } from './kit.ts'
-import { mountStage, runStage, type StageContext, type StageModel } from './stage.ts'
+import { AMBIENT, clamp, emoteAspect, emoteImg, finishVars, kitCrest, kitName, pick, rand, type Kit, type KitEmoteName } from './kit.ts'
+import { mountStage, runStage, type StageContext, type StageModel, type StageTiming } from './stage.ts'
 import { EMOTE_PILE_CSS } from './styles.ts'
 
 /**
- * "Emote Pile · Crown", ported from the lab's `PileFamily(stage, o, 'crown')`:
- * chat emotes drop in at stream pace, bounce and stack. Every seventh drop is
- * yours: the lab's sample emote, bigger, glowing in your paint, with your crest
- * riding on it. Hover makes the pile jump and drops yours in; at a peak a row
- * of nine lands, then yours on top.
+ * "Emote Pile · Crown, staged" (direction B of the 2026-10-07 banner round),
+ * ported from the lab's `PileFamily(stage, o, 'crown')`: chat emotes drop in,
+ * bounce and stack. Every seventh drop is yours: your crest, bigger and
+ * glowing in your paint, with a small "you" tag riding above the newest one.
+ * Hover makes the pile jump and drops yours in; at a peak a row of nine lands,
+ * then yours on top, and the glow behind the pile swells (`data-glow="peak"`).
+ *
+ * Staged runs calmer than the lab: about half its drop rate, a peak every 28
+ * to 36 s, and fewer bodies on screen.
  *
  * The lab's bodies are circles. The wide 7TV emotes this set adds are about
  * three times wider than tall, so a wide body keeps the same physics with an
  * ellipse (shorter, emote-wide) and tumbles less; a square emote's body is the
- * lab's circle exactly.
+ * lab's circle exactly. A crest tumbles as little as a wide emote, so it
+ * lands upright enough to read.
  */
 interface Body {
   el: HTMLElement
@@ -40,7 +45,12 @@ const WIDE_HEIGHT = 0.57
 const WIDE_SPIN = 0.35
 const WIDE_TILT = 20
 
-export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, wide: boolean): StageModel {
+/** The staged banner's stream: about half the lab's pace, a peak every 28 to 36 s. */
+export const STAGED_TIMING: StageTiming = { pace: 0.22, firstPeak: 8, peakEvery: [28, 36] }
+/** How long a peak's glow stays swollen. */
+const GLOW_MS = 1400
+
+export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit): StageModel {
   const { still } = context
   const bodies: Body[] = []
   let W = 0
@@ -49,27 +59,33 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
   let nextAt = 0.3
   let spawned = 0
   let built = false
-  const R = wide ? 12 : 10
-  const CAP = wide ? 26 : 12
+  const R = 12
+  const CAP = 22
   let floorBox: Box | null = null
+  // The "you" tag rides above your newest crest; bodies are drawn under it.
+  const tag = document.createElement('span')
+  tag.className = 'spk-tag'
+  tag.append(kitName(kit))
+  stage.append(tag)
+  let tagW = 0
+  let tagH = 16
 
   function makeBody({ name, r, x, y, box, look, vx, vy }: { name: KitEmoteName; r: number; x: number; y: number; box: Box; look: Body['look']; vx?: number; vy?: number }): Body {
-    const shown = look === 'ambient' ? name : LINE_EMOTE
-    const aspect = emoteAspect(shown)
+    const aspect = look === 'ambient' ? emoteAspect(name) : 1
     const isWide = aspect > 1.5
     const ry = isWide ? r * WIDE_HEIGHT : r
     const rx = isWide ? ry * aspect : r
-    const spin = isWide ? WIDE_SPIN : 1
+    const spin = look === 'you' || isWide ? WIDE_SPIN : 1
     const el = document.createElement('div')
     el.className = 'spk-body'
     el.style.width = `${rx * 2}px`
     el.style.height = `${ry * 2}px`
     const inner = document.createElement('div')
     inner.className = 'spk-inner'
-    inner.append(look === 'ambient' ? emoteImg(name, ry * 2, still) : lineEmote(ry * 2, still))
+    inner.append(look === 'ambient' ? emoteImg(name, ry * 2, still) : kitCrest(kit, Math.round(r * 2)))
     el.append(inner)
-    if (look === 'you') { el.classList.add('spk-you'); el.append(kitCrest(kit, wide ? 15 : 13)) }
-    stage.append(el)
+    if (look === 'you') el.classList.add('spk-you')
+    stage.insertBefore(el, tag)
     const b: Body = { el, inner, x, y, vx: vx ?? rand(-30, 30), vy: vy ?? rand(0, 40), rx, ry, rot: rand(-25, 25) * spin, vr: rand(-180, 180) * spin, spin, box, look, dying: false }
     bodies.push(b)
     return b
@@ -107,11 +123,22 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
       }
     }
   }
+  /** Your newest crest still on stage. */
+  function yours(): Body | null {
+    for (let i = bodies.length - 1; i >= 0; i--) if (bodies[i].look === 'you' && !bodies[i].dying) return bodies[i]
+    return null
+  }
   function render() {
     for (const b of bodies) {
       b.el.style.transform = `translate(${b.x - b.rx}px, ${b.y - b.ry}px)`
       b.inner.style.transform = `rotate(${b.rot}deg)`
     }
+    const mine = yours()
+    if (!mine) { tag.style.opacity = '0'; return }
+    if (!tagW) { tagW = tag.offsetWidth || 34; tagH = tag.offsetHeight || 16 }
+    const y = mine.y - mine.ry - tagH - 7
+    tag.style.transform = `translate(${clamp(mine.x - tagW / 2, 0, Math.max(0, W - tagW))}px, ${y}px)`
+    tag.style.opacity = y > -tagH ? '1' : '0'
   }
   function kick() {
     for (const b of bodies) if (!b.dying) { b.vy -= rand(220, 360); b.vx += rand(-80, 80); b.vr += rand(-300, 300) * b.spin }
@@ -121,8 +148,8 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
     const r = you ? R * 1.45 : R
     makeBody({ name: pick(AMBIENT), r, x: x ?? (you ? rand(W * 0.35, W * 0.7) : rand(r, W - r)), y: -r - rand(0, 16), box: floorBox, look: you ? 'you' : 'ambient' })
     const alive = bodies.filter(b => !b.dying)
-    const yours = alive.filter(b => b.look === 'you')
-    if (yours.length > 2) kill(yours[0])
+    const crests = alive.filter(b => b.look === 'you')
+    if (crests.length > 2) kill(crests[0])
     if (alive.length > CAP) { const old = alive.find(b => b.look !== 'you'); if (old) kill(old) }
   }
   function tick(dt: number) {
@@ -133,7 +160,7 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
       floorBox = { l: 0, r: W, b: H }
       if (!built) {
         built = true
-        for (let k = 0; k < (wide ? 9 : 6); k++) crownSpawn(false)
+        for (let k = 0; k < 9; k++) crownSpawn(false)
         crownSpawn(true)
         for (const b of bodies) b.y = rand(H * 0.3, H)
         for (let k = 0; k < 120; k++) step(1 / 60)
@@ -151,6 +178,8 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
     peak() {
       for (let k = 0; k < 9; k++) context.later(() => crownSpawn(false, (W / 10) * (k + 1)), k * 60)
       context.later(() => crownSpawn(true, W * 0.55), 750)
+      stage.dataset.glow = 'peak'
+      context.later(() => { delete stage.dataset.glow }, GLOW_MS)
     },
     resize() {
       // One floor for every body, resized in place so the pile keeps colliding.
@@ -164,10 +193,11 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
   }
 }
 
-/** Draws the Crown pile into `stage` until the returned stop is called. */
-export function mountEmotePile(stage: HTMLElement, kit: Kit, wide = true): () => void {
+/** Draws the staged Crown pile into `stage` until the returned stop is called. */
+export function mountEmotePile(stage: HTMLElement, kit: Kit): () => void {
   const own: Kit = { ...kit }
   for (const [name, value] of Object.entries(finishVars(own.finish))) stage.style.setProperty(name, value)
   stage.dataset.mode = 'crown'
-  return mountStage(stage, EMOTE_PILE_CSS, still => runStage(stage, still, context => EmotePile(stage, context, own, wide)))
+  const stop = mountStage(stage, EMOTE_PILE_CSS, still => runStage(stage, still, context => EmotePile(stage, context, own), STAGED_TIMING))
+  return () => { stop(); delete stage.dataset.glow }
 }

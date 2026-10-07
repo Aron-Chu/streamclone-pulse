@@ -12,9 +12,12 @@ import { theme } from '../ui/theme.ts'
  * top-level page, not a ~320px panel embedded in someone else's layout.
  */
 const hostStyles = `
-  /* The Supporter banner: the design lab's full-settings banner with its
-     Emote Pile stage on the right (44% to 150 px from the edge), fading in
-     behind the copy. --spk-fin* is the shown kit's paint. */
+  /* The Supporter banner, "Crown, staged" (2026-10-07 round, direction B):
+     the Emote Pile gets the whole right half, with a soft glow behind it that
+     swells at each peak (data-glow="peak" on the stage); the copy, a bigger
+     headline and three perk chips hold the left half. --spk-fin* is the shown
+     kit's paint. The frame is the container its narrow layout answers to. */
+  .pulse-settings-supporter-banner-frame { container: pulse-supporter-banner / inline-size; margin: 0 0 18px; min-width: 0; }
   .pulse-settings-supporter-banner {
     align-items: center;
     background: #15151c;
@@ -25,10 +28,10 @@ const hostStyles = `
     display: flex;
     font-family: inherit;
     gap: 14px;
-    height: 108px;
+    height: 132px;
     isolation: isolate;
     letter-spacing: 0;
-    margin: 0 0 18px;
+    margin: 0;
     overflow: hidden;
     padding: 0 18px;
     position: relative;
@@ -38,23 +41,36 @@ const hostStyles = `
   }
   .pulse-settings-supporter-banner:hover, .pulse-settings-supporter-banner:focus-visible { border-color: rgba(var(--spk-fin-rgb), 0.5); }
   .pulse-settings-supporter-banner:focus-visible { outline: 2px solid var(--spk-fin); outline-offset: 3px; }
-  .pulse-settings-supporter-banner::before { background: linear-gradient(90deg, #15151c 0%, #15151c 42%, rgba(21, 21, 28, 0) 46%); content: ""; inset: 0; pointer-events: none; position: absolute; z-index: -1; }
-  .pulse-supporter-pile { bottom: 0; left: 44%; pointer-events: none; position: absolute; right: 150px; top: 0; z-index: -2; }
-  .pulse-settings-supporter-banner-plate { align-items: center; display: flex; gap: 14px; max-width: min(400px, 41%); min-width: 0; }
-  .pulse-settings-supporter-banner-mark { align-items: center; background: rgba(var(--spk-fin-rgb), 0.12); border: 1px solid rgba(var(--spk-fin-rgb), 0.35); border-radius: 9px; display: flex; flex: none; height: 36px; justify-content: center; width: 36px; }
-  .pulse-settings-supporter-banner-mark path { stroke: var(--spk-fin); }
-  .pulse-settings-supporter-banner-copy { display: grid; gap: 2px; min-width: 0; }
-  .pulse-settings-supporter-banner-copy strong { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
-  .pulse-settings-supporter-banner-copy small { color: rgba(250, 250, 252, 0.72); font-size: 12px; line-height: 16px; }
-  .pulse-settings-supporter-banner-arrow { background: rgba(13, 13, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 999px; color: var(--spk-fin-core); flex: none; font-size: 12px; font-weight: 700; margin-left: auto; padding: 6px 11px; white-space: nowrap; }
+  .pulse-settings-supporter-banner::before { background: linear-gradient(90deg, #15151c 0%, #15151c 47%, rgba(21, 21, 28, 0) 53%); content: ""; inset: 0; pointer-events: none; position: absolute; z-index: -1; }
+  /* The pile runs to the banner's edge, so it clips itself: a body or the peak glow at the edge never widens the banner. */
+  .pulse-supporter-pile { bottom: 0; left: 50%; overflow: clip; pointer-events: none; position: absolute; right: 0; top: 0; z-index: -2; }
+  .pulse-supporter-pile::before { background: radial-gradient(52% 78% at 56% 100%, rgba(var(--spk-fin-rgb), 0.17), transparent 72%); content: ""; inset: 0; opacity: 0.75; pointer-events: none; position: absolute; transform-origin: 56% 100%; transition: opacity 700ms ease, transform 700ms ease; z-index: -1; }
+  .pulse-supporter-pile[data-glow="peak"]::before { opacity: 1; transform: scale(1.12); }
+  .pulse-settings-supporter-banner-copy { display: grid; gap: 3px; max-width: min(372px, 50%); min-width: 0; position: relative; }
+  .pulse-settings-supporter-banner-eyebrow { align-items: center; color: var(--spk-fin); column-gap: 6px; display: flex; flex-wrap: wrap; font-size: 12px; font-weight: 800; letter-spacing: 0.07em; line-height: 15px; row-gap: 1px; text-transform: uppercase; }
+  .pulse-settings-supporter-banner-eyebrow > * { flex: none; }
+  .pulse-settings-supporter-banner-eyebrow em { color: #8b8ba0; font-style: normal; white-space: nowrap; }
+  .pulse-settings-supporter-banner-copy strong { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; line-height: 22px; }
+  .pulse-settings-supporter-banner-copy small { color: rgba(250, 250, 252, 0.72); font-size: 12px; line-height: 16px; text-wrap: pretty; }
+  .pulse-settings-supporter-banner-perks { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 1px; }
+  .pulse-settings-supporter-perk { align-items: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; color: #e4e4ec; display: inline-flex; font-size: 12px; font-weight: 700; gap: 5px; height: 22px; line-height: 1; padding: 0 8px 0 4px; white-space: nowrap; }
+  .pulse-settings-supporter-perk .pulse-crest { height: 15px; width: 15px; }
+  .pulse-settings-supporter-perk img { height: 15px; width: auto; }
+  .pulse-settings-supporter-swatch { border-radius: 50%; display: inline-block; flex: none; height: 13px; width: 13px; }
+  .pulse-settings-supporter-banner-arrow { background: rgba(13, 13, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 999px; color: var(--spk-fin-core); font-size: 12px; font-weight: 700; padding: 6px 11px; position: absolute; right: 12px; top: 12px; transition: background 200ms, border-color 200ms; white-space: nowrap; z-index: 1; }
+  .pulse-settings-supporter-banner[data-supporter-kit="sample"] .pulse-settings-supporter-banner-arrow { background: rgba(var(--spk-fin-rgb), 0.14); border-color: rgba(var(--spk-fin-rgb), 0.45); }
+  .pulse-settings-supporter-banner:is(:hover, :focus-visible) .pulse-settings-supporter-banner-arrow { background: rgba(var(--spk-fin-rgb), 0.22); border-color: rgba(var(--spk-fin-rgb), 0.6); }
   .pulse-banner-customize [data-supporter-perk] a { color: var(--pulse-accent-ink, #ddd6fe); font-weight: 700; }
-  @media (max-width: 560px) {
-    .pulse-settings-supporter-banner { display: block; height: auto; padding: 14px 14px 100px; }
-    .pulse-settings-supporter-banner-plate { align-items: flex-start; max-width: none; }
-    /* Here the pile spans the whole banner: clip sideways at its edge, as the banner would, so nothing scrolls. */
-    .pulse-supporter-pile { height: 88px; left: 0; overflow-x: clip; right: 0; top: auto; }
+  @container pulse-supporter-banner (max-width: 560px) {
+    .pulse-settings-supporter-banner { display: block; height: auto; padding: 14px 14px 92px; }
     .pulse-settings-supporter-banner::before { display: none; }
-    .pulse-settings-supporter-banner-arrow { bottom: 8px; position: absolute; right: 10px; z-index: 1; }
+    .pulse-settings-supporter-banner-copy { max-width: none; }
+    /* Here the pile spans the whole banner along its bottom; drops may fall in from above it, never sideways. */
+    .pulse-supporter-pile { height: 84px; left: 0; overflow-y: visible; right: 0; top: auto; }
+    .pulse-settings-supporter-banner-arrow { display: inline-block; margin-top: 10px; position: relative; right: auto; top: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-supporter-pile::before, .pulse-settings-supporter-banner-arrow { transition: none; }
   }
   .pulse-account-link-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .pulse-account-link-actions button, .pulse-account-link-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease; }

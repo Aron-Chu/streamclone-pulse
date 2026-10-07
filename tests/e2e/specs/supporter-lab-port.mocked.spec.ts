@@ -179,7 +179,7 @@ test('quick settings: Supporters get Tenure Climb up to their own crest, in thei
   expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('supporterSignatureEmote'))).toEqual({ supporterSignatureEmote: 'wideReacting' })
 })
 
-test('full settings: the Crown pile, the lab sample for non-Supporters, paused offscreen and still under reduced motion', async ({ extension, prepare }, info) => {
+test('full settings: the staged Crown, the lab sample for non-Supporters, paused offscreen and still under reduced motion', async ({ extension, prepare }, info) => {
   await prepare()
   const page = extension.page
   await page.setViewportSize({ width: 1280, height: 720 })
@@ -189,13 +189,24 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   await expect(banner).toHaveAttribute('data-supporter-kit', 'sample')
   await expect(stage).toHaveAttribute('data-mode', 'crown')
   await expect(stage).toHaveAttribute('data-running', 'true')
-  await expect(banner.locator('strong')).toHaveText('Pulse Supporter')
-  await expect(banner.locator('small')).toHaveText('Your crest lands on top of the pile, in your paint. Only you see it. Core Pulse tools stay free.')
+  await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Pulse Supporter· US$4.99/mo')
+  await expect(banner.locator('strong')).toHaveText('Your crest lands on top')
+  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Title paint', 'Tenure crest', 'Emote rain'])
+  await expect(banner.locator('small')).toHaveText('Only you see them. Core tools stay free.')
   await expect(banner.locator('.pulse-settings-supporter-banner-arrow')).toHaveText('View benefits →')
   await expect.poll(() => stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(8)
+  // Yours is the sample crest, with the small "you" tag riding above it.
   const you = stage.locator('.spk-you')
-  await expect(you.first().locator('img')).toHaveAttribute('src', 'https://cdn.7tv.app/emote/01GAFTZ9K80003DHH026MC7JW0/2x.webp')
   await expect(you.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
+  await expect(you.locator('img')).toHaveCount(0)
+  const tag = stage.locator('.spk-tag')
+  await expect(tag).toHaveText('you')
+  await expect(tag).toHaveCSS('opacity', '1')
+  // The pile has the whole right half.
+  const [bannerBox, stageBox] = await Promise.all([banner.boundingBox(), stage.boundingBox()])
+  expect(stageBox!.x - bannerBox!.x).toBeCloseTo(bannerBox!.width / 2, -1)
+  expect(bannerBox!.height).toBeGreaterThanOrEqual(132)
+  expect(bannerBox!.height).toBeLessThanOrEqual(134)
   for (const src of await stage.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(EMOTE_SRC)
   expect(await banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await page.waitForTimeout(2500)
@@ -209,9 +220,10 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   await capture(banner, info, 'ext-banner-crown-hover.png')
   await page.mouse.move(5, 700)
 
-  // A peak (the lab's timer): a row of nine, then yours on top.
+  // A peak (8 s in, then every 28 to 36 s): a row of nine, then yours on top, and the glow swells.
   const before = await stage.locator('.spk-body').count()
   await expect(stage).toHaveAttribute('data-peaks', '1', { timeout: 15_000 })
+  await expect(stage).toHaveAttribute('data-glow', 'peak')
   await page.waitForTimeout(1100)
   expect(await stage.locator('.spk-you').count()).toBeGreaterThanOrEqual(1)
   expect(await stage.locator('.spk-body').count()).toBeGreaterThanOrEqual(Math.min(26, before))
@@ -226,6 +238,7 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   // The lab's phone layout: copy on top, the pile along the bottom, nothing scrolling sideways.
   await page.setViewportSize({ width: 400, height: 860 })
   await expect.poll(() => banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await expect.poll(async () => (await stage.boundingBox())!.height).toBeCloseTo(84, 0)
   await page.waitForTimeout(1500)
   expect(await banner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await capture(banner, info, 'ext-banner-crown-phone.png')
@@ -235,6 +248,7 @@ test('full settings: the Crown pile, the lab sample for non-Supporters, paused o
   await expect(stage).toHaveAttribute('data-still', 'true')
   await expect(stage).toHaveAttribute('data-running', 'false')
   for (const src of await stage.locator('img[src*="cdn.7tv.app"]').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))) expect(src).toMatch(/\/2x_static\.webp$/)
+  await expect(stage.locator('.spk-you .spk-crest').first()).toBeAttached()
   await imagesSettled(stage)
   await capture(banner, info, 'ext-banner-crown-still.png')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
@@ -261,9 +275,14 @@ test('full settings: a Supporter’s own crest crowns the pile in their paint, a
   const stage = banner.locator('.pulse-supporter-pile')
   await expect(banner).toHaveAttribute('data-supporter-kit', 'own')
   await expect(banner).toHaveCSS('--spk-fin', '#e6a9d6')
+  await expect(banner.locator('.pulse-settings-supporter-banner-eyebrow')).toHaveText('Your kit')
+  await expect(banner.locator('strong')).toHaveText('Yours lands on top')
+  await expect(banner.locator('.pulse-settings-supporter-perk')).toHaveText(['Halo paint', 'Year-one crest', 'Emote rain'])
   const you = stage.locator('.spk-you')
   await expect(you.first().locator('.spk-crest')).toHaveAttribute('data-tenure', '12m')
-  await expect(you.locator('img[src*="01HMM8VG3R0007GXBD883VP2YY"]')).toHaveCount(0)
+  await expect(you.first().locator('.spk-crest polygon')).toHaveAttribute('stroke', '#e6a9d6')
+  await expect(you.locator('img')).toHaveCount(0)
+  await expect(stage.locator('.spk-tag .pulse-paint')).toHaveAttribute('data-finish', 'halo')
   await page.waitForTimeout(2500)
   await capture(banner, info, 'ext-banner-crown-supporter.png')
 
