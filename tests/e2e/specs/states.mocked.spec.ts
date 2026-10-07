@@ -614,7 +614,10 @@ test.describe('extension mocked states', () => {
     await expect.poll(async () => olderReveal.evaluate(element => Number.parseFloat(getComputedStyle(element).transitionDuration))).toBeLessThan(0.001)
     await host.emulateMedia({ reducedMotion: 'no-preference' })
 
-    await expect(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
+    // Soft, like the emote-picker set: the test still fails on any mismatch, but one
+    // run records the actual PNG of all three settings-page captures, so a baseline
+    // refresh never has to stop at the first stale one.
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
       animations: 'disabled',
       // Only the Supporter banner's emote pile moves; the banner copy and "View benefits" pill stay covered.
       mask: [host.locator('.pulse-supporter-pile')],
@@ -625,7 +628,7 @@ test.describe('extension mocked states', () => {
     // Visual coverage for the complete page shell and its responsive top nav.
     await sectionNav.getByRole('link', { name: 'Pulse on Twitch' }).click()
     await host.evaluate(() => window.scrollTo(0, 0))
-    await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',
       // Only the Supporter banner's emote pile moves; the banner copy and "View benefits" pill stay covered.
       mask: [host.locator('.pulse-supporter-pile')],
@@ -634,7 +637,7 @@ test.describe('extension mocked states', () => {
     })
     await host.setViewportSize({ width: 620, height: 820 })
     await expect.poll(() => sectionNav.evaluate(element => getComputedStyle(element).position)).toBe('static')
-    await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
       animations: 'disabled',
       // Only the Supporter banner's emote pile moves; the banner copy and "View benefits" pill stay covered.
       mask: [host.locator('.pulse-supporter-pile')],
