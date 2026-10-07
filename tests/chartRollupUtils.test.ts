@@ -4,6 +4,7 @@ import {
   areaPathInBand,
   chartBarBucketOpacity,
   easeInOutCubic,
+  extendSeriesToTrailingEdge,
   firstViewerOffsetSeconds,
   linePathInBand,
   plotY,
@@ -201,6 +202,19 @@ describe('rampNullableSeriesFromStreamStart', () => {
   it('returns the series unchanged when nothing was ever sampled', () => {
     const values = [null, null, null] as Array<number | null>
     expect(rampNullableSeriesFromStreamStart(values)).toEqual(values)
+  })
+})
+
+describe('extendSeriesToTrailingEdge', () => {
+  it('carries the last value to Now across real quiet buckets', () => {
+    expect(extendSeriesToTrailingEdge([5, 7, null, null])).toEqual([5, 7, 7, 7])
+    expect(extendSeriesToTrailingEdge([5, 7, null, null], [{}, {}, { missing: false }, {}])).toEqual([5, 7, 7, 7])
+  })
+
+  it('stops at the first missing bucket of the plotted points', () => {
+    const points = [{}, {}, {}, { missing: true }, { missing: true }]
+    expect(extendSeriesToTrailingEdge([5, 7, null, null, null], points)).toEqual([5, 7, 7, null, null])
+    expect(extendSeriesToTrailingEdge([5, 7, null, null], [{}, {}, { missing: true }, {}])).toEqual([5, 7, null, null])
   })
 })
 

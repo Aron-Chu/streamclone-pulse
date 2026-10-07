@@ -219,9 +219,14 @@ export function extendViewerSeriesToTrailingEdge(
 /**
  * Chart-only: carry the last positive sample forward across trailing null/zero gaps
  * (viewers, chat trends, emote trends).
+ *
+ * With the plotted `points`, the carry stops at the first `missing` one: only
+ * real quiet buckets (the open minute among them) are carried, so a line
+ * never runs on over trailing minutes that were never recorded.
  */
 export function extendSeriesToTrailingEdge(
   values: Array<number | null>,
+  points?: ReadonlyArray<Pick<ExtensionRollup, 'missing'>>,
 ): Array<number | null> {
   let lastIndex = -1
   let lastValue = 0
@@ -234,7 +239,7 @@ export function extendSeriesToTrailingEdge(
   }
   if (lastIndex < 0 || lastIndex >= values.length - 1) return values
   const out = [...values]
-  for (let i = lastIndex + 1; i < out.length; i += 1) {
+  for (let i = lastIndex + 1; i < out.length && !points?.[i]?.missing; i += 1) {
     out[i] = lastValue
   }
   return out

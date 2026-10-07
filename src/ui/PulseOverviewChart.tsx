@@ -631,13 +631,14 @@ function PulseOverviewChartImpl({
   )
 
   const trendWindow = useMemo(() => trendSmoothingWindow(rollups.length), [rollups.length])
-  // The stream-start ramp sees the bucket flags so it never draws over
-  // missing buckets; those stay blank under the no-data band below.
+  // The stream-start ramp and the carry to Now see the bucket flags so they
+  // never draw over missing buckets; those stay blank under the no-data band.
   const chatTrendValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(
           smoothNullableSeriesValues(chat, trendWindow),
+          rollups,
         ),
         rollups,
       ),
@@ -648,6 +649,7 @@ function PulseOverviewChartImpl({
       rampNullableSeriesFromStreamStart(
         extendSeriesToTrailingEdge(
           smoothNullableSeriesValues(emotes, trendWindow),
+          rollups,
         ),
         rollups,
       ),
@@ -656,7 +658,7 @@ function PulseOverviewChartImpl({
   const chatDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
-        extendSeriesToTrailingEdge(chat),
+        extendSeriesToTrailingEdge(chat, rollups),
         rollups,
       ),
     [chat, rollups],
@@ -664,7 +666,7 @@ function PulseOverviewChartImpl({
   const emoteDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
-        extendSeriesToTrailingEdge(emotes),
+        extendSeriesToTrailingEdge(emotes, rollups),
         rollups,
       ),
     [emotes, rollups],

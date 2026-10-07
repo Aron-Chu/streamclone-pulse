@@ -212,6 +212,27 @@ describe('overview chart over missing buckets', () => {
     expect(chatOverviewStartX(markup)).toBeGreaterThan(150)
   })
 
+  it('ends the trend lines where a missing tail of the stream begins', () => {
+    // Tracking stopped about 2.8h before Now: the last 40 of 480 Full buckets
+    // are missing, ten of the 120 drawn points.
+    const rollups: ExtensionRollup[] = Array.from({ length: 480 }, (_, index) => index >= 440
+      ? { offsetSeconds: index * 254, chatCount: 0, sevenTvEmoteCount: 0, missing: true }
+      : { offsetSeconds: index * 254, chatCount: 60 + (index % 7), sevenTvEmoteCount: 5, totalEmoteCount: 12 })
+    const markup = renderToStaticMarkup(<PulseOverviewChart rollups={rollups} durationSeconds={480 * 254} isLive />)
+    const bands = [...markup.matchAll(/<rect x="([\d.]+)"[^>]*data-chart-no-data=""/g)].map(match => Number(match[1]))
+    expect(bands).toHaveLength(10)
+    const noDataStart = Math.min(...bands)
+    for (const series of ['chat', 'emotes']) {
+      for (const state of ['overview', 'detail']) {
+        const d = markup.match(new RegExp(`<path[^>]*d="([^"]+)"[^>]*data-chart-path-state="${state}"[^>]*data-chart-series="${series}"`))?.[1]
+        expect(d, `${series} ${state}`).toBeTruthy()
+        const numbers = d!.match(/-?[\d.]+/g)!.map(Number)
+        const xs = numbers.filter((_, index) => index % 2 === 0)
+        expect(Math.max(...xs), `${series} ${state}`).toBeLessThan(noDataStart)
+      }
+    }
+  })
+
   it('keeps the short stream-start ramp over real quiet buckets', () => {
     const rollups: ExtensionRollup[] = Array.from({ length: 60 }, (_, index) => ({
       offsetSeconds: index * 60,
