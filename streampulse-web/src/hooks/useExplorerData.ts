@@ -16,6 +16,16 @@ export interface UseExplorerDataOptions extends ExplorerQuery {
 
 const cache = new Map<string, ExplorerEnvelope>()
 const DEFAULT_POLL_MS = Number(import.meta.env.VITE_PUBLIC_HUB_POLL_MS ?? 45_000)
+/** A detail read (which does not poll) tries again this many times while its window warms. */
+export const EXPLORER_WARMING_RETRIES = 1
+/** Used only if a warming answer arrives without Retry-After. */
+const WARMING_RETRY_FALLBACK_MS = 30_000
+
+/** What a failed read tells the next one. */
+interface LoadOutcome {
+  reason?: string
+  retryAfterMs?: number
+}
 
 function keyFor(options: UseExplorerDataOptions): string {
   return JSON.stringify({
@@ -52,6 +62,8 @@ export function useExplorerData(options: UseExplorerDataOptions) {
   const [announcement, setAnnouncement] = useState('')
   // Retry-After from the last failed read: no attempt, polled or pressed, starts before it.
   const [retryBlocked, setRetryBlocked] = useState(false)
+  // A detail read that answered "warming" has one automatic attempt queued.
+  const [retryScheduled, setRetryScheduled] = useState(false)
   const retryNotBeforeRef = useRef(0)
   const unblockTimerRef = useRef<number>()
   const requestRef = useRef(0)
@@ -65,7 +77,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     setRetryBlocked(false)
   }, [])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<LoadOutcome | undefined> => {
     if (!enabled) return
     const request = ++requestRef.current
     controllerRef.current?.abort(new DOMException('superseded', 'AbortError'))
@@ -113,6 +125,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
         setData(null)
         setError(isApiError(caught) ? caught.message : caught instanceof Error ? caught.message : 'Explorer unavailable')
       }
+      return { reason: unavailable?.reason, retryAfterMs }
     } finally {
       if (request === requestRef.current) {
         setLoading(false)
@@ -154,13 +167,25 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     setError(null)
     setAnnouncement('')
     clearRetryBlock()
+    setRetryScheduled(false)
     let active = true
     let timer: number | undefined
-    // Each read is followed by at most one timer: a list polls, never sooner than Retry-After.
-    const next = () => {
-      if (!active || !enabled || pollMs <= 0) return
+    let warmingRetries = 0
+    // Each read is followed by at most one timer. A list polls, never sooner than
+    // Retry-After; a detail read tries again only while its window warms.
+    const next = (outcome?: LoadOutcome) => {
+      if (!active || !enabled) return
       const wait = Math.max(0, retryNotBeforeRef.current - Date.now())
-      timer = window.setTimeout(poll, Math.max(pollMs, wait))
+      if (pollMs > 0) {
+        timer = window.setTimeout(poll, Math.max(pollMs, wait))
+      } else if (outcome?.reason === 'snapshot_warming' && warmingRetries < EXPLORER_WARMING_RETRIES) {
+        warmingRetries += 1
+        setRetryScheduled(true)
+        timer = window.setTimeout(() => {
+          setRetryScheduled(false)
+          void load().then(next)
+        }, wait || WARMING_RETRY_FALLBACK_MS)
+      }
     }
     const poll = () => {
       if (!active) return
@@ -195,7 +220,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     if (Date.now() < retryNotBeforeRef.current) return
     void load()
   }
-  // A polling list reads again on its own; a detail read waits for the reader.
-  const retryScheduled = enabled && pollMs > 0
-  return { data, loading, refreshing, loadingMore, error, unavailable, announcement, retryBlocked, retryScheduled, refresh, loadMore }
+  // A polling list always reads again on its own; a detail read only while a warming retry is queued.
+  const automatic = retryScheduled || (enabled && pollMs > 0)
+  return { data, loading, refreshing, loadingMore, error, unavailable, announcement, retryBlocked, retryScheduled: automatic, refresh, loadMore }
 }

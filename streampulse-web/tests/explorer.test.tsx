@@ -299,6 +299,25 @@ describe('Pulse Explorer while a history window is prepared', () => {
     expect(within(inspector).getByText('You can try again in a moment.')).toBeTruthy()
     expect(within(inspector).queryByRole('button', { name: 'Try again' })).toBeNull()
   })
+
+  it('tells the inspector reader when a warming detail will be read again', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const data = normalizeExplorerEnvelope(rawEnvelope())!
+    const detail = { ...hookResult(null), unavailable: true, error: 'snapshot_warming', retryBlocked: true, retryScheduled: true }
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? detail : hookResult(data)))
+    const { container, unmount } = renderAt('/analytics/explore/pulse-xqc-stream-1?window=7d')
+    const inspector = container.querySelector('aside.explorer-inspector') as HTMLElement
+    expect(within(inspector).getByText('Broadcast details are not ready yet')).toBeTruthy()
+    expect(within(inspector).getByText('Pulse Explorer checks again automatically.')).toBeTruthy()
+    expect(within(inspector).queryByRole('button', { name: 'Try again' })).toBeNull()
+    unmount()
+    // After its one automatic retry, and once Retry-After ends, the reader can try again.
+    Object.assign(detail, { retryScheduled: false, retryBlocked: false })
+    const after = renderAt('/analytics/explore/pulse-xqc-stream-1?window=7d')
+    const panel = after.container.querySelector('aside.explorer-inspector') as HTMLElement
+    expect(within(panel).queryByText('Pulse Explorer checks again automatically.')).toBeNull()
+    expect(within(panel).getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
 })
 
 // OP1-RES-003 / CX-RES-004: a shared broadcast link must stay inspectable when

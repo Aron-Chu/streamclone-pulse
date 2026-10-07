@@ -81,7 +81,33 @@ it('waits out Retry-After before the next poll and ignores a retry pressed durin
   }
 })
 
-it('leaves a failed detail read to the reader, after Retry-After', async () => {
+it('retries a warming detail read once, at Retry-After, and then waits for the reader', async () => {
+  vi.useFakeTimers()
+  try {
+    const fetch = vi.spyOn(explorer, 'fetchExplorer').mockRejectedValue(preparing('snapshot_warming', 60_000))
+    const { result } = renderHook(() => useExplorerData({ window: '7d', signal: 'all', state: 'all', sort: 'strongest', q: 'warming-detail', broadcastId: 'pulse-xqc-1' }))
+    await flush()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(result.current.retryScheduled).toBe(true)
+    await flush(59_000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await flush(1_000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    // Still warming: no third automatic read, and Try again returns once Retry-After ends.
+    expect(result.current.retryScheduled).toBe(false)
+    expect(result.current.retryBlocked).toBe(true)
+    await flush(120_000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(result.current.retryBlocked).toBe(false)
+    act(() => result.current.refresh())
+    await flush()
+    expect(fetch).toHaveBeenCalledTimes(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('does not retry a detail read on its own for a reason other than warming', async () => {
   vi.useFakeTimers()
   try {
     const fetch = vi.spyOn(explorer, 'fetchExplorer').mockRejectedValue(preparing('build_busy', 5_000))
