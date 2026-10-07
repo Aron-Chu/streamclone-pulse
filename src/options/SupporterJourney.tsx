@@ -720,11 +720,20 @@ export function SupporterJourney({ onEntitlement, look, children }: {
   const facts: Array<[string, string]> = []
   if (isSupporter && accessDate) facts.push([status === 'grace' ? 'Access until' : 'Access through', accessDate])
 
-  const identity: CardIdentity = linked ? { kind: 'pulse', reference: accountReference(linked.accountId) } : renewalWaiting ? { kind: 'pulse' } : { kind: 'none' }
+  // Only a known account state names an account or says there is none: before
+  // the worker answers, or when it cannot, the card and the Account row stay neutral.
+  const identity: CardIdentity = linked ? { kind: 'pulse', reference: accountReference(linked.accountId) }
+    : renewalWaiting ? { kind: 'pulse' }
+    : !account ? { kind: 'unknown', reason: 'checking' }
+    : account.state === 'error' || accountDown ? { kind: 'unknown', reason: 'unavailable' }
+    : { kind: 'none' }
   const perks = !stale && supporterPerksAllowed(entitlement)
   const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting
+  const accountRow: [string, string] = connected ? ['Connected to this extension', 'This extension is connected to your Pulse account. Connecting does not link your Twitch identity.']
+    : identity.kind === 'unknown' ? [identity.reason === 'checking' ? 'Checking the connection…' : 'Connection status unavailable', 'Your free tools still work.']
+    : ['Not signed in', 'Free tools work without it.']
 
   return (
     <>
@@ -768,8 +777,8 @@ export function SupporterJourney({ onEntitlement, look, children }: {
           <div data-row="account">
             <dt>StreamPulse</dt>
             <dd>
-              {connected ? 'Connected to this extension' : 'Not signed in'}
-              <small>{connected ? 'This extension is connected to your Pulse account. Connecting does not link your Twitch identity.' : 'Free tools work without it.'}</small>
+              {accountRow[0]}
+              <small>{accountRow[1]}</small>
             </dd>
             <dd className="pulse-account-link-actions">{connected ? <button type="button" disabled={accountBusy || payBusy} onClick={disconnect}>Disconnect extension</button> : null}</dd>
           </div>

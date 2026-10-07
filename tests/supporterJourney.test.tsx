@@ -748,6 +748,94 @@ describe('connection states', () => {
   })
 })
 
+const PERKS = ['supporter.banner.v1', 'supporter.finish.v1']
+const HALO = { enabled: true, finish: 'halo' } as const
+function card(host: HTMLElement) {
+  const root = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+  return {
+    root,
+    name: () => root.querySelector<HTMLElement>('.pulse-supporter-card-who strong')!,
+    sub: () => root.querySelector('.pulse-supporter-card-who > span')?.textContent ?? '',
+    avatar: () => root.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity'),
+    sample: () => root.querySelector('.pulse-supporter-card-sample') !== null,
+    steps: () => [...root.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')].map(step => step.dataset.step),
+    next: () => root.querySelector('.pulse-supporter-ladder-next')?.textContent ?? '',
+  }
+}
+const accountRow = (host: HTMLElement) => host.querySelector('[data-row="account"] dd')?.textContent ?? ''
+
+describe('Your card while the account is unknown', () => {
+  it('claims neither an account nor sign-out before the account reply, then names the account', async () => {
+    let answer!: (value: SupporterAccountState) => void
+    const reply = new Promise<SupporterAccountState>(resolve => { answer = resolve })
+    const view = await mount({ account: () => reply, entitlement: () => ready('active', { features: PERKS, cosmetics: HALO }) })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('loading')
+      expect(yours.name().textContent).toBe('Checking your account…')
+      expect(yours.avatar()).toBe('unknown')
+      // The server-confirmed membership is stated, but nothing paints a status line as a name.
+      expect(yours.name().querySelector('.pulse-paint, .pulse-crest')).toBeNull()
+      expect(accountRow(view.host)).toContain('Checking the connection…')
+      expect(view.text()).not.toContain('Not signed in')
+      expect(view.text()).not.toContain('Free tools work without')
+      expect(view.buttons()).not.toContain('Disconnect extension')
+      await act(async () => answer(linked))
+      expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
+      expect(yours.avatar()).toBe('pulse')
+      expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-text')).toBe(accountReference(ACCOUNT_ID))
+      expect(accountRow(view.host)).toContain('Connected to this extension')
+    } finally { view.cleanup() }
+  })
+
+  it('says the account is unavailable, unpainted, when the account read fails but membership is active', async () => {
+    const view = await mount({ account: () => new Error('worker asleep'), entitlement: () => ready('active', { features: PERKS, cosmetics: HALO }) })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('account-unavailable')
+      expect(yours.name().textContent).toBe('Account unavailable')
+      expect(yours.avatar()).toBe('unknown')
+      expect(yours.name().querySelector('.pulse-paint, .pulse-crest')).toBeNull()
+      expect(yours.sub()).not.toContain('Free tools work without')
+      expect(accountRow(view.host)).toContain('Connection status unavailable')
+      expect(view.text()).not.toContain('Not signed in')
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterAccountState]>([
+    ['an account error', { state: 'error' }],
+    ['a pending revocation', { state: 'error', revocationPending: true }],
+    ['an unreachable account service', { state: 'unavailable', reason: 'temporarily_unavailable' }],
+  ])('stays neutral for %s', async (_label, account) => {
+    const view = await mount({ account: () => account, entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      const yours = card(view.host)
+      expect(yours.name().textContent).toBe('Account unavailable')
+      expect(yours.avatar()).toBe('unknown')
+      expect(yours.sub()).toBe('Your free tools still work.')
+      expect(accountRow(view.host)).toContain('Connection status unavailable')
+      expect(view.text()).not.toContain('Not signed in')
+    } finally { view.cleanup() }
+  })
+
+  it.each<SupporterAccountState>([
+    { state: 'signed_out' },
+    { state: 'denied' },
+    { state: 'expired' },
+    { state: 'relink_required' },
+    { state: 'unavailable', reason: 'not_deployed' },
+  ])('says Not signed in only when the account state is known: %o', async account => {
+    const view = await mount({ account: () => account, entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      const yours = card(view.host)
+      expect(yours.name().textContent).toBe('Not signed in')
+      expect(yours.avatar()).toBe('none')
+      expect(yours.sub()).toBe('Free tools work without an account.')
+      expect(accountRow(view.host)).toContain('Not signed in')
+    } finally { view.cleanup() }
+  })
+})
+
 describe('change signals and stale reads', () => {
   it('re-reads quietly on a projection signal and ignores unrelated storage changes', async () => {
     let entitlement: SupporterEntitlement = ready('none')

@@ -9,13 +9,16 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
 /**
  * Who the card is about. It shows only an identity that really exists: today
  * that is the StreamPulse account this extension is connected to (masked the
- * way streampulse.stream shows it), or nobody. Sign in with Twitch is compiled
- * off in this build (`TWITCH_SIGNIN_ENABLED`), so there is no Twitch name or
- * picture to show. The `twitch` kind is the seam for when it ships: feed it the
- * display-only profile the sign-in returns.
+ * way streampulse.stream shows it), or nobody. While the account state is still
+ * loading or could not be read, the card is `unknown`: it claims neither an
+ * account nor its absence. Sign in with Twitch is compiled off in this build
+ * (`TWITCH_SIGNIN_ENABLED`), so there is no Twitch name or picture to show. The
+ * `twitch` kind is the seam for when it ships: feed it the display-only profile
+ * the sign-in returns.
  */
 export type CardIdentity =
   | { kind: 'none' }
+  | { kind: 'unknown'; reason: 'checking' | 'unavailable' }
   | { kind: 'pulse'; reference?: string }
   | { kind: 'twitch'; displayName: string; picture?: string }
 
@@ -66,8 +69,9 @@ export function SupporterCard({ identity, membership, look, children }: {
 }) {
   const own = membership.supporter && look.perks
   const current = membership.supporter ? tenureIndex(membership.tenure) : -1
-  const name = identity.kind === 'none' ? 'Not signed in' : identity.kind === 'twitch' ? identity.displayName : identity.reference ?? 'StreamPulse account'
-  const painted = own && look.finish
+  const name = cardName(identity)
+  // Only a real identity wears the paint and crest; a status line never does.
+  const painted = own && look.finish && (identity.kind === 'pulse' || identity.kind === 'twitch')
   return (
     <section className="pulse-supporter-card" aria-label="Your Supporter card" data-supporter-card={own ? 'own' : 'sample'} style={finishVars(look.finish) as CSSProperties}>
       <div className="pulse-supporter-card-banner pulse-personal-panel">
@@ -102,9 +106,19 @@ export function SupporterCard({ identity, membership, look, children }: {
   )
 }
 
+function cardName(identity: CardIdentity): string {
+  switch (identity.kind) {
+    case 'none': return 'Not signed in'
+    case 'unknown': return identity.reason === 'checking' ? 'Checking your account…' : 'Account unavailable'
+    case 'twitch': return identity.displayName
+    default: return identity.reference ?? 'StreamPulse account'
+  }
+}
+
 function subline(identity: CardIdentity, membership: CardMembership): string {
   if (identity.kind === 'none') return 'Free tools work without an account.'
   if (membership.supporter) return ['Pulse Supporter', membership.months > 0 ? months(membership.months) : null, membership.grace ? 'payment due' : null].filter(Boolean).join(' · ')
+  if (identity.kind === 'unknown') return 'Your free tools still work.'
   const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : 'StreamPulse account'
   return `${who} · ${membership.ended ? 'Supporter ended' : 'not a Supporter yet'}`
 }
@@ -117,11 +131,11 @@ function nextLine(membership: CardMembership, current: number): ReactNode {
   return <>{now} · <b>{TENURES[current + 1].title}</b> in {months(Math.max(1, next.months - membership.months))}</>
 }
 
-/** The avatar: a neutral silhouette for nobody, the StreamPulse mark for a StreamPulse account. */
+/** The avatar: a neutral silhouette for nobody or an account not known yet, the StreamPulse mark for a StreamPulse account. */
 function CardAvatar({ identity }: { identity: CardIdentity }) {
   return (
     <span className="pulse-supporter-card-avatar" data-identity={identity.kind} aria-hidden="true">
-      {identity.kind === 'none'
+      {identity.kind === 'none' || identity.kind === 'unknown'
         ? <svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="9" r="4" fill="currentColor" /><path d="M4.5 20c0-4.1 3.4-6.5 7.5-6.5s7.5 2.4 7.5 6.5z" fill="currentColor" /></svg>
         : identity.kind === 'pulse'
           ? <PeakMark size={30} strokeWidth={1.8} stroke="currentColor" />

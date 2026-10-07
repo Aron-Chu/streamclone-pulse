@@ -177,7 +177,7 @@ const hostStyles = `
   .pulse-supporter-card-sample { background: rgba(13, 13, 18, 0.92); border: 1px solid rgba(var(--spk-fin-rgb), 0.55); border-radius: 999px; color: var(--spk-fin-core); font-size: 12px; font-weight: 800; letter-spacing: 0.03em; line-height: 16px; padding: 2px 8px; pointer-events: none; position: absolute; right: 8px; top: 8px; z-index: 3; }
   .pulse-supporter-card-body { align-items: end; display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: -30px; padding: 0 16px; position: relative; z-index: 1; }
   .pulse-supporter-card-avatar { align-items: center; background: #1d1d26; border-radius: 999px; box-shadow: 0 0 0 4px #15151c, 0 0 0 6px var(--spk-fin); color: var(--spk-fin); display: inline-flex; flex: none; font-size: 26px; font-weight: 900; height: 64px; justify-content: center; overflow: hidden; width: 64px; }
-  .pulse-supporter-card-avatar[data-identity="none"] { box-shadow: 0 0 0 4px #15151c, 0 0 0 6px ${theme.border}; color: ${theme.textMuted}; }
+  .pulse-supporter-card-avatar[data-identity="none"], .pulse-supporter-card-avatar[data-identity="unknown"] { box-shadow: 0 0 0 4px #15151c, 0 0 0 6px ${theme.border}; color: ${theme.textMuted}; }
   .pulse-supporter-card-avatar img { height: 100%; object-fit: cover; width: 100%; }
   .pulse-supporter-card-who { display: grid; flex: 1 1 200px; gap: 2px; min-width: 0; padding-bottom: 2px; }
   .pulse-supporter-card-who strong { align-items: center; color: ${theme.textPrimary}; display: flex; flex-wrap: wrap; font-size: 20px; font-weight: 900; gap: 7px; letter-spacing: -0.01em; line-height: 1.2; overflow-wrap: anywhere; }
