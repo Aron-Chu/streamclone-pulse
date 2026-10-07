@@ -37,9 +37,9 @@ import {
 } from './chartRollupUtils.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { eventPathIncludesNode, onOutsidePointerDown, usePulsePortalRoot } from './pulsePortalContext.ts'
-import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
+import { EXTENSION_CHART_MAX_POINTS, nearestRollupIndex } from './extensionChartPoints.ts'
 import { panDeltaSecondsFromPointer } from './chartPanMath.ts'
-import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, viewportBuckets, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
+import { FOLLOW_LIVE_EPSILON_SECONDS, MIN_VIEWPORT_SECONDS, bucketRollups, viewportBucketRanges, wheelZoom, zoomViewport, panViewport, type ChartViewport } from './chartViewport.ts'
 import {
   chartMomentMarkerKey,
   chartMomentMarkerPresentation,
@@ -415,8 +415,13 @@ function PulseOverviewChartImpl({
   const internalViewport: ChartViewport = externalViewport ?? { startSeconds: 0, endSeconds: Math.max(0, durationSeconds) }
   // Without an external viewport the chart owns sampling: cap the raw timeline so
   // full-range rendering stays bounded while zoom (external viewport) can recover
-  // detail from the raw source.
-  const visibleRollups = useMemo(() => externalViewport ? viewportBuckets(sourceRollups, internalViewport, EXTENSION_CHART_MAX_POINTS) : downsampleRollupsForChart(sourceRollups), [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds])
+  // detail from the raw source. Past 120 minutes each drawn point is the most
+  // active minute of a bucket; visibleRanges holds each bucket's source span.
+  const visibleRanges = useMemo(
+    () => viewportBucketRanges(sourceRollups, externalViewport ? internalViewport : null, EXTENSION_CHART_MAX_POINTS),
+    [sourceRollups, externalViewport, internalViewport.startSeconds, internalViewport.endSeconds],
+  )
+  const visibleRollups = useMemo(() => bucketRollups(sourceRollups, visibleRanges), [sourceRollups, visibleRanges])
   const rollups = visibleRollups
   // Selection/preview props arrive as indexes into the FULL source rollup list,
   // while everything below renders against the viewport-filtered list.
@@ -905,23 +910,16 @@ function PulseOverviewChartImpl({
 
   const n = visibleRollups.length
 
-  // Parent selection/preview props are FULL-domain indexes; render them in the
-  // visible viewport domain by offset lookup (visible ⇄ full mapping both ways).
-  const visibleIndexByOffset = useMemo(() => {
-    const map = new Map<number, number>()
-    visibleRollups.forEach((rollup, index) => {
-      if (!map.has(rollup.offsetSeconds)) map.set(rollup.offsetSeconds, index)
-    })
-    return map
-  }, [visibleRollups])
+  // Parent selection/preview props are FULL-domain indexes. A pinned minute
+  // renders on the drawn point of the bucket that contains it, not only when
+  // it is that bucket's drawn minute.
   const visibleIndexFromFull = useCallback(
     (fullIdx: number | null | undefined): number | null => {
       if (fullIdx == null) return null
-      const rollup = sourceRollups[fullIdx]
-      if (!rollup) return null
-      return visibleIndexByOffset.get(rollup.offsetSeconds) ?? null
+      const index = visibleRanges.findIndex(([start, end]) => fullIdx >= start && fullIdx < end)
+      return index < 0 ? null : index
     },
-    [sourceRollups, visibleIndexByOffset],
+    [visibleRanges],
   )
 
   const visibleMomentMarkers = useMemo(() => {

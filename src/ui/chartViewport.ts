@@ -318,24 +318,42 @@ function lowerBoundByOffset(rollups: ExtensionRollup[], target: number): number 
   return lo
 }
 
-export function viewportBuckets(
+/**
+ * The [start, end) source indices behind each point the chart draws for a
+ * viewport (or, without one, the whole timeline), in order. Past
+ * `targetBuckets` minutes each point stands for a run of minutes, so any
+ * source minute maps to the drawn point of the bucket that contains it.
+ */
+export function viewportBucketRanges(
   minuteRollups: ExtensionRollup[],
-  viewport: ChartViewport,
+  viewport: ChartViewport | null,
   targetBuckets: number,
-): ExtensionRollup[] {
-  if (minuteRollups.length === 0) return []
-  if (targetBuckets <= 0) return []
-  const start = viewport.startSeconds
-  const end = viewport.endSeconds
-  if (end <= start) return []
+): Array<[number, number]> {
   // Rollups are offset-ordered, so bound the window instead of scanning every minute:
   // this runs on every wheel-zoom and pan frame.
-  const from = lowerBoundByOffset(minuteRollups, start)
-  const to = lowerBoundByOffset(minuteRollups, end)
-  if (to <= from) return []
-  const filtered = minuteRollups.slice(from, to)
-  if (filtered.length <= targetBuckets) return filtered
-  return downsampleRollupsForChart(filtered, targetBuckets)
+  const from = viewport ? lowerBoundByOffset(minuteRollups, viewport.startSeconds) : 0
+  const to = viewport ? lowerBoundByOffset(minuteRollups, viewport.endSeconds) : minuteRollups.length
+  const size = Math.max(1, (to - from) / targetBuckets)
+  const ranges: Array<[number, number]> = []
+  for (let bucket = 0; bucket < targetBuckets; bucket += 1) {
+    const start = from + Math.floor(bucket * size)
+    const end = Math.min(to, from + Math.floor((bucket + 1) * size))
+    if (end > start) ranges.push([start, end])
+  }
+  return ranges
+}
+
+/** Each range's most active real minute, unmodified (downsampleRollupsForChart's pick). */
+export function bucketRollups(minuteRollups: ExtensionRollup[], ranges: Array<[number, number]>): ExtensionRollup[] {
+  return ranges.map(([start, end]) => downsampleRollupsForChart(minuteRollups.slice(start, end), 1)[0]!)
+}
+
+export function viewportBuckets(
+  minuteRollups: ExtensionRollup[],
+  viewport: ChartViewport | null,
+  targetBuckets: number,
+): ExtensionRollup[] {
+  return bucketRollups(minuteRollups, viewportBucketRanges(minuteRollups, viewport, targetBuckets))
 }
 
 /**
