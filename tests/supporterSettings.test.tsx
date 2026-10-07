@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { SupporterAccountSection } from '../src/options/SupporterAccountSection.tsx'
 import { SupporterCosmeticControls } from '../src/options/SupporterCosmeticControls.tsx'
+import { injectHostStyles } from '../src/options/hostStyles.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import type { SupporterEntitlement } from '../src/shared/supporterAccount.ts'
 
@@ -128,6 +129,10 @@ describe('supporter settings', () => {
       expect(steps.map(step => step.dataset.step)).toEqual(['past', 'past', 'current', 'off', 'off'])
       expect(steps[2].getAttribute('aria-current')).toBe('step')
       expect(card.querySelector('.pulse-supporter-ladder-next')?.textContent).toBe('Steady signal now · Year-one crest in 5 months')
+      // A paid-up member's footer is not the payment-issue warning.
+      const journey = card.querySelector<HTMLElement>('.pulse-journey')!
+      expect(journey.dataset.journeyState).toBe('active')
+      expect(journey.hasAttribute('data-tone')).toBe(false)
       // Billing is one tap away, and nothing about a chat badge is offered as included.
       expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Manage billing ↗')
       expect(host.textContent).toContain('Concept · not built')
@@ -257,6 +262,115 @@ describe('supporter settings', () => {
       act(() => root.unmount())
       host.remove()
       vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('Your card: payment issue and the top crest', () => {
+  const linkedAccount = { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
+  const supporter = (status: 'active' | 'grace', supportPeriods: number, extra: Partial<SupporterEntitlement> = {}): SupporterEntitlement => ({
+    state: 'ready', status, supportPeriods, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'halo' }, ...extra,
+  } as SupporterEntitlement)
+  const renderCard = async (entitlement: SupporterEntitlement) => {
+    const sendMessage = vi.fn(async (message: { type: string }) =>
+      message.type === 'SUPPORTER_ENTITLEMENT' ? { type: 'SUPPORTER_ENTITLEMENT', entitlement }
+        : message.type === 'SUPPORTER_ACCOUNT' ? { type: 'SUPPORTER_ACCOUNT', account: linkedAccount }
+          : undefined)
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    await act(async () => root.render(<SupporterAccountSection />))
+    const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+    const steps = [...card.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')]
+    return {
+      host,
+      card,
+      journey: card.querySelector<HTMLElement>('.pulse-journey')!,
+      subline: card.querySelector('.pulse-supporter-card-who > span')?.textContent,
+      crest: card.querySelector('.pulse-supporter-card-who strong .pulse-crest')?.getAttribute('data-tenure'),
+      steps: steps.map(step => step.dataset.step),
+      currentStep: steps.filter(step => step.getAttribute('aria-current') === 'step').map(step => step.dataset.tier),
+      next: card.querySelector('.pulse-supporter-ladder-next')?.textContent,
+      cleanup: () => {
+        act(() => root.unmount())
+        host.remove()
+        vi.unstubAllGlobals()
+      },
+    }
+  }
+
+  it('warns in the footer and the subline when a renewal failed, with the earned crest held on the ladder', async () => {
+    const view = await renderCard(supporter('grace', 7, { accessUntil: '2026-10-19T12:00:00Z' }))
+    try {
+      // The card is still the member's own, painted, with the crest 7 months earned.
+      expect(view.card.dataset.supporterCard).toBe('own')
+      expect(view.card.querySelector('.pulse-supporter-card-sample')).toBeNull()
+      expect(view.crest).toBe('6m')
+      expect(view.subline).toBe('Pulse Supporter · 7 months · payment due')
+      expect(view.steps).toEqual(['past', 'past', 'current', 'off', 'off'])
+      expect(view.currentStep).toEqual(['6m'])
+      expect(view.next).toBe('Steady signal now · Year-one crest in 5 months')
+      // The footer carries the warm payment-issue tone, its title and the fix.
+      expect(view.journey.dataset.journeyState).toBe('grace')
+      expect(view.journey.dataset.tone).toBe('warn')
+      expect(view.journey.querySelector('.pulse-journey-title')?.textContent).toBe('Payment needs attention')
+      expect([...view.journey.querySelectorAll('.pulse-journey-primary')].map(action => action.textContent)).toEqual(['Update payment method'])
+      expect([...view.journey.querySelectorAll('.pulse-journey-facts dt')].map(term => term.textContent)).toEqual(['Access until'])
+      // The warm styling is a settings-page rule this footer actually matches.
+      injectHostStyles()
+      const css = document.getElementById('streampulse-settings-host-styles')?.textContent ?? ''
+      const warnRules = [...css.matchAll(/([^{}]*\[data-tone="warn"\][^{}]*)\{([^}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }))
+      const footerRule = warnRules.find(rule => rule.selector === '.pulse-supporter-card > .pulse-journey[data-tone="warn"]')
+      expect(footerRule?.body).toMatch(/background:\s*rgba\(253, 186, 116/)
+      expect(view.journey.matches(footerRule!.selector)).toBe(true)
+      const statusRule = warnRules.find(rule => rule.selector.endsWith('.pulse-journey-status'))
+      expect(statusRule).toBeDefined()
+      expect(view.journey.querySelector('.pulse-journey-status')?.matches(statusRule!.selector)).toBe(true)
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it('says nothing is due and draws no warning for the same member while paid up', async () => {
+    const view = await renderCard(supporter('active', 7, { accessUntil: '2026-10-19T12:00:00Z' }))
+    try {
+      expect(view.subline).toBe('Pulse Supporter · 7 months')
+      expect(view.subline).not.toContain('payment due')
+      expect(view.journey.dataset.journeyState).toBe('active')
+      expect(view.journey.hasAttribute('data-tone')).toBe(false)
+      expect([...view.journey.querySelectorAll('.pulse-journey-facts dt')].map(term => term.textContent)).toEqual(['Access through'])
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it.each([
+    [23, '12m', ['past', 'past', 'past', 'current', 'off'], 'Year-one crest now · Two-year pinnacle in 1 month'],
+    [24, '24m', ['past', 'past', 'past', 'past', 'current'], 'Two-year pinnacle now · the top crest'],
+    [31, '24m', ['past', 'past', 'past', 'past', 'current'], 'Two-year pinnacle now · the top crest'],
+  ] as const)('puts %i months at the right rung, naming the top crest from 24 months', async (months, tier, steps, next) => {
+    const view = await renderCard(supporter('active', months))
+    try {
+      expect(view.subline).toBe(`Pulse Supporter · ${months} months`)
+      expect(view.crest).toBe(tier)
+      expect(view.steps).toEqual(steps)
+      expect(view.currentStep).toEqual([tier])
+      expect(view.next).toBe(next)
+    } finally {
+      view.cleanup()
+    }
+  })
+
+  it('keeps the top crest through a payment issue', async () => {
+    const view = await renderCard(supporter('grace', 26))
+    try {
+      expect(view.subline).toBe('Pulse Supporter · 26 months · payment due')
+      expect(view.currentStep).toEqual(['24m'])
+      expect(view.next).toBe('Two-year pinnacle now · the top crest')
+      expect(view.journey.dataset.tone).toBe('warn')
+    } finally {
+      view.cleanup()
     }
   })
 })
