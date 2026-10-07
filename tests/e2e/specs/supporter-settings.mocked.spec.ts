@@ -1,3 +1,4 @@
+import type { Locator } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
 import { linkDevice, serveMembership, supporterBody } from '../helpers/supporterMembership.ts'
 
@@ -71,6 +72,56 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(page).toHaveURL(/#privacy$/)
   await page.goBack()
   await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
+})
+
+test('Your look tiles work from the keyboard and show where focus is', async ({ extension, prepare }) => {
+  await prepare()
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  // Each tile's radio is a 1px transparent input: the tile's focus-within outline is the only focus indicator.
+  const tile = (radio: Locator) => radio.locator('xpath=ancestor::label[contains(concat(" ", @class, " "), " pulse-supporter-tile ")][1]')
+  const you = page.locator('.pulse-supporter-who > li').first()
+  const paint = page.getByRole('group', { name: 'Paint' })
+  const wave = page.getByRole('group', { name: 'Wave' })
+  const sheen = page.getByRole('group', { name: 'Sheen' })
+  const etched = paint.getByRole('radio', { name: 'Etched', exact: true })
+  const smooth = wave.getByRole('radio', { name: 'Smooth wave', exact: true })
+  await expect(etched).toBeChecked()
+  await expect(smooth).toBeChecked()
+  await expect(tile(etched)).toHaveCSS('outline-style', 'none')
+
+  // Shift+Tab from Wave reaches the checked Paint tile: the hidden inputs stay in the tab order.
+  await smooth.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(etched).toBeFocused()
+  await expect(tile(etched)).toHaveCSS('outline-style', 'solid')
+  // An arrow key moves the choice to the next tile, the outline follows it, and Who sees what previews it.
+  await page.keyboard.press('ArrowRight')
+  const halo = paint.getByRole('radio', { name: 'Halo', exact: true })
+  await expect(halo).toBeChecked()
+  await expect(halo).toBeFocused()
+  await expect(tile(halo)).toHaveCSS('outline-style', 'solid')
+  await expect(tile(etched)).toHaveCSS('outline-style', 'none')
+  await expect(you.locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
+  await expect(page.getByText('Shown with the look you’re trying')).toBeVisible()
+
+  // Tab goes on to the checked Wave tile, then the checked Sheen tile.
+  await page.keyboard.press('Tab')
+  await expect(smooth).toBeFocused()
+  await expect(tile(smooth)).toHaveCSS('outline-style', 'solid')
+  await page.keyboard.press('Tab')
+  const sweep = sheen.getByRole('radio', { name: 'Sweep sheen', exact: true })
+  await expect(sweep).toBeChecked()
+  await expect(sweep).toBeFocused()
+  await expect(tile(sweep)).toHaveCSS('outline-style', 'solid')
+  await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'sweep')
+  await page.keyboard.press('ArrowRight')
+  const glint = sheen.getByRole('radio', { name: 'Glint sheen', exact: true })
+  await expect(glint).toBeChecked()
+  await expect(glint).toBeFocused()
+  await expect(tile(glint)).toHaveCSS('outline-style', 'solid')
+  await expect(tile(sweep)).toHaveCSS('outline-style', 'none')
+  await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'glint')
 })
 
 /** Record what the page asks the browser to open, then open it as usual. */
