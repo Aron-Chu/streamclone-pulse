@@ -112,7 +112,7 @@ function Progress({ steps }: { steps: [Step, Step, Step] }) {
 function OfferTerms() {
   return (
     <>
-      {/* The card's footer line: the price and its terms in one row. */}
+      {/* The card's footer line: the price and its terms in one row, before the action. */}
       <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
       {/* "You get" lists only shipped benefits, and names each perk the
           settings banner sells: title paint, the tenure crest and emote rain.
@@ -771,10 +771,13 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
                 {notice.text && notice.at === 'card' ? <p className="pulse-journey-notice">{notice.text}</p> : null}
               </div>
               {facts.length ? <dl className="pulse-journey-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
+              {/* The price and its renewal terms come before the button that
+                  buys it, in reading and Tab order and above it at any width;
+                  beside it when there is room, as in the redesign's footer. */}
+              {terms ? <OfferTerms /> : null}
             </div>
             {primary ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}</div> : null}
           </div>
-          {terms ? <OfferTerms /> : null}
           {/* The worker decides the path at the click: without installation
               accounts on the server (production today) it falls back to the
               website link, so the website path is stated first. */}

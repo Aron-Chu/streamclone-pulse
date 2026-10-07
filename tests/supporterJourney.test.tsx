@@ -842,6 +842,33 @@ describe('the offer names what the banner sells', () => {
   })
 })
 
+describe('the price comes before the button that buys it', () => {
+  // Reading and Tab order follow the DOM: a screen-reader or keyboard user must
+  // hear the price and that it renews monthly before reaching the purchase
+  // button, and at narrow widths the price sits above it.
+  it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string]>([
+    ['unlinked', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Supporter'],
+    ['offer', () => linked, () => ready('none', { installationAccountsEnabled: true }), 'Become a Supporter'],
+    ['offer', () => linked, () => ready('none'), 'Continue to checkout'],
+    ['checkout-closed', () => linked, () => ready('none', { checkoutEnabled: false }), 'Check sign-up status'],
+    ['expired', () => linked, () => ready('expired'), 'Rejoin Supporter'],
+  ])('in the %s state, before "%s"', async (state, account, entitlement, label) => {
+    const view = await mount({ account, entitlement })
+    try {
+      expect(view.state()).toBe(state)
+      const primary = view.host.querySelector<HTMLElement>('.pulse-journey-primary')!
+      expect(primary.textContent).toBe(label)
+      const terms = view.host.querySelector<HTMLElement>('.pulse-supporter-terms')!
+      expect(terms.textContent).toContain('US$4.99 / month')
+      expect(terms.textContent).toContain('renews monthly until you cancel')
+      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')!
+      for (const line of [terms, youGet]) expect(line.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      // Beside the button's own column, not after the row that holds it.
+      expect(terms.closest('.pulse-journey-main')).not.toBeNull()
+    } finally { view.cleanup() }
+  })
+})
+
 const PERKS = ['supporter.banner.v1', 'supporter.finish.v1']
 const HALO = { enabled: true, finish: 'halo' } as const
 function card(host: HTMLElement) {

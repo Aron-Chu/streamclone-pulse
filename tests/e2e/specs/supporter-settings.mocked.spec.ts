@@ -24,7 +24,16 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(top).toHaveCSS('background-image', 'none')
   await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
   await expect(card.locator('.pulse-journey')).toHaveAttribute('data-journey-state', 'unlinked')
-  await expect(card.locator('.pulse-journey-primary')).toHaveText(['Become a Supporter'])
+  const primary = card.locator('.pulse-journey-primary')
+  await expect(primary).toHaveText(['Become a Supporter'])
+  // The price and that it renews come before the button that buys it, in reading and Tab order.
+  const terms = card.locator('.pulse-supporter-terms')
+  await expect(terms).toContainText('US$4.99 / month')
+  await expect(terms).toContainText('renews monthly until you cancel')
+  expect(await primary.evaluate(button => {
+    const price = button.closest('.pulse-journey')?.querySelector('.pulse-supporter-terms')
+    return price ? Boolean(price.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING) : null
+  })).toBe(true)
 
   // Who sees what: only you, a labelled concept, and normal chat for everyone else.
   const who = page.locator('.pulse-supporter-who > li')
@@ -44,6 +53,11 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 900 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+    if (width < 768) {
+      // Narrow, the button wraps below its column: the price sits above it, never under it.
+      const [price, button] = await Promise.all([terms.boundingBox(), primary.boundingBox()])
+      expect(price!.y + price!.height).toBeLessThanOrEqual(button!.y)
+    }
     await page.screenshot({ path: info.outputPath(`supporter-settings-${width}.png`), fullPage: true, animations: 'disabled' })
   }
   await page.reload()
