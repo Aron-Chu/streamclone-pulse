@@ -960,9 +960,29 @@ function absolutizeEmotes(emotes: HubEmote[] | undefined): HubEmote[] {
   return emotes.map((emote) => ({ ...emote, imageUrl: absoluteAssetUrl(emote.imageUrl) }))
 }
 
+/**
+ * One wrong-typed text field in one row must not take the page down (string
+ * methods and React children both throw on objects). Rows without a text login
+ * have no identity to link or rank and are dropped; other text is cleared.
+ */
+function hasTextLogin(row: unknown): boolean {
+  return isRecord(row) && typeof row.login === 'string'
+}
+
+function clearWrongTypedText<T extends object>(row: T, keys: readonly (keyof T & string)[]): T {
+  const next = { ...row }
+  for (const key of keys) {
+    if (next[key] !== undefined && typeof next[key] !== 'string') next[key] = undefined as T[typeof key]
+  }
+  return next
+}
+
 function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   if (!movers) return []
-  return movers.map((mover) => ({ ...mover, profileImageUrl: sanitizeHubProfileImageUrl(mover.profileImageUrl) }))
+  return movers.filter(hasTextLogin).map((mover) => ({
+    ...clearWrongTypedText(mover, ['displayName', 'category']),
+    profileImageUrl: sanitizeHubProfileImageUrl(mover.profileImageUrl),
+  }))
 }
 
 /** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
@@ -1036,10 +1056,10 @@ export function resolveHubTopMovers(
 
 function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLiveChannel[] {
   if (!channels) return []
-  return channels.map((channel) => {
+  return channels.filter(hasTextLogin).map((channel) => {
     const screener = normalizeHubChannelScreenerFields(channel.screener)
     return {
-      ...channel,
+      ...clearWrongTypedText(channel, ['displayName', 'title', 'category', 'streamId', 'hostLogin']),
       startedAt: measurementTimeIso(channel.startedAt),
       profileImageUrl: sanitizeHubProfileImageUrl(channel.profileImageUrl),
       screener: screener ?? undefined,
@@ -1049,7 +1069,11 @@ function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLive
 
 function absolutizeMoments(moments: HubMoment[] | undefined): HubMoment[] {
   if (!moments) return []
-  return moments.map((moment) => ({ ...moment, topEmotes: absolutizeEmotes(moment.topEmotes) }))
+  return moments.map((moment) => ({
+    ...clearWrongTypedText(moment, ['login', 'displayName', 'streamId', 'detail']),
+    label: typeof moment.label === 'string' ? moment.label : '',
+    topEmotes: absolutizeEmotes(moment.topEmotes),
+  }))
 }
 
 /**
@@ -1181,13 +1205,15 @@ function normalizeIngest(raw: Partial<HubIngest> | undefined): HubIngest | undef
 
 function normalizeLivePulseMoments(raw: HubLivePulseMoment[] | undefined): HubLivePulseMoment[] {
   if (!raw?.length) return []
-  return raw.map((moment) => {
+  // login is optional here, but a present non-text login is a broken identity.
+  return raw.filter((moment) => isRecord(moment) && (moment.login === undefined || hasTextLogin(moment))).map((moment) => {
     const categoryId = normalizeCategoryId(moment.categoryId)
     const boxArtUrl = normalizeCategoryBoxArt(moment.boxArtUrl, categoryId)
     const categoryMetadataRejected = moment.categoryMetadataRejected === true
       || rejectedCategoryMetadata(moment.categoryId, moment.boxArtUrl, categoryId, boxArtUrl)
     return {
-      ...moment,
+      ...clearWrongTypedText(moment, ['displayName', 'category', 'streamId', 'kind', 'source', 'activityTag', 'topEmoteCode']),
+      label: typeof moment.label === 'string' ? moment.label : '',
       categoryId,
       boxArtUrl,
       categoryMetadataRejected: categoryMetadataRejected || undefined,

@@ -167,6 +167,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const consecutiveFailuresRef = useRef(0)
   const nextRetryAfterMsRef = useRef<number | null>(null)
   const retryNotBeforeRef = useRef(0)
+  const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection } | null>(null)
   const randomRef = useRef(random)
   randomRef.current = random
 
@@ -182,7 +183,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       setPollSequence(pollSequenceRef.current)
       hasDataRef.current = true
       setLoadedActivityWindow(activityWindow)
-      if (endpointOk) persistSuccessfulHub(activityWindow, hub, projection)
+      // Persisted by the effect below once React has committed this snapshot.
+      pendingPersistRef.current = endpointOk ? { hub, activityWindow, projection } : null
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
       retryNotBeforeRef.current = 0
@@ -327,6 +329,16 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const refresh = useCallback(() => {
     void load(true)
   }, [load])
+
+  // Persist only a snapshot the page has committed: a render crash above this
+  // hook never commits one. A crash that does commit (in an effect, or below a
+  // nested boundary) is discarded by the error boundary that catches it.
+  useEffect(() => {
+    const pending = pendingPersistRef.current
+    if (!pending) return
+    pendingPersistRef.current = null
+    persistSuccessfulHub(pending.activityWindow, pending.hub, pending.projection)
+  }, [pollSequence])
 
   useEffect(() => {
     if (prevActivityWindowRef.current === activityWindow) return

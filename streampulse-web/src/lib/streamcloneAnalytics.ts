@@ -113,6 +113,15 @@ function portalLifecycleFields(stream: PortalStreamRecord) {
   }
 }
 
+/** The console trims and renders these; one wrong-typed value must not crash the page. */
+function portalStreamText(stream: Pick<PortalStreamRecord, 'displayName' | 'title' | 'category'>) {
+  return {
+    displayName: typeof stream.displayName === 'string' ? stream.displayName : undefined,
+    title: typeof stream.title === 'string' ? stream.title : undefined,
+    category: typeof stream.category === 'string' ? stream.category : undefined,
+  }
+}
+
 interface PortalSignalObservation {
   state: string
   observedAt: string
@@ -798,9 +807,7 @@ function portalLiveResponseToAnalytics(
       ? {
           streamId: stream.streamId,
           login: stream.login,
-          displayName: stream.displayName,
-          title: stream.title,
-          category: stream.category,
+          ...portalStreamText(stream),
           currentViewers: stream.currentViewers,
           peakViewers: stream.peakViewers,
           viewerSamples: stream.viewerSamples,
@@ -887,9 +894,7 @@ function portalDetailToAnalytics(
       ? {
           streamId: stream.streamId,
           login: stream.login,
-          displayName: stream.displayName,
-          title: stream.title,
-          category: stream.category,
+          ...portalStreamText(stream),
           currentViewers: stream.currentViewers,
           peakViewers: stream.peakViewers,
           viewerSamples: stream.viewerSamples,
@@ -1024,6 +1029,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
         chatCoveragePct?: number
         updatedAt?: number
         availability?: PortalSessionAvailability
+        stream?: AnalyticsStreamDetail['stream']
       }>(portalPath(`/streams/${encodeURIComponent(streamId)}/status`))
         if (data.streamId !== streamId) return null
         const sourceUpdated = Object.prototype.hasOwnProperty.call(data, 'vodId')
@@ -1048,6 +1054,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
           }
         }
         return { ...data, state: data.state === 'live' || data.state === 'historical' ? undefined : data.state,
+          ...(data.stream ? { stream: { ...data.stream, ...portalStreamText(data.stream) } } : {}),
           ...(sourceUpdated ? { vodId: archive?.vodId ?? '', vodAlignSeconds: archive?.alignment,
             vodDurationSeconds: archive?.duration } : {}), availability }
     } catch {
@@ -1085,7 +1092,7 @@ export const portalAnalyticsApi: AnalyticsApi = {
       ? analyticsPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
       : portalPath(`/channels/${encodeURIComponent(login)}/streams?limit=${Math.max(1, limit)}`)
     const { data } = await apiClient<AnalyticsStreamsResponse>(path)
-    return { ...data, items: usesLocalAnalyticsRoutes() ? data.items : (data.items ?? []).map(item => ({ ...item, ...portalLifecycleFields(item) })), updatedAt: measurementTimeMs(data.updatedAt) ?? 0 }
+    return { ...data, items: usesLocalAnalyticsRoutes() ? data.items : (data.items ?? []).map(item => ({ ...item, ...portalLifecycleFields(item), ...portalStreamText(item) })), updatedAt: measurementTimeMs(data.updatedAt) ?? 0 }
   },
 
   async getAnalyticsLive(login: string): Promise<AnalyticsStreamDetail> {
@@ -1225,9 +1232,8 @@ export const portalAnalyticsApi: AnalyticsApi = {
       items: (data.items ?? []).map((item) => ({
         streamId: item.streamId,
         id: item.streamId,
-        displayName: item.displayName ?? item.login,
-        title: item.title,
-        category: item.category,
+        ...portalStreamText(item),
+        displayName: portalStreamText(item).displayName ?? item.login,
         peakViewers: item.peakViewers,
         viewerSamples: item.viewerSamples,
         chatMessages: item.chatMessages,
