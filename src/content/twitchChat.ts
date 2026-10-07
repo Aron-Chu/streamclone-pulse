@@ -130,18 +130,7 @@ function isVisibleChatEditor(element: Element): element is HTMLElement {
 
 /** Resolve the visible editable Twitch chat control, never its layout wrapper. */
 export function resolveNativeChatComposer(doc: Document = document): HTMLElement | null {
-  for (const selector of CHAT_EDITOR_SELECTORS) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const node of Array.from(nodes)) {
-      if (isVisibleChatEditor(node)) return node
-    }
-  }
-  return null
+  return queryAll(doc, CHAT_EDITOR_SELECTORS).find(isVisibleChatEditor) ?? null
 }
 
 /** Focus the native editor only when the caller has a direct user gesture. */
@@ -359,22 +348,24 @@ export function overlapsChatColumn(
   return rect.right >= column.left + 8 && rect.left <= column.right - 8
 }
 
-/** Visible element rects matching `selectors` inside `scope`, in selector order. */
-function visibleRects(scope: ParentNode, selectors: readonly string[]): DOMRect[] {
-  const rects: DOMRect[] = []
+/** Elements matching `selectors` inside `scope`, in selector order; an unsupported selector matches none. */
+function queryAll(scope: ParentNode, selectors: readonly string[]): Element[] {
+  const elements: Element[] = []
   for (const selector of selectors) {
-    let nodes: NodeListOf<Element>
     try {
-      nodes = scope.querySelectorAll(selector)
+      elements.push(...scope.querySelectorAll(selector))
     } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      const rect = element.getBoundingClientRect()
-      if (rect.width > 0 && rect.height > 0) rects.push(rect)
+      // Skip a selector this browser cannot parse.
     }
   }
-  return rects
+  return elements
+}
+
+/** Visible element rects matching `selectors` inside `scope`, in selector order. */
+function visibleRects(scope: ParentNode, selectors: readonly string[]): DOMRect[] {
+  return queryAll(scope, selectors)
+    .map(element => element.getBoundingClientRect())
+    .filter(rect => rect.width > 0 && rect.height > 0)
 }
 
 /**
@@ -419,22 +410,8 @@ export function pickChatColumn<T extends { rect: RectLike }>(
 }
 
 function collectCandidates(doc: Document): ChatColumnCandidate[] {
-  const seen = new Set<Element>()
-  const candidates: ChatColumnCandidate[] = []
-  for (const selector of CHAT_COLUMN_SELECTORS) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      if (seen.has(element)) continue
-      seen.add(element)
-      candidates.push({ element, rect: element.getBoundingClientRect() })
-    }
-  }
-  return candidates
+  return [...new Set(queryAll(doc, CHAT_COLUMN_SELECTORS))]
+    .map(element => ({ element, rect: element.getBoundingClientRect() }))
 }
 
 /**
@@ -573,13 +550,7 @@ export function resolveChatHeaderHeight(
 }
 
 function rectKey(rect: DOMRect | null): string {
-  if (!rect) return 'null'
-  return [
-    Math.round(rect.left),
-    Math.round(rect.top),
-    Math.round(rect.width),
-    Math.round(rect.height),
-  ].join(':')
+  return rect ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join(':') : 'null'
 }
 
 export function toChatRectSnapshot(
@@ -648,23 +619,14 @@ function headerBarFor(measure: ChatMeasure): ChatRectSnapshot {
   const { column } = measure
   const anchors = collectHeaderAnchorRects(measure.scope, column)
   const fallback = headerContainerRect(measure)
-
-  if (anchors.length === 0) {
-    return toChatRectSnapshot({
-      top: fallback.top,
-      left: column.left,
-      width: column.width,
-      height: Math.min(fallback.height, DEFAULT_CHAT_HEADER_HEIGHT + 8),
-    })
-  }
-
   const top = Math.min(fallback.top, ...anchors.map(rect => rect.top))
-  const bottom = Math.max(...anchors.map(rect => rect.bottom))
   return toChatRectSnapshot({
     top,
     left: column.left,
     width: column.width,
-    height: Math.min(Math.max(bottom - top, 28), DEFAULT_CHAT_HEADER_HEIGHT + 12),
+    height: anchors.length
+      ? Math.min(Math.max(Math.max(...anchors.map(rect => rect.bottom)) - top, 28), DEFAULT_CHAT_HEADER_HEIGHT + 12)
+      : Math.min(fallback.height, DEFAULT_CHAT_HEADER_HEIGHT + 8),
   })
 }
 
@@ -1008,18 +970,22 @@ export interface BoundedRemeasureSchedulerHooks {
   clearTimeout: (id: number) => void
 }
 
-/** Testable ancestry check used by the mutation filter and focused tests. */
+/** Whether `test` holds for any of `selectors`; an unsupported selector never does. */
+function anySelector(selectors: readonly string[], test: (selector: string) => unknown): boolean {
+  return selectors.some(selector => {
+    try {
+      return !!test(selector)
+    } catch {
+      return false
+    }
+  })
+}
+
+/** Testable check for a node inside the chat message list. */
 export function matchesChatMessageListAncestry(
   closest: (selector: string) => unknown,
 ): boolean {
-  for (const selector of CHAT_MESSAGE_LIST_IGNORE_SELECTORS) {
-    try {
-      if (closest(selector)) return true
-    } catch {
-      continue
-    }
-  }
-  return false
+  return anySelector(CHAT_MESSAGE_LIST_IGNORE_SELECTORS, closest)
 }
 
 function mutationTargetElement(node: Node | null): Element | null {
@@ -1029,36 +995,15 @@ function mutationTargetElement(node: Node | null): Element | null {
 }
 
 function matchesAnySelector(element: Element, selectors: readonly string[]): boolean {
-  for (const selector of selectors) {
-    try {
-      if (element.matches(selector)) return true
-    } catch {
-      continue
-    }
-  }
-  return false
+  return anySelector(selectors, selector => element.matches(selector))
 }
 
 function matchesAnySelectorAncestry(element: Element, selectors: readonly string[]): boolean {
-  for (const selector of selectors) {
-    try {
-      if (element.closest(selector)) return true
-    } catch {
-      continue
-    }
-  }
-  return false
+  return anySelector(selectors, selector => element.closest(selector))
 }
 
 function containsAnySelector(element: Element, selectors: readonly string[]): boolean {
-  for (const selector of selectors) {
-    try {
-      if (element.querySelector(selector)) return true
-    } catch {
-      continue
-    }
-  }
-  return false
+  return anySelector(selectors, selector => element.querySelector(selector))
 }
 
 function nodeContainsAnySelector(node: Node | null, selectors: readonly string[]): boolean {
@@ -1072,10 +1017,7 @@ type ChatGeometryMutation = Pick<MutationRecord, 'target'> & Partial<
 >
 
 function mutationNodes(mutation: ChatGeometryMutation): Node[] {
-  return [
-    ...(mutation.addedNodes ? Array.from(mutation.addedNodes) : []),
-    ...(mutation.removedNodes ? Array.from(mutation.removedNodes) : []),
-  ]
+  return [...(mutation.addedNodes ?? []), ...(mutation.removedNodes ?? [])]
 }
 
 function allMutationNodesMatch(
@@ -1099,7 +1041,7 @@ export function shouldScheduleChatGeometryFromMutations(
     if (!element) return true
 
     const type = mutation.type ?? 'childList'
-    const inMessageList = matchesChatMessageListAncestry(selector => element.closest(selector))
+    const inMessageList = matchesAnySelectorAncestry(element, CHAT_MESSAGE_LIST_IGNORE_SELECTORS)
     const transientElement = matchesAnySelectorAncestry(element, CHAT_TRANSIENT_CHROME_SELECTORS)
 
     if (type === 'attributes') {
@@ -1163,18 +1105,20 @@ export function createBoundedRemeasureScheduler(
   let finalTimeoutId: number | null = null
   let windowDeadline = 0
 
+  function requestFrame(): void {
+    let callbackRanSynchronously = false
+    const nextRafId = hooks.requestAnimationFrame(() => {
+      callbackRanSynchronously = true
+      measureFrame()
+    })
+    if (!callbackRanSynchronously) rafId = nextRafId
+  }
+
   function measureFrame(): void {
     rafId = null
     if (disposed) return
     measure()
-    if (!disposed && hooks.now() < windowDeadline) {
-      let callbackRanSynchronously = false
-      const nextRafId = hooks.requestAnimationFrame(() => {
-        callbackRanSynchronously = true
-        measureFrame()
-      })
-      if (!callbackRanSynchronously) rafId = nextRafId
-    }
+    if (!disposed && hooks.now() < windowDeadline) requestFrame()
   }
 
   function finalMeasure(): void {
@@ -1190,12 +1134,7 @@ export function createBoundedRemeasureScheduler(
   function schedule(): void {
     if (disposed || rafId !== null || finalTimeoutId !== null) return
     windowDeadline = hooks.now() + CHAT_SNAP_REMEASURE_WINDOW_MS
-    let callbackRanSynchronously = false
-    const nextRafId = hooks.requestAnimationFrame(() => {
-      callbackRanSynchronously = true
-      measureFrame()
-    })
-    if (!callbackRanSynchronously) rafId = nextRafId
+    requestFrame()
     finalTimeoutId = hooks.setTimeout(finalMeasure, CHAT_SNAP_FINAL_MEASURE_DELAY_MS)
   }
 
@@ -1214,18 +1153,10 @@ function chatGeometryObservationTargets(
   doc: Document,
   column: Element | null,
 ): Element[] {
-  const targets = new Set<Element>()
-  if (column) targets.add(column)
   // The header row can sit outside the column element, inside the chat stack.
-  const scope: ParentNode = column?.closest?.(CHAT_SCOPE_SELECTOR) ?? column ?? doc
-  for (const selector of CHAT_GEOMETRY_SELECTORS) {
-    try {
-      for (const element of Array.from(scope.querySelectorAll(selector))) targets.add(element)
-    } catch {
-      continue
-    }
-  }
-  return Array.from(targets)
+  const targets = queryAll(column?.closest?.(CHAT_SCOPE_SELECTOR) ?? column ?? doc, CHAT_GEOMETRY_SELECTORS)
+  if (column) targets.unshift(column)
+  return [...new Set(targets)]
 }
 
 /**
