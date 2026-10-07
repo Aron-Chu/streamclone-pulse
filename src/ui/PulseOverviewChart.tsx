@@ -933,7 +933,13 @@ function PulseOverviewChartImpl({
       .map((peak, rank) => {
         const offsetSeconds = reactionAnalyticalOffset(peak)
         if (offsetSeconds < firstOffset - 60 || offsetSeconds > lastOffset + 60) return null
-        const sourceIndex = nearestRollupIndex(visibleRollups, offsetSeconds)
+        // A pick pins the source bucket that holds the moment (Full) or the
+        // nearest minute (zoomed ranges). The marker sits on the drawn point
+        // holding that bucket, like the lock, and is the pick only when the
+        // pinned bucket is its own, not merely one sharing its drawn point.
+        const near = nearestRollupIndex(sourceRollups, offsetSeconds)
+        const fullIndex = near > 0 && sourceRollups[near]!.offsetSeconds > offsetSeconds ? near - 1 : near
+        const sourceIndex = visibleIndexFromFull(fullIndex) ?? nearestRollupIndex(visibleRollups, offsetSeconds)
         if (sourceIndex < 0) return null
         const signal = chartMomentSignal(peak)
         const band = signal === 'viewers'
@@ -958,6 +964,8 @@ function PulseOverviewChartImpl({
           key: chartMomentMarkerKey(peak.offsetSeconds, peak.score, rank),
           offsetSeconds,
           sourceIndex,
+          fullIndex,
+          pinned: selectedIndex === fullIndex || selectedIndex === near,
           x: interpolatePlotXForOffset(offsetSeconds, visibleRollups, plotWidth),
           y: chartMomentMarkerY({ value, axisMin, axisMax, band }),
           signal,
@@ -979,12 +987,15 @@ function PulseOverviewChartImpl({
     n,
     peakMarkers,
     plotWidth,
+    selectedIndex,
     showPeakMarkers,
+    sourceRollups,
     viewerAxisMax,
     viewerAxisMin,
     viewerBandBottom,
     viewerBandTop,
     viewers,
+    visibleIndexFromFull,
     visibleRollups,
   ])
 
@@ -995,18 +1006,16 @@ function PulseOverviewChartImpl({
     }
   }, [activeMomentMarkerKey, visibleMomentMarkers])
 
-  const handlePeakMarkerClick = useCallback((peak: ExtensionPeak, sourceIndex: number): void => {
+  const handlePeakMarkerClick = useCallback((marker: { peak: ExtensionPeak; fullIndex: number; pinned: boolean }): void => {
     if (onSelectMoment) {
-      onSelectMoment(peak)
+      onSelectMoment(marker.peak)
       return
     }
-    const fullIndex = fullIndexFromVisible(sourceIndex) ?? sourceIndex
     // Selection is sticky. Re-clicking the committed bucket confirms the
     // current inspection instead of silently dismissing it; Close, Escape,
     // or an intentional outside action are the explicit release paths.
-    if (selectedIndex != null && fullIndex === selectedIndex) return
-    onSelectIndex?.(fullIndex)
-  }, [fullIndexFromVisible, onClearSelection, onSelectIndex, onSelectMoment, selectedIndex])
+    if (!marker.pinned) onSelectIndex?.(marker.fullIndex)
+  }, [onSelectIndex, onSelectMoment])
 
   const pinIndex = visibleIndexFromFull(selectedIndex ?? null)
   const previewVisibleIndex = visibleIndexFromFull(previewIndex ?? null)
@@ -2160,7 +2169,7 @@ function PulseOverviewChartImpl({
         {visibleMomentMarkers.length > 0 ? (
           <g data-chart-moment-markers="true" aria-label="Top moment markers">
             {visibleMomentMarkers.map(marker => {
-              const active = marker.sourceIndex === pinIndex || activeMomentMarkerKey === marker.key
+              const active = marker.pinned || activeMomentMarkerKey === marker.key
               const presentation = chartMomentMarkerPresentation(active)
               const clock = momentClockDisplay(marker.peak)
               const accessibleClock = `minute bucket ${clock.text}`
@@ -2201,13 +2210,13 @@ function PulseOverviewChartImpl({
                   onBlur={() => setActiveMomentMarkerKey(current => current === marker.key ? null : current)}
                   onClick={event => {
                     event.stopPropagation()
-                    handlePeakMarkerClick(marker.peak, marker.sourceIndex)
+                    handlePeakMarkerClick(marker)
                   }}
                   onKeyDown={event => {
                     if ((!onSelectIndex && !onSelectMoment) || (event.key !== 'Enter' && event.key !== ' ')) return
                     event.preventDefault()
                     event.stopPropagation()
-                    handlePeakMarkerClick(marker.peak, marker.sourceIndex)
+                    handlePeakMarkerClick(marker)
                   }}
                 >
                   <title>

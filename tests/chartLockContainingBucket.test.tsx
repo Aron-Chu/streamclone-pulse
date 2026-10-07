@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { ExtensionRollup } from '../src/shared/messages.ts'
+import type { ExtensionPeak, ExtensionRollup } from '../src/shared/messages.ts'
 import { findChartIndexByOffset } from '../src/ui/chatActivityEmotes.ts'
 import { viewportBucketRanges, viewportBuckets } from '../src/ui/chartViewport.ts'
 import { downsampleRollupsForChart, EXTENSION_CHART_MAX_POINTS } from '../src/ui/extensionChartPoints.ts'
@@ -118,5 +118,75 @@ describe('chart lock for a pinned source minute', () => {
     )
     expect(attr(html, 'data-chart-mode')).toBe('preview')
     expect(attr(html, 'data-chart-preview-index')).toBe('50')
+  })
+})
+
+describe('moment markers on the locked point', () => {
+  const peak = (offsetSeconds: number, score: number): ExtensionPeak => ({
+    offsetSeconds,
+    score,
+    reasons: ['chat'],
+    dominantSignal: 'chat',
+  })
+  const markerState = (html: string, offset: number) =>
+    html.match(new RegExp(`data-chart-moment-marker-offset="${offset}"[^>]*data-chart-moment-marker-state="([a-z]+)"`))?.[1] ?? null
+
+  // 480 Full buckets of 254s drawn four to a point. Point 9 (buckets 36-39)
+  // draws bucket 39 and point 10 (40-43) draws 43. Moment A starts early in
+  // bucket 40, so it is nearer bucket 39's drawn minute; moment B is in 43.
+  const step = 254
+  const rollups: ExtensionRollup[] = Array.from({ length: 480 }, (_, index) => ({
+    offsetSeconds: index * step,
+    chatCount: index === 39 ? 90 : index === 43 ? 80 : index === 40 ? 30 : 20,
+    sevenTvEmoteCount: 2,
+  }))
+  const duration = 480 * step
+  const viewport = { startSeconds: 0, endSeconds: duration }
+  const A = 40 * step + 20
+  const B = 43 * step + 10
+  const render = (selectedIndex: number | null) => renderToStaticMarkup(
+    <PulseOverviewChart
+      rollups={rollups}
+      durationSeconds={duration}
+      viewport={viewport}
+      selectedIndex={selectedIndex}
+      peakMarkers={[peak(A, 90), peak(B, 80)]}
+      showPeakMarkers
+      onSelectMoment={() => {}}
+    />,
+  )
+
+  it('lights the picked moment, not a neighbour sharing its drawn point', () => {
+    const html = render(findChartIndexByOffset(rollups.map(rollup => rollup.offsetSeconds), A, { bucketed: true }))
+    expect(attr(html, 'data-chart-locked-index')).toBe('10')
+    expect(markerState(html, A)).toBe('active')
+    expect(markerState(html, B)).toBe('resting')
+  })
+
+  it('lights the moment in the pinned bucket after a chart pick', () => {
+    const html = render(43)
+    expect(markerState(html, A)).toBe('resting')
+    expect(markerState(html, B)).toBe('active')
+    expect(markerState(render(null), A)).toBe('resting')
+  })
+
+  it('lights a moment pinned on its nearest minute in a zoomed range', () => {
+    const minutes = series(90, 60)
+    const offset = 18 * 60 + 45
+    // Zoomed ranges pin the nearest minute (19), not the one holding 18:45.
+    const selectedIndex = findChartIndexByOffset(minutes.map(rollup => rollup.offsetSeconds), offset)
+    expect(selectedIndex).toBe(19)
+    const html = renderToStaticMarkup(
+      <PulseOverviewChart
+        rollups={minutes}
+        durationSeconds={5400}
+        viewport={{ startSeconds: 0, endSeconds: 5400 }}
+        selectedIndex={selectedIndex}
+        peakMarkers={[peak(offset, 50)]}
+        showPeakMarkers
+        onSelectMoment={() => {}}
+      />,
+    )
+    expect(markerState(html, offset)).toBe('active')
   })
 })
