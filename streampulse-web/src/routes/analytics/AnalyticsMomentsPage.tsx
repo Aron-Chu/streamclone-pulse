@@ -756,7 +756,18 @@ function MomentsWorkspace() {
         creatorReturnFocus.current = null
       }
     })
-    return () => { scrollPositions.set(key, window.scrollY); if (scrollPositions.size > 40) scrollPositions.delete(scrollPositions.keys().next().value!) }
+  }, [location.key, requested, view])
+  // Remember the reader's place as this entry is left. A layout cleanup runs in
+  // the commit's mutation phase, before RouteScrollManager's layout effect opens
+  // a pushed page at the top; a passive cleanup would run after that reset and
+  // record 0, so Back would return the reader to the top of the list.
+  useLayoutEffect(() => {
+    const key = location.key
+    return () => {
+      scrollPositions.delete(key)
+      scrollPositions.set(key, window.scrollY)
+      if (scrollPositions.size > 40) scrollPositions.delete(scrollPositions.keys().next().value!)
+    }
   }, [location.key, requested, view])
   const locationUrl = location.pathname + location.search
   useEffect(() => {

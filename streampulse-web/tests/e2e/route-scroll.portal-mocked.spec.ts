@@ -291,6 +291,37 @@ test.describe('Explorer list and detail', () => {
   })
 })
 
+test.describe('Back to the Moments list', () => {
+  // The Moments page remembers the reader's place per history entry; a pushed
+  // page opening at the top must not overwrite that place before it is saved.
+  const ways = [
+    { name: 'the top-nav Home link', leave: (page: Page) => page.locator('nav.analytics-topnav__links').getByRole('link', { name: 'Home', exact: true }).click() },
+    { name: 'a footer link', leave: (page: Page) => page.getByRole('navigation', { name: 'Site links' }).getByRole('link', { name: 'Support', exact: true }).click() },
+  ] as const
+  for (const { name, leave } of ways) {
+    test(`returns the reader to their place in Latest after following ${name}`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 640 })
+      await installHubUxMock(page)
+      await page.goto('/analytics/moments')
+      await expect(page.locator('.moments-result').first()).toBeVisible()
+      await scrollToBottom(page)
+      const left = await scrollY(page)
+
+      await leave(page)
+      await expect(page).not.toHaveURL(/\/analytics\/moments/)
+      await expect.poll(() => scrollY(page)).toBe(0)
+
+      await page.goBack()
+      await expect(page).toHaveURL(/\/analytics\/moments$/)
+      await expect(page.locator('.moments-result').first()).toBeVisible()
+      await expect.poll(async () => Math.abs((await scrollY(page)) - left)).toBeLessThanOrEqual(2)
+      // Still there once the page's own restore and any late rows have settled.
+      await page.waitForTimeout(500)
+      expect(Math.abs((await scrollY(page)) - left)).toBeLessThanOrEqual(2)
+    })
+  }
+})
+
 test('a rejected beta key opens the hub at the top, not at the dashboard offset', async ({ page }) => {
   await seedBetaKey(page, 'test-beta-key')
   await installHubUxMock(page)
