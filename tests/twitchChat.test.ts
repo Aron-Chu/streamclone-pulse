@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import {
   CHAT_HEADER_SELECTORS,
@@ -24,8 +24,16 @@ import {
   resolveChatHeaderHeight,
   shouldScheduleChatGeometryFromMutations,
   toChatRectSnapshot,
+  CHAT_MOVE_CHECK_MS,
+  measureSidebarSnapLayout,
+  observeChatSnapLayout,
+  overlapsChatColumn,
+  resolveChatBottomBound,
+  resolveChatScope,
+  SNAP_LAYOUT_HOLD_MS,
   type SidebarSnapLayout,
 } from '../src/content/twitchChat.ts'
+import { overlayBaseStyles } from '../src/ui/overlayStyles.ts'
 import { applyTwitchSidebarChromeHides } from '../src/content/twitchSidebarChrome.ts'
 import {
   computeMessagesAreaRect,
@@ -712,5 +720,295 @@ describe('buildSidebarBodyRect', () => {
     }
     const body = buildSidebarBodyRect(layout)
     expect(body).toEqual(layout.panel)
+  })
+})
+
+/**
+ * A JSDOM Twitch-like page whose element rects are set per element. The chat
+ * stack is `.channel-root__right-column`; the header row sits above the
+ * chat-room section, as on Twitch, and the composer sits inside it.
+ */
+function makeStackedChatPage(options: { stack?: boolean } = {}) {
+  const stack = options.stack ?? true
+  const dom = new JSDOM(`
+    <nav class="side-nav"><button aria-label="Collapse Side Nav" data-test="side-nav-collapse"></button></nav>
+    <div class="whispers"><div role="textbox" contenteditable="true" data-test="whisper"></div></div>
+    <div class="${stack ? 'channel-root__right-column' : 'outer'}" data-test="stack">
+      <div class="stream-chat-header" data-test="header">
+        <button data-a-target="right-column__toggle-collapse-btn" aria-label="Collapse Chat" data-test="collapse"></button>
+        <h2 data-a-target="chat-room-header-line" data-test="title">Stream chat</h2>
+        <button data-a-target="chat-viewers" aria-label="Users in chat" data-test="viewers"></button>
+      </div>
+      <section data-test-selector="chat-room-component-layout" data-test="column">
+        <div data-test-selector="chat-scrollable-area" data-test="messages"></div>
+        <div data-a-target="chat-input" role="textbox" contenteditable="true" data-test="composer"></div>
+      </section>
+    </div>`, { url: 'https://www.twitch.tv/fixturechan' })
+  const doc = dom.window.document
+  const byTest = (name: string) => doc.querySelector(`[data-test="${name}"]`) as HTMLElement
+  const rects = new Map<Element, DOMRect>()
+  const place = (name: string, box: { top: number; left: number; width: number; height: number } | null) => {
+    if (box) rects.set(byTest(name), positionedRect(box))
+    else rects.delete(byTest(name))
+  }
+  Object.defineProperty(dom.window.Element.prototype, 'getBoundingClientRect', {
+    configurable: true,
+    value(this: Element) {
+      // Like a browser: a detached element measures as an empty rect.
+      return (this.isConnected && rects.get(this)) || positionedRect({ top: 0, left: 0, width: 0, height: 0 })
+    },
+  })
+  // 1024 x 768 viewport (JSDOM default); the chat stack is on the right.
+  place('stack', { top: 50, left: 680, width: 340, height: 718 })
+  place('header', { top: 50, left: 680, width: 340, height: 50 })
+  place('collapse', { top: 60, left: 690, width: 30, height: 30 })
+  place('title', { top: 64, left: 760, width: 120, height: 22 })
+  place('viewers', { top: 60, left: 980, width: 30, height: 30 })
+  place('column', { top: 100, left: 680, width: 340, height: 668 })
+  place('messages', { top: 100, left: 680, width: 340, height: 560 })
+  place('composer', { top: 690, left: 690, width: 320, height: 40 })
+  // Stray controls elsewhere on the page.
+  place('side-nav-collapse', { top: 54, left: 8, width: 30, height: 30 })
+  place('whisper', { top: 600, left: 700, width: 300, height: 36 })
+  return { dom, doc, byTest, place }
+}
+
+type StackedChatPage = ReturnType<typeof makeStackedChatPage>
+
+describe('chat stack scoping', () => {
+  it('reads header controls and the composer only inside the chat stack', () => {
+    const page = makeStackedChatPage()
+    const column = page.byTest('column')
+    expect(resolveChatScope(page.doc, column)).toBe(page.byTest('stack'))
+    // The strays really match the selectors, so this is not passing by accident.
+    expect(Array.from(page.doc.querySelectorAll('button[aria-label*="Collapse" i]')))
+      .toContain(page.byTest('side-nav-collapse'))
+    expect(Array.from(page.doc.querySelectorAll('[contenteditable="true"][role="textbox"]')))
+      .toContain(page.byTest('whisper'))
+
+    const layout = measureSidebarSnapLayout(page.doc)
+    expect(layout).not.toBeNull()
+    // Header row = collapse/title/viewers (60..90), not pulled up to the side-nav toggle at 54.
+    expect(layout!.header.top).toBe(60)
+    expect(layout!.panel.top).toBe(90)
+    // Bottom = chat composer (690) - 2, not the whisper composer at 600 docked over the column.
+    expect(layout!.panel.bottom).toBe(688)
+    expect(resolveChatBottomBound(page.doc)).toBe(690)
+    // Tab slot sits between the stack's own collapse and viewers controls.
+    expect(layout!.headerTabs.left).toBe(724)
+  })
+
+  it('without a chat stack keeps the document-wide read but ignores controls off the column', () => {
+    const page = makeStackedChatPage({ stack: false })
+    expect(resolveChatScope(page.doc, page.byTest('column'))).toBe(page.doc)
+    const layout = measureSidebarSnapLayout(page.doc)
+    // The side-nav toggle (x 8..38) does not overlap the column (x 680..1020).
+    expect(layout!.header.top).toBe(60)
+  })
+
+  it('accepts only rects that overlap the column by more than the 8 px slack', () => {
+    const column = { left: 680, right: 1020 }
+    expect(overlapsChatColumn({ left: 8, right: 38 }, column)).toBe(false)
+    expect(overlapsChatColumn({ left: 600, right: 687 }, column)).toBe(false)
+    expect(overlapsChatColumn({ left: 600, right: 688 }, column)).toBe(true)
+    expect(overlapsChatColumn({ left: 1012, right: 1100 }, column)).toBe(true)
+    expect(overlapsChatColumn({ left: 1013, right: 1100 }, column)).toBe(false)
+  })
+})
+
+describe('panel bottom while the composer is missing', () => {
+  it('keeps the last composer inset instead of dropping to the fixed reserve', () => {
+    const page = makeStackedChatPage()
+    const placed = measureSidebarSnapLayout(page.doc)!
+    expect(placed.panel.bottom).toBe(688)
+
+    page.place('composer', null)
+    // No previous layout: the 150 px reserve (column bottom 768 - 150).
+    expect(measureSidebarSnapLayout(page.doc)!.panel.bottom).toBe(618)
+    // With the placed layout: the same 80 px inset above the column bottom.
+    expect(measureSidebarSnapLayout(page.doc, placed)!.panel.bottom).toBe(688)
+
+    // The inset follows the column when it moves while the composer is gone.
+    page.place('column', { top: 120, left: 680, width: 340, height: 668 })
+    expect(measureSidebarSnapLayout(page.doc, placed)!.panel.bottom).toBe(708)
+
+    // A composer that comes back wins again.
+    page.place('column', { top: 100, left: 680, width: 340, height: 668 })
+    page.place('composer', { top: 700, left: 690, width: 320, height: 30 })
+    expect(measureSidebarSnapLayout(page.doc, placed)!.panel.bottom).toBe(698)
+  })
+})
+
+describe('observeChatSnapLayout', () => {
+  function installObserverGlobals(page: StackedChatPage) {
+    let clock = 10_000
+    let nextId = 1
+    const intervals = new Map<number, () => void>()
+    const timeouts = new Map<number, () => void>()
+    const frames = new Map<number, () => void>()
+    const listeners: string[] = []
+    const fakeWindow = {
+      setInterval: (fn: () => void) => { intervals.set(nextId, fn); return nextId++ },
+      clearInterval: (id: number) => { intervals.delete(id) },
+      setTimeout: (fn: () => void) => { timeouts.set(nextId, fn); return nextId++ },
+      clearTimeout: (id: number) => { timeouts.delete(id) },
+      requestAnimationFrame: (fn: () => void) => { frames.set(nextId, fn); return nextId++ },
+      cancelAnimationFrame: (id: number) => { frames.delete(id) },
+      addEventListener: (type: string) => { listeners.push(type) },
+      removeEventListener: () => {},
+    }
+    vi.stubGlobal('window', fakeWindow)
+    vi.stubGlobal('document', page.doc)
+    vi.stubGlobal('MutationObserver', page.dom.window.MutationObserver)
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    return {
+      listeners,
+      /** One 250 ms tick of the move check / periodic measure. */
+      tick() {
+        clock += CHAT_MOVE_CHECK_MS
+        for (const fn of [...intervals.values()]) fn()
+      },
+      /** Run a scheduled remeasure burst to its final measurement. */
+      flushBurst() {
+        frames.clear()
+        clock += 700
+        const pending = [...timeouts.values()]
+        timeouts.clear()
+        for (const fn of pending) fn()
+      },
+      pendingBursts: () => timeouts.size,
+      intervalCount: () => intervals.size,
+    }
+  }
+
+  function observe(initial: SidebarSnapLayout | null = null) {
+    const seen: Array<SidebarSnapLayout | null> = []
+    const stop = observeChatSnapLayout(layout => seen.push(layout), initial)
+    return { seen, stop }
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('holds the last layout through a brief chat remount instead of hiding the panel', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.panel.bottom).toBe(688)
+
+    // Twitch remounts the whole right column: no chat column on the page for a moment.
+    const stack = page.byTest('stack')
+    stack.remove()
+    // The tick sees the detached column and starts a burst; its measure finds no column.
+    env.tick()
+    expect(env.pendingBursts()).toBe(1)
+    env.flushBurst()
+    expect(seen).toHaveLength(1)
+
+    // It comes back inside the hold with the same geometry: no null, no blink.
+    page.doc.body.append(stack)
+    env.tick()
+    expect(seen).toHaveLength(1)
+    // And the hold is over: a later remount starts a fresh one.
+    env.tick()
+    env.tick()
+    expect(seen).toHaveLength(1)
+    stop()
+  })
+
+  it('keeps the panel in place when only the chat-room section remounts', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    const before = seen[0]!.panel
+
+    // The section (and its composer) goes; the right column stays and stands in as the column.
+    page.byTest('column').remove()
+    env.tick()
+    env.flushBurst()
+    expect(seen.at(-1)).not.toBeNull()
+    expect(seen.at(-1)!.panel).toEqual(before)
+    stop()
+  })
+
+  it('drops the layout once the hold runs out', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    page.byTest('stack').remove()
+    env.tick()
+    env.flushBurst()
+    expect(seen).toHaveLength(1)
+    // Ticks keep measuring while the hold runs, then the null goes out.
+    for (let elapsed = CHAT_MOVE_CHECK_MS; elapsed <= SNAP_LAYOUT_HOLD_MS; elapsed += CHAT_MOVE_CHECK_MS) env.tick()
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toBeNull()
+    stop()
+  })
+
+  it('drops at once when the column is still on the page but collapsed', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    page.place('stack', { top: 50, left: 1010, width: 10, height: 718 })
+    page.place('column', { top: 100, left: 1010, width: 10, height: 668 })
+    // The next full measure (every 2 s) sees a collapsed column and drops it without a hold.
+    for (let i = 0; i < 8; i += 1) env.tick()
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toBeNull()
+    stop()
+  })
+
+  it('installs no scroll listener and catches a move without a resize on the next tick', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    expect(env.listeners).not.toContain('scroll')
+    expect(env.listeners).toContain('resize')
+
+    // An ancestor transform shifts the whole chat stack 24 px down; nothing resizes.
+    for (const name of ['stack', 'header', 'collapse', 'title', 'viewers', 'column', 'messages', 'composer']) {
+      const rect = page.byTest(name).getBoundingClientRect()
+      page.place(name, { top: rect.top + 24, left: rect.left, width: rect.width, height: rect.height })
+    }
+    expect(seen).toHaveLength(1)
+    env.tick()
+    expect(env.pendingBursts()).toBe(1)
+    env.flushBurst()
+    expect(seen).toHaveLength(2)
+    expect(seen[1]?.header.top).toBe(84)
+    expect(seen[1]?.panel.bottom).toBe(712)
+
+    stop()
+    expect(env.intervalCount()).toBe(0)
+  })
+
+  it('starts from a seeded layout without re-emitting it, and holds it through a remount', () => {
+    const page = makeStackedChatPage()
+    const placed = measureSidebarSnapLayout(page.doc)!
+    const env = installObserverGlobals(page)
+
+    const restarted = observe(placed)
+    expect(restarted.seen).toHaveLength(0)
+    restarted.stop()
+
+    page.byTest('stack').remove()
+    const { seen, stop } = observe(placed)
+    expect(seen).toHaveLength(0)
+    env.tick()
+    expect(seen).toHaveLength(0)
+    stop()
+  })
+})
+
+describe('sidebar panel entrance animation', () => {
+  it('never runs on the sidebar panel shell, even before shadow.css loads', () => {
+    const dom = new JSDOM(`<style>${overlayBaseStyles}</style><section class="pulse-shell placement-sidebar pulse-sidebar-panel"></section><section class="pulse-shell placement-right"></section>`)
+    const [sidebar, floating] = Array.from(dom.window.document.querySelectorAll('section'))
+    expect(dom.window.getComputedStyle(sidebar).animationName).toBe('none')
+    expect(dom.window.getComputedStyle(floating).animationName).toBe('pulse-in-right')
   })
 })

@@ -98,6 +98,7 @@ export const overlayBaseStyles = `
   .placement-bottom:not(.mode-mini) { animation-name: pulse-in-bottom; }
   .pulse-hidden { display: none !important; }
   .pulse-sidebar-panel.pulse-shell {
+    animation: none;
     background: ${theme.bgCanvas};
     border: 0;
     border-radius: 0;

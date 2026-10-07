@@ -304,27 +304,41 @@ function normalizeVodPathPart(value: string | undefined): string | null {
   return /^\d{5,20}$/.test(value) ? value : null
 }
 
+/**
+ * How long a live reading holds without a fresh one. The content script's 5 s
+ * live tick has to read offline twice in a row before live drops, so an ad
+ * break or player swap that briefly hides the live player cannot flip the
+ * panel to recap and force a refetch. Twitch's own offline markers still drop
+ * live at once.
+ */
+export const LIVE_READING_HOLD_MS = 7_000
+
+let liveReadingLogin: string | null | undefined
+let liveReadingAt = 0
+
 /** True when the Twitch channel page is showing a live broadcast (not offline/VOD). */
-export function detectTwitchChannelLive(context: TwitchPageContext): boolean {
+export function detectTwitchChannelLive(context: TwitchPageContext, now = Date.now()): boolean {
   if (context.kind !== 'channel' || context.vodId) return false
   if (typeof document === 'undefined') return false
 
-  if (document.querySelector('[data-a-target="channel-offline-still-image"]')) return false
-  if (document.querySelector('[data-a-target="channel-offline-header"]')) return false
+  if (document.querySelector('[data-a-target="channel-offline-still-image"], [data-a-target="channel-offline-header"]')) {
+    liveReadingLogin = undefined
+    return false
+  }
 
-  const video = document.querySelector('video')
+  // The main player, not the first <video> on the page: an ad or preview
+  // player can come first in DOM order.
+  const video = getPrimaryVideo()
+  const streamCard = document.querySelector('[data-a-target="stream-info-card-component"]')
   // Live HLS often reports duration as Infinity. Number.isFinite(Infinity) is false,
   // so do not gate this branch on isFinite.
-  if (video && video.duration === Infinity) {
+  if ((video && video.duration === Infinity) || /\bLIVE\b/i.test(streamCard?.textContent ?? '')) {
+    liveReadingLogin = context.login
+    liveReadingAt = now
     return true
   }
 
-  const streamCard = document.querySelector('[data-a-target="stream-info-card-component"]')
-  if (streamCard && /\bLIVE\b/i.test(streamCard.textContent ?? '')) {
-    return true
-  }
-
-  return false
+  return liveReadingLogin === context.login && now - liveReadingAt < LIVE_READING_HOLD_MS
 }
 
 /**

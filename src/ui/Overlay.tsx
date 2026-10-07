@@ -79,6 +79,7 @@ import {
 import { getPrimaryVideo, seekPlaybackOffset, seekPlaybackOffsetVerified, streamOffsetSecondsForLiveSeek, type TwitchPageContext } from '../content/twitch.ts'
 import { observeMomentPlayback } from '../content/momentPlayback.ts'
 import { discoverLiveVodIdFromDom } from '../content/twitchVodDiscovery.ts'
+import { SIDEBAR_COMPACT_WIDTH } from '../content/resolveOverlayHostVisibility.ts'
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
 import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
@@ -769,7 +770,7 @@ function OverlayMain({
   )
   const canRenderPayload = Boolean(payload && panelSurfaceState !== 'identity_mismatch')
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
-  const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < 360
+  const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < SIDEBAR_COMPACT_WIDTH
   const shellClass = [
     'pulse-shell',
     `placement-${resolvedPlacement}`,

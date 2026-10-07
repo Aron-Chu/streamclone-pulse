@@ -338,6 +338,45 @@ export const CHAT_BOTTOM_RESERVE_PX = 150
 export const VOD_CHAT_BOTTOM_RESERVE_PX = 48
 export const MIN_PANEL_HEIGHT = 80
 
+/** Twitch's right-hand chat stack: header row, message list and composer. */
+export const CHAT_SCOPE_SELECTOR = '.channel-root__right-column'
+
+/**
+ * Where header anchors and composer candidates are read: the chat stack that
+ * holds the resolved column, so a side-nav "Collapse" toggle or a whisper
+ * composer elsewhere on the page cannot move the panel edges. A layout
+ * without that stack keeps the document-wide read.
+ */
+export function resolveChatScope(doc: Document, column: Element | null | undefined): ParentNode {
+  return column?.closest?.(CHAT_SCOPE_SELECTOR) ?? doc
+}
+
+/** Horizontal overlap with the chat column, with the dock's 8 px slack. */
+export function overlapsChatColumn(
+  rect: Pick<DOMRect, 'left' | 'right'>,
+  column: Pick<DOMRect, 'left' | 'right'>,
+): boolean {
+  return rect.right >= column.left + 8 && rect.left <= column.right - 8
+}
+
+/** Visible element rects matching `selectors` inside `scope`, in selector order. */
+function visibleRects(scope: ParentNode, selectors: readonly string[]): DOMRect[] {
+  const rects: DOMRect[] = []
+  for (const selector of selectors) {
+    let nodes: NodeListOf<Element>
+    try {
+      nodes = scope.querySelectorAll(selector)
+    } catch {
+      continue
+    }
+    for (const element of Array.from(nodes)) {
+      const rect = element.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) rects.push(rect)
+    }
+  }
+  return rects
+}
+
 /**
  * A chat rect is usable only when it is wide and tall enough to host the panel.
  * Zero/near-zero width (theater collapse) or short remnants (popout) are
@@ -412,20 +451,8 @@ export function measureChatRect(doc: Document = document): DOMRect | null {
   return resolveChatColumn(doc)?.rect ?? null
 }
 
-function queryFirstRect(doc: Document, selectors: readonly string[]): DOMRect | null {
-  for (const selector of selectors) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      const rect = element.getBoundingClientRect()
-      if (rect.width > 0 && rect.height > 0) return rect
-    }
-  }
-  return null
+function queryFirstRect(scope: ParentNode, selectors: readonly string[]): DOMRect | null {
+  return visibleRects(scope, selectors)[0] ?? null
 }
 
 /**
@@ -461,34 +488,24 @@ function clampDomRectBottom(rect: DOMRect, bottomBound: number | null): DOMRect 
 /**
  * Top Y of the Twitch composer/input chrome. Used to keep the Pulse panel from
  * covering the interactive chat controls; transient body banners do not move
- * this bound.
+ * this bound. Only composers inside the chat stack (`scope`) that overlap the
+ * column count, so a whisper or reply box elsewhere cannot move the edge.
  */
 export function resolveChatBottomBound(
   doc: Document = document,
-  columnRect?: DOMRect | null,
+  columnRect?: Pick<DOMRect, 'top' | 'height' | 'bottom' | 'left' | 'right'> | null,
+  scope?: ParentNode,
 ): number | null {
-  const column = columnRect ?? measureChatRect(doc)
+  const resolved = columnRect && scope ? null : resolveChatColumn(doc)
+  const column = columnRect ?? resolved?.rect
   if (!column) return null
 
   const lowerStart = column.top + column.height * 0.4
   let bound: number | null = null
-
-  for (const selector of CHAT_COMPOSER_SELECTORS) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      const rect = element.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) continue
-      if (rect.top < lowerStart) continue
-      if (rect.bottom > column.bottom + 4) continue
-      if (bound == null || rect.top < bound) bound = rect.top
-    }
+  for (const rect of visibleRects(scope ?? resolveChatScope(doc, resolved?.element), CHAT_COMPOSER_SELECTORS)) {
+    if (rect.top < lowerStart || rect.bottom > column.bottom + 4 || !overlapsChatColumn(rect, column)) continue
+    if (bound == null || rect.top < bound) bound = rect.top
   }
-
   return bound
 }
 
@@ -500,6 +517,7 @@ export function resolveChatDockBottomY(
 ): number {
   let bottom = panelBottom
   const lowerStart = column.top + column.height * 0.35
+  const scope = resolveChatScope(doc, resolveChatColumn(doc)?.element)
   const dockClearSelectors = [
     ...CHAT_BOTTOM_CLAMP_SELECTORS,
     '[data-a-target="chat-scrollable-area__scroll-button"]',
@@ -508,27 +526,12 @@ export function resolveChatDockBottomY(
     'button[aria-label*="New messages" i]',
   ] as const
 
-  for (const selector of dockClearSelectors) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      const rect = element.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) continue
-      if (rect.top < lowerStart) continue
-      if (rect.top >= bottom - 4) continue
-      if (rect.right < column.left + 8 || rect.left > column.left + column.width - 8) continue
-      bottom = Math.min(bottom, rect.top - 4)
-    }
+  for (const rect of visibleRects(scope, dockClearSelectors)) {
+    if (rect.top < lowerStart || rect.top >= bottom - 4 || !overlapsChatColumn(rect, column)) continue
+    bottom = Math.min(bottom, rect.top - 4)
   }
 
-  const bottomBound = resolveChatBottomBound(
-    doc,
-    new DOMRect(column.left, column.top, column.width, column.height),
-  )
+  const bottomBound = resolveChatBottomBound(doc, column, scope)
   if (bottomBound != null) {
     bottom = Math.min(bottom, bottomBound - 2)
   }
@@ -592,64 +595,77 @@ export function toChatRectSnapshot(
   }
 }
 
-/** Resolve the Stream Chat header row, or derive from column top + measured height. */
-export function resolveChatHeaderRect(doc: Document = document): ChatRectSnapshot | null {
-  const direct = queryFirstRect(doc, CHAT_HEADER_SELECTORS)
-  if (direct) {
-    const height = Math.min(direct.height, DEFAULT_CHAT_HEADER_HEIGHT + 8)
-    return toChatRectSnapshot({ top: direct.top, left: direct.left, width: direct.width, height })
-  }
-
-  const column = measureChatRect(doc)
-  if (!column) return null
-  const height = resolveChatHeaderHeight(doc)
-  return toChatRectSnapshot({ top: column.top, left: column.left, width: column.width, height })
+/** One measurement pass: the column is resolved once and every read is scoped to its chat stack. */
+interface ChatMeasure {
+  readonly doc: Document
+  readonly column: ChatRectSnapshot
+  readonly scope: ParentNode
 }
 
-function collectHeaderAnchorRects(doc: Document): DOMRect[] {
-  const anchors: DOMRect[] = []
-  const pushAnchor = (rect: DOMRect, maxHeight = 48) => {
-    if (rect.width <= 0 || rect.height <= 0 || rect.height > maxHeight) return
-    anchors.push(rect)
+function chatMeasure(doc: Document, resolved = resolveChatColumn(doc)): ChatMeasure | null {
+  return resolved && {
+    doc,
+    column: toChatRectSnapshot(resolved.rect),
+    scope: resolveChatScope(doc, resolved.element),
+  }
+}
+
+/**
+ * The visible chat-room header container in the chat stack, or the column top
+ * with the default header height. (The stack contains the column, so a search
+ * inside the column cannot find a header this one missed.)
+ */
+function headerContainerRect(measure: ChatMeasure): ChatRectSnapshot {
+  const direct = queryFirstRect(measure.scope, CHAT_HEADER_SELECTORS)
+  const box = direct ?? measure.column
+  return toChatRectSnapshot({
+    top: box.top,
+    left: box.left,
+    width: box.width,
+    height: direct ? Math.min(direct.height, DEFAULT_CHAT_HEADER_HEIGHT + 8) : DEFAULT_CHAT_HEADER_HEIGHT,
+  })
+}
+
+/** Resolve the Stream Chat header row, or the column top with the default height. */
+export function resolveChatHeaderRect(doc: Document = document): ChatRectSnapshot | null {
+  const measure = chatMeasure(doc)
+  return measure && headerContainerRect(measure)
+}
+
+/** Collapse / chatters / title rects in the chat stack that overlap the column. */
+function collectHeaderAnchorRects(scope: ParentNode, column: ChatRectSnapshot): DOMRect[] {
+  return [
+    ...visibleRects(scope, [
+      ...CHAT_HEADER_COLLAPSE_SELECTORS,
+      ...CHAT_VIEWERS_SELECTORS,
+      ...CHAT_COMMUNITY_SELECTORS,
+    ]).filter(rect => rect.height <= 40),
+    ...visibleRects(scope, CHAT_HEADER_TITLE_SELECTORS).filter(rect => rect.height <= 36),
+  ].filter(rect => overlapsChatColumn(rect, column))
+}
+
+function headerBarFor(measure: ChatMeasure): ChatRectSnapshot {
+  const { column } = measure
+  const anchors = collectHeaderAnchorRects(measure.scope, column)
+  const fallback = headerContainerRect(measure)
+
+  if (anchors.length === 0) {
+    return toChatRectSnapshot({
+      top: fallback.top,
+      left: column.left,
+      width: column.width,
+      height: Math.min(fallback.height, DEFAULT_CHAT_HEADER_HEIGHT + 8),
+    })
   }
 
-  for (const selector of CHAT_HEADER_COLLAPSE_SELECTORS) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      pushAnchor(element.getBoundingClientRect(), 40)
-    }
-  }
-
-  for (const selector of [...CHAT_VIEWERS_SELECTORS, ...CHAT_COMMUNITY_SELECTORS]) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      pushAnchor(element.getBoundingClientRect(), 40)
-    }
-  }
-
-  for (const selector of CHAT_HEADER_TITLE_SELECTORS) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      pushAnchor(element.getBoundingClientRect(), 36)
-    }
-  }
-
-  return anchors
+  const top = Math.min(fallback.top, ...anchors.map(rect => rect.top))
+  const bottom = Math.max(...anchors.map(rect => rect.bottom))
+  return toChatRectSnapshot({
+    top,
+    left: column.left,
+    width: column.width,
+    height: Math.min(Math.max(bottom - top, 28), DEFAULT_CHAT_HEADER_HEIGHT + 12),
+  })
 }
 
 /**
@@ -660,38 +676,10 @@ export function resolveChatHeaderBarRect(
   doc: Document = document,
   column?: ChatRectSnapshot | null,
 ): ChatRectSnapshot | null {
-  const columnRect = column ?? (() => {
-    const measured = measureChatRect(doc)
-    return measured ? toChatRectSnapshot(measured) : null
-  })()
+  const measure = chatMeasure(doc)
+  const columnRect = column ?? measure?.column
   if (!columnRect) return null
-
-  const anchors = collectHeaderAnchorRects(doc)
-  const fallback = resolveChatHeaderRect(doc)
-
-  if (anchors.length === 0) {
-    if (!fallback) return null
-    return toChatRectSnapshot({
-      top: fallback.top,
-      left: columnRect.left,
-      width: columnRect.width,
-      height: Math.min(fallback.height, DEFAULT_CHAT_HEADER_HEIGHT + 8),
-    })
-  }
-
-  let top = Math.min(...anchors.map(rect => rect.top))
-  let bottom = Math.max(...anchors.map(rect => rect.bottom))
-  if (fallback && fallback.top < top) {
-    top = fallback.top
-  }
-
-  const height = Math.min(Math.max(bottom - top, 28), DEFAULT_CHAT_HEADER_HEIGHT + 12)
-  return toChatRectSnapshot({
-    top,
-    left: columnRect.left,
-    width: columnRect.width,
-    height,
-  })
+  return headerBarFor({ doc, column: columnRect, scope: measure?.scope ?? doc })
 }
 
 function resolveChatTopBannerBottom(
@@ -789,38 +777,31 @@ export function computeHeaderTabsRect(
   return toChatRectSnapshot({ top: header.top, left, width, height: header.height })
 }
 
-function resolveHeaderEdge(
-  doc: Document,
+/** First header control (in selector order) on the header row over the column. */
+function headerEdgeRect(
+  measure: ChatMeasure,
   selectors: readonly string[],
   header: ChatRectSnapshot,
-  edge: 'left' | 'right',
-): number | null {
-  for (const selector of selectors) {
-    let nodes: NodeListOf<Element>
-    try {
-      nodes = doc.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const element of Array.from(nodes)) {
-      const rect = element.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) continue
-      if (Math.abs(rect.top - header.top) > header.height + 8) continue
-      return edge === 'left' ? rect.right : rect.left
-    }
-  }
-  return null
+): DOMRect | undefined {
+  return visibleRects(measure.scope, selectors).find(rect => (
+    Math.abs(rect.top - header.top) <= header.height + 8 && overlapsChatColumn(rect, measure.column)
+  ))
+}
+
+function headerTabsFor(measure: ChatMeasure, header: ChatRectSnapshot): ChatRectSnapshot {
+  return computeHeaderTabsRect(
+    header,
+    headerEdgeRect(measure, CHAT_HEADER_COLLAPSE_SELECTORS, header)?.right ?? null,
+    headerEdgeRect(measure, CHAT_HEADER_TRAILING_SELECTORS, header)?.left ?? null,
+  )
 }
 
 export function resolveChatHeaderTabsRect(
   doc: Document = document,
   header?: ChatRectSnapshot | null,
 ): ChatRectSnapshot | null {
-  const headerRect = header ?? resolveChatHeaderBarRect(doc) ?? resolveChatHeaderRect(doc)
-  if (!headerRect) return null
-  const collapseRight = resolveHeaderEdge(doc, CHAT_HEADER_COLLAPSE_SELECTORS, headerRect, 'left')
-  const trailingLeft = resolveHeaderEdge(doc, CHAT_HEADER_TRAILING_SELECTORS, headerRect, 'right')
-  return computeHeaderTabsRect(headerRect, collapseRight, trailingLeft)
+  const measure = chatMeasure(doc)
+  return measure && headerTabsFor(measure, header ?? headerBarFor(measure))
 }
 
 /** Full-width header bar including collapse / community controls on the same row. */
@@ -858,26 +839,34 @@ export function expandHeaderBarRect(
   })
 }
 
+/**
+ * Panel body from `top` down to the composer clamp. While the composer is
+ * briefly missing (chat reload, a reply bar swap), the previous layout's inset
+ * above the column bottom is kept instead of dropping to the fixed reserve and
+ * jumping back when the composer returns.
+ */
+function panelFor(
+  measure: ChatMeasure,
+  top: number,
+  previous?: SidebarSnapLayout | null,
+): ChatRectSnapshot | null {
+  const { column } = measure
+  const bound = resolveChatBottomBound(measure.doc, column, measure.scope)
+  const bottom = bound == null && previous
+    ? column.bottom - (previous.column.bottom - previous.panel.bottom)
+    : resolvePanelBottomY(column.bottom, bound, {
+      isVodPage: isTwitchVodPath(measure.doc.defaultView?.location?.pathname ?? ''),
+    })
+  const height = bottom - top
+  return height < MIN_PANEL_HEIGHT
+    ? null
+    : toChatRectSnapshot({ top, left: column.left, width: column.width, height })
+}
+
 /** Panel body below the stable chat header, above the composer clamp. */
 export function resolveChatPanelRect(doc: Document = document): ChatRectSnapshot | null {
-  const column = measureChatRect(doc)
-  if (!column || !isUsableChatRect(column)) return null
-
-  const columnSnapshot = toChatRectSnapshot(column)
-  const header = resolveChatHeaderRect(doc)
-  const headerBar = resolveChatHeaderBarRect(doc, columnSnapshot) ?? header
-  const headerBottom = headerBar?.bottom ?? header?.bottom ?? column.top + resolveChatHeaderHeight(doc)
-  const bottomBound = resolveChatBottomBound(doc, column)
-
-  const top = resolveChatContentTop(doc, headerBottom, columnSnapshot)
-
-  const pathname = doc.defaultView?.location?.pathname ?? ''
-  const isVodPage = isTwitchVodPath(pathname)
-  const bottom = resolvePanelBottomY(column.bottom, bottomBound, { isVodPage })
-
-  const height = bottom - top
-  if (height < MIN_PANEL_HEIGHT) return null
-  return toChatRectSnapshot({ top, left: column.left, width: column.width, height })
+  const measure = chatMeasure(doc)
+  return measure && panelFor(measure, headerBarFor(measure).bottom)
 }
 
 /** Pure bottom Y for panel body — used by resolveChatPanelRect and unit tests. */
@@ -913,28 +902,35 @@ export function buildSidebarBodyRect(layout: SidebarSnapLayout): ChatRectSnapsho
   return layout.panel
 }
 
-export function measureSidebarSnapLayout(doc: Document = document): SidebarSnapLayout | null {
-  const resolved = resolveChatColumn(doc)
-  if (!resolved || !isUsableChatRect(resolved.rect)) return null
-
-  const viewportWidth = doc.defaultView?.innerWidth ?? doc.documentElement?.clientWidth
-  const viewportHeight = doc.defaultView?.innerHeight ?? doc.documentElement?.clientHeight
+function snapLayoutFor(
+  measure: ChatMeasure,
+  previous?: SidebarSnapLayout | null,
+): SidebarSnapLayout | null {
+  const { doc, column } = measure
+  const viewportWidth = doc.defaultView?.innerWidth ?? doc.documentElement?.clientWidth ?? NaN
+  const viewportHeight = doc.defaultView?.innerHeight ?? doc.documentElement?.clientHeight ?? NaN
   if (
-    viewportWidth != null
-    && viewportHeight != null
-    && Number.isFinite(viewportWidth)
+    Number.isFinite(viewportWidth)
     && Number.isFinite(viewportHeight)
-    && !isChatRectInViewport(resolved.rect, viewportWidth, viewportHeight)
+    && !isChatRectInViewport(column, viewportWidth, viewportHeight)
   ) return null
 
-  const column = toChatRectSnapshot(resolved.rect)
-  const header = resolveChatHeaderBarRect(doc, column) ?? resolveChatHeaderRect(doc)
-  const panel = resolveChatPanelRect(doc)
-  if (!header || !panel) return null
-  const headerTabs = resolveChatHeaderTabsRect(doc, header)
-  if (!headerTabs) return null
+  const header = headerBarFor(measure)
+  const panel = panelFor(measure, header.bottom, previous)
+  return panel && { column, header, headerTabs: headerTabsFor(measure, header), panel }
+}
 
-  return { column, header, headerTabs, panel }
+/**
+ * Column, header row, tab slot and panel body for the sidebar hosts.
+ * `previous` is the last layout the caller placed, used to hold the panel's
+ * bottom inset while the composer is briefly missing.
+ */
+export function measureSidebarSnapLayout(
+  doc: Document = document,
+  previous?: SidebarSnapLayout | null,
+): SidebarSnapLayout | null {
+  const measure = chatMeasure(doc)
+  return measure && snapLayoutFor(measure, previous)
 }
 
 /** @deprecated use measureSidebarSnapLayout */
@@ -1220,7 +1216,8 @@ function chatGeometryObservationTargets(
 ): Element[] {
   const targets = new Set<Element>()
   if (column) targets.add(column)
-  const scope: ParentNode = column ?? doc
+  // The header row can sit outside the column element, inside the chat stack.
+  const scope: ParentNode = column?.closest?.(CHAT_SCOPE_SELECTOR) ?? column ?? doc
   for (const selector of CHAT_GEOMETRY_SELECTORS) {
     try {
       for (const element of Array.from(scope.querySelectorAll(selector))) targets.add(element)
@@ -1320,20 +1317,45 @@ export function observeChatRect(cb: (rect: DOMRect | null) => void): () => void 
   }
 }
 
+/** A layout that turns null is held this long before the hosts hide. */
+export const SNAP_LAYOUT_HOLD_MS = 500
+/** How often the column's own rect is checked for a move without a resize. */
+export const CHAT_MOVE_CHECK_MS = 250
+
 /**
  * Observe chat column + header height for sidebar snap layout.
  *
  * Remeasures run on every animation frame across a bounded elapsed-time window
  * (~600ms) after each trigger, followed by one final measurement (~650ms), so
  * Twitch's CSS transitions still produce a stable snapshot on any refresh rate.
+ *
+ * Triggers: a ResizeObserver on the column, header and composer; the filtered
+ * body MutationObserver; window resize; a 250 ms check of the column's own
+ * rect, which catches moves without a resize (an ancestor transform, theatre
+ * or side-nav transitions, a page scroll); and a full measure every 2 s.
+ * There is no scroll listener: Twitch scrolls its chat list on every message,
+ * and none of those scrolls can move the column.
+ *
+ * When the layout turns null while the column is missing from the page (a chat
+ * remount) or still usable (a brief header/composer gap), the last layout is
+ * held for SNAP_LAYOUT_HOLD_MS, so the panel does not blink and replay its
+ * entrance animations. A column that is still on the page but too small
+ * (collapsed chat, theatre) drops at once.
  */
-export function observeChatSnapLayout(cb: (layout: SidebarSnapLayout | null) => void): () => void {
-  let lastKey: string | null = null
+export function observeChatSnapLayout(
+  cb: (layout: SidebarSnapLayout | null) => void,
+  initial: SidebarSnapLayout | null = null,
+): () => void {
+  let lastLayout = initial
+  let lastKey: string | null = initial && layoutKey(initial)
   let observedTargets: Element[] = []
-  let singleRafId: number | null = null
+  let column: Element | null = null
+  let columnKey = ''
+  let holdUntil = 0
+  let ticks = 0
   let disposed = false
 
-  function syncObservedTargets(column: Element | null): void {
+  function syncObservedTargets(): void {
     const nextTargets = chatGeometryObservationTargets(document, column)
     if (
       nextTargets.length === observedTargets.length
@@ -1349,11 +1371,20 @@ export function observeChatSnapLayout(cb: (layout: SidebarSnapLayout | null) => 
   function measure(): void {
     if (disposed) return
     const resolved = resolveChatColumn()
-    syncObservedTargets(resolved?.element ?? null)
-    const layout = measureSidebarSnapLayout()
+    column = resolved?.element ?? null
+    columnKey = rectKey(resolved?.rect ?? null)
+    syncObservedTargets()
+    const layout = resolved && snapLayoutFor(chatMeasure(document, resolved)!, lastLayout)
+    if (!layout && lastLayout && (resolved || !document.querySelector(CHAT_COLUMN_SELECTORS.join(',')))) {
+      // The tick below keeps measuring while a hold runs, then this drops it.
+      holdUntil ||= Date.now() + SNAP_LAYOUT_HOLD_MS
+      if (Date.now() < holdUntil) return
+    }
+    holdUntil = 0
     const key = layoutKey(layout)
     if (key !== lastKey) {
       lastKey = key
+      lastLayout = layout
       cb(layout)
     }
   }
@@ -1368,13 +1399,6 @@ export function observeChatSnapLayout(cb: (layout: SidebarSnapLayout | null) => 
     clearTimeout: id => window.clearTimeout(id),
   })
   const scheduleMeasure = () => remeasurer.schedule()
-  const scheduleSingleMeasure = () => {
-    if (disposed || singleRafId !== null) return
-    singleRafId = window.requestAnimationFrame(() => {
-      singleRafId = null
-      measure()
-    })
-  }
 
   const resizeObserver =
     typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasure) : null
@@ -1392,19 +1416,20 @@ export function observeChatSnapLayout(cb: (layout: SidebarSnapLayout | null) => 
   }
 
   window.addEventListener('resize', scheduleMeasure, { passive: true })
-  window.addEventListener('scroll', scheduleSingleMeasure, { passive: true, capture: true })
-  const intervalId = window.setInterval(measure, PERIODIC_REMEASURE_MS)
+  // One rect read per tick; a moved (or detached) column starts a burst. A
+  // full measure runs every 2 s, and on every tick while a hold runs.
+  const intervalId = window.setInterval(() => {
+    if (holdUntil || ++ticks % (PERIODIC_REMEASURE_MS / CHAT_MOVE_CHECK_MS) === 0) measure()
+    else if (column && rectKey(column.getBoundingClientRect()) !== columnKey) scheduleMeasure()
+  }, CHAT_MOVE_CHECK_MS)
 
   measure()
 
   return () => {
     disposed = true
     remeasurer.dispose()
-    if (singleRafId !== null) window.cancelAnimationFrame(singleRafId)
-    singleRafId = null
     window.clearInterval(intervalId)
     window.removeEventListener('resize', scheduleMeasure)
-    window.removeEventListener('scroll', scheduleSingleMeasure, { capture: true } as EventListenerOptions)
     mutationObserver.disconnect()
     resizeObserver?.disconnect()
   }
