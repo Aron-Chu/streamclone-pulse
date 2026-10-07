@@ -38,3 +38,62 @@ it('drops a Load more page that lands after the filters change', async () => {
   expect(result.current.loadingMore).toBe(false)
   expect(result.current.error).toBeNull()
 })
+
+function unavailableBody(reason: string) {
+  return { schemaVersion: 1, status: 'unavailable', generatedAt: '2026-10-07T12:00:00Z', dataThrough: '2026-10-07T12:00:00Z', window: '7d',
+    query: { window: '7d', signal: 'all', state: 'all', sort: 'strongest' }, summary: { broadcastCount: 0, momentCount: 0, categoryCount: 0 },
+    facets: { signals: [], categories: [], states: [] }, broadcasts: [], moments: [], reason }
+}
+
+/** The 503 the backend sends while a 24h/7d window is prepared, as apiClient reports it. */
+function preparing(reason: string, retryAfterMs = 30_000) {
+  return { kind: 'server', message: 'HTTP 503', status: 503, body: unavailableBody(reason), retryAfterMs }
+}
+
+async function flush(ms = 0) {
+  await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+}
+
+it('waits out Retry-After before the next poll and ignores a retry pressed during it', async () => {
+  vi.useFakeTimers()
+  try {
+    const fetch = vi.spyOn(explorer, 'fetchExplorer').mockRejectedValue(preparing('snapshot_warming', 30_000))
+    const { result } = renderHook(() => useExplorerData({ window: '7d', signal: 'all', state: 'all', sort: 'strongest', q: 'retry-after-list', pollMs: 5_000 }))
+    await flush()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(result.current.unavailable).toBe(true)
+    expect(result.current.error).toBe('snapshot_warming')
+    expect(result.current.retryBlocked).toBe(true)
+    expect(result.current.retryScheduled).toBe(true)
+    act(() => result.current.refresh())
+    await flush(29_000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    fetch.mockResolvedValue(envelope(['warm-1']))
+    await flush(1_000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(result.current.data?.broadcasts.map(item => item.id)).toEqual(['warm-1'])
+    expect(result.current.retryBlocked).toBe(false)
+    // Healthy again: the regular cadence resumes.
+    await flush(5_000)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('leaves a failed detail read to the reader, after Retry-After', async () => {
+  vi.useFakeTimers()
+  try {
+    const fetch = vi.spyOn(explorer, 'fetchExplorer').mockRejectedValue(preparing('build_busy', 5_000))
+    const { result } = renderHook(() => useExplorerData({ window: '7d', signal: 'all', state: 'all', sort: 'strongest', q: 'busy-detail', broadcastId: 'pulse-xqc-1' }))
+    await flush()
+    expect(result.current.error).toBe('build_busy')
+    expect(result.current.retryScheduled).toBe(false)
+    expect(result.current.retryBlocked).toBe(true)
+    await flush(60_000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(result.current.retryBlocked).toBe(false)
+  } finally {
+    vi.useRealTimers()
+  }
+})

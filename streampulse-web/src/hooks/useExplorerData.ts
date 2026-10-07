@@ -50,10 +50,20 @@ export function useExplorerData(options: UseExplorerDataOptions) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
+  // Retry-After from the last failed read: no attempt, polled or pressed, starts before it.
+  const [retryBlocked, setRetryBlocked] = useState(false)
+  const retryNotBeforeRef = useRef(0)
+  const unblockTimerRef = useRef<number>()
   const requestRef = useRef(0)
   const controllerRef = useRef<AbortController | null>(null)
   // A continuation belongs to the query that requested it; a filter change aborts it.
   const loadMoreRef = useRef<AbortController | null>(null)
+
+  const clearRetryBlock = useCallback(() => {
+    retryNotBeforeRef.current = 0
+    window.clearTimeout(unblockTimerRef.current)
+    setRetryBlocked(false)
+  }, [])
 
   const load = useCallback(async () => {
     if (!enabled) return
@@ -81,13 +91,21 @@ export function useExplorerData(options: UseExplorerDataOptions) {
       if (envelope.status !== 'unavailable') cache.set(queryKey, envelope)
       setData(envelope)
       setError(null)
+      clearRetryBlock()
     } catch (caught) {
       if (controller.signal.aborted || (isApiError(caught) && caught.kind === 'aborted')) return
       const unavailable = isApiError(caught) ? normalizeExplorerEnvelope(caught.body) : null
+      const retryAfterMs = isApiError(caught) && typeof caught.retryAfterMs === 'number' && caught.retryAfterMs > 0 ? caught.retryAfterMs : undefined
+      if (retryAfterMs) {
+        retryNotBeforeRef.current = Date.now() + retryAfterMs
+        setRetryBlocked(true)
+        window.clearTimeout(unblockTimerRef.current)
+        unblockTimerRef.current = window.setTimeout(() => setRetryBlocked(false), retryAfterMs)
+      }
       if (previous) {
         const stale = staleCopy(previous)
         setData(stale)
-        setError(isApiError(caught) ? caught.message : caught instanceof Error ? caught.message : 'Explorer refresh failed')
+        setError(unavailable?.reason ?? (isApiError(caught) ? caught.message : caught instanceof Error ? caught.message : 'Explorer refresh failed'))
       } else if (unavailable) {
         setData(unavailable)
         setError(unavailable.reason ?? 'Explorer unavailable')
@@ -101,7 +119,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
         setRefreshing(false)
       }
     }
-  }, [broadcastId, enabled, limit, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey])
+  }, [broadcastId, clearRetryBlock, enabled, limit, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey])
 
   const loadMore = useCallback(async () => {
     if (!data?.nextCursor || loadingMore || broadcastId) return
@@ -135,21 +153,49 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     setLoadingMore(false)
     setError(null)
     setAnnouncement('')
-    void load()
-    const timer = enabled && pollMs > 0
-      ? window.setInterval(() => {
-          if (document.visibilityState === 'visible') void load()
-        }, pollMs)
-      : undefined
+    clearRetryBlock()
+    let active = true
+    let timer: number | undefined
+    // Each read is followed by at most one timer: a list polls, never sooner than Retry-After.
+    const next = () => {
+      if (!active || !enabled || pollMs <= 0) return
+      const wait = Math.max(0, retryNotBeforeRef.current - Date.now())
+      timer = window.setTimeout(poll, Math.max(pollMs, wait))
+    }
+    const poll = () => {
+      if (!active) return
+      // A read pressed meanwhile may have pushed Retry-After past this tick.
+      const wait = retryNotBeforeRef.current - Date.now()
+      if (wait > 0) {
+        timer = window.setTimeout(poll, wait)
+        return
+      }
+      if (document.visibilityState !== 'visible') {
+        next()
+        return
+      }
+      void load().then(next)
+    }
+    void load().then(next)
     return () => {
+      active = false
+      window.clearTimeout(timer)
       requestRef.current += 1
       controllerRef.current?.abort(new DOMException('unmounted', 'AbortError'))
       loadMoreRef.current?.abort(new DOMException('superseded', 'AbortError'))
       loadMoreRef.current = null
-      if (timer) window.clearInterval(timer)
     }
-  }, [enabled, load, pollMs, queryKey])
+  }, [clearRetryBlock, enabled, load, pollMs, queryKey])
+
+  useEffect(() => () => window.clearTimeout(unblockTimerRef.current), [])
 
   const unavailable = useMemo(() => enabled && ((!loading && !data) || data?.status === 'unavailable'), [data, enabled, loading])
-  return { data, loading, refreshing, loadingMore, error, unavailable, announcement, refresh: () => void load(), loadMore }
+  const refresh = () => {
+    // The server asked for a pause; the page offers no retry until it ends.
+    if (Date.now() < retryNotBeforeRef.current) return
+    void load()
+  }
+  // A polling list reads again on its own; a detail read waits for the reader.
+  const retryScheduled = enabled && pollMs > 0
+  return { data, loading, refreshing, loadingMore, error, unavailable, announcement, retryBlocked, retryScheduled, refresh, loadMore }
 }

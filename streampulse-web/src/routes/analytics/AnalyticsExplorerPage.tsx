@@ -14,6 +14,7 @@ import {
 import { useExplorerData } from '../../hooks/useExplorerData'
 import {
   explorerReasonCopy,
+  isExplorerPreparing,
   type ExplorerBroadcast,
   type ExplorerQuery,
   type ExplorerSignal,
@@ -195,26 +196,37 @@ function ScoreTrend({ moments }: { moments: NewsroomUpdate[] }) {
   )
 }
 
+/** What the reader can expect next after a failed read: an automatic check, a pause the server asked for, or neither. */
+function retryNote(retry: { scheduled?: boolean; blocked?: boolean } | undefined): string | null {
+  if (retry?.scheduled) return 'Pulse Explorer checks again automatically.'
+  return retry?.blocked ? 'You can try again in a moment.' : null
+}
+
 function ExplorerStatePanel({
   kind,
   reason,
   onRetry,
+  retry,
 }: {
   kind: 'loading' | 'empty' | 'unavailable'
   reason?: string | null
   onRetry?: () => void
+  /** `blocked` while the server's Retry-After lasts; `scheduled` when an automatic read follows. */
+  retry?: { scheduled?: boolean; blocked?: boolean }
 }) {
   const copy = kind === 'loading'
     ? ['Loading verified broadcasts', 'Reading qualified reaction activity.']
     : kind === 'empty'
       ? ['No matching broadcasts', explorerReasonCopy(reason) || 'Try a wider range or fewer filters.']
-      : ['Pulse Explorer is unavailable', explorerReasonCopy(reason) || 'Verified activity could not be reached.']
+      : [isExplorerPreparing(reason) ? 'This range is not ready yet' : 'Pulse Explorer is unavailable', explorerReasonCopy(reason) || 'Verified activity could not be reached.']
+  const note = kind === 'unavailable' ? retryNote(retry) : null
   return (
     <div className={`explorer-state explorer-state--${kind}`} role={kind === 'loading' ? 'status' : 'alert'}>
       <Radio aria-hidden="true" />
       <strong>{copy[0]}</strong>
       <span>{copy[1]}</span>
-      {onRetry ? <button type="button" onClick={onRetry}><RefreshCw aria-hidden="true" />Try again</button> : null}
+      {note ? <span>{note}</span> : null}
+      {onRetry && !retry?.blocked ? <button type="button" onClick={onRetry}><RefreshCw aria-hidden="true" />Try again</button> : null}
     </div>
   )
 }
@@ -327,6 +339,7 @@ function BroadcastInspector({
   unavailable,
   error,
   onRetry,
+  retry,
   backHref,
   headingRef,
 }: {
@@ -337,11 +350,13 @@ function BroadcastInspector({
   unavailable: boolean
   error?: string | null
   onRetry: () => void
+  retry?: { scheduled?: boolean; blocked?: boolean }
   backHref: string
   headingRef: Ref<HTMLHeadingElement>
 }) {
   if (loading && !broadcast) return <ExplorerStatePanel kind="loading" />
-  if (unavailable && !broadcast) return <ExplorerStatePanel kind="unavailable" reason={error} onRetry={onRetry} />
+  if (unavailable && !broadcast) return <ExplorerStatePanel kind="unavailable" reason={error} onRetry={onRetry} retry={retry} />
+  const note = unavailable ? retryNote(retry) : null
   if (!broadcast) return <div className="explorer-inspector__placeholder"><Radio aria-hidden="true" /><span>Select a broadcast to inspect its verified moments.</span></div>
   const orderedMoments = [...moments].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))
   return (
@@ -373,8 +388,12 @@ function BroadcastInspector({
       <BroadcastActions broadcast={broadcast} query={query} />
       {unavailable ? (
         <div className="explorer-inspector__error" role="alert">
-          <div><strong>Broadcast details are unavailable</strong><span>{explorerReasonCopy(error) || 'The result list is still available while this inspector reconnects.'}</span></div>
-          <button type="button" onClick={onRetry}><RefreshCw aria-hidden="true" />Try again</button>
+          <div>
+            <strong>{isExplorerPreparing(error) ? 'Broadcast details are not ready yet' : 'Broadcast details are unavailable'}</strong>
+            <span>{explorerReasonCopy(error) || 'The result list is still available while this inspector reconnects.'}</span>
+            {note ? <span>{note}</span> : null}
+          </div>
+          {!retry?.blocked ? <button type="button" onClick={onRetry}><RefreshCw aria-hidden="true" />Try again</button> : null}
         </div>
       ) : orderedMoments.length >= 2 ? <ScoreTrend moments={orderedMoments} /> : (
         <section className="explorer-single-evidence" aria-label="Single verified moment">
@@ -525,7 +544,7 @@ export default function AnalyticsExplorerPage() {
           <label><span>Sort</span><select aria-label="Sort" value={query.sort} onChange={(event) => replaceQuery({ sort: event.target.value as ExplorerSort })}>{SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         </section>
 
-        {list.data?.status === 'stale' ? <div className="explorer-stale" role="status"><span>{dataAge} Fresh activity could not be reached; valid results remain visible.</span><button type="button" onClick={list.refresh}><RefreshCw aria-hidden="true" />Refresh</button></div> : null}
+        {list.data?.status === 'stale' ? <div className="explorer-stale" role="status"><span>{dataAge} Fresh activity could not be reached; valid results remain visible.</span>{!list.retryBlocked ? <button type="button" onClick={list.refresh}><RefreshCw aria-hidden="true" />Refresh</button> : null}</div> : null}
 
         <div className={`pulse-explorer__workspace${singleWorkspaceState ? ' pulse-explorer__workspace--single' : ''}`}>
           <section className="explorer-results" aria-labelledby="explorer-results-title">
@@ -536,7 +555,7 @@ export default function AnalyticsExplorerPage() {
             <div className="explorer-results__scroll analytics-scroll-hidden">
               {!windowAvailable ? <ExplorerWindowUnavailablePanel range={query.window} liveHref={withSearch('/analytics/explore', paramsFromQuery({ ...query, window: 'live' }))} /> : null}
               {list.loading && !list.data ? <ExplorerStatePanel kind="loading" /> : null}
-              {list.unavailable ? <ExplorerStatePanel kind="unavailable" reason={list.error || list.data?.reason} onRetry={list.refresh} /> : null}
+              {list.unavailable ? <ExplorerStatePanel kind="unavailable" reason={list.error || list.data?.reason} onRetry={list.refresh} retry={{ scheduled: list.retryScheduled, blocked: list.retryBlocked }} /> : null}
               {list.data?.status === 'empty' ? <ExplorerStatePanel kind="empty" reason={list.data.reason} /> : null}
               {list.data?.broadcasts.map((broadcast) => (
                 <BroadcastResult
@@ -559,6 +578,7 @@ export default function AnalyticsExplorerPage() {
               unavailable={detail.unavailable || Boolean(broadcastId && detail.data?.status === 'empty')}
               error={detail.error || detail.data?.reason}
               onRetry={detail.refresh}
+              retry={{ scheduled: detail.retryScheduled, blocked: detail.retryBlocked }}
               backHref={backHref}
               headingRef={headingRef}
             />
