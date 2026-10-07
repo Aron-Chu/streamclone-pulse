@@ -77,6 +77,21 @@ describe('slow first-paint reads', () => {
     expect(await result).toMatchObject({ ok: false, error: { kind: 'timeout' } })
   })
 
+  it.each(['30m', 'recent'] as const)('keeps the 8 s default for a %s hub read that names no deadline', async (activityWindow) => {
+    // Moments Latest and the landing tickers read the 30m hub with no explicit deadline.
+    stubFetch(() => ({ delayMs: 9_000, body: { ...hubBody, activity: { ...hubBody.activity, windowMinutes: 30 } } }))
+    const result = settle(fetchPublicHubBase(undefined, activityWindow, 'moments'))
+    await vi.advanceTimersByTimeAsync(8_000)
+    expect(await result).toMatchObject({ ok: false, error: { kind: 'timeout' } })
+  })
+
+  it('gives a hub read with no window (24h) the slow-read deadline', async () => {
+    stubFetch(() => ({ delayMs: 9_000, body: hubBody }))
+    const result = settle(fetchPublicHubBase())
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(await result).toMatchObject({ ok: true, value: { hubEndpointOk: true } })
+  })
+
   it('still reports a hub body that never arrives as a timeout', async () => {
     stubFetch(() => ({ delayMs: SLOW_READ_TIMEOUT_MS + 5_000, body: hubBody }))
     const result = settle(fetchPublicHubBase(undefined, '24h'))

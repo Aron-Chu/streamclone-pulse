@@ -782,13 +782,20 @@ export function hasPublicHubResponseShape(raw: unknown): raw is PublicHubInput {
     Array.isArray(raw.topEmotes) && Array.isArray(raw.topMovers)
 }
 
+/** The 30-minute windows, whose small bodies keep apiClient's default deadline. */
+function isRecentHubWindow(activityWindow?: PublicHubActivityWindow): boolean {
+  return activityWindow === '30m' || activityWindow === 'recent'
+}
+
 /** Primary hub fetch only — no Top-500 readiness fan-out. */
 export async function fetchPublicHubBase(
   signal?: AbortSignal,
   activityWindow?: PublicHubActivityWindow,
   projection?: PublicHubProjection,
-  // The 24h body is ~1.2 MB decoded; a slow network needs longer than the 8 s default.
-  timeoutMs = SLOW_READ_TIMEOUT_MS,
+  // The 24h body is ~1.2 MB decoded; a slow network needs longer than the 8 s
+  // default. A 30-minute body is small and keeps the default, so a stalled API
+  // reaches its error or stats fallback sooner.
+  timeoutMs: number | undefined = isRecentHubWindow(activityWindow) ? undefined : SLOW_READ_TIMEOUT_MS,
 ): Promise<FetchPublicHubResult> {
   try {
     const primary = await apiClient<PublicHub>(publicHubPath(activityWindow, projection), { signal, timeoutMs })
