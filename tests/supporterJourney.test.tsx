@@ -16,7 +16,7 @@ const ready = (status: string, extra: Partial<Extract<SupporterEntitlement, { st
 type Worker = {
   account: (action: SupporterAccountAction) => SupporterAccountState | Promise<SupporterAccountState> | Error
   entitlement: () => SupporterEntitlement | Promise<SupporterEntitlement> | Error
-  billing?: (action: string) => SupporterBillingState
+  billing?: (action: string) => SupporterBillingState | Promise<SupporterBillingState>
   restore?: (action: string, email?: string) => SupporterRestoreState | Promise<SupporterRestoreState>
   devices?: (action: string, deviceId?: string) => import('../src/shared/supporterAccount.ts').SupporterDevicesState
 }
@@ -35,7 +35,7 @@ async function mount(worker: Worker, onEntitlement?: (value: SupporterEntitlemen
       if (entitlement instanceof Error) throw entitlement
       return { type: 'SUPPORTER_ENTITLEMENT', entitlement }
     }
-    if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: worker.billing?.(message.action!) ?? { state: 'fallback' } }
+    if (message.type === 'SUPPORTER_BILLING') return { type: 'SUPPORTER_BILLING', billing: (await worker.billing?.(message.action!)) ?? { state: 'fallback' } }
     if (message.type === 'SUPPORTER_RESTORE' && worker.restore) return { type: 'SUPPORTER_RESTORE', restore: await worker.restore(message.action!, message.email) }
     if (message.type === 'SUPPORTER_DEVICES' && worker.devices) return { type: 'SUPPORTER_DEVICES', devices: worker.devices(message.action!, message.deviceId) }
     return undefined
@@ -795,6 +795,30 @@ describe('notices beside the action that caused them', () => {
       expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(2)
       expect(page.footer()).toContain(MANAGE_FAILED)
       expect(page.accountStatus()?.textContent).toBe('')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps Manage billing enabled and focused while it opens, ignores a second press, and reports the failure beside it', async () => {
+    let answer: (billing: SupporterBillingState) => void = () => undefined
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { installationAccountsEnabled: true }), billing: action => action === 'portal' ? new Promise<SupporterBillingState>(resolve => { answer = resolve }) : { state: 'idle' } })
+    try {
+      const page = sections(view.host)
+      const manage = [...page.account.querySelectorAll('button')].find(button => button.textContent === 'Manage billing ↗')!
+      manage.focus()
+      await act(async () => manage.click())
+      // While the request is open: still enabled (a disabled button drops focus), marked busy, and a second press does nothing.
+      expect(manage.disabled).toBe(false)
+      expect(manage.getAttribute('aria-busy')).toBe('true')
+      expect(document.activeElement).toBe(manage)
+      await act(async () => manage.click())
+      expect(view.calls('SUPPORTER_BILLING', 'portal')).toBe(1)
+      await act(async () => answer({ state: 'error' }))
+      expect(manage.hasAttribute('aria-busy')).toBe(false)
+      expect(document.activeElement).toBe(manage)
+      // The failure is stated in the Account card that holds the button.
+      expect(page.accountStatus()?.textContent).toContain(MANAGE_FAILED)
+      expect(manage.closest('section')).toBe(page.accountStatus()?.closest('section'))
+      expect(page.footer()).not.toContain(MANAGE_FAILED)
     } finally { view.cleanup() }
   })
 

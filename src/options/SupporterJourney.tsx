@@ -807,7 +807,9 @@ export function SupporterJourney({ onEntitlement, onShown, look, children }: {
             {isSupporter && entitlement?.state === 'ready' ? <div data-row="billing">
               <dt>Billing</dt>
               <dd>Stripe<small>Change card, get receipts, or cancel.</small></dd>
-              <dd className="pulse-account-link-actions"><button type="button" disabled={payBusy} onClick={() => void manage('account')}>Manage billing <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
+              {/* Never disabled while it works: a disabled button drops keyboard
+                  focus to the page. manage() ignores a press while one is open. */}
+              <dd className="pulse-account-link-actions"><button type="button" aria-busy={payBusy || undefined} onClick={() => void manage('account')}>Manage billing <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
             </div> : null}
             <div data-row="new-browser">
               <dt>New browser</dt>

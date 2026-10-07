@@ -155,3 +155,38 @@ test('a Supporter’s emote rain choice keeps keyboard focus through its save', 
   const stored = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))
   expect(stored).toMatchObject({ pulseBanner: { mode: 'rain' } })
 })
+
+test('Manage billing keeps keyboard focus while it opens and reports a failure in the Account card', async ({ extension, prepare }) => {
+  await prepare()
+  await linkDevice(extension.serviceWorker)
+  await serveMembership(extension.context, () => ({ ...supporterBody('active', 2), accountKind: 'installation', installationAccountsEnabled: true, restoreEligible: false }))
+  let portals = 0
+  await extension.context.route('https://api.streampulse.stream/v1/billing/portal', async route => {
+    portals++
+    // Long enough for Chromium's focus fixup to run, as a slow portal request would.
+    await new Promise(resolve => setTimeout(resolve, 1_000))
+    await route.fulfill({ status: 503, json: { error: 'unavailable' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  const account = page.locator('section').filter({ has: page.getByRole('heading', { level: 3, name: 'Account', exact: true }) })
+  const manage = account.getByRole('button', { name: 'Manage billing', exact: false })
+  const status = account.locator('[data-account-notice]')
+  await expect(status).toHaveText('')
+  await manage.focus()
+  await page.keyboard.press('Enter')
+  await expect.poll(() => portals).toBe(1)
+  // While it opens: enabled, still focused, and busy. Read at once, not retried:
+  // a button disabled for the request is enabled again once it ends.
+  expect(await manage.isEnabled()).toBe(true)
+  expect(await manage.evaluate(button => button === document.activeElement)).toBe(true)
+  await expect(manage).toHaveAttribute('aria-busy', 'true')
+  // A second press while it opens asks nothing more.
+  await page.keyboard.press('Enter')
+  await expect(status).toContainText('Could not open membership management')
+  await expect(manage).not.toHaveAttribute('aria-busy', 'true')
+  await expect(manage).toBeFocused()
+  expect(portals).toBe(1)
+  // Reported beside the button, not in the card footer a screen above.
+  await expect(page.locator('.pulse-journey-status')).not.toContainText('Could not open membership management')
+})
