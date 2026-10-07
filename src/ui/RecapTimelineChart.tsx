@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { deriveLiveStats, formatHeatOffset, reactionAnalyticalOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
-import type { ExtensionEmote, ExtensionPeak, PulsePayload } from '../shared/messages.ts'
+import type { ExtensionEmote, ExtensionPeak, PulsePayload, PulseRecapMoment } from '../shared/messages.ts'
 import {
   fullHistoryActivationKey,
   hasStableFullHistoryActivation,
@@ -142,24 +142,7 @@ export function RecapTimelineChart({
   const chartPeakMarkers = useMemo<ExtensionPeak[]>(() => {
     const source = mergedMoments.length > 0
       ? mergedMoments
-      : peakOffsets.map(offsetSeconds => ({
-          offsetSeconds,
-          score: 0,
-          compositeScore: undefined,
-          reactionScore: undefined,
-          viewerMomentumScore: undefined,
-          reasons: ['manual'],
-          dominantSignal: 'composite',
-          chatCount: undefined,
-          emoteCount: undefined,
-          reactionOnsetOffsetSeconds: undefined,
-          reactionApexOffsetSeconds: undefined,
-          seekOffsetSeconds: undefined,
-          precisionSeconds: undefined,
-          refinementStatus: undefined,
-          refinementConfidence: undefined,
-          reactionScoringVersion: undefined,
-        }))
+      : peakOffsets.map((offsetSeconds): PulseRecapMoment => ({ offsetSeconds, score: 0, reasons: ['manual'] }))
     return source.map(moment => ({
         offsetSeconds: moment.offsetSeconds,
         score: moment.score,
