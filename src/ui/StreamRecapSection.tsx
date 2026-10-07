@@ -38,6 +38,7 @@ import {
   safeGameTimeline,
 } from './extensionChartAdapter.ts'
 import type { RecapUiState } from './recapUiState.ts'
+import { formatPulseApiError } from './pulseApiErrors.ts'
 import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
 import { PulseMomentRow } from './PulseMomentRow.tsx'
@@ -941,7 +942,7 @@ export function StreamRecapSection({
       <PulseSectionCard title={title}>
         <div style={styles.stateBlock}>
           <p style={styles.stateText}>
-            {pollError?.trim() || 'Stream recap is unavailable right now.'}
+            {formatPulseApiError(pollError) ?? 'Stream recap is unavailable right now.'}
           </p>
           {onRetry ? (
             <button type="button" className="pulse-secondary-btn" style={styles.secondaryButton} onClick={onRetry}>

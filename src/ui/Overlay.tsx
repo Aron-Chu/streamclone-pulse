@@ -276,7 +276,7 @@ function OverlayMain({
   login,
   context,
   payload,
-  error,
+  error: reportedError,
   pendingTrackPrompt = false,
   onTrackStarted,
   sessionOpenedAtMs = null,
@@ -297,6 +297,22 @@ function OverlayMain({
   vodPulseLoading = false,
   softStaleRefreshWarning = false,
 }: OverlayProps) {
+  // A worker or network that never answers must not leave "Loading Pulse" up
+  // forever: offer Retry after 10 s, and treat 30 s of silence as an outage.
+  const loadKey = `${login}:${context.vodId ?? ''}:${sessionOpenedAtMs ?? ''}`
+  const awaitingData = !reportedError && !payload && !vodPulse
+  const [loadStall, setLoadStall] = useState<[string, number]>(['', 0])
+  useEffect(() => {
+    if (!awaitingData) return
+    const soft = setTimeout(() => setLoadStall([loadKey, 1]), 10_000)
+    const hard = setTimeout(() => setLoadStall([loadKey, 2]), 30_000)
+    return () => {
+      clearTimeout(soft)
+      clearTimeout(hard)
+    }
+  }, [awaitingData, loadKey])
+  const loadStallStage = awaitingData && loadStall[0] === loadKey ? loadStall[1] : 0
+  const error = reportedError || (loadStallStage > 1 ? 'request_failed' : undefined)
   const [mode, setModeState] = useState<OverlayMode>('expanded')
   const [placement, setPlacementState] = useState<OverlayPlacement>('right')
   const [density, setDensityState] = useState<DensityPreference>('comfortable')
@@ -706,7 +722,11 @@ function OverlayMain({
         pulseSupported,
       })
     : null
-  const panelSurfaceState = resolvePulsePanelSurfaceState({
+  // A VOD answered without chart data (missing / syncing replay) is a status,
+  // not an outage: VodPulseStatusCard explains it, the header must not say
+  // Loading or Unavailable.
+  const vodStatusOnly = Boolean(vodPulse && !payload && !error)
+  const panelSurfaceState = vodStatusOnly ? 'offline_empty' : resolvePulsePanelSurfaceState({
     payload,
     error,
     pageIsLive,
@@ -1444,7 +1464,8 @@ function OverlayMain({
       }
       setNotice({
         kind: 'warn',
-        text: err instanceof Error ? err.message : 'Could not load full stream chart.',
+        // Viewer copy only: a raw transport message is not an explanation.
+        text: coverageErrorMessage(err instanceof Error ? err.message : null, 'Could not load full stream chart.'),
       })
       return { ok: false, reason: 'request_failed' }
     }
@@ -1582,9 +1603,11 @@ function OverlayMain({
   }
 
   // Body host visibility is owned by mount.tsx (hidden entirely on Chat tab).
+  // Only the sidebar body fills its host. On a fixed floating shell 100% means
+  // the whole viewport, so the placement CSS must size the pill and mini bar.
   if (resolvedMode === 'collapsed') {
     return (
-      <section className={shellClass} data-pulse-density={density} style={styles.collapsedHost} aria-label="StreamPulse collapsed">
+      <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.collapsedHost : undefined} aria-label="StreamPulse collapsed">
         <CollapsedPill
           tracking={payload?.tracking ?? false}
           isLive={uiIsLive}
@@ -1597,7 +1620,7 @@ function OverlayMain({
 
   if (resolvedMode === 'mini') {
     return (
-      <section className={shellClass} data-pulse-density={density} style={styles.miniHost} aria-label="StreamPulse mini overlay">
+      <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay">
         <MiniDock
           login={login}
           payload={payload}
@@ -1851,9 +1874,11 @@ function OverlayMain({
       {isVodPage && !hasRecapPanel && panelSurfaceState !== 'identity_mismatch' ? (
         <VodPulseStatusCard
           vodPulse={vodPulse}
-          loading={vodPulseLoading}
+          // A stalled load is reported as an error above; never "Loading" beside it.
+          loading={vodPulseLoading && !error}
           error={error}
-          onRetry={() => void refreshPulse()}
+          // An orphaned tab can only reload, which the error card above offers.
+          onRetry={error === EXTENSION_RECONNECT_MESSAGE ? undefined : () => void refreshPulse()}
         />
       ) : null}
 
@@ -1896,19 +1921,26 @@ function OverlayMain({
         </>
       ) : null}
 
-      {!error && !payload ? (
-        sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
-          <PulseSidebarSkeleton hostedBackend={hostedBackend} />
-        ) : (
-          <section style={styles.stateBlock}>
-            <h2 style={styles.stateTitle}>Loading Pulse</h2>
-            <p style={styles.stateText}>
-              {hostedBackend
-                ? 'Fetching live analytics from StreamPulse…'
-                : `Waiting for Pulse data from ${backendUrl}. Make sure the stack is running, then retry.`}
-            </p>
-          </section>
-        )
+      {awaitingData && !error ? (
+        <>
+          {sidebarBodyOnly && resolvedPlacement === 'sidebar' ? (
+            <PulseSidebarSkeleton hostedBackend={hostedBackend} />
+          ) : (
+            <section style={styles.stateBlock}>
+              <h2 style={styles.stateTitle}>Loading Pulse</h2>
+              <p style={styles.stateText}>
+                {hostedBackend
+                  ? 'Fetching live analytics from StreamPulse…'
+                  : `Waiting for Pulse data from ${backendUrl}. Make sure the stack is running, then retry.`}
+              </p>
+            </section>
+          )}
+          {loadStallStage ? (
+            <div style={styles.footerActions}>
+              <button type="button" style={styles.secondaryButton} onClick={() => void refreshPulse()}>Retry</button>
+            </div>
+          ) : null}
+        </>
       ) : null}
         </div>
       )}
@@ -2340,7 +2372,11 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
   return (
     <section style={styles.errorBlock}>
       <h2 style={styles.errorTitle}>Can&apos;t reach StreamPulse</h2>
-      <p style={styles.stateText}>No response from {backendUrl}. Is the StreamPulse stack running? Showing this instead of empty charts.</p>
+      <p style={styles.stateText}>
+        {isHostedBackendUrl(backendUrl)
+          ? 'StreamPulse isn’t responding right now. Try again in a minute.'
+          : `No response from ${backendUrl}. Is the StreamPulse stack running? Showing this instead of empty charts.`}
+      </p>
       <div style={styles.footerActions}>
         <button type="button" style={styles.secondaryButton} onClick={onRetry}>Retry</button>
         <button type="button" style={styles.textButtonLarge} onClick={onSettings}>Open settings</button>
@@ -2350,10 +2386,14 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
 }
 
 function PulseRefreshError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  // An orphaned tab keeps its last chart, but Retry goes through a dead port.
+  const reconnect = error === EXTENSION_RECONNECT_MESSAGE
   return (
     <div role="status" className="pulse-refresh-error" style={styles.refreshError}>
       <span>{formatPulseApiError(error) ?? 'The latest Pulse refresh failed; showing the last good data.'}</span>
-      <button type="button" style={styles.textButtonLarge} onClick={onRetry}>Retry</button>
+      <button type="button" style={styles.textButtonLarge} onClick={reconnect ? () => window.location.reload() : onRetry}>
+        {reconnect ? 'Reload page' : 'Retry'}
+      </button>
     </div>
   )
 }

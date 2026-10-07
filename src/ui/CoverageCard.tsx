@@ -56,7 +56,8 @@ export function CoverageCard({
   const helixBlocked = source.helixEnabled === false
   const errorText = helixBlocked
     ? 'StreamPulse backend is missing Twitch API credentials (TWITCH_OAUTH_CLIENT_ID / SECRET). VOD lookup cannot run.'
-    : formatPulseApiError(checkError ?? (buttonState === 'failed' ? job?.error : null))
+    // checkError is already overlay copy; only raw job codes go through the allowlist.
+    : checkError ?? (buttonState === 'failed' ? formatPulseApiError(job?.error) ?? 'Backfill failed.' : null)
 
   let statusLine = copy.body
   if (backfilling) {

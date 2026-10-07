@@ -17,6 +17,7 @@ export type ApiScenario =
   | 'offline'
   | 'vod-ready'
   | 'vod-syncing'
+  | 'vod-missing'
   | 'api-500'
   | 'timeout'
   | 'malformed'
@@ -79,6 +80,13 @@ const SCENARIOS: Record<Exclude<ApiScenario, 'api-500' | 'timeout' | 'malformed'
     pulse: 'pulse-offline.json',
     coverage: 'coverage-active.json',
     vod: 'vod-syncing.json',
+  },
+  // Most Twitch VODs: the backend answers 200 but has never indexed them.
+  'vod-missing': {
+    health: 'health-ok.json',
+    pulse: 'pulse-offline.json',
+    coverage: 'coverage-active.json',
+    vod: 'vod-missing.json',
   },
 }
 

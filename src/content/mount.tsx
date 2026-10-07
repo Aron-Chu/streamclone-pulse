@@ -78,6 +78,8 @@ export interface OverlayMountOptions {
   onLivePollWindowChange?: (window: PulseCacheWindow) => void
   livePollStore?: Pick<LivePollController, 'getSnapshot' | 'subscribe'>
   softStaleRefreshWarning?: boolean
+  /** Failed first load: render the error state, not an endless "Loading Pulse". */
+  error?: string
 }
 
 export function applyOverlayPayloadUpdate(
@@ -594,7 +596,7 @@ export function mountOverlay(
   currentContext = context
   currentOptions = options
   currentPayload = initial
-  currentError = undefined
+  currentError = options.error
   currentCoverageTier = options.coverageTier ?? null
   if (needsDisplayHydration) {
     storedPlacement = DEFAULT_OVERLAY_PLACEMENT
@@ -667,7 +669,8 @@ export function updateOverlayPayload(
   const previousPayload = currentPayload
   if (meta?.softStaleRefresh) {
     // Keep cached chart; surface a bounded nonblocking warning via options/error lane.
-    currentError = undefined
+    // With no chart on screen an error card stays: there is nothing to keep.
+    if (currentPayload) currentError = undefined
     currentOptions = {
       ...currentOptions,
       softStaleRefreshWarning: true,
