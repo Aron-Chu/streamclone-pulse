@@ -5,7 +5,7 @@
 // When no usable chat column is found (popout chat, theater, layout change,
 // zero-width), the caller falls back to the floating right dock.
 
-import { isTwitchVodPath } from './twitch.ts'
+import { isTwitchChatPath, isTwitchVodPath } from './twitch.ts'
 
 export interface RectLike {
   readonly width: number
@@ -1264,9 +1264,11 @@ function holdsPlacedLayout(
   // swap): the panel bottom does not drop to the reserve and jump back. A new
   // page without a composer (a VOD's chat replay) gets its reserve at once.
   if (layout) return !!placed.composer && !layout.composer && layout.path === placed.path
-  // A usable column is a brief header/composer gap, and a column gone from the
-  // page may be remounting.
-  return columnFound || !document.querySelector(CHAT_COLUMN_SELECTORS.join(','))
+  // A usable column is a brief header/composer gap, and a column gone from a
+  // page with chat may be remounting. One gone because the route left chat
+  // (the directory, a channel's Videos list) is not coming back.
+  return columnFound
+    || (!document.querySelector(CHAT_COLUMN_SELECTORS.join(',')) && isTwitchChatPath(pathOf(document)))
 }
 
 /**
@@ -1283,14 +1285,15 @@ function holdsPlacedLayout(
  * There is no scroll listener: Twitch scrolls its chat list on every message,
  * and none of those scrolls can move the column.
  *
- * When the layout turns null while the column is missing from the page (a chat
- * remount) or still usable (a brief header/composer gap), the last layout is
- * held for SNAP_LAYOUT_HOLD_MS, so the panel does not blink and replay its
- * entrance animations. A column that is still on the page but too small
- * (collapsed chat, theatre) drops at once. A composer that goes missing on the
- * same page holds the last layout the same way, so the panel bottom does not
- * drop to the reserve and jump back; one that stays missing past the hold, or
- * a new page without a composer (a VOD's chat replay), gets the page's reserve.
+ * When the layout turns null while the column is missing from a page with chat
+ * (a chat remount) or still usable (a brief header/composer gap), the last
+ * layout is held for SNAP_LAYOUT_HOLD_MS, so the panel does not blink and
+ * replay its entrance animations. A column that is still on the page but too
+ * small (collapsed chat, theatre), or gone because the route left chat, drops
+ * at once. A composer that goes missing on the same page holds the last layout
+ * the same way, so the panel bottom does not drop to the reserve and jump back;
+ * one that stays missing past the hold, or a new page without a composer (a
+ * VOD's chat replay), gets the page's reserve.
  */
 export function observeChatSnapLayout(
   cb: (layout: SidebarSnapLayout | null) => void,

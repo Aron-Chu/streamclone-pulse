@@ -52,6 +52,12 @@ export function isTwitchVodPath(pathname: string): boolean {
   return parseTwitchPage(pathname).kind === 'vod'
 }
 
+/** True where Twitch shows a chat column: a channel's own page or a VOD watch page. */
+export function isTwitchChatPath(pathname: string): boolean {
+  const { kind } = parseTwitchPage(pathname)
+  return kind === 'vod' || (kind === 'channel' && pathname.split('/').filter(Boolean).length === 1)
+}
+
 export function parseTwitchPage(pathname: string): TwitchPageContext {
   const parts = pathname.split('/').filter(Boolean)
   if (!parts.length) return { kind: 'non-channel', login: null, vodId: null }

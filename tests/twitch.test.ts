@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import {
   detectTwitchChannelLive,
+  isTwitchChatPath,
   isTwitchVodPath,
   LIVE_READING_HOLD_MS,
   parseChannelLogin,
@@ -13,6 +14,25 @@ describe('isTwitchVodPath', () => {
     expect(isTwitchVodPath('/videos/1234567890')).toBe(true)
     expect(isTwitchVodPath('/xqc/videos/1234567890')).toBe(true)
     expect(isTwitchVodPath('/xqc')).toBe(false)
+  })
+})
+
+describe('isTwitchChatPath', () => {
+  it('is true on a channel page and on VOD watch pages', () => {
+    expect(isTwitchChatPath('/xqc')).toBe(true)
+    expect(isTwitchChatPath('/xqc/')).toBe(true)
+    expect(isTwitchChatPath('/videos/1234567890')).toBe(true)
+    expect(isTwitchChatPath('/xqc/videos/1234567890')).toBe(true)
+  })
+
+  it('is false on system routes and channel sub-pages without chat', () => {
+    expect(isTwitchChatPath('/')).toBe(false)
+    expect(isTwitchChatPath('/directory')).toBe(false)
+    expect(isTwitchChatPath('/directory/following')).toBe(false)
+    expect(isTwitchChatPath('/videos')).toBe(false)
+    expect(isTwitchChatPath('/xqc/videos')).toBe(false)
+    expect(isTwitchChatPath('/xqc/about')).toBe(false)
+    expect(isTwitchChatPath('/xqc/clip/SomeClipSlug')).toBe(false)
   })
 })
 

@@ -1067,6 +1067,47 @@ describe('observeChatSnapLayout', () => {
     expect(seen[1]).toMatchObject({ path: '/otherchan', composer: false, panel: { bottom: 618 } })
     stop()
   })
+
+  it.each(['/directory', '/fixturechan/videos'])('drops at once when the route leaves chat (%s)', path => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    // Twitch unmounts the right column on the new page.
+    page.dom.window.history.pushState(null, '', path)
+    page.byTest('stack').remove()
+    env.tick()
+    env.flushBurst()
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toBeNull()
+    stop()
+  })
+
+  it.each(['/otherchan', '/videos/1234567890'])('still holds a remount on the way to another page with chat (%s)', path => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    page.dom.window.history.pushState(null, '', path)
+    const stack = page.byTest('stack')
+    stack.remove()
+    env.tick()
+    env.flushBurst()
+    expect(seen).toHaveLength(1)
+    page.doc.body.append(stack)
+    env.tick()
+    expect(seen).toHaveLength(1)
+    stop()
+  })
+
+  it('drops a seeded layout at once when a restart lands on a page without chat', () => {
+    const page = makeStackedChatPage()
+    const placed = measureSidebarSnapLayout(page.doc)!
+    installObserverGlobals(page)
+    page.dom.window.history.pushState(null, '', '/directory')
+    page.byTest('stack').remove()
+    const { seen, stop } = observe(placed)
+    expect(seen).toEqual([null])
+    stop()
+  })
 })
 
 describe('sidebar panel entrance animation', () => {
