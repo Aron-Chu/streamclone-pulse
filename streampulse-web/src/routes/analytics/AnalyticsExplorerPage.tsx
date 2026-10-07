@@ -21,6 +21,7 @@ import {
   type ExplorerState,
 } from '../../lib/explorer'
 import { checkMomentSource, fromHubMoment } from '../../lib/discoveryMoments'
+import { analyticsReturnPath } from '../../lib/momentsNavigation'
 import { formatApproximate, formatRelativeTime } from '../../lib/formatStats'
 import { configuredNewsroomWindows, newsroomDataThroughAge, type NewsroomExternalSource, type NewsroomUpdate, type NewsroomWindow } from '../../lib/newsroom'
 import { routeScrollState } from '../../lib/routeScroll'
@@ -288,7 +289,12 @@ function useVerifiedReplayHref(broadcast: ExplorerBroadcast) {
 function BroadcastActions({ broadcast, query }: { broadcast: ExplorerBroadcast; query: ExplorerQuery }) {
   const [copied, setCopied] = useState(false)
   const anchor = broadcast.strongestMoment
-  const analytics = `/analytics/${encodeURIComponent(broadcast.login)}/${encodeURIComponent(broadcast.streamId)}?t=${Math.floor(anchor.momentRef.offsetSeconds)}`
+  const detailPath = withSearch(`/analytics/explore/${encodeURIComponent(broadcast.id)}`, paramsFromQuery(query))
+  // The session page's back link returns here (← Pulse Explorer), to this broadcast when
+  // its id fits a return path, otherwise to the same filtered list.
+  const returnTo = analyticsReturnPath(detailPath) ?? withSearch('/analytics/explore', paramsFromQuery(query))
+  const analytics = `/analytics/${encodeURIComponent(broadcast.login)}/${encodeURIComponent(broadcast.streamId)}?${new URLSearchParams({
+    t: String(Math.floor(anchor.momentRef.offsetSeconds)), returnTo })}`
   const replay = useVerifiedReplayHref(broadcast)
   const watch = broadcast.state === 'live'
     ? { href: `https://www.twitch.tv/${encodeURIComponent(broadcast.login)}`, label: 'Watch live' }
@@ -296,9 +302,8 @@ function BroadcastActions({ broadcast, query }: { broadcast: ExplorerBroadcast; 
       ? { href: replay.href, label: 'Watch VOD' }
       : null
   const copy = async () => {
-    const path = withSearch(`/analytics/explore/${encodeURIComponent(broadcast.id)}`, paramsFromQuery(query))
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${path}`)
+      await navigator.clipboard.writeText(`${window.location.origin}${detailPath}`)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1600)
     } catch {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -221,6 +221,27 @@ describe('Pulse Explorer contract and workspace', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'Watch VOD' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/2864434763?t=164s'))
     expect(request).toHaveBeenCalledTimes(1)
     expect(request.mock.calls[0][0]).toBe('/v1/portal/analytics/streams/stream-1')
+  })
+
+  it('opens Analytics with a return path, so the session page links back to Pulse Explorer', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    renderExplorer(normalizeExplorerEnvelope(rawEnvelope())!, '/analytics/explore/pulse-xqc-stream-1?window=7d&sort=recent')
+    const href = new URL(within(screen.getByRole('group', { name: 'Broadcast actions' })).getByRole('link', { name: 'Analytics' }).getAttribute('href')!, 'https://portal.invalid')
+    expect(href.pathname).toBe('/analytics/xqc/stream-1')
+    expect(href.searchParams.get('t')).toBe('240')
+    expect(href.searchParams.get('returnTo')).toBe('/analytics/explore/pulse-xqc-stream-1?window=7d&sort=recent')
+  })
+
+  it('returns to the filtered list when a broadcast id cannot be a return path', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const raw = rawEnvelope()
+    for (const key of ['broadcast', 'broadcasts'] as const) {
+      const value = raw[key]
+      raw[key] = Array.isArray(value) ? value.map((item) => ({ ...item, id: 'pulse.xqc:1' })) : { ...(value as object), id: 'pulse.xqc:1' }
+    }
+    renderExplorer(normalizeExplorerEnvelope(raw)!, '/analytics/explore?window=7d')
+    const href = new URL(within(screen.getByRole('group', { name: 'Broadcast actions' })).getByRole('link', { name: 'Analytics' }).getAttribute('href')!, 'https://portal.invalid')
+    expect(href.searchParams.get('returnTo')).toBe('/analytics/explore?window=7d')
   })
 
   it('offers no VOD link when the alignment is not verified', async () => {

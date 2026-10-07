@@ -80,7 +80,7 @@ test.describe('Pulse Explorer routes', () => {
     await page.locator('.explorer-result').filter({ hasText: 'xQc' }).click()
     await expect(page).toHaveURL(/\/analytics\/explore\/pulse-xqc-session-1\?window=7d&sort=recent$/)
     const actions = page.getByRole('group', { name: 'Broadcast actions' })
-    await expect(actions.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240$/)
+    await expect(actions.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240&returnTo=%2Fanalytics%2Fexplore%2Fpulse-xqc-session-1%3Fwindow%3D7d%26sort%3Drecent$/)
     await expect(actions.getByRole('link', { name: 'Watch live' })).toHaveAttribute('href', 'https://www.twitch.tv/xqc')
     await expect(page.getByRole('img', { name: /reaction score trend with 3 measured moments/i })).toBeVisible()
     await expect(page.locator('.explorer-moments li')).toHaveCount(3)
