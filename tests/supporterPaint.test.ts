@@ -33,7 +33,7 @@ describe('supporter paint style', () => {
       const url = supporterCrestCssUrl(id)
       expect(url.startsWith('url("data:image/svg+xml,%3Csvg ')).toBe(true)
       expect(url).not.toMatch(/[#<>]/)
-      expect(url).toContain(SUPPORTER_CREST_GEMS[id].edge.replace('#', '%23'))
+      expect(url).toContain(SUPPORTER_CREST_GEMS[id].edge.replace(/#/g, '%23'))
     }
     expect(supporterCrestCssUrl('24m')).toContain('%23ffe8a6')
     expect(supporterCrestCssUrl('new')).not.toContain('%23ffe8a6')
