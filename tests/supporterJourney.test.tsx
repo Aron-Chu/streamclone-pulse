@@ -836,6 +836,96 @@ describe('Your card while the account is unknown', () => {
   })
 })
 
+describe('Your card states only the membership it knows', () => {
+  const NEUTRAL_LADDER = ['off', 'off', 'off', 'off', 'off']
+  const NEUTRAL_NEXT = 'A crest starts at New and grows at 3, 6, 12 and 24 months.'
+
+  it('says it is checking, not "not a Supporter yet", while a linked account waits for the membership read', async () => {
+    let answer!: (value: SupporterEntitlement) => void
+    const reply = new Promise<SupporterEntitlement>(resolve => { answer = resolve })
+    const view = await mount({ account: () => linked, entitlement: () => reply })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('membership-loading')
+      expect(yours.name().textContent).toBe(accountReference(ACCOUNT_ID))
+      expect(yours.sub()).toBe('StreamPulse account · checking membership…')
+      expect(yours.sample()).toBe(false)
+      expect(yours.steps()).toEqual(NEUTRAL_LADDER)
+      expect(yours.next()).toBe(NEUTRAL_NEXT)
+      expect(view.text()).not.toContain('not a Supporter yet')
+      await act(async () => answer(ready('active', { supportPeriods: 7, features: PERKS, cosmetics: HALO })))
+      expect(yours.sub()).toBe('Pulse Supporter · 7 months')
+      expect(yours.steps()).toEqual(['past', 'past', 'current', 'off', 'off'])
+    } finally { view.cleanup() }
+  })
+
+  it('treats a linked account still reported as not linked as checking', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ({ state: 'not_linked' }) })
+    try {
+      expect(card(view.host).sub()).toBe('StreamPulse account · checking membership…')
+      expect(card(view.host).sample()).toBe(false)
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterEntitlement | Error]>([
+    ['an error', { state: 'error' }],
+    ['a temporarily unavailable service', { state: 'unavailable', reason: 'temporarily_unavailable' }],
+    ['Supporter not deployed', { state: 'unavailable', reason: 'not_deployed' }],
+    ['a thrown read', new Error('worker gone')],
+  ])('says the membership is unavailable after %s, matching the footer', async (_label, entitlement) => {
+    const view = await mount({ account: () => linked, entitlement: () => entitlement })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('membership-unknown')
+      expect(yours.sub()).toBe('StreamPulse account · membership status unavailable')
+      expect(yours.sample()).toBe(false)
+      expect(yours.steps()).toEqual(NEUTRAL_LADDER)
+      expect(yours.next()).toBe(NEUTRAL_NEXT)
+      expect(view.text()).not.toContain('not a Supporter yet')
+    } finally { view.cleanup() }
+  })
+
+  it('claims nothing about membership before the account answers', async () => {
+    const view = await mount({ account: () => new Promise<SupporterAccountState>(() => {}), entitlement: () => new Promise<SupporterEntitlement>(() => {}) })
+    try {
+      const yours = card(view.host)
+      expect(yours.name().textContent).toBe('Checking your account…')
+      expect(yours.sub()).toBe('Your free tools still work.')
+      expect(yours.sample()).toBe(false)
+      expect(yours.steps()).toEqual(NEUTRAL_LADDER)
+      expect(view.text()).not.toMatch(/not a Supporter yet|Not signed in|Free tools work without/)
+    } finally { view.cleanup() }
+  })
+
+  it('names a membership under review and holds the crest it earned', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('review', { supportPeriods: 13, features: PERKS, cosmetics: HALO }) })
+    try {
+      const yours = card(view.host)
+      expect(view.state()).toBe('review')
+      expect(yours.sub()).toBe('StreamPulse account · membership needs review')
+      expect(yours.steps()).toEqual(['past', 'past', 'past', 'current', 'off'])
+      expect(yours.next()).toBe('Year-one crest earned · on hold while your membership is reviewed')
+      expect(view.text()).not.toContain('not a Supporter yet')
+      expect(view.text()).not.toContain('Your crest starts at New')
+    } finally { view.cleanup() }
+  })
+
+  it.each<[string, SupporterEntitlement, string]>([
+    ['pending', ready('pending', { supportPeriods: 0 }), 'StreamPulse account · payment confirming'],
+    ['none', ready('none'), 'StreamPulse account · not a Supporter yet'],
+    ['expired', ready('expired'), 'StreamPulse account · Supporter ended'],
+  ])('states a known %s membership as the server reports it', async (_status, entitlement, line) => {
+    const view = await mount({ account: () => linked, entitlement: () => entitlement })
+    try {
+      const yours = card(view.host)
+      expect(yours.sub()).toBe(line)
+      expect(yours.sample()).toBe(true)
+      expect(yours.steps()).toEqual(['start', 'off', 'off', 'off', 'off'])
+      expect(yours.next()).toBe('Your crest starts at New and grows at 3, 6, 12 and 24 months.')
+    } finally { view.cleanup() }
+  })
+})
+
 describe('change signals and stale reads', () => {
   it('re-reads quietly on a projection signal and ignores unrelated storage changes', async () => {
     let entitlement: SupporterEntitlement = ready('none')

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
+import type { SupporterStatus } from '../shared/supporterAccount.ts'
 import type { SupporterPaintStyle, SupporterTenure } from '../shared/supporterPaint.ts'
 import { DEFAULT_PULSE_BANNER, type PulseBannerPreference } from '../shared/storage.ts'
 import { TENURES, finishVars, tenureIndex } from '../supporter/kit.ts'
@@ -22,11 +23,16 @@ export type CardIdentity =
   | { kind: 'pulse'; reference?: string }
   | { kind: 'twitch'; displayName: string; picture?: string }
 
-/** The membership the card states. `supporter` means active or grace. */
+/**
+ * What the card can say about membership: the server's status, or `checking`
+ * before it arrives and `unknown` when it could not be read. Those two claim
+ * neither membership nor its absence.
+ */
+export type CardStatus = SupporterStatus | 'checking' | 'unknown'
+
+/** The membership the card states. */
 export interface CardMembership {
-  supporter: boolean
-  grace: boolean
-  ended: boolean
+  status: CardStatus
   months: number
   tenure: SupporterTenure
 }
@@ -53,6 +59,19 @@ const CARD_RAIN: PulseBannerPreference = { ...DEFAULT_PULSE_BANNER, mode: 'rain'
 
 const months = (count: number) => `${count} ${count === 1 ? 'month' : 'months'}`
 
+/** The card's line for a membership that is not active or in grace, after the account. */
+const STATUS_LINE: Record<Exclude<CardStatus, 'active' | 'grace'>, string> = {
+  checking: 'checking membership…',
+  unknown: 'membership status unavailable',
+  none: 'not a Supporter yet',
+  pending: 'payment confirming',
+  review: 'membership needs review',
+  expired: 'Supporter ended',
+}
+
+const isSupporter = (status: CardStatus) => status === 'active' || status === 'grace'
+const isKnown = (status: CardStatus) => status !== 'checking' && status !== 'unknown'
+
 /**
  * The Account & Supporter page's lead, direction B "Your card" of the
  * 2026-10-07 redesign: a Twitch-style viewer card with emote rain across its
@@ -67,8 +86,11 @@ export function SupporterCard({ identity, membership, look, children }: {
   look: CardLook
   children: ReactNode
 }) {
-  const own = membership.supporter && look.perks
-  const current = membership.supporter ? tenureIndex(membership.tenure) : -1
+  const { status } = membership
+  const known = isKnown(status)
+  const own = isSupporter(status) && look.perks
+  // A crest earned before a review is held, not lost.
+  const current = isSupporter(status) || (status === 'review' && membership.months > 0) ? tenureIndex(membership.tenure) : -1
   const name = cardName(identity)
   // Only a real identity wears the paint and crest; a status line never does.
   const painted = own && look.finish && (identity.kind === 'pulse' || identity.kind === 'twitch')
@@ -76,7 +98,7 @@ export function SupporterCard({ identity, membership, look, children }: {
     <section className="pulse-supporter-card" aria-label="Your Supporter card" data-supporter-card={own ? 'own' : 'sample'} style={finishVars(look.finish) as CSSProperties}>
       <div className="pulse-supporter-card-banner pulse-personal-panel">
         <PulseBannerBackdrop value={CARD_RAIN} perks />
-        {own ? null : <span className="pulse-supporter-card-sample">Sample look</span>}
+        {own || !known ? null : <span className="pulse-supporter-card-sample">Sample look</span>}
       </div>
       <div className="pulse-supporter-card-body">
         <CardAvatar identity={identity} />
@@ -93,7 +115,7 @@ export function SupporterCard({ identity, membership, look, children }: {
       <div className="pulse-supporter-card-ladder">
         <ol className="pulse-supporter-ladder" aria-label="Crest ladder" style={{ '--fill': current > 0 ? current / (LADDER.length - 1) : 0 } as CSSProperties}>
           {LADDER.map((step, index) => (
-            <li key={step.id} data-tier={step.id} data-step={current < 0 ? (index === 0 ? 'start' : 'off') : index < current ? 'past' : index === current ? 'current' : 'off'} aria-current={index === current ? 'step' : undefined}>
+            <li key={step.id} data-tier={step.id} data-step={current < 0 ? (known && index === 0 ? 'start' : 'off') : index < current ? 'past' : index === current ? 'current' : 'off'} aria-current={index === current ? 'step' : undefined}>
               <span><i className="pulse-crest" data-tenure={step.id} aria-hidden="true" /></span>
               <small>{step.label}</small>
             </li>
@@ -116,15 +138,19 @@ function cardName(identity: CardIdentity): string {
 }
 
 function subline(identity: CardIdentity, membership: CardMembership): string {
+  const { status } = membership
   if (identity.kind === 'none') return 'Free tools work without an account.'
-  if (membership.supporter) return ['Pulse Supporter', membership.months > 0 ? months(membership.months) : null, membership.grace ? 'payment due' : null].filter(Boolean).join(' · ')
-  if (identity.kind === 'unknown') return 'Your free tools still work.'
+  if (status === 'active' || status === 'grace') return ['Pulse Supporter', membership.months > 0 ? months(membership.months) : null, status === 'grace' ? 'payment due' : null].filter(Boolean).join(' · ')
+  const line = STATUS_LINE[status]
+  if (identity.kind === 'unknown') return isKnown(status) ? line.charAt(0).toUpperCase() + line.slice(1) : 'Your free tools still work.'
   const who = identity.kind === 'twitch' ? 'Signed in with Twitch' : 'StreamPulse account'
-  return `${who} · ${membership.ended ? 'Supporter ended' : 'not a Supporter yet'}`
+  return `${who} · ${line}`
 }
 
 function nextLine(membership: CardMembership, current: number): ReactNode {
+  if (!isKnown(membership.status)) return <>A crest starts at <b>New</b> and grows at 3, 6, 12 and 24 months.</>
   if (current < 0) return <>Your crest starts at <b>New</b> and grows at 3, 6, 12 and 24 months.</>
+  if (membership.status === 'review') return <><b>{TENURES[current].title}</b> earned · on hold while your membership is reviewed</>
   const now = <><b>{TENURES[current].title}</b> now</>
   const next = LADDER[current + 1]
   if (!next) return <>{now} · the top crest</>

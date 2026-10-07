@@ -16,7 +16,7 @@ import {
 import { DEFAULT_SUPPORTER_PAINT, supporterTenureForMonths } from '../shared/supporterPaint.ts'
 import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
-import { SupporterCard, type CardIdentity, type CardLook } from './SupporterCard.tsx'
+import { SupporterCard, type CardIdentity, type CardLook, type CardStatus } from './SupporterCard.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 
 /**
@@ -727,6 +727,9 @@ export function SupporterJourney({ onEntitlement, look, children }: {
     : !account ? { kind: 'unknown', reason: 'checking' }
     : account.state === 'error' || accountDown ? { kind: 'unknown', reason: 'unavailable' }
     : { kind: 'none' }
+  // Likewise the membership: before the server answers, or when it cannot, the
+  // card says it is checking or unavailable, never "not a Supporter".
+  const cardStatus: CardStatus = status ?? (identity.kind === 'none' ? 'none' : entitlement?.state === 'error' || entitlement?.state === 'unavailable' ? 'unknown' : 'checking')
   const perks = !stale && supporterPerksAllowed(entitlement)
   const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
@@ -739,7 +742,7 @@ export function SupporterJourney({ onEntitlement, look, children }: {
     <>
       <SupporterCard
         identity={identity}
-        membership={{ supporter: isSupporter, grace: status === 'grace', ended: status === 'expired', months: periods, tenure: supporterTenureForMonths(periods) }}
+        membership={{ status: cardStatus, months: periods, tenure: supporterTenureForMonths(periods) }}
         look={cardLook}
       >
         <div className="pulse-journey" data-journey-state={state} data-tone={status === 'grace' && state === 'grace' ? 'warn' : undefined}>
