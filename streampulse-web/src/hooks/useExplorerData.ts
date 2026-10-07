@@ -52,6 +52,8 @@ export function useExplorerData(options: UseExplorerDataOptions) {
   const [announcement, setAnnouncement] = useState('')
   const requestRef = useRef(0)
   const controllerRef = useRef<AbortController | null>(null)
+  // A continuation belongs to the query that requested it; a filter change aborts it.
+  const loadMoreRef = useRef<AbortController | null>(null)
 
   const load = useCallback(async () => {
     if (!enabled) return
@@ -104,18 +106,25 @@ export function useExplorerData(options: UseExplorerDataOptions) {
   const loadMore = useCallback(async () => {
     if (!data?.nextCursor || loadingMore || broadcastId) return
     const cursor = data.nextCursor
+    const controller = new AbortController()
+    loadMoreRef.current = controller
     setLoadingMore(true)
     try {
-      const page = await fetchExplorer({ ...query, cursor, limit })
+      const page = await fetchExplorer({ ...query, cursor, limit, abortSignal: controller.signal })
+      if (controller.signal.aborted) return
       const byId = new Map(data.broadcasts.map((broadcast) => [broadcast.id, broadcast]))
       for (const broadcast of page.broadcasts) byId.set(broadcast.id, broadcast)
       const merged = { ...data, broadcasts: [...byId.values()], nextCursor: page.nextCursor, generatedAt: page.generatedAt, dataThrough: page.dataThrough }
       cache.set(queryKey, merged)
       setData(merged)
     } catch (caught) {
+      if (controller.signal.aborted) return
       setError(isApiError(caught) ? caught.message : 'Could not load more broadcasts')
     } finally {
-      setLoadingMore(false)
+      if (loadMoreRef.current === controller) {
+        loadMoreRef.current = null
+        setLoadingMore(false)
+      }
     }
   }, [broadcastId, data, limit, loadingMore, query.category, query.q, query.signal, query.sort, query.state, query.window, queryKey])
 
@@ -123,6 +132,7 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     const cached = cache.get(queryKey)
     setData(cached ?? null)
     setLoading(enabled && !cached)
+    setLoadingMore(false)
     setError(null)
     setAnnouncement('')
     void load()
@@ -134,6 +144,8 @@ export function useExplorerData(options: UseExplorerDataOptions) {
     return () => {
       requestRef.current += 1
       controllerRef.current?.abort(new DOMException('unmounted', 'AbortError'))
+      loadMoreRef.current?.abort(new DOMException('superseded', 'AbortError'))
+      loadMoreRef.current = null
       if (timer) window.clearInterval(timer)
     }
   }, [enabled, load, pollMs, queryKey])
