@@ -18,6 +18,8 @@ export interface LibraryWorkspaceProps {
   /** Optional display-only analysis projections keyed by canonical moment ID. */
   contexts?: Readonly<Record<string, MomentContextState>>
   presentations?: Readonly<Record<string, MomentPresentation>>
+  /** Portal origin for moment Analytics links; production when omitted. */
+  analyticsOrigin?: string
   now?: () => number
 }
 
@@ -59,7 +61,7 @@ function BookmarksNotice({ state, onRetry }: { state: BookmarksState; onRetry: (
   )
 }
 
-export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, now = Date.now }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now }: LibraryWorkspaceProps) {
   const library = useLibrary(repository)
   const [view, setView] = useState<LibraryView>(initialView)
   const [query, setQuery] = useState('')
@@ -166,7 +168,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
           {items.length ? <p className="pl-muted" role="status">{items.length} {items.length === 1 ? 'moment' : 'moments'}{query.trim() ? ' matching your search' : ''}</p> : null}
 
           {pageItems.length ? <ul className="pl-list">{pageItems.map(moment => <MomentListItem key={moment.id} moment={moment} recent={view === 'recent'} busy={library.busy}
-            personalWorkspace
+            personalWorkspace analyticsOrigin={analyticsOrigin}
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
             onSave={save} onEdit={setEditing} onPreview={moment => setPreviewId(moment.id)} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
             onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>

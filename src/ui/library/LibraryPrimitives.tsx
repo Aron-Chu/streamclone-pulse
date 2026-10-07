@@ -74,8 +74,10 @@ export function MomentEditor({ moment, personalWorkspace = false, collections, s
   </LibraryDialog>
 }
 
-export function MomentListItem({ moment, personalWorkspace = false, recent, busy, onSave, onEdit, onRemove, onOpenLink, onPreview, presentation, context }: {
+export function MomentListItem({ moment, personalWorkspace = false, analyticsOrigin = DEFAULT_WEB_ANALYTICS_BASE_URL, recent, busy, onSave, onEdit, onRemove, onOpenLink, onPreview, presentation, context }: {
   personalWorkspace?: boolean
+  /** Portal origin for the Analytics link, derived from the configured API (dev → local portal). */
+  analyticsOrigin?: string
   moment: LibraryMoment; recent: boolean; busy: boolean; onSave: (reference: MomentReference) => void
   onEdit: (moment: LibraryMoment) => void; onRemove: (moment: LibraryMoment) => void; onOpenLink?: (reference: MomentReference) => void
   onPreview?: (moment: LibraryMoment) => void
@@ -88,7 +90,7 @@ export function MomentListItem({ moment, personalWorkspace = false, recent, busy
   const url = replayUrl(moment)
   const replayStatus = moment.availability === 'unresolved' ? 'Replay link unavailable' : 'Source unavailable'
   const date = recent ? moment.jumpedAt : moment.savedAt
-  const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: DEFAULT_WEB_ANALYTICS_BASE_URL, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
+  const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
   return <li className="pl-moment" data-moment-id={moment.id}>
     <MomentMedia moment={moment} presentation={presentation} compact />
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong>
