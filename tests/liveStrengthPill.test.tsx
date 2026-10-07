@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ExtensionPeak, ExtensionRollup, PulsePayload } from '../src/shared/messages.ts'
 import { LiveStatsBand } from '../src/ui/LiveStatsBand.tsx'
 import { momentStrength } from '../src/ui/momentStrength.ts'
+import { shadowStyles } from '../src/ui/theme.ts'
 
 const MINUTES = 40
 const MOMENT_MINUTE = 30
@@ -67,6 +68,14 @@ function render(withFullHistory: boolean): string {
   )
 }
 
+/** Declarations of the single shadow-style rule whose selector is `selector`. */
+function shadowRule(selector: string): Record<string, string> {
+  const rules = [...shadowStyles.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .filter(([, head]) => head.split(',').some(part => part.trim() === selector))
+  expect(rules).toHaveLength(1)
+  return Object.fromEntries(rules[0][2].split(';').map(d => d.split(':').map(v => v.trim())).filter(([k, v]) => k && v))
+}
+
 describe('Live now strongest moment strength pill', () => {
   it('shows "<N>× usual" under the time once validated full history is loaded', () => {
     const row = featuredRow(render(true))
@@ -88,5 +97,16 @@ describe('Live now strongest moment strength pill', () => {
     expect(row).not.toContain('usual')
     expect(row).not.toContain('title="')
     expect(row).toContain('<span style="flex:1">Strongest loaded moment · 00:30:00</span>')
+  })
+
+  it('keeps the time line to one line, so a narrow or compact panel cannot grow the row', () => {
+    // The chip sets white-space: normal; a wrapped first line would stack the
+    // pill under two 12px lines (50px). It ellipsizes instead.
+    expect(shadowRule('.pulse-strength-two > :first-child')).toMatchObject({
+      overflow: 'hidden',
+      'text-overflow': 'ellipsis',
+      'white-space': 'nowrap',
+    })
+    expect(shadowRule('.pulse-strength-two')).toMatchObject({ 'line-height': '12px', 'min-width': '0' })
   })
 })

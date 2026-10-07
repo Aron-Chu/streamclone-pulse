@@ -201,10 +201,44 @@ test.describe('chart preview/lock interactions', () => {
     expect(featuredBox.height).toBeCloseTo(40, 0)
     expect(pillBox.height).toBeCloseTo(14, 0)
     expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(featuredBox.y + featuredBox.height)
+    // At the default width the whole time line fits; nothing is ellipsized.
+    const line = featured.locator('.pulse-strength-two > :first-child')
+    expect(await line.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     await featured.click()
     // Its ranked moment shows in the Top Moments card.
     await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-top-moment-card="selected"] [data-selected-moment-card="true"]`)).toBeVisible()
     await assertBookmarkLabel(extension.page)
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('featured moment row stays 40px with the pill in a narrow compact panel', async ({ extension, prepare, evidence }) => {
+    // Compact density in a 300px chat column leaves the time line less room
+    // than it needs; if it wrapped, the pill would stack under two lines and
+    // the row (and the chart under it) would grow to 50px when it appears.
+    await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: { densityPreference: 'compact' } })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await extension.page.addStyleTag({ content: '.channel-root__right-column { min-width: 300px !important; width: 300px !important; max-width: 300px !important; }' })
+    await expect
+      .poll(async () => Math.round((await extension.page.locator(`#${PULSE_ROOT_ID}`).boundingBox())?.width ?? 0), { timeout: 10_000 })
+      .toBe(300)
+    const featured = extension.page.locator(`#${PULSE_ROOT_ID} [data-featured-moment="true"]`)
+    const pill = featured.locator('.pulse-strength-pill')
+    await expect(pill).toHaveText('2.4× usual')
+    const featuredBox = (await featured.boundingBox())!
+    const pillBox = (await pill.boundingBox())!
+    expect(featuredBox.height).toBeCloseTo(40, 0)
+    expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(featuredBox.y + featuredBox.height)
+    // The time line is narrower than its text here, so it ellipsizes on one
+    // line (the hover title still carries the full time).
+    const line = featured.locator('.pulse-strength-two > :first-child')
+    const fit = await line.evaluate(el => {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      return { client: el.clientWidth, scroll: el.scrollWidth, lines: new Set(Array.from(range.getClientRects()).map(rect => Math.round(rect.top))).size }
+    })
+    expect(fit.scroll).toBeGreaterThan(fit.client)
+    expect(fit.lines).toBe(1)
     assertNoUncaughtErrors(evidence)
   })
 

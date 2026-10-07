@@ -335,6 +335,9 @@ export const shadowStyles = `
     outline-offset: 2px;
   }
   .pulse-strength-two { display: grid; gap: 2px; line-height: 12px; min-width: 0; }
+  /* One line only: a wrapped first line would stack the pill under two 12px
+     lines and grow the row past 40px in narrow or compact panels. */
+  .pulse-strength-two > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-strength-line2 { align-items: center; display: flex; gap: 5px; height: 14px; min-width: 0; }
   .pulse-strength-pill {
     align-items: center;
