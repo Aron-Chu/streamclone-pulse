@@ -277,6 +277,50 @@ describe('overview chart over missing buckets', () => {
     }
   })
 
+  describe('on thinned points', () => {
+    // 480 Full buckets of 254s drawn as 120 points; point 25 is buckets 100-103.
+    const real = (index: number, chatCount = 40): ExtensionRollup => ({
+      offsetSeconds: index * 254, chatCount, sevenTvEmoteCount: chatCount ? 4 : 0, viewerCount: 500, viewerSamples: 1,
+    })
+    const hole = (index: number): ExtensionRollup => ({ offsetSeconds: index * 254, chatCount: 0, sevenTvEmoteCount: 0, missing: true })
+    const stream = (bucket: (index: number) => ExtensionRollup | null) =>
+      Array.from({ length: 480 }, (_, index) => bucket(index) ?? real(index))
+    const bands = (rollups: ExtensionRollup[]) => {
+      const markup = renderToStaticMarkup(<PulseOverviewChart rollups={rollups} durationSeconds={480 * 254} />)
+      const plot = markup.match(/<rect[^>]*data-chart-scrubber="true"[^>]*>/)![0]
+      const plotStart = Number(plot.match(/ x="([\d.]+)"/)![1])
+      const plotWidth = Number(plot.match(/ width="([\d.]+)"/)![1])
+      return [...markup.matchAll(/<rect x="(-?[\d.]+)"[^>]*opacity="([\d.]+)" data-chart-no-data=""/g)].map(match => ({
+        point: Math.round(((Number(match[1]) - plotStart) / plotWidth) * 119 + 0.5),
+        opacity: Number(match[2]),
+      }))
+    }
+
+    it('draws a real quiet bucket over a hole that shares its point', () => {
+      // Bucket 100 missing, 101-103 real but quiet: point 25 keeps a real
+      // bucket (and its viewer sample), with a light no-data share.
+      const rollups = stream(index => index === 100 ? hole(index) : index > 100 && index < 104 ? real(index, 0) : null)
+      const drawn = viewportBuckets(rollups, null, EXTENSION_CHART_MAX_POINTS)
+      expect(drawn[25]).toBe(rollups[101])
+      expect(drawn[25]!.viewerCount).toBe(500)
+      expect(bands(rollups)).toEqual([{ point: 25, opacity: 0.125 }])
+    })
+
+    it('shades a hole that the point does not draw, matching the gap notice', () => {
+      // Bucket 100 real and quiet, 101-103 missing.
+      const rollups = stream(index => index === 100 ? real(index, 0) : index > 100 && index < 104 ? hole(index) : null)
+      expect(viewportBuckets(rollups, null, EXTENSION_CHART_MAX_POINTS)[25]).toBe(rollups[100])
+      expect(describeRollupGap(rollups, true)).toBe('Missing chat data from 07:07:34 to 07:20:16')
+      expect(bands(rollups)).toEqual([{ point: 25, opacity: 0.375 }])
+    })
+
+    it('keeps a fully missing point at the full no-data shade', () => {
+      const rollups = stream(index => index >= 100 && index < 104 ? hole(index) : null)
+      expect(viewportBuckets(rollups, null, EXTENSION_CHART_MAX_POINTS)[25]!.missing).toBe(true)
+      expect(bands(rollups)).toEqual([{ point: 25, opacity: 0.5 }])
+    })
+  })
+
   it('keeps the short stream-start ramp over real quiet buckets', () => {
     const rollups: ExtensionRollup[] = Array.from({ length: 60 }, (_, index) => ({
       offsetSeconds: index * 60,

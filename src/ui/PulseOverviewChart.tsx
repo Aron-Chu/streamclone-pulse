@@ -1769,19 +1769,24 @@ function PulseOverviewChartImpl({
             fill={CHART_INTERACTION.activityFill}
           />
           {/* Missing buckets get a dim no-data column so a hole never reads as a
-              quiet minute (their bars are 1px at near-zero opacity). */}
-          {rollups.map((point, index) => point.missing ? (
-            <rect
-              key={index}
-              x={plotXForIndex(index - 0.5, n, PAD_LEFT, plotWidth)}
-              y={activityTop}
-              width={plotWidth / Math.max(1, n - 1)}
-              height={activityBottom - activityTop}
-              fill={CHART_INTERACTION.gridLine}
-              opacity={0.5}
-              data-chart-no-data=""
-            />
-          ) : null)}
+              quiet minute (their bars are 1px at near-zero opacity). A thinned
+              point shades by the share of its source buckets that are missing,
+              so the band marks the same holes as the gap notice. */}
+          {visibleRanges.map(([start, end], index) => {
+            const missingShare = sourceRollups.slice(start, end).filter(point => point.missing).length / (end - start)
+            return missingShare > 0 ? (
+              <rect
+                key={index}
+                x={plotXForIndex(index - 0.5, n, PAD_LEFT, plotWidth)}
+                y={activityTop}
+                width={plotWidth / Math.max(1, n - 1)}
+                height={activityBottom - activityTop}
+                fill={CHART_INTERACTION.gridLine}
+                opacity={0.5 * missingShare}
+                data-chart-no-data=""
+              />
+            ) : null
+          })}
           {pinColumn ? (
             <rect
               x={pinColumn.x}
