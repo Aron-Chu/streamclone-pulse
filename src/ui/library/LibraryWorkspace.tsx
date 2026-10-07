@@ -199,7 +199,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
           {view === 'saved' && deviceSaves ? <section className="pl-stack pl-device-saves" aria-labelledby={`${id}-device-saves`}>
             <h3 id={`${id}-device-saves`}>Saved on this device</h3>
             <p className="pl-muted">{deviceSaves === 1 ? '1 bookmark' : `${deviceSaves} bookmarks`} saved without an account {deviceSaves === 1 ? 'is' : 'are'} kept on this device, not in your account.</p>
-            <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy}
+            <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy} analyticsOrigin={analyticsOrigin}
               onRemove={moment => setConfirmation({ kind: 'remove', moment })}
               onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
           </section> : null}

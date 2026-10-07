@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { MyMomentsPage } from '../src/options/MyMomentsPage.tsx'
-import { MomentListItem } from '../src/ui/library/LibraryPrimitives.tsx'
+import { DeviceSaveItem, MomentListItem } from '../src/ui/library/LibraryPrimitives.tsx'
 import type { LibraryMoment } from '../src/ui/library/model.ts'
 import type { MyMomentsSnapshot } from '../src/shared/myMoments.ts'
 
@@ -69,4 +69,14 @@ it('uses the given origin on a list row and production when none is given', () =
     onSave: () => undefined, onEdit: () => undefined, onRemove: () => undefined }))
   expect(row('http://localhost:5173')).toContain('href="http://localhost:5173/analytics/xqc/123456#t=754"')
   expect(row()).toContain('href="https://streampulse.stream/analytics/xqc/123456#t=754"')
+})
+
+it('gives a stream-only device save the same Analytics link, on the given origin or production', () => {
+  const streamOnly: LibraryMoment = { ...moment, id: 'local:b', vodId: null, availability: 'unresolved' }
+  const row = (analyticsOrigin?: string) => renderToStaticMarkup(createElement(DeviceSaveItem, { moment: streamOnly, analyticsOrigin, busy: false, onRemove: () => undefined }))
+  expect(row('http://localhost:5173')).toContain('Replay link unavailable')
+  expect(row('http://localhost:5173')).toContain('href="http://localhost:5173/analytics/xqc/123456#t=754"')
+  expect(row()).toContain('href="https://streampulse.stream/analytics/xqc/123456#t=754"')
+  // No stream id: nothing to open, and no channel-route link that would pick another stream.
+  expect(renderToStaticMarkup(createElement(DeviceSaveItem, { moment: { ...streamOnly, streamId: undefined }, busy: false, onRemove: () => undefined }))).not.toContain('/analytics/')
 })

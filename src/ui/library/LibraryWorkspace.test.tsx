@@ -15,9 +15,9 @@ Object.defineProperties(HTMLDialogElement.prototype, {
 })
 let root: Root | undefined
 let container: HTMLDivElement
-async function render(repository: LibraryRepository) {
+async function render(repository: LibraryRepository, analyticsOrigin?: string) {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
-  await act(async () => { root!.render(<LibraryWorkspace repository={repository} onExport={() => {}} contexts={demoContexts} presentations={demoPresentations} />); await new Promise(r => setTimeout(r, 5)) })
+  await act(async () => { root!.render(<LibraryWorkspace repository={repository} onExport={() => {}} contexts={demoContexts} presentations={demoPresentations} analyticsOrigin={analyticsOrigin} />); await new Promise(r => setTimeout(r, 5)) })
   await act(async () => { await new Promise(r => setTimeout(r, 5)) })
 }
 async function click(text: string) {
@@ -169,7 +169,7 @@ describe('My Moments frontend', () => {
     expect(container.textContent).not.toContain('Could not reach StreamPulse')
     expect(container.textContent).not.toContain('saved without an account')
   })
-  it('lists pre-account device saves while an account is linked, with replay links and remove', async () => {
+  it('lists pre-account device saves while an account is linked, with replay and analytics links and remove', async () => {
     const save = (id: string, extra: object) => ({ id, login: 'xqc', streamId: '123456', offsetSeconds: 754, label: '', notes: '', source: 'extension',
       createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-01T12:00:00.000Z', ...extra })
     const deviceBookmarks = [
@@ -180,14 +180,20 @@ describe('My Moments frontend', () => {
     const commands: unknown[] = []
     const after = { ...snapshot, deviceBookmarks: deviceBookmarks.slice(1) }
     await render({ load: async () => snapshot as unknown as LibrarySnapshot,
-      execute: async command => { commands.push(command); return after as unknown as LibrarySnapshot }, export: async () => '' })
+      execute: async command => { commands.push(command); return after as unknown as LibrarySnapshot }, export: async () => '' }, 'http://localhost:5173')
     expect(container.textContent).toContain('2 bookmarks saved without an account are kept on this device, not in your account.')
     expect(container.textContent).toContain('No account bookmarks yet')
     const rows = [...container.querySelectorAll<HTMLElement>('[data-device-save="true"]')]
-    // Newest first; a stream-only save keeps the fallback title and no replay link.
+    // Newest first; a stream-only save keeps the fallback title and no replay
+    // link, but still opens its stream in Analytics on the configured portal,
+    // as it did before the account linked.
     expect(rows.map(row => row.dataset.momentId)).toEqual(['local:b', 'local:a'])
     expect(rows[0].textContent).toContain('Saved moment')
     expect(rows[0].textContent).toContain('Replay link unavailable')
+    expect(rows[0].querySelector('a[href*="/videos/"]')).toBeNull()
+    const analyticsHref = (row: HTMLElement) => row.querySelector<HTMLAnchorElement>('a[aria-label^="Open analytics for"]')?.getAttribute('href')
+    expect(analyticsHref(rows[0])).toBe('http://localhost:5173/analytics/xqc/123456#t=754')
+    expect(analyticsHref(rows[1])).toBe('http://localhost:5173/analytics/xqc/123456#t=754')
     expect(rows[1].textContent).toContain('Chat spike')
     expect(rows[1].textContent).toContain('xqc · 00:12:34')
     expect(rows[1].textContent).toContain('kept here')
