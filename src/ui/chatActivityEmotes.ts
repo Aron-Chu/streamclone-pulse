@@ -545,7 +545,7 @@ type PrepareChartRollupsCache = {
 let prepareChartRollupsCache: PrepareChartRollupsCache | null = null
 
 /** Overlay the recurring recent poll onto a retained Full-history snapshot. */
-function mergeRecentRollupTail(
+export function mergeRecentRollupTail(
   fullRollups: ExtensionRollup[],
   recentRollups: ExtensionRollup[],
 ): ExtensionRollup[] {
