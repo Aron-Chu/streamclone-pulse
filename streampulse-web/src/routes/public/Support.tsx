@@ -33,6 +33,9 @@ type CardState =
   | Exclude<SupportSendOutcome, { kind: 'rate_limited' }>
   | { kind: 'rate_limited'; until: number; seconds: number | null }
 
+/** Where keyboard focus goes after a send or a reset, so it never falls to <body>. */
+type FocusTarget = 'message' | 'email' | 'submit'
+
 type TurnstileAPI = {
   render: (
     el: HTMLElement,
@@ -84,9 +87,14 @@ function waitPhrase(seconds: number): string {
   return `${Math.round(seconds / 60)} minutes`
 }
 
-function UnavailablePanel({ keptMessage }: { keptMessage?: string }) {
+function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: string; takeFocus?: boolean }) {
   const [diagnostics, setDiagnostics] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
+  const leadRef = useRef<HTMLParagraphElement | null>(null)
+  // Only when it replaces a form the reader was using; never on page load.
+  useEffect(() => {
+    if (takeFocus) leadRef.current?.focus()
+  }, [takeFocus])
   async function copyDiagnostics() {
     const summary = supportDiagnostics({ userAgent: navigator.userAgent, online: navigator.onLine,
       width: window.innerWidth, height: window.innerHeight })
@@ -96,7 +104,7 @@ function UnavailablePanel({ keptMessage }: { keptMessage?: string }) {
   }
   return (
     <div className="feedback-off" data-testid="support-form-unavailable">
-      <p className="feedback-off__lead" role="status">
+      <p className="feedback-off__lead" role="status" ref={leadRef} tabIndex={-1}>
         The hosted form is unavailable right now.
         <small>For non-sensitive questions, open a public issue. GitHub posts are public, so leave out personal details.</small>
       </p>
@@ -142,6 +150,12 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   const widgetIdRef = useRef<string | null>(null)
   const submitControllerRef = useRef<AbortController | null>(null)
   const sentHeadingRef = useRef<HTMLParagraphElement | null>(null)
+  const formRef = useRef<HTMLFormElement | null>(null)
+  const messageRef = useRef<HTMLTextAreaElement | null>(null)
+  const emailRef = useRef<HTMLInputElement | null>(null)
+  const submitRef = useRef<HTMLButtonElement | null>(null)
+  const pendingFocusRef = useRef<FocusTarget | null>(null)
+  const [panelTakesFocus, setPanelTakesFocus] = useState(false)
   useEffect(() => () => {
     submitControllerRef.current?.abort()
     if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
@@ -176,12 +190,12 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
           'expired-callback': () => setTurnstileToken(''),
           'error-callback': () => {
             setTurnstileToken('')
-            setState({ kind: 'unavailable' })
+            becomeUnavailable()
           },
         })
       })
       .catch(() => {
-        if (!cancelled) setState({ kind: 'unavailable' })
+        if (!cancelled) becomeUnavailable()
       })
     return () => {
       cancelled = true
@@ -213,6 +227,22 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   useEffect(() => {
     if (state.kind === 'sent') sentHeadingRef.current?.focus()
   }, [state.kind])
+
+  // Runs after the new state's markup is in place, so the target exists.
+  useEffect(() => {
+    const want = pendingFocusRef.current
+    if (!want) return
+    pendingFocusRef.current = null
+    const target = want === 'message' ? messageRef.current : want === 'email' ? emailRef.current : submitRef.current
+    if (target && document.activeElement !== target) target.focus()
+  }, [state])
+
+  /** The unavailable panel replaces the form; it takes focus only if the reader was in the form. */
+  function becomeUnavailable() {
+    const active = typeof document === 'undefined' ? null : document.activeElement
+    setPanelTakesFocus(!!active && !!formRef.current?.contains(active))
+    setState({ kind: 'unavailable' })
+  }
 
   /** Every attempt spends its challenge token; the widget issues a fresh one. */
   function resetChallenge() {
@@ -273,6 +303,13 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
       setState(outcome)
       return
     }
+    if (outcome.kind === 'unavailable') {
+      becomeUnavailable()
+      return
+    }
+    // Keep the reader where they can act: on the field the server pointed at,
+    // otherwise on Send / Try again (the alert says what happened).
+    pendingFocusRef.current = outcome.kind === 'rejected' && outcome.field ? outcome.field : 'submit'
     if (outcome.kind === 'rate_limited') {
       const waitMs = outcome.retryAfterMs ?? RATE_LIMIT_FALLBACK_MS
       setState({
@@ -285,7 +322,9 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
     setState(outcome)
   }
 
-  if (state.kind === 'unavailable') return <UnavailablePanel keptMessage={message.trim() ? message : undefined} />
+  if (state.kind === 'unavailable') {
+    return <UnavailablePanel keptMessage={message.trim() ? message : undefined} takeFocus={panelTakesFocus} />
+  }
 
   const sending = state.kind === 'sending'
   const messageBytes = utf8ByteLength(message.trim())
@@ -321,20 +360,24 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             <p className="feedback-done__title" ref={sentHeadingRef} tabIndex={-1}>Saved. Thank you.</p>
             <p className="feedback-done__sub">Keep this ID if you follow up.</p>
             <p className="feedback-done__ref">Case ID: <code>{state.caseId}</code></p>
-            <button type="button" className={buttonClass('outline', 'default')} onClick={() => setState({ kind: 'idle' })}>
+            <button type="button" className={buttonClass('outline', 'default')}
+              onClick={() => { pendingFocusRef.current = 'message'; setState({ kind: 'idle' }) }}>
               Send something else
             </button>
           </div>
         </div>
       ) : (
-        <form data-testid="support-form" className="feedback-form" onSubmit={onSubmit} aria-busy={sending} noValidate>
-          <fieldset className="feedback-form__fields" disabled={sending}>
+        <form data-testid="support-form" className="feedback-form" onSubmit={onSubmit} aria-busy={sending} noValidate ref={formRef}>
+          {/* Paused, not disabled, while sending: disabling the control that has
+              focus drops focus to <body> and the keyboard reader starts over. */}
+          <div className="feedback-form__fields" data-paused={sending ? 'true' : undefined}>
             <fieldset className="feedback-choice">
               <legend className="feedback-sr">What is this about?</legend>
               {FEEDBACK_KINDS.map(option => (
                 <label key={option.value} className={`feedback-choice__opt${kind === option.value ? ' is-on' : ''}`}>
                   <input type="radio" name="feedback-kind" value={option.value} checked={kind === option.value}
-                    onChange={() => { setKind(option.value); edited() }} />
+                    aria-disabled={sending ? true : undefined}
+                    onChange={() => { if (sending) return; setKind(option.value); edited() }} />
                   {option.value === 'bug' ? <AlertCircle aria-hidden="true" /> : <Lightbulb aria-hidden="true" />}
                   {option.label}
                 </label>
@@ -343,7 +386,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
 
             <div className="feedback-field">
               <label className="feedback-label" htmlFor="feedback-message">Your message</label>
-              <textarea id="feedback-message" className="feedback-input" rows={5} value={message}
+              <textarea id="feedback-message" ref={messageRef} className="feedback-input" rows={5} value={message} readOnly={sending}
                 placeholder={kind === 'bug' ? 'What happened? Mention the channel if it helps.' : 'What would make StreamPulse better for you?'}
                 aria-invalid={messageError ? true : undefined}
                 aria-describedby={[messageError ? 'feedback-message-hint' : '', messageBytes >= COUNTER_FROM ? 'feedback-message-count' : ''].filter(Boolean).join(' ') || undefined}
@@ -358,8 +401,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
 
             <div className="feedback-field">
               <label className="feedback-label" htmlFor="feedback-email">Email <small>· optional, only if you&apos;d like a reply</small></label>
-              <input id="feedback-email" className="feedback-input" type="email" autoComplete="email" maxLength={254}
-                placeholder="you@example.com" value={email}
+              <input id="feedback-email" ref={emailRef} className="feedback-input" type="email" autoComplete="email" maxLength={254}
+                placeholder="you@example.com" value={email} readOnly={sending}
                 aria-invalid={emailError ? true : undefined}
                 aria-describedby={emailError ? 'feedback-email-hint' : undefined}
                 onChange={e => { setEmail(e.target.value); edited() }} />
@@ -368,14 +411,15 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
 
             {email.trim() ? (
               <label className="feedback-check">
-                <input type="checkbox" checked={contactConsent} onChange={e => { setContactConsent(e.target.checked); edited() }} />
+                <input type="checkbox" checked={contactConsent} aria-disabled={sending ? true : undefined}
+                  onChange={e => { if (sending) return; setContactConsent(e.target.checked); edited() }} />
                 <span>I consent to being contacted at this email about this report.</span>
               </label>
             ) : null}
             <label className="feedback-check">
-              <input type="checkbox" checked={consent} aria-required="true"
+              <input type="checkbox" checked={consent} aria-required="true" aria-disabled={sending ? true : undefined}
                 aria-invalid={state.kind === 'invalid' && state.error === 'consent_required' ? true : undefined}
-                onChange={e => { setConsent(e.target.checked); edited() }} />
+                onChange={e => { if (sending) return; setConsent(e.target.checked); edited() }} />
               <span>I consent to submitting this text to StreamPulse support.</span>
             </label>
             {state.kind === 'invalid' && state.error === 'consent_required' ? <p className="feedback-hint">{DRAFT_ERRORS.consent_required}</p> : null}
@@ -390,7 +434,10 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             ) : null}
 
             <div className="feedback-row">
-              <button type="submit" className={buttonClass('default', 'lg')} disabled={state.kind === 'rate_limited'}>
+              {/* aria-disabled, not disabled, so the button keeps focus; onSubmit
+                  ignores presses while sending or rate limited. */}
+              <button type="submit" ref={submitRef} className={buttonClass('default', 'lg')}
+                aria-disabled={sending || state.kind === 'rate_limited' ? true : undefined}>
                 {sending ? <><span className="feedback-spin" aria-hidden="true" />Sending…</>
                   : state.kind === 'failed' || state.kind === 'check_failed' ? 'Try again'
                   : <>Send feedback<ArrowRight aria-hidden="true" /></>}
@@ -400,7 +447,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
                 <p className="feedback-muted" aria-hidden="true" data-testid="support-rate-countdown">Send again in {waitSeconds}s</p>
               ) : null}
             </div>
-          </fieldset>
+          </div>
           <p className="feedback-legal">
             How we handle it: <Link to="/privacy">Privacy policy</Link> · Privacy or legal: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> · Security: see <a href="#security">Contact</a> below
           </p>

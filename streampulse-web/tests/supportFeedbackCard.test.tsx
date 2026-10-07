@@ -47,6 +47,8 @@ function message() { return screen.getByLabelText('Your message') as HTMLTextAre
 function typeMessage(text: string) { fireEvent.change(message(), { target: { value: text } }) }
 function consent() { fireEvent.click(screen.getByLabelText('I consent to submitting this text to StreamPulse support.')) }
 function send() { fireEvent.submit(screen.getByTestId('support-form')) }
+function submitButton() { return screen.getByRole('button', { name: /Send feedback|Try again/ }) as HTMLButtonElement }
+function consentBox() { return screen.getByLabelText('I consent to submitting this text to StreamPulse support.') as HTMLInputElement }
 
 beforeEach(() => {
   vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
@@ -152,19 +154,74 @@ describe('support feedback card', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('shows a sending state that pauses the form', async () => {
+  it('shows a sending state that pauses the form without taking focus off Send', async () => {
     let release: (response: Response) => void = () => {}
     respondWith(() => new Promise<Response>(resolve => { release = resolve }))
     await renderCard()
     typeMessage('Slow network')
     consent()
     issue('tok-1')
+    const submit = submitButton()
+    submit.focus()
     send()
     expect(await screen.findByText('Sending…')).toBeTruthy()
-    expect(message().closest('fieldset')!.disabled).toBe(true)
     expect(screen.getByTestId('support-form').getAttribute('aria-busy')).toBe('true')
+    // Paused, not disabled: Chrome blurs a focused control that becomes
+    // disabled, which dropped the keyboard reader back to <body>.
+    expect(submit.matches(':disabled')).toBe(false)
+    expect(submit.getAttribute('aria-disabled')).toBe('true')
+    expect(document.activeElement).toBe(submit)
+    expect(message().readOnly).toBe(true)
+    // While the first send is in flight, edits and a second press do nothing.
+    fireEvent.click(consentBox())
+    expect(consentBox().checked).toBe(true)
+    send()
+    expect(requests).toHaveLength(1)
     release(json(200, { case_id: 'c1' })())
     await screen.findByText('Saved. Thank you.')
+  })
+
+  it('keeps focus on Send after a failed send and moves it to the message after "Send something else"', async () => {
+    respondWith(json(500, { error: 'boom' }), json(200, { case_id: 'c1' }))
+    await renderCard()
+    typeMessage('Focus check')
+    consent()
+    issue('tok-1')
+    submitButton().focus()
+    send()
+    await screen.findByText("Couldn't send. Your message is still here.")
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Try again' }))
+    issue('tok-2')
+    send()
+    await screen.findByText('Saved. Thank you.')
+    fireEvent.click(screen.getByRole('button', { name: 'Send something else' }))
+    await waitFor(() => expect(document.activeElement).toBe(message()))
+  })
+
+  it('moves focus to the field a server rejection points at', async () => {
+    respondWith(json(400, { error: 'invalid_email' }))
+    await renderCard()
+    typeMessage('Reply to me')
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: 'me@example.com' } })
+    fireEvent.click(screen.getByLabelText('I consent to being contacted at this email about this report.'))
+    consent()
+    issue('tok-1')
+    submitButton().focus()
+    send()
+    expect(await screen.findByText('The server did not accept that email. Check it, or leave it blank.')).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByLabelText(/^Email/))
+  })
+
+  it('moves focus to the unavailable panel when it replaces the form the reader was in', async () => {
+    respondWith(json(503, { error: 'disabled' }))
+    await renderCard()
+    typeMessage('Is this on?')
+    consent()
+    issue('tok-1')
+    submitButton().focus()
+    send()
+    const off = await screen.findByTestId('support-form-unavailable')
+    await waitFor(() => expect(document.activeElement).toBe(within(off).getByText(/The hosted form is unavailable right now/)))
   })
 
   it('keeps the text when sending fails and offers Try again', async () => {
@@ -202,7 +259,7 @@ describe('support feedback card', () => {
       const alert = await screen.findByTestId('support-form-rate-limit')
       const said = 'Too many attempts. Try again in about 30 seconds. Your message is still here.'
       expect(alert.textContent).toBe(said)
-      expect((screen.getByRole('button', { name: /Send feedback/ }) as HTMLButtonElement).disabled).toBe(true)
+      expect(submitButton().getAttribute('aria-disabled')).toBe('true')
       expect(message().value).toBe('Spam? No.')
       // The countdown ticks outside the alert; the alert itself is said once.
       const countdown = screen.getByTestId('support-rate-countdown')
@@ -213,10 +270,13 @@ describe('support feedback card', () => {
       expect(screen.getByTestId('support-rate-countdown').textContent).not.toBe(before)
       expect(screen.getByTestId('support-form-rate-limit').textContent).toBe(said)
       expect(screen.getByTestId('support-form-announce').textContent).toBe('')
+      issue('tok-2')
+      send()
+      expect(requests).toHaveLength(1)
       await act(async () => { vi.advanceTimersByTime(28_000) })
       await waitFor(() => expect(screen.queryByTestId('support-form-rate-limit')).toBeNull())
       expect(screen.queryByTestId('support-rate-countdown')).toBeNull()
-      expect((screen.getByRole('button', { name: /Send feedback/ }) as HTMLButtonElement).disabled).toBe(false)
+      expect(submitButton().getAttribute('aria-disabled')).toBeNull()
       // Said once, politely, when sending is allowed again.
       await waitFor(() => expect(screen.getByTestId('support-form-announce').textContent).toBe('You can send again.'))
       expect(screen.getByTestId('support-form-announce').getAttribute('role')).toBe('status')
