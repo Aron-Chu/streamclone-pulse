@@ -801,34 +801,35 @@ export function expandHeaderBarRect(
   })
 }
 
+function pathOf(doc: Document): string {
+  return doc.defaultView?.location?.pathname ?? ''
+}
+
 /**
- * Panel body from `top` down to the composer clamp. While the composer is
- * briefly missing (chat reload, a reply bar swap), the previous layout's inset
- * above the column bottom is kept instead of dropping to the fixed reserve and
- * jumping back when the composer returns.
+ * Panel body from `top` down to the composer clamp, or the page's reserve
+ * when no composer is found, plus the route and whether a composer placed it.
  */
 function panelFor(
   measure: ChatMeasure,
   top: number,
-  previous?: SidebarSnapLayout | null,
-): ChatRectSnapshot | null {
+): Pick<SidebarSnapLayout, 'panel' | 'path' | 'composer'> | null {
   const { column } = measure
+  const path = pathOf(measure.doc)
   const bound = resolveChatBottomBound(measure.doc, column, measure.scope)
-  const bottom = bound == null && previous
-    ? column.bottom - (previous.column.bottom - previous.panel.bottom)
-    : resolvePanelBottomY(column.bottom, bound, {
-      isVodPage: isTwitchVodPath(measure.doc.defaultView?.location?.pathname ?? ''),
-    })
-  const height = bottom - top
+  const height = resolvePanelBottomY(column.bottom, bound, { isVodPage: isTwitchVodPath(path) }) - top
   return height < MIN_PANEL_HEIGHT
     ? null
-    : toChatRectSnapshot({ top, left: column.left, width: column.width, height })
+    : {
+      panel: toChatRectSnapshot({ top, left: column.left, width: column.width, height }),
+      path,
+      composer: bound != null,
+    }
 }
 
 /** Panel body below the stable chat header, above the composer clamp. */
 export function resolveChatPanelRect(doc: Document = document): ChatRectSnapshot | null {
   const measure = chatMeasure(doc)
-  return measure && panelFor(measure, headerBarFor(measure).bottom)
+  return (measure && panelFor(measure, headerBarFor(measure).bottom)?.panel) ?? null
 }
 
 /** Pure bottom Y for panel body — used by resolveChatPanelRect and unit tests. */
@@ -847,6 +848,10 @@ export interface SidebarSnapLayout {
   readonly header: ChatRectSnapshot
   readonly headerTabs: ChatRectSnapshot
   readonly panel: ChatRectSnapshot
+  /** location.pathname the layout was measured on. */
+  readonly path?: string
+  /** Whether the panel bottom came from Twitch's composer, not the fixed reserve. */
+  readonly composer?: boolean
 }
 
 export function computeHeaderTabInsets(
@@ -864,10 +869,7 @@ export function buildSidebarBodyRect(layout: SidebarSnapLayout): ChatRectSnapsho
   return layout.panel
 }
 
-function snapLayoutFor(
-  measure: ChatMeasure,
-  previous?: SidebarSnapLayout | null,
-): SidebarSnapLayout | null {
+function snapLayoutFor(measure: ChatMeasure): SidebarSnapLayout | null {
   const { doc, column } = measure
   const viewportWidth = doc.defaultView?.innerWidth ?? doc.documentElement?.clientWidth ?? NaN
   const viewportHeight = doc.defaultView?.innerHeight ?? doc.documentElement?.clientHeight ?? NaN
@@ -878,21 +880,14 @@ function snapLayoutFor(
   ) return null
 
   const header = headerBarFor(measure)
-  const panel = panelFor(measure, header.bottom, previous)
-  return panel && { column, header, headerTabs: headerTabsFor(measure, header), panel }
+  const panel = panelFor(measure, header.bottom)
+  return panel && { column, header, headerTabs: headerTabsFor(measure, header), ...panel }
 }
 
-/**
- * Column, header row, tab slot and panel body for the sidebar hosts.
- * `previous` is the last layout the caller placed, used to hold the panel's
- * bottom inset while the composer is briefly missing.
- */
-export function measureSidebarSnapLayout(
-  doc: Document = document,
-  previous?: SidebarSnapLayout | null,
-): SidebarSnapLayout | null {
+/** Column, header row, tab slot and panel body for the sidebar hosts. */
+export function measureSidebarSnapLayout(doc: Document = document): SidebarSnapLayout | null {
   const measure = chatMeasure(doc)
-  return measure && snapLayoutFor(measure, previous)
+  return measure && snapLayoutFor(measure)
 }
 
 /** @deprecated use measureSidebarSnapLayout */
@@ -1248,10 +1243,31 @@ export function observeChatRect(cb: (rect: DOMRect | null) => void): () => void 
   }
 }
 
-/** A layout that turns null is held this long before the hosts hide. */
+/**
+ * A layout that turns null, or loses its composer, is held this long before
+ * the hosts hide or the panel bottom drops to the reserve.
+ */
 export const SNAP_LAYOUT_HOLD_MS = 500
 /** How often the column's own rect is checked for a move without a resize. */
 export const CHAT_MOVE_CHECK_MS = 250
+
+/**
+ * Whether a measurement keeps the placed layout for SNAP_LAYOUT_HOLD_MS
+ * instead of being applied now.
+ */
+function holdsPlacedLayout(
+  placed: SidebarSnapLayout,
+  layout: SidebarSnapLayout | null,
+  columnFound: boolean,
+): boolean {
+  // The composer went missing on the same page (a chat reload, a reply bar
+  // swap): the panel bottom does not drop to the reserve and jump back. A new
+  // page without a composer (a VOD's chat replay) gets its reserve at once.
+  if (layout) return !!placed.composer && !layout.composer && layout.path === placed.path
+  // A usable column is a brief header/composer gap, and a column gone from the
+  // page may be remounting.
+  return columnFound || !document.querySelector(CHAT_COLUMN_SELECTORS.join(','))
+}
 
 /**
  * Observe chat column + header height for sidebar snap layout.
@@ -1271,7 +1287,10 @@ export const CHAT_MOVE_CHECK_MS = 250
  * remount) or still usable (a brief header/composer gap), the last layout is
  * held for SNAP_LAYOUT_HOLD_MS, so the panel does not blink and replay its
  * entrance animations. A column that is still on the page but too small
- * (collapsed chat, theatre) drops at once.
+ * (collapsed chat, theatre) drops at once. A composer that goes missing on the
+ * same page holds the last layout the same way, so the panel bottom does not
+ * drop to the reserve and jump back; one that stays missing past the hold, or
+ * a new page without a composer (a VOD's chat replay), gets the page's reserve.
  */
 export function observeChatSnapLayout(
   cb: (layout: SidebarSnapLayout | null) => void,
@@ -1305,8 +1324,8 @@ export function observeChatSnapLayout(
     column = resolved?.element ?? null
     columnKey = rectKey(resolved?.rect ?? null)
     syncObservedTargets()
-    const layout = resolved && snapLayoutFor(chatMeasure(document, resolved)!, lastLayout)
-    if (!layout && lastLayout && (resolved || !document.querySelector(CHAT_COLUMN_SELECTORS.join(',')))) {
+    const layout = resolved && snapLayoutFor(chatMeasure(document, resolved)!)
+    if (lastLayout && holdsPlacedLayout(lastLayout, layout, !!resolved)) {
       // The tick below keeps measuring while a hold runs, then this drops it.
       holdUntil ||= Date.now() + SNAP_LAYOUT_HOLD_MS
       if (Date.now() < holdUntil) return

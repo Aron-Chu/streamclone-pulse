@@ -817,25 +817,23 @@ describe('chat stack scoping', () => {
 })
 
 describe('panel bottom while the composer is missing', () => {
-  it('keeps the last composer inset instead of dropping to the fixed reserve', () => {
+  it('uses the page reserve and records the route and whether a composer placed it', () => {
     const page = makeStackedChatPage()
     const placed = measureSidebarSnapLayout(page.doc)!
+    expect(placed).toMatchObject({ path: '/fixturechan', composer: true })
     expect(placed.panel.bottom).toBe(688)
 
     page.place('composer', null)
-    // No previous layout: the 150 px reserve (column bottom 768 - 150).
-    expect(measureSidebarSnapLayout(page.doc)!.panel.bottom).toBe(618)
-    // With the placed layout: the same 80 px inset above the column bottom.
-    expect(measureSidebarSnapLayout(page.doc, placed)!.panel.bottom).toBe(688)
+    // The 150 px reserve (column bottom 768 - 150).
+    expect(measureSidebarSnapLayout(page.doc)).toMatchObject({ composer: false, panel: { bottom: 618 } })
 
-    // The inset follows the column when it moves while the composer is gone.
-    page.place('column', { top: 120, left: 680, width: 340, height: 668 })
-    expect(measureSidebarSnapLayout(page.doc, placed)!.panel.bottom).toBe(708)
-
-    // A composer that comes back wins again.
-    page.place('column', { top: 100, left: 680, width: 340, height: 668 })
-    page.place('composer', { top: 700, left: 690, width: 320, height: 30 })
-    expect(measureSidebarSnapLayout(page.doc, placed)!.panel.bottom).toBe(698)
+    // A VOD's chat replay has no composer: its own 48 px reserve.
+    page.dom.window.history.pushState(null, '', '/fixturechan/videos/1234567890')
+    expect(measureSidebarSnapLayout(page.doc)).toMatchObject({
+      path: '/fixturechan/videos/1234567890',
+      composer: false,
+      panel: { bottom: 720 },
+    })
   })
 })
 
@@ -1000,6 +998,73 @@ describe('observeChatSnapLayout', () => {
     expect(seen).toHaveLength(0)
     env.tick()
     expect(seen).toHaveLength(0)
+    stop()
+  })
+
+  it('holds the panel bottom through a brief composer gap on the same page', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    expect(seen[0]).toMatchObject({ composer: true, panel: { bottom: 688 } })
+
+    // A reply bar swap: no composer for a moment. The next full measure (every 2 s) starts a hold.
+    page.place('composer', null)
+    for (let i = 0; i < 8; i += 1) env.tick()
+    expect(seen).toHaveLength(1)
+    // It comes back inside the hold: the panel never dropped to the 150 px reserve.
+    page.place('composer', { top: 690, left: 690, width: 320, height: 40 })
+    for (let i = 0; i < 9; i += 1) env.tick()
+    expect(seen).toHaveLength(1)
+    stop()
+  })
+
+  it('gives the panel the reserve once the composer stays missing past the hold', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    page.place('composer', null)
+    for (let i = 0; i < 8; i += 1) env.tick()
+    expect(seen).toHaveLength(1)
+    // Ticks keep measuring while the hold runs, then the 150 px reserve goes out.
+    for (let elapsed = CHAT_MOVE_CHECK_MS; elapsed <= SNAP_LAYOUT_HOLD_MS; elapsed += CHAT_MOVE_CHECK_MS) env.tick()
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toMatchObject({ composer: false, panel: { bottom: 618 } })
+    // While it stays missing, no new hold starts and nothing moves.
+    for (let i = 0; i < 16; i += 1) env.tick()
+    expect(seen).toHaveLength(2)
+    stop()
+  })
+
+  it('never carries a live composer inset onto a VOD chat replay', () => {
+    const page = makeStackedChatPage()
+    // A live channel: the panel ends at the composer, 80 px above the column bottom.
+    const live = measureSidebarSnapLayout(page.doc)!
+    expect(live.panel.bottom).toBe(688)
+    const env = installObserverGlobals(page)
+
+    // Open one of its VODs. The observer restarts from the placed live layout,
+    // and the VOD's chat replay has no composer: its 48 px reserve at once.
+    page.dom.window.history.pushState(null, '', '/fixturechan/videos/1234567890')
+    page.place('composer', null)
+    const { seen, stop } = observe(live)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ composer: false, panel: { bottom: 720 } })
+    // Re-measured from its own layout, it stays on the reserve.
+    for (let i = 0; i < 16; i += 1) env.tick()
+    expect(seen).toHaveLength(1)
+    stop()
+  })
+
+  it('gives a channel reached without a composer its own reserve at once', () => {
+    const page = makeStackedChatPage()
+    const env = installObserverGlobals(page)
+    const { seen, stop } = observe()
+    // Raid or click through to a channel whose chat has no composer (logged out, subscriber-only).
+    page.dom.window.history.pushState(null, '', '/otherchan')
+    page.place('composer', null)
+    for (let i = 0; i < 8; i += 1) env.tick()
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toMatchObject({ path: '/otherchan', composer: false, panel: { bottom: 618 } })
     stop()
   })
 })
