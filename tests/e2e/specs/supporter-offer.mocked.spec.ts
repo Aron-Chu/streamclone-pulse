@@ -251,7 +251,7 @@ test.describe('packaged supporter offer', () => {
     await prepare({ scenario: 'live-ready' })
     const page = extension.page
     await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await expect(page.getByText('Stripe asks for your email and payment details', { exact: false })).toBeVisible()
+    await expect(page.getByText('opens streampulse.stream, where you sign in and approve this extension before paying on Stripe', { exact: false })).toBeVisible()
     await expect(page.locator('a[data-supporter-action="billing"]')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Use a StreamPulse website account', exact: true })).toBeVisible()

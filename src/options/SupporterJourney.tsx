@@ -723,7 +723,10 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
         </div>
         {facts.length ? <dl className="pulse-journey-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
         {terms ? <OfferTerms /> : null}
-        {state === 'unlinked' ? <p className="pulse-supporter-detail">Stripe asks for your email and payment details. You only verify your email if you need to restore membership later.</p> : null}
+        {/* The worker decides the path at the click: without installation
+            accounts on the server (production today) it falls back to the
+            website link, so the website path is stated first. */}
+        {state === 'unlinked' ? <p className="pulse-supporter-detail">Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details; you only verify that email if you restore membership later.</p> : null}
         {primary || secondary.length ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}{secondary}</div> : null}
         {restoreForm && restore.state === 'idle' && !payBusy ? <form onSubmit={event => void startRestore(event)} className="pulse-journey-restore">
           <label htmlFor="supporter-restore-email">Email used at checkout</label>

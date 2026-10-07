@@ -35,7 +35,7 @@ describe('supporter settings', () => {
       expect(host.textContent).toContain('nothing is equipped, published, or injected into Twitch chat')
       // Status comes from the server. An unlinked install must say how it
       // would connect rather than implying the preview grants anything.
-      expect(host.textContent).toContain('Stripe asks for your email and payment details')
+      expect(host.textContent).toContain('opens streampulse.stream, where you sign in and approve this extension before paying on Stripe')
       expect(host.textContent).toContain('remain free')
       // The chat badge must never be presented as included.
       expect(host.textContent).toContain('Not included yet')
