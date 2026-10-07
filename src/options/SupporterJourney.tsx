@@ -114,9 +114,11 @@ function OfferTerms() {
     <>
       {/* The card's footer line: the price and its terms in one row. */}
       <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
-      {/* "You get" lists only shipped benefits; "Who sees what" shows the chat
-          crest as a concept, so it is not restated here. */}
-      <p className="pulse-supporter-detail"><b>You get</b> a private Pulse header accent, three accent finishes, emote rain behind your Pulse panel, and private support recognition.</p>
+      {/* "You get" lists only shipped benefits, and names each perk the
+          settings banner sells: title paint, the tenure crest and emote rain.
+          "Who sees what" shows the chat crest as a concept, so it is not
+          restated here. */}
+      <p className="pulse-supporter-detail"><b>You get</b> a private Pulse header accent, three accent finishes, a tenure crest beside your panel title that grows with your support (only you see it), emote rain behind your Pulse panel, and private support recognition.</p>
     </>
   )
 }

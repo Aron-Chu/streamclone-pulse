@@ -823,6 +823,25 @@ describe('notices beside the action that caused them', () => {
   })
 })
 
+describe('the offer names what the banner sells', () => {
+  // The settings banner sells three perks: title paint, the tenure crest and
+  // emote rain. The "You get" line above the purchase button names each one.
+  it.each([
+    ['signed out', () => ({ state: 'signed_out' }) as SupporterAccountState, () => ({ state: 'not_linked' }) as SupporterEntitlement],
+    ['linked without a membership', () => linked, () => ready('none')],
+  ] as const)('lists title paint, the tenure crest and emote rain when %s', async (_name, account, entitlement) => {
+    const view = await mount({ account, entitlement, billing: () => ({ state: 'idle' }) })
+    try {
+      const youGet = [...view.host.querySelectorAll('.pulse-supporter-detail')].find(line => line.querySelector('b')?.textContent === 'You get')?.textContent ?? ''
+      expect(youGet).toMatch(/header accent/)
+      expect(youGet).toMatch(/accent finishes/)
+      expect(youGet).toMatch(/tenure crest beside your panel title that grows with your support/)
+      expect(youGet).toMatch(/emote rain behind your Pulse panel/)
+      expect(youGet).not.toMatch(/signature/i)
+    } finally { view.cleanup() }
+  })
+})
+
 const PERKS = ['supporter.banner.v1', 'supporter.finish.v1']
 const HALO = { enabled: true, finish: 'halo' } as const
 function card(host: HTMLElement) {
