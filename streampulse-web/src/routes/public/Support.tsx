@@ -34,7 +34,16 @@ type CardState =
   | { kind: 'rate_limited'; until: number; seconds: number | null }
 
 /** Where keyboard focus goes after a send or a reset, so it never falls to <body>. */
-type FocusTarget = 'message' | 'email' | 'submit'
+type FocusTarget = 'message' | 'email' | 'contact' | 'consent' | 'submit'
+
+/** The control that has to change for each problem found before sending. */
+const DRAFT_ERROR_TARGET: Record<FeedbackDraftError, FocusTarget> = {
+  message_required: 'message',
+  message_too_long: 'message',
+  invalid_email: 'email',
+  contact_consent_required: 'contact',
+  consent_required: 'consent',
+}
 
 type TurnstileAPI = {
   render: (
@@ -63,6 +72,18 @@ const DRAFT_ERRORS: Record<FeedbackDraftError | 'check_pending', string> = {
   contact_consent_required: 'Allow a reply to this email, or leave the email blank.',
   invalid_email: 'Enter a valid email, or leave it blank.',
   check_pending: 'Still checking that you are not a bot. Try again in a moment.',
+}
+
+const REJECTED_FIELD_TEXT = {
+  message: 'The server could not accept this message. Shorten it and try again.',
+  email: 'The server did not accept that email. Check it, or leave it blank.',
+} as const
+
+/** The hint shown next to a field for this state, if any. */
+function fieldProblemText(state: CardState): string | null {
+  if (state.kind === 'invalid' && state.error !== 'check_pending') return DRAFT_ERRORS[state.error]
+  if (state.kind === 'rejected' && state.field) return REJECTED_FIELD_TEXT[state.field]
+  return null
 }
 
 /** Show the byte count once a long message gets close to the limit. */
@@ -153,6 +174,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   const formRef = useRef<HTMLFormElement | null>(null)
   const messageRef = useRef<HTMLTextAreaElement | null>(null)
   const emailRef = useRef<HTMLInputElement | null>(null)
+  const contactRef = useRef<HTMLInputElement | null>(null)
+  const consentRef = useRef<HTMLInputElement | null>(null)
   const submitRef = useRef<HTMLButtonElement | null>(null)
   const pendingFocusRef = useRef<FocusTarget | null>(null)
   const [panelTakesFocus, setPanelTakesFocus] = useState(false)
@@ -233,8 +256,20 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
     const want = pendingFocusRef.current
     if (!want) return
     pendingFocusRef.current = null
-    const target = want === 'message' ? messageRef.current : want === 'email' ? emailRef.current : submitRef.current
-    if (target && document.activeElement !== target) target.focus()
+    const target = {
+      message: messageRef, email: emailRef, contact: contactRef, consent: consentRef, submit: submitRef,
+    }[want].current
+    if (!target) return
+    if (document.activeElement !== target) {
+      // Focus lands with the field's aria-invalid and hint already in place,
+      // so a screen reader reads the problem with the field.
+      target.focus()
+      return
+    }
+    // Focus cannot move to where the reader already is (Enter in the email
+    // box), so say the problem through the status line instead.
+    const text = fieldProblemText(state)
+    if (text) announce(text)
   }, [state])
 
   /** The unavailable panel replaces the form; it takes focus only if the reader was in the form. */
@@ -260,6 +295,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
     const draft = { kind, message, email, consent, contactConsent }
     const problem = validateFeedbackDraft(draft)
     if (problem) {
+      pendingFocusRef.current = DRAFT_ERROR_TARGET[problem]
       setState({ kind: 'invalid', error: problem })
       return
     }
@@ -331,13 +367,18 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   const messageError = state.kind === 'invalid' && (state.error === 'message_required' || state.error === 'message_too_long')
     ? DRAFT_ERRORS[state.error]
     : state.kind === 'rejected' && state.field === 'message'
-      ? 'The server could not accept this message. Shorten it and try again.'
+      ? REJECTED_FIELD_TEXT.message
       : null
-  const emailError = state.kind === 'invalid' && (state.error === 'invalid_email' || state.error === 'contact_consent_required')
-    ? DRAFT_ERRORS[state.error]
+  const emailError = state.kind === 'invalid' && state.error === 'invalid_email'
+    ? DRAFT_ERRORS.invalid_email
     : state.kind === 'rejected' && state.field === 'email'
-      ? 'The server did not accept that email. Check it, or leave it blank.'
+      ? REJECTED_FIELD_TEXT.email
       : null
+  // The reply-consent box is what needs ticking here, not the email itself.
+  const contactError = state.kind === 'invalid' && state.error === 'contact_consent_required'
+    ? DRAFT_ERRORS.contact_consent_required
+    : null
+  const consentError = state.kind === 'invalid' && state.error === 'consent_required' ? DRAFT_ERRORS.consent_required : null
   // Visible countdown only; the alert below keeps the wording it arrived with,
   // because a role="alert" whose text changes is read out again every second.
   const waitSeconds = state.kind === 'rate_limited' ? retrySeconds(state.until, now) : null
@@ -410,19 +451,25 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             </div>
 
             {email.trim() ? (
-              <label className="feedback-check">
-                <input type="checkbox" checked={contactConsent} aria-disabled={sending ? true : undefined}
-                  onChange={e => { if (sending) return; setContactConsent(e.target.checked); edited() }} />
-                <span>I consent to being contacted at this email about this report.</span>
-              </label>
+              <>
+                <label className="feedback-check">
+                  <input type="checkbox" ref={contactRef} checked={contactConsent} aria-disabled={sending ? true : undefined}
+                    aria-invalid={contactError ? true : undefined}
+                    aria-describedby={contactError ? 'feedback-contact-hint' : undefined}
+                    onChange={e => { if (sending) return; setContactConsent(e.target.checked); edited() }} />
+                  <span>I consent to being contacted at this email about this report.</span>
+                </label>
+                {contactError ? <p className="feedback-hint" id="feedback-contact-hint">{contactError}</p> : null}
+              </>
             ) : null}
             <label className="feedback-check">
-              <input type="checkbox" checked={consent} aria-required="true" aria-disabled={sending ? true : undefined}
-                aria-invalid={state.kind === 'invalid' && state.error === 'consent_required' ? true : undefined}
+              <input type="checkbox" ref={consentRef} checked={consent} aria-required="true" aria-disabled={sending ? true : undefined}
+                aria-invalid={consentError ? true : undefined}
+                aria-describedby={consentError ? 'feedback-consent-hint' : undefined}
                 onChange={e => { if (sending) return; setConsent(e.target.checked); edited() }} />
               <span>I consent to submitting this text to StreamPulse support.</span>
             </label>
-            {state.kind === 'invalid' && state.error === 'consent_required' ? <p className="feedback-hint">{DRAFT_ERRORS.consent_required}</p> : null}
+            {consentError ? <p className="feedback-hint" id="feedback-consent-hint">{consentError}</p> : null}
 
             {alert ? (
               <div className="feedback-alert" role="alert" data-testid={state.kind === 'rate_limited' ? 'support-form-rate-limit' : 'support-form-error'}>

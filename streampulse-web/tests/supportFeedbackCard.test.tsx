@@ -361,6 +361,87 @@ describe('support feedback card', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it.each([
+    {
+      name: 'an empty message',
+      fill: () => { consent() },
+      text: 'Add a few words first.',
+      field: () => message(),
+      hint: 'feedback-message-hint',
+    },
+    {
+      name: 'an invalid email',
+      fill: () => {
+        typeMessage('Hello')
+        fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: 'not-an-email' } })
+        consent()
+      },
+      text: 'Enter a valid email, or leave it blank.',
+      field: () => screen.getByLabelText(/^Email/),
+      hint: 'feedback-email-hint',
+    },
+    {
+      name: 'an email without reply consent',
+      fill: () => {
+        typeMessage('Hello')
+        fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: 'me@example.com' } })
+        consent()
+      },
+      text: 'Allow a reply to this email, or leave the email blank.',
+      field: () => screen.getByLabelText('I consent to being contacted at this email about this report.'),
+      hint: 'feedback-contact-hint',
+    },
+    {
+      name: 'the consent box unticked',
+      fill: () => { typeMessage('Hello') },
+      text: 'Tick the consent box to send this.',
+      field: () => consentBox(),
+      hint: 'feedback-consent-hint',
+    },
+  ])('moves focus to the field to fix for $name, with the problem as its description', async ({ fill, text, field, hint }) => {
+    const fetchMock = respondWith()
+    await renderCard()
+    fill()
+    issue('tok-1')
+    submitButton().focus()
+    send()
+    const hintNode = await screen.findByText(text)
+    expect(hintNode.id).toBe(hint)
+    await waitFor(() => expect(document.activeElement).toBe(field()))
+    expect(field().getAttribute('aria-invalid')).toBe('true')
+    expect(field().getAttribute('aria-describedby')?.split(' ')).toContain(hint)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('marks the reply-consent box, not the email, when reply consent is missing', async () => {
+    respondWith()
+    await renderCard()
+    typeMessage('Hello')
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: 'me@example.com' } })
+    consent()
+    issue('tok-1')
+    send()
+    await screen.findByText('Allow a reply to this email, or leave the email blank.')
+    expect(screen.getByLabelText(/^Email/).getAttribute('aria-invalid')).toBeNull()
+    expect(screen.getByLabelText('I consent to being contacted at this email about this report.').getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('says the problem through the status line when focus is already on the field', async () => {
+    respondWith()
+    await renderCard()
+    typeMessage('Hello')
+    const emailBox = screen.getByLabelText(/^Email/) as HTMLInputElement
+    fireEvent.change(emailBox, { target: { value: 'not-an-email' } })
+    consent()
+    issue('tok-1')
+    // Enter in the email box submits with focus already there.
+    emailBox.focus()
+    send()
+    await screen.findByText('Enter a valid email, or leave it blank.')
+    expect(document.activeElement).toBe(emailBox)
+    await waitFor(() => expect(screen.getByTestId('support-form-announce').textContent).toBe('Enter a valid email, or leave it blank.'))
+  })
+
   it('requires the explicit consent checkbox', async () => {
     const fetchMock = respondWith()
     await renderCard()
