@@ -26,7 +26,16 @@ describe('supporter settings', () => {
       expect(host.querySelector('h2')?.textContent).toBe('Account & Supporter')
       // Your card: only an identity that exists. Twitch sign-in is off, so nobody is signed in and no Twitch name is drawn.
       const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
-      expect(card.getAttribute('aria-label')).toBe('Your Supporter card')
+      // Heading navigation stops at the card: a visually hidden h3 names it,
+      // between the page's h2 and "Who sees what" (the preview's own title is decoration).
+      const outline = [...host.querySelectorAll<HTMLElement>('h2, h3')].filter(heading => !heading.closest('[aria-hidden="true"]')).map(heading => `${heading.tagName} ${heading.textContent}`)
+      expect(outline).toEqual(['H2 Account & Supporter', 'H3 Your Supporter card', 'H3 Who sees what', 'H3 Your look', 'H3 Account'])
+      const heading = card.querySelector('h3')!
+      expect(card.firstElementChild).toBe(heading)
+      expect(heading.id).not.toBe('')
+      expect(card.getAttribute('aria-labelledby')).toBe(heading.id)
+      expect(card.hasAttribute('aria-label')).toBe(false)
+      expect(heading.className).toBe('pulse-visually-hidden')
       expect(card.dataset.supporterCard).toBe('sample')
       expect(card.querySelector('.pulse-supporter-card-who strong')?.textContent).toBe('Not signed in')
       expect(card.querySelector('.pulse-supporter-card-avatar')?.getAttribute('data-identity')).toBe('none')

@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { useId, type CSSProperties, type ReactNode } from 'react'
 import type { SupporterStatus } from '../shared/supporterAccount.ts'
 import type { SupporterPaintStyle, SupporterTenure } from '../shared/supporterPaint.ts'
 import { DEFAULT_PULSE_BANNER, type PulseBannerPreference } from '../shared/storage.ts'
@@ -79,6 +79,10 @@ const isKnown = (status: CardStatus) => status !== 'checking' && status !== 'unk
  * membership in one line, and a five-step crest ladder from New to 2 years.
  * The membership journey (`children`) is its footer: the price and one button,
  * or the renew date and billing.
+ *
+ * The card is a section headed by a visually hidden h3, so heading navigation
+ * stops here between the page's h2 and "Who sees what"; the card's own lines
+ * (the name, the membership, the footer's title) stay as drawn.
  */
 export function SupporterCard({ identity, membership, look, children }: {
   identity: CardIdentity
@@ -94,8 +98,10 @@ export function SupporterCard({ identity, membership, look, children }: {
   const name = cardName(identity)
   // Only a real identity wears the paint and crest; a status line never does.
   const painted = own && look.finish && (identity.kind === 'pulse' || identity.kind === 'twitch')
+  const headingId = useId()
   return (
-    <section className="pulse-supporter-card" aria-label="Your Supporter card" data-supporter-card={own ? 'own' : 'sample'} style={finishVars(look.finish) as CSSProperties}>
+    <section className="pulse-supporter-card" aria-labelledby={headingId} data-supporter-card={own ? 'own' : 'sample'} style={finishVars(look.finish) as CSSProperties}>
+      <h3 id={headingId} className="pulse-visually-hidden">Your Supporter card</h3>
       <div className="pulse-supporter-card-banner pulse-personal-panel">
         <PulseBannerBackdrop value={CARD_RAIN} perks />
         {/* Only a known non-Supporter is told the look is a sample. */}

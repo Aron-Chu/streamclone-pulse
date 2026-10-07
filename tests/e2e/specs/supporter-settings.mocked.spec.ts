@@ -11,6 +11,9 @@ test('packaged supporter settings stay local, accessible and responsive', async 
 
   // Your card: the identity that exists (nobody, with Twitch sign-in off), the sample look, and the crest ladder.
   const card = page.getByRole('region', { name: 'Your Supporter card' })
+  // Heading navigation stops at the card (its h3 is visually hidden), between the page's h2 and "Who sees what".
+  await expect(card.getByRole('heading', { level: 3, name: 'Your Supporter card', exact: true })).toHaveCount(1)
+  await expect(page.locator('.pulse-supporter-settings').getByRole('heading')).toHaveText(['Account & Supporter', 'Your Supporter card', 'Who sees what', 'Your look', 'Account'])
   await expect(card.locator('.pulse-supporter-card-who strong')).toHaveText('Not signed in')
   await expect(card.getByText('Sample look', { exact: true })).toBeVisible()
   await expect(card).not.toContainText('Twitch')

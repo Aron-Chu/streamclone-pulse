@@ -869,6 +869,33 @@ describe('the price comes before the button that buys it', () => {
   })
 })
 
+describe('Your card is a headed section', () => {
+  // Pressing H from the page's h2 must stop at the card, before its name,
+  // ladder, status and action, not skip to "Who sees what" below it.
+  it.each<[string, () => SupporterAccountState, () => SupporterEntitlement, string, string]>([
+    ['unlinked', () => ({ state: 'signed_out' }), () => ({ state: 'not_linked' }), 'Become a Pulse Supporter', 'Become a Supporter'],
+    ['grace', () => linked, () => ready('grace', { accessUntil: '2026-10-19T12:00:00Z' }), 'Payment needs attention', 'Update payment method'],
+  ])('in the %s state', async (_state, account, entitlement, title, action) => {
+    const view = await mount({ account, entitlement })
+    try {
+      const section = view.host.querySelector<HTMLElement>('section.pulse-supporter-card')!
+      const headings = [...section.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')]
+      expect(headings.map(heading => `${heading.tagName} ${heading.textContent}`)).toEqual(['H3 Your Supporter card'])
+      const [heading] = headings
+      expect(section.getAttribute('aria-labelledby')).toBe(heading.id)
+      expect(heading.id).not.toBe('')
+      expect(document.getElementById(heading.id)).toBe(heading)
+      const status = section.querySelector('.pulse-journey-status')!
+      expect(status.textContent).toContain(title)
+      const primary = section.querySelector<HTMLElement>('.pulse-journey-primary')!
+      expect(primary.textContent).toBe(action)
+      for (const after of [section.querySelector('.pulse-supporter-card-who')!, section.querySelector('.pulse-supporter-ladder')!, status, primary]) {
+        expect(heading.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      }
+    } finally { view.cleanup() }
+  })
+})
+
 const PERKS = ['supporter.banner.v1', 'supporter.finish.v1']
 const HALO = { enabled: true, finish: 'halo' } as const
 function card(host: HTMLElement) {
