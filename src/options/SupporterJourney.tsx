@@ -116,8 +116,11 @@ function OfferTerms() {
   )
 }
 
-export function SupporterJourney({ onEntitlement, look, children }: {
+export function SupporterJourney({ onEntitlement, onShown, look, children }: {
+  /** The membership paid controls may act on: null while a refresh has failed. */
   onEntitlement?: (value: SupporterEntitlement | null) => void
+  /** The last confirmed membership on screen, kept through a failed refresh. Display only. */
+  onShown?: (value: SupporterEntitlement | null) => void
   /** The paint the card wears; by default a Supporter's equipped one, or the sample. */
   look?: Omit<CardLook, 'perks'>
   children?: ReactNode
@@ -162,6 +165,7 @@ export function SupporterJourney({ onEntitlement, look, children }: {
   const lastLinkedAccountId = useRef<string | null>(null)
 
   useEffect(() => { onEntitlement?.(stale ? null : entitlement) }, [entitlement, stale, onEntitlement])
+  useEffect(() => { onShown?.(entitlement) }, [entitlement, onShown])
 
   const readEntitlement = useCallback(async (quiet: boolean) => {
     if (entitlementInFlight.current) return
@@ -730,7 +734,9 @@ export function SupporterJourney({ onEntitlement, look, children }: {
   // Likewise the membership: before the server answers, or when it cannot, the
   // card says it is checking or unavailable, never "not a Supporter".
   const cardStatus: CardStatus = status ?? (identity.kind === 'none' ? 'none' : entitlement?.state === 'error' || entitlement?.state === 'unavailable' ? 'unknown' : 'checking')
-  const perks = !stale && supporterPerksAllowed(entitlement)
+  // The card is display: through a failed refresh it keeps the last confirmed
+  // look, as the footer says. Only paid controls pause (see onEntitlement).
+  const perks = supporterPerksAllowed(entitlement)
   const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
   const connected = linked !== null || renewalWaiting

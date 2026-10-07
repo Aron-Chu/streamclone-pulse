@@ -98,7 +98,8 @@ export function SupporterCard({ identity, membership, look, children }: {
     <section className="pulse-supporter-card" aria-label="Your Supporter card" data-supporter-card={own ? 'own' : 'sample'} style={finishVars(look.finish) as CSSProperties}>
       <div className="pulse-supporter-card-banner pulse-personal-panel">
         <PulseBannerBackdrop value={CARD_RAIN} perks />
-        {own || !known ? null : <span className="pulse-supporter-card-sample">Sample look</span>}
+        {/* Only a known non-Supporter is told the look is a sample. */}
+        {isSupporter(status) || !known ? null : <span className="pulse-supporter-card-sample">Sample look</span>}
       </div>
       <div className="pulse-supporter-card-body">
         <CardAvatar identity={identity} />

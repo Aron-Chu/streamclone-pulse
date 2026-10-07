@@ -252,6 +252,61 @@ describe('supporter settings', () => {
   })
 })
 
+describe('Your card through a failed refresh', () => {
+  it('keeps a Supporter’s confirmed look on the card and in who sees what, while the paid controls pause', async () => {
+    let membership: SupporterEntitlement | Error = {
+      state: 'ready', status: 'active', supportPeriods: 13, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'halo' },
+    }
+    const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>) => void>()
+    const sendMessage = vi.fn(async (message: { type: string }) => {
+      if (message.type === 'SUPPORTER_ENTITLEMENT') {
+        if (membership instanceof Error) throw membership
+        return { type: 'SUPPORTER_ENTITLEMENT', entitlement: membership }
+      }
+      if (message.type === 'SUPPORTER_ACCOUNT') return { type: 'SUPPORTER_ACCOUNT', account: { state: 'linked', accountId: '11111111-1111-4111-8111-1111111a1b2c', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }
+      return undefined
+    })
+    vi.stubGlobal('chrome', { runtime: { sendMessage }, storage: { onChanged: {
+      addListener: (listener: (changes: Record<string, chrome.storage.StorageChange>) => void) => listeners.add(listener),
+      removeListener: (listener: (changes: Record<string, chrome.storage.StorageChange>) => void) => listeners.delete(listener),
+    } } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const look = () => {
+      const card = host.querySelector<HTMLElement>('.pulse-supporter-card')!
+      return {
+        card: card.dataset.supporterCard,
+        sample: card.querySelector('.pulse-supporter-card-sample') !== null,
+        finish: card.style.getPropertyValue('--spk-fin'),
+        paint: card.querySelector('.pulse-supporter-card-who strong .pulse-paint')?.getAttribute('data-finish'),
+        crest: card.querySelector('.pulse-supporter-card-who strong .pulse-crest')?.getAttribute('data-tenure'),
+        line: card.querySelector('.pulse-supporter-card-who > span')?.textContent,
+      }
+    }
+    try {
+      await act(async () => root.render(<SupporterAccountSection />))
+      const confirmed = look()
+      expect(confirmed).toEqual({ card: 'own', sample: false, finish: '#e6a9d6', paint: 'halo', crest: '12m', line: 'Pulse Supporter · 13 months' })
+      expect(host.textContent).not.toContain('Shown with the sample look')
+
+      // A quiet re-read fails: the footer says it shows the last confirmed status.
+      membership = new Error('offline')
+      await act(async () => { for (const listener of listeners) listener({ pulseSupporterRevision: { newValue: 'changed', oldValue: 'old' } }) })
+      expect(host.querySelector('[data-journey-stale="true"]')).not.toBeNull()
+      expect(look()).toEqual(confirmed)
+      expect(host.textContent).not.toContain('Sample look')
+      expect(host.textContent).not.toContain('Shown with the sample look')
+      // Paid controls only act on fresh values, so equipping pauses until a read succeeds.
+      expect([...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Checking Supporter status…')?.disabled).toBe(true)
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
 describe('cosmetics while membership is unknown', () => {
   it('pauses instead of switching to pre-purchase mode, and keeps the selection', async () => {
     const sendMessage = vi.fn()

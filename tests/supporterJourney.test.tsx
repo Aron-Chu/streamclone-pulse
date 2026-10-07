@@ -941,17 +941,39 @@ describe('change signals and stale reads', () => {
     expect(view.listeners.size).toBe(0)
   })
 
-  it('keeps the last confirmed status on a failed quiet read, but never hands it to paid controls', async () => {
-    let entitlement: SupporterEntitlement | Error = ready('active', { features: ['supporter.banner.v1', 'supporter.finish.v1'] })
+  it.each<[string, () => SupporterEntitlement | Error]>([
+    ['a thrown read', () => new Error('offline')],
+    ['an error', () => ({ state: 'error' })],
+    ['a temporarily unavailable service', () => ({ state: 'unavailable', reason: 'temporarily_unavailable' })],
+  ])('keeps the last confirmed status and look after %s on a quiet read, but never hands it to paid controls', async (_label, failure) => {
+    let entitlement: SupporterEntitlement | Error = ready('active', { features: PERKS, cosmetics: HALO })
     const onEntitlement = vi.fn()
     const view = await mount({ account: () => linked, entitlement: () => entitlement }, onEntitlement)
     try {
       expect(onEntitlement).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'active' }))
-      entitlement = new Error('offline')
+      entitlement = failure()
       await view.change({ pulseSupporterRevision: { newValue: 'changed' } })
       expect(view.state()).toBe('active')
       expect(view.host.querySelector('[data-journey-stale="true"]')).not.toBeNull()
       expect(onEntitlement).toHaveBeenLastCalledWith(null)
+      // The card still wears the confirmed look: no sample tag, the paint and crest stay.
+      const yours = card(view.host)
+      expect(yours.root.dataset.supporterCard).toBe('own')
+      expect(yours.sample()).toBe(false)
+      expect(yours.name().querySelector('.pulse-paint')?.getAttribute('data-finish')).toBe('halo')
+      expect(yours.name().querySelector('.pulse-crest')).not.toBeNull()
+      expect(yours.root.style.getPropertyValue('--spk-fin')).toBe('#e6a9d6')
+      expect(yours.sub()).toBe('Pulse Supporter · 2 months')
+    } finally { view.cleanup() }
+  })
+
+  it('never tags a Supporter’s card as a sample, even when the server withholds the look', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('active', { features: [] }) })
+    try {
+      const yours = card(view.host)
+      expect(yours.sub()).toBe('Pulse Supporter · 2 months')
+      expect(yours.sample()).toBe(false)
+      expect(yours.name().querySelector('.pulse-paint')).toBeNull()
     } finally { view.cleanup() }
   })
 

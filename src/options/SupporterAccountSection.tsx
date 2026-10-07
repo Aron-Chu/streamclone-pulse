@@ -22,19 +22,24 @@ const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
  * server-checked projection.
  */
 export function SupporterAccountSection() {
+  // `entitlement` is fresh, for the paid controls; `shown` is the last confirmed
+  // membership on screen, which keeps the look through a failed refresh.
   const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
+  const [shown, setShown] = useState<SupporterEntitlement | null>(null)
   const [draft, setDraft] = useState<SupporterFinish | null | undefined>(undefined)
   const paint = useSupporterPaintStyle()
   const banner = usePulseBanner()
   const savedCosmetics = useCallback((cosmetics: SupporterCosmetics) => {
-    setEntitlement(current => current?.state === 'ready' ? { ...current, cosmetics } : current)
+    const saved = (current: SupporterEntitlement | null) => current?.state === 'ready' ? { ...current, cosmetics } : current
+    setEntitlement(saved)
+    setShown(saved)
   }, [])
-  const perks = supporterPerksAllowed(entitlement)
-  const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
+  const perks = supporterPerksAllowed(shown)
+  const equipped = perks && shown?.state === 'ready' && shown.cosmetics?.enabled ? shown.cosmetics.finish : null
   // The card wears a Supporter's equipped paint, or the sample; the previews wear what is being tried.
   const worn = perks ? equipped : SAMPLE_KIT.finish
   const tried = draft === undefined ? worn : draft
-  const tenure = perks && entitlement?.state === 'ready' ? supporterTenureForMonths(entitlement.supportPeriods) : SAMPLE_KIT.tenure
+  const tenure = perks && shown?.state === 'ready' ? supporterTenureForMonths(shown.supportPeriods) : SAMPLE_KIT.tenure
 
   return (
     <div className="pulse-supporter-settings">
@@ -42,7 +47,7 @@ export function SupporterAccountSection() {
         <h2>Account &amp; Supporter</h2>
         <p>Your Supporter card, who sees what, and billing.</p>
       </div>
-      <SupporterJourney onEntitlement={setEntitlement} look={{ finish: worn, paint: paint.style }}>
+      <SupporterJourney onEntitlement={setEntitlement} onShown={setShown} look={{ finish: worn, paint: paint.style }}>
         <SupporterWhoSees finish={tried} paint={paint.style} tenure={tenure} rain={perks ? banner.value : SAMPLE_RAIN} shown={tried !== worn ? 'trying' : perks ? 'own' : 'sample'} />
         <SupporterCosmeticControls entitlement={entitlement} onSaved={savedCosmetics} onDraft={setDraft} />
       </SupporterJourney>
