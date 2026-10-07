@@ -2,9 +2,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ExtensionPeak, ExtensionRollup, PulsePayload } from '../src/shared/messages.ts'
 import { LiveStatsBand } from '../src/ui/LiveStatsBand.tsx'
+import { momentStrength } from '../src/ui/momentStrength.ts'
 
 const MINUTES = 40
 const MOMENT_MINUTE = 30
+// The recent window alone (minutes 16 to 40) holds the moment and 14 measured
+// minutes before it, enough for a pill of its own. Only the full-history guard
+// can keep the row plain until the validated timeline arrives.
+const RECENT_MINUTES = 25
 
 function rollup(index: number): ExtensionRollup {
   return {
@@ -36,7 +41,7 @@ function payload(withFullHistory: boolean): PulsePayload {
     currentOffsetSeconds: MINUTES * 60,
     coverageStartOffsetSeconds: 0,
     startedAt: '2026-06-11T12:00:00.000Z',
-    rollups: all.slice(-10),
+    rollups: all.slice(-RECENT_MINUTES),
     ...(withFullHistory ? { fullRollups: all } : {}),
     lanes: { composite: [], chat: [], seventv: [] },
     recap: null,
@@ -73,6 +78,11 @@ describe('Live now strongest moment strength pill', () => {
   })
 
   it('keeps the plain row until full history is loaded, so the number never jumps', () => {
+    // The recent rollups by themselves would already give a pill, so a plain
+    // row here proves the guard held it back rather than missing data.
+    const recentOnly = momentStrength(payload(false).rollups, peak)
+    expect(recentOnly).not.toBeNull()
+    expect(recentOnly).toMatchObject({ label: '4.2×', minutes: 14 })
     const row = featuredRow(render(false))
     expect(row).not.toContain('pulse-strength')
     expect(row).not.toContain('usual')
