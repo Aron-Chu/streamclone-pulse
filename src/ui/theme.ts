@@ -356,7 +356,9 @@ export const shadowStyles = `
   .pulse-strength-pill[data-lvl="2"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.12); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28); color: rgb(var(--pulse-accent-light-rgb, 167, 139, 250)); }
   .pulse-strength-pill[data-lvl="3"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.24); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45); color: ${theme.textPrimary}; }
   .pulse-strength-pill[data-lvl="4"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.48); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.65); color: #fff; }
-  .pulse-strength-pill[data-lvl="5"] { background: rgb(var(--pulse-accent-rgb, 139, 92, 246)); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.9); color: ${theme.onAccent}; }
+  /* Solid fills carry text on accentStrong (design guide): onAccent on the
+     plain Aurora accent is only 4.2:1, under AA for 9px text. */
+  .pulse-strength-pill[data-lvl="5"] { background: rgb(var(--pulse-accent-strong-rgb, 124, 58, 237)); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.9); color: ${theme.onAccent}; }
   .pulse-library-peek-cta {
     align-items: center;
     appearance: none;
