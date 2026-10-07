@@ -6,7 +6,10 @@ import type { SupporterAccountState } from './supporterAccount.ts'
  * While false the options page keeps the device-code account card and the
  * worker answers TWITCH_SIGN_IN without network I/O. Turn it on only after the
  * backend's Twitch routes are mounted for this build's store surface and the
- * redirect spike has passed for every browser this build ships to.
+ * redirect spike has passed for every browser this build ships to. The same
+ * change adds the `identity` permission to every manifest, the permission
+ * allowlist and the store permission docs; tests/manifestPermissions.test.ts
+ * fails until both move together.
  */
 export const TWITCH_SIGNIN_ENABLED = false
 
