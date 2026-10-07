@@ -211,14 +211,29 @@ describe('support feedback card', () => {
     }
   })
 
-  it('asks the reader to wait a minute when the server names no Retry-After', async () => {
-    respondWith(json(429, { error: 'rate_limited' }))
-    await renderCard()
-    typeMessage('Again')
-    consent()
-    issue('tok-1')
-    send()
-    expect((await screen.findByTestId('support-form-rate-limit')).textContent).toContain('Too many attempts. Wait a minute, then try again.')
+  it('asks the reader to wait a minute when the server names no Retry-After, then lets them send again', async () => {
+    // The backend's 429 for this route sends no Retry-After, and a cross-origin
+    // reply hides it unless CORS exposes it: Send must not stay off until reload.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      respondWith(json(429, { error: 'rate_limited' }), json(200, { case_id: 'c-after-wait' }))
+      await renderCard()
+      typeMessage('Again')
+      consent()
+      issue('tok-1')
+      send()
+      expect((await screen.findByTestId('support-form-rate-limit')).textContent).toContain('Too many attempts. Wait a minute, then try again.')
+      await act(async () => { vi.advanceTimersByTime(30_000) })
+      expect(screen.getByTestId('support-form-rate-limit')).toBeTruthy()
+      await act(async () => { vi.advanceTimersByTime(31_000) })
+      await waitFor(() => expect(screen.queryByTestId('support-form-rate-limit')).toBeNull())
+      issue('tok-2')
+      send()
+      await screen.findByText('Saved. Thank you.')
+      expect(requests).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('switches to the unavailable state when the hosted form is off, keeping the message to copy', async () => {

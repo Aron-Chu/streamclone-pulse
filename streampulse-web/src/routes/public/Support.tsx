@@ -31,7 +31,7 @@ type CardState =
   | { kind: 'sending' }
   | { kind: 'invalid'; error: FeedbackDraftError | 'check_pending' }
   | Exclude<SupportSendOutcome, { kind: 'rate_limited' }>
-  | { kind: 'rate_limited'; until: number | null }
+  | { kind: 'rate_limited'; until: number; guessed: boolean }
 
 type TurnstileAPI = {
   render: (
@@ -65,8 +65,16 @@ const DRAFT_ERRORS: Record<FeedbackDraftError | 'check_pending', string> = {
 /** Show the byte count once a long message gets close to the limit. */
 const COUNTER_FROM = SUPPORT_DESCRIPTION_MAX - 500
 
-function retrySeconds(until: number | null, now: number): number | null {
-  return until === null ? null : Math.max(1, Math.ceil((until - now) / 1000))
+/**
+ * How long Send waits after a 429 that names no readable Retry-After. The
+ * backend's limiter for this route counts per minute and its 429 carries no
+ * Retry-After, and a cross-origin reply only exposes that header when CORS
+ * lists it, so a missing value is the normal case, not an edge.
+ */
+const RATE_LIMIT_FALLBACK_MS = 60_000
+
+function retrySeconds(until: number, now: number): number {
+  return Math.max(1, Math.ceil((until - now) / 1000))
 }
 
 function UnavailablePanel({ keptMessage }: { keptMessage?: string }) {
@@ -161,7 +169,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
     }
   }, [availability, siteKey])
 
-  // A rate limit holds Send until the server's Retry-After has passed.
+  // A rate limit holds Send until the server's Retry-After (or the fallback
+  // minute) has passed, then lets the reader send again without a reload.
   const rateUntil = state.kind === 'rate_limited' ? state.until : null
   useEffect(() => {
     if (rateUntil === null) return
@@ -241,7 +250,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
       return
     }
     if (outcome.kind === 'rate_limited') {
-      setState({ kind: 'rate_limited', until: outcome.retryAfterMs === null ? null : Date.now() + outcome.retryAfterMs })
+      const guessed = outcome.retryAfterMs === null
+      setState({ kind: 'rate_limited', until: Date.now() + (outcome.retryAfterMs ?? RATE_LIMIT_FALLBACK_MS), guessed })
       return
     }
     setState(outcome)
@@ -266,7 +276,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
     : state.kind === 'check_failed' ? "The bot check didn't go through. Your message is still here; try again."
     : state.kind === 'rejected' && state.field === null ? 'The server could not accept this report. Check the fields and try again.'
     : state.kind === 'rate_limited'
-      ? waitSeconds === null
+      ? state.guessed || waitSeconds === null
         ? 'Too many attempts. Wait a minute, then try again. Your message is still here.'
         : `Too many attempts. Try again in ${waitSeconds} second${waitSeconds === 1 ? '' : 's'}. Your message is still here.`
       : null
