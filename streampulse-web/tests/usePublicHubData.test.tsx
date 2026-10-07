@@ -1085,5 +1085,71 @@ describe('usePublicHubData', () => {
       })
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
     })
+
+    it('ends retryBlocked when the Retry-After pause ends, with no read to clear it', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase
+        .mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 60_000 })
+        .mockResolvedValue(hubResult(5))
+      // Polling off: nothing reads again on its own, so only the pause ending can offer Try again.
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(result.current.retryBlocked).toBe(true)
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(59_999) })
+      expect(result.current.retryBlocked).toBe(true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(result.current.retryBlocked).toBe(false)
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        result.current.refresh()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+      expect(result.current.data?.poolSize).toBe(5)
+    })
+
+    it('offers Try again and polls when a pressed read\'s pause ends, though a poll fell inside it', async () => {
+      vi.useFakeTimers()
+      const pressed = deferredHub()
+      fetchPublicHubBase
+        .mockResolvedValueOnce(hubResult(5))
+        // The poll in flight when Try again is pressed; the press aborts it.
+        .mockImplementationOnce((signal: AbortSignal) => new Promise((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason))
+        }))
+        .mockImplementationOnce(() => pressed.promise)
+        .mockResolvedValue(hubResult(6))
+      // random 0: a healthy poll comes 15% early, every 38.25 s.
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0 }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(result.current.data?.poolSize).toBe(5)
+      await act(async () => { await vi.advanceTimersByTimeAsync(38_250) })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      // The aborted poll arms the next one 38.25 s out; then the pressed read names a 60 s pause.
+      await act(async () => {
+        result.current.refresh()
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+      await act(async () => {
+        pressed.reject({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 60_000 })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.retryBlocked).toBe(true)
+
+      // The armed poll falls inside the pause and makes no request.
+      await act(async () => { await vi.advanceTimersByTimeAsync(59_999) })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+      expect(result.current.retryBlocked).toBe(true)
+
+      // The pause ends: Try again is offered and the next poll reads, not a full pause later.
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(result.current.retryBlocked).toBe(false)
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(4)
+      expect(result.current.data?.poolSize).toBe(6)
+    })
   })
 })

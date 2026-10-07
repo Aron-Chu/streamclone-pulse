@@ -172,6 +172,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   const consecutiveFailuresRef = useRef(0)
   const nextRetryAfterMsRef = useRef<number | null>(null)
   const retryNotBeforeRef = useRef(0)
+  // Ends retryBlocked when the server's pause ends, whether or not a read runs then.
+  const unblockTimerRef = useRef<number>()
   const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection } | null>(null)
   const randomRef = useRef(random)
   randomRef.current = random
@@ -193,6 +195,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       consecutiveFailuresRef.current = 0
       nextRetryAfterMsRef.current = null
       retryNotBeforeRef.current = 0
+      window.clearTimeout(unblockTimerRef.current)
     },
     [activityWindow, projection],
   )
@@ -313,9 +316,14 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       consecutiveFailuresRef.current += 1
       if (isApiError(err) && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
         // Honor server Retry-After when present; never shorten below healthy cadence.
-        nextRetryAfterMsRef.current = Math.max(pollMs, err.retryAfterMs)
-        retryNotBeforeRef.current = Date.now() + nextRetryAfterMsRef.current
+        const pauseMs = Math.max(pollMs, err.retryAfterMs)
+        nextRetryAfterMsRef.current = pauseMs
+        retryNotBeforeRef.current = Date.now() + pauseMs
         setRetryBlocked(true)
+        // Offer Try again once the pause ends: a hidden tab, polling turned off, or a
+        // poll that fired just before the end may not run a read then.
+        window.clearTimeout(unblockTimerRef.current)
+        unblockTimerRef.current = window.setTimeout(() => setRetryBlocked(false), pauseMs)
       }
       setError(
         isApiError(err)
@@ -402,9 +410,20 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       const delay =
         retryAfter ??
         computeJitteredDelayMs(pollMs, consecutiveFailuresRef.current, randomRef.current)
+      arm(delay)
+    }
+    const arm = (delay: number) => {
       pollTimer = window.setTimeout(() => {
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
           scheduleNext()
+          return
+        }
+        // A read pressed while this poll waited may have set a later Retry-After:
+        // poll when that pause ends, not a whole Retry-After after this tick.
+        const wait = retryNotBeforeRef.current - Date.now()
+        if (wait > 0) {
+          nextRetryAfterMsRef.current = null
+          arm(wait)
           return
         }
         void load().finally(() => {
@@ -437,6 +456,8 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [enabled, pollMs, load])
+
+  useEffect(() => () => window.clearTimeout(unblockTimerRef.current), [])
 
   const activityRefreshing = useMemo(
     () =>
