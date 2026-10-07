@@ -154,9 +154,10 @@ export function useExplorerData(options: UseExplorerDataOptions) {
         window.clearTimeout(unblockTimerRef.current)
         unblockTimerRef.current = window.setTimeout(() => setRetryBlocked(false), retryAfterMs)
       }
-      if (previous) {
-        const stale = staleCopy(previous)
-        show(stale)
+      // Marked out of date as it is now: a Load more may have landed during this read.
+      const shown = cache.get(queryKey) ?? previous
+      if (shown) {
+        show(staleCopy(shown))
         setError(unavailable?.reason ?? (isApiError(caught) ? caught.message : caught instanceof Error ? caught.message : 'Explorer refresh failed'))
       } else if (unavailable) {
         show(unavailable)

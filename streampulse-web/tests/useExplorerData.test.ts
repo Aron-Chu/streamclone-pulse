@@ -338,3 +338,32 @@ it('joins a Load more page to a poll that kept the cursor, keeping the poll\'s s
     vi.useRealTimers()
   }
 })
+
+it('keeps a Load more page that landed during a poll that then fails', async () => {
+  vi.useFakeTimers()
+  try {
+    const server = pagedServer(['a', 'b', 'c', 'd', 'e'])
+    let failPoll: ((reason: unknown) => void) | undefined
+    let firstPages = 0
+    vi.spyOn(explorer, 'fetchExplorer').mockImplementation(async options => {
+      // The first poll (the second first-page read) is held, then fails.
+      if (!options?.cursor && firstPages++ === 1) return new Promise((_, reject) => { failPoll = reject })
+      return server.answer(options)
+    })
+    const { result } = renderHook(() => useExplorerData({ ...live, q: 'failed-poll-keeps-page' }))
+    await flush()
+    await flush(5_000)
+    expect(failPoll).toBeDefined()
+    await act(async () => { await result.current.loadMore() })
+    expect(ids(result.current.data)).toEqual(['a', 'b', 'c', 'd'])
+
+    await act(async () => { failPoll!({ kind: 'timeout', message: 'Request timed out' }) })
+    // Shown as out of date, with the rows and the cursor the reader has now.
+    expect(result.current.data?.status).toBe('stale')
+    expect(ids(result.current.data)).toEqual(['a', 'b', 'c', 'd'])
+    expect(result.current.data?.nextCursor).toBe('d')
+    expect(result.current.error).toBe('Request timed out')
+  } finally {
+    vi.useRealTimers()
+  }
+})
