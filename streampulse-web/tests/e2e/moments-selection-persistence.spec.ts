@@ -7,11 +7,13 @@ test('the next selected moment retains its evidence after the collection is repl
   await page.goto('/analytics/moments?view=recent')
   await expect(page.locator('.moments-result')).toHaveCount(2)
   await page.locator('[data-discovery-key]').first().click()
-  const detail = page.getByRole('region', { name: 'Selected moment', exact: true })
-  await expect(detail.getByRole('heading', { name: 'Twitch emote spike', exact: true })).toBeVisible()
+  const detail = page.getByRole('region', { name: /^Selected moment: / })
+  await expect(detail.locator('.moments-detail-head')).toContainText('1 of 2 loaded moments')
   await detail.getByRole('button', { name: 'Next moment', exact: true }).click()
   await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
-  await expect(detail.getByRole('heading', { name: 'Chat spike', exact: true })).toBeVisible()
+  // Next moves the detail in line, under the second row.
+  await expect(detail.locator('.moments-detail-head')).toContainText('2 of 2 loaded moments')
+  await expect.poll(() => page.locator('.moments-result').nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
 
   await installHubUxMock(page, { mode: 'empty' })
   await page.evaluate(() => {
@@ -30,7 +32,7 @@ test('the next selected moment retains its evidence after the collection is repl
   await expect(measurement.locator('dd').nth(1)).toHaveText('95')
   await expect(detail.getByText('OMEGALUL', { exact: true })).toBeVisible()
   await expect(detail.getByText('Selection outside loaded matches', { exact: true })).toBeVisible()
-  await detail.getByRole('button', { name: /Back to results/ }).click()
+  await detail.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page).toHaveURL(/\/analytics\/moments\?view=recent$/)
   await expect(detail).toHaveCount(0)
 })

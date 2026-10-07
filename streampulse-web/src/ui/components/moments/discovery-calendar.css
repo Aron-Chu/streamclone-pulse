@@ -113,7 +113,6 @@
   .discovery-calendar__collection-status { grid-template-columns: minmax(0, 1fr); }
   .discovery-calendar__collection-status > p { grid-column: auto; }
   .discovery-calendar__body { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .moments-workspace.is-reviewing .discovery-calendar { display: none; }
 }
 @media (max-width: 520px) {
   .discovery-calendar { padding: 12px; }

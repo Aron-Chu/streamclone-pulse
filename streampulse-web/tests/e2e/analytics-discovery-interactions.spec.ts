@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 
+// Mock-only: an API read a test does not answer (the open moment's minutes, among
+// others) fails here, never against production. Routes added later take precedence.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
+})
+
 for (const width of [390, 768, 1440]) {
 test(`a detection keeps its reaction headline and exact identity between Live Wire and Moments at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 })
@@ -18,8 +24,11 @@ test(`a detection keeps its reaction headline and exact identity between Live Wi
   const open = page.locator('[data-discovery-key=\'["xqc","s1",120]\']')
   const result = page.locator('.moments-result').filter({ has: open })
   await expect(page).toHaveURL(/stream=s1&offset=120/)
-  await expect(page.getByRole('region', { name: 'Selected moment', exact: true })).toContainText('Twitch emote spike')
-  await page.getByRole('button', { name: 'Back to results' }).click()
+  // The detail opens in line under the row that names the reaction.
+  await expect(page.getByRole('region', { name: /^Selected moment: / })).toBeVisible()
+  await expect(result).toContainText('Twitch emote spike')
+  expect(await result.evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  await page.getByRole('region', { name: /^Selected moment: / }).getByRole('button', { name: 'Close', exact: true }).click()
   await expect(open).toBeFocused()
   // The row states the same signal and ratio compactly and carries the full
   // headline on the ratio itself, so the two surfaces cannot drift apart.

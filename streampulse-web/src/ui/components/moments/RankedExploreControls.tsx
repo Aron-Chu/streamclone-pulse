@@ -27,7 +27,7 @@ export function RankedExploreControls({ params, indexedRetentionStart, certified
       <label>Creator<input aria-label="Exact creator login" type="search" maxLength={25} value={params.get('creator') || ''} onChange={e => onChange({ creator: e.target.value.toLowerCase() || null })} placeholder="All creators" /></label>
       <span className="moments-muted">Order: observed IRC chat/min</span>
       <button type="button" onClick={onReset}><RotateCcw size={16} aria-hidden="true" />Reset Explore</button></>}
-      <button type="button" disabled={loading || invalid} onClick={onRefresh}><RefreshCw size={16} aria-hidden="true" />Reload collection</button>
+      <button type="button" data-keeps-selection disabled={loading || invalid} onClick={onRefresh}><RefreshCw size={16} aria-hidden="true" />Reload collection</button>
     </div>
     {data ? <p className="moments-muted" role="status">{retained ? 'Previous snapshot retained' : 'Snapshot'}: {data.asOf} · {data.from} through {new Date(Date.parse(data.to) - 86400000).toISOString().slice(0, 10)} UTC · {data.creator || 'All creators'} · {data.categoryMissing ? 'Unknown category' : data.category || 'All categories'} · Certified dates {indexedRetentionStart}–{latestDay}; checked {checkedAt} UTC · {data.freshness === 'stale' ? 'Index delayed' : 'Index ready'}</p> : indexedRetentionStart ? <p className="moments-muted">{`Certified dates ${indexedRetentionStart}–${latestDay} UTC · Checked ${checkedAt} UTC · Partial measurement`} · Up to 30 days inclusive</p>
       : loading ? <p className="moments-muted">Checking certified dates before loading a collection · Up to 30 days inclusive</p> : null}

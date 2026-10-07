@@ -116,7 +116,7 @@ for (const width of [390, 768, 1440]) {
     await page.locator('.moments-result').first().getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible()
     await page.locator('.moments-card-primary').first().click()
-    await expect(page.getByRole('region', { name: 'Selected moment', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: /^Selected moment: / })).toBeVisible()
     await expect(page.locator('.moments-result.is-selected').first()).toHaveAttribute('data-detection-id', expected.rankedIDs[0])
     await page.screenshot({ path: info.outputPath(`real-detail-${width}.png`) })
     await page.goBack()
