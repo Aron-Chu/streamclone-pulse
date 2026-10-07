@@ -27,6 +27,18 @@ describe('toolbar popup ownership', () => {
     expect(source).toContain('safeImageUrl(')
   })
 
+  it('asks for My Moments only after checking the window is not private', () => {
+    const source = readFileSync(new URL('../src/popup/popup.tsx', import.meta.url), 'utf8')
+    const guard = source.indexOf('if (popupShowsDeviceHistory(next, await popupWindowIncognito(tab)))')
+    const request = source.indexOf("type: 'MY_MOMENTS', action: 'recent'")
+
+    expect(guard).toBeGreaterThanOrEqual(0)
+    expect(request).toBeGreaterThan(guard)
+    // The guarded request is the popup's only My Moments read.
+    expect(source.match(/type: 'MY_MOMENTS'/g)).toHaveLength(1)
+    expect(source).toContain('chrome.windows.getCurrent()')
+  })
+
   it('loads its own stylesheet before mounting the popup', () => {
     const source = readFileSync(new URL('../src/popup/popup.tsx', import.meta.url), 'utf8')
     const styleInit = source.indexOf('styleElement.textContent = popupStyles')

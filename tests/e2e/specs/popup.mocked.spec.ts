@@ -54,7 +54,7 @@ async function routeMedia(page: Page): Promise<void> {
  * Opened as a tab, the popup's own page is the active tab. Point its tab query
  * at a Twitch tab instead, and answer the avatar read the way Twitch would.
  */
-async function pretendActiveTab(page: Page, tab: { id: number; url: string }): Promise<void> {
+async function pretendActiveTab(page: Page, tab: { id: number; url: string; incognito?: boolean }): Promise<void> {
   await page.addInitScript(({ tab, avatar }) => {
     chrome.tabs.query = (async () => [{ ...tab, active: true }]) as unknown as typeof chrome.tabs.query
     chrome.scripting.executeScript = (async () => [{ result: avatar }]) as unknown as typeof chrome.scripting.executeScript
@@ -184,6 +184,39 @@ test.describe('toolbar popup', () => {
     const opened = extension.context.waitForEvent('page')
     await jump.getByRole('button', { name: /1 save on this device/ }).click()
     expect((await opened).url()).toBe(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
+  })
+
+  test('in a private window it leaves out jump back in and never asks for My Moments', async ({ extension, prepare }) => {
+    await prepare()
+    const page = extension.page
+    await page.setViewportSize({ width: 320, height: 700 })
+    await routeMedia(page)
+    await routeHub(page, readFixture('hub-popup.json'))
+    await page.goto(`chrome-extension://${extension.extensionId}/popup/index.html`)
+    // The regular profile holds a device save that its own popup would offer.
+    await page.evaluate(async () => {
+      const loaded = await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'load' })
+      await chrome.runtime.sendMessage({ type: 'MY_MOMENTS', action: 'mutate', scope: loaded.snapshot.scope, command: { kind: 'save', reference: { id: 'fixture', channel: 'fixturechan', title: 'Chat spike', vodId: '2806037629', offsetSeconds: 3600, availability: 'available' } } })
+    })
+    // Allowed in Incognito, the popup opens over a private window's tab. Its
+    // messages carry no tab, so only the popup can tell the window is private.
+    await pretendActiveTab(page, { id: 4242, url: 'https://example.com/', incognito: true })
+    await page.addInitScript(() => {
+      const sent: string[] = []
+      ;(globalThis as { __popupSent?: string[] }).__popupSent = sent
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime) as (...args: unknown[]) => unknown
+      chrome.runtime.sendMessage = ((message: { type?: string; action?: string }, ...rest: unknown[]) => {
+        sent.push([message?.type, message?.action].filter(Boolean).join(':'))
+        return send(message, ...rest)
+      }) as unknown as typeof chrome.runtime.sendMessage
+    })
+    await page.reload()
+    await expect(page.locator('section.pp-live')).toBeVisible()
+    await expect(page.getByText('Jump back in')).toHaveCount(0)
+    await expect(page.getByText(/on this device/)).toHaveCount(0)
+    const sent = await page.evaluate(() => (globalThis as { __popupSent?: string[] }).__popupSent ?? [])
+    expect(sent).toContain('HUB_SNAPSHOT')
+    expect(sent.filter(type => type.startsWith('MY_MOMENTS'))).toEqual([])
   })
 
   test('on a live channel it shows that stream: avatar, live chat, viewers, top emote and the biggest moment', async ({ extension, prepare }, info) => {

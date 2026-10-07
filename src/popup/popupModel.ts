@@ -49,6 +49,17 @@ export function popupTabView(url: string | undefined): PopupTabView {
   return { kind: 'channel', login: segment.toLowerCase() }
 }
 
+/**
+ * Whether the popup may ask for "Jump back in": this profile's My Moments
+ * history and device saves. The worker refuses My Moments for incognito
+ * Twitch tabs by `sender.tab`, but a popup message has no tab, and in spanning
+ * mode the worker never runs incognito, so only the popup knows it is showing
+ * in a private window. A window the popup could not identify counts as private.
+ */
+export function popupShowsDeviceHistory(view: PopupTabView, incognito: boolean | undefined): boolean {
+  return (view.kind === 'elsewhere' || view.kind === 'browsing') && incognito === false
+}
+
 const SAFE_IMAGE_HOSTS = new Set([
   'static-cdn.jtvnw.net',
   'cdn.7tv.app',

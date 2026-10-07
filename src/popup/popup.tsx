@@ -16,6 +16,7 @@ import {
   formatCount,
   formatSince,
   emoteImage,
+  popupShowsDeviceHistory,
   popupTabView,
   safeImageUrl,
   sparkGeometry,
@@ -88,9 +89,12 @@ function PopupApp() {
         void sendBackgroundMessage({ type: 'HUB_SNAPSHOT' })
           .then(res => setHub('type' in res && res.type === 'HUB_SNAPSHOT' && res.snapshot ? { status: 'ready', snapshot: res.snapshot } : { status: 'error' }))
           .catch(() => setHub({ status: 'error' }))
-        void sendBackgroundMessage({ type: 'MY_MOMENTS', action: 'recent' })
-          .then(res => { if ('type' in res && res.type === 'MY_MOMENTS_RECENT') setRecent(res.recent) })
-          .catch(() => null)
+        // A private window never reads this profile's history or saves.
+        if (popupShowsDeviceHistory(next, await popupWindowIncognito(tab))) {
+          void sendBackgroundMessage({ type: 'MY_MOMENTS', action: 'recent' })
+            .then(res => { if ('type' in res && res.type === 'MY_MOMENTS_RECENT') setRecent(res.recent) })
+            .catch(() => null)
+        }
       }
       if (next.kind !== 'channel') return
       void loadChannel(next.login)
@@ -559,6 +563,20 @@ function SkeletonChannel() {
       <span className="pp-skel" style={{ display: 'block', height: 40, marginTop: 12, borderRadius: 8 }} />
     </>
   )
+}
+
+/**
+ * Whether the popup is showing in a private window: the active tab says so,
+ * else the popup's own window. Undefined when neither can be read.
+ */
+async function popupWindowIncognito(tab: chrome.tabs.Tab | undefined): Promise<boolean | undefined> {
+  if (typeof tab?.incognito === 'boolean') return tab.incognito
+  try {
+    const current = await chrome.windows.getCurrent()
+    return typeof current?.incognito === 'boolean' ? current.incognito : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Reads the channel avatar Twitch already shows, so the popup sends no request of its own. */

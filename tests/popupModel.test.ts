@@ -6,6 +6,7 @@ import {
   formatCount,
   formatSince,
   formatUptime,
+  popupShowsDeviceHistory,
   popupTabView,
   safeImageUrl,
   sparkGeometry,
@@ -48,6 +49,25 @@ describe('popup tab view', () => {
     expect(popupTabView('http://www.twitch.tv/xqc')).toEqual({ kind: 'elsewhere' })
     expect(popupTabView('chrome-extension://abc/popup/index.html')).toEqual({ kind: 'elsewhere' })
     expect(popupTabView(undefined)).toEqual({ kind: 'elsewhere' })
+  })
+})
+
+describe('popup device history', () => {
+  it('asks for Jump back in only away from a stream in a regular window', () => {
+    expect(popupShowsDeviceHistory({ kind: 'elsewhere' }, false)).toBe(true)
+    expect(popupShowsDeviceHistory({ kind: 'browsing' }, false)).toBe(true)
+    expect(popupShowsDeviceHistory({ kind: 'channel', login: 'fixturechan' }, false)).toBe(false)
+    expect(popupShowsDeviceHistory({ kind: 'vod', vodId: '2806037629' }, false)).toBe(false)
+  })
+
+  it('never shows this profile\'s history or saves in a private window', () => {
+    expect(popupShowsDeviceHistory({ kind: 'elsewhere' }, true)).toBe(false)
+    expect(popupShowsDeviceHistory({ kind: 'browsing' }, true)).toBe(false)
+  })
+
+  it('treats a window it could not identify as private', () => {
+    expect(popupShowsDeviceHistory({ kind: 'elsewhere' }, undefined)).toBe(false)
+    expect(popupShowsDeviceHistory({ kind: 'browsing' }, undefined)).toBe(false)
   })
 })
 
