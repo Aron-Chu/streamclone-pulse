@@ -44,12 +44,12 @@ test('second and third session updates hand off their own aligned archive time',
     const aligned = Math.floor(offset + timing.vodAlignSeconds)
     await expect(page.getByRole('link', { name: 'Review in Streamclone ↗', exact: true })).toHaveAttribute('href',
       `${watchOrigin}/c/xqc?vod=${vodId}&offset=${aligned}&sid=${streamId}&from=analytics`)
-    await page.getByRole('button', { name: 'Back to results' }).click()
+    await page.getByRole('region', { name: /^Selected moment: / }).getByRole('button', { name: 'Close', exact: true }).click()
   }
 })
 
 test('saved selection rechecks source before offering watch handoff; failure remains saveable', async ({ page }) => {
-  const detail = page.getByRole('region', { name: 'Selected moment', exact: true })
+  const detail = page.getByRole('region', { name: /^Selected moment: / })
   await page.goto(`/analytics/moments?login=xqc&stream=${streamId}&offset=5183`)
   await expect(detail.getByRole('link', { name: 'Review in Streamclone ↗' })).toBeVisible()
   await detail.getByRole('button', { name: 'Save', exact: true }).click()
@@ -119,6 +119,6 @@ for (const width of [390, 768, 1440]) test(`actual watch app receives selected s
   await expect(watch.getByRole('button', { name: 'Create Twitch clip', exact: true })).toBeFocused()
   await watch.close()
   // The originating selection stays stream-relative; only playback is aligned.
-  await expect(page.getByRole('region', { name: 'Selected moment', exact: true })).toContainText('1:26:23 into stream')
+  await expect(page.getByRole('region', { name: /^Selected moment: / })).toContainText('1:26:23 into stream')
   await expect(page).toHaveURL(new RegExp('offset=5183'))
 })

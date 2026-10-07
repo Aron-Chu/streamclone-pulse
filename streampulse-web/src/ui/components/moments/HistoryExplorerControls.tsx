@@ -15,7 +15,7 @@ export function HistoryExplorerControls({ params, now, indexedRetentionStart, ce
     <div className="moments-history__header"><h2>{creator ? '@' + creator : 'Global moments'}</h2><span className="moments-muted">Certified dates unavailable</span></div>
     <div className="moments-notice" role="status"><h3>{loading ? 'Checking certified dates…' : 'History unavailable'}</h3>
       <p>{loading ? 'Checking the certified retained range before loading a date.' : error || 'No verified retained UTC day is available yet.'}</p>
-      {!loading ? <button type="button" onClick={onRefresh}>Retry history</button> : null}
+      {!loading ? <button type="button" data-keeps-selection onClick={onRefresh}>Retry history</button> : null}
       <Link to="/analytics/moments?view=recent">Browse Latest moments</Link>
     </div>
   </section>
@@ -38,7 +38,7 @@ export function HistoryExplorerControls({ params, now, indexedRetentionStart, ce
     <div className="moments-history__ranking">
       <span className="moments-muted">Order: observed IRC chat/min</span>
       <span className="moments-muted">{day || (month ? `Month ${month} · date filter` : 'Recent date range')}{day ? <button type="button" aria-label="Clear day selection" title="Recent date range" onClick={() => onChange({ day: null, year: null, month: null })}><X size={16} /></button> : null}</span>
-      <button type="button" disabled={loading} aria-label="Refresh rankings" title="Refresh rankings" onClick={onRefresh}><RefreshCw size={16} /></button>
+      <button type="button" data-keeps-selection disabled={loading} aria-label="Refresh rankings" title="Refresh rankings" onClick={onRefresh}><RefreshCw size={16} /></button>
     </div>
     <p className="moments-muted">Observed IRC chat per detected moment’s minute · indexed completed broadcasts only</p>
     <details className="moments-history__filters"><summary>Filters{creator || params.get('category') || params.get('categoryMissing') === 'true' ? ' · active' : ''}</summary>
@@ -55,7 +55,7 @@ export function HistoryExplorerControls({ params, now, indexedRetentionStart, ce
       </div>
     </details>
     {retained && data ? <p role="status">Previous volume ranking retained while this selection is unavailable or loading: {data.from} to {data.to} (exclusive), {data.creator || 'global'}.</p> : null}
-    {error ? <div className="moments-notice" role="status"><h3>Rankings unavailable</h3><p>{error}</p><button type="button" disabled={loading} onClick={onRefresh}>Retry rankings</button>{invalid ? <button type="button" onClick={() => onChange({ year: null, month: null, day: null, sort: 'volume' })}>Open recent volume history</button> : null}<Link to="/analytics/moments?view=recent">Browse Latest moments</Link></div> : null}
+    {error ? <div className="moments-notice" role="status"><h3>Rankings unavailable</h3><p>{error}</p><button type="button" data-keeps-selection disabled={loading} onClick={onRefresh}>Retry rankings</button>{invalid ? <button type="button" onClick={() => onChange({ year: null, month: null, day: null, sort: 'volume' })}>Open recent volume history</button> : null}<Link to="/analytics/moments?view=recent">Browse Latest moments</Link></div> : null}
     {data && !retained ? <p className="moments-muted">{data.coverage.state === 'none' ? 'No indexed measurement in this selection' : `${data.eligibility.rankedDetections.toLocaleString()} ranked detected moments · ${data.coverage.indexedStreams.toLocaleString()} indexed completed broadcasts · Partial measurement`}{data.freshness === 'stale' ? ' · Index delayed' : ''}</p> : null}
   </section>
 }

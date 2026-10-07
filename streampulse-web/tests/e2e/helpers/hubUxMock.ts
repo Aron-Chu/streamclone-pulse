@@ -102,9 +102,19 @@ export type HubUxMockOptions = {
   legacySuccessfulCoarseFallback?: boolean
   /** Holds only the canonical 30m reply, so tests can inspect independent live lanes. */
   recentHubGate?: Promise<void>
+  /** Broadcast offsets for the two Pulse moments (default 120s and 240s). */
+  momentOffsets?: [number, number]
+  /** More Pulse moments after the two defaults, `minutesBefore` the second one. */
+  extraPulseMoments?: Array<{ login: string; streamId: string; offsetSeconds: number; label: string; minutesBefore: number }>
 }
 
-export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<void> {
+/** What the mock served, for routes a test adds around it. */
+export type HubUxMockServed = {
+  /** `at` of the two default Pulse moments: each one's own minute. */
+  momentAts: [number, number]
+}
+
+export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<HubUxMockServed> {
   const mode = options.mode ?? 'ready'
   const hubDelayMs = options.hubDelayMs ?? 0
   const noLiveData = mode === 'empty' || mode === 'zero-live'
@@ -318,7 +328,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             profileImageUrl: options.firstMomentProfileImageUrl,
             archiveArtwork: options.firstMomentArchiveArtwork,
             handoffRef: options.firstMomentHandoffRef,
-            offsetSeconds: 120,
+            offsetSeconds: options.momentOffsets?.[0] ?? 120,
             comparison,
             score: 92,
             label: 'Twitch emote spike',
@@ -342,7 +352,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             login: 'sodapoppin',
             displayName: 'sodapoppin',
             streamId: 's2',
-            offsetSeconds: 240,
+            offsetSeconds: options.momentOffsets?.[1] ?? 240,
             score: 84,
             label: 'Chat spike',
             kind: 'chat_spike',
@@ -359,6 +369,23 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
               { name: 'OMEGALUL', provider: 'bttv', count: 88, sharePct: 31 },
             ],
           },
+          ...(options.extraPulseMoments ?? []).map(({ minutesBefore, ...moment }, index) => ({
+            ...moment,
+            publicMomentId: `public-extra-${index + 1}`,
+            displayName: moment.login,
+            score: 80 - index,
+            kind: 'chat_spike',
+            source: 'live_irc',
+            confidence: 90,
+            vodState: 'live_only',
+            chatPerMin: 240,
+            emotesPerMin: 70,
+            viewers: 8000,
+            viewerDelta: 'no change',
+            category: 'Just Chatting',
+            at: newsroomMomentAt - 6 * 60_000 - minutesBefore * 60_000,
+            topEmotes: [{ name: 'KEKW', provider: '7tv', count: 40, sharePct: 25 }],
+          })),
         ],
         featuredSession: { state: 'empty', reason: 'no_qualifying_session' },
       }),
@@ -387,4 +414,5 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   await page.route(/\/v1\/public\/newsroom(\/[^?]+)?(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schemaVersion: 0 }) }),
   )
+  return { momentAts: [newsroomMomentAt, newsroomMomentAt - 6 * 60_000] }
 }

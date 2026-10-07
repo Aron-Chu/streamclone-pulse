@@ -184,12 +184,10 @@
 .moments-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .moments-actions a[href^="/analytics"]::after { content: "\2192"; margin-left: 0.35em; }
 
-.moments-layout { display: grid; align-items: start; gap: 24px; }
-.moments-layout:not(.has-selection) { grid-template-columns: minmax(0, 1fr); }
-.moments-layout:not(.has-selection) .moments-results { width: 100%; }
-.moments-layout.has-selection { grid-template-columns: minmax(290px, 360px) minmax(0, 1fr); gap: 20px; }
-/* One flat list in every state: browsing and reviewing differ in width, not in
-   how a detection is drawn. */
+.moments-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 24px; }
+.moments-layout .moments-results { width: 100%; }
+/* One flat, full-width list in every state: an open moment's detail opens under
+   its own row, so browsing and reviewing never change the list's width. */
 .moments-result-list {
   display: grid;
   gap: 0;
@@ -291,11 +289,74 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   object-fit: cover;
 }
 
-.moments-detail { position: sticky; top: 88px; border: 1px solid var(--fma-border, hsl(var(--sc-border))); border-radius: 7px; padding: 20px; background: var(--fma-panel, hsl(var(--sc-card))); }
-.moments-detail { max-height: calc(100dvh - 104px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--fma-border) transparent; color-scheme: dark; scrollbar-gutter: stable; scroll-padding-block: 20px; }
-.moments-detail::-webkit-scrollbar { width: 6px; }
-.moments-detail::-webkit-scrollbar-track { background: transparent; }
-.moments-detail::-webkit-scrollbar-thumb { background: var(--fma-border); border-radius: 8px; }
+/* The open moment, in line: a slot under its row grows from 0fr to 1fr and the
+   detail fades in just after it; closing is quicker. Reduced motion is instant
+   (the rule at the end of this file, and MomentInlineReveal skips its delay). */
+.moments-result,
+.moments-inline { scroll-margin-block-start: 88px; }
+.moments-inline { display: grid; grid-template-rows: 0fr; border-bottom: 1px solid var(--fma-border); transition: grid-template-rows 280ms cubic-bezier(.22, 1, .36, 1); }
+.moments-inline.is-open { grid-template-rows: 1fr; }
+.moments-inline.is-closing { pointer-events: none; transition-duration: 200ms; transition-timing-function: cubic-bezier(.4, 0, .2, 1); }
+.moments-inline:last-child { border-bottom: 0; }
+.moments-inline__clip { min-height: 0; overflow: hidden; }
+.moments-detail { position: relative; margin: 2px 14px 14px; border: 1px solid color-mix(in srgb, var(--fma-accent-text) 30%, var(--fma-border)); border-radius: 7px; padding: 20px; background: var(--fma-panel, hsl(var(--sc-card))); color-scheme: dark; }
+/* A standalone card has no row above it: it sits over the list in its own frame. */
+.moments-inline--standalone { margin-bottom: 14px; border-bottom: 0; }
+.moments-inline--standalone .moments-detail { margin: 0; }
+.moments-inline .moments-detail { opacity: 0; transform: translateY(-6px); transition: opacity 200ms ease 60ms, transform 260ms cubic-bezier(.22, 1, .36, 1) 40ms; }
+.moments-inline.is-open .moments-detail { opacity: 1; transform: none; }
+.moments-inline.is-closing .moments-detail { transition-delay: 0s; transition-duration: 120ms; }
+.moments-detail:focus { outline: none; }
+.moments-detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 14px; }
+.moments-detail-head > span { color: var(--fma-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.moments-detail-head > div,
+.moments-detail-head nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.moments-workspace .moments-detail-head button { gap: 6px; }
+/* What happened on the left, watching and actions on the right; one column below 900px. */
+.moments-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: start; }
+.moments-detail-grid > div { min-width: 0; }
+.moments-detail-grid > div > :first-child { margin-top: 0; }
+@media (min-width: 900px) { .moments-detail-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 899px) { .moments-detail-side > :first-child { margin-top: 18px; } }
+
+/* Chat per minute around the moment: measured minute rollups only. */
+.moment-minutes { container-type: inline-size; margin: 0 0 18px; }
+.moment-minutes figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
+.moment-minutes figcaption strong { color: var(--fma-text); font-size: 15px; }
+.moment-minutes figcaption span { color: var(--fma-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.moment-minutes figcaption span.is-hovered { color: var(--fma-text); }
+.moment-minutes__plot { position: relative; padding: 12px 12px 6px; border: 1px solid var(--fma-border); border-radius: 7px; background: var(--sp-surface-2, color-mix(in srgb, var(--fma-text) 2%, transparent)); touch-action: pan-y; }
+.moment-minutes__plot svg { display: block; width: 100%; height: 120px; overflow: visible; }
+.moment-minutes__bar { fill: hsl(258 42% 58%); fill-opacity: .55; transform-box: fill-box; transform-origin: 50% 100%; }
+.moment-minutes__bar[data-moment] { fill: var(--fma-accent-text); fill-opacity: 1; }
+.moment-minutes__bar[data-hovered]:not([data-moment]) { fill-opacity: .85; }
+/* A rollup with no chat count is "no chat recorded": a neutral floor mark, not a bar. */
+.moment-minutes__unrecorded { fill: color-mix(in srgb, var(--fma-text) 30%, transparent); }
+.moment-minutes__unrecorded[data-hovered] { fill: color-mix(in srgb, var(--fma-text) 55%, transparent); }
+.moment-minutes__baseline { stroke: color-mix(in srgb, var(--fma-text) 35%, transparent); stroke-width: 1; stroke-dasharray: 5 5; }
+.moment-minutes__axis { position: relative; display: flex; justify-content: space-between; margin-top: 6px; color: var(--fma-muted); font: 600 11px/1 var(--fma-mono, ui-monospace), monospace; font-variant-numeric: tabular-nums; }
+.moment-minutes__axis em { position: absolute; top: 0; transform: translateX(-50%); color: var(--fma-accent-text); font-style: normal; white-space: nowrap; }
+.moment-minutes__legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; color: var(--fma-muted); font-size: 12px; }
+.moment-minutes__swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: var(--fma-accent-text); vertical-align: -1px; }
+.moment-minutes__swatch--baseline { width: 14px; height: 0; border-top: 1px dashed color-mix(in srgb, var(--fma-text) 50%, transparent); border-radius: 0; background: none; vertical-align: 3px; }
+.moment-minutes__swatch--unrecorded { width: 14px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fma-text) 30%, transparent); vertical-align: 2px; }
+.moment-minutes__plot--loading { height: 150px; }
+.moment-minutes__plot--loading > span { position: absolute; inset: 12px 12px 22px; border-radius: 4px; background: color-mix(in srgb, var(--fma-text) 5%, transparent); }
+.moment-minutes-note { margin: 0 0 18px; }
+/* Narrow plots put "this moment" on its own line so it never covers an end label. */
+@container (max-width: 520px) {
+  /* Too narrow for the title and a minute readout side by side: the readout gets a
+     line of its own, held even while empty, so a hover or press never moves the plot. */
+  .moment-minutes figcaption span { flex-basis: 100%; min-height: 1.5em; line-height: 1.5; }
+  .moment-minutes__plot svg { height: 96px; }
+  .moment-minutes__axis { padding-bottom: 15px; }
+  .moment-minutes__axis em { top: 15px; }
+}
+@keyframes moment-minute-bar-enter { from { transform: scaleY(.05); opacity: .2; } }
+@media (prefers-reduced-motion: no-preference) {
+  .moments-inline.is-open .moment-minutes__bar { animation: moment-minute-bar-enter 400ms cubic-bezier(.22, 1, .36, 1) both; }
+  .moment-minutes__plot--loading > span { animation: moments-loading-breathe 1.8s ease-in-out infinite alternate; }
+}
 .moments-loading { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,330px),1fr)); gap: 16px; }
 .moments-loading__card { border: 1px solid var(--fma-border); border-radius: 8px; padding: 16px; min-height: 280px; }
 .moments-loading--sessions .moments-loading__card { min-height: 142px; }
@@ -310,12 +371,9 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-workspace :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) {
   .moments-loading__card { animation: moments-loading-breathe 1.8s ease-in-out infinite alternate; }
-  .moments-detail { animation: moments-detail-reveal 180ms ease-out; }
   .moments-workspace :is(button,a,select,input) { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
 }
 @keyframes moments-loading-breathe { from { opacity: .5; } to { opacity: .9; } }
-@keyframes moments-detail-reveal { from { opacity: .4; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-.moments-detail .moments-back { border: 0; background: transparent; padding-inline: 0; }
 .moments-identity { display: flex; align-items: center; gap: 12px; margin: 20px 0 14px; }
 .moments-identity > div { min-width: 0; overflow-wrap: anywhere; }
 .moments-detail-offset { margin-left: auto; text-align: right; flex: none; }
@@ -334,10 +392,6 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-primary-actions .moments-vod-offset-note { flex-basis: 100%; color: var(--fma-muted); font-size: 12px; line-height: 1.4; }
 .moments-primary-actions .moment-save-control button { border-color: color-mix(in srgb, var(--fma-text) 25%, var(--fma-border)); background: var(--sp-surface-3, var(--fma-dim)); padding-inline: 20px; }
 .moments-secondary-actions a { border: 0; background: transparent; padding-left: 0; color: var(--fma-sub); }
-.moments-review-navigation { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; margin-top:12px; padding-bottom:12px; border-bottom:1px solid var(--fma-border); }
-.moments-detail { scroll-margin-block-start:100px; }
-.moments-review-navigation > span { color:var(--fma-muted); font-size:12px; font-variant-numeric:tabular-nums; }
-.moments-review-navigation > div { display:flex; flex-wrap:wrap; gap:8px; }
 .moments-source { margin: 18px 0; padding: 16px 0; border-top: 1px solid var(--fma-border, hsl(var(--sc-border))); border-bottom: 1px solid var(--fma-border, hsl(var(--sc-border))); }
 .moments-source p,
 .moments-evidence { color: var(--fma-muted, hsl(var(--sc-muted-foreground))); font-size: 13px; }
@@ -413,12 +467,9 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 @media (max-width: 850px) {
   .moments-workspace { padding: 20px 16px; }
   .moments-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .moments-layout.has-selection { display: block; }
-  .moments-layout.has-selection .moments-results { display: none; }
-  /* Review on a phone is a destination, not a form above an offscreen detail. Back restores filters. */
-  .moments-workspace.is-reviewing .moments-toolbar,
-  .moments-workspace.is-reviewing .moments-filter-note { display: none; }
-  .moments-detail { position: static; max-height: none; overflow: visible; scrollbar-gutter: auto; padding: 18px; scroll-margin-block-start:180px; }
+  .moments-detail { padding: 18px; }
+  .moments-result,
+  .moments-inline { scroll-margin-block-start: 120px; }
   .moments-idle { display: none; }
   .moments-workspace button,
   .moments-workspace input,
@@ -434,7 +485,6 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 
 @media (min-width: 851px) and (max-width: 1100px) {
   .moments-workspace { padding-inline: 20px; }
-  .moments-layout.has-selection { grid-template-columns: minmax(240px, .7fr) minmax(0, 1.3fr); gap: 14px; }
   .moments-detail { padding: 16px; }
 }
 
@@ -445,6 +495,8 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   .moments-toolbar { grid-template-columns: minmax(0, 1fr); }
   .moments-date-range { grid-template-columns: minmax(0, 1fr); grid-column: auto; }
   .moments-result { padding: 10px 12px; }
+  .moments-inline .moments-detail { margin: 2px 8px 10px; padding: 14px; }
+  .moments-inline--standalone .moments-detail { margin: 0; }
   .moments-result .moments-actions :is(a, button) { min-height: 44px; }
   .moments-detail-offset { flex: 0 1 auto; }
   .moments-measurement dl { grid-template-columns: minmax(0, 1fr); }

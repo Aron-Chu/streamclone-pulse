@@ -47,6 +47,7 @@ export function MomentRow({
   clipCandidate,
   creator,
   ranking,
+  detailId,
   onSelect,
 }: {
   moment: DiscoveryMoment
@@ -58,7 +59,10 @@ export function MomentRow({
   /** Creator identity, supplied only where a list spans channels. */
   creator?: ReactNode
   ranking?: { score: number; scoreExplanation: string; detectionId?: string }
-  onSelect: (moment: DiscoveryMoment) => void
+  /** The id of this row's open detail, for `aria-controls`. Rows that open in line set it. */
+  detailId?: string
+  /** Receives the row element, so a caller can keep it in place while content moves. */
+  onSelect: (moment: DiscoveryMoment, row: HTMLElement | null) => void
 }) {
   const location = useLocation()
   const name = moment.displayName || moment.login
@@ -82,7 +86,7 @@ export function MomentRow({
       // the same pointer target. Preserve nested links, Save and text selection.
       if ((event.target as HTMLElement).closest('a, button, input, select, textarea, [role="button"]')) return
       if (window.getSelection()?.toString()) return
-      onSelect(moment)
+      onSelect(moment, event.currentTarget)
     }}
   >
     {artwork ? <MomentArchiveArtwork artwork={artwork} /> : null}
@@ -94,9 +98,12 @@ export function MomentRow({
           type="button"
           className="moments-card-primary"
           data-discovery-key={moment.key}
-          aria-label={`${moment.label} — Open moment for ${name} at ${offset} into broadcast`}
+          // A row that opens in line closes its open detail when pressed again: name that action.
+          aria-label={`${moment.label} — ${detailId && selected ? 'Close' : 'Open'} moment for ${name} at ${offset} into broadcast`}
           aria-current={selected ? 'true' : undefined}
-          onClick={() => onSelect(moment)}
+          aria-expanded={detailId ? selected : undefined}
+          aria-controls={detailId && selected ? detailId : undefined}
+          onClick={event => onSelect(moment, event.currentTarget.closest('article'))}
         >
           <span>{moment.label}</span>
         </button>
