@@ -135,6 +135,37 @@ describe('portal link registry', () => {
 })
 
 /**
+ * streampulse-web in this repo is the site behind streampulse.stream, and a link
+ * the extension publishes must resolve there the way
+ * streampulse-web/scripts/check-public-links.mjs resolves one: a prerendered
+ * route or a `_redirects` rule. Pages answers anything else with 404.html. The
+ * e2e harness replaces streampulse.stream with a mock page, so no other test
+ * notices a link to a page the website does not have yet.
+ *
+ * This is the merge gate for a new extension link: the website route lands
+ * first. It does not prove the page is deployed; the store review checklist
+ * covers that.
+ */
+describe('website routes', () => {
+  it('links only to pages the website in this repo serves', () => {
+    const web = (path: string) => readFileSync(`streampulse-web/${path}`, 'utf8')
+    const prerendered = new Set([...web('scripts/prerender.mjs').matchAll(/^\s*path: '([^']*)',/gm)].map(match => `/${match[1]}`))
+    const rewritten = new Set(web('public/_redirects').split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#')).map(line => line.split(/\s+/)[0]))
+    expect(prerendered).toContain('/privacy')
+    expect(rewritten).toContain('/account/link-device')
+
+    // Every page path portalLinks.ts writes: policy, community and product links.
+    const linked = [...new Set([...readFileSync('src/shared/portalLinks.ts', 'utf8').matchAll(/(?:\$\{CANONICAL_PORTAL_ORIGIN\}|')(\/[a-z][\w/-]*)[`']/g)].map(match => match[1]))]
+    for (const link of [...Object.values(POLICY_LINKS), ...Object.values(COMMUNITY_LINKS), productLink('supporter'), productLink('billing'), productLink('signIn'), productLink('linkDevice')]) {
+      expect(linked, 'the path scan missed a registry link').toContain(new URL(link).pathname)
+    }
+
+    const missing = linked.filter(path => !prerendered.has(path) && !rewritten.has(path))
+    expect(missing, 'streampulse-web does not serve these extension links; land the website route before the extension links to it').toEqual([])
+  })
+})
+
+/**
  * The content-script gzip budget had ~600 bytes of headroom when this landed.
  * The registry is a page-surface concern; if it ever reaches the content bundle
  * the budget check becomes the second failure, not the first.

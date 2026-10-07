@@ -145,7 +145,8 @@ the mocked Playwright suite and must be reviewed before they are committed.
 - [ ] `npm run package:cws` (or `validate:package:cws`) for the store target; no localhost
 - [ ] `src/shared/release-notes.json` marks the new version released with `releasedAt`; no `*-ci-probe-not-for-upload` ZIP is ever a candidate
 - [ ] Privacy / Support URLs match live pages and **current** disclosures
-- [ ] Every portal route linked by the extension returns the intended live page (including `/supporter`, account, policy, and changelog routes)
+- [ ] Every portal route linked by the extension returns the intended live page (including `/supporter`, account, policy, changelog, `/support`, and `/discord` routes)
+- [ ] `/discord` forwards to the Discord invite (not the "isn't open yet" page) and the `/support` feedback form is on, because the extension's Help & Feedback, popup, and Community card promise both (see `chrome-web-store-review-checklist.md`)
 - [ ] Owner confirms the publisher-dashboard version and Support URL, selects a higher version than the published release, then authorizes upload
 - [ ] Real unpacked-extension smoke on Twitch recorded for the release SHA
 - [ ] Do **not** upload historical ZIP SHA `ae8d9b835d8459e4b886fad6948e903d6c0c9bae035119ad018cd42fbb253075`
