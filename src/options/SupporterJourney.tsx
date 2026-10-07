@@ -102,7 +102,7 @@ function OfferTerms() {
         <dt>Price</dt><dd>{PRICE_DISPLAY}</dd>
         <dt>Renews</dt><dd>Monthly, until you cancel</dd>
         <dt>Cancel</dt><dd>Any time; access runs to the end of the paid month</dd>
-        <dt>You get</dt><dd>A private Pulse header accent, three accent finishes, emote rain behind your Pulse panel, a signature emote only you see, and private support recognition</dd>
+        <dt>You get</dt><dd>A private Pulse header accent, three accent finishes, emote rain behind your Pulse panel, and private support recognition</dd>
       </dl>
       {/* The "You get" row lists only shipped benefits, and the chat badge
           has its own card, so it is not restated here. */}

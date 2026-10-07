@@ -7,12 +7,10 @@ import { theme } from '../ui/theme.ts'
 import { PulseBannerBackdrop, usePulseBanner } from '../ui/PulseBanner.tsx'
 import { supporterTenureForMonths } from '../shared/supporterPaint.ts'
 import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
-import { SupporterSignatureField } from './SupporterSignatureField.tsx'
 
 /**
  * The finish paints the panel title, wave and sheen choose how that paint
- * moves, and the tenure crest sits beside it. The signature emote rides the
- * Supporter's line on the quick-settings card and tops the settings banner.
+ * moves, and the tenure crest sits beside it.
  * The preview reproduces that header rather than a
  * decorative plate: an earlier version previewed a tinted banner that the
  * overlay no longer draws, so the preview promised something the extension did
@@ -199,7 +197,6 @@ export function SupporterCosmeticControls({ entitlement, onSaved }: {
     </fieldset>
     <SupporterPaintStyleFields finish={finish} style={paint.style} onChoose={next => void paint.choose(next)} />
     <p className="pulse-supporter-detail" aria-live="polite">{paint.status || 'Wave and sheen save to this browser profile right away and show whenever your finish is equipped.'}</p>
-    <SupporterSignatureField allowed={allowed} unknown={unknown} />
     <div className="pulse-account-link-actions">
       {unknown ? (
         <button type="button" disabled>Checking Supporter status…</button>

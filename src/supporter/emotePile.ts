@@ -1,13 +1,13 @@
-import { AMBIENT, emoteAspect, emoteImg, finishVars, kitCrest, kitEmote, pick, rand, type Kit, type KitEmoteName } from './kit.ts'
+import { AMBIENT, LINE_EMOTE, emoteAspect, emoteImg, finishVars, kitCrest, lineEmote, pick, rand, type Kit, type KitEmoteName } from './kit.ts'
 import { mountStage, runStage, type StageContext, type StageModel } from './stage.ts'
 import { EMOTE_PILE_CSS } from './styles.ts'
 
 /**
  * "Emote Pile · Crown", ported from the lab's `PileFamily(stage, o, 'crown')`:
  * chat emotes drop in at stream pace, bounce and stack. Every seventh drop is
- * your signature emote, bigger, glowing in your paint, with your crest riding
- * on it. Hover makes the pile jump and drops yours in; at a peak a row of nine
- * lands, then yours on top.
+ * yours: the lab's sample emote, bigger, glowing in your paint, with your crest
+ * riding on it. Hover makes the pile jump and drops yours in; at a peak a row
+ * of nine lands, then yours on top.
  *
  * The lab's bodies are circles. The wide 7TV emotes this set adds are about
  * three times wider than tall, so a wide body keeps the same physics with an
@@ -54,7 +54,7 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
   let floorBox: Box | null = null
 
   function makeBody({ name, r, x, y, box, look, vx, vy }: { name: KitEmoteName; r: number; x: number; y: number; box: Box; look: Body['look']; vx?: number; vy?: number }): Body {
-    const shown = look === 'ambient' ? name : kit.emote
+    const shown = look === 'ambient' ? name : LINE_EMOTE
     const aspect = emoteAspect(shown)
     const isWide = aspect > 1.5
     const ry = isWide ? r * WIDE_HEIGHT : r
@@ -66,7 +66,7 @@ export function EmotePile(stage: HTMLElement, context: StageContext, kit: Kit, w
     el.style.height = `${ry * 2}px`
     const inner = document.createElement('div')
     inner.className = 'spk-inner'
-    inner.append(look === 'ambient' ? emoteImg(name, ry * 2, still) : kitEmote(kit, ry * 2, still))
+    inner.append(look === 'ambient' ? emoteImg(name, ry * 2, still) : lineEmote(ry * 2, still))
     el.append(inner)
     if (look === 'you') { el.classList.add('spk-you'); el.append(kitCrest(kit, wide ? 15 : 13)) }
     stage.append(el)

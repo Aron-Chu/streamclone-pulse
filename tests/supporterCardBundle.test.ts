@@ -53,7 +53,7 @@ describe('Supporter card stays out of the Twitch content script', () => {
     const graph = [...contentGraph()].map(rel)
     expect(graph).toContain('src/ui/PulseSettingsPanel.tsx')
     expect(graph).toContain('src/content/bridge.ts')
-    const lab = graph.filter(file => file.startsWith('src/supporter/') || file === 'src/content/supporterCard.ts' || file === 'src/shared/supporterSignature.ts')
+    const lab = graph.filter(file => file.startsWith('src/supporter/') || file === 'src/content/supporterCard.ts')
     expect(lab).toEqual([])
   })
 
@@ -67,7 +67,7 @@ describe('Supporter card stays out of the Twitch content script', () => {
     const content = readFileSync(contentBundle, 'utf8')
     const card = readFileSync(cardBundle, 'utf8')
     // The stage's own code and data: class names, emote IDs, canned lines, labels, crest stage names.
-    for (const marker of ['spk-chat', '01J7VZYB08000E8DPG2XYMKQYR', '01HMM8VG3R0007GXBD883VP2YY', 'that peak was mine', 'Year-one crest', 'supporterSignatureEmote']) {
+    for (const marker of ['spk-chat', '01J7VZYB08000E8DPG2XYMKQYR', '01HMM8VG3R0007GXBD883VP2YY', 'that peak was mine', 'Year-one crest']) {
       expect(content.includes(marker), `twitch.js must not contain ${marker}`).toBe(false)
       expect(card.includes(marker), `supporter-card.js must contain ${marker}`).toBe(true)
     }
@@ -76,6 +76,9 @@ describe('Supporter card stays out of the Twitch content script', () => {
     expect(content).toContain('SUPPORTER_CARD_SCRIPT')
     expect(content).toContain('__pulseSupporterCard')
     expect(card).toContain('__pulseSupporterCard')
+    // The dropped signature perk: neither script reads its old storage key.
+    expect(content.includes('supporterSignatureEmote')).toBe(false)
+    expect(card.includes('supporterSignatureEmote')).toBe(false)
     // Self-contained: no imports or chunk loads, nothing exposed to pages.
     expect(card).not.toMatch(/\bimport\s*\(|\bfrom\s*['"]|chunks\//)
     const manifest = JSON.parse(readFileSync(resolve(root, 'dist/manifest.json'), 'utf8')) as { web_accessible_resources?: Array<{ resources: string[] }> }
