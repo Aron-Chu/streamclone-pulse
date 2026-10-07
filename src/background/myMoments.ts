@@ -20,11 +20,30 @@ export function replayAvailability(m: Pick<MomentReference, 'vodId' | 'offsetSec
 }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
   streamId: b.streamId, offsetSeconds: b.offsetSeconds, availability: replayAvailability({ vodId: b.vodId ?? null, offsetSeconds: b.offsetSeconds }), savedAt: Date.parse(b.createdAt), note })
-async function currentScope(): Promise<string> {
+/**
+ * Who owns this device's moments, and whether the device may keep bookmarks.
+ *
+ * Only a really unlinked device saves bookmarks locally. A connection waiting
+ * on token renewal (`unavailable` with `linked`) is still its account: the
+ * stored credentials name it, so it keeps the account scope, and the hosted
+ * path reports the outage (`account_temporarily_unavailable`) instead of a
+ * device save that would drop out of view once renewal succeeds. If that
+ * account cannot be read back it is held rather than treated as signed out.
+ *
+ * An unconfirmed disconnect (`error` with `revocationPending`) stays local on
+ * purpose: its tombstone authorizes nothing and resolves only to signed out,
+ * so saves made meanwhile land in the scope the device returns to.
+ */
+async function resolveScope(): Promise<{ scope: string; held: boolean }> {
   const root = await getBackendUrl()
-  const account = root === DEFAULT_BACKEND_URL ? await supporterAccount.run('status') : null
-  return `${root}|${account?.state === 'linked' ? `account:${account.accountId}` : 'local'}`
+  if (root !== DEFAULT_BACKEND_URL) return { scope: `${root}|local`, held: false }
+  const account = await supporterAccount.run('status')
+  const waiting = account.state === 'unavailable' && account.linked === true
+  const accountId = account.state === 'linked' ? account.accountId : waiting ? await supporterAccount.localAccountId() : null
+  if (accountId) return { scope: `${root}|account:${accountId}`, held: false }
+  return { scope: `${root}|local`, held: waiting }
 }
+async function currentScope(): Promise<string> { return (await resolveScope()).scope }
 const scopeAccount = (scope: string): string | undefined => scope.split('|account:')[1]
 /** Device saves belong to the backend root, not to whichever account is linked. */
 const deviceScope = (scope: string) => `${scope.split('|')[0]}|local`
@@ -72,14 +91,15 @@ const privateBrowsing = (sender: chrome.runtime.MessageSender) => !!(sender.tab?
 /**
  * Twitch-page bookmark requests while no account is linked: kept in this
  * worker's database, never sent over the network. Resolves null when the
- * hosted path owns the request (a linked account, or private browsing where
- * nothing may persist), so the caller keeps that path exactly as before.
+ * hosted path owns the request (a linked account, including one waiting on
+ * renewal, or private browsing where nothing may persist), so the caller keeps
+ * that path exactly as before.
  * Each read or write is one IndexedDB transaction, so it needs no queue slot.
  */
 export async function handleDeviceBookmarks(message: ListBookmarksMessage | SaveBookmarkMessage, sender: chrome.runtime.MessageSender): Promise<BackgroundResponse | null> {
   if (privateBrowsing(sender)) return null
-  const scope = await currentScope()
-  if (scopeAccount(scope)) return null
+  const { scope, held } = await resolveScope()
+  if (held || scopeAccount(scope)) return null
   if (message.type === 'SAVE_BOOKMARK') {
     const b = message.bookmark
     const data = await personalTransaction(scope, d => addDeviceBookmark(d, b, Date.now()))
@@ -113,7 +133,7 @@ let queue: Promise<unknown> = Promise.resolve()
 export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
   const run = queue.then(async () => {
     if (privateBrowsing(sender)) throw new Error('My Moments is unavailable in private browsing.')
-    const scope = await currentScope()
+    const { scope, held } = await resolveScope()
     if (message.type === 'MOMENT_CAPTURE') {
       if (message.action === 'status') {
         const data = await personalTransaction(scope)
@@ -130,7 +150,10 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
     if (message.action === 'mutate') {
       if (message.scope !== scope) throw new Error('Device connection changed. Reload My Moments.')
       const command = message.command
-      if (command.kind === 'save' && !scopeAccount(scope)) {
+      if (command.kind === 'save' && held) {
+        // Still connected; a device save here would leave the account's list.
+        throw new Error('Could not reach StreamPulse. Try saving again shortly.')
+      } else if (command.kind === 'save' && !scopeAccount(scope)) {
         // No account: the save stays in this database and is never uploaded.
         const r = command.reference
         await personalTransaction(scope, data => addDeviceBookmark(data, { login: r.channel, streamId: r.streamId, vodId: r.vodId ?? undefined, offsetSeconds: r.offsetSeconds!, label: r.title }, Date.now()))
