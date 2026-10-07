@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   CANONICAL_PORTAL_ORIGIN,
@@ -8,6 +8,7 @@ import {
   portalOriginOrCanonical,
   productLink,
 } from '../src/shared/portalLinks.ts'
+import { contentScriptModules } from './helpers/contentGraph.ts'
 import { listSourceFiles } from './helpers/sourceFiles.ts'
 
 /**
@@ -139,15 +140,39 @@ describe('portal link registry', () => {
  * the budget check becomes the second failure, not the first.
  */
 describe('content bundle', () => {
-  it('does not ship the policy link registry', () => {
-    let bundle: string
-    try {
-      bundle = readFileSync('dist/content/twitch.js', 'utf8')
-    } catch {
-      return // built artifact absent; the build's budget gate still covers this
+  // The minifier keeps `${CANONICAL_PORTAL_ORIGIN}/discord` as a template
+  // literal (`${C}/discord`), so a full 'streampulse.stream/discord' string never
+  // appears in any build. Match the bare path, at a path-segment end so
+  // '/supporter' is not read as '/support'.
+  const markers = ['/refunds', '/terms', '/privacy', '/discord', '/support']
+  const pathSegment = (marker: string) => new RegExp(`${marker}(?![\w-])`)
+
+  it('keeps the link registry and the community entry points out of the content script graph', () => {
+    // Unit tests run before `npm run build` in CI, so this source-level walk is
+    // the half of the guard that runs there.
+    const graph = contentScriptModules()
+    expect(graph).toContain('src/content/entry.ts')
+    expect(graph.length).toBeGreaterThan(50)
+    const leaked = graph.filter(file => ['src/shared/portalLinks.ts', 'src/ui/communityIcons.tsx', 'src/ui/SettingsWorkspace.tsx'].includes(file))
+    expect(leaked).toEqual([])
+  })
+
+  it('does not ship the policy or community links in a build', () => {
+    const contentBundle = 'dist/content/twitch.js'
+    // Unit tests run before `npm run build` in CI; with no build there is nothing to inspect.
+    if (!existsSync(contentBundle)) {
+      expect(existsSync(contentBundle)).toBe(false)
+      return
     }
-    for (const marker of ['/refunds', 'streampulse.stream/terms', 'streampulse.stream/privacy', 'streampulse.stream/discord', 'streampulse.stream/support']) {
-      expect(bundle.includes(marker), `content bundle must not contain ${marker}`).toBe(false)
+    const bundle = readFileSync(contentBundle, 'utf8')
+    for (const marker of markers) {
+      expect(pathSegment(marker).test(bundle), `content bundle must not contain ${marker}`).toBe(false)
+    }
+    // The markers must be able to match at all: the page bundles that do ship
+    // the registry contain every one of them in the form the minifier writes.
+    const pageBundles = listSourceFiles('dist', ['.js']).filter(file => !file.startsWith('dist/content/')).map(file => readFileSync(file, 'utf8'))
+    for (const marker of markers) {
+      expect(pageBundles.some(page => pathSegment(marker).test(page)), `no page bundle contains ${marker}; the marker cannot detect a leak`).toBe(true)
     }
   })
 })
