@@ -342,6 +342,34 @@ describe('Top Moments card (live panel)', () => {
     expect(document.activeElement).toBe(row)
   })
 
+  it('keeps focus on an action of the card when a poll changes the moment it shows', () => {
+    const host = mount(<Panel />)
+    const action = (name: string) => topCard(host)!.querySelector<HTMLButtonElement>(`[data-moment-inspector-action="${name}"]`)!
+    const jump = action('jump')
+    act(() => jump.focus())
+
+    // The next poll ranks a new strongest moment; the card shows it on the
+    // same nodes, so Jump keeps focus.
+    const stronger = { ...peaks[0], offsetSeconds: 480, score: 99 }
+    act(() => root!.render(<Panel payload={makePayload({ peaks: [stronger, ...peaks] })} />))
+    expect(topCardLabel(host)).toMatch(/^Strongest moment at 00:08/)
+    expect(action('jump')).toBe(jump)
+    expect(document.activeElement).toBe(jump)
+
+    // The same when a poll refines a picked moment.
+    click(rows(host)[2])
+    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
+    const analytics = action('analytics')
+    act(() => analytics.focus())
+    const refined = { ...peaks[1], reactionApexOffsetSeconds: 251, refinementStatus: 'refined' }
+    act(() => root!.render(<Panel payload={makePayload({ peaks: [stronger, peaks[0], refined, peaks[2]] })} />))
+    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
+    expect(action('analytics')).toBe(analytics)
+    expect(document.activeElement).toBe(analytics)
+    // The details still fade in on the swap.
+    expect(topCard(host)!.querySelector('.pulse-moment-card-swap')).not.toBeNull()
+  })
+
   it('keeps a pick past the fold listed at the end, and × then moves focus to Show more', () => {
     const host = mount(<Panel payload={manyPayload} />)
     expect(rows(host)).toHaveLength(5)
