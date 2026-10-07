@@ -29,6 +29,19 @@ export const POLICY_LINKS = {
   support: `${CANONICAL_PORTAL_ORIGIN}/support`,
 } as const
 
+/**
+ * Community destinations: the website's feedback form and its Discord page.
+ *
+ * Fixed production pages, separate from the policy links. The extension never
+ * embeds a Discord invite: `/discord` is the website's own page, which holds the
+ * current invite (or says the server isn't open yet), so an invite can rotate
+ * without a store release.
+ */
+export const COMMUNITY_LINKS = {
+  feedback: `${CANONICAL_PORTAL_ORIGIN}/support`,
+  discord: `${CANONICAL_PORTAL_ORIGIN}/discord`,
+} as const
+
 const PRODUCT_PATHS = {
   supporter: '/supporter',
   billing: '/account/billing',

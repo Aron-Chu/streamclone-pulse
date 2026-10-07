@@ -30,6 +30,10 @@ describe('parseBackgroundRequest', () => {
       type: 'OPEN_SETTINGS_HOST',
       section: 'updates',
     })
+    expect(parseBackgroundRequest({ type: 'OPEN_SETTINGS_HOST', section: 'help' })).toEqual({
+      type: 'OPEN_SETTINGS_HOST',
+      section: 'help',
+    })
     expect(parseBackgroundRequest({
       type: 'GET_PULSE_VOD',
       vodId: '2806037629',

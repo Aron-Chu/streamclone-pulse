@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import type { SettingsHostSection } from '../shared/messages.ts'
-import { POLICY_LINKS } from '../shared/portalLinks.ts'
+import { COMMUNITY_LINKS, POLICY_LINKS } from '../shared/portalLinks.ts'
+import { DiscordMark, FeedbackIcon, NewTabArrow } from '../ui/communityIcons.tsx'
 import { SupporterBanner } from './SupporterCrownBanner.tsx'
 
 export interface HostNavItem {
@@ -89,23 +90,29 @@ export function SettingsHostShell({
       </header>
 
       <div className="pulse-host-body">
-        <nav className="pulse-host-nav" aria-label="Settings sections">
-          <span className="pulse-host-nav-label">Settings</span>
-          {navItems.map(item => (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              aria-current={activeSection === item.id ? 'page' : undefined}
-              onClick={event => selectSection(event, item.id)}
-            >
-              <span className="pulse-host-nav-indicator" aria-hidden="true" />
-              {item.label}
-            </a>
-          ))}
-        </nav>
+        <div className="pulse-host-rail">
+          <nav className="pulse-host-nav" aria-label="Settings sections">
+            <span className="pulse-host-nav-label">Settings</span>
+            {navItems.map(item => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                aria-current={activeSection === item.id ? 'page' : undefined}
+                onClick={event => selectSection(event, item.id)}
+              >
+                <span className="pulse-host-nav-indicator" aria-hidden="true" />
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          {/* On every section, Help & Feedback included: the community links never move. */}
+          <CommunityCard />
+        </div>
 
         <div className="pulse-host-main">
-          {activeSection !== 'supporter' ? <SupporterBanner onOpen={() => navigateToSection('supporter')} onPerks={setSupporterPerks} /> : null}
+          {activeSection !== 'supporter' && activeSection !== 'help'
+            ? <SupporterBanner onOpen={() => navigateToSection('supporter')} onPerks={setSupporterPerks} />
+            : null}
           {typeof children === 'function' ? children(activeSection, supporterPerks) : children}
           <footer className="pulse-host-footer">
             <span>StreamPulse extension settings</span>
@@ -119,10 +126,35 @@ export function SettingsHostShell({
   )
 }
 
+/**
+ * The two community links, under the section list on every section. Both
+ * open streampulse.stream pages; the Discord invite lives on the website only.
+ */
+function CommunityCard() {
+  return (
+    <aside className="pulse-host-community" aria-label="Community">
+      <span className="pulse-host-nav-label">Community</span>
+      <a className="pulse-host-community-link" data-community-link="discord" href={COMMUNITY_LINKS.discord} target="_blank" rel="noopener noreferrer">
+        <DiscordMark />
+        <span>Join the Discord</span>
+        <span className="pulse-host-community-sr"> (opens in a new tab)</span>
+        <NewTabArrow />
+      </a>
+      <a className="pulse-host-community-link" data-community-link="feedback" href={COMMUNITY_LINKS.feedback} target="_blank" rel="noopener noreferrer">
+        <FeedbackIcon />
+        <span>Send feedback</span>
+        <span className="pulse-host-community-sr"> (opens in a new tab)</span>
+        <NewTabArrow />
+      </a>
+    </aside>
+  )
+}
+
 export const DEFAULT_NAV: ReadonlyArray<HostNavItem> = [
   { id: 'moments', label: 'My Moments' },
   { id: 'pulse', label: 'Pulse on Twitch' },
   { id: 'supporter', label: 'Account & Supporter' },
   { id: 'privacy', label: 'Privacy & Data' },
   { id: 'updates', label: 'Updates & Changelog' },
+  { id: 'help', label: 'Help & Feedback' },
 ]

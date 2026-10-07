@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   CANONICAL_PORTAL_ORIGIN,
+  COMMUNITY_LINKS,
   deviceLinkWithCode,
   POLICY_LINKS,
   portalOriginOrCanonical,
@@ -39,6 +40,18 @@ describe('portal link registry', () => {
     expect(POLICY_LINKS.privacy).toBe(`${CANONICAL_PORTAL_ORIGIN}/privacy`)
     expect(POLICY_LINKS.terms).toBe(`${CANONICAL_PORTAL_ORIGIN}/terms`)
     expect(POLICY_LINKS.refunds).toBe(`${CANONICAL_PORTAL_ORIGIN}/refunds`)
+  })
+
+  it('keeps the community links on fixed, slash-free production pages', () => {
+    // The extension's contract with the website: /support holds the feedback
+    // form and /discord holds the invite. A dev origin never rewrites them.
+    expect(COMMUNITY_LINKS).toEqual({ feedback: `${CANONICAL_PORTAL_ORIGIN}/support`, discord: `${CANONICAL_PORTAL_ORIGIN}/discord` })
+    for (const link of Object.values(COMMUNITY_LINKS)) {
+      const url = new URL(link)
+      expect(url.origin).toBe(CANONICAL_PORTAL_ORIGIN)
+      expect(url.search).toBe('')
+      expect(url.hash).toBe('')
+    }
   })
 
   it('resolves product links against a configured dev portal origin', () => {
@@ -133,7 +146,7 @@ describe('content bundle', () => {
     } catch {
       return // built artifact absent; the build's budget gate still covers this
     }
-    for (const marker of ['/refunds', 'streampulse.stream/terms', 'streampulse.stream/privacy']) {
+    for (const marker of ['/refunds', 'streampulse.stream/terms', 'streampulse.stream/privacy', 'streampulse.stream/discord', 'streampulse.stream/support']) {
       expect(bundle.includes(marker), `content bundle must not contain ${marker}`).toBe(false)
     }
   })
