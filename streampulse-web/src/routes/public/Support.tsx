@@ -31,7 +31,7 @@ type CardState =
   | { kind: 'sending' }
   | { kind: 'invalid'; error: FeedbackDraftError | 'check_pending' }
   | Exclude<SupportSendOutcome, { kind: 'rate_limited' }>
-  | { kind: 'rate_limited'; until: number; guessed: boolean }
+  | { kind: 'rate_limited'; until: number; seconds: number | null }
 
 type TurnstileAPI = {
   render: (
@@ -75,6 +75,13 @@ const RATE_LIMIT_FALLBACK_MS = 60_000
 
 function retrySeconds(until: number, now: number): number {
   return Math.max(1, Math.ceil((until - now) / 1000))
+}
+
+/** The server's wait in words, fixed when the 429 arrives (the alert never ticks). */
+function waitPhrase(seconds: number): string {
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`
+  if (seconds < 90) return 'a minute'
+  return `${Math.round(seconds / 60)} minutes`
 }
 
 function UnavailablePanel({ keptMessage }: { keptMessage?: string }) {
@@ -126,13 +133,29 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   const [turnstileToken, setTurnstileToken] = useState('')
   const [state, setState] = useState<CardState>(availability === 'unavailable' ? { kind: 'unavailable' } : { kind: 'idle' })
   const [now, setNow] = useState(() => Date.now())
+  // One polite status line for things said once (never a ticking value).
+  const [liveNote, setLiveNote] = useState('')
+  const noteTimerRef = useRef<number | null>(null)
 
   const idempotency = useRef(createSupportIdempotency())
   const widgetHostRef = useRef<HTMLDivElement | null>(null)
   const widgetIdRef = useRef<string | null>(null)
   const submitControllerRef = useRef<AbortController | null>(null)
   const sentHeadingRef = useRef<HTMLParagraphElement | null>(null)
-  useEffect(() => () => submitControllerRef.current?.abort(), [])
+  useEffect(() => () => {
+    submitControllerRef.current?.abort()
+    if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
+  }, [])
+
+  /** Say `text` once through the status line, even when it repeats the last note. */
+  function announce(text: string) {
+    if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
+    setLiveNote('')
+    noteTimerRef.current = window.setTimeout(() => {
+      noteTimerRef.current = null
+      setLiveNote(text)
+    }, 100)
+  }
 
   useEffect(() => {
     if (availability !== 'ready' || !siteKey) return
@@ -181,6 +204,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
       if (current >= rateUntil) {
         window.clearInterval(tick)
         setState(prev => (prev.kind === 'rate_limited' ? { kind: 'idle' } : prev))
+        announce('You can send again.')
       }
     }, 1000)
     return () => window.clearInterval(tick)
@@ -250,8 +274,12 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
       return
     }
     if (outcome.kind === 'rate_limited') {
-      const guessed = outcome.retryAfterMs === null
-      setState({ kind: 'rate_limited', until: Date.now() + (outcome.retryAfterMs ?? RATE_LIMIT_FALLBACK_MS), guessed })
+      const waitMs = outcome.retryAfterMs ?? RATE_LIMIT_FALLBACK_MS
+      setState({
+        kind: 'rate_limited',
+        until: Date.now() + waitMs,
+        seconds: outcome.retryAfterMs === null ? null : Math.ceil(outcome.retryAfterMs / 1000),
+      })
       return
     }
     setState(outcome)
@@ -271,18 +299,21 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
     : state.kind === 'rejected' && state.field === 'email'
       ? 'The server did not accept that email. Check it, or leave it blank.'
       : null
+  // Visible countdown only; the alert below keeps the wording it arrived with,
+  // because a role="alert" whose text changes is read out again every second.
   const waitSeconds = state.kind === 'rate_limited' ? retrySeconds(state.until, now) : null
   const alert = state.kind === 'failed' ? "Couldn't send. Your message is still here."
     : state.kind === 'check_failed' ? "The bot check didn't go through. Your message is still here; try again."
     : state.kind === 'rejected' && state.field === null ? 'The server could not accept this report. Check the fields and try again.'
     : state.kind === 'rate_limited'
-      ? state.guessed || waitSeconds === null
+      ? state.seconds === null
         ? 'Too many attempts. Wait a minute, then try again. Your message is still here.'
-        : `Too many attempts. Try again in ${waitSeconds} second${waitSeconds === 1 ? '' : 's'}. Your message is still here.`
+        : `Too many attempts. Try again in about ${waitPhrase(state.seconds)}. Your message is still here.`
       : null
 
   return (
     <>
+      <p className="feedback-sr" role="status" data-testid="support-form-announce">{liveNote}</p>
       {state.kind === 'sent' ? (
         <div className="feedback-done" data-testid="support-form-success" role="status">
           <span className="feedback-done__check" aria-hidden="true"><Check /></span>
@@ -365,6 +396,9 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
                   : <>Send feedback<ArrowRight aria-hidden="true" /></>}
               </button>
               {sending ? <p className="feedback-muted" role="status" data-testid="support-form-loading">Sending. The form is paused until it finishes.</p> : null}
+              {waitSeconds !== null ? (
+                <p className="feedback-muted" aria-hidden="true" data-testid="support-rate-countdown">Send again in {waitSeconds}s</p>
+              ) : null}
             </div>
           </fieldset>
           <p className="feedback-legal">

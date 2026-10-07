@@ -200,12 +200,26 @@ describe('support feedback card', () => {
       issue('tok-1')
       send()
       const alert = await screen.findByTestId('support-form-rate-limit')
-      expect(alert.textContent).toMatch(/Too many attempts\. Try again in (30|29) seconds\. Your message is still here\./)
+      const said = 'Too many attempts. Try again in about 30 seconds. Your message is still here.'
+      expect(alert.textContent).toBe(said)
       expect((screen.getByRole('button', { name: /Send feedback/ }) as HTMLButtonElement).disabled).toBe(true)
       expect(message().value).toBe('Spam? No.')
-      await act(async () => { vi.advanceTimersByTime(31_000) })
+      // The countdown ticks outside the alert; the alert itself is said once.
+      const countdown = screen.getByTestId('support-rate-countdown')
+      expect(countdown.getAttribute('aria-hidden')).toBe('true')
+      expect(countdown.closest('[role="alert"], [role="status"], [aria-live]')).toBeNull()
+      const before = countdown.textContent
+      await act(async () => { vi.advanceTimersByTime(3_000) })
+      expect(screen.getByTestId('support-rate-countdown').textContent).not.toBe(before)
+      expect(screen.getByTestId('support-form-rate-limit').textContent).toBe(said)
+      expect(screen.getByTestId('support-form-announce').textContent).toBe('')
+      await act(async () => { vi.advanceTimersByTime(28_000) })
       await waitFor(() => expect(screen.queryByTestId('support-form-rate-limit')).toBeNull())
+      expect(screen.queryByTestId('support-rate-countdown')).toBeNull()
       expect((screen.getByRole('button', { name: /Send feedback/ }) as HTMLButtonElement).disabled).toBe(false)
+      // Said once, politely, when sending is allowed again.
+      await waitFor(() => expect(screen.getByTestId('support-form-announce').textContent).toBe('You can send again.'))
+      expect(screen.getByTestId('support-form-announce').getAttribute('role')).toBe('status')
     } finally {
       vi.useRealTimers()
     }
