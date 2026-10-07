@@ -189,6 +189,18 @@ test.describe('chart preview/lock interactions', () => {
     const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
     await expect(featured).toBeVisible()
     expect((await featured.boundingBox())!.y).toBeLessThan((await chart.boundingBox())!.y)
+    // Strength pill on a second line under the time: the fixture's 01:00:00
+    // minute has 140 chats; the 15 measured minutes before it average 58.7,
+    // so 2.4x usual, the first accent step. The row keeps its 40px height.
+    const pill = featured.locator('.pulse-strength-pill')
+    await expect(pill).toHaveText('2.4× usual')
+    await expect(pill).toHaveAttribute('data-lvl', '2')
+    await expect(featured).toHaveAttribute('title', '140 chats in the minute at 01:00:00. The 15 measured minutes before it averaged 59 a minute.')
+    const featuredBox = (await featured.boundingBox())!
+    const pillBox = (await pill.boundingBox())!
+    expect(featuredBox.height).toBeCloseTo(40, 0)
+    expect(pillBox.height).toBeCloseTo(14, 0)
+    expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(featuredBox.y + featuredBox.height)
     await featured.click()
     // Its ranked moment shows in the Top Moments card.
     await expect(extension.page.locator(`#${PULSE_ROOT_ID} [data-top-moment-card="selected"] [data-selected-moment-card="true"]`)).toBeVisible()
