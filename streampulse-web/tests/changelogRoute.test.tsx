@@ -13,8 +13,15 @@ interface ReleaseFixture {
   status: string
   title: string
   summary: string
+  new?: string[]
+  improved?: string[]
+  fixed?: string[]
+  knownIssues?: string[]
   links?: { details?: string }
 }
+
+/** The page's note headings, in its order. */
+const CATEGORY_HEADINGS = [['new', 'New'], ['improved', 'Improved'], ['fixed', 'Fixed'], ['knownIssues', 'Known limitations']] as const
 
 const { currentVersion, releases } = releaseNotes as { currentVersion: string; releases: ReleaseFixture[] }
 const webRoot = resolve(import.meta.dirname, '..')
@@ -57,8 +64,18 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
       }
     }
     expect(document.body.textContent).not.toContain('Preview')
-    const shipped = document.getElementById(`v${released[0].version}`)!
-    expect(within(shipped).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['Known limitations'])
+    // Read from the notes, so a release step that marks a version released changes no test:
+    // each released version lists its own notes, under the headings they fill.
+    for (const release of released) {
+      const section = document.getElementById(`v${release.version}`)!
+      const filled = CATEGORY_HEADINGS.filter(([key]) => (release[key]?.length ?? 0) > 0)
+      expect(within(section).queryAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(filled.map(([, label]) => label))
+      expect([...section.querySelectorAll('li')].map((item) => item.textContent)).toEqual(filled.flatMap(([key]) => release[key] ?? []))
+    }
+    // The in-development label shows only while the current version is not released.
+    const inDevelopment = released.some((release) => release.version === currentVersion) ? null : currentVersion
+    if (inDevelopment) expect(document.getElementById(`v${inDevelopment}`)?.textContent).toContain(`v${inDevelopment} · In development`)
+    else expect(document.body.textContent).not.toContain('In development')
     expect(screen.getByRole('link', { name: 'StreamPulse Support' }).getAttribute('href')).toBe('/support')
     // The page itself makes no claim about which build the Chrome Web Store lists.
     expect(screen.getByText('What changed in each version of the StreamPulse Chrome extension.')).toBeTruthy()

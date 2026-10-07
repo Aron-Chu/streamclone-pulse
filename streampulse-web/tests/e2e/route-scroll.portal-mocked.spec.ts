@@ -3,6 +3,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { seedBetaKey } from './helpers/auth'
 import { installExplorerMock } from './helpers/explorerMock'
 import { installHubUxMock } from './helpers/hubUxMock'
+// The notes the page is built from; the extension's release step marks versions released.
+import releaseNotes from '../../../src/shared/release-notes.json' with { type: 'json' }
 
 /**
  * Route-change scroll, cold-load fragments, the dashboard narrow menu and the
@@ -380,9 +382,12 @@ test('the extension "Release details" destination is a prerendered release-notes
   expect(await response?.text()).toContain('data-testid="changelog-page"')
   await expect(page).toHaveTitle('Release Notes — StreamPulse')
   await expect(page.getByRole('heading', { level: 1, name: 'Release notes' })).toBeVisible()
-  // Released versions only, plus an honest label for the one in development.
+  // Released versions only, plus an honest label for the current version while it is unreleased.
   await expect(page.getByText(/^v[\d.]+ · Released/).first()).toBeVisible()
-  await expect(page.getByText(/^v[\d.]+ · In development$/)).toBeVisible()
+  const { currentVersion, releases } = releaseNotes as { currentVersion: string; releases: Array<{ version: string; status: string }> }
+  const currentReleased = releases.some((release) => release.version === currentVersion && release.status === 'released')
+  if (currentReleased) await expect(page.getByText(/^v[\d.]+ · In development$/)).toHaveCount(0)
+  else await expect(page.getByText(`v${currentVersion} · In development`, { exact: true })).toBeVisible()
   await expect(page.getByText(/· Preview/)).toHaveCount(0)
   await expect(page.getByTestId('not-found')).toHaveCount(0)
 })
