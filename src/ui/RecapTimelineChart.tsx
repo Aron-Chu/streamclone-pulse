@@ -24,6 +24,7 @@ import {
   toggleEmotePlotKeys,
 } from './chatActivityEmotes.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
+import { nearestRollupIndex } from './extensionChartPoints.ts'
 import { extensionRollupViewerCount, safeGameTimeline } from './extensionChartAdapter.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
@@ -59,6 +60,11 @@ export interface RecapTimelineChartProps {
   sidebarFill?: boolean
   highlightedGameSegmentKey?: string | null
   onSelectPoint: (point: LiveHeatPoint) => void
+  /**
+   * A spike marker's moment. Returns true when the recap shows it as a listed
+   * moment; otherwise the chart selects the moment's minute.
+   */
+  onSelectMoment?: (peak: ExtensionPeak) => boolean
   onClearSelection?: () => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }
@@ -73,6 +79,7 @@ export function RecapTimelineChart({
   sidebarFill = false,
   highlightedGameSegmentKey = null,
   onSelectPoint,
+  onSelectMoment,
   onClearSelection,
   onRequestFullRollups,
 }: RecapTimelineChartProps) {
@@ -378,21 +385,11 @@ export function RecapTimelineChart({
   }, [selectPointAtIndex])
 
   const handleChartMomentSelect = useCallback((peak: ExtensionPeak): void => {
-    // Select the moment via the same rollup-index path as bar clicks, so
-    // the pin and highlight match the top moments list behavior.
-    const offset = reactionAnalyticalOffset(peak)
-    let bestIdx = 0
-    let bestDist = Infinity
-    for (let i = 0; i < minuteRollups.length; i++) {
-      const dist = Math.abs(minuteRollups[i].offsetSeconds - offset)
-      if (dist < bestDist) {
-        bestDist = dist
-        bestIdx = i
-      }
-    }
-    selectPointAtIndex(bestIdx)
+    // A listed moment shows in the Top Moments card, as in the live panel.
+    // Any other selects its nearest minute, the same path as a bar click.
+    if (!onSelectMoment?.(peak)) selectPointAtIndex(nearestRollupIndex(minuteRollups, reactionAnalyticalOffset(peak)))
     setChartHoverOffsetSeconds(null)
-  }, [minuteRollups, selectPointAtIndex])
+  }, [minuteRollups, onSelectMoment, selectPointAtIndex])
 
   function toggleEmotePlot(emote: ExtensionEmote): void {
     const key = emoteSelectionKey(emote)

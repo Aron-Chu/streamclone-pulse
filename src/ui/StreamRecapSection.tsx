@@ -259,6 +259,15 @@ function foldMoments<T>(items: T[], expanded: boolean, picked: (item: T) => bool
   return expanded ? items : items.filter((item, index) => index < RECAP_MOMENTS_COLLAPSED_COUNT || picked(item))
 }
 
+/**
+ * The listed moment a spike marker on the recap chart stands for: the same
+ * moment, or else one within a minute of it, as for the highlight strip.
+ */
+function listedMoment<T extends { offsetSeconds: number; score: number }>(items: T[], peak: ExtensionPeak): T | undefined {
+  return items.find(item => item.offsetSeconds === peak.offsetSeconds && Math.round(item.score) === Math.round(peak.score))
+    ?? items.find(item => Math.abs(item.offsetSeconds - peak.offsetSeconds) <= 60)
+}
+
 /** Escape in a list whose pick the card shows goes back to the strongest. */
 function clearOnEscape(card: TopMomentCardProps | null) {
   return (event: { key: string }) => { if (event.key === 'Escape' && card?.selected) card.onClear() }
@@ -544,6 +553,12 @@ function RecapReadyContent({
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onClearSelection={clearRecapSelection}
         onSelectPoint={point => pick(`bucket:${point.offsetSeconds}`, point)}
+        // A spike marker of a listed moment shows it in the Top Moments card.
+        onSelectMoment={peak => {
+          const moment = listedMoment(mergedMoments, peak)
+          if (moment) pick(recapMomentKey(payload.streamId, moment))
+          return moment != null
+        }}
         onRequestFullRollups={onRequestFullRollups}
       />
       {/* One grid child, so the card's slot never adds or drops a grid gap. */}
@@ -776,6 +791,11 @@ function OfflineFallbackContent({
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onClearSelection={clearOfflineSelection}
         onSelectPoint={point => pick(`bucket:${point.offsetSeconds}`, point)}
+        onSelectMoment={peak => {
+          const point = listedMoment(peakPoints, peak)
+          if (point) pick(offlinePointKey(point))
+          return point != null
+        }}
         onRequestFullRollups={onRequestFullRollups}
       />
       {/* One grid child, so the card's slot never adds or drops a grid gap. */}

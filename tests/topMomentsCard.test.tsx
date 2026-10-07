@@ -8,6 +8,7 @@ import type { ExtensionPeak, PulsePayload } from '../src/shared/messages.ts'
 import { LiveStatsBand } from '../src/ui/LiveStatsBand.tsx'
 import { MomentCardSlot } from '../src/ui/MomentCardSlot.tsx'
 import { MostReactedSection } from '../src/ui/MostReactedSection.tsx'
+import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
 import { StreamRecapSection } from '../src/ui/StreamRecapSection.tsx'
 import { MOMENT_CARD_HEIGHT } from '../src/ui/momentCardLayout.ts'
 import { liveHeatPointKey, resolveMostReactedHeat } from '../src/ui/mostReacted.ts'
@@ -531,6 +532,41 @@ describe('Stream recap Top moments', () => {
   )
   /** The card a chart pick opens above the Top moments caption. */
   const slotCard = (host: ParentNode) => [...host.querySelectorAll('.pulse-moment-slot:not(.pulse-moment-slot-exit)')]
+  const marker = (host: ParentNode, offsetSeconds: number) =>
+    host.querySelector(`[data-chart-moment-marker="true"][data-chart-moment-marker-offset="${offsetSeconds}"]`)
+  const markerState = (host: ParentNode, offsetSeconds: number) => marker(host, offsetSeconds)?.getAttribute('data-chart-moment-marker-state')
+  const clickMarker = (host: ParentNode, offsetSeconds: number) => act(() => {
+    marker(host, offsetSeconds)!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+
+  it('lets the recap chart select a spike marker\'s minute only when no listed moment takes it', () => {
+    const chart = (onSelectMoment: (peak: ExtensionPeak) => boolean, onSelectPoint: (point: { offsetSeconds: number }) => void) => (
+      <RecapTimelineChart
+        payload={recapPayload}
+        backendUrl="https://api.example.test"
+        peakOffsets={[]}
+        catalog={[]}
+        onSelectPoint={onSelectPoint}
+        onSelectMoment={onSelectMoment}
+      />
+    )
+    const listed = vi.fn(() => true)
+    const unlisted = vi.fn(() => false)
+    const onSelectPoint = vi.fn()
+    const host = mount(chart(listed, onSelectPoint))
+    click(host.querySelector('[data-chart-moment-toggle="true"]')!)
+
+    clickMarker(host, 240)
+    expect(listed).toHaveBeenCalledOnce()
+    expect(listed.mock.calls[0][0]).toMatchObject({ offsetSeconds: 240 })
+    expect(onSelectPoint).not.toHaveBeenCalled()
+
+    act(() => root!.render(chart(unlisted, onSelectPoint)))
+    clickMarker(host, 360)
+    expect(unlisted).toHaveBeenCalledOnce()
+    expect(onSelectPoint).toHaveBeenCalledOnce()
+    expect(onSelectPoint.mock.calls[0][0]).toMatchObject({ offsetSeconds: 360 })
+  })
 
   for (const variant of [
     { name: 'recap', payload: recapPayload },
@@ -575,6 +611,17 @@ describe('Stream recap Top moments', () => {
       expect(slotCard(host)[0].compareDocumentPosition(list[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(card.getAttribute('data-top-moment-card')).toBe('strongest')
       expect(selectionCards(host)).toHaveLength(1)
+
+      // A spike marker of a listed moment shows it in the card, as in the
+      // live panel: its row is pressed and the chart's card closes.
+      click(host.querySelector('[data-chart-moment-toggle="true"]')!)
+      clickMarker(host, 240)
+      expect(topCard(host)).toBe(card)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:04/)
+      expect(list[1].getAttribute('aria-pressed')).toBe('true')
+      expect(slotCard(host)).toHaveLength(0)
+      expect(selectionCards(host)).toHaveLength(1)
+      expect(markerState(host, 240)).toBe('active')
 
       click(list[0])
       expect(topCardLabel(host)).toMatch(/^Selected moment at 00:02/)
