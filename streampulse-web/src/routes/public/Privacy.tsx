@@ -20,7 +20,7 @@ export default function Privacy() {
           </div>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 1, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
+            Last updated: October 7, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse Chrome extension.
           </p>
         </header>
 
@@ -246,6 +246,16 @@ export default function Privacy() {
              link the extension to a Pulse account or start an installation account for Supporter, the account device credential is held in an
             extension-origin database reachable only from the extension's own trusted contexts, not
             from any Twitch page script. Disconnecting the extension or uninstalling it removes it.
+          </li>
+          <li>
+            <strong>Extension IndexedDB</strong> (<code>pulse-my-moments-v1</code>) — My Moments data
+            kept only in this browser profile: the moments you watch when you turn on history (off by
+            default, kept for the retention period you choose), the notes you add to saved moments, and
+            bookmarks you save while no account is linked (channel, stream or VOD, time offset and label).
+            None of it is uploaded to StreamPulse or synced through your Chrome profile, and incognito
+            windows neither read it nor add to it. Removing a save, clearing history in My Moments or
+            uninstalling the extension deletes it. Bookmarks saved while an account is linked are
+            stored by StreamPulse with that account.
           </li>
           <li>
             <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins

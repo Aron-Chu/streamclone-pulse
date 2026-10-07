@@ -64,6 +64,21 @@ describe('public release routes', () => {
     expect(body).not.toMatch(/security@streampulse\.stream/i)
   })
 
+  it('lists the extension My Moments database with what it holds and that it stays on the device', () => {
+    renderRoute(<Privacy />)
+    const storage = screen.getByRole('heading', { name: /what is stored in the browser/i }).nextElementSibling
+    const entry = [...(storage?.querySelectorAll('li') ?? [])].find(item => item.textContent?.includes('pulse-my-moments-v1'))
+    const text = entry?.textContent?.replace(/\s+/g, ' ') ?? ''
+    expect(text).toMatch(/Extension IndexedDB/)
+    expect(text).toMatch(/history \(off by default/i)
+    expect(text).toMatch(/notes you add to saved moments/i)
+    expect(text).toMatch(/bookmarks you save while no account is linked/i)
+    expect(text).toMatch(/None of it is uploaded to StreamPulse or synced/i)
+    expect(text).toMatch(/incognito windows neither read it nor add to it/i)
+    expect(text).toMatch(/uninstalling the extension deletes it/i)
+    expect(text).toMatch(/Bookmarks saved while an account is linked are stored by StreamPulse with that account/i)
+  })
+
   it('publishes actionable extension and analytics support guidance', () => {
     renderRoute(<Support />)
     expect(screen.getByRole('heading', { name: /support & troubleshooting/i })).toBeTruthy()
