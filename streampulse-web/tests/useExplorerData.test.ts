@@ -81,6 +81,39 @@ it('waits out Retry-After before the next poll and ignores a retry pressed durin
   }
 })
 
+it('keeps a loaded list visible as stale and holds polls and Refresh until a failed poll\'s Retry-After ends', async () => {
+  vi.useFakeTimers()
+  try {
+    const fetch = vi.spyOn(explorer, 'fetchExplorer').mockResolvedValue(envelope(['a']))
+    const { result } = renderHook(() => useExplorerData({ window: '7d', signal: 'all', state: 'all', sort: 'strongest', q: 'retry-after-stale-list', pollMs: 5_000 }))
+    await flush()
+    expect(result.current.data?.status).toBe('ready')
+
+    // A long-lived tab: the next poll finds the window expired, with Retry-After: 60.
+    fetch.mockRejectedValue(preparing('snapshot_expired', 60_000))
+    await flush(5_000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(result.current.data?.status).toBe('stale')
+    expect(result.current.data?.broadcasts.map(item => item.id)).toEqual(['a'])
+    expect(result.current.error).toBe('snapshot_expired')
+    expect(result.current.retryBlocked).toBe(true)
+
+    // Neither a pressed Refresh nor a poll reads before the pause ends.
+    act(() => result.current.refresh())
+    await flush(59_999)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(result.current.retryBlocked).toBe(true)
+    fetch.mockResolvedValue(envelope(['a', 'b']))
+    await flush(1)
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(result.current.data?.status).toBe('ready')
+    expect(result.current.data?.broadcasts.map(item => item.id)).toEqual(['a', 'b'])
+    expect(result.current.retryBlocked).toBe(false)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it('retries a warming detail read once, at Retry-After, and then waits for the reader', async () => {
   vi.useFakeTimers()
   try {

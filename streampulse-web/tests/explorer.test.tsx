@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -317,6 +317,31 @@ describe('Pulse Explorer while a history window is prepared', () => {
     const panel = after.container.querySelector('aside.explorer-inspector') as HTMLElement
     expect(within(panel).queryByText('Pulse Explorer checks again automatically.')).toBeNull()
     expect(within(panel).getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
+  it('keeps an out-of-date list visible and offers Refresh only once Retry-After ends', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const ready = normalizeExplorerEnvelope(rawEnvelope())!
+    const stale: ExplorerEnvelope = { ...ready, status: 'stale', reason: 'refresh_unavailable' }
+    const list = { ...hookResult(stale), error: 'snapshot_expired', retryBlocked: true, retryScheduled: true }
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? hookResult(ready) : list))
+    const { container, rerender } = renderAt('/analytics/explore?window=7d')
+    const banner = () => container.querySelector('.explorer-stale') as HTMLElement
+    expect(within(banner()).getByText(/Fresh activity could not be reached; valid results remain visible\./)).toBeTruthy()
+    expect(container.querySelectorAll('.explorer-result')).toHaveLength(1)
+    expect(within(banner()).queryByRole('button', { name: 'Refresh' })).toBeNull()
+
+    Object.assign(list, { retryBlocked: false })
+    rerender(
+      <MemoryRouter initialEntries={['/analytics/explore?window=7d']}>
+        <Routes>
+          <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+          <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(within(banner()).getByRole('button', { name: 'Refresh' }))
+    expect(list.refresh).toHaveBeenCalledTimes(1)
   })
 })
 
