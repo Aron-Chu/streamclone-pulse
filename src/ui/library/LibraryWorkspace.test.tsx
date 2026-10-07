@@ -169,10 +169,37 @@ describe('My Moments frontend', () => {
     expect(container.textContent).not.toContain('Could not reach StreamPulse')
     expect(container.textContent).not.toContain('saved without an account')
   })
-  it('says where pre-account device saves are while an account is linked', async () => {
-    const snapshot = { ...createDemoSnapshot('new', 0), bookmarksState: 'ready', bookmarksAvailable: true, deviceBookmarks: [{ id: 'local:a' }, { id: 'local:b' }] }
-    await render({ load: async () => snapshot as unknown as LibrarySnapshot, execute: async () => snapshot as unknown as LibrarySnapshot, export: async () => '' })
+  it('lists pre-account device saves while an account is linked, with replay links and remove', async () => {
+    const save = (id: string, extra: object) => ({ id, login: 'xqc', streamId: '123456', offsetSeconds: 754, label: '', notes: '', source: 'extension',
+      createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-01T12:00:00.000Z', ...extra })
+    const deviceBookmarks = [
+      save('local:a', { vodId: '1234567890', label: 'Chat spike', notes: 'kept here' }),
+      save('local:b', { createdAt: '2026-10-02T12:00:00.000Z' }),
+    ]
+    const snapshot = { ...createDemoSnapshot('new', 0), bookmarksState: 'ready', bookmarksAvailable: true, deviceBookmarks }
+    const commands: unknown[] = []
+    const after = { ...snapshot, deviceBookmarks: deviceBookmarks.slice(1) }
+    await render({ load: async () => snapshot as unknown as LibrarySnapshot,
+      execute: async command => { commands.push(command); return after as unknown as LibrarySnapshot }, export: async () => '' })
     expect(container.textContent).toContain('2 bookmarks saved without an account are kept on this device, not in your account.')
+    expect(container.textContent).toContain('No account bookmarks yet')
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-device-save="true"]')]
+    // Newest first; a stream-only save keeps the fallback title and no replay link.
+    expect(rows.map(row => row.dataset.momentId)).toEqual(['local:b', 'local:a'])
+    expect(rows[0].textContent).toContain('Saved moment')
+    expect(rows[0].textContent).toContain('Replay link unavailable')
+    expect(rows[1].textContent).toContain('Chat spike')
+    expect(rows[1].textContent).toContain('xqc · 00:12:34')
+    expect(rows[1].textContent).toContain('kept here')
+    expect(rows[1].querySelector('a')?.getAttribute('href')).toBe('https://www.twitch.tv/videos/1234567890?t=754s')
+    // Read-only: no edit or preview, only remove.
+    expect(rows[1].textContent).not.toContain('Edit note')
+    expect(rows[1].textContent).not.toContain('Preview')
+    await act(async () => { rows[1].querySelector<HTMLButtonElement>('button[aria-label="Remove from this device: Chat spike"]')!.click(); await new Promise(r => setTimeout(r, 5)) })
+    expect(container.querySelector('dialog')?.textContent).toContain('from this device. Your account is not changed.')
+    await click('Confirm change')
+    expect(commands).toEqual([{ kind: 'unsave', id: 'local:a' }])
+    expect(container.querySelectorAll('[data-device-save="true"]')).toHaveLength(1)
   })
   it('ignores stale completion after repository/account changes', async () => {
     let finish!: (snapshot: LibrarySnapshot) => void

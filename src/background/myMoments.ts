@@ -4,20 +4,10 @@ import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
 import { supporterAccount } from './supporterAccountRuntime.ts'
 import type { BookmarksState, MyMomentsRecent, MyMomentsRequest, MyMomentsSnapshot } from '../shared/myMoments.ts'
 import type { BackgroundResponse, ListBookmarksMessage, PulseBookmark, SaveBookmarkMessage } from '../shared/messages.ts'
-import type { LibraryMoment, MomentReference } from '../ui/library/model.ts'
+import { replayAvailability, type LibraryMoment, type MomentReference } from '../ui/library/model.ts'
 import { addDeviceBookmark, bookmarkIdentity, momentIdentity as identity, personalTransaction, recordWatched } from './myMomentsStore.ts'
 
-/**
- * Pulse offsets count from go-live; Twitch's `?t=` counts from the archive
- * start. They agree when the archive starts with the stream, the mapping every
- * VOD path uses when the backend reports no origin delta (completed VOD pages,
- * the channel's open-in-VOD jump, the portal's bookmark link). Saved references
- * never carry a delta, so a numeric VOD id is required to address the second;
- * a stream-only reference stays unresolved and keeps its analytics link.
- */
-export function replayAvailability(m: Pick<MomentReference, 'vodId' | 'offsetSeconds'>): MomentReference['availability'] {
-  return m.vodId && /^\d{6,20}$/.test(m.vodId) && m.offsetSeconds !== null && Number.isFinite(m.offsetSeconds) && m.offsetSeconds >= 0 ? 'available' : 'unresolved'
-}
+export { replayAvailability }
 const bookmarkMoment = (b: PulseBookmark, note: string): LibraryMoment => ({ id: b.id, channel: b.login, title: b.label || 'Saved moment', vodId: b.vodId ?? null,
   streamId: b.streamId, offsetSeconds: b.offsetSeconds, availability: replayAvailability({ vodId: b.vodId ?? null, offsetSeconds: b.offsetSeconds }), savedAt: Date.parse(b.createdAt), note })
 /**
@@ -171,11 +161,15 @@ export function handleMyMoments(message: MyMomentsRequest, sender: chrome.runtim
         }
       } else if (command.kind === 'unsave' || command.kind === 'edit') {
         const all = await snapshot(scope)
-        if (!all.moments.some(m => m.id === command.id && m.savedAt !== undefined)) throw new Error('Bookmark unavailable. Reload before editing.')
+        const hosted = all.moments.some(m => m.id === command.id && m.savedAt !== undefined)
+        // A save made before linking is listed read-only beside the account's
+        // bookmarks; removing it only touches this device, never the account.
+        const onDevice = !hosted && command.kind === 'unsave' && !!scopeAccount(scope) && all.deviceBookmarks.some(b => b.id === command.id)
+        if (!hosted && !onDevice) throw new Error('Bookmark unavailable. Reload before editing.')
         await assertScope(scope)
-        if (command.kind === 'unsave' && scopeAccount(scope)) await deletePulseBookmark(command.id, undefined, scopeAccount(scope))
+        if (command.kind === 'unsave' && scopeAccount(scope) && !onDevice) await deletePulseBookmark(command.id, undefined, scopeAccount(scope))
         await assertScope(scope)
-        await personalTransaction(scope, data => {
+        await personalTransaction(onDevice ? deviceScope(scope) : scope, data => {
           const notes = { ...data.notes }
           if (command.kind === 'edit') notes[command.id] = command.note
           else delete notes[command.id]

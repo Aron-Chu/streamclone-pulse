@@ -115,3 +115,26 @@ export function MomentListItem({ moment, personalWorkspace = false, analyticsOri
     </div>
   </li>
 }
+
+/**
+ * A save kept on this device from before an account was linked. Listed beside
+ * the account's bookmarks so it stays reachable until an import exists: it can
+ * be opened and removed here, but not edited, previewed or uploaded.
+ */
+export function DeviceSaveItem({ moment, busy, onRemove, onOpenLink }: {
+  moment: LibraryMoment; busy: boolean; onRemove: (moment: LibraryMoment) => void; onOpenLink?: (reference: MomentReference) => void
+}) {
+  const url = replayUrl(moment)
+  return <li className="pl-moment pl-moment-device" data-moment-id={moment.id} data-device-save="true">
+    <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong><span className="pl-tag">On this device</span></div>
+      <p className="pl-moment-identity">{moment.channel} · {timestamp(moment.offsetSeconds)}</p>
+      <p className="pl-muted">Bookmarked {moment.savedAt === undefined ? '—' : <time dateTime={new Date(moment.savedAt).toISOString()}>{new Date(moment.savedAt).toLocaleString()}</time>}</p>
+      {moment.note ? <p className="pl-note">{moment.note}</p> : null}
+      <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>
+        {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>Open saved Twitch link</a>
+          : <span className="pl-replay-status" role="status">Replay link unavailable</span>}
+        <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove from this device: ${moment.title}`}>Remove</button>
+      </div>
+    </div>
+  </li>
+}

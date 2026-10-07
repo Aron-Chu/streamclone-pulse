@@ -1,12 +1,13 @@
 import { PulseThemedSelect } from '../PulseThemedSelect.tsx'
 import { useEffect, useId, useRef, useState } from 'react'
 import { PulseSectionCard } from '../PulseSectionCard.tsx'
-import { LibraryDialog, MomentEditor, MomentListItem } from './LibraryPrimitives.tsx'
-import { hasRecent, visibleMoments, type LibraryMoment, type LibraryPreferences, type LibraryRepository, type LibrarySnapshot, type LibraryView, type MomentReference } from './model.ts'
+import { DeviceSaveItem, LibraryDialog, MomentEditor, MomentListItem } from './LibraryPrimitives.tsx'
+import { hasRecent, replayAvailability, visibleMoments, type LibraryMoment, type LibraryPreferences, type LibraryRepository, type LibrarySnapshot, type LibraryView, type MomentReference } from './model.ts'
 import { useLibrary } from './useLibrary.ts'
 import { MomentPreview, type MomentContextState } from './MomentPreview.tsx'
 import type { MomentPresentation } from './MomentMedia.tsx'
 import type { BookmarksState } from '../../shared/myMoments.ts'
+import type { PulseBookmark } from '../../shared/messages.ts'
 import './library.css'
 
 export interface LibraryWorkspaceProps {
@@ -30,6 +31,19 @@ const views: readonly { id: LibraryView; label: string }[] = [
 ]
 
 type Confirmation = { kind: 'remove'; moment: LibraryMoment } | { kind: 'clear' } | { kind: 'retention'; preferences: LibraryPreferences }
+
+/** Pre-link device saves as rows, newest first. Only the worker's linked snapshot carries any. */
+function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
+  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<PulseBookmark>[] }).deviceBookmarks : []
+  return saves.flatMap(b => {
+    if (typeof b.id !== 'string') return []
+    const vodId = b.vodId ?? null
+    const offsetSeconds = typeof b.offsetSeconds === 'number' ? b.offsetSeconds : null
+    const savedAt = Date.parse(b.createdAt ?? '')
+    return [{ id: b.id, channel: b.login ?? '', title: b.label || 'Saved moment', vodId, streamId: b.streamId, offsetSeconds,
+      availability: replayAvailability({ vodId, offsetSeconds }), ...(Number.isFinite(savedAt) ? { savedAt } : {}), note: b.notes ?? '' }]
+  }).sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0) || a.id.localeCompare(b.id))
+}
 
 /**
  * Names why the hosted list is missing and what to do about it.
@@ -99,8 +113,10 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const bookmarksState: BookmarksState = snapshot && 'bookmarksState' in snapshot
     ? (snapshot as { bookmarksState: BookmarksState }).bookmarksState
     : 'ready'
-  // Saves made before an account was linked; not uploaded, so say where they are.
-  const deviceSaves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: unknown[] }).deviceBookmarks.length : 0
+  // Saves made before an account was linked; not uploaded, so list them where
+  // they are rather than only counting them.
+  const deviceMoments = deviceSaveMoments(snapshot)
+  const deviceSaves = deviceMoments.length
   // Unfiltered population decides whether filters are worth showing at all.
   const population = snapshot ? visibleMoments(snapshot, view, '', '', clock) : []
   const items = snapshot
@@ -150,7 +166,6 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       {[0, 1, 2].map(n => <div className="pl-skeleton" aria-hidden="true" key={n}><span /><span /></div>)}</section> : null}
     {snapshot ? <>
       {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} /> : null}
-      {view === 'saved' && deviceSaves ? <p className="pl-muted">{deviceSaves === 1 ? '1 bookmark' : `${deviceSaves} bookmarks`} saved without an account {deviceSaves === 1 ? 'is' : 'are'} kept on this device, not in your account.</p> : null}
       {snapshot.sync.kind === 'offline' ? <p className="pl-warning">You’re offline. Local saves still work. Cloud changes have not been backed up yet.</p> : null}
       {contentView ? <>
         <section className="pl-library-results" id={`${id}-panel-${view}`} role="tabpanel" aria-labelledby={`${id}-tab-${view}`} tabIndex={-1} aria-label={views.find(v => v.id === view)?.label}>
@@ -172,7 +187,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
             onSave={save} onEdit={setEditing} onPreview={moment => setPreviewId(moment.id)} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
             onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
-            : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? 'No history yet' : 'No bookmarks yet'}</h3>
+            : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? 'No history yet' : deviceSaves ? 'No account bookmarks yet' : 'No bookmarks yet'}</h3>
               <p>{filtered ? 'Try a channel name, a word from your note, or clear the filters.'
                 : view === 'recent' ? 'Watch a Pulse moment for at least 10 seconds after a jump. Opening a link alone is not recorded.'
                   : 'Choose Bookmark on a Pulse moment or recent jump. No replay is required.'}</p>
@@ -180,6 +195,14 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
 
           {pages > 1 ? <nav className="pl-row pl-between" aria-label="Moment pages"><button type="button" className="pl-button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
             <span>Page {currentPage} of {pages}</span><button type="button" className="pl-button" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Next</button></nav> : null}
+
+          {view === 'saved' && deviceSaves ? <section className="pl-stack pl-device-saves" aria-labelledby={`${id}-device-saves`}>
+            <h3 id={`${id}-device-saves`}>Saved on this device</h3>
+            <p className="pl-muted">{deviceSaves === 1 ? '1 bookmark' : `${deviceSaves} bookmarks`} saved without an account {deviceSaves === 1 ? 'is' : 'are'} kept on this device, not in your account.</p>
+            <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy}
+              onRemove={moment => setConfirmation({ kind: 'remove', moment })}
+              onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
+          </section> : null}
         </section>
       </> : <div className="pl-library-results" id={`${id}-panel-storage`} role="tabpanel" aria-labelledby={`${id}-tab-storage`} tabIndex={-1} aria-label="Storage and privacy">
         <StorageSettings snapshot={snapshot} busy={library.busy} onExport={() => void exportAll()} onClear={() => setConfirmation({ kind: 'clear' })}
@@ -197,7 +220,9 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       onClose={() => setEditing(null)} onCommit={note => library.run({ kind: 'edit', id: editing.id, note }, 'Note saved on this device.')} /> : null}
     {confirmation ? <LibraryDialog title={confirmation.kind === 'clear' ? 'Clear history?' : confirmation.kind === 'remove' ? 'Remove bookmark?' : 'Shorten history?'} canClose={!library.busy} onClose={() => setConfirmation(null)}>
       <p>{confirmation.kind === 'clear' ? 'This removes history. Manual bookmarks and notes stay.'
-        : confirmation.kind === 'remove' ? 'This removes the bookmark and its note. A separately remembered jump may still appear until history expires.'
+        : confirmation.kind === 'remove' ? deviceMoments.some(m => m.id === confirmation.moment.id)
+          ? 'This removes the bookmark and its note from this device. Your account is not changed.'
+          : 'This removes the bookmark and its note. A separately remembered jump may still appear until history expires.'
           : 'Older history may expire. Bookmarks are unaffected. Export or save anything you want to keep before continuing.'}</p>
       {library.error ? <p className="pl-error" role="alert">{library.error}</p> : null}
       <div className="pl-row"><button type="button" className="pl-button" disabled={library.busy} onClick={() => setConfirmation(null)}>Keep as is</button>

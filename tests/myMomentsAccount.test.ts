@@ -132,6 +132,33 @@ it('keeps device saves out of the linked list but reports them for a later impor
   expect(snapshot.deviceBookmarks).toMatchObject([{ id: local!.item.id, notes: 'kept here' }])
   expect(f.save).not.toHaveBeenCalled()
 })
+it('removes a pre-link device save while linked without touching the account', async () => {
+  f.accountId = null
+  const local = await deviceSave(120)
+  const before = (await load()).snapshot.scope
+  await handleMyMoments({ type: 'MY_MOMENTS', action: 'mutate', scope: before, command: { kind: 'edit', id: local!.item.id, note: 'kept here' } }, {})
+  f.accountId = 'one'
+  f.pages.mockResolvedValue({ items: [item] })
+  const scope = (await load()).snapshot.scope
+  const { snapshot } = await handleMyMoments({ type: 'MY_MOMENTS', action: 'mutate', scope, command: { kind: 'unsave', id: local!.item.id } }, {}) as { snapshot: { moments: LibraryMoment[]; deviceBookmarks: unknown[] } }
+  expect(snapshot.deviceBookmarks).toEqual([])
+  expect(snapshot.moments.map(m => m.id)).toEqual(['bk'])
+  expect(f.data.get(before)).toMatchObject({ bookmarks: [], notes: {} })
+  expect(f.remove).not.toHaveBeenCalled()
+  // Editing stays limited to the account's own bookmarks.
+  const again = await deviceSaveWhileSignedOut()
+  await expect(handleMyMoments({ type: 'MY_MOMENTS', action: 'mutate', scope, command: { kind: 'edit', id: again, note: 'no' } }, {})).rejects.toThrow('Bookmark unavailable')
+  // A hosted bookmark is still removed on the account.
+  await handleMyMoments({ type: 'MY_MOMENTS', action: 'mutate', scope, command: { kind: 'unsave', id: 'bk' } }, {})
+  expect(f.remove).toHaveBeenCalledWith('bk', undefined, 'one')
+})
+async function deviceSaveWhileSignedOut(): Promise<string> {
+  const account = f.accountId
+  f.accountId = null
+  const saved = await deviceSave(240)
+  f.accountId = account
+  return saved!.item.id
+}
 it('reads the popup\'s recent moments from this device only, newest first', async () => {
   f.accountId = null
   const scope = (await load()).snapshot.scope
