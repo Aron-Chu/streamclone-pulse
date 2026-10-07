@@ -107,6 +107,35 @@ it('retries a warming detail read once, at Retry-After, and then waits for the r
   }
 })
 
+it('retries a warming detail read once after 30 s when the page cannot read Retry-After', async () => {
+  vi.useFakeTimers()
+  try {
+    // Production today: the API's CORS layer does not expose Retry-After, so apiClient reports none.
+    const fetch = vi.spyOn(explorer, 'fetchExplorer').mockRejectedValue({ ...preparing('snapshot_warming'), retryAfterMs: undefined })
+    const { result } = renderHook(() => useExplorerData({ window: '7d', signal: 'all', state: 'all', sort: 'strongest', q: 'warming-detail-no-retry-after', broadcastId: 'pulse-xqc-1' }))
+    await flush()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBe('snapshot_warming')
+    // An automatic check follows, and no pause is claimed that the page cannot honour.
+    expect(result.current.retryScheduled).toBe(true)
+    expect(result.current.retryBlocked).toBe(false)
+    await flush(29_999)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await flush(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    // Still warming: no third automatic read; Try again stays available.
+    expect(result.current.retryScheduled).toBe(false)
+    expect(result.current.retryBlocked).toBe(false)
+    await flush(120_000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    act(() => result.current.refresh())
+    await flush()
+    expect(fetch).toHaveBeenCalledTimes(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it('does not retry a detail read on its own for a reason other than warming', async () => {
   vi.useFakeTimers()
   try {
