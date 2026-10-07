@@ -133,7 +133,7 @@ test.describe('packaged supporter offer', () => {
     const twitch = await extension.context.newPage()
     const cdp = await extension.context.newCDPSession(twitch)
     for (const finish of ['glass', 'etched', 'halo']) {
-      await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: new RegExp(finish, 'i') }).check()
+      await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: new RegExp(finish, 'i') }).check()
       await settings.getByRole('button', { name: 'Equip accent', exact: true }).click()
       await expect(settings.getByText(new RegExp(`${finish} accent equipped\\.`, 'i'))).toBeVisible()
       await openTwitchChannel(twitch)
@@ -141,13 +141,13 @@ test.describe('packaged supporter offer', () => {
       await twitch.screenshot({ path: join(CAPTURE_DIR, `accent-${finish}.png`), animations: 'disabled' })
     }
     await settings.reload()
-    await expect(settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true })).toBeChecked()
-    await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Default', exact: true }).check()
+    await expect(settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true })).toBeChecked()
+    await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Default', exact: true }).check()
     await settings.getByRole('button', { name: 'Use default', exact: true }).click()
     await expect(settings.getByText('Default accent restored.', { exact: true })).toBeVisible()
     await twitch.reload()
     await expectBannerFinish(cdp, null)
-    await settings.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+    await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
     await settings.getByRole('button', { name: 'Equip accent', exact: true }).click()
     await expect(settings.getByText('Halo accent equipped.', { exact: true })).toBeVisible()
     status = 'expired'
@@ -193,10 +193,10 @@ test.describe('packaged supporter offer', () => {
         await expect(page.locator(`a[href="https://streampulse.stream${policy}"]`).first()).toBeVisible()
       }
 
-      // The unreleased chat badge must never read as included, and the caveat
-      // is stated exactly once so the page cannot contradict itself.
-      await expect(page.getByText('Not included yet')).toHaveCount(1)
-      await expect(page.getByText(/chat badge/i).first()).toBeVisible()
+      // The unreleased chat crest must never read as included: "Who sees what"
+      // labels it a concept exactly once, so the page cannot contradict itself.
+      await expect(page.getByText('Concept · not built', { exact: true })).toHaveCount(1)
+      await expect(page.getByText('Only if you opt in, once it’s built', { exact: true })).toBeVisible()
 
       await page.screenshot({
         path: join(CAPTURE_DIR, `supporter-${status}.png`),

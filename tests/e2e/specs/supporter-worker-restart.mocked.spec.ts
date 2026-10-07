@@ -297,7 +297,7 @@ test('a stopped packaged worker resumes Checkout cooldown and applies the chosen
       await respond(route, entry, cosmetics)
     })
     await extension.page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-    await extension.page.getByRole('group', { name: 'Accent finish' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+    await extension.page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
     await extension.page.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
     await extension.page.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
     await expect(extension.page.locator('[data-journey-state="stripe-open"]')).toBeVisible()

@@ -4,6 +4,7 @@ import { POLICY_LINKS, deviceLinkWithCode, productLink } from '../shared/portalL
 import {
   ACCOUNT_REVISION_KEY,
   SUPPORTER_REVISION_KEY,
+  supporterPerksAllowed,
   type SupporterAccountAction,
   type SupporterAccountState,
   type SupporterEntitlement,
@@ -12,11 +13,19 @@ import {
   type SupporterRestoreState,
   type SupporterDevicesState,
 } from '../shared/supporterAccount.ts'
+import { DEFAULT_SUPPORTER_PAINT, supporterTenureForMonths } from '../shared/supporterPaint.ts'
+import { SAMPLE_KIT } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
+import { SupporterCard, type CardIdentity, type CardLook } from './SupporterCard.tsx'
 import { usePortalOrigin } from './usePortalOrigin.ts'
 
 /**
- * Account connection and Supporter membership as one journey.
+ * Account connection and Supporter membership as one journey, drawn as the
+ * Account & Supporter page's "Your card" (direction B of the 2026-10-07
+ * redesign): the card states who you are and your membership, its footer is
+ * this journey's status and one primary action, and the Account card closes
+ * the page with the connection, billing and policies. `children` sit between
+ * the two.
  *
  * The worker owns credentials, polling secrets and every HTTP request; this page
  * receives safe projections and asks it to act. Purchase and billing management
@@ -98,20 +107,21 @@ function Progress({ steps }: { steps: [Step, Step, Step] }) {
 function OfferTerms() {
   return (
     <>
-      <dl className="pulse-supporter-terms">
-        <dt>Price</dt><dd>{PRICE_DISPLAY}</dd>
-        <dt>Renews</dt><dd>Monthly, until you cancel</dd>
-        <dt>Cancel</dt><dd>Any time; access runs to the end of the paid month</dd>
-        <dt>You get</dt><dd>A private Pulse header accent, three accent finishes, emote rain behind your Pulse panel, and private support recognition</dd>
-      </dl>
-      {/* The "You get" row lists only shipped benefits, and the chat badge
-          has its own card, so it is not restated here. */}
-      <p className="pulse-supporter-detail">Taxes, if any, are shown before you pay.</p>
+      {/* The card's footer line: the price and its terms in one row. */}
+      <p className="pulse-supporter-terms"><b>{PRICE_DISPLAY}</b><span>renews monthly until you cancel</span><span>cancel any time; access runs to the end of the paid month</span><span>taxes, if any, shown before you pay</span></p>
+      {/* "You get" lists only shipped benefits; "Who sees what" shows the chat
+          crest as a concept, so it is not restated here. */}
+      <p className="pulse-supporter-detail"><b>You get</b> a private Pulse header accent, three accent finishes, emote rain behind your Pulse panel, and private support recognition.</p>
     </>
   )
 }
 
-export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: SupporterEntitlement | null) => void } = {}) {
+export function SupporterJourney({ onEntitlement, look, children }: {
+  onEntitlement?: (value: SupporterEntitlement | null) => void
+  /** The paint the card wears; by default a Supporter's equipped one, or the sample. */
+  look?: Omit<CardLook, 'perks'>
+  children?: ReactNode
+} = {}) {
   const portalOrigin = usePortalOrigin()
   const [account, setAccount] = useState<SupporterAccountState | null>(null)
   const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
@@ -706,40 +716,79 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
     }
   }
 
+  // The card already names the account and the months supported.
   const facts: Array<[string, string]> = []
   if (isSupporter && accessDate) facts.push([status === 'grace' ? 'Access until' : 'Access through', accessDate])
-  if (status && status !== 'none' && periods > 0) facts.push(['Supported', `${periods} ${periods === 1 ? 'month' : 'months'}`])
-  if (linked) facts.push(['Pulse account', accountReference(linked.accountId)])
+
+  const identity: CardIdentity = linked ? { kind: 'pulse', reference: accountReference(linked.accountId) } : renewalWaiting ? { kind: 'pulse' } : { kind: 'none' }
+  const perks = !stale && supporterPerksAllowed(entitlement)
+  const equipped = perks && entitlement?.state === 'ready' && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
+  const cardLook: CardLook = { finish: look ? look.finish : perks ? equipped : SAMPLE_KIT.finish, paint: look?.paint ?? DEFAULT_SUPPORTER_PAINT, perks }
+  const connected = linked !== null || renewalWaiting
 
   return (
-    <PulseSectionCard title="Supporter" headingLevel={3}>
-      <div className="pulse-journey" data-journey-state={state}>
-        {steps ? <Progress steps={steps} /> : null}
-        <div role="status" aria-live="polite" className="pulse-journey-status">
-          <p className="pulse-journey-title"><strong>{title}</strong></p>
-          {body}
-          {stale ? <p className="pulse-supporter-detail" data-journey-stale="true">Could not refresh just now; showing the last confirmed status.</p> : null}
-          {notice ? <p className="pulse-journey-notice">{notice}</p> : null}
-        </div>
-        {facts.length ? <dl className="pulse-journey-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
-        {terms ? <OfferTerms /> : null}
-        {/* The worker decides the path at the click: without installation
-            accounts on the server (production today) it falls back to the
-            website link, so the website path is stated first. */}
-        {state === 'unlinked' ? <p className="pulse-supporter-detail">Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details; you only verify that email if you restore membership later.</p> : null}
-        {primary || secondary.length ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}{secondary}</div> : null}
-        {restoreForm && restore.state === 'idle' && !payBusy ? <form onSubmit={event => void startRestore(event)} className="pulse-journey-restore">
-          <label htmlFor="supporter-restore-email">Email used at checkout</label>
-          <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={restoreEmail} onChange={event => setRestoreEmail(event.target.value)} disabled={payBusy} />
-          <div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-journey-primary" type="submit" disabled={payBusy}>{payBusy ? 'Sending…' : 'Send restore link'}</button><button type="button" disabled={payBusy} onClick={() => void leaveRestore()}>Back</button></div>
-        </form> : null}
-        {linked ? (
-          <div className="pulse-journey-connection">
-            <span>This extension is connected to your Pulse account. Connecting does not link your Twitch identity.</span>
-            <button type="button" disabled={accountBusy || payBusy} onClick={disconnect}>Disconnect extension</button>
+    <>
+      <SupporterCard
+        identity={identity}
+        membership={{ supporter: isSupporter, grace: status === 'grace', ended: status === 'expired', months: periods, tenure: supporterTenureForMonths(periods) }}
+        look={cardLook}
+      >
+        <div className="pulse-journey" data-journey-state={state} data-tone={status === 'grace' && state === 'grace' ? 'warn' : undefined}>
+          {steps ? <Progress steps={steps} /> : null}
+          <div className="pulse-journey-row">
+            <div className="pulse-journey-main">
+              <div role="status" aria-live="polite" className="pulse-journey-status">
+                <p className="pulse-journey-title"><strong>{title}</strong></p>
+                {body}
+                {stale ? <p className="pulse-supporter-detail" data-journey-stale="true">Could not refresh just now; showing the last confirmed status.</p> : null}
+                {notice ? <p className="pulse-journey-notice">{notice}</p> : null}
+              </div>
+              {facts.length ? <dl className="pulse-journey-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
+            </div>
+            {primary ? <div className="pulse-account-link-actions pulse-journey-actions">{primary}</div> : null}
           </div>
-        ) : null}
-        {renewalWaiting ? <div className="pulse-journey-connection"><span>Disconnecting stops this extension’s account access.</span><button type="button" disabled={accountBusy || payBusy} onClick={disconnect}>Disconnect extension</button></div> : null}
+          {terms ? <OfferTerms /> : null}
+          {/* The worker decides the path at the click: without installation
+              accounts on the server (production today) it falls back to the
+              website link, so the website path is stated first. */}
+          {state === 'unlinked' ? <p className="pulse-supporter-detail">Become a Supporter opens streampulse.stream, where you sign in and approve this extension before paying on Stripe. If the server lets this extension check out by itself, Stripe opens directly and asks for your email and payment details; you only verify that email if you restore membership later.</p> : null}
+          {secondary.length ? <div className="pulse-account-link-actions pulse-journey-actions">{secondary}</div> : null}
+          {restoreForm && restore.state === 'idle' && !payBusy ? <form onSubmit={event => void startRestore(event)} className="pulse-journey-restore">
+            <label htmlFor="supporter-restore-email">Email used at checkout</label>
+            <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={restoreEmail} onChange={event => setRestoreEmail(event.target.value)} disabled={payBusy} />
+            <div className="pulse-account-link-actions pulse-journey-actions"><button className="pulse-journey-primary" type="submit" disabled={payBusy}>{payBusy ? 'Sending…' : 'Send restore link'}</button><button type="button" disabled={payBusy} onClick={() => void leaveRestore()}>Back</button></div>
+          </form> : null}
+        </div>
+      </SupporterCard>
+
+      {children}
+
+      <PulseSectionCard title="Account" headingLevel={3}>
+        <dl className="pulse-supporter-rows">
+          <div data-row="account">
+            <dt>StreamPulse</dt>
+            <dd>
+              {connected ? 'Connected to this extension' : 'Not signed in'}
+              <small>{connected ? 'This extension is connected to your Pulse account. Connecting does not link your Twitch identity.' : 'Free tools work without it.'}</small>
+            </dd>
+            <dd className="pulse-account-link-actions">{connected ? <button type="button" disabled={accountBusy || payBusy} onClick={disconnect}>Disconnect extension</button> : null}</dd>
+          </div>
+          {isSupporter && entitlement?.state === 'ready' ? <div data-row="billing">
+            <dt>Billing</dt>
+            <dd>Stripe<small>Change card, get receipts, or cancel.</small></dd>
+            <dd className="pulse-account-link-actions"><button type="button" disabled={payBusy} onClick={() => void manage()}>Manage billing <span className="pulse-supporter-ext" aria-hidden="true">↗</span></button></dd>
+          </div> : null}
+          <div data-row="new-browser">
+            <dt>New browser</dt>
+            <dd>Connect the same StreamPulse account there.<small>Or restore your Supporter with the email you used at checkout.</small></dd>
+            <dd />
+          </div>
+          <div data-row="payments">
+            <dt>Payments</dt>
+            <dd>Handled by Stripe.<small>StreamPulse never sees or stores your card number.</small></dd>
+            <dd />
+          </div>
+        </dl>
         {confirmDisconnect ? <div className="pulse-journey-confirm" role="group" aria-label="Confirm disconnection"><p>Disconnect this extension? This does not cancel your subscription or stop a payment already in progress. You will need email recovery to restore membership here.</p><div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={accountBusy || payBusy} onClick={() => void confirmDisconnection()}>Confirm disconnect</button><button type="button" onClick={() => setConfirmDisconnect(false)}>Keep connected</button></div></div> : null}
         {linked && entitlement?.state === 'ready' && entitlement.accountKind === 'installation' && entitlement.installationAccountsEnabled === true ? <details className="pulse-journey-devices" onToggle={event => { if (event.currentTarget.open && devices === null) void listDevices() }}>
           <summary>Connected extensions</summary>
@@ -750,16 +799,15 @@ export function SupporterJourney({ onEntitlement }: { onEntitlement?: (value: Su
           </li>)}</ul> : <p role="status">{devicesBusy ? 'Loading connections…' : devices === null ? 'Refresh to see current connections.' : 'Connections could not be loaded.'}</p>}
           <div className="pulse-account-link-actions pulse-journey-actions"><button type="button" disabled={devicesBusy} onClick={() => void listDevices()}>Refresh connections</button>{devices?.state === 'ready' && devices.nextCursor ? <button type="button" disabled={devicesBusy} onClick={() => void listDevices(devices.nextCursor)}>Next connections</button> : null}</div>
         </details> : null}
-      </div>
-
-      <p className="pulse-supporter-detail">
-        Core Pulse tools, your existing accent themes, moment bookmarks, and links to Twitch clips and VODs remain free.
-      </p>
-      <p className="pulse-supporter-detail pulse-supporter-policies">
-        <a href={POLICY_LINKS.terms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
-        <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
-        <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
-      </p>
-    </PulseSectionCard>
+        <p className="pulse-supporter-detail">
+          Core Pulse tools, your existing accent themes, moment bookmarks, and links to Twitch clips and VODs remain free.
+        </p>
+        <p className="pulse-supporter-detail pulse-supporter-policies">
+          <a href={POLICY_LINKS.terms} target="_blank" rel="noopener noreferrer">Supporter terms</a>
+          <a href={POLICY_LINKS.refunds} target="_blank" rel="noopener noreferrer">Cancellation &amp; refunds</a>
+          <a href={POLICY_LINKS.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>
+        </p>
+      </PulseSectionCard>
+    </>
   )
 }
