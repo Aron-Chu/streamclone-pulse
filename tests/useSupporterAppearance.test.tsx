@@ -6,12 +6,20 @@ import {
   APPEARANCE_RECHECK_MS,
   APPEARANCE_RENEW_LEAD_MS,
   APPEARANCE_WAKE_DEBOUNCE_MS,
+  resetSupporterAppearanceForTests,
   useSupporterAppearance,
+  useSupporterAppearanceDetails,
 } from '../src/ui/useSupporterAppearance.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-type Reply = { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number }
+type Reply = {
+  type: 'SUPPORTER_APPEARANCE'
+  finish: 'glass' | 'etched' | 'halo' | null
+  validForMs: number
+  tenure?: '12m' | '24m'
+  paint?: { wave: 'smooth' | 'aurora'; sheen: 'sweep' | 'glint' }
+}
 const accent = (validForMs = 60_000): Reply => ({ type: 'SUPPORTER_APPEARANCE', finish: 'halo', validForMs })
 const none: Reply = { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0 }
 
@@ -40,10 +48,64 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] })
   hidden = false
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+  resetSupporterAppearanceForTests()
 })
 afterEach(() => { vi.useRealTimers() })
 
 describe('supporter header appearance', () => {
+  it('lets the next mount start from a still-verified finish without asking again', async () => {
+    const first = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent())
+    const header = mount(first)
+    await advance(0)
+    expect(header.finish()).toBe('halo')
+    header.unmount()
+    // Quick settings replaces the header a moment later.
+    await advance(5_000)
+    const second = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent())
+    const settings = mount(second)
+    expect(settings.finish()).toBe('halo')
+    await advance(0)
+    expect(second).not.toHaveBeenCalled()
+    // It still renews before the inherited window lapses.
+    await advance(60_000 - 5_000 - APPEARANCE_RENEW_LEAD_MS)
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(settings.finish()).toBe('halo')
+    settings.unmount()
+  })
+
+  it('renews at once when the inherited finish is about to lapse, without blinking off', async () => {
+    const first = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent())
+    const header = mount(first)
+    await advance(0)
+    header.unmount()
+    // Only about 10 s of the verified window is left when settings mount.
+    await advance(50_000)
+    let finishRenewal!: (value: Reply) => void
+    const second = vi.fn<() => Promise<Reply>>().mockImplementation(() => new Promise(resolve => { finishRenewal = resolve }))
+    const settings = mount(second)
+    expect(settings.finish()).toBe('halo')
+    await advance(0)
+    expect(second).toHaveBeenCalledTimes(1)
+    await act(async () => { finishRenewal(accent()) })
+    await advance(11_000)
+    expect(settings.finish()).toBe('halo')
+    settings.unmount()
+  })
+
+  it('starts blank again once the shared finish has lapsed', async () => {
+    const first = vi.fn<() => Promise<Reply>>().mockResolvedValue(accent(10_000))
+    const header = mount(first)
+    await advance(0)
+    header.unmount()
+    await advance(11_000)
+    const second = vi.fn<() => Promise<Reply>>().mockResolvedValue(none)
+    const settings = mount(second)
+    expect(settings.finish()).toBe('none')
+    await advance(0)
+    expect(second).toHaveBeenCalledTimes(1)
+    settings.unmount()
+  })
+
   it('keeps a verified accent through its renewal instead of blinking off', async () => {
     let finishSecond!: (value: Reply) => void
     const request = vi.fn<() => Promise<Reply>>()
@@ -193,6 +255,31 @@ describe('worker change signals', () => {
     await advance(0)
     expect(view.finish()).toBe('none')
     view.unmount()
+  })
+
+  it('carries the crest and paint style with the finish, and re-checks when the synced paint style changes', async () => {
+    const painted = (sheen: 'sweep' | 'glint'): Reply => ({ ...accent(), tenure: '12m', paint: { wave: 'aurora', sheen } })
+    const request = vi.fn<() => Promise<Reply>>().mockResolvedValueOnce(painted('sweep')).mockResolvedValue(painted('glint'))
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    function Probe() {
+      const appearance = useSupporterAppearanceDetails(request as never)
+      return <span data-tenure={appearance?.tenure} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} />
+    }
+    act(() => root.render(<Probe />))
+    await advance(0)
+    const probe = () => host.querySelector('span')!.dataset
+    expect(probe()).toMatchObject({ tenure: '12m', wave: 'aurora', sheen: 'sweep' })
+    // A wave or sheen saved in settings is a synced preference, not an account signal.
+    await signal('supporterPaintStyle', 'sync')
+    await advance(0)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(probe()).toMatchObject({ sheen: 'glint' })
+    await signal('supporterPaintStyle', 'local')
+    expect(request).toHaveBeenCalledTimes(2)
+    act(() => root.unmount())
+    host.remove()
   })
 
   it('ignores unrelated keys and other storage areas, and coalesces a signal during a check', async () => {

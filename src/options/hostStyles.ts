@@ -14,9 +14,12 @@ import { theme } from '../ui/theme.ts'
 const hostStyles = `
   .pulse-settings-supporter-banner {
     align-items: center;
-    background: linear-gradient(100deg, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.3), rgba(45, 212, 191, 0.2));
-    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.7);
+    background: linear-gradient(100deg, #17171e 0%, #15151c 55%, rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16) 100%);
+    border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45);
     border-radius: 8px;
+    isolation: isolate;
+    overflow: hidden;
+    position: relative;
     color: ${theme.textPrimary};
     cursor: pointer;
     display: flex;
@@ -24,7 +27,7 @@ const hostStyles = `
     gap: 10px;
     letter-spacing: 0;
     margin: 0 0 18px;
-    min-height: 58px;
+    min-height: 76px;
     padding: 13px 14px;
     text-align: left;
     width: 100%;
@@ -45,6 +48,13 @@ const hostStyles = `
     width: 28px;
   }
   .pulse-settings-supporter-banner-copy { display: grid; gap: 2px; min-width: 0; }
+  .pulse-supporter-banner-pile { bottom: 0; left: 46%; pointer-events: none; position: absolute; right: 150px; top: 0; z-index: -1; }
+  .pulse-pile-body { height: 26px; left: 0; position: absolute; top: 0; width: 26px; will-change: transform; }
+  .pulse-pile-inner { align-items: center; display: flex; height: 100%; justify-content: center; width: 100%; }
+  .pulse-pile-inner img { height: 26px; max-width: none; width: auto; }
+  .pulse-pile-inner .pulse-crest { filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25)); height: 24px; width: 24px; }
+  @media (min-width: 641px) { .pulse-settings-supporter-banner-copy { max-width: 42%; } }
+  @media (max-width: 640px) { .pulse-supporter-banner-pile { display: none; } }
   .pulse-settings-supporter-banner-copy strong { font-size: 14px; font-weight: 800; }
   .pulse-settings-supporter-banner-copy small { color: ${theme.textSecondary}; font-size: 12px; line-height: 1.4; }
   .pulse-settings-supporter-banner-arrow { align-items: center; color: var(--pulse-accent-ink, #ddd6fe); display: inline-flex; font-size: 12px; font-weight: 700; gap: 6px; margin-left: auto; white-space: nowrap; }
@@ -60,6 +70,20 @@ const hostStyles = `
   .pulse-account-link-actions button:disabled { opacity: .6; cursor: not-allowed; }
   .pulse-account-link-actions button[aria-busy="true"] { cursor: wait; }
   .pulse-account-link-actions :focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  /* Sign in with Twitch: Twitch brand purple with the white glitch mark. */
+  .pulse-account-link-actions .pulse-twitch-signin { gap: 8px; border-color: #9146FF; background: #9146FF; color: #FFFFFF; }
+  .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
+  .pulse-account-link-actions .pulse-twitch-signin:focus-visible { outline-color: #BF94FF; }
+  .pulse-twitch-glitch { flex: none; }
+  .pulse-account-link-actions .pulse-account-quiet-button { border-color: transparent; background: transparent; color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-account-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .pulse-account-identity > div { display: grid; gap: 2px; min-width: 0; }
+  .pulse-account-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid ${theme.border}; object-fit: cover; }
+  .pulse-account-name { font-weight: 700; overflow-wrap: anywhere; }
+  .pulse-account-other-ways { display: grid; gap: 10px; border-top: 1px solid ${theme.border}; padding-top: 12px; }
+  .pulse-account-other-ways > summary { width: fit-content; min-height: 32px; display: flex; align-items: center; gap: 6px; color: ${theme.textSecondary}; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .pulse-account-other-ways[open] > summary { color: ${theme.textPrimary}; }
+  .pulse-account-other-ways > summary:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; border-radius: 4px; }
   .pulse-supporter-settings { max-width: 720px; }
   .pulse-supporter-settings .pulse-section-card { grid-template-columns: minmax(0, 1fr); }
   .pulse-supporter-settings p { margin: 0; line-height: 1.6; }
@@ -219,6 +243,8 @@ const hostStyles = `
   .pulse-supporter-stage-detail p { color: ${theme.textSecondary}; font-size: 12px; line-height: 1.4; }
   .pulse-supporter-chat-label { color: ${theme.textMuted}; font-size: 12px; font-weight: 800; letter-spacing: .07em; margin-top: 15px !important; text-transform: uppercase; }
   .pulse-supporter-badge-choices input, .pulse-supporter-preview-toggle input { accent-color: ${theme.accent}; }
+  .pulse-supporter-paint-choices { margin-top: 12px; }
+  .pulse-supporter-paint-sample { flex: none; font-size: 20px; font-weight: 900; line-height: 1; min-width: 28px; }
   .pulse-supporter-finish-swatch { border: 1px solid rgba(255, 255, 255, 0.45); border-radius: 999px; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04); flex: none; height: 12px; width: 12px; }
   .pulse-supporter-finish-choice { display: grid; gap: 2px; min-width: 0; }
   .pulse-supporter-finish-choice strong { color: inherit; font-size: 12px; }

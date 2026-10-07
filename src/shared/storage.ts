@@ -1,4 +1,5 @@
 import { normalizeLogin } from './login.ts'
+import { SUPPORTER_PAINT_KEY, normalizeSupporterPaintStyle, type SupporterPaintStyle } from './supporterPaint.ts'
 import type {
   ProtectChannelSyncStatus,
   ProtectSyncOperation,
@@ -614,7 +615,7 @@ export async function setThemePreference(pref: ThemePreference): Promise<void> {
 
 export const PULSE_BANNER_KEY = 'pulseBanner'
 export type PulseBannerPreference = { mode: 'off' | 'still' | 'rain'; intensity: number; title: string }
-export const DEFAULT_PULSE_BANNER: PulseBannerPreference = { mode: 'rain', intensity: 35, title: '' }
+export const DEFAULT_PULSE_BANNER: PulseBannerPreference = { mode: 'off', intensity: 35, title: '' }
 
 export function normalizePulseBanner(value: unknown): PulseBannerPreference {
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -624,6 +625,15 @@ export function normalizePulseBanner(value: unknown): PulseBannerPreference {
       ? Math.min(70, Math.max(10, Math.round(raw.intensity))) : DEFAULT_PULSE_BANNER.intensity,
     title: typeof raw.title === 'string' ? raw.title.trim().slice(0, 40) : '',
   }
+}
+
+export async function getSupporterPaintStyle(): Promise<SupporterPaintStyle> {
+  const stored = await syncStorageGet(SUPPORTER_PAINT_KEY)
+  return normalizeSupporterPaintStyle(stored[SUPPORTER_PAINT_KEY])
+}
+
+export async function setSupporterPaintStyle(value: SupporterPaintStyle): Promise<void> {
+  await syncStorageSet({ [SUPPORTER_PAINT_KEY]: normalizeSupporterPaintStyle(value) })
 }
 
 export async function getPulseBanner(): Promise<PulseBannerPreference> {
@@ -879,6 +889,20 @@ function normalizeThemePreference(value: unknown): ThemePreference {
 
 export function normalizeDensityPreference(value: unknown): DensityPreference {
   return value === 'compact' || value === 'comfortable' ? value : DEFAULT_DENSITY_PREFERENCE
+}
+
+type StorageChanges = Record<string, { newValue?: unknown }>
+
+/** The accent a sync storage change carries, or undefined when it did not change. */
+export function themeFromStorageChange(changes: StorageChanges): ThemePreference | undefined {
+  const change = changes[THEME_PREFERENCE_KEY]
+  return change ? normalizeThemePreference(change.newValue) : undefined
+}
+
+/** The density a sync storage change carries, or undefined when it did not change. */
+export function densityFromStorageChange(changes: StorageChanges): DensityPreference | undefined {
+  const change = changes[DENSITY_PREFERENCE_KEY]
+  return change ? normalizeDensityPreference(change.newValue) : undefined
 }
 
 function normalizeDefaultChartWindow(value: unknown): DefaultChartWindow {

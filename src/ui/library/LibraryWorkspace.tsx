@@ -41,13 +41,15 @@ function BookmarksNotice({ state, onRetry }: { state: BookmarksState; onRetry: (
   const linkable = state === 'not_linked' || state === 'expired'
   return (
     <PulseSectionCard
-      title={state === 'not_linked' ? 'Bookmarks need your Pulse account' : state === 'expired' ? 'Your account link expired' : 'Could not reach StreamPulse'}
+      title={state === 'not_linked' ? 'Bookmarks are saved on this device' : state === 'expired' ? 'Your account link expired' : 'Could not reach StreamPulse'}
       headingLevel={3}
     >
       <p className="pl-muted">
-        {linkable
-          ? 'Saved moments sync through your account so they survive a reinstall. Watched history and notes stay on this device either way.'
-          : 'No bookmark change was confirmed. Watched history and notes on this device are unaffected.'}
+        {state === 'not_linked'
+          ? 'Connect a free Pulse account and new bookmarks follow you to any device. Bookmarks, notes and watched history saved here stay on this device.'
+          : linkable
+            ? 'Saved moments sync through your account so they survive a reinstall. Watched history and notes stay on this device either way.'
+            : 'No bookmark change was confirmed. Watched history and notes on this device are unaffected.'}
       </p>
       <div className="pl-row">
         {linkable ? <a className="pl-button pl-primary" href="#supporter">Connect account</a> : null}
@@ -95,6 +97,8 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const bookmarksState: BookmarksState = snapshot && 'bookmarksState' in snapshot
     ? (snapshot as { bookmarksState: BookmarksState }).bookmarksState
     : 'ready'
+  // Saves made before an account was linked; not uploaded, so say where they are.
+  const deviceSaves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: unknown[] }).deviceBookmarks.length : 0
   // Unfiltered population decides whether filters are worth showing at all.
   const population = snapshot ? visibleMoments(snapshot, view, '', '', clock) : []
   const items = snapshot
@@ -124,7 +128,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const contentView = view === 'saved' || view === 'recent'
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
-      <p className="pl-muted">Find your way back to the stream. Bookmarks are free; connect an account when you want them to sync across devices.</p></div></div>
+      <p className="pl-muted">Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes and watch history stay on this device.</p></div></div>
     <div className="pl-library-intro" aria-label="How My Moments works">
       <span><strong>Bookmarks</strong><small>Keep a timestamp and note for later.</small></span>
       <span><strong>History</strong><small>Optional, device-only playback memory.</small></span>
@@ -144,6 +148,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       {[0, 1, 2].map(n => <div className="pl-skeleton" aria-hidden="true" key={n}><span /><span /></div>)}</section> : null}
     {snapshot ? <>
       {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} /> : null}
+      {view === 'saved' && deviceSaves ? <p className="pl-muted">{deviceSaves === 1 ? '1 bookmark' : `${deviceSaves} bookmarks`} saved without an account {deviceSaves === 1 ? 'is' : 'are'} kept on this device, not in your account.</p> : null}
       {snapshot.sync.kind === 'offline' ? <p className="pl-warning">You’re offline. Local saves still work. Cloud changes have not been backed up yet.</p> : null}
       {contentView ? <>
         <section className="pl-library-results" id={`${id}-panel-${view}`} role="tabpanel" aria-labelledby={`${id}-tab-${view}`} tabIndex={-1} aria-label={views.find(v => v.id === view)?.label}>

@@ -42,6 +42,7 @@ import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
 import { PulseMomentRow } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
+import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { SavedMoments } from './SavedMoments.tsx'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
@@ -590,22 +591,27 @@ function RecapReadyContent({
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
-      {recapCardHold.point ? (
-        <div
-          className={recapCardHold.exiting ? 'pulse-moment-card-exit' : undefined}
-          data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
-        >
-          <SelectedMomentCard
-            point={recapCardHold.point}
-            backendUrl={backendUrl}
-            compact
-            onJump={onJump}
-            onAnalytics={onAnalytics}
-            onClear={clearRecapSelection}
-          />
-        </div>
-      ) : null}
+      {/* One grid child, so the card's slot never adds or drops a grid gap. */}
+      <div>
+        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
+        {recapCardHold.point ? (
+          <MomentCardSlot
+            exiting={recapCardHold.exiting}
+            data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
+          >
+            <div style={styles.slotSpacing}>
+              <SelectedMomentCard
+                point={recapCardHold.point}
+                backendUrl={backendUrl}
+                compact
+                onJump={onJump}
+                onAnalytics={onAnalytics}
+                onClear={clearRecapSelection}
+              />
+            </div>
+          </MomentCardSlot>
+        ) : null}
+      </div>
       <RecapMomentsList
         moments={mergedMoments}
         visibleMoments={visibleMoments}
@@ -811,22 +817,27 @@ function OfflineFallbackContent({
         }}
         onRequestFullRollups={onRequestFullRollups}
       />
-      <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
-      {recapCardHold.point ? (
-        <div
-          className={recapCardHold.exiting ? 'pulse-moment-card-exit' : undefined}
-          data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
-        >
-          <SelectedMomentCard
-            point={recapCardHold.point}
-            backendUrl={backendUrl}
-            compact
-            onJump={onJump}
-            onAnalytics={onAnalytics}
-            onClear={clearOfflineSelection}
-          />
-        </div>
-      ) : null}
+      {/* One grid child, so the card's slot never adds or drops a grid gap. */}
+      <div>
+        <SavedMoments login={payload.login} streamId={payload.streamId} vodId={payload.vodId ?? undefined} selected={userSelectedRef.current ? selectedPoint : null} />
+        {recapCardHold.point ? (
+          <MomentCardSlot
+            exiting={recapCardHold.exiting}
+            data-chart-inspector-exiting={recapCardHold.exiting ? 'true' : undefined}
+          >
+            <div style={styles.slotSpacing}>
+              <SelectedMomentCard
+                point={recapCardHold.point}
+                backendUrl={backendUrl}
+                compact
+                onJump={onJump}
+                onAnalytics={onAnalytics}
+                onClear={clearOfflineSelection}
+              />
+            </div>
+          </MomentCardSlot>
+        ) : null}
+      </div>
       {peakPoints.length > 0 ? (
         <>
           <span style={styles.listCaption}>Top moments</span>
@@ -992,6 +1003,8 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 10,
   },
+  /** The recap grid gap, carried inside the card slot so it animates with it. */
+  slotSpacing: { paddingTop: 10 },
   statBand: {
     display: 'grid',
     gap: 8,

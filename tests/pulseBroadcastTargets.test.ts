@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isExtensionPageSender,
+  isSupportedTwitchUrl,
   isTrustedTwitchTopFrameSender,
   isSenderAuthorizedForMessage,
   MESSAGE_SENDER_SCOPE,
@@ -60,6 +61,7 @@ describe('isSenderAuthorizedForMessage', () => {
   it('denies every extension-page message to a Twitch content script', () => {
     const gated = scopedTypes('extension-page')
     expect(gated).toContain('SUPPORTER_ACCOUNT')
+    expect(gated).toContain('TWITCH_SIGN_IN')
     expect(gated).toContain('ENROLL_DEVICE')
     expect(gated).toContain('ROTATE_DEVICE')
     expect(gated).toContain('REVOKE_DEVICE')
@@ -121,5 +123,16 @@ describe('isSenderAuthorizedForMessage', () => {
   it('does not trust a non-canonical Twitch subdomain content script', () => {
     const clips = { id: extensionId, frameId: 0, tab: { url: 'https://clips.twitch.tv/abc' } }
     expect(isSenderAuthorizedForMessage('HEALTH', undefined, clips, extensionId)).toBe(false)
+  })
+
+  it('keeps Sign in with Twitch away from every content script, including on id.twitch.tv', () => {
+    expect(MESSAGE_SENDER_SCOPE.TWITCH_SIGN_IN).toBe('extension-page')
+    const authorize = { id: extensionId, frameId: 0, tab: { url: 'https://id.twitch.tv/oauth2/authorize?state=x' } }
+    for (const sender of [twitchTab, authorize, { ...authorize, frameId: 1 }]) {
+      expect(isSenderAuthorizedForMessage('TWITCH_SIGN_IN', 'xqc', sender, extensionId)).toBe(false)
+    }
+    expect(isSenderAuthorizedForMessage('TWITCH_SIGN_IN', undefined, optionsPage, extensionId)).toBe(true)
+    // The overlay never mounts on the Twitch sign-in host.
+    expect(isSupportedTwitchUrl('https://id.twitch.tv/oauth2/authorize')).toBe(false)
   })
 })

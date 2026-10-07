@@ -254,7 +254,8 @@ test.describe('extension mocked states', () => {
     const settings = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settings).toBeVisible()
     await expect(settings.locator('[data-api-status]')).toBeVisible()
-    await expect(settings.locator('[data-sampler-status]')).toBeVisible()
+    // Backend sampler health lives in full settings, not on the channel card.
+    await expect(settings.locator('[data-sampler-status]')).toHaveCount(0)
     await expect(settings.getByText('Remember recently opened channels')).toHaveCount(0)
     await expect(settings.locator('[data-settings-section]')).toHaveCount(0)
     await expect(settings.locator('input[type="password"]')).toHaveCount(0)
@@ -512,6 +513,8 @@ test.describe('extension mocked states', () => {
 
     await expect(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
       animations: 'disabled',
+      // The Supporter banner's emote pile is physics-driven, so it never settles identically.
+      mask: [host.locator('.pulse-supporter-banner-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
@@ -521,6 +524,8 @@ test.describe('extension mocked states', () => {
     await host.evaluate(() => window.scrollTo(0, 0))
     await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',
+      // The Supporter banner's emote pile is physics-driven, so it never settles identically.
+      mask: [host.locator('.pulse-supporter-banner-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })
@@ -528,6 +533,8 @@ test.describe('extension mocked states', () => {
     await expect.poll(() => sectionNav.evaluate(element => getComputedStyle(element).position)).toBe('static')
     await expect(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
       animations: 'disabled',
+      // The Supporter banner's emote pile is physics-driven, so it never settles identically.
+      mask: [host.locator('.pulse-supporter-banner-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
     })

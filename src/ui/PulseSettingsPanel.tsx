@@ -1,42 +1,120 @@
-import { PeakMark } from './PeakMark.tsx'
 import { PulseBannerQuickPreview } from './PulseBanner.tsx'
-import { theme } from './theme.ts'
-import { compactViewerSamplingLabel, summarizeViewerSampling } from '../shared/viewerSamplingStatus.ts'
-import { useState } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
+import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
 import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
+import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSupporterAppearance.ts'
+import { SUPPORTER_FINISH_OPTIONS } from './supporterFinish.ts'
+import { SettingsGearIcon } from './SettingsGearIcon.tsx'
+import { formatCount } from './mostReacted.ts'
+import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
 import type { SettingsHostSection } from '../shared/messages.ts'
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
-export function PulseSettingsPanel({ onBack }: { onBack?: () => void }) {
-  const preferences = usePulsePreferences()
-  const { health, checking, refresh, error: connectionError } = usePulseHealth()
-  const [openError, setOpenError] = useState<string | null>(null)
-  const [opening, setOpening] = useState(false)
+/** The Twitch channel the panel is open on, from data the overlay already holds. */
+export interface QuickSettingsChannel {
+  login: string
+  displayName?: string | null
+  isLive: boolean
+  category?: string | null
+  /** A current count only; leave it out rather than show a stale one. */
+  viewerCount?: number | null
+  startedAt?: string | null
+  surface: PulsePanelSurfaceState
+}
 
-  async function openHost(section: SettingsHostSection = 'pulse'): Promise<void> {
+function useSettingsHostOpener() {
+  const [error, setError] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
+  async function open(section: SettingsHostSection): Promise<void> {
     setOpening(true)
-    setOpenError(null)
+    setError(null)
     try {
       const response = await sendBackgroundMessage({ type: 'OPEN_SETTINGS_HOST', section })
       const failure = backgroundErrorMessage(response, EXTENSION_RECONNECT_MESSAGE)
-      if (failure || !response || !('type' in response) || response.type !== 'OPEN_SETTINGS_HOST') setOpenError(failure ?? EXTENSION_RECONNECT_MESSAGE)
+      if (failure || !response || !('type' in response) || response.type !== 'OPEN_SETTINGS_HOST') setError(failure ?? EXTENSION_RECONNECT_MESSAGE)
     } catch {
-      setOpenError(EXTENSION_RECONNECT_MESSAGE)
+      setError(EXTENSION_RECONNECT_MESSAGE)
     } finally { setOpening(false) }
   }
+  return { error, opening, open }
+}
+
+/**
+ * Pinned where the Pulse view keeps its Settings bar, so the way out to the
+ * full settings page sits in the same place on both views.
+ */
+export function OpenAllSettingsButton({ style }: { style?: CSSProperties }) {
+  const { error, opening, open } = useSettingsHostOpener()
+  return (
+    <>
+      {error ? <p className="pulse-settings-hint pulse-settings-footer-error" role="alert">{error}</p> : null}
+      <button
+        type="button"
+        className="pulse-settings-bottom-bar"
+        data-settings-host-cta="pulse"
+        style={style}
+        title="Open all settings in a new tab"
+        disabled={opening}
+        onClick={() => void open('pulse')}
+      >
+        <SettingsGearIcon size={16} />
+        <span>{opening ? 'Opening settings…' : 'Open all settings'}</span>
+        <span aria-hidden="true">↗</span>
+      </button>
+    </>
+  )
+}
+
+const SURFACE_STATUS: Record<PulsePanelSurfaceState, { tone: 'ok' | 'wait' | 'idle' | 'bad'; copy: (name: string) => string }> = {
+  live_tracked: { tone: 'ok', copy: () => 'Pulse is charting this stream live.' },
+  live_late: { tone: 'ok', copy: () => 'Pulse joined partway through. Charting from here on.' },
+  live_untracked: { tone: 'wait', copy: () => 'Pulse isn’t charting this stream right now.' },
+  offline_recap: { tone: 'ok', copy: () => 'Stream ended. The replay recap is ready.' },
+  offline_empty: { tone: 'idle', copy: name => `${name} is offline. Nothing to chart right now.` },
+  unsupported: { tone: 'wait', copy: name => `${name} is outside the channels Pulse covers.` },
+  identity_mismatch: { tone: 'wait', copy: () => 'The stream just changed. Pulse is catching up.' },
+  loading: { tone: 'wait', copy: () => 'Getting Pulse ready…' },
+  error: { tone: 'bad', copy: () => 'Pulse data isn’t loading right now.' },
+}
+
+function uptimeLabel(startedAt: string | null | undefined, now = Date.now()): string | null {
+  const started = startedAt ? Date.parse(startedAt) : NaN
+  // Twitch ends a broadcast at 48 h, so anything longer is a stale start time.
+  if (!Number.isFinite(started) || started > now || now - started > 48 * 3_600_000) return null
+  const minutes = Math.floor((now - started) / 60_000)
+  const hours = Math.floor(minutes / 60)
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
+}
+
+export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; channel?: QuickSettingsChannel }) {
+  const preferences = usePulsePreferences()
+  // The header owns this poll on the Pulse tab and is unmounted while settings
+  // are open, so reading it here does not double the worker round trips.
+  const appearance = useSupporterAppearanceDetails()
+  const { health, checking, refresh, error: connectionError } = usePulseHealth()
+  const { error: openError, opening, open: openHost } = useSettingsHostOpener()
 
   const reachable = health?.ok === true
   const apiStatus = checking ? 'checking' : reachable ? 'connected' : 'unreachable'
-  const sampler = summarizeViewerSampling(reachable ? health?.viewerSampling : undefined)
-  const samplerLabel = reachable ? compactViewerSamplingLabel(sampler) : 'Unknown'
   const isSidebar = preferences.placement === 'sidebar'
+  const name = channel?.displayName?.trim() || channel?.login || ''
+  const surface = channel ? SURFACE_STATUS[channel.surface] : null
+  const status = checking
+    ? { tone: 'wait', copy: 'Checking StreamPulse…' }
+    : connectionError
+      ? { tone: 'bad', copy: 'Extension disconnected' }
+      : !reachable
+        ? { tone: 'bad', copy: 'Can’t reach StreamPulse. Try again.' }
+        : surface
+          ? { tone: surface.tone, copy: surface.copy(name) }
+          : { tone: 'ok', copy: 'Connected to StreamPulse' }
 
   return (
     <div
@@ -49,12 +127,20 @@ export function PulseSettingsPanel({ onBack }: { onBack?: () => void }) {
         {onBack ? (
           <button type="button" className="pulse-link-btn" onClick={onBack}>← Back to Pulse</button>
         ) : <span />}
+        {preferences.status ? (
+          <span
+            className={preferences.status === 'Saved' ? 'pulse-settings-saved' : 'pulse-settings-status-fail'}
+            role="status"
+          >
+            {preferences.status === 'Saved' ? '✓ Saved' : preferences.status}
+          </span>
+        ) : null}
         <h1>Quick settings</h1>
         {!isSidebar && onBack ? (
           <button
             type="button"
             className="pulse-link-btn"
-            style={{ fontSize: 11, marginLeft: 'auto' }}
+            style={{ fontSize: 11 }}
             aria-label="Close settings"
             onClick={onBack}
           >
@@ -63,146 +149,100 @@ export function PulseSettingsPanel({ onBack }: { onBack?: () => void }) {
         ) : null}
       </div>
 
-      <div className="pulse-settings-connection" data-settings-connection="true">
-        <span className={`pulse-settings-status-dot pulse-settings-status-dot-${apiStatus}`} aria-hidden="true" />
-        <span className="pulse-settings-connection-copy">
-          <strong data-api-status={apiStatus}>
-            {checking ? 'Checking connection' : reachable ? `Connected · v${RELEASE_PREVIEW.version}` : connectionError ? 'Extension disconnected' : 'API unreachable'}
-          </strong>
-          <small data-sampler-status={sampler.state}>Sampler · {samplerLabel}</small>
-        </span>
-        <button
-          type="button"
-          className="pulse-settings-retest"
-          aria-label="Test connection"
-          title="Test connection"
-          disabled={checking}
-          onClick={() => void refresh(true)}
-        >
-          {checking ? '…' : '↻'}
-        </button>
+      <div className="pulse-settings-status-card">
+        {channel ? <ChannelHeader key={channel.login} channel={channel} name={name} /> : null}
+        <div className="pulse-settings-connection" data-settings-connection="true">
+          <span className="pulse-settings-status-dot" data-tone={status.tone} aria-hidden="true" />
+          <span className="pulse-settings-connection-copy">
+            <strong data-api-status={apiStatus}>{status.copy}</strong>
+          </span>
+          <button
+            type="button"
+            className="pulse-settings-retest"
+            aria-label="Test connection"
+            title="Test connection"
+            disabled={checking}
+            onClick={() => void refresh(true)}
+          >
+            {checking ? '…' : '↻'}
+          </button>
+        </div>
       </div>
       {connectionError ? <p className="pulse-settings-hint" role="status">{connectionError}</p> : null}
 
-      <button
-        type="button"
-        className="pulse-settings-open-all"
-        data-settings-host-cta="pulse"
-        disabled={opening}
-        onClick={() => void openHost('pulse')}
-      >
-        <span>{opening ? 'Opening settings…' : 'Open all settings'}</span>
-        <span aria-hidden="true">↗</span>
-      </button>
+      <SupporterHero appearance={appearance} disabled={opening} onOpen={() => void openHost('supporter')} />
       {openError ? <p className="pulse-settings-hint" role="alert">{openError}</p> : null}
 
       <section className="pulse-settings-quick" aria-label="Extension preferences">
-        <div className="pulse-settings-section-heading">
-          <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: theme.textSecondary }}>
-            Quick controls
-          </span>
-          {preferences.status ? (
-            <span
-              className={preferences.status === 'Saved' ? 'pulse-settings-saved' : 'pulse-settings-status-fail'}
-              role="status"
-            >
-              {preferences.status}
-            </span>
-          ) : null}
-        </div>
-
-        <h2 className="pulse-quick-group-title">Live data</h2>
-        <ToggleRow
-          id="pulse-auto-update"
-          label="Refresh live data automatically"
-          hint="Auto-update activity and viewer counts."
-          checked={preferences.autoUpdate}
-          onChange={preferences.setAutoUpdate}
-        />
-
-        <h2 className="pulse-quick-group-title">Layout</h2>
-        <div className="pulse-settings-field pulse-settings-control-block">
-          <span className="pulse-settings-label">Density</span>
-          <ChoicePicker
-            kind="density"
-            variant="compact"
-            groupLabel="Density"
-            options={DENSITY_OPTIONS}
-            value={preferences.density}
-            onChange={next => void preferences.setDensity(next)}
+        <QuickGroup title="Live data">
+          <ToggleRow
+            id="pulse-auto-update"
+            label="Refresh live data automatically"
+            hint="Auto-update activity and viewer counts."
+            checked={preferences.autoUpdate}
+            onChange={preferences.setAutoUpdate}
           />
-        </div>
+        </QuickGroup>
 
-        <div className="pulse-settings-field pulse-settings-control-block">
-          <span className="pulse-settings-label">Placement</span>
-          <ChoicePicker
-            kind="placement"
-            variant="compact"
-            groupLabel="Placement"
-            options={PLACEMENT_OPTIONS.map(option => ({
-              ...option,
-              icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,
-            }))}
-            value={preferences.placement}
-            onChange={next => void preferences.setPlacement(next)}
+        <QuickGroup title="Layout">
+          <div className="pulse-settings-field pulse-settings-control-block">
+            <span className="pulse-settings-label">Density</span>
+            <ChoicePicker
+              kind="density"
+              variant="compact"
+              groupLabel="Density"
+              options={DENSITY_OPTIONS}
+              value={preferences.density}
+              onChange={next => void preferences.setDensity(next)}
+            />
+          </div>
+
+          <div className="pulse-settings-field pulse-settings-control-block">
+            <span className="pulse-settings-label">Placement</span>
+            <ChoicePicker
+              kind="placement"
+              variant="compact"
+              groupLabel="Placement"
+              options={PLACEMENT_OPTIONS.map(option => ({
+                ...option,
+                icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,
+              }))}
+              value={preferences.placement}
+              onChange={next => void preferences.setPlacement(next)}
+            />
+          </div>
+
+          <ToggleRow
+            id="pulse-chat-dock"
+            label="Dock when chat is closed"
+            hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking is only available when placement is set to Sidebar.'}
+            checked={preferences.dock}
+            disabled={!isSidebar}
+            onChange={preferences.setDock}
           />
-        </div>
+        </QuickGroup>
 
-        <ToggleRow
-          id="pulse-chat-dock"
-          label="Dock when chat is closed"
-          hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking is only available when placement is set to Sidebar.'}
-          checked={preferences.dock}
-          disabled={!isSidebar}
-          onChange={preferences.setDock}
-        />
-
-        <h2 className="pulse-quick-group-title">Appearance</h2>
-        <div className="pulse-settings-field pulse-settings-control-block">
-          <span className="pulse-settings-label">Accent</span>
-          <ChoicePicker
-            kind="accent"
-            variant="compact"
-            groupLabel="Accent"
-            options={ACCENT_THEME_OPTIONS}
-            value={preferences.accent}
-            onChange={next => void preferences.setAccent(next)}
-          />
-        </div>
-        <div className="pulse-settings-field pulse-settings-control-block">
-          <span className="pulse-settings-label">Background &amp; motion</span>
-          <PulseBannerQuickPreview />
-          <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse')}>
-            Edit background in all settings ↗
-          </button>
-        </div>
-
-        <div style={{ paddingTop: 6, paddingBottom: 2 }}>
-          <button
-            type="button"
-            className="pulse-link-btn"
-            style={{ fontSize: 10, color: theme.textMuted, cursor: 'pointer', padding: 0 }}
-            onClick={() => void preferences.resetAppearanceAndLayout()}
-          >
-            Reset appearance and layout to defaults
-          </button>
-        </div>
+        <QuickGroup title="Appearance">
+          <div className="pulse-settings-field pulse-settings-control-block">
+            <span className="pulse-settings-label">Accent</span>
+            <ChoicePicker
+              kind="accent"
+              variant="compact"
+              groupLabel="Accent"
+              options={ACCENT_THEME_OPTIONS}
+              value={preferences.accent}
+              onChange={next => void preferences.setAccent(next)}
+            />
+          </div>
+          <div className="pulse-settings-field pulse-settings-control-block">
+            <span className="pulse-settings-label">Background &amp; motion</span>
+            <PulseBannerQuickPreview />
+            <button type="button" className="pulse-link-btn" data-banner-editor-cta="true" disabled={opening} onClick={() => void openHost('pulse')}>
+              Edit background in all settings ↗
+            </button>
+          </div>
+        </QuickGroup>
       </section>
-
-      <button
-        type="button"
-        className="pulse-settings-supporter-cta"
-        data-settings-host-cta="supporter"
-        disabled={opening}
-        onClick={() => void openHost('supporter')}
-      >
-        <PeakMark size={20} stroke={theme.accentSoft} className="pulse-settings-supporter-mark" />
-        <span className="pulse-settings-supporter-text">
-          <strong>Pulse Supporter</strong>
-          <small>Personal finishes. Core tools stay free.</small>
-        </span>
-        <span aria-hidden="true">›</span>
-      </button>
 
       <details className="pulse-settings-release-preview" data-changelog-preview="true">
         <summary>
@@ -229,6 +269,83 @@ export function PulseSettingsPanel({ onBack }: { onBack?: () => void }) {
         </div>
       </details>
 
+      <button
+        type="button"
+        className="pulse-link-btn pulse-settings-reset"
+        onClick={() => void preferences.resetAppearanceAndLayout()}
+      >
+        <span aria-hidden="true">↺</span> Reset appearance and layout to defaults
+      </button>
+    </div>
+  )
+}
+
+function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name: string }) {
+  const [avatar, setAvatar] = useState(() => readTwitchChannelAvatarUrl(channel.login, channel.displayName))
+  const replay = channel.surface === 'offline_recap'
+  const uptime = channel.isLive ? uptimeLabel(channel.startedAt) : null
+  const facts = [channel.category, uptime ? `live ${uptime}` : null].filter(Boolean).join(' · ')
+  return (
+    <div className="pulse-settings-channel" data-live={channel.isLive ? 'true' : undefined}>
+      <span className="pulse-settings-channel-avatar" aria-hidden="true">
+        {avatar
+          ? <img src={avatar} alt="" referrerPolicy="no-referrer" onError={() => setAvatar(undefined)} />
+          : name.charAt(0).toUpperCase()}
+      </span>
+      <span className="pulse-settings-channel-copy">
+        <small>{channel.isLive ? 'Watching' : replay ? 'Replay' : 'Visiting'}</small>
+        <strong>{name}</strong>
+        {facts ? <span>{facts}</span> : null}
+      </span>
+      {channel.isLive ? (
+        <span className="pulse-settings-channel-live">
+          <b>LIVE</b>
+          {channel.viewerCount != null ? <span title={`${channel.viewerCount.toLocaleString('en-US')} viewers`}>{formatCount(channel.viewerCount)}</span> : null}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * The Supporter entry. Its line is the real header perk: a tenure crest beside
+ * a painted title. Without a verified finish the crest climbs all five stages
+ * while the title tries each finish, once when quick settings opens and on a
+ * loop while hovered; all of it is CSS. With one, the line shows the
+ * Supporter's own crest and paint. No price, no purchase wording.
+ */
+export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
+  const finish = appearance?.finish ?? null
+  const finishLabel = finish ? SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label : undefined
+  return (
+    <button
+      type="button"
+      className="pulse-settings-supporter-cta"
+      data-settings-host-cta="supporter"
+      data-supporter-verified={finish ? 'true' : undefined}
+      data-finish={finish ?? undefined}
+      disabled={disabled}
+      onClick={onOpen}
+    >
+      <span className="pulse-supporter-cta-head">
+        <strong>Pulse Supporter</strong>
+        <span>{finish ? 'Manage Supporter' : 'Explore Supporter'} <span aria-hidden="true">›</span></span>
+      </span>
+      <small>{finishLabel ? `${finishLabel} paint equipped. Thanks for backing Pulse.` : 'Paint your panel title and earn a crest that grows. Core tools stay free.'}</small>
+      <span className="pulse-supporter-line" aria-hidden="true">
+        {finish
+          ? <><i className="pulse-crest" data-tenure={appearance?.tenure ?? 'new'} /><b className="pulse-paint" data-finish={finish} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text="Stream Pulse">Stream Pulse</b></>
+          : <><i className="pulse-crest pulse-crest-climb" data-tenure="12m" /><b className="pulse-paint pulse-paint-try" data-finish="etched" data-text="Stream Pulse">Stream Pulse</b></>}
+      </span>
+    </button>
+  )
+}
+
+function QuickGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="pulse-quick-group">
+      <h2 className="pulse-quick-group-title">{title}</h2>
+      <div className="pulse-quick-group-card">{children}</div>
     </div>
   )
 }

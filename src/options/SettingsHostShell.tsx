@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import type { SettingsHostSection } from '../shared/messages.ts'
 import { POLICY_LINKS } from '../shared/portalLinks.ts'
 import { PeakMark } from '../ui/PeakMark.tsx'
+import { SupporterBannerPile } from './SupporterBannerPile.tsx'
 
 export interface HostNavItem {
   id: SettingsHostSection
@@ -111,9 +112,10 @@ export function SettingsHostShell({
               onClick={() => navigateToSection('supporter')}
             >
               <span className="pulse-settings-supporter-banner-mark" aria-hidden="true"><PeakMark size={20} /></span>
+              <SupporterBannerPile />
               <span className="pulse-settings-supporter-banner-copy">
                 <strong>Pulse Supporter benefits</strong>
-                <small>Personal finishes and private recognition. Core Pulse tools stay free.</small>
+                <small>Paint your panel title, choose its wave and sheen, and earn a crest that grows. Core Pulse tools stay free.</small>
               </span>
               <span className="pulse-settings-supporter-banner-arrow">View benefits <span aria-hidden="true">→</span></span>
             </button>

@@ -1,4 +1,5 @@
-import { handleMyMoments } from './myMoments.ts'
+import { handleDeviceBookmarks, handleMyMoments } from './myMoments.ts'
+import { loadHubSnapshot } from './hubSnapshot.ts'
 import {
   addPulseWatchlist,
   createPulseBookmark,
@@ -38,6 +39,7 @@ import type { BackgroundRequest, BackgroundResponse, DeviceAuthStatus, Extension
 import { parseBackgroundRequest } from '../shared/parseBackgroundRequest.ts'
 import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
+import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
   isDiagnosticsConsentEnabled,
@@ -52,8 +54,9 @@ import {
   trackDiagnosticsWork,
   trustedDiagnosticsBuildMeta,
 } from '../shared/extensionDiagnostics.ts'
-import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
+import { getBackendUrl, getProtectSyncState, getSessionCoverage, getSessionPulse, getSupporterPaintStyle, isHostedBackendUrl, setAutoUpdateEnabled, cacheSessionPulseIfEnabled, setProtectSyncState, setSessionCoverage, type ProtectSyncStorageState, type PulseCacheWindow } from '../shared/storage.ts'
 import { sanitizePulseErrorMessage } from '../shared/pulseError.ts'
+import { DEFAULT_SUPPORTER_PAINT, supporterTenureForMonths } from '../shared/supporterPaint.ts'
 import {
   addToWatchlist,
   getWatchlist,
@@ -947,10 +950,18 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         case 'SUPPORTER_APPEARANCE': {
           const entitlement = await supporterAccount.entitlement()
           const finish = entitlement.state === 'ready' && entitlement.features.includes('supporter.banner.v1') && entitlement.features.includes('supporter.finish.v1') && entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
-          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0 } satisfies BackgroundResponse)
+          // The crest follows the server's support count; wave and sheen are
+          // this profile's presentation choice and only travel with a verified finish.
+          const crestAndPaint = finish && entitlement.state === 'ready'
+            ? { tenure: supporterTenureForMonths(entitlement.supportPeriods), paint: await getSupporterPaintStyle().catch(() => DEFAULT_SUPPORTER_PAINT) }
+            : {}
+          sendResponse({ type: 'SUPPORTER_APPEARANCE', finish, validForMs: finish && entitlement.state === 'ready' ? entitlement.validForMs ?? 0 : 0, ...crestAndPaint } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_ACCOUNT': {
+          // Every disconnect is a user sign-out: silent Twitch sign-in must not
+          // undo it. The marker never blocks the disconnect itself.
+          if (message.action === 'disconnect') await twitchSignIn.markSignedOutByUser().catch(() => undefined)
           const account = await supporterAccount.run(message.action)
           if (account.state === 'pending') watchPendingLink()
           sendResponse({ type: 'SUPPORTER_ACCOUNT', account } satisfies BackgroundResponse)
@@ -976,6 +987,12 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         case 'SUPPORTER_FINISH_INTENT': {
           const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
           sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
+          return
+        }
+        case 'TWITCH_SIGN_IN': {
+          sendResponse((message.action === 'status'
+            ? await twitchSignIn.status()
+            : await twitchSignIn.signIn(message.mode, message.forceVerify === true)) satisfies BackgroundResponse)
           return
         }
         case 'OPEN_SETTINGS_HOST': {
@@ -1128,12 +1145,22 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'SYNC_WATCHLIST', channels, sync: statusFromStorageState(state, channels) } satisfies BackgroundResponse)
           return
         }
+        case 'HUB_SNAPSHOT': {
+          try {
+            sendResponse({ type: 'HUB_SNAPSHOT', snapshot: await loadHubSnapshot() } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({ type: 'HUB_SNAPSHOT', snapshot: null, error: err instanceof Error ? err.message : 'hub_unavailable' } satisfies BackgroundResponse)
+          }
+          return
+        }
         case 'MY_MOMENTS':
         case 'MOMENT_CAPTURE': {
           sendResponse(await handleMyMoments(message, sender))
           return
         }
         case 'LIST_BOOKMARKS': {
+          const device = await handleDeviceBookmarks(message, sender)
+          if (device) { sendResponse(device); return }
           const page = await fetchPulseBookmarks({
             login: message.login,
             streamId: message.streamId,
@@ -1145,6 +1172,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SAVE_BOOKMARK': {
+          const device = await handleDeviceBookmarks(message, sender)
+          if (device) { sendResponse(device); return }
           const item = await createPulseBookmark(message.bookmark)
           sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
           return
@@ -1267,7 +1296,9 @@ chrome.runtime.onStartup.addListener(() => {
   })()
 })
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(details => {
+  // The only moment silent Twitch sign-in may later be tried (no-op while the flag is off).
+  if (details?.reason === 'install') void twitchSignIn.markFirstInstall().catch(() => undefined)
   void (async () => {
     const { restrictCredentialStorageAccess } = await import('../shared/storage.ts')
     await restrictCredentialStorageAccess()

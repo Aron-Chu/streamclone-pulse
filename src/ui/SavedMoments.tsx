@@ -29,11 +29,21 @@ const primaryButtonStyle: CSSProperties = {
   color: 'var(--pulse-accent-ink, #ddd6fe)',
 }
 
-/** Free, on-demand bookmarks. Account credentials never leave the worker. */
-export function SavedMoments({ login, streamId, vodId, selected }: {
+/**
+ * Free, on-demand bookmarks. Account credentials never leave the worker.
+ * Without an account the worker keeps saves on this device instead.
+ *
+ * Bookmark saves exactly what the inspector card shows: the ranked moment when
+ * one is selected, otherwise the raw chart minute (no score is sent for it).
+ */
+export function SavedMoments({ login, streamId, vodId, selected, minuteOffsetSeconds }: {
   login: string; streamId?: string; vodId?: string; selected?: LiveHeatPoint | null
+  /** Raw chart minute shown by the inspector when no ranked moment is selected. */
+  minuteOffsetSeconds?: number | null
 }) {
   const [items, setItems] = useState<PulseBookmark[]>([])
+  /** From the worker: saves stay on this device, or (private windows) need an account. */
+  const [home, setHome] = useState<'device' | 'connect'>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<SaveProblem>()
   const [notice, setNotice] = useState('')
@@ -44,7 +54,7 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
     const reset = () => {
       generation.current++
       pending.current = false
-      setItems([]); setError(undefined); setNotice(''); setBusy(false)
+      setItems([]); setError(undefined); setNotice(''); setBusy(false); setHome(undefined)
     }
     const changed = (changes: Record<string, chrome.storage.StorageChange>) => {
       if ('pulseAccountRevision' in changes || 'backendUrl' in changes) { reset(); hydrate() }
@@ -69,8 +79,12 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
         limit: 100,
       })).then(result => {
         if (!active || current !== generation.current || pending.current) return
-        if ('error' in result && result.error) return
+        if ('error' in result && result.error) {
+          if (saveProblem(new Error(result.error)).connect) setHome('connect')
+          return
+        }
         if ('type' in result && result.type === 'BOOKMARKS') {
+          if (result.device) setHome('device')
           setItems(previous => {
             const merged = new Map(previous.map(item => [item.id, item]))
             for (const item of result.items) merged.set(item.id, item)
@@ -86,11 +100,14 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
     return () => { active = false; generation.current++; storage?.removeListener(changed) }
   }, [login, streamId, validVodId])
 
-  const offset = selected ? Math.floor(reactionAnalyticalOffset(selected)) : undefined
+  const target = selected ? reactionAnalyticalOffset(selected) : minuteOffsetSeconds
+  const offset = target != null ? Math.floor(target) : undefined
   const usableOffset = offset !== undefined && Number.isFinite(offset) && offset >= 0
+  const label = selected ? displayMomentReasonLabel(selected.reason, selected.reasonLabel) : 'Minute activity'
   const saved = usableOffset && items.some(item => item.offsetSeconds === offset
     && (streamId ? item.streamId === streamId : item.vodId === validVodId))
   const canSave = usableOffset && Boolean(streamId || validVodId)
+  const bookmarkText = saved ? 'Bookmarked' : busy ? 'Saving...' : 'Bookmark'
 
   async function openSettings(section: 'moments' | 'supporter') {
     const current = generation.current
@@ -103,7 +120,7 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
   }
 
   async function save() {
-    if (!selected || !canSave || pending.current || saved) return
+    if (!canSave || pending.current || saved) return
     const current = generation.current
     pending.current = true
     setBusy(true); setError(undefined); setNotice('')
@@ -133,13 +150,14 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
 
       const result = await sendBackgroundMessage({ type: 'SAVE_BOOKMARK', bookmark: {
         login, streamId, ...(validVodId ? { vodId: validVodId } : {}), offsetSeconds: offset,
-        label: displayMomentReasonLabel(selected.reason, selected.reasonLabel), source: 'extension',
+        label, source: 'extension',
       } })
       if (current !== generation.current) return
       if ('error' in result && result.error) throw new Error(result.error)
       if (!('type' in result) || result.type !== 'BOOKMARK') throw new Error('invalid_bookmark_response')
       setItems(previous => [result.item, ...previous.filter(item => item.id !== result.item.id)])
-      setNotice(`Bookmarked at ${formatHeatOffset(offset)}.`)
+      if (result.device) setHome('device')
+      setNotice(`${result.device ? 'Saved on this device' : 'Bookmarked'} at ${formatHeatOffset(offset)}.`)
     } catch (cause) {
       if (current === generation.current) setError(saveProblem(cause))
     } finally {
@@ -151,18 +169,18 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
     <div className="pulse-moment-actions" style={{
       display: 'grid',
       gap: 8,
-      gridTemplateColumns: selected ? 'repeat(auto-fit, minmax(132px, 1fr))' : 'minmax(0, max-content)',
+      gridTemplateColumns: usableOffset ? 'repeat(auto-fit, minmax(132px, 1fr))' : 'minmax(0, max-content)',
       alignItems: 'stretch',
       justifyContent: 'start',
     }}>
-      {selected ? <button style={{ ...(canSave && !saved ? primaryButtonStyle : buttonStyle), width: '100%' }} className={`pulse-action-chip pulse-moment-bookmark-button${canSave && !saved ? ' pulse-action-chip-primary' : ''}`} type="button" disabled={busy || saved || !canSave}
-        title={canSave ? `Save this moment at ${formatHeatOffset(offset!)}` : 'A stream or VOD reference is required'}
-        aria-label={canSave ? `Save moment at ${formatHeatOffset(offset!)}` : 'Save moment unavailable: a stream or VOD reference is required'}
+      {usableOffset ? <button style={{ ...(canSave && !saved ? primaryButtonStyle : buttonStyle), width: '100%' }} className={`pulse-action-chip pulse-moment-bookmark-button${canSave && !saved ? ' pulse-action-chip-primary' : ''}`} type="button" disabled={busy || saved || !canSave}
+        title={canSave ? `Save this ${selected ? 'moment' : 'minute'} at ${formatHeatOffset(offset!)}` : 'A stream or VOD reference is required'}
+        aria-label={canSave ? `${bookmarkText} ${selected ? 'moment' : 'minute'} at ${formatHeatOffset(offset!)}` : 'Bookmark unavailable: a stream or VOD reference is required'}
         data-moment-action="bookmark"
         data-moment-save-state={saved ? 'saved' : busy ? 'saving' : canSave ? 'ready' : 'unavailable'}
-        onClick={() => void save()}><span className="pulse-moment-bookmark-icon"><LibraryIcon name={saved ? 'check' : 'bookmark'} /></span>{saved ? 'Bookmarked' : busy ? 'Saving...' : 'Bookmark'}</button> : null}
+        onClick={() => void save()}><span className="pulse-moment-bookmark-icon"><LibraryIcon name={saved ? 'check' : 'bookmark'} /></span>{bookmarkText}</button> : null}
       <button
-        style={{ ...buttonStyle, width: selected ? '100%' : undefined }}
+        style={{ ...buttonStyle, width: usableOffset ? '100%' : undefined }}
         className="pulse-action-chip"
         type="button"
         title="Open your saved moments, notes, and watched history"
@@ -170,11 +188,15 @@ export function SavedMoments({ login, streamId, vodId, selected }: {
         data-moment-action="open-library"
         onClick={() => void openSettings('moments')}
       >
-        <LibraryIcon name="bookmark" />View My Moments
+        <LibraryIcon name="bookmark" />My Moments
       </button>
     </div>
     <p className="pulse-moment-actions-copy" style={{ margin: '7px 0 0', color: theme.textMuted, fontSize: 10, lineHeight: 1.4 }}>
-      Free to use. Bookmarks sync with your Pulse account.
+      {!usableOffset ? 'Select a moment or a chart minute to bookmark it.'
+        : !canSave ? 'Bookmarks unlock once Pulse links this stream.'
+          : home === 'device' ? 'Bookmarks stay on this device. No account needed.'
+            : home === 'connect' ? 'Free with a Pulse account. Connect to save.'
+              : 'Free to use. Bookmarks sync with your Pulse account.'}
     </p>
     {notice ? <p className="pulse-moment-action-feedback" role="status" style={{ margin: '6px 0 0', color: theme.textSecondary }}>{notice}</p> : null}
     {error ? <div className="pulse-moment-action-error" role="alert" style={{ marginTop: 6, display: 'grid', gap: 6 }}>
