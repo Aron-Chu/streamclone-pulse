@@ -121,6 +121,15 @@ const routes = [
     robots: 'index,follow',
   },
   {
+    // The extension's "Release details" links open this page. Kept out of search:
+    // it republishes the extension's notes, including versions not yet released.
+    path: 'changelog',
+    title: 'Release Notes — StreamPulse',
+    description: 'What changed in each version of the StreamPulse Chrome extension.',
+    canonicalPath: '/changelog',
+    robots: 'noindex,nofollow',
+  },
+  {
     path: 'setup',
     title: 'StreamPulse Analytics',
     description: 'This legacy StreamPulse route redirects to public analytics.',

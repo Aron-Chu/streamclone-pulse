@@ -13,6 +13,7 @@ import {
 import { initPortalSentry } from './lib/sentry'
 import { PortalErrorBoundary } from './ui/PortalErrorBoundary'
 import { PageMetadata } from './ui/PageMetadata'
+import { RouteScrollManager } from './ui/RouteScrollManager'
 import { shadowStyles } from './ui/theme'
 import './ui/portal-fonts.css'
 import './ui/public-utilities.css'
@@ -21,6 +22,7 @@ import { captureAccountConfirmation } from './lib/accountConfirmation'
 import { captureAccountDeviceCode } from './lib/accountDeviceCode'
 import { captureAccountRestore, isPrivateSupporterRoute } from './lib/accountRestore'
 import { setProductAnalyticsRoute } from './lib/productAnalytics'
+import { routeScrollState } from './lib/routeScroll'
 
 captureAccountConfirmation()
 captureAccountDeviceCode()
@@ -59,7 +61,8 @@ function AuthRejectedListener() {
       }
       clearBetaKey()
       queryClient.clear()
-      navigate('/analytics', { replace: true })
+      // The reader did not choose this page: open it at the top, not at their old place.
+      navigate('/analytics', { replace: true, state: routeScrollState('top') })
     }
     window.addEventListener('auth:rejected', onRejected)
     return () => window.removeEventListener('auth:rejected', onRejected)
@@ -110,6 +113,7 @@ async function bootstrap() {
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <PageMetadata />
+            <RouteScrollManager />
             <AuthRejectedListener />
             <ProductAnalyticsRouteObserver />
             <AppRoutes />

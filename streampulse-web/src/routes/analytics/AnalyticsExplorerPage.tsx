@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type Ref } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type Ref } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -23,6 +23,7 @@ import {
 import { checkMomentSource, fromHubMoment } from '../../lib/discoveryMoments'
 import { formatApproximate, formatRelativeTime } from '../../lib/formatStats'
 import { configuredNewsroomWindows, newsroomDataThroughAge, type NewsroomExternalSource, type NewsroomUpdate, type NewsroomWindow } from '../../lib/newsroom'
+import { routeScrollState } from '../../lib/routeScroll'
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { Avatar } from '../../ui/components/hub/primitives'
 import { ResilientImage } from '../../ui/components/ResilientImage'
@@ -53,6 +54,21 @@ const SORTS: Array<{ value: ExplorerSort; label: string }> = [
   { value: 'recent', label: 'Most recent' },
   { value: 'moments', label: 'Most moments' },
 ]
+
+/** explorer.css stacks the workspace below 960 px, where a broadcast's detail replaces the list. */
+const STACKED_WORKSPACE = '(max-width: 959px)'
+const KEEP_PLACE = routeScrollState('keep')
+
+function subscribeWorkspaceLayout(onChange: () => void): () => void {
+  const query = window.matchMedia(STACKED_WORKSPACE)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+/** Whether the list stays beside the inspector, so moving between them keeps the reader's place. */
+function useSideBySideWorkspace(): boolean {
+  return useSyncExternalStore(subscribeWorkspaceLayout, () => !window.matchMedia(STACKED_WORKSPACE).matches, () => false)
+}
 
 function oneOf<T extends string>(value: string | null, values: readonly T[], fallback: T): T {
   return value && values.includes(value as T) ? value as T : fallback
@@ -215,9 +231,9 @@ function ExplorerWindowUnavailablePanel({ range, liveHref }: { range: NewsroomWi
   )
 }
 
-function BroadcastResult({ broadcast, selected, href }: { broadcast: ExplorerBroadcast; selected: boolean; href: string }) {
+function BroadcastResult({ broadcast, selected, href, state }: { broadcast: ExplorerBroadcast; selected: boolean; href: string; state?: unknown }) {
   return (
-    <Link className="explorer-result" data-selected={selected || undefined} aria-current={selected ? 'page' : undefined} to={href}>
+    <Link className="explorer-result" data-selected={selected || undefined} aria-current={selected ? 'page' : undefined} to={href} state={state}>
       <div className="explorer-result__top">
         <BroadcastAvatar broadcast={broadcast} />
         <span className="explorer-result__identity">
@@ -424,6 +440,7 @@ export default function AnalyticsExplorerPage() {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const canonicalParams = paramsFromQuery(query)
   const backHref = withSearch('/analytics/explore', canonicalParams)
+  const placeState = useSideBySideWorkspace() ? KEEP_PLACE : undefined
 
   useEffect(() => setSearchDraft(query.q ?? ''), [query.q])
   useEffect(() => {
@@ -432,15 +449,15 @@ export default function AnalyticsExplorerPage() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
-      navigate(backHref)
+      navigate(backHref, { state: placeState })
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [backHref, broadcastId, navigate])
+  }, [backHref, broadcastId, navigate, placeState])
 
   const replaceQuery = (patch: Partial<ExplorerQuery>) => {
     const next = paramsFromQuery({ ...query, ...patch })
-    navigate(withSearch('/analytics/explore', next))
+    navigate(withSearch('/analytics/explore', next), { state: placeState })
   }
   const submitSearch = (event: FormEvent) => {
     event.preventDefault()
@@ -522,6 +539,7 @@ export default function AnalyticsExplorerPage() {
                   broadcast={broadcast}
                   selected={selectedId === broadcast.id}
                   href={withSearch(`/analytics/explore/${encodeURIComponent(broadcast.id)}`, canonicalParams)}
+                  state={placeState}
                 />
               ))}
               {list.data?.nextCursor ? <button className="explorer-load-more" type="button" onClick={list.loadMore} disabled={list.loadingMore}>{list.loadingMore ? 'Loading…' : 'Load more broadcasts'}</button> : null}
