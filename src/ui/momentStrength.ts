@@ -1,14 +1,19 @@
 import { isEmoteSpikeReason } from '@streampulse/pulse-core'
-import type { ExtensionPeak, ExtensionRollup } from '../shared/messages.ts'
+import type { ExtensionPeak, ExtensionRollup, PulseCoverage } from '../shared/messages.ts'
 import { minuteEmoteTotal } from './chartRollupUtils.ts'
+import { hasMissingPrefixFromStreamStart } from './chatActivityEmotes.ts'
 
 /**
  * How strong a moment was next to this stream's usual, for the Live now
  * "Strongest loaded moment" pill: the moment minute's own signal (chat for
  * chat spikes, emotes for emote spikes, read from the per-minute rollups and
  * never from the peak's own counts) over the mean of that signal across the up
- * to 30 measured minutes immediately before it. Missing minutes are skipped,
- * not counted as zero, and the moment minute is never part of its own usual.
+ * to 30 measured minutes immediately before it. Unmeasured minutes are
+ * skipped, not counted as zero, and the moment minute is never part of its own
+ * usual. Unmeasured means absent, marked `missing`, or an empty row (no chat,
+ * no emotes) inside a range the coverage reports as missing chat: the backend
+ * sends viewer-only rows for minutes it sampled viewers but captured no chat
+ * (a late IRC join or an IRC outage), and those are not quiet minutes.
  *
  * This recent 30-minute usual (owner's Method A) is deliberately not the
  * website's "How unusual was this reaction?" number. That card shows the
@@ -47,16 +52,31 @@ const MINUTE = 60
 
 /**
  * `rollups` must be the validated full history (plus the recent tail); a
- * recent-only window would move the usual from poll to poll. Returns null when
- * the moment minute is not loaded, fewer than 10 measured minutes precede it,
- * or the ratio is under 1.2×.
+ * recent-only window would move the usual from poll to poll. `coverage` is the
+ * payload's chat coverage. Returns null when the moment minute is not loaded,
+ * fewer than 10 measured minutes precede it, or the ratio is under 1.2×.
  */
 export function momentStrength(
   rollups: readonly ExtensionRollup[],
   moment: Pick<ExtensionPeak, 'offsetSeconds' | 'dominantSignal' | 'reasonLabel'>,
+  coverage?: PulseCoverage | null,
 ): MomentStrength | null {
   const emotes = isEmoteSpikeReason(moment.dominantSignal) || isEmoteSpikeReason(moment.reasonLabel ?? '')
   const count = (rollup: ExtensionRollup): number => Math.max(0, (emotes ? minuteEmoteTotal(rollup) : rollup.chatCount) || 0)
+  // Missing chat ranges, each [from, to] in minute starts with `to` the last
+  // missing minute (inclusive). A legacy late join may only give its start.
+  const gaps = [...(coverage?.missingRanges ?? [])]
+  if (hasMissingPrefixFromStreamStart(coverage)) {
+    gaps.push({ fromOffsetSeconds: 0, toOffsetSeconds: coverage!.coverageStartOffsetSeconds - MINUTE })
+  }
+  // Coverage minutes are clock-aligned and rollup minutes start up to 59 s
+  // earlier, so match by overlap. Only empty rows are dropped, which keeps the
+  // chat minutes on either edge of a gap.
+  const measured = (rollup: ExtensionRollup): boolean => !rollup.missing && (
+    rollup.chatCount > 0
+    || minuteEmoteTotal(rollup) > 0
+    || !gaps.some(gap => rollup.offsetSeconds > gap.fromOffsetSeconds - MINUTE && rollup.offsetSeconds < gap.toOffsetSeconds + MINUTE)
+  )
   const at = moment.offsetSeconds
   let minute: ExtensionRollup | undefined
   for (const rollup of rollups) {
@@ -66,7 +86,7 @@ export function momentStrength(
   if (!minute) return null
   const start = minute.offsetSeconds
   const before = rollups
-    .filter(rollup => !rollup.missing && rollup.offsetSeconds < start)
+    .filter(rollup => rollup.offsetSeconds < start && measured(rollup))
     .sort((a, b) => b.offsetSeconds - a.offsetSeconds)
     .slice(0, STRENGTH_BASELINE_MINUTES)
   if (before.length < STRENGTH_MIN_MEASURED_MINUTES) return null

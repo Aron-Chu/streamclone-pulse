@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ExtensionRollup } from '../src/shared/messages.ts'
+import type { ExtensionRollup, PulseCoverage, PulseCoverageRange } from '../src/shared/messages.ts'
 import { momentStrength } from '../src/ui/momentStrength.ts'
 
 const chatSpike = { offsetSeconds: 0, dominantSignal: 'chat_spike', reasonLabel: 'Chat spike' }
@@ -85,6 +85,108 @@ describe('momentStrength (Method A: mean of up to 30 measured minutes before the
       rollups[20] = { ...rollups[20]!, missing: true }
       expect(momentStrength(rollups, at(20))).toBeNull()
       expect(momentStrength(steady(20, 20, 100), at(25))).toBeNull()
+    })
+  })
+
+  describe('missing chat coverage (viewer-only rows)', () => {
+    /** A row the backend sends for a minute it sampled viewers but captured no chat. */
+    const viewerOnly = (index: number, offsetSeconds = index * 60): ExtensionRollup =>
+      ({ offsetSeconds, chatCount: 0, sevenTvEmoteCount: 0, totalEmoteCount: 0, viewerCount: 4200, viewerSamples: 3 })
+
+    /** Live coverage as the backend builds it: ranges in minute starts, `to` inclusive. */
+    function coverage(missingRanges: PulseCoverageRange[] | undefined, extra: Partial<PulseCoverage> = {}): PulseCoverage {
+      return {
+        state: 'waiting_for_vod',
+        coverageStartOffsetSeconds: 0,
+        coverageEndOffsetSeconds: 0,
+        hasFullStreamCoverage: false,
+        trackedFromStart: false,
+        hasGaps: Boolean(missingRanges?.length),
+        missingRanges,
+        canBackfill: false,
+        message: 'VOD chat not available yet',
+        ...extra,
+      }
+    }
+
+    // Chat joined at 00:20 (missing first 20 minutes); viewers sampled from 00:00.
+    const lateJoin = [
+      ...Array.from({ length: 20 }, (_, i) => viewerOnly(i)),
+      ...Array.from({ length: 5 }, (_, i) => minute(20 + i, 60)),
+      minute(25, 140),
+    ]
+    const lateJoinCoverage = coverage([{ fromOffsetSeconds: 0, toOffsetSeconds: 19 * 60 }], {
+      coverageStartOffsetSeconds: 20 * 60,
+      coverageEndOffsetSeconds: 25 * 60,
+    })
+
+    it('does not count a viewer-only prefix before chat began toward the usual or the minimum', () => {
+      // Without the coverage the 20 empty rows read as quiet minutes: 140 over 12.
+      expect(momentStrength(lateJoin, at(25))).toMatchObject({ label: '10×+', mean: 12, minutes: 25 })
+      // Only 5 minutes had chat before the moment, under the 10-minute minimum.
+      expect(momentStrength(lateJoin, at(25), lateJoinCoverage)).toBeNull()
+    })
+
+    it('averages only the chat minutes once enough follow a late join', () => {
+      const rollups = [...lateJoin.slice(0, 25), ...Array.from({ length: 10 }, (_, i) => minute(25 + i, 60)), minute(35, 150)]
+      expect(momentStrength(rollups, at(35), lateJoinCoverage)).toMatchObject({ label: '2.5×', mean: 60, minutes: 15 })
+    })
+
+    it('treats a legacy late join with only a coverage start as a missing prefix', () => {
+      const legacy = coverage(undefined, { state: 'partial_tracking', coverageStartOffsetSeconds: 20 * 60, hasGaps: false })
+      expect(momentStrength(lateJoin, at(25), legacy)).toBeNull()
+    })
+
+    // Chat 00:00-00:09, a 20-minute IRC outage 00:10-00:29 with viewers still
+    // sampled, then the moment at 00:30. The backend's range is 00:10 to 00:29.
+    const outage = [
+      ...Array.from({ length: 10 }, (_, i) => minute(i, 60)),
+      ...Array.from({ length: 20 }, (_, i) => viewerOnly(10 + i)),
+      minute(30, 140),
+    ]
+    const outageCoverage = coverage([{ fromOffsetSeconds: 10 * 60, toOffsetSeconds: 29 * 60 }], {
+      state: 'missing_ranges_detected',
+      coverageEndOffsetSeconds: 30 * 60,
+    })
+
+    it('skips a mid-stream viewer-only hole instead of averaging it in as zero chat', () => {
+      expect(momentStrength(outage, at(30))).toMatchObject({ label: '7.0×', mean: 20, minutes: 30 })
+      expect(momentStrength(outage, at(30), outageCoverage)).toMatchObject({ label: '2.3×', mean: 60, minutes: 10 })
+    })
+
+    it('treats the range end as the last missing minute, not one past it', () => {
+      // An exclusive end would let the 00:29 row in: 11 minutes, 54.5 a minute, 2.6×.
+      const strength = momentStrength(outage, at(30), outageCoverage)
+      expect(strength?.minutes).toBe(10)
+      expect(strength?.ratio).toBe(2.3)
+    })
+
+    it('matches rollup minutes that start up to 59 s before the clock minute the range uses', () => {
+      // Stream began at :39, so rollups sit 39 s before the coverage minutes
+      // (00:00, 00:21, 01:21, ...). Chat resumes at 00:30, the moment is 00:35.
+      const shift = (rollup: ExtensionRollup): ExtensionRollup => ({ ...rollup, offsetSeconds: Math.max(0, rollup.offsetSeconds - 39) })
+      const rollups = [
+        ...outage.slice(0, 30),
+        ...Array.from({ length: 5 }, (_, i) => minute(30 + i, 60)),
+        minute(35, 150),
+      ].map(shift)
+      const strength = momentStrength(rollups, { ...chatSpike, offsetSeconds: 35 * 60 - 39 }, outageCoverage)
+      // The 00:10 row (09:21) is in the hole; the 00:30 chat row (29:21) overlaps
+      // the range end but has chat, so it still counts.
+      expect(strength).toMatchObject({ label: '2.5×', mean: 60, minutes: 15 })
+    })
+
+    it('still counts a quiet minute that the coverage does not report missing', () => {
+      const rollups = [...Array.from({ length: 10 }, (_, i) => minute(i, i < 5 ? 0 : 20)), minute(10, 30)]
+      const tracked = coverage([], { state: 'full_stream_tracked', hasFullStreamCoverage: true, trackedFromStart: true })
+      expect(momentStrength(rollups, at(10), tracked)).toMatchObject({ mean: 10, minutes: 10, ratio: 3 })
+      expect(momentStrength(rollups, at(10), outageCoverage)).toMatchObject({ mean: 10, minutes: 10, ratio: 3 })
+    })
+
+    it('keeps an emote-only row inside a reported range', () => {
+      const rollups = [...outage.slice(0, 30), minute(30, 140)]
+      rollups[12] = { ...viewerOnly(12), totalEmoteCount: 3 }
+      expect(momentStrength(rollups, at(30), outageCoverage)?.minutes).toBe(11)
     })
   })
 

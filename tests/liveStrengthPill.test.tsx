@@ -99,6 +99,42 @@ describe('Live now strongest moment strength pill', () => {
     expect(row).toContain('<span style="flex:1">Strongest loaded moment · 00:30:00</span>')
   })
 
+  it('passes the chat coverage, so viewer-only minutes before a late chat join are not a quiet usual', () => {
+    // Chat joined at 00:25; the backend still sent viewer-only rows from 00:00
+    // and reports 00:00-00:24 as missing chat. Five chat minutes precede the
+    // moment, under the 10-minute minimum, so the row stays plain.
+    const lateJoin = payload(true)
+    const viewerOnly = (row: ExtensionRollup): ExtensionRollup => row.offsetSeconds < 25 * 60
+      ? { ...row, chatCount: 0, sevenTvEmoteCount: 0, totalEmoteCount: 0, viewerCount: 4200, viewerSamples: 3 }
+      : row
+    lateJoin.fullRollups = lateJoin.fullRollups!.map(viewerOnly)
+    lateJoin.rollups = lateJoin.rollups.map(viewerOnly)
+    lateJoin.coverage = {
+      state: 'waiting_for_vod',
+      coverageStartOffsetSeconds: 25 * 60,
+      coverageEndOffsetSeconds: MINUTES * 60,
+      hasFullStreamCoverage: false,
+      trackedFromStart: false,
+      hasGaps: true,
+      missingRanges: [{ fromOffsetSeconds: 0, toOffsetSeconds: 24 * 60 }],
+      canBackfill: false,
+      message: 'VOD chat not available yet',
+    }
+    // Read as quiet minutes, the 25 empty rows would make 168 look like 10×+.
+    expect(momentStrength(lateJoin.fullRollups, peak)?.label).toBe('10×+')
+    const row = featuredRow(renderToStaticMarkup(
+      <LiveStatsBand
+        payload={lateJoin}
+        backendUrl="https://api.example.test"
+        currentOffsetSeconds={MINUTES * 60}
+        onMomentSelect={vi.fn()}
+      />,
+    ))
+    expect(row).toContain('Strongest loaded moment · 00:30:00')
+    expect(row).not.toContain('pulse-strength')
+    expect(row).not.toContain('usual')
+  })
+
   it('keeps the time line to one line, so a narrow or compact panel cannot grow the row', () => {
     // The chip sets white-space: normal; a wrapped first line would stack the
     // pill under two 12px lines (50px). It ellipsizes instead.

@@ -717,12 +717,13 @@ export function LiveStatsBand({
   }, [payload])
   const featuredMoment = chartPeakMarkers[0]
   // Validated full history only, so the pill never shows a recent-window
-  // number first and jumps once the full timeline arrives.
+  // number first and jumps once the full timeline arrives. The coverage marks
+  // viewer-only rows in missing chat ranges as unmeasured, not quiet.
   const featuredStrength = useMemo(
     () => (hasFullRollups && featuredMoment
-      ? momentStrength(mergeRecentRollupTail(payload.fullRollups ?? [], payload.rollups), featuredMoment)
+      ? momentStrength(mergeRecentRollupTail(payload.fullRollups ?? [], payload.rollups), featuredMoment, payload.coverage)
       : null),
-    [featuredMoment, hasFullRollups, payload.fullRollups, payload.rollups],
+    [featuredMoment, hasFullRollups, payload.coverage, payload.fullRollups, payload.rollups],
   )
   const featuredTime = featuredMoment ? formatHeatOffset(featuredMoment.offsetSeconds) : ''
 
