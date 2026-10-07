@@ -349,6 +349,9 @@ test('the extension "Release details" destination is a prerendered release-notes
   expect(await response?.text()).toContain('data-testid="changelog-page"')
   await expect(page).toHaveTitle('Release Notes — StreamPulse')
   await expect(page.getByRole('heading', { level: 1, name: 'Release notes' })).toBeVisible()
-  await expect(page.locator('#v0\\.2\\.1')).toBeVisible()
+  // Released versions only, plus an honest label for the one in development.
+  await expect(page.getByText(/^v[\d.]+ · Released/).first()).toBeVisible()
+  await expect(page.getByText(/^v[\d.]+ · In development$/)).toBeVisible()
+  await expect(page.getByText(/· Preview/)).toHaveCount(0)
   await expect(page.getByTestId('not-found')).toHaveCount(0)
 })

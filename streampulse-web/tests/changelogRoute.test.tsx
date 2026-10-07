@@ -16,7 +16,7 @@ interface ReleaseFixture {
   links?: { details?: string }
 }
 
-const releases = (releaseNotes as { releases: ReleaseFixture[] }).releases
+const { currentVersion, releases } = releaseNotes as { currentVersion: string; releases: ReleaseFixture[] }
 const webRoot = resolve(import.meta.dirname, '..')
 const read = (path: string) => readFileSync(resolve(webRoot, path), 'utf8')
 
@@ -34,20 +34,31 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     }
   })
 
-  it('lists every extension release with its notes and an honest release state', () => {
+  it('describes only released versions and labels the version in development honestly', () => {
     render(<MemoryRouter initialEntries={['/changelog']}><AppRoutes /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1, name: 'Release notes' })).toBeTruthy()
+    const released = releases.filter((release) => release.status === 'released')
+    expect(released.length).toBeGreaterThan(0)
     for (const release of releases) {
       const section = document.getElementById(`v${release.version}`)
-      expect(section).toBeTruthy()
-      const scoped = within(section!)
-      expect(scoped.getByRole('heading', { level: 2, name: release.title })).toBeTruthy()
-      expect(scoped.getByText(release.summary)).toBeTruthy()
-      expect(section!.textContent).toContain(`v${release.version} · ${release.status === 'released' ? 'Released' : 'Preview'}`)
+      if (release.status === 'released') {
+        const scoped = within(section!)
+        expect(scoped.getByRole('heading', { level: 2, name: release.title })).toBeTruthy()
+        expect(scoped.getByText(release.summary)).toBeTruthy()
+        expect(section!.textContent).toContain(`v${release.version} · Released`)
+      } else if (release.version === currentVersion) {
+        // Named, never described: its notes can change before it ships.
+        expect(section!.textContent).toContain(`v${release.version} · In development`)
+        expect(section!.textContent).toContain('has not been released yet')
+        expect(document.body.textContent).not.toContain(release.summary)
+      } else {
+        expect(section).toBeNull()
+        expect(document.body.textContent).not.toContain(release.summary)
+      }
     }
-    const current = document.getElementById('v0.2.1')!
-    expect(within(current).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent))
-      .toEqual(['New', 'Improved', 'Fixed', 'Known limitations'])
+    expect(document.body.textContent).not.toContain('Preview')
+    const shipped = document.getElementById(`v${released[0].version}`)!
+    expect(within(shipped).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['Known limitations'])
     expect(screen.getByRole('link', { name: 'StreamPulse Support' }).getAttribute('href')).toBe('/support')
     // The page itself makes no claim about which build the Chrome Web Store lists.
     expect(screen.getByText('What changed in each version of the StreamPulse Chrome extension.')).toBeTruthy()
@@ -68,7 +79,7 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(read('scripts/prerender.mjs')).toMatch(/path: 'changelog',\s+title: 'Release Notes — StreamPulse',/)
     expect(read('scripts/check-public-pages.mjs')).toContain("['changelog/index.html', 'Release Notes — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/changelog']")
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/changelog'/)
-    // It republishes notes for versions not yet released, so it is not offered to search engines.
+    // It documents the extension rather than the site, so it is not offered to search engines.
     expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'noindex,nofollow',/)
     expect(read('public/sitemap.xml')).not.toContain('/changelog')
   })
