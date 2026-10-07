@@ -343,10 +343,6 @@ function OverlayMain({
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
-  // The moment a Top Moments row picked. While it is still the pinned moment,
-  // its card opens under that row; picked on the chart, it opens there.
-  const [listPinOffset, setListPinOffset] = useState<number | null>(null)
-  const cardInList = listPinOffset != null && listPinOffset === mostReactedPinOffset
   const [mostReactedPreviewOffset, setMostReactedPreviewOffset] = useState<number | null>(null)
   const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
   const jumpBusyRef = useRef(false)
@@ -485,12 +481,11 @@ function OverlayMain({
     }
   }
 
-  const handleMostReactedPin = useCallback((offsetSeconds: number | null, fromList?: boolean) => {
+  const handleMostReactedPin = useCallback((offsetSeconds: number | null) => {
     setMostReactedPreviewOffset(null)
     setMostReactedPinOffset(offsetSeconds)
     setChartPinOffset(offsetSeconds)
     setChartMinuteSelection(null)
-    setListPinOffset(fromList ? offsetSeconds : null)
   }, [])
 
   const handleChartPin = useCallback((offsetSeconds: number | null) => {
@@ -1829,7 +1824,9 @@ function OverlayMain({
                   pinOffsetSeconds={chartPinOffset}
                   previewOffsetSeconds={mostReactedPreviewOffset}
                   selectedMomentOffsetSeconds={mostReactedPinOffset}
-                  cardInList={cardInList}
+                  // A ranked moment, picked in Top Moments or on the chart,
+                  // shows in the Top Moments card; the chart keeps minutes.
+                  cardInList={panelSections?.showMostReacted}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                   coverageTier={coverageTierState?.coverageTier ?? null}
                   liveMetadata={coverageTierState?.liveMetadata ?? null}
@@ -1849,7 +1846,6 @@ function OverlayMain({
                   onAnalyticsAtOffset={openAnalytics}
                   onHighlightOffset={setMostReactedPreviewOffset}
                   onPinOffset={handleMostReactedPin}
-                  cardInList={cardInList}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
                 />
               ) : null}

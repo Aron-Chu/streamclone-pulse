@@ -126,31 +126,33 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     const shell = extension.page.locator('#streamclone-pulse-root .pulse-shell')
     await expect(shell).toBeVisible()
 
-    // On initial load, SelectedMomentCard is NOT rendered (progressive disclosure)
+    // On initial load the Top Moments card shows the strongest moment; nothing is selected.
+    const topCard = extension.page.locator(`#${PULSE_ROOT_ID} [data-top-moment-card]`)
+    await expect(topCard).toHaveAttribute('data-top-moment-card', 'strongest')
     await expect(
-      extension.page.locator(`#${PULSE_ROOT_ID} [data-selected-moment-card="true"]`),
+      extension.page.locator(`#${PULSE_ROOT_ID} [aria-label^="Selected moment at"]`),
     ).toHaveCount(0)
 
     // Capture initial recap state
     await saveScreenshot(extension.page, '18-recap-progressive-disclosure-initial.png', shell)
 
-    // Click first moment row to reveal inspector
+    // Click first moment row to select it in the card
     const momentRow = extension.page.locator(`#${PULSE_ROOT_ID} .pulse-moment-row-button`).first()
     await expect(momentRow).toBeVisible()
     await momentRow.click()
 
-    // Now SelectedMomentCard is revealed
-    const selectedCard = extension.page.locator(`#${PULSE_ROOT_ID} [data-selected-moment-card="true"]`).first()
+    // The card now shows the picked moment
+    const selectedCard = extension.page.locator(`#${PULSE_ROOT_ID} [aria-label^="Selected moment at"]`)
     await expect(selectedCard).toBeVisible()
+    await expect(topCard).toHaveAttribute('data-top-moment-card', 'selected')
 
     // Capture expanded recap state
     await saveScreenshot(extension.page, '19-recap-progressive-disclosure-expanded.png', shell)
 
-    // Clear selection dismisses card
+    // Clearing the selection goes back to the strongest moment
     await selectedCard.getByRole('button', { name: 'Clear selected moment' }).click()
-    await expect(
-      extension.page.locator(`#${PULSE_ROOT_ID} [data-selected-moment-card="true"]`),
-    ).toHaveCount(0)
+    await expect(selectedCard).toHaveCount(0)
+    await expect(topCard).toHaveAttribute('data-top-moment-card', 'strongest')
   })
 
   test('4. Interaction proof: wheel zoom over chart without scrolling parent page', async ({

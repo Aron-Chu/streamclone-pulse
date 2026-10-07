@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   momentClockDisplay,
@@ -41,10 +41,11 @@ import type { RecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
 import type { ExtensionCoverageResponse } from '../shared/coverage.ts'
 import type { FullHistoryRequestResult } from '../shared/fullHistoryAuth.ts'
-import { PulseMomentRow, momentRowKey, type PulseMomentRowCard } from './PulseMomentRow.tsx'
+import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { SavedMoments } from './SavedMoments.tsx'
+import { TopMomentCard, type TopMomentCardProps } from './TopMomentCard.tsx'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { theme } from './theme.ts'
@@ -263,9 +264,14 @@ function RecapHighlightStrip({
 const RECAP_MOMENTS_COLLAPSED_COUNT = 5
 const RECAP_MOMENTS_MAX_COUNT = 20
 
-/** Collapsed, a list shows its first rows plus the row whose card is open. */
-function foldMoments<T>(items: T[], expanded: boolean, open: (item: T) => boolean): T[] {
-  return expanded ? items : items.filter((item, index) => index < RECAP_MOMENTS_COLLAPSED_COUNT || open(item))
+/** Collapsed, a list shows its first rows. */
+function foldMoments<T>(items: T[], expanded: boolean): T[] {
+  return expanded ? items : items.slice(0, RECAP_MOMENTS_COLLAPSED_COUNT)
+}
+
+/** Escape in a list whose pick the card shows goes back to the strongest. */
+function clearOnEscape(card: TopMomentCardProps | null) {
+  return (event: { key: string }) => { if (event.key === 'Escape' && card?.selected) card.onClear() }
 }
 
 function RecapMomentsList({
@@ -278,7 +284,6 @@ function RecapMomentsList({
   rollups,
   peaks,
   selectedKey,
-  cardKey,
   card,
   onSelect,
   onHighlight,
@@ -292,19 +297,19 @@ function RecapMomentsList({
   rollups: ExtensionRollup[]
   peaks: ExtensionPeak[] | undefined
   selectedKey: string | null
-  /** The row picked in this list, whose card opens under it. */
-  cardKey: string | null
-  card: Omit<PulseMomentRowCard, 'open'>
+  /** The card above the list: the moment picked in it, or the strongest. */
+  card: TopMomentCardProps | null
   onSelect: (key: string) => void
   onHighlight: (offsetSeconds: number | null) => void
 }) {
   if (moments.length === 0) return null
-  const shown = foldMoments(moments, expanded, moment => recapMomentKey(payload.streamId, moment) === cardKey)
+  const shown = foldMoments(moments, expanded)
   const hiddenCount = moments.length - shown.length
   return (
     <>
       <span style={styles.listCaption}>Top moments</span>
-      <div style={styles.momentList}>
+      {card ? <TopMomentCard {...card} /> : null}
+      <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
         {shown.map(moment => {
           const key = recapMomentKey(payload.streamId, moment)
           const point = recapMomentToLiveHeatPoint(moment, catalog, payload.startedAt, rollups, peaks)
@@ -316,7 +321,7 @@ function RecapMomentsList({
               selected={key === selectedKey}
               onHighlight={onHighlight}
               onSelect={() => onSelect(key)}
-              card={{ ...card, open: key === cardKey }}
+              controls={card?.id}
             />
           )
         })}
@@ -374,8 +379,8 @@ function RecapReadyContent({
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
   const userSelectedRef = useRef(false)
-  // Picked in the Top moments list: the card opens under that row, not above the list.
-  const [listPick, setListPick] = useState(false)
+  const [, setPicks] = useState(0)
+  const cardId = useId()
 
   useEffect(() => {
     userSelectedRef.current = false
@@ -396,7 +401,6 @@ function RecapReadyContent({
   useEffect(() => {
     if (!externalPoint) return
     userSelectedRef.current = true
-    setListPick(false)
     setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
     setOverridePoint(externalPoint)
     setHoveredOffset(null)
@@ -404,11 +408,17 @@ function RecapReadyContent({
   const selectedPoint = selectedMoment
     ? recapMomentToLiveHeatPoint(selectedMoment, catalog, payload.startedAt, rollups, payload.peaks)
     : overridePoint
+  // A listed moment, however it was picked, shows in the card above the list.
+  const listedPick = userSelectedRef.current && selectedMoment != null
+  const topPoint = listedPick
+    ? selectedPoint
+    : heroMoment && recapMomentToLiveHeatPoint(heroMoment, catalog, payload.startedAt, rollups, payload.peaks)
 
-  // Hold the card for one exit window so clearing a selection fades and
-  // collapses instead of vanishing on the same frame.
+  // A minute, clip or highlight the list does not rank opens its own card.
+  // Hold it for one exit window so clearing a selection fades and collapses
+  // instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current && !listPick ? selectedPoint : null,
+    userSelectedRef.current && !selectedMoment ? selectedPoint : null,
     prefersReducedMotion(),
   )
 
@@ -452,9 +462,11 @@ function RecapReadyContent({
       ? recapHighlightBurstKey(payload.streamId, recap.funniestEmoteBurst.offsetSeconds)
       : null
 
-  function markUserSelected(fromList = false): void {
+  // A pick that changes no other state (the highlighted first row) still has
+  // to render: the card then shows it as the selected moment.
+  function markUserSelected(): void {
     userSelectedRef.current = true
-    setListPick(fromList)
+    setPicks(picks => picks + 1)
   }
 
   function clearRecapSelection(): void {
@@ -610,10 +622,17 @@ function RecapReadyContent({
         rollups={rollups}
         peaks={payload.peaks}
         selectedKey={selectedKey}
-        cardKey={userSelectedRef.current && listPick ? selectedKey : null}
-        card={{ onJump, onAnalytics, onClose: clearRecapSelection }}
+        card={topPoint ? {
+          id: cardId,
+          point: topPoint,
+          selected: listedPick,
+          backendUrl,
+          onJump,
+          onAnalytics,
+          onClear: clearRecapSelection,
+        } : null}
         onSelect={key => {
-          markUserSelected(true)
+          markUserSelected()
           setSelectedKey(key)
           setOverridePoint(null)
           setHoveredOffset(null)
@@ -688,8 +707,8 @@ function OfflineFallbackContent({
   )
   const [overridePoint, setOverridePoint] = useState<LiveHeatPoint | null>(null)
   const userSelectedRef = useRef(false)
-  // Picked in the Top moments list: the card opens under that row, not above the list.
-  const [listPick, setListPick] = useState(false)
+  const [, setPicks] = useState(0)
+  const cardId = useId()
 
   useEffect(() => {
     userSelectedRef.current = false
@@ -706,15 +725,12 @@ function OfflineFallbackContent({
     setOverridePoint(null)
   }, [payload.streamId, heroPoint?.offsetSeconds, heroPoint?.score])
 
-  const selectedPoint =
-    selectedKey == null
-      ? null
-      : peakPoints.find(point => offlinePointKey(point) === selectedKey) ?? overridePoint
+  const listedPoint = peakPoints.find(point => offlinePointKey(point) === selectedKey)
+  const selectedPoint = selectedKey == null ? null : listedPoint ?? overridePoint
 
   useEffect(() => {
     if (!externalPoint) return
     userSelectedRef.current = true
-    setListPick(false)
     setSelectedKey(`clip:${externalPoint.offsetSeconds}`)
     setOverridePoint(externalPoint)
     setHoveredOffset(null)
@@ -723,15 +739,32 @@ function OfflineFallbackContent({
   // Hold the card for one exit window so clearing a selection fades and
   // collapses instead of vanishing on the same frame.
   const recapCardHold = usePinnedCardHold(
-    userSelectedRef.current && !listPick ? selectedPoint : null,
+    userSelectedRef.current && !listedPoint ? selectedPoint : null,
     prefersReducedMotion(),
   )
-  const cardKey = userSelectedRef.current && listPick ? selectedKey : null
-  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded, point => offlinePointKey(point) === cardKey)
+  // A listed moment, however it was picked, shows in the card above the list.
+  const listedPick = userSelectedRef.current && listedPoint != null
+  const topPoint = listedPick ? listedPoint : heroPoint
+  const card: TopMomentCardProps | null = topPoint ? {
+    id: cardId,
+    point: topPoint,
+    selected: listedPick,
+    backendUrl,
+    onJump,
+    onAnalytics,
+    onClear: clearOfflineSelection,
+  } : null
+  const shownPeakPoints = foldMoments(peakPoints, momentsExpanded)
   const hiddenPeakCount = peakPoints.length - shownPeakPoints.length
 
-  function clearOfflineSelection(): void {
+  // As in the recap: a pick of the highlighted first row still renders.
+  function markUserSelected(): void {
     userSelectedRef.current = true
+    setPicks(picks => picks + 1)
+  }
+
+  function clearOfflineSelection(): void {
+    markUserSelected()
     setSelectedKey(null)
     setOverridePoint(null)
     setHoveredOffset(null)
@@ -802,8 +835,7 @@ function OfflineFallbackContent({
         highlightedGameSegmentKey={recapChartHighlightedGameKey}
         onClearSelection={clearOfflineSelection}
         onSelectPoint={point => {
-          userSelectedRef.current = true
-          setListPick(false)
+          markUserSelected()
           setSelectedKey(`bucket:${point.offsetSeconds}`)
           setOverridePoint(point)
           setHoveredOffset(null)
@@ -834,7 +866,8 @@ function OfflineFallbackContent({
       {peakPoints.length > 0 ? (
         <>
           <span style={styles.listCaption}>Top moments</span>
-          <div style={styles.momentList}>
+          {card ? <TopMomentCard {...card} /> : null}
+          <div style={styles.momentList} onKeyDown={clearOnEscape(card)}>
             {shownPeakPoints.map(point => {
               const key = offlinePointKey(point)
               return (
@@ -845,18 +878,12 @@ function OfflineFallbackContent({
                   selected={key === selectedKey}
                   onHighlight={setHoveredOffset}
                   onSelect={next => {
-                    userSelectedRef.current = true
-                    setListPick(true)
+                    markUserSelected()
                     setSelectedKey(offlinePointKey(next))
                     setOverridePoint(null)
                     setHoveredOffset(null)
                   }}
-                  card={{
-                    open: key === cardKey,
-                    onJump,
-                    onAnalytics,
-                    onClose: clearOfflineSelection,
-                  }}
+                  controls={card?.id}
                 />
               )
             })}
