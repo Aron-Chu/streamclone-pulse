@@ -4,12 +4,19 @@ import { minuteEmoteTotal } from './chartRollupUtils.ts'
 
 /**
  * How strong a moment was next to this stream's usual, for the Live now
- * "Strongest loaded moment" pill. Same definition as the website's
- * "How unusual was this reaction?": the moment minute's own signal (chat for
+ * "Strongest loaded moment" pill: the moment minute's own signal (chat for
  * chat spikes, emotes for emote spikes, read from the per-minute rollups and
  * never from the peak's own counts) over the mean of that signal across the up
  * to 30 measured minutes immediately before it. Missing minutes are skipped,
  * not counted as zero, and the moment minute is never part of its own usual.
+ *
+ * This recent 30-minute usual (owner's Method A) is deliberately not the
+ * website's "How unusual was this reaction?" number. That card shows the
+ * backend's comparison (buildHubMomentComparison), which averages every
+ * measured minute from stream start up to the moment, has no floor, needs 20
+ * minutes at 80% coverage and reads "N× earlier average". The pill answers
+ * "how much above the last half hour", so a stream that has warmed up reads
+ * lower here than there; the two numbers for one moment can differ.
  */
 export interface MomentStrength {
   /** Moment minute ÷ usual, rounded to the one decimal the pill shows. */
