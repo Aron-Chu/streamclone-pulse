@@ -60,7 +60,6 @@ export function PulseBannerBackdrop({ value, paused = false }: { value: PulseBan
     return () => { observer.disconnect(); document.removeEventListener('visibilitychange', visibility) }
   }, [])
   return <>
-    <style>{BANNER_CSS}</style>
     <div ref={ref} className="pulse-banner-art" data-mode={value.mode} data-running={visible && !paused} aria-hidden="true" style={{ opacity: value.intensity / 100 }}>
       {value.mode !== 'off' && EMOTES.map((id, index) => <img key={id} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer"
         src={`https://cdn.7tv.app/emote/${id}/2x_static.webp`}
@@ -101,49 +100,10 @@ export function PulseBannerControls({ expanded = false }: { expanded?: boolean }
 /** The overlay shows the saved appearance without turning quick settings into an editor. */
 export function PulseBannerQuickPreview() {
   const banner = usePulseBanner()
-  const mode = banner.value.mode === 'off' ? 'Off' : banner.value.mode === 'still' ? 'Still 7TV' : '7TV rain'
+  const mode = banner.value.mode === 'off' ? 'Backdrop off' : banner.value.mode === 'still' ? 'Still 7TV' : '7TV rain'
   return <div className="pulse-personal-panel pulse-banner-quick-preview" data-appearance-preview="true" data-preview-mode={banner.value.mode} role="img" aria-label={`Appearance preview: ${banner.value.title || 'Stream Pulse'}, ${mode}`} style={bannerThemeVariables}>
     <PulseBannerBackdrop value={banner.value} />
     <strong>{banner.value.title || 'Stream Pulse'}</strong>
     <small>{mode}</small>
   </div>
 }
-
-const BANNER_CSS = `
-.pulse-personal-panel { isolation: isolate; }
-/* Previews need a containing block for the art layer. The overlay shell already has one:
-   relative in the sidebar, fixed in right/bottom placement, which must stay fixed. */
-.pulse-personal-panel:not(.placement-right):not(.placement-bottom) { position: relative; }
-.pulse-background-preview { background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); overflow: hidden; }
-.pulse-banner-quick-preview { align-items: center; background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); color: var(--pulse-banner-text); display: flex; gap: 8px; min-height: 48px; min-width: 0; overflow: hidden; padding: 8px 10px; }
-.pulse-banner-quick-preview strong { flex: 1 1 auto; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pulse-banner-quick-preview small { color: var(--pulse-banner-text-secondary); flex: none; font-size: 10px; }
-.pulse-personal-banner { background: transparent; }
-.pulse-banner-art { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; container-type: size; }
-.pulse-background-preview .pulse-banner-art, .pulse-banner-quick-preview .pulse-banner-art { z-index: 0; }
-.pulse-background-preview .pulse-banner-copy, .pulse-banner-quick-preview strong, .pulse-banner-quick-preview small { position: relative; z-index: 1; }
-.pulse-banner-art img { position: absolute; width: 34px; height: 34px; object-fit: contain; transform: rotate(calc(var(--i) * 9deg - 20deg)); opacity: .8; }
-.pulse-banner-art[data-mode="rain"] img { top: 0 !important; animation: pulse-banner-rain linear infinite; animation-play-state: paused; }
-.pulse-banner-art[data-mode="rain"][data-running="true"] img { animation-play-state: running; }
-.pulse-banner-copy { min-width: 0; overflow-wrap: anywhere; }
-.pulse-banner-customize { width: 100%; min-width: 0; font-size: 12px; color: inherit; }
-.pulse-banner-customize summary { cursor: pointer; padding: 10px 0; font-weight: 600; color: var(--pulse-banner-text); }
-.pulse-banner-customize output { color: var(--pulse-banner-text-secondary); font-variant-numeric: tabular-nums; }
-.pulse-banner-customize input[type="range"] { min-height: 24px; }
-.pulse-banner-save button[type="submit"] { flex: 1; font-weight: 600; }
-.pulse-banner-customize form, .pulse-banner-customize fieldset { display: grid; gap: 10px; min-width: 0; }
-.pulse-banner-customize fieldset { border: 0; padding: 0; margin: 0; }
-.pulse-banner-customize label { display: flex; justify-content: space-between; }
-.pulse-banner-customize input { min-width: 0; width: 100%; box-sizing: border-box; accent-color: var(--pulse-banner-accent); }
-.pulse-banner-customize input:not([type="range"]) { background: var(--pulse-banner-canvas); color: var(--pulse-banner-text); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); padding: 8px; font: inherit; }
-.pulse-banner-modes, .pulse-banner-save { display: flex; gap: 6px; }
-.pulse-banner-modes { gap: 2px; padding: 3px; background: var(--pulse-banner-canvas); border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); }
-.pulse-banner-modes button { flex: 1; }
-.pulse-banner-customize button { min-height: 32px; padding: 6px 12px; border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); background: var(--pulse-banner-panel); color: var(--pulse-banner-text); font: inherit; cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
-.pulse-banner-customize button[aria-pressed="true"], .pulse-banner-customize button[type="submit"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16); border-color: var(--pulse-banner-border-accent); color: var(--pulse-banner-accent-ink); }
-.pulse-banner-customize button:hover { background: var(--pulse-banner-panel-elevated); }
-.pulse-banner-customize :focus-visible { outline: 2px solid var(--pulse-banner-accent-soft); outline-offset: 2px; }
-.pulse-banner-customize button:disabled { opacity: .5; cursor: default; }
-@keyframes pulse-banner-rain { from { translate: 0 -50px; rotate: -12deg; } to { translate: -12px calc(100cqh + 50px); rotate: 18deg; } }
-@media (prefers-reduced-motion: reduce) { .pulse-banner-art[data-mode="rain"] img { animation: none; top: calc(8% + var(--i) * 15%) !important; } .pulse-banner-customize button { transition: none; } }
-`

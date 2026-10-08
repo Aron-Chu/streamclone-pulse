@@ -82,8 +82,8 @@ export function MomentListItem({ moment, personalWorkspace = false, recent, busy
   presentation?: MomentPresentation
   context?: MomentContextState
 }) {
-  // A stored VOD id is only an identity hint until the backend verifies that
-  // the replay is available. Keep the list consistent with MomentPreview and
+  // A stored VOD id is only an identity hint until the worker resolves the
+  // replay as available. Keep the list consistent with MomentPreview and
   // never turn an unresolved reference into a playable link.
   const url = replayUrl(moment)
   const replayStatus = moment.availability === 'unresolved' ? 'Replay link unavailable' : 'Source unavailable'

@@ -60,6 +60,20 @@ const hostStyles = `
   .pulse-account-link-actions button:disabled { opacity: .6; cursor: not-allowed; }
   .pulse-account-link-actions button[aria-busy="true"] { cursor: wait; }
   .pulse-account-link-actions :focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
+  /* Sign in with Twitch: Twitch brand purple with the white glitch mark. */
+  .pulse-account-link-actions .pulse-twitch-signin { gap: 8px; border-color: #9146FF; background: #9146FF; color: #FFFFFF; }
+  .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
+  .pulse-account-link-actions .pulse-twitch-signin:focus-visible { outline-color: #BF94FF; }
+  .pulse-twitch-glitch { flex: none; }
+  .pulse-account-link-actions .pulse-account-quiet-button { border-color: transparent; background: transparent; color: ${theme.textSecondary}; font-weight: 600; }
+  .pulse-account-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .pulse-account-identity > div { display: grid; gap: 2px; min-width: 0; }
+  .pulse-account-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid ${theme.border}; object-fit: cover; }
+  .pulse-account-name { font-weight: 700; overflow-wrap: anywhere; }
+  .pulse-account-other-ways { display: grid; gap: 10px; border-top: 1px solid ${theme.border}; padding-top: 12px; }
+  .pulse-account-other-ways > summary { width: fit-content; min-height: 32px; display: flex; align-items: center; gap: 6px; color: ${theme.textSecondary}; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .pulse-account-other-ways[open] > summary { color: ${theme.textPrimary}; }
+  .pulse-account-other-ways > summary:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; border-radius: 4px; }
   .pulse-supporter-settings { max-width: 720px; }
   .pulse-supporter-settings .pulse-section-card { grid-template-columns: minmax(0, 1fr); }
   .pulse-supporter-settings p { margin: 0; line-height: 1.6; }

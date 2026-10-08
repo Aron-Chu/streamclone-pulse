@@ -52,7 +52,7 @@ test('packaged My Moments retains notes, separates consent and clears history wi
       return response.account.state
     }, { timeout: 15000, intervals: [1000] }).toBe('linked')
   }
-  await expect(page.getByText('Bookmarks need your Pulse account', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bookmarks are saved on this device', { exact: true })).toBeVisible()
   await link()
   await expect(page.getByRole('heading',{name:'My Moments',exact:true})).toBeVisible()
   await expect(page.getByText('Saved comeback',{exact:true})).toBeVisible()
@@ -120,7 +120,7 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   await expect(page.getByText('My note across reload', { exact: true })).toBeVisible()
   const disconnected = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'disconnect' }))
   expect(disconnected.account.state).toBe('signed_out')
-  await expect(page.getByText('Bookmarks need your Pulse account', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bookmarks are saved on this device', { exact: true })).toBeVisible()
   await expect(page.getByText('My note across reload', { exact: true })).toHaveCount(0)
   const firstAccountItems = items
   items = []

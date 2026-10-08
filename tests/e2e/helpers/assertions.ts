@@ -7,7 +7,7 @@ export const PULSE_ROOT_ID = 'streamclone-pulse-root'
 export const PULSE_TABS_ID = 'streamclone-pulse-tabs'
 
 /** Permissions intentionally allowed in the production manifest. */
-export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting'] as const
+export const EXPECTED_MANIFEST_PERMISSIONS = ['storage', 'scripting', 'identity'] as const
 
 /**
  * Required host permissions for the production / CWS package.

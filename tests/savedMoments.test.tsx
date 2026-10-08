@@ -26,7 +26,7 @@ it('saves the exact stream offset after a dedupe preflight', async () => {
     .mockResolvedValueOnce({ type: 'BOOKMARK', item })
   await render()
   expect(host.textContent).toContain('Free to use.')
-  expect(host.querySelector('button[aria-label^="Save moment at"]')).toBeTruthy()
+  expect(host.querySelector('button[aria-label^="Bookmark moment at"]')).toBeTruthy()
   expect(host.querySelector('button[aria-label="Open My Moments"]')).toBeTruthy()
   expect(sendBackgroundMessage).not.toHaveBeenCalled()
   await click('Bookmark')
@@ -151,4 +151,50 @@ it('preserves a valid VOD reference when no live stream id is available', async 
     type: 'SAVE_BOOKMARK',
     bookmark: expect.objectContaining({ login: 'xqc', vodId: '987654321', offsetSeconds: 120 }),
   }))
+})
+
+it('bookmarks the raw chart minute the inspector shows when no ranked moment is selected', async () => {
+  vi.mocked(sendBackgroundMessage)
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [] })
+    .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, offsetSeconds: 300, label: 'Minute activity' } })
+  await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={null} minuteOffsetSeconds={300.4} />))
+  expect(host.querySelector('button[aria-label="Bookmark minute at 00:05:00"]')).toBeTruthy()
+  await click('Bookmark')
+  expect(sendBackgroundMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+    type: 'SAVE_BOOKMARK',
+    bookmark: expect.objectContaining({ offsetSeconds: 300, label: 'Minute activity', streamId: '123456' }),
+  }))
+})
+
+it('prefers the ranked moment over the raw minute', async () => {
+  await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={point} minuteOffsetSeconds={300} />))
+  expect(host.querySelector('button[aria-label="Bookmark moment at 00:02:00"]')).toBeTruthy()
+})
+
+it('says how to get a Bookmark button when nothing is selected', async () => {
+  await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={null} minuteOffsetSeconds={null} />))
+  expect(host.querySelector('[data-moment-action="bookmark"]')).toBeNull()
+  expect(host.textContent).toContain('Select a moment or a chart minute to bookmark it.')
+  expect(host.querySelector('button[aria-label="Open My Moments"]')?.textContent).toBe('My Moments')
+})
+
+it('tells a signed-out viewer that saves stay on this device', async () => {
+  vi.stubGlobal('chrome', { runtime: { id: 'test-extension' }, storage: { onChanged: { addListener: vi.fn(), removeListener: vi.fn() } } })
+  vi.mocked(sendBackgroundMessage)
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [], device: true })
+    .mockResolvedValueOnce({ type: 'BOOKMARKS', items: [], device: true })
+    .mockResolvedValueOnce({ type: 'BOOKMARK', item: { ...item, id: 'local:one' }, device: true })
+  await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={point} />))
+  expect(host.textContent).toContain('Bookmarks stay on this device. No account needed.')
+  expect(host.textContent).not.toContain('Connect')
+  await click('Bookmark')
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('Saved on this device at 00:02:00.')
+  expect(host.querySelector('[data-moment-save-state="saved"]')).not.toBeNull()
+  expect(host.querySelector('[role="alert"]')).toBeNull()
+})
+it('asks a private-window viewer, who cannot save on the device, to connect', async () => {
+  vi.stubGlobal('chrome', { runtime: { id: 'test-extension' }, storage: { onChanged: { addListener: vi.fn(), removeListener: vi.fn() } } })
+  vi.mocked(sendBackgroundMessage).mockResolvedValueOnce({ error: 'account_authorization_required' })
+  await act(async () => root.render(<SavedMoments login="xqc" streamId="123456" selected={point} />))
+  expect(host.textContent).toContain('Free with a Pulse account. Connect to save.')
 })

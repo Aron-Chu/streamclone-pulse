@@ -92,14 +92,15 @@ async function linkDevice(extension: { serviceWorker: import('@playwright/test')
   expect(stored, 'linked credential was not seeded into the worker').toBe('linked')
 }
 
-function supporterBody(status: string, supportPeriods: number) {
+// The backend reports Checkout per account; these fixtures default to open.
+function supporterBody(status: string, supportPeriods: number, checkoutEnabled = true) {
   return {
     schemaVersion: 1,
     accountId: LINKED_DEVICE.accountId,
     environment: 'live',
     revision: 4,
     status,
-    checkoutEnabled: true,
+    checkoutEnabled,
     serverTime: new Date().toISOString(),
     accessFrom: new Date(Date.now() - 86_400_000).toISOString(),
     accessUntil: new Date(Date.now() + 20 * 86_400_000).toISOString(),
