@@ -49,7 +49,7 @@ export class PanelErrorBoundary extends Component<PanelErrorBoundaryProps, Panel
         <section style={styles.block} data-testid="pulse-panel-error">
           <h2 style={styles.title}>Pulse panel error</h2>
           <p style={styles.text}>Something went wrong rendering this panel.</p>
-          <p style={styles.hint}>Reload the Twitch tab. If this persists, open Options and report a support case.</p>
+          <p style={styles.hint}>Reload the Twitch tab. If this persists, open Help &amp; Feedback in Settings.</p>
         </section>
       )
     }

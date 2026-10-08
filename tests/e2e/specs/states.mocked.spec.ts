@@ -628,6 +628,7 @@ test.describe('extension mocked states', () => {
 
     // Visual coverage for the complete page shell and its responsive top nav.
     await sectionNav.getByRole('link', { name: 'Pulse on Twitch' }).click()
+    expect(await host.locator('.pulse-host-rail').evaluate(element => getComputedStyle(element).position)).toBe('sticky')
     await host.evaluate(() => window.scrollTo(0, 0))
     // The pill sits inside the banner and paints above the (masked) pile: the topmost element at its centre is the pill.
     const bannerPill = host.locator('.pulse-settings-supporter-banner-arrow')
@@ -649,7 +650,8 @@ test.describe('extension mocked states', () => {
       maxDiffPixelRatio: 0.04,
     })
     await host.setViewportSize({ width: 620, height: 820 })
-    await expect.poll(() => sectionNav.evaluate(element => getComputedStyle(element).position)).toBe('static')
+    // The rail (section list + Community card) is what sticks on wide pages; narrow pages flow it as a block.
+    await expect.poll(() => host.locator('.pulse-host-rail').evaluate(element => getComputedStyle(element).position)).toBe('static')
     expect(await bannerPillOnTop()).toBe(true)
     await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page-narrow.png', {
       animations: 'disabled',

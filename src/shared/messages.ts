@@ -167,7 +167,7 @@ export interface CheckForUpdateMessage {
   type: 'CHECK_FOR_UPDATE'
 }
 
-export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'developer'
+export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'help' | 'developer'
 
 /** Open the packaged extension-origin settings host from a Twitch surface. */
 export interface OpenSettingsHostMessage {
