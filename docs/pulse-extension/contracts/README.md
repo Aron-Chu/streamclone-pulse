@@ -1,8 +1,11 @@
 # StreamPulse privacy / diagnostics / support / analytics contracts
 
 **Status:** Contract freeze for RPR-3 / RPR-4 / RPR-5.  
-**Implementation:** pending (disabled-by-default when code lands).  
-**Activation:** pending owner/vendor configuration — **not active** on hosted production.
+**Implementation:** RPR-4 (support cases) is **implemented** — backend `POST /v1/portal/support/cases`
+with its Postgres outbox, and the portal feedback card on `/support`. RPR-3 / RPR-5 implementation
+status is tracked in [activation.md](./activation.md). Everything ships disabled by default.  
+**Activation:** pending owner/vendor configuration — **not active** on hosted production
+(see [activation.md § Activation inputs](./activation.md#activation-inputs)).
 
 This document set freezes schemas, consent, retention, processors, failure behavior,
 and dependency gates. It does **not** mark RPR-3/4/5 complete.

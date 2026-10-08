@@ -669,6 +669,20 @@ select {
   color: #fff;
 }
 
+.app-footer__links a.app-footer__discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* /discord: the one Blurple action on the page. */
+.app-shell .sc-btn.discord-join,
+.app-shell .sc-btn.discord-join:hover:not(:disabled) {
+  background: #5865f2;
+  color: #fff;
+}
+.app-shell .sc-btn.discord-join:hover:not(:disabled) { background: #4752c4; }
+
 /* Shared public foundation: usable on a cold route and at narrow/zoomed widths. */
 .app-shell { min-width: 0; overflow-wrap: anywhere; }
 .app-main, .app-main > *, .app-nav__links { min-width: 0; }

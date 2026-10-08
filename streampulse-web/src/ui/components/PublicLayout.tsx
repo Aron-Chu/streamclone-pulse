@@ -3,6 +3,8 @@ import { Link, NavLink } from 'react-router-dom'
 import { AccountEntry } from './AccountEntry'
 import { accountHeaderEnabled } from '../../lib/accountHeaderFlag'
 import { BrandMark } from './BrandMark'
+import { DiscordMark } from './DiscordMark'
+import { discordInviteUrl } from '../../lib/discord'
 import { ChromeInstallCta } from './ChromeInstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import { AnalyticsPreferences } from './AnalyticsPreferences'
@@ -17,6 +19,7 @@ import {
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const discord = discordInviteUrl()
   const menuTrigger = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!menuOpen) return
@@ -107,6 +110,12 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>
+              <Link to="/support#send-feedback">Send feedback</Link>
+              {discord ? (
+                <a href={discord} target="_blank" rel="noopener noreferrer" className="app-footer__discord" aria-label="Discord (opens in a new tab)">
+                  <DiscordMark size={15} />Discord
+                </a>
+              ) : null}
               <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">
                 GitHub
               </a>

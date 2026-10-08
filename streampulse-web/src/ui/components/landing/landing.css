@@ -203,6 +203,7 @@
 
 .sl-menu a {
   padding: 0.42rem 0.72rem;
+  white-space: nowrap;
   border-radius: var(--sc-radius);
   color: hsl(var(--sc-muted-foreground));
   text-decoration: none;
@@ -217,6 +218,9 @@
 
 .sl-nav__right {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .sl-hero--stage {
@@ -297,6 +301,83 @@
   justify-content: center;
   gap: 0.8rem;
   margin-top: 1.6rem;
+}
+
+.sl-community {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.9rem;
+}
+
+/* Discord's own Blurple; white text on it is 4.6:1. Seen at once, but still
+   smaller than the white install button above it. */
+.sl-discord-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 2.6rem;
+  padding: 0 1.1rem 0 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #5865f2;
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.sl-discord-pill:hover {
+  background: #4752c4;
+  color: #fff;
+}
+
+.sl-discord-pill:focus-visible,
+.sl-discord-icon:focus-visible,
+.sc-btn.sl-discord-nav:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+}
+
+.sl-discord-pill__ext {
+  opacity: 0.8;
+}
+
+.sc-btn.sl-discord-nav {
+  gap: 0.42rem;
+  padding: 0 0.7rem 0 0.6rem;
+  border-color: #5865f2;
+  background: #5865f2;
+  color: #fff;
+}
+
+.sc-btn.sl-discord-nav:hover:not(:disabled) {
+  border-color: #4752c4;
+  background: #4752c4;
+  color: #fff;
+}
+
+.sc-btn.sl-discord-nav svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Phone and tablet header: a 44px mark beside Menu (see the media rules below). */
+.sl-discord-icon {
+  display: none;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 0.55rem;
+  background: #5865f2;
+  color: #fff;
+}
+
+.sl-discord-icon:hover {
+  background: #4752c4;
+  color: #fff;
 }
 
 .sl-stage__cue {
@@ -759,6 +840,12 @@
   color: hsl(var(--sc-foreground));
 }
 
+.sl-foot__links a.sl-foot__discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .sl-foot small {
   width: 100%;
   padding-top: 1rem;
@@ -856,6 +943,8 @@
 @media (max-width: 960px) {
   .sl-mobile-nav { display: block; }
   .sl-menu { display: none; }
+  .sl-nav__right .sl-discord-nav { display: none; }
+  .sl-discord-icon { display: grid; margin-left: -0.75rem; }
   .sl-chatbg { display: none; }
   /* No gutter survives at this width, so the rain hugs the viewport edge and
      grazes the copy. Halve it there so it stays texture rather than content. */
@@ -873,10 +962,29 @@
 @media (max-width: 560px) {
   .sl-nav { padding: 0 1rem; }
   .sl-nav__right { display: none; }
+  .sl-discord-icon { margin-left: auto; }
   .sl-stage { padding: 0 1rem; }
   .sl-stage h1 { font-size: 2.35rem; }
   .sl-ln-grid { grid-template-columns: 1fr; }
   .sl-xtour:not([data-static]) .sl-xtour__scene { height: 260vh; }
+}
+
+/* With the Discord mark beside Menu there is no room for both small nav
+   buttons; Open Analytics stays one tap away in the hero and the menu. */
+@media (min-width: 561px) and (max-width: 700px) {
+  .sl-nav--discord .sl-nav__analytics { display: none; }
+}
+
+@media (max-width: 359px) {
+  .sl-nav--discord { gap: 0.5rem; }
+}
+
+/* Just above the Menu breakpoint the Discord button leaves the menu links
+   about 14px short, and "Pulse tab" / "Signal replay" wrapped onto two lines
+   (961-974px). Tighten the spacing there instead of dropping a nav item. */
+@media (min-width: 961px) and (max-width: 1040px) {
+  .sl-nav--discord { gap: 0.75rem; }
+  .sl-nav--discord .sl-menu a { padding-inline: 0.55rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
