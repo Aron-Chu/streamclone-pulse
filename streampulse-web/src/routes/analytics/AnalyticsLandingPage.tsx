@@ -61,6 +61,7 @@ import type { HubSidebarSection } from "../../ui/components/analytics/AnalyticsH
 import { compact } from "../../ui/components/analytics/hubFormat";
 import { useCommandCenterLabels } from "../../ui/providers/AnalyticsThemeProvider";
 import { SectionReveal } from "../../ui/motion/useAnalyticsMotion";
+import { useHashScrollHold } from "../../ui/RouteScrollManager";
 import "../../ui/components/analytics/figma-analytics.css";
 import "../../ui/components/newsroom/newsroom.css";
 import "../../ui/components/analytics/discovery-layout.css";
@@ -189,6 +190,8 @@ function AnalyticsLandingContent() {
     [activityWindow, data.activity, servedActivityWindowMinutes],
   );
   const loadingInitial = hub.loading && !hub.data;
+  // A #section-* link lands once the sections have their real heights, not on the skeleton.
+  useHashScrollHold(loadingInitial);
   const measurementAvailable = Boolean(hub.data && hub.loadSource !== 'stats-fallback');
   const measurementsUnavailable = !loadingInitial && !measurementAvailable;
   const hubUiState = resolveHubUiState({
@@ -604,6 +607,8 @@ function AnalyticsLandingContent() {
           error={hub.error}
           backendUrl={getBackendUrl()}
           loading={loadingInitial || hubUiState === "loading"}
+          onRetry={hub.retryBlocked ? undefined : hub.refresh}
+          retryDisabled={hub.refreshing}
         />
         <HubBackendSourceBanner />
 

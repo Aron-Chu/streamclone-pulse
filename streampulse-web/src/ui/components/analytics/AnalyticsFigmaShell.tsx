@@ -12,6 +12,8 @@ import { AnalyticsHubSidebar } from './AnalyticsHubSidebar'
 
 import { AnalyticsTopNav } from './AnalyticsTopNav'
 
+import { PageErrorBoundary } from '../../PortalErrorBoundary'
+
 const NAV_ITEMS = [
   { label: 'Home', to: '/', end: true },
   { label: 'Analytics', to: '/analytics', end: true },
@@ -86,7 +88,9 @@ function AnalyticsFigmaShellInner({
         )}
 
         <div ref={centerRef} className="figma-analytics__center figma-analytics__center--themed">
-          {children}
+          <PageErrorBoundary shell={(panel) => <main id="analytics-main" className="figma-analytics__main" tabIndex={-1}>{panel}</main>}>
+            {children}
+          </PageErrorBoundary>
         </div>
 
         {rightRail ? (

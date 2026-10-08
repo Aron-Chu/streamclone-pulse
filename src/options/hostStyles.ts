@@ -57,7 +57,10 @@ const hostStyles = `
     .pulse-settings-supporter-banner-arrow { bottom: 8px; position: absolute; right: 10px; z-index: 1; }
   }
   .pulse-supporter-signature-choices { margin-top: 12px; }
-  .pulse-supporter-signature-choices img { flex: none; height: 24px; max-width: 76px; object-fit: contain; width: auto; }
+  .pulse-supporter-signature-choices img { flex: none; height: 24px; max-width: 76px; min-width: 0; object-fit: contain; width: auto; }
+  /* Wide 7TV emotes plus an unbreakable name ('wideReacting') outgrow a 132px card: drop the name under the emote, and break it only if it still cannot fit. */
+  .pulse-supporter-badge-choices.pulse-supporter-signature-choices label { flex-wrap: wrap; row-gap: 4px; }
+  .pulse-supporter-signature-choices .pulse-supporter-finish-choice strong { overflow-wrap: anywhere; }
   .pulse-supporter-badge-choices.pulse-supporter-signature-choices:disabled label { cursor: not-allowed; opacity: 0.6; }
   .pulse-account-link-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .pulse-account-link-actions button, .pulse-account-link-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease; }

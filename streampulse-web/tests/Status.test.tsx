@@ -67,4 +67,14 @@ describe('public Status', () => {
     expect(checked).not.toBe(valueFor('Data as of'))
     expect(Math.abs(Date.now() - new Date(checked).getTime())).toBeLessThan(5000)
   })
+
+  it.each([{ v: 1 }, 2])('stays readable when the incident or API version has the wrong type (version %o)', async (version) => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ status: 'up', incident: { hostile: true } }))
+      .mockResolvedValueOnce(response({ ok: true, version })))
+    render(<MemoryRouter><Status /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('Reported Services Operational')).toBeTruthy())
+    expect(screen.getByText('API version Unknown')).toBeTruthy()
+    expect(screen.queryByText(/Active incident/)).toBeNull()
+  })
 })

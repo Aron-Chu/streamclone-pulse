@@ -253,7 +253,11 @@ export function AnalyticsConsole({
       vodId: item.vodId,
     }))
   }, [streamsQuery.data?.items])
-  const listsLoading = streamsQuery.isLoading
+  // A never-loaded query returns to "pending" on every refetch (TanStack v5). Judge the
+  // list by whether it has failed, so polls and retries of a failed list keep the
+  // failure on screen instead of flashing a loading state.
+  const streamsListFailed = !streamsQuery.data && streamsQuery.errorUpdateCount > 0
+  const listsLoading = streamsQuery.isLoading && !streamsListFailed
 
   const sidebarStreams = useMemo(() => {
     const local = streamsQuery.data?.items ?? []
@@ -330,8 +334,12 @@ export function AnalyticsConsole({
   const sessionResolving = Boolean(
     isHistoricalRoute && listsLoading && /^\d{4}-\d{2}-\d{2}$/.test(streamId),
   )
+  // A failed list cannot show that a date has no stream: report a failed load, not "not found".
+  const dateAliasListFailed = Boolean(
+    isHistoricalRoute && streamsListFailed && /^\d{4}-\d{2}-\d{2}$/.test(streamId),
+  )
   const unresolvedSessionAlias = Boolean(
-    isHistoricalRoute && isDateSlugUnresolved(streamId, matchedStream, listsLoading),
+    isHistoricalRoute && !dateAliasListFailed && isDateSlugUnresolved(streamId, matchedStream, listsLoading),
   )
 
   // Only a resolved live payload can prove that a historical route points at
@@ -440,14 +448,26 @@ export function AnalyticsConsole({
     return mergeMinutesTailIntoDetail(statusMerged, minutesTailQuery.data ?? undefined)
   }, [statusMerged, minutesTailQuery.data])
 
-  const sessionLoadFailed = Boolean(
-    isHistoricalRoute && !detailQuery.isLoading && detailQuery.isError && !detail,
-  )
-  const sessionNotFound = unresolvedSessionAlias || detailOwnershipMismatch || Boolean(isHistoricalRoute && !detail && (
-    (detailQuery.error as { status?: number } | null)?.status === 404
+  // The session read is judged like the list: while a failed, never-loaded read is
+  // fetched again (a poll, a focus refetch or Refresh data) its error is cleared, so
+  // keep its last error and the failure stays on screen until data arrives. The error is
+  // keyed to its read, so another session's failure never shows while this one is pending.
+  const detailReadKey = isLiveRoute || currentLiveTarget ? `live:${channelLogin}` : `${channelLogin}:${targetQueryStreamId}`
+  const lastDetailError = useRef<{ key: string; error: unknown } | null>(null)
+  if (detailQuery.error) lastDetailError.current = { key: detailReadKey, error: detailQuery.error }
+  const settledDetailError = (detailQuery.data === undefined && detailQuery.errorUpdateCount > 0
+    ? detailQuery.error ?? (lastDetailError.current?.key === detailReadKey ? lastDetailError.current.error : null)
+    : null) as { kind?: string; status?: number } | null
+  // The channel route fails the same way: a failed live read is not an empty channel.
+  const sessionLoadFailed = dateAliasListFailed || Boolean(settledDetailError && !detail)
+  const sessionLoadTimedOut = sessionLoadFailed && !dateAliasListFailed && settledDetailError?.kind === 'timeout'
+  const sessionNotFound = !dateAliasListFailed && (unresolvedSessionAlias || detailOwnershipMismatch || Boolean(isHistoricalRoute && !detail && (
+    settledDetailError?.status === 404
     || (detailQuery.isSuccess && detailQuery.data === null)
-  ))
+  )))
   const effectiveSessionNotFound = sessionNotFound || sessionLoadFailed
+  // Until the first read settles there is nothing to classify; "Needs sync" would claim an empty session.
+  const statCardsPending = effectiveSessionNotFound || sessionResolving || (detailQuery.isLoading && !detail)
 
   const handleSelectOffset = useCallback((offsetSeconds: number) => {
     if (!Number.isFinite(offsetSeconds)) return
@@ -1285,38 +1305,38 @@ export function AnalyticsConsole({
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <StatCard
             label={isHistoricalRoute ? 'Last measured viewers' : 'Current viewers'}
-            value={effectiveSessionNotFound ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
+            value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
           <StatCard
             label="Average viewers"
-            value={effectiveSessionNotFound ? '-' : statCardClasses.average.placeholder ?? count(headerStats.avg)}
+            value={statCardsPending ? '-' : statCardClasses.average.placeholder ?? count(headerStats.avg)}
             tone={statCardClasses.average.muted ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
           <StatCard
             label="Peak viewers"
-            value={effectiveSessionNotFound ? '-' : statCardClasses.peak.placeholder ?? count(headerStats.peak)}
+            value={statCardsPending ? '-' : statCardClasses.peak.placeholder ?? count(headerStats.peak)}
             tone={statCardClasses.peak.muted ? STAT_PLACEHOLDER_MUTED_CLASS : undefined}
           />
           <StatCard
             label="Measured chat"
-            value={effectiveSessionNotFound ? '-' : statCardClasses.chat.placeholder ?? count(headerStats.chat)}
+            value={statCardsPending ? '-' : statCardClasses.chat.placeholder ?? count(headerStats.chat)}
             tone={statCardClasses.chat.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-violet-300/90'}
           />
           <StatCard
             label="Measured emote uses"
-            value={effectiveSessionNotFound ? '-' : statCardClasses.emoteUses.placeholder ?? count(headerStats.emotes)}
+            value={statCardsPending ? '-' : statCardClasses.emoteUses.placeholder ?? count(headerStats.emotes)}
             tone={statCardClasses.emoteUses.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-emerald-300/90'}
           />
           <StatCard
             label="Measured span"
-            value={effectiveSessionNotFound ? '-' : durationFromDetail(detail)}
+            value={statCardsPending ? '-' : durationFromDetail(detail)}
           />
         </section>
 
         <div className={consoleGridClassName} data-analytics-console-grid>
           <section className={centerColumnClassName} data-analytics-center-column>
-            {sessionResolving || (!sessionNotFound && detailQuery.isLoading && !detail) ? (
+            {sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail) ? (
               <AnalyticsConsoleDataSkeleton />
             ) : null}
             {effectiveSessionNotFound ? (
@@ -1325,8 +1345,10 @@ export function AnalyticsConsole({
                   <>Date <span className="font-mono">{streamId}</span> was not found in up to 100 recent stored streams. Older broadcasts may exist outside this sample.</>
                 ) : sessionNotFound ? (
                   <>Session not found for <span className="font-mono">{streamId}</span>. Pick another stream from the sidebar.</>
+                ) : sessionLoadTimedOut ? (
+                  <>{isLiveRoute ? 'The latest session' : 'Session data'} for <span className="font-mono">{isLiveRoute ? channelLogin : streamId}</span> took too long to load. Refresh to try again.</>
                 ) : (
-                  <>Unable to load session data for <span className="font-mono">{streamId}</span>. Refresh to try again.</>
+                  <>Unable to load {isLiveRoute ? 'the latest session' : 'session data'} for <span className="font-mono">{isLiveRoute ? channelLogin : streamId}</span>. Refresh to try again.</>
                 )}
               </div>
             ) : null}
@@ -1476,6 +1498,10 @@ export function AnalyticsConsole({
                 <StreamSidebar
                   login={channelLogin}
                   streams={sidebarStreams}
+                  loading={listsLoading}
+                  loadFailed={streamsListFailed}
+                  retrying={streamsQuery.isFetching}
+                  onRetry={() => void streamsQuery.refetch()}
                   activeID={isHistoricalRoute ? streamId : undefined}
                   isLiveView={isLiveRoute}
                   liveState={detail?.stream?.lifecycleState === 'unknown' ? 'unknown' : channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detail?.state : undefined}
