@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AccountError, accountRequest } from '../src/lib/accountApi'
+import { accountHeaderEnabled } from '../src/lib/accountHeaderFlag'
 import { leaveAccountPagesAfterSignOut, resetAccountSessionForTests } from '../src/lib/accountSession'
 import { AccountEntry, AccountMenuButton } from '../src/ui/components/AccountEntry'
 import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
@@ -139,9 +140,50 @@ describe('header account entry', () => {
   })
 })
 
-describe('header placement', () => {
+describe('header account entry flag (VITE_ACCOUNT_HEADER)', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
+
+  it('is off unless the build sets exactly "1"', () => {
+    vi.stubEnv('VITE_ACCOUNT_HEADER', '')
+    expect(accountHeaderEnabled()).toBe(false)
+    vi.stubEnv('VITE_ACCOUNT_HEADER', 'true')
+    expect(accountHeaderEnabled()).toBe(false)
+    vi.stubEnv('VITE_ACCOUNT_HEADER', '1')
+    expect(accountHeaderEnabled()).toBe(true)
+  })
+
+  it('leaves both headers as on master while off, even for a session cookie holder', async () => {
+    vi.stubEnv('VITE_ACCOUNT_HEADER', '')
+    signedIn()
+    const items = [{ label: 'Home', to: '/analytics', end: true }]
+    const publicView = render(<MemoryRouter initialEntries={['/docs']}><PublicLayout><h1>Docs</h1></PublicLayout></MemoryRouter>)
+    await act(async () => { await Promise.resolve() })
+    const publicHeader = screen.getByRole('banner')
+    expect(publicHeader.className).toBe('app-nav')
+    expect(publicHeader.querySelector('.account-entry')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Account' })).toBeNull()
+    publicView.unmount()
+
+    render(<MemoryRouter><AnalyticsTopNav items={items} /></MemoryRouter>)
+    await act(async () => { await Promise.resolve() })
+    const analyticsHeader = screen.getByRole('banner')
+    expect(analyticsHeader.className).toBe('analytics-topnav')
+    expect(analyticsHeader.querySelector('.account-entry')).toBeNull()
+    const menu = screen.getByRole('navigation', { name: 'Analytics navigation' })
+    expect(menu.querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Account')
+    expect(menu.querySelector('a[href="/account/settings"]')).toBeNull()
+    expect(accountRequest).not.toHaveBeenCalled()
+  })
+})
+
+describe('header placement (VITE_ACCOUNT_HEADER=1)', () => {
+  beforeEach(() => { vi.stubEnv('VITE_ACCOUNT_HEADER', '1') })
+  afterEach(() => { vi.unstubAllEnvs() })
+
   it('adds the entry to the public layout header', async () => {
     render(<MemoryRouter initialEntries={['/docs']}><PublicLayout><h1>Docs</h1></PublicLayout></MemoryRouter>)
+    expect(screen.getByRole('banner').className).toBe('app-nav app-nav--account')
     expect(screen.getByRole('banner').querySelector('[data-account-entry="signed-out"]')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/account/sign-in')
   })
@@ -152,6 +194,7 @@ describe('header placement', () => {
     const menu = () => screen.getByRole('navigation', { name: 'Analytics navigation' })
     expect(menu().querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Sign in')
     expect(menu().querySelector('a[href="/account/settings"]')).toBeNull()
+    expect(screen.getByRole('banner').className).toBe('analytics-topnav analytics-topnav--account')
     view.unmount()
 
     resetAccountSessionForTests()
