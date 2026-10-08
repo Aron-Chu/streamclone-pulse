@@ -6,7 +6,8 @@
 |---------|-------|
 | Extension diagnostics upload | **Not active** |
 | Extension product analytics | **Not active** |
-| Hosted support form / Turnstile | **Not active** |
+| Hosted support form / Turnstile | **Not active** — implemented; `/support` shows the form as unavailable |
+| Discord entry points (site + extension) | **Not active** — hidden until a valid invite is configured; `/discord` says the server is not open yet |
 | Portal Sentry | May initialize when portal build has `VITE_SENTRY_DSN` |
 | Public mailbox | `privacy@streampulse.stream` only |
 | Security reporting | GitHub Private Vulnerability Reporting **enabled** |
@@ -16,6 +17,22 @@ RPR-3/4/5 are **implementation complete; activation pending**. Do **not** claim
 active collection. Defaults and vendor credentials remain **disabled**.
 
 Verified public mailbox: **`privacy@streampulse.stream` only**.
+
+## Activation inputs
+
+These are configuration, not code changes. None of them is committed to the repository.
+
+| Input | Where | Effect when missing or invalid |
+|-------|-------|-------------------------------|
+| `VITE_TURNSTILE_SITE_KEY` | Portal build environment (public site key; mode comes from the key — Invisible is intended) | `/support` shows "The hosted form is unavailable right now" with the GitHub issue and safe-diagnostics paths |
+| `VITE_PUBLIC_DISCORD_INVITE_URL` | Portal build environment. Must be exactly `https://discord.gg/<code>` or `https://discord.com/invite/<code>` (no query, fragment or extra path) | Every Discord link (landing nav, hero pill, footers, `/support` line) is hidden and `/discord` says the server isn't open yet |
+| `PULSE_SUPPORT_CASES_ENABLED` + Turnstile secret | Backend (private ops) | `POST /v1/portal/support/cases` answers `503 disabled`, which the card shows as unavailable |
+| Reply inbox / email adapter destination | Backend (private ops) | Cases are stored but nobody can reply; choose the inbox before telling people a reply is possible |
+| Support retention | Backend (`PULSE_SUPPORT_RETENTION_ENABLED`) | Stays **off** until the owner approves a duration |
+
+Both `VITE_*` values are read at build time (Vite inlines them) and also by the prerender step, so set
+them in the environment of the whole `pages:deploy:prod` run. Changing either needs a site rebuild,
+never an extension release: the extension only links to `/support` and `/discord`.
 
 ## Fail-closed defaults
 
