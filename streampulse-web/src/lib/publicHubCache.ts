@@ -1,12 +1,11 @@
 import { getBackendUrl } from './apiClient'
 import { hasPublicHubResponseShape, normalizePublicHub, type PublicHub, type PublicHubActivityWindow, type PublicHubProjection } from './publicHub'
 import { hubActivityContractIssues } from './hubActivityHonesty'
+import { allowPublicHubCacheWritesForTests, clearPublicHubCache, PROJECTION_STORAGE_PREFIX, publicHubCacheWritesStopped, STORAGE_PREFIX } from './publicHubCacheReset'
 
 /** Staleness hint only — cached data may still render while refreshing. */
 export const PUBLIC_HUB_CACHE_STALE_MS = 10 * 60 * 1000
 
-const STORAGE_PREFIX = 'sp:publicHub:v1:'
-const PROJECTION_STORAGE_PREFIX = 'sp:publicHubProjection:v1:'
 export const PUBLIC_HUB_CACHE_MAX_CHARS = 750_000
 const PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS = 100_000
 export const PUBLIC_HUB_CACHE_MAX_ENTRIES = 2
@@ -129,7 +128,7 @@ export function writePublicHubCache(
   fullData: PublicHub,
   projection?: PublicHubProjection,
 ): void {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || publicHubCacheWritesStopped()) return
   try {
     const data = projection ? projectPublicHubForCache(fullData, projection) : fullData
     const key = publicHubCacheKey(backendUrl, activityWindow, projection)
@@ -167,15 +166,10 @@ export function writePublicHubCache(
   }
 }
 
-/** Test helper — clears all public hub cache entries. */
+/** Test helper — clears all public hub cache entries and allows saving again. */
 export function clearPublicHubCacheForTests(): void {
-  if (typeof window === 'undefined' || !window.localStorage) return
-  const keys: string[] = []
-  for (let i = 0; i < window.localStorage.length; i++) {
-    const key = window.localStorage.key(i)
-    if (key?.startsWith(STORAGE_PREFIX) || key?.startsWith(PROJECTION_STORAGE_PREFIX)) keys.push(key)
-  }
-  keys.forEach((key) => window.localStorage.removeItem(key))
+  allowPublicHubCacheWritesForTests()
+  clearPublicHubCache()
 }
 
 export function readPublicHubCacheForCurrentBackend(

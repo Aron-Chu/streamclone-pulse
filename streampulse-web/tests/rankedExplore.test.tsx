@@ -1,5 +1,6 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { useEffect } from 'react'
+import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import AnalyticsMomentsPage from '../src/routes/analytics/AnalyticsMomentsPage'
 import * as transport from '../src/lib/discoveryCatalogue'
@@ -9,6 +10,7 @@ import { normalizeApiError } from '../src/lib/apiClient'
 import { usePublicHubData } from '../src/hooks/usePublicHubData'
 import { useRankedRetention } from '../src/hooks/useDiscoveryCatalogue'
 import { clearRankedFeatureCheckForTests } from '../src/hooks/useRankedFeatureAvailability'
+import { CREATOR_COMMIT_DELAY_MS } from '../src/ui/components/moments/useCreatorDraft'
 
 vi.mock('../src/hooks/useMomentProfiles', () => ({ useMomentProfiles: (rows: unknown) => rows }))
 vi.mock('../src/hooks/usePublicHubData', () => ({ usePublicHubData: vi.fn(() => ({ data: null, loading: false })) }))
@@ -33,6 +35,14 @@ function certifiedAvailability(from: string): availabilityTransport.RankedAvaila
   return { asOf, serverToday, certifiedFrom: from, certifiedThroughExclusive: serverToday,
     verifiedAt: asOf, certificateGeneration: 1, login: '', days }
 }
+function NavigationLog({ entries }: { entries: { search: string; type: string }[] }) {
+  const location = useLocation()
+  const type = useNavigationType()
+  useEffect(() => { entries.push({ search: location.search, type }) }, [location.key])
+  return null
+}
+const PARTIAL_LOGINS = ['c', 'cr', 'cre', 'crea', 'creat', 'creato', 'creator']
+const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 afterEach(async () => {
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
   vi.restoreAllMocks()
@@ -164,8 +174,194 @@ it('shows full selected eligibility counts without confusing excluded detections
     freshness: 'ready', coverage: { state: 'partial', indexedStreams: 2, measuredMinutes: 4 }, facets: [], items: [{ key: 'one' }],
     eligibility: { scope: 'time_creator_category_before_pagination', totalDetections: 60, rankedDetections: 52, excludedDetections: 8 },
   } as unknown as transport.RankedDiscovery
-  render(<RankedExploreControls params={new URLSearchParams()} now={new Date('2026-09-13T12:00:00Z')} data={data} loading={false} retained={false} error="" invalid={false} onChange={() => {}} onReset={() => {}} onRefresh={() => {}} />)
+  render(<MemoryRouter><RankedExploreControls params={new URLSearchParams()} now={new Date('2026-09-13T12:00:00Z')} data={data} loading={false} retained={false} error="" invalid={false} onChange={() => {}} onReset={() => {}} onRefresh={() => {}} /></MemoryRouter>)
   expect(screen.getByLabelText('Selection eligibility').textContent).toContain('60 matching detections')
   expect(screen.getByLabelText('Selection eligibility').textContent).toContain('1 of 52 ranked loaded')
   expect(screen.getByLabelText('Selection eligibility').textContent).toContain('8 excluded from volume ranking')
+})
+it('applies a typed Explore creator once, replacing the URL entry instead of one per keystroke', async () => {
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  const today = new Date().toISOString().slice(0, 10)
+  const boundary = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10)
+  vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockResolvedValue(certifiedAvailability(boundary))
+  const fetch = vi.spyOn(transport, 'fetchRankedDiscovery').mockImplementation(async scope => emptyVolume(scope, boundary))
+  const navigations: { search: string; type: string }[] = []
+  render(<MemoryRouter initialEntries={['/analytics/moments?view=explore']}><AnalyticsMomentsPage /><NavigationLog entries={navigations} /></MemoryRouter>)
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+  const input = screen.getByLabelText('Exact creator login') as HTMLInputElement
+  input.focus()
+  await act(nextFrame)
+  navigations.length = 0
+  scrollTo.mockClear()
+  for (const value of PARTIAL_LOGINS) fireEvent.change(input, { target: { value } })
+  expect(input.value).toBe('creator')
+  expect(navigations).toEqual([])
+  await act(() => new Promise(resolve => setTimeout(resolve, CREATOR_COMMIT_DELAY_MS + 50)))
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+  expect(fetch.mock.calls.map(([scope]) => scope.creator)).toEqual(['', 'creator'])
+  expect(navigations.map(entry => entry.type)).toEqual(['REPLACE'])
+  expect(new URLSearchParams(navigations[0].search).get('creator')).toBe('creator')
+  expect(document.activeElement).toBe(input)
+  // Applied in place: the page keeps the reader's place instead of jumping to the top.
+  await act(nextFrame)
+  expect(scrollTo).not.toHaveBeenCalled()
+
+  // Enter applies at once and cancels the pending pause.
+  fireEvent.change(input, { target: { value: 'XQC' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(navigations.map(entry => new URLSearchParams(entry.search).get('creator'))).toEqual(['creator', 'xqc'])
+  await act(() => new Promise(resolve => setTimeout(resolve, CREATOR_COMMIT_DELAY_MS + 50)))
+  expect(navigations.map(entry => entry.type)).toEqual(['REPLACE', 'REPLACE'])
+
+  // A reset from outside the field wins over the typed value and starts at the top.
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Explore' }))
+  expect(input.value).toBe('')
+  await waitFor(() => expect(screen.getByText(/Snapshot:/).textContent).toContain('All creators'))
+  await act(nextFrame)
+  expect(scrollTo).toHaveBeenLastCalledWith(0, 0)
+})
+it('drops a pending Explore creator when navigation from outside the field keeps the same login', async () => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  const today = new Date().toISOString().slice(0, 10)
+  const boundary = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10)
+  vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockResolvedValue(certifiedAvailability(boundary))
+  const fetch = vi.spyOn(transport, 'fetchRankedDiscovery').mockImplementation(async scope => emptyVolume(scope, boundary))
+  const navigations: { search: string; type: string }[] = []
+  render(<MemoryRouter initialEntries={['/analytics/moments?view=explore']}><AnalyticsMomentsPage /><NavigationLog entries={navigations} /></MemoryRouter>)
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+  const input = screen.getByLabelText('Exact creator login') as HTMLInputElement
+  input.focus()
+  navigations.length = 0
+  fireEvent.change(input, { target: { value: 'abc' } })
+  // A tap that leaves focus in the field (no blur) while the pause is pending.
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Explore' }))
+  expect((screen.getByLabelText('Exact creator login') as HTMLInputElement).value).toBe('')
+  await act(() => new Promise(resolve => setTimeout(resolve, CREATOR_COMMIT_DELAY_MS + 50)))
+  expect(navigations.map(entry => new URLSearchParams(entry.search).get('creator'))).toEqual([null])
+  expect((screen.getByLabelText('Exact creator login') as HTMLInputElement).value).toBe('')
+  expect(fetch.mock.calls.map(([scope]) => scope.creator)).not.toContain('abc')
+})
+it('keeps the History creator field focused and its filters open and in place while a typed creator is checked', async () => {
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  const today = new Date().toISOString().slice(0, 10)
+  const boundary = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10)
+  let releaseCreator!: (value: availabilityTransport.RankedAvailability) => void
+  const availability = vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockImplementation(login => login
+    ? new Promise(resolve => { releaseCreator = resolve })
+    : Promise.resolve(certifiedAvailability(boundary)))
+  const fetch = vi.spyOn(transport, 'fetchRankedDiscovery').mockImplementation(async scope => emptyVolume(scope, boundary))
+  const navigations: { search: string; type: string }[] = []
+  render(<MemoryRouter initialEntries={['/analytics/moments?view=history']}><AnalyticsMomentsPage /><NavigationLog entries={navigations} /></MemoryRouter>)
+  const input = await screen.findByLabelText('History creator') as HTMLInputElement
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+  const filters = input.closest('details')!
+  const overview = screen.getByRole('region', { name: 'Recent activity overview' })
+  const results = screen.getByRole('region', { name: 'Moment results' })
+  filters.open = true
+  input.focus()
+  await act(nextFrame)
+  navigations.length = 0
+  scrollTo.mockClear()
+  for (const value of PARTIAL_LOGINS) {
+    fireEvent.change(input, { target: { value } })
+    expect(screen.getByLabelText('History creator')).toBe(input)
+    expect(document.activeElement).toBe(input)
+  }
+  await act(() => new Promise(resolve => setTimeout(resolve, CREATOR_COMMIT_DELAY_MS + 50)))
+  await waitFor(() => expect(availability).toHaveBeenCalledTimes(2))
+  expect(availability.mock.calls.map(([login]) => login)).toEqual(['', 'creator'])
+  expect(navigations.map(entry => entry.type)).toEqual(['REPLACE'])
+  // While the new creator is checked, the last checked calendar stays in place (so
+  // nothing above the open panel moves) and the check is announced below the panel.
+  expect(screen.getByText('Checking certified dates…')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Global moments' })).toBeTruthy()
+  expect(screen.getByRole('region', { name: 'Recent activity overview' })).toBe(overview)
+  expect(screen.queryByRole('heading', { name: 'History unavailable' })).toBeNull()
+  // The results below keep their place too, holding the last ranking marked as retained.
+  expect(screen.getByRole('region', { name: 'Moment results' })).toBe(results)
+  expect(screen.getByText(/Previous volume ranking retained/).textContent).toContain('global')
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(screen.getByLabelText('History creator')).toBe(input)
+  expect(input.closest('details')).toBe(filters)
+  expect(filters.open).toBe(true)
+  expect(document.activeElement).toBe(input)
+  await act(nextFrame)
+  expect(scrollTo).not.toHaveBeenCalled()
+
+  await act(async () => releaseCreator(certifiedAvailability(boundary)))
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+  expect(fetch.mock.calls.map(([scope]) => scope.creator)).toEqual(['', 'creator'])
+  expect(screen.getByRole('heading', { name: '@creator' })).toBeTruthy()
+  expect(screen.queryByText('Checking certified dates…')).toBeNull()
+  expect(screen.getByRole('region', { name: 'Recent activity overview' })).toBe(overview)
+  expect(screen.getByLabelText('History creator')).toBe(input)
+  expect(filters.open).toBe(true)
+  expect(document.activeElement).toBe(input)
+  expect(input.value).toBe('creator')
+  await act(nextFrame)
+  expect(scrollTo).not.toHaveBeenCalled()
+})
+it('does not bring back an old calendar or ranking when History is retried after a failed creator check', async () => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  const today = new Date().toISOString().slice(0, 10)
+  const boundary = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10)
+  let creatorChecks = 0
+  vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockImplementation(login => !login
+    ? Promise.resolve(certifiedAvailability(boundary))
+    : ++creatorChecks === 1 ? Promise.reject(normalizeApiError(503, { error: 'discovery_unavailable' })) : new Promise(() => {}))
+  vi.spyOn(transport, 'fetchRankedDiscovery').mockImplementation(async scope => emptyVolume(scope, boundary))
+  render(<MemoryRouter initialEntries={['/analytics/moments?view=history']}><AnalyticsMomentsPage /></MemoryRouter>)
+  const input = await screen.findByLabelText('History creator') as HTMLInputElement
+  await screen.findByRole('region', { name: 'Moment results' })
+  fireEvent.change(input, { target: { value: 'creator' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  await screen.findByRole('heading', { name: 'History unavailable' })
+  expect(screen.getByLabelText('History creator')).toBe(input)
+  expect(screen.queryByRole('region', { name: 'Recent activity overview' })).toBeNull()
+  expect(screen.queryByRole('region', { name: 'Moment results' })).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Retry history' }))
+  await screen.findByRole('heading', { name: 'Checking certified dates…' })
+  expect(creatorChecks).toBe(2)
+  expect(screen.queryByRole('region', { name: 'Recent activity overview' })).toBeNull()
+  expect(screen.queryByRole('region', { name: 'Moment results' })).toBeNull()
+  expect(screen.queryByText(/Previous volume ranking retained/)).toBeNull()
+  expect(screen.getByLabelText('History creator')).toBe(input)
+})
+function rankedRow(scope: transport.RankedScope, boundary: string): transport.RankedDiscovery {
+  const login = scope.creator || 'globalrow'
+  return { ...emptyVolume(scope, boundary), items: [{ key: `row-${login}`, detectionId: `row-${login}`, rank: 1, score: 2, at: Date.now() - 86_400_000,
+    rankingVersion: 'volume-observed-irc-v1', scoreExplanation: 'Measured score', categoryMissing: false,
+    login, streamId: 'stream1', offsetSeconds: 60, label: `${login} reaction`, provenance: 'hub' }] } as unknown as transport.RankedDiscovery
+}
+function TestBack() {
+  const navigate = useNavigate()
+  return <button type="button" onClick={() => navigate(-1)}>Test back</button>
+}
+for (const path of ['History tab', 'Back'] as const) it(`does not show Explore rows under a History creator while that creator is checked again (${path})`, async () => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  const today = new Date().toISOString().slice(0, 10)
+  const boundary = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10)
+  let creatorChecks = 0
+  let releaseCreator!: (value: availabilityTransport.RankedAvailability) => void
+  vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockImplementation(login => !login || ++creatorChecks === 1
+    ? Promise.resolve(certifiedAvailability(boundary))
+    : new Promise(resolve => { releaseCreator = resolve }))
+  const fetch = vi.spyOn(transport, 'fetchRankedDiscovery').mockImplementation(async scope => rankedRow(scope, boundary))
+  render(<MemoryRouter initialEntries={['/analytics/moments?view=history&scope=creator&creator=creator']}><AnalyticsMomentsPage /><TestBack /></MemoryRouter>)
+  await screen.findByText('creator reaction')
+  fireEvent.click(screen.getByRole('tab', { name: 'Explore' }))
+  await screen.findByText('globalrow reaction')
+  fireEvent.click(path === 'Back' ? screen.getByRole('button', { name: 'Test back' }) : screen.getByRole('tab', { name: 'History' }))
+  await screen.findByRole('heading', { name: 'Checking certified dates…' })
+  expect(creatorChecks).toBe(2)
+  // Explore's ranking never stands in for the creator's while the creator's dates are checked.
+  expect(screen.queryByRole('region', { name: 'Moment results' })).toBeNull()
+  expect(screen.queryByText('globalrow reaction')).toBeNull()
+  expect(fetch.mock.calls.map(([scope]) => scope.creator)).toEqual(['creator', ''])
+
+  await act(async () => releaseCreator(certifiedAvailability(boundary)))
+  await screen.findByText('creator reaction')
+  expect(screen.getByRole('heading', { name: '@creator' })).toBeTruthy()
+  expect(fetch.mock.calls.map(([scope]) => scope.creator)).toEqual(['creator', '', 'creator'])
 })

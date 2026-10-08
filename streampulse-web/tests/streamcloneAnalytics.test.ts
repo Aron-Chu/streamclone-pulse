@@ -111,6 +111,31 @@ describe('streamcloneAnalytics adapter', () => {
     expect(list.items[0].endedAt).toBeUndefined()
     expect(list.items[0].lifecycleState).toBe('unknown')
   })
+  it('clears wrong-typed stream text before the channel and session console render it', async () => {
+    getBackendUrlMock.mockReturnValue('https://api.streampulse.stream')
+    const stream = { streamId: '123', login: 'example', startedAt: '2026-08-01T10:00:00Z',
+      title: { hostile: true }, category: 7, displayName: ['x'] }
+    apiClientMock.mockResolvedValue({ data: { channel: 'example', state: 'historical', streamId: '123', stream,
+      items: [stream, { ...stream, streamId: '124', title: 'Kept title', category: 'Just Chatting' }], updatedAt: Date.now(), rollups: [], minutes: [] } })
+    const { portalAnalyticsApi } = await import('../src/lib/streamcloneAnalytics')
+    const surfaces = [
+      (await portalAnalyticsApi.getAnalyticsLive('example') as AnalyticsStreamDetail).stream,
+      (await portalAnalyticsApi.getAnalyticsStream('123') as AnalyticsStreamDetail).stream,
+      ((await portalAnalyticsApi.getStreamStatus!('123')) as { stream?: AnalyticsStreamDetail['stream'] } | null)?.stream,
+      (await portalAnalyticsApi.getAnalyticsStreams('example') as AnalyticsStreamsResponse).items[0],
+    ]
+    for (const row of surfaces) {
+      expect(row).toMatchObject({ streamId: '123', login: 'example' })
+      expect(row?.title).toBeUndefined()
+      expect(row?.category).toBeUndefined()
+      expect(row?.displayName).toBeUndefined()
+    }
+    const list = await portalAnalyticsApi.getAnalyticsStreams('example') as AnalyticsStreamsResponse
+    expect(list.items[1]).toMatchObject({ title: 'Kept title', category: 'Just Chatting' })
+    const history = await portalAnalyticsApi.getChannelStreamHistory('example') as { items: Array<Record<string, unknown>> }
+    expect(history.items[0]).toMatchObject({ streamId: '123', displayName: 'example', title: undefined, category: undefined })
+    expect(history.items[1]).toMatchObject({ title: 'Kept title', category: 'Just Chatting' })
+  })
   const minute = (index: number) => ({
     minuteTs: new Date(Date.now() + index * 60_000).toISOString(),
     viewerAvg: 0,

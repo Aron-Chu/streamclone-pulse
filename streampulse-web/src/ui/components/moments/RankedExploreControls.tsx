@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom'
 import type { RankedDiscovery } from '../../../lib/discoveryCatalogue'
 import { MomentCategoryBrowser } from './MomentCategoryBrowser'
 import { MomentSelect } from './MomentSelect'
+import { useCreatorDraft } from './useCreatorDraft'
 
 export function RankedExploreControls({ params, indexedRetentionStart, certifiedThroughExclusive, retentionCheckedAt, data, loading, retained, error, invalid, notDeployed = false, onChange, onReset, onRefresh }: {
   params: URLSearchParams; now: Date; indexedRetentionStart?: string; certifiedThroughExclusive?: string; retentionCheckedAt?: string; data?: RankedDiscovery; loading: boolean; retained: boolean; error: string; invalid: boolean;
   /** The server has no ranked route at all (404); a temporary outage keeps the filters. */
   notDeployed?: boolean;
-  onChange: (values: Record<string, string | null>) => void; onReset: () => void; onRefresh: () => void;
+  onChange: (values: Record<string, string | null>, options?: { replace?: boolean }) => void; onReset: () => void; onRefresh: () => void;
 }) {
+  const creator = useCreatorDraft(params.get('creator') || '', login => onChange({ creator: login || null }, { replace: true }))
   const latestDay = certifiedThroughExclusive ? new Date(Date.parse(certifiedThroughExclusive) - 86_400_000).toISOString().slice(0, 10) : ''
   const period = params.get('period') || 'latest'
   const selected = params.get('categoryMissing') === 'true' ? '__unknown__' : params.get('category') || ''
@@ -24,7 +26,7 @@ export function RankedExploreControls({ params, indexedRetentionStart, certified
       </MomentSelect></div>
       {period === 'custom' ? <><label>From (UTC)<input aria-label="From (UTC)" type="date" min={indexedRetentionStart} max={latestDay} value={params.get('from') || ''} onChange={e => onChange({ from: e.target.value })} /></label>
         <label>Through (UTC, inclusive)<input aria-label="Through (UTC, inclusive)" type="date" min={indexedRetentionStart} max={latestDay} value={params.get('to') || ''} onChange={e => onChange({ to: e.target.value })} /></label></> : null}
-      <label>Creator<input aria-label="Exact creator login" type="search" maxLength={25} value={params.get('creator') || ''} onChange={e => onChange({ creator: e.target.value.toLowerCase() || null })} placeholder="All creators" /></label>
+      <label>Creator<input aria-label="Exact creator login" type="search" maxLength={25} {...creator} placeholder="All creators" /></label>
       <span className="moments-muted">Order: observed IRC chat/min</span>
       <button type="button" onClick={onReset}><RotateCcw size={16} aria-hidden="true" />Reset Explore</button></>}
       <button type="button" data-keeps-selection disabled={loading || invalid} onClick={onRefresh}><RefreshCw size={16} aria-hidden="true" />Reload collection</button>

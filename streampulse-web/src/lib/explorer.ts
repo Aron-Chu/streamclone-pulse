@@ -256,9 +256,12 @@ export function normalizeExplorerEnvelope(value: unknown): ExplorerEnvelope | nu
   }
 }
 
+/** The most broadcasts one Explorer list read returns (streampulse-backend's explorerMaxLimit). */
+export const EXPLORER_MAX_LIMIT = 50
+
 function boundedLimit(value: number | undefined): number {
   if (!Number.isFinite(value)) return 25
-  return Math.max(1, Math.min(50, Math.floor(value ?? 25)))
+  return Math.max(1, Math.min(EXPLORER_MAX_LIMIT, Math.floor(value ?? 25)))
 }
 
 export async function fetchExplorer(options: FetchExplorerOptions = {}): Promise<ExplorerEnvelope> {
@@ -281,6 +284,17 @@ export async function fetchExplorer(options: FetchExplorerOptions = {}): Promise
   return envelope
 }
 
+/**
+ * 503 reasons for a 24h/7d window the backend is still preparing (a background
+ * snapshot, or a guarded request-path build). Each comes with Retry-After, and a
+ * later read can succeed without anything changing on the reader's side.
+ */
+const PREPARING_REASONS = new Set(['snapshot_warming', 'snapshot_expired', 'build_busy', 'build_timeout'])
+
+export function isExplorerPreparing(reason: string | undefined | null): boolean {
+  return PREPARING_REASONS.has(reason?.trim().toLowerCase() ?? '')
+}
+
 export function explorerReasonCopy(reason: string | undefined | null): string | undefined {
   const normalized = reason?.trim().toLowerCase()
   if (!normalized) return undefined
@@ -289,6 +303,10 @@ export function explorerReasonCopy(reason: string | undefined | null): string | 
     no_material_broadcasts: 'No verified broadcasts match these filters.',
     store_unavailable: 'Historical activity storage is temporarily unavailable.',
     not_found: 'This broadcast is no longer available in the selected range.',
+    snapshot_warming: 'This history range is still being prepared.',
+    snapshot_expired: 'This history range is being refreshed. Its last saved copy is too old to show.',
+    build_busy: 'Pulse Explorer is busy preparing other history right now.',
+    build_timeout: 'Preparing this history range took too long.',
   }
   if (reasons[normalized]) return reasons[normalized]
   if (normalized.includes('malformed explorer')) return 'The Explorer response did not match the supported public contract.'

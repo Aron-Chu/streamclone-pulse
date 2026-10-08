@@ -31,8 +31,8 @@ function safeDataTime(value?: string): string {
   const timestamp = measurementTimeMs(value)
   return timestamp != null ? new Date(timestamp).toLocaleString() : 'Unknown'
 }
-function versionLabel(value?: string): string {
-  const clean = value?.trim().replace(/^v+/i, '')
+function versionLabel(value?: unknown): string {
+  const clean = typeof value === 'string' ? value.trim().replace(/^v+/i, '') : ''
   return clean ? `v${clean}` : 'Unknown'
 }
 async function probeJson<T>(url: string, signal: AbortSignal): Promise<ProbeResult<T>> {
@@ -102,7 +102,7 @@ export default function Status() {
         <div><dt className="text-zinc-500 font-bold uppercase">Checked at</dt><dd className="mt-1 text-zinc-200 font-bold">{checkedAt ? checkedAt.toLocaleString() : 'Not checked yet'}</dd></div>
         <div><dt className="text-zinc-500 font-bold uppercase">Data as of</dt><dd className="mt-1 text-zinc-200 font-bold">{safeDataTime(statusProbe.data?.updatedAt)}</dd></div>
       </dl>
-      {statusProbe.data?.incident ? <div className="alert alert-warning mt-4"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
+      {typeof statusProbe.data?.incident === 'string' && statusProbe.data.incident ? <div className="alert alert-warning mt-4"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
       {backendSource !== 'hosted' ? <p className="mt-4 text-xs text-zinc-500">Local or custom API — status reflects that backend, not necessarily production.</p> : null}
     </div>
   </section></PublicLayout>

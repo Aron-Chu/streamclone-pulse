@@ -42,7 +42,7 @@ export interface DiscoveryMoment {
 const identifier = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 220 && !/[\s\u0000-\u001f]/.test(value)
 export const validVodId = (value: unknown): value is string => typeof value === 'string' && /^\d{1,30}$/.test(value)
 export function fromHubMoment(moment: FigmaMomentRow & { archiveArtwork?: ArchiveArtwork }): DiscoveryMoment | null {
-  const login = moment.login?.trim().toLowerCase()
+  const login = typeof moment.login === 'string' ? moment.login.trim().toLowerCase() : ''
   if (!login || !/^[a-z0-9_]{1,25}$/.test(login) || !identifier(moment.streamId) || !Number.isFinite(moment.offsetSeconds) || moment.offsetSeconds < 0) return null
   const publicMomentId = identifier(moment.publicMomentId) ? moment.publicMomentId : undefined
   // Exact stream + source offset identifies one measured minute even when older APIs omit a public ID.
@@ -71,7 +71,7 @@ export function fromHubMoment(moment: FigmaMomentRow & { archiveArtwork?: Archiv
     && (!suppliedVodId || suppliedVodId === artworkVodId)
     ? verifiedArchiveArtwork(moment.archiveArtwork, artworkVodId) : undefined
   return { key, publicMomentId, login, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds,
-    at: resolveMomentAtMs(moment.at) ?? undefined, label: moment.label || 'Measured reaction', displayName: moment.displayName,
+    at: resolveMomentAtMs(moment.at) ?? undefined, label: (typeof moment.label === 'string' && moment.label) || 'Measured reaction', displayName: moment.displayName,
     category: moment.category, categoryId: moment.categoryId, boxArtUrl: moment.boxArtUrl,
     categoryMetadataRejected: moment.categoryMetadataRejected,
     profileImageUrl: moment.profileImageUrl, chatPerMin: verifiedMinute ? comparison!.chat.currentPerMin : moment.chatPerMin,

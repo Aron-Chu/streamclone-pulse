@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -127,6 +127,8 @@ function hookResult(data: ExplorerEnvelope | null) {
     error: null,
     unavailable: false,
     announcement: '',
+    retryBlocked: false,
+    retryScheduled: false,
     refresh: vi.fn(),
     loadMore: vi.fn(),
   }
@@ -223,11 +225,165 @@ describe('Pulse Explorer contract and workspace', () => {
     expect(request.mock.calls[0][0]).toBe('/v1/portal/analytics/streams/stream-1')
   })
 
+  it('opens Analytics with a return path, so the session page links back to Pulse Explorer', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    renderExplorer(normalizeExplorerEnvelope(rawEnvelope())!, '/analytics/explore/pulse-xqc-stream-1?window=7d&sort=recent')
+    const href = new URL(within(screen.getByRole('group', { name: 'Broadcast actions' })).getByRole('link', { name: 'Analytics' }).getAttribute('href')!, 'https://portal.invalid')
+    expect(href.pathname).toBe('/analytics/xqc/stream-1')
+    expect(href.searchParams.get('t')).toBe('240')
+    expect(href.searchParams.get('returnTo')).toBe('/analytics/explore/pulse-xqc-stream-1?window=7d&sort=recent')
+  })
+
+  it('returns to the filtered list when a broadcast id cannot be a return path', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const raw = rawEnvelope()
+    for (const key of ['broadcast', 'broadcasts'] as const) {
+      const value = raw[key]
+      raw[key] = Array.isArray(value) ? value.map((item) => ({ ...item, id: 'pulse.xqc:1' })) : { ...(value as object), id: 'pulse.xqc:1' }
+    }
+    renderExplorer(normalizeExplorerEnvelope(raw)!, '/analytics/explore?window=7d')
+    const href = new URL(within(screen.getByRole('group', { name: 'Broadcast actions' })).getByRole('link', { name: 'Analytics' }).getAttribute('href')!, 'https://portal.invalid')
+    expect(href.searchParams.get('returnTo')).toBe('/analytics/explore?window=7d')
+  })
+
   it('offers no VOD link when the alignment is not verified', async () => {
     request.mockResolvedValue({ data: { channel: 'xqc', vodId: '2864434763', vodAlignSeconds: -76, vodDurationSeconds: 18000,
       vodTiming: { state: 'unavailable' }, stream: { streamId: 'stream-1', vodId: '2864434763' } } })
     renderExplorer(endedWithVod())
     await waitFor(() => expect(screen.getByText('Replay unavailable')).toBeTruthy())
     expect(screen.queryByRole('link', { name: 'Watch VOD' })).toBeNull()
+  })
+})
+
+describe('Pulse Explorer while a history window is prepared', () => {
+  function renderAt(url: string) {
+    return render(
+      <MemoryRouter initialEntries={[url]}>
+        <Routes>
+          <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+          <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it.each([
+    ['snapshot_warming', 'This history range is still being prepared.'],
+    ['snapshot_expired', 'This history range is being refreshed. Its last saved copy is too old to show.'],
+    ['build_busy', 'Pulse Explorer is busy preparing other history right now.'],
+    ['build_timeout', 'Preparing this history range took too long.'],
+  ])('explains %s without a raw reason code', (reason, copy) => {
+    expect(explorerReasonCopy(reason)).toBe(copy)
+  })
+
+  it('says the list checks again on its own and offers no retry until Retry-After ends', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    mockUseExplorerData.mockImplementation(() => ({ ...hookResult(null), unavailable: true, error: 'snapshot_warming', retryBlocked: true, retryScheduled: true }))
+    renderAt('/analytics/explore?window=7d')
+    expect(screen.getByText('This range is not ready yet')).toBeTruthy()
+    expect(screen.getByText('This history range is still being prepared.')).toBeTruthy()
+    expect(screen.getByText('Pulse Explorer checks again automatically.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.queryByText('snapshot_warming')).toBeNull()
+  })
+
+  it('holds the inspector retry until Retry-After ends', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const data = normalizeExplorerEnvelope(rawEnvelope())!
+    const detail = { ...hookResult(null), unavailable: true, error: 'build_busy', retryBlocked: true }
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? detail : hookResult(data)))
+    const { container } = renderAt('/analytics/explore/pulse-xqc-stream-1?window=7d')
+    const inspector = container.querySelector('aside.explorer-inspector') as HTMLElement
+    expect(within(inspector).getByText('Broadcast details are not ready yet')).toBeTruthy()
+    expect(within(inspector).getByText('Pulse Explorer is busy preparing other history right now.')).toBeTruthy()
+    expect(within(inspector).getByText('You can try again in a moment.')).toBeTruthy()
+    expect(within(inspector).queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
+  it('tells the inspector reader when a warming detail will be read again', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const data = normalizeExplorerEnvelope(rawEnvelope())!
+    const detail = { ...hookResult(null), unavailable: true, error: 'snapshot_warming', retryBlocked: true, retryScheduled: true }
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? detail : hookResult(data)))
+    const { container, unmount } = renderAt('/analytics/explore/pulse-xqc-stream-1?window=7d')
+    const inspector = container.querySelector('aside.explorer-inspector') as HTMLElement
+    expect(within(inspector).getByText('Broadcast details are not ready yet')).toBeTruthy()
+    expect(within(inspector).getByText('Pulse Explorer checks again automatically.')).toBeTruthy()
+    expect(within(inspector).queryByRole('button', { name: 'Try again' })).toBeNull()
+    unmount()
+    // After its one automatic retry, and once Retry-After ends, the reader can try again.
+    Object.assign(detail, { retryScheduled: false, retryBlocked: false })
+    const after = renderAt('/analytics/explore/pulse-xqc-stream-1?window=7d')
+    const panel = after.container.querySelector('aside.explorer-inspector') as HTMLElement
+    expect(within(panel).queryByText('Pulse Explorer checks again automatically.')).toBeNull()
+    expect(within(panel).getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
+  it('keeps an out-of-date list visible and offers Refresh only once Retry-After ends', () => {
+    vi.stubEnv('VITE_PUBLIC_NEWSROOM_WINDOWS', 'live,24h,7d')
+    const ready = normalizeExplorerEnvelope(rawEnvelope())!
+    const stale: ExplorerEnvelope = { ...ready, status: 'stale', reason: 'refresh_unavailable' }
+    const list = { ...hookResult(stale), error: 'snapshot_expired', retryBlocked: true, retryScheduled: true }
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? hookResult(ready) : list))
+    const { container, rerender } = renderAt('/analytics/explore?window=7d')
+    const banner = () => container.querySelector('.explorer-stale') as HTMLElement
+    expect(within(banner()).getByText(/Fresh activity could not be reached; valid results remain visible\./)).toBeTruthy()
+    expect(container.querySelectorAll('.explorer-result')).toHaveLength(1)
+    expect(within(banner()).queryByRole('button', { name: 'Refresh' })).toBeNull()
+
+    Object.assign(list, { retryBlocked: false })
+    rerender(
+      <MemoryRouter initialEntries={['/analytics/explore?window=7d']}>
+        <Routes>
+          <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+          <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(within(banner()).getByRole('button', { name: 'Refresh' }))
+    expect(list.refresh).toHaveBeenCalledTimes(1)
+  })
+})
+
+// OP1-RES-003 / CX-RES-004: a shared broadcast link must stay inspectable when
+// only the list request fails or comes back empty.
+describe('Pulse Explorer detail route with a failed or empty list', () => {
+  type ListResult = Omit<ReturnType<typeof hookResult>, 'error'> & { error: string | null }
+  function renderDetailRoute(list: ListResult, path = '/analytics/explore/pulse-xqc-stream-1') {
+    const data = normalizeExplorerEnvelope(rawEnvelope())!
+    mockUseExplorerData.mockImplementation((query: { broadcastId?: string }) => (query.broadcastId ? hookResult(data) : list))
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/analytics/explore" element={<AnalyticsExplorerPage />} />
+          <Route path="/analytics/explore/:broadcastId" element={<AnalyticsExplorerPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('keeps the loaded broadcast and reports the list failure in the results column only', () => {
+    const { container } = renderDetailRoute({ ...hookResult(null), unavailable: true, error: 'internal_error' })
+    const inspector = container.querySelector('aside.explorer-inspector')
+    expect(inspector).not.toBeNull()
+    expect(screen.getByRole('heading', { level: 2, name: 'xQc' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Back to broadcasts' })).toBeTruthy()
+    const results = container.querySelector('section.explorer-results') as HTMLElement
+    expect(results.textContent).toContain('Pulse Explorer is unavailable')
+    expect(inspector?.textContent).not.toContain('Pulse Explorer is unavailable')
+    expect(container.querySelector('.pulse-explorer__workspace--single')).toBeNull()
+  })
+
+  it('keeps the loaded broadcast when the list comes back empty', () => {
+    const empty = normalizeExplorerEnvelope({ ...rawEnvelope(), status: 'empty', broadcasts: [], broadcast: undefined, moments: undefined })
+    const { container } = renderDetailRoute(hookResult(empty))
+    expect(screen.getByRole('heading', { level: 2, name: 'xQc' })).toBeTruthy()
+    expect((container.querySelector('section.explorer-results') as HTMLElement).textContent).toContain('No matching broadcasts')
+  })
+
+  it('still uses the single workspace on the index route when the list fails', () => {
+    const { container } = renderDetailRoute({ ...hookResult(null), unavailable: true, error: 'internal_error' }, '/analytics/explore')
+    expect(container.querySelector('aside.explorer-inspector')).toBeNull()
+    expect(container.querySelector('.pulse-explorer__workspace--single')).not.toBeNull()
   })
 })
