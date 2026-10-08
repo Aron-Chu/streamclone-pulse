@@ -11,6 +11,7 @@ import Refunds from './public/Refunds'
 import Supporter from './public/Supporter'
 import SupporterThanks from './public/SupporterThanks'
 import Support from './public/Support'
+import Discord from './public/Discord'
 import Changelog from './public/Changelog'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
@@ -120,6 +121,9 @@ function PortalRoutes() {
         <Route path="/supporter" element={<Supporter />} />
         <Route path="/supporter/thanks" element={<SupporterThanks />} />
         <Route path="/support" element={<Support />} />
+        {/* The extension's "Join Discord" opens this page; it forwards to the
+            build-time invite, or says the server is not open yet. */}
+        <Route path="/discord" element={<Discord />} />
         {/* The extension's "Release details" links open this page. */}
         <Route path="/changelog" element={<Changelog />} />
         <Route path="/account/sign-in" element={<AccountPage />} />
