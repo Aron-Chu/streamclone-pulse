@@ -7,12 +7,15 @@ type Captured = { key: string | null; body: Record<string, unknown> }
 
 let issue: (token: string) => void = () => {}
 let resets = 0
+let renderOpts: Record<string, unknown> | null = null
 let requests: Captured[] = []
 
 function installTurnstile() {
   resets = 0
+  renderOpts = null
   window.turnstile = {
     render: (_el, opts) => {
+      renderOpts = opts
       issue = token => act(() => opts.callback(token))
       return 'widget-1'
     },
@@ -440,6 +443,25 @@ describe('support feedback card', () => {
     await screen.findByText('Enter a valid email, or leave it blank.')
     expect(document.activeElement).toBe(emailBox)
     await waitFor(() => expect(screen.getByTestId('support-form-announce').textContent).toBe('Enter a valid email, or leave it blank.'))
+  })
+
+  it.each([
+    { width: 261, size: 'compact' },
+    { width: 556, size: 'flexible' },
+  ])('renders Turnstile interaction-only and $size when the card has $width px for it', async ({ width, size }) => {
+    // 300px is the narrowest normal/flexible widget; a 320px phone leaves 261px.
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width)
+    try {
+      await renderCard()
+      await waitFor(() => expect(renderOpts).not.toBeNull())
+      expect(renderOpts).toMatchObject({ appearance: 'interaction-only', size })
+      const host = screen.getByTestId('support-turnstile')
+      expect(host.classList.contains('is-shown')).toBe(false)
+      act(() => { (renderOpts!['before-interactive-callback'] as () => void)() })
+      expect(host.classList.contains('is-shown')).toBe(true)
+    } finally {
+      clientWidth.mockRestore()
+    }
   })
 
   it('requires the explicit consent checkbox', async () => {

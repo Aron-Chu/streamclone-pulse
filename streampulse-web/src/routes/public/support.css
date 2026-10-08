@@ -1,7 +1,9 @@
 /* /support feedback card (v2 design, 2026-10-07). Plain CSS on the public
    tokens so it renders on a cold route before any analytics styles load. */
 
-.support-page { display: grid; gap: 1.75rem; min-width: 0; }
+/* minmax(0, 1fr): nothing inside (a 300px challenge on a 320px phone) can
+   widen the column past the viewport. */
+.support-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; min-width: 0; }
 
 .feedback-card {
   position: relative;
@@ -111,8 +113,10 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-legal a { color: #a1a1aa; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(161, 161, 170, 0.4); }
 .feedback-legal a:hover { color: #e4e4e7; }
 
-.feedback-challenge:empty { display: none; }
-.feedback-challenge { margin-top: 0.75rem; }
+/* A block, not display:none, so its width can pick the widget size; it has no
+   height or margin until Cloudflare asks the reader to interact. */
+.feedback-challenge { max-width: 100%; }
+.feedback-challenge.is-shown { margin-top: 0.75rem; }
 
 .feedback-done { display: flex; align-items: flex-start; gap: 0.9rem; }
 .feedback-done__check { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.4); color: #6ee7b7; }

@@ -50,9 +50,12 @@ type TurnstileAPI = {
     el: HTMLElement,
     opts: {
       sitekey: string
+      size?: 'normal' | 'flexible' | 'compact'
+      appearance?: 'always' | 'execute' | 'interaction-only'
       callback: (token: string) => void
       'expired-callback'?: () => void
       'error-callback'?: () => void
+      'before-interactive-callback'?: () => void
     },
   ) => string
   reset: (widgetId?: string) => void
@@ -160,6 +163,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   const [contactConsent, setContactConsent] = useState(false)
   const [consent, setConsent] = useState(false)
   const [turnstileToken, setTurnstileToken] = useState('')
+  // Turnstile stays invisible unless Cloudflare needs the reader to interact.
+  const [challengeShown, setChallengeShown] = useState(false)
   const [state, setState] = useState<CardState>(availability === 'unavailable' ? { kind: 'unavailable' } : { kind: 'idle' })
   const [now, setNow] = useState(() => Date.now())
   // One polite status line for things said once (never a ticking value).
@@ -204,8 +209,14 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
           window.turnstile.remove(widgetIdRef.current)
           widgetIdRef.current = null
         }
+        // The normal and flexible widgets are at least 300px wide, wider than a
+        // 320px phone leaves inside the card, so a narrow card gets compact.
+        const width = widgetHostRef.current.clientWidth
         widgetIdRef.current = window.turnstile.render(widgetHostRef.current, {
           sitekey: siteKey,
+          appearance: 'interaction-only',
+          size: width > 0 && width < 300 ? 'compact' : 'flexible',
+          'before-interactive-callback': () => setChallengeShown(true),
           callback: token => {
             setTurnstileToken(token)
             setState(prev => (prev.kind === 'invalid' && prev.error === 'check_pending' ? { kind: 'idle' } : prev))
@@ -500,7 +511,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
           </p>
         </form>
       )}
-      <div ref={widgetHostRef} hidden={state.kind === 'sent'} data-testid="support-turnstile" className="feedback-challenge" />
+      <div ref={widgetHostRef} hidden={state.kind === 'sent'} data-testid="support-turnstile"
+        className={`feedback-challenge${challengeShown ? ' is-shown' : ''}`} />
     </>
   )
 }
