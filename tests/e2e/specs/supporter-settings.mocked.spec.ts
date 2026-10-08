@@ -2,9 +2,14 @@ import type { Locator } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
 import { linkDevice, serveMembership, supporterBody } from '../helpers/supporterMembership.ts'
 
+const WIDE_EMOTE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="106" height="32" viewBox="0 0 106 32"><rect width="106" height="32" rx="6" fill="#9146ff"/></svg>'
+
 test('packaged supporter settings stay local, accessible and responsive', async ({ extension, prepare }, info) => {
   await prepare()
   const page = extension.page
+  // Serve every 7TV emote locally at the widest real shape (wide emotes run about 3.1-3.3:1), so the
+  // overflow checks below see loaded images on every run instead of depending on live CDN timing.
+  await extension.context.route('https://cdn.7tv.app/emote/**', route => route.fulfill({ contentType: 'image/svg+xml', body: WIDE_EMOTE_SVG }))
   const before = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get(null))
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   await expect(page.getByRole('heading', { name: 'Account & Supporter' })).toBeVisible()
@@ -54,9 +59,11 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   for (const button of await page.getByRole('group', { name: 'Emote rain' }).getByRole('button').all()) await expect(button).toBeDisabled()
   await expect(page.getByText(/signature emote/i)).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('supporter-settings-halo.png'), fullPage: true, animations: 'disabled' })
-  for (const width of [320, 390, 768]) {
+  for (const width of [320, 360, 390, 480, 768]) {
     await page.setViewportSize({ width, height: 900 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+    // No Your look choice may spill its label past its own border, even where the page does not scroll.
+    expect(await page.locator('.pulse-supporter-look-row :is(label, button)').evaluateAll(choices => choices.filter(choice => choice.scrollWidth > choice.clientWidth + 1).map(choice => choice.textContent))).toEqual([])
     if (width < 768) {
       // Narrow, the button wraps below its column: the price sits above it, never under it.
       const [price, button] = await Promise.all([terms.boundingBox(), primary.boundingBox()])

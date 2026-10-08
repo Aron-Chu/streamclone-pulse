@@ -273,7 +273,7 @@ describe('Your Line, drawn by content/supporter-card.js', () => {
     }
     // Both halves of the requested mix show up: Twitch globals and the wide 7TV emotes.
     const sources = lines.flatMap(line => [...line.querySelectorAll('img')].map(img => img.src))
-    expect(sources.some(src => src.includes('static-cdn.jtvnw.net'))).toBe(true)
+    expect(sources.some(src => new URL(src).hostname === 'static-cdn.jtvnw.net')).toBe(true)
     expect(sources.some(src => /01J7VZYB08000E8DPG2XYMKQYR|01HMM8VG3R0007GXBD883VP2YY|01K6YP3JPX47KY68B19S6MY6DY/.test(src))).toBe(true)
     stop()
     card.remove()

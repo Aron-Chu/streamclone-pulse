@@ -80,7 +80,7 @@ test.describe('Pulse Explorer routes', () => {
     await page.locator('.explorer-result').filter({ hasText: 'xQc' }).click()
     await expect(page).toHaveURL(/\/analytics\/explore\/pulse-xqc-session-1\?window=7d&sort=recent$/)
     const actions = page.getByRole('group', { name: 'Broadcast actions' })
-    await expect(actions.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240$/)
+    await expect(actions.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', /\/analytics\/xqc\/stream-xqc-pulse-xqc-session-1\?t=240&returnTo=%2Fanalytics%2Fexplore%2Fpulse-xqc-session-1%3Fwindow%3D7d%26sort%3Drecent$/)
     await expect(actions.getByRole('link', { name: 'Watch live' })).toHaveAttribute('href', 'https://www.twitch.tv/xqc')
     await expect(page.getByRole('img', { name: /reaction score trend with 3 measured moments/i })).toBeVisible()
     await expect(page.locator('.explorer-moments li')).toHaveCount(3)
@@ -116,6 +116,27 @@ test.describe('Pulse Explorer routes', () => {
     await expect(page.getByText('Broadcast details are unavailable')).toBeVisible()
     await expect(page.locator('.explorer-result')).toHaveCount(4)
   })
+
+  // OP1-RES-003: a shared link stays inspectable when only the list request fails.
+  for (const width of [390, 1440]) {
+    test(`a failed list keeps a shared broadcast link inspectable at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width < 800 ? 1000 : 900 })
+      await install(page)
+      await page.route(/\/v1\/public\/explorer\?/, async (route) => {
+        await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal_error"}' })
+      })
+      await page.goto('/analytics/explore/pulse-lirik-session-2')
+      // Wait for the failed list to render first so the inspector checks below cannot race it.
+      const listFailure = page.locator('.explorer-results').getByText('Pulse Explorer is unavailable')
+      if (width >= 960) await expect(listFailure).toBeVisible()
+      else await expect(listFailure).toBeAttached()
+      await expect(page.locator('.explorer-inspector')).toBeVisible()
+      await expect(page.getByRole('heading', { level: 2, name: 'Lirik' })).toBeVisible()
+      // The back link is a narrow-layout control; it is hidden by design at 960px and wider.
+      if (width < 960) await expect(page.getByRole('link', { name: 'Back to broadcasts' })).toBeVisible()
+      await assertNoPageHorizontalOverflow(page)
+    })
+  }
 
   for (const mode of ['empty', 'unavailable', 'malformed'] as const) {
     test(`${mode} state is explicit without exposing backend state strings`, async ({ page }) => {

@@ -96,8 +96,8 @@
       "version": "0.1.1",
       "status": "released",
       "releasedAt": null,
-      "title": "Published Chrome Web Store beta",
-      "summary": "The build currently listed on the Chrome Web Store. Per-change notes were not recorded when it was published, so no itemised history is claimed here.",
+      "title": "Earlier Chrome Web Store beta",
+      "summary": "An earlier beta published on the Chrome Web Store. Per-change notes were not recorded when it was published, so no itemised history is claimed here.",
       "knownIssues": [
         "A live stream may not expose a VOD id until Twitch publishes the archive after the stream ends."
       ],

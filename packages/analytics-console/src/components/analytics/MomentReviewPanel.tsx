@@ -134,7 +134,17 @@ export function MomentReviewPanel({
     const row = container.querySelector<HTMLElement>(
       `[data-moment-scroll-anchor][data-minute-ts="${CSS.escape(selectedRollup.minuteTs)}"]`,
     )
-    row?.scrollIntoView({ block: 'nearest', behavior: motionEnabled ? 'smooth' : 'instant' })
+    if (!row) return
+    // Scroll only the list's own box. scrollIntoView also scrolls the page, and
+    // on phones/tablets the list sits below the chart, so selecting a minute
+    // pushed the chart off-screen.
+    const box = container.getBoundingClientRect()
+    const rect = row.getBoundingClientRect()
+    const delta = rect.top < box.top
+      ? rect.top - box.top
+      : rect.bottom > box.bottom ? Math.min(rect.bottom - box.bottom, rect.top - box.top) : 0
+    if (delta === 0) return
+    container.scrollTo({ top: container.scrollTop + delta, behavior: motionEnabled ? 'smooth' : 'instant' })
   }, [selectedRollup?.minuteTs, motionEnabled])
 
   if (candidates.length < 2) {

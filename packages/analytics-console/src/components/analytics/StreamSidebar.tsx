@@ -29,9 +29,20 @@ export function StreamSidebar({
   buildSessionPath,
   buildChannelPath,
   liveSessionPath,
+  loading = false,
+  loadFailed = false,
+  retrying = false,
+  onRetry,
 }: {
   login: string
   streams: AnalyticsStream[]
+  /** The first stream list request is in flight; a later poll of a failed list keeps the failure shown. */
+  loading?: boolean
+  /** The stream list request failed and nothing is loaded; never shown as an empty channel. */
+  loadFailed?: boolean
+  /** A list request is in flight; the retry stays in place but cannot restart it. */
+  retrying?: boolean
+  onRetry?: () => void
   activeID?: string
   isLiveView: boolean
   liveState?: string
@@ -98,7 +109,25 @@ export function StreamSidebar({
             </div>
           </Link>
         ) : null}
-        {streams.length === 0 ? (
+        {streams.length === 0 && loading ? (
+          <div role="status" className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+            Loading streams…
+          </div>
+        ) : streams.length === 0 && loadFailed ? (
+          <div role="alert" className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
+            Couldn&apos;t load streams.
+            {onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                disabled={retrying}
+                className="mx-auto mt-2 block min-h-11 rounded border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-black uppercase text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:opacity-50"
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
+        ) : streams.length === 0 ? (
           <div className="px-3 py-4 text-center text-xs font-semibold text-zinc-500">
             No past streams indexed yet.
           </div>

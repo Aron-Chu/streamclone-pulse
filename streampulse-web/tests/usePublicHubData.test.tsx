@@ -1,5 +1,5 @@
-import { StrictMode, type PropsWithChildren } from 'react'
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { Component, StrictMode, useEffect, type PropsWithChildren, type ReactNode } from 'react'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackendUrl } from '../src/lib/apiClient'
 import * as publicHubCache from '../src/lib/publicHubCache'
@@ -33,6 +33,7 @@ vi.mock('../src/lib/publicHub', async () => {
 })
 
 import { usePublicHubData } from '../src/hooks/usePublicHubData'
+import { PortalErrorBoundary } from '../src/ui/PortalErrorBoundary'
 
 function sampleHub(poolSize: number): PublicHub {
   return normalizePublicHub({
@@ -612,6 +613,100 @@ describe('usePublicHubData', () => {
     expect(typeof cached?.cachedAt).toBe('number')
   })
 
+  it('never persists a poll that crashes its page, so a reload refetches instead of re-crashing', async () => {
+    class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+      state = { failed: false }
+      static getDerivedStateFromError() { return { failed: true } }
+      render() { return this.state.failed ? <p>crashed</p> : this.props.children }
+    }
+    let refresh = () => {}
+    function Page() {
+      const hub = usePublicHubData({ pollMs: 0 })
+      refresh = hub.refresh
+      // Stands in for any row the page cannot render.
+      if (hub.data?.poolSize === 13) throw new Error('unrenderable snapshot')
+      return <p>pool {hub.data?.poolSize ?? 'loading'}</p>
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    fetchPublicHubBase.mockResolvedValueOnce(hubResult(5)).mockResolvedValueOnce(hubResult(13))
+    render(<Boundary><Page /></Boundary>)
+    expect(await screen.findByText('pool 5')).toBeTruthy()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(5)
+
+    await act(async () => { refresh() })
+    expect(await screen.findByText('crashed')).toBeTruthy()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(5)
+  })
+
+  it('drops a snapshot saved by a crash in a child effect, so a retry reads fresh instead of re-hydrating it', async () => {
+    function EffectCrash({ poolSize }: { poolSize?: number }) {
+      useEffect(() => { if (poolSize === 13) throw new Error('unrenderable snapshot') }, [poolSize])
+      return null
+    }
+    let refresh = () => {}
+    function Page() {
+      const hub = usePublicHubData({ pollMs: 0 })
+      refresh = hub.refresh
+      return <><p>pool {hub.data?.poolSize ?? 'loading'}</p><EffectCrash poolSize={hub.data?.poolSize} /></>
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    fetchPublicHubBase.mockResolvedValueOnce(hubResult(5)).mockResolvedValueOnce(hubResult(13)).mockResolvedValue(hubResult(5))
+    const view = render(<PortalErrorBoundary resetKey="/analytics"><Page /></PortalErrorBoundary>)
+    expect(await screen.findByText('pool 5')).toBeTruthy()
+
+    await act(async () => { refresh() })
+    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
+    // The effect crash committed, and so saved, the snapshot before the boundary caught it.
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+
+    // Following a link clears the error; the page must not re-hydrate the crash.
+    view.rerender(<PortalErrorBoundary resetKey="/analytics/moments"><Page /></PortalErrorBoundary>)
+    expect(await screen.findByText('pool 5')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
+  })
+
+  it('stops saving snapshots once a boundary below the polling page has caught a crash', async () => {
+    function RenderCrash({ poolSize }: { poolSize?: number }) {
+      if (poolSize === 13) throw new Error('unrenderable snapshot')
+      return <p>pool {poolSize ?? 'loading'}</p>
+    }
+    let refresh = () => {}
+    function Page() {
+      const hub = usePublicHubData({ pollMs: 0 })
+      refresh = hub.refresh
+      // The page (and its polling hook) stays mounted around its layout's boundary.
+      return <PortalErrorBoundary><RenderCrash poolSize={hub.data?.poolSize} /></PortalErrorBoundary>
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    fetchPublicHubBase.mockResolvedValueOnce(hubResult(5)).mockResolvedValueOnce(hubResult(13)).mockResolvedValue(hubResult(7))
+    render(<Page />)
+    expect(await screen.findByText('pool 5')).toBeTruthy()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(5)
+
+    await act(async () => { refresh() })
+    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+
+    await act(async () => { refresh() })
+    expect(readPublicHubCache(getBackendUrl(), '24h')).toBeNull()
+  })
+
+  it('re-validates a cached snapshot so a wrong-typed row cannot crash the hydrate', () => {
+    const poisoned = sampleHub(4)
+    poisoned.liveChannels = [
+      { login: 'xqc', displayName: { hostile: true }, viewers: 1, chatPerMin: 1, seventvPerMin: 1, coverageState: 'synced', trendPct: 0 },
+      { login: null, viewers: 1, chatPerMin: 1, seventvPerMin: 1, coverageState: 'synced', trendPct: 0 },
+    ] as unknown as PublicHub['liveChannels']
+    writePublicHubCache(getBackendUrl(), '24h', poisoned)
+    fetchPublicHubBase.mockReturnValue(new Promise(() => {}))
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    expect(result.current.loadSource).toBe('cache')
+    expect(result.current.data?.liveChannels.map((channel) => channel.login)).toEqual(['xqc'])
+    expect(result.current.data?.liveChannels[0].displayName).toBeUndefined()
+  })
+
   it('ignores corrupted cache and cold-starts loading', async () => {
     localStorage.setItem(publicHubCacheKey(getBackendUrl(), '24h'), '{not-json')
     fetchPublicHubBase.mockResolvedValue(hubResult(5))
@@ -989,6 +1084,72 @@ describe('usePublicHubData', () => {
         await Promise.resolve()
       })
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+    })
+
+    it('ends retryBlocked when the Retry-After pause ends, with no read to clear it', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase
+        .mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 60_000 })
+        .mockResolvedValue(hubResult(5))
+      // Polling off: nothing reads again on its own, so only the pause ending can offer Try again.
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(result.current.retryBlocked).toBe(true)
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(59_999) })
+      expect(result.current.retryBlocked).toBe(true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(result.current.retryBlocked).toBe(false)
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        result.current.refresh()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+      expect(result.current.data?.poolSize).toBe(5)
+    })
+
+    it('offers Try again and polls when a pressed read\'s pause ends, though a poll fell inside it', async () => {
+      vi.useFakeTimers()
+      const pressed = deferredHub()
+      fetchPublicHubBase
+        .mockResolvedValueOnce(hubResult(5))
+        // The poll in flight when Try again is pressed; the press aborts it.
+        .mockImplementationOnce((signal: AbortSignal) => new Promise((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason))
+        }))
+        .mockImplementationOnce(() => pressed.promise)
+        .mockResolvedValue(hubResult(6))
+      // random 0: a healthy poll comes 15% early, every 38.25 s.
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0 }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(result.current.data?.poolSize).toBe(5)
+      await act(async () => { await vi.advanceTimersByTimeAsync(38_250) })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
+
+      // The aborted poll arms the next one 38.25 s out; then the pressed read names a 60 s pause.
+      await act(async () => {
+        result.current.refresh()
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+      await act(async () => {
+        pressed.reject({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 60_000 })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.retryBlocked).toBe(true)
+
+      // The armed poll falls inside the pause and makes no request.
+      await act(async () => { await vi.advanceTimersByTimeAsync(59_999) })
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(3)
+      expect(result.current.retryBlocked).toBe(true)
+
+      // The pause ends: Try again is offered and the next poll reads, not a full pause later.
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(result.current.retryBlocked).toBe(false)
+      expect(fetchPublicHubBase).toHaveBeenCalledTimes(4)
+      expect(result.current.data?.poolSize).toBe(6)
     })
   })
 })
