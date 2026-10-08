@@ -130,6 +130,19 @@ export function ensureTurnstileScript(siteKey: string): Promise<void> {
   })
 }
 
+/**
+ * Whether a Turnstile client error code (passed to the widget's error-callback)
+ * can pass on a fresh challenge. Cloudflare's client-side error table marks
+ * these "Retry: Yes": challenge and interaction timeouts (1106xx), the iframe
+ * failing to load (200500), and the generic challenge failures (300xxx, 600xxx).
+ * Everything else is a configuration or browser problem (site key, domain,
+ * clock) that no retry fixes, as is a missing or unknown code.
+ */
+export function turnstileErrorRetryable(code: unknown): boolean {
+  const value = typeof code === 'number' ? String(code) : typeof code === 'string' ? code.trim() : ''
+  return /^(1106\d\d|200500|300\d{3}|600\d{3})$/.test(value)
+}
+
 const utf8 = new TextEncoder()
 
 /** Length in UTF-8 bytes — the unit the backend's limits are written in. */
