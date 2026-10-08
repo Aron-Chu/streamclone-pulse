@@ -52,6 +52,12 @@ function consent() { fireEvent.click(screen.getByLabelText('I consent to submitt
 function send() { fireEvent.submit(screen.getByTestId('support-form')) }
 function submitButton() { return screen.getByRole('button', { name: /Send feedback|Try again/ }) as HTMLButtonElement }
 function consentBox() { return screen.getByLabelText('I consent to submitting this text to StreamPulse support.') as HTMLInputElement }
+/** Fires the widget's error-callback with a Cloudflare client error code; returns what the card returned. */
+function widgetError(code: string): unknown {
+  let handled: unknown
+  act(() => { handled = (renderOpts!['error-callback'] as (errorCode: string) => unknown)(code) })
+  return handled
+}
 
 beforeEach(() => {
   vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
@@ -370,6 +376,76 @@ describe('support feedback card', () => {
     send()
     expect(await screen.findByText("The bot check didn't go through. Your message is still here; try again.")).toBeTruthy()
     expect(message().value).toBe('Human here')
+  })
+
+  it('keeps the form and the message when the bot check errors, and starts a fresh challenge on the next Send', async () => {
+    respondWith(json(200, { case_id: 'c-after-check' }))
+    await renderCard()
+    typeMessage('Human, honest')
+    consent()
+    // A challenge timeout while the reader is still typing changes nothing on screen.
+    expect(widgetError('300030')).toBe(true)
+    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(resets).toBe(0)
+
+    // Send starts a fresh challenge and waits for it.
+    send()
+    expect(await screen.findByText('Still checking that you are not a bot. Try again in a moment.')).toBeTruthy()
+    expect(resets).toBe(1)
+    // That one fails too: now the reader is told, and the text stays.
+    widgetError('600010')
+    expect((await screen.findByRole('alert')).textContent).toBe("The bot check didn't go through. Your message is still here; try again.")
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+    expect(message().value).toBe('Human, honest')
+    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
+
+    send()
+    expect(resets).toBe(2)
+    issue('tok-fresh')
+    send()
+    await screen.findByText('Saved. Thank you.')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.body.turnstile_token).toBe('tok-fresh')
+  })
+
+  it.each(['110200', '400020'])('shows the unavailable panel when the widget reports configuration error %s', async (code) => {
+    respondWith()
+    await renderCard()
+    typeMessage('Is the check broken?')
+    widgetError(code)
+    const off = await screen.findByTestId('support-form-unavailable')
+    expect((within(off).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Is the check broken?')
+  })
+
+  it('falls back to the unavailable panel when every fresh challenge fails', async () => {
+    const fetchMock = respondWith()
+    await renderCard()
+    typeMessage('Blocked iframe')
+    consent()
+    widgetError('200500')
+    send()
+    widgetError('200500')
+    expect(await screen.findByText("The bot check didn't go through. Your message is still here; try again.")).toBeTruthy()
+    send()
+    widgetError('200500')
+    const off = await screen.findByTestId('support-form-unavailable')
+    expect((within(off).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Blocked iframe')
+    expect(resets).toBe(2)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('leaves a sent case on screen when the next challenge errors', async () => {
+    respondWith(json(200, { case_id: 'case-kept' }))
+    await renderCard()
+    typeMessage('All good')
+    consent()
+    issue('tok-1')
+    send()
+    await screen.findByText('Saved. Thank you.')
+    widgetError('110200')
+    expect(screen.getByText('Saved. Thank you.')).toBeTruthy()
+    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
   })
 
   it('points a server rejection at the message field', async () => {

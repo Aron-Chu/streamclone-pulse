@@ -8,6 +8,7 @@ import {
   supportFailureOutcome,
   supportSuccessOutcome,
   truncateUtf8,
+  turnstileErrorRetryable,
   utf8ByteLength,
   validateFeedbackDraft,
   validateSupportForm,
@@ -171,4 +172,19 @@ describe('send outcomes', () => {
   ])('maps %j to %j', (error, outcome) => {
     expect(supportFailureOutcome(error)).toEqual(outcome)
   })
+})
+
+describe('Turnstile widget errors', () => {
+  // Cloudflare's client-side error table: Retry "Yes" for timeouts, the iframe
+  // failing to load and the generic challenge failures; "No" for configuration.
+  it.each(['110600', '110620', '200500', '300030', '300010', '600010', 600010])('%j is worth a fresh challenge', (code) => {
+    expect(turnstileErrorRetryable(code)).toBe(true)
+  })
+
+  it.each(['110100', '110110', '110200', '200100', '400020', '400021', '400070', '100000', '110500', '', 'abc', undefined, null])(
+    '%j is not',
+    (code) => {
+      expect(turnstileErrorRetryable(code)).toBe(false)
+    },
+  )
 })

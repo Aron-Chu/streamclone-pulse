@@ -14,12 +14,19 @@ import { expect, test, type Page, type Route } from '@playwright/test'
  * floor). By default it takes the worst case and asks the reader to interact,
  * so the widget is visible; with `window.__turnstilePasses` set it passes
  * invisibly, as interaction-only does for most readers. Every render and
- * reset issues a fresh token.
+ * reset issues a fresh token, unless `window.__turnstileErrors` still holds a
+ * Cloudflare client error code: then that render or reset reports the next
+ * code through error-callback instead.
  */
 const TURNSTILE_STUB = `
 (() => {
   let issued = 0
   const widgets = {}
+  const settle = (opts) => setTimeout(() => {
+    const code = (window.__turnstileErrors || []).shift()
+    if (code) opts['error-callback'] && opts['error-callback'](code)
+    else { window.__turnstileIssued = ++issued; opts.callback('stub-token-' + issued) }
+  }, 0)
   window.__turnstileRenders = []
   window.turnstile = {
     render(el, opts) {
@@ -35,10 +42,10 @@ const TURNSTILE_STUB = `
       if (window.__turnstilePasses) box.style.display = 'none'
       el.appendChild(box)
       if (!window.__turnstilePasses && opts['before-interactive-callback']) opts['before-interactive-callback']()
-      setTimeout(() => opts.callback('stub-token-' + (++issued)), 0)
+      settle(opts)
       return id
     },
-    reset(id) { const opts = widgets[id]; if (opts) setTimeout(() => opts.callback('stub-token-' + (++issued)), 0) },
+    reset(id) { const opts = widgets[id]; if (opts) settle(opts) },
     remove(id) { delete widgets[id] },
   }
 })()
@@ -249,6 +256,27 @@ test.describe('configured build', () => {
       await expect(page.getByTestId('support-form-success')).toContainText('case-e2e-1')
       await page.getByRole('button', { name: 'Send something else' }).click()
       await expect(page.getByLabel('Your message')).toBeFocused()
+    })
+
+    test('a bot-check error keeps the message, and Try again gets a fresh challenge', async ({ page, baseURL }) => {
+      // The first challenge times out while the reader types; the fresh one Send
+      // starts fails; the one after that passes.
+      await page.addInitScript(() => { (window as { __turnstileErrors?: string[] }).__turnstileErrors = ['110600', '600010'] })
+      await mockNetwork(page, baseURL, [{ status: 200, body: { case_id: 'case-e2e-check' } }])
+      await openConfiguredSupport(page)
+      await page.getByLabel('Your message').fill('Human, honest')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await expect(page.getByTestId('support-form').getByRole('alert')).toHaveCount(0)
+      await sendButton(page).click()
+      await expect(page.getByTestId('support-form-error')).toHaveText("The bot check didn't go through. Your message is still here; try again.")
+      await expect(page.getByTestId('support-form-unavailable')).toHaveCount(0)
+      await expect(page.getByLabel('Your message')).toHaveValue('Human, honest')
+      await page.getByRole('button', { name: 'Try again' }).click()
+      await expect(page.getByTestId('support-form-error')).toHaveCount(0)
+      // The fresh challenge from that press is the first to pass.
+      await expect.poll(() => page.evaluate(() => (window as { __turnstileIssued?: number }).__turnstileIssued ?? 0)).toBe(1)
+      await sendButton(page).click()
+      await expect(page.getByTestId('support-form-success')).toContainText('case-e2e-check')
     })
 
     test('the rate-limit alert keeps its words while the countdown ticks', async ({ page, baseURL }) => {

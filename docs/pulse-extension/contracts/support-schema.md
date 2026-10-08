@@ -55,6 +55,11 @@ so `/support` shows the form as unavailable. Activation inputs are listed in
   same key on retry); too many attempts (honours `Retry-After`); unavailable (hosted form off or
   not configured: `503` `disabled`, `missing_turnstile_secret`, `missing_limiter`, `missing_store`,
   `missing_delivery_adapter` — keeps the GitHub issue and safe-diagnostics paths). The Turnstile token is reset after every attempt.
+- Bot check: a `400` `turnstile_failed` keeps the text and offers "Try again". A widget error that
+  Cloudflare marks retryable (timeouts `1106xx`, iframe load `200500`, challenge failures `300xxx` /
+  `600xxx`) also keeps the form: the next Send starts a fresh challenge, and only a reader waiting on
+  the check is told it failed. A configuration error (site key, domain, clock), a script that does not
+  load, or the failure of a second fresh challenge shows unavailable.
 - Retention stays **off** (`PULSE_SUPPORT_RETENTION_ENABLED=false`) until a duration is approved.
 
 **Forbidden attachments** in v1. No automatic screenshots, logs, cookies, or IDs.

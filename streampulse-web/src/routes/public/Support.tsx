@@ -18,6 +18,7 @@ import {
   supportFailureOutcome,
   supportFormAvailability,
   supportSuccessOutcome,
+  turnstileErrorRetryable,
   utf8ByteLength,
   validateFeedbackDraft,
   type FeedbackDraftError,
@@ -54,7 +55,8 @@ type TurnstileAPI = {
       appearance?: 'always' | 'execute' | 'interaction-only'
       callback: (token: string) => void
       'expired-callback'?: () => void
-      'error-callback'?: () => void
+      /** Gets Cloudflare's client error code; a truthy return marks it handled. */
+      'error-callback'?: (errorCode?: string) => boolean | void
       'before-interactive-callback'?: () => void
     },
   ) => string
@@ -100,6 +102,13 @@ const COUNTER_FROM = SUPPORT_DESCRIPTION_MAX - 500
  * value must still be handled.
  */
 const RATE_LIMIT_FALLBACK_MS = 60_000
+
+/**
+ * Fresh challenges the reader's Send presses may start after the widget errors,
+ * before the card stops offering the form and shows the unavailable panel (an
+ * extension or network that blocks Cloudflare's iframe fails every time).
+ */
+const WIDGET_RETRY_LIMIT = 2
 
 function retrySeconds(until: number, now: number): number {
   return Math.max(1, Math.ceil((until - now) / 1000))
@@ -188,6 +197,10 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
   const consentRef = useRef<HTMLInputElement | null>(null)
   const submitRef = useRef<HTMLButtonElement | null>(null)
   const pendingFocusRef = useRef<FocusTarget | null>(null)
+  // The widget reported an error since its last token, and how many fresh
+  // challenges the reader's presses have started since then.
+  const widgetFailedRef = useRef(false)
+  const widgetRetriesRef = useRef(0)
   const [panelTakesFocus, setPanelTakesFocus] = useState(false)
   useEffect(() => () => {
     submitControllerRef.current?.abort()
@@ -223,13 +236,16 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
           size: width > 0 && width < 300 ? 'compact' : 'flexible',
           'before-interactive-callback': () => setChallengeShown(true),
           callback: token => {
+            widgetFailedRef.current = false
+            widgetRetriesRef.current = 0
             setTurnstileToken(token)
             setState(prev => (prev.kind === 'invalid' && prev.error === 'check_pending' ? { kind: 'idle' } : prev))
           },
           'expired-callback': () => setTurnstileToken(''),
-          'error-callback': () => {
-            setTurnstileToken('')
-            becomeUnavailable()
+          'error-callback': errorCode => {
+            widgetFailed(errorCode)
+            // Handled here, so Turnstile does not also log it to the console.
+            return true
           },
         })
       })
@@ -288,11 +304,36 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
     if (text) announce(text)
   }, [state])
 
-  /** The unavailable panel replaces the form; it takes focus only if the reader was in the form. */
-  function becomeUnavailable() {
+  /** The unavailable panel takes focus only if the reader was in the form it replaces. */
+  function notePanelFocus() {
     const active = typeof document === 'undefined' ? null : document.activeElement
     setPanelTakesFocus(!!active && !!formRef.current?.contains(active))
+  }
+
+  function becomeUnavailable() {
+    notePanelFocus()
     setState({ kind: 'unavailable' })
+  }
+
+  /**
+   * The widget reported an error. A timeout, a failed challenge or an iframe
+   * that did not load keeps the form and the typed message: Turnstile retries
+   * on its own, and the reader's next Send starts a fresh challenge. A
+   * configuration error (site key, domain), or fresh challenges that keep
+   * failing, show the unavailable panel instead.
+   */
+  function widgetFailed(errorCode: unknown) {
+    setTurnstileToken('')
+    widgetFailedRef.current = true
+    if (!turnstileErrorRetryable(errorCode) || widgetRetriesRef.current >= WIDGET_RETRY_LIMIT) {
+      notePanelFocus()
+      // A case already sent, or on its way, stays on screen.
+      setState(prev => (prev.kind === 'sent' || prev.kind === 'sending' ? prev : { kind: 'unavailable' }))
+      return
+    }
+    // Said only to a reader waiting on the check, never to one still typing;
+    // a repeat while it is shown changes nothing, so it is said once.
+    setState(prev => (prev.kind === 'invalid' && prev.error === 'check_pending' ? { kind: 'check_failed' } : prev))
   }
 
   /** Every attempt spends its challenge token; the widget issues a fresh one. */
@@ -316,6 +357,13 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
       return
     }
     if (!turnstileToken.trim()) {
+      if (widgetFailedRef.current) {
+        // The widget errored: this press starts a fresh challenge (at the
+        // reader's pace, so a failing network is never retried in a loop).
+        widgetFailedRef.current = false
+        widgetRetriesRef.current += 1
+        resetChallenge()
+      }
       setState({ kind: 'invalid', error: 'check_pending' })
       return
     }
