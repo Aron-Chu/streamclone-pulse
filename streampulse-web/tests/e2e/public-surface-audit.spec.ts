@@ -56,6 +56,8 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
 const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1'
 /** The build under test has My Moments on; its item then leads the account menu. */
 const ACCOUNT_MOMENTS = process.env.VITE_ACCOUNT_MOMENTS === '1'
+/** The build under test has the header account entry on (Sign in link / account menu). Off by default. */
+const ACCOUNT_HEADER = process.env.VITE_ACCOUNT_HEADER === '1'
 
 /** The signed-out sign-in page leads with Twitch when the flag is on, else with the email form. */
 async function expectSignedOutSignInPage(page: Page): Promise<void> {
@@ -213,15 +215,21 @@ test.describe('public surface audit', () => {
   })
 
   for (const width of [1440, 375]) {
-    test(`anonymous visitors get a sign-in link and no account request at ${width}px`, async ({ page }, testInfo) => {
+    test(`anonymous visitors get the enabled header entry and no account request at ${width}px`, async ({ page }, testInfo) => {
       const accountReads: string[] = []
       page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/v1/account/')) accountReads.push(request.url()) })
       await page.setViewportSize({ width, height: 900 })
       for (const [path, header] of [['/docs', 'header.app-nav'], ['/analytics', 'header.analytics-topnav']] as const) {
         await page.goto(path)
         const signIn = page.locator(header).getByRole('link', { name: 'Sign in', exact: true })
-        await expect(signIn).toBeVisible()
-        await expect(signIn).toHaveAttribute('href', '/account/sign-in')
+        if (ACCOUNT_HEADER) {
+          await expect(signIn).toBeVisible()
+          await expect(signIn).toHaveAttribute('href', '/account/sign-in')
+        } else {
+          await expect(page.locator(header)).toBeVisible()
+          await expect(page.locator(header).locator('.account-entry')).toHaveCount(0)
+          await expect(signIn).toHaveCount(0)
+        }
         await expect(page.locator(header).getByRole('button', { name: 'Account', exact: true })).toHaveCount(0)
         await expectNoHorizontalOverflow(page)
         await page.screenshot({ path: testInfo.outputPath(`account-entry-signed-out${path.replace('/', '-')}-${width}.png`) })
@@ -231,7 +239,30 @@ test.describe('public surface audit', () => {
       expect(accountReads).toEqual([])
     })
 
+    test(`signed-in visitors keep master's header while VITE_ACCOUNT_HEADER is off at ${width}px`, async ({ page, baseURL }) => {
+      test.skip(ACCOUNT_HEADER, 'this build has the header account entry on')
+      await page.context().addCookies([{ name: '__Host-pulse_csrf', value: 'ab'.repeat(32), domain: new URL(baseURL!).hostname, path: '/', secure: true, sameSite: 'Strict' }])
+      const accountReads: string[] = []
+      page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/v1/account/')) accountReads.push(request.url()) })
+      await page.setViewportSize({ width, height: 900 })
+      for (const path of ['/docs', '/analytics']) {
+        await page.goto(path)
+        await expect(page.getByRole('banner')).toBeVisible()
+        await expect(page.locator('header .account-entry')).toHaveCount(0)
+        await expect(page.getByRole('banner').getByRole('button', { name: 'Account', exact: true })).toHaveCount(0)
+      }
+      // The support menu keeps master's plain "Account" link.
+      const analyticsHeader = page.locator('header.analytics-topnav')
+      await analyticsHeader.getByRole('button', { name: 'Support and account', exact: true }).click()
+      const support = analyticsHeader.locator('.analytics-topnav__more-links')
+      await expect(support.getByRole('link', { name: 'Account', exact: true })).toHaveAttribute('href', '/account/sign-in')
+      await expect(support.getByRole('link', { name: 'Account & devices' })).toHaveCount(0)
+      // Header chrome never asks who is signed in.
+      expect(accountReads).toEqual([])
+    })
+
     test(`signed-in visitors get an account menu at ${width}px`, async ({ page, baseURL }, testInfo) => {
+      test.skip(!ACCOUNT_HEADER, 'needs a VITE_ACCOUNT_HEADER=1 build')
       const csrf = 'ab'.repeat(32)
       await page.context().addCookies([{ name: '__Host-pulse_csrf', value: csrf, domain: new URL(baseURL!).hostname, path: '/', secure: true, sameSite: 'Strict' }])
       let accountReads = 0
@@ -323,7 +354,8 @@ test.describe('public surface audit', () => {
     await page.route('**/v1/account/me', route => route.fulfill({ status: 401, json: { error: 'sign_in_required' } }))
     await page.goto('/account/sign-in')
     await expectSignedOutSignInPage(page)
-    await expect(page.locator('header.app-nav').getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
+    if (ACCOUNT_HEADER) await expect(page.locator('header.app-nav').getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
+    else await expect(page.locator('header.app-nav .account-entry')).toHaveCount(0)
   })
 })
 
@@ -407,7 +439,7 @@ test.describe('Sign in with Twitch', () => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/account/sign-in')
       const header = page.locator('header.app-nav')
-      await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
+      if (ACCOUNT_HEADER) await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
       const twitch = page.getByRole('button', { name: 'Sign in with Twitch' })
       await expect(twitch).toBeVisible()
       await expect(twitch).toHaveCSS('background-color', 'rgb(145, 70, 255)')
@@ -421,9 +453,13 @@ test.describe('Sign in with Twitch', () => {
       await twitch.click()
       await page.waitForURL(`${origin}/account/settings`)
 
-      const account = header.getByRole('button', { name: 'Account: PulseTester', exact: true })
-      await expect(account).toBeVisible()
-      await expect(account.locator('img')).toHaveAttribute('src', 'https://static-cdn.jtvnw.net/jtv_user_pictures/pulse-profile_image-70x70.png')
+      if (ACCOUNT_HEADER) {
+        const account = header.getByRole('button', { name: 'Account: PulseTester', exact: true })
+        await expect(account).toBeVisible()
+        await expect(account.locator('img')).toHaveAttribute('src', 'https://static-cdn.jtvnw.net/jtv_user_pictures/pulse-profile_image-70x70.png')
+      } else {
+        await expect(header.locator('.account-entry')).toHaveCount(0)
+      }
       await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0)
       await expect(page.getByTestId('twitch-account-row')).toContainText('Connected as PulseTester')
       await expectNoHorizontalOverflow(page)

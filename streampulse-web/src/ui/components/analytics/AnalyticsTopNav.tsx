@@ -5,6 +5,7 @@ import { AccountEntry } from '../AccountEntry'
 import { BrandMark } from '../BrandMark'
 import { ChromeInstallCta } from '../ChromeInstallCta'
 import { useAccountSession } from '../../../lib/accountSession'
+import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -36,7 +37,6 @@ export function AnalyticsTopNav({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelId = useId()
   const location = useLocation()
-  const signedOut = useAccountSession().status === 'signed_out'
 
   useEffect(() => {
     setIsOpen(false)
@@ -61,7 +61,7 @@ export function AnalyticsTopNav({
   }
 
   return (
-    <header className="analytics-topnav" data-analytics-build="command-center-cws-2026-07-22">
+    <header className={accountHeaderEnabled() ? 'analytics-topnav analytics-topnav--account' : 'analytics-topnav'} data-analytics-build="command-center-cws-2026-07-22">
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
@@ -99,9 +99,9 @@ export function AnalyticsTopNav({
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
-              {signedOut
-                ? <Link to="/account/sign-in" onClick={() => closeMenu()}>Sign in</Link>
-                : <Link to="/account/settings" onClick={() => closeMenu()}>Account &amp; devices</Link>}
+              {accountHeaderEnabled()
+                ? <MenuAccountLink onNavigate={() => closeMenu()} />
+                : <Link to="/account/sign-in" onClick={() => closeMenu()}>Account</Link>}
               <Link to="/account/billing" onClick={() => closeMenu()}>Manage membership</Link>
               <Link to="/account/link-device" onClick={() => closeMenu()}>Link extension</Link>
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
@@ -127,7 +127,14 @@ export function AnalyticsTopNav({
           </div>
         ) : null}
       </div>
-      <AccountEntry variant="analytics" />
+      {accountHeaderEnabled() ? <AccountEntry variant="analytics" /> : null}
     </header>
   )
+}
+
+/** With the header account entry on, the menu's account link follows the session. */
+function MenuAccountLink({ onNavigate }: { onNavigate: () => void }) {
+  return useAccountSession().status === 'signed_out'
+    ? <Link to="/account/sign-in" onClick={onNavigate}>Sign in</Link>
+    : <Link to="/account/settings" onClick={onNavigate}>Account &amp; devices</Link>
 }

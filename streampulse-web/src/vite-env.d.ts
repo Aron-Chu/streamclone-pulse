@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_TWITCH_SIGNIN?: string
   /** "1" turns on My Moments on the website (account bookmarks and synced history). */
   readonly VITE_ACCOUNT_MOMENTS?: string
+  /** "1" turns on the header account entry (Sign in link / account menu); anything else leaves the header as before. */
+  readonly VITE_ACCOUNT_HEADER?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { AccountEntry } from './AccountEntry'
+import { accountHeaderEnabled } from '../../lib/accountHeaderFlag'
 import { BrandMark } from './BrandMark'
 import { ChromeInstallCta } from './ChromeInstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
@@ -31,7 +32,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <a className="public-skip-link" href="#public-main">Skip to main content</a>
-      <header className="app-nav">
+      <header className={accountHeaderEnabled() ? 'app-nav app-nav--account' : 'app-nav'}>
         <Link to="/" className="app-nav__brand" title="StreamPulse Home">
           <BrandMark className="app-nav__mark" size={28} />
           <span>StreamPulse</span>
@@ -85,7 +86,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </a>
           <ChromeInstallCta className="app-nav__install" data-cta="chrome-install-public-nav" />
         </nav>
-        <AccountEntry variant="public" />
+        {accountHeaderEnabled() ? <AccountEntry variant="public" /> : null}
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
       <footer className="app-footer">
