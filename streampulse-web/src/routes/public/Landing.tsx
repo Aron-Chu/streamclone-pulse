@@ -116,7 +116,8 @@ function Hero({
         </div>
         {discord ? (
           <div className="sl-community">
-            <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-discord-pill" aria-label={DISCORD_LABEL}>
+            {/* The name starts with the words on the pill, for voice control. */}
+            <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-discord-pill" aria-label="Join the Discord (opens in a new tab)">
               <DiscordMark size={20} />
               Join the Discord
               <ArrowUpRight className="sl-discord-pill__ext" size={13} aria-hidden="true" />

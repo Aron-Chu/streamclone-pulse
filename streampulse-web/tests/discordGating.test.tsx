@@ -129,6 +129,27 @@ describe('Discord entry points', () => {
     expect(within(footer).queryByText('Discord')).toBeNull()
   })
 
+  it('gives every Discord link a name that contains its visible label (WCAG 2.5.3)', async () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
+    const landing = render(<MemoryRouter><Landing /></MemoryRouter>)
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    const support = render(<MemoryRouter><Support /></MemoryRouter>)
+    const site = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
+    const links = discordLinks()
+    expect(links.length).toBeGreaterThanOrEqual(6)
+    const pill = links.find(a => a.classList.contains('sl-discord-pill'))!
+    expect(pill.getAttribute('aria-label')).toBe('Join the Discord (opens in a new tab)')
+    for (const link of links) {
+      const visible = (link.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const name = link.getAttribute('aria-label') ?? visible
+      // A voice-control user says what they see; the name has to contain it.
+      if (visible) expect(name.toLowerCase(), link.className).toContain(visible.toLowerCase())
+    }
+    landing.unmount()
+    support.unmount()
+    site.unmount()
+  })
+
   it('adds the quiet Discord line under the support card', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     render(<MemoryRouter><Support /></MemoryRouter>)
