@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 
 /**
  * /support feedback card in a real browser. The form, the Turnstile widget and
@@ -128,20 +128,17 @@ test.describe('configured build', () => {
       await page.setViewportSize({ width, height: 900 })
       await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
       await mockNetwork(page, baseURL)
-      // The page as prerendered, before JavaScript: same document, module script removed.
-      await page.route('**/support', async (route) => {
-        if (route.request().resourceType() !== 'document') return route.fallback()
-        const response = await route.fetch()
-        const html = (await response.text()).replace(/<script\b[^>]*type="module"[^>]*>\s*<\/script>/g, '')
-        await route.fulfill({ response, body: html })
-      })
+      // The page as prerendered, before the app runs: scripting stays on, but
+      // no script loads, so the prerendered markup is what lays out.
+      const noScripts = (route: Route) => (route.request().resourceType() === 'script' ? route.abort() : route.fallback())
+      await page.route('**/*', noScripts)
       await page.goto('/support')
       // Without a site key the card prerenders the unavailable panel instead.
       test.skip(await page.getByTestId('support-form-unavailable').isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /support prerenders no form')
       const prerendered = await cardLayout(page)
       await expect(page.locator('.feedback-form--shell')).toBeVisible()
 
-      await page.unroute('**/support')
+      await page.unroute('**/*', noScripts)
       await page.goto('/support')
       await expect(page.locator('.feedback-form')).not.toHaveClass(/feedback-form--shell/)
       await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
