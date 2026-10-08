@@ -165,4 +165,26 @@ test.describe('configured build', () => {
       await expect(off.getByRole('link', { name: 'Open a public issue on GitHub' })).toBeVisible()
     })
   })
+
+  test('the chosen feedback type stays visible in forced colours', async ({ page, baseURL }) => {
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.emulateMedia({ forcedColors: 'active' })
+    await mockNetwork(page, baseURL)
+    await openConfiguredSupport(page)
+    const radios = page.locator('.feedback-choice input[type="radio"]')
+    await expect(radios).toHaveCount(2)
+    // The system radio is drawn, so the checked one is shown without colour.
+    for (const radio of await radios.all()) {
+      await expect(radio).toBeVisible()
+      expect(await radio.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+    }
+    await expect(radios.nth(0)).toBeChecked()
+    await page.getByText('I have an idea').click()
+    await expect(radios.nth(1)).toBeChecked()
+    const outline = (index: number) => page.locator('.feedback-choice__opt').nth(index).evaluate(element => getComputedStyle(element).outlineStyle)
+    expect(await outline(1)).toBe('solid')
+    expect(await outline(0)).toBe('none')
+    await page.emulateMedia({ forcedColors: 'none' })
+    expect(await radios.nth(0).evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  })
 })
