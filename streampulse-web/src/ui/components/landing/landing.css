@@ -203,6 +203,7 @@
 
 .sl-menu a {
   padding: 0.42rem 0.72rem;
+  white-space: nowrap;
   border-radius: var(--sc-radius);
   color: hsl(var(--sc-muted-foreground));
   text-decoration: none;
@@ -976,6 +977,14 @@
 
 @media (max-width: 359px) {
   .sl-nav--discord { gap: 0.5rem; }
+}
+
+/* Just above the Menu breakpoint the Discord button leaves the menu links
+   about 14px short, and "Pulse tab" / "Signal replay" wrapped onto two lines
+   (961-974px). Tighten the spacing there instead of dropping a nav item. */
+@media (min-width: 961px) and (max-width: 1040px) {
+  .sl-nav--discord { gap: 0.75rem; }
+  .sl-nav--discord .sl-menu a { padding-inline: 0.55rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
