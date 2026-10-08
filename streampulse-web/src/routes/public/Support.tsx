@@ -364,9 +364,13 @@ function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boo
     pendingFocusRef.current = outcome.kind === 'rejected' && outcome.field ? outcome.field : 'submit'
     if (outcome.kind === 'rate_limited') {
       const waitMs = outcome.retryAfterMs ?? RATE_LIMIT_FALLBACK_MS
+      // `now` last moved at mount or on the last tick; move it with the state so
+      // the first frame of the countdown does not count from back then.
+      const arrived = Date.now()
+      setNow(arrived)
       setState({
         kind: 'rate_limited',
-        until: Date.now() + waitMs,
+        until: arrived + waitMs,
         seconds: outcome.retryAfterMs === null ? null : Math.ceil(outcome.retryAfterMs / 1000),
       })
       return

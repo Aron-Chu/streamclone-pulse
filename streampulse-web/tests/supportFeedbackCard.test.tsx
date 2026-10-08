@@ -313,6 +313,39 @@ describe('support feedback card', () => {
     }
   })
 
+  it('counts the visible wait from when the 429 arrives, not from when the page loaded', async () => {
+    // `now` used to move only on mount and on each countdown tick, so the first
+    // frame of a 429 after five quiet minutes read "Send again in 360s".
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const shown: string[] = []
+    const collect = (records: MutationRecord[]) => {
+      for (const record of records) {
+        const countdown = (record.target.nodeType === Node.TEXT_NODE ? record.target.parentElement : record.target as Element)
+          ?.closest('[data-testid="support-rate-countdown"]')
+        if (record.type === 'characterData' && countdown) shown.push(record.oldValue ?? '')
+      }
+    }
+    const observer = new MutationObserver(collect)
+    try {
+      respondWith(json(429, { error: 'rate_limited' }))
+      await renderCard()
+      typeMessage('Took a while to write this')
+      consent()
+      issue('tok-1')
+      vi.setSystemTime(Date.now() + 5 * 60_000)
+      observer.observe(screen.getByTestId('support-form'), { subtree: true, characterData: true, characterDataOldValue: true })
+      send()
+      const countdown = await screen.findByTestId('support-rate-countdown')
+      collect(observer.takeRecords())
+      shown.push(countdown.textContent ?? '')
+      const seconds = shown.map(text => Number(/\d+/.exec(text)?.[0]))
+      expect(seconds.every(value => value >= 1 && value <= 60), `countdown showed ${JSON.stringify(shown)}`).toBe(true)
+    } finally {
+      observer.disconnect()
+      vi.useRealTimers()
+    }
+  })
+
   it('switches to the unavailable state when the hosted form is off, keeping the message to copy', async () => {
     respondWith(json(503, { error: 'disabled' }))
     await renderCard()
