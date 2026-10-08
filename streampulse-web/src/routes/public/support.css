@@ -1,0 +1,186 @@
+/* /support feedback card (v2 design, 2026-10-07). Plain CSS on the public
+   tokens so it renders on a cold route before any analytics styles load. */
+
+/* minmax(0, 1fr): nothing inside (a 300px challenge on a 320px phone) can
+   widen the column past the viewport. */
+.support-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; min-width: 0; }
+
+/* Page title, centred over the card in the same column. */
+.support-page__head { width: min(620px, 100%); margin: 0 auto -0.25rem; text-align: center; }
+.support-page__badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.6rem; border-radius: 6px; background: rgba(139, 92, 246, 0.1); color: #c4b5fd; font-size: 0.75rem; font-weight: 700; }
+.support-page__badge > span { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; }
+.support-page__head h1 { margin: 0.7rem 0 0; font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.4rem); line-height: 1.1; font-weight: 900; letter-spacing: -0.03em; color: #fff; text-wrap: balance; }
+.support-page__head p { margin: 0.55rem auto 0; max-width: 52ch; color: #a1a1aa; font-size: 1rem; line-height: 1.5; text-wrap: pretty; }
+
+.feedback-card {
+  position: relative;
+  width: min(620px, 100%);
+  margin: 0 auto;
+  padding: 1.75rem;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #121218, #0d0d11);
+  box-shadow: 0 20px 60px -30px rgba(139, 92, 246, 0.35);
+}
+.feedback-card::before {
+  content: '';
+  position: absolute;
+  left: 1.75rem;
+  right: 1.75rem;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(347 89% 65% / 0.7), hsl(258 90% 70% / 0.8), hsl(189 94% 55% / 0.7), transparent);
+}
+.feedback-card__title { margin: 0; font-size: 1.7rem; line-height: 1.1; font-weight: 850; letter-spacing: -0.025em; color: #fff; }
+.feedback-card__sub { margin: 0.45rem 0 1.25rem; color: #a1a1aa; font-size: 0.98rem; text-wrap: pretty; }
+
+.feedback-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.feedback-form { display: grid; gap: 0.95rem; }
+.feedback-form fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.feedback-form__fields { display: grid; gap: 0.95rem; }
+.feedback-form__fields[data-paused='true'] > :not(.feedback-row) { opacity: 0.6; }
+
+.feedback-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.feedback-choice__opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 52px;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  background: #0b0b0e;
+  color: #d4d4d8;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.feedback-choice__opt input { position: absolute; opacity: 0; pointer-events: none; }
+.feedback-choice__opt svg { width: 20px; height: 20px; flex: none; color: #71717a; }
+.feedback-choice__opt.is-on { border-color: rgba(139, 92, 246, 0.75); background: rgba(139, 92, 246, 0.12); color: #fff; box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.35); }
+.feedback-choice__opt.is-on svg { color: #c4b5fd; }
+.feedback-choice__opt:has(input:focus-visible) { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+
+.feedback-field { display: grid; gap: 0.4rem; min-width: 0; }
+.feedback-label { font-size: 0.88rem; font-weight: 600; color: #e4e4e7; }
+.feedback-label small { font-weight: 400; color: #8b8b95; font-size: 0.84rem; }
+.feedback-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  background: #09090b;
+  color: #fafafa;
+  font: inherit;
+  font-size: 0.95rem;
+}
+.feedback-input::placeholder { color: #8b8b95; }
+textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5; display: block; }
+.feedback-input[aria-invalid='true'] { border-color: rgba(251, 191, 36, 0.6); }
+.feedback-input:focus { outline: none; border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+.feedback-input[readonly] { color: #d4d4d8; }
+
+.feedback-hint { margin: 0; font-size: 0.84rem; color: #fcd34d; }
+.feedback-count { margin: 0; font: 500 0.78rem/1.4 var(--font-mono); color: #8b8b95; }
+.feedback-count.is-over { color: #fcd34d; }
+
+.feedback-check { display: flex; align-items: flex-start; gap: 0.6rem; min-height: 32px; font-size: 0.86rem; color: #c4c4cf; cursor: pointer; }
+.feedback-check input { width: 1.05rem; height: 1.05rem; margin: 0.15rem 0 0; flex: none; accent-color: #8b5cf6; }
+
+.feedback-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  border-radius: 10px;
+  background: rgba(244, 63, 94, 0.08);
+  color: #fecdd3;
+  font-size: 0.9rem;
+}
+.feedback-alert svg { width: 17px; height: 17px; flex: none; color: #fb7185; }
+
+.feedback-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding-top: 0.2rem; }
+.feedback-row .sc-btn { min-height: 46px; }
+.feedback-muted { margin: 0; font-size: 0.84rem; line-height: 1.45; color: #8b8b95; }
+.feedback-spin {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: feedback-spin 0.8s linear infinite;
+}
+@keyframes feedback-spin { to { transform: rotate(360deg); } }
+
+.feedback-legal { margin: 0.1rem 0 0; padding-top: 0.75rem; border-top: 1px solid #1f1f25; font-size: 0.8rem; color: #7c7c87; }
+.feedback-legal a { color: #a1a1aa; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(161, 161, 170, 0.4); }
+.feedback-legal a:hover { color: #e4e4e7; }
+
+/* A block, not display:none, so its width can pick the widget size; it has no
+   height or margin until Cloudflare asks the reader to interact. */
+.feedback-challenge { max-width: 100%; }
+.feedback-challenge.is-shown { margin-top: 0.75rem; }
+
+.feedback-done { display: flex; align-items: flex-start; gap: 0.9rem; }
+.feedback-done__check { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.4); color: #6ee7b7; }
+.feedback-done__check svg { width: 22px; height: 22px; }
+.feedback-done__title { margin: 0; font-size: 1.15rem; font-weight: 850; letter-spacing: -0.02em; color: #fff; }
+.feedback-done__title:focus { outline: none; }
+.feedback-done__sub { margin: 0.1rem 0 0; color: #a1a1aa; font-size: 0.9rem; }
+.feedback-done__ref { display: inline-block; margin: 0.45rem 0 0.9rem; padding: 0.2rem 0.55rem; border: 1px solid #27272a; border-radius: 6px; background: #09090b; font: 500 0.8rem/1.4 var(--font-mono); color: #d4d4d8; }
+.feedback-done__ref code { color: inherit; word-break: break-all; }
+.feedback-done .sc-btn { display: flex; }
+
+.feedback-off { display: grid; gap: 0.85rem; }
+.feedback-off__lead { margin: 0; color: #d4d4d8; font-size: 0.95rem; }
+.feedback-off__lead:focus { outline: none; }
+.feedback-off__lead small { display: block; margin-top: 0.3rem; color: #8b8b95; font-size: 0.82rem; }
+.feedback-off__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.feedback-off__actions .sc-btn { white-space: normal; text-align: center; }
+.feedback-off__copy { margin: 0; font-size: 0.82rem; color: #a1a1aa; }
+.feedback-off__copy:empty { display: none; }
+.feedback-off pre { margin: 0; padding: 0.75rem; border: 1px solid #27272a; border-radius: 8px; background: #09090b; font: 0.78rem/1.5 var(--font-mono); color: #d4d4d8; white-space: pre-wrap; }
+
+.support-discord-line { margin: -0.4rem auto 0; text-align: center; font-size: 0.92rem; color: #8b8b95; }
+.support-discord-line a { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0 0.35rem; font-weight: 600; color: #e4e4e7; }
+.support-discord-line a svg { color: #5865f2; }
+.support-discord-line a span { border-bottom: 1px solid rgba(255, 255, 255, 0.25); }
+.support-discord-line a:hover { color: #fff; }
+.support-discord-line small { display: block; margin-top: -0.3rem; font-size: 0.8rem; color: #8b8b95; }
+
+@media (max-width: 560px) {
+  .feedback-card { padding: 1.3rem 1.1rem; border-radius: 14px; }
+  .feedback-card::before { left: 1.1rem; right: 1.1rem; }
+  .feedback-card__title { font-size: 1.5rem; }
+  .feedback-choice__opt { flex-direction: column; justify-content: center; gap: 0.3rem; min-height: 74px; padding: 0.6rem 0.4rem; font-size: 0.88rem; text-align: center; }
+  .feedback-choice__opt svg { width: 19px; height: 19px; }
+  .feedback-row .sc-btn { width: 100%; }
+}
+
+/* Prerendered shell: looks like the live form (no disabled dimming) and is
+   replaced by it once JavaScript runs; without JavaScript it gives way to the
+   <noscript> unavailable panel. */
+.feedback-form--shell .sc-btn:disabled { opacity: 1; }
+.feedback-form--shell :is(input, textarea):disabled { cursor: default; }
+@media (scripting: none) {
+  .feedback-form--shell { display: none; }
+}
+
+/* Windows High Contrast / forced colours drops the backgrounds, borders'
+   colours and shadows that mark the chosen type, and the real radio is
+   transparent, so both options looked the same. Show the system radio there
+   and outline the chosen option in the system highlight colour. */
+@media (forced-colors: active) {
+  .feedback-choice__opt { border-color: CanvasText; }
+  .feedback-choice__opt input { position: static; opacity: 1; flex: none; margin: 0; }
+  .feedback-choice__opt.is-on { border-color: Highlight; outline: 2px solid Highlight; outline-offset: -3px; }
+  .feedback-choice__opt:has(input:focus-visible) { outline: 2px solid CanvasText; outline-offset: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-spin { animation: none; }
+}

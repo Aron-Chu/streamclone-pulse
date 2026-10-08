@@ -8,6 +8,10 @@ interface ImportMetaEnv {
   readonly VITE_POSTHOG_PROJECT_TOKEN?: string
   readonly VITE_REPLAYFORGE_UI_ORIGIN?: string
   readonly VITE_STREAMCLONE_WATCH_ORIGIN?: string
+  /** Activation input: Cloudflare Turnstile site key. Without it the support form stays unavailable. */
+  readonly VITE_TURNSTILE_SITE_KEY?: string
+  /** Activation input: public Discord invite. Without a valid one every Discord link is hidden. */
+  readonly VITE_PUBLIC_DISCORD_INVITE_URL?: string
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string
