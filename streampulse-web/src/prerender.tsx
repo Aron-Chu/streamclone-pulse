@@ -9,6 +9,7 @@ import Supporter from './routes/public/Supporter'
 import SupporterThanks from './routes/public/SupporterThanks'
 import AccountRestore from './routes/account/AccountRestore'
 import Support from './routes/public/Support'
+import Discord from './routes/public/Discord'
 import Status from './routes/public/Status'
 import Changelog from './routes/public/Changelog'
 import NotFound from './routes/public/NotFound'
@@ -26,6 +27,7 @@ export function prerenderPublicPage(path: string): string {
     : path === '/supporter/thanks' ? <SupporterThanks />
     : path === '/account/restore' ? <AccountRestore />
     : path === '/support' ? <Support />
+    : path === '/discord' ? <Discord />
     : path === '/status' ? <Status />
     : path === '/changelog' ? <Changelog />
     : ['/analytics', '/setup', '/login'].includes(path)

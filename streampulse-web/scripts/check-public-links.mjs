@@ -79,7 +79,7 @@ for (const file of htmlFiles(dist)) {
 }
 
 /** Paths the extension and the sign-in email publish. These must exist too. */
-const EXTERNALLY_PUBLISHED = ['/privacy', '/terms', '/refunds', '/support', '/supporter', '/supporter/thanks', '/account/restore', '/status', '/docs', '/changelog']
+const EXTERNALLY_PUBLISHED = ['/privacy', '/terms', '/refunds', '/support', '/supporter', '/supporter/thanks', '/account/restore', '/status', '/docs', '/changelog', '/discord']
 for (const path of EXTERNALLY_PUBLISHED) {
   if (!resolves(path)) failures.push(`${path}: published by the extension or sign-in email but does not resolve`)
 }

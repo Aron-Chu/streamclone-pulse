@@ -30,6 +30,19 @@ Copy `.env.development.localhost.example` to `.env.development.localhost` when y
 
 **Full checklist:** [`docs/website-portal/local-dev-runbook.md`](../docs/website-portal/local-dev-runbook.md) (hosted-first defaults, troubleshooting, poll discipline).
 
+## Feedback form and Discord (activation inputs)
+
+Both are build-time environment values; neither is committed, and without them the site stays honest:
+
+| Variable | Without a valid value |
+|----------|----------------------|
+| `VITE_TURNSTILE_SITE_KEY` | The `/support` feedback card shows "unavailable" with the GitHub issue and safe-diagnostics paths. |
+| `VITE_PUBLIC_DISCORD_INVITE_URL` | Every Discord link is hidden; `/discord` says the server isn't open yet. Accepts only `https://discord.gg/<code>` or `https://discord.com/invite/<code>`. |
+
+Set them for the whole `pages:deploy:prod` run (the prerender step reads them too). Never
+write an invite literal in source — `tests/noDiscordInviteLiterals.test.ts` fails on one. Details:
+[`docs/pulse-extension/contracts/activation.md`](../docs/pulse-extension/contracts/activation.md#activation-inputs).
+
 ## Troubleshooting local dev
 
 | Symptom | Fix |
