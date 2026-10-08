@@ -54,6 +54,8 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
 
 /** The build under test has Sign in with Twitch on (npm run test:e2e:audit inherits VITE_TWITCH_SIGNIN). */
 const TWITCH_SIGNIN = process.env.VITE_TWITCH_SIGNIN === '1'
+/** The build under test has My Moments on; its item then leads the account menu. */
+const ACCOUNT_MOMENTS = process.env.VITE_ACCOUNT_MOMENTS === '1'
 
 /** The signed-out sign-in page leads with Twitch when the flag is on, else with the email form. */
 async function expectSignedOutSignInPage(page: Page): Promise<void> {
@@ -252,6 +254,13 @@ test.describe('public surface audit', () => {
       await trigger.focus()
       await page.keyboard.press('Enter')
       const menu = page.getByRole('menu', { name: 'Account' })
+      if (ACCOUNT_MOMENTS) {
+        await expect(menu.getByRole('menuitem', { name: 'My Moments' })).toBeFocused()
+        await expect(menu.getByRole('menuitem', { name: 'My Moments' })).toHaveAttribute('href', '/account/moments')
+        await page.keyboard.press('ArrowDown')
+      } else {
+        await expect(menu.getByRole('menuitem', { name: 'My Moments' })).toHaveCount(0)
+      }
       await expect(menu.getByRole('menuitem', { name: 'Account & devices' })).toBeFocused()
       await expect(menu.getByRole('menuitem', { name: 'Account & devices' })).toHaveAttribute('href', '/account/settings')
       await expect(menu.getByRole('menuitem', { name: 'Membership & billing' })).toHaveAttribute('href', '/account/billing')
