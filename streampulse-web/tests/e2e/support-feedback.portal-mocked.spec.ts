@@ -11,8 +11,10 @@ import { expect, test, type Page } from '@playwright/test'
 /**
  * Stands in for Cloudflare's api.js. Like the real widget it honours `size`
  * (compact 150px wide, normal 300px, flexible fills its host with a 300px
- * floor) and, as the worst case, always asks the reader to interact, so the
- * widget is visible. Every render and reset issues a fresh token.
+ * floor). By default it takes the worst case and asks the reader to interact,
+ * so the widget is visible; with `window.__turnstilePasses` set it passes
+ * invisibly, as interaction-only does for most readers. Every render and
+ * reset issues a fresh token.
  */
 const TURNSTILE_STUB = `
 (() => {
@@ -30,8 +32,9 @@ const TURNSTILE_STUB = `
       if (opts.size === 'flexible') { box.style.width = '100%'; box.style.minWidth = '300px' }
       else box.style.width = opts.size === 'compact' ? '150px' : '300px'
       box.style.background = '#333'
+      if (window.__turnstilePasses) box.style.display = 'none'
       el.appendChild(box)
-      if (opts['before-interactive-callback']) opts['before-interactive-callback']()
+      if (!window.__turnstilePasses && opts['before-interactive-callback']) opts['before-interactive-callback']()
       setTimeout(() => opts.callback('stub-token-' + (++issued)), 0)
       return id
     },
@@ -75,6 +78,15 @@ async function openConfiguredSupport(page: Page) {
   await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
 }
 
+/** The card's height and where the content after it starts, once fonts are in. */
+async function cardLayout(page: Page) {
+  await page.evaluate(() => document.fonts.ready.then(() => undefined))
+  return page.locator('#send-feedback').evaluate((card) => ({
+    card: Math.round(card.getBoundingClientRect().height),
+    next: Math.round(card.nextElementSibling!.getBoundingClientRect().top + scrollY),
+  }))
+}
+
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }))
 
@@ -99,4 +111,47 @@ test.describe('configured build', () => {
       if (width === 320) expect(render!.size).toBe('compact')
     })
   }
+
+  for (const width of [390, 1440]) {
+    test(`the prerendered card already takes the live form's space at ${width}px`, async ({ page, baseURL }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
+      await mockNetwork(page, baseURL)
+      // The page as prerendered, before JavaScript: same document, module script removed.
+      await page.route('**/support', async (route) => {
+        if (route.request().resourceType() !== 'document') return route.fallback()
+        const response = await route.fetch()
+        const html = (await response.text()).replace(/<script\b[^>]*type="module"[^>]*>\s*<\/script>/g, '')
+        await route.fulfill({ response, body: html })
+      })
+      await page.goto('/support')
+      // Without a site key the card prerenders the unavailable panel instead.
+      test.skip(await page.getByTestId('support-form-unavailable').isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /support prerenders no form')
+      const prerendered = await cardLayout(page)
+      await expect(page.locator('.feedback-form--shell')).toBeVisible()
+
+      await page.unroute('**/support')
+      await page.goto('/support')
+      await expect(page.locator('.feedback-form')).not.toHaveClass(/feedback-form--shell/)
+      await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
+      await expect(page.getByLabel('Your message')).toBeEnabled()
+      const live = await cardLayout(page)
+      // Nothing below the card moves when the live form replaces the shell.
+      expect(Math.abs(live.card - prerendered.card)).toBeLessThanOrEqual(1)
+      expect(Math.abs(live.next - prerendered.next)).toBeLessThanOrEqual(1)
+    })
+  }
+
+  test.describe('without JavaScript', () => {
+    test.use({ javaScriptEnabled: false })
+
+    test('shows the unavailable panel instead of the disabled shell', async ({ page }) => {
+      await page.goto('/support')
+      test.skip(await page.locator('.feedback-form--shell').count() === 0, 'build has no VITE_TURNSTILE_SITE_KEY, so /support prerenders no form')
+      await expect(page.locator('.feedback-form--shell')).toBeHidden()
+      const off = page.getByTestId('support-form-unavailable')
+      await expect(off).toBeVisible()
+      await expect(off.getByRole('link', { name: 'Open a public issue on GitHub' })).toBeVisible()
+    })
+  })
 })

@@ -154,6 +154,15 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
   .feedback-row .sc-btn { width: 100%; }
 }
 
+/* Prerendered shell: looks like the live form (no disabled dimming) and is
+   replaced by it once JavaScript runs; without JavaScript it gives way to the
+   <noscript> unavailable panel. */
+.feedback-form--shell .sc-btn:disabled { opacity: 1; }
+.feedback-form--shell :is(input, textarea):disabled { cursor: default; }
+@media (scripting: none) {
+  .feedback-form--shell { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .feedback-spin { animation: none; }
 }

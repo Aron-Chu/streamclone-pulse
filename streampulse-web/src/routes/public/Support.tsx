@@ -151,11 +151,15 @@ function UnavailablePanel({ keptMessage, takeFocus = false }: { keptMessage?: st
 }
 
 /**
- * Public feedback card (RPR-4). The form renders only in a browser with a
+ * Public feedback card (RPR-4). The form works only in a browser with a
  * Turnstile site key; the backend stays flag-gated and answers 503 until it is
  * activated, which the card shows as unavailable rather than as a send failure.
+ *
+ * `shell` is the prerendered copy: the same markup with every control
+ * disabled, so the page does not jump when the live form replaces it, and
+ * nothing typed before JavaScript runs is thrown away by that replacement.
  */
-function FeedbackCard({ siteKey }: { siteKey: string }) {
+function FeedbackCard({ siteKey, shell = false }: { siteKey: string; shell?: boolean }) {
   const availability = supportFormAvailability(siteKey)
   const [kind, setKind] = useState<FeedbackKind>('bug')
   const [message, setMessage] = useState('')
@@ -419,7 +423,8 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
           </div>
         </div>
       ) : (
-        <form data-testid="support-form" className="feedback-form" onSubmit={onSubmit} aria-busy={sending} noValidate ref={formRef}>
+        <form data-testid="support-form" className={shell ? 'feedback-form feedback-form--shell' : 'feedback-form'}
+          onSubmit={onSubmit} aria-busy={sending} noValidate ref={formRef}>
           {/* Paused, not disabled, while sending: disabling the control that has
               focus drops focus to <body> and the keyboard reader starts over. */}
           <div className="feedback-form__fields" data-paused={sending ? 'true' : undefined}>
@@ -428,7 +433,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
               {FEEDBACK_KINDS.map(option => (
                 <label key={option.value} className={`feedback-choice__opt${kind === option.value ? ' is-on' : ''}`}>
                   <input type="radio" name="feedback-kind" value={option.value} checked={kind === option.value}
-                    aria-disabled={sending ? true : undefined}
+                    disabled={shell || undefined} aria-disabled={sending ? true : undefined}
                     onChange={() => { if (sending) return; setKind(option.value); edited() }} />
                   {option.value === 'bug' ? <AlertCircle aria-hidden="true" /> : <Lightbulb aria-hidden="true" />}
                   {option.label}
@@ -439,6 +444,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             <div className="feedback-field">
               <label className="feedback-label" htmlFor="feedback-message">Your message</label>
               <textarea id="feedback-message" ref={messageRef} className="feedback-input" rows={5} value={message} readOnly={sending}
+                disabled={shell || undefined}
                 placeholder={kind === 'bug' ? 'What happened? Mention the channel if it helps.' : 'What would make StreamPulse better for you?'}
                 aria-invalid={messageError ? true : undefined}
                 aria-describedby={[messageError ? 'feedback-message-hint' : '', messageBytes >= COUNTER_FROM ? 'feedback-message-count' : ''].filter(Boolean).join(' ') || undefined}
@@ -454,7 +460,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             <div className="feedback-field">
               <label className="feedback-label" htmlFor="feedback-email">Email <small>· optional, only if you&apos;d like a reply</small></label>
               <input id="feedback-email" ref={emailRef} className="feedback-input" type="email" autoComplete="email" maxLength={254}
-                placeholder="you@example.com" value={email} readOnly={sending}
+                placeholder="you@example.com" value={email} readOnly={sending} disabled={shell || undefined}
                 aria-invalid={emailError ? true : undefined}
                 aria-describedby={emailError ? 'feedback-email-hint' : undefined}
                 onChange={e => { setEmail(e.target.value); edited() }} />
@@ -475,6 +481,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             ) : null}
             <label className="feedback-check">
               <input type="checkbox" ref={consentRef} checked={consent} aria-required="true" aria-disabled={sending ? true : undefined}
+                disabled={shell || undefined}
                 aria-invalid={consentError ? true : undefined}
                 aria-describedby={consentError ? 'feedback-consent-hint' : undefined}
                 onChange={e => { if (sending) return; setConsent(e.target.checked); edited() }} />
@@ -494,7 +501,7 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
             <div className="feedback-row">
               {/* aria-disabled, not disabled, so the button keeps focus; onSubmit
                   ignores presses while sending or rate limited. */}
-              <button type="submit" ref={submitRef} className={buttonClass('default', 'lg')}
+              <button type="submit" ref={submitRef} className={buttonClass('default', 'lg')} disabled={shell || undefined}
                 aria-disabled={sending || state.kind === 'rate_limited' ? true : undefined}>
                 {sending ? <><span className="feedback-spin" aria-hidden="true" />Sending…</>
                   : state.kind === 'failed' || state.kind === 'check_failed' ? 'Try again'
@@ -517,16 +524,6 @@ function FeedbackCard({ siteKey }: { siteKey: string }) {
   )
 }
 
-/** Rendered before JavaScript runs (prerender) when the form is configured. */
-function FeedbackCardPlaceholder() {
-  return (
-    <>
-      <p className="feedback-muted">Loading the feedback form…</p>
-      <noscript><UnavailablePanel /></noscript>
-    </>
-  )
-}
-
 export default function Support() {
   const siteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() ?? ''
   const ready = supportFormAvailability(siteKey) === 'ready'
@@ -538,7 +535,14 @@ export default function Support() {
         <section id="send-feedback" className="feedback-card" aria-labelledby="feedback-title">
           <h2 id="feedback-title" className="feedback-card__title">Send us feedback</h2>
           <p className="feedback-card__sub">Spotted a problem or have an idea? Tell us here.</p>
-          {ready && typeof window === 'undefined' ? <FeedbackCardPlaceholder /> : <FeedbackCard siteKey={siteKey} />}
+          {ready && typeof window === 'undefined' ? (
+            // Prerender: the form's own markup, so the live form takes exactly
+            // its space; without JavaScript the shell hides and this panel shows.
+            <>
+              <FeedbackCard siteKey={siteKey} shell />
+              <noscript><UnavailablePanel /></noscript>
+            </>
+          ) : <FeedbackCard siteKey={siteKey} />}
         </section>
 
         {discord ? (
