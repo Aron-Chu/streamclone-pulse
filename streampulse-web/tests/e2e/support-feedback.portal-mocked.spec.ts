@@ -210,4 +210,64 @@ test.describe('configured build', () => {
     }
     expect(wrapped).toEqual([])
   })
+
+  test.describe('keyboard and screen-reader paths', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
+    })
+
+    const sendButton = (page: Page) => page.getByTestId('support-form').locator('button[type="submit"]')
+
+    test('focus stays on Send while sending and after a failed send', async ({ page, baseURL }) => {
+      await mockNetwork(page, baseURL, [{ status: 500, body: { error: 'boom' }, delayMs: 800 }])
+      await openConfiguredSupport(page)
+      await page.getByLabel('Your message').fill('Pulse tab is blank')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await sendButton(page).focus()
+      await page.keyboard.press('Enter')
+      await expect(page.getByTestId('support-form-loading')).toBeVisible()
+      await expect(sendButton(page)).toBeFocused()
+      await expect(page.getByTestId('support-form-error')).toHaveText("Couldn't send. Your message is still here.")
+      await expect(page.getByRole('button', { name: 'Try again' })).toBeFocused()
+      await expect(page.getByLabel('Your message')).toHaveValue('Pulse tab is blank')
+    })
+
+    test('an empty Send moves focus to the message box with its hint', async ({ page, baseURL }) => {
+      await mockNetwork(page, baseURL)
+      await openConfiguredSupport(page)
+      await sendButton(page).click()
+      const box = page.getByLabel('Your message')
+      await expect(box).toBeFocused()
+      await expect(box).toHaveAttribute('aria-invalid', 'true')
+      await expect(box).toHaveAccessibleDescription('Add a few words first.')
+    })
+
+    test('"Send something else" puts focus in the message box', async ({ page, baseURL }) => {
+      await mockNetwork(page, baseURL, [{ status: 200, body: { case_id: 'case-e2e-1' } }])
+      await openConfiguredSupport(page)
+      await page.getByLabel('Your message').fill('An idea')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await sendButton(page).click()
+      await expect(page.getByTestId('support-form-success')).toContainText('case-e2e-1')
+      await page.getByRole('button', { name: 'Send something else' }).click()
+      await expect(page.getByLabel('Your message')).toBeFocused()
+    })
+
+    test('the rate-limit alert keeps its words while the countdown ticks', async ({ page, baseURL }) => {
+      await mockNetwork(page, baseURL, [{ status: 429, body: { error: 'rate_limited' } }])
+      await openConfiguredSupport(page)
+      await page.getByLabel('Your message').fill('Again')
+      await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
+      await sendButton(page).click()
+      const alert = page.getByTestId('support-form-rate-limit')
+      await expect(alert).toHaveText('Too many attempts. Wait a minute, then try again. Your message is still here.')
+      const countdown = page.getByTestId('support-rate-countdown')
+      const first = await countdown.textContent()
+      await expect.poll(() => countdown.textContent(), { timeout: 4_000 }).not.toBe(first)
+      await expect(alert).toHaveText('Too many attempts. Wait a minute, then try again. Your message is still here.')
+      await expect(sendButton(page)).toHaveAttribute('aria-disabled', 'true')
+      await expect(sendButton(page)).toBeFocused()
+    })
+  })
 })
