@@ -176,7 +176,14 @@ describe('content bundle', () => {
   // appears in any build. Match the bare path, at a path-segment end so
   // '/supporter' is not read as '/support'.
   const markers = ['/refunds', '/terms', '/privacy', '/discord', '/support']
-  const pathSegment = (marker: string) => new RegExp(`${marker}(?![\w-])`)
+  const pathSegment = (marker: string) => new RegExp(`${marker}(?![\\w-])`)
+
+  it('matches a marker only at a path-segment end', () => {
+    expect(pathSegment('/support').test('`${C}/support`')).toBe(true)
+    expect(pathSegment('/support').test('"/support"')).toBe(true)
+    expect(pathSegment('/support').test('`${C}/supporter`')).toBe(false)
+    expect(pathSegment('/terms').test('/terms-of-sale')).toBe(false)
+  })
 
   it('keeps the link registry and the community entry points out of the content script graph', () => {
     // Unit tests run before `npm run build` in CI, so this source-level walk is
