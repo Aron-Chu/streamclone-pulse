@@ -86,6 +86,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
         canonicalPath: '/support',
         robots: 'index,follow',
       }
+    case '/discord':
+      return { title: 'Discord — StreamPulse', description: 'Join the public StreamPulse community on Discord.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/changelog':
       return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse Chrome extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     default: {
