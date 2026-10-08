@@ -5,6 +5,13 @@
    widen the column past the viewport. */
 .support-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; min-width: 0; }
 
+/* Page title, centred over the card in the same column. */
+.support-page__head { width: min(620px, 100%); margin: 0 auto -0.25rem; text-align: center; }
+.support-page__badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.6rem; border-radius: 6px; background: rgba(139, 92, 246, 0.1); color: #c4b5fd; font-size: 0.75rem; font-weight: 700; }
+.support-page__badge > span { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; }
+.support-page__head h1 { margin: 0.7rem 0 0; font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.4rem); line-height: 1.1; font-weight: 900; letter-spacing: -0.03em; color: #fff; text-wrap: balance; }
+.support-page__head p { margin: 0.55rem auto 0; max-width: 52ch; color: #a1a1aa; font-size: 1rem; line-height: 1.5; text-wrap: pretty; }
+
 .feedback-card {
   position: relative;
   width: min(620px, 100%);

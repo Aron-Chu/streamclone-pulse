@@ -90,6 +90,17 @@ async function cardLayout(page: Page) {
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }))
 
+test.describe('any build', () => {
+  test('the page h1 comes before every other heading on /support', async ({ page, baseURL }) => {
+    await mockNetwork(page, baseURL)
+    await page.goto('/support')
+    await expect(page.getByRole('heading', { level: 1, name: 'Support & Troubleshooting' })).toBeVisible()
+    const tags = await page.locator('main h1, main h2, main h3, main h4, main h5, main h6').evaluateAll(hs => hs.map(h => h.tagName))
+    expect(tags[0]).toBe('H1')
+    expect(tags.filter(tag => tag === 'H1')).toHaveLength(1)
+  })
+})
+
 test.describe('configured build', () => {
   for (const width of [320, 360, 390, 768, 1440]) {
     test(`the challenge fits a ${width}px viewport without horizontal scroll`, async ({ page, baseURL }) => {

@@ -474,3 +474,15 @@ describe('support feedback card', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+describe('support page outline', () => {
+  it.each(['1x00000000000000000000AA', ''])('puts the page h1 before the feedback card heading (site key %j)', (key) => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', key)
+    render(<MemoryRouter><Support /></MemoryRouter>)
+    const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
+    expect(headings[0]!.tagName).toBe('H1')
+    expect(headings[0]!.textContent).toBe('Support & Troubleshooting')
+    expect(document.querySelectorAll('h1')).toHaveLength(1)
+    expect(headings[1]!.textContent).toBe('Send us feedback')
+  })
+})

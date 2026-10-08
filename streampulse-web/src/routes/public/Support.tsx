@@ -532,6 +532,17 @@ export default function Support() {
   return (
     <PublicLayout>
       <div data-testid="support-page" className="support-page">
+        {/* The page's h1 comes first, so the heading outline and "next h1"
+            reach the title before the card's h2. */}
+        <header className="support-page__head">
+          <span className="support-page__badge">
+            <span aria-hidden="true" />
+            StreamPulse Help & Diagnostic Desk
+          </span>
+          <h1>Support & Troubleshooting</h1>
+          <p>Troubleshooting for the Twitch Chrome extension, coverage states, and public analytics portal.</p>
+        </header>
+
         <section id="send-feedback" className="feedback-card" aria-labelledby="feedback-title">
           <h2 id="feedback-title" className="feedback-card__title">Send us feedback</h2>
           <p className="feedback-card__sub">Spotted a problem or have an idea? Tell us here.</p>
@@ -556,21 +567,8 @@ export default function Support() {
         ) : null}
 
         <article className="panel public-document support-page__guide">
-          <header className="mb-6 border-b border-white/[0.08] pb-6">
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 rounded bg-violet-500/10 px-2.5 py-1 text-xs font-bold text-violet-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-                StreamPulse Help & Diagnostic Desk
-              </span>
-            </div>
-            <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Support & Troubleshooting</h1>
-            <p className="mt-2 text-base text-zinc-400">
-              Troubleshooting for the Twitch Chrome extension, coverage states, and public analytics portal.
-            </p>
-          </header>
-
-          <section id="install" className="mt-6">
-            <h2>Install StreamPulse</h2>
+          <section id="install">
+            <h2 className="!mt-0">Install StreamPulse</h2>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <ChromeInstallCta className={buttonClass('default', 'sm')} data-cta="chrome-install-support" />
               <span className="text-xs font-mono text-zinc-500">Official Web Store Build</span>
