@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { lazy, Suspense, useState, type ReactNode } from 'react'
-import { ArrowRight, BookOpen, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, BookOpen, LineChart, PanelTopOpen, Radio, ShieldCheck, Sparkles } from 'lucide-react'
 import '../../ui/tokens.css'
 import '../../ui/components/landing/landing.css'
 import { buttonClass } from '../../ui/primitives'
@@ -15,9 +15,11 @@ import { ResourceGrid } from '../../ui/components/landing/ResourceGrid'
 import { RoadmapTimeline } from '../../ui/components/landing/RoadmapTimeline'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
 import { BrandMark } from '../../ui/components/BrandMark'
+import { DiscordMark } from '../../ui/components/DiscordMark'
 import { ChromeInstallCta } from '../../ui/components/ChromeInstallCta'
 import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
 import { GITHUB_REPO_URL } from '../../lib/externalLinks'
+import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
 
 const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
@@ -38,10 +40,12 @@ function DeferredDemo({ children }: { children: ReactNode }) {
   return <div ref={host}><Suspense fallback={fallback}>{visible ? children : fallback}</Suspense></div>
 }
 
-function TopNav() {
+const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
+
+function TopNav({ discord }: { discord: string | null }) {
   return (
     <header className="sl-header">
-      <nav className="sl-nav" aria-label="StreamPulse">
+      <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse">
         <Link to="/" className="sl-brand">
           <BrandMark className="sl-brand__mark" size={28} />
           StreamPulse
@@ -53,12 +57,23 @@ function TopNav() {
           <Link to="/docs">Docs</Link>
         </div>
         <div className="sl-nav__right">
+          {discord ? (
+            <a href={discord} target="_blank" rel="noopener noreferrer" className={buttonClass('default', 'sm', { className: 'sl-discord-nav' })} aria-label={DISCORD_LABEL}>
+              <DiscordMark size={16} />Discord
+            </a>
+          ) : null}
           <ChromeInstallCta className={buttonClass('outline', 'sm')} data-cta="chrome-install-nav" />
-          <Link to="/analytics" className={buttonClass('outline', 'sm')} onClick={() => capturePublicCta('open_analytics')}>
+          <Link to="/analytics" className={buttonClass('outline', 'sm', { className: 'sl-nav__analytics' })} onClick={() => capturePublicCta('open_analytics')}>
             Open Analytics
           </Link>
         </div>
         <LandingMobileNav />
+        {/* At Menu widths the nav button collapses to this 44px mark beside Menu. */}
+        {discord ? (
+          <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-discord-icon" aria-label={DISCORD_LABEL}>
+            <DiscordMark size={22} />
+          </a>
+        ) : null}
       </nav>
     </header>
   )
@@ -67,9 +82,11 @@ function TopNav() {
 function Hero({
   emoteItems,
   moverItems,
+  discord,
 }: {
   emoteItems: ReturnType<typeof buildEmoteTicker>
   moverItems: ReturnType<typeof buildMoverTicker>
+  discord: string | null
 }) {
   return (
     <section className="sl-hero sl-hero--stage" aria-labelledby="hero-headline">
@@ -97,6 +114,16 @@ function Hero({
             <ArrowRight size={16} aria-hidden="true" />
           </Link>
         </div>
+        {discord ? (
+          <div className="sl-community">
+            {/* The name starts with the words on the pill, for voice control. */}
+            <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-discord-pill" aria-label="Join the Discord (opens in a new tab)">
+              <DiscordMark size={20} />
+              Join the Discord
+              <ArrowUpRight className="sl-discord-pill__ext" size={13} aria-hidden="true" />
+            </a>
+          </div>
+        ) : null}
         <a href="#demo" className="sl-stage__cue">
           See an example of the Pulse tab
           <span className="sl-stage__cuedot" aria-hidden="true" />
@@ -178,7 +205,7 @@ function FeatureGrid() {
   )
 }
 
-function Footer() {
+function Footer({ discord }: { discord: string | null }) {
   return (
     <footer className="sl-footer">
       <div className="sl-container sl-foot">
@@ -191,6 +218,12 @@ function Footer() {
           <Link to="/status">Status</Link>
           <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Analytics</Link>
           <Link to="/support">Support</Link>
+          <Link to="/support#send-feedback">Send feedback</Link>
+          {discord ? (
+            <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-foot__discord" aria-label="Discord (opens in a new tab)">
+              <DiscordMark size={15} />Discord
+            </a>
+          ) : null}
           <Link to="/privacy">Privacy</Link>
           <AnalyticsPreferences />
           <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
@@ -207,6 +240,7 @@ export default function Landing() {
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const mainRef = useRef<HTMLElement | null>(null)
+  const discord = discordInviteUrl()
 
   // A hash in the entry URL cannot scroll on its own: the browser looks for the
   // target while React is still rendering, finds nothing, and gives up. Without
@@ -255,9 +289,9 @@ export default function Landing() {
       <EmoteRain />
       <TwitchChatBackdrop />
       <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
-      <TopNav />
+      <TopNav discord={discord} />
       <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
-        <Hero emoteItems={emoteItems} moverItems={moverItems} />
+        <Hero emoteItems={emoteItems} moverItems={moverItems} discord={discord} />
 
         <section id="demo" className="sl-section" aria-labelledby="demo-title">
           <div className="sl-container">
@@ -331,7 +365,7 @@ export default function Landing() {
           </div>
         </section>
       </main>
-      <Footer />
+      <Footer discord={discord} />
     </div>
   )
 }
